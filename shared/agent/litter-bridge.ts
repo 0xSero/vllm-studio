@@ -7,7 +7,9 @@ export const LITTER_BRIDGE_CAPABILITIES = [
   "sessions.read",
   "sessions.write",
   "agent.turn",
+  "realtime.session",
 ] as const;
+export const LITTER_BRIDGE_REALTIME_CONTRACT_VERSION = 1 as const;
 
 export const LitterBridgeParseOptions = {
   errors: "all",
@@ -118,6 +120,15 @@ const AgentTurnAuthSchema = Schema.Struct({
   capability: Schema.Literal("agent.turn"),
   idempotencyKey: IdentifierSchema,
 }).pipe(strict);
+const RealtimeSessionReadAuthSchema = Schema.Struct({
+  ...RequestAuthFields,
+  capability: Schema.Literal("realtime.session"),
+}).pipe(strict);
+const RealtimeSessionMutationAuthSchema = Schema.Struct({
+  ...RequestAuthFields,
+  capability: Schema.Literal("realtime.session"),
+  idempotencyKey: IdentifierSchema,
+}).pipe(strict);
 
 export const LitterBridgeSectionNameSchema = Schema.Literals([
   "health",
@@ -143,6 +154,9 @@ export const LitterBridgeErrorCodeSchema = Schema.Literals([
   "controller_unavailable",
   "section_unavailable",
   "agent_runtime_unavailable",
+  "realtime_unavailable",
+  "realtime_session_expired",
+  "realtime_state_conflict",
   "internal",
 ]);
 
@@ -263,6 +277,213 @@ export const LitterBridgeCapabilitiesManifestSchema = Schema.Struct({
   issuedAt: TimestampSchema,
   capabilities: Schema.Array(LitterBridgeCapabilitySchema).pipe(Schema.check(Schema.isUnique())),
 }).pipe(strict);
+
+export const LitterBridgeRealtimeContractVersionSchema = Schema.Literal(
+  LITTER_BRIDGE_REALTIME_CONTRACT_VERSION,
+);
+export const LitterBridgeRealtimeProviderSchema = Schema.Literals([
+  "provider_native",
+  "local_pipeline",
+]);
+export const LitterBridgeRealtimeModalitySchema = Schema.Literals(["audio", "text"]);
+export const LitterBridgeRealtimeSignalingSchema = Schema.Literals([
+  "webrtc_offer_answer",
+  "local_websocket",
+]);
+export const LitterBridgeRealtimeSessionStateSchema = Schema.Literals([
+  "creating",
+  "negotiating",
+  "active",
+  "reconnecting",
+  "closing",
+  "closed",
+  "expired",
+  "failed",
+]);
+export const LitterBridgeRealtimeUnavailableReasonSchema = Schema.Literals([
+  "provider_not_configured",
+  "model_not_loaded",
+  "model_unsupported",
+  "speech_plugin_unavailable",
+  "runtime_unavailable",
+]);
+
+export const LitterBridgeRealtimeVoiceSchema = Schema.Struct({
+  id: IdentifierSchema,
+  label: IdentifierSchema,
+}).pipe(strict);
+
+export const LitterBridgeRealtimeCapabilitySchema = Schema.Struct({
+  capabilityId: IdentifierSchema,
+  provider: LitterBridgeRealtimeProviderSchema,
+  modelId: IdentifierSchema,
+  available: Schema.Boolean,
+  unavailableReason: Schema.NullOr(LitterBridgeRealtimeUnavailableReasonSchema),
+  inputModalities: Schema.Array(LitterBridgeRealtimeModalitySchema).pipe(
+    Schema.check(Schema.isUnique()),
+  ),
+  outputModalities: Schema.Array(LitterBridgeRealtimeModalitySchema).pipe(
+    Schema.check(Schema.isUnique()),
+  ),
+  signaling: LitterBridgeRealtimeSignalingSchema,
+  voices: Schema.Array(LitterBridgeRealtimeVoiceSchema),
+  supportsReconnect: Schema.Boolean,
+  supportsUpdate: Schema.Boolean,
+  sessionTtlSeconds: PositiveIntegerSchema,
+  maxSignalBytes: PositiveIntegerSchema,
+}).pipe(
+  Schema.check(
+    Schema.makeFilter((input) =>
+      input.available === (input.unavailableReason === null)
+        ? undefined
+        : "Availability and unavailableReason must agree",
+    ),
+  ),
+  strict,
+);
+
+export const LitterBridgeRealtimeCapabilitiesRequestSchema = Schema.Struct({
+  type: Schema.Literal("realtime_capabilities_request"),
+  protocolVersion: LitterBridgeProtocolVersionSchema,
+  auth: RealtimeSessionReadAuthSchema,
+  controllerId: IdentifierSchema,
+  acceptedContractVersions: Schema.Array(LitterBridgeRealtimeContractVersionSchema).pipe(
+    Schema.check(Schema.isNonEmpty()),
+    Schema.check(Schema.isUnique()),
+  ),
+}).pipe(strict);
+
+export const LitterBridgeRealtimeCapabilitiesResultSchema = Schema.Struct({
+  type: Schema.Literal("realtime_capabilities"),
+  protocolVersion: LitterBridgeProtocolVersionSchema,
+  contractVersion: LitterBridgeRealtimeContractVersionSchema,
+  requestId: IdentifierSchema,
+  controllerId: IdentifierSchema,
+  generatedAt: TimestampSchema,
+  capabilities: Schema.Array(LitterBridgeRealtimeCapabilitySchema),
+}).pipe(strict);
+
+export const LitterBridgeRealtimeOfferSchema = Schema.Struct({
+  type: Schema.Literal("webrtc_offer"),
+  sdp: WireTextSchema,
+}).pipe(strict);
+
+export const LitterBridgeRealtimeAnswerSchema = Schema.Struct({
+  type: Schema.Literal("webrtc_answer"),
+  sdp: WireTextSchema,
+}).pipe(strict);
+
+export const LitterBridgeRealtimeSessionSchema = Schema.Struct({
+  sessionId: IdentifierSchema,
+  clientSessionId: IdentifierSchema,
+  capabilityId: IdentifierSchema,
+  deviceId: IdentifierSchema,
+  state: LitterBridgeRealtimeSessionStateSchema,
+  createdAt: TimestampSchema,
+  expiresAt: TimestampSchema,
+  reconnectToken: Schema.NullOr(OpaqueTokenSchema),
+}).pipe(strict);
+
+export const LitterBridgeRealtimeSessionCreateRequestSchema = Schema.Struct({
+  type: Schema.Literal("realtime_session_create_request"),
+  protocolVersion: LitterBridgeProtocolVersionSchema,
+  contractVersion: LitterBridgeRealtimeContractVersionSchema,
+  auth: RealtimeSessionMutationAuthSchema,
+  controllerId: IdentifierSchema,
+  clientSessionId: IdentifierSchema,
+  capabilityId: IdentifierSchema,
+  voiceId: Schema.NullOr(IdentifierSchema),
+  offer: LitterBridgeRealtimeOfferSchema,
+}).pipe(strict);
+
+export const LitterBridgeRealtimeSessionCreateResultSchema = Schema.Struct({
+  type: Schema.Literal("realtime_session_created"),
+  protocolVersion: LitterBridgeProtocolVersionSchema,
+  contractVersion: LitterBridgeRealtimeContractVersionSchema,
+  requestId: IdentifierSchema,
+  idempotencyKey: IdentifierSchema,
+  session: LitterBridgeRealtimeSessionSchema,
+  answer: LitterBridgeRealtimeAnswerSchema,
+  brokerLatencyMs: NonNegativeNumberSchema,
+}).pipe(strict);
+
+export const LitterBridgeRealtimeSignalSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("ice_candidate"),
+    candidate: WireTextSchema,
+    sdpMid: Schema.NullOr(IdentifierSchema),
+    sdpMLineIndex: Schema.NullOr(NonNegativeIntegerSchema),
+  }).pipe(strict),
+  Schema.Struct({
+    type: Schema.Literal("ice_complete"),
+  }).pipe(strict),
+]).pipe(strict);
+
+export const LitterBridgeRealtimeSignalRequestSchema = Schema.Struct({
+  type: Schema.Literal("realtime_signal_request"),
+  protocolVersion: LitterBridgeProtocolVersionSchema,
+  contractVersion: LitterBridgeRealtimeContractVersionSchema,
+  auth: RealtimeSessionMutationAuthSchema,
+  sessionId: IdentifierSchema,
+  signal: LitterBridgeRealtimeSignalSchema,
+}).pipe(strict);
+
+export const LitterBridgeRealtimeSessionUpdateRequestSchema = Schema.Struct({
+  type: Schema.Literal("realtime_session_update_request"),
+  protocolVersion: LitterBridgeProtocolVersionSchema,
+  contractVersion: LitterBridgeRealtimeContractVersionSchema,
+  auth: RealtimeSessionMutationAuthSchema,
+  sessionId: IdentifierSchema,
+  voiceId: Schema.NullOr(IdentifierSchema),
+  instructions: Schema.NullOr(ShortTextSchema),
+}).pipe(strict);
+
+export const LitterBridgeRealtimeSessionCloseRequestSchema = Schema.Struct({
+  type: Schema.Literal("realtime_session_close_request"),
+  protocolVersion: LitterBridgeProtocolVersionSchema,
+  contractVersion: LitterBridgeRealtimeContractVersionSchema,
+  auth: RealtimeSessionMutationAuthSchema,
+  sessionId: IdentifierSchema,
+  reason: Schema.Literals(["user", "handoff", "timeout", "shutdown"]),
+}).pipe(strict);
+
+export const LitterBridgeRealtimeSessionStatusSchema = Schema.Struct({
+  type: Schema.Literal("realtime_session_status"),
+  protocolVersion: LitterBridgeProtocolVersionSchema,
+  contractVersion: LitterBridgeRealtimeContractVersionSchema,
+  eventId: IdentifierSchema,
+  sequence: NonNegativeIntegerSchema,
+  observedAt: TimestampSchema,
+  session: LitterBridgeRealtimeSessionSchema,
+  brokerLatencyMs: Schema.NullOr(NonNegativeNumberSchema),
+  mediaConnectionLatencyMs: Schema.NullOr(NonNegativeNumberSchema),
+  error: Schema.NullOr(LitterBridgeErrorSchema),
+}).pipe(strict);
+
+export const LitterBridgeRealtimeMutationAckSchema = Schema.Struct({
+  type: Schema.Literal("realtime_mutation_ack"),
+  protocolVersion: LitterBridgeProtocolVersionSchema,
+  contractVersion: LitterBridgeRealtimeContractVersionSchema,
+  requestId: IdentifierSchema,
+  idempotencyKey: IdentifierSchema,
+  session: LitterBridgeRealtimeSessionSchema,
+}).pipe(strict);
+
+export const LitterBridgeRealtimeRequestSchema = Schema.Union([
+  LitterBridgeRealtimeCapabilitiesRequestSchema,
+  LitterBridgeRealtimeSessionCreateRequestSchema,
+  LitterBridgeRealtimeSignalRequestSchema,
+  LitterBridgeRealtimeSessionUpdateRequestSchema,
+  LitterBridgeRealtimeSessionCloseRequestSchema,
+]).pipe(strict);
+
+export const LitterBridgeRealtimeResultSchema = Schema.Union([
+  LitterBridgeRealtimeCapabilitiesResultSchema,
+  LitterBridgeRealtimeSessionCreateResultSchema,
+  LitterBridgeRealtimeSessionStatusSchema,
+  LitterBridgeRealtimeMutationAckSchema,
+  LitterBridgeErrorResultSchema,
+]).pipe(strict);
 
 export const LitterBridgeControllerSnapshotRequestSchema = Schema.Struct({
   type: Schema.Literal("controller_snapshot_request"),
@@ -660,6 +881,37 @@ export type LitterBridgeMetrics = typeof LitterBridgeMetricsSchema.Type;
 export type LitterBridgeAgentRuntimeStats = typeof LitterBridgeAgentRuntimeStatsSchema.Type;
 export type LitterBridgeControllerSnapshot = typeof LitterBridgeControllerSnapshotSchema.Type;
 export type LitterBridgeCapabilitiesManifest = typeof LitterBridgeCapabilitiesManifestSchema.Type;
+export type LitterBridgeRealtimeContractVersion =
+  typeof LitterBridgeRealtimeContractVersionSchema.Type;
+export type LitterBridgeRealtimeProvider = typeof LitterBridgeRealtimeProviderSchema.Type;
+export type LitterBridgeRealtimeModality = typeof LitterBridgeRealtimeModalitySchema.Type;
+export type LitterBridgeRealtimeSignaling = typeof LitterBridgeRealtimeSignalingSchema.Type;
+export type LitterBridgeRealtimeSessionState = typeof LitterBridgeRealtimeSessionStateSchema.Type;
+export type LitterBridgeRealtimeUnavailableReason =
+  typeof LitterBridgeRealtimeUnavailableReasonSchema.Type;
+export type LitterBridgeRealtimeVoice = typeof LitterBridgeRealtimeVoiceSchema.Type;
+export type LitterBridgeRealtimeCapability = typeof LitterBridgeRealtimeCapabilitySchema.Type;
+export type LitterBridgeRealtimeCapabilitiesRequest =
+  typeof LitterBridgeRealtimeCapabilitiesRequestSchema.Type;
+export type LitterBridgeRealtimeCapabilitiesResult =
+  typeof LitterBridgeRealtimeCapabilitiesResultSchema.Type;
+export type LitterBridgeRealtimeOffer = typeof LitterBridgeRealtimeOfferSchema.Type;
+export type LitterBridgeRealtimeAnswer = typeof LitterBridgeRealtimeAnswerSchema.Type;
+export type LitterBridgeRealtimeSession = typeof LitterBridgeRealtimeSessionSchema.Type;
+export type LitterBridgeRealtimeSessionCreateRequest =
+  typeof LitterBridgeRealtimeSessionCreateRequestSchema.Type;
+export type LitterBridgeRealtimeSessionCreateResult =
+  typeof LitterBridgeRealtimeSessionCreateResultSchema.Type;
+export type LitterBridgeRealtimeSignal = typeof LitterBridgeRealtimeSignalSchema.Type;
+export type LitterBridgeRealtimeSignalRequest = typeof LitterBridgeRealtimeSignalRequestSchema.Type;
+export type LitterBridgeRealtimeSessionUpdateRequest =
+  typeof LitterBridgeRealtimeSessionUpdateRequestSchema.Type;
+export type LitterBridgeRealtimeSessionCloseRequest =
+  typeof LitterBridgeRealtimeSessionCloseRequestSchema.Type;
+export type LitterBridgeRealtimeSessionStatus = typeof LitterBridgeRealtimeSessionStatusSchema.Type;
+export type LitterBridgeRealtimeMutationAck = typeof LitterBridgeRealtimeMutationAckSchema.Type;
+export type LitterBridgeRealtimeRequest = typeof LitterBridgeRealtimeRequestSchema.Type;
+export type LitterBridgeRealtimeResult = typeof LitterBridgeRealtimeResultSchema.Type;
 export type LitterBridgeControllerSnapshotRequest =
   typeof LitterBridgeControllerSnapshotRequestSchema.Type;
 export type LitterBridgeControllerAction = typeof LitterBridgeControllerActionSchema.Type;
@@ -693,8 +945,7 @@ export type LitterBridgeConflictResult = typeof LitterBridgeConflictResultSchema
 export type LitterBridgeForkResult = typeof LitterBridgeForkResultSchema.Type;
 export type LitterBridgeSessionTransferResult = typeof LitterBridgeSessionTransferResultSchema.Type;
 export type LitterBridgeAgentTurnResult = typeof LitterBridgeAgentTurnResultSchema.Type;
-export type LitterBridgeSessionCreateRequest =
-  typeof LitterBridgeSessionCreateRequestSchema.Type;
+export type LitterBridgeSessionCreateRequest = typeof LitterBridgeSessionCreateRequestSchema.Type;
 export type LitterBridgeSessionCreateAck = typeof LitterBridgeSessionCreateAckSchema.Type;
 export type LitterBridgeSessionCreateResult = typeof LitterBridgeSessionCreateResultSchema.Type;
 export type LitterBridgeRequest = typeof LitterBridgeRequestSchema.Type;
