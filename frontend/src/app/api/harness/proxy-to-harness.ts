@@ -3,6 +3,7 @@ import {
   HARNESS_INTEGRATION_CONTRACT_VERSION,
   HARNESS_REMOTE_DATA_CONSENT_HEADER,
   HARNESS_REMOTE_DATA_CONSENT_VERSION,
+  decodeHarnessVerificationCheck,
   type HarnessIntegrationContract,
 } from "@shared/agent/harness";
 
@@ -120,6 +121,206 @@ export function downstreamResponseHeaders(upstreamHeaders: Headers): Headers {
   return headers;
 }
 
+type JsonRecord = Record<string, unknown>;
+
+function jsonRecord(value: unknown): JsonRecord | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as JsonRecord)
+    : null;
+}
+
+function projectedStrings(value: unknown, limit = 100): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string").slice(0, limit)
+    : [];
+}
+
+function projectedRecord(value: unknown, keys: readonly string[]): JsonRecord {
+  const source = jsonRecord(value);
+  if (!source) return {};
+  return Object.fromEntries(
+    keys.flatMap((key) => {
+      const item = source[key];
+      return typeof item === "string" || typeof item === "number" || typeof item === "boolean"
+        ? [[key, item]]
+        : [];
+    }),
+  );
+}
+
+function projectedVerification(value: unknown): JsonRecord[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 100).map((item) => {
+    const check = decodeHarnessVerificationCheck(item);
+    return check
+      ? { ...check }
+      : {
+          name: "Legacy verification entry",
+          passed: false,
+          message: "The upstream Harness did not return a structured verification receipt.",
+          independent: false,
+          source: "legacy",
+        };
+  });
+}
+
+function projectedEvents(value: unknown): JsonRecord[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(-100)
+    .map((item) => projectedRecord(item, ["seq", "checkpoint", "status", "at"]));
+}
+
+function projectedTask(value: unknown): JsonRecord | null {
+  const source = jsonRecord(value);
+  if (!source) return null;
+  const task = projectedRecord(source, [
+    "id",
+    "status",
+    "status_label",
+    "summary",
+    "human_title",
+    "objective",
+    "mode",
+    "execution_profile",
+    "needs_human",
+    "review_status",
+    "result_category",
+  ]);
+  task.changed_files = projectedStrings(source.changed_files);
+  task.artifacts = Array.isArray(source.artifacts)
+    ? source.artifacts.slice(0, 100).map((item) => projectedRecord(item, ["name", "path"]))
+    : [];
+  task.events = projectedEvents(source.events);
+  task.verification = projectedVerification(source.verification);
+  task.progress = projectedRecord(source.progress, ["label", "percent", "determinate"]);
+  task.current = projectedRecord(source.current, [
+    "checkpoint",
+    "current_subgoal",
+    "cycle",
+    "last_event_at",
+  ]);
+  task.readiness_gate = projectedRecord(source.readiness_gate, [
+    "can_start",
+    "can_queue",
+    "state",
+    "label",
+    "next_action",
+    "summary",
+    "requires_review",
+  ]);
+  const metadata = jsonRecord(source.metadata);
+  task.metadata = {
+    ...projectedRecord(metadata, ["observed_at", "updated_at"]),
+    route_receipt: projectedRecord(metadata?.route_receipt, [
+      "contract",
+      "actual",
+      "evidence",
+      "status",
+      "reviewer",
+      "observed_at",
+    ]),
+    integration: projectedRecord(metadata?.integration, [
+      "kind",
+      "route_id",
+      "model_id",
+      "node",
+      "runtime",
+      "model_used",
+      "connected_workspace_mutated",
+    ]),
+    demo: projectedRecord(metadata?.demo, ["enabled", "model_used", "workspace"]),
+  };
+  task.final_result = projectedRecord(source.final_result, ["accepted"]);
+  return task;
+}
+
+function projectedSetup(value: unknown, target: HarnessTarget): JsonRecord | null {
+  const source = jsonRecord(value);
+  if (!source) return null;
+  return {
+    ...projectedRecord(source, [
+      "configured",
+      "editable",
+      "suggested_check",
+      "verification_command",
+      "workspace",
+      "execution_summary",
+      "assurance_mode",
+    ]),
+    allowed_api_key_envs: projectedStrings(source.allowed_api_key_envs),
+    worker: projectedRecord(source.worker, ["label", "type", "data_location"]),
+    provider: projectedRecord(source.provider, [
+      "endpoint",
+      "model",
+      "api_key_env",
+      "data_location",
+    ]),
+    verification_contract: projectedRecord(source.verification_contract, ["shell", "summary"]),
+    integration: harnessIntegrationContract(target),
+  };
+}
+
+export function projectHarnessPayload(
+  value: unknown,
+  namespace: "v1" | "api",
+  path: string[],
+  target: HarnessTarget,
+): JsonRecord | null {
+  const source = jsonRecord(value);
+  if (!source) return null;
+  const route = path.join("/");
+  if (namespace === "api" && route === "setup") return projectedSetup(source, target);
+  if (route === "routes") {
+    return {
+      routes: Array.isArray(source.routes)
+        ? source.routes.slice(0, 100).map((item) => ({
+            ...projectedRecord(item, [
+              "id",
+              "model_id",
+              "node",
+              "runtime",
+              "role",
+              "status",
+              "status_reason",
+              "max_context_tokens",
+            ]),
+            capabilities: projectedStrings(jsonRecord(item)?.capabilities),
+            eligible_for: projectedStrings(jsonRecord(item)?.eligible_for),
+          }))
+        : [],
+      selection: projectedRecord(source.selection, ["policy"]),
+    };
+  }
+  if (route === "modes") {
+    return {
+      ...projectedRecord(source, ["kind", "default", "default_execution_profile"]),
+      modes: Array.isArray(source.modes)
+        ? source.modes
+            .slice(0, 100)
+            .map((item) => projectedRecord(item, ["key", "label", "best_for", "caution"]))
+        : [],
+      execution_profiles: Array.isArray(source.execution_profiles)
+        ? source.execution_profiles
+            .slice(0, 100)
+            .map((item) => projectedRecord(item, ["key", "label", "summary", "caution"]))
+        : [],
+    };
+  }
+  if (route.endsWith("events")) {
+    return {
+      ...projectedRecord(source, ["api_version", "task_id"]),
+      events: projectedEvents(source.events),
+    };
+  }
+  const envelope = projectedRecord(source, ["api_version"]);
+  if ("task" in source) envelope.task = projectedTask(source.task);
+  if ("current" in source) envelope.current = projectedTask(source.current);
+  if (Array.isArray(source.tasks)) envelope.tasks = source.tasks.map(projectedTask).filter(Boolean);
+  if (Object.keys(envelope).length > 0) return envelope;
+  return projectedTask(source);
+}
+
 function harnessPathSegment(part: string): string {
   let decoded = part;
   try {
@@ -139,7 +340,7 @@ async function downstreamHarnessResponse(
   path: string[],
   target: HarnessTarget,
 ): Promise<Response> {
-  if (namespace !== "api" || path.join("/") !== "setup" || !upstream.ok) {
+  if (!upstream.ok) {
     return new Response(upstream.body, {
       status: upstream.status,
       headers: downstreamResponseHeaders(upstream.headers),
@@ -151,17 +352,18 @@ async function downstreamHarnessResponse(
   } catch {
     return Response.json({ error: "Harness setup returned invalid JSON" }, { status: 502 });
   }
-  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
-    return Response.json({ error: "Harness setup returned an invalid contract" }, { status: 502 });
+  const projected = projectHarnessPayload(payload, namespace, path, target);
+  if (!projected) {
+    return Response.json(
+      { error: "Harness returned an invalid response contract" },
+      { status: 502 },
+    );
   }
   const headers = downstreamResponseHeaders(upstream.headers);
   headers.delete("etag");
   headers.delete("last-modified");
   headers.set("content-type", "application/json");
-  return new Response(
-    JSON.stringify({ ...payload, integration: harnessIntegrationContract(target) }),
-    { status: upstream.status, headers },
-  );
+  return new Response(JSON.stringify(projected), { status: upstream.status, headers });
 }
 
 export function harnessTargetUrl(

@@ -11,6 +11,7 @@ import {
   harnessToken,
   harnessTargetUrl,
   isHarnessRouteAllowed,
+  projectHarnessPayload,
   proxyToManagedHarness,
   proxyToProviderHarness,
   upstreamRequestHeaders,
@@ -237,5 +238,46 @@ describe("Local Studio Harness proxy headers", () => {
       if (previousToken === undefined) delete process.env.LOCAL_STUDIO_HARNESS_TOKEN;
       else process.env.LOCAL_STUDIO_HARNESS_TOKEN = previousToken;
     }
+  });
+
+  test("projects task responses without raw worker output or unknown fields", () => {
+    const projected = projectHarnessPayload(
+      {
+        task: {
+          id: "task-1",
+          status: "done",
+          summary: "Safe result summary",
+          advanced_details: { stdout: "raw-secret-value" },
+          events: [
+            {
+              seq: 4,
+              checkpoint: "verification_complete",
+              summary: "raw-secret-value",
+              output: "raw-secret-value",
+            },
+          ],
+          verification: ["raw-secret-value"],
+          metadata: {
+            observed_at: "2026-08-04T12:00:00Z",
+            "raw-secret-value": true,
+          },
+        },
+        "raw-secret-value": { leaked: true },
+      },
+      "api",
+      ["tasks", "current"],
+      "managed",
+    );
+    const serialized = JSON.stringify(projected);
+    const task = projected?.task as {
+      events?: Array<Record<string, unknown>>;
+      verification?: Array<Record<string, unknown>>;
+    };
+
+    assert.ok(projected);
+    assert.equal(serialized.includes("raw-secret-value"), false);
+    assert.deepEqual(task.events, [{ seq: 4, checkpoint: "verification_complete" }]);
+    assert.equal(task.verification?.[0]?.passed, false);
+    assert.equal(task.verification?.[0]?.source, "legacy");
   });
 });
