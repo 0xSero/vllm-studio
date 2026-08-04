@@ -2,7 +2,9 @@
   "ignores": [
     "@hono/node-server",
     "@modelcontextprotocol/sdk",
+    "brace-expansion",
     "chromium-bidi",
+    "fast-check",
     "playwright-core",
     "proper-lockfile",
     "semver",

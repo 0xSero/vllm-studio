@@ -1,4 +1,4 @@
-import "./app-identity";
+import { isDevChannelBuild } from "./app-identity";
 import {
   app,
   clipboard,
@@ -18,7 +18,12 @@ import { isHttpUrl } from "./helpers/url";
 import { createMainWindow } from "./logic/window-manager";
 import { registerNavigationPolicy } from "./logic/security";
 import { startFrontendServer, stopFrontendServer, type ServerHandle } from "./logic/app-server";
-import { checkForUpdates, getUpdateState, initializeAutoUpdates } from "./logic/update-manager";
+import {
+  checkForUpdates,
+  getUpdateState,
+  initializeAutoUpdates,
+  installDownloadedUpdate,
+} from "./logic/update-manager";
 import { addProject, listProjectsWithMeta, removeProject } from "./logic/projects-store";
 import { deployController } from "./logic/controller-deploy";
 import {
@@ -214,10 +219,43 @@ async function restartFrontendServer(port?: number): Promise<void> {
   }
 }
 
+// Resolve a renderer-supplied file reference to a real path inside the user's
+// home tree, or null. Assistant output cites files the way people write them —
+// repo-relative, "services/agent-runtime/src/foo.ts". Passing that straight to
+// realpath resolves it against the MAIN PROCESS cwd, which is the app bundle,
+// so it throws; try it as given, then against each known project root.
+function resolveHomeConfinedPath(target: unknown): string | null {
+  if (typeof target !== "string" || !target.trim()) return null;
+  const raw = target.trim();
+  const candidates = [raw];
+  if (!path.isAbsolute(raw) && !raw.startsWith("~")) {
+    for (const project of listProjectsWithMeta()) {
+      if (project.path) candidates.push(path.join(project.path, raw));
+    }
+  }
+  const home = realpathSync.native(app.getPath("home"));
+  for (const candidate of candidates) {
+    let resolved: string;
+    try {
+      resolved = realpathSync.native(candidate);
+    } catch {
+      continue;
+    }
+    // Confined to the user's home tree, so a crafted markdown link cannot point
+    // the renderer at /etc or a mounted disk.
+    const relative = path.relative(home, resolved);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) continue;
+    return resolved;
+  }
+  return null;
+}
+
 function registerIpcHandlers(): void {
   ipcMain.handle("desktop:get-runtime", async () => ({
     platform: process.platform,
     appVersion: app.getVersion(),
+    packaged: app.isPackaged,
+    releaseChannel: isDevChannelBuild ? "dev" : "stable",
     chromeVersion: process.versions.chrome,
     electronVersion: process.versions.electron,
   }));
@@ -232,22 +270,27 @@ function registerIpcHandlers(): void {
   // the user's home tree (the same default as the runtime's WORKSPACE_ROOTS) so
   // a crafted markdown link cannot point the renderer at /etc or a mounted disk.
   ipcMain.handle("desktop:reveal-path", async (_, target: unknown) => {
-    if (typeof target !== "string" || !target.trim()) return false;
-    let resolved: string;
-    try {
-      resolved = realpathSync.native(target.trim());
-    } catch {
-      return false;
-    }
-    const home = realpathSync.native(app.getPath("home"));
-    const relative = path.relative(home, resolved);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) return false;
+    const resolved = resolveHomeConfinedPath(target);
+    if (!resolved) return false;
     shell.showItemInFolder(resolved);
     return true;
   });
 
+  // Hand a file to its default application — the only way to view formats the
+  // Files panel cannot render (PDFs, archives, media). Same home confinement.
+  ipcMain.handle("desktop:open-path", async (_, target: unknown) => {
+    const resolved = resolveHomeConfinedPath(target);
+    if (!resolved) return false;
+    const error = await shell.openPath(resolved);
+    return error === "";
+  });
+
   ipcMain.handle("desktop:get-update-status", async () => getUpdateState());
   ipcMain.handle("desktop:check-for-updates", async () => checkForUpdates(true));
+  ipcMain.handle("desktop:install-update", async () => {
+    installDownloadedUpdate();
+    return true;
+  });
   ipcMain.handle("desktop:get-kittylitter-pairing-json", async () => getKittylitterPairingJson());
   ipcMain.handle("desktop:copy-kittylitter-pairing-json", async (_, pairingJson: unknown) => {
     try {

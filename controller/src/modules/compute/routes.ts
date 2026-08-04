@@ -34,6 +34,7 @@ const LaunchRequestSchema = Schema.Struct({
   options: Schema.optional(OptionsSchema),
   extraArgs: Schema.optional(Schema.Array(Schema.String)),
   env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  dockerImage: Schema.optional(Schema.String),
   binary: Schema.optional(Schema.String),
 });
 
@@ -114,6 +115,7 @@ export const registerComputeRoutes = defineRoutes((app, context) =>
               options: mergeOptions(parsed.options ?? {}),
               extraArgs: parsed.extraArgs ?? [],
               env: parsed.env ?? {},
+              dockerImage: parsed.dockerImage ?? null,
               binary: parsed.binary ?? null,
             })
             .pipe(Effect.mapError(toHttp));

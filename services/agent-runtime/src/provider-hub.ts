@@ -147,22 +147,6 @@ function hubPromise(): Promise<ModelRuntime> {
   return getGlobalSingleton("providerHubRuntime", createHubRuntime);
 }
 
-// The agent-runtime process is the single hub authority: it runs sessions,
-// serves the login routes, and owns the ModelRuntime. The Next server also
-// bundles this module but must never instantiate pi's runtime — it asks the
-// agent runtime over HTTP instead (see pi-runtime-models.ts).
-function processRole(): { isAgentRuntime: boolean } {
-  return getGlobalSingleton("providerHubProcessRole", () => ({ isAgentRuntime: false }));
-}
-
-export function markAgentRuntimeProcess(): void {
-  processRole().isAgentRuntime = true;
-}
-
-export function isAgentRuntimeProcess(): boolean {
-  return processRole().isAgentRuntime;
-}
-
 function jobsMap(): Map<string, LoginJob> {
   return getGlobalSingleton("providerHubLoginJobs", () => new Map<string, LoginJob>());
 }
@@ -172,9 +156,9 @@ export function getProviderHub(): Promise<ModelRuntime> {
 }
 
 /** Re-read models.json after Local Studio rewrites it (controller refresh). */
-export async function reloadProviderHub(): Promise<void> {
+export async function refreshProviderHub(): Promise<void> {
   const runtime = await hubPromise();
-  await runtime.reloadConfig();
+  await runtime.refresh({ allowNetwork: false });
   await registerE2EProviders(runtime);
 }
 

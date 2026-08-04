@@ -1,12 +1,14 @@
 import { memo, useMemo, useState } from "react";
 import { ChevronRight } from "@/ui/icon-registry";
 import type { ThinkingBlock, ToolBlock } from "@/features/agent/messages";
+import type { ToolKind } from "@/features/agent/ui/timeline/tool-metadata";
 import { useReasoningVisible } from "@/features/agent/messages/use-reasoning-visible";
-import { ToolBlockView } from "@/features/agent/ui/timeline/tool-block-view";
+import { TOOL_ICONS, ToolBlockView } from "@/features/agent/ui/timeline/tool-block-view";
 import {
   buildActivityItems,
   exploreCounts,
   summarizeActivity,
+  summaryIconKind,
   activityPreview,
   type ActivitySegment,
 } from "@/features/agent/ui/timeline/activity-grouping";
@@ -113,7 +115,10 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
       (segment) =>
         segment.kind === "tools" && segment.blocks.some((block) => block.status === "running"),
     );
+  const busy = working || live;
   const summary = useMemo(() => summarizeActivity(visibleSegments), [visibleSegments]);
+  // One kind of tool -> that tool's glyph; a mixed turn -> the terminal glyph.
+  const summaryIcon = useMemo(() => summaryIconKind(visibleSegments), [visibleSegments]);
   const preview = live ? activityPreview(visibleSegments) : null;
 
   // Reasoning hidden + nothing else to show → render nothing. The turn's
@@ -128,7 +133,7 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
       <div className="flex min-w-0 flex-col gap-0.5">
         {items.map((item) =>
           item.kind === "reasoning" ? (
-            <ReasoningDisclosure key={item.id} block={item.block} active={working || live} />
+            <ReasoningDisclosure key={item.id} block={item.block} active={busy} />
           ) : null,
         )}
       </div>
@@ -148,18 +153,22 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
             collapsed summary grows with the turn ("Ran 20 commands · edited 13
             files · …") and will not fit a phone column — let it truncate
             instead of forcing the row wider than the thread. */}
+        {!(busy) ? <SummaryGlyph kind={summaryIcon} /> : null}
         <span
           className={`text-[length:var(--fs-base)] font-normal leading-5 ${
-            working || live ? "codex-shimmer-text shrink-0" : "min-w-0 flex-1 truncate"
-          } ${working || live ? "" : "text-(--fg)/48"}`}
+            busy ? "codex-shimmer-text shrink-0" : "min-w-0 flex-1 truncate"
+          } ${busy ? "" : "text-(--fg)/48"}`}
         >
-          {working || live ? "Working" : summary}
+          {busy ? "Working" : summary}
         </span>
-        {!expanded && (working || live) && preview ? (
-          <span className="min-w-0 flex-1 truncate font-mono text-[length:var(--codex-chat-code-font-size)] leading-5 text-(--dim)/70">
-            {preview}
+        {!expanded && (busy) && preview ? (
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-(--dim)/70">
+            <PreviewGlyph kind={preview.kind} verb={preview.verb} />
+            <span className="min-w-0 flex-1 truncate font-mono text-[length:var(--codex-chat-code-font-size)] leading-5">
+              {preview.detail || preview.verb}
+            </span>
           </span>
-        ) : working || live ? (
+        ) : busy ? (
           <span className="min-w-0 flex-1" />
         ) : null}
         <ChevronRight className="h-3 w-3 shrink-0 text-(--dim)/50 transition-transform group-open:rotate-90" />
@@ -183,3 +192,16 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
     </details>
   );
 });
+
+/** Leading glyph for the collapsed summary: the single tool kind's icon, the
+ *  terminal icon for a mixed turn, nothing for reasoning-only. */
+function SummaryGlyph({ kind }: { kind: ToolKind | null }) {
+  if (!kind) return null;
+  const Icon = TOOL_ICONS[kind];
+  return <Icon className="h-3.5 w-3.5 shrink-0 text-(--fg)/40" strokeWidth={1.6} />;
+}
+
+function PreviewGlyph({ kind, verb }: { kind: ToolKind; verb: string }) {
+  const Icon = TOOL_ICONS[kind];
+  return <Icon className="h-3.5 w-3.5 shrink-0 opacity-80" strokeWidth={1.6} aria-label={verb} />;
+}

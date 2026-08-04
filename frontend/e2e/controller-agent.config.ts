@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { defineConfig } from "@playwright/test";
@@ -9,6 +9,14 @@ const controllerPort = 43_222;
 const baseURL = `http://127.0.0.1:${frontendPort}`;
 const dataDir = mkdtempSync(path.join(os.tmpdir(), "local-studio-controller-e2e-data-"));
 const homeDir = mkdtempSync(path.join(os.tmpdir(), "local-studio-controller-e2e-home-"));
+const kittylitterBin = path.join(homeDir, "kittylitter");
+writeFileSync(
+  kittylitterBin,
+  `#!/bin/sh
+printf '%s\\n' '{"v":1,"node_id":"test-node","token":"test-token","host_name":"test-host","relay":null}'
+`,
+);
+chmodSync(kittylitterBin, 0o755);
 writeFileSync(
   path.join(dataDir, "api-settings.json"),
   JSON.stringify({ backendUrl: `http://127.0.0.1:${controllerPort}`, apiKey: "" }),
@@ -37,7 +45,7 @@ writeFileSync(
   }),
 );
 const controllerScript = path.resolve(__dirname, "fixtures", "fake-controller.mjs");
-const startScript = path.resolve(__dirname, "..", "scripts", "start-standalone.mjs");
+const projectScript = path.resolve(__dirname, "..", "..", "scripts", "project.mjs");
 
 export default defineConfig({
   testDir: ".",
@@ -68,7 +76,8 @@ export default defineConfig({
         `HOME=${homeDir}`,
         `LOCAL_STUDIO_AGENT_RUNTIME_URL=http://127.0.0.1:${runtimePort}`,
         `LOCAL_STUDIO_DATA_DIR=${dataDir}`,
-        `node ${startScript}`,
+        `KITTYLITTER_BIN=${kittylitterBin}`,
+        `node ${projectScript} start`,
       ].join(" "),
       url: `${baseURL}/api/desktop-health`,
       timeout: 60_000,

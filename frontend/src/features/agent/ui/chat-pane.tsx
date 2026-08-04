@@ -51,14 +51,6 @@ function subagentChipsFor(piSessionId: string | null | undefined) {
   return <SubagentChips piSessionId={piSessionId} />;
 }
 
-function effectiveThinkingLevel(
-  levels: readonly AgentThinkingLevel[],
-  saved: AgentThinkingLevel | undefined,
-): AgentThinkingLevel {
-  if (saved && levels.includes(saved)) return saved;
-  if (levels.includes("high")) return "high";
-  return levels.at(-1) ?? "off";
-}
 import {
   useComposerLoadedContext,
   useComposerMentionRows,
@@ -84,7 +76,8 @@ import {
   useChatPaneRuntimeHandle,
 } from "@/features/agent/ui/chat-pane-hooks";
 import { useChatPaneSessionTitle } from "@/features/agent/ui/chat-pane-session-title";
-import { useGoalCommand } from "@/features/agent/ui/use-goal-command";
+import { canRunGoalCommand, useGoalCommand } from "@/features/agent/ui/use-goal-command";
+import { useGoalMode } from "@/features/agent/ui/use-goal-mode";
 import { useChatPaneComposerActions } from "@/features/agent/ui/use-chat-pane-composer-actions";
 import { useComposerCommandHandlers } from "@/features/agent/ui/use-composer-command-handlers";
 import { useChatPaneSendFlow } from "@/features/agent/ui/chat-pane-send-flow";
@@ -95,6 +88,11 @@ import { useTools } from "@/features/agent/tools/context";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import type { BrowserBackend } from "@/features/agent/tools/types";
 import type { AgentThinkingLevel } from "@/features/agent/contracts";
+import {
+  loadThinkingLevelDefault,
+  pickThinkingLevel,
+  setThinkingLevelDefault,
+} from "@/features/agent/messages/thinking-level-pref";
 import {
   exportFilenameFromTitle,
   sessionToMarkdown,
@@ -406,11 +404,21 @@ export function ChatPane({
   const { selectedSkills, selectedPromptTemplates, removeLoadedContext } = useComposerLoadedContext(
     { activeTab, tools },
   );
-  const thinkingLevel = effectiveThinkingLevel(modelThinkingLevels, activeTab?.thinkingLevel);
+  // Per-session choice wins; a fresh session (no saved level) falls back to the
+  // level the user last picked, then the model's "high" default. This stops new
+  // sessions from always snapping back to High (issue #277).
+  const thinkingLevel = pickThinkingLevel(
+    modelThinkingLevels,
+    activeTab?.thinkingLevel,
+    loadThinkingLevelDefault(),
+  );
   const selectThinkingLevel = useCallback(
     (level: AgentThinkingLevel) => {
       if (!activeTab || running) return;
+      // Persist on the session (survives turns + reloads) and remember it as the
+      // default for the next fresh session.
       updateTab(activeTab.id, (session) => ({ ...session, thinkingLevel: level }));
+      setThinkingLevelDefault(level);
     },
     [activeTab, running, updateTab],
   );
@@ -471,6 +479,7 @@ export function ChatPane({
   );
   const activePiSessionId = piSessionIdOf(activeTab);
   const { goalRevision, goalAction } = useGoalCommand(activePiSessionId);
+  const [goalModeOn, setGoalModeOn] = useState(false);
   const handleProjectPicked = useCallback(
     (project: Project) => {
       if (!activeTab || activeTab.messages.length > 0) return;
@@ -494,6 +503,7 @@ export function ChatPane({
           ...(onForkSession ? { forkSession: onForkSession } : {}),
           ...(canExport ? { exportSession } : {}),
           goal: goalAction,
+          enterGoalMode: () => setGoalModeOn(true),
         }),
         promptTemplateCommandProvider({
           templates: tools.promptTemplateCatalogue,
@@ -579,17 +589,33 @@ export function ChatPane({
       abortTurn,
       attachFiles,
     });
+  const goalModeApi = useGoalMode({
+    goalAction,
+    sendMessage,
+    goalMode: goalModeOn,
+    setGoalMode: setGoalModeOn,
+  });
   const handleComposerSubmit = useCallback(
     (event: FormEvent) => {
+      if (goalModeApi.submitAsGoal(event, activeTab?.input ?? "")) return;
       const invocation = parseSlashInvocation(activeTab?.input ?? "");
-      if (invocation && commandRegistry.find(invocation.name, commandContext)) {
+      const commandCanRun = invocation?.name !== "goal" || canRunGoalCommand(activePiSessionId);
+      if (invocation && commandCanRun && commandRegistry.find(invocation.name, commandContext)) {
         event.preventDefault();
         void runCommandInvocation(invocation);
         return;
       }
       void sendMessage(event);
     },
-    [activeTab, commandContext, commandRegistry, runCommandInvocation, sendMessage],
+    [
+      activeTab,
+      activePiSessionId,
+      commandContext,
+      commandRegistry,
+      goalModeApi,
+      runCommandInvocation,
+      sendMessage,
+    ],
   );
   const loadEarlierHistory = useCallback(
     () => (activeTabId ? engine.loadEarlier(activeTabId) : Promise.resolve()),
@@ -676,7 +702,10 @@ export function ChatPane({
           onComposerDragLeave={handleComposerDragLeave}
           onComposerDragOver={handleComposerDragOver}
           onComposerDrop={handleComposerDrop}
-          onComposerKeyDown={handleComposerKeyDown}
+          onComposerKeyDown={(event) => {
+            if (goalModeApi.interceptKeyDown(event)) return;
+            handleComposerKeyDown(event);
+          }}
           onComposerPaste={handleComposerPaste}
           onEditQueued={editQueued}
           onInitGit={onInitGit}
@@ -692,7 +721,7 @@ export function ChatPane({
           onTranscript={handleTranscript}
           onToggleBrowserBackend={onToggleBrowserBackend}
           onToggleBrowserTool={onToggleBrowserTool}
-          placeholder={composerVisual.placeholder}
+          placeholder={goalModeApi.goalPlaceholder ?? composerVisual.placeholder}
           drawer={
             <SessionProjectDrawer
               tabId={activeTabId}
@@ -722,6 +751,8 @@ export function ChatPane({
           selectedSkills={selectedSkills}
           status={activeTab?.status}
           textareaRef={textareaRef}
+          goalMode={goalModeApi.goalMode}
+          onExitGoalMode={goalModeApi.exitGoalMode}
           floating={composerOnly}
           dense={!showHeader && !composerOnly}
         />
@@ -771,6 +802,9 @@ function ChatPaneChrome({
 
 /** Remounts per session so the goal poll and project selection never carry
  *  across tabs, and hides project switching while a turn is in flight. */
+// The drawer's Interrupt button has no form event of its own, and sendMessage
+// only ever uses the event to cancel the browser's native submit.
+
 function SessionProjectDrawer({
   tabId,
   piSessionId,

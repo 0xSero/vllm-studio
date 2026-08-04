@@ -21,6 +21,10 @@ import {
   imageInputsFromAttachments,
   type ChatAttachment,
 } from "@/features/agent/ui/chat-attachments";
+import {
+  messagesToResumeAfterAbort,
+  removePendingSteersClearedByAbort,
+} from "@/features/agent/ui/chat-pane-send-flow-model";
 
 type UseChatPaneSendFlowOptions = {
   activeTab: SessionTab | null;
@@ -59,6 +63,7 @@ export function useChatPaneSendFlow({
 }: UseChatPaneSendFlowOptions) {
   const composerSubmitInFlightRef = useRef<SessionSubmitGuard>(new Set());
   const controlSubmitInFlightRef = useRef<SessionSubmitGuard>(new Set());
+  const abortSubmitInFlightRef = useRef<SessionSubmitGuard>(new Set());
 
   const buildPromptArgs = useCallback(
     (sessionId: string, rawText: string, effectiveBrowserEnabled = browserToolEnabled) => {
@@ -173,13 +178,13 @@ export function useChatPaneSendFlow({
           ? [
               ...t.messages,
               {
-              id: pendingSteerId,
-              role: "user",
-              text,
-              pending: true,
-              awaitingEcho: true,
-              timestamp: nowLabel(),
-            },
+                id: pendingSteerId,
+                role: "user",
+                text,
+                pending: true,
+                awaitingEcho: true,
+                timestamp: nowLabel(),
+              },
             ]
           : t.messages,
       }));
@@ -187,7 +192,14 @@ export function useChatPaneSendFlow({
       return Effect.runPromise(
         Effect.gen(function* () {
           const result = yield* Effect.tryPromise({
-            try: () => engine.sendControl(mode, text, runtime, tab.id, tab.piSessionId),
+            try: () =>
+              engine.sendControl({
+                mode,
+                text,
+                runtime,
+                sessionId: tab.id,
+                piSessionId: tab.piSessionId,
+              }),
             catch: (error) => error,
           });
           updateTab(tab.id, (t) => ({
@@ -328,26 +340,53 @@ export function useChatPaneSendFlow({
 
   const removeQueued = useCallback(
     (queueId: string) => {
-      if (!activeTab) return;
-      updateTab(activeTab.id, (tab) => ({
-        ...tab,
-        queue: (tab.queue ?? []).filter((entry) => entry.id !== queueId),
-      }));
+      if (!activeTab) return Promise.resolve();
+      const item = (activeTab.queue ?? []).find((entry) => entry.id === queueId);
+      if (!item) return Promise.resolve();
+      return engine
+        .sendControl({
+          mode: "follow_up",
+          text: item.text,
+          runtime: activeTab.id,
+          sessionId: activeTab.id,
+          piSessionId: activeTab.piSessionId,
+          queueAction: "remove",
+        })
+        .then((result) => {
+          if (result.ok) return;
+          updateTab(activeTab.id, (tab) => ({
+            ...tab,
+            error: result.error || "Remove failed",
+          }));
+        });
     },
-    [activeTab, updateTab],
+    [activeTab, engine, updateTab],
   );
 
   const editQueued = useCallback(
     (queueId: string, text: string) => {
-      if (!activeTab) return;
-      updateTab(activeTab.id, (tab) => ({
-        ...tab,
-        queue: (tab.queue ?? []).map((entry) =>
-          entry.id === queueId ? { ...entry, text } : entry,
-        ),
-      }));
+      if (!activeTab) return Promise.resolve();
+      const item = (activeTab.queue ?? []).find((entry) => entry.id === queueId);
+      if (!item) return Promise.resolve();
+      return engine
+        .sendControl({
+          mode: "follow_up",
+          text: item.text,
+          runtime: activeTab.id,
+          sessionId: activeTab.id,
+          piSessionId: activeTab.piSessionId,
+          queueAction: "replace",
+          queueReplacement: text,
+        })
+        .then((result) => {
+          if (result.ok) return;
+          updateTab(activeTab.id, (tab) => ({
+            ...tab,
+            error: result.error || "Edit failed",
+          }));
+        });
     },
-    [activeTab, updateTab],
+    [activeTab, engine, updateTab],
   );
 
   const steerQueued = useCallback(
@@ -356,31 +395,52 @@ export function useChatPaneSendFlow({
       const item = (activeTab.queue ?? []).find((entry) => entry.id === queueId);
       if (!item) return Promise.resolve();
       const runtime = activeTab.id;
-      removeQueued(queueId);
       return Effect.runPromise(
         Effect.gen(function* () {
           const result = yield* Effect.tryPromise({
             try: () =>
-              engine.sendControl("steer", item.text, runtime, activeTab.id, activeTab.piSessionId),
+              engine.sendControl({
+                mode: "steer",
+                text: item.text,
+                runtime,
+                sessionId: activeTab.id,
+                piSessionId: activeTab.piSessionId,
+                queueAction: "promote",
+              }),
             catch: (error) => error,
           });
           if (!result.ok) {
             updateTab(activeTab.id, (t) => ({
               ...t,
-              queue: [...(t.queue ?? []), item],
               error: result.error || "Steer failed",
             }));
           }
         }),
       );
     },
-    [activeTab, engine, removeQueued, updateTab],
+    [activeTab, engine, updateTab],
   );
 
   const abortTurn = useCallback(() => {
     if (!activeTab) return Promise.resolve();
-    return engine.abortTurn(activeTab.id);
-  }, [activeTab, engine]);
+    const tab = activeTab;
+    return runGuardedSubmit(abortSubmitInFlightRef.current, tab.id, async () => {
+      const cleared = await engine.abortTurn(tab.id);
+      const pending = messagesToResumeAfterAbort(tab.queue ?? [], cleared);
+      if (pending.length === 0) return;
+      updateTab(tab.id, (current) => ({
+        ...current,
+        queue: [],
+        messages: removePendingSteersClearedByAbort(current.messages, cleared),
+      }));
+      const [next, ...remaining] = pending;
+      if (!next) return;
+      await submitPrompt(next, tab.id);
+      for (const text of remaining) {
+        await queueAndSendControl("follow_up", text, tab, tab.id, cwd);
+      }
+    });
+  }, [activeTab, cwd, engine, queueAndSendControl, runGuardedSubmit, submitPrompt, updateTab]);
 
   // Re-run the last user turn after a failure (a 503, a network blip). On a
   // *send* failure the text is restored to the composer, but a turn that errors

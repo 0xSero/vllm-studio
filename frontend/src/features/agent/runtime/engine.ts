@@ -16,7 +16,11 @@ import {
 } from "@/features/agent/composer-context";
 import type { Session, SessionId, UpdateSession } from "@/features/agent/runtime/types";
 import type { BrowserBackend, ToolSelection } from "@/features/agent/tools/types";
-import type { AgentThinkingLevel, AgentToolAccess } from "@/features/agent/contracts";
+import type {
+  AgentQueueAction,
+  AgentThinkingLevel,
+  AgentToolAccess,
+} from "@/features/agent/contracts";
 import * as api from "@/features/agent/runtime/api";
 import {
   runtimeCanHydrateCanonicalSession,
@@ -52,18 +56,12 @@ export type SessionEngine = {
   /** Send a freshly-typed prompt — orchestrates optimistic update + streaming. */
   submitPrompt: (args: SubmitArgs) => Promise<void>;
   /** Send a steer/follow-up control message while a turn is in progress. */
-  sendControl: (
-    mode: "steer" | "follow_up",
-    text: string,
-    runtime: string,
-    sessionId: SessionId,
-    piSessionId?: string | null,
-  ) => Promise<{ ok: boolean; error?: string }>;
+  sendControl: (request: AgentControlRequest) => Promise<{ ok: boolean; error?: string }>;
   loadRuntimeStatus: (
     runtime: string,
     piSessionId?: string | null,
   ) => Promise<api.RuntimeStatus | null>;
-  abortTurn: (sessionId: SessionId) => Promise<void>;
+  abortTurn: (sessionId: SessionId) => Promise<api.AbortSessionResult>;
   loadAndReplay: (piSessionId: string, sessionId: SessionId) => Promise<void>;
   /** Fetch and prepend the previous page of older history (tail paging). */
   loadEarlier: (sessionId: SessionId) => Promise<void>;
@@ -76,6 +74,16 @@ export type SessionEngine = {
     tab: { status: Session["status"]; piSessionId?: string | null },
     runtime: string,
   ) => Promise<boolean>;
+};
+
+export type AgentControlRequest = {
+  mode: "steer" | "follow_up";
+  text: string;
+  runtime: string;
+  sessionId: SessionId;
+  piSessionId?: string | null;
+  queueAction?: AgentQueueAction;
+  queueReplacement?: string;
 };
 
 export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
@@ -104,13 +112,9 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   const loadRuntimeStatusCb = useCallback(api.loadRuntimeStatus, []);
 
   const sendControl = useCallback(
-    (
-      mode: "steer" | "follow_up",
-      text: string,
-      runtime: string,
-      sessionId: SessionId,
-      piSessionId?: string | null,
-    ): Promise<{ ok: boolean; error?: string }> => {
+    (request: AgentControlRequest): Promise<{ ok: boolean; error?: string }> => {
+      const { mode, text, runtime, sessionId, piSessionId, queueAction, queueReplacement } =
+        request;
       if (!text.trim() || !modelId) return Promise.resolve({ ok: false });
       return Effect.runPromise(
         Effect.gen(function* () {
@@ -119,6 +123,9 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           const promptTemplates = selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES;
           const browserEnabledForTurn = browserToolEnabled;
           const message = selectedContextPrompt(text, skills);
+          const contextualQueueReplacement = queueReplacement
+            ? selectedContextPrompt(queueReplacement, skills)
+            : undefined;
           const result = yield* Effect.tryPromise({
             try: () =>
               api.submitTurnCommand({
@@ -130,6 +137,8 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
                 cwd: cwd.trim() || undefined,
                 piSessionId,
                 mode,
+                queueAction,
+                queueReplacement: contextualQueueReplacement,
                 browserToolEnabled: browserEnabledForTurn,
                 browserSessionId: runtime,
                 browserBackend,
@@ -144,6 +153,15 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             contextUsage: api.runtimeContextUsage(result.status, session.contextUsage),
             status: "running",
           }));
+          // Same acceptance bookkeeping the prompt path does. Without it a
+          // steer/follow-up got no accept-grace (so a stale runtime-list
+          // snapshot could idle the session and tear down its stream
+          // mid-turn) and no cursor rewind if the runtime's seq had restarted.
+          sessionRuntimeController().noteTurnAccepted(
+            sessionId,
+            undefined,
+            result.status?.eventSeq,
+          );
           if (result.piSessionId) onPiSessionIdChange?.(result.piSessionId);
           return { ok: true };
         }).pipe(
@@ -208,7 +226,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           // and /abort has no piSessionId fallback lookup.
           const runtime = sessionRuntimeController().connectionKey(sessionId);
           updateSession(sessionId, (session) => ({ ...session, status: "stopping" }));
-          yield* Effect.tryPromise({
+          const cleared = yield* Effect.tryPromise({
             try: () => api.abortSession(runtime),
             catch: (error) => error,
           });
@@ -220,6 +238,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           // last streamed text is committed before we finalize.
           sessionRuntimeController().flush(sessionId);
           updateSession(sessionId, settleTurnFinalizingTools);
+          return cleared;
         }),
       ),
     [updateSession],
@@ -297,6 +316,9 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               title: meta?.title ?? title ?? session.title,
               startedAt: meta?.startedAt ?? startedAt ?? session.startedAt,
               tokenStats: tokenStats ?? undefined,
+              // Lifetime spend is computed server-side from the whole rollout,
+              // so it survives both compaction and the tail load's cutoff.
+              usageTotals: meta?.usage ?? session.usageTotals,
               contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
               status: runtimeActive ? "running" : "idle",
               activeAssistantId: undefined,
@@ -428,15 +450,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           ),
         ),
       ),
-    [
-      browserToolEnabled,
-      browserBackend,
-      cwd,
-      loadAndReplay,
-      modelId,
-      thinkingLevel,
-      updateSession,
-    ],
+    [browserToolEnabled, browserBackend, cwd, loadAndReplay, modelId, thinkingLevel, updateSession],
   );
 
   const acceptsControl = useCallback(

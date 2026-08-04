@@ -1,8 +1,38 @@
 "use client";
 
 import Link from "next/link";
-import { Settings, Smartphone } from "@/ui/icon-registry";
+import { Download, Settings, Smartphone } from "@/ui/icon-registry";
+import { Spinner } from "@/ui";
 import { ProfileAvatar, useLocalProfile } from "@/features/shell/local-profile";
+import { useAppUpdate } from "@/features/shell/use-app-update";
+
+// Visible only when a newer release exists. One click downloads the update in
+// place; once it is ready, the next click relaunches into the new version.
+function UpdateButton() {
+  const update = useAppUpdate();
+  if (!update.updateAvailable) return null;
+  const label =
+    update.phase === "ready"
+      ? `Restart to update to v${update.latestVersion}`
+      : update.phase === "working"
+        ? `Downloading v${update.latestVersion}…`
+        : `Update to v${update.latestVersion}`;
+  return (
+    <button
+      type="button"
+      onClick={update.startUpdate}
+      title={label}
+      aria-label={label}
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--sidebar-row-radius)] text-(--color-primary) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+    >
+      {update.phase === "working" ? (
+        <Spinner size="xs" />
+      ) : (
+        <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+      )}
+    </button>
+  );
+}
 
 export function ProfileFooter({ settingsActive }: { settingsActive: boolean }) {
   const [profile] = useLocalProfile();
@@ -18,6 +48,7 @@ export function ProfileFooter({ settingsActive }: { settingsActive: boolean }) {
         <ProfileAvatar profile={profile} />
         <span className="truncate text-[length:var(--fs-md)] text-(--fg)">{profile.name}</span>
       </Link>
+      <UpdateButton />
       <Link
         href="/settings#profile"
         prefetch={false}

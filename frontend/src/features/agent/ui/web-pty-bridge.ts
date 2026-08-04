@@ -29,13 +29,27 @@ export type WebPtyBridge = {
   detach(id: string): void;
 };
 
+type StreamState = { abort: AbortController; closed: boolean; replay: string };
+
 const dataListeners = new Set<DataListener>();
 const exitListeners = new Set<ExitListener>();
 const snapshotListeners = new Set<SnapshotListener>();
-const streams = new Map<string, { abort: AbortController; closed: boolean }>();
+const streams = new Map<string, StreamState>();
 
 const RECONNECT_DELAY_MS = 1_500;
 const MAX_RECONNECT_ATTEMPTS = 20;
+// Mirror the server-side pty-service MAX_REPLAY_CHARS. We keep a client-side
+// copy of the bounded scrollback per live stream so a reattach that *reuses* a
+// still-running stream (a second pane on the same ownerKey, or a fresh xterm
+// boot that races the old stream's teardown) can be handed the same buffer the
+// server holds — the reuse path never receives its own `snapshot` frame, so
+// without this it would render blank. See issue #287.
+export const MAX_STREAM_REPLAY_CHARS = 200_000;
+
+export function appendStreamReplay(prev: string, chunk: string): string {
+  const next = prev + chunk;
+  return next.length > MAX_STREAM_REPLAY_CHARS ? next.slice(-MAX_STREAM_REPLAY_CHARS) : next;
+}
 
 function decodeBase64(value: string): string {
   try {
@@ -58,7 +72,7 @@ async function postJson(pathname: string, body: unknown): Promise<Response> {
 
 type SseFrame = { event: string; data: string };
 
-function parseSseFrames(buffer: string): { frames: SseFrame[]; rest: string } {
+export function parseSseFrames(buffer: string): { frames: SseFrame[]; rest: string } {
   const frames: SseFrame[] = [];
   let rest = buffer;
   for (;;) {
@@ -82,6 +96,10 @@ function parseSseFrames(buffer: string): { frames: SseFrame[]; rest: string } {
 function dispatchFrame(id: string, frame: SseFrame, onFirstSnapshot: (replay: string) => void) {
   if (frame.event === "snapshot") {
     const replay = decodeBase64(frame.data);
+    const state = streams.get(id);
+    // A snapshot is the authoritative full buffer (initial attach or reconnect):
+    // replace, don't append.
+    if (state) state.replay = appendStreamReplay("", replay);
     onFirstSnapshot(replay);
     for (const listener of snapshotListeners) listener(id, replay);
     return;
@@ -102,13 +120,17 @@ function dispatchFrame(id: string, frame: SseFrame, onFirstSnapshot: (replay: st
   }
   if (frame.event === "message" && frame.data) {
     const chunk = decodeBase64(frame.data);
-    if (chunk) for (const listener of dataListeners) listener(id, chunk);
+    if (chunk) {
+      const state = streams.get(id);
+      if (state) state.replay = appendStreamReplay(state.replay, chunk);
+      for (const listener of dataListeners) listener(id, chunk);
+    }
   }
 }
 
 async function runStream(
   id: string,
-  state: { abort: AbortController; closed: boolean },
+  state: StreamState,
   onFirstSnapshot: (replay: string) => void,
 ): Promise<void> {
   let attempts = 0;
@@ -156,10 +178,13 @@ export const webPtyBridge: WebPtyBridge = {
     const { id, reused } = (await response.json()) as { id: string; reused?: boolean };
 
     // One stream per session id; a second panel attach reuses the running one.
+    // Hand the reusing attach the buffer we've been mirroring so it can render
+    // the same scrollback the first attach sees — the shared stream won't emit
+    // a fresh `snapshot` frame just for this new consumer (issue #287).
     const existing = streams.get(id);
-    if (existing && !existing.closed) return { id, reused, replay: "" };
+    if (existing && !existing.closed) return { id, reused, replay: existing.replay };
 
-    const state = { abort: new AbortController(), closed: false };
+    const state: StreamState = { abort: new AbortController(), closed: false, replay: "" };
     streams.set(id, state);
     const firstSnapshot = new Promise<string>((resolve) => {
       let resolved = false;

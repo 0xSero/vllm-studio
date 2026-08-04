@@ -56,7 +56,11 @@ type Session = {
   disposers: Array<() => void>;
 };
 
-const MAX_REPLAY_CHARS = 200_000;
+// Bounded scrollback kept per shell for reattach/replay (~200 KB of UTF-16,
+// comfortably under a 512 KB ceiling). A reattaching client gets this buffer as
+// the first `snapshot` frame; navigating away or dropping the stream never
+// trims it — only new output past the cap rolls off the front.
+export const MAX_REPLAY_CHARS = 200_000;
 const MAX_PTY_SESSIONS = 64;
 export const MAX_PTY_INPUT_CHARS = 32_768;
 
@@ -142,11 +146,12 @@ function clampDimension(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) && parsed >= 2 && parsed <= 1_000 ? parsed : fallback;
 }
 
+export function clampReplay(replay: string): string {
+  return replay.length > MAX_REPLAY_CHARS ? replay.slice(-MAX_REPLAY_CHARS) : replay;
+}
+
 function appendReplay(session: Session, chunk: string): void {
-  session.replay += chunk;
-  if (session.replay.length > MAX_REPLAY_CHARS) {
-    session.replay = session.replay.slice(-MAX_REPLAY_CHARS);
-  }
+  session.replay = clampReplay(session.replay + chunk);
 }
 
 function ownedSession(ownerKey: string): Session | null {

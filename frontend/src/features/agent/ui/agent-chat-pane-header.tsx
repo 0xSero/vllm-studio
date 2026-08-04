@@ -79,6 +79,9 @@ export function AgentChatPaneHeader({
           <input
             autoFocus
             value={draftTitle}
+            // Select the whole existing name on entry so a click-to-rename can
+            // be overwritten by typing straight away (issue #274).
+            onFocus={(event) => event.currentTarget.select()}
             onChange={(event) => setDraftTitle(event.target.value)}
             onBlur={finishRename}
             onKeyDown={(event) => {
@@ -92,12 +95,15 @@ export function AgentChatPaneHeader({
             aria-label="Rename session"
           />
         ) : (
-          <span
-            className="block min-w-0 truncate whitespace-nowrap text-[length:var(--fs-md)] font-medium leading-none text-(--fg) md:text-[length:var(--fs-base)]"
+          <button
+            type="button"
+            onClick={startRename}
+            className="block min-w-0 truncate whitespace-nowrap rounded-sm text-left text-[length:var(--fs-md)] font-medium leading-none text-(--fg) hover:bg-(--hover) md:text-[length:var(--fs-base)]"
             title={title}
+            aria-label={`Rename session: ${title}`}
           >
             {title}
-          </span>
+          </button>
         )}
         <button
           type="button"

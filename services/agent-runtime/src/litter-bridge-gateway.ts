@@ -303,33 +303,66 @@ const resolvePiAgentDir = (dataDir: string): string => {
   return path.resolve(path.join(dataDir, "pi-agent"));
 };
 
-/**
- * Resolve the command an external consumer should run to launch the *same*
- * `pi-coding-agent` this instance uses: this process's own executable (under
- * Electron that means `ELECTRON_RUN_AS_NODE`) plus the CLI entry.
- *
- * Resolution goes through `import.meta.resolve`, which uses the same module
- * graph that already loaded pi as a library — so it works whether the package
- * is hoisted next to the agent-runtime (dev) or in a sibling subtree of the
- * desktop bundle, where a `createRequire` walk from this module would miss it.
- * `dist/cli.js` is derived as a sibling of the package's main entry because the
- * package's `exports` map does not expose the `dist/cli.js` subpath directly.
- * Returns null on any failure so the descriptor omits `piRuntime` and consumers
- * fall back to discovery rather than getting a broken command.
- */
+export const resolveElectronNodeExecutable = (
+  execPath: string,
+  pathExists: (candidate: string) => boolean = existsSync,
+): string => {
+  const executableName = path.basename(execPath);
+  const contentsDir = path.dirname(path.dirname(execPath));
+  const helperPath = path.join(
+    contentsDir,
+    "Frameworks",
+    `${executableName} Helper.app`,
+    "Contents",
+    "MacOS",
+    `${executableName} Helper`,
+  );
+  return pathExists(helperPath) ? helperPath : execPath;
+};
+
+export const resolvePackagedPiCli = (
+  resourcesPath: string | undefined,
+  pathExists: (candidate: string) => boolean = existsSync,
+): string | null => {
+  if (!resourcesPath?.trim()) return null;
+  const cli = path.join(
+    resourcesPath,
+    "app",
+    "frontend",
+    ".next",
+    "standalone",
+    "frontend",
+    "node_modules",
+    "@earendil-works",
+    "pi-coding-agent",
+    "dist",
+    "cli.js",
+  );
+  return pathExists(cli) ? cli : null;
+};
+
 const resolvePiRuntime = (): GatewayPiRuntime | null => {
+  let cli: string | null = null;
   try {
     const mainUrl = import.meta.resolve("@earendil-works/pi-coding-agent");
     const distDir = path.dirname(fileURLToPath(mainUrl));
-    const cli = path.join(distDir, "cli.js");
-    const env: Record<string, string> = {};
-    if (process.versions.electron) {
-      env.ELECTRON_RUN_AS_NODE = "1";
-    }
-    return { program: process.execPath, args: [cli], env };
+    cli = path.join(distDir, "cli.js");
   } catch {
-    return null;
+    cli = null;
   }
+  cli ??= resolvePackagedPiCli(
+    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath,
+  );
+  if (!cli) return null;
+  const env: Record<string, string> = {};
+  const program =
+    process.platform === "darwin" && process.versions.electron
+      ? resolveElectronNodeExecutable(process.execPath)
+      : process.execPath;
+  if (process.versions.electron) {
+    env.ELECTRON_RUN_AS_NODE = "1";
+  }
+  return { program, args: [cli], env };
 };
 
 const loadControllerId = (dataDir: string): string => {

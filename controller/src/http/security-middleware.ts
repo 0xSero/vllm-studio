@@ -86,7 +86,7 @@ const rateLimitKey = (path: string, method: string, clientIp: string): string =>
 const nextEffect = (next: Next): Effect.Effect<void, unknown> =>
   Effect.tryPromise({ try: next, catch: (error) => error });
 
-export function createMutatingAuthMiddleware(context: AppContext): MiddlewareHandler {
+export function createAuthMiddleware(context: AppContext): MiddlewareHandler {
   return effectMiddleware((ctx, next) =>
     Effect.suspend(() => {
       if (isPublicRequest(ctx.req.method, ctx.req.path)) return nextEffect(next);

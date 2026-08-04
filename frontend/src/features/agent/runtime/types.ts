@@ -42,6 +42,10 @@ export type Session = {
   startedAt?: string;
   input: string;
   tokenStats?: TokenStats;
+  /** Lifetime token spend for the whole session, compaction included.
+   *  Computed server-side from the rollout; not derived from the visible
+   *  transcript, which a tail load truncates. */
+  usageTotals?: import("@/features/agent/runtime/api").SessionUsageTotals | null;
   usedSkills?: ComposerSkillRef[];
   contextUsage?: RuntimeContextUsage | null;
   activeAssistantId?: string;

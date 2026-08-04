@@ -362,8 +362,9 @@ function GoalCard({
                 : "text-(--fg)/34",
           )}
         />
-        <span className="min-w-0 flex-1 truncate font-medium text-(--fg)/82">
-          {STATUS_LABEL[goal.status]}
+        <span className="shrink-0 font-medium text-(--fg)/82">{STATUS_LABEL[goal.status]}</span>
+        <span className="min-w-0 flex-1 truncate text-(--fg)/48" title={goal.objective}>
+          {goal.objective}
         </span>
         <span className="shrink-0 tabular-nums text-(--fg)/40">
           {formatElapsed(goal.createdAt)}
@@ -438,9 +439,7 @@ function GoalCard({
             </button>
           </div>
         </div>
-      ) : (
-        <p className="pt-1 leading-[1.55] text-(--fg)/48">{goal.objective}</p>
-      )}
+      ) : null}
     </div>
   );
 }

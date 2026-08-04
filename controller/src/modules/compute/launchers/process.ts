@@ -80,7 +80,7 @@ export const makeProcessLauncher = (logPathFor: (name: string) => string): Launc
       const [binary, ...args] = plan.argv;
       if (!binary) return yield* spawnFailed("plan.argv is empty");
       const logFd = yield* Effect.try({
-        try: () => openSync(logPathFor(record.name), "a"),
+        try: () => openSync(logPathFor(record.name), "w"),
         catch: (error) => error,
       }).pipe(
         Effect.catch((error) =>

@@ -13,6 +13,7 @@ import {
 } from "@/features/shell/local-profile";
 import { QrCode } from "@/features/shell/qr-code";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { writeClipboardText } from "@/lib/clipboard";
 import { SettingsButton, SettingsGroup, SettingsLink } from "./settings-ui";
 
 export function ProfileSettings() {
@@ -124,13 +125,25 @@ function PhonePairingSettings() {
   const [pairingError, setPairingError] = useState("");
   const [pairingBusy, setPairingBusy] = useState(true);
   const loadPairingJson = async (): Promise<string> => {
-    const result = await window.localStudioDesktop?.getKittylitterPairingJson?.();
-    if (!result?.ok || !result.pairingJson) {
-      throw new Error(result?.error || "Connection JSON is available in the desktop app.");
+    const desktop = window.localStudioDesktop?.getKittylitterPairingJson;
+    if (desktop) {
+      const result = await desktop();
+      if (!result.ok) throw new Error(result.error);
+      if (!result.pairingJson) throw new Error("Connection JSON is unavailable.");
+      setPairingJson(result.pairingJson);
+      setPairingError("");
+      return result.pairingJson;
     }
-    setPairingJson(result.pairingJson);
+    const response = await fetch("/api/kittylitter/pairing", { method: "POST" });
+    const payload = (await response.json()) as { pairingJson?: unknown; error?: unknown };
+    if (!response.ok || typeof payload.pairingJson !== "string") {
+      throw new Error(
+        typeof payload.error === "string" ? payload.error : "Connection JSON is unavailable.",
+      );
+    }
+    setPairingJson(payload.pairingJson);
     setPairingError("");
-    return result.pairingJson;
+    return payload.pairingJson;
   };
   const refreshPairing = (): Promise<void> =>
     Effect.runPromise(
@@ -156,9 +169,12 @@ function PhonePairingSettings() {
   const copy = async () => {
     try {
       const value = pairingJson || (await loadPairingJson());
-      const result = await window.localStudioDesktop?.copyKittylitterPairingJson?.(value);
-      if (!result?.ok) {
-        throw new Error(result?.error || "Connection JSON is available in the desktop app.");
+      const desktop = window.localStudioDesktop?.copyKittylitterPairingJson;
+      if (desktop) {
+        const result = await desktop(value);
+        if (!result.ok) throw new Error(result.error || "Connection JSON could not be copied.");
+      } else {
+        await writeClipboardText(value);
       }
       setCopied(true);
       setPairingError("");

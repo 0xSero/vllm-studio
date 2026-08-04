@@ -9,7 +9,7 @@
 // with prompt-stream/engine; hydration status with loadAndReplay.)
 
 import { isAgentSettledEvent } from "@shared/agent/pi-events";
-import { drainQueueAfterAgentEnd, piSessionIdFromEvent } from "@/features/agent/messages";
+import { piSessionIdFromEvent } from "@/features/agent/messages";
 import {
   listRuntimeSessions,
   loadRuntimeStatus,
@@ -244,6 +244,16 @@ export function createSessionRuntimeController(
   // Receive gate: advance receivedSeq immediately (dedup + reconnect cursor);
   // committedSeq — and the persisted lastEventSeq — only advance when the
   // event's effects are actually committed (see applyEvent).
+  // A turn can settle four ways: the authoritative `agent_settled` event, an
+  // idle status frame, the liveness reconcile, and the runtime-list poll. The
+  // live-target pin must drop on ALL of them — a pin that outlives its turn
+  // retargets the NEXT turn's blocks onto a settled bubble (or onto a dead id,
+  // where they are discarded silently while the seq cursor advances). That is
+  // what erased everything after a follow-up message when the stream dropped.
+  const dropLiveTarget = (sessionId: SessionId) => {
+    streamContext.liveAssistantIds.delete(sessionId);
+  };
+
   const acceptSeq = (sessionId: SessionId, seq?: number): boolean => {
     const current = cursors.get(sessionId) ?? adoptExternalCursor(undefined);
     const decision = acceptRuntimeSeq(current, seq);
@@ -264,6 +274,7 @@ export function createSessionRuntimeController(
     payload: Extract<RuntimeEventPayload, { type: "status" }>,
   ) => {
     const idle = payload.phase === "done" || payload.phase === "idle";
+    if (idle) dropLiveTarget(sessionId);
     commit(sessionId, (session) => ({
       ...session,
       piSessionId: payload.session?.piSessionId || session.piSessionId,
@@ -297,15 +308,11 @@ export function createSessionRuntimeController(
       // turn; left set, it would silently retarget the NEXT turn's events onto
       // this (now settled) bubble, so the next bubble renders empty — tool
       // calls and reasoning land off-screen and no final content appears.
-      streamContext.liveAssistantIds.delete(sessionId);
-      // Queue display reconciliation only: Pi drains its own follow_up queue
-      // server-side, so locally we just drop the drained head and any
-      // already-sent items from the visible queue.
-      commit(sessionId, (session) =>
-        (session.queue ?? []).length === 0
-          ? session
-          : { ...session, queue: drainQueueAfterAgentEnd(session.queue ?? []).remaining },
-      );
+      dropLiveTarget(sessionId);
+      // The queue is NOT touched here. Pi owns it: it drains its own follow_up
+      // queue server-side and tells us what happened through the delivered user
+      // echo and `queue_update`. Dropping items at settle just erased the stack
+      // a beat before pi delivered them.
       return;
     }
 
@@ -470,6 +477,7 @@ export function createSessionRuntimeController(
     const acceptedAt = turnAcceptedAt.get(session.id);
     if (acceptedAt !== undefined && fetchStartedAt - acceptedAt < pollIdleGraceMs) return;
     const patch = patchRuntimeStatus(status);
+    dropLiveTarget(session.id);
     commit(session.id, (current) => {
       if (current.status !== "running" && current.status !== "stopping") return current;
       if (sameRuntimePatch(current, patch, "idle") && !current.activeAssistantId) {
@@ -565,6 +573,7 @@ export function createSessionRuntimeController(
           cancelReconnect();
           sub?.close();
           coalescer.flushNow(sessionId);
+          dropLiveTarget(sessionId);
           commit(sessionId, (session) =>
             session.status === "running" ||
             session.status === "starting" ||

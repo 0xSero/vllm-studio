@@ -91,3 +91,24 @@ test("steer echoes still match after agent_end has un-dimmed the bubbles", () =>
   assert.equal(userCount(current.messages, "check this"), 1);
   assert.equal(userCount(current.messages, "codex session"), 1);
 });
+
+// --- stale live-target pin ---------------------------------------------------
+
+test("a pin whose bubble no longer exists does not swallow the turn", () => {
+  // Reproduces the follow-up-after-a-dropped-connection loss: the pin from the
+  // previous turn survived a settle that wasn't `agent_settled`, and every
+  // block event afterwards was discarded against the dead id while the seq
+  // cursor advanced, so nothing after the follow-up ever rendered.
+  const ctx = context();
+  ctx.liveAssistantIds.set("session-1", "assistant-gone");
+
+  const next = reduceSessionEvent(session(), ctx, {
+    type: "message_start",
+    message: { role: "assistant", content: [{ type: "text", text: "still here" }] },
+  });
+
+  const assistants = next.messages.filter((message) => message.role === "assistant");
+  assert.equal(assistants.length, 1);
+  assert.notEqual(assistants[0].id, "assistant-gone");
+  assert.equal(ctx.liveAssistantIds.has("session-1"), false);
+});

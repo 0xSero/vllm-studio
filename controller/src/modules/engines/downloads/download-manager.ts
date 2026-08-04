@@ -31,11 +31,21 @@ const sumDownloadedBytes = (files: DownloadFileInfo[]): number =>
   files.reduce((total, file) => total + (file.downloaded_bytes || 0), 0);
 
 const sumTotalBytes = (files: DownloadFileInfo[]): number | null => {
-  const known = files.filter((file) => typeof file.size_bytes === "number") as Array<
-    DownloadFileInfo & { size_bytes: number }
-  >;
-  return known.length === 0 ? null : known.reduce((total, file) => total + file.size_bytes, 0);
+  if (files.length === 0 || files.some((file) => typeof file.size_bytes !== "number")) return null;
+  return files.reduce((total, file) => total + (file.size_bytes ?? 0), 0);
 };
+
+export const normalizeDownloadTotalBytes = (download: ModelDownload): number | null => {
+  const completeTotal = sumTotalBytes(download.files);
+  if (completeTotal !== null) return completeTotal;
+  const storedTotal = download.total_bytes;
+  return storedTotal !== null && storedTotal >= download.downloaded_bytes ? storedTotal : null;
+};
+
+const normalizeDownload = (download: ModelDownload): ModelDownload => ({
+  ...download,
+  total_bytes: normalizeDownloadTotalBytes(download),
+});
 
 const sameFileSet = (first: DownloadFileInfo[], second: DownloadFileInfo[]): boolean => {
   const firstPaths = first.map((file) => file.path).sort();
@@ -180,11 +190,13 @@ export class DownloadManager {
   }
 
   public list(): Effect.Effect<ModelDownload[], EngineOperationError> {
-    return this.store.list();
+    return this.store.list().pipe(Effect.map((downloads) => downloads.map(normalizeDownload)));
   }
 
   public get(id: string): Effect.Effect<ModelDownload | null, EngineOperationError> {
-    return this.store.get(id);
+    return this.store
+      .get(id)
+      .pipe(Effect.map((download) => (download ? normalizeDownload(download) : null)));
   }
 
   public start(request: DownloadRequest): Effect.Effect<ModelDownload, EngineOperationError> {
@@ -386,7 +398,7 @@ export class DownloadManager {
         current.completed_at = allComplete ? toTimestamp() : null;
         current.error = allComplete ? null : (current.error ?? "Download incomplete");
         current.downloaded_bytes = sumDownloadedBytes(current.files);
-        current.total_bytes = current.total_bytes ?? sumTotalBytes(current.files);
+        current.total_bytes = normalizeDownloadTotalBytes(current);
         current.updated_at = toTimestamp();
         yield* manager.store.save(current);
         yield* manager.publishState(current, current.status);
@@ -586,9 +598,10 @@ export class DownloadManager {
         ...latest,
         files: updatedFiles,
         downloaded_bytes: sumDownloadedBytes(updatedFiles),
-        total_bytes: latest.total_bytes ?? sumTotalBytes(updatedFiles),
+        total_bytes: latest.total_bytes,
         updated_at: toTimestamp(),
       };
+      updated.total_bytes = normalizeDownloadTotalBytes(updated);
       yield* store.save(updated);
       return updated;
     });

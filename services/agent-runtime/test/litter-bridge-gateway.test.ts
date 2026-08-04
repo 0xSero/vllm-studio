@@ -24,12 +24,59 @@ import {
   litterBridgeSha256Utf8,
   litterBridgeSignaturePreimage,
   litterBridgeToolHashPreimage,
+  resolveElectronNodeExecutable,
+  resolvePackagedPiCli,
   verifyLitterBridgeRequest,
 } from "../src/litter-bridge-gateway";
 
 const NOW = new Date("2026-07-20T18:30:00.000Z");
 const SECRET = "test-secret-that-is-at-least-thirty-two-bytes-long";
 const CONTROLLER_ID = "controller-test";
+
+test("macOS Electron Pi launches use the background helper executable", () => {
+  const executable = path.join(
+    "/Applications",
+    "Local Studio Dev.app",
+    "Contents",
+    "MacOS",
+    "Local Studio Dev",
+  );
+  const helper = path.join(
+    "/Applications",
+    "Local Studio Dev.app",
+    "Contents",
+    "Frameworks",
+    "Local Studio Dev Helper.app",
+    "Contents",
+    "MacOS",
+    "Local Studio Dev Helper",
+  );
+
+  assert.equal(
+    resolveElectronNodeExecutable(executable, (candidate) => candidate === helper),
+    helper,
+  );
+  assert.equal(resolveElectronNodeExecutable(executable, () => false), executable);
+});
+
+test("packaged Pi runtime resolves the embedded frontend CLI", () => {
+  const resources = path.join("/Applications", "Local Studio.app", "Contents", "Resources");
+  const cli = path.join(
+    resources,
+    "app",
+    "frontend",
+    ".next",
+    "standalone",
+    "frontend",
+    "node_modules",
+    "@earendil-works",
+    "pi-coding-agent",
+    "dist",
+    "cli.js",
+  );
+  assert.equal(resolvePackagedPiCli(resources, (candidate) => candidate === cli), cli);
+  assert.equal(resolvePackagedPiCli(resources, () => false), null);
+});
 
 const keyMaterial = (): { privateKey: KeyObject; publicHex: string } => {
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
@@ -1382,6 +1429,9 @@ test("independent controller failures produce an explicit degraded partial snaps
 
 test("published handoff metadata is private and removed only by its owner", () => {
   const directory = mkdtempSync(path.join(tmpdir(), "local-studio-litter-gateway-"));
+  const savedPiCodingAgentDir = process.env.PI_CODING_AGENT_DIR;
+  delete process.env.PI_CODING_AGENT_DIR;
+  try {
   const gateway = createLitterBridgeGateway({
     secret: SECRET,
     controllerId: CONTROLLER_ID,
@@ -1410,6 +1460,10 @@ test("published handoff metadata is private and removed only by its owner", () =
 
   gateway.dispose();
   assert.throws(() => statSync(filepath));
+  } finally {
+    if (savedPiCodingAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = savedPiCodingAgentDir;
+  }
 });
 
 test("signed agent.turn reports retryAfterMs when a concurrent reservation is in flight", async () => {

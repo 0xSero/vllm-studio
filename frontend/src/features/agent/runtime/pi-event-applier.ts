@@ -203,7 +203,14 @@ function resolveAssistantTarget(
   session: Session,
   ctx: SessionStreamContext,
 ): { session: Session; targetId: string } {
-  const pinned = ctx.liveAssistantIds.get(session.id);
+  // Validate the pin the same way the active id is validated below. An
+  // unvalidated pin that outlived its bubble made patchAssistantMessage drop
+  // every event on the floor while the seq cursor advanced anyway — the
+  // follow-up-after-a-dropped-connection content loss.
+  const pinnedId = ctx.liveAssistantIds.get(session.id);
+  const pinned =
+    pinnedId && messageIndexById(session.messages, pinnedId) >= 0 ? pinnedId : undefined;
+  if (pinnedId && !pinned) ctx.liveAssistantIds.delete(session.id);
   // The active bubble is almost always the LAST message (bubbles append at the
   // end), so validate it by scanning backward — folding a long replayed log
   // must not rescan the whole transcript from the front for every event.

@@ -5,11 +5,14 @@ import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 type UseFilesystemPanelEffectsParams = {
   cwd: string | null;
+  root: string | null;
   relPath: string;
   openFile: string | null;
+  skipTextRead: boolean;
   fileOpenRequest: FileOpenRequest | null;
   lastOpenFileByProject: Record<string, string>;
-  cwdRef: MutableRefObject<string | null>;
+  rootRef: MutableRefObject<string | null>;
+  setRootOverride: Dispatch<SetStateAction<string | null>>;
   setRelPath: Dispatch<SetStateAction<string>>;
   setEntries: Dispatch<SetStateAction<FsEntry[]>>;
   setOpenFile: Dispatch<SetStateAction<string | null>>;
@@ -29,11 +32,14 @@ type UseFilesystemPanelEffectsParams = {
 
 export function useFilesystemPanelEffects({
   cwd,
+  root,
   relPath,
   openFile,
+  skipTextRead,
   fileOpenRequest,
   lastOpenFileByProject,
-  cwdRef,
+  rootRef,
+  setRootOverride,
   setRelPath,
   setEntries,
   setOpenFile,
@@ -51,14 +57,31 @@ export function useFilesystemPanelEffects({
   setLastOpenFileByProject,
 }: UseFilesystemPanelEffectsParams): void {
   const handledFileOpenRequest = useRef(0);
+  // A file-open request can land on a root the panel is not showing yet (an
+  // absolute path outside the session project). Switching roots re-runs the
+  // reset effect below, which would wipe the file we were asked to open, so the
+  // request parks its target here and the reset effect adopts it.
+  const pendingOpen = useRef<{ root: string; rel: string; relPath: string } | null>(null);
+  // Root whose open file came from a request, so the "restore last file"
+  // effect does not immediately replace it with a remembered one.
+  const pendingApplied = useRef<string | null>(null);
 
   useMountSubscription(() => {
-    cwdRef.current = cwd;
-  }, [cwd, cwdRef]);
+    rootRef.current = root;
+  }, [root, rootRef]);
+
+  // Switching session/project drops any external root the panel had adopted.
+  useMountSubscription(() => {
+    setRootOverride(null);
+  }, [cwd, setRootOverride]);
 
   useMountSubscription(() => {
-    setRelPath("");
-    setOpenFile(null);
+    const pending = pendingOpen.current;
+    const adopted = pending && pending.root === root ? pending : null;
+    pendingOpen.current = null;
+    pendingApplied.current = adopted ? root : null;
+    setRelPath(adopted?.relPath ?? "");
+    setOpenFile(adopted?.rel ?? null);
     setFileContent("");
     setDraftContent("");
     setFileTruncated(false);
@@ -70,7 +93,7 @@ export function useFilesystemPanelEffects({
     setDirChildren(new Map());
     setDirLoading(new Set());
   }, [
-    cwd,
+    root,
     setComments,
     setDirChildren,
     setDirLoading,
@@ -86,7 +109,7 @@ export function useFilesystemPanelEffects({
   ]);
 
   useMountSubscription(() => {
-    if (!cwd) {
+    if (!root) {
       setEntries([]);
       return;
     }
@@ -94,7 +117,7 @@ export function useFilesystemPanelEffects({
     (async () => {
       try {
         const response = await fetch(
-          `/api/agent/fs?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(relPath)}`,
+          `/api/agent/fs?cwd=${encodeURIComponent(root)}&path=${encodeURIComponent(relPath)}`,
           { cache: "no-store" },
         );
         const payload = (await response.json()) as { entries?: FsEntry[]; error?: string };
@@ -106,27 +129,52 @@ export function useFilesystemPanelEffects({
     return () => {
       cancelled = true;
     };
-  }, [cwd, relPath, setEntries]);
+  }, [root, relPath, setEntries]);
 
   useMountSubscription(() => {
-    if (!cwd) return;
-    const remembered = lastOpenFileByProject[cwd];
+    if (!root || pendingApplied.current === root) return;
+    const remembered = lastOpenFileByProject[root];
     if (remembered) setOpenFile(remembered);
-  }, [cwd, lastOpenFileByProject, setOpenFile]);
+  }, [root, lastOpenFileByProject, setOpenFile]);
 
   useMountSubscription(() => {
     if (!fileOpenRequest || handledFileOpenRequest.current === fileOpenRequest.id) {
       return;
     }
     handledFileOpenRequest.current = fileOpenRequest.id;
-    const rel = relativePathForRequest(fileOpenRequest.path, cwd);
-    if (!rel) return;
-    setOpenFile(rel);
-    if (cwd) setLastOpenFileByProject(cwd, rel);
-  }, [cwd, fileOpenRequest, setLastOpenFileByProject, setOpenFile]);
+    const target = resolveFileOpenTarget(fileOpenRequest.path, cwd);
+    if (!target) return;
+    // Returning to the session project clears the override rather than pinning
+    // an identical root, so the "external root" bar stays off.
+    const nextOverride = target.root === cwd ? null : target.root;
+    if ((nextOverride ?? cwd) !== root) {
+      // Park the target for the reset effect that the root change triggers.
+      pendingOpen.current = {
+        root: target.root,
+        rel: target.kind === "directory" ? "" : target.rel,
+        relPath: target.kind === "directory" ? target.rel : "",
+      };
+      setRootOverride(nextOverride);
+      return;
+    }
+    if (target.kind === "directory") {
+      setRelPath(target.rel);
+      return;
+    }
+    setOpenFile(target.rel);
+    if (root) setLastOpenFileByProject(root, target.rel);
+  }, [
+    cwd,
+    root,
+    fileOpenRequest,
+    setLastOpenFileByProject,
+    setOpenFile,
+    setRelPath,
+    setRootOverride,
+  ]);
 
   useMountSubscription(() => {
-    if (!cwd || !openFile) {
+    if (!root || !openFile || skipTextRead) {
       setFileContent("");
       setDraftContent("");
       setFileTruncated(false);
@@ -142,11 +190,11 @@ export function useFilesystemPanelEffects({
       try {
         const [fileResponse, commentsResponse] = await Promise.all([
           fetch(
-            `/api/agent/fs/file?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(openFile)}`,
+            `/api/agent/fs/file?cwd=${encodeURIComponent(root)}&path=${encodeURIComponent(openFile)}`,
             { cache: "no-store" },
           ),
           fetch(
-            `/api/agent/comments?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(openFile)}`,
+            `/api/agent/comments?cwd=${encodeURIComponent(root)}&path=${encodeURIComponent(openFile)}`,
             { cache: "no-store" },
           ),
         ]);
@@ -164,11 +212,15 @@ export function useFilesystemPanelEffects({
         setFileTruncated(fileBody.truncated ?? false);
         setFileSize(fileBody.size ?? 0);
         setComments(commentsBody.comments ?? []);
+        // A read that fails server-side (missing file, path outside an allowed
+        // root) used to leave an empty pane with no explanation.
+        if (!fileResponse.ok || fileBody.error) setSaveError(fileBody.error || "Read failed.");
       } catch {
         if (!cancelled) {
           setFileContent("");
           setDraftContent("");
           setComments([]);
+          setSaveError("Read failed.");
         }
       } finally {
         if (!cancelled) setLoadingFile(false);
@@ -178,8 +230,9 @@ export function useFilesystemPanelEffects({
       cancelled = true;
     };
   }, [
-    cwd,
+    root,
     openFile,
+    skipTextRead,
     setComments,
     setDraftContent,
     setFileContent,
@@ -190,8 +243,53 @@ export function useFilesystemPanelEffects({
   ]);
 }
 
-function relativePathForRequest(path: string, cwd: string | null): string | null {
-  let raw = path.trim();
+type FileOpenTarget = { root: string; rel: string; kind: "file" | "directory" };
+
+// Resolve a clicked reference into the root the panel should show and the path
+// under it. References arrive the way assistants write them: `file://` URLs,
+// `path:line:col`, `~/…`, `./…`, repo-relative, or absolute paths that point
+// somewhere else entirely (a PDF on the Desktop while the session runs in a
+// project). Absolute paths outside the session root resolve against their own
+// parent directory rather than returning null — the panel adopts that directory
+// as its root so the file actually opens.
+export function resolveFileOpenTarget(
+  requestPath: string,
+  cwd: string | null,
+): FileOpenTarget | null {
+  const projectRoot = cwd ? cwd.replace(/\/+$/, "") : null;
+  const raw = normalizeReference(requestPath, projectRoot);
+  if (!raw) return null;
+  const isDirectory = raw.endsWith("/");
+  const clean = isDirectory ? raw.replace(/\/+$/, "") : raw;
+  if (!clean) return null;
+
+  if (projectRoot && (clean === projectRoot || clean.startsWith(`${projectRoot}/`))) {
+    return {
+      root: projectRoot,
+      rel: clean === projectRoot ? "" : clean.slice(projectRoot.length + 1),
+      kind: isDirectory ? "directory" : "file",
+    };
+  }
+  if (clean.startsWith("/")) {
+    if (isDirectory) return { root: clean, rel: "", kind: "directory" };
+    const slash = clean.lastIndexOf("/");
+    const parent = clean.slice(0, slash);
+    const name = clean.slice(slash + 1);
+    if (!name) return null;
+    return { root: parent || "/", rel: name, kind: "file" };
+  }
+  if (!projectRoot) return null;
+  const rel = clean.startsWith("./") ? clean.slice(2) : clean;
+  if (!rel || rel.startsWith("../")) return null;
+  return { root: projectRoot, rel, kind: isDirectory ? "directory" : "file" };
+}
+
+// Strip the decorations references arrive with (backticks, a `file://` scheme,
+// a `:line:col` suffix) and expand `~`. The renderer has no `os.homedir()`, but
+// the session cwd is an absolute path under the same home, so `/Users/<name>` /
+// `/home/<name>` recovers it — enough to make `~/…` paths clickable.
+function normalizeReference(requestPath: string, projectRoot: string | null): string | null {
+  let raw = requestPath.trim();
   if (!raw) return null;
   if (/^file:\/\//i.test(raw)) {
     try {
@@ -202,10 +300,8 @@ function relativePathForRequest(path: string, cwd: string | null): string | null
   }
   raw = raw.replace(/^`|`$/g, "").replace(/:\d+(?::\d+)?$/, "");
   if (!raw || raw.includes("\0")) return null;
-  if (cwd && raw.startsWith(`${cwd.replace(/\/+$/, "")}/`)) {
-    return raw.slice(cwd.replace(/\/+$/, "").length + 1);
-  }
-  if (raw.startsWith("./")) return raw.slice(2);
-  if (!raw.startsWith("/") && !raw.startsWith("../")) return raw;
-  return null;
+  if (raw !== "~" && !raw.startsWith("~/")) return raw;
+  const home = projectRoot?.match(/^(\/(?:Users|home)\/[^/]+)/)?.[1];
+  if (!home) return raw;
+  return raw === "~" ? `${home}/` : `${home}/${raw.slice(2)}`;
 }
