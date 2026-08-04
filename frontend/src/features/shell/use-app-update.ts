@@ -14,10 +14,6 @@ export type AppUpdate = {
   downloadUrl: string | null;
   updateAvailable: boolean;
   phase: AppUpdatePhase;
-  /**
-   * Desktop: download the update in place (data is untouched), then a second
-   * activation relaunches into the new version. Web: open the DMG download.
-   */
   startUpdate: () => void;
 };
 
@@ -115,19 +111,13 @@ export function useAppUpdate(): AppUpdate {
 
   const startUpdate = useCallback(() => {
     const desktop = bridge();
-    if (phase === "ready" && desktop.installUpdate) {
-      void desktop.installUpdate();
-      return;
-    }
-    // A failed in-place update (or no desktop bridge) falls back to the plain
-    // DMG download in the browser — reinstalling keeps user data as well.
-    if (!desktop.checkForUpdates || phase === "failed") {
+    if (!desktop.startUpdate) {
       if (latest.url) window.open(latest.url, "_blank", "noopener");
       return;
     }
     setPhase("working");
-    void desktop.checkForUpdates().then(syncDesktopPhase, () => setPhase("failed"));
-  }, [latest.url, phase, syncDesktopPhase]);
+    void desktop.startUpdate().then(syncDesktopPhase, () => setPhase("failed"));
+  }, [latest.url, syncDesktopPhase]);
 
   return {
     currentVersion,
