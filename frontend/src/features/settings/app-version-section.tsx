@@ -46,7 +46,13 @@ export function AppVersionSection() {
               ) : (
                 <Download className="h-3 w-3" />
               )}
-              {update.phase === "ready" ? "Restart to update" : webDownload ? "Download" : "Update"}
+              {update.phase === "working"
+                ? "Updating…"
+                : update.phase === "ready"
+                  ? "Restart to update"
+                  : webDownload
+                    ? "Download"
+                    : "Update"}
             </SettingsButton>
           ) : undefined
         }

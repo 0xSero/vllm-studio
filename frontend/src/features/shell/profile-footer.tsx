@@ -6,8 +6,6 @@ import { Spinner } from "@/ui";
 import { ProfileAvatar, useLocalProfile } from "@/features/shell/local-profile";
 import { useAppUpdate } from "@/features/shell/use-app-update";
 
-// Visible only when a newer release exists. One click downloads the update in
-// place; once it is ready, the next click relaunches into the new version.
 function UpdateButton() {
   const update = useAppUpdate();
   if (!update.updateAvailable) return null;
@@ -15,7 +13,7 @@ function UpdateButton() {
     update.phase === "ready"
       ? `Restart to update to v${update.latestVersion}`
       : update.phase === "working"
-        ? `Downloading v${update.latestVersion}…`
+        ? `Updating to v${update.latestVersion}…`
         : `Update to v${update.latestVersion}`;
   return (
     <button
