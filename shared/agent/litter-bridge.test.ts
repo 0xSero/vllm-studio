@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { Schema } from "effect";
 import {
@@ -8,6 +9,14 @@ import {
   LitterBridgeControllerActionRequestSchema,
   LitterBridgeControllerActionSchema,
   LitterBridgeControllerSnapshotSchema,
+  LitterBridgeRealtimeCapabilitiesRequestSchema,
+  LitterBridgeRealtimeCapabilitiesResultSchema,
+  LitterBridgeRealtimeSessionCloseRequestSchema,
+  LitterBridgeRealtimeSessionCreateRequestSchema,
+  LitterBridgeRealtimeSessionCreateResultSchema,
+  LitterBridgeRealtimeSessionStatusSchema,
+  LitterBridgeRealtimeSessionUpdateRequestSchema,
+  LitterBridgeRealtimeSignalRequestSchema,
   LitterBridgeSessionListPageSchema,
   LitterBridgeSessionListRequestSchema,
   LitterBridgeSessionPageSchema,
@@ -15,6 +24,10 @@ import {
   LitterBridgeSessionTransferEnvelopeSchema,
   LitterBridgeSessionTransferResultSchema,
 } from "./litter-bridge";
+
+const realtimeFixture = JSON.parse(
+  readFileSync(new URL("./litter-bridge-realtime-v1.fixture.json", import.meta.url), "utf8"),
+) as Record<string, unknown>;
 
 const timestamp = "2026-07-20T12:30:45.000Z";
 const hash = "a".repeat(64);
@@ -128,6 +141,53 @@ const transfer = {
 };
 
 describe("Litter bridge contracts", () => {
+  test("accepts the realtime v1 conformance vectors", () => {
+    const vectors = [
+      [LitterBridgeRealtimeCapabilitiesRequestSchema, "capabilitiesRequest"],
+      [LitterBridgeRealtimeCapabilitiesResultSchema, "capabilitiesResult"],
+      [LitterBridgeRealtimeSessionCreateRequestSchema, "createRequest"],
+      [LitterBridgeRealtimeSessionCreateResultSchema, "createResult"],
+      [LitterBridgeRealtimeSignalRequestSchema, "signalRequest"],
+      [LitterBridgeRealtimeSessionUpdateRequestSchema, "updateRequest"],
+      [LitterBridgeRealtimeSessionCloseRequestSchema, "closeRequest"],
+      [LitterBridgeRealtimeSessionStatusSchema, "status"],
+    ] as const;
+
+    for (const [schema, key] of vectors) {
+      assert.doesNotThrow(() => Schema.decodeUnknownSync(schema)(realtimeFixture[key]));
+    }
+  });
+
+  test("rejects incompatible realtime versions and contradictory availability", () => {
+    const request = structuredClone(realtimeFixture.capabilitiesRequest) as Record<string, unknown>;
+    request.acceptedContractVersions = [2];
+    assert.throws(() =>
+      Schema.decodeUnknownSync(LitterBridgeRealtimeCapabilitiesRequestSchema)(request),
+    );
+
+    const result = structuredClone(realtimeFixture.capabilitiesResult) as {
+      capabilities: Array<Record<string, unknown>>;
+    };
+    result.capabilities[0] = {
+      ...result.capabilities[0],
+      available: false,
+      unavailableReason: null,
+    };
+    assert.throws(() =>
+      Schema.decodeUnknownSync(LitterBridgeRealtimeCapabilitiesResultSchema)(result),
+    );
+  });
+
+  test("rejects provider secrets outside the typed realtime boundary", () => {
+    const request = {
+      ...(structuredClone(realtimeFixture.createRequest) as Record<string, unknown>),
+      providerApiKey: "must-not-cross-the-bridge",
+    };
+    assert.throws(() =>
+      Schema.decodeUnknownSync(LitterBridgeRealtimeSessionCreateRequestSchema)(request),
+    );
+  });
+
   test("accepts only the versioned capability vocabulary", () => {
     const manifest = Schema.decodeUnknownSync(LitterBridgeCapabilitiesManifestSchema)({
       type: "capabilities",
