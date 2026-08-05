@@ -5,14 +5,8 @@ import { Spinner } from "@/ui";
 import { SettingsButton, SettingsGroup, SettingsRow, SettingsValue } from "./settings-ui";
 import { useAppUpdate } from "@/features/shell/use-app-update";
 
-// "Application" block for the General settings section: the installed version
-// plus a one-click update against the newest GitHub release.
 export function AppVersionSection() {
   const update = useAppUpdate();
-  // No installed-version signal (web build or dev run): offer the plain
-  // download whenever the newest release is known.
-  const webDownload =
-    update.releaseChannel === null && !update.currentVersion && update.downloadUrl;
   const devChannel = update.releaseChannel === "dev";
   const onLatest = update.currentVersion && update.latestVersion && !update.updateAvailable;
   const description = devChannel
@@ -37,7 +31,7 @@ export function AppVersionSection() {
           </SettingsValue>
         }
         actions={
-          update.updateAvailable || webDownload ? (
+          update.updateAvailable ? (
             <SettingsButton onClick={update.startUpdate} tone="primary">
               {update.phase === "working" ? (
                 <Spinner size="xs" />
@@ -50,9 +44,7 @@ export function AppVersionSection() {
                 ? "Updating…"
                 : update.phase === "ready"
                   ? "Restart to update"
-                  : webDownload
-                    ? "Download"
-                    : "Update"}
+                  : "Update"}
             </SettingsButton>
           ) : undefined
         }
