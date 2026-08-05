@@ -62,7 +62,8 @@ extraResources:
     to: app/frontend/.next/standalone
     filter:
       - "**/*"
-      - "!**/data/**"
+      - "!data/**"
+      - "!frontend/data/**"
       - "!**/dist-desktop/**"
       - "!**/*.log"
   - from: .next/static

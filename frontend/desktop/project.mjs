@@ -84,6 +84,7 @@ var init_assert_standalone_build = __esm(() => {
     "node_modules/@earendil-works/pi-coding-agent/package.json",
     "node_modules/@earendil-works/pi-coding-agent/dist/index.js",
     "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/package.json",
+    "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/providers/data/amazon-bedrock.json",
     "node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/build/value/shared/union_priority_sort.mjs"
   ];
   if (!candidates.some((candidate) => existsSync2(candidate)))
@@ -2184,7 +2185,8 @@ async function afterPack(context) {
   `));
   let standaloneRoot = path.dirname(standaloneServer), missingRuntimeFile = [
     path.join(standaloneRoot, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "index.js"),
-    path.join(standaloneRoot, "node_modules", "@earendil-works", "pi-coding-agent", "node_modules", "@earendil-works", "pi-ai", "package.json")
+    path.join(standaloneRoot, "node_modules", "@earendil-works", "pi-coding-agent", "node_modules", "@earendil-works", "pi-ai", "package.json"),
+    path.join(standaloneRoot, "node_modules", "@earendil-works", "pi-coding-agent", "node_modules", "@earendil-works", "pi-ai", "dist", "providers", "data", "amazon-bedrock.json")
   ].find((file) => !existsSync(file));
   if (missingRuntimeFile)
     throw Error(`Packaged app is missing a Pi runtime dependency: ${missingRuntimeFile}`);
