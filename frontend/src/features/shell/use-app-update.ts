@@ -6,18 +6,14 @@ import { useMountSubscription } from "@/hooks/use-mount-subscription";
 export type AppUpdatePhase = "idle" | "working" | "ready" | "failed";
 
 export type AppUpdate = {
-  /** Installed app version (desktop bridge); null on the plain web app. */
   currentVersion: string | null;
   releaseChannel: "dev" | "stable" | null;
-  /** Newest published release, when reachable. */
   latestVersion: string | null;
-  downloadUrl: string | null;
   updateAvailable: boolean;
   phase: AppUpdatePhase;
   startUpdate: () => void;
 };
 
-// "2.10.1" vs "2.9.0" — numeric per segment, missing segments are 0.
 export function isNewerVersion(candidate: string, current: string): boolean {
   const a = candidate.split(".").map((part) => Number.parseInt(part, 10) || 0);
   const b = current.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -55,16 +51,10 @@ function phaseForStatus(status: string): AppUpdatePhase {
 export function useAppUpdate(): AppUpdate {
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
   const [releaseChannel, setReleaseChannel] = useState<"dev" | "stable" | null>(null);
-  const [latest, setLatest] = useState<{ version: string | null; url: string | null }>({
-    version: null,
-    url: null,
-  });
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [phase, setPhase] = useState<AppUpdatePhase>("idle");
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Poll the desktop updater snapshot while a download is in flight. The main
-  // process auto-downloads in the background, so this also catches an update
-  // that finished before the user clicked anything.
   const syncDesktopPhase = useCallback(() => {
     const getStatus = bridge().getUpdateStatus;
     if (!getStatus) return;
@@ -84,16 +74,14 @@ export function useAppUpdate(): AppUpdate {
   useMountSubscription(() => {
     let cancelled = false;
     void fetch("/api/app-update", { cache: "no-store" })
-      .then((response) => response.json() as Promise<{ latest?: string; downloadUrl?: string }>)
+      .then((response) => response.json() as Promise<{ latest?: string }>)
       .then((body) => {
-        if (!cancelled) setLatest({ version: body.latest ?? null, url: body.downloadUrl ?? null });
+        if (!cancelled) setLatestVersion(body.latest ?? null);
       })
       .catch(() => undefined);
     void bridge()
       .getRuntime?.()
       .then((runtime) => {
-        // An unpackaged dev run reports the repo's package.json version, which
-        // trails every published release — it must not claim an update.
         if (!cancelled && runtime.packaged) {
           setCurrentVersion(runtime.appVersion);
           setReleaseChannel(runtime.releaseChannel);
@@ -107,23 +95,22 @@ export function useAppUpdate(): AppUpdate {
     };
   }, [syncDesktopPhase]);
 
-  const updateAvailable = isReleaseUpdateAvailable(latest.version, currentVersion, releaseChannel);
+  const updateAvailable = isReleaseUpdateAvailable(latestVersion, currentVersion, releaseChannel);
 
   const startUpdate = useCallback(() => {
     const desktop = bridge();
     if (!desktop.startUpdate) {
-      if (latest.url) window.open(latest.url, "_blank", "noopener");
+      setPhase("failed");
       return;
     }
     setPhase("working");
     void desktop.startUpdate().then(syncDesktopPhase, () => setPhase("failed"));
-  }, [latest.url, syncDesktopPhase]);
+  }, [syncDesktopPhase]);
 
   return {
     currentVersion,
     releaseChannel,
-    latestVersion: latest.version,
-    downloadUrl: latest.url,
+    latestVersion,
     updateAvailable,
     phase,
     startUpdate,
