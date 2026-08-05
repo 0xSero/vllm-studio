@@ -250,6 +250,21 @@ the final stage can create the GitHub release with the DMG, updater files,
 stable website alias, checksums, and source manifest. There is no npm publish
 and tags are never created by hand.
 
+## Acknowledgements
+
+Local Studio is built with and inspired by exceptional open-source work:
+
+- [Pi](https://github.com/earendil-works/pi) — the agent runtime and native
+  session model behind Workbench.
+- [T3 Code](https://github.com/pingdotgg/t3code) — inspiration for a focused,
+  developer-first coding workbench.
+- [SGLang](https://github.com/sgl-project/sglang) — a high-performance model
+  serving backend supported by Local Studio recipes.
+- [vLLM](https://github.com/vllm-project/vllm) — a high-throughput inference
+  and serving backend supported throughout Local Studio.
+- [Convex](https://github.com/get-convex/convex-backend) — inspiration for
+  reactive, real-time application architecture.
+
 ## Contributing
 
 Contributions should be small, focused, and easy to review. Start from the
