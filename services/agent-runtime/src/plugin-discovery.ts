@@ -4,6 +4,7 @@ import path from "node:path";
 import { Effect, Schema } from "effect";
 import { coerce, compare } from "semver";
 import { resolveDataDir } from "./data-dir";
+import { PluginArtifactDigestError, pluginArtifactDigest } from "./plugin-artifact-digest";
 import { resolveBundledPluginDirectory } from "./plugin-resources";
 
 const PluginInterfaceSchema = Schema.Struct({
@@ -53,6 +54,7 @@ export type PluginBundle = {
   plugin: PluginView;
   manifest: PluginManifest;
   rootDir: string;
+  artifactDigest: string;
   trusted: boolean;
 };
 
@@ -116,12 +118,25 @@ async function manifestInDirectory(
     const trusted = bundled
       ? path.dirname(await realpath(dir)) === (await realpath(bundled))
       : false;
+    const artifactDigest = await Effect.runPromise(pluginArtifactDigest(dir));
     return {
-      bundle: { plugin: pluginView(manifest, source.label), manifest, rootDir: dir, trusted },
+      bundle: {
+        plugin: pluginView(manifest, source.label),
+        manifest,
+        rootDir: dir,
+        artifactDigest,
+        trusted,
+      },
       priority: source.priority,
     };
-  } catch {
-    return null;
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return null;
+    }
+    if (error instanceof PluginArtifactDigestError) {
+      throw new PluginDiscoveryError(error.message);
+    }
+    throw new PluginDiscoveryError(`Invalid plugin artifact in ${source.label}`);
   }
 }
 
@@ -147,7 +162,8 @@ async function scanDirectory(
         ),
       )
     ).flat();
-  } catch {
+  } catch (error) {
+    if (error instanceof PluginDiscoveryError) throw error;
     return [];
   }
 }
