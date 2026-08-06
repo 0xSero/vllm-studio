@@ -2,7 +2,14 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ConnectorConfig } from "../src/connector-contract";
+import {
+  cancelConnectorApprovals,
+  ConnectorApprovalError,
+  connectorApprovalDigest,
+  createConnectorApprovalBroker,
+  executeConnectorTool,
+} from "../src/connector-approval";
+import type { ConnectorArguments, ConnectorConfig } from "../src/connector-contract";
 import {
   filterAllowedConnectorTools,
   assertConnectorToolAllowed,
@@ -40,6 +47,19 @@ const connector = (overrides: Partial<ConnectorConfig> = {}): ConnectorConfig =>
   url: "http://127.0.0.1:3999/mcp",
   enabled: true,
   ...overrides,
+});
+
+const approvedConnector = (overrides: Partial<ConnectorConfig> = {}): ConnectorConfig =>
+  connector({ allowTools: ["write"], permissionReviewed: true, ...overrides });
+
+const approvalScope = (
+  args: ConnectorArguments,
+  overrides: Partial<{ sessionId: string; connector: ConnectorConfig; tool: string }> = {},
+) => ({
+  sessionId: overrides.sessionId ?? "session-a",
+  connector: overrides.connector ?? approvedConnector(),
+  tool: overrides.tool ?? "write",
+  args,
 });
 
 const tool = (name: string, readOnlyHint = false): McpToolInfo =>
@@ -123,5 +143,110 @@ describe("connector grants", () => {
     expect(() => applyReviewedConnectorInventory(reviewed, [tool("other")])).toThrow(
       /approved tool inventory changed/,
     );
+  });
+});
+
+describe("connector action approval", () => {
+  test("digests canonical full JSON scope", () => {
+    const key = Buffer.alloc(32, 7);
+    const digest = (args: ConnectorArguments) =>
+      connectorApprovalDigest(key, approvalScope(args)).toString("hex");
+    const original = digest({ nested: { a: 1, b: 2 }, values: [1, 2], nullable: null });
+    expect(digest({ nullable: null, values: [1, 2], nested: { b: 2, a: 1 } })).toBe(original);
+    for (const changed of [
+      { nested: { a: 1, b: 2 }, values: [2, 1], nullable: null },
+      { nested: { a: 1, b: 2 }, values: [1, 2] },
+      { nested: { a: 1, b: 2 }, values: [1, 2], nullable: false },
+      { nested: { a: 1, b: 2 }, values: [1, 2], nullable: null, token: "other" },
+    ]) {
+      expect(digest(changed)).not.toBe(original);
+    }
+  });
+
+  test("consumes an exact approval once without exposing argument values", () => {
+    const broker = createConnectorApprovalBroker({ key: Buffer.alloc(32, 3) });
+    const secret = "synthetic-credential-value";
+    const unsafe = `${"label".repeat(30)}\n\u202e`;
+    const approved = approvalScope(
+      { [unsafe]: secret, nested: { value: "private" } },
+      { connector: approvedConnector({ id: unsafe, name: unsafe }), tool: unsafe },
+    );
+    const view = broker.begin(approved);
+    expect(JSON.stringify(view)).not.toContain(secret);
+    expect(broker.consume(view.id, approved, true)).toBe(true);
+    expect(broker.consume(view.id, approved, true)).toBe(false);
+    const metadata = JSON.stringify({ view, audit: broker.audit() });
+    expect(metadata).not.toContain(secret);
+    expect(metadata).not.toMatch(/[\n\u202e]/);
+    expect(view.connectorName).toEndWith("…");
+  });
+
+  test("denies changed, expired, aborted, cancelled, and overflowing approvals", () => {
+    let now = 100;
+    const broker = createConnectorApprovalBroker({
+      key: Buffer.alloc(32, 5),
+      ttlMs: 10,
+      now: () => now,
+    });
+    for (const changed of [
+      approvalScope({ token: "b" }),
+      approvalScope({ token: "a" }, { sessionId: "session-b" }),
+      approvalScope({ token: "a" }, { tool: "other" }),
+      approvalScope({ token: "a" }, { connector: approvedConnector({ allowTools: ["other"] }) }),
+    ]) {
+      const view = broker.begin(approvalScope({ token: "a" }));
+      expect(broker.consume(view.id, changed, true)).toBe(false);
+    }
+    const expired = broker.begin(approvalScope({}));
+    now = 110;
+    expect(broker.consume(expired.id, approvalScope({}), true)).toBe(false);
+    const controller = new AbortController();
+    const aborted = broker.begin(approvalScope({}), controller.signal);
+    controller.abort();
+    expect(broker.consume(aborted.id, approvalScope({}), true)).toBe(false);
+    broker.begin(approvalScope({}, { sessionId: "session-c" }));
+    expect(broker.cancelSession("session-c")).toBe(1);
+    for (let index = 0; index < 128; index += 1) {
+      broker.begin(approvalScope({ index }, { sessionId: "queued-session" }));
+    }
+    expect(() => broker.begin(approvalScope({ overflow: true }))).toThrow(/queue is full/);
+    expect(broker.cancelSession("queued-session")).toBe(128);
+  });
+
+  test("requires approval, revalidates grants, and executes one approved action", async () => {
+    useTemporaryData();
+    const live = approvedConnector({
+      transport: "stdio",
+      command: process.execPath,
+      args: [join(import.meta.dir, "fixtures/connector-server.mjs")],
+      url: undefined,
+    });
+    const sessionId = "direct-session";
+    const execute = (approve?: () => Promise<boolean>) =>
+      executeConnectorTool({
+        sessionId,
+        connectorId: "custom",
+        tool: "write",
+        args: { credential: "synthetic" },
+        ...(approve ? { approve } : {}),
+      });
+    await saveConnectors([live]);
+    await expect(execute()).rejects.toBeInstanceOf(ConnectorApprovalError);
+    await expect(
+      execute(async () => {
+        await saveConnectors([approvedConnector({ allowTools: [] })]);
+        return true;
+      }),
+    ).rejects.toThrow(/not allowed/);
+    expect(cancelConnectorApprovals(sessionId)).toBe(0);
+    await saveConnectors([live]);
+    let approvals = 0;
+    expect(
+      await execute(async () => {
+        approvals += 1;
+        return true;
+      }),
+    ).toEqual({ content: [{ type: "text", text: "write:called" }] });
+    expect(approvals).toBe(1);
   });
 });

@@ -43,7 +43,7 @@ function claimsGoogleWorkspace(connector: ConnectorConfig): boolean {
 }
 
 export function protectManagedConnector(connector: ConnectorConfig): ConnectorConfig {
-  if (!claimsGoogleWorkspace(connector)) return connector;
+  if (!claimsGoogleWorkspace(connector)) return normalizeConnector(connector);
   const account = googleWorkspaceConnectorAccount(connector.id);
   const binding = account ? GOOGLE_WORKSPACE_BINDINGS[account] : null;
   const valid =
@@ -107,7 +107,7 @@ export async function listConnectors(): Promise<ConnectorConfig[]> {
     const parsed = Schema.decodeUnknownSync(ConnectorsFileSchema)(
       JSON.parse(await readFile(file, "utf-8")),
     );
-    return (parsed.connectors ?? []).map(protectManagedConnector).map(normalizeConnector);
+    return (parsed.connectors ?? []).map(protectManagedConnector);
   } catch {
     throw new Error("Connector configuration is invalid");
   }
@@ -116,11 +116,7 @@ export async function listConnectors(): Promise<ConnectorConfig[]> {
 async function writeConnectors(connectors: ConnectorConfig[]): Promise<void> {
   resolveDataDir();
   const file = resolveConnectorsFilePath();
-  const payload = JSON.stringify(
-    { connectors: connectors.map(normalizeConnector).map(protectManagedConnector) },
-    null,
-    2,
-  );
+  const payload = JSON.stringify({ connectors: connectors.map(protectManagedConnector) }, null, 2);
   const tempFile = `${file}.tmp-${process.pid}-${randomUUID()}`;
   await writeFile(tempFile, payload, "utf-8");
   await chmod(tempFile, 0o600).catch(() => undefined);

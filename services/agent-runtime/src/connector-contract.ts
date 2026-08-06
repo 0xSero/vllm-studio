@@ -86,9 +86,37 @@ export const ConnectorSshPathResponseSchema = Schema.Struct({
   path: Schema.NullOr(Schema.String),
 });
 
+export type ConnectorJson = Schema.Json;
+export const ConnectorArgumentsSchema = Schema.Record(Schema.String, Schema.Json);
+export const ConnectorToolCallSchema = Schema.Struct({
+  session_id: Schema.String,
+  connector_id: Schema.String,
+  tool: Schema.String,
+  args: Schema.optional(ConnectorArgumentsSchema),
+});
+
 export type ConnectorOrigin = typeof ConnectorOriginSchema.Type;
 export type ConnectorAuthReference = typeof ConnectorAuthReferenceSchema.Type;
 export type ConnectorConfig = typeof ConnectorConfigSchema.Type;
 export type ConnectorView = typeof ConnectorViewSchema.Type;
 export type ConnectorRisk = typeof ConnectorRiskSchema.Type;
+export type ConnectorArguments = typeof ConnectorArgumentsSchema.Type;
 export type ConnectorToolPermission = typeof ConnectorToolPermissionSchema.Type;
+export type ConnectorApprovalView = {
+  id: string;
+  connectorName: string;
+  tool: string;
+  risk: ConnectorRisk;
+  argumentSummary: string[];
+};
+export type ConnectorApprovalBridge = {
+  execute(input: {
+    sessionId: string;
+    connectorId: string;
+    tool: string;
+    args: unknown;
+    signal?: AbortSignal;
+    approve?: (view: ConnectorApprovalView) => Promise<boolean>;
+  }): Promise<unknown>;
+  cancel(sessionId: string): number;
+};

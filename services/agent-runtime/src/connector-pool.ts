@@ -33,26 +33,32 @@ const toTarget = (connector: ConnectorConfig, signal?: AbortSignal) => {
 async function enabledConnector(connectorId: string): Promise<ConnectorConfig> {
   const connector = (await listConnectors()).find((entry) => entry.id === connectorId);
   if (!connector) throw new Error(`Unknown connector "${connectorId}"`);
-  if (!connector.enabled || connector.permissionReviewed !== true) {
+  if (connector.permissionReviewed !== true)
     throw new Error(`Connector "${connectorId}" is disabled`);
-  }
+  if (!connector.enabled) throw new Error(`Connector "${connectorId}" is disabled`);
   return connector;
 }
 
-export function filterAllowedConnectorTools(
-  connector: ConnectorConfig,
-  tools: McpToolInfo[],
-): McpToolInfo[] {
+function allowedTools(connector: ConnectorConfig, tools: McpToolInfo[]): McpToolInfo[] {
   if (connector.permissionReviewed !== true) return [];
   const allow = new Set(connector.allowTools ?? []);
   return tools.filter((tool) => allow.has(tool.name));
 }
 
-export function assertConnectorToolAllowed(connector: ConnectorConfig, tool: string): void {
+function assertToolAllowed(connector: ConnectorConfig, tool: string): void {
   if (connector.permissionReviewed === true && connector.allowTools?.includes(tool)) return;
   throw new ConnectorToolDeniedError(
     `Tool "${tool}" is not allowed for connector "${connector.id}"`,
   );
+}
+
+export async function authorizedConnectorTool(
+  connectorId: string,
+  tool: string,
+): Promise<ConnectorConfig> {
+  const connector = await enabledConnector(connectorId);
+  assertToolAllowed(connector, tool);
+  return connector;
 }
 
 export async function getPooledConnection(connectorId: string): Promise<McpConnection> {
@@ -75,7 +81,7 @@ export async function listConnectorTools(connectorId: string): Promise<McpToolIn
   const connector = await enabledConnector(connectorId);
   try {
     const connection = await getPooledConnection(connectorId);
-    return filterAllowedConnectorTools(connector, await connection.listTools());
+    return allowedTools(connector, await connection.listTools());
   } catch (error) {
     closePooledConnection(connectorId);
     throw error;
@@ -83,17 +89,19 @@ export async function listConnectorTools(connectorId: string): Promise<McpToolIn
 }
 
 export async function callConnectorTool(
-  connectorId: string,
+  connector: ConnectorConfig,
   tool: string,
   args: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<unknown> {
-  const connector = await enabledConnector(connectorId);
-  assertConnectorToolAllowed(connector, tool);
+  assertToolAllowed(connector, tool);
+  signal?.throwIfAborted();
+  closePooledConnection(connector.id);
+  const connection = connectMcp(toTarget(connector, signal));
   try {
-    return await (await getPooledConnection(connectorId)).callTool(tool, args);
-  } catch (error) {
-    closePooledConnection(connectorId);
-    throw error;
+    return await connection.callTool(tool, args);
+  } finally {
+    connection.close();
   }
 }
 
@@ -112,3 +120,8 @@ export async function probeConnector(
     connection?.close();
   }
 }
+
+export {
+  allowedTools as filterAllowedConnectorTools,
+  assertToolAllowed as assertConnectorToolAllowed,
+};

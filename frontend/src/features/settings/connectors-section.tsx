@@ -347,15 +347,7 @@ function CatalogDrawer({
       const host = fields.SSH_HOST?.trim();
       const id = entry.id === "computer" && host ? `computer-${host.split("@").pop()}` : entry.id;
       const name = entry.id === "computer" && host ? `Computer: ${host}` : entry.name;
-      const connector = {
-        id: id.toLowerCase().replace(/[^a-z0-9-_]+/g, "-"),
-        name,
-        transport: entry.transport,
-        command: entry.command,
-        args,
-        env: fields,
-        catalogId: entry.id,
-      };
+      const connectorId = id.toLowerCase().replace(/[^a-z0-9-_]+/g, "-");
       const { connectors } = await requestJson(
         "/api/agent/connectors",
         Schema.decodeUnknownSync(ConnectorsResponseSchema),
@@ -363,17 +355,23 @@ function CatalogDrawer({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ...connector,
+            id: connectorId,
+            name,
+            transport: entry.transport,
+            command: entry.command,
+            args,
+            env: fields,
             allowTools: [...granted],
             permissionReviewed: tools !== null,
             enabled: tools !== null,
+            catalogId: entry.id,
           }),
         },
       );
       onChanged(connectors);
       if (tools) onClose();
       else {
-        const permissions = (await probeConnector(connector.id)).tools;
+        const permissions = (await probeConnector(connectorId)).tools;
         setTools(permissions);
         setGranted(
           new Set(permissions.flatMap((tool) => (tool.default_granted ? [tool.name] : []))),

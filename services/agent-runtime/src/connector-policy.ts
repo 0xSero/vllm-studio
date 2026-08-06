@@ -36,9 +36,6 @@ const catalogSpec = (id: CatalogConnectorId) => {
   return { command: "node", args: server ? [server] : [], env: new Set(["SSH_HOST"]) };
 };
 
-const exact = (left: readonly string[] | undefined, right: readonly string[]): boolean =>
-  left?.length === right.length && right.every((value, index) => left[index] === value);
-
 function catalogMatches(connector: ConnectorConfig, id: CatalogConnectorId): boolean {
   const spec = catalogSpec(id);
   const validId = id === "computer" ? connector.id.startsWith("computer") : connector.id === id;
@@ -47,7 +44,7 @@ function catalogMatches(connector: ConnectorConfig, id: CatalogConnectorId): boo
     spec.args.length > 0 &&
     connector.transport === "stdio" &&
     connector.command === spec.command &&
-    exact(connector.args, spec.args) &&
+    JSON.stringify(connector.args) === JSON.stringify(spec.args) &&
     Object.keys(connector.env ?? {}).every((key) => spec.env.has(key)) &&
     !connector.cwd &&
     !connector.url &&
@@ -87,15 +84,13 @@ function trustedCatalog(connector: ConnectorConfig): CatalogConnectorId | null {
 }
 
 export function connectorToolRisk(connector: ConnectorConfig, tool: string): ConnectorRisk {
-  if (
+  const googleBinding =
     connector.origin?.kind === "account-adapter" &&
     connector.origin.binding === "google-workspace" &&
     isGoogleWorkspacePlugin(connector.origin.id)
-  ) {
-    return GOOGLE_WORKSPACE_BINDINGS[connector.origin.id].observeTools.includes(tool)
-      ? "read"
-      : "critical";
-  }
+      ? GOOGLE_WORKSPACE_BINDINGS[connector.origin.id]
+      : null;
+  if (googleBinding) return googleBinding.observeTools.includes(tool) ? "read" : "critical";
   const catalog = trustedCatalog(connector);
   if (catalog === "github") {
     if (GITHUB_READ.has(tool)) return "read";
