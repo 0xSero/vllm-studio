@@ -74,8 +74,21 @@ export function protectManagedConnector(connector: ConnectorConfig): ConnectorCo
     url: binding.endpoint,
     auth: { type: "oauth", provider: "google-workspace", account },
     allowTools: [...binding.observeTools],
+    permissionReviewed: true,
     origin: { kind: "account-adapter", id: account, binding: "google-workspace" },
     enabled: connector.enabled,
+  };
+}
+
+function normalizeConnector(connector: ConnectorConfig): ConnectorConfig {
+  const allowTools = [...new Set(connector.allowTools ?? [])];
+  const permissionReviewed =
+    connector.allowTools !== undefined && connector.permissionReviewed === true;
+  return {
+    ...connector,
+    allowTools,
+    permissionReviewed,
+    enabled: connector.enabled && permissionReviewed,
   };
 }
 
@@ -94,7 +107,7 @@ export async function listConnectors(): Promise<ConnectorConfig[]> {
     const parsed = Schema.decodeUnknownSync(ConnectorsFileSchema)(
       JSON.parse(await readFile(file, "utf-8")),
     );
-    return (parsed.connectors ?? []).map(protectManagedConnector);
+    return (parsed.connectors ?? []).map(protectManagedConnector).map(normalizeConnector);
   } catch {
     throw new Error("Connector configuration is invalid");
   }
@@ -103,7 +116,11 @@ export async function listConnectors(): Promise<ConnectorConfig[]> {
 async function writeConnectors(connectors: ConnectorConfig[]): Promise<void> {
   resolveDataDir();
   const file = resolveConnectorsFilePath();
-  const payload = JSON.stringify({ connectors: connectors.map(protectManagedConnector) }, null, 2);
+  const payload = JSON.stringify(
+    { connectors: connectors.map(normalizeConnector).map(protectManagedConnector) },
+    null,
+    2,
+  );
   const tempFile = `${file}.tmp-${process.pid}-${randomUUID()}`;
   await writeFile(tempFile, payload, "utf-8");
   await chmod(tempFile, 0o600).catch(() => undefined);
@@ -130,12 +147,17 @@ export function upsertConnectors(incoming: ConnectorConfig[]): Promise<Connector
         env: mergeSecrets(connector.env, existing?.env),
         headers: mergeSecrets(connector.headers, existing?.headers),
         cwd: connector.cwd ?? existing?.cwd,
-        allowTools: connector.allowTools ?? existing?.allowTools,
+        allowTools:
+          connector.permissionReviewed === true
+            ? (connector.allowTools ?? [])
+            : (existing?.allowTools ?? []),
+        permissionReviewed: connector.permissionReviewed ?? existing?.permissionReviewed ?? false,
         origin: connector.origin ?? existing?.origin,
         auth: connector.auth ?? existing?.auth,
       };
-      if (index === -1) connectors.push(merged);
-      else connectors[index] = merged;
+      const normalized = normalizeConnector(merged);
+      if (index === -1) connectors.push(normalized);
+      else connectors[index] = normalized;
     }
     await writeConnectors(connectors);
     return connectors;
@@ -182,6 +204,8 @@ const maskRecord = (
 export function toConnectorView(connector: ConnectorConfig): ConnectorView {
   return {
     ...connector,
+    allowTools: [...(connector.allowTools ?? [])],
+    permissionReviewed: connector.permissionReviewed === true,
     env: maskRecord(connector.env),
     headers: maskRecord(connector.headers),
     secret_keys: [
@@ -202,7 +226,9 @@ export function hasEnabledConnectorsSync(): boolean {
     const parsed = Schema.decodeUnknownSync(ConnectorsFileSchema)(
       JSON.parse(readFileSync(file, "utf-8")),
     );
-    return Boolean(parsed.connectors?.some((connector) => connector.enabled));
+    return Boolean(
+      parsed.connectors?.map(normalizeConnector).some((connector) => connector.enabled),
+    );
   } catch {
     return false;
   }

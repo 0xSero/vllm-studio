@@ -2,6 +2,12 @@ import { Schema } from "effect";
 
 const StringRecordSchema = Schema.Record(Schema.String, Schema.String);
 
+export const ConnectorRiskSchema = Schema.Union([
+  Schema.Literal("read"),
+  Schema.Literal("mutating"),
+  Schema.Literal("critical"),
+]);
+
 const ConnectorOriginSchema = Schema.Struct({
   kind: Schema.String,
   id: Schema.String,
@@ -27,6 +33,7 @@ const ConnectorFields = {
   headers: Schema.optional(StringRecordSchema),
   auth: Schema.optional(ConnectorAuthReferenceSchema),
   allowTools: Schema.optional(Schema.Array(Schema.String)),
+  permissionReviewed: Schema.optional(Schema.Boolean),
   origin: Schema.optional(ConnectorOriginSchema),
   enabled: Schema.Boolean,
 };
@@ -34,6 +41,8 @@ const ConnectorFields = {
 const ConnectorConfigSchema = Schema.Struct(ConnectorFields);
 export const ConnectorViewSchema = Schema.Struct({
   ...ConnectorFields,
+  allowTools: Schema.Array(Schema.String),
+  permissionReviewed: Schema.Boolean,
   secret_keys: Schema.Array(Schema.String),
 });
 export const ConnectorsFileSchema = Schema.Struct({
@@ -53,13 +62,24 @@ export const ConnectorUpsertInputSchema = Schema.Struct({
   url: Schema.optional(Schema.String),
   headers: Schema.optional(StringRecordSchema),
   allowTools: Schema.optional(Schema.Array(Schema.String)),
+  permissionReviewed: Schema.optional(Schema.Boolean),
+  catalogId: Schema.optional(
+    Schema.Union([Schema.Literal("github"), Schema.Literal("x"), Schema.Literal("computer")]),
+  ),
   enabled: Schema.optional(Schema.Boolean),
+});
+export const ConnectorToolPermissionSchema = Schema.Struct({
+  name: Schema.String,
+  risk: ConnectorRiskSchema,
+  granted: Schema.Boolean,
+  default_granted: Schema.Boolean,
 });
 export const ConnectorTestInputSchema = Schema.Struct({ id: Schema.String });
 export const ConnectorTestResponseSchema = Schema.Struct({
   ok: Schema.Boolean,
   tool_count: Schema.Number,
   tool_names: Schema.Array(Schema.String),
+  tools: Schema.Array(ConnectorToolPermissionSchema),
   error: Schema.optional(Schema.String),
 });
 export const ConnectorSshPathResponseSchema = Schema.Struct({
@@ -70,3 +90,5 @@ export type ConnectorOrigin = typeof ConnectorOriginSchema.Type;
 export type ConnectorAuthReference = typeof ConnectorAuthReferenceSchema.Type;
 export type ConnectorConfig = typeof ConnectorConfigSchema.Type;
 export type ConnectorView = typeof ConnectorViewSchema.Type;
+export type ConnectorRisk = typeof ConnectorRiskSchema.Type;
+export type ConnectorToolPermission = typeof ConnectorToolPermissionSchema.Type;

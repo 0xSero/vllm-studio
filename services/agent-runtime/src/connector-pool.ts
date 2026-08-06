@@ -33,18 +33,23 @@ const toTarget = (connector: ConnectorConfig, signal?: AbortSignal) => {
 async function enabledConnector(connectorId: string): Promise<ConnectorConfig> {
   const connector = (await listConnectors()).find((entry) => entry.id === connectorId);
   if (!connector) throw new Error(`Unknown connector "${connectorId}"`);
-  if (!connector.enabled) throw new Error(`Connector "${connectorId}" is disabled`);
+  if (!connector.enabled || connector.permissionReviewed !== true) {
+    throw new Error(`Connector "${connectorId}" is disabled`);
+  }
   return connector;
 }
 
-function allowedTools(connector: ConnectorConfig, tools: McpToolInfo[]): McpToolInfo[] {
-  if (!connector.allowTools) return tools;
-  const allow = new Set(connector.allowTools);
+export function filterAllowedConnectorTools(
+  connector: ConnectorConfig,
+  tools: McpToolInfo[],
+): McpToolInfo[] {
+  if (connector.permissionReviewed !== true) return [];
+  const allow = new Set(connector.allowTools ?? []);
   return tools.filter((tool) => allow.has(tool.name));
 }
 
-function assertToolAllowed(connector: ConnectorConfig, tool: string): void {
-  if (!connector.allowTools || connector.allowTools.includes(tool)) return;
+export function assertConnectorToolAllowed(connector: ConnectorConfig, tool: string): void {
+  if (connector.permissionReviewed === true && connector.allowTools?.includes(tool)) return;
   throw new ConnectorToolDeniedError(
     `Tool "${tool}" is not allowed for connector "${connector.id}"`,
   );
@@ -70,7 +75,7 @@ export async function listConnectorTools(connectorId: string): Promise<McpToolIn
   const connector = await enabledConnector(connectorId);
   try {
     const connection = await getPooledConnection(connectorId);
-    return allowedTools(connector, await connection.listTools());
+    return filterAllowedConnectorTools(connector, await connection.listTools());
   } catch (error) {
     closePooledConnection(connectorId);
     throw error;
@@ -83,7 +88,7 @@ export async function callConnectorTool(
   args: Record<string, unknown>,
 ): Promise<unknown> {
   const connector = await enabledConnector(connectorId);
-  assertToolAllowed(connector, tool);
+  assertConnectorToolAllowed(connector, tool);
   try {
     return await (await getPooledConnection(connectorId)).callTool(tool, args);
   } catch (error) {
