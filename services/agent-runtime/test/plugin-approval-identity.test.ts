@@ -1,0 +1,201 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { Effect } from "effect";
+import type { ConnectorConfig } from "../src/connector-contract";
+import { callConnectorTool } from "../src/connector-pool";
+import { listConnectors, saveConnectors } from "../src/connectors-service";
+import { stdioChildEnvironment } from "../src/mcp-client";
+import { pluginConnectorConfigurationDigest } from "../src/plugin-connector-identity";
+import { discoverPluginBundles, type PluginSource } from "../src/plugin-discovery";
+import { refreshEnabledPluginConnectors } from "../src/plugin-runtime";
+
+const originalDataDirectory = process.env.LOCAL_STUDIO_DATA_DIR;
+const roots: string[] = [];
+
+afterEach(() => {
+  if (originalDataDirectory === undefined) delete process.env.LOCAL_STUDIO_DATA_DIR;
+  else process.env.LOCAL_STUDIO_DATA_DIR = originalDataDirectory;
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+function fixture(): { root: string; source: PluginSource[] } {
+  const parent = mkdtempSync(path.join(tmpdir(), "local-studio-plugin-approval-"));
+  roots.push(parent);
+  process.env.LOCAL_STUDIO_DATA_DIR = path.join(parent, "data");
+  const root = path.join(parent, "fixture");
+  mkdirSync(path.join(root, ".codex-plugin"), { recursive: true });
+  writeFileSync(path.join(root, "server.js"), "process.exit(1)");
+  writeFileSync(path.join(root, "artifact.txt"), "artifact-one");
+  writeFileSync(
+    path.join(root, ".codex-plugin", "plugin.json"),
+    JSON.stringify({
+      name: "fixture",
+      version: "1.0.0",
+      mcpServers: "mcp.json",
+    }),
+  );
+  writeFileSync(
+    path.join(root, "mcp.json"),
+    JSON.stringify({
+      mcpServers: {
+        fixture: {
+          command: process.execPath,
+          args: ["./server.js"],
+          env: { EXPLICIT: "one" },
+          cwd: ".",
+        },
+      },
+    }),
+  );
+  return { root, source: [{ label: "Fixture", dir: root, priority: 1 }] };
+}
+
+async function approvedConnector(root: string, source: PluginSource[]): Promise<ConnectorConfig> {
+  const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
+  if (!bundle) throw new Error("fixture plugin was not discovered");
+  const connector: ConnectorConfig = {
+    id: "plugin-fixture-fixture",
+    name: "fixture",
+    transport: "stdio",
+    command: process.execPath,
+    args: [realpathSync(path.join(root, "server.js"))],
+    env: { EXPLICIT: "one" },
+    cwd: realpathSync(root),
+    allowTools: ["read"],
+    enabled: true,
+  };
+  return {
+    ...connector,
+    origin: {
+      kind: "plugin",
+      id: "fixture",
+      version: "1.0.0",
+      binding: "fixture",
+      artifactDigest: bundle.artifactDigest,
+      configurationDigest: pluginConnectorConfigurationDigest(connector),
+    },
+  };
+}
+
+describe("plugin approval identity", () => {
+  test("revokes approval after same-version artifact drift before a tool call", async () => {
+    const { root, source } = fixture();
+    const approved = await approvedConnector(root, source);
+    await saveConnectors([approved]);
+    writeFileSync(path.join(root, "artifact.txt"), "artifact-two");
+    await Effect.runPromise(refreshEnabledPluginConnectors(source));
+    const [revoked] = await listConnectors();
+    expect(revoked?.enabled).toBe(false);
+    expect(revoked?.allowTools).toEqual([]);
+    expect(revoked?.origin?.artifactDigest).not.toBe(approved.origin?.artifactDigest);
+    await expect(callConnectorTool(approved.id, "read", {})).rejects.toThrow(/disabled/);
+  });
+
+  test("revokes approval after persisted configuration drift", async () => {
+    const { root, source } = fixture();
+    const approved = await approvedConnector(root, source);
+    await saveConnectors([{ ...approved, env: { EXPLICIT: "tampered" } }]);
+    await Effect.runPromise(refreshEnabledPluginConnectors(source));
+    const [revoked] = await listConnectors();
+    expect(revoked?.enabled).toBe(false);
+    expect(revoked?.allowTools).toEqual([]);
+    expect(revoked?.env).toEqual({ EXPLICIT: "one" });
+  });
+
+  test("fails closed for legacy approval and a removed plugin", async () => {
+    const { root, source } = fixture();
+    const approved = await approvedConnector(root, source);
+    await saveConnectors([
+      {
+        ...approved,
+        origin: { kind: "plugin", id: "fixture", version: "1.0.0", binding: "fixture" },
+      },
+    ]);
+    await Effect.runPromise(refreshEnabledPluginConnectors(source));
+    expect((await listConnectors())[0]?.enabled).toBe(false);
+    await saveConnectors([approved]);
+    rmSync(root, { recursive: true });
+    await Effect.runPromise(refreshEnabledPluginConnectors(source));
+    expect((await listConnectors())[0]?.enabled).toBe(false);
+  });
+
+  test("binds every launch configuration field deterministically", () => {
+    const base: ConnectorConfig = {
+      id: "plugin-fixture-server",
+      name: "Fixture",
+      transport: "stdio",
+      command: "/runtime/node",
+      args: ["server.js"],
+      env: { B: "two", A: "one" },
+      cwd: "/plugin",
+      url: "https://example.test/mcp",
+      headers: { B: "two", A: "one" },
+      auth: { type: "oauth", provider: "fixture", account: "one" },
+      enabled: false,
+    };
+    const digest = pluginConnectorConfigurationDigest(base);
+    expect(
+      pluginConnectorConfigurationDigest({
+        ...base,
+        env: { A: "one", B: "two" },
+        headers: { A: "one", B: "two" },
+      }),
+    ).toBe(digest);
+    const changes: ConnectorConfig[] = [
+      { ...base, id: "plugin-fixture-other" },
+      { ...base, transport: "http" },
+      { ...base, command: "/runtime/other" },
+      { ...base, args: ["other.js"] },
+      { ...base, env: { A: "changed" } },
+      { ...base, cwd: "/other" },
+      { ...base, url: "https://other.test/mcp" },
+      { ...base, headers: { A: "changed" } },
+      { ...base, auth: { type: "oauth", provider: "fixture", account: "two" } },
+    ];
+    changes.forEach((changed) =>
+      expect(pluginConnectorConfigurationDigest(changed)).not.toBe(digest),
+    );
+  });
+});
+
+describe("stdio child environment", () => {
+  test("keeps only POSIX essentials and explicit connector values", () => {
+    const environment = stdioChildEnvironment(
+      { PLUGIN_TOKEN: "explicit", PATH: "/explicit/bin" },
+      {
+        PATH: "/ambient/bin",
+        HOME: "/home/user",
+        LANG: "en_US.UTF-8",
+        AWS_SECRET_ACCESS_KEY: "ambient-secret",
+        NODE_OPTIONS: "--require ambient.js",
+      },
+      "linux",
+    );
+    expect(environment).toEqual({
+      PATH: "/explicit/bin",
+      HOME: "/home/user",
+      LANG: "en_US.UTF-8",
+      PLUGIN_TOKEN: "explicit",
+    });
+  });
+
+  test("matches Windows essentials case-insensitively without ambient secrets", () => {
+    const environment = stdioChildEnvironment(
+      { Path: "C:\\explicit" },
+      {
+        Path: "C:\\ambient",
+        SystemRoot: "C:\\Windows",
+        USERPROFILE: "C:\\Users\\fixture",
+        AZURE_CLIENT_SECRET: "ambient-secret",
+      },
+      "win32",
+    );
+    expect(environment).toEqual({
+      SYSTEMROOT: "C:\\Windows",
+      USERPROFILE: "C:\\Users\\fixture",
+      Path: "C:\\explicit",
+    });
+  });
+});

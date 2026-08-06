@@ -32,10 +32,62 @@ export type McpTarget = StdioTarget | HttpTarget;
 
 const CLIENT_INFO = { name: "local-studio", version: "2.0.0" };
 
-const processEnvironment = (): Record<string, string> =>
-  Object.fromEntries(
-    Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+const POSIX_ENVIRONMENT_KEYS = [
+  "PATH",
+  "HOME",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "USER",
+  "LOGNAME",
+  "LANG",
+  "LANGUAGE",
+  "LC_ALL",
+  "LC_CTYPE",
+  "LC_MESSAGES",
+];
+
+const WINDOWS_ENVIRONMENT_KEYS = [
+  "PATH",
+  "PATHEXT",
+  "SYSTEMROOT",
+  "WINDIR",
+  "COMSPEC",
+  "TEMP",
+  "TMP",
+  "USERPROFILE",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "PROGRAMDATA",
+];
+
+export function stdioChildEnvironment(
+  explicit: Record<string, string> = {},
+  parent: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): Record<string, string> {
+  const windows = platform === "win32";
+  const entries = Object.entries(parent).filter(
+    (entry): entry is [string, string] => entry[1] !== undefined,
   );
+  const result: Record<string, string> = {};
+  for (const key of windows ? WINDOWS_ENVIRONMENT_KEYS : POSIX_ENVIRONMENT_KEYS) {
+    const found = entries.find(([name]) => (windows ? name.toUpperCase() === key : name === key));
+    if (found) result[key] = found[1];
+  }
+  for (const [key, value] of Object.entries(explicit)) {
+    if (windows) {
+      const duplicate = Object.keys(result).find(
+        (existing) => existing.toUpperCase() === key.toUpperCase(),
+      );
+      if (duplicate) delete result[duplicate];
+    }
+    result[key] = value;
+  }
+  return result;
+}
 
 const combinedSignal = (
   requestSignal: AbortSignal | null | undefined,
@@ -45,7 +97,8 @@ const combinedSignal = (
   return requestSignal ?? targetSignal ?? undefined;
 };
 
-const authorizedFetch = (target: HttpTarget): typeof fetch =>
+const authorizedFetch =
+  (target: HttpTarget): typeof fetch =>
   async (input, init) => {
     const send = async (forceRefresh: boolean): Promise<Response> => {
       const headers = new Headers(init?.headers);
@@ -67,7 +120,7 @@ const transportFor = (target: McpTarget) => {
     return new StdioClientTransport({
       command: target.command,
       args: target.args ?? [],
-      env: { ...processEnvironment(), ...(target.env ?? {}) },
+      env: stdioChildEnvironment(target.env),
       ...(target.cwd ? { cwd: target.cwd } : {}),
       stderr: "pipe",
     });
@@ -96,11 +149,7 @@ class SdkMcpConnection implements McpConnection {
 
   async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
     await this.connected;
-    return this.client.callTool(
-      { name, arguments: args },
-      undefined,
-      { signal: this.signal },
-    );
+    return this.client.callTool({ name, arguments: args }, undefined, { signal: this.signal });
   }
 
   close(): void {

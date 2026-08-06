@@ -7,6 +7,8 @@ const ConnectorOriginSchema = Schema.Struct({
   id: Schema.String,
   version: Schema.optional(Schema.String),
   binding: Schema.optional(Schema.String),
+  artifactDigest: Schema.optional(Schema.String),
+  configurationDigest: Schema.optional(Schema.String),
 });
 
 const ConnectorAuthReferenceSchema = Schema.Struct({
