@@ -1,5 +1,4 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { once } from "node:events";
 import { closeSync, writeSync } from "node:fs";
 import { Readable } from "node:stream";
 import { Effect, Stream } from "effect";
@@ -21,8 +20,8 @@ const decodeOutput = (readable: Readable): Stream.Stream<string> =>
     Stream.catchCause(() => Stream.empty),
   );
 
-const redactOutput = (stdout: Readable, stderr: Readable, descriptor: number): VoidEffect =>
-  Stream.merge(decodeOutput(stdout), decodeOutput(stderr)).pipe(
+const redactStream = (outputStream: Readable): Stream.Stream<string> =>
+  decodeOutput(outputStream).pipe(
     Stream.mapAccum(
       (): RedactionState => ({ pending: "", dropping: false }),
       (state, chunk) => {
@@ -48,6 +47,10 @@ const redactOutput = (stdout: Readable, stderr: Readable, descriptor: number): V
         onHalt: (state) => (state.pending && !state.dropping ? [redactLogLine(state.pending)] : []),
       },
     ),
+  );
+
+const redactOutput = (outputStream: Readable, descriptor: number): VoidEffect =>
+  redactStream(outputStream).pipe(
     Stream.runForEach((output) =>
       Effect.sync(() => {
         try {
@@ -57,12 +60,23 @@ const redactOutput = (stdout: Readable, stderr: Readable, descriptor: number): V
     ),
   );
 
-const waitForChild = (child: ChildProcess): Effect.Effect<void, Error> =>
-  Effect.tryPromise({
-    try: async () => {
-      await once(child, "close");
-    },
-    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+const childExited = (child: ChildProcess): boolean =>
+  child.exitCode !== null || child.signalCode !== null;
+
+const waitForChild = (child: ChildProcess): Effect.Effect<void> =>
+  Effect.callback<void, never>((resume) => {
+    if (childExited(child)) {
+      resume(Effect.void);
+      return;
+    }
+    const complete = (): void => {
+      child.off("close", complete);
+      resume(Effect.void);
+    };
+    child.once("close", complete);
+    return Effect.sync(() => {
+      child.off("close", complete);
+    });
   });
 
 const runLogProxy = (): Effect.Effect<void, unknown> =>
@@ -83,7 +97,11 @@ const runLogProxy = (): Effect.Effect<void, unknown> =>
         catch: (cause) => cause,
       });
       yield* Effect.all(
-        [redactOutput(child.stdout, child.stderr, descriptor), waitForChild(child)],
+        [
+          redactOutput(child.stdout, descriptor),
+          redactOutput(child.stderr, descriptor),
+          waitForChild(child),
+        ],
         { concurrency: "unbounded", discard: true },
       );
     }),

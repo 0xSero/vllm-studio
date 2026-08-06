@@ -84,7 +84,7 @@ describe("process launcher logs", () => {
           argv: [
             process.execPath,
             "-e",
-            `process.stdout.write("OPENAI_API_"); setTimeout(() => process.stderr.write("KEY=${secret}"), 50)`,
+            `process.stdout.write("OPENAI_API_"); setTimeout(() => process.stderr.write("X-Api-Key: ${secret}-stderr\\n"), 25); setTimeout(() => process.stdout.write("KEY=${secret}\\n"), 50)`,
           ],
         },
         record,
@@ -95,22 +95,29 @@ describe("process launcher logs", () => {
     const tail = await Effect.runPromise(launcher.logTail(reference, { ...record, ref: reference }));
     expect(persisted).not.toContain(secret);
     expect(persisted).toContain("OPENAI_API_KEY=[redacted]");
+    expect(persisted).toContain("X-Api-Key: [redacted]");
     expect(tail).toBe(persisted);
     if (process.platform !== "win32") expect(statSync(logPath).mode & 0o777).toBe(0o600);
   });
 
   test("keeps redacting after the detached launch parent exits", async () => {
-    if (process.platform === "win32") return;
     const detachedLog = join(root, "detached.log");
-    const harness = join(root, "detach-harness.mjs");
+    const harness = join(root, "detach-harness.ts");
     const secret = "detached-engine-secret";
-    const engine = `process.stdout.write("OPENAI_API_"); setTimeout(() => process.stderr.write("KEY=${secret}"), 100)`;
+    const engine = `setTimeout(() => process.stdout.write("OPENAI_API_KEY=${secret}"), 700); setTimeout(() => process.exit(0), 800)`;
     writeFileSync(
       harness,
-      `import { spawn } from "node:child_process"; const child = spawn(${JSON.stringify(process.execPath)}, [${JSON.stringify(fileURLToPath(logProxyModuleUrl))}, ${JSON.stringify(detachedLog)}, ${JSON.stringify(process.execPath)}, "-e", ${JSON.stringify(engine)}], { detached: true, stdio: "ignore" }); child.unref();`,
+      [
+        `import { Effect } from ${JSON.stringify(new URL("../node_modules/effect/dist/index.js", import.meta.url).href)};`,
+        `import { makeProcessLauncher } from ${JSON.stringify(new URL("../src/modules/compute/launchers/process.ts", import.meta.url).href)};`,
+        `const launcher = makeProcessLauncher(() => ${JSON.stringify(detachedLog)});`,
+        `await Effect.runPromise(launcher.start(${JSON.stringify({ ...plan, argv: [process.execPath, "-e", engine] })}, ${JSON.stringify(record)}));`,
+      ].join("\n"),
     );
+    const startedAt = Date.now();
     expect(spawnSync(process.execPath, [harness]).status).toBe(0);
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    expect(Date.now() - startedAt).toBeLessThan(500);
+    for (let attempt = 0; attempt < 200; attempt += 1) {
       const output = existsSync(detachedLog) ? readFileSync(detachedLog, "utf8") : "";
       if (output.includes("[redacted]")) break;
       await Bun.sleep(10);

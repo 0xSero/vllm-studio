@@ -181,6 +181,7 @@ if [ "$OS_NAME" = "Darwin" ]; then
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>5</integer>
+  <key>Umask</key><integer>63</integer>
   <key>StandardOutPath</key><string>$LOG_XML</string>
   <key>StandardErrorPath</key><string>$LOG_XML</string>
 </dict>

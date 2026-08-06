@@ -1,6 +1,5 @@
 import {
   chmodSync,
-  mkdirSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -10,6 +9,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { Effect } from "effect";
+import { ensurePrivateLogDirectory } from "../../../core/log-files";
 import type {
   DeviceId,
   EngineId,
@@ -140,9 +140,8 @@ const acquirePlacementLock = (lockPath: string): Effect.Effect<void, LaunchFailu
 export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
   const directory = join(dataDirectory, "instances");
   const logsDirectory = join(directory, "logs");
-  mkdirSync(logsDirectory, { recursive: true, mode: 0o700 });
-  chmodSync(directory, 0o700);
-  chmodSync(logsDirectory, 0o700);
+  ensurePrivateLogDirectory(directory);
+  ensurePrivateLogDirectory(logsDirectory);
   const lockPath = join(directory, "placement.lock");
   const recordPath = (name: string): string => join(directory, `${safeName(name)}.json`);
 
