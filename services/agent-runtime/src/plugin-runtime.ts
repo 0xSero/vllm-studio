@@ -3,7 +3,12 @@ import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { Effect, Schema } from "effect";
 import { closePooledConnection, probeConnector } from "./connector-pool";
-import { listConnectors, upsertConnectors, type ConnectorConfig } from "./connectors-service";
+import {
+  listConnectors,
+  replaceConnectors,
+  upsertConnectors,
+  type ConnectorConfig,
+} from "./connectors-service";
 import { getGoogleAccount, type GoogleAccountView } from "./google-account";
 import {
   googleWorkspaceConnector,
@@ -501,7 +506,7 @@ async function reconcileEnabledPluginConnectors(
   );
   if (unavailable.length > 0) {
     unavailable.forEach((connector) => closePooledConnection(connector.id));
-    connectors = await upsertConnectors(
+    connectors = await replaceConnectors(
       unavailable.map((connector) => revokedConnector(connector)),
     );
   }
@@ -518,7 +523,9 @@ async function reconcileEnabledPluginConnectors(
       servers = await Effect.runPromise(loadPluginServers(bundle));
     } catch {
       approved.forEach((connector) => closePooledConnection(connector.id));
-      connectors = await upsertConnectors(approved.map((connector) => revokedConnector(connector)));
+      connectors = await replaceConnectors(
+        approved.map((connector) => revokedConnector(connector)),
+      );
       errors.set(bundle.plugin.id, "Plugin identity could not be verified");
       continue;
     }
@@ -532,7 +539,7 @@ async function reconcileEnabledPluginConnectors(
     });
     if (changed.length === 0) continue;
     changed.forEach((connector) => closePooledConnection(connector.id));
-    connectors = await upsertConnectors(changed);
+    connectors = await replaceConnectors(changed);
     reapprovalRequired.add(bundle.plugin.id);
   }
   return { connectors, errors, reapprovalRequired };
@@ -712,7 +719,7 @@ export function setPluginEnabled(
       changed = owned.map((connector) => ({ ...connector, enabled: false }));
     }
     yield* Effect.tryPromise({
-      try: () => upsertConnectors(changed),
+      try: () => replaceConnectors(changed),
       catch: (error) => new PluginRuntimeError(500, `Failed to save plugin state: ${error}`),
     });
     return {

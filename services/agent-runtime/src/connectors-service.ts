@@ -142,6 +142,20 @@ export function upsertConnectors(incoming: ConnectorConfig[]): Promise<Connector
   });
 }
 
+export function replaceConnectors(incoming: ConnectorConfig[]): Promise<ConnectorConfig[]> {
+  return withConnectorAccess(async () => {
+    const connectors = await listConnectors();
+    for (const candidate of incoming) {
+      const connector = protectManagedConnector(candidate);
+      const index = connectors.findIndex((entry) => entry.id === connector.id);
+      if (index === -1) connectors.push(connector);
+      else connectors[index] = connector;
+    }
+    await writeConnectors(connectors);
+    return connectors;
+  });
+}
+
 export function removeConnector(id: string): Promise<ConnectorConfig[]> {
   if (googleWorkspaceConnectorAccount(id)) {
     return Promise.reject(

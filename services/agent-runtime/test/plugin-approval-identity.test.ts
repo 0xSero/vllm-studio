@@ -104,6 +104,46 @@ describe("plugin approval identity", () => {
     expect(revoked?.env).toEqual({ EXPLICIT: "one" });
   });
 
+  test("removes stale launch fields when the plugin transport changes", async () => {
+    const { root, source } = fixture();
+    const approved = await approvedConnector(root, source);
+    await saveConnectors([
+      {
+        ...approved,
+        headers: { Authorization: "stale" },
+        auth: { type: "oauth", provider: "fixture", account: "stale" },
+      },
+    ]);
+    writeFileSync(
+      path.join(root, "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          fixture: {
+            type: "http",
+            url: "https://example.test/mcp",
+          },
+        },
+      }),
+    );
+    await Effect.runPromise(refreshEnabledPluginConnectors(source));
+    const [revoked] = await listConnectors();
+    expect(revoked).toMatchObject({
+      transport: "http",
+      url: "https://example.test/mcp",
+      allowTools: [],
+      enabled: false,
+    });
+    expect(revoked?.command).toBeUndefined();
+    expect(revoked?.args).toBeUndefined();
+    expect(revoked?.env).toBeUndefined();
+    expect(revoked?.cwd).toBeUndefined();
+    expect(revoked?.headers).toEqual({});
+    expect(revoked?.auth).toBeUndefined();
+    expect(revoked?.origin?.configurationDigest).toBe(
+      pluginConnectorConfigurationDigest(revoked as ConnectorConfig),
+    );
+  });
+
   test("fails closed for legacy approval and a removed plugin", async () => {
     const { root, source } = fixture();
     const approved = await approvedConnector(root, source);
