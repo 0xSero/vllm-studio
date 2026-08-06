@@ -1,15 +1,19 @@
 import {
+  chmodSync,
+  constants,
   existsSync,
+  fchmodSync,
+  fstatSync,
   mkdirSync,
   readdirSync,
-  statSync,
   unlinkSync,
   openSync,
   closeSync,
+  lstatSync,
   readSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const LOG_PREFIX = "vllm_";
 const LOG_SUFFIX = ".log";
@@ -62,10 +66,70 @@ export const sanitizeLogSessionId = (sessionId: string): string => {
   return safe;
 };
 
+const ensurePrivateDirectory = (directory: string): void => {
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const stat = lstatSync(directory);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error(`Unsafe log directory: ${directory}`);
+  }
+  chmodSync(directory, 0o700);
+};
+
 export const ensureLogsDirectory = (dataDirectory: string): string => {
   const directory = resolve(dataDirectory, "logs");
-  mkdirSync(directory, { recursive: true });
+  ensurePrivateDirectory(resolve(dataDirectory));
+  ensurePrivateDirectory(directory);
   return directory;
+};
+
+export const openPrivateLogFile = (path: string, truncate = false): number => {
+  ensurePrivateDirectory(dirname(path));
+  const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
+  const descriptor = openSync(
+    path,
+    constants.O_APPEND |
+      constants.O_CREAT |
+      constants.O_WRONLY |
+      (truncate ? constants.O_TRUNC : 0) |
+      noFollow,
+    0o600,
+  );
+  try {
+    if (!fstatSync(descriptor).isFile()) throw new Error(`Unsafe log file: ${path}`);
+    fchmodSync(descriptor, 0o600);
+    return descriptor;
+  } catch (error) {
+    closeSync(descriptor);
+    throw error;
+  }
+};
+
+export const openPrivateLogFileForRead = (path: string): number => {
+  const before = lstatSync(path);
+  if (!before.isFile() || before.isSymbolicLink()) {
+    throw new Error(`Unsafe log file: ${path}`);
+  }
+  const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
+  const descriptor = openSync(path, constants.O_RDONLY | noFollow);
+  try {
+    const opened = fstatSync(descriptor);
+    if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
+      throw new Error(`Unsafe log file: ${path}`);
+    }
+    return descriptor;
+  } catch (error) {
+    closeSync(descriptor);
+    throw error;
+  }
+};
+
+const isReadableLogFile = (path: string): boolean => {
+  try {
+    closeSync(openPrivateLogFileForRead(path));
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 export const primaryLogPathFor = (dataDirectory: string, sessionId: string): string => {
@@ -80,9 +144,9 @@ export const fallbackLogPathFor = (sessionId: string): string => {
 
 export const resolveExistingLogPath = (dataDirectory: string, sessionId: string): string | null => {
   const primary = primaryLogPathFor(dataDirectory, sessionId);
-  if (existsSync(primary)) return primary;
+  if (isReadableLogFile(primary)) return primary;
   const fallback = fallbackLogPathFor(sessionId);
-  if (existsSync(fallback)) return fallback;
+  if (isReadableLogFile(fallback)) return fallback;
   return null;
 };
 
@@ -93,7 +157,8 @@ const scanLogDirectory = (directory: string, source: LogFileEntry["source"]): Lo
       .filter((name) => name.startsWith(LOG_PREFIX) && name.endsWith(LOG_SUFFIX))
       .map((name) => {
         const path = join(directory, name);
-        const stat = statSync(path);
+        const stat = lstatSync(path);
+        if (!stat.isFile() || stat.isSymbolicLink()) return null;
         const sessionId = name
           .replace(new RegExp(`^${LOG_PREFIX}`), "")
           .replace(new RegExp(`${LOG_SUFFIX}$`), "");
@@ -104,7 +169,8 @@ const scanLogDirectory = (directory: string, source: LogFileEntry["source"]): Lo
           sizeBytes: stat.size,
           source,
         } satisfies LogFileEntry;
-      });
+      })
+      .filter((entry): entry is LogFileEntry => entry !== null);
   } catch {
     return [];
   }
@@ -183,19 +249,20 @@ export const cleanupLogFiles = (
   return { deleted: deletedPaths.length };
 };
 
-
 export const tailFileLines = (
   path: string,
   limit: number,
   maxBytes = 10 * 1024 * 1024,
 ): string[] => {
   if (limit <= 0) return [];
-  if (!existsSync(path)) return [];
-
-  // Read from the end until we have enough newlines or hit maxBytes.
-  const fd = openSync(path, "r");
+  let fd: number;
   try {
-    const stat = statSync(path);
+    fd = openPrivateLogFileForRead(path);
+  } catch {
+    return [];
+  }
+  try {
+    const stat = fstatSync(fd);
     let pos = stat.size;
     if (pos <= 0) return [];
 

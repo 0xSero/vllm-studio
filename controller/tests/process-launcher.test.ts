@@ -1,9 +1,20 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Effect } from "effect";
 import type { AsyncCommandResult } from "../src/core/command";
+import { logProxyModuleUrl } from "../src/core/log-proxy";
 import type { HandleReference, InstanceRecord, LaunchPlan } from "../src/modules/compute/contracts";
 import { makeDockerLauncher, type DockerLauncherRuntime } from "../src/modules/compute/launchers/docker";
 import { makeProcessLauncher, type ProcessIdentity, type ProcessLauncherRuntime } from "../src/modules/compute/launchers/process";
@@ -38,6 +49,17 @@ const plan: LaunchPlan = {
   health: { path: "/health", readyDeadlineMs: 60_000, intervalMs: 100 },
 };
 
+const waitForExit = async (
+  launcher: ReturnType<typeof makeProcessLauncher>,
+  reference: HandleReference,
+): Promise<void> => {
+  const durable = { ...record, ref: reference };
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (!(await Effect.runPromise(launcher.alive(reference, durable)))) return;
+    await Bun.sleep(10);
+  }
+};
+
 describe("process launcher logs", () => {
   test("a new launch cannot inherit a previous failure", async () => {
     writeFileSync(logPath, "stale failure\n");
@@ -50,6 +72,76 @@ describe("process launcher logs", () => {
     const tail = await Effect.runPromise(launcher.logTail(reference, record));
     expect(tail).toBe("fresh");
     expect(readFileSync(logPath, "utf8")).toBe("fresh");
+  });
+
+  test("redacts fragmented engine credentials before persistence", async () => {
+    const secret = "synthetic-engine-secret";
+    const launcher = makeProcessLauncher(() => logPath);
+    const reference = await Effect.runPromise(
+      launcher.start(
+        {
+          ...plan,
+          argv: [
+            process.execPath,
+            "-e",
+            `process.stdout.write("OPENAI_API_"); setTimeout(() => process.stderr.write("KEY=${secret}"), 50)`,
+          ],
+        },
+        record,
+      ),
+    );
+    await waitForExit(launcher, reference);
+    const persisted = readFileSync(logPath, "utf8");
+    const tail = await Effect.runPromise(launcher.logTail(reference, { ...record, ref: reference }));
+    expect(persisted).not.toContain(secret);
+    expect(persisted).toContain("OPENAI_API_KEY=[redacted]");
+    expect(tail).toBe(persisted);
+    if (process.platform !== "win32") expect(statSync(logPath).mode & 0o777).toBe(0o600);
+  });
+
+  test("keeps redacting after the detached launch parent exits", async () => {
+    if (process.platform === "win32") return;
+    const detachedLog = join(root, "detached.log");
+    const harness = join(root, "detach-harness.mjs");
+    const secret = "detached-engine-secret";
+    const engine = `process.stdout.write("OPENAI_API_"); setTimeout(() => process.stderr.write("KEY=${secret}"), 100)`;
+    writeFileSync(
+      harness,
+      `import { spawn } from "node:child_process"; const child = spawn(${JSON.stringify(process.execPath)}, [${JSON.stringify(fileURLToPath(logProxyModuleUrl))}, ${JSON.stringify(detachedLog)}, ${JSON.stringify(process.execPath)}, "-e", ${JSON.stringify(engine)}], { detached: true, stdio: "ignore" }); child.unref();`,
+    );
+    expect(spawnSync(process.execPath, [harness]).status).toBe(0);
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const output = existsSync(detachedLog) ? readFileSync(detachedLog, "utf8") : "";
+      if (output.includes("[redacted]")) break;
+      await Bun.sleep(10);
+    }
+    const persisted = readFileSync(detachedLog, "utf8");
+    expect(persisted).not.toContain(secret);
+    expect(persisted).toContain("OPENAI_API_KEY=[redacted]");
+  });
+
+  test("does not tail a replaced log symlink", async () => {
+    if (process.platform === "win32") return;
+    const target = join(root, "sensitive.txt");
+    rmSync(logPath, { force: true });
+    writeFileSync(target, "sensitive-content");
+    symlinkSync(target, logPath);
+    const launcher = makeProcessLauncher(() => logPath);
+    expect(
+      await Effect.runPromise(
+        launcher.logTail(
+          {
+            kind: "process",
+            pid: process.pid,
+            processGroupId: null,
+            sessionId: null,
+            startToken: null,
+          },
+          record,
+        ),
+      ),
+    ).toBe("");
+    expect(readFileSync(target, "utf8")).toBe("sensitive-content");
   });
 });
 

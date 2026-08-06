@@ -1,7 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, openSync, readFileSync, readdirSync, readSync, statSync } from "node:fs";
+import { closeSync, fstatSync, readFileSync, readdirSync, readSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { Effect } from "effect";
 import type { HandleReference, InstanceRecord, LaunchPlan } from "../contracts";
+import { openPrivateLogFile, openPrivateLogFileForRead } from "../../../core/log-files";
+import { logProxyModuleUrl } from "../../../core/log-proxy";
 import { LOG_TAIL_BYTES, spawnFailed, type Launcher } from "./launcher";
 
 /**
@@ -12,6 +15,7 @@ import { LOG_TAIL_BYTES, spawnFailed, type Launcher } from "./launcher";
 
 const STOP_POLL_MS = 250;
 const LAUNCH_MARKER = "LOCAL_STUDIO_LAUNCH_NONCE";
+const LOG_PROXY_PATH = fileURLToPath(logProxyModuleUrl);
 const localChildren = new Map<number, ChildProcess>();
 
 export interface ProcessIdentity { readonly pid: number; readonly processGroupId: number; readonly sessionId: number; readonly startToken: string; readonly launchMarker: string | null }
@@ -55,18 +59,18 @@ const realRuntime: ProcessLauncherRuntime = {
 
 const readTailBytes = (path: string, bytes: number): string => {
   try {
-    const size = statSync(path).size;
-    const start = Math.max(0, size - bytes);
-    const length = size - start;
-    if (length <= 0) return "";
-    const buffer = Buffer.alloc(length);
-    const fd = openSync(path, "r");
+    const fd = openPrivateLogFileForRead(path);
     try {
+      const size = fstatSync(fd).size;
+      const start = Math.max(0, size - bytes);
+      const length = size - start;
+      if (length <= 0) return "";
+      const buffer = Buffer.alloc(length);
       readSync(fd, buffer, 0, length, start);
+      return buffer.toString("utf8");
     } finally {
       closeSync(fd);
     }
-    return buffer.toString("utf8");
   } catch {
     return "";
   }
@@ -116,17 +120,17 @@ export const makeProcessLauncher = (
     Effect.gen(function* () {
       const [binary, ...args] = plan.argv;
       if (!binary) return yield* spawnFailed("plan.argv is empty");
-      const logFd = yield* Effect.try({
-        try: () => openSync(logPathFor(record.name), "w"),
-        catch: (error) => error,
-      }).pipe(
-        Effect.catch((error) =>
-          spawnFailed(`cannot open log file for ${record.name}: ${String(error)}`),
-        ),
-      );
-      const child = spawn(binary, args, {
+      const logPath = logPathFor(record.name);
+      yield* Effect.try({
+        try: () => {
+          const descriptor = openPrivateLogFile(logPath, true);
+          closeSync(descriptor);
+        },
+        catch: () => undefined,
+      }).pipe(Effect.catch(() => spawnFailed(`cannot open private log for ${record.name}`)));
+      const child = spawn(process.execPath, [LOG_PROXY_PATH, logPath, binary, ...args], {
         detached: true,
-        stdio: ["ignore", logFd, logFd],
+        stdio: "ignore",
         env: { ...process.env, ...plan.env, [LAUNCH_MARKER]: record.nonce },
         ...(plan.workdir ? { cwd: plan.workdir } : {}),
       });
@@ -134,7 +138,6 @@ export const makeProcessLauncher = (
         child.on("error", () => resume(Effect.succeed(-1)));
         child.on("spawn", () => resume(Effect.succeed(child.pid ?? -1)));
       });
-      closeSync(logFd);
       if (pid <= 0) return yield* spawnFailed(`failed to spawn ${binary}`);
       if (runtime.platform !== "linux") localChildren.set(pid, child);
       child.unref();

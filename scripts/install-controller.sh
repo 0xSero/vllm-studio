@@ -15,6 +15,7 @@
 # Prints a final machine-readable line on success:
 #   LOCAL_STUDIO_CONTROLLER {"url":"http://<host>:<port>","api_key":"<key>"}
 set -euo pipefail
+umask 077
 
 OS_NAME="$(uname -s)"
 HOST_WAS_SET="${LOCAL_STUDIO_HOST+x}"
@@ -35,8 +36,35 @@ HOST="${LOCAL_STUDIO_HOST:-0.0.0.0}"
 PORT="${LOCAL_STUDIO_PORT:-8080}"
 REPO="${LOCAL_STUDIO_REPO:-https://github.com/sybil-solutions/local-studio.git}"
 BUN="$HOME/.bun/bin/bun"
+ENV_FILE="$DIR/.env"
 
 log() { printf '[local-studio] %s\n' "$*"; }
+read_env_value() {
+  grep "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-
+}
+harden_private_file() {
+  if [ -L "$1" ] || { [ -e "$1" ] && [ ! -f "$1" ]; }; then
+    log "refusing unsafe private file at $1"
+    exit 1
+  fi
+  [ ! -f "$1" ] || chmod 600 "$1"
+}
+harden_private_directory() {
+  if [ -L "$1" ] || { [ -e "$1" ] && [ ! -d "$1" ]; }; then log "refusing unsafe private directory at $1"; exit 1; fi
+  [ ! -d "$1" ] || chmod 700 "$1"
+}
+
+harden_private_file "$ENV_FILE"
+if [ -f "$ENV_FILE" ]; then
+  if [ -z "$HOST_WAS_SET" ] && grep -q '^LOCAL_STUDIO_HOST=' "$ENV_FILE"; then HOST="$(read_env_value LOCAL_STUDIO_HOST)"; fi
+  if [ -z "$PORT_WAS_SET" ] && grep -q '^LOCAL_STUDIO_PORT=' "$ENV_FILE"; then PORT="$(read_env_value LOCAL_STUDIO_PORT)"; fi
+  if [ -z "$DATA_DIR_WAS_SET" ] && grep -q '^LOCAL_STUDIO_DATA_DIR=' "$ENV_FILE"; then DATA_DIR="$(read_env_value LOCAL_STUDIO_DATA_DIR)"; fi
+  if [ -z "$MODELS_DIR_WAS_SET" ] && grep -q '^LOCAL_STUDIO_MODELS_DIR=' "$ENV_FILE"; then MODELS_DIR="$(read_env_value LOCAL_STUDIO_MODELS_DIR)"; fi
+fi
+harden_private_directory "$DATA_DIR"; harden_private_directory "$MODELS_DIR"
+harden_private_file "$DATA_DIR/controller.log"
+harden_private_file "$HOME/Library/LaunchAgents/org.local.studio.controller.plist"
+harden_private_file "$HOME/.config/systemd/user/local-studio-controller-$PORT.service"
 
 # --- prerequisites -----------------------------------------------------------
 command -v git >/dev/null 2>&1 || { log "git is required — install it and rerun"; exit 1; }
@@ -64,10 +92,6 @@ log "installing controller dependencies…"
 (cd "$DIR/controller" && "$BUN" install >/dev/null 2>&1) || (cd "$DIR/controller" && "$BUN" install)
 
 # --- config ------------------------------------------------------------------
-ENV_FILE="$DIR/.env"
-read_env_value() {
-  grep "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-
-}
 write_env_value() {
   key="$1"
   value="$2"
@@ -111,6 +135,12 @@ write_env_value LOCAL_STUDIO_PORT "$PORT"
 write_env_value LOCAL_STUDIO_DATA_DIR "$DATA_DIR"
 write_env_value LOCAL_STUDIO_MODELS_DIR "$MODELS_DIR"
 mkdir -p "$DATA_DIR" "$MODELS_DIR"
+harden_private_file "$ENV_FILE"
+chmod 600 "$ENV_FILE"
+harden_private_directory "$DATA_DIR"; harden_private_directory "$MODELS_DIR"
+harden_private_file "$DATA_DIR/controller.log"
+touch "$DATA_DIR/controller.log"
+chmod 600 "$DATA_DIR/controller.log"
 
 # --- service -----------------------------------------------------------------
 started=""
@@ -156,6 +186,7 @@ if [ "$OS_NAME" = "Darwin" ]; then
 </dict>
 </plist>
 PLIST
+  chmod 600 "$PLIST"
   plutil -lint "$PLIST" >/dev/null
   SERVICE="gui/$(id -u)/$LABEL"
   launchctl bootout "$SERVICE" >/dev/null 2>&1 || true
@@ -181,6 +212,7 @@ EnvironmentFile=$ENV_FILE
 ExecStart=$BUN $DIR/controller/src/main.ts
 Restart=on-failure
 RestartSec=3
+UMask=0077
 KillMode=mixed
 TimeoutStopSec=15
 StandardOutput=append:$DATA_DIR/controller.log
@@ -189,6 +221,7 @@ StandardError=append:$DATA_DIR/controller.log
 [Install]
 WantedBy=default.target
 UNIT
+  chmod 600 "$UNIT_DIR/$UNIT_NAME"
   systemctl --user daemon-reload
   systemctl --user enable "$UNIT_NAME" >/dev/null 2>&1 || true
   # restart (not enable --now) so a rewritten unit definition always applies.

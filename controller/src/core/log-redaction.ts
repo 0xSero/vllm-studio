@@ -1,12 +1,3 @@
-/**
- * Conservative log-line redaction for API/SSE responses.
- *
- * Preserves raw log files on disk; only use this when serializing lines to
- * HTTP/SSE clients. The regexes are intentionally anchored to known secret
- * markers so ordinary error messages, file paths, ports, and throughput metrics
- * are not eaten.
- */
-
 const REDACTED = "[redacted]";
 
 /**
@@ -31,13 +22,13 @@ export function redactLogLine(line: string): string {
 
   // Authorization / Bearer headers.
   redacted = redacted.replace(
-    new RegExp(String.raw`(Authorization:\s*Bearer\s+)` + TOKEN, "gi"),
+    new RegExp(String.raw`(Authorization["']?\s*[:=]\s*["']?Bearer\s+)` + TOKEN, "gi"),
     `$1${REDACTED}`,
   );
 
   // X-Api-Key style headers.
   redacted = redacted.replace(
-    new RegExp(String.raw`((?:^|[\r\n])[Xx]-[Aa]pi-[Kk]ey:\s+)` + TOKEN, "g"),
+    new RegExp(String.raw`([Xx]-[Aa]pi-[Kk]ey["']?\s*[:=]\s*["']?)` + TOKEN, "g"),
     `$1${REDACTED}`,
   );
 
@@ -48,7 +39,7 @@ export function redactLogLine(line: string): string {
       String.raw`((?:^|[\s;{"'|&]|export\s+)(?:HF_TOKEN|HUGGING_FACE_HUB_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|[A-Za-z_][A-Za-z0-9_]*_API_KEY|[A-Za-z_][A-Za-z0-9_]*_TOKEN)\s*=\s*)(?:"[^"]*"|'[^']*'|` +
         TOKEN +
         ")",
-      "g",
+      "gi",
     ),
     `$1${REDACTED}`,
   );
@@ -56,18 +47,18 @@ export function redactLogLine(line: string): string {
   // JSON-ish key/value pairs: "api_key": "...", 'token': '...'.
   // Preserves the quote style of the value.
   redacted = redacted.replace(
-    /(["']?(?:api_key|api-key|apikey|auth_token|access_token|token|secret|password|hf_token|openai_api_key|anthropic_api_key)["']?\s*:\s*)(["'])[^"']*\2/gi,
+    /(["']?(?:api_key|api-key|apikey|authorization|x-api-key|auth_token|access_token|token|secret|password|hf_token|openai_api_key|anthropic_api_key)["']?\s*:\s*)(["'])[^"']*\2/gi,
     `$1$2${REDACTED}$2`,
   );
 
   // CLI long flags: --api-key <value>, --hf-token <value>, etc.
   redacted = redacted.replace(
     new RegExp(
-      String.raw`(\s)(--(?:api-key|apikey|api_token|auth-token|access-token|hf-token|token|secret|password))\s+` +
+      String.raw`(\s)(--(?:api-key|apikey|api_token|auth-token|access-token|hf-token|token|secret|password))(\s+|=)` +
         TOKEN,
       "gi",
     ),
-    `$1$2 ${REDACTED}`,
+    `$1$2$3${REDACTED}`,
   );
 
   // URL query parameters: api_key=..., token=..., etc.
@@ -78,3 +69,6 @@ export function redactLogLine(line: string): string {
 
   return redacted;
 }
+
+export const redactLogTail = (value: string, maximumCharacters: number): string =>
+  redactLogLine(value).slice(-maximumCharacters);

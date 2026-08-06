@@ -2,6 +2,7 @@ import { realpathSync, statSync } from "node:fs";
 import { Effect } from "effect";
 import type { Accelerator, HandleReference, InstanceRecord, LaunchPlan } from "../contracts";
 import { resolveBinary, runCommandAsyncEffect, type AsyncCommandResult } from "../../../core/command";
+import { redactLogLine, redactLogTail } from "../../../core/log-redaction";
 import { dockerFlagsFor } from "../engines/devices";
 import { LOG_TAIL_BYTES, spawnFailed, type Launcher } from "./launcher";
 
@@ -124,7 +125,9 @@ export const makeDockerLauncher = (
       ];
       const result = yield* docker(runtime, executable.path, arguments_, 120_000);
       if (result.status !== 0) {
-        return yield* spawnFailed("docker run failed");
+        return yield* spawnFailed(
+          redactLogLine(`docker run failed: ${result.stderr || result.stdout}`),
+        );
       }
       const containerId = result.stdout.trim();
       if (!/^[a-f0-9]{64}$/.test(containerId)) {
@@ -178,7 +181,7 @@ export const makeDockerLauncher = (
           reference.containerId,
         ]).pipe(
           Effect.map((result) =>
-            `${result.stdout}\n${result.stderr}`.trim().slice(-LOG_TAIL_BYTES),
+            redactLogTail(`${result.stdout}\n${result.stderr}`.trim(), LOG_TAIL_BYTES),
           ),
         ),
 });

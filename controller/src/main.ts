@@ -6,6 +6,9 @@ import { parseBooleanFlag } from "./core/validation";
 import { createApp } from "./http/app";
 import { startMetricsCollector } from "./modules/system/metrics-collector";
 import { detectGpuMonitoringTool } from "./modules/system/platform/gpu";
+import { redactLogLine } from "./core/log-redaction";
+
+process.umask(0o077);
 
 class ControllerStartupError extends Schema.TaggedErrorClass<ControllerStartupError>()(
   "ControllerStartupError",
@@ -97,7 +100,7 @@ let shuttingDown = false;
 fiber.addObserver((exit) => {
   if (shuttingDown || Exit.isSuccess(exit)) return;
   shuttingDown = true;
-  console.error(Cause.pretty(exit.cause));
+  console.error(redactLogLine(Cause.pretty(exit.cause)));
   void runtime.dispose().finally(() => process.exit(1));
 });
 
