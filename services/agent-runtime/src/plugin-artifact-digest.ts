@@ -1,6 +1,6 @@
 import { createHash, type Hash } from "node:crypto";
 import { constants, type Stats } from "node:fs";
-import { lstat, open, readdir, readlink, realpath } from "node:fs/promises";
+import { lstat, open, opendir, readlink, realpath } from "node:fs/promises";
 import path from "node:path";
 import { Effect } from "effect";
 
@@ -51,7 +51,7 @@ const updateLength = (hash: Hash, length: number): void => {
 function updateEntry(hash: Hash, relative: string, type: string, mode: number): void {
   updateField(hash, label(relative));
   updateField(hash, type);
-  updateField(hash, (mode & 0o777).toString(8).padStart(3, "0"));
+  updateField(hash, (mode & 0o7777).toString(8).padStart(4, "0"));
 }
 
 function sameEntry(left: Stats, right: Stats): boolean {
@@ -67,6 +67,23 @@ function sameEntry(left: Stats, right: Stats): boolean {
 
 const sorted = (names: string[]): string[] =>
   names.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+
+async function boundedDirectoryNames(
+  absolute: string,
+  relative: string,
+  maximum: number,
+  overflowMessage: string,
+): Promise<string[]> {
+  return artifactOperation(relative, async () => {
+    const directory = await opendir(absolute);
+    const names: string[] = [];
+    for await (const entry of directory) {
+      if (names.length >= maximum) throw failure(overflowMessage, relative);
+      names.push(entry.name);
+    }
+    return sorted(names);
+  });
+}
 
 function contained(root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate);
@@ -150,13 +167,23 @@ async function hashEntry(
     return;
   }
   if (!before.isDirectory()) throw failure("Plugin artifact entry is unsupported", relative);
-  const names = sorted(await artifactOperation(relative, () => readdir(absolute)));
+  const names = await boundedDirectoryNames(
+    absolute,
+    relative,
+    limits.maxEntries - state.entries,
+    "Plugin artifact is too large",
+  );
   updateEntry(hash, relative, "directory", before.mode);
   for (const name of names) {
     const childRelative = relative ? `${relative}/${name}` : name;
     await hashEntry(root, path.join(absolute, name), childRelative, hash, state, limits);
   }
-  const currentNames = sorted(await artifactOperation(relative, () => readdir(absolute)));
+  const currentNames = await boundedDirectoryNames(
+    absolute,
+    relative,
+    names.length,
+    "Plugin artifact changed while hashing",
+  );
   const after = await artifactOperation(relative, () => lstat(absolute));
   if (
     !sameEntry(before, after) ||

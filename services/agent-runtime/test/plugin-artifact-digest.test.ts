@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   rmSync,
+  statSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
@@ -69,12 +70,18 @@ describe("plugin artifact identity", () => {
     chmodSync(path.join(root, "entry"), 0o700);
     const modeChanged = await digest(root);
     expect(modeChanged).not.toBe(contentChanged);
+    chmodSync(path.join(root, "entry"), 0o4700);
+    const specialModeChanged = await digest(root);
+    if ((statSync(path.join(root, "entry")).mode & 0o7000) !== 0) {
+      expect(specialModeChanged).not.toBe(modeChanged);
+    }
     rmSync(path.join(root, "link"));
     symlinkSync("targets/two", path.join(root, "link"));
-    expect(await digest(root)).not.toBe(modeChanged);
+    const symlinkChanged = await digest(root);
+    expect(symlinkChanged).not.toBe(specialModeChanged);
     writeFileSync(path.join(root, "renamed"), "changed");
     rmSync(path.join(root, "entry"));
-    expect(await digest(root)).not.toBe(modeChanged);
+    expect(await digest(root)).not.toBe(symlinkChanged);
   });
 
   test("rejects escaping, dangling, and cyclic symlinks", async () => {
