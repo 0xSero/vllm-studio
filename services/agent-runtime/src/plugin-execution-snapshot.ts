@@ -146,6 +146,53 @@ export function preparePluginExecutionSnapshot(bundle: PluginBundle, connector: 
   return Effect.tryPromise({ try: () => snapshotConnector(bundle, connector), catch: (error) => error instanceof PluginExecutionSnapshotError ? error : new PluginExecutionSnapshotError("Plugin execution snapshot failed") });
 }
 
+export function expectedPluginExecutionSnapshot(
+  bundle: PluginBundle,
+  connector: ConnectorConfig,
+  existing: ConnectorConfig,
+): Effect.Effect<ConnectorConfig, PluginExecutionSnapshotError> {
+  return Effect.tryPromise({
+    try: async () => {
+      if (!connector.origin || !existing.origin?.snapshotDigest || connector.transport !== "stdio" || !connector.command) {
+        throw new PluginExecutionSnapshotError("Plugin execution snapshot identity is missing");
+      }
+      const connectorOrigin = connector.origin;
+      const sourceRoot = await import("node:fs/promises").then(({ realpath }) => realpath(bundle.rootDir));
+      const artifactRoot = path.join(snapshotRoot(bundle.artifactDigest), "artifact");
+      const mapped: ConnectorConfig = {
+        ...connector,
+        command: connector.command === process.execPath
+          ? process.execPath
+          : mapIntoSnapshot(sourceRoot, artifactRoot, connector.command),
+        args: connector.args?.map((value) =>
+          contained(sourceRoot, value) ? mapIntoSnapshot(sourceRoot, artifactRoot, value) : value,
+        ),
+        cwd: connector.cwd
+          ? mapIntoSnapshot(sourceRoot, artifactRoot, connector.cwd)
+          : artifactRoot,
+        origin: {
+          ...connectorOrigin,
+          snapshotDigest: existing.origin.snapshotDigest,
+          ...(existing.origin.runtimeDigest ? { runtimeDigest: existing.origin.runtimeDigest } : {}),
+        },
+      };
+      return {
+        ...mapped,
+        origin: {
+          ...connectorOrigin,
+          snapshotDigest: existing.origin.snapshotDigest,
+          ...(existing.origin.runtimeDigest ? { runtimeDigest: existing.origin.runtimeDigest } : {}),
+          configurationDigest: pluginConnectorConfigurationDigest(mapped),
+        },
+      };
+    },
+    catch: (error) =>
+      error instanceof PluginExecutionSnapshotError
+        ? error
+        : new PluginExecutionSnapshotError("Plugin execution snapshot identity failed"),
+  });
+}
+
 export function verifyPluginExecutionSnapshot(connector: ConnectorConfig): Effect.Effect<void, PluginExecutionSnapshotError> {
   return Effect.tryPromise({
     try: async () => {

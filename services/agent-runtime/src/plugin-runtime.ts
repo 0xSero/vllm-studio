@@ -17,7 +17,7 @@ import {
 } from "./google-workspace-adapter";
 import { pluginArtifactDigest } from "./plugin-artifact-digest";
 import { pluginConnectorConfigurationDigest } from "./plugin-connector-identity";
-import { preparePluginExecutionSnapshot, verifyPluginExecutionSnapshot } from "./plugin-execution-snapshot";
+import { expectedPluginExecutionSnapshot, preparePluginExecutionSnapshot, verifyPluginExecutionSnapshot } from "./plugin-execution-snapshot";
 import { discoverPluginBundles, type PluginBundle, type PluginSource } from "./plugin-discovery";
 import {
   type PluginActivationResult,
@@ -70,8 +70,13 @@ const AppManifestSchema = Schema.Struct({
 
 const EXECUTABLE_ENVIRONMENT_KEYS = new Set([
   "BUN_OPTIONS",
+  "DYLD_FALLBACK_LIBRARY_PATH",
+  "DYLD_FRAMEWORK_PATH",
   "DYLD_INSERT_LIBRARIES",
+  "DYLD_LIBRARY_PATH",
+  "LD_LIBRARY_PATH",
   "LD_PRELOAD",
+  "NODE_PATH",
   "NODE_OPTIONS",
 ]);
 
@@ -580,12 +585,9 @@ async function reconcileEnabledPluginConnectors(
       const replacement = servers.find(
         (server) => server.connector?.origin?.binding === connector.origin?.binding,
       )?.connector;
-      const snapshotReplacement: ConnectorConfig | undefined = replacement?.origin && connector.origin?.snapshotDigest
-        ? { ...replacement, origin: { ...replacement.origin, snapshotDigest: connector.origin.snapshotDigest, ...(connector.origin.runtimeDigest ? { runtimeDigest: connector.origin.runtimeDigest } : {}) }, command: connector.origin.runtimeDigest ? replacement.command : connector.command, args: connector.args, cwd: connector.cwd }
+      const expected: ConnectorConfig | undefined = replacement?.transport === "stdio" && connector.origin?.snapshotDigest
+        ? await Effect.runPromise(expectedPluginExecutionSnapshot(bundle, replacement, connector))
         : replacement ?? undefined;
-      const expected: ConnectorConfig | undefined = snapshotReplacement?.origin
-        ? { ...snapshotReplacement, origin: { ...snapshotReplacement.origin, configurationDigest: pluginConnectorConfigurationDigest(snapshotReplacement) } }
-        : snapshotReplacement;
       return expected && await samePluginIdentity(connector, expected)
         ? []
         : [

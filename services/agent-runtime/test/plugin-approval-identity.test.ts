@@ -362,6 +362,22 @@ describe("plugin approval identity", () => {
     }
   });
 
+  test("revokes a switch to a different entry inside the approved snapshot", async () => {
+    const { root, source } = fixture();
+    writeFileSync(path.join(root, "other.js"), "process.exit(0)");
+    const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
+    if (!bundle) throw new Error("fixture plugin was not discovered");
+    const prepared = await Effect.runPromise(
+      preparePluginExecutionSnapshot(bundle, await approvedConnector(root, source)),
+    );
+    const entry = prepared.args?.[0];
+    if (!entry || !prepared.origin) throw new Error("prepared connector is incomplete");
+    const changed = { ...prepared, args: [path.join(path.dirname(entry), "other.js")] };
+    await saveConnectors([{ ...changed, origin: { ...prepared.origin, configurationDigest: pluginConnectorConfigurationDigest(changed) } }]);
+    await Effect.runPromise(refreshEnabledPluginConnectors(source));
+    expect((await listConnectors())[0]).toMatchObject({ enabled: false, allowTools: [] });
+  });
+
   test("refuses to snapshot bytes changed after discovery", async () => {
     const { root, source } = fixture();
     chmodSync(path.join(root, "server.js"), 0o755);
