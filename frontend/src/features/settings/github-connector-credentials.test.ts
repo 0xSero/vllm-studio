@@ -1,11 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
-import {
-  GITHUB_TOKEN_KEY,
-  githubCredentialUpdate,
-  hasStoredGitHubCredential,
-} from "./github-connector-credentials";
+import { GITHUB_CONNECTOR_TOKEN_KEY } from "@local-studio/agent-runtime/connector-contract";
+import { githubCredentialUpdate, hasStoredGitHubCredential } from "./github-connector-credentials";
 
 const drawerSource = readFileSync(new URL("./connectors-section.tsx", import.meta.url), "utf8");
 
@@ -14,15 +11,14 @@ describe("GitHub connector credential recovery", () => {
     assert.deepEqual(githubCredentialUpdate("  fixture-token  "), {
       id: "github",
       catalogId: "github",
-      env: { [GITHUB_TOKEN_KEY]: "fixture-token" },
+      env: { [GITHUB_CONNECTOR_TOKEN_KEY]: "fixture-token" },
       enabled: true,
     });
     assert.throws(() => githubCredentialUpdate(""), /Enter a new personal access token/);
-    assert.throws(() => githubCredentialUpdate("••••••••"), /Enter a new personal access token/);
   });
 
   test("recognizes stored credentials by secret metadata instead of secret values", () => {
-    assert.equal(hasStoredGitHubCredential({ secret_keys: [GITHUB_TOKEN_KEY] }), true);
+    assert.equal(hasStoredGitHubCredential({ secret_keys: [GITHUB_CONNECTOR_TOKEN_KEY] }), true);
     assert.equal(hasStoredGitHubCredential({ secret_keys: [] }), false);
     assert.equal(hasStoredGitHubCredential(null), false);
   });

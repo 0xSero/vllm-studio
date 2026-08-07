@@ -17,7 +17,11 @@ import path from "node:path";
 import { gunzipSync, inflateRawSync } from "node:zlib";
 import { Effect, Semaphore } from "effect";
 import lockfile from "proper-lockfile";
-import type { ConnectorConfig, GitHubConnectorArtifactStatus } from "./connector-contract";
+import {
+  GITHUB_CONNECTOR_TOKEN_KEY,
+  type ConnectorConfig,
+  type GitHubConnectorArtifactStatus,
+} from "./connector-contract";
 import { resolveDataDir } from "./data-dir";
 import { connectMcp } from "./mcp-client";
 
@@ -180,7 +184,6 @@ const VERIFY_CLOSE_TIMEOUT_MS = 6_000;
 const PRIVATE_DIRECTORY_MODE = 0o700;
 const PRIVATE_FILE_MODE = 0o600;
 const EXECUTABLE_MODE = 0o500;
-const GITHUB_TOKEN_KEY = "GITHUB_PERSONAL_ACCESS_TOKEN";
 const installSemaphore = Semaphore.makeUnsafe(1);
 
 export class GitHubConnectorArtifactError extends Error {
@@ -877,7 +880,7 @@ export function verifyGitHubMcpExecutable(
         transport: "stdio",
         command,
         args: [...(options.prefixArgs ?? []), ...GITHUB_MCP_ARGS],
-        env: { [GITHUB_TOKEN_KEY]: "local-studio-install-verification" },
+        env: { [GITHUB_CONNECTOR_TOKEN_KEY]: "local-studio-install-verification" },
       }),
     ),
     (connection) =>
@@ -1057,7 +1060,7 @@ function exactValues(left: readonly string[] | undefined, right: readonly string
 }
 
 function allowedEnvironment(env: Readonly<Record<string, string>> | undefined): boolean {
-  return !env || Object.keys(env).every((key) => key === GITHUB_TOKEN_KEY);
+  return !env || Object.keys(env).every((key) => key === GITHUB_CONNECTOR_TOKEN_KEY);
 }
 
 function artifactBinding(selected: GitHubMcpArtifact): string {

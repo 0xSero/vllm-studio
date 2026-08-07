@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+export const GITHUB_CONNECTOR_TOKEN_KEY = "GITHUB_PERSONAL_ACCESS_TOKEN";
+
 const StringRecordSchema = Schema.Record(Schema.String, Schema.String);
 
 const ConnectorOriginSchema = Schema.Struct({

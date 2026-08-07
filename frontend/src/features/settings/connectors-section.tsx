@@ -6,6 +6,7 @@ import {
   ConnectorSshPathResponseSchema,
   ConnectorTestResponseSchema,
   ConnectorsResponseSchema,
+  GITHUB_CONNECTOR_TOKEN_KEY,
   GitHubConnectorArtifactStatusSchema,
   type ConnectorView,
   type GitHubConnectorArtifactStatus,
@@ -22,11 +23,7 @@ import {
   ModelValue,
 } from "@/features/recipes/recipes-content/model-page";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import {
-  GITHUB_TOKEN_KEY,
-  githubCredentialUpdate,
-  hasStoredGitHubCredential,
-} from "./github-connector-credentials";
+import { githubCredentialUpdate, hasStoredGitHubCredential } from "./github-connector-credentials";
 
 interface CatalogEntry {
   id: string;
@@ -48,7 +45,7 @@ const CATALOG: CatalogEntry[] = [
     transport: "stdio",
     command: "github-mcp-server",
     args: ["stdio", "--read-only", "--toolsets=repos,issues,pull_requests"],
-    envFields: [{ key: GITHUB_TOKEN_KEY, label: "Personal access token" }],
+    envFields: [{ key: GITHUB_CONNECTOR_TOKEN_KEY, label: "Personal access token" }],
   },
   {
     id: "x",
@@ -393,7 +390,7 @@ function CatalogDrawer({
     setBusy(true);
     setError("");
     try {
-      const enteredGitHubToken = fields[GITHUB_TOKEN_KEY] ?? "";
+      const enteredGitHubToken = fields[GITHUB_CONNECTOR_TOKEN_KEY] ?? "";
       const githubUpdate =
         entry.id === "github" && enteredGitHubToken.trim()
           ? githubCredentialUpdate(enteredGitHubToken)
