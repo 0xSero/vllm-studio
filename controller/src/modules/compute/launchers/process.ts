@@ -101,14 +101,6 @@ const currentProxy = (reference: HandleReference, record: InstanceRecord): Child
     : null;
 const childRunning = (child: ChildProcess): boolean =>
   child.exitCode === null && child.signalCode === null;
-const processExists = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 const ownership = (
   reference: HandleReference,
@@ -149,11 +141,16 @@ const terminateFailedRedaction = (
   record: InstanceRecord,
   runtime: ProcessLauncherRuntime,
 ): void => {
-  if (reference?.kind === "process" && runtime.platform === "linux") {
-    if (ownership(reference, { ...record, ref: reference }, runtime) !== "owned") return;
-    if (reference.processGroupId !== null) {
+  if (runtime.platform === "linux") {
+    if (
+      reference?.kind === "process" &&
+      ownership(reference, { ...record, ref: reference }, runtime) === "owned" &&
+      reference.processGroupId !== null
+    ) {
       runtime.signalGroup(reference.processGroupId, "SIGKILL");
+      return;
     }
+    if (childRunning(child)) child.kill("SIGKILL");
     return;
   }
   if (
@@ -162,10 +159,10 @@ const terminateFailedRedaction = (
     localChildren.get(reference.pid) === child
   ) {
     if (runtime.platform !== "win32") runtime.signalGroup(reference.pid, "SIGKILL");
-    if (childRunning(child) && processExists(reference.pid)) child.kill("SIGKILL");
+    if (childRunning(child)) child.kill("SIGKILL");
     return;
   }
-  if (!childRunning(child) || !child.pid || !processExists(child.pid)) return;
+  if (!childRunning(child) || !child.pid) return;
   if (runtime.platform !== "win32") runtime.signalGroup(child.pid, "SIGKILL");
   child.kill("SIGKILL");
 };
@@ -268,11 +265,11 @@ export const makeProcessLauncher = (
       } as const;
       localProxies.set(pid, proxy.child);
       const observeProcesses = (): void => {
-        if (!proxy.child.pid || !processExists(proxy.child.pid)) {
+        if (!childRunning(proxy.child)) {
           proxyFailed();
           return;
         }
-        if (processExists(pid)) return;
+        if (childRunning(child)) return;
         proxy.finish();
         engineExitedAt ??= Date.now();
         if (Date.now() - engineExitedAt >= 1_000) proxy.child.kill("SIGTERM");
@@ -287,7 +284,7 @@ export const makeProcessLauncher = (
     Effect.sync(() => {
       if (reference.kind !== "process") return false;
       const proxy = currentProxy(reference, record);
-      const draining = Boolean(proxy?.pid && processExists(proxy.pid));
+      const draining = Boolean(proxy && childRunning(proxy));
       if (runtime.platform === "linux") {
         return ownership(reference, record, runtime) !== "gone" || draining;
       }

@@ -243,15 +243,13 @@ describe("process launcher logs", () => {
         record,
       ),
     );
-    const enginePid = await readPid(enginePath);
-    const workerPid = await readPid(workerPath);
+    const [enginePid, workerPid] = await Promise.all([readPid(enginePath), readPid(workerPath)]);
     try {
       const proxyPid = processMatching(crashLog);
       expect(proxyPid).toBeGreaterThan(0);
       process.kill(proxyPid, "SIGKILL");
       writeFileSync(triggerPath, "write");
-      await waitForPidExit(enginePid);
-      await waitForPidExit(workerPid);
+      await Promise.all([waitForPidExit(enginePid), waitForPidExit(workerPid)]);
       expect(pidAlive(enginePid)).toBe(false);
       expect(pidAlive(workerPid)).toBe(false);
     } finally {
@@ -359,6 +357,32 @@ test("native launch retries durable proof and keeps non-Linux cleanup in memory"
   expect(await Effect.runPromise(fallbackLauncher.owns(fallback, durable))).toBe(true);
   await Effect.runPromise(fallbackLauncher.stop(fallback, durable, 0));
   expect(await Effect.runPromise(fallbackLauncher.owns(fallback, durable))).toBe(false);
+});
+
+test("native launch never signals an unproved Linux group", async () => {
+  for (const group of [null, [member({ launchMarker: "foreign" })]]) {
+    const suffix = `${process.pid}-${Date.now()}-${group === null ? "missing" : "foreign"}`;
+    const pidPath = join(root, `unproved-${suffix}.pid`);
+    const signals: string[] = [];
+    const exit = await Effect.runPromiseExit(
+      makeProcessLauncher(() => logPath, processRuntime("linux", group, signals)).start(
+        {
+          ...plan,
+          argv: [
+            process.execPath,
+            "-e",
+            `require("node:fs").writeFileSync(${JSON.stringify(pidPath)}, String(process.pid)); setInterval(() => {}, 1000)`,
+          ],
+        },
+        record,
+      ),
+    );
+    const pid = await readPid(pidPath);
+    await waitForPidExit(pid);
+    expect(exit._tag).toBe("Failure");
+    expect(signals).toEqual([]);
+    expect(pidAlive(pid)).toBe(false);
+  }
 });
 
 const containerId = "a".repeat(64);
