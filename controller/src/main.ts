@@ -1,3 +1,4 @@
+import "./core/process-boundary";
 import { Cause, Effect, Exit, Fiber, Schema } from "effect";
 import { startComputeSupervisor } from "./modules/compute/supervisor";
 import { AppContextService, getModelsDirectoryState, type AppContext } from "./app-context";
@@ -6,9 +7,6 @@ import { parseBooleanFlag } from "./core/validation";
 import { createApp } from "./http/app";
 import { startMetricsCollector } from "./modules/system/metrics-collector";
 import { detectGpuMonitoringTool } from "./modules/system/platform/gpu";
-import { redactLogLine } from "./core/log-redaction";
-
-process.umask(0o077);
 
 class ControllerStartupError extends Schema.TaggedErrorClass<ControllerStartupError>()(
   "ControllerStartupError",
@@ -100,7 +98,7 @@ let shuttingDown = false;
 fiber.addObserver((exit) => {
   if (shuttingDown || Exit.isSuccess(exit)) return;
   shuttingDown = true;
-  console.error(redactLogLine(Cause.pretty(exit.cause)));
+  console.error(Cause.pretty(exit.cause));
   void runtime.dispose().finally(() => process.exit(1));
 });
 

@@ -197,7 +197,6 @@ started=""
 if [ "$OS_NAME" = "Darwin" ]; then
   LABEL="org.local.studio.controller"
   PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
-  LOG_FILE="$DATA_DIR/controller.log"
   xml_escape() {
     printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g'
   }
@@ -207,7 +206,6 @@ if [ "$OS_NAME" = "Darwin" ]; then
   DIR_XML="$(xml_escape "$DIR")"
   DATA_XML="$(xml_escape "$DATA_DIR")"
   MODELS_XML="$(xml_escape "$MODELS_DIR")"
-  LOG_XML="$(xml_escape "$LOG_FILE")"
   API_KEY_XML="$(xml_escape "$API_KEY")"
   PATH_XML="$(xml_escape "$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")"
   cat > "$PLIST" <<PLIST
@@ -232,8 +230,8 @@ if [ "$OS_NAME" = "Darwin" ]; then
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>5</integer>
   <key>Umask</key><integer>63</integer>
-  <key>StandardOutPath</key><string>$LOG_XML</string>
-  <key>StandardErrorPath</key><string>$LOG_XML</string>
+  <key>StandardOutPath</key><string>/dev/null</string>
+  <key>StandardErrorPath</key><string>/dev/null</string>
 </dict>
 </plist>
 PLIST
@@ -266,8 +264,8 @@ RestartSec=3
 UMask=0077
 KillMode=mixed
 TimeoutStopSec=15
-StandardOutput=append:$DATA_DIR/controller.log
-StandardError=append:$DATA_DIR/controller.log
+StandardOutput=null
+StandardError=null
 
 [Install]
 WantedBy=default.target
@@ -283,7 +281,7 @@ UNIT
 else
   log "no systemd — starting with nohup"
   pkill -f "$DIR/controller/src/main.ts" 2>/dev/null || true
-  (cd "$DIR" && setsid nohup env "$(grep -v '^#' "$ENV_FILE" | xargs)" "$BUN" controller/src/main.ts >> "$DATA_DIR/controller.log" 2>&1 < /dev/null &)
+  (cd "$DIR" && setsid nohup env "$(grep -v '^#' "$ENV_FILE" | xargs)" "$BUN" controller/src/main.ts >/dev/null 2>&1 < /dev/null &)
   started="nohup"
 fi
 

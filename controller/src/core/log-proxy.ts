@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess, type StdioOptions } from "node:child_process";
-import { closeSync, createReadStream, writeSync } from "node:fs";
+import { closeSync, createReadStream, fstatSync, ftruncateSync, writeSync } from "node:fs";
 import { Readable, type Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { Effect, Schema, Stream } from "effect";
@@ -9,6 +9,7 @@ import { redactLogLine } from "./log-redaction";
 
 const maximumPendingCharacters = 64 * 1024;
 const maximumProtocolBytes = 1024;
+const maximumPersistedLogBytes = 10 * 1024 * 1024;
 const protocolTimeoutMs = 10_000;
 const forwardStreamsMode = "--forward-streams";
 const spawnCommandMode = "--spawn-command";
@@ -140,12 +141,27 @@ const redactStream = (outputStream: Readable): Stream.Stream<string> =>
     ),
   );
 
+export const writeBoundedLogOutput = (
+  descriptor: number,
+  output: string,
+  maximumBytes = maximumPersistedLogBytes,
+): void => {
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) {
+    throw new Error("Maximum persisted log bytes must be a positive safe integer");
+  }
+  const encoded = Buffer.from(output);
+  const bounded =
+    encoded.length <= maximumBytes ? encoded : encoded.subarray(encoded.length - maximumBytes);
+  if (fstatSync(descriptor).size + bounded.length > maximumBytes) ftruncateSync(descriptor, 0);
+  writeSync(descriptor, bounded);
+};
+
 const redactOutput = (outputStream: Readable, descriptor: number): VoidEffect =>
   redactStream(outputStream).pipe(
     Stream.runForEach((output) =>
       Effect.sync(() => {
         try {
-          writeSync(descriptor, output);
+          writeBoundedLogOutput(descriptor, output);
         } catch {}
       }),
     ),

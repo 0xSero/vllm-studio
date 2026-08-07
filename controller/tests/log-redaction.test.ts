@@ -3,9 +3,10 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Effect } from "effect";
 import * as logFiles from "../src/core/log-files";
+import { writeBoundedLogOutput } from "../src/core/log-proxy";
 import { redactLogLine } from "../src/core/log-redaction";
 import { createLogger } from "../src/core/logger";
 import { makeInstanceStore } from "../src/modules/compute/instances/store";
@@ -35,6 +36,14 @@ describe("log redaction", () => {
       `Authorization=Token ${syntheticSecret}`,
       `Authorization: Digest username="user", response="${syntheticSecret}"`,
       `authorization=Custom ${syntheticSecret}`,
+      JSON.stringify({ raw: JSON.stringify({ Authorization: `Basic ${syntheticSecret}` }) }),
+      JSON.stringify({ raw: JSON.stringify({ Authorization: `Token ${syntheticSecret}` }) }),
+      JSON.stringify({ raw: JSON.stringify({ Authorization: `Custom ${syntheticSecret}` }) }),
+      JSON.stringify({
+        raw: JSON.stringify({
+          Authorization: `Digest username="user", response="${syntheticSecret}"`,
+        }),
+      }),
       `X-Api-Key: ${syntheticSecret}`,
       `X-Api-Key: "prefix\\\"${syntheticSecret}"`,
       `OPENAI_API_KEY=${syntheticSecret}`,
@@ -71,6 +80,23 @@ describe("log redaction", () => {
     const filePath = logFiles.primaryLogPathFor(join(root, "data"), "authorization");
     const events: string[] = [];
     const consoleLines: string[] = [];
+    const nestedSecrets = ["nested-basic", "nested-digest", "nested-token", "nested-custom"];
+    const structuredSecrets = Object.fromEntries(
+      [
+        "api_key",
+        "api-key",
+        "apikey",
+        "x-api-key",
+        "auth_token",
+        "access_token",
+        "token",
+        "secret",
+        "password",
+        "hf_token",
+        "openai_api_key",
+        "anthropic_api_key",
+      ].map((key, index) => [key, `nested-structured-${index}`]),
+    );
     const original = console.info;
     console.info = (...values: unknown[]) => consoleLines.push(values.join(" "));
     try {
@@ -79,7 +105,18 @@ describe("log redaction", () => {
         onLine: (line) => events.push(line),
       });
       logger.info(
-        `Authorization: Basic ${syntheticSecret}\nAuthorization=Digest response="${syntheticSecret}"\nAuthorization: Token ${syntheticSecret}`,
+        `Authorization: Basic ${syntheticSecret}\nAuthorization=Digest response="${syntheticSecret}"\nAuthorization: Token ${syntheticSecret}\nAuthorization=Custom ${syntheticSecret}`,
+        {
+          values: [
+            JSON.stringify({ Authorization: `Basic ${nestedSecrets[0]}` }),
+            JSON.stringify({
+              Authorization: `Digest username="user", response="${nestedSecrets[1]}"`,
+            }),
+            JSON.stringify({ Authorization: `Token ${nestedSecrets[2]}` }),
+            JSON.stringify({ Authorization: `Custom ${nestedSecrets[3]}` }),
+            JSON.stringify(structuredSecrets),
+          ],
+        },
       );
       await Effect.runPromise(logger.shutdown());
     } finally {
@@ -87,7 +124,9 @@ describe("log redaction", () => {
     }
     const persisted = fs.readFileSync(filePath, "utf8").trimEnd();
     expect(persisted).not.toContain(syntheticSecret);
-    expect(persisted.match(/\[redacted\]/g)).toHaveLength(3);
+    for (const secret of nestedSecrets) expect(persisted).not.toContain(secret);
+    for (const secret of Object.values(structuredSecrets)) expect(persisted).not.toContain(secret);
+    expect(persisted.match(/\[redacted\]/g)?.length ?? 0).toBeGreaterThanOrEqual(8);
     expect(events).toEqual([persisted]);
     expect(consoleLines).toEqual([persisted]);
   });
@@ -115,6 +154,49 @@ describe("log redaction", () => {
     expect(persisted).not.toContain(syntheticSecret);
     expect(events).toEqual([persisted]);
     expect(consoleLines).toEqual([persisted]);
+  });
+
+  test("redacts dependency console output before a service can persist it", () => {
+    const root = temporaryDirectory();
+    const dependency = join(root, "dependency.mjs");
+    const harness = join(root, "harness.ts");
+    const secrets = ["dependency-basic", "dependency-token", "dependency-structured"];
+    fs.writeFileSync(
+      dependency,
+      [
+        `console.log("Authorization: Basic ${secrets[0]}")`,
+        `console.error("Authorization=Token ${secrets[1]}")`,
+        `console.warn({ raw: JSON.stringify({ api_key: "${secrets[2]}" }) })`,
+      ].join("\n"),
+    );
+    fs.writeFileSync(
+      harness,
+      [
+        `import ${JSON.stringify(new URL("../src/core/process-boundary.ts", import.meta.url).href)}`,
+        `await import(${JSON.stringify(pathToFileURL(dependency).href)})`,
+      ].join("\n"),
+    );
+    const result = spawnSync(process.execPath, [harness], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    const output = `${result.stdout}${result.stderr}`;
+    for (const secret of secrets) expect(output).not.toContain(secret);
+    expect(output.match(/\[redacted\]/g)).toHaveLength(3);
+  });
+
+  test("bounds persisted redacted diagnostics", () => {
+    const root = temporaryDirectory();
+    const filePath = logFiles.primaryLogPathFor(join(root, "data"), "bounded");
+    const descriptor = logFiles.openPrivateLogFile(filePath, true);
+    try {
+      writeBoundedLogOutput(descriptor, "first-output\n", 16);
+      writeBoundedLogOutput(descriptor, "second-output\n", 16);
+      expect(fs.readFileSync(filePath, "utf8")).toBe("second-output\n");
+      writeBoundedLogOutput(descriptor, "0123456789abcdefghijkl", 16);
+    } finally {
+      fs.closeSync(descriptor);
+    }
+    expect(fs.statSync(filePath).size).toBeLessThanOrEqual(16);
+    expect(fs.readFileSync(filePath, "utf8")).toBe("6789abcdefghijkl");
   });
 
   test("repairs private directory and file modes", async () => {
@@ -258,6 +340,12 @@ describe("log redaction", () => {
     expect(installer).toContain('chmod 600 "$ENV_FILE"');
     expect(installer).toContain('chmod 600 "$DATA_DIR/controller.log"');
     expect(installer).toContain("UMask=0077");
+    expect(installer).toContain("<key>StandardOutPath</key><string>/dev/null</string>");
+    expect(installer).toContain("<key>StandardErrorPath</key><string>/dev/null</string>");
+    expect(installer).toContain("StandardOutput=null");
+    expect(installer).toContain("StandardError=null");
+    expect(installer).not.toContain("StandardOutput=append:");
+    expect(installer).not.toContain("StandardError=append:");
   });
 
   test("installer rejects old Bun and accepts the declared minimum or newer", () => {

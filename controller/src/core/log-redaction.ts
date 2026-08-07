@@ -1,13 +1,16 @@
 const REDACTED = "[redacted]";
 
-const SECRET_VALUE = String.raw`(?:"(?:\\(?:[^\r\n]|(?=\r?\n|$))|[^"\\\r\n])*(?:"|(?=\r?\n|$))|'(?:\\(?:[^\r\n]|(?=\r?\n|$))|[^'\\\r\n])*(?:'|(?=\r?\n|$))|\[redacted\]|[^\s;,}"'\]]+)`;
+const SECRET_VALUE = String.raw`(?:\\+"[^\r\n]*?\\+"(?=\s*[,}\]])|\\+'[^\r\n]*?\\+'(?=\s*[,}\]])|"(?:\\(?:[^\r\n]|(?=\r?\n|$))|[^"\\\r\n])*(?:"|(?=\r?\n|$))|'(?:\\(?:[^\r\n]|(?=\r?\n|$))|[^'\\\r\n])*(?:'|(?=\r?\n|$))|\[redacted\]|[^\s;,}"'\]]+)`;
 const AUTHORIZATION_VALUE = String.raw`(?:"(?:\\[^\r\n]|[^"\\\r\n])*"|'(?:\\[^\r\n]|[^'\\\r\n])*'|[^\r\n}]*)`;
 
 export function redactLogLine(line: string): string {
   let redacted = line;
 
   redacted = redacted.replace(
-    new RegExp(String.raw`(["']?Authorization["']?\s*[:=]\s*)` + AUTHORIZATION_VALUE, "gi"),
+    new RegExp(
+      String.raw`((?:\\*["'])?Authorization(?:\\*["'])?\s*[:=]\s*)` + AUTHORIZATION_VALUE,
+      "gi",
+    ),
     `$1${REDACTED}`,
   );
 
@@ -28,10 +31,9 @@ export function redactLogLine(line: string): string {
     `$1${REDACTED}`,
   );
 
-  // JSON-ish and YAML-ish key/value pairs.
   redacted = redacted.replace(
     new RegExp(
-      String.raw`(["']?(?:api_key|api-key|apikey|authorization|x-api-key|auth_token|access_token|token|secret|password|hf_token|openai_api_key|anthropic_api_key)["']?\s*:\s*)` +
+      String.raw`((?:\\*["'])?(?:api_key|api-key|apikey|authorization|x-api-key|auth_token|access_token|token|secret|password|hf_token|openai_api_key|anthropic_api_key)(?:\\*["'])?\s*:\s*)` +
         SECRET_VALUE,
       "gi",
     ),
