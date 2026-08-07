@@ -1,6 +1,8 @@
 import { connectMcp, type McpConnection, type McpToolInfo } from "./mcp-client";
 import { connectorAuthorizationHeaders } from "./connector-auth";
 import { listConnectors, type ConnectorConfig } from "./connectors-service";
+import { Effect } from "effect";
+import { assertGitHubConnectorReady, isManagedGitHubConnector } from "./connector-artifacts";
 
 const pool = new Map<string, McpConnection>();
 
@@ -34,6 +36,9 @@ async function enabledConnector(connectorId: string): Promise<ConnectorConfig> {
   const connector = (await listConnectors()).find((entry) => entry.id === connectorId);
   if (!connector) throw new Error(`Unknown connector "${connectorId}"`);
   if (!connector.enabled) throw new Error(`Connector "${connectorId}" is disabled`);
+  if (isManagedGitHubConnector(connector)) {
+    await Effect.runPromise(assertGitHubConnectorReady(connector));
+  }
   return connector;
 }
 
@@ -98,6 +103,9 @@ export async function probeConnector(
 ): Promise<{ ok: boolean; tools: McpToolInfo[]; error?: string }> {
   let connection: McpConnection | null = null;
   try {
+    if (isManagedGitHubConnector(connector)) {
+      await Effect.runPromise(assertGitHubConnectorReady(connector), { signal });
+    }
     connection = connectMcp(toTarget(connector, signal));
     const tools = await connection.listTools();
     return { ok: true, tools };

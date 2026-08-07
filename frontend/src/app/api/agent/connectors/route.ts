@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { ConnectorUpsertInputSchema } from "@local-studio/agent-runtime/connector-contract";
+import {
+  assertGitHubConnectorReady,
+  githubMcpConnectorConfiguration,
+} from "@local-studio/agent-runtime/connector-artifacts";
 import {
   isValidConnectorId,
   listConnectors,
@@ -14,6 +18,44 @@ import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+type ConnectorUpsertInput = typeof ConnectorUpsertInputSchema.Type;
+
+class InvalidConnectorPayloadError extends Error {}
+
+function customConnector(
+  body: Extract<ConnectorUpsertInput, { transport: string }>,
+): ConnectorConfig {
+  if (body.transport === "stdio" && !body.command) {
+    throw new InvalidConnectorPayloadError("command is required for stdio");
+  }
+  if (body.transport === "http" && !body.url) {
+    throw new InvalidConnectorPayloadError("url is required for http");
+  }
+  return {
+    id: body.id,
+    name: body.name?.trim() || body.id,
+    transport: body.transport,
+    ...(body.command ? { command: body.command } : {}),
+    ...(body.args ? { args: body.args } : {}),
+    ...(body.env ? { env: body.env } : {}),
+    ...(body.cwd ? { cwd: body.cwd } : {}),
+    ...(body.url ? { url: body.url } : {}),
+    ...(body.headers ? { headers: body.headers } : {}),
+    ...(body.allowTools ? { allowTools: body.allowTools } : {}),
+    enabled: body.enabled ?? true,
+  };
+}
+
+async function connectorFromInput(body: ConnectorUpsertInput): Promise<ConnectorConfig> {
+  if (!("catalogId" in body)) return customConnector(body);
+  const connector = githubMcpConnectorConfiguration({
+    env: body.env,
+    enabled: body.enabled ?? true,
+  });
+  if (connector.enabled) await Effect.runPromise(assertGitHubConnectorReady(connector));
+  return connector;
+}
 
 export async function GET(request: NextRequest) {
   const denied = requireApiAccess(request);
@@ -34,33 +76,15 @@ export async function POST(request: NextRequest) {
   if (!isValidConnectorId(body.id)) {
     return NextResponse.json({ error: "invalid connector id" }, { status: 400 });
   }
-  if (body.transport === "stdio" && !body.command) {
-    return NextResponse.json({ error: "command is required for stdio" }, { status: 400 });
-  }
-  if (body.transport === "http" && !body.url) {
-    return NextResponse.json({ error: "url is required for http" }, { status: 400 });
-  }
-  const connector: ConnectorConfig = {
-    id: body.id,
-    name: body.name?.trim() || body.id,
-    transport: body.transport,
-    ...(body.command ? { command: body.command } : {}),
-    ...(body.args ? { args: body.args } : {}),
-    ...(body.env ? { env: body.env } : {}),
-    ...(body.cwd ? { cwd: body.cwd } : {}),
-    ...(body.url ? { url: body.url } : {}),
-    ...(body.headers ? { headers: body.headers } : {}),
-    ...(body.allowTools ? { allowTools: body.allowTools } : {}),
-    enabled: body.enabled ?? true,
-  };
   try {
+    const connector = await connectorFromInput(body);
     const connectors = await upsertConnector(connector);
     closePooledConnection(connector.id);
     return NextResponse.json({ connectors: connectors.map(toConnectorView) });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Connector could not be saved" },
-      { status: 409 },
+      { status: error instanceof InvalidConnectorPayloadError ? 400 : 409 },
     );
   }
 }

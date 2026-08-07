@@ -54,7 +54,23 @@ export const ConnectorsFileSchema = Schema.Struct({
 export const ConnectorsResponseSchema = Schema.Struct({
   connectors: Schema.Array(ConnectorViewSchema),
 });
-export const ConnectorUpsertInputSchema = Schema.Struct({
+export const GitHubConnectorArtifactStatusSchema = Schema.Struct({
+  version: Schema.String,
+  target: Schema.String,
+  state: Schema.Union([
+    Schema.Literal("installed"),
+    Schema.Literal("not-installed"),
+    Schema.Literal("invalid"),
+    Schema.Literal("unsupported"),
+  ]),
+});
+const CatalogConnectorUpsertInputSchema = Schema.Struct({
+  id: Schema.Literal("github"),
+  catalogId: Schema.Literal("github"),
+  env: Schema.optional(StringRecordSchema),
+  enabled: Schema.optional(Schema.Boolean),
+});
+const CustomConnectorUpsertInputSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.optional(Schema.String),
   transport: Schema.Union([Schema.Literal("stdio"), Schema.Literal("http")]),
@@ -67,6 +83,10 @@ export const ConnectorUpsertInputSchema = Schema.Struct({
   allowTools: Schema.optional(Schema.Array(Schema.String)),
   enabled: Schema.optional(Schema.Boolean),
 });
+export const ConnectorUpsertInputSchema = Schema.Union([
+  CatalogConnectorUpsertInputSchema,
+  CustomConnectorUpsertInputSchema,
+]);
 export const ConnectorTestInputSchema = Schema.Struct({ id: Schema.String });
 export const ConnectorTestResponseSchema = Schema.Struct({
   ok: Schema.Boolean,
@@ -82,3 +102,4 @@ export type ConnectorOrigin = typeof ConnectorOriginSchema.Type;
 export type ConnectorAuthReference = typeof ConnectorAuthReferenceSchema.Type;
 export type ConnectorConfig = typeof ConnectorConfigSchema.Type;
 export type ConnectorView = typeof ConnectorViewSchema.Type;
+export type GitHubConnectorArtifactStatus = typeof GitHubConnectorArtifactStatusSchema.Type;
