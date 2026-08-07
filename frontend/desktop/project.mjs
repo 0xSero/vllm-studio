@@ -1396,6 +1396,7 @@ var releasePackageArguments = ({ app, version, commit }) => [
 
 var exports_release_package_arguments_test = {};
 import assert3 from "node:assert/strict";
+import { readFileSync as readFileSyncReleasePolicy } from "node:fs";
 import test3 from "node:test";
 var init_release_package_arguments_test = __esm(() => {
   test3("release signing packaging never publishes implicitly", () => {
@@ -1404,7 +1405,11 @@ var init_release_package_arguments_test = __esm(() => {
       version: "2.9.0",
       commit: "0123456789abcdef"
     });
-    assert3.deepEqual(args3.slice(-2), ["--publish", "never"]), assert3.deepEqual(args3.slice(0, 2), ["--prepackaged", "/tmp/Local Studio.app"]);
+    assert3.deepEqual(args3.slice(-2), ["--publish", "never"]), assert3.deepEqual(args3.slice(0, 2), ["--prepackaged", "/tmp/Local Studio.app"]), assert3.ok(args3.includes("--config.extraMetadata.version=2.9.0")), assert3.ok(args3.includes("--config.extraMetadata.localStudioCommit=0123456789abcdef"));
+  });
+  test3("stable release version authority stays explicit and wired end to end", () => {
+    let instructions = readFileSyncReleasePolicy(new URL("../../AGENTS.md", import.meta.url), "utf8"), workflow = readFileSyncReleasePolicy(new URL("../../.github/workflows/release.yml", import.meta.url), "utf8"), manifests = ["../../package.json", "../package.json", "../../controller/package.json", "../../controller/contracts/package.json", "../../services/agent-runtime/package.json"].map((manifest) => JSON.parse(readFileSyncReleasePolicy(new URL(manifest, import.meta.url), "utf8")));
+    assert3.match(instructions, /semantic-release's computed version is the authority for stable desktop releases/u), assert3.match(instructions, /Checked-in package versions are synchronized development fallbacks/u), assert3.match(workflow, /release_version: \$\{\{ steps\.next-release\.outputs\.version \}\}/u), assert3.match(workflow, /--config\.extraMetadata\.version=\$\{\{ steps\.next-release\.outputs\.version \}\}/u), assert3.equal(workflow.match(/--version \$\{\{ needs\.build\.outputs\.release_version \}\}/gu)?.length, 2), assert3.equal(new Set(manifests.map((manifest) => manifest.version)).size, 1);
   });
   test3("release signing notarizes and staples the app before packaging", () => {
     let calls = [];
