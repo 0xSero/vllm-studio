@@ -1,24 +1,13 @@
 const REDACTED = "[redacted]";
 
 const SECRET_VALUE = String.raw`(?:"(?:\\(?:[^\r\n]|(?=\r?\n|$))|[^"\\\r\n])*(?:"|(?=\r?\n|$))|'(?:\\(?:[^\r\n]|(?=\r?\n|$))|[^'\\\r\n])*(?:'|(?=\r?\n|$))|\[redacted\]|[^\s;,}"'\]]+)`;
+const AUTHORIZATION_VALUE = String.raw`(?:"(?:\\[^\r\n]|[^"\\\r\n])*"|'(?:\\[^\r\n]|[^'\\\r\n])*'|[^\r\n}]*)`;
 
-/**
- * Redact common secret-bearing patterns from a single log line.
- *
- * Covered:
- * - Authorization: Bearer <token>
- * - X-Api-Key: <token>
- * - Env assignments: HF_TOKEN=..., OPENAI_API_KEY=..., *_API_KEY=..., *_TOKEN=...
- * - JSON-ish pairs: "api_key": "...", 'token': '...'
- * - CLI flags: --api-key <value>, --hf-token <value>, --token <value>, etc.
- * - URL query params: ?api_key=...&token=...
- */
 export function redactLogLine(line: string): string {
   let redacted = line;
 
-  // Authorization / Bearer headers.
   redacted = redacted.replace(
-    new RegExp(String.raw`(Authorization["']?\s*[:=]\s*["']?Bearer\s+)` + SECRET_VALUE, "gi"),
+    new RegExp(String.raw`(["']?Authorization["']?\s*[:=]\s*)` + AUTHORIZATION_VALUE, "gi"),
     `$1${REDACTED}`,
   );
 

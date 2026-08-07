@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,6 +31,10 @@ describe("log redaction", () => {
       `Authorization: Bearer ${syntheticSecret}`,
       `Authorization: Bearer "${syntheticSecret}"`,
       `{"authorization":"Bearer ${syntheticSecret}"}`,
+      `Authorization: Basic ${syntheticSecret}`,
+      `Authorization=Token ${syntheticSecret}`,
+      `Authorization: Digest username="user", response="${syntheticSecret}"`,
+      `authorization=Custom ${syntheticSecret}`,
       `X-Api-Key: ${syntheticSecret}`,
       `X-Api-Key: "prefix\\\"${syntheticSecret}"`,
       `OPENAI_API_KEY=${syntheticSecret}`,
@@ -59,6 +64,32 @@ describe("log redaction", () => {
     expect(once).not.toContain(syntheticSecret);
     expect(once).toContain("[redacted]");
     expect(redactLogLine(once)).toBe(once);
+  });
+
+  test("removes complete Authorization credentials from every logger sink", async () => {
+    const root = temporaryDirectory();
+    const filePath = logFiles.primaryLogPathFor(join(root, "data"), "authorization");
+    const events: string[] = [];
+    const consoleLines: string[] = [];
+    const original = console.info;
+    console.info = (...values: unknown[]) => consoleLines.push(values.join(" "));
+    try {
+      const logger = createLogger("info", {
+        filePath,
+        onLine: (line) => events.push(line),
+      });
+      logger.info(
+        `Authorization: Basic ${syntheticSecret}\nAuthorization=Digest response="${syntheticSecret}"\nAuthorization: Token ${syntheticSecret}`,
+      );
+      await Effect.runPromise(logger.shutdown());
+    } finally {
+      console.info = original;
+    }
+    const persisted = fs.readFileSync(filePath, "utf8").trimEnd();
+    expect(persisted).not.toContain(syntheticSecret);
+    expect(persisted.match(/\[redacted\]/g)).toHaveLength(3);
+    expect(events).toEqual([persisted]);
+    expect(consoleLines).toEqual([persisted]);
   });
 
   test("redacts before bounding a retained tail", () => {
@@ -235,5 +266,81 @@ describe("log redaction", () => {
     expect(installer).toContain('chmod 600 "$ENV_FILE"');
     expect(installer).toContain('chmod 600 "$DATA_DIR/controller.log"');
     expect(installer).toContain("UMask=0077");
+  });
+
+  test("installer rejects old Bun and accepts the declared minimum or newer", () => {
+    const installerPath = fileURLToPath(
+      new URL("../../scripts/install-controller.sh", import.meta.url),
+    );
+    const controllerPackage = JSON.parse(
+      fs.readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
+    ) as { engines?: { bun?: string } };
+    const minimum = controllerPackage.engines?.bun?.replace(/^>=/, "");
+    if (!minimum) throw new Error("Missing controller Bun engine requirement");
+    const [major = 0, minor = 0, patch = 0] = minimum.split(".").map(Number);
+    const old = [major, minor, Math.max(0, patch - 1)].join(".");
+    const newer = [major, minor, patch + 1].join(".");
+    const check = (version: string): number | null =>
+      spawnSync("bash", [installerPath, "--check-bun-version", version, minimum]).status;
+    expect(check(old)).not.toBe(0);
+    expect(check(minimum)).toBe(0);
+    expect(check(newer)).toBe(0);
+    for (const malformed of ["1.3", "1..14", "1.3.x", "1.3.14.0", "1_3_14", `${minimum}-canary`]) {
+      expect(check(malformed)).not.toBe(0);
+    }
+  });
+
+  test("installer upgrades an old Bun or refuses an unsupported replacement", () => {
+    const installerPath = fileURLToPath(
+      new URL("../../scripts/install-controller.sh", import.meta.url),
+    );
+    const controllerPackage = JSON.parse(
+      fs.readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
+    ) as { engines?: { bun?: string } };
+    const minimum = controllerPackage.engines?.bun?.replace(/^>=/, "");
+    if (!minimum) throw new Error("Missing controller Bun engine requirement");
+    const [major = 0, minor = 0, patch = 0] = minimum.split(".").map(Number);
+    const old = [major, minor, Math.max(0, patch - 1)].join(".");
+    const runEnsure = (installed: string): ReturnType<typeof spawnSync> => {
+      const root = temporaryDirectory();
+      const home = join(root, "home");
+      const bin = join(root, "bin");
+      fs.mkdirSync(home, { recursive: true });
+      fs.mkdirSync(bin, { recursive: true });
+      const initialBun = join(root, "initial-bun");
+      const installedBun = join(root, "installed-bun");
+      const fakeCurl = join(bin, "curl");
+      fs.writeFileSync(initialBun, `#!/usr/bin/env bash\nprintf '%s\\n' ${old}\n`);
+      fs.writeFileSync(installedBun, `#!/usr/bin/env bash\nprintf '%s\\n' ${installed}\n`);
+      fs.writeFileSync(
+        fakeCurl,
+        [
+          "#!/usr/bin/env bash",
+          'mkdir -p "$HOME/.bun/bin"',
+          'cp "$FAKE_INSTALLED_BUN" "$HOME/.bun/bin/bun"',
+          'chmod 700 "$HOME/.bun/bin/bun"',
+          "printf ':\\n'",
+        ].join("\n"),
+      );
+      fs.chmodSync(initialBun, 0o700);
+      fs.chmodSync(installedBun, 0o700);
+      fs.chmodSync(fakeCurl, 0o700);
+      return spawnSync("bash", [installerPath, "--ensure-bun-version", minimum], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: home,
+          PATH: `${bin}:/usr/bin:/bin`,
+          LOCAL_STUDIO_BUN_BINARY: initialBun,
+          FAKE_INSTALLED_BUN: installedBun,
+        },
+      });
+    };
+    const upgraded = runEnsure(minimum);
+    expect(upgraded.status).toBe(0);
+    expect(upgraded.stdout).toContain(`bun: ${minimum}`);
+    const refused = runEnsure(old);
+    expect(refused.status).not.toBe(0);
+    expect(refused.stdout).toContain(`older than required ${minimum} after upgrade`);
   });
 });
