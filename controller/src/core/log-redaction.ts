@@ -56,6 +56,3 @@ export function redactLogLine(line: string): string {
 
   return redacted;
 }
-
-export const redactLogTail = (value: string, maximumCharacters: number): string =>
-  redactLogLine(value).slice(-maximumCharacters);

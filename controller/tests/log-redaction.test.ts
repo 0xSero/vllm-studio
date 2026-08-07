@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect } from "effect";
 import * as logFiles from "../src/core/log-files";
-import { redactLogLine, redactLogTail } from "../src/core/log-redaction";
+import { redactLogLine } from "../src/core/log-redaction";
 import { createLogger } from "../src/core/logger";
 import { makeInstanceStore } from "../src/modules/compute/instances/store";
 
@@ -90,14 +90,6 @@ describe("log redaction", () => {
     expect(persisted.match(/\[redacted\]/g)).toHaveLength(3);
     expect(events).toEqual([persisted]);
     expect(consoleLines).toEqual([persisted]);
-  });
-
-  test("redacts before bounding a retained tail", () => {
-    const maximumCharacters = `KEY=${syntheticSecret}`.length;
-    const input = `prefix OPENAI_API_KEY=${syntheticSecret}`;
-    expect(redactLogLine(input.slice(-maximumCharacters))).toContain(syntheticSecret);
-    expect(redactLogTail(input, maximumCharacters)).not.toContain(syntheticSecret);
-    expect(redactLogTail(input, maximumCharacters)).toContain("[redacted]");
   });
 
   test("uses the same redacted line for console, file, and event sinks", async () => {
