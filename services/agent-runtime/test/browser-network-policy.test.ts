@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, request } from "node:http";
 import { connect, type AddressInfo } from "node:net";
-import type { BrowserContext } from "playwright-core";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Deferred, Effect } from "effect";
+import { chromium, type BrowserContext } from "playwright-core";
 import { createBrowserNetworkPolicy, type BrowserDestination, type BrowserNetworkPolicy } from "../src/browser-host/network-policy";
 import { createBrowserProxy, type BrowserProxy } from "../src/browser-host/pinning-proxy";
-import { PlaywrightManager } from "../src/browser-host/playwright";
+import { findBrowserBinary, PlaywrightManager } from "../src/browser-host/playwright";
 
 const publicAddress = { address: "93.184.216.34", family: 4 } as const;
 const loopbackAddress = { address: "127.0.0.1", family: 4 } as const;
@@ -26,6 +30,18 @@ function fakeContext(mode: string, events: string[], route = async (): Promise<v
     close: async () => void events.push(`close:${mode}`), once: () => undefined,
     route, routeWebSocket: async () => undefined,
   } as unknown as BrowserContext;
+}
+function listen(server: ReturnType<typeof createServer>, port: number, host: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, () => resolve());
+  });
+}
+function close(server: ReturnType<typeof createServer>): Promise<void> {
+  if (!server.listening) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
 }
 describe("browser network policy", () => {
   test("classifies navigation and pins only uniformly allowed DNS answers", async () => {
@@ -140,4 +156,107 @@ describe("browser network policy", () => {
     await expect(routeManager.ensure()).rejects.toThrow("route failed");
     expect(routeEvents.join()).toBe("launch,route,close:context,close:public,close:loopback");
   });
+  test.skipIf(findBrowserBinary() === null)(
+    "keeps real Chromium redirects and subresources from reaching a rebound loopback target",
+    async () => {
+      const binary = findBrowserBinary();
+      if (!binary) throw new Error("Chromium disappeared after test selection");
+      const expected = new Set([
+        "/redirect-target",
+        "/image",
+        "/script.js",
+        "/frame",
+        "/fetch",
+        "/socket",
+        "/worker.js",
+      ]);
+      const observed = new Set<string>();
+      const complete = Deferred.makeUnsafe<void>();
+      let targetConnections = 0;
+      const target = createServer();
+      target.on("connection", (socket) => {
+        targetConnections += 1;
+        socket.destroy();
+      });
+      let targetOrigin = "";
+      const entry = createServer((incoming, response) => {
+        if (incoming.url === "/redirect") {
+          response.writeHead(302, { location: `${targetOrigin}/redirect-target` });
+          response.end();
+          return;
+        }
+        if (incoming.url === "/subresources") {
+          response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+          response.end(`<!doctype html><html><body>
+<img src="${targetOrigin}/image"><script src="${targetOrigin}/script.js"></script><iframe src="${targetOrigin}/frame"></iframe>
+<script>
+void fetch("${targetOrigin}/fetch").catch(() => undefined);
+const socket = new WebSocket("${targetOrigin.replace(/^http/u, "ws")}/socket");
+socket.addEventListener("error", () => socket.close());
+const workerSource = 'importScripts("${targetOrigin}/worker.js")';
+const worker = new Worker(URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" })));
+worker.addEventListener("error", () => worker.terminate());
+</script></body></html>`);
+          return;
+        }
+        response.writeHead(404);
+        response.end();
+      });
+      const profile = mkdtempSync(join(tmpdir(), "local-studio-browser-canary-"));
+      let manager: PlaywrightManager | null = null;
+      try {
+        await listen(target, 0, loopbackAddress.address);
+        const targetPort = (target.address() as AddressInfo).port;
+        targetOrigin = `http://rebind.test:${targetPort}`;
+        await listen(entry, 0, loopbackAddress.address);
+        const port = (entry.address() as AddressInfo).port;
+        const blocked = createBrowserNetworkPolicy(async () => [loopbackAddress]);
+        const policy: BrowserNetworkPolicy = {
+          navigation: blocked.navigation,
+          resolve: async (raw, mode) => {
+            const url = new URL(raw);
+            if (url.hostname === "rebind.test" && url.port === String(port)) {
+              return { address: loopbackAddress, port, url: url.toString() };
+            }
+            try {
+              return await blocked.resolve(raw, mode);
+            } finally {
+              if (expected.has(url.pathname)) {
+                observed.add(url.pathname);
+                if (observed.size === expected.size) {
+                  Effect.runSync(Deferred.succeed(complete, undefined));
+                }
+              }
+            }
+          },
+        };
+        manager = new PlaywrightManager(
+          (_directory, options) => chromium.launchPersistentContext(profile, options),
+          () => binary,
+          (mode) => createBrowserProxy(mode, policy),
+          policy,
+        );
+        const context = await manager.ensure("public");
+        const origin = `http://rebind.test:${port}`;
+        const redirectPage = await context.newPage();
+        await redirectPage
+          .goto(`${origin}/redirect`, { timeout: 5_000, waitUntil: "domcontentloaded" })
+          .catch(() => null);
+        await redirectPage.close();
+        const page = await context.newPage();
+        await page.goto(`${origin}/subresources`, {
+          timeout: 5_000,
+          waitUntil: "domcontentloaded",
+        });
+        await Effect.runPromise(Deferred.await(complete).pipe(Effect.timeout(15_000)));
+        expect([...observed].sort()).toEqual([...expected].sort());
+        expect(targetConnections).toBe(0);
+      } finally {
+        if (manager) await manager.stop();
+        await Promise.all([close(entry), close(target)]);
+        rmSync(profile, { force: true, recursive: true });
+      }
+    },
+    20_000,
+  );
 });

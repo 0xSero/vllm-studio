@@ -5,7 +5,11 @@ import path from "node:path";
 import { Effect, Semaphore } from "effect";
 import { chromium, type BrowserContext } from "playwright-core";
 import { getGlobalSingleton } from "../instances";
-import { browserNetworkPolicy, type BrowserNetworkMode } from "./network-policy";
+import {
+  browserNetworkPolicy,
+  type BrowserNetworkMode,
+  type BrowserNetworkPolicy,
+} from "./network-policy";
 import { createBrowserProxy, type BrowserProxy } from "./pinning-proxy";
 
 const LAUNCH_TIMEOUT_MS = 15_000;
@@ -87,6 +91,7 @@ export class PlaywrightManager {
     private readonly launchBrowser = launchPersistentBrowser,
     private readonly resolveBinary = findBrowserBinary,
     private readonly proxyFactory = createBrowserProxy,
+    private readonly networkPolicy: BrowserNetworkPolicy = browserNetworkPolicy,
   ) {}
 
   isAvailable(): boolean {
@@ -143,7 +148,7 @@ export class PlaywrightManager {
       this.context = context;
       await context.route(/^https?:\/\//u, async (route) => {
         try {
-          await browserNetworkPolicy.resolve(route.request().url(), mode);
+          await this.networkPolicy.resolve(route.request().url(), mode);
           await route.continue();
         } catch {
           await route.abort("blockedbyclient");
@@ -151,7 +156,7 @@ export class PlaywrightManager {
       });
       await context.routeWebSocket(/^wss?:\/\//u, async (route) => {
         try {
-          await browserNetworkPolicy.resolve(route.url(), mode);
+          await this.networkPolicy.resolve(route.url(), mode);
           route.connectToServer();
         } catch {
           await route.close({ code: 1008, reason: "Browser network policy blocked destination" });
