@@ -17,6 +17,7 @@ import {
 } from "./google-workspace-adapter";
 import { pluginArtifactDigest } from "./plugin-artifact-digest";
 import { pluginConnectorConfigurationDigest } from "./plugin-connector-identity";
+import { preparePluginExecutionSnapshot, verifyPluginExecutionSnapshot } from "./plugin-execution-snapshot";
 import { discoverPluginBundles, type PluginBundle, type PluginSource } from "./plugin-discovery";
 import {
   type PluginActivationResult,
@@ -110,15 +111,23 @@ async function containedRealPath(root: string, value: string): Promise<string> {
 }
 
 async function resolvedCommand(root: string, command: string): Promise<string> {
-  if (path.isAbsolute(command)) return command;
+  if (["node", "nodejs"].includes(command) || command === path.basename(process.execPath)) return process.execPath;
+  if (path.isAbsolute(command)) {
+    const canonical = await realpath(command);
+    if (canonical === await realpath(process.execPath)) return process.execPath;
+    if (!isContained(await realpath(root), canonical)) throw new PluginRuntimeError(422, "Plugin executable path escapes its bundle");
+    return canonical;
+  }
   if (command.startsWith(".") || command.includes(path.sep)) {
     return containedRealPath(root, command);
   }
-  return command;
+  throw new PluginRuntimeError(422, "Plugin executable must be bundled");
 }
 
 async function resolvedArg(root: string, value: string): Promise<string> {
-  return value.startsWith(".") ? containedRealPath(root, value) : value;
+  return path.isAbsolute(value) || value.startsWith(".") || value.includes(path.sep)
+    ? containedRealPath(root, value)
+    : value;
 }
 
 function connectorId(pluginId: string, serverId: string): string {
@@ -160,13 +169,17 @@ async function resolvedServer(
 
   if ("command" in server) {
     const root = await realpath(bundle.rootDir);
-    const args = await Promise.all((server.args ?? []).map((value) => resolvedArg(root, value)));
+    const command = await resolvedCommand(root, server.command);
+    const values = server.args ?? [];
+    const entryIndex = command === process.execPath ? values.findIndex((value) => !value.startsWith("-")) : -1;
+    if (command === process.execPath && entryIndex === -1) throw new PluginRuntimeError(422, "Plugin runtime entry point is missing");
+    const args = await Promise.all(values.map((value, index) => index === entryIndex ? containedRealPath(root, value) : resolvedArg(root, value)));
     return {
       connector: withPluginOrigin(bundle, serverId, {
         id,
         name,
         transport: "stdio",
-        command: await resolvedCommand(root, server.command),
+        command,
         args,
         env: { ...(server.env ?? {}) },
         cwd: await containedRealPath(root, server.cwd ?? "."),
@@ -464,10 +477,17 @@ function hasPluginGrant(connector: ConnectorConfig): boolean {
   return connector.enabled || Boolean(connector.allowTools?.length);
 }
 
-function samePluginIdentity(existing: ConnectorConfig, replacement: ConnectorConfig): boolean {
+async function samePluginIdentity(existing: ConnectorConfig, replacement: ConnectorConfig): Promise<boolean> {
   const current = existing.origin;
   const expected = replacement.origin;
   if (!current?.artifactDigest || !current.configurationDigest || !expected) return false;
+  if (existing.transport === "stdio") {
+    try {
+      await Effect.runPromise(verifyPluginExecutionSnapshot(existing));
+    } catch {
+      return false;
+    }
+  }
   return (
     current.kind === "plugin" &&
     expected.kind === "plugin" &&
@@ -535,19 +555,25 @@ async function reconcileEnabledPluginConnectors(
       errors.set(bundle.plugin.id, "Plugin identity could not be verified");
       continue;
     }
-    const changed = approved.flatMap((connector) => {
+    const changed = (await Promise.all(approved.map(async (connector) => {
       const replacement = servers.find(
         (server) => server.connector?.origin?.binding === connector.origin?.binding,
       )?.connector;
-      return replacement && samePluginIdentity(connector, replacement)
+      const snapshotReplacement: ConnectorConfig | undefined = replacement?.origin && connector.origin?.snapshotDigest
+        ? { ...replacement, origin: { ...replacement.origin, snapshotDigest: connector.origin.snapshotDigest, ...(connector.origin.runtimeDigest ? { runtimeDigest: connector.origin.runtimeDigest } : {}) }, command: connector.command, args: connector.args, cwd: connector.cwd }
+        : replacement ?? undefined;
+      const expected: ConnectorConfig | undefined = snapshotReplacement?.origin
+        ? { ...snapshotReplacement, origin: { ...snapshotReplacement.origin, configurationDigest: pluginConnectorConfigurationDigest(snapshotReplacement) } }
+        : snapshotReplacement;
+      return expected && await samePluginIdentity(connector, expected)
         ? []
         : [
             {
               existingId: connector.id,
-              connector: revokedConnector(connector, replacement ?? undefined),
+              connector: revokedConnector(connector, expected ?? undefined),
             },
           ];
-    });
+    }))).flat();
     if (changed.length === 0) continue;
     changed.forEach(({ existingId, connector }) => {
       closePooledConnection(existingId);
@@ -750,9 +776,11 @@ export function setPluginEnabled(
           new PluginRuntimeError(409, reason ?? "Plugin has no executable MCP server"),
         );
       }
-      changed = yield* enabledObserveConnectors(
-        servers.flatMap((server) => (server.connector ? [server.connector] : [])),
+      const prepared = yield* Effect.all(
+        servers.flatMap((server) => server.connector ? [preparePluginExecutionSnapshot(bundle, server.connector).pipe(Effect.mapError(() => new PluginRuntimeError(409, "Plugin execution snapshot failed")))] : []),
+        { concurrency: 1 },
       );
+      changed = yield* enabledObserveConnectors(prepared);
       yield* verifyBundleArtifact(bundle);
     } else {
       if (owned.length === 0) {

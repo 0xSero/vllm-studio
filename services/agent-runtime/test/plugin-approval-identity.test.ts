@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Effect } from "effect";
@@ -9,15 +9,31 @@ import { listConnectors, saveConnectors, toConnectorView } from "../src/connecto
 import { stdioChildEnvironment } from "../src/mcp-client";
 import { pluginConnectorConfigurationDigest } from "../src/plugin-connector-identity";
 import { discoverPluginBundles, type PluginSource } from "../src/plugin-discovery";
-import { refreshEnabledPluginConnectors } from "../src/plugin-runtime";
+import { preparePluginExecutionSnapshot, verifyPluginExecutionSnapshot } from "../src/plugin-execution-snapshot";
+import { refreshEnabledPluginConnectors, setPluginEnabled } from "../src/plugin-runtime";
 
 const originalDataDirectory = process.env.LOCAL_STUDIO_DATA_DIR;
 const roots: string[] = [];
 
+function restoreWritable(entryPath: string): void {
+  if (!existsSync(entryPath)) return;
+  const stats = lstatSync(entryPath);
+  if (stats.isSymbolicLink()) return;
+  if (stats.isDirectory()) {
+    chmodSync(entryPath, 0o700);
+    readdirSync(entryPath).forEach((name) => restoreWritable(path.join(entryPath, name)));
+  } else {
+    chmodSync(entryPath, 0o600);
+  }
+}
+
 afterEach(() => {
   if (originalDataDirectory === undefined) delete process.env.LOCAL_STUDIO_DATA_DIR;
   else process.env.LOCAL_STUDIO_DATA_DIR = originalDataDirectory;
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) {
+    restoreWritable(root);
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 function fixture(): { root: string; source: PluginSource[] } {
@@ -233,6 +249,55 @@ describe("plugin approval identity", () => {
     changes.forEach((changed) =>
       expect(pluginConnectorConfigurationDigest(changed)).not.toBe(digest),
     );
+  });
+
+  test("rejects an interpreter entry point outside the plugin bundle", async () => {
+    const { root, source } = fixture();
+    const outside = path.join(path.dirname(root), "outside.js");
+    writeFileSync(outside, "process.exit(0)");
+    writeFileSync(
+      path.join(root, "mcp.json"),
+      JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: [outside], cwd: "." } } }),
+    );
+    await expect(Effect.runPromise(setPluginEnabled("fixture", true, source))).rejects.toThrow(/escapes its bundle/);
+  });
+
+  test("pins approved executable bytes in a hardened private snapshot", async () => {
+    const { root, source } = fixture();
+    chmodSync(path.join(root, "server.js"), 0o755);
+    const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
+    if (!bundle) throw new Error("fixture plugin was not discovered");
+    const connector = await approvedConnector(root, source);
+    const prepared = await Effect.runPromise(preparePluginExecutionSnapshot(bundle, { ...connector, command: realpathSync(path.join(root, "server.js")), args: [] }));
+    expect(prepared.command).not.toBe(realpathSync(path.join(root, "server.js")));
+    expect(readFileSync(prepared.command ?? "", "utf8")).toBe("process.exit(1)");
+    writeFileSync(path.join(root, "server.js"), "process.exit(0)");
+    await Effect.runPromise(verifyPluginExecutionSnapshot(prepared));
+    expect(readFileSync(prepared.command ?? "", "utf8")).toBe("process.exit(1)");
+    chmodSync(prepared.command ?? "", 0o700);
+    await expect(Effect.runPromise(verifyPluginExecutionSnapshot(prepared))).rejects.toThrow(/writable/);
+  });
+
+  test("preserves an unchanged approval only while its snapshot verifies", async () => {
+    const { root, source } = fixture();
+    chmodSync(path.join(root, "server.js"), 0o755);
+    const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
+    if (!bundle) throw new Error("fixture plugin was not discovered");
+    const connector = await approvedConnector(root, source);
+    const prepared = await Effect.runPromise(preparePluginExecutionSnapshot(bundle, connector));
+    await saveConnectors([prepared]);
+    await Effect.runPromise(refreshEnabledPluginConnectors(source));
+    expect((await listConnectors())[0]).toMatchObject({ enabled: true, allowTools: ["read"] });
+  });
+
+  test("refuses to snapshot bytes changed after discovery", async () => {
+    const { root, source } = fixture();
+    chmodSync(path.join(root, "server.js"), 0o755);
+    const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
+    if (!bundle) throw new Error("fixture plugin was not discovered");
+    const connector = await approvedConnector(root, source);
+    writeFileSync(path.join(root, "server.js"), "process.exit(0)");
+    await expect(Effect.runPromise(preparePluginExecutionSnapshot(bundle, { ...connector, command: realpathSync(path.join(root, "server.js")), args: [] }))).rejects.toThrow(/changed while snapshotting/);
   });
 });
 
