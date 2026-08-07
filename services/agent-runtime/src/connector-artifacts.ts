@@ -1032,3 +1032,148 @@ export function installGitHubConnectorArtifact(
       }),
     );
 }
+
+function exactValues(left: readonly string[] | undefined, right: readonly string[]): boolean {
+  return left?.length === right.length && right.every((value, index) => left[index] === value);
+}
+
+function allowedEnvironment(env: Readonly<Record<string, string>> | undefined): boolean {
+  return !env || Object.keys(env).every((key) => key === GITHUB_TOKEN_KEY);
+}
+
+function artifactBinding(selected: GitHubMcpArtifact): string {
+  return `sha256:${selected.executableSha256}`;
+}
+
+export function githubMcpConnectorConfiguration(
+  input: { env?: Readonly<Record<string, string>>; enabled?: boolean } = {},
+  dependencies: GitHubMcpArtifactDependencies = {},
+): ConnectorConfig {
+  const selected = selectedArtifact(dependencies);
+  if (!selected || !allowedEnvironment(input.env)) {
+    throw new Error(
+      selected ? "GitHub connector environment is invalid" : "GitHub connector is unavailable",
+    );
+  }
+  const dataDir = selectedDataDir(dependencies);
+  const command = path.join(versionRoot(dataDir, selected), selected.executableName);
+  return {
+    id: "github",
+    name: "GitHub",
+    transport: "stdio",
+    command,
+    args: [...GITHUB_MCP_ARGS],
+    ...(input.env ? { env: { ...input.env } } : {}),
+    allowTools: [...GITHUB_MCP_TOOLS],
+    origin: {
+      kind: "catalog",
+      id: "github",
+      version: selected.version,
+      binding: artifactBinding(selected),
+    },
+    enabled: input.enabled ?? false,
+  };
+}
+
+export function isManagedGitHubConnector(connector: ConnectorConfig): boolean {
+  return connector.origin?.kind === "catalog" && connector.origin.id === "github";
+}
+
+export function managedGitHubConnectorMatches(
+  connector: ConnectorConfig,
+  dependencies: GitHubMcpArtifactDependencies = {},
+): boolean {
+  const selected = selectedArtifact(dependencies);
+  if (!selected) return false;
+  let expected: ConnectorConfig;
+  try {
+    expected = githubMcpConnectorConfiguration(
+      { env: connector.env, enabled: connector.enabled },
+      dependencies,
+    );
+  } catch {
+    return false;
+  }
+  return (
+    connector.id === expected.id &&
+    connector.name === expected.name &&
+    connector.transport === expected.transport &&
+    connector.command === expected.command &&
+    exactValues(connector.args, GITHUB_MCP_ARGS) &&
+    exactValues(connector.allowTools, GITHUB_MCP_TOOLS) &&
+    allowedEnvironment(connector.env) &&
+    !connector.cwd &&
+    !connector.url &&
+    !connector.headers &&
+    !connector.auth &&
+    connector.origin?.kind === "catalog" &&
+    connector.origin.id === "github" &&
+    connector.origin.version === selected.version &&
+    connector.origin.binding === artifactBinding(selected)
+  );
+}
+
+function exactLegacyGitHubConnector(connector: ConnectorConfig): boolean {
+  return (
+    connector.id === "github" &&
+    connector.name === "GitHub" &&
+    connector.transport === "stdio" &&
+    connector.command === "npx" &&
+    exactValues(connector.args, ["-y", "@modelcontextprotocol/server-github"]) &&
+    allowedEnvironment(connector.env) &&
+    connector.allowTools === undefined &&
+    !connector.cwd &&
+    !connector.url &&
+    !connector.headers &&
+    !connector.auth &&
+    !connector.origin
+  );
+}
+
+export function migrateLegacyGitHubConnector(
+  connector: ConnectorConfig,
+  dependencies: GitHubMcpArtifactDependencies = {},
+): { connector: ConnectorConfig; migrated: boolean } {
+  if (!exactLegacyGitHubConnector(connector)) return { connector, migrated: false };
+  return {
+    connector: githubMcpConnectorConfiguration(
+      { env: connector.env, enabled: false },
+      dependencies,
+    ),
+    migrated: true,
+  };
+}
+
+export function assertGitHubConnectorReady(
+  connector: ConnectorConfig,
+  dependencies: GitHubMcpArtifactDependencies = {},
+): Effect.Effect<void, GitHubConnectorArtifactError> {
+  if (!managedGitHubConnectorMatches(connector, dependencies)) {
+    return Effect.fail(
+      new GitHubConnectorArtifactError(409, "GitHub connector configuration is invalid"),
+    );
+  }
+  return Effect.tryPromise({
+    try: async () => {
+      const selected = selectedArtifact(dependencies);
+      if (!selected) throw new Error("unsupported");
+      const platform = dependencies.platform ?? process.platform;
+      const dataDir = selectedDataDir(dependencies);
+      const state = await securedInstalledState(
+        selected,
+        dataDir,
+        platform,
+        windowsSecurity(dependencies, platform),
+      );
+      if (state !== "installed") {
+        throw new GitHubConnectorArtifactError(409, "GitHub MCP integrity check failed");
+      }
+    },
+    catch: (error) =>
+      error instanceof GitHubConnectorArtifactError
+        ? error
+        : new GitHubConnectorArtifactError(409, "GitHub MCP integrity check failed", {
+            cause: error,
+          }),
+  });
+}
