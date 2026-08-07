@@ -415,6 +415,26 @@ export class BrowserHost<RawPage = Page> {
     }
   }
 
+  private async withExistingSession<A>(
+    sessionKey: BrowserSessionKey,
+    task: (session: BrowserSessionHost<RawPage>) => Promise<A>,
+  ): Promise<A | null> {
+    const key = decodeBrowserSessionKey(sessionKey);
+    const record = await this.withPermit(async () => {
+      const existing = this.sessions.get(key);
+      if (!existing || existing.releaseRequested) return null;
+      existing.inFlight += 1;
+      existing.lastAccess = this.now();
+      return existing;
+    });
+    if (!record) return null;
+    try {
+      return await task(record.host);
+    } finally {
+      await this.finish(record);
+    }
+  }
+
   private withFallbackPermit<A>(
     record: SessionRecord<RawPage>,
     task: () => Promise<A>,
@@ -438,6 +458,10 @@ export class BrowserHost<RawPage = Page> {
 
   getState(sessionKey: BrowserSessionKey, pageId?: string): Promise<PageState> {
     return this.withSession(sessionKey, (session) => session.getState(pageId));
+  }
+
+  peekState(sessionKey: BrowserSessionKey): Promise<PageState | null> {
+    return this.withExistingSession(sessionKey, (session) => session.peekState());
   }
 
   goBack(sessionKey: BrowserSessionKey, pageId?: string): Promise<void> {
