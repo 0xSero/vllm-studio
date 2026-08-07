@@ -150,6 +150,7 @@ function withPluginOrigin(
       version: bundle.plugin.version,
       binding: serverId,
       artifactDigest: bundle.artifactDigest,
+      sourceDigest: bundle.sourceDigest,
       configurationDigest: pluginConnectorConfigurationDigest(connector),
     },
   };
@@ -480,7 +481,7 @@ function hasPluginGrant(connector: ConnectorConfig): boolean {
 async function samePluginIdentity(existing: ConnectorConfig, replacement: ConnectorConfig): Promise<boolean> {
   const current = existing.origin;
   const expected = replacement.origin;
-  if (!current?.artifactDigest || !current.configurationDigest || !expected) return false;
+  if (!current?.artifactDigest || !current.configurationDigest || !current.sourceDigest || !expected) return false;
   if (existing.transport === "stdio") {
     try {
       await Effect.runPromise(verifyPluginExecutionSnapshot(existing));
@@ -495,6 +496,7 @@ async function samePluginIdentity(existing: ConnectorConfig, replacement: Connec
     current.version === expected.version &&
     current.binding === expected.binding &&
     current.artifactDigest === expected.artifactDigest &&
+    current.sourceDigest === expected.sourceDigest &&
     current.configurationDigest === expected.configurationDigest &&
     current.configurationDigest === pluginConnectorConfigurationDigest(existing) &&
     expected.configurationDigest === pluginConnectorConfigurationDigest(replacement)
@@ -601,9 +603,7 @@ export function refreshEnabledPluginConnectors(
   sources?: PluginSource[],
 ): Effect.Effect<void, PluginRuntimeError> {
   return Effect.gen(function* () {
-    const bundles = yield* discoverPluginBundles(sources).pipe(
-      Effect.mapError((error) => new PluginRuntimeError(500, error.message)),
-    );
+    const bundles = yield* discoveredBundlesEffect(sources);
     yield* connectorReconciliationEffect(bundles);
   });
 }
@@ -612,6 +612,39 @@ function connectorsEffect(): Effect.Effect<ConnectorConfig[], PluginRuntimeError
   return Effect.tryPromise({
     try: listConnectors,
     catch: () => new PluginRuntimeError(500, "Failed to read connector state"),
+  });
+}
+
+function discoveredBundlesEffect(
+  sources?: PluginSource[],
+): Effect.Effect<PluginBundle[], PluginRuntimeError> {
+  return Effect.matchEffect(discoverPluginBundles(sources), {
+    onFailure: (error) =>
+      Effect.tryPromise({
+        try: async () => {
+          if (!error.sourceDigest) return;
+          const connectors = await listConnectors();
+          const affected = connectors.filter(
+            (connector) =>
+              connector.origin?.kind === "plugin" &&
+              connector.origin.sourceDigest === error.sourceDigest &&
+              hasPluginGrant(connector),
+          );
+          affected.forEach((connector) => closePooledConnection(connector.id));
+          if (affected.length > 0) {
+            await replaceConnectorIdentities(
+              affected.map((connector) => ({
+                existingId: connector.id,
+                connector: revokedConnector(connector),
+              })),
+            );
+          }
+        },
+        catch: () => new PluginRuntimeError(500, "Plugin discovery revocation failed"),
+      }).pipe(
+        Effect.flatMap(() => Effect.fail(new PluginRuntimeError(500, error.message))),
+      ),
+    onSuccess: Effect.succeed,
   });
 }
 
@@ -627,9 +660,7 @@ export function listPluginRuntimeViews(
   sources?: PluginSource[],
 ): Effect.Effect<PluginRuntimeView[], PluginRuntimeError> {
   return Effect.gen(function* () {
-    const bundles = yield* discoverPluginBundles(sources).pipe(
-      Effect.mapError((error) => new PluginRuntimeError(500, error.message)),
-    );
+    const bundles = yield* discoveredBundlesEffect(sources);
     const reconciliation = yield* connectorReconciliationEffect(bundles);
     const account = yield* googleAccountEffect();
     return yield* Effect.all(
@@ -724,9 +755,7 @@ export function setPluginEnabled(
   sources?: PluginSource[],
 ): Effect.Effect<PluginActivationResult, PluginRuntimeError> {
   return Effect.gen(function* () {
-    const bundles = yield* discoverPluginBundles(sources).pipe(
-      Effect.mapError((error) => new PluginRuntimeError(500, error.message)),
-    );
+    const bundles = yield* discoveredBundlesEffect(sources);
     const bundle = bundles.find((candidate) => candidate.plugin.id === pluginId);
     if (!bundle) return yield* Effect.fail(new PluginRuntimeError(404, "Plugin not found"));
     const current = yield* connectorsEffect();

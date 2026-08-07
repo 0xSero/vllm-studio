@@ -55,6 +55,7 @@ export type PluginBundle = {
   manifest: PluginManifest;
   rootDir: string;
   artifactDigest: string;
+  sourceDigest: string;
   trusted: boolean;
 };
 
@@ -63,7 +64,14 @@ type DiscoveredPlugin = {
   priority: number;
 };
 
-export class PluginDiscoveryError extends Error {}
+export class PluginDiscoveryError extends Error {
+  constructor(message: string, readonly sourceDigest?: string) {
+    super(message);
+  }
+}
+
+const pluginSourceDigest = (canonicalDirectory: string): string =>
+  `sha256:${createHash("sha256").update(canonicalDirectory).digest("hex")}`;
 
 export function defaultPluginSources(): PluginSource[] {
   const home = homedir();
@@ -111,7 +119,9 @@ async function manifestInDirectory(
   dir: string,
   source: PluginSource,
 ): Promise<DiscoveredPlugin | null> {
+  let sourceDigest: string | undefined;
   try {
+    sourceDigest = pluginSourceDigest(await realpath(dir));
     const raw = await readFile(path.join(dir, ".codex-plugin", "plugin.json"), "utf8");
     const manifest = Schema.decodeUnknownSync(PluginManifestSchema)(JSON.parse(raw));
     const bundled = resolveBundledPluginDirectory();
@@ -125,6 +135,7 @@ async function manifestInDirectory(
         manifest,
         rootDir: dir,
         artifactDigest,
+        sourceDigest,
         trusted,
       },
       priority: source.priority,
@@ -134,9 +145,9 @@ async function manifestInDirectory(
       return null;
     }
     if (error instanceof PluginArtifactDigestError) {
-      throw new PluginDiscoveryError(error.message);
+      throw new PluginDiscoveryError(error.message, sourceDigest);
     }
-    throw new PluginDiscoveryError(`Invalid plugin artifact in ${source.label}`);
+    throw new PluginDiscoveryError(`Invalid plugin artifact in ${source.label}`, sourceDigest);
   }
 }
 
@@ -203,7 +214,10 @@ export function discoverPluginBundles(
         .map(({ bundle }) => bundle)
         .sort((left, right) => left.plugin.displayName.localeCompare(right.plugin.displayName));
     },
-    catch: (error) => new PluginDiscoveryError(String(error)),
+    catch: (error) =>
+      error instanceof PluginDiscoveryError
+        ? error
+        : new PluginDiscoveryError(String(error)),
   });
 }
 
@@ -215,3 +229,4 @@ export function discoverPlugins(
     Effect.map((bundles) => bundles.map(({ plugin }) => plugin)),
   );
 }
+import { createHash } from "node:crypto";

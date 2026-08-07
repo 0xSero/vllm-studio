@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Effect } from "effect";
@@ -90,6 +90,7 @@ async function approvedConnector(root: string, source: PluginSource[]): Promise<
       version: "1.0.0",
       binding: "fixture",
       artifactDigest: bundle.artifactDigest,
+      sourceDigest: bundle.sourceDigest,
       configurationDigest: pluginConnectorConfigurationDigest(connector),
     },
   };
@@ -175,6 +176,15 @@ describe("plugin approval identity", () => {
     rmSync(root, { recursive: true });
     await Effect.runPromise(refreshEnabledPluginConnectors(source));
     expect((await listConnectors())[0]?.enabled).toBe(false);
+  });
+
+  test("revokes only the grant owned by an artifact that discovery can no longer read", async () => {
+    const { root, source } = fixture();
+    const approved = await approvedConnector(root, source);
+    await saveConnectors([approved]);
+    symlinkSync("missing", path.join(root, "dangling"));
+    await expect(Effect.runPromise(refreshEnabledPluginConnectors(source))).rejects.toThrow();
+    expect((await listConnectors())[0]).toMatchObject({ enabled: false, allowTools: [] });
   });
 
   test("removes the granted record when its persisted connector id drifts", async () => {

@@ -11,6 +11,7 @@ const ConnectorOriginSchema = Schema.Struct({
   configurationDigest: Schema.optional(Schema.String),
   snapshotDigest: Schema.optional(Schema.String),
   runtimeDigest: Schema.optional(Schema.String),
+  sourceDigest: Schema.optional(Schema.String),
 });
 
 const ConnectorAuthReferenceSchema = Schema.Struct({
