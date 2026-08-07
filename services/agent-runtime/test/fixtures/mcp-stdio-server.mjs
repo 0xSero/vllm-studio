@@ -72,6 +72,16 @@ const listTools = (message) => {
     process.stdout.write(`${payload}${" ".repeat(limit - Buffer.byteLength(payload) - 1)}\n`);
     return;
   }
+  if (mode === "near-limit-split-next-frame") {
+    const frame = Buffer.from(`${payload}${" ".repeat(limit - Buffer.byteLength(payload) - 1)}\n`);
+    const next = Buffer.from(
+      `${JSON.stringify({ jsonrpc: "2.0", method: "notifications/tools/list_changed" })}\n`,
+    );
+    const splitAt = frame.length - 1_024;
+    process.stdout.write(frame.subarray(0, splitAt));
+    setTimeout(() => process.stdout.write(Buffer.concat([frame.subarray(splitAt), next])), 5);
+    return;
+  }
   if (mode === "multiple-frames") {
     process.stdout.write(
       `${JSON.stringify({ jsonrpc: "2.0", method: "notifications/tools/list_changed" })}\n${payload}\n`,

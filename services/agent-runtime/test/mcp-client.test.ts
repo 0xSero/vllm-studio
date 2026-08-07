@@ -78,6 +78,14 @@ describe("bounded MCP stdio transport", () => {
     expect(multiple.map((tool) => tool.name)).toEqual(["multiple-frames"]);
   });
 
+  test("bounds each split frame without rejecting the next frame in its final chunk", async () => {
+    const connection = connectionFor("near-limit-split-next-frame");
+    const first = await within(connection.listTools(), 10_000);
+    const second = await within(connection.listTools(), 10_000);
+    expect(first.map((tool) => tool.name)).toEqual(["near-limit-split-next-frame"]);
+    expect(second.map((tool) => tool.name)).toEqual(["near-limit-split-next-frame"]);
+  });
+
   test("rejects a no-newline frame beyond four MiB with a typed terminal error", async () => {
     const error = await rejected(connectionFor("overflow-initialize").listTools());
     expect(error).toBeInstanceOf(McpProtocolError);
