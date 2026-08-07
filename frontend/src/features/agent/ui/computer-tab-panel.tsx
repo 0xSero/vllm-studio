@@ -156,9 +156,14 @@ function SideChatTab({
   );
 }
 
-function BrowserTab({ onNavigateBrowser, tools }: ComputerTabPanelProps) {
+function BrowserTab({
+  focusedSession,
+  onNavigateBrowser,
+  tools,
+}: ComputerTabPanelProps) {
   return (
     <LazyAgentBrowser
+      sessionId={focusedSession?.id ?? null}
       url={tools.browser.url}
       inputValue={tools.browser.input}
       onInputChange={tools.setBrowserInput}

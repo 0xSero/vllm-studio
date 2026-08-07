@@ -2,6 +2,7 @@
 
 import { useCallback, useState, type FormEvent } from "react";
 import { ArrowLeftIcon, ArrowRightIcon, CloseIcon, ReloadIcon } from "@/ui/icons";
+import { browserSessionRequest } from "@/features/agent/browser/session-request";
 import { DEFAULT_BROWSER_URL } from "@/features/agent/tools/persistence";
 import {
   ScreencastSurface,
@@ -17,6 +18,7 @@ import { LocalhostStartPage } from "@/features/agent/ui/agent-browser-start-page
 import { ReadingView, type ReadablePage } from "@/features/agent/ui/agent-browser-reading-view";
 
 type Props = {
+  sessionId: string | null;
   url: string;
   inputValue: string;
   onInputChange: (value: string) => void;
@@ -28,6 +30,7 @@ type Props = {
 };
 
 export function AgentBrowser({
+  sessionId,
   url,
   inputValue,
   onInputChange,
@@ -92,12 +95,20 @@ export function AgentBrowser({
   );
   useBrowserLiveStateSync({
     enabled: showStartPage && visible,
+    sessionId,
     onLiveUrl: adoptLiveUrl,
   });
 
-  const postLiveVerb = useCallback((verb: "back" | "forward" | "reload") => {
-    void fetch(`/api/agent/browser/${verb}`, { method: "POST" }).catch(() => undefined);
-  }, []);
+  const postLiveVerb = useCallback(
+    (verb: "back" | "forward" | "reload") => {
+      const request = browserSessionRequest(sessionId, verb, {
+        method: "POST",
+      });
+      if (!request) return;
+      void fetch(request.input, request.init).catch(() => undefined);
+    },
+    [sessionId],
+  );
   const handleReload = () => {
     if (showStartPage) {
       setLocalSites([]);
@@ -236,6 +247,7 @@ export function AgentBrowser({
           />
         ) : (
           <ScreencastSurface
+            sessionId={sessionId}
             url={url}
             visible={visible}
             onState={(state) => {

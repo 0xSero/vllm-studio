@@ -1,4 +1,5 @@
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { browserSessionRequest } from "@/features/agent/browser/session-request";
 
 export type LocalhostSite = {
   port: number;
@@ -72,17 +73,26 @@ const LIVE_STATE_POLL_MS = 2_000;
 
 export function useBrowserLiveStateSync({
   enabled,
+  sessionId,
   onLiveUrl,
 }: {
   enabled: boolean;
+  sessionId: string | null;
   onLiveUrl: (url: string) => void;
 }): void {
   useMountSubscription(() => {
-    if (!enabled) return;
+    if (!enabled || !sessionId) return;
     let cancelled = false;
+    const controller = new AbortController();
     const poll = async () => {
       try {
-        const response = await fetch("/api/agent/browser/state", { cache: "no-store" });
+        const request = browserSessionRequest(sessionId, "state", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!request) return;
+        const response = await fetch(request.input, request.init);
+        if (!response.ok) return;
         const payload = (await response.json()) as { ok?: boolean; data?: { url?: string } };
         const liveUrl = payload.ok ? (payload.data?.url ?? "") : "";
         if (!cancelled && liveUrl && liveUrl !== "about:blank") onLiveUrl(liveUrl);
@@ -94,7 +104,8 @@ export function useBrowserLiveStateSync({
     const timer = setInterval(() => void poll(), LIVE_STATE_POLL_MS);
     return () => {
       cancelled = true;
+      controller.abort();
       clearInterval(timer);
     };
-  }, [enabled, onLiveUrl]);
+  }, [enabled, onLiveUrl, sessionId]);
 }
