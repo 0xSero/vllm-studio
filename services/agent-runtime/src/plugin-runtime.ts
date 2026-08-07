@@ -82,7 +82,12 @@ const EXECUTABLE_ENVIRONMENT_KEYS = new Set([
 
 function pluginEnvironment(input: Record<string, string>): Record<string, string> {
   for (const key of Object.keys(input)) {
-    if (EXECUTABLE_ENVIRONMENT_KEYS.has(key.toUpperCase())) {
+    const normalized = key.toUpperCase();
+    if (
+      EXECUTABLE_ENVIRONMENT_KEYS.has(normalized) ||
+      normalized.startsWith("LD_") ||
+      normalized.startsWith("DYLD_")
+    ) {
       throw new PluginRuntimeError(422, "Plugin environment may not load external code");
     }
   }
@@ -502,6 +507,15 @@ function hasPluginGrant(connector: ConnectorConfig): boolean {
   return connector.enabled || Boolean(connector.allowTools?.length);
 }
 
+function closePluginConnectorPools(connector: ConnectorConfig): void {
+  closePooledConnection(connector.id);
+  if (connector.origin?.kind === "plugin") {
+    closePooledConnection(
+      connectorId(connector.origin.id, connector.origin.binding ?? connector.origin.id),
+    );
+  }
+}
+
 async function samePluginIdentity(existing: ConnectorConfig, replacement: ConnectorConfig): Promise<boolean> {
   const current = existing.origin;
   const expected = replacement.origin;
@@ -551,7 +565,7 @@ async function reconcileEnabledPluginConnectors(
       hasPluginGrant(connector),
   );
   if (unavailable.length > 0) {
-    unavailable.forEach((connector) => closePooledConnection(connector.id));
+    unavailable.forEach(closePluginConnectorPools);
     connectors = await replaceConnectorIdentities(
       unavailable.map((connector) => ({
         existingId: connector.id,
@@ -571,7 +585,7 @@ async function reconcileEnabledPluginConnectors(
     try {
       servers = await Effect.runPromise(loadPluginServers(bundle));
     } catch {
-      approved.forEach((connector) => closePooledConnection(connector.id));
+      approved.forEach(closePluginConnectorPools);
       connectors = await replaceConnectorIdentities(
         approved.map((connector) => ({
           existingId: connector.id,
@@ -600,7 +614,7 @@ async function reconcileEnabledPluginConnectors(
     if (changed.length === 0) continue;
     changed.forEach(({ existingId, connector }) => {
       closePooledConnection(existingId);
-      closePooledConnection(connector.id);
+      closePluginConnectorPools(connector);
     });
     connectors = await replaceConnectorIdentities(changed);
     reapprovalRequired.add(bundle.plugin.id);
@@ -653,12 +667,7 @@ function discoveredBundlesEffect(
               sourceDigests.has(connector.origin.sourceDigest) &&
               hasPluginGrant(connector),
           );
-          affected.forEach((connector) => {
-            closePooledConnection(connector.id);
-            closePooledConnection(
-              connectorId(connector.origin?.id ?? "", connector.origin?.binding ?? ""),
-            );
-          });
+          affected.forEach(closePluginConnectorPools);
           if (affected.length > 0) {
             await replaceConnectorIdentities(
               affected.map((connector) => ({
@@ -851,7 +860,7 @@ export function setPluginEnabled(
     const replacements = pluginIdentityReplacements(owned, changed, enabled);
     replacements.forEach(({ existingId, connector }) => {
       closePooledConnection(existingId);
-      closePooledConnection(connector.id);
+      closePluginConnectorPools(connector);
     });
     yield* Effect.tryPromise({
       try: () => replaceConnectorIdentities(replacements),

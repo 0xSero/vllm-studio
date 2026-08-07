@@ -272,6 +272,26 @@ describe("plugin approval identity", () => {
     await expect(Effect.runPromise(setPluginEnabled("fixture", true, source))).rejects.toThrow(/escapes its bundle/);
   });
 
+  test("rejects plugin environment variables that load external code", async () => {
+    const { root, source } = fixture();
+    writeFileSync(
+      path.join(root, "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          fixture: {
+            command: process.execPath,
+            args: ["./server.js"],
+            env: { LD_AUDIT: "/tmp/external.so" },
+            cwd: ".",
+          },
+        },
+      }),
+    );
+    await expect(Effect.runPromise(setPluginEnabled("fixture", true, source))).rejects.toThrow(
+      /may not load external code/,
+    );
+  });
+
   test("pins approved executable bytes in a hardened private snapshot", async () => {
     const { root, source } = fixture();
     chmodSync(path.join(root, "server.js"), 0o755);
