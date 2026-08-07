@@ -191,7 +191,9 @@ export function replaceConnectorIdentities(
     const removedIds = new Set(
       replacements.flatMap(({ existingId, connector }) => [existingId, connector.id]),
     );
-    const connectors = (await listConnectors()).filter((entry) => !removedIds.has(entry.id));
+    const connectors = (await readAndMigrateConnectors()).filter(
+      (entry) => !removedIds.has(entry.id),
+    );
     connectors.push(...replacements.map(({ connector }) => connector));
     await writeConnectors(connectors);
     return connectors;

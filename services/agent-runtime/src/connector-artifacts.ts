@@ -89,6 +89,8 @@ export type GitHubMcpVerificationOptions = {
   prefixArgs?: readonly string[];
   expectedTools?: readonly string[];
   timeoutMs?: number;
+  closeTimeoutMs?: number;
+  connect?: typeof connectMcp;
 };
 
 const artifact = (input: Omit<GitHubMcpArtifact, "version" | "entries">): GitHubMcpArtifact => ({
@@ -174,6 +176,7 @@ const MAX_EXPANDED_BYTES = 32 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES = 16;
 const INSTALL_TIMEOUT_MS = 60_000;
 const VERIFY_TIMEOUT_MS = 10_000;
+const VERIFY_CLOSE_TIMEOUT_MS = 6_000;
 const PRIVATE_DIRECTORY_MODE = 0o700;
 const PRIVATE_FILE_MODE = 0o600;
 const EXECUTABLE_MODE = 0o500;
@@ -357,32 +360,36 @@ const POWERSHELL_ACL_SCRIPT = [
   "[Console]::Out.Write('{\"ok\":true}')",
 ].join(";");
 
-function trustedPowerShellPath(): string {
-  const systemRoot = process.env.SystemRoot?.trim() || "C:\\Windows";
-  const resolvedRoot = path.win32.resolve(systemRoot);
-  if (
-    !path.win32.isAbsolute(resolvedRoot) ||
-    path.win32.dirname(resolvedRoot).toLowerCase() !==
-      path.win32.parse(resolvedRoot).root.toLowerCase()
-  ) {
-    throw new Error("Windows ACL verifier is unavailable");
-  }
-  const candidate = path.win32.join(
-    resolvedRoot,
-    "System32",
-    "WindowsPowerShell",
-    "v1.0",
-    "powershell.exe",
-  );
+export const WINDOWS_POWERSHELL_PATH =
+  "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+
+type WindowsPowerShellIdentity = {
+  readonly file: boolean;
+  readonly symbolicLink: boolean;
+  readonly realPath: string;
+};
+
+const inspectWindowsPowerShell = (candidate: string): WindowsPowerShellIdentity => {
   const info = lstatSync(candidate);
+  return {
+    file: info.isFile(),
+    symbolicLink: info.isSymbolicLink(),
+    realPath: realpathSync(candidate),
+  };
+};
+
+export function trustedPowerShellPath(
+  inspect: (candidate: string) => WindowsPowerShellIdentity = inspectWindowsPowerShell,
+): string {
+  const identity = inspect(WINDOWS_POWERSHELL_PATH);
   if (
-    info.isSymbolicLink() ||
-    !info.isFile() ||
-    realpathSync(candidate).toLowerCase() !== candidate.toLowerCase()
+    identity.symbolicLink ||
+    !identity.file ||
+    identity.realPath.toLowerCase() !== WINDOWS_POWERSHELL_PATH.toLowerCase()
   ) {
     throw new Error("Windows ACL verifier is unavailable");
   }
-  return candidate;
+  return WINDOWS_POWERSHELL_PATH;
 }
 
 function invokeWindowsAcl(action: "protect" | "verify", entry: string, kind: "directory" | "file") {
@@ -390,9 +397,8 @@ function invokeWindowsAcl(action: "protect" | "verify", entry: string, kind: "di
     let output = "";
     let settled = false;
     const environment = Object.fromEntries([
-      ...["SystemRoot", "WINDIR", "TEMP", "TMP"].flatMap((key) =>
-        process.env[key] === undefined ? [] : [[key, process.env[key]]],
-      ),
+      ["SystemRoot", "C:\\Windows"],
+      ["WINDIR", "C:\\Windows"],
       ["LOCAL_STUDIO_ACL_ACTION", action],
       ["LOCAL_STUDIO_ACL_KIND", kind],
       ["LOCAL_STUDIO_ACL_ENTRY", entry],
@@ -867,7 +873,7 @@ export function verifyGitHubMcpExecutable(
   const expected = [...(options.expectedTools ?? GITHUB_MCP_TOOLS)].sort();
   return Effect.acquireUseRelease(
     Effect.sync(() =>
-      connectMcp({
+      (options.connect ?? connectMcp)({
         transport: "stdio",
         command,
         args: [...(options.prefixArgs ?? []), ...GITHUB_MCP_ARGS],
@@ -897,7 +903,20 @@ export function verifyGitHubMcpExecutable(
               );
         }),
       ),
-    (connection) => Effect.sync(() => connection.close()),
+    (connection) =>
+      Effect.tryPromise({
+        try: () => connection.close(),
+        catch: () =>
+          new GitHubConnectorArtifactError(409, "GitHub MCP shutdown verification failed"),
+      }).pipe(
+        Effect.timeoutOrElse({
+          duration: options.closeTimeoutMs ?? VERIFY_CLOSE_TIMEOUT_MS,
+          orElse: () =>
+            Effect.fail(
+              new GitHubConnectorArtifactError(409, "GitHub MCP shutdown verification timed out"),
+            ),
+        }),
+      ),
   );
 }
 

@@ -507,13 +507,16 @@ function hasPluginGrant(connector: ConnectorConfig): boolean {
   return connector.enabled || Boolean(connector.allowTools?.length);
 }
 
-function closePluginConnectorPools(connector: ConnectorConfig): void {
-  closePooledConnection(connector.id);
+async function closePluginConnectorPools(connector: ConnectorConfig): Promise<void> {
+  const closures = [closePooledConnection(connector.id)];
   if (connector.origin?.kind === "plugin") {
-    closePooledConnection(
-      connectorId(connector.origin.id, connector.origin.binding ?? connector.origin.id),
+    closures.push(
+      closePooledConnection(
+        connectorId(connector.origin.id, connector.origin.binding ?? connector.origin.id),
+      ),
     );
   }
+  await Promise.all(closures);
 }
 
 async function samePluginIdentity(existing: ConnectorConfig, replacement: ConnectorConfig): Promise<boolean> {
@@ -565,7 +568,7 @@ async function reconcileEnabledPluginConnectors(
       hasPluginGrant(connector),
   );
   if (unavailable.length > 0) {
-    unavailable.forEach(closePluginConnectorPools);
+    await Promise.all(unavailable.map(closePluginConnectorPools));
     connectors = await replaceConnectorIdentities(
       unavailable.map((connector) => ({
         existingId: connector.id,
@@ -585,7 +588,7 @@ async function reconcileEnabledPluginConnectors(
     try {
       servers = await Effect.runPromise(loadPluginServers(bundle));
     } catch {
-      approved.forEach(closePluginConnectorPools);
+      await Promise.all(approved.map(closePluginConnectorPools));
       connectors = await replaceConnectorIdentities(
         approved.map((connector) => ({
           existingId: connector.id,
@@ -612,10 +615,11 @@ async function reconcileEnabledPluginConnectors(
           ];
     }))).flat();
     if (changed.length === 0) continue;
-    changed.forEach(({ existingId, connector }) => {
-      closePooledConnection(existingId);
-      closePluginConnectorPools(connector);
-    });
+    await Promise.all(
+      changed.map(({ existingId, connector }) =>
+        Promise.all([closePooledConnection(existingId), closePluginConnectorPools(connector)]),
+      ),
+    );
     connectors = await replaceConnectorIdentities(changed);
     reapprovalRequired.add(bundle.plugin.id);
   }
@@ -667,7 +671,7 @@ function discoveredBundlesEffect(
               sourceDigests.has(connector.origin.sourceDigest) &&
               hasPluginGrant(connector),
           );
-          affected.forEach(closePluginConnectorPools);
+          await Promise.all(affected.map(closePluginConnectorPools));
           if (affected.length > 0) {
             await replaceConnectorIdentities(
               affected.map((connector) => ({
@@ -858,10 +862,13 @@ export function setPluginEnabled(
       changed = owned.map((connector) => ({ ...connector, enabled: false }));
     }
     const replacements = pluginIdentityReplacements(owned, changed, enabled);
-    replacements.forEach(({ existingId, connector }) => {
-      closePooledConnection(existingId);
-      closePluginConnectorPools(connector);
-    });
+    yield* Effect.promise(() =>
+      Promise.all(
+        replacements.map(({ existingId, connector }) =>
+          Promise.all([closePooledConnection(existingId), closePluginConnectorPools(connector)]),
+        ),
+      ),
+    );
     yield* Effect.tryPromise({
       try: () => replaceConnectorIdentities(replacements),
       catch: (error) => new PluginRuntimeError(500, `Failed to save plugin state: ${error}`),

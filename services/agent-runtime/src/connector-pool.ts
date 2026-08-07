@@ -64,11 +64,11 @@ export async function getPooledConnection(connectorId: string): Promise<McpConne
   return connection;
 }
 
-export function closePooledConnection(connectorId: string): void {
+export async function closePooledConnection(connectorId: string): Promise<void> {
   const connection = pool.get(connectorId);
   if (!connection) return;
   pool.delete(connectorId);
-  connection.close();
+  await connection.close();
 }
 
 export async function listConnectorTools(connectorId: string): Promise<McpToolInfo[]> {
@@ -77,7 +77,7 @@ export async function listConnectorTools(connectorId: string): Promise<McpToolIn
     const connection = await getPooledConnection(connectorId);
     return allowedTools(connector, await connection.listTools());
   } catch (error) {
-    closePooledConnection(connectorId);
+    await closePooledConnection(connectorId);
     throw error;
   }
 }
@@ -92,7 +92,7 @@ export async function callConnectorTool(
   try {
     return await (await getPooledConnection(connectorId)).callTool(tool, args);
   } catch (error) {
-    closePooledConnection(connectorId);
+    await closePooledConnection(connectorId);
     throw error;
   }
 }
@@ -108,10 +108,12 @@ export async function probeConnector(
     }
     connection = connectMcp(toTarget(connector, signal));
     const tools = await connection.listTools();
+    await connection.close();
+    connection = null;
     return { ok: true, tools };
   } catch (error) {
     return { ok: false, tools: [], error: error instanceof Error ? error.message : String(error) };
   } finally {
-    connection?.close();
+    await connection?.close().catch(() => undefined);
   }
 }

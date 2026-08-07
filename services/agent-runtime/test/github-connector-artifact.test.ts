@@ -22,6 +22,7 @@ import {
   GITHUB_MCP_ARTIFACTS,
   GITHUB_MCP_TOOLS,
   GITHUB_MCP_VERSION,
+  WINDOWS_POWERSHELL_PATH,
   assertGitHubConnectorReady,
   getGitHubConnectorArtifactStatus,
   githubMcpConnectorConfiguration,
@@ -29,11 +30,13 @@ import {
   installGitHubConnectorArtifact,
   migrateLegacyGitHubConnector,
   resolvedGitHubMcpDataDir,
+  trustedPowerShellPath,
   verifyGitHubMcpExecutable,
   type GitHubMcpArtifact,
 } from "../src/connector-artifacts";
 import { probeConnector } from "../src/connector-pool";
 import { listConnectors } from "../src/connectors-service";
+import { connectMcp, type McpConnection } from "../src/mcp-client";
 
 type FixtureEntry = { name: string; bytes: Buffer; type?: number };
 type ArtifactFixture = { artifact: GitHubMcpArtifact; archive: Buffer; executable: Buffer };
@@ -183,6 +186,105 @@ async function installFixture(root: string, selected: ArtifactFixture) {
   );
 }
 
+const forbiddenAmbientKeys = [
+  "LOCAL_STUDIO_AMBIENT_SECRET",
+  "AWS_SECRET_ACCESS_KEY",
+  "NODE_OPTIONS",
+  "LD_PRELOAD",
+  "DYLD_INSERT_LIBRARIES",
+];
+const reviewedPosixEnvironmentKeys = [
+  "PATH",
+  "HOME",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "USER",
+  "LOGNAME",
+  "LANG",
+  "LANGUAGE",
+  "LC_ALL",
+  "LC_CTYPE",
+  "LC_MESSAGES",
+  "SHELL",
+  "TERM",
+  "GITHUB_PERSONAL_ACCESS_TOKEN",
+];
+const reviewedWindowsEnvironmentKeys = [
+  "PATH",
+  "PATHEXT",
+  "SYSTEMROOT",
+  "WINDIR",
+  "COMSPEC",
+  "TEMP",
+  "TMP",
+  "USERPROFILE",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "PROGRAMDATA",
+  "PROCESSOR_ARCHITECTURE",
+  "SYSTEMDRIVE",
+  "USERNAME",
+  "PROGRAMFILES",
+  "GITHUB_PERSONAL_ACCESS_TOKEN",
+];
+
+function exposeAmbientEnvironment(): () => void {
+  const previous = new Map(forbiddenAmbientKeys.map((key) => [key, process.env[key]]));
+  process.env.LOCAL_STUDIO_AMBIENT_SECRET = "ambient-secret";
+  process.env.AWS_SECRET_ACCESS_KEY = "ambient-secret";
+  process.env.NODE_OPTIONS = "--trace-warnings";
+  process.env.LD_PRELOAD = "/ambient/loader.so";
+  process.env.DYLD_INSERT_LIBRARIES = "/ambient/loader.dylib";
+  return () => {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  };
+}
+
+function mcpFixtureSource(options: {
+  token: string;
+  shutdown?: "graceful" | "ignore";
+  marker?: string;
+}): string {
+  return [
+    options.marker ? 'import { writeFileSync } from "node:fs";' : "",
+    `if (JSON.stringify(process.argv.slice(2)) !== ${JSON.stringify(JSON.stringify(GITHUB_MCP_ARGS))}) process.exit(41);`,
+    `if (process.env.GITHUB_PERSONAL_ACCESS_TOKEN !== ${JSON.stringify(options.token)}) process.exit(42);`,
+    `if (${JSON.stringify(forbiddenAmbientKeys)}.some(key => process.env[key] !== undefined)) process.exit(43);`,
+    `{ const allowed = new Set(process.platform === "win32" ? ${JSON.stringify(reviewedWindowsEnvironmentKeys)} : ${JSON.stringify(reviewedPosixEnvironmentKeys)}); if (Object.keys(process.env).some(key => !allowed.has(process.platform === "win32" ? key.toUpperCase() : key))) process.exit(44); }`,
+    ...(options.shutdown === "ignore"
+      ? ['process.on("SIGTERM", () => {});', "setInterval(() => {}, 1_000);"]
+      : []),
+    ...(options.shutdown === "graceful" && options.marker
+      ? [
+          `process.stdin.on("end", () => setTimeout(() => { writeFileSync(${JSON.stringify(options.marker)}, "closed"); process.exit(0); }, 75));`,
+        ]
+      : []),
+    'let input = "";',
+    'process.stdin.setEncoding("utf8");',
+    'process.stdin.on("data", chunk => {',
+    "  input += chunk;",
+    "  for (;;) {",
+    '    const split = input.indexOf("\\n");',
+    "    if (split < 0) break;",
+    "    const line = input.slice(0, split);",
+    "    input = input.slice(split + 1);",
+    "    if (!line) continue;",
+    "    const request = JSON.parse(line);",
+    '    if (request.method === "initialize") process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { protocolVersion: request.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "github-mcp-server", version: "1.6.0" } } }) + "\\n");',
+    `    if (request.method === "tools/list") process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { tools: ${JSON.stringify(GITHUB_MCP_TOOLS.map((name) => ({ name, inputSchema: { type: "object" } })))} } }) + "\\n");`,
+    "  }",
+    "});",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 describe("GitHub MCP manifest and configuration", () => {
   test("pins every official Local Studio target to GitHub v1.6.0 release identity", () => {
     expect(
@@ -243,6 +345,31 @@ describe("GitHub MCP manifest and configuration", () => {
     expect(githubMcpExecutablePath("linux", "x64", "/data")).toBe(
       "/data/runtime/connectors/github-mcp-server/1.6.0/github-mcp-server",
     );
+  });
+
+  test("ignores forged Windows roots and rejects a noncanonical PowerShell identity", () => {
+    const previous = process.env.SystemRoot;
+    process.env.SystemRoot = "C:\\Users\\attacker\\Windows";
+    const inspected: string[] = [];
+    try {
+      expect(
+        trustedPowerShellPath((candidate) => {
+          inspected.push(candidate);
+          return { file: true, symbolicLink: false, realPath: candidate };
+        }),
+      ).toBe(WINDOWS_POWERSHELL_PATH);
+      expect(inspected).toEqual([WINDOWS_POWERSHELL_PATH]);
+      expect(() =>
+        trustedPowerShellPath(() => ({
+          file: true,
+          symbolicLink: false,
+          realPath: "C:\\Users\\attacker\\powershell.exe",
+        })),
+      ).toThrow("Windows ACL verifier is unavailable");
+    } finally {
+      if (previous === undefined) delete process.env.SystemRoot;
+      else process.env.SystemRoot = previous;
+    }
   });
 
   test("generates only the exact read-only execution and allowlist", () => {
@@ -442,6 +569,55 @@ describe("GitHub MCP verified installation", () => {
       await expect(
         stat(path.join(root, "runtime", "connectors", "github-mcp-server", GITHUB_MCP_VERSION)),
       ).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("waits for verified MCP shutdown before Windows artifact promotion", async () => {
+    const root = await temporaryDataDir();
+    const selected = fixture("zip");
+    let closed = false;
+    let promoted = false;
+    const connection: McpConnection = {
+      listTools: async () =>
+        GITHUB_MCP_TOOLS.map((name) => ({ name, inputSchema: { type: "object" } })),
+      callTool: async () => undefined,
+      close: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 75));
+        closed = true;
+      },
+    };
+    try {
+      const status = await Effect.runPromise(
+        installGitHubConnectorArtifact({
+          artifact: selected.artifact,
+          platform: "win32",
+          arch: "x64",
+          dataDir: root,
+          fetch: async () =>
+            new Response(selected.archive, {
+              headers: { "Content-Length": String(selected.archive.length) },
+            }),
+          verifyExecutable: (command) =>
+            Effect.runPromise(
+              verifyGitHubMcpExecutable(command, {
+                connect: () => connection,
+                closeTimeoutMs: 1_000,
+              }),
+            ),
+          windowsSecurity: privateWindowsSecurity,
+          rename: async (source, destination) => {
+            if (path.basename(source).startsWith(".pending-")) {
+              expect(closed).toBe(true);
+              promoted = true;
+            }
+            await rename(source, destination);
+          },
+        }),
+      );
+      expect(status.state).toBe("installed");
+      expect(promoted).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -670,30 +846,111 @@ describe("GitHub MCP verified installation", () => {
   test("smoke-tests the exact read-only argv and 22-tool inventory", async () => {
     const root = await temporaryDataDir();
     const server = path.join(root, "fixture-server.mjs");
-    const source = [
-      `if (JSON.stringify(process.argv.slice(2)) !== ${JSON.stringify(JSON.stringify(GITHUB_MCP_ARGS))}) process.exit(41);`,
-      'let input = "";',
-      'process.stdin.setEncoding("utf8");',
-      'process.stdin.on("data", chunk => {',
-      "  input += chunk;",
-      "  for (;;) {",
-      '    const split = input.indexOf("\\n");',
-      "    if (split < 0) break;",
-      "    const line = input.slice(0, split);",
-      "    input = input.slice(split + 1);",
-      "    if (!line) continue;",
-      "    const request = JSON.parse(line);",
-      '    if (request.method === "initialize") process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { protocolVersion: request.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "github-mcp-server", version: "1.6.0" } } }) + "\\n");',
-      `    if (request.method === "tools/list") process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { tools: ${JSON.stringify(GITHUB_MCP_TOOLS.map((name) => ({ name, inputSchema: { type: "object" } })))} } }) + "\\n");`,
-      "  }",
-      "});",
-    ].join("\n");
+    const restore = exposeAmbientEnvironment();
     try {
-      await writeFile(server, source, { mode: 0o600 });
+      await writeFile(
+        server,
+        mcpFixtureSource({ token: "local-studio-install-verification" }),
+        { mode: 0o600 },
+      );
       await Effect.runPromise(
         verifyGitHubMcpExecutable(process.execPath, { prefixArgs: [server], timeoutMs: 5_000 }),
       );
     } finally {
+      restore();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps managed runtime spawns to the PAT and reviewed OS environment", async () => {
+    const root = await temporaryDataDir();
+    const server = path.join(root, "managed-server.mjs");
+    const restore = exposeAmbientEnvironment();
+    let connection: McpConnection | null = null;
+    try {
+      await writeFile(server, mcpFixtureSource({ token: "managed-token" }), { mode: 0o600 });
+      const connector = githubMcpConnectorConfiguration(
+        { env: { GITHUB_PERSONAL_ACCESS_TOKEN: "managed-token" }, enabled: true },
+        { artifact: fixture("tar.gz").artifact, platform: "darwin", arch: "x64", dataDir: root },
+      );
+      connection = connectMcp({
+        transport: "stdio",
+        command: process.execPath,
+        args: [server, ...(connector.args ?? [])],
+        env: connector.env,
+      });
+      expect((await connection.listTools()).map((tool) => tool.name).sort()).toEqual(
+        [...GITHUB_MCP_TOOLS].sort(),
+      );
+      await connection.close();
+      connection = null;
+    } finally {
+      await connection?.close().catch(() => undefined);
+      restore();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("waits for a slow graceful MCP child exit", async () => {
+    const root = await temporaryDataDir();
+    const server = path.join(root, "slow-server.mjs");
+    const marker = path.join(root, "closed");
+    const restore = exposeAmbientEnvironment();
+    let connection: McpConnection | null = null;
+    try {
+      await writeFile(
+        server,
+        mcpFixtureSource({ token: "slow-token", shutdown: "graceful", marker }),
+        { mode: 0o600 },
+      );
+      connection = connectMcp(
+        {
+          transport: "stdio",
+          command: process.execPath,
+          args: [server, ...GITHUB_MCP_ARGS],
+          env: { GITHUB_PERSONAL_ACCESS_TOKEN: "slow-token" },
+        },
+        { gracefulCloseMs: 1_000, forceCloseMs: 1_000 },
+      );
+      await connection.listTools();
+      await connection.close();
+      connection = null;
+      expect(await readFile(marker, "utf8")).toBe("closed");
+    } finally {
+      await connection?.close().catch(() => undefined);
+      restore();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("force-terminates an MCP child that ignores graceful shutdown", async () => {
+    const root = await temporaryDataDir();
+    const server = path.join(root, "ignoring-server.mjs");
+    const restore = exposeAmbientEnvironment();
+    let connection: McpConnection | null = null;
+    try {
+      await writeFile(
+        server,
+        mcpFixtureSource({ token: "ignoring-token", shutdown: "ignore" }),
+        { mode: 0o600 },
+      );
+      connection = connectMcp(
+        {
+          transport: "stdio",
+          command: process.execPath,
+          args: [server, ...GITHUB_MCP_ARGS],
+          env: { GITHUB_PERSONAL_ACCESS_TOKEN: "ignoring-token" },
+        },
+        { gracefulCloseMs: 50, forceCloseMs: 1_000 },
+      );
+      await connection.listTools();
+      const started = Date.now();
+      await connection.close();
+      connection = null;
+      expect(Date.now() - started).toBeLessThan(1_000);
+    } finally {
+      await connection?.close().catch(() => undefined);
+      restore();
       await rm(root, { recursive: true, force: true });
     }
   });

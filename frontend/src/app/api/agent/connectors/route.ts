@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
   try {
     const connector = await connectorFromInput(body);
     const connectors = await upsertConnector(connector);
-    closePooledConnection(connector.id);
+    await closePooledConnection(connector.id);
     return NextResponse.json({ connectors: connectors.map(toConnectorView) });
   } catch (error) {
     return NextResponse.json(
@@ -96,7 +96,7 @@ export async function DELETE(request: NextRequest) {
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
   try {
     const connectors = await removeConnector(id);
-    closePooledConnection(id);
+    await closePooledConnection(id);
     return NextResponse.json({ connectors: connectors.map(toConnectorView) });
   } catch (error) {
     return NextResponse.json(
