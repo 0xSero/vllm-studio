@@ -2,11 +2,11 @@ import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { Effect, Schema } from "effect";
-import { closePooledConnection, probeConnector } from "./connector-pool";
+import { probeConnector } from "./connector-pool";
 import {
   listConnectors,
-  replaceConnectorIdentities,
-  upsertConnectors,
+  replaceConnectorIdentitiesEffect,
+  upsertConnectorsEffect,
   type ConnectorConfig,
 } from "./connectors-service";
 import { getGoogleAccount, type GoogleAccountView } from "./google-account";
@@ -17,7 +17,14 @@ import {
 } from "./google-workspace-adapter";
 import { pluginArtifactDigest } from "./plugin-artifact-digest";
 import { pluginConnectorConfigurationDigest } from "./plugin-connector-identity";
-import { expectedPluginExecutionSnapshot, preparePluginExecutionSnapshot, verifyPluginExecutionSnapshot } from "./plugin-execution-snapshot";
+import {
+  expectedPluginExecutionSnapshot,
+  garbageCollectPluginExecutionSnapshots,
+  preparePluginExecutionSnapshot,
+  type PluginExecutionSnapshotLease,
+  verifyPluginExecutionSnapshot,
+  withPluginExecutionSnapshotLifecycle,
+} from "./plugin-execution-snapshot";
 import { discoverPluginBundles, type PluginBundle, type PluginSource } from "./plugin-discovery";
 import {
   type PluginActivationResult,
@@ -480,9 +487,11 @@ function runtimeHealthView(
   connectors: ConnectorConfig[],
 ): Effect.Effect<PluginRuntimeView> {
   if (view.tools.state !== "enabled") return Effect.succeed(view);
-  return Effect.promise(() =>
-    Promise.all(connectors.map((connector) => probeConnector(connector))),
-  ).pipe(
+  return Effect.tryPromise({
+    try: (signal) =>
+      Promise.all(connectors.map((connector) => probeConnector(connector, signal, true))),
+    catch: () => undefined,
+  }).pipe(
     Effect.map((probes) => {
       const failures = probes.flatMap((probe, index) =>
         probe.ok ? [] : [`${connectors[index]?.name}: MCP probe failed`],
@@ -494,6 +503,12 @@ function runtimeHealthView(
           }
         : view;
     }),
+    Effect.catch(() =>
+      Effect.succeed({
+        ...view,
+        tools: { ...view.tools, state: "invalid" as const, reason: "MCP probe failed" },
+      }),
+    ),
   );
 }
 
@@ -507,38 +522,35 @@ function hasPluginGrant(connector: ConnectorConfig): boolean {
   return connector.enabled || Boolean(connector.allowTools?.length);
 }
 
-function closePluginConnectorPools(connector: ConnectorConfig): void {
-  closePooledConnection(connector.id);
-  if (connector.origin?.kind === "plugin") {
-    closePooledConnection(
-      connectorId(connector.origin.id, connector.origin.binding ?? connector.origin.id),
-    );
-  }
-}
-
-async function samePluginIdentity(existing: ConnectorConfig, replacement: ConnectorConfig): Promise<boolean> {
+function samePluginIdentity(
+  existing: ConnectorConfig,
+  replacement: ConnectorConfig,
+): Effect.Effect<boolean> {
   const current = existing.origin;
   const expected = replacement.origin;
-  if (!current?.artifactDigest || !current.configurationDigest || !current.sourceDigest || !expected) return false;
-  if (existing.transport === "stdio") {
-    try {
-      await Effect.runPromise(verifyPluginExecutionSnapshot(existing));
-    } catch {
-      return false;
-    }
+  if (!current?.artifactDigest || !current.configurationDigest || !current.sourceDigest || !expected) {
+    return Effect.succeed(false);
   }
-  return (
-    current.kind === "plugin" &&
-    expected.kind === "plugin" &&
-    current.id === expected.id &&
-    current.version === expected.version &&
-    current.binding === expected.binding &&
-    current.artifactDigest === expected.artifactDigest &&
-    current.sourceDigest === expected.sourceDigest &&
-    current.configurationDigest === expected.configurationDigest &&
-    current.configurationDigest === pluginConnectorConfigurationDigest(existing) &&
-    expected.configurationDigest === pluginConnectorConfigurationDigest(replacement)
-  );
+  return Effect.gen(function* () {
+    if (existing.transport === "stdio") {
+      const valid = yield* verifyPluginExecutionSnapshot(existing).pipe(
+        Effect.match({ onFailure: () => false, onSuccess: () => true }),
+      );
+      if (!valid) return false;
+    }
+    return (
+      current.kind === "plugin" &&
+      expected.kind === "plugin" &&
+      current.id === expected.id &&
+      current.version === expected.version &&
+      current.binding === expected.binding &&
+      current.artifactDigest === expected.artifactDigest &&
+      current.sourceDigest === expected.sourceDigest &&
+      current.configurationDigest === expected.configurationDigest &&
+      current.configurationDigest === pluginConnectorConfigurationDigest(existing) &&
+      expected.configurationDigest === pluginConnectorConfigurationDigest(replacement)
+    );
+  });
 }
 
 const revokedConnector = (
@@ -550,97 +562,111 @@ const revokedConnector = (
   enabled: false,
 });
 
-async function reconcileEnabledPluginConnectors(
+function reconcileEnabledPluginConnectors(
   bundles: PluginBundle[],
   initial: ConnectorConfig[],
-): Promise<ConnectorReconciliation> {
-  let connectors = initial;
-  const errors = new Map<string, string>();
-  const reapprovalRequired = new Set<string>();
-  const discovered = new Set(bundles.map((bundle) => bundle.plugin.id));
-  const unavailable = connectors.filter(
-    (connector) =>
-      connector.origin?.kind === "plugin" &&
-      !discovered.has(connector.origin.id) &&
-      hasPluginGrant(connector),
-  );
-  if (unavailable.length > 0) {
-    unavailable.forEach(closePluginConnectorPools);
-    connectors = await replaceConnectorIdentities(
-      unavailable.map((connector) => ({
-        existingId: connector.id,
-        connector: revokedConnector(connector),
-      })),
-    );
-  }
-  for (const bundle of bundles) {
-    const approved = connectors.filter(
+  lifecycle: PluginExecutionSnapshotLease,
+): Effect.Effect<ConnectorReconciliation, PluginRuntimeError> {
+  return Effect.gen(function* () {
+    let connectors = initial;
+    const errors = new Map<string, string>();
+    const reapprovalRequired = new Set<string>();
+    const discovered = new Set(bundles.map((bundle) => bundle.plugin.id));
+    const unavailable = connectors.filter(
       (connector) =>
         connector.origin?.kind === "plugin" &&
-        connector.origin.id === bundle.plugin.id &&
+        !discovered.has(connector.origin.id) &&
         hasPluginGrant(connector),
     );
-    if (approved.length === 0) continue;
-    let servers: ResolvedServer[];
-    try {
-      servers = await Effect.runPromise(loadPluginServers(bundle));
-    } catch {
-      approved.forEach(closePluginConnectorPools);
-      connectors = await replaceConnectorIdentities(
-        approved.map((connector) => ({
+    if (unavailable.length > 0) {
+      connectors = yield* replaceConnectorIdentitiesEffect(
+        unavailable.map((connector) => ({
           existingId: connector.id,
           connector: revokedConnector(connector),
         })),
+        lifecycle,
+      ).pipe(
+        Effect.mapError(() => new PluginRuntimeError(500, "Plugin reconciliation failed")),
       );
-      errors.set(bundle.plugin.id, "Plugin identity could not be verified");
-      continue;
     }
-    const changed = (await Promise.all(approved.map(async (connector) => {
-      const replacement = servers.find(
-        (server) => server.connector?.origin?.binding === connector.origin?.binding,
-      )?.connector;
-      const expected: ConnectorConfig | undefined = replacement?.transport === "stdio" && connector.origin?.snapshotDigest
-        ? await Effect.runPromise(expectedPluginExecutionSnapshot(bundle, replacement, connector))
-        : replacement ?? undefined;
-      return expected && await samePluginIdentity(connector, expected)
-        ? []
-        : [
-            {
-              existingId: connector.id,
-              connector: revokedConnector(connector, expected ?? undefined),
-            },
-          ];
-    }))).flat();
-    if (changed.length === 0) continue;
-    changed.forEach(({ existingId, connector }) => {
-      closePooledConnection(existingId);
-      closePluginConnectorPools(connector);
-    });
-    connectors = await replaceConnectorIdentities(changed);
-    reapprovalRequired.add(bundle.plugin.id);
-  }
-  return { connectors, errors, reapprovalRequired };
+    for (const bundle of bundles) {
+      const approved = connectors.filter(
+        (connector) =>
+          connector.origin?.kind === "plugin" &&
+          connector.origin.id === bundle.plugin.id &&
+          hasPluginGrant(connector),
+      );
+      if (approved.length === 0) continue;
+      const servers = yield* loadPluginServers(bundle).pipe(
+        Effect.matchEffect({
+          onFailure: () =>
+            replaceConnectorIdentitiesEffect(
+              approved.map((connector) => ({
+                existingId: connector.id,
+                connector: revokedConnector(connector),
+              })),
+              lifecycle,
+            ).pipe(
+              Effect.map((next) => {
+                connectors = next;
+                errors.set(bundle.plugin.id, "Plugin identity could not be verified");
+                return undefined;
+              }),
+              Effect.mapError(
+                () => new PluginRuntimeError(500, "Plugin reconciliation failed"),
+              ),
+            ),
+          onSuccess: (resolved) => Effect.succeed(resolved),
+        }),
+      );
+      if (!servers) continue;
+      const changed: { existingId: string; connector: ConnectorConfig }[] = [];
+      for (const connector of approved) {
+        const replacement = servers.find(
+          (server) => server.connector?.origin?.binding === connector.origin?.binding,
+        )?.connector;
+        const expected: ConnectorConfig | undefined =
+          replacement?.transport === "stdio" && connector.origin?.snapshotDigest
+            ? yield* expectedPluginExecutionSnapshot(bundle, replacement, connector).pipe(
+                Effect.mapError(
+                  () => new PluginRuntimeError(500, "Plugin reconciliation failed"),
+                ),
+              )
+            : replacement ?? undefined;
+        if (!expected || !(yield* samePluginIdentity(connector, expected))) {
+          changed.push({
+            existingId: connector.id,
+            connector: revokedConnector(connector, expected),
+          });
+        }
+      }
+      if (changed.length === 0) continue;
+      connectors = yield* replaceConnectorIdentitiesEffect(changed, lifecycle).pipe(
+        Effect.mapError(() => new PluginRuntimeError(500, "Plugin reconciliation failed")),
+      );
+      reapprovalRequired.add(bundle.plugin.id);
+    }
+    return { connectors, errors, reapprovalRequired };
+  });
 }
 
 function connectorReconciliationEffect(
   bundles: PluginBundle[],
+  lifecycle: PluginExecutionSnapshotLease,
 ): Effect.Effect<ConnectorReconciliation, PluginRuntimeError> {
   return Effect.gen(function* () {
     const initial = yield* connectorsEffect();
-    return yield* Effect.tryPromise({
-      try: () => reconcileEnabledPluginConnectors(bundles, initial),
-      catch: () => new PluginRuntimeError(500, "Plugin reconciliation failed"),
-    });
+    return yield* reconcileEnabledPluginConnectors(bundles, initial, lifecycle);
   });
 }
 
 export function refreshEnabledPluginConnectors(
   sources?: PluginSource[],
 ): Effect.Effect<void, PluginRuntimeError> {
-  return Effect.gen(function* () {
-    const bundles = yield* discoveredBundlesEffect(sources);
-    yield* connectorReconciliationEffect(bundles);
-  });
+  return pluginSnapshotOperation((lifecycle) => Effect.gen(function* () {
+  const bundles = yield* discoveredBundlesEffect(lifecycle, sources);
+  yield* connectorReconciliationEffect(bundles, lifecycle);
+  }));
 }
 
 function connectorsEffect(): Effect.Effect<ConnectorConfig[], PluginRuntimeError> {
@@ -650,37 +676,60 @@ function connectorsEffect(): Effect.Effect<ConnectorConfig[], PluginRuntimeError
   });
 }
 
+function collectPluginExecutionSnapshots(
+  lifecycle: PluginExecutionSnapshotLease,
+): Effect.Effect<void, PluginRuntimeError> {
+  return connectorsEffect().pipe(
+    Effect.flatMap((connectors) =>
+      garbageCollectPluginExecutionSnapshots(connectors, lifecycle).pipe(
+        Effect.mapError(
+          () => new PluginRuntimeError(500, "Plugin execution snapshot cleanup failed"),
+        ),
+      ),
+    ),
+  );
+}
+
+function pluginSnapshotOperation<A>(
+  use: (lifecycle: PluginExecutionSnapshotLease) => Effect.Effect<A, PluginRuntimeError>,
+): Effect.Effect<A, PluginRuntimeError> {
+  return withPluginExecutionSnapshotLifecycle((lifecycle) =>
+    use(lifecycle).pipe(Effect.onExit(() => collectPluginExecutionSnapshots(lifecycle))),
+  );
+}
+
 function discoveredBundlesEffect(
+  lifecycle: PluginExecutionSnapshotLease,
   sources?: PluginSource[],
 ): Effect.Effect<PluginBundle[], PluginRuntimeError> {
   return Effect.matchEffect(discoverPluginBundles(sources), {
-    onFailure: (error) =>
-      Effect.tryPromise({
-        try: async () => {
-          const sourceDigests = new Set(error.sourceDigests);
-          if (sourceDigests.size === 0) return;
-          const connectors = await listConnectors();
-          const affected = connectors.filter(
-            (connector) =>
-              connector.origin?.kind === "plugin" &&
-              connector.origin.sourceDigest !== undefined &&
-              sourceDigests.has(connector.origin.sourceDigest) &&
-              hasPluginGrant(connector),
+    onFailure: (error) => Effect.gen(function* () {
+      const sourceDigests = new Set(error.sourceDigests);
+      if (sourceDigests.size > 0) {
+        const connectors = yield* connectorsEffect();
+        const affected = connectors.filter(
+          (connector) =>
+            connector.origin?.kind === "plugin" &&
+            connector.origin.sourceDigest !== undefined &&
+            sourceDigests.has(connector.origin.sourceDigest) &&
+            hasPluginGrant(connector),
+        );
+        if (affected.length > 0) {
+          yield* replaceConnectorIdentitiesEffect(
+            affected.map((connector) => ({
+              existingId: connector.id,
+              connector: revokedConnector(connector),
+            })),
+            lifecycle,
+          ).pipe(
+            Effect.mapError(
+              () => new PluginRuntimeError(500, "Plugin discovery revocation failed"),
+            ),
           );
-          affected.forEach(closePluginConnectorPools);
-          if (affected.length > 0) {
-            await replaceConnectorIdentities(
-              affected.map((connector) => ({
-                existingId: connector.id,
-                connector: revokedConnector(connector),
-              })),
-            );
-          }
-        },
-        catch: () => new PluginRuntimeError(500, "Plugin discovery revocation failed"),
-      }).pipe(
-        Effect.flatMap(() => Effect.fail(new PluginRuntimeError(500, error.message))),
-      ),
+        }
+      }
+      return yield* Effect.fail(new PluginRuntimeError(500, error.message));
+    }),
     onSuccess: Effect.succeed,
   });
 }
@@ -693,12 +742,13 @@ function googleAccountEffect(): Effect.Effect<GoogleAccountView, PluginRuntimeEr
   );
 }
 
-export function listPluginRuntimeViews(
+function listPluginRuntimeViewsUnlocked(
+  lifecycle: PluginExecutionSnapshotLease,
   sources?: PluginSource[],
 ): Effect.Effect<PluginRuntimeView[], PluginRuntimeError> {
   return Effect.gen(function* () {
-    const bundles = yield* discoveredBundlesEffect(sources);
-    const reconciliation = yield* connectorReconciliationEffect(bundles);
+    const bundles = yield* discoveredBundlesEffect(lifecycle, sources);
+    const reconciliation = yield* connectorReconciliationEffect(bundles, lifecycle);
     const account = yield* googleAccountEffect();
     return yield* Effect.all(
       bundles.map((bundle) =>
@@ -714,15 +764,23 @@ export function listPluginRuntimeViews(
   });
 }
 
+export function listPluginRuntimeViews(
+  sources?: PluginSource[],
+): Effect.Effect<PluginRuntimeView[], PluginRuntimeError> {
+  return pluginSnapshotOperation((lifecycle) =>
+    listPluginRuntimeViewsUnlocked(lifecycle, sources),
+  );
+}
+
 function enabledObserveConnectors(
   connectors: ConnectorConfig[],
 ): Effect.Effect<ConnectorConfig[], PluginRuntimeError> {
   return Effect.tryPromise({
-    try: async () => {
+    try: async (signal) => {
       const probed = await Promise.all(
         connectors.map(async (connector) => ({
           connector,
-          probe: await probeConnector(connector),
+          probe: await probeConnector(connector, signal, true),
         })),
       );
       return probed.map(({ connector, probe }) => {
@@ -791,8 +849,8 @@ export function setPluginEnabled(
   enabled: boolean,
   sources?: PluginSource[],
 ): Effect.Effect<PluginActivationResult, PluginRuntimeError> {
-  return Effect.gen(function* () {
-    const bundles = yield* discoveredBundlesEffect(sources);
+  return pluginSnapshotOperation((lifecycle) => Effect.gen(function* () {
+    const bundles = yield* discoveredBundlesEffect(lifecycle, sources);
     const bundle = bundles.find((candidate) => candidate.plugin.id === pluginId);
     if (!bundle) return yield* Effect.fail(new PluginRuntimeError(404, "Plugin not found"));
     const current = yield* connectorsEffect();
@@ -812,20 +870,21 @@ export function setPluginEnabled(
         ? yield* enabledObserveConnectors([googleWorkspaceConnector(googleWorkspace, false)])
         : owned.map((connector) => ({ ...connector, enabled: false }));
       if (changed.length) {
-        yield* Effect.tryPromise({
-          try: () => upsertConnectors(changed),
-          catch: (error) =>
-            new PluginRuntimeError(500, `Failed to save account adapter state: ${error}`),
-        });
+        yield* upsertConnectorsEffect(changed, lifecycle).pipe(
+          Effect.mapError(
+            (error) =>
+              new PluginRuntimeError(500, `Failed to save account adapter state: ${error}`),
+          ),
+        );
       }
       return {
-        plugins: yield* listPluginRuntimeViews(sources),
+        plugins: yield* listPluginRuntimeViewsUnlocked(lifecycle, sources),
         connectorIds: changed.map((connector) => connector.id),
       };
     }
     if (yield* loadHostCapability(bundle)) {
       return {
-        plugins: yield* listPluginRuntimeViews(sources),
+        plugins: yield* listPluginRuntimeViewsUnlocked(lifecycle, sources),
         connectorIds: [],
       };
     }
@@ -843,7 +902,17 @@ export function setPluginEnabled(
         );
       }
       const prepared = yield* Effect.all(
-        servers.flatMap((server) => server.connector ? [preparePluginExecutionSnapshot(bundle, server.connector).pipe(Effect.mapError(() => new PluginRuntimeError(409, "Plugin execution snapshot failed")))] : []),
+        servers.flatMap((server) =>
+          server.connector
+            ? [
+                preparePluginExecutionSnapshot(bundle, server.connector, lifecycle).pipe(
+                  Effect.mapError(
+                    () => new PluginRuntimeError(409, "Plugin execution snapshot failed"),
+                  ),
+                ),
+              ]
+            : [],
+        ),
         { concurrency: 1 },
       );
       changed = yield* enabledObserveConnectors(prepared);
@@ -851,24 +920,21 @@ export function setPluginEnabled(
     } else {
       if (owned.length === 0) {
         return {
-          plugins: yield* listPluginRuntimeViews(sources),
+          plugins: yield* listPluginRuntimeViewsUnlocked(lifecycle, sources),
           connectorIds: [],
         };
       }
       changed = owned.map((connector) => ({ ...connector, enabled: false }));
     }
     const replacements = pluginIdentityReplacements(owned, changed, enabled);
-    replacements.forEach(({ existingId, connector }) => {
-      closePooledConnection(existingId);
-      closePluginConnectorPools(connector);
-    });
-    yield* Effect.tryPromise({
-      try: () => replaceConnectorIdentities(replacements),
-      catch: (error) => new PluginRuntimeError(500, `Failed to save plugin state: ${error}`),
-    });
+    yield* replaceConnectorIdentitiesEffect(replacements, lifecycle).pipe(
+      Effect.mapError(
+        (error) => new PluginRuntimeError(500, `Failed to save plugin state: ${error}`),
+      ),
+    );
     return {
-      plugins: yield* listPluginRuntimeViews(sources),
+      plugins: yield* listPluginRuntimeViewsUnlocked(lifecycle, sources),
       connectorIds: changed.map((connector) => connector.id),
     };
-  });
+  }));
 }

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { Schema } from "effect";
 import { ConnectorTestInputSchema } from "@local-studio/agent-runtime/connector-contract";
 import { listConnectors } from "@local-studio/agent-runtime/connectors-service";
-import { probeConnector } from "@local-studio/agent-runtime/connector-pool";
+import { probePersistedConnector } from "@local-studio/agent-runtime/connector-pool";
 import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   }
   const connector = (await listConnectors()).find((entry) => entry.id === body.id);
   if (!connector) return NextResponse.json({ error: "unknown connector" }, { status: 404 });
-  const result = await probeConnector(connector);
+  const result = await probePersistedConnector(connector, request.signal);
   return NextResponse.json({
     ok: result.ok,
     tool_count: result.tools.length,

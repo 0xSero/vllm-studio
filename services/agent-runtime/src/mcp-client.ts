@@ -9,7 +9,7 @@ export type McpToolInfo = Tool;
 export interface McpConnection {
   listTools(): Promise<McpToolInfo[]>;
   callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
-  close(): void;
+  close(): Promise<void>;
 }
 
 export interface StdioTarget {
@@ -135,10 +135,17 @@ class SdkMcpConnection implements McpConnection {
   private readonly client = new Client(CLIENT_INFO, { capabilities: {} });
   private readonly connected: Promise<void>;
   private readonly signal: AbortSignal | undefined;
+  private readonly transport: ReturnType<typeof transportFor>;
+  private readonly transportClosed: Promise<void>;
+  private closing: Promise<void> | undefined;
 
   constructor(target: McpTarget) {
     this.signal = target.transport === "http" ? target.signal : undefined;
-    this.connected = this.client.connect(transportFor(target), { signal: this.signal });
+    this.transport = transportFor(target);
+    this.transportClosed = new Promise((resolve) => {
+      this.transport.onclose = resolve;
+    });
+    this.connected = this.client.connect(this.transport, { signal: this.signal });
   }
 
   async listTools(): Promise<McpToolInfo[]> {
@@ -152,8 +159,24 @@ class SdkMcpConnection implements McpConnection {
     return this.client.callTool({ name, arguments: args }, undefined, { signal: this.signal });
   }
 
-  close(): void {
-    void this.client.close().catch(() => undefined);
+  async close(): Promise<void> {
+    if (this.closing) return this.closing;
+    const waitForStdioExit =
+      this.transport instanceof StdioClientTransport && this.transport.pid !== null;
+    this.closing = this.client.close().then(async () => {
+      if (!waitForStdioExit) return;
+      await Promise.race([
+        this.transportClosed,
+        new Promise<never>((_, reject) => {
+          const timeout = setTimeout(
+            () => reject(new Error("MCP stdio process did not exit")),
+            2_000,
+          );
+          timeout.unref();
+        }),
+      ]);
+    });
+    return this.closing;
   }
 }
 
