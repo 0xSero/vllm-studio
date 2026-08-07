@@ -68,6 +68,25 @@ const AppManifestSchema = Schema.Struct({
   apps: Schema.Record(Schema.String, Schema.Unknown),
 });
 
+const EXECUTABLE_ENVIRONMENT_KEYS = new Set([
+  "BUN_OPTIONS",
+  "DYLD_INSERT_LIBRARIES",
+  "LD_PRELOAD",
+  "NODE_OPTIONS",
+]);
+
+function pluginEnvironment(input: Record<string, string>): Record<string, string> {
+  for (const key of Object.keys(input)) {
+    if (EXECUTABLE_ENVIRONMENT_KEYS.has(key.toUpperCase())) {
+      throw new PluginRuntimeError(422, "Plugin environment may not load external code");
+    }
+  }
+  return {
+    ...input,
+    ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+  };
+}
+
 type ResolvedServer = {
   connector: ConnectorConfig | null;
   blocker?: string;
@@ -182,10 +201,7 @@ async function resolvedServer(
         transport: "stdio",
         command,
         args,
-        env: {
-          ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
-          ...(server.env ?? {}),
-        },
+        env: pluginEnvironment({ ...(server.env ?? {}) }),
         cwd: await containedRealPath(root, server.cwd ?? "."),
         enabled: false,
       }),

@@ -74,6 +74,15 @@ async function assertHardened(root: string): Promise<void> {
   await visit(root);
 }
 
+async function assertSnapshotPath(root: string, value: string): Promise<void> {
+  if (!path.isAbsolute(value) || !contained(root, value)) {
+    throw new PluginExecutionSnapshotError("Plugin snapshot path changed");
+  }
+  const { realpath } = await import("node:fs/promises");
+  const [canonicalRoot, canonical] = await Promise.all([realpath(root), realpath(value)]);
+  if (!contained(canonicalRoot, canonical)) throw new PluginExecutionSnapshotError("Plugin snapshot path changed");
+}
+
 async function removeTree(root: string): Promise<void> {
   try {
     const stats = await lstat(root);
@@ -142,11 +151,18 @@ export function verifyPluginExecutionSnapshot(connector: ConnectorConfig): Effec
     try: async () => {
       if (connector.transport !== "stdio" || connector.origin?.kind !== "plugin" || !connector.origin.artifactDigest || !connector.origin.snapshotDigest) throw new PluginExecutionSnapshotError("Plugin execution snapshot is missing");
       const root = snapshotRoot(connector.origin.artifactDigest);
+      const artifactRoot = path.join(root, "artifact");
       await assertHardened(root);
-      if ((await Effect.runPromise(pluginArtifactDigest(path.join(root, "artifact")))) !== connector.origin.snapshotDigest) throw new PluginExecutionSnapshotError("Plugin execution snapshot changed");
+      if ((await Effect.runPromise(pluginArtifactDigest(artifactRoot))) !== connector.origin.snapshotDigest) throw new PluginExecutionSnapshotError("Plugin execution snapshot changed");
       if (connector.command === process.execPath && !connector.origin.runtimeDigest) throw new PluginExecutionSnapshotError("Plugin runtime identity is missing");
       if (connector.origin.runtimeDigest && connector.command !== process.execPath) throw new PluginExecutionSnapshotError("Plugin runtime path changed");
       if (connector.origin.runtimeDigest && (await fileDigest(process.execPath)) !== connector.origin.runtimeDigest) throw new PluginExecutionSnapshotError("Plugin runtime changed");
+      if (!connector.origin.runtimeDigest) await assertSnapshotPath(artifactRoot, connector.command ?? "");
+      await assertSnapshotPath(artifactRoot, connector.cwd ?? "");
+      for (const value of connector.args ?? []) {
+        if (path.isAbsolute(value)) await assertSnapshotPath(artifactRoot, value);
+        else if (value.includes(path.sep)) throw new PluginExecutionSnapshotError("Plugin argument path changed");
+      }
     },
     catch: (error) => error instanceof PluginExecutionSnapshotError ? error : new PluginExecutionSnapshotError("Plugin execution snapshot could not be verified"),
   });

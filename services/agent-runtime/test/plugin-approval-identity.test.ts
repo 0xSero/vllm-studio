@@ -336,6 +336,32 @@ describe("plugin approval identity", () => {
     expect((await listConnectors())[0]).toMatchObject({ enabled: false, allowTools: [] });
   });
 
+  test("revokes snapshot launch paths that escape the approved artifact", async () => {
+    const { root, source } = fixture();
+    chmodSync(path.join(root, "server.js"), 0o755);
+    const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
+    if (!bundle) throw new Error("fixture plugin was not discovered");
+    const approved = await approvedConnector(root, source);
+    for (const prepared of [
+      await Effect.runPromise(preparePluginExecutionSnapshot(bundle, approved)),
+      await Effect.runPromise(
+        preparePluginExecutionSnapshot(bundle, {
+          ...approved,
+          command: realpathSync(path.join(root, "server.js")),
+          args: [],
+        }),
+      ),
+    ]) {
+      const changed = prepared.origin?.runtimeDigest
+        ? { ...prepared, args: [path.join(path.dirname(root), "outside.js")] }
+        : { ...prepared, command: path.join(path.dirname(root), "outside.js") };
+      if (!changed.origin) throw new Error("prepared connector has no origin");
+      await saveConnectors([{ ...changed, origin: { ...changed.origin, configurationDigest: pluginConnectorConfigurationDigest(changed) } }]);
+      await Effect.runPromise(refreshEnabledPluginConnectors(source));
+      expect((await listConnectors())[0]).toMatchObject({ enabled: false, allowTools: [] });
+    }
+  });
+
   test("refuses to snapshot bytes changed after discovery", async () => {
     const { root, source } = fixture();
     chmodSync(path.join(root, "server.js"), 0o755);
