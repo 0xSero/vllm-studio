@@ -11,9 +11,11 @@ import {
 } from "../src/connector-approval";
 import type { ConnectorArguments, ConnectorConfig } from "../src/connector-contract";
 import {
+  closePooledConnection,
   filterAllowedConnectorTools,
   assertConnectorToolAllowed,
   ConnectorToolDeniedError,
+  listConnectorTools,
 } from "../src/connector-pool";
 import {
   catalogConnectorConfiguration,
@@ -129,6 +131,51 @@ describe("connector grants", () => {
     expect(() =>
       catalogConnectorConfiguration({ ...github, permissionReviewed: false }, "github"),
     ).toThrow(/Review and save/);
+
+    const x = catalogConnectorConfiguration(
+      connector({
+        id: "x",
+        name: "X",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "@enescinar/twitter-mcp"],
+        env: {
+          API_KEY: "synthetic",
+          API_SECRET_KEY: "synthetic",
+          ACCESS_TOKEN: "synthetic",
+          ACCESS_TOKEN_SECRET: "synthetic",
+        },
+        url: undefined,
+        allowTools: ["search_tweets", "post_tweet"],
+        permissionReviewed: true,
+      }),
+      "x",
+    );
+    expect(connectorToolRisk(x, "search_tweets")).toBe("read");
+    expect(connectorToolRisk(x, "post_tweet")).toBe("mutating");
+    expect(connectorToolRisk(x, "unknown")).toBe("critical");
+
+    const google = connector({
+      origin: { kind: "account-adapter", id: "gmail", binding: "google-workspace" },
+    });
+    expect(connectorToolRisk(google, "list_labels")).toBe("read");
+    expect(connectorToolRisk(google, "send_message")).toBe("critical");
+  });
+
+  test("lists only explicitly granted tools from a pooled connector", async () => {
+    useTemporaryData();
+    const live = approvedConnector({
+      transport: "stdio",
+      command: process.execPath,
+      args: [join(import.meta.dir, "fixtures/connector-server.mjs")],
+      url: undefined,
+    });
+    await saveConnectors([live]);
+    try {
+      expect((await listConnectorTools(live.id)).map((entry) => entry.name)).toEqual(["write"]);
+    } finally {
+      closePooledConnection(live.id);
+    }
   });
 
   test("stages unreviewed plugin tools even when they claim to be read-only", () => {

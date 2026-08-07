@@ -11,6 +11,13 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       capabilities: { tools: {} },
       serverInfo: { name: "connector-test", version: "1" },
     });
+  } else if (message.method === "tools/list") {
+    reply(message.id, {
+      tools: [
+        { name: "read", inputSchema: { type: "object" } },
+        { name: "write", inputSchema: { type: "object" } },
+      ],
+    });
   } else if (message.method === "tools/call") {
     reply(message.id, {
       content: [{ type: "text", text: `${message.params.name}:called` }],
