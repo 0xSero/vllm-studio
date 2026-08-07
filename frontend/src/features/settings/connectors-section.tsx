@@ -22,6 +22,11 @@ import {
   ModelValue,
 } from "@/features/recipes/recipes-content/model-page";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import {
+  GITHUB_TOKEN_KEY,
+  githubCredentialUpdate,
+  hasStoredGitHubCredential,
+} from "./github-connector-credentials";
 
 interface CatalogEntry {
   id: string;
@@ -43,7 +48,7 @@ const CATALOG: CatalogEntry[] = [
     transport: "stdio",
     command: "github-mcp-server",
     args: ["stdio", "--read-only", "--toolsets=repos,issues,pull_requests"],
-    envFields: [{ key: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "Personal access token" }],
+    envFields: [{ key: GITHUB_TOKEN_KEY, label: "Personal access token" }],
   },
   {
     id: "x",
@@ -96,6 +101,52 @@ const connectorCommand = (connector: ConnectorView): string =>
     ? [connector.command, ...(connector.args ?? [])].filter(Boolean).join(" ")
     : (connector.url ?? "HTTP endpoint not set");
 
+function GitHubRecoveryFooter({
+  token,
+  saving,
+  confirmingRemoval,
+  onClose,
+  onCancelRemoval,
+  onConfirmRemoval,
+  onRemove,
+  onUpdate,
+}: {
+  token: string;
+  saving: boolean;
+  confirmingRemoval: boolean;
+  onClose: () => void;
+  onCancelRemoval: () => void;
+  onConfirmRemoval: () => void;
+  onRemove: () => void;
+  onUpdate: () => void;
+}) {
+  if (confirmingRemoval) {
+    return (
+      <>
+        <Button variant="secondary" disabled={saving} onClick={onCancelRemoval}>
+          Keep connector
+        </Button>
+        <Button variant="danger" loading={saving} onClick={onConfirmRemoval}>
+          Confirm removal
+        </Button>
+      </>
+    );
+  }
+  return (
+    <>
+      <Button variant="secondary" onClick={onClose} disabled={saving}>
+        Cancel
+      </Button>
+      <Button variant="danger" onClick={onRemove} disabled={saving}>
+        Remove connector
+      </Button>
+      <Button loading={saving} disabled={!token.trim() || saving} onClick={onUpdate}>
+        Update credential and enable
+      </Button>
+    </>
+  );
+}
+
 function ConnectorDrawer({
   connector,
   onClose,
@@ -110,9 +161,12 @@ function ConnectorDrawer({
   const [args, setArgs] = useState((connector.args ?? []).join("\n"));
   const [url, setUrl] = useState(connector.url ?? "");
   const [enabled, setEnabled] = useState(connector.enabled);
+  const [githubToken, setGitHubToken] = useState("");
+  const [confirmingRemoval, setConfirmingRemoval] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const managed = Boolean(connector.origin);
+  const managedGitHub = connector.origin?.kind === "catalog" && connector.origin.id === "github";
 
   const save = async () => {
     setSaving(true);
@@ -151,6 +205,47 @@ function ConnectorDrawer({
     }
   };
 
+  const updateGitHubCredential = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      const { connectors } = await requestJson(
+        "/api/agent/connectors",
+        Schema.decodeUnknownSync(ConnectorsResponseSchema),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(githubCredentialUpdate(githubToken)),
+        },
+      );
+      setGitHubToken("");
+      onChanged(connectors);
+      onClose();
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Credential update failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeManagedGitHub = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      const { connectors } = await requestJson(
+        `/api/agent/connectors?id=${encodeURIComponent(connector.id)}`,
+        Schema.decodeUnknownSync(ConnectorsResponseSchema),
+        { method: "DELETE" },
+      );
+      onChanged(connectors);
+      onClose();
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : "Connector removal failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <ResourceDrawer
       title={connector.name}
@@ -166,7 +261,18 @@ function ConnectorDrawer({
           : `${connector.transport} · connectors.json`
       }
       footer={
-        managed ? (
+        managedGitHub ? (
+          <GitHubRecoveryFooter
+            token={githubToken}
+            saving={saving}
+            confirmingRemoval={confirmingRemoval}
+            onClose={onClose}
+            onCancelRemoval={() => setConfirmingRemoval(false)}
+            onConfirmRemoval={() => void removeManagedGitHub()}
+            onRemove={() => setConfirmingRemoval(true)}
+            onUpdate={() => void updateGitHubCredential()}
+          />
+        ) : managed ? (
           <Button onClick={onClose}>Done</Button>
         ) : (
           <>
@@ -241,6 +347,26 @@ function ConnectorDrawer({
           <Checkbox checked={enabled} onChange={setEnabled} label="Enabled in Workbench" />
         </div>
       )}
+      {managedGitHub ? (
+        <ResourceDrawerSection title="Credential recovery">
+          <p className="mb-4 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
+            Stored credentials are never displayed. Enter a replacement token to repair access, or
+            remove the connector and reconnect it later.
+          </p>
+          <FormField
+            label="New personal access token"
+            description="The replacement is stored locally and enables the connector after saving."
+          >
+            <Input
+              type="password"
+              value={githubToken}
+              onChange={(event) => setGitHubToken(event.target.value)}
+              autoComplete="off"
+              className="font-mono"
+            />
+          </FormField>
+        </ResourceDrawerSection>
+      ) : null}
       {error ? <p className="mt-4 text-[length:var(--fs-sm)] text-(--ui-danger)">{error}</p> : null}
     </ResourceDrawer>
   );
@@ -267,6 +393,14 @@ function CatalogDrawer({
     setBusy(true);
     setError("");
     try {
+      const enteredGitHubToken = fields[GITHUB_TOKEN_KEY] ?? "";
+      const githubUpdate =
+        entry.id === "github" && enteredGitHubToken.trim()
+          ? githubCredentialUpdate(enteredGitHubToken)
+          : null;
+      if (entry.id === "github" && !githubUpdate && !hasStoredGitHubCredential(existing)) {
+        throw new Error("Enter a personal access token");
+      }
       if (entry.id === "github") {
         onGitHubArtifactChanged(
           await requestJson(
@@ -301,12 +435,12 @@ function CatalogDrawer({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(
             github
-              ? {
+              ? (githubUpdate ?? {
                   id: "github",
                   catalogId: "github",
-                  env: Object.keys(fields).length ? fields : existing?.env,
+                  env: existing?.env,
                   enabled: true,
-                }
+                })
               : {
                   id: id.toLowerCase().replace(/[^a-z0-9-_]+/g, "-"),
                   name,
