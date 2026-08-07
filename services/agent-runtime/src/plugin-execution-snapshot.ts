@@ -145,6 +145,7 @@ export function verifyPluginExecutionSnapshot(connector: ConnectorConfig): Effec
       await assertHardened(root);
       if ((await Effect.runPromise(pluginArtifactDigest(path.join(root, "artifact")))) !== connector.origin.snapshotDigest) throw new PluginExecutionSnapshotError("Plugin execution snapshot changed");
       if (connector.command === process.execPath && !connector.origin.runtimeDigest) throw new PluginExecutionSnapshotError("Plugin runtime identity is missing");
+      if (connector.origin.runtimeDigest && connector.command !== process.execPath) throw new PluginExecutionSnapshotError("Plugin runtime path changed");
       if (connector.origin.runtimeDigest && (await fileDigest(process.execPath)) !== connector.origin.runtimeDigest) throw new PluginExecutionSnapshotError("Plugin runtime changed");
     },
     catch: (error) => error instanceof PluginExecutionSnapshotError ? error : new PluginExecutionSnapshotError("Plugin execution snapshot could not be verified"),

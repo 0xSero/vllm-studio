@@ -565,7 +565,7 @@ async function reconcileEnabledPluginConnectors(
         (server) => server.connector?.origin?.binding === connector.origin?.binding,
       )?.connector;
       const snapshotReplacement: ConnectorConfig | undefined = replacement?.origin && connector.origin?.snapshotDigest
-        ? { ...replacement, origin: { ...replacement.origin, snapshotDigest: connector.origin.snapshotDigest, ...(connector.origin.runtimeDigest ? { runtimeDigest: connector.origin.runtimeDigest } : {}) }, command: connector.command, args: connector.args, cwd: connector.cwd }
+        ? { ...replacement, origin: { ...replacement.origin, snapshotDigest: connector.origin.snapshotDigest, ...(connector.origin.runtimeDigest ? { runtimeDigest: connector.origin.runtimeDigest } : {}) }, command: connector.origin.runtimeDigest ? replacement.command : connector.command, args: connector.args, cwd: connector.cwd }
         : replacement ?? undefined;
       const expected: ConnectorConfig | undefined = snapshotReplacement?.origin
         ? { ...snapshotReplacement, origin: { ...snapshotReplacement.origin, configurationDigest: pluginConnectorConfigurationDigest(snapshotReplacement) } }

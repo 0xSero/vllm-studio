@@ -314,6 +314,28 @@ describe("plugin approval identity", () => {
     expect((await listConnectors())[0]).toMatchObject({ enabled: false, allowTools: [] });
   });
 
+  test("revokes a host-runtime snapshot whose persisted command path changes", async () => {
+    const { root, source } = fixture();
+    const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
+    if (!bundle) throw new Error("fixture plugin was not discovered");
+    const prepared = await Effect.runPromise(
+      preparePluginExecutionSnapshot(bundle, await approvedConnector(root, source)),
+    );
+    const changed = { ...prepared, command: path.join(root, "server.js") };
+    if (!changed.origin) throw new Error("prepared connector has no origin");
+    await saveConnectors([
+      {
+        ...changed,
+        origin: {
+          ...changed.origin,
+          configurationDigest: pluginConnectorConfigurationDigest(changed),
+        },
+      },
+    ]);
+    await Effect.runPromise(refreshEnabledPluginConnectors(source));
+    expect((await listConnectors())[0]).toMatchObject({ enabled: false, allowTools: [] });
+  });
+
   test("refuses to snapshot bytes changed after discovery", async () => {
     const { root, source } = fixture();
     chmodSync(path.join(root, "server.js"), 0o755);

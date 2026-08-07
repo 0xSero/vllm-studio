@@ -64,6 +64,27 @@ type DiscoveredPlugin = {
   priority: number;
 };
 
+async function settledPlugins(
+  operations: Promise<DiscoveredPlugin[]>[],
+): Promise<DiscoveredPlugin[]> {
+  const scanned = await Promise.allSettled(operations);
+  const failures = scanned.flatMap((result) =>
+    result.status === "rejected" && result.reason instanceof PluginDiscoveryError
+      ? [result.reason]
+      : [],
+  );
+  if (failures.length > 0) {
+    throw new PluginDiscoveryError(
+      failures[0]?.message ?? "Plugin discovery failed",
+      undefined,
+      [...new Set(failures.flatMap((failure) => failure.sourceDigests))],
+    );
+  }
+  return scanned.flatMap((result) =>
+    result.status === "fulfilled" ? result.value : [],
+  );
+}
+
 export class PluginDiscoveryError extends Error {
   constructor(
     message: string,
@@ -170,13 +191,11 @@ async function scanDirectory(
       (entry) =>
         entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "node_modules",
     );
-    return (
-      await Promise.all(
-        childDirectories.map((entry) =>
-          scanDirectory(path.join(dir, entry.name), source, depth + 1, maxDepth),
-        ),
-      )
-    ).flat();
+    return settledPlugins(
+      childDirectories.map((entry) =>
+        scanDirectory(path.join(dir, entry.name), source, depth + 1, maxDepth),
+      ),
+    );
   } catch (error) {
     if (error instanceof PluginDiscoveryError) throw error;
     return [];
@@ -204,23 +223,8 @@ export function discoverPluginBundles(
 ): Effect.Effect<PluginBundle[], PluginDiscoveryError> {
   return Effect.tryPromise({
     try: async () => {
-      const scanned = await Promise.allSettled(
+      const discovered = await settledPlugins(
         sources.map((source) => scanDirectory(source.dir, source, 0, maxDepth)),
-      );
-      const failures = scanned.flatMap((result) =>
-        result.status === "rejected" && result.reason instanceof PluginDiscoveryError
-          ? [result.reason]
-          : [],
-      );
-      if (failures.length > 0) {
-        throw new PluginDiscoveryError(
-          failures[0]?.message ?? "Plugin discovery failed",
-          undefined,
-          [...new Set(failures.flatMap((failure) => failure.sourceDigests))],
-        );
-      }
-      const discovered = scanned.flatMap((result) =>
-        result.status === "fulfilled" ? result.value : [],
       );
       const plugins = new Map<string, DiscoveredPlugin>();
       for (const candidate of discovered) {

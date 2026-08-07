@@ -145,18 +145,18 @@ describe("plugin artifact identity", () => {
 
   test("discovery reports every concurrently unreadable plugin source", async () => {
     if (process.platform === "win32") return;
-    const left = fixture("left-invalid");
-    const right = fixture("right-invalid");
+    const parent = fixture("invalid-plugins");
+    const left = path.join(parent, "left");
+    const right = path.join(parent, "right");
+    mkdirSync(left);
+    mkdirSync(right);
     manifest(left);
     manifest(right);
     symlinkSync("missing", path.join(left, "unsafe"));
     symlinkSync("missing", path.join(right, "unsafe"));
     try {
       await Effect.runPromise(
-        discoverPluginBundles([
-          { label: "Left", dir: left, priority: 1 },
-          { label: "Right", dir: right, priority: 1 },
-        ], 0),
+        discoverPluginBundles([{ label: "Fixture", dir: parent, priority: 1 }], 1),
       );
       throw new Error("expected discovery to fail");
     } catch (error) {
