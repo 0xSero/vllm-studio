@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { chmod, readFile, rename, writeFile } from "fs/promises";
-import { existsSync, readFileSync, statSync } from "fs";
+import { chmod, lstat, readFile, rename, unlink, writeFile } from "fs/promises";
+import { existsSync, readFileSync, statSync, type Stats } from "fs";
 import { join } from "path";
 import { resolveDataDir } from "./data-dir";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import {
   CONNECTOR_MASK_TOKEN,
   ConnectorConfigSchema,
@@ -25,10 +25,45 @@ export {
   type ConnectorView,
 } from "./connector-contract";
 
+export type ConnectorFileSystem = {
+  readonly chmod: (path: string, mode: number) => Promise<void>;
+  readonly lstat: (path: string) => Promise<Stats>;
+  readonly rename: (source: string, destination: string) => Promise<void>;
+  readonly unlink: (path: string) => Promise<void>;
+  readonly writeFile: (
+    path: string,
+    data: string,
+    options: { readonly encoding: "utf-8"; readonly flag: "wx"; readonly mode: number },
+  ) => Promise<void>;
+};
+
+export type ConnectorPersistenceOptions = {
+  readonly fileSystem?: ConnectorFileSystem;
+  readonly identity?: ConnectorPersistenceIdentity;
+  readonly windowsSecurity?: ConnectorWindowsSecurity;
+};
+
+export type ConnectorPersistenceIdentity = {
+  readonly platform: NodeJS.Platform;
+  readonly uid: number | undefined;
+};
+
+export type ConnectorWindowsSecurity = {
+  readonly protect: (path: string, kind: "directory" | "file") => Promise<void>;
+  readonly verify: (path: string, kind: "directory" | "file") => Promise<void>;
+};
+
 const CONNECTOR_CONFIGURATION_ERROR = "Connector configuration is invalid";
 const exact = { onExcessProperty: "error" } as const;
 const decodeRawConnector = Schema.decodeUnknownSync(ConnectorConfigSchema, exact);
 const decodeUpsertInput = Schema.decodeUnknownSync(ConnectorUpsertInputSchema, exact);
+const defaultConnectorFileSystem: ConnectorFileSystem = {
+  chmod,
+  lstat,
+  rename,
+  unlink,
+  writeFile,
+};
 let connectorAccess = Promise.resolve();
 
 export class ConnectorConfigurationError extends Error {
@@ -127,9 +162,122 @@ export async function listConnectors(): Promise<ConnectorConfig[]> {
   }
 }
 
-async function writeConnectors(connectors: ConnectorConfig[]): Promise<void> {
-  resolveDataDir();
-  const file = resolveConnectorsFilePath();
+function fileOperation<A>(operation: () => Promise<A>) {
+  return Effect.tryPromise({ try: operation, catch: (error) => error });
+}
+
+function verifyPathKind(metadata: Stats, kind: "directory" | "file"): void {
+  const validKind = kind === "directory" ? metadata.isDirectory() : metadata.isFile();
+  if (!validKind || metadata.isSymbolicLink()) {
+    throw new Error(`Connector ${kind} is unsafe`);
+  }
+}
+
+function verifyOwnerOnly(
+  initial: Stats,
+  metadata: Stats,
+  kind: "directory" | "file",
+  mode: number,
+  uid: number,
+): void {
+  verifyStablePath(initial, metadata, kind);
+  if (metadata.uid !== uid || (metadata.mode & 0o777) !== mode) {
+    throw new Error(`Connector ${kind} permissions are unsafe`);
+  }
+}
+
+function verifyStablePath(initial: Stats, metadata: Stats, kind: "directory" | "file"): void {
+  verifyPathKind(metadata, kind);
+  if (initial.dev !== metadata.dev || initial.ino !== metadata.ino) {
+    throw new Error(`Connector ${kind} changed during permission enforcement`);
+  }
+}
+
+function enforceOwnerOnly(
+  fileSystem: ConnectorFileSystem,
+  path: string,
+  kind: "directory" | "file",
+  mode: number,
+  identity: ConnectorPersistenceIdentity,
+  windowsSecurity: ConnectorWindowsSecurity | undefined,
+) {
+  return Effect.gen(function* () {
+    const initial = yield* fileOperation(() => fileSystem.lstat(path));
+    yield* Effect.try({
+      try: () => verifyPathKind(initial, kind),
+      catch: (error) => error,
+    });
+    if (identity.platform === "win32") {
+      if (!windowsSecurity) {
+        return yield* Effect.fail(
+          new Error("Connector owner-only ACL enforcement is unavailable on Windows"),
+        );
+      }
+      yield* fileOperation(() => windowsSecurity.protect(path, kind));
+      yield* fileOperation(() => windowsSecurity.verify(path, kind));
+      const metadata = yield* fileOperation(() => fileSystem.lstat(path));
+      return yield* Effect.try({
+        try: () => verifyStablePath(initial, metadata, kind),
+        catch: (error) => error,
+      });
+    }
+    const uid = identity.uid;
+    if (uid === undefined) {
+      return yield* Effect.fail(new Error("Connector ownership verifier is unavailable"));
+    }
+    yield* fileOperation(() => fileSystem.chmod(path, mode));
+    const metadata = yield* fileOperation(() => fileSystem.lstat(path));
+    yield* Effect.try({
+      try: () => verifyOwnerOnly(initial, metadata, kind, mode, uid),
+      catch: (error) => error,
+    });
+  });
+}
+
+function writeConnectorPayload(
+  payload: string,
+  fileSystem: ConnectorFileSystem,
+  identity: ConnectorPersistenceIdentity,
+  windowsSecurity: ConnectorWindowsSecurity | undefined,
+) {
+  return Effect.gen(function* () {
+    const dataDirectory = yield* Effect.try({
+      try: resolveDataDir,
+      catch: (error) => error,
+    });
+    yield* enforceOwnerOnly(
+      fileSystem,
+      dataDirectory,
+      "directory",
+      0o700,
+      identity,
+      windowsSecurity,
+    );
+    const file = join(dataDirectory, "connectors.json");
+    const tempFile = `${file}.tmp-${process.pid}-${randomUUID()}`;
+    yield* Effect.acquireUseRelease(
+      Effect.succeed(tempFile),
+      (temporary) =>
+        Effect.gen(function* () {
+          yield* fileOperation(() =>
+            fileSystem.writeFile(temporary, payload, {
+              encoding: "utf-8",
+              flag: "wx",
+              mode: 0o600,
+            }),
+          );
+          yield* enforceOwnerOnly(fileSystem, temporary, "file", 0o600, identity, windowsSecurity);
+          yield* fileOperation(() => fileSystem.rename(temporary, file));
+        }),
+      (temporary) => fileOperation(() => fileSystem.unlink(temporary)).pipe(Effect.ignore),
+    );
+  });
+}
+
+function writeConnectors(
+  connectors: ConnectorConfig[],
+  options: ConnectorPersistenceOptions = {},
+): Promise<void> {
   let configuration: typeof ConnectorsFileSchema.Type;
   try {
     configuration = Schema.decodeUnknownSync(ConnectorsFileSchema, exact)({
@@ -139,14 +287,24 @@ async function writeConnectors(connectors: ConnectorConfig[]): Promise<void> {
     throw configurationError();
   }
   const payload = JSON.stringify(configuration, null, 2);
-  const tempFile = `${file}.tmp-${process.pid}-${randomUUID()}`;
-  await writeFile(tempFile, payload, "utf-8");
-  await chmod(tempFile, 0o600).catch(() => undefined);
-  await rename(tempFile, file);
+  return Effect.runPromise(
+    writeConnectorPayload(
+      payload,
+      options.fileSystem ?? defaultConnectorFileSystem,
+      options.identity ?? {
+        platform: process.platform,
+        uid: process.getuid?.(),
+      },
+      options.windowsSecurity,
+    ),
+  );
 }
 
-export function saveConnectors(connectors: ConnectorConfig[]): Promise<void> {
-  return withConnectorAccess(() => writeConnectors(connectors));
+export function saveConnectors(
+  connectors: ConnectorConfig[],
+  options: ConnectorPersistenceOptions = {},
+): Promise<void> {
+  return withConnectorAccess(() => writeConnectors(connectors, options));
 }
 
 export async function upsertConnector(connector: ConnectorConfig): Promise<ConnectorConfig[]> {
