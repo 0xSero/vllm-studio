@@ -1,18 +1,21 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import {
   chmodSync,
+  constants,
   existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { chmod, lstat, rename, unlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, open, rename, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Schema } from "effect";
@@ -23,6 +26,8 @@ import {
 } from "../src/connector-contract";
 import {
   ConnectorConfigurationError,
+  type ConnectorFileHandle,
+  type ConnectorFileSystem,
   listConnectors,
   resolveConnectorsFilePath,
   saveConnectors,
@@ -48,7 +53,42 @@ function useDataDirectory(): string {
   return root;
 }
 
-const nodeConnectorFileSystem = { chmod, lstat, rename, unlink, writeFile };
+async function openConnectorFile(
+  target: string,
+  flags: number,
+  mode: number,
+): Promise<ConnectorFileHandle> {
+  const handle = await open(target, flags, mode);
+  return {
+    chmod: (nextMode) => handle.chmod(nextMode),
+    close: () => handle.close(),
+    readFile: (options) => handle.readFile(options),
+    stat: () => handle.stat(),
+    sync: () => handle.sync(),
+    writeFile: (data, options) => handle.writeFile(data, options),
+  };
+}
+
+const nodeConnectorFileSystem: ConnectorFileSystem = {
+  chmod,
+  lstat,
+  open: openConnectorFile,
+  rename,
+  unlink,
+};
+
+function darwinAcl(target: string): string {
+  return execFileSync("/bin/ls", ["-lde", path.resolve(target)], {
+    encoding: "utf8",
+    env: { LANG: "C", LC_ALL: "C" },
+    maxBuffer: 16 * 1024,
+    timeout: 5_000,
+  });
+}
+
+function hasDarwinAcl(target: string): boolean {
+  return /(?:^|\n)\s+\d+:\s/u.test(darwinAcl(target));
+}
 
 const connector = (id: string, overrides: Partial<ConnectorConfig> = {}): ConnectorConfig => ({
   id,
@@ -225,22 +265,122 @@ describe("connector secret boundaries", () => {
     const root = useDataDirectory();
     const file = resolveConnectorsFilePath();
     chmodSync(root, 0o755);
+    let createFlags = 0;
     let initialTemporaryMode: number | null = null;
+    let initialTemporarySize: number | null = null;
 
     await saveConnectors([connector("private-create", { env: { TOKEN: "private-sentinel" } })], {
       fileSystem: {
         ...nodeConnectorFileSystem,
-        writeFile: async (target, data, options) => {
-          await writeFile(target, data, options);
-          initialTemporaryMode = statSync(target).mode & 0o777;
+        open: async (target, flags, mode) => {
+          createFlags = flags;
+          const handle = await openConnectorFile(target, flags, mode);
+          return {
+            ...handle,
+            writeFile: async (data, options) => {
+              const metadata = statSync(target);
+              initialTemporaryMode = metadata.mode & 0o777;
+              initialTemporarySize = metadata.size;
+              await handle.writeFile(data, options);
+            },
+          };
         },
       },
     });
 
+    expect(createFlags & constants.O_CREAT).toBe(constants.O_CREAT);
+    expect(createFlags & constants.O_EXCL).toBe(constants.O_EXCL);
+    expect(createFlags & constants.O_NOFOLLOW).toBe(constants.O_NOFOLLOW);
+    expect(createFlags & constants.O_WRONLY).toBe(constants.O_WRONLY);
     expect(initialTemporaryMode).toBe(0o600);
+    expect(initialTemporarySize).toBe(0);
     expect(statSync(root).mode & 0o777).toBe(0o700);
     expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(readFileSync(file, "utf8")).toContain("private-sentinel");
+  });
+
+  test.skipIf(process.platform !== "darwin")(
+    "removes inherited macOS ACLs before persisting connector secrets",
+    async () => {
+      const parent = mkdtempSync(path.join(tmpdir(), "local-studio-connector-acl-"));
+      roots.push(parent);
+      execFileSync(
+        "/bin/chmod",
+        ["+a", "everyone allow read,file_inherit,directory_inherit", path.resolve(parent)],
+        { timeout: 5_000 },
+      );
+      const root = path.join(parent, "data");
+      mkdirSync(root);
+      process.env.LOCAL_STUDIO_DATA_DIR = root;
+      expect(hasDarwinAcl(root)).toBe(true);
+
+      await saveConnectors([
+        connector("darwin-private", { env: { TOKEN: "darwin-private-sentinel" } }),
+      ]);
+
+      const file = resolveConnectorsFilePath();
+      expect(hasDarwinAcl(root)).toBe(false);
+      expect(hasDarwinAcl(file)).toBe(false);
+      expect(statSync(root).mode & 0o777).toBe(0o700);
+      expect(statSync(file).mode & 0o777).toBe(0o600);
+      expect(readFileSync(file, "utf8")).toContain("darwin-private-sentinel");
+    },
+  );
+
+  test("surfaces cleanup failure while leaving an unverified temporary file empty", async () => {
+    const root = useDataDirectory();
+    let temporary = "";
+    let writes = 0;
+    let failure: unknown;
+
+    try {
+      await saveConnectors(
+        [connector("cleanup-failure", { env: { TOKEN: "cleanup-secret-sentinel" } })],
+        {
+          darwinSecurity: {
+            protect: async () => undefined,
+            verify: async (target, kind) => {
+              if (kind === "file") {
+                expect(statSync(target).size).toBe(0);
+                throw new Error("injected ACL verification failure");
+              }
+            },
+          },
+          fileSystem: {
+            ...nodeConnectorFileSystem,
+            open: async (target, flags, mode) => {
+              temporary = target;
+              const handle = await openConnectorFile(target, flags, mode);
+              return {
+                ...handle,
+                writeFile: async (data, options) => {
+                  writes += 1;
+                  await handle.writeFile(data, options);
+                },
+              };
+            },
+            unlink: async (target) => {
+              if (target === temporary) throw new Error("injected unlink failure");
+              await unlink(target);
+            },
+          },
+          identity: { platform: "darwin", uid: process.getuid?.() },
+        },
+      );
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(failure).toHaveProperty("message", "Connector temporary file cleanup failed");
+    const errors = failure instanceof AggregateError ? failure.errors : [];
+    expect(errors.map(String).join("\n")).toContain("injected ACL verification failure");
+    expect(errors.map(String).join("\n")).toContain("injected unlink failure");
+    expect(writes).toBe(0);
+    expect(existsSync(temporary)).toBe(true);
+    expect(statSync(temporary).size).toBe(0);
+    expect(readFileSync(temporary, "utf8")).not.toContain("cleanup-secret-sentinel");
+    expect(existsSync(path.join(root, "connectors.json"))).toBe(false);
   });
 
   test("does not promote connector secrets when permission enforcement fails", async () => {
@@ -258,9 +398,15 @@ describe("connector secret boundaries", () => {
       saveConnectors([connector("replacement", { env: { TOKEN: "replacement-sentinel" } })], {
         fileSystem: {
           ...nodeConnectorFileSystem,
-          chmod: async (target, mode) => {
-            if (target !== root) throw new Error("injected chmod failure");
-            await chmod(target, mode);
+          open: async (target, flags, mode) => {
+            const handle = await openConnectorFile(target, flags, mode);
+            return {
+              ...handle,
+              chmod: async (nextMode) => {
+                if (target.includes(".tmp-")) throw new Error("injected chmod failure");
+                await handle.chmod(nextMode);
+              },
+            };
           },
         },
       }),
@@ -276,6 +422,41 @@ describe("connector secret boundaries", () => {
     expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 
+  test("preserves the previous connector file when secure temporary sync fails", async () => {
+    const root = useDataDirectory();
+    const file = resolveConnectorsFilePath();
+    const previous = JSON.stringify(
+      { connectors: [connector("sync-previous", { env: { TOKEN: "sync-previous-sentinel" } })] },
+      null,
+      2,
+    );
+    writeFileSync(file, previous, { mode: 0o600 });
+
+    await expect(
+      saveConnectors([connector("sync-next", { env: { TOKEN: "sync-next-sentinel" } })], {
+        fileSystem: {
+          ...nodeConnectorFileSystem,
+          open: async (target, flags, mode) => {
+            const handle = await openConnectorFile(target, flags, mode);
+            return {
+              ...handle,
+              sync: async () => {
+                throw new Error("injected sync failure");
+              },
+            };
+          },
+        },
+      }),
+    ).rejects.toThrow("injected sync failure");
+
+    expect(readFileSync(file, "utf8")).toBe(previous);
+    expect(readFileSync(file, "utf8")).not.toContain("sync-next-sentinel");
+    expect(readdirSync(root).filter((entry) => entry.includes(".tmp-"))).toEqual([]);
+
+    await saveConnectors([connector("sync-next", { env: { TOKEN: "sync-next-sentinel" } })]);
+    expect(readFileSync(file, "utf8")).toContain("sync-next-sentinel");
+  });
+
   test("rejects a temporary secret file that remains group-readable", async () => {
     const root = useDataDirectory();
     const file = resolveConnectorsFilePath();
@@ -284,10 +465,12 @@ describe("connector secret boundaries", () => {
       saveConnectors([connector("unsafe-mode", { env: { TOKEN: "unsafe-mode-sentinel" } })], {
         fileSystem: {
           ...nodeConnectorFileSystem,
-          writeFile: (target, data, options) =>
-            writeFile(target, data, { ...options, mode: 0o640 }),
-          chmod: async (target, mode) => {
-            if (target === root) await chmod(target, mode);
+          open: async (target, flags) => {
+            const handle = await openConnectorFile(target, flags, 0o640);
+            return {
+              ...handle,
+              chmod: async () => undefined,
+            };
           },
         },
       }),
@@ -300,7 +483,6 @@ describe("connector secret boundaries", () => {
   test("rejects a temporary secret file whose ownership changes", async () => {
     const root = useDataDirectory();
     const file = resolveConnectorsFilePath();
-    let temporaryReads = 0;
 
     await expect(
       saveConnectors([connector("unsafe-owner", { env: { TOKEN: "unsafe-owner-sentinel" } })], {
@@ -308,7 +490,7 @@ describe("connector secret boundaries", () => {
           ...nodeConnectorFileSystem,
           lstat: async (target) => {
             const metadata = await lstat(target);
-            if (target === root || ++temporaryReads < 2) return metadata;
+            if (target === root) return metadata;
             return new Proxy(metadata, {
               get(current, property) {
                 if (property === "uid") return current.uid + 1;
@@ -323,6 +505,107 @@ describe("connector secret boundaries", () => {
 
     expect(existsSync(file)).toBe(false);
     expect(readdirSync(root).filter((entry) => entry.includes(".tmp-"))).toEqual([]);
+  });
+
+  test("repairs an existing permissive connector file before reading it", async () => {
+    const root = useDataDirectory();
+    const file = resolveConnectorsFilePath();
+    writeFileSync(
+      file,
+      JSON.stringify({
+        connectors: [connector("repair-read", { env: { TOKEN: "read-sentinel" } })],
+      }),
+      { mode: 0o644 },
+    );
+    chmodSync(file, 0o644);
+
+    expect(await listConnectors()).toHaveLength(1);
+    expect(statSync(root).mode & 0o777).toBe(0o700);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+  });
+
+  test("fails before reading when an existing connector file cannot be protected", async () => {
+    useDataDirectory();
+    const file = resolveConnectorsFilePath();
+    writeFileSync(file, JSON.stringify({ connectors: [connector("unsafe-read")] }), {
+      mode: 0o644,
+    });
+    let read = false;
+
+    await expect(
+      listConnectors({
+        fileSystem: {
+          ...nodeConnectorFileSystem,
+          open: async (target, flags, mode) => {
+            const handle = await openConnectorFile(target, flags, mode);
+            return {
+              ...handle,
+              chmod: async () => {
+                throw new Error("injected read protection failure");
+              },
+              readFile: async (options) => {
+                read = true;
+                return handle.readFile(options);
+              },
+            };
+          },
+        },
+        identity: { platform: "linux", uid: process.getuid?.() },
+      }),
+    ).rejects.toThrow("injected read protection failure");
+
+    expect(read).toBe(false);
+  });
+
+  test("rejects an existing connector symlink without reading its target", async () => {
+    const root = useDataDirectory();
+    const file = resolveConnectorsFilePath();
+    const external = path.join(root, "external-read.json");
+    const payload = JSON.stringify({
+      connectors: [connector("external-read", { env: { TOKEN: "external-read-sentinel" } })],
+    });
+    writeFileSync(external, payload, { mode: 0o600 });
+    symlinkSync(external, file);
+
+    await expect(listConnectors()).rejects.toThrow("Connector file is unsafe");
+    expect(readFileSync(external, "utf8")).toBe(payload);
+  });
+
+  test("rejects a connector file swapped between lstat and no-follow open", async () => {
+    const root = useDataDirectory();
+    const file = resolveConnectorsFilePath();
+    const original = JSON.stringify({ connectors: [connector("original-read")] });
+    const replacement = JSON.stringify({ connectors: [connector("replacement-read")] });
+    writeFileSync(file, original, { mode: 0o600 });
+    let read = false;
+    let readFlags = 0;
+
+    await expect(
+      listConnectors({
+        fileSystem: {
+          ...nodeConnectorFileSystem,
+          open: async (target, flags, mode) => {
+            if (target === file) {
+              renameSync(file, `${file}.swapped`);
+              writeFileSync(file, replacement, { mode: 0o600 });
+              readFlags = flags;
+            }
+            const handle = await openConnectorFile(target, flags, mode);
+            return {
+              ...handle,
+              readFile: async (options) => {
+                read = true;
+                return handle.readFile(options);
+              },
+            };
+          },
+        },
+        identity: { platform: "linux", uid: process.getuid?.() },
+      }),
+    ).rejects.toThrow("Connector file changed during permission enforcement");
+
+    expect(read).toBe(false);
+    expect(readFlags & constants.O_NOFOLLOW).toBe(constants.O_NOFOLLOW);
   });
 
   test("fails closed where owner-only ACL enforcement is unavailable", async () => {
