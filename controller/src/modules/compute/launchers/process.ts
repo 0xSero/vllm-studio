@@ -1,10 +1,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, fstatSync, readFileSync, readdirSync, readSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { closeSync, readFileSync, readdirSync } from "node:fs";
 import { Effect } from "effect";
 import type { HandleReference, InstanceRecord, LaunchPlan } from "../contracts";
-import { openPrivateLogFile, openPrivateLogFileForRead } from "../../../core/log-files";
-import { logProxyModuleUrl } from "../../../core/log-proxy";
+import { openPrivateLogFile, readPrivateLogTail } from "../../../core/log-files";
+import { startRedactedStreamProxy } from "../../../core/log-proxy";
 import { LOG_TAIL_BYTES, spawnFailed, type Launcher } from "./launcher";
 
 /**
@@ -15,12 +14,23 @@ import { LOG_TAIL_BYTES, spawnFailed, type Launcher } from "./launcher";
 
 const STOP_POLL_MS = 250;
 const LAUNCH_MARKER = "LOCAL_STUDIO_LAUNCH_NONCE";
-const LOG_PROXY_PATH = fileURLToPath(logProxyModuleUrl);
 const localChildren = new Map<number, ChildProcess>();
+const localProxies = new Map<number, ChildProcess>();
 
-export interface ProcessIdentity { readonly pid: number; readonly processGroupId: number; readonly sessionId: number; readonly startToken: string; readonly launchMarker: string | null }
+export interface ProcessIdentity {
+  readonly pid: number;
+  readonly processGroupId: number;
+  readonly sessionId: number;
+  readonly startToken: string;
+  readonly launchMarker: string | null;
+}
 
-export interface ProcessLauncherRuntime { readonly platform: NodeJS.Platform; readonly readIdentity: (pid: number) => ProcessIdentity | null; readonly readGroup: (processGroupId: number) => readonly ProcessIdentity[] | null; readonly signalGroup: (processGroupId: number, signal: NodeJS.Signals) => void }
+export interface ProcessLauncherRuntime {
+  readonly platform: NodeJS.Platform;
+  readonly readIdentity: (pid: number) => ProcessIdentity | null;
+  readonly readGroup: (processGroupId: number) => readonly ProcessIdentity[] | null;
+  readonly signalGroup: (processGroupId: number, signal: NodeJS.Signals) => void;
+}
 
 const readLinuxIdentity = (pid: number): ProcessIdentity | null => {
   try {
@@ -32,7 +42,13 @@ const readLinuxIdentity = (pid: number): ProcessIdentity | null => {
     if (![pid, processGroupId, sessionId].every(Number.isSafeInteger) || !startToken) return null;
     const prefix = `${LAUNCH_MARKER}=`;
     let launchMarker: string | null = null;
-    try { launchMarker = readFileSync(`/proc/${pid}/environ`, "utf8").split("\0").find((entry) => entry.startsWith(prefix))?.slice(prefix.length) ?? null; } catch {}
+    try {
+      launchMarker =
+        readFileSync(`/proc/${pid}/environ`, "utf8")
+          .split("\0")
+          .find((entry) => entry.startsWith(prefix))
+          ?.slice(prefix.length) ?? null;
+    } catch {}
     return { pid, processGroupId, sessionId, startToken, launchMarker };
   } catch {
     return null;
@@ -44,7 +60,10 @@ const readLinuxGroup = (processGroupId: number): readonly ProcessIdentity[] | nu
     return readdirSync("/proc")
       .filter((entry) => /^\d+$/.test(entry))
       .map((entry) => readLinuxIdentity(Number(entry)))
-      .filter((identity): identity is ProcessIdentity => identity !== null && identity.processGroupId === processGroupId);
+      .filter(
+        (identity): identity is ProcessIdentity =>
+          identity !== null && identity.processGroupId === processGroupId,
+      );
   } catch {
     return null;
   }
@@ -54,36 +73,48 @@ const realRuntime: ProcessLauncherRuntime = {
   platform: process.platform,
   readIdentity: readLinuxIdentity,
   readGroup: readLinuxGroup,
-  signalGroup: (processGroupId, signal) => { try { process.kill(-processGroupId, signal); } catch {} },
-};
-
-const readTailBytes = (path: string, bytes: number): string => {
-  try {
-    const fd = openPrivateLogFileForRead(path);
+  signalGroup: (processGroupId, signal) => {
     try {
-      const size = fstatSync(fd).size;
-      const start = Math.max(0, size - bytes);
-      const length = size - start;
-      if (length <= 0) return "";
-      const buffer = Buffer.alloc(length);
-      readSync(fd, buffer, 0, length, start);
-      return buffer.toString("utf8");
-    } finally {
-      closeSync(fd);
-    }
-  } catch {
-    return "";
-  }
+      process.kill(-processGroupId, signal);
+    } catch {}
+  },
 };
 
 const sameProcessReference = (reference: HandleReference, record: InstanceRecord): boolean => {
   const stored = record.ref;
-  return reference.kind === "process" && stored?.kind === "process" && reference.pid === stored.pid && reference.processGroupId === stored.processGroupId && reference.sessionId === stored.sessionId && reference.startToken === stored.startToken;
+  return (
+    reference.kind === "process" &&
+    stored?.kind === "process" &&
+    reference.pid === stored.pid &&
+    reference.processGroupId === stored.processGroupId &&
+    reference.sessionId === stored.sessionId &&
+    reference.startToken === stored.startToken
+  );
 };
-const currentChild = (reference: HandleReference, record: InstanceRecord): ChildProcess | null => sameProcessReference(reference, record) && reference.kind === "process" ? localChildren.get(reference.pid) ?? null : null;
-const childRunning = (child: ChildProcess): boolean => child.exitCode === null && child.signalCode === null;
+const currentChild = (reference: HandleReference, record: InstanceRecord): ChildProcess | null =>
+  sameProcessReference(reference, record) && reference.kind === "process"
+    ? (localChildren.get(reference.pid) ?? null)
+    : null;
+const currentProxy = (reference: HandleReference, record: InstanceRecord): ChildProcess | null =>
+  sameProcessReference(reference, record) && reference.kind === "process"
+    ? (localProxies.get(reference.pid) ?? null)
+    : null;
+const childRunning = (child: ChildProcess): boolean =>
+  child.exitCode === null && child.signalCode === null;
+const processExists = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
-const ownership = (reference: HandleReference, record: InstanceRecord, runtime: ProcessLauncherRuntime): "owned" | "gone" | "unknown" => {
+const ownership = (
+  reference: HandleReference,
+  record: InstanceRecord,
+  runtime: ProcessLauncherRuntime,
+): "owned" | "gone" | "unknown" => {
   if (
     runtime.platform !== "linux" ||
     reference.kind !== "process" ||
@@ -112,6 +143,33 @@ const ownership = (reference: HandleReference, record: InstanceRecord, runtime: 
     : "unknown";
 };
 
+const terminateFailedRedaction = (
+  child: ChildProcess,
+  reference: HandleReference | null,
+  record: InstanceRecord,
+  runtime: ProcessLauncherRuntime,
+): void => {
+  if (reference?.kind === "process" && runtime.platform === "linux") {
+    if (ownership(reference, { ...record, ref: reference }, runtime) !== "owned") return;
+    if (reference.processGroupId !== null) {
+      runtime.signalGroup(reference.processGroupId, "SIGKILL");
+    }
+    return;
+  }
+  if (
+    reference?.kind === "process" &&
+    sameProcessReference(reference, { ...record, ref: reference }) &&
+    localChildren.get(reference.pid) === child
+  ) {
+    if (runtime.platform !== "win32") runtime.signalGroup(reference.pid, "SIGKILL");
+    if (childRunning(child) && processExists(reference.pid)) child.kill("SIGKILL");
+    return;
+  }
+  if (!childRunning(child) || !child.pid || !processExists(child.pid)) return;
+  if (runtime.platform !== "win32") runtime.signalGroup(child.pid, "SIGKILL");
+  child.kill("SIGKILL");
+};
+
 export const makeProcessLauncher = (
   logPathFor: (name: string) => string,
   runtime: ProcessLauncherRuntime = realRuntime,
@@ -128,49 +186,121 @@ export const makeProcessLauncher = (
         },
         catch: () => undefined,
       }).pipe(Effect.catch(() => spawnFailed(`cannot open private log for ${record.name}`)));
-      const child = spawn(process.execPath, [LOG_PROXY_PATH, logPath, binary, ...args], {
-        detached: true,
-        stdio: "ignore",
-        env: { ...process.env, ...plan.env, [LAUNCH_MARKER]: record.nonce },
-        ...(plan.workdir ? { cwd: plan.workdir } : {}),
-      });
-      const pid = yield* Effect.callback<number, never>((resume) => {
-        child.on("error", () => resume(Effect.succeed(-1)));
-        child.on("spawn", () => resume(Effect.succeed(child.pid ?? -1)));
-      });
-      if (pid <= 0) return yield* spawnFailed(`failed to spawn ${binary}`);
+      const proxy = yield* startRedactedStreamProxy(logPath).pipe(
+        Effect.mapError(() => ({
+          kind: "spawn-failed" as const,
+          detail: `cannot start private log proxy for ${record.name}`,
+        })),
+      );
+      const child = yield* Effect.try({
+        try: () =>
+          spawn(binary, args, {
+            detached: true,
+            stdio: ["ignore", proxy.stdoutDescriptor, proxy.stderrDescriptor],
+            env: { ...process.env, ...plan.env, [LAUNCH_MARKER]: record.nonce },
+            ...(plan.workdir ? { cwd: plan.workdir } : {}),
+          }),
+        catch: () => ({
+          kind: "spawn-failed" as const,
+          detail: `failed to spawn ${binary}`,
+        }),
+      }).pipe(
+        Effect.tapError(() =>
+          Effect.sync(() => {
+            proxy.finish();
+            proxy.child.kill("SIGKILL");
+          }),
+        ),
+      );
+      const pid =
+        child.pid ??
+        (yield* Effect.callback<number, never>((resume) => {
+          child.once("error", () => resume(Effect.succeed(-1)));
+          child.once("spawn", () => resume(Effect.succeed(child.pid ?? -1)));
+        }));
+      proxy.unref();
+      if (pid <= 0) {
+        proxy.finish();
+        proxy.child.kill("SIGKILL");
+        return yield* spawnFailed(`failed to spawn ${binary}`);
+      }
       if (runtime.platform !== "linux") localChildren.set(pid, child);
       child.unref();
+      let reference: HandleReference | null = null;
+      let engineExitedAt: number | null = null;
+      let monitor: NodeJS.Timeout | null = null;
+      const proxyFailed = (): void => {
+        terminateFailedRedaction(child, reference, record, runtime);
+        proxy.finish();
+        localChildren.delete(pid);
+        localProxies.delete(pid);
+        if (monitor) clearInterval(monitor);
+      };
       let proved: ProcessIdentity | null = null;
-      for (let attempt = 0; runtime.platform === "linux" && attempt < 20 && proved === null; attempt += 1) {
+      for (
+        let attempt = 0;
+        runtime.platform === "linux" && attempt < 20 && proved === null;
+        attempt += 1
+      ) {
         const identity = runtime.readIdentity(pid);
-        if (identity?.pid === pid && identity.processGroupId === pid && identity.sessionId === pid && identity.launchMarker === record.nonce) proved = identity;
+        if (
+          identity?.pid === pid &&
+          identity.processGroupId === pid &&
+          identity.sessionId === pid &&
+          identity.launchMarker === record.nonce
+        )
+          proved = identity;
         if (!proved) yield* Effect.sleep(25);
       }
       if (runtime.platform === "linux" && !proved) {
-        child.kill("SIGKILL"); localChildren.delete(pid); return yield* spawnFailed("spawned process identity could not be proved");
+        proxy.finish();
+        proxy.child.kill("SIGKILL");
+        terminateFailedRedaction(child, reference, record, runtime);
+        localChildren.delete(pid);
+        return yield* spawnFailed("spawned process identity could not be proved");
       }
-      return {
+      reference = {
         kind: "process",
         pid,
         processGroupId: proved?.processGroupId ?? null,
         sessionId: proved?.sessionId ?? null,
         startToken: proved?.startToken ?? null,
       } as const;
+      localProxies.set(pid, proxy.child);
+      const observeProcesses = (): void => {
+        if (!proxy.child.pid || !processExists(proxy.child.pid)) {
+          proxyFailed();
+          return;
+        }
+        if (processExists(pid)) return;
+        proxy.finish();
+        engineExitedAt ??= Date.now();
+        if (Date.now() - engineExitedAt >= 1_000) proxy.child.kill("SIGTERM");
+      };
+      monitor = setInterval(observeProcesses, 10);
+      monitor.unref();
+      observeProcesses();
+      return reference;
     }),
 
-  alive: (reference, record) => Effect.sync(() => {
-    if (reference.kind !== "process") return false;
-    if (runtime.platform === "linux") return ownership(reference, record, runtime) !== "gone";
-    const child = currentChild(reference, record);
-    return child ? childRunning(child) : true;
-  }),
+  alive: (reference, record) =>
+    Effect.sync(() => {
+      if (reference.kind !== "process") return false;
+      const proxy = currentProxy(reference, record);
+      const draining = Boolean(proxy?.pid && processExists(proxy.pid));
+      if (runtime.platform === "linux") {
+        return ownership(reference, record, runtime) !== "gone" || draining;
+      }
+      const child = currentChild(reference, record);
+      return child ? childRunning(child) || draining : draining;
+    }),
 
-  owns: (reference, record) => Effect.sync(() => {
-    if (runtime.platform === "linux") return ownership(reference, record, runtime) === "owned";
-    const child = currentChild(reference, record);
-    return child !== null && childRunning(child);
-  }),
+  owns: (reference, record) =>
+    Effect.sync(() => {
+      if (runtime.platform === "linux") return ownership(reference, record, runtime) === "owned";
+      const child = currentChild(reference, record);
+      return child !== null && childRunning(child);
+    }),
 
   stop: (reference, record, graceMs) =>
     Effect.gen(function* () {
@@ -182,7 +312,8 @@ export const makeProcessLauncher = (
         const deadline = Date.now() + graceMs;
         while (childRunning(child) && Date.now() < deadline) yield* Effect.sleep(STOP_POLL_MS);
         if (childRunning(child)) child.kill("SIGKILL");
-        while (childRunning(child) && Date.now() < deadline + 1_000) yield* Effect.sleep(25); return;
+        while (childRunning(child) && Date.now() < deadline + 1_000) yield* Effect.sleep(25);
+        return;
       }
       if (reference.processGroupId === null) return;
       const term = yield* Effect.sync(() => {
@@ -205,5 +336,5 @@ export const makeProcessLauncher = (
     }),
 
   logTail: (reference: HandleReference, record: InstanceRecord) =>
-    Effect.sync(() => readTailBytes(logPathFor(record.name), LOG_TAIL_BYTES)),
+    Effect.sync(() => readPrivateLogTail(logPathFor(record.name), LOG_TAIL_BYTES)),
 });

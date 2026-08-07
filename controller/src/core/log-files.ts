@@ -193,6 +193,25 @@ export const openPrivateLogFileForRead = (path: string): number => {
   }
 };
 
+export const readPrivateLogTail = (path: string, bytes: number): string => {
+  try {
+    const descriptor = openPrivateLogFileForRead(path);
+    try {
+      const size = fstatSync(descriptor).size;
+      const start = Math.max(0, size - bytes);
+      const length = size - start;
+      if (length <= 0) return "";
+      const buffer = Buffer.alloc(length);
+      readSync(descriptor, buffer, 0, length, start);
+      return buffer.toString("utf8");
+    } finally {
+      closeSync(descriptor);
+    }
+  } catch {
+    return "";
+  }
+};
+
 const isReadableLogFile = (path: string): boolean => {
   try {
     closeSync(openPrivateLogFileForRead(path));
