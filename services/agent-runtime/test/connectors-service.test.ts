@@ -45,6 +45,8 @@ const connector = (id: string, overrides: Partial<ConnectorConfig> = {}): Connec
 
 const masks = (...keys: string[]): Record<string, string> =>
   Object.fromEntries(keys.map((key) => [key, CONNECTOR_MASK_TOKEN]));
+const prototypeSecret = (value: string): Record<string, string> =>
+  Object.fromEntries([["__proto__", value]]);
 
 async function expectConfigurationError(
   operation: Promise<unknown>,
@@ -164,6 +166,43 @@ describe("connector secret boundaries", () => {
     });
 
     expect(await listConnectors()).toEqual([{ ...managed, enabled: false }]);
+  });
+
+  test("preserves prototype-named secrets through raw and masked settings writes", async () => {
+    useDataDirectory();
+    const id = "prototype-secrets";
+    const envSentinel = "prototype-env-sentinel";
+    const headerSentinel = "prototype-header-sentinel";
+    const input = {
+      id,
+      transport: "http" as const,
+      url: `https://${id}.example.test/mcp`,
+      env: prototypeSecret(envSentinel),
+      headers: prototypeSecret(headerSentinel),
+    };
+
+    await upsertConnectorInput(input);
+    const storedAfterRaw = (await listConnectors())[0];
+    if (!storedAfterRaw) throw new Error("Expected stored connector");
+    expect(storedAfterRaw.env).toEqual(prototypeSecret(envSentinel));
+    expect(storedAfterRaw.headers).toEqual(prototypeSecret(headerSentinel));
+    expect(Object.hasOwn(storedAfterRaw.env ?? {}, "__proto__")).toBe(true);
+    expect(Object.hasOwn(storedAfterRaw.headers ?? {}, "__proto__")).toBe(true);
+
+    const view = toConnectorView(storedAfterRaw);
+    expect(view.env).toEqual(prototypeSecret(CONNECTOR_MASK_TOKEN));
+    expect(view.headers).toEqual(prototypeSecret(CONNECTOR_MASK_TOKEN));
+    expect(view.secret_keys).toEqual({ env: ["__proto__"], headers: ["__proto__"] });
+    await upsertConnectorInput({ ...input, env: view.env, headers: view.headers });
+
+    const storedAfterMask = (await listConnectors())[0];
+    expect(storedAfterMask?.env).toEqual(prototypeSecret(envSentinel));
+    expect(storedAfterMask?.headers).toEqual(prototypeSecret(headerSentinel));
+    const file = readFileSync(resolveConnectorsFilePath(), "utf8");
+    expect(file).toContain('"__proto__"');
+    expect(file).toContain(envSentinel);
+    expect(file).toContain(headerSentinel);
+    expect(file).not.toContain(CONNECTOR_MASK_TOKEN);
   });
 
   test("rejects reserved masks at raw and persisted boundaries", async () => {

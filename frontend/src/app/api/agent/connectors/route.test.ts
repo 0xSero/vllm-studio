@@ -44,6 +44,8 @@ const request = (path = "", init?: ConstructorParameters<typeof NextRequest>[1])
 const post = (body: unknown) => POST(request("", { method: "POST", body: JSON.stringify(body) }));
 const assertNoSecrets = (text: string, ...secrets: string[]): void =>
   secrets.forEach((secret) => assert.equal(text.includes(secret), false));
+const prototypeSecret = (value: string): Record<string, string> =>
+  Object.fromEntries([["__proto__", value]]);
 
 describe("connector route secret boundaries", () => {
   test("masks arbitrary values in list and masked update responses", async () => {
@@ -128,5 +130,43 @@ describe("connector route secret boundaries", () => {
     assertNoSecrets(text, "delete-env-sentinel", "delete-header-sentinel");
     const visible = decodeResponse(JSON.parse(text)).connectors[0];
     assert.deepEqual(visible?.secret_keys, { env: ["SESSION"], headers: ["CREDENTIAL"] });
+  });
+
+  test("preserves prototype-named secrets through raw and masked posts", async () => {
+    useDataDirectory();
+    const id = "route-prototype-secrets";
+    const envSentinel = "route-prototype-env-sentinel";
+    const headerSentinel = "route-prototype-header-sentinel";
+    const input = {
+      id,
+      transport: "http",
+      url: `https://${id}.example.test/mcp`,
+      env: prototypeSecret(envSentinel),
+      headers: prototypeSecret(headerSentinel),
+    };
+
+    const rawResponse = await post(input);
+    const rawText = await rawResponse.text();
+    assert.equal(rawResponse.status, 200);
+    assertNoSecrets(rawText, envSentinel, headerSentinel);
+    const view = decodeResponse(JSON.parse(rawText)).connectors[0];
+    assert.deepEqual(view?.env, prototypeSecret(CONNECTOR_MASK_TOKEN));
+    assert.deepEqual(view?.headers, prototypeSecret(CONNECTOR_MASK_TOKEN));
+    assert.deepEqual(view?.secret_keys, { env: ["__proto__"], headers: ["__proto__"] });
+    assert.equal(Object.hasOwn(view?.env ?? {}, "__proto__"), true);
+    assert.equal(Object.hasOwn(view?.headers ?? {}, "__proto__"), true);
+
+    const maskedResponse = await post(view);
+    const maskedText = await maskedResponse.text();
+    assert.equal(maskedResponse.status, 200);
+    assertNoSecrets(maskedText, envSentinel, headerSentinel);
+    const stored = (await listConnectors())[0];
+    assert.deepEqual(stored?.env, prototypeSecret(envSentinel));
+    assert.deepEqual(stored?.headers, prototypeSecret(headerSentinel));
+    const file = readFileSync(resolveConnectorsFilePath(), "utf8");
+    assert.match(file, /"__proto__"/);
+    assert.match(file, /route-prototype-env-sentinel/);
+    assert.match(file, /route-prototype-header-sentinel/);
+    assert.equal(file.includes(CONNECTOR_MASK_TOKEN), false);
   });
 });

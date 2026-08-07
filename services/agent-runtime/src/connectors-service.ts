@@ -237,7 +237,7 @@ function mergeSecrets(
   stored: Record<string, string> | undefined,
 ): Record<string, string> | undefined {
   if (!incoming) return incoming;
-  const result: Record<string, string> = {};
+  const result: Record<string, string> = Object.create(null);
   for (const [key, value] of Object.entries(incoming)) {
     if (value !== CONNECTOR_MASK_TOKEN) {
       result[key] = value;
