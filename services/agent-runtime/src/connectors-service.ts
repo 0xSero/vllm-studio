@@ -143,14 +143,28 @@ export function upsertConnectors(incoming: ConnectorConfig[]): Promise<Connector
 }
 
 export function replaceConnectors(incoming: ConnectorConfig[]): Promise<ConnectorConfig[]> {
+  return replaceConnectorIdentities(
+    incoming.map((connector) => ({ existingId: connector.id, connector })),
+  );
+}
+
+export function replaceConnectorIdentities(
+  incoming: { existingId: string; connector: ConnectorConfig }[],
+): Promise<ConnectorConfig[]> {
   return withConnectorAccess(async () => {
-    const connectors = await listConnectors();
-    for (const candidate of incoming) {
-      const connector = protectManagedConnector(candidate);
-      const index = connectors.findIndex((entry) => entry.id === connector.id);
-      if (index === -1) connectors.push(connector);
-      else connectors[index] = connector;
+    const replacements = incoming.map(({ existingId, connector }) => ({
+      existingId,
+      connector: protectManagedConnector(connector),
+    }));
+    const targetIds = new Set(replacements.map(({ connector }) => connector.id));
+    if (targetIds.size !== replacements.length) {
+      throw new Error("Connector replacement identities conflict");
     }
+    const removedIds = new Set(
+      replacements.flatMap(({ existingId, connector }) => [existingId, connector.id]),
+    );
+    const connectors = (await listConnectors()).filter((entry) => !removedIds.has(entry.id));
+    connectors.push(...replacements.map(({ connector }) => connector));
     await writeConnectors(connectors);
     return connectors;
   });
@@ -194,8 +208,17 @@ const maskRecord = (
 };
 
 export function toConnectorView(connector: ConnectorConfig): ConnectorView {
+  const origin = connector.origin
+    ? {
+        kind: connector.origin.kind,
+        id: connector.origin.id,
+        ...(connector.origin.version ? { version: connector.origin.version } : {}),
+        ...(connector.origin.binding ? { binding: connector.origin.binding } : {}),
+      }
+    : undefined;
   return {
     ...connector,
+    ...(origin ? { origin } : { origin: undefined }),
     env: maskRecord(connector.env),
     headers: maskRecord(connector.headers),
     secret_keys: [

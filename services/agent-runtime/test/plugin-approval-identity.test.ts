@@ -5,7 +5,7 @@ import path from "node:path";
 import { Effect } from "effect";
 import type { ConnectorConfig } from "../src/connector-contract";
 import { callConnectorTool } from "../src/connector-pool";
-import { listConnectors, saveConnectors } from "../src/connectors-service";
+import { listConnectors, saveConnectors, toConnectorView } from "../src/connectors-service";
 import { stdioChildEnvironment } from "../src/mcp-client";
 import { pluginConnectorConfigurationDigest } from "../src/plugin-connector-identity";
 import { discoverPluginBundles, type PluginSource } from "../src/plugin-discovery";
@@ -159,6 +159,42 @@ describe("plugin approval identity", () => {
     rmSync(root, { recursive: true });
     await Effect.runPromise(refreshEnabledPluginConnectors(source));
     expect((await listConnectors())[0]?.enabled).toBe(false);
+  });
+
+  test("removes the granted record when its persisted connector id drifts", async () => {
+    const { root, source } = fixture();
+    const approved = await approvedConnector(root, source);
+    await saveConnectors([{ ...approved, id: "tampered" }]);
+    await Effect.runPromise(refreshEnabledPluginConnectors(source));
+    const connectors = await listConnectors();
+    expect(connectors).toHaveLength(1);
+    expect(connectors[0]).toMatchObject({
+      id: approved.id,
+      enabled: false,
+      allowTools: [],
+    });
+    await expect(callConnectorTool("tampered", "read", {})).rejects.toThrow(/Unknown/);
+  });
+
+  test("does not expose internal approval digests in connector views", async () => {
+    const { root, source } = fixture();
+    const approved = await approvedConnector(root, source);
+    const view = toConnectorView({
+      ...approved,
+      env: { LOW_ENTROPY_PASSWORD: "guessable" },
+      headers: { Authorization: "Bearer private" },
+    });
+    expect(view.origin).toEqual({
+      kind: "plugin",
+      id: "fixture",
+      version: "1.0.0",
+      binding: "fixture",
+    });
+    const serialized = JSON.stringify(view);
+    expect(serialized).not.toContain(approved.origin?.artifactDigest ?? "missing");
+    expect(serialized).not.toContain(approved.origin?.configurationDigest ?? "missing");
+    expect(serialized).not.toContain("guessable");
+    expect(serialized).not.toContain("Bearer private");
   });
 
   test("binds every launch configuration field deterministically", () => {

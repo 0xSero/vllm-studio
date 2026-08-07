@@ -5,7 +5,7 @@ import { Effect, Schema } from "effect";
 import { closePooledConnection, probeConnector } from "./connector-pool";
 import {
   listConnectors,
-  replaceConnectors,
+  replaceConnectorIdentities,
   upsertConnectors,
   type ConnectorConfig,
 } from "./connectors-service";
@@ -506,8 +506,11 @@ async function reconcileEnabledPluginConnectors(
   );
   if (unavailable.length > 0) {
     unavailable.forEach((connector) => closePooledConnection(connector.id));
-    connectors = await replaceConnectors(
-      unavailable.map((connector) => revokedConnector(connector)),
+    connectors = await replaceConnectorIdentities(
+      unavailable.map((connector) => ({
+        existingId: connector.id,
+        connector: revokedConnector(connector),
+      })),
     );
   }
   for (const bundle of bundles) {
@@ -523,8 +526,11 @@ async function reconcileEnabledPluginConnectors(
       servers = await Effect.runPromise(loadPluginServers(bundle));
     } catch {
       approved.forEach((connector) => closePooledConnection(connector.id));
-      connectors = await replaceConnectors(
-        approved.map((connector) => revokedConnector(connector)),
+      connectors = await replaceConnectorIdentities(
+        approved.map((connector) => ({
+          existingId: connector.id,
+          connector: revokedConnector(connector),
+        })),
       );
       errors.set(bundle.plugin.id, "Plugin identity could not be verified");
       continue;
@@ -535,11 +541,19 @@ async function reconcileEnabledPluginConnectors(
       )?.connector;
       return replacement && samePluginIdentity(connector, replacement)
         ? []
-        : [revokedConnector(connector, replacement ?? undefined)];
+        : [
+            {
+              existingId: connector.id,
+              connector: revokedConnector(connector, replacement ?? undefined),
+            },
+          ];
     });
     if (changed.length === 0) continue;
-    changed.forEach((connector) => closePooledConnection(connector.id));
-    connectors = await replaceConnectors(changed);
+    changed.forEach(({ existingId, connector }) => {
+      closePooledConnection(existingId);
+      closePooledConnection(connector.id);
+    });
+    connectors = await replaceConnectorIdentities(changed);
     reapprovalRequired.add(bundle.plugin.id);
   }
   return { connectors, errors, reapprovalRequired };
@@ -647,6 +661,37 @@ function enabledObserveConnectors(
   });
 }
 
+function pluginIdentityReplacements(
+  owned: ConnectorConfig[],
+  changed: ConnectorConfig[],
+  enabling: boolean,
+): { existingId: string; connector: ConnectorConfig }[] {
+  if (!enabling) {
+    return owned.map((connector, index) => ({
+      existingId: connector.id,
+      connector: changed[index] ?? { ...connector, enabled: false },
+    }));
+  }
+  const remaining = [...changed];
+  const replacements = owned.map((connector) => {
+    const index = remaining.findIndex(
+      (candidate) => candidate.origin?.binding === connector.origin?.binding,
+    );
+    if (index === -1) {
+      return { existingId: connector.id, connector: revokedConnector(connector) };
+    }
+    const replacement = remaining.splice(index, 1)[0];
+    return {
+      existingId: connector.id,
+      connector: replacement ?? revokedConnector(connector),
+    };
+  });
+  replacements.push(
+    ...remaining.map((connector) => ({ existingId: connector.id, connector })),
+  );
+  return replacements;
+}
+
 export function setPluginEnabled(
   pluginId: string,
   enabled: boolean,
@@ -718,8 +763,13 @@ export function setPluginEnabled(
       }
       changed = owned.map((connector) => ({ ...connector, enabled: false }));
     }
+    const replacements = pluginIdentityReplacements(owned, changed, enabled);
+    replacements.forEach(({ existingId, connector }) => {
+      closePooledConnection(existingId);
+      closePooledConnection(connector.id);
+    });
     yield* Effect.tryPromise({
-      try: () => replaceConnectors(changed),
+      try: () => replaceConnectorIdentities(replacements),
       catch: (error) => new PluginRuntimeError(500, `Failed to save plugin state: ${error}`),
     });
     return {

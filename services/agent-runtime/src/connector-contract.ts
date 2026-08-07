@@ -34,8 +34,15 @@ const ConnectorFields = {
 };
 
 const ConnectorConfigSchema = Schema.Struct(ConnectorFields);
+const ConnectorOriginViewSchema = Schema.Struct({
+  kind: Schema.String,
+  id: Schema.String,
+  version: Schema.optional(Schema.String),
+  binding: Schema.optional(Schema.String),
+});
 export const ConnectorViewSchema = Schema.Struct({
   ...ConnectorFields,
+  origin: Schema.optional(ConnectorOriginViewSchema),
   secret_keys: Schema.Array(Schema.String),
 });
 export const ConnectorsFileSchema = Schema.Struct({
