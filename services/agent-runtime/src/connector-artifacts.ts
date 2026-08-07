@@ -503,3 +503,257 @@ export function getGitHubConnectorArtifactStatus(
 ): Effect.Effect<GitHubConnectorArtifactStatus> {
   return Effect.promise(() => artifactStatus(dependencies));
 }
+
+function safeArchiveName(name: string): boolean {
+  if (!name || name.includes("\\") || path.posix.isAbsolute(name) || /^[A-Za-z]:/.test(name)) {
+    return false;
+  }
+  return name.split("/").every((part) => part.length > 0 && part !== "." && part !== "..");
+}
+
+function tarText(bytes: Buffer, offset: number, length: number): string {
+  const end = bytes.indexOf(0, offset);
+  return bytes
+    .subarray(offset, end === -1 || end > offset + length ? offset + length : end)
+    .toString();
+}
+
+function tarNumber(bytes: Buffer, offset: number, length: number): number {
+  const value = tarText(bytes, offset, length).trim();
+  if (!/^[0-7]+$/.test(value)) {
+    throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is invalid");
+  }
+  const parsed = Number.parseInt(value, 8);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is invalid");
+  }
+  return parsed;
+}
+
+function tarHeaderChecksum(bytes: Buffer, offset: number): number {
+  let checksum = 0;
+  for (let index = 0; index < 512; index += 1) {
+    checksum += index >= 148 && index < 156 ? 32 : (bytes[offset + index] ?? 0);
+  }
+  return checksum;
+}
+
+type ArchiveEntry = { name: string; bytes: Buffer };
+
+function tarEntries(archive: Buffer): ArchiveEntry[] {
+  let expanded: Buffer;
+  try {
+    expanded = gunzipSync(archive, { maxOutputLength: MAX_EXPANDED_BYTES });
+  } catch {
+    throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is invalid");
+  }
+  const entries: ArchiveEntry[] = [];
+  let offset = 0;
+  while (offset + 512 <= expanded.length) {
+    const header = expanded.subarray(offset, offset + 512);
+    if (header.every((value) => value === 0)) {
+      if (!expanded.subarray(offset).every((value) => value === 0)) {
+        throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is invalid");
+      }
+      return entries;
+    }
+    if (tarNumber(expanded, offset + 148, 8) !== tarHeaderChecksum(expanded, offset)) {
+      throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is invalid");
+    }
+    const name = [tarText(expanded, offset + 345, 155), tarText(expanded, offset, 100)]
+      .filter(Boolean)
+      .join("/");
+    const size = tarNumber(expanded, offset + 124, 12);
+    const type = expanded[offset + 156] ?? 0;
+    const start = offset + 512;
+    const end = start + size;
+    if (
+      !safeArchiveName(name) ||
+      (type !== 0 && type !== 48) ||
+      size > MAX_EXPANDED_BYTES ||
+      end > expanded.length ||
+      entries.length >= MAX_ARCHIVE_ENTRIES
+    ) {
+      throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is unsafe");
+    }
+    entries.push({ name, bytes: expanded.subarray(start, end) });
+    offset = start + Math.ceil(size / 512) * 512;
+  }
+  throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is invalid");
+}
+
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function zipEndOffset(archive: Buffer): number {
+  const minimum = Math.max(0, archive.length - 65_557);
+  for (let offset = archive.length - 22; offset >= minimum; offset -= 1) {
+    if (archive.readUInt32LE(offset) === 0x06054b50) return offset;
+  }
+  throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is invalid");
+}
+
+function zipEntryBytes(
+  archive: Buffer,
+  localOffset: number,
+  compressedSize: number,
+  uncompressedSize: number,
+  method: number,
+  flags: number,
+  checksum: number,
+  name: string,
+  centralOffset: number,
+): Buffer {
+  if (localOffset + 30 > archive.length || archive.readUInt32LE(localOffset) !== 0x04034b50) {
+    throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is invalid");
+  }
+  const nameLength = archive.readUInt16LE(localOffset + 26);
+  const extraLength = archive.readUInt16LE(localOffset + 28);
+  const dataOffset = localOffset + 30 + nameLength + extraLength;
+  const dataEnd = dataOffset + compressedSize;
+  const descriptor = (flags & 8) !== 0;
+  const localName = archive.subarray(localOffset + 30, localOffset + 30 + nameLength).toString();
+  if (
+    archive.readUInt16LE(localOffset + 6) !== flags ||
+    archive.readUInt16LE(localOffset + 8) !== method ||
+    localName !== name ||
+    dataEnd + (descriptor ? 16 : 0) > centralOffset ||
+    (descriptor
+      ? archive.readUInt32LE(localOffset + 14) !== 0 ||
+        archive.readUInt32LE(localOffset + 18) !== 0 ||
+        archive.readUInt32LE(localOffset + 22) !== 0 ||
+        archive.readUInt32LE(dataEnd) !== 0x08074b50 ||
+        archive.readUInt32LE(dataEnd + 4) !== checksum ||
+        archive.readUInt32LE(dataEnd + 8) !== compressedSize ||
+        archive.readUInt32LE(dataEnd + 12) !== uncompressedSize
+      : archive.readUInt32LE(localOffset + 14) !== checksum ||
+        archive.readUInt32LE(localOffset + 18) !== compressedSize ||
+        archive.readUInt32LE(localOffset + 22) !== uncompressedSize)
+  ) {
+    throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is invalid");
+  }
+  const compressed = archive.subarray(dataOffset, dataEnd);
+  let bytes: Buffer;
+  try {
+    bytes =
+      method === 0
+        ? Buffer.from(compressed)
+        : inflateRawSync(compressed, { maxOutputLength: uncompressedSize });
+  } catch {
+    throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is invalid");
+  }
+  if (bytes.length !== uncompressedSize || crc32(bytes) !== checksum) {
+    throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is invalid");
+  }
+  return bytes;
+}
+
+function zipEntries(archive: Buffer): ArchiveEntry[] {
+  const end = zipEndOffset(archive);
+  const disk = archive.readUInt16LE(end + 4);
+  const centralDisk = archive.readUInt16LE(end + 6);
+  const diskEntries = archive.readUInt16LE(end + 8);
+  const entries = archive.readUInt16LE(end + 10);
+  const centralSize = archive.readUInt32LE(end + 12);
+  const centralOffset = archive.readUInt32LE(end + 16);
+  const commentLength = archive.readUInt16LE(end + 20);
+  if (
+    disk !== 0 ||
+    centralDisk !== 0 ||
+    diskEntries !== entries ||
+    entries > MAX_ARCHIVE_ENTRIES ||
+    end + 22 + commentLength !== archive.length ||
+    centralOffset + centralSize !== end
+  ) {
+    throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is invalid");
+  }
+  const result: ArchiveEntry[] = [];
+  let offset = centralOffset;
+  let expanded = 0;
+  for (let index = 0; index < entries; index += 1) {
+    if (offset + 46 > end || archive.readUInt32LE(offset) !== 0x02014b50) {
+      throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is invalid");
+    }
+    const madeBy = archive.readUInt16LE(offset + 4);
+    const flags = archive.readUInt16LE(offset + 8);
+    const method = archive.readUInt16LE(offset + 10);
+    const checksum = archive.readUInt32LE(offset + 16);
+    const compressedSize = archive.readUInt32LE(offset + 20);
+    const uncompressedSize = archive.readUInt32LE(offset + 24);
+    const nameLength = archive.readUInt16LE(offset + 28);
+    const extraLength = archive.readUInt16LE(offset + 30);
+    const entryCommentLength = archive.readUInt16LE(offset + 32);
+    const startDisk = archive.readUInt16LE(offset + 34);
+    const external = archive.readUInt32LE(offset + 38);
+    const localOffset = archive.readUInt32LE(offset + 42);
+    const next = offset + 46 + nameLength + extraLength + entryCommentLength;
+    const name = archive.subarray(offset + 46, offset + 46 + nameLength).toString();
+    const unixType = external >>> 28;
+    expanded += uncompressedSize;
+    if (
+      next > end ||
+      !safeArchiveName(name) ||
+      (flags & ~0x0808) !== 0 ||
+      (method !== 0 && method !== 8) ||
+      startDisk !== 0 ||
+      compressedSize === 0xffffffff ||
+      uncompressedSize === 0xffffffff ||
+      expanded > MAX_EXPANDED_BYTES ||
+      (madeBy >>> 8 === 3 && unixType !== 0 && unixType !== 8)
+    ) {
+      throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is unsafe");
+    }
+    result.push({
+      name,
+      bytes: zipEntryBytes(
+        archive,
+        localOffset,
+        compressedSize,
+        uncompressedSize,
+        method,
+        flags,
+        checksum,
+        name,
+        centralOffset,
+      ),
+    });
+    offset = next;
+  }
+  if (offset !== end) throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is invalid");
+  return result;
+}
+
+function extractedExecutable(archive: Buffer, selected: GitHubMcpArtifact): Buffer {
+  const entries = selected.archiveFormat === "tar.gz" ? tarEntries(archive) : zipEntries(archive);
+  const names = new Set<string>();
+  for (const entry of entries) {
+    if (names.has(entry.name)) {
+      throw new GitHubConnectorArtifactError(409, "GitHub MCP archive is unsafe");
+    }
+    names.add(entry.name);
+  }
+  if (
+    entries.length !== selected.entries.length ||
+    selected.entries.some(
+      (expected) =>
+        entries.find((entry) => entry.name === expected.name)?.bytes.length !== expected.size,
+    )
+  ) {
+    throw new GitHubConnectorArtifactError(409, "GitHub MCP archive contents are invalid");
+  }
+  const executable = entries.find((entry) => entry.name === selected.executableName)?.bytes;
+  if (
+    !executable ||
+    executable.length !== selected.executableSize ||
+    sha256(executable) !== selected.executableSha256
+  ) {
+    throw new GitHubConnectorArtifactError(409, "GitHub MCP executable integrity check failed");
+  }
+  return executable;
+}
