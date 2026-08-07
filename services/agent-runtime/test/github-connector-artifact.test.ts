@@ -345,3 +345,356 @@ describe("GitHub MCP manifest and configuration", () => {
     }
   });
 });
+
+describe("GitHub MCP verified installation", () => {
+  test.skipIf(process.env.LOCAL_STUDIO_GITHUB_MCP_REAL_SMOKE !== "1")(
+    "installs and starts the pinned official artifact for the current platform",
+    async () => {
+      const root = await temporaryDataDir();
+      try {
+        expect(
+          await Effect.runPromise(installGitHubConnectorArtifact({ dataDir: root })),
+        ).toMatchObject({ version: GITHUB_MCP_VERSION, state: "installed" });
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+    90_000,
+  );
+
+  test("keeps status reads offline and reports unsupported targets without mutation", async () => {
+    const root = await temporaryDataDir();
+    const selected = fixture("tar.gz");
+    try {
+      expect(
+        await Effect.runPromise(
+          getGitHubConnectorArtifactStatus({
+            artifact: selected.artifact,
+            platform: "darwin",
+            arch: "x64",
+            dataDir: root,
+          }),
+        ),
+      ).toEqual({
+        version: GITHUB_MCP_VERSION,
+        target: selected.artifact.target,
+        state: "not-installed",
+      });
+      expect(
+        await Effect.runPromise(
+          getGitHubConnectorArtifactStatus({ platform: "freebsd", arch: "arm64", dataDir: root }),
+        ),
+      ).toEqual({ version: GITHUB_MCP_VERSION, target: "freebsd-arm64", state: "unsupported" });
+      expect(await readdir(root)).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("installs bounded tar and zip fixtures atomically with private permissions", async () => {
+    for (const format of ["tar.gz", "zip"] as const) {
+      const root = await temporaryDataDir();
+      const selected = fixture(format);
+      try {
+        expect((await installFixture(root, selected)).state).toBe("installed");
+        const executable = path.join(
+          root,
+          "runtime",
+          "connectors",
+          "github-mcp-server",
+          selected.artifact.version,
+          selected.artifact.executableName,
+        );
+        expect(await readFile(executable)).toEqual(selected.executable);
+        expect(await readdir(path.dirname(executable))).toEqual([selected.artifact.executableName]);
+        if (format === "tar.gz") expect((await stat(executable)).mode & 0o777).toBe(0o500);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    }
+  });
+
+  test("rejects a Windows artifact whose owner-only ACL cannot be verified", async () => {
+    const root = await temporaryDataDir();
+    const selected = fixture("zip");
+    try {
+      await expect(
+        Effect.runPromise(
+          installGitHubConnectorArtifact({
+            artifact: selected.artifact,
+            platform: "win32",
+            arch: "x64",
+            dataDir: root,
+            fetch: async () =>
+              new Response(selected.archive, {
+                headers: { "Content-Length": String(selected.archive.length) },
+              }),
+            verifyExecutable: async () => undefined,
+            windowsSecurity: {
+              protect: async () => undefined,
+              verify: async (_entry, kind) => {
+                if (kind === "file") throw new Error("ACL is not private");
+              },
+            },
+          }),
+        ),
+      ).rejects.toThrow("installation failed");
+      await expect(
+        stat(path.join(root, "runtime", "connectors", "github-mcp-server", GITHUB_MCP_VERSION)),
+      ).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("is idempotent without redownloading an intact artifact", async () => {
+    const root = await temporaryDataDir();
+    const selected = fixture("tar.gz");
+    let fetches = 0;
+    try {
+      await installFixture(root, selected);
+      const status = await Effect.runPromise(
+        installGitHubConnectorArtifact({
+          artifact: selected.artifact,
+          platform: "darwin",
+          arch: "x64",
+          dataDir: root,
+          fetch: async () => {
+            fetches += 1;
+            throw new Error("intact artifacts must not be downloaded again");
+          },
+          verifyExecutable: async () => undefined,
+        }),
+      );
+      expect(status.state).toBe("installed");
+      expect(fetches).toBe(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects interrupted downloads without publishing a partial target", async () => {
+    const root = await temporaryDataDir();
+    const selected = fixture("tar.gz");
+    try {
+      await expect(
+        Effect.runPromise(
+          installGitHubConnectorArtifact({
+            artifact: selected.artifact,
+            platform: "darwin",
+            arch: "x64",
+            dataDir: root,
+            fetch: async () =>
+              new Response(selected.archive.subarray(0, selected.archive.length - 1), {
+                headers: { "Content-Length": String(selected.archive.length) },
+              }),
+            verifyExecutable: async () => undefined,
+          }),
+        ),
+      ).rejects.toThrow("integrity");
+      await expect(
+        stat(path.join(root, "runtime", "connectors", "github-mcp-server", GITHUB_MCP_VERSION)),
+      ).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("bounds the complete install and leaves no target after timeout", async () => {
+    const root = await temporaryDataDir();
+    const selected = fixture("tar.gz");
+    try {
+      await expect(
+        Effect.runPromise(
+          installGitHubConnectorArtifact({
+            artifact: selected.artifact,
+            platform: "darwin",
+            arch: "x64",
+            dataDir: root,
+            timeoutMs: 25,
+            fetch: async (_input, init) =>
+              new Promise<Response>((_resolve, reject) => {
+                const signal = init?.signal;
+                if (!signal) return;
+                if (signal.aborted) reject(signal.reason);
+                else signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+              }),
+            verifyExecutable: async () => undefined,
+          }),
+        ),
+      ).rejects.toMatchObject({ status: 504 });
+      await expect(
+        stat(path.join(root, "runtime", "connectors", "github-mcp-server", GITHUB_MCP_VERSION)),
+      ).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("restores the previous target when atomic promotion fails", async () => {
+    const root = await temporaryDataDir();
+    const selected = fixture("tar.gz");
+    const target = path.join(
+      root,
+      "runtime",
+      "connectors",
+      "github-mcp-server",
+      GITHUB_MCP_VERSION,
+    );
+    const marker = path.join(target, "previous-install");
+    try {
+      await mkdir(target, { recursive: true, mode: 0o700 });
+      await writeFile(marker, "previous", { mode: 0o600 });
+      await expect(
+        Effect.runPromise(
+          installGitHubConnectorArtifact({
+            artifact: selected.artifact,
+            platform: "darwin",
+            arch: "x64",
+            dataDir: root,
+            fetch: async () =>
+              new Response(selected.archive, {
+                headers: { "Content-Length": String(selected.archive.length) },
+              }),
+            verifyExecutable: async () => undefined,
+            rename: async (source, destination) => {
+              if (path.basename(source).startsWith(".pending-") && destination === target) {
+                throw new Error("promotion failed");
+              }
+              await rename(source, destination);
+            },
+          }),
+        ),
+      ).rejects.toThrow("installation failed");
+      expect(await readFile(marker, "utf8")).toBe("previous");
+      expect(await readdir(target)).toEqual(["previous-install"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails closed on checksum mismatch, traversal, symlinks, and oversized archives", async () => {
+    const oversizedFixture = fixture("tar.gz");
+    const oversizedArchive = Buffer.alloc(12 * 1024 * 1024 + 1);
+    for (const selected of [
+      {
+        ...fixture("tar.gz"),
+        artifact: { ...fixture("tar.gz").artifact, archiveSha256: "0".repeat(64) },
+      },
+      fixture("tar.gz", (entries) => [
+        ...entries,
+        { name: "../escape", bytes: Buffer.from("escape") },
+      ]),
+      fixture("tar.gz", (entries) => [
+        ...entries,
+        { name: "github-mcp-link", bytes: Buffer.alloc(0), type: 50 },
+      ]),
+      {
+        ...oversizedFixture,
+        archive: oversizedArchive,
+        artifact: {
+          ...oversizedFixture.artifact,
+          archiveSize: oversizedArchive.length,
+          archiveSha256: sha256(oversizedArchive),
+        },
+      },
+    ]) {
+      const root = await temporaryDataDir();
+      try {
+        await expect(installFixture(root, selected)).rejects.toThrow();
+        const target = path.join(
+          root,
+          "runtime",
+          "connectors",
+          "github-mcp-server",
+          GITHUB_MCP_VERSION,
+        );
+        await expect(stat(target)).rejects.toThrow();
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    }
+  });
+
+  test("verifies immutable state before every managed spawn", async () => {
+    const root = await temporaryDataDir();
+    const selected = fixture("tar.gz");
+    try {
+      await installFixture(root, selected);
+      const dependencies = {
+        artifact: selected.artifact,
+        platform: "darwin" as const,
+        arch: "x64",
+        dataDir: root,
+      };
+      const connector = githubMcpConnectorConfiguration(
+        { env: { GITHUB_PERSONAL_ACCESS_TOKEN: "token" }, enabled: true },
+        dependencies,
+      );
+      await Effect.runPromise(assertGitHubConnectorReady(connector, dependencies));
+      if (!connector.command) throw new Error("fixture executable path unavailable");
+      await chmod(connector.command, 0o700);
+      await writeFile(connector.command, "tampered");
+      expect(await Effect.runPromise(getGitHubConnectorArtifactStatus(dependencies))).toMatchObject(
+        { state: "invalid" },
+      );
+      await expect(
+        Effect.runPromise(assertGitHubConnectorReady(connector, dependencies)),
+      ).rejects.toThrow("integrity");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("blocks a managed probe before spawn when the verified artifact is absent", async () => {
+    const root = await temporaryDataDir();
+    const previous = process.env.LOCAL_STUDIO_DATA_DIR;
+    process.env.LOCAL_STUDIO_DATA_DIR = root;
+    try {
+      const connector = githubMcpConnectorConfiguration({
+        env: { GITHUB_PERSONAL_ACCESS_TOKEN: "token" },
+        enabled: true,
+      });
+      expect(await probeConnector(connector)).toMatchObject({
+        ok: false,
+        tools: [],
+        error: "GitHub MCP integrity check failed",
+      });
+    } finally {
+      if (previous === undefined) delete process.env.LOCAL_STUDIO_DATA_DIR;
+      else process.env.LOCAL_STUDIO_DATA_DIR = previous;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("smoke-tests the exact read-only argv and 22-tool inventory", async () => {
+    const root = await temporaryDataDir();
+    const server = path.join(root, "fixture-server.mjs");
+    const source = [
+      `if (JSON.stringify(process.argv.slice(2)) !== ${JSON.stringify(JSON.stringify(GITHUB_MCP_ARGS))}) process.exit(41);`,
+      'let input = "";',
+      'process.stdin.setEncoding("utf8");',
+      'process.stdin.on("data", chunk => {',
+      "  input += chunk;",
+      "  for (;;) {",
+      '    const split = input.indexOf("\\n");',
+      "    if (split < 0) break;",
+      "    const line = input.slice(0, split);",
+      "    input = input.slice(split + 1);",
+      "    if (!line) continue;",
+      "    const request = JSON.parse(line);",
+      '    if (request.method === "initialize") process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { protocolVersion: request.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "github-mcp-server", version: "1.6.0" } } }) + "\\n");',
+      `    if (request.method === "tools/list") process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { tools: ${JSON.stringify(GITHUB_MCP_TOOLS.map((name) => ({ name, inputSchema: { type: "object" } })))} } }) + "\\n");`,
+      "  }",
+      "});",
+    ].join("\n");
+    try {
+      await writeFile(server, source, { mode: 0o600 });
+      await Effect.runPromise(
+        verifyGitHubMcpExecutable(process.execPath, { prefixArgs: [server], timeoutMs: 5_000 }),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
