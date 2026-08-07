@@ -17,10 +17,7 @@ import path from "node:path";
 import { Effect } from "effect";
 import type { ConnectorConfig } from "../src/connector-contract";
 import { callConnectorTool, probePersistedConnector } from "../src/connector-pool";
-import {
-  closePooledConnection,
-  getOrCreatePooledConnection,
-} from "../src/connector-pool-state";
+import { closePooledConnection, getOrCreatePooledConnection } from "../src/connector-pool-state";
 import {
   listConnectors,
   removeConnector,
@@ -184,6 +181,20 @@ function snapshotRoot(connector: ConnectorConfig): string {
   const digest = connector.origin?.artifactDigest;
   if (!digest) throw new Error("connector artifact digest is missing");
   return path.join(executionRoot(), digest.replace("sha256:", ""));
+}
+
+function writeProbeServer(root: string, marker: string): void {
+  writeFileSync(
+    path.join(root, "server.js"),
+    `const fs = require("node:fs");
+const readline = require("node:readline");
+fs.writeFileSync(${JSON.stringify(marker)}, "launched");
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const request = JSON.parse(line);
+  if (request.method === "initialize") process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { protocolVersion: request.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "fixture", version: "1.0.0" } } }) + "\\n");
+  if (request.method === "tools/list") process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { tools: [] } }) + "\\n");
+});`,
+  );
 }
 
 describe("plugin approval identity", () => {
@@ -357,9 +368,13 @@ describe("plugin approval identity", () => {
     writeFileSync(outside, "process.exit(0)");
     writeFileSync(
       path.join(root, "mcp.json"),
-      JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: [outside], cwd: "." } } }),
+      JSON.stringify({
+        mcpServers: { fixture: { command: process.execPath, args: [outside], cwd: "." } },
+      }),
     );
-    await expect(Effect.runPromise(setPluginEnabled("fixture", true, source))).rejects.toThrow(/escapes its bundle/);
+    await expect(Effect.runPromise(setPluginEnabled("fixture", true, source))).rejects.toThrow(
+      /escapes its bundle/,
+    );
   });
 
   test("rejects plugin environment variables that load external code", async () => {
@@ -399,7 +414,121 @@ describe("plugin approval identity", () => {
     await Effect.runPromise(verifyPluginExecutionSnapshot(prepared));
     expect(readFileSync(prepared.command ?? "", "utf8")).toBe("process.exit(1)");
     chmodSync(prepared.command ?? "", 0o700);
-    await expect(Effect.runPromise(verifyPluginExecutionSnapshot(prepared))).rejects.toThrow(/writable/);
+    await expect(Effect.runPromise(verifyPluginExecutionSnapshot(prepared))).rejects.toThrow(
+      /writable/,
+    );
+  });
+
+  test("reuses an unchanged retained snapshot without replacing its directory", async () => {
+    const { root, source } = fixture();
+    const connector = await approvedConnector(root, source);
+    const prepared = await prepareSnapshot(root, source, connector);
+    await saveConnectors([prepared]);
+    const storageBefore = lstatSync(executionRoot());
+    const snapshotBefore = lstatSync(snapshotRoot(prepared));
+    const repeated = await prepareSnapshot(root, source, connector);
+    const storageAfter = lstatSync(executionRoot());
+    const snapshotAfter = lstatSync(snapshotRoot(repeated));
+    expect({ dev: storageAfter.dev, ino: storageAfter.ino }).toEqual({
+      dev: storageBefore.dev,
+      ino: storageBefore.ino,
+    });
+    expect({ dev: snapshotAfter.dev, ino: snapshotAfter.ino }).toEqual({
+      dev: snapshotBefore.dev,
+      ino: snapshotBefore.ino,
+    });
+    expect(repeated.origin?.snapshotDigest).toBe(prepared.origin?.snapshotDigest);
+    expect(readdirSync(executionRoot()).some((name) => name.startsWith(".garbage-"))).toBe(false);
+  });
+
+  test("does not replace a competing snapshot destination", async () => {
+    const { root, source } = fixture();
+    const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
+    if (!bundle) throw new Error("fixture plugin was not discovered");
+    mkdirSync(executionRoot(), { recursive: true, mode: 0o700 });
+    const victim = path.join(path.dirname(root), "snapshot-victim");
+    mkdirSync(victim, { mode: 0o700 });
+    const marker = path.join(victim, "marker");
+    writeFileSync(marker, "outside");
+    const destination = path.join(executionRoot(), bundle.artifactDigest.replace("sha256:", ""));
+    symlinkSync(victim, destination);
+    await expect(
+      prepareConnectorSnapshot(bundle, await approvedConnector(root, source)),
+    ).rejects.toThrow();
+    expect(lstatSync(destination).isSymbolicLink()).toBe(true);
+    expect(readFileSync(marker, "utf8")).toBe("outside");
+  });
+
+  test("does not delete a retained snapshot swapped into a failing publication", async () => {
+    const { root, source } = fixture();
+    const retained = await prepareSnapshot(root, source, await approvedConnector(root, source));
+    await saveConnectors([retained]);
+    const retainedPath = snapshotRoot(retained);
+    writeFileSync(path.join(root, "artifact.txt"), "artifact-two");
+    const [candidateBundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
+    if (!candidateBundle) throw new Error("fixture plugin was not discovered");
+    const candidatePath = path.join(
+      executionRoot(),
+      candidateBundle.artifactDigest.replace("sha256:", ""),
+    );
+    const racer = `const fs = require("node:fs");
+const candidate = process.argv[1];
+const retained = process.argv[2];
+const deadline = Date.now() + 5000;
+process.stdout.write("READY\\n");
+while (Date.now() < deadline) {
+  try {
+    if (!fs.lstatSync(candidate).isDirectory()) continue;
+    fs.renameSync(candidate, candidate + ".original-claim");
+    fs.renameSync(retained, candidate);
+    process.stdout.write("SWAPPED\\n");
+    process.exit(0);
+  } catch {}
+}
+process.stdout.write("TIMEOUT\\n");
+process.exit(2);`;
+    const child = Bun.spawn(["node", "-e", racer, candidatePath, retainedPath], {
+      stdout: "pipe",
+    });
+    const reader = child.stdout.getReader();
+    const decoder = new TextDecoder();
+    let output = "";
+    const waitForOutput = async (expected: string): Promise<void> => {
+      while (!output.includes(expected)) {
+        const chunk = await reader.read();
+        if (chunk.done) throw new Error(`Snapshot racer exited before ${expected}: ${output}`);
+        output += decoder.decode(chunk.value, { stream: true });
+      }
+    };
+    try {
+      await waitForOutput("READY");
+      const preparation = prepareConnectorSnapshot(
+        candidateBundle,
+        await approvedConnector(root, source),
+      );
+      await waitForOutput("SWAPPED");
+      await expect(preparation).rejects.toThrow();
+      expect(existsSync(retainedPath)).toBe(false);
+      expect(readFileSync(path.join(candidatePath, "artifact", "artifact.txt"), "utf8")).toBe(
+        "artifact-one",
+      );
+      expect(readdirSync(executionRoot()).some((name) => name.startsWith(".garbage-"))).toBe(false);
+      const persisted = await listConnectors();
+      await Effect.runPromise(
+        withPluginExecutionSnapshotLifecycle((lifecycle) =>
+          garbageCollectPluginExecutionSnapshots(persisted, lifecycle),
+        ),
+      );
+      expect(readFileSync(path.join(candidatePath, "artifact", "artifact.txt"), "utf8")).toBe(
+        "artifact-one",
+      );
+      await removeConnector(retained.id);
+      expect(existsSync(candidatePath)).toBe(false);
+    } finally {
+      child.kill();
+      await child.exited;
+      reader.releaseLock();
+    }
   });
 
   test("preserves an unchanged approval only while its snapshot verifies", async () => {
@@ -418,10 +547,7 @@ describe("plugin approval identity", () => {
     const { root, source } = fixture();
     const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
     if (!bundle) throw new Error("fixture plugin was not discovered");
-    const prepared = await prepareConnectorSnapshot(
-      bundle,
-      await approvedConnector(root, source),
-    );
+    const prepared = await prepareConnectorSnapshot(bundle, await approvedConnector(root, source));
     if (!prepared.origin) throw new Error("prepared connector has no origin");
     const { runtimeDigest: _, ...origin } = prepared.origin;
     await saveConnectors([{ ...prepared, origin }]);
@@ -433,10 +559,7 @@ describe("plugin approval identity", () => {
     const { root, source } = fixture();
     const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
     if (!bundle) throw new Error("fixture plugin was not discovered");
-    const prepared = await prepareConnectorSnapshot(
-      bundle,
-      await approvedConnector(root, source),
-    );
+    const prepared = await prepareConnectorSnapshot(bundle, await approvedConnector(root, source));
     const changed = { ...prepared, command: path.join(root, "server.js") };
     if (!changed.origin) throw new Error("prepared connector has no origin");
     await saveConnectors([
@@ -460,20 +583,25 @@ describe("plugin approval identity", () => {
     const approved = await approvedConnector(root, source);
     for (const prepared of [
       await prepareConnectorSnapshot(bundle, approved),
-      await prepareConnectorSnapshot(
-        bundle,
-        {
-          ...approved,
-          command: realpathSync(path.join(root, "server.js")),
-          args: [],
-        },
-      ),
+      await prepareConnectorSnapshot(bundle, {
+        ...approved,
+        command: realpathSync(path.join(root, "server.js")),
+        args: [],
+      }),
     ]) {
       const changed = prepared.origin?.runtimeDigest
         ? { ...prepared, args: [path.join(path.dirname(root), "outside.js")] }
         : { ...prepared, command: path.join(path.dirname(root), "outside.js") };
       if (!changed.origin) throw new Error("prepared connector has no origin");
-      await saveConnectors([{ ...changed, origin: { ...changed.origin, configurationDigest: pluginConnectorConfigurationDigest(changed) } }]);
+      await saveConnectors([
+        {
+          ...changed,
+          origin: {
+            ...changed.origin,
+            configurationDigest: pluginConnectorConfigurationDigest(changed),
+          },
+        },
+      ]);
       await Effect.runPromise(refreshEnabledPluginConnectors(source));
       expect((await listConnectors())[0]).toMatchObject({ enabled: false, allowTools: [] });
     }
@@ -484,14 +612,19 @@ describe("plugin approval identity", () => {
     writeFileSync(path.join(root, "other.js"), "process.exit(0)");
     const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
     if (!bundle) throw new Error("fixture plugin was not discovered");
-    const prepared = await prepareConnectorSnapshot(
-      bundle,
-      await approvedConnector(root, source),
-    );
+    const prepared = await prepareConnectorSnapshot(bundle, await approvedConnector(root, source));
     const entry = prepared.args?.[0];
     if (!entry || !prepared.origin) throw new Error("prepared connector is incomplete");
     const changed = { ...prepared, args: [path.join(path.dirname(entry), "other.js")] };
-    await saveConnectors([{ ...changed, origin: { ...prepared.origin, configurationDigest: pluginConnectorConfigurationDigest(changed) } }]);
+    await saveConnectors([
+      {
+        ...changed,
+        origin: {
+          ...prepared.origin,
+          configurationDigest: pluginConnectorConfigurationDigest(changed),
+        },
+      },
+    ]);
     await Effect.runPromise(refreshEnabledPluginConnectors(source));
     expect((await listConnectors())[0]).toMatchObject({ enabled: false, allowTools: [] });
   });
@@ -794,9 +927,7 @@ describe("plugin approval identity", () => {
     const controller = new AbortController();
     let mutationSettled = false;
     const mutation = Effect.runPromise(
-      withPluginExecutionSnapshotLifecycle((lifecycle) =>
-        saveConnectorsEffect([], lifecycle),
-      ),
+      withPluginExecutionSnapshotLifecycle((lifecycle) => saveConnectorsEffect([], lifecycle)),
       { signal: controller.signal },
     ).finally(() => {
       mutationSettled = true;
@@ -870,6 +1001,59 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     expect(existsSync(retained)).toBe(false);
   }, 10_000);
 
+  test("does not launch a removed connector whose shared snapshot is retained", async () => {
+    const { root, source } = fixture();
+    const marker = path.join(path.dirname(root), "stale-probe-launched");
+    writeProbeServer(root, marker);
+    const approved = await approvedConnector(root, source);
+    if (!approved.origin) throw new Error("approved connector has no origin");
+    const first = await prepareSnapshot(root, source, {
+      ...approved,
+      id: "plugin-fixture-first",
+      origin: { ...approved.origin, binding: "first" },
+    });
+    const second = await prepareSnapshot(root, source, {
+      ...approved,
+      id: "plugin-fixture-second",
+      origin: { ...approved.origin, binding: "second" },
+    });
+    await saveConnectors([first, second]);
+    await removeConnector(first.id);
+    expect(existsSync(snapshotRoot(first))).toBe(true);
+    expect((await listConnectors()).map(({ id }) => id)).toEqual([second.id]);
+    await expect(probePersistedConnector(first.id)).rejects.toThrow(/Unknown connector/);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  test("does not launch a persisted probe aborted while waiting for its lifecycle", async () => {
+    const { root, source } = fixture();
+    const marker = path.join(path.dirname(root), "cancelled-probe-launched");
+    writeProbeServer(root, marker);
+    const prepared = await prepareSnapshot(root, source, await approvedConnector(root, source));
+    await saveConnectors([prepared]);
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const holder = Effect.runPromise(
+      withPluginExecutionSnapshotLifecycle(() =>
+        Effect.promise(() => {
+          entered.resolve();
+          return release.promise;
+        }),
+      ),
+    );
+    await entered.promise;
+    const controller = new AbortController();
+    const probe = probePersistedConnector(prepared.id, controller.signal);
+    await Promise.resolve();
+    controller.abort();
+    expect(existsSync(marker)).toBe(false);
+    release.resolve();
+    await expect(probe).rejects.toThrow();
+    await holder;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(existsSync(marker)).toBe(false);
+  });
+
   test("serializes persisted plugin probes with snapshot retirement", async () => {
     const { root, source } = fixture();
     const pidFile = path.join(path.dirname(root), "route-probe.pid");
@@ -892,7 +1076,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     });
     await saveConnectors([prepared]);
     const controller = new AbortController();
-    const probe = probePersistedConnector(prepared, controller.signal);
+    const probe = probePersistedConnector(prepared.id, controller.signal);
     await waitFor(() => existsSync(readyFile));
     const pid = Number(readFileSync(pidFile, "utf8"));
     let retired = false;
@@ -904,7 +1088,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     expect(processIsAlive(pid)).toBe(true);
     expect(existsSync(snapshotRoot(prepared))).toBe(true);
     controller.abort();
-    expect((await probe).ok).toBe(false);
+    await expect(probe).rejects.toThrow();
     await retirement;
     await waitFor(() => !processIsAlive(pid));
     expect(existsSync(snapshotRoot(prepared))).toBe(false);
@@ -961,8 +1145,10 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     };
     const binding = GOOGLE_WORKSPACE_BINDINGS.gmail;
     const connector: ConnectorConfig = {
-      id: binding.connectorId, name: binding.name,
-      transport: "http", url: binding.endpoint,
+      id: binding.connectorId,
+      name: binding.name,
+      transport: "http",
+      url: binding.endpoint,
       auth: { type: "oauth", provider: "google-workspace", account: "gmail" },
       allowTools: [...binding.observeTools],
       origin: { kind: "account-adapter", id: "gmail", binding: "google-workspace" },
@@ -973,7 +1159,11 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     );
     values.set(
       "google-workspace",
-      JSON.stringify({ clientSecret: "old-secret", refreshTokens: { gmail: "refresh-token" }, pendingRevocations: [] }),
+      JSON.stringify({
+        clientSecret: "old-secret",
+        refreshTokens: { gmail: "refresh-token" },
+        pendingRevocations: [],
+      }),
     );
     await saveConnectors([connector]);
     const save = Effect.runPromise(
