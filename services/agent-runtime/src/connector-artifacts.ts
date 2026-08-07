@@ -757,3 +757,105 @@ function extractedExecutable(archive: Buffer, selected: GitHubMcpArtifact): Buff
   }
   return executable;
 }
+
+async function privateDirectory(
+  entry: string,
+  platform: NodeJS.Platform,
+  security: WindowsArtifactSecurity | null,
+): Promise<string> {
+  await mkdir(entry, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+  const info = await lstat(entry);
+  if (info.isSymbolicLink() || !info.isDirectory() || !ownerMatches(info)) {
+    throw new GitHubConnectorArtifactError(409, "GitHub MCP install directory is unsafe");
+  }
+  if (platform !== "win32") await chmod(entry, PRIVATE_DIRECTORY_MODE);
+  if (security) {
+    await security.protect(entry, "directory");
+    await security.verify(entry, "directory");
+  }
+  const resolved = path.resolve(entry);
+  if (!sameResolvedPath(realpathSync(entry), resolved, platform)) {
+    throw new GitHubConnectorArtifactError(409, "GitHub MCP install directory is unsafe");
+  }
+  return resolved;
+}
+
+async function installBase(
+  dataDir: string,
+  platform: NodeJS.Platform,
+  security: WindowsArtifactSecurity | null,
+): Promise<string> {
+  let current = await privateDirectory(dataDir, platform, security);
+  for (const name of ["runtime", "connectors", "github-mcp-server"]) {
+    current = await privateDirectory(path.join(current, name), platform, security);
+  }
+  return current;
+}
+
+async function writeChunk(
+  handle: Awaited<ReturnType<typeof open>>,
+  chunk: Uint8Array,
+): Promise<void> {
+  let offset = 0;
+  while (offset < chunk.length) {
+    const { bytesWritten } = await handle.write(chunk, offset, chunk.length - offset);
+    if (bytesWritten === 0) {
+      throw new GitHubConnectorArtifactError(502, "GitHub MCP download failed");
+    }
+    offset += bytesWritten;
+  }
+}
+
+async function downloadArchive(
+  selected: GitHubMcpArtifact,
+  destination: string,
+  fetchImpl: typeof fetch,
+  signal: AbortSignal,
+): Promise<void> {
+  const response = await fetchImpl(selected.url, {
+    headers: { Accept: "application/octet-stream" },
+    signal,
+  });
+  if (!response.ok || !response.body) {
+    throw new GitHubConnectorArtifactError(502, "GitHub MCP download failed");
+  }
+  const declaredValue = response.headers.get("content-length");
+  if (declaredValue) {
+    const declared = Number(declaredValue);
+    if (
+      !Number.isSafeInteger(declared) ||
+      declared !== selected.archiveSize ||
+      declared > MAX_ARCHIVE_BYTES
+    ) {
+      throw new GitHubConnectorArtifactError(502, "GitHub MCP download size is invalid");
+    }
+  }
+  const handle = await open(destination, "wx", PRIVATE_FILE_MODE);
+  const reader = response.body.getReader();
+  const digest = createHash("sha256");
+  let size = 0;
+  let complete = false;
+  try {
+    while (true) {
+      if (signal.aborted) throw signal.reason;
+      const next = await reader.read();
+      if (next.done) {
+        complete = true;
+        break;
+      }
+      size += next.value.byteLength;
+      if (size > MAX_ARCHIVE_BYTES || size > selected.archiveSize) {
+        throw new GitHubConnectorArtifactError(502, "GitHub MCP download exceeded its byte limit");
+      }
+      digest.update(next.value);
+      await writeChunk(handle, next.value);
+    }
+  } finally {
+    if (!complete) await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+    await handle.close();
+  }
+  if (size !== selected.archiveSize || digest.digest("hex") !== selected.archiveSha256) {
+    throw new GitHubConnectorArtifactError(409, "GitHub MCP archive integrity check failed");
+  }
+}
