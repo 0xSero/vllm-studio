@@ -635,7 +635,12 @@ function discoveredBundlesEffect(
               sourceDigests.has(connector.origin.sourceDigest) &&
               hasPluginGrant(connector),
           );
-          affected.forEach((connector) => closePooledConnection(connector.id));
+          affected.forEach((connector) => {
+            closePooledConnection(connector.id);
+            closePooledConnection(
+              connectorId(connector.origin?.id ?? "", connector.origin?.binding ?? ""),
+            );
+          });
           if (affected.length > 0) {
             await replaceConnectorIdentities(
               affected.map((connector) => ({
