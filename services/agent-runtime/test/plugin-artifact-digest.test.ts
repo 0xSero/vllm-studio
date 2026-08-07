@@ -13,7 +13,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Effect } from "effect";
-import { discoverPluginBundles } from "../src/plugin-discovery";
+import { discoverPluginBundles, PluginDiscoveryError } from "../src/plugin-discovery";
 import { pluginArtifactDigest } from "../src/plugin-artifact-digest";
 
 const roots: string[] = [];
@@ -141,5 +141,27 @@ describe("plugin artifact identity", () => {
     await expect(Effect.runPromise(discoverPluginBundles(source, 0))).rejects.toThrow(
       /unsafe|cannot be read/,
     );
+  });
+
+  test("discovery reports every concurrently unreadable plugin source", async () => {
+    if (process.platform === "win32") return;
+    const left = fixture("left-invalid");
+    const right = fixture("right-invalid");
+    manifest(left);
+    manifest(right);
+    symlinkSync("missing", path.join(left, "unsafe"));
+    symlinkSync("missing", path.join(right, "unsafe"));
+    try {
+      await Effect.runPromise(
+        discoverPluginBundles([
+          { label: "Left", dir: left, priority: 1 },
+          { label: "Right", dir: right, priority: 1 },
+        ], 0),
+      );
+      throw new Error("expected discovery to fail");
+    } catch (error) {
+      expect(error).toBeInstanceOf(PluginDiscoveryError);
+      expect((error as PluginDiscoveryError).sourceDigests).toHaveLength(2);
+    }
   });
 });

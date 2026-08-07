@@ -100,7 +100,6 @@ async function snapshotConnector(bundle: PluginBundle, connector: ConnectorConfi
   if (connector.transport !== "stdio" || !connector.command) return connector;
   const destination = snapshotRoot(bundle.artifactDigest);
   const artifactRoot = path.join(destination, "artifact");
-  const runtimePath = path.join(destination, "runtime");
   const sourceRoot = await import("node:fs/promises").then(({ realpath }) => realpath(bundle.rootDir));
   const runtimeCommand = connector.command === process.execPath;
   const temp = `${destination}.tmp-${process.pid}-${Date.now()}`;
@@ -114,8 +113,6 @@ async function snapshotConnector(bundle: PluginBundle, connector: ConnectorConfi
     let runtimeDigest: string | undefined;
     if (runtimeCommand) {
       runtimeDigest = await fileDigest(process.execPath);
-      await cp(process.execPath, path.join(temp, "runtime"), { dereference: false });
-      if ((await fileDigest(path.join(temp, "runtime"))) !== runtimeDigest) throw new PluginExecutionSnapshotError("Plugin runtime changed while snapshotting");
     }
     await hardenTree(temp);
     await removeTree(destination);
@@ -123,7 +120,7 @@ async function snapshotConnector(bundle: PluginBundle, connector: ConnectorConfi
     const snapshotDigest = await Effect.runPromise(pluginArtifactDigest(artifactRoot));
     const prepared: ConnectorConfig = {
       ...connector,
-      command: runtimeCommand ? runtimePath : mapIntoSnapshot(sourceRoot, artifactRoot, connector.command),
+      command: runtimeCommand ? process.execPath : mapIntoSnapshot(sourceRoot, artifactRoot, connector.command),
       args: connector.args?.map((value) => contained(sourceRoot, value) ? mapIntoSnapshot(sourceRoot, artifactRoot, value) : value),
       cwd: connector.cwd ? mapIntoSnapshot(sourceRoot, artifactRoot, connector.cwd) : artifactRoot,
       origin: connector.origin ? { ...connector.origin, snapshotDigest, ...(runtimeDigest ? { runtimeDigest } : {}) } : connector.origin,
@@ -147,7 +144,8 @@ export function verifyPluginExecutionSnapshot(connector: ConnectorConfig): Effec
       const root = snapshotRoot(connector.origin.artifactDigest);
       await assertHardened(root);
       if ((await Effect.runPromise(pluginArtifactDigest(path.join(root, "artifact")))) !== connector.origin.snapshotDigest) throw new PluginExecutionSnapshotError("Plugin execution snapshot changed");
-      if (connector.origin.runtimeDigest && (await fileDigest(path.join(root, "runtime"))) !== connector.origin.runtimeDigest) throw new PluginExecutionSnapshotError("Plugin runtime snapshot changed");
+      if (connector.command === process.execPath && !connector.origin.runtimeDigest) throw new PluginExecutionSnapshotError("Plugin runtime identity is missing");
+      if (connector.origin.runtimeDigest && (await fileDigest(process.execPath)) !== connector.origin.runtimeDigest) throw new PluginExecutionSnapshotError("Plugin runtime changed");
     },
     catch: (error) => error instanceof PluginExecutionSnapshotError ? error : new PluginExecutionSnapshotError("Plugin execution snapshot could not be verified"),
   });

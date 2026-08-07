@@ -65,7 +65,11 @@ type DiscoveredPlugin = {
 };
 
 export class PluginDiscoveryError extends Error {
-  constructor(message: string, readonly sourceDigest?: string) {
+  constructor(
+    message: string,
+    readonly sourceDigest?: string,
+    readonly sourceDigests: readonly string[] = sourceDigest ? [sourceDigest] : [],
+  ) {
     super(message);
   }
 }
@@ -200,9 +204,24 @@ export function discoverPluginBundles(
 ): Effect.Effect<PluginBundle[], PluginDiscoveryError> {
   return Effect.tryPromise({
     try: async () => {
-      const discovered = (
-        await Promise.all(sources.map((source) => scanDirectory(source.dir, source, 0, maxDepth)))
-      ).flat();
+      const scanned = await Promise.allSettled(
+        sources.map((source) => scanDirectory(source.dir, source, 0, maxDepth)),
+      );
+      const failures = scanned.flatMap((result) =>
+        result.status === "rejected" && result.reason instanceof PluginDiscoveryError
+          ? [result.reason]
+          : [],
+      );
+      if (failures.length > 0) {
+        throw new PluginDiscoveryError(
+          failures[0]?.message ?? "Plugin discovery failed",
+          undefined,
+          [...new Set(failures.flatMap((failure) => failure.sourceDigests))],
+        );
+      }
+      const discovered = scanned.flatMap((result) =>
+        result.status === "fulfilled" ? result.value : [],
+      );
       const plugins = new Map<string, DiscoveredPlugin>();
       for (const candidate of discovered) {
         plugins.set(

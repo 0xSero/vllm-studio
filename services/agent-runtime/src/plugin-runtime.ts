@@ -182,7 +182,10 @@ async function resolvedServer(
         transport: "stdio",
         command,
         args,
-        env: { ...(server.env ?? {}) },
+        env: {
+          ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+          ...(server.env ?? {}),
+        },
         cwd: await containedRealPath(root, server.cwd ?? "."),
         enabled: false,
       }),
@@ -622,12 +625,14 @@ function discoveredBundlesEffect(
     onFailure: (error) =>
       Effect.tryPromise({
         try: async () => {
-          if (!error.sourceDigest) return;
+          const sourceDigests = new Set(error.sourceDigests);
+          if (sourceDigests.size === 0) return;
           const connectors = await listConnectors();
           const affected = connectors.filter(
             (connector) =>
               connector.origin?.kind === "plugin" &&
-              connector.origin.sourceDigest === error.sourceDigest &&
+              connector.origin.sourceDigest !== undefined &&
+              sourceDigests.has(connector.origin.sourceDigest) &&
               hasPluginGrant(connector),
           );
           affected.forEach((connector) => closePooledConnection(connector.id));
