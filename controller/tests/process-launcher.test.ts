@@ -243,7 +243,6 @@ describe("process launcher logs", () => {
         record,
       ),
     );
-    const durable = { ...record, ref: reference };
     const enginePid = await readPid(enginePath);
     const workerPid = await readPid(workerPath);
     try {
@@ -251,10 +250,6 @@ describe("process launcher logs", () => {
       expect(proxyPid).toBeGreaterThan(0);
       process.kill(proxyPid, "SIGKILL");
       writeFileSync(triggerPath, "write");
-      await Bun.sleep(100);
-      if (await Effect.runPromise(launcher.owns(reference, durable))) {
-        await Effect.runPromise(launcher.stop(reference, durable, 0));
-      }
       await waitForPidExit(enginePid);
       await waitForPidExit(workerPid);
       expect(pidAlive(enginePid)).toBe(false);
