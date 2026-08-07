@@ -22,6 +22,17 @@ function through(proxy: BrowserProxy, target: string): Promise<number> {
     outgoing.end();
   });
 }
+function rawThrough(proxy: BrowserProxy, message: string): Promise<string> {
+  const endpoint = new URL(proxy.url);
+  return new Promise((resolve, reject) => {
+    let response = "";
+    const socket = connect(Number(endpoint.port), endpoint.hostname, () => socket.write(message));
+    socket.setEncoding("utf8");
+    socket.on("data", (chunk) => (response += chunk));
+    socket.once("end", () => resolve(response));
+    socket.once("error", reject);
+  });
+}
 function fakeProxy(mode: string, events: string[]): BrowserProxy {
   return { url: "http://127.0.0.1:1", close: async () => void events.push(`close:${mode}`) };
 }
@@ -57,24 +68,60 @@ describe("browser network policy", () => {
   });
   test("rejects rebinding before transport and pins allowed loopback requests", async () => {
     let hits = 0;
+    let connections = 0;
+    let upgrades = 0;
     let host = "";
     const origin = createServer((incoming, response) => {
       hits += 1;
       host = incoming.headers.host ?? "";
       response.end();
     });
+    origin.on("connection", () => (connections += 1));
+    origin.on("upgrade", (_incoming, socket) => {
+      upgrades += 1;
+      socket.end(
+        "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n",
+      );
+    });
     await new Promise<void>((resolve) => origin.listen(0, "127.0.0.1", resolve));
     const port = (origin.address() as AddressInfo).port;
     const policy = createBrowserNetworkPolicy(async () => [loopbackAddress]);
-    const publicProxy = await createBrowserProxy("public", policy);
+    const rejectedProtocols = new Set<string>();
+    const tracedPolicy: BrowserNetworkPolicy = {
+      navigation: policy.navigation,
+      resolve: (raw, mode) => {
+        rejectedProtocols.add(new URL(raw).protocol);
+        return policy.resolve(raw, mode);
+      },
+    };
+    const publicProxy = await createBrowserProxy("public", tracedPolicy);
     const target = `http://example.test:${port}/resource`;
     expect(await through(publicProxy, target)).toBe(403);
-    expect(hits).toBe(0);
+    const connectResponse = await rawThrough(
+      publicProxy,
+      `CONNECT example.test:${port} HTTP/1.1\r\nHost: example.test:${port}\r\n\r\n`,
+    );
+    await rawThrough(
+      publicProxy,
+      `GET http://example.test:${port}/socket HTTP/1.1\r\nHost: example.test:${port}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`,
+    );
+    expect(connectResponse.startsWith("HTTP/1.1 403")).toBe(true);
+    expect([...rejectedProtocols].sort()).toEqual(["http:", "https:", "ws:"]);
+    expect([hits, connections]).toEqual([0, 0]);
     await publicProxy.close();
     const loopbackProxy = await createBrowserProxy("loopback", policy);
     expect(await through(loopbackProxy, target)).toBe(403);
     expect(await through(loopbackProxy, `http://localhost:${port}/resource`)).toBe(200);
-    expect([hits, host]).toEqual([1, `localhost:${port}`]);
+    const tunnelResponse = await rawThrough(
+      loopbackProxy,
+      `CONNECT localhost:${port} HTTP/1.1\r\nHost: localhost:${port}\r\n\r\nGET /tunnel HTTP/1.1\r\nHost: localhost:${port}\r\nConnection: close\r\n\r\n`,
+    );
+    await rawThrough(
+      loopbackProxy,
+      `GET http://localhost:${port}/socket HTTP/1.1\r\nHost: localhost:${port}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`,
+    );
+    expect(tunnelResponse.startsWith("HTTP/1.1 200 Connection Established")).toBe(true);
+    expect([hits, connections, upgrades, host]).toEqual([2, 3, 1, `localhost:${port}`]);
     await loopbackProxy.close();
     await new Promise<void>((resolve) => origin.close(() => resolve()));
   });
@@ -161,16 +208,36 @@ describe("browser network policy", () => {
     async () => {
       const binary = findBrowserBinary();
       if (!binary) throw new Error("Chromium disappeared after test selection");
-      const expected = new Set([
-        "/redirect-target",
-        "/image",
-        "/script.js",
-        "/frame",
-        "/fetch",
-        "/socket",
-        "/worker.js",
+      const probes = [
+        "redirect",
+        "image",
+        "script",
+        "iframe",
+        "fetch",
+        "websocket",
+        "worker",
+      ] as const;
+      type Probe = (typeof probes)[number];
+      const expected = new Set<Probe>(probes);
+      const routeProbes = new Map<string, Probe>([
+        ["/redirect", "redirect"],
+        ["/image", "image"],
+        ["/script.js", "script"],
+        ["/frame", "iframe"],
+        ["/fetch", "fetch"],
+        ["/socket", "websocket"],
+        ["/worker.js", "worker"],
       ]);
-      const observed = new Set<string>();
+      const proxyProbes = new Map<string, Probe>([
+        ["/redirect-target", "redirect"],
+        ["/image", "image"],
+        ["/script.js", "script"],
+        ["/frame", "iframe"],
+        ["/fetch", "fetch"],
+        ["/worker.js", "worker"],
+      ]);
+      const routeAllowed = new Set<Probe>();
+      const proxyRejected = new Set<Probe>();
       const complete = Deferred.makeUnsafe<void>();
       let targetConnections = 0;
       const target = createServer();
@@ -210,8 +277,21 @@ worker.addEventListener("error", () => worker.terminate());
         targetOrigin = `http://rebind.test:${targetPort}`;
         await listen(entry, 0, loopbackAddress.address);
         const port = (entry.address() as AddressInfo).port;
+        const allowed = createBrowserNetworkPolicy(async (hostname) =>
+          hostname === "rebind.test" ? [publicAddress] : [loopbackAddress],
+        );
         const blocked = createBrowserNetworkPolicy(async () => [loopbackAddress]);
-        const policy: BrowserNetworkPolicy = {
+        const routePolicy: BrowserNetworkPolicy = {
+          navigation: allowed.navigation,
+          resolve: async (raw, mode) => {
+            const url = new URL(raw);
+            const destination = await allowed.resolve(raw, mode);
+            const probe = routeProbes.get(url.pathname);
+            if (probe) routeAllowed.add(probe);
+            return destination;
+          },
+        };
+        const proxyPolicy: BrowserNetworkPolicy = {
           navigation: blocked.navigation,
           resolve: async (raw, mode) => {
             const url = new URL(raw);
@@ -220,21 +300,29 @@ worker.addEventListener("error", () => worker.terminate());
             }
             try {
               return await blocked.resolve(raw, mode);
-            } finally {
-              if (expected.has(url.pathname)) {
-                observed.add(url.pathname);
-                if (observed.size === expected.size) {
+            } catch (error) {
+              const probe =
+                url.hostname === "rebind.test" &&
+                url.port === String(targetPort) &&
+                url.protocol === "https:" &&
+                url.pathname === "/"
+                  ? "websocket"
+                  : proxyProbes.get(url.pathname);
+              if (probe) {
+                proxyRejected.add(probe);
+                if (proxyRejected.size === expected.size) {
                   Effect.runSync(Deferred.succeed(complete, undefined));
                 }
               }
+              throw error;
             }
           },
         };
         manager = new PlaywrightManager(
           (_directory, options) => chromium.launchPersistentContext(profile, options),
           () => binary,
-          (mode) => createBrowserProxy(mode, policy),
-          policy,
+          (mode) => createBrowserProxy(mode, proxyPolicy),
+          routePolicy,
         );
         const context = await manager.ensure("public");
         const origin = `http://rebind.test:${port}`;
@@ -249,7 +337,9 @@ worker.addEventListener("error", () => worker.terminate());
           waitUntil: "domcontentloaded",
         });
         await Effect.runPromise(Deferred.await(complete).pipe(Effect.timeout(15_000)));
-        expect([...observed].sort()).toEqual([...expected].sort());
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(routeAllowed).toEqual(expected);
+        expect(proxyRejected).toEqual(expected);
         expect(targetConnections).toBe(0);
       } finally {
         if (manager) await manager.stop();
