@@ -1,10 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 import { ConnectorUpsertInputSchema } from "@local-studio/agent-runtime/connector-contract";
-import {
-  assertGitHubConnectorReady,
-  githubMcpConnectorConfiguration,
-} from "@local-studio/agent-runtime/connector-artifacts";
+import { githubMcpConnectorConfiguration } from "@local-studio/agent-runtime/connector-artifacts";
 import {
   isValidConnectorId,
   listConnectors,
@@ -47,14 +44,12 @@ function customConnector(
   };
 }
 
-async function connectorFromInput(body: ConnectorUpsertInput): Promise<ConnectorConfig> {
+function connectorFromInput(body: ConnectorUpsertInput): ConnectorConfig {
   if (!("catalogId" in body)) return customConnector(body);
-  const connector = githubMcpConnectorConfiguration({
+  return githubMcpConnectorConfiguration({
     env: body.env,
     enabled: body.enabled ?? true,
   });
-  if (connector.enabled) await Effect.runPromise(assertGitHubConnectorReady(connector));
-  return connector;
 }
 
 export async function GET(request: NextRequest) {
@@ -77,7 +72,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid connector id" }, { status: 400 });
   }
   try {
-    const connector = await connectorFromInput(body);
+    const connector = connectorFromInput(body);
     const connectors = await upsertConnector(connector);
     await closePooledConnection(connector.id);
     return NextResponse.json({ connectors: connectors.map(toConnectorView) });
