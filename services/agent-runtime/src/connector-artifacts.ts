@@ -859,3 +859,176 @@ async function downloadArchive(
     throw new GitHubConnectorArtifactError(409, "GitHub MCP archive integrity check failed");
   }
 }
+
+export function verifyGitHubMcpExecutable(
+  command: string,
+  options: GitHubMcpVerificationOptions = {},
+): Effect.Effect<void, GitHubConnectorArtifactError> {
+  const expected = [...(options.expectedTools ?? GITHUB_MCP_TOOLS)].sort();
+  return Effect.acquireUseRelease(
+    Effect.sync(() =>
+      connectMcp({
+        transport: "stdio",
+        command,
+        args: [...(options.prefixArgs ?? []), ...GITHUB_MCP_ARGS],
+        env: { [GITHUB_TOKEN_KEY]: "local-studio-install-verification" },
+      }),
+    ),
+    (connection) =>
+      Effect.tryPromise({
+        try: () => connection.listTools(),
+        catch: () =>
+          new GitHubConnectorArtifactError(409, "GitHub MCP startup verification failed"),
+      }).pipe(
+        Effect.timeoutOrElse({
+          duration: options.timeoutMs ?? VERIFY_TIMEOUT_MS,
+          orElse: () =>
+            Effect.fail(
+              new GitHubConnectorArtifactError(409, "GitHub MCP startup verification timed out"),
+            ),
+        }),
+        Effect.flatMap((tools) => {
+          const actual = tools.map((tool) => tool.name).sort();
+          return actual.length === expected.length &&
+            actual.every((name, index) => name === expected[index])
+            ? Effect.void
+            : Effect.fail(
+                new GitHubConnectorArtifactError(409, "GitHub MCP tool inventory is invalid"),
+              );
+        }),
+      ),
+    (connection) => Effect.sync(() => connection.close()),
+  );
+}
+
+async function promote(
+  staging: string,
+  target: string,
+  selected: GitHubMcpArtifact,
+  dataDir: string,
+  platform: NodeJS.Platform,
+  security: WindowsArtifactSecurity | null,
+  renameImpl: typeof rename,
+): Promise<void> {
+  const backup = path.join(path.dirname(target), `.replaced-${randomUUID()}`);
+  let replaced = false;
+  let promoted = false;
+  try {
+    try {
+      await lstat(target);
+      await renameImpl(target, backup);
+      replaced = true;
+    } catch (error) {
+      if (!missing(error)) throw error;
+    }
+    await renameImpl(staging, target);
+    promoted = true;
+    if ((await securedInstalledState(selected, dataDir, platform, security)) !== "installed") {
+      throw new GitHubConnectorArtifactError(409, "GitHub MCP installed executable is invalid");
+    }
+    if (replaced) await rm(backup, { recursive: true, force: true });
+  } catch (error) {
+    if (promoted) await rm(target, { recursive: true, force: true }).catch(() => undefined);
+    if (replaced) await renameImpl(backup, target).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function installArtifact(
+  selected: GitHubMcpArtifact,
+  dependencies: GitHubMcpArtifactDependencies,
+  signal: AbortSignal,
+  base: string,
+): Promise<GitHubConnectorArtifactStatus> {
+  const platform = dependencies.platform ?? process.platform;
+  const dataDir = selectedDataDir(dependencies);
+  const security = windowsSecurity(dependencies, platform);
+  if ((await securedInstalledState(selected, dataDir, platform, security)) === "installed") {
+    return artifactStatus(dependencies);
+  }
+  const staging = await mkdtemp(path.join(base, ".pending-"));
+  if (platform !== "win32") await chmod(staging, PRIVATE_DIRECTORY_MODE);
+  if (security) {
+    await security.protect(staging, "directory");
+    await security.verify(staging, "directory");
+  }
+  const archivePath = path.join(staging, selected.archiveName);
+  try {
+    await downloadArchive(selected, archivePath, dependencies.fetch ?? fetch, signal);
+    signal.throwIfAborted();
+    const executable = extractedExecutable(await readFile(archivePath), selected);
+    signal.throwIfAborted();
+    await unlink(archivePath);
+    const executablePath = path.join(staging, selected.executableName);
+    const handle = await open(executablePath, "wx", EXECUTABLE_MODE);
+    try {
+      await handle.writeFile(executable);
+    } finally {
+      await handle.close();
+    }
+    if (platform !== "win32") await chmod(executablePath, EXECUTABLE_MODE);
+    if (security) {
+      await security.protect(executablePath, "file");
+      await security.verify(executablePath, "file");
+    }
+    await (
+      dependencies.verifyExecutable ??
+      ((command) => Effect.runPromise(verifyGitHubMcpExecutable(command), { signal }))
+    )(executablePath);
+    signal.throwIfAborted();
+    await promote(
+      staging,
+      versionRoot(dataDir, selected),
+      selected,
+      dataDir,
+      platform,
+      security,
+      dependencies.rename ?? rename,
+    );
+    return artifactStatus(dependencies);
+  } finally {
+    await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+export function installGitHubConnectorArtifact(
+  dependencies: GitHubMcpArtifactDependencies = {},
+): Effect.Effect<GitHubConnectorArtifactStatus, GitHubConnectorArtifactError> {
+  const selected = selectedArtifact(dependencies);
+  if (!selected) {
+    return Effect.fail(
+      new GitHubConnectorArtifactError(409, "GitHub MCP is unavailable on this platform"),
+    );
+  }
+  const timeoutMs = dependencies.timeoutMs ?? INSTALL_TIMEOUT_MS;
+  return installSemaphore
+    .withPermit(
+      Effect.tryPromise({
+        try: async (signal) => {
+          const platform = dependencies.platform ?? process.platform;
+          const dataDir = selectedDataDir(dependencies);
+          const security = windowsSecurity(dependencies, platform);
+          const base = await installBase(dataDir, platform, security);
+          const release = await lockfile.lock(base, {
+            realpath: true,
+            stale: 10_000,
+            update: 2_000,
+            retries: { retries: 80, factor: 1.15, minTimeout: 25, maxTimeout: 250 },
+          });
+          try {
+            return await installArtifact(selected, dependencies, signal, base);
+          } finally {
+            await release();
+          }
+        },
+        catch: artifactFailure,
+      }),
+    )
+    .pipe(
+      Effect.timeoutOrElse({
+        duration: timeoutMs,
+        orElse: () =>
+          Effect.fail(new GitHubConnectorArtifactError(504, "GitHub MCP installation timed out")),
+      }),
+    );
+}
