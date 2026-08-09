@@ -4,11 +4,8 @@ import { Suspense, lazy, useCallback, type ReactNode } from "react";
 import {
   FolderTree,
   GitBranch,
-  GitPullRequest,
   Globe2,
-  ListChecks,
   MessageSquarePlus,
-  ScanSearch,
   TerminalSquare,
 } from "@/ui/icon-registry";
 import type { ToolsContextValue } from "@/features/agent/tools/context";
@@ -39,28 +36,8 @@ const LazyGitDiffPanel = lazy(() =>
     default: GitDiffPanel,
   })),
 );
-const LazyPrPanel = lazy(() =>
-  import("@/features/agent/ui/pr-panel").then(({ PrPanel }) => ({
-    default: PrPanel,
-  })),
-);
-const LazyPlanPanel = lazy(() =>
-  import("@/features/agent/ui/plan-panel").then(({ PlanPanel }) => ({
-    default: PlanPanel,
-  })),
-);
-const LazyInspectorPanel = lazy(() =>
-  import("@/features/agent/ui/inspector-panel").then(({ InspectorPanel }) => ({
-    default: InspectorPanel,
-  })),
-);
 
 export type SideChatTabsUpdater = Session[] | ((tabs: Session[]) => Session[]);
-
-export type SideChatDraft = {
-  title: string;
-  input: string;
-};
 
 type ComputerTabPanelProps = {
   activeModel: AgentModel | null;
@@ -74,7 +51,7 @@ type ComputerTabPanelProps = {
   onCloseSideChat: () => void;
   onCompactSession?: () => Promise<void>;
   onNavigateBrowser: (value: string) => void;
-  onOpenSideChat: (draft?: SideChatDraft) => void;
+  onOpenSideChat: () => void;
   onOpenTerminal: () => void;
   onRenameSideChat: (tabId: string, title: string) => void;
   onUpdateSideChatTabs: (nextTabsOrUpdater: SideChatTabsUpdater) => void;
@@ -92,27 +69,9 @@ export function ComputerTabPanel(props: ComputerTabPanelProps) {
     browser: <BrowserTab {...props} />,
     files: <FilesTab cwd={focusedCwd} />,
     diff: <LazyGitDiffPanel cwd={focusedCwd} />,
-    pr: <LazyPrPanel cwd={focusedCwd} />,
-    plan: (
-      <LazyPlanPanel
-        sessionId={props.focusedSession?.id ?? null}
-        onOpenTaskSideChat={(todo) =>
-          props.onOpenSideChat({
-            title: todo.content || "Plan task",
-            input: buildPlanTaskPrompt(todo.content),
-          })
-        }
-      />
-    ),
-    inspector: <LazyInspectorPanel session={props.focusedSession} />,
     terminal: null,
   };
   return <Suspense fallback={<ComputerTabFallback />}>{panels[props.tools.computer.tab]}</Suspense>;
-}
-
-function buildPlanTaskPrompt(task: string): string {
-  const title = task.trim() || "this plan task";
-  return `Help me complete this plan task:\n\n${title}\n\nFocus only on this task. Start by checking the relevant project context, then either make the smallest correct change or explain the next concrete step.`;
 }
 
 function StatusTab({
@@ -253,13 +212,6 @@ function ComputerLauncherPanel({
       onClick: () => onOpenSideChat(),
     },
     {
-      key: "plan",
-      title: "Plan",
-      description: "Plan and track to-dos",
-      icon: ListChecks,
-      onClick: () => tools.setComputerTab("plan"),
-    },
-    {
       key: "browser",
       title: "Browser",
       description: "Open a website",
@@ -269,23 +221,9 @@ function ComputerLauncherPanel({
     {
       key: "diff",
       title: "Review",
-      description: "View code changes",
+      description: "Diff, commit, push, and PR",
       icon: GitBranch,
       onClick: () => tools.setComputerTab("diff"),
-    },
-    {
-      key: "pr",
-      title: "PR",
-      description: "Pull request status and merge",
-      icon: GitPullRequest,
-      onClick: () => tools.setComputerTab("pr"),
-    },
-    {
-      key: "inspector",
-      title: "Inspector",
-      description: "Per-turn tools, files, and context",
-      icon: ScanSearch,
-      onClick: () => tools.setComputerTab("inspector"),
     },
     {
       key: "terminal",
