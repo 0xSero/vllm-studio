@@ -6,6 +6,8 @@ Keep code composable and typed, use Effect for async and streaming, use the shar
 
 `docs/workflow.md` is the single source of truth for branches, gates and releases. In short: branch from `dev`, one branch per agent so two of you never share one, open a PR into `dev`, and never push directly to `dev` or `main`.
 
+The active approval-gated performance campaign is tracked in `work/local-studio-performance-program/status.md`. Its architecture and execution constraints are in `work/local-studio-performance-program/scope.md` and `work/local-studio-performance-program/rules.md`, with dependency-ordered work in `work/local-studio-performance-program/tasks/`. Do not start its feature implementation until the status ledger says `APPROVED`; the campaign permits one shared browser profile/session total, owned and used serially by Codex.
+
 Run `npm run check` before handoff — it already runs the frontend quality gate and the unit tests, so do not run them separately. Add `npm run test:integration` when the change touches the controller or the runtime. Never bypass git hooks.
 Commit conventionally as you go. CI builds, packages and smoke-tests the desktop app on every run, so rebuild and reinstall locally only when you need to verify something by hand — use `scripts/install-desktop-app.sh [stable|dev]`, never a hand-rolled backup copy.
 Use the documented local, remote, deployment, and agent-runtime workflows in the repository, keep secrets in ignored `.env.local`, and treat the live browser, controller, installed app, or deployed domain as the acceptance target for visible behavior.
