@@ -47,7 +47,6 @@ type ComputerTabPanelProps = {
   gitSummary?: GitSummary | null;
   models: AgentModel[];
   modelsLoading: boolean;
-  isElectron: boolean;
   onCloseSideChat: () => void;
   onCompactSession?: () => Promise<void>;
   onNavigateBrowser: (value: string) => void;
@@ -138,10 +137,10 @@ function SideChatTab({
             {...reasoning}
           />
         )}
-        browserToolEnabled={false}
+        browserToolEnabled={tools.browser.enabled}
         browserBackend={tools.browser.backend}
         onToggleBrowserBackend={tools.toggleBrowserBackend}
-        onToggleBrowserTool={() => tools.setComputerTab("browser")}
+        onToggleBrowserTool={tools.toggleBrowser}
         isFocused
         onFocus={() => undefined}
         tabs={[sideChatSession]}
@@ -157,7 +156,7 @@ function SideChatTab({
   );
 }
 
-function BrowserTab({ isElectron, onNavigateBrowser, tools }: ComputerTabPanelProps) {
+function BrowserTab({ onNavigateBrowser, tools }: ComputerTabPanelProps) {
   return (
     <LazyAgentBrowser
       url={tools.browser.url}
@@ -166,7 +165,6 @@ function BrowserTab({ isElectron, onNavigateBrowser, tools }: ComputerTabPanelPr
       onNavigate={onNavigateBrowser}
       onLocationChange={(next) => tools.setBrowserUrl(next, next)}
       onClose={() => tools.setComputerOpen(false)}
-      isElectron={isElectron}
       visible={tools.computer.open}
     />
   );

@@ -121,7 +121,6 @@ export function AgentBrowserPanel({
   const sideChatSession =
     sessions.find((session) => session.id === sideChatSeed.id) ?? sideChatSeed;
   const { registerComputerAside, startComputerResize } = handles;
-  const isElectron = typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent);
   const terminalOwner = useMemo(
     () => terminalOwnerFor(activeProject, focusedSession),
     [activeProject, focusedSession],
@@ -273,7 +272,6 @@ export function AgentBrowserPanel({
         gitSummary={gitSummary}
         models={models}
         modelsLoading={modelsLoading}
-        isElectron={isElectron}
         onCloseSideChat={closeSideChat}
         onCompactSession={handles.compactFocusedSession}
         onNavigateBrowser={navigateBrowser}
