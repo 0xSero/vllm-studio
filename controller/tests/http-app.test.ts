@@ -119,6 +119,70 @@ describe("controller HTTP application", () => {
     expect([...documentedOperations].sort()).toEqual([...registeredOperations].sort());
   });
 
+  test("includes enabled external provider models in the OpenAI model catalog", async () => {
+    const providerServer = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) => {
+        if (new URL(request.url).pathname === "/v1/models") {
+          return Response.json({ data: [{ id: "gpt-5.6-sol" }, { id: "" }, {}] });
+        }
+        return new Response("Not Found", { status: 404 });
+      },
+    });
+    context.config.providers = [
+      {
+        id: "mai",
+        name: "MRTNZ AI (MAI)",
+        base_url: providerServer.url.origin,
+        api_key: "provider-key",
+        enabled: true,
+      },
+      {
+        id: "disabled",
+        name: "Disabled Provider",
+        base_url: "https://disabled.example",
+        api_key: "disabled-key",
+        enabled: false,
+      },
+      {
+        id: "unavailable",
+        name: "Unavailable Provider",
+        base_url: `${providerServer.url.origin}/unavailable`,
+        api_key: "unavailable-key",
+        enabled: true,
+      },
+    ];
+
+    try {
+      const response = await app.request("/v1/models", {
+        headers: { "x-api-key": apiKey },
+      });
+      expect(response.status).toBe(200);
+      const payload = (await response.json()) as {
+        data: Array<{
+          id: string;
+          owned_by: string;
+          active: boolean;
+          metadata: Record<string, unknown>;
+        }>;
+      };
+      expect(payload.data).toContainEqual(
+        expect.objectContaining({
+          id: "mai/gpt-5.6-sol",
+          owned_by: "mai",
+          active: true,
+          metadata: expect.objectContaining({ external: true, provider: "mai" }),
+        }),
+      );
+      expect(payload.data.some((model) => model.id.startsWith("disabled/"))).toBe(false);
+      expect(payload.data.some((model) => model.id.startsWith("unavailable/"))).toBe(false);
+    } finally {
+      await providerServer.stop(true);
+      context.config.providers = [];
+    }
+  });
+
   test("falls back to persisted logs when a Docker container no longer exists", async () => {
     const sessionId = "stale-docker-session";
     await runtime.runPromise(

@@ -44,6 +44,7 @@ import { notFound } from "../../core/errors";
 import { findObservedInferenceProcess } from "../../core/function-observability";
 import { parseBooleanFlag } from "../../core/validation";
 import { fetchInference } from "../../http/local-fetch";
+import { providerModels } from "../../services/provider-model-catalog";
 
 function isMockInferenceEnabled(): boolean {
   return parseBooleanFlag(process.env["LOCAL_STUDIO_MOCK_INFERENCE"]);
@@ -114,6 +115,30 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
               max_model_len: maxModelLength,
               metadata: resolvedRecipeMetadata(recipe, modelId),
             });
+          }
+
+          const providerCatalogs = yield* Effect.forEach(
+            context.config.providers.filter((provider) => provider.enabled && provider.api_key),
+            (provider) => providerModels(provider, 3000).pipe(Effect.option),
+            { concurrency: "unbounded" },
+          );
+          for (const result of providerCatalogs) {
+            if (result._tag !== "Some") continue;
+            for (const model of result.value.models) {
+              const modelId = `${result.value.provider}/${model.id}`;
+              models.push({
+                id: modelId,
+                object: "model",
+                created: now,
+                owned_by: result.value.provider,
+                active: true,
+                metadata: {
+                  external: true,
+                  provider: result.value.provider,
+                  vision: resolveModelVision({ identifiers: [model.id, modelId] }),
+                },
+              });
+            }
           }
 
           if (models.length === 0 && (isMockInferenceEnabled() || current)) {
