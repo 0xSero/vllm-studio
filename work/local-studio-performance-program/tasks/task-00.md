@@ -1,0 +1,49 @@
+# Task 00 — Establish the campaign control plane
+
+## Objective
+
+After user approval, freeze source truth, create isolated worktrees and integration PR topology, resolve workflow references, register Fable owners, and create the evidence manifest before any feature edit.
+
+## Dependencies
+
+- `status.md` is explicitly changed to `APPROVED` by Codex after user approval.
+- Pop maintenance, Alleycat authority, container security, and Linux publication remain separate gates.
+
+## Files and systems involved
+
+- `AGENTS.md`, `docs/workflow.md`
+- `work/local-studio-performance-program/{scope,rules,status}.md`
+- `evidence/<run-id>/manifest.json`
+- Local Studio, Litter, and Alleycat Git refs, worktrees, and GitHub PRs
+- Fable session registry
+
+## Work
+
+1. Fetch all three remotes and record full remote refs, protection/CI state, open overlapping PRs, submodule pins, and working-tree state.
+2. Confirm the Local Studio integration branch still derives from current `origin/dev`; refresh it only through Codex if `dev` moved.
+3. Create clean, dedicated child worktrees for accepted Local Studio lanes. Do not share a worktree or branch between sessions.
+4. Create a clean Litter integration worktree from freshly verified `origin/main`. Review PR #239 commit by commit. Consolidate useful PR #240 requirements into this ledger rather than merging its planning files.
+5. Audit Alleycat's three lineages and staged diff without modifying them. Select one protocol authority and record whether the product uses the scoped pair-token Pi bridge or a fully enforced signed grant protocol. Do not create the integration worktree until this decision is explicit.
+6. Open or refresh one draft Local Studio integration PR into `dev`; after approval create separate linked Litter and Alleycat integration PRs in their repositories.
+7. Create the initial manifest with repository/build/surface schema, browser lease, redaction checklist, artifact hashing, and requirement mapping.
+8. Start one proven, named, browser-disabled Fable session per accepted child objective and record its identity and ownership.
+
+## Validation
+
+- `git status --short --branch` is clean in every campaign worktree.
+- Full local integration SHA equals the recorded base or documented reviewed refresh.
+- Each branch has one owner and one worktree; no branch is checked out twice.
+- GitHub targets are correct; child PRs point to integration, integration points to the protected repository branch.
+- `npm run check` passes for the Local Studio control-plane changes.
+- The original dirty Litter and staged Alleycat checkouts remain unchanged.
+
+## Acceptance criteria
+
+- Status contains immutable refs, dirty-state exclusions, owners, Fable IDs, PR URLs, decisions, and blockers.
+- The browser lease names one Codex owner and one profile/session; every worker is browserless.
+- Alleycat authority is selected or the dependent tasks are explicitly blocked.
+- No feature code, deployment mutation, model launch, or protected-branch push occurred.
+
+## Rollback
+
+Close unmerged campaign PRs and remove only clean campaign worktrees/branches after confirming their exact paths and commits. Never delete or reset a pre-existing checkout.
