@@ -21,7 +21,7 @@ Let a user deliberately create a local session or a session on a selected remote
 
 ## Work
 
-1. Define `EnvironmentRef`, `ExecutionTarget`, `SessionPlacement`, `FilesystemAuthority`, and negotiated capabilities with opaque IDs. Keep model controller selection separate.
+1. Define `EnvironmentRef`, `ExecutionTarget`, `SessionPlacement`, `FilesystemAuthority`, and negotiated capabilities with opaque IDs. Reuse the existing stable installation/authority identity as the target ID where valid; do not invent a placement enum or duplicate identity. Keep model controller selection separate.
 2. Register local Electron runtime and approved remote runtime endpoints server-side. Credentials never enter browser local storage, query strings, logs, or session JSON.
 3. Bind target/filesystem identity at project/session creation and return it in every summary/read response.
 4. Route session, goal, directory, filesystem, Git, and terminal operations through that target. Reject missing/mismatched target IDs.

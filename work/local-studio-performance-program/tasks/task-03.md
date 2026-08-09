@@ -21,14 +21,15 @@ Make fifty-session navigation, large old-chat opening, streaming, inspector jump
 
 ## Work
 
-1. Replace per-project refetch growth and duplicated all-session fetches with one paged, target-aware inventory cache and narrow subscriptions.
+1. Replace per-project refetch growth and duplicated all-session fetches with one paged, target-aware inventory cache and narrow subscriptions. Remove the implicit seven-day project-list and 30-day pinned/search visibility windows, or expose them as user-controlled filters; age alone must never make a preserved session disappear.
 2. Keep per-session mutable state in bounded external stores so streaming one chat does not copy or rerender the entire workspace/session map.
 3. Extract and test pure canonical timeline-row derivation before changing rendering.
-4. Virtualize timeline and inspector with stable canonical IDs. Evaluate the existing `react-virtuoso` dependency before reviving the historical virtualizer.
+4. Virtualize timeline and inspector with stable canonical IDs using the existing `react-virtuoso` dependency. Port historical behavior and benchmarks, not its `@tanstack/react-virtual` dependency, unless a separate measured dependency review approves a change.
 5. Replace all-node DOM scans with visible-range/observer data. Keep prompt navigation and exact-ID inspector jumps correct for unmounted rows.
 6. Preserve cached immediate paint, canonical reconciliation, bottom-follow, user drag protection, rapid queued turns, and an anchor shift at or below the frozen budget when earlier pages prepend.
-7. Bound session caches, row measurements, and detached subscriptions. Prove no cross-session stale overwrite during rapid switching.
-8. Port historical changes one logical behavior at a time and remeasure; never import the divergent branch wholesale.
+7. Remove full Timeline remounts keyed only by the active tab where they discard reusable state, and stabilize callbacks/props so memoized message rows remain effective during streaming.
+8. Bound session caches, row measurements, and detached subscriptions. Prove no cross-session stale overwrite during rapid switching.
+9. Port historical changes one logical behavior at a time and remeasure; never import the divergent branch wholesale.
 
 ## Tests
 

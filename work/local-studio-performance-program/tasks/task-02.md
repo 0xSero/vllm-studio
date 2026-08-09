@@ -19,9 +19,9 @@ Make session discovery, visible-tail loading, usage accounting, and active-branc
 ## Work
 
 1. Add an incremental session-usage checkpoint containing file identity, byte offset, partial-line state, accumulated totals, and schema version. Reset safely after truncate, replace, inode change, corruption, or incompatible version.
-2. Add a bounded session inventory index/cache so warm list requests do not synchronously traverse and stat every candidate directory. Preserve trusted-root and traversal protections.
+2. Add a versioned persistent, bounded session inventory index/cache so warm restart/list requests do not synchronously traverse, stat, and rescan up to 2,000 lines from every candidate. Invalidate active entries incrementally while preserving trusted-root and traversal protections.
 3. Add stable cursor pagination and explicit result limits to per-project and all-project inventory. Preserve deterministic sort, archive filters, canonical ID deduplication, and incomplete-source semantics.
-4. Remove duplicate full-file work from initial visible-tail hydration. Add an incremental active-branch/checkpoint strategy or another measured bounded approach compatible with Pi branch semantics.
+4. Remove duplicate full-file work from initial visible-tail hydration. Add an incremental active-branch/checkpoint strategy or another measured bounded approach compatible with Pi branch semantics, including a differential golden for transcripts beyond the current 96 MiB full-scan bound.
 5. Include execution/runtime identity, filesystem host, goal summary, capabilities, revision, and target identity in the versioned summary contract without duplicating contract ownership.
 6. Port only relevant historical test/codec/checkpoint ideas from the quality branch after reviewing them against current `dev`; do not cherry-pick unrelated release or documentation commits.
 7. Keep I/O cooperative so health and SSE remain responsive under the large corpus.

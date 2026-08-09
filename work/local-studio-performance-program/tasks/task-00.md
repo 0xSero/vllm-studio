@@ -25,7 +25,7 @@ After user approval, freeze source truth, create isolated worktrees and integrat
 4. Create a clean Litter integration worktree from freshly verified `origin/main`. Review PR #239 commit by commit. Consolidate useful PR #240 requirements into this ledger rather than merging its planning files.
 5. Audit Alleycat's three lineages and staged diff without modifying them. Select one protocol authority and record whether the product uses the scoped pair-token Pi bridge or a fully enforced signed grant protocol. Do not create the integration worktree until this decision is explicit.
 6. Open or refresh one draft Local Studio integration PR into `dev`; after approval create separate linked Litter and Alleycat integration PRs in their repositories.
-7. Create the initial manifest with repository/build/surface schema, browser lease, redaction checklist, artifact hashing, and requirement mapping.
+7. Create the initial manifest with repository/build/surface schema, browser lease, redaction checklist, artifact hashing, and requirement mapping. Add an ignored `evidence/<run-id>/.raw/` staging rule; only manifests, small sanitized metrics, and reviewable screenshots are eligible for Git.
 8. Start one proven, named, browser-disabled Fable session per accepted child objective and record its identity and ownership.
 
 ## Validation
@@ -36,6 +36,7 @@ After user approval, freeze source truth, create isolated worktrees and integrat
 - GitHub targets are correct; child PRs point to integration, integration points to the protected repository branch.
 - `npm run check` passes for the Local Studio control-plane changes.
 - The original dirty Litter and staged Alleycat checkouts remain unchanged.
+- The canonical force-tracked workpack is the only promoted `work/` tree; no duplicate planning dump or raw evidence is tracked.
 
 ## Acceptance criteria
 

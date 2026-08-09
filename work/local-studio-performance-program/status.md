@@ -1,6 +1,6 @@
 # Local Studio performance program status
 
-Updated: 2026-08-09T18:39:37-04:00
+Updated: 2026-08-09T19:05:38-04:00
 
 Program state: `PLANNED — AWAITING USER APPROVAL`
 
@@ -53,7 +53,7 @@ Observed at 2026-08-09T18:39:37-04:00.
 | Model | Fable 5 independently proven before start |
 | Permission mode | plan/read-only |
 | Browser | disabled |
-| State | working during initial ledger creation; update with final structured result before handoff |
+| State | done; structured result delivered, material corrections incorporated, no browser used |
 
 Implementation sessions will be appended here; never replace or reuse an identity for a different objective.
 
@@ -119,7 +119,7 @@ All live observations are time-sensitive and must be revalidated at execution ti
 
 | Repository | Integration branch | Target | PR | State |
 |---|---|---|---|---|
-| Local Studio | `codex/local-studio-performance-integration-20260809` | `dev` | pending plan commit/push | planning only |
+| Local Studio | `codex/local-studio-performance-integration-20260809` | `dev` | [#382](https://github.com/sybil-solutions/local-studio/pull/382) | draft; planning only |
 | Litter | create after approval from recorded `origin/main` | `main` | pending | not created |
 | Alleycat | create after authority decision | selected protected branch | pending | blocked by authority |
 

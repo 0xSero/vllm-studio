@@ -40,7 +40,7 @@ isolated worktrees -> child PRs -> campaign integration branch -> draft PR -> de
 
 - Record the campaign branch, immutable base, owners, tasks, child PRs, acceptance surfaces, and rollback in one canonical status ledger.
 - One agent owns each child branch/worktree. No agents share branches, worktrees, or uncommitted changes.
-- The integration owner reviews every diff and accepts one logical commit at a time through reviewed squash merge or cherry-pick.
+- The integration owner reviews every diff and accepts logical commits that each remain within the 15-file/600-source-line hook limits. If a child PR is larger, retain or recut its dependency-ordered commits; do not use a GitHub squash merge to create one oversized integration commit.
 - The repository CI is triggered by pull requests into `dev` or `main`, not by child PRs into arbitrary integration branches. Every child therefore runs the repository's local gates before merge; the always-open draft integration PR into `dev` supplies combined CI after accepted merges.
 - Rebase or refresh from `origin/dev` only through the integration owner. Resolve dependency order in the campaign ledger.
 - A campaign spanning other repositories still needs one integration branch and PR per repository. Link them in the umbrella ledger; do not imply one GitHub PR spans repositories.
@@ -101,6 +101,7 @@ A lower surface never proves a higher one.
 - Never capture secrets, pairing JSON, authentication prompts, private transcripts, or unrelated windows.
 - Campaign-specific browser limits live in the active campaign rules. For the 2026-08-09 performance program, exactly one Codex-owned persistent browser profile/session is allowed and every browser/Electron/mobile evidence flow is serialized. Workers remain browserless.
 - Large recordings belong in CI/PR artifact storage with immutable URL and SHA-256 in the manifest. Do not bloat Git history with raw video.
+- Track only the canonical campaign workpack, manifests, small sanitized metrics, and reviewable screenshots. Keep raw capture staging in a campaign-declared ignored `.raw/` directory, upload/hash it, then remove it before handoff. Do not promote duplicate plans, browser profiles, transcripts, build output, or ad hoc reports into Git.
 
 ## Releases
 

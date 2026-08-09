@@ -17,7 +17,7 @@
 - Alleycat requires a separate integration worktree and PR only after the authority/lineage gate selects `origin/main`, the pinned release lineage, or a reviewed recut. Do not build on the dirty checkout.
 - A cross-repository campaign cannot be one literal PR. Link the Local Studio, Litter, and Alleycat integration PRs in `status.md` and the evidence manifest.
 - Child PRs into a Local Studio integration branch do not trigger the repository's normal CI. Run local repository gates before child merge, then keep the integration PR into `dev` open so combined CI runs after each accepted merge.
-- Make small conventional commits. Do not bypass hooks. Keep each commit within repository file/line limits. Use reviewed squash merges or reviewed cherry-picks so the integration branch has one logical commit per accepted track.
+- Make small conventional commits. Do not bypass hooks. Keep every source commit within 15 files and 600 changed source lines. If an accepted track is larger, preserve multiple dependency-ordered logical commits; never squash it into a commit that would violate the hook limits.
 - Codex alone owns the integration branches. Fable never merges, rebases another owner's branch, force-pushes, or pushes to `dev`/`main`.
 
 ## Fable session discipline
@@ -51,7 +51,7 @@ This rule is literal and campaign-wide.
 - Leave no code comments in touched code. Put durable behavior in types, names, tests, and the workpack.
 - With vLLM and SGLang, do not disable CUDA graphs, force eager execution, or add forbidden token caps.
 - Do not add executable helper scripts. Extend `scripts/project.mjs` when a durable repository command is required.
-- Prefer existing dependencies when they meet the measured need. Current Local Studio already has `react-virtuoso`; re-evaluate it before adding or reviving another virtualizer.
+- Use the existing `react-virtuoso` dependency for the first timeline implementation. Port the historical benchmark, pure rows, stores, and behavior tests, but reimplement the historical `@tanstack/react-virtual` layer with `react-virtuoso`. A dependency change requires measured proof that the existing library cannot meet an acceptance invariant and a separate dependency review.
 - No drive-by refactors. Large files are split only when required by the accepted task and protected by behavior tests.
 
 ## Contract and product invariants
@@ -102,7 +102,9 @@ Each manifest entry includes:
 - artifact path or immutable external URL, MIME type, byte size, and SHA-256;
 - pass/fail/blocked result, reviewer, redaction status, and known gap.
 
-Small sanitized JSON, text, and screenshots may be tracked. Large videos remain PR/CI artifacts with immutable URL/hash metadata. Evidence never contains secrets or unrelated desktop content.
+The force-tracked `work/local-studio-performance-program/` tree is the single deliberate exception to the repository's ignored `work/` scratch space. Do not promote another plan tree.
+
+Track manifests, small sanitized JSON/text metrics, and reviewable screenshots. Stage raw recordings only under an explicitly ignored `evidence/<run-id>/.raw/` directory; upload and hash them, then remove the local raw copy before handoff. Large videos remain PR/CI artifacts with immutable URL/hash metadata. Evidence never contains secrets or unrelated desktop content.
 
 ## Validation and handoff
 

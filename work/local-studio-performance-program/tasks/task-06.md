@@ -12,23 +12,24 @@ Produce truthful, fast, privacy-preserving aggregates for supported AI sessions 
 
 ## Files involved
 
-- `controller/contracts/usage.ts` or a single replacement Usage contract owner
+- `controller/contracts/usage.ts` for controller-serving telemetry
+- A single assistant-usage contract under `shared/agent/`
 - `controller/src/modules/system/usage-routes.ts`
 - `controller/src/stores/inference-request-store.ts`
 - `services/agent-runtime/src/session-usage.ts`
-- New bounded collectors/registry under the owning controller/runtime modules
+- Bounded transcript collectors under `services/agent-runtime/src/usage/` on each execution target
 - `frontend/src/features/usage/normalize-usage-stats.ts`, API client, and focused tests
 - Scoped third-party notice if substantial T3 code is copied
 
 ## Work
 
-1. Replace the interface/manual-coercion boundary with a versioned Effect Schema contract. Preserve backward decode only where an active compatibility requirement exists.
+1. Keep controller-serving telemetry versioned in `controller/contracts/usage.ts`. Define assistant-session usage once under `shared/agent/` and expose it from the agent runtime that owns the transcripts; do not make the model controller scan a user's Pi/Codex/Claude/ChatGPT files.
 2. Model two top-level datasets:
    - assistant-session activity by day/environment/provider/runtime/model/project/source;
    - controller-serving requests with latency, TTFT, tokens, cache semantics, and source.
-3. Add a source collector registry for Pi, Codex, and Claude Code transcript formats, plus canonical Local Studio/Litter records where they add distinct session activity. Define an explicit ChatGPT source result that imports only an authorized export/API; when no authorized source is available it remains `unsupported` or `pending`, not absent from coverage.
+3. Add an agent-runtime source collector registry for Pi, Codex, and Claude Code transcript formats, plus canonical Local Studio/Litter records where they add distinct session activity. Define an explicit ChatGPT source result that imports only an authorized export/API; when no authorized source is available it remains `unsupported` or `pending`, not absent from coverage.
 4. Reuse line-streamed/incremental parsing. Cache by stable source identity, file identity, size/mtime/checkpoint, parser version, and environment.
-5. Aggregate on the filesystem-owning environment. Return sanitized buckets, source fingerprint, coverage/status, duration, and provenance; never raw transcript text or absolute private paths.
+5. Query assistant usage through the session's `ExecutionTarget` and controller serving through the selected `ControllerRef`. Aggregate on each filesystem-owning agent runtime, then return sanitized buckets, source fingerprint, coverage/status, duration, and provenance; never raw transcript text or absolute private paths.
 6. Deduplicate repeated events inside a source and repeated physical sources across configured environments. Add explicit duplicate-source status.
 7. Keep cache-input, cache-creation, uncached-input, output, and reasoning semantics non-overlapping. Compute placeholder percentiles correctly or omit/mark unavailable rather than returning misleading values.
 8. Label price results API-equivalent, preserve unpriced data, and record pricing source/time/version. Usage correctness cannot depend on live pricing availability.

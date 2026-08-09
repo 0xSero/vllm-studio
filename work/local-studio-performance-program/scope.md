@@ -64,7 +64,7 @@ Adapt the architecture and interaction model to Local Studio data and design tok
 
 1. Generate sanitized deterministic fixtures: 50 sessions across at least five projects and four runtimes; archived, branched, queued, tool-heavy, and reasoning sessions; one 1,000-entry and one 10,000-row conversation; a 100 KB streamed response; and rapid follow-up/reconnect cases.
 2. Measure clean current commits before porting historical changes. Run at least three cold and three warm trials with machine and build identity recorded.
-3. Add incremental usage and active-branch checkpoints, cursor inventory, bounded session stores, and a virtualized timeline/inspector.
+3. Add incremental usage and active-branch checkpoints, cursor inventory, bounded session stores, and a `react-virtuoso` timeline/inspector. Historical `@tanstack/react-virtual` code is behavior reference, not the selected dependency.
 4. Preserve exact canonical ordering, visible-tail first paint, bottom-follow, user-drag protection, and viewport anchor while prepending earlier pages.
 5. On Litter, repair stable Android keys, bound state amplification, and preserve measured native renderer optimizations unless a new profile disproves them.
 

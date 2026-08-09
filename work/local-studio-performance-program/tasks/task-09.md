@@ -30,7 +30,8 @@ Make Pi behavior runtime-neutral at the UI boundary, expose truthful per-runtime
 7. Surface and persist `read_only` versus `full` tool access per session with a safe documented default. Confirm read-only exposes only the allowed tool set.
 8. Expose model, thinking/reasoning visibility, browser availability, skills/plugins, queue steering, approvals, and goal states only when the selected adapter advertises them.
 9. Add direct goal-driver tests for budgets, continuation boundaries, anti-spin, pause/block/complete, runtime error, restart, and cross-surface updates.
-10. Make Claude permission behavior an explicit configuration/approval flow; do not silently accept permission bypass.
+10. Add typed, bounded retry-on-error behavior for retriable transport/runtime failures. Never retry authorization, target mismatch, duplicate mutation, or non-idempotent actions blindly.
+11. Make Claude permission behavior an explicit configuration/approval flow; do not silently accept permission bypass.
 
 ## Tests
 
