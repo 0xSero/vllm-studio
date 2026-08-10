@@ -1,10 +1,10 @@
 # Local Studio performance program status
 
-Updated: 2026-08-09T20:32:14-04:00
+Updated: 2026-08-09T21:02:54-04:00
 
 Program state: `APPROVED`
 
-Feature implementation: not started; Task 00 is the next action
+Feature implementation: not started; Task 00 control plane is `IN PROGRESS` (execution snapshot below)
 
 This is the canonical campaign ledger for Local Studio, Litter, and Alleycat. It records planning, execution ownership, immutable refs, PRs, Fable sessions, acceptance surfaces, evidence, blockers, and rollback state. `scope.md` defines the architecture and twelve-hour cut; `rules.md` defines how work may be executed; `tasks/` is the dependency-ordered implementation blueprint.
 
@@ -69,6 +69,22 @@ Review and revision sessions, all `claude-fable-5` and browserless:
 
 Implementation sessions will be appended here; never replace or reuse an identity for a different objective.
 
+Task 00 implementation session, `claude-fable-5` and browserless:
+
+| Field | Value |
+|---|---|
+| Objective | Task 00 control plane: repository-contained artifacts and canonical ledger update |
+| Name | `ls-perf-w00-task00-control-plane` (assigned worker name) |
+| Short ID | `90ed8b8d` — verified by Codex |
+| Full UUID | `90ed8b8d-57dc-42fc-8d79-0746b98669c5` — verified by Codex |
+| Repository / worktree / branch | Local Studio; `~/.codex/worktrees/ls-perf-w00-task-00-control-plane`; `codex/ls-perf-w00-task-00-control-plane` (sole owner; checked out nowhere else) |
+| Model | `claude-fable-5` (Fable 5); model proof verified by Codex |
+| Permission mode | safe mode, `acceptEdits`, max effort, no Chrome; repository hooks enforced; no bypass flags |
+| Browser | disabled; browserless per campaign rule |
+| Owner | Fable implementer for in-repo Task 00 artifacts; Codex owns integration, PRs, merges, browser, and evidence capture |
+| Start | 2026-08-09T20:41:52-04:00 (first verified read-only inspection in the assigned worktree) |
+| State | `IN PROGRESS` — Phase A edits authored; commit and push await Codex authorization; final commit/push/PR facts land in Phase B |
+
 ## Hard resource rule
 
 Exactly one persistent browser profile/session may exist for the entire campaign. Codex is the only browser/evidence owner. All Fable sessions and implementation agents are browserless. Browser, Electron, simulator/device, screenshot, and video work is queued and serialized; automated browser work uses one worker. A replacement browser may start only after the previous process is closed and the replacement is recorded.
@@ -92,8 +108,8 @@ All live observations are time-sensitive and must be revalidated at execution ti
 
 | ID | Requirement | Task(s) | State | Required acceptance surface |
 |---|---|---|---|---|
-| R01 | Canonical dated plan/status referenced by AGENTS | 00 | `PLANNED` | source/review PR |
-| R02 | One integration branch/PR with child worktrees and clean history | 00, 15 | `PLANNED` | GitHub/local refs/CI |
+| R01 | Canonical dated plan/status referenced by AGENTS | 00 | `IN PROGRESS — CONTROL PLANE ONLY` | source/review PR |
+| R02 | One integration branch/PR with child worktrees and clean history | 00, 15 | `IN PROGRESS — CONTROL PLANE ONLY` | GitHub/local refs/CI |
 | R03 | Reproducible 50-session and long-chat performance baselines | 01 | `PLANNED` | hermetic + Pop lab + device |
 | R04 | Instant Local Studio old-chat open, smooth scroll, bounded memory/DOM | 02, 03 | `PLANNED` | benchmark + installed Electron |
 | R05 | Instant Litter inventory/chat open and smooth native scrolling | 04 | `PLANNED` | installed iOS and Android |
@@ -117,7 +133,7 @@ All live observations are time-sensitive and must be revalidated at execution ti
 
 | Task | Title | Dependency | State | Planned owner |
 |---|---|---|---|---|
-| 00 | Control plane, refs, worktrees, PRs, evidence schema | approval | `NOT STARTED` | Codex |
+| 00 | Control plane, refs, worktrees, PRs, evidence schema | approval | `IN PROGRESS` | Codex + Fable `ls-perf-w00-task00-control-plane` (in-repo artifacts) |
 | 01 | Deterministic corpus and clean baseline | 00 | `NOT STARTED` | Fable implementer + Codex measurement |
 | 02 | Runtime inventory and hydration hot path | 01 | `NOT STARTED` | Fable implementer |
 | 03 | Electron session store, timeline, inspector, scroll | 01, 02 | `NOT STARTED` | Fable implementer |
@@ -139,17 +155,18 @@ All live observations are time-sensitive and must be revalidated at execution ti
 | Repository | Integration branch | Target | PR | State |
 |---|---|---|---|---|
 | Local Studio | `codex/local-studio-performance-integration-20260809` | `dev` | [#382](https://github.com/sybil-solutions/local-studio/pull/382) | draft; planning only |
-| Local Studio workpack revision child | `codex/ls-perf-plan-revision-20260809` | `codex/local-studio-performance-integration-20260809` | [#383](https://github.com/sybil-solutions/local-studio/pull/383) | draft; awaiting Codex integration review |
+| Local Studio workpack revision child | `codex/ls-perf-plan-revision-20260809` | `codex/local-studio-performance-integration-20260809` | [#383](https://github.com/sybil-solutions/local-studio/pull/383) | merged 2026-08-10T00:35:12Z as integration commit `6bdf748a`; verified read-only 2026-08-10T00:45:10Z |
+| Local Studio Task 00 child | `codex/ls-perf-w00-task-00-control-plane` | `codex/local-studio-performance-integration-20260809` | pending — Codex creates it after the authorized push | Phase A edits authored; commit and push await Codex authorization |
 | Litter | create after approval from recorded `origin/main` | `main` | pending | not created |
 | Alleycat | create after authority decision | selected protected branch | pending | blocked by authority |
 
 ## Evidence ledger
 
-No execution evidence exists yet. Planning research is not feature acceptance. Use `evidence/<run-id>/manifest.json` and link each run here.
+The Task 00 control-plane run below is `CONTROL PLANE ONLY — NO PRODUCT ACCEPTANCE`; no product execution evidence exists yet. Planning research is not feature acceptance. Use `evidence/<run-id>/manifest.json` and link each run here.
 
 | Run ID | Commit | Surface | Requirements | Result | Manifest |
 |---|---|---|---|---|---|
-| — | — | — | — | `NOT RUN` | — |
+| `2026-08-09-task-00-control-plane` | child branch `codex/ls-perf-w00-task-00-control-plane` from base `6bdf748a4da0d5634aa944417dcf362023f7ddf8` | control plane only — no product surface | R01, R02, R16, R17 | `IN PROGRESS — CONTROL PLANE ONLY — NO PRODUCT ACCEPTANCE` | [manifest.json](../../evidence/2026-08-09-task-00-control-plane/manifest.json) |
 
 ## Known blockers and stop conditions
 
@@ -165,3 +182,48 @@ No execution evidence exists yet. Planning research is not feature acceptance. U
 ## Next transition
 
 Approval is recorded above. Task 00 starts the twelve-hour clock: it creates clean cross-repository worktrees, records fresh refs, confirms 2x/4x Spark availability through read-only discovery, and opens the integration review topology. Wave 1 (Tasks 01, 05, 12) follows; the Task 12 serving-contract merge gates the creation of Task 13 and Task 14 branches. Separate gates above remain in force.
+
+## Task 00 execution snapshot — 2026-08-09 (Phase A)
+
+Recorded: 2026-08-09T21:02:54-04:00 (America/New_York, EDT). Task 00 in-repo control-plane work is `IN PROGRESS` on the dedicated child branch below. This snapshot records control-plane facts only; R03–R20 and every product acceptance surface remain planned, pending, blocked, unknown, or not run as recorded above.
+
+Twelve-hour clock: this workstream's first verified read-only inspection ran at 2026-08-09T20:41:52-04:00; the canonical campaign-wide kickoff time is Codex's to confirm.
+
+### Verified campaign refs (read-only)
+
+| Fact | Value | Observed |
+|---|---|---|
+| Integration branch `codex/local-studio-performance-integration-20260809` (remote) | `6bdf748a4da0d5634aa944417dcf362023f7ddf8` | 2026-08-10T00:45:06Z, `git ls-remote` |
+| Integration worktree `~/.codex/worktrees/0b96/vllm-studio` (Codex) | same commit; clean; in sync with origin | 2026-08-10T00:52:46Z, `git status` |
+| `origin/dev` | `88b56e36bd5c84930dbe364296ba4ae669f72689`; unchanged — integration still derives from current `origin/dev` | 2026-08-10T00:45:06Z |
+| `origin/main` | `52c2b20f2994be07186b42da54e2836234785e8a`; unchanged | 2026-08-10T00:45:06Z |
+| Workpack revision child PR [#383](https://github.com/sybil-solutions/local-studio/pull/383) | `MERGED` 2026-08-10T00:35:12Z as merge commit `6bdf748a4da0d5634aa944417dcf362023f7ddf8` | 2026-08-10T00:45:10Z, `gh pr view` |
+| Umbrella draft PR [#382](https://github.com/sybil-solutions/local-studio/pull/382) | open draft into `dev`; combined CI for head `6bdf748a`: all rollup checks (gates, controller, agent-runtime, frontend, desktop-package, secret scanning, CodeQL, dependency review) `SUCCESS` by 2026-08-10T00:41:32Z | 2026-08-10T00:45:10Z |
+| Task 00 child branch `codex/ls-perf-w00-task-00-control-plane` | worktree `~/.codex/worktrees/ls-perf-w00-task-00-control-plane`; started clean at exact base `6bdf748a4da0d5634aa944417dcf362023f7ddf8`; checked out nowhere else; not yet on origin | 2026-08-10T00:41:52Z and 00:45:06Z |
+| Incorporated workpack head | `4844b159a80aeb1720a44f2150f87ea6e8d9aea2` is an ancestor of the child base | 2026-08-10T00:41:52Z |
+
+### Control-plane artifacts added by this task
+
+Run manifest [manifest.json](../../evidence/2026-08-09-task-00-control-plane/manifest.json) (`CONTROL PLANE ONLY — NO PRODUCT ACCEPTANCE`) plus the single `.gitignore` staging rule `/evidence/*/.raw/`; ignore behavior proven in both directions with `git check-ignore`.
+
+### Browser lease
+
+`reserved_not_started`. Codex solely owns the single campaign lease, logical profile `codex-campaign-browser-profile-01`; no campaign browser, profile, or process has started; all workers stay browserless.
+
+### Decisions required and unknowns
+
+- Alleycat protocol authority: `NOT SELECTED`. Required decision: exactly one truthful protocol path — the scoped pair-token Pi bridge or a fully enforced signed grant protocol — on one lineage: `origin/main` `3f0f8442`, the pinned release lineage `417f2a9f`, or a reviewed recut of the staged `d584a006` grant work. Until recorded: no Alleycat integration worktree/PR, and authority-dependent Task 05 work stays blocked.
+- 2x/4x DGX Spark availability: `UNKNOWN`. No fresh read-only discovery result has been supplied and this session performed none; the user-provided screenshot records the target example, not live proof. Live Spark mutation remains gated.
+- Codex-verified read-only cross-repo facts (supplied 2026-08-09T21:02:54-04:00): Litter `origin/main` `5f651a475a16c93c273501fd370627f826c5e06f`; Litter primary checkout `codex/post-github-cleanup-20260804` at `9ebb405bb329866e3e3f6e9d16b45a5bb1a91706`, user-owned, dirty only at modified submodules `shared/third_party/codex` and `shared/third_party/ghostty` plus untracked `prompt.md`; Litter PR #239 `OPEN`, clean/mergeable at `a4cbf2df005dd45633d00377678d6adc9cc3146a`, required shared-prep/android/ios/release checks successful or intentionally skipped, disposition still pending (commit-by-commit review not yet performed); Litter PR #240 `OPEN`, clean/mergeable at `b277efd34d9962d3482372067618a3d6bc992e10`, planning reference only; Alleycat `origin/main` `3f0f84422e977f32cbc98de7a1d6c4e26fb240d1`; Alleycat staged checkout `codex/local-studio-prod-runtime` at `d584a006c75fe744def6cb3f41bcef4991b86b5f`, exactly 14 staged files (5829 insertions, 18 deletions). No cross-repository worktree was created; Litter integration worktree creation remains a Codex-owned step.
+
+### Worktree inventory (observed 2026-08-10T00:41:52Z)
+
+Clean assertions are scoped to the two campaign worktrees actually checked (refs table above); the prior workpack revision worktree and its merged child branch were removed after integration (Codex-supplied). Eleven stale `/private/tmp` registrations with missing gitdirs and every other non-campaign worktree — including the primary checkout and the detached historical reference `repo-comparison-review-35c382` — were observed only, sit outside campaign clean assertions, and were not altered; pruning is not authorized for this session.
+
+### Validation state (Phase A)
+
+- Passed locally: `git diff --check`; manifest JSON parse; ignore-rule proof in both directions (`evidence/<run-id>/.raw/` ignored, the manifest tracked); diff scope limited to the three owned paths; and the dependency-free gates `check:automation`, `check:contracts`, `check:structure`, and `check:release`, each run as a separate unpiped command with exit 0.
+- Root `npm run check` aggregate: `NOT RUN — PENDING`. Dependencies are absent (no `node_modules` anywhere in this fresh worktree), and the aggregate's `check:frontend → check:quality` chain includes a full frontend `npm run build`; a lockfile install and that build each need explicit Codex authorization before this session may run them.
+- Pre-push hook (`.githooks/pre-push`) unconditionally runs frontend `check:static`, `check:cleanup`, and `assert-standalone`, which requires a prior local frontend build. The child-branch push therefore waits for Codex authorization; hooks are never bypassed.
+- Commit hooks `commit-msg` and `pre-commit` (protected-branch guard, 15-file/600-source-line limit) apply to the Phase A commit; their outcomes are reported in the Phase A handoff.
+- Context only, never a substitute for the local aggregate: PR #382 combined CI passed on `6bdf748a`, the exact tree this child branch starts from.
