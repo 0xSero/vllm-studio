@@ -1,6 +1,6 @@
 # Local Studio performance program status
 
-Updated: 2026-08-09T23:10:46-04:00
+Updated: 2026-08-09T23:38:36-04:00
 
 Program state: `APPROVED`
 
@@ -93,7 +93,7 @@ Discovery and closeout sessions, all `claude-fable-5` and browserless:
 | `ls-perf-w00-litter-pr239-disposition` | `64d15e6b` | `64d15e6b-5ecc-4be1-839f-6a78afb948a4` | browserless, read-only | done; commit-by-commit disposition recorded in the closeout snapshot |
 | `ls-perf-w00-spark-readonly-discovery` | `9d971caf` | `9d971caf-1b22-46f8-b8bd-b1e4ea6bb909` | browserless, read-only | completed; availability `BLOCKED` (closeout snapshot) |
 | `ls-perf-w00-alleycat-authority-review` | `086267eb` | `086267eb-a3db-48ab-8ce9-73b9b870dea4` | browserless, read-only | done; verdict `READY AFTER CORRECTIONS`; no repository mutation |
-| `ls-perf-w00-task00-closeout-20260809` | `26f9bb1c` | `26f9bb1c-1371-497f-b6cd-9e85aece2e6f` | browserless; documentation and sanitized evidence only | closeout commit prepared; awaiting Codex review |
+| `ls-perf-w00-task00-closeout-20260809` | `26f9bb1c` | `26f9bb1c-1371-497f-b6cd-9e85aece2e6f` | browserless; documentation and sanitized evidence only | closeout, sequencing-correction, and provenance-correction commits prepared; awaiting Codex review |
 
 ## Hard resource rule
 
@@ -180,7 +180,7 @@ Both Task 00 runs below are control-plane and read-only discovery only — no pr
 | Run ID | Commit | Surface | Requirements | Result | Manifest |
 |---|---|---|---|---|---|
 | `2026-08-09-task-00-control-plane` | `c30a9216d1cd35824889a3d6009d237e939313ea` on `codex/ls-perf-w00-task-00-control-plane` from base `6bdf748a4da0d5634aa944417dcf362023f7ddf8` | control plane only — no product surface | R01, R02, R16, R17 | `CONTROL PLANE ONLY — NO PRODUCT ACCEPTANCE` — truthful historical snapshot; superseded for current-state decisions by `2026-08-09-task-00-external-discovery` | [manifest.json](../../evidence/2026-08-09-task-00-control-plane/manifest.json) |
-| `2026-08-09-task-00-external-discovery` | closeout commit on `codex/ls-perf-w00-task00-closeout-20260809` from base `e125d72cd16557c5f91565f7b45acd0f2e77c7c8` | read-only discovery — no product surface | R01, R02, R17, R18, R19 | `TASK 00 CLOSEOUT — READ-ONLY DISCOVERY — NO PRODUCT ACCEPTANCE` | [manifest.json](../../evidence/2026-08-09-task-00-external-discovery/manifest.json) |
+| `2026-08-09-task-00-external-discovery` | closeout commits on `codex/ls-perf-w00-task00-closeout-20260809` from base `e125d72cd16557c5f91565f7b45acd0f2e77c7c8` | read-only discovery — no product surface | R01, R02, R17, R18, R19 | `TASK 00 CLOSEOUT — READ-ONLY DISCOVERY — NO PRODUCT ACCEPTANCE` | [manifest.json](../../evidence/2026-08-09-task-00-external-discovery/manifest.json) |
 
 ## Known blockers and stop conditions
 
@@ -195,7 +195,7 @@ Both Task 00 runs below are control-plane and read-only discovery only — no pr
 
 ## Next transition
 
-Task 00 is closed: the control plane merged (PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) as `bd9e8d9f`, PR [#386](https://github.com/sybil-solutions/local-studio/pull/386) as `e125d72c`), the external read-only discovery outcomes are recorded in the closeout snapshot below, and no product acceptance is claimed. Wave 1 (Tasks 01, 05A, 12c) is `READY` and starts next under the existing rules. The 12c merge gates Task 13 branch creation; the strict sequence 12r -> 06f -> 14a gates Task 14a; 03r gates 14b. Litter and Alleycat implementation worktrees/PRs are created just in time for their first accepted objectives. The separate approval gates above remain in force; Codex reviews and owns integration of this closeout commit.
+Task 00 is closed: the control plane merged (PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) as `bd9e8d9f`, PR [#386](https://github.com/sybil-solutions/local-studio/pull/386) as `e125d72c`), the external read-only discovery outcomes are recorded in the closeout snapshot below, and no product acceptance is claimed. Wave 1 (Tasks 01, 05A, 12c) is `READY` and starts next under the existing rules. The 12c merge gates Task 13 branch creation; the strict sequence 12r -> 06f -> 14a gates Task 14a; 03r gates 14b. Litter and Alleycat implementation worktrees/PRs are created just in time for their first accepted objectives. The separate approval gates above remain in force; Codex reviews and owns integration of the closeout branch's commits.
 
 ## Task 00 execution snapshot — 2026-08-09 (historical)
 
@@ -240,7 +240,7 @@ Clean assertions are scoped to the two campaign worktrees actually checked (refs
 
 ## Task 00 closeout snapshot — 2026-08-09
 
-Recorded: 2026-08-09T23:10:46-04:00 (America/New_York, EDT) by closeout session `26f9bb1c`. Task 00 state: `COMPLETE — CONTROL PLANE AND READ-ONLY DISCOVERY RECORDED; NO PRODUCT ACCEPTANCE`. Evidence: [manifest.json](../../evidence/2026-08-09-task-00-external-discovery/manifest.json). The execution snapshot above is historical; this section is current.
+First recorded: 2026-08-09T23:10:46-04:00 (America/New_York, EDT) by closeout session `26f9bb1c`; later ledger corrections on the same branch carry their own times in the `Updated:` header above and the manifest `updatedAt`, and the Spark read-only observation window below keeps its own separate observation times. Task 00 state: `COMPLETE — CONTROL PLANE AND READ-ONLY DISCOVERY RECORDED; NO PRODUCT ACCEPTANCE`. Evidence: [manifest.json](../../evidence/2026-08-09-task-00-external-discovery/manifest.json). The execution snapshot above is historical; this section reflects the latest recorded state.
 
 ### External discovery outcomes and remaining gates
 
@@ -251,7 +251,8 @@ Local Studio integration:
 | Integration head | `codex/local-studio-performance-integration-20260809` at `e125d72cd16557c5f91565f7b45acd0f2e77c7c8`; integration worktree and remote integration ref matched after merge |
 | Task 00 child PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) | merged as `bd9e8d9ff8781b2068bd7e2e7f705cf4df55b4e5` from final child head `f90505a76525e5f43a2b53ba9882b02f13392dcf`; phase-A commit `c30a9216d1cd35824889a3d6009d237e939313ea` is historical, not the final head |
 | Dependency-corrections child PR [#386](https://github.com/sybil-solutions/local-studio/pull/386) | merged as `e125d72cd16557c5f91565f7b45acd0f2e77c7c8` from child head `eb4d79f6e19d1a9e17588504c583d82bcac3d56a` |
-| PR #386 corrections | explicit 05A, 12c, 12r, 06f, and 03r gates; item-staged Task 09; the strict sequence 12r -> 06f -> 14a — 06f consumes Task 12's exact selected route and carries it through accounting, never re-resolving an instance from model name, and 14a consumes merged 06f without a reverse dependency; deterministic replica routing; one `/v1/models` entry per exact served-model name while retaining every instance |
+| PR #386 corrections | explicit 05A, 12c, 12r, 06f, and 03r gates; item-staged Task 09; Task 14 consumes 06f without a reverse dependency; deterministic replica routing; one `/v1/models` entry per exact served-model name while retaining every instance |
+| Closeout sequencing correction (post-#386, this branch) | commit `994f5aad8d5baff280281584960931bca008fcb2` on `codex/ls-perf-w00-task00-closeout-20260809` establishes the strict sequence 12r -> 06f -> 14a, the exact selected-route carry-through in 06f accounting, and no instance re-resolution from model name; local and unmerged, awaiting Codex review |
 | Umbrella draft PR [#382](https://github.com/sybil-solutions/local-studio/pull/382) | at `e125d72c` passed gates, controller, agent-runtime, frontend, desktop-package, secret scanning, CodeQL, and dependency review |
 
 Litter — PR #239 commit-by-commit disposition (disposition only; PR #239 is not merged):

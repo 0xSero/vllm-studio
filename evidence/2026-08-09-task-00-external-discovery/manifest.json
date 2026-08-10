@@ -7,7 +7,7 @@
     "workpack": "work/local-studio-performance-program/tasks/task-00.md"
   },
   "createdAt": "2026-08-09T23:10:46-04:00",
-  "updatedAt": "2026-08-09T23:30:20-04:00",
+  "updatedAt": "2026-08-09T23:38:36-04:00",
   "timezone": "America/New_York (EDT, UTC-04:00)",
   "state": "task_00_complete_no_product_acceptance",
   "classification": "TASK 00 CLOSEOUT — READ-ONLY DISCOVERY — NO PRODUCT ACCEPTANCE",
@@ -55,9 +55,15 @@
       "state": "MERGED",
       "mergeCommit": "e125d72cd16557c5f91565f7b45acd0f2e77c7c8",
       "finalChildHead": "eb4d79f6e19d1a9e17588504c583d82bcac3d56a",
-      "corrections": "explicit 05A, 12c, 12r, 06f, and 03r gates; item-staged Task 09; the strict sequence 12r -> 06f -> 14a — 06f consumes Task 12's exact selected route and carries it through accounting, never re-resolving an instance from model name, and 14a consumes merged 06f without a reverse dependency; deterministic replica routing; one /v1/models entry per exact served-model name while retaining every instance"
+      "corrections": "explicit 05A, 12c, 12r, 06f, and 03r gates; item-staged Task 09; Task 14 consumes 06f without a reverse dependency; deterministic replica routing; one /v1/models entry per exact served-model name while retaining every instance"
     }
   ],
+  "postPr386SequencingCorrection": {
+    "commit": "994f5aad8d5baff280281584960931bca008fcb2",
+    "branch": "codex/ls-perf-w00-task00-closeout-20260809",
+    "relation": "closeout-branch follow-up after PR #386; not part of PR #386, not merged; awaiting Codex review and integration",
+    "establishes": "strict sequence 12r -> 06f -> 14a; 06f carries Task 12's exact selected route through accounting; no instance re-resolution from model name"
+  },
   "fableSessions": [
     {
       "name": "ls-perf-plan-dependency-corrections-20260809",
@@ -100,7 +106,7 @@
       "uuid": "26f9bb1c-1371-497f-b6cd-9e85aece2e6f",
       "browser": "disabled",
       "mode": "documentation and sanitized evidence only",
-      "state": "closeout and sequencing-correction commits prepared; awaiting Codex review",
+      "state": "closeout, sequencing-correction, and provenance-correction commits prepared; awaiting Codex review",
       "branch": "codex/ls-perf-w00-task00-closeout-20260809",
       "baseCommit": "e125d72cd16557c5f91565f7b45acd0f2e77c7c8"
     }
