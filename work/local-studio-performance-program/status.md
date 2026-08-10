@@ -149,7 +149,7 @@ All live observations are time-sensitive and must be revalidated at execution ti
 | 03 | Electron session store, timeline, inspector, scroll | 01, 02 | `NOT STARTED` | Fable implementer |
 | 04 | Litter native performance and state amplification | 01, 00 #239 disposition; 05A/05 as staged | `NOT STARTED — INSTALLED-DEVICE MATRIX IN CONTINUATION` | Fable implementer |
 | 05 | Identity, Alleycat authority, and cross-surface sync | 00 | `05A READY` — authority selected; items 1-10 wait for 05A and a clean just-in-time cross-repository recut/worktree, not another authority decision | Fable implementer + Codex security review |
-| 06 | Versioned multi-environment Usage data plane | 00, 01, 05A, 12c | `NOT STARTED` | Fable implementer |
+| 06 | Versioned multi-environment Usage data plane | 00, 01, 05A, 12c; 12r before 06f | `NOT STARTED` | Fable implementer |
 | 07 | Usage UI and responsive Local Studio presentation | 06 | `NOT STARTED` | Fable implementer + Codex visual review |
 | 08 | Execution targets and remote filesystem vertical slice | 02, 05A, security review | `NOT STARTED` | Fable implementer + Codex isolation review |
 | 09 | Runtime adapters, goals, controls, reliability | 05, 06 gate start; 08 placement/routing items only | `NOT STARTED` | Fable implementer |
@@ -157,10 +157,10 @@ All live observations are time-sensitive and must be revalidated at execution ti
 | 11 | Pop lab, Linux surface, onboarding journey | 00, 01, relevant integrated features | `NOT STARTED` | Codex evidence owner |
 | 12 | Concurrent multi-model serving inventory and lifecycle | 00; 01 harness conventions | `12c READY` | Fable implementer |
 | 13 | Multi-Spark topology and telemetry truth | 12c compute-contract foundation; 00 availability discovery | `WAITING ON 12c; LIVE ACCEPTANCE SURFACE BLOCKED ON AVAILABILITY` | Fable implementer |
-| 14 | Vision-sidecar pairing, routing, and attribution | 12c, 12r + 06f for 14a; 03r for 14b | `NOT STARTED` | Fable implementer |
+| 14 | Vision-sidecar pairing, routing, and attribution | 12c; the strict 12r -> 06f -> 14a sequence for 14a; 03r for 14b | `NOT STARTED` | Fable implementer |
 | 15 | Integration, installed acceptance, cleanup, delivery | all accepted tasks 00–14 | `NOT STARTED` | Codex |
 
-Wave plan: 05A (Task 05 identity schemas) and 12c (Task 12 serving-contract/compute foundation) both merge inside Wave 1 before Wave 2 opens; the 12r openai-routes release and the 06f attribution fields both merge before any Task 14a branch; 03r releases the composer files to 14b.
+Wave plan: 05A (Task 05 identity schemas) and 12c (Task 12 serving-contract/compute foundation) both merge inside Wave 1 before Wave 2 opens; the strict sequence 12r -> 06f -> 14a holds — the 12r openai-routes release merges before 06f, whose attribution fields carry Task 12's exact selected route through accounting and never re-resolve an instance from model name, and merged 06f gates any Task 14a branch; 03r releases the composer files to 14b.
 
 ## Pull request ledger
 
@@ -195,7 +195,7 @@ Both Task 00 runs below are control-plane and read-only discovery only — no pr
 
 ## Next transition
 
-Task 00 is closed: the control plane merged (PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) as `bd9e8d9f`, PR [#386](https://github.com/sybil-solutions/local-studio/pull/386) as `e125d72c`), the external read-only discovery outcomes are recorded in the closeout snapshot below, and no product acceptance is claimed. Wave 1 (Tasks 01, 05A, 12c) is `READY` and starts next under the existing rules. The 12c merge gates Task 13 branch creation; 12r plus 06f gate Task 14a; 03r gates 14b. Litter and Alleycat implementation worktrees/PRs are created just in time for their first accepted objectives. The separate approval gates above remain in force; Codex reviews and owns integration of this closeout commit.
+Task 00 is closed: the control plane merged (PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) as `bd9e8d9f`, PR [#386](https://github.com/sybil-solutions/local-studio/pull/386) as `e125d72c`), the external read-only discovery outcomes are recorded in the closeout snapshot below, and no product acceptance is claimed. Wave 1 (Tasks 01, 05A, 12c) is `READY` and starts next under the existing rules. The 12c merge gates Task 13 branch creation; the strict sequence 12r -> 06f -> 14a gates Task 14a; 03r gates 14b. Litter and Alleycat implementation worktrees/PRs are created just in time for their first accepted objectives. The separate approval gates above remain in force; Codex reviews and owns integration of this closeout commit.
 
 ## Task 00 execution snapshot — 2026-08-09 (historical)
 
@@ -251,7 +251,7 @@ Local Studio integration:
 | Integration head | `codex/local-studio-performance-integration-20260809` at `e125d72cd16557c5f91565f7b45acd0f2e77c7c8`; integration worktree and remote integration ref matched after merge |
 | Task 00 child PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) | merged as `bd9e8d9ff8781b2068bd7e2e7f705cf4df55b4e5` from final child head `f90505a76525e5f43a2b53ba9882b02f13392dcf`; phase-A commit `c30a9216d1cd35824889a3d6009d237e939313ea` is historical, not the final head |
 | Dependency-corrections child PR [#386](https://github.com/sybil-solutions/local-studio/pull/386) | merged as `e125d72cd16557c5f91565f7b45acd0f2e77c7c8` from child head `eb4d79f6e19d1a9e17588504c583d82bcac3d56a` |
-| PR #386 corrections | explicit 05A, 12c, 12r, 06f, and 03r gates; item-staged Task 09; Task 14 consumes 06f without a reverse dependency; deterministic replica routing; one `/v1/models` entry per exact served-model name while retaining every instance |
+| PR #386 corrections | explicit 05A, 12c, 12r, 06f, and 03r gates; item-staged Task 09; the strict sequence 12r -> 06f -> 14a — 06f consumes Task 12's exact selected route and carries it through accounting, never re-resolving an instance from model name, and 14a consumes merged 06f without a reverse dependency; deterministic replica routing; one `/v1/models` entry per exact served-model name while retaining every instance |
 | Umbrella draft PR [#382](https://github.com/sybil-solutions/local-studio/pull/382) | at `e125d72c` passed gates, controller, agent-runtime, frontend, desktop-package, secret scanning, CodeQL, and dependency review |
 
 Litter — PR #239 commit-by-commit disposition (disposition only; PR #239 is not merged):

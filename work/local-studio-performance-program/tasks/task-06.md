@@ -10,6 +10,7 @@ Produce truthful, fast, privacy-preserving aggregates for supported AI sessions 
 - Task 01 usage fixtures and performance baseline.
 - Task 05's 05A identity-schema commit for shared environment/runtime identity.
 - The 12c serving-state-contract commit from [Task 12](task-12.md) for per-instance attribution wherever controller-serving telemetry is touched.
+- The 12r openai-routes release from Task 12 before this task's 06f commit: 06f consumes Task 12's exact selected route. The ownership sequence is strict — 12r -> 06f -> 14a — and Task 14a consumes merged 06f without a reverse dependency.
 
 ## Files involved
 
@@ -27,7 +28,7 @@ Produce truthful, fast, privacy-preserving aggregates for supported AI sessions 
 1. Keep controller-serving telemetry versioned in `controller/contracts/usage.ts`. Define assistant-session usage once under `shared/agent/` and expose it from the agent runtime that owns the transcripts; do not make the model controller scan a user's Pi/Codex/Claude/ChatGPT files.
 2. Model two top-level datasets:
    - assistant-session activity by day/environment/provider/runtime/model/project/source;
-   - controller-serving requests with latency, TTFT, tokens, cache semantics, source, and the serving instance/served model from the Task 12 contract, so concurrent models never merge into one serving total. The serving-instance attribution fields land as this task's 06f commit at the `inference-accounting.ts` write site; Task 14a depends on merged 06f.
+   - controller-serving requests with latency, TTFT, tokens, cache semantics, source, and the serving instance/served model from the Task 12 contract, so concurrent models never merge into one serving total. The serving-instance attribution fields land as this task's 06f commit at the `inference-accounting.ts` write site after the 12r release, carrying Task 12's exact selected route through accounting — 06f never re-resolves an instance from model name; Task 14a depends on merged 06f.
 3. Add an agent-runtime source collector registry for Pi, Codex, and Claude Code transcript formats, plus canonical Local Studio/Litter records where they add distinct session activity. Define an explicit ChatGPT source result that imports only an authorized export/API; when no authorized source is available it remains `unsupported` or `pending`, not absent from coverage.
 4. Reuse line-streamed/incremental parsing. Cache by stable source identity, file identity, size/mtime/checkpoint, parser version, and environment.
 5. Query assistant usage through the session's `ExecutionTarget` and controller serving through the selected `ControllerRef`. Aggregate on each filesystem-owning agent runtime, then return sanitized buckets, source fingerprint, coverage/status, duration, and provenance; never raw transcript text or absolute private paths.
