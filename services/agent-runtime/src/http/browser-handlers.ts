@@ -387,7 +387,7 @@ export async function handleBrowserState(): Promise<Response> {
     return Response.json({ ok: false, error: "Browser unavailable" }, { status: 503 });
   }
   try {
-    return Response.json({ ok: true, data: await browserHost.getState() });
+    return Response.json({ ok: true, data: await browserHost.peekState() });
   } catch (error) {
     return Response.json({
       ok: false,

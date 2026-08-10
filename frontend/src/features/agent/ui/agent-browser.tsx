@@ -9,6 +9,7 @@ import {
 } from "@/features/agent/ui/agent-browser-screencast";
 import {
   useAgentBrowserEffects,
+  useBrowserLiveStateSync,
   useLocalhostSitesEffects,
   type LocalhostSite,
 } from "@/features/agent/ui/agent-browser-effects";
@@ -81,6 +82,17 @@ export function AgentBrowser({
     onLoadingChange: setLocalSitesLoading,
     onSitesChange: setLocalSites,
     onErrorChange: setLocalSitesError,
+  });
+  const adoptLiveUrl = useCallback(
+    (liveUrl: string) => {
+      setHasOpenedUrl(true);
+      onLocationChange(liveUrl);
+    },
+    [onLocationChange],
+  );
+  useBrowserLiveStateSync({
+    enabled: showStartPage && visible,
+    onLiveUrl: adoptLiveUrl,
   });
 
   const postLiveVerb = useCallback((verb: "back" | "forward" | "reload") => {

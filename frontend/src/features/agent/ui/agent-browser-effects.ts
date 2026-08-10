@@ -67,3 +67,34 @@ export function useAgentBrowserEffects({
     }
   }, [enabled, fetchReadable, readingMode, url]);
 }
+
+const LIVE_STATE_POLL_MS = 2_000;
+
+export function useBrowserLiveStateSync({
+  enabled,
+  onLiveUrl,
+}: {
+  enabled: boolean;
+  onLiveUrl: (url: string) => void;
+}): void {
+  useMountSubscription(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const response = await fetch("/api/agent/browser/state", { cache: "no-store" });
+        const payload = (await response.json()) as { ok?: boolean; data?: { url?: string } };
+        const liveUrl = payload.ok ? (payload.data?.url ?? "") : "";
+        if (!cancelled && liveUrl && liveUrl !== "about:blank") onLiveUrl(liveUrl);
+      } catch {
+        return;
+      }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), LIVE_STATE_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [enabled, onLiveUrl]);
+}
