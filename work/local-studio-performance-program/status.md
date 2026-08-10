@@ -1,10 +1,10 @@
 # Local Studio performance program status
 
-Updated: 2026-08-09T21:02:54-04:00
+Updated: 2026-08-09T21:43:08-04:00
 
 Program state: `APPROVED`
 
-Feature implementation: not started; Task 00 control plane is `IN PROGRESS` (execution snapshot below)
+Feature implementation: not started; Task 00 control plane is `IMPLEMENTATION COMPLETE — AWAITING CODEX REVIEW` (execution snapshot below)
 
 This is the canonical campaign ledger for Local Studio, Litter, and Alleycat. It records planning, execution ownership, immutable refs, PRs, Fable sessions, acceptance surfaces, evidence, blockers, and rollback state. `scope.md` defines the architecture and twelve-hour cut; `rules.md` defines how work may be executed; `tasks/` is the dependency-ordered implementation blueprint.
 
@@ -83,7 +83,7 @@ Task 00 implementation session, `claude-fable-5` and browserless:
 | Browser | disabled; browserless per campaign rule |
 | Owner | Fable implementer for in-repo Task 00 artifacts; Codex owns integration, PRs, merges, browser, and evidence capture |
 | Start | 2026-08-09T20:41:52-04:00 (first verified read-only inspection in the assigned worktree) |
-| State | `IN PROGRESS` — Phase A edits authored; commit and push await Codex authorization; final commit/push/PR facts land in Phase B |
+| State | `IMPLEMENTATION COMPLETE — AWAITING CODEX REVIEW` — commit `c30a9216` pushed via the authorized explicit refspec; child draft PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) open; control-plane only |
 
 ## Hard resource rule
 
@@ -133,7 +133,7 @@ All live observations are time-sensitive and must be revalidated at execution ti
 
 | Task | Title | Dependency | State | Planned owner |
 |---|---|---|---|---|
-| 00 | Control plane, refs, worktrees, PRs, evidence schema | approval | `IN PROGRESS` | Codex + Fable `ls-perf-w00-task00-control-plane` (in-repo artifacts) |
+| 00 | Control plane, refs, worktrees, PRs, evidence schema | approval | `IMPLEMENTATION COMPLETE — AWAITING CODEX REVIEW` | Codex + Fable `ls-perf-w00-task00-control-plane` (in-repo artifacts) |
 | 01 | Deterministic corpus and clean baseline | 00 | `NOT STARTED` | Fable implementer + Codex measurement |
 | 02 | Runtime inventory and hydration hot path | 01 | `NOT STARTED` | Fable implementer |
 | 03 | Electron session store, timeline, inspector, scroll | 01, 02 | `NOT STARTED` | Fable implementer |
@@ -156,7 +156,7 @@ All live observations are time-sensitive and must be revalidated at execution ti
 |---|---|---|---|---|
 | Local Studio | `codex/local-studio-performance-integration-20260809` | `dev` | [#382](https://github.com/sybil-solutions/local-studio/pull/382) | draft; planning only |
 | Local Studio workpack revision child | `codex/ls-perf-plan-revision-20260809` | `codex/local-studio-performance-integration-20260809` | [#383](https://github.com/sybil-solutions/local-studio/pull/383) | merged 2026-08-10T00:35:12Z as integration commit `6bdf748a`; verified read-only 2026-08-10T00:45:10Z |
-| Local Studio Task 00 child | `codex/ls-perf-w00-task-00-control-plane` | `codex/local-studio-performance-integration-20260809` | pending — Codex creates it after the authorized push | Phase A edits authored; commit and push await Codex authorization |
+| Local Studio Task 00 child | `codex/ls-perf-w00-task-00-control-plane` | `codex/local-studio-performance-integration-20260809` | [#385](https://github.com/sybil-solutions/local-studio/pull/385) | draft; head `c30a9216` pushed with all hooks enforced; awaiting Codex review/integration |
 | Litter | create after approval from recorded `origin/main` | `main` | pending | not created |
 | Alleycat | create after authority decision | selected protected branch | pending | blocked by authority |
 
@@ -166,7 +166,7 @@ The Task 00 control-plane run below is `CONTROL PLANE ONLY — NO PRODUCT ACCEPT
 
 | Run ID | Commit | Surface | Requirements | Result | Manifest |
 |---|---|---|---|---|---|
-| `2026-08-09-task-00-control-plane` | child branch `codex/ls-perf-w00-task-00-control-plane` from base `6bdf748a4da0d5634aa944417dcf362023f7ddf8` | control plane only — no product surface | R01, R02, R16, R17 | `IN PROGRESS — CONTROL PLANE ONLY — NO PRODUCT ACCEPTANCE` | [manifest.json](../../evidence/2026-08-09-task-00-control-plane/manifest.json) |
+| `2026-08-09-task-00-control-plane` | `c30a9216d1cd35824889a3d6009d237e939313ea` on `codex/ls-perf-w00-task-00-control-plane` from base `6bdf748a4da0d5634aa944417dcf362023f7ddf8` | control plane only — no product surface | R01, R02, R16, R17 | `CONTROL PLANE ONLY — AWAITING CODEX REVIEW — NO PRODUCT ACCEPTANCE` | [manifest.json](../../evidence/2026-08-09-task-00-control-plane/manifest.json) |
 
 ## Known blockers and stop conditions
 
@@ -181,13 +181,13 @@ The Task 00 control-plane run below is `CONTROL PLANE ONLY — NO PRODUCT ACCEPT
 
 ## Next transition
 
-Approval is recorded above. Task 00 starts the twelve-hour clock: it creates clean cross-repository worktrees, records fresh refs, confirms 2x/4x Spark availability through read-only discovery, and opens the integration review topology. Wave 1 (Tasks 01, 05, 12) follows; the Task 12 serving-contract merge gates the creation of Task 13 and Task 14 branches. Separate gates above remain in force.
+Approval is recorded above. Task 00's in-repo control plane is delivered on child draft PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) and awaits Codex review/integration; the remaining Task 00 items stay with Codex — PR #239 disposition, the Alleycat authority decision, read-only 2x/4x Spark discovery, and any cross-repository worktrees/PRs. A separate Fable revision session incorporates the active dependency review; this session leaves the dependency graph untouched. Wave 1 (Tasks 01, 05, 12) follows once Task 00 is accepted; the Task 12 serving-contract merge gates the creation of Task 13 and Task 14 branches. Separate gates above remain in force.
 
-## Task 00 execution snapshot — 2026-08-09 (Phase A)
+## Task 00 execution snapshot — 2026-08-09
 
-Recorded: 2026-08-09T21:02:54-04:00 (America/New_York, EDT). Task 00 in-repo control-plane work is `IN PROGRESS` on the dedicated child branch below. This snapshot records control-plane facts only; R03–R20 and every product acceptance surface remain planned, pending, blocked, unknown, or not run as recorded above.
+Recorded: 2026-08-09T21:43:08-04:00 (America/New_York, EDT). Task 00 in-repo control-plane work is `IMPLEMENTATION COMPLETE — AWAITING CODEX REVIEW`: commit `c30a9216d1cd35824889a3d6009d237e939313ea` (parent `6bdf748a4da0d5634aa944417dcf362023f7ddf8`; Claude Fable 5 co-author trailer) is pushed and delivered as child draft PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) into the integration branch. This snapshot records control-plane facts only; R03–R20 and every product acceptance surface remain planned, pending, blocked, unknown, or not run as recorded above.
 
-Twelve-hour clock: this workstream's first verified read-only inspection ran at 2026-08-09T20:41:52-04:00; the canonical campaign-wide kickoff time is Codex's to confirm.
+Twelve-hour clock: campaign kickoff 2026-08-09T20:41:52-04:00, confirmed by Codex at Phase B.
 
 ### Verified campaign refs (read-only)
 
@@ -199,7 +199,8 @@ Twelve-hour clock: this workstream's first verified read-only inspection ran at 
 | `origin/main` | `52c2b20f2994be07186b42da54e2836234785e8a`; unchanged | 2026-08-10T00:45:06Z |
 | Workpack revision child PR [#383](https://github.com/sybil-solutions/local-studio/pull/383) | `MERGED` 2026-08-10T00:35:12Z as merge commit `6bdf748a4da0d5634aa944417dcf362023f7ddf8` | 2026-08-10T00:45:10Z, `gh pr view` |
 | Umbrella draft PR [#382](https://github.com/sybil-solutions/local-studio/pull/382) | open draft into `dev`; combined CI for head `6bdf748a`: all rollup checks (gates, controller, agent-runtime, frontend, desktop-package, secret scanning, CodeQL, dependency review) `SUCCESS` by 2026-08-10T00:41:32Z | 2026-08-10T00:45:10Z |
-| Task 00 child branch `codex/ls-perf-w00-task-00-control-plane` | worktree `~/.codex/worktrees/ls-perf-w00-task-00-control-plane`; started clean at exact base `6bdf748a4da0d5634aa944417dcf362023f7ddf8`; checked out nowhere else; not yet on origin | 2026-08-10T00:41:52Z and 00:45:06Z |
+| Task 00 child branch `codex/ls-perf-w00-task-00-control-plane` | started clean at exact base `6bdf748a4da0d5634aa944417dcf362023f7ddf8` in sole worktree `~/.codex/worktrees/ls-perf-w00-task-00-control-plane`; after the hook-enforced push, remote ref and local HEAD both `c30a9216d1cd35824889a3d6009d237e939313ea` | 2026-08-10T01:37:52Z, `git ls-remote` |
+| Task 00 child draft PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) | head `codex/ls-perf-w00-task-00-control-plane` at `c30a9216` into `codex/local-studio-performance-integration-20260809`; created by Codex | Codex-supplied, Phase B |
 | Incorporated workpack head | `4844b159a80aeb1720a44f2150f87ea6e8d9aea2` is an ancestor of the child base | 2026-08-10T00:41:52Z |
 
 ### Control-plane artifacts added by this task
@@ -214,16 +215,15 @@ Run manifest [manifest.json](../../evidence/2026-08-09-task-00-control-plane/man
 
 - Alleycat protocol authority: `NOT SELECTED`. Required decision: exactly one truthful protocol path — the scoped pair-token Pi bridge or a fully enforced signed grant protocol — on one lineage: `origin/main` `3f0f8442`, the pinned release lineage `417f2a9f`, or a reviewed recut of the staged `d584a006` grant work. Until recorded: no Alleycat integration worktree/PR, and authority-dependent Task 05 work stays blocked.
 - 2x/4x DGX Spark availability: `UNKNOWN`. No fresh read-only discovery result has been supplied and this session performed none; the user-provided screenshot records the target example, not live proof. Live Spark mutation remains gated.
-- Codex-verified read-only cross-repo facts (supplied 2026-08-09T21:02:54-04:00): Litter `origin/main` `5f651a475a16c93c273501fd370627f826c5e06f`; Litter primary checkout `codex/post-github-cleanup-20260804` at `9ebb405bb329866e3e3f6e9d16b45a5bb1a91706`, user-owned, dirty only at modified submodules `shared/third_party/codex` and `shared/third_party/ghostty` plus untracked `prompt.md`; Litter PR #239 `OPEN`, clean/mergeable at `a4cbf2df005dd45633d00377678d6adc9cc3146a`, required shared-prep/android/ios/release checks successful or intentionally skipped, disposition still pending (commit-by-commit review not yet performed); Litter PR #240 `OPEN`, clean/mergeable at `b277efd34d9962d3482372067618a3d6bc992e10`, planning reference only; Alleycat `origin/main` `3f0f84422e977f32cbc98de7a1d6c4e26fb240d1`; Alleycat staged checkout `codex/local-studio-prod-runtime` at `d584a006c75fe744def6cb3f41bcef4991b86b5f`, exactly 14 staged files (5829 insertions, 18 deletions). No cross-repository worktree was created; Litter integration worktree creation remains a Codex-owned step.
+- Codex-verified read-only cross-repo facts (supplied 2026-08-09T21:02:54-04:00; reconfirmed by Codex at Phase B): Litter `origin/main` `5f651a475a16c93c273501fd370627f826c5e06f`; Litter primary checkout `codex/post-github-cleanup-20260804` at `9ebb405bb329866e3e3f6e9d16b45a5bb1a91706`, user-owned, dirty only at modified submodules `shared/third_party/codex` and `shared/third_party/ghostty` plus untracked `prompt.md`; Litter PR #239 `OPEN`, clean/mergeable at `a4cbf2df005dd45633d00377678d6adc9cc3146a`, required shared-prep/android/ios/release checks successful or intentionally skipped, disposition still pending (commit-by-commit review not yet performed); Litter PR #240 `OPEN`, clean/mergeable at `b277efd34d9962d3482372067618a3d6bc992e10`, planning reference only; Alleycat `origin/main` `3f0f84422e977f32cbc98de7a1d6c4e26fb240d1`; Alleycat staged checkout `codex/local-studio-prod-runtime` at `d584a006c75fe744def6cb3f41bcef4991b86b5f`, exactly 14 staged files (5829 insertions, 18 deletions). No cross-repository worktree was created; Litter integration worktree creation remains a Codex-owned step.
 
 ### Worktree inventory (observed 2026-08-10T00:41:52Z)
 
 Clean assertions are scoped to the two campaign worktrees actually checked (refs table above); the prior workpack revision worktree and its merged child branch were removed after integration (Codex-supplied). Eleven stale `/private/tmp` registrations with missing gitdirs and every other non-campaign worktree — including the primary checkout and the detached historical reference `repo-comparison-review-35c382` — were observed only, sit outside campaign clean assertions, and were not altered; pruning is not authorized for this session.
 
-### Validation state (Phase A)
+### Validation state
 
-- Passed locally: `git diff --check`; manifest JSON parse; ignore-rule proof in both directions (`evidence/<run-id>/.raw/` ignored, the manifest tracked); diff scope limited to the three owned paths; and the dependency-free gates `check:automation`, `check:contracts`, `check:structure`, and `check:release`, each run as a separate unpiped command with exit 0.
-- Root `npm run check` aggregate: `NOT RUN — PENDING`. Dependencies are absent (no `node_modules` anywhere in this fresh worktree), and the aggregate's `check:frontend → check:quality` chain includes a full frontend `npm run build`; a lockfile install and that build each need explicit Codex authorization before this session may run them.
-- Pre-push hook (`.githooks/pre-push`) unconditionally runs frontend `check:static`, `check:cleanup`, and `assert-standalone`, which requires a prior local frontend build. The child-branch push therefore waits for Codex authorization; hooks are never bypassed.
-- Commit hooks `commit-msg` and `pre-commit` (protected-branch guard, 15-file/600-source-line limit) apply to the Phase A commit; their outcomes are reported in the Phase A handoff.
-- Context only, never a substitute for the local aggregate: PR #382 combined CI passed on `6bdf748a`, the exact tree this child branch starts from.
+- Phase A commit `c30a9216d1cd35824889a3d6009d237e939313ea`: exactly the three owned paths (375 insertions, 8 deletions); `git diff --check` clean; `commit-msg` and `pre-commit` hooks passed; manifest JSON parse and both `git check-ignore` directions proven.
+- Root `npm run check`: exit 0, run once unpiped after Codex-authorized frozen-lockfile installs (`bun install --frozen-lockfile` in `shared/`, `controller/`, `services/agent-runtime/`; `npm ci --legacy-peer-deps` in `frontend/` with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` and `ELECTRON_SKIP_BINARY_DOWNLOAD=1`). All seven constituents ran; frontend unit tests 127 passed; all four lockfile SHA-256 values identical before and after; no browser, Electron, Playwright binary, or product service launched.
+- Push: `git push origin codex/ls-perf-w00-task-00-control-plane:codex/ls-perf-w00-task-00-control-plane` completed with every hook enforced (commit-range check, frontend `check:static`, `check:cleanup`, `assert-standalone`); remote ref equals local HEAD; working tree clean after push.
+- Context only, never a substitute for the local aggregate: umbrella PR #382 combined CI green at integration head `6bdf748a`.

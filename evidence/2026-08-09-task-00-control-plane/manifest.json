@@ -7,8 +7,9 @@
     "workpack": "work/local-studio-performance-program/tasks/task-00.md"
   },
   "createdAt": "2026-08-09T20:52:46-04:00",
+  "updatedAt": "2026-08-09T21:43:08-04:00",
   "timezone": "America/New_York (EDT, UTC-04:00)",
-  "state": "control_plane_in_progress_phase_a_awaiting_codex",
+  "state": "implementation_complete_awaiting_codex_review",
   "classification": "CONTROL PLANE ONLY — NO PRODUCT ACCEPTANCE",
   "campaign": {
     "program": "local-studio-performance-program",
@@ -28,8 +29,11 @@
     "childExactBaseSha": "6bdf748a4da0d5634aa944417dcf362023f7ddf8",
     "incorporatedWorkpackHead": "4844b159a80aeb1720a44f2150f87ea6e8d9aea2",
     "intendedPrTarget": "codex/local-studio-performance-integration-20260809",
-    "childPrUrl": null,
-    "childPrNote": "Codex creates the child PR after authorizing the Phase A push; the URL is recorded in Phase B"
+    "childPrUrl": "https://github.com/sybil-solutions/local-studio/pull/385",
+    "childPrState": "draft; head codex/ls-perf-w00-task-00-control-plane at c30a9216d1cd35824889a3d6009d237e939313ea into codex/local-studio-performance-integration-20260809; created by Codex",
+    "phaseACommit": "c30a9216d1cd35824889a3d6009d237e939313ea",
+    "phaseACommitParent": "6bdf748a4da0d5634aa944417dcf362023f7ddf8",
+    "push": "explicit refspec git push origin codex/ls-perf-w00-task-00-control-plane:codex/ls-perf-w00-task-00-control-plane; all hooks enforced; remote ref equals local HEAD; working tree clean after push; lockfiles unchanged"
   },
   "repositorySnapshots": [
     {
@@ -60,10 +64,10 @@
         },
         {
           "ref": "refs/heads/codex/ls-perf-w00-task-00-control-plane",
-          "sha": null,
-          "observedAt": "2026-08-10T00:45:06Z",
+          "sha": "c30a9216d1cd35824889a3d6009d237e939313ea",
+          "observedAt": "2026-08-10T01:37:52Z",
           "method": "git ls-remote",
-          "note": "absent on origin at manifest creation; the push waits for Codex authorization"
+          "note": "Phase A commit pushed with all hooks enforced; equals local HEAD"
         }
       ],
       "pullRequests": [
@@ -175,6 +179,13 @@
       }
     }
   ],
+  "validation": {
+    "phaseACommit": "c30a9216d1cd35824889a3d6009d237e939313ea; parent 6bdf748a4da0d5634aa944417dcf362023f7ddf8; git diff --check clean; commit-msg and pre-commit hooks passed; commit trailer identifies Claude Fable 5",
+    "npmRunCheck": "exit 0; run once unpiped after frozen-lockfile installs with PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 and ELECTRON_SKIP_BINARY_DOWNLOAD=1; all seven aggregate constituents ran; frontend unit tests 127 passed",
+    "lockfiles": "shared, controller, services/agent-runtime (bun frozen lockfile) and frontend (npm ci) SHA-256 identical before and after installs",
+    "push": "pre-push hooks enforced: commit-range check, frontend check:static, check:cleanup, assert-standalone; no browser, Electron, Playwright binary, or product service launched",
+    "scope": "control-plane evidence only; not product acceptance"
+  },
   "requirementMapping": {
     "R01": {
       "requirement": "Canonical dated plan/status referenced by AGENTS",
