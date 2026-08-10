@@ -7,7 +7,7 @@ Establish one runtime-qualified session identity and one truthful authenticated 
 ## Dependencies
 
 - Task 00 immutable refs and separate integration PRs.
-- Explicit Alleycat lineage/protocol decision.
+- Explicit Alleycat lineage/protocol decision recorded at Task 00.
 
 ## Files involved
 
@@ -20,6 +20,7 @@ Establish one runtime-qualified session identity and one truthful authenticated 
 
 ## Work
 
+0. Land 05A as the first, separately reviewable commit: versioned `shared/agent/` schemas for runtime-qualified `SessionIdentity`, `EnvironmentRef`, `ExecutionTarget`, `SessionPlacement`, `FilesystemAuthority`, `SessionCapabilities`, revision, and archive state. Schemas only — no migrations, no transport. 05A merges in Wave 1 before any consumer includes those fields; Tasks 02, 04, 06, 08, and 09 consume it and never redefine it.
 1. Choose and document the authoritative Alleycat protocol:
    - keep the scoped pair-token Pi bridge and remove misleading grants; or
    - implement signed controller advertisement, forwarding, grant enforcement, revocation, and negative authorization end to end.

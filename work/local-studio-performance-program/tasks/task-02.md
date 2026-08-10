@@ -6,7 +6,8 @@ Make session discovery, visible-tail loading, usage accounting, and active-branc
 
 ## Dependencies
 
-- Task 01 baseline and goldens complete.
+- Task 01 baseline and goldens gate work items 1-4, 6, and 7.
+- Task 05's 05A identity-schema commit merges before item 5 adds identity fields to the summary contract. 05A is an item-level merge gate, not a task-start gate.
 
 ## Files involved
 
@@ -22,7 +23,7 @@ Make session discovery, visible-tail loading, usage accounting, and active-branc
 2. Add a versioned persistent, bounded session inventory index/cache so warm restart/list requests do not synchronously traverse, stat, and rescan up to 2,000 lines from every candidate. Invalidate active entries incrementally while preserving trusted-root and traversal protections.
 3. Add stable cursor pagination and explicit result limits to per-project and all-project inventory. Preserve deterministic sort, archive filters, canonical ID deduplication, and incomplete-source semantics.
 4. Remove duplicate full-file work from initial visible-tail hydration. Add an incremental active-branch/checkpoint strategy or another measured bounded approach compatible with Pi branch semantics, including a differential golden for transcripts beyond the current 96 MiB full-scan bound.
-5. Include execution/runtime identity, filesystem host, goal summary, capabilities, revision, and target identity in the versioned summary contract without duplicating contract ownership.
+5. Include execution/runtime identity, filesystem host, goal summary, capabilities, revision, and target identity in the versioned summary contract without duplicating contract ownership, consuming the merged 05A schemas rather than redefining them.
 6. Port only relevant historical test/codec/checkpoint ideas from the quality branch after reviewing them against current `dev`; do not cherry-pick unrelated release or documentation commits.
 7. Keep I/O cooperative so health and SSE remain responsive under the large corpus.
 

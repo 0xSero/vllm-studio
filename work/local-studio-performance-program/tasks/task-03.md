@@ -16,7 +16,8 @@ Make fifty-session navigation, large old-chat opening, streaming, inspector jump
 - `frontend/src/features/agent/ui/inspector-panel.tsx`
 - `frontend/src/features/agent/workspace/`
 - `frontend/src/features/agent/runtime/`
-- `frontend/e2e/bench/` (created in Task 01; created here if Task 01 has not yet) and focused unit/component tests
+- `frontend/src/features/agent/ui/chat-pane.tsx` and `frontend/src/features/agent/ui/render-workspace-pane.tsx` (work item 7)
+- `frontend/e2e/bench/` (owned and created by Task 01; this task extends the accepted harness) and focused unit/component tests
 - Historical commits `e9b1869c`, `e4d4e24a`, `a2b47f5f`, `f1cf160a`, `e41b85ce` as reference only
 
 ## Work
@@ -27,7 +28,7 @@ Make fifty-session navigation, large old-chat opening, streaming, inspector jump
 4. Virtualize timeline and inspector with stable canonical IDs using the existing `react-virtuoso` dependency. Port historical behavior and benchmarks, not its `@tanstack/react-virtual` dependency, unless a separate measured dependency review approves a change.
 5. Replace all-node DOM scans with visible-range/observer data. Keep prompt navigation and exact-ID inspector jumps correct for unmounted rows.
 6. Preserve cached immediate paint, canonical reconciliation, bottom-follow, user drag protection, rapid queued turns, and an anchor shift at or below the frozen budget when earlier pages prepend.
-7. Remove full Timeline remounts keyed only by the active tab where they discard reusable state, and stabilize callbacks/props so memoized message rows remain effective during streaming.
+7. Remove full Timeline remounts keyed only by the active tab where they discard reusable state, and stabilize callbacks/props so memoized message rows remain effective during streaming. The merged `chat-pane.tsx` and `render-workspace-pane.tsx` commits from this item are the 03r release; merging them unlocks Task 14b.
 8. Bound session caches, row measurements, and detached subscriptions. Prove no cross-session stale overwrite during rapid switching.
 9. Port historical changes one logical behavior at a time and remeasure; never import the divergent branch wholesale.
 

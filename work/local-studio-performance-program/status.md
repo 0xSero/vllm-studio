@@ -1,6 +1,6 @@
 # Local Studio performance program status
 
-Updated: 2026-08-09T21:43:08-04:00
+Updated: 2026-08-09T22:17:52-04:00
 
 Program state: `APPROVED`
 
@@ -135,20 +135,22 @@ All live observations are time-sensitive and must be revalidated at execution ti
 |---|---|---|---|---|
 | 00 | Control plane, refs, worktrees, PRs, evidence schema | approval | `IMPLEMENTATION COMPLETE — AWAITING CODEX REVIEW` | Codex + Fable `ls-perf-w00-task00-control-plane` (in-repo artifacts) |
 | 01 | Deterministic corpus and clean baseline | 00 | `NOT STARTED` | Fable implementer + Codex measurement |
-| 02 | Runtime inventory and hydration hot path | 01 | `NOT STARTED` | Fable implementer |
+| 02 | Runtime inventory and hydration hot path | 01; 05A for summary identity fields | `NOT STARTED` | Fable implementer |
 | 03 | Electron session store, timeline, inspector, scroll | 01, 02 | `NOT STARTED` | Fable implementer |
-| 04 | Litter native performance and state amplification | 01, 05 authority contracts | `NOT STARTED — INSTALLED-DEVICE MATRIX IN CONTINUATION` | Fable implementer |
+| 04 | Litter native performance and state amplification | 01, 00 #239 disposition; 05A/05 as staged | `NOT STARTED — INSTALLED-DEVICE MATRIX IN CONTINUATION` | Fable implementer |
 | 05 | Identity, Alleycat authority, and cross-surface sync | 00 | `NOT STARTED` | Fable implementer + Codex security review |
-| 06 | Versioned multi-environment Usage data plane | 00, 01, 05 | `NOT STARTED` | Fable implementer |
+| 06 | Versioned multi-environment Usage data plane | 00, 01, 05A, 12c | `NOT STARTED` | Fable implementer |
 | 07 | Usage UI and responsive Local Studio presentation | 06 | `NOT STARTED` | Fable implementer + Codex visual review |
-| 08 | Execution targets and remote filesystem vertical slice | 02, 05 | `NOT STARTED` | Fable implementer + Codex isolation review |
-| 09 | Runtime adapters, goals, controls, reliability | 05, 06, 08 | `NOT STARTED` | Fable implementer |
+| 08 | Execution targets and remote filesystem vertical slice | 02, 05A, security review | `NOT STARTED` | Fable implementer + Codex isolation review |
+| 09 | Runtime adapters, goals, controls, reliability | 05, 06 gate start; 08 placement/routing items only | `NOT STARTED` | Fable implementer |
 | 10 | Shared design contract and native convergence | 03, 04, 05, 09 | `CONTINUATION — NOT IN TWELVE-HOUR TRANCHE` | Fable implementer + Codex visual review |
 | 11 | Pop lab, Linux surface, onboarding journey | 00, 01, relevant integrated features | `NOT STARTED` | Codex evidence owner |
 | 12 | Concurrent multi-model serving inventory and lifecycle | 00; 01 harness conventions | `NOT STARTED` | Fable implementer |
-| 13 | Multi-Spark topology and telemetry truth | 12 contract merged; 00 availability discovery | `NOT STARTED` | Fable implementer |
-| 14 | Vision-sidecar pairing, routing, and attribution | 12 contract merged | `NOT STARTED` | Fable implementer |
+| 13 | Multi-Spark topology and telemetry truth | 12c compute-contract foundation; 00 availability discovery | `NOT STARTED` | Fable implementer |
+| 14 | Vision-sidecar pairing, routing, and attribution | 12c, 12r + 06f for 14a; 03r for 14b | `NOT STARTED` | Fable implementer |
 | 15 | Integration, installed acceptance, cleanup, delivery | all accepted tasks 00–14 | `NOT STARTED` | Codex |
+
+Wave plan: 05A (Task 05 identity schemas) and 12c (Task 12 serving-contract/compute foundation) both merge inside Wave 1 before Wave 2 opens; the 12r openai-routes release and the 06f attribution fields both merge before any Task 14a branch; 03r releases the composer files to 14b.
 
 ## Pull request ledger
 
@@ -181,7 +183,7 @@ The Task 00 control-plane run below is `CONTROL PLANE ONLY — NO PRODUCT ACCEPT
 
 ## Next transition
 
-Approval is recorded above. Task 00's in-repo control plane is delivered on child draft PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) and awaits Codex review/integration; the remaining Task 00 items stay with Codex — PR #239 disposition, the Alleycat authority decision, read-only 2x/4x Spark discovery, and any cross-repository worktrees/PRs. A separate Fable revision session incorporates the active dependency review; this session leaves the dependency graph untouched. Wave 1 (Tasks 01, 05, 12) follows once Task 00 is accepted; the Task 12 serving-contract merge gates the creation of Task 13 and Task 14 branches. Separate gates above remain in force.
+Approval is recorded above. Task 00's in-repo control plane is delivered on child draft PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) and awaits Codex review/integration; the remaining Task 00 items stay with Codex — PR #239 disposition, the Alleycat authority decision, read-only 2x/4x Spark discovery, and any cross-repository worktrees/PRs. A separate Fable revision session incorporates the active dependency review; this session leaves the dependency graph untouched. Wave 1 (Tasks 01, 05, 12) follows once Task 00 is accepted; the 12c merge gates Task 13 branch creation and the 12r merge gates Task 14a branch creation. Separate gates above remain in force.
 
 ## Task 00 execution snapshot — 2026-08-09
 

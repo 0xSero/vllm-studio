@@ -6,9 +6,8 @@ Make Pi behavior runtime-neutral at the UI boundary, expose truthful per-runtime
 
 ## Dependencies
 
-- Task 05 identity/capability contracts.
-- Task 08 placement/target routing.
-- Task 06 usage source semantics for adapters that report usage; serving-instance and vision-sidecar attribution stays owned by [Task 12](task-12.md)/[Task 14](task-14.md) contracts and is consumed, not re-derived, here.
+- Tasks 05 and 06 gate the adapter, goal, and tool items: Task 05 identity/capability contracts, and Task 06 usage source semantics for adapters that report usage. Serving-instance and vision-sidecar attribution stays owned by [Task 12](task-12.md)/[Task 14](task-14.md) contracts and is consumed, not re-derived, here.
+- Task 08 placement/target routing gates only the placement-consuming items and cross-target capability tests, not task start.
 
 ## Files involved
 

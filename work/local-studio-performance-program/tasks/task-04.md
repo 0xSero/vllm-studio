@@ -7,8 +7,8 @@ Meet the same inventory, old-chat, streaming, scrolling, and reconnect intent on
 ## Dependencies
 
 - Task 01 Litter corpus/baseline.
-- Task 05 identity and capability contracts selected before persistence changes merge.
-- Review Litter PR #239 to avoid duplicating fidelity/queue/batching work.
+- Task 00's recorded, commit-by-commit accept/reimplement/drop disposition for Litter PR #239, required before branch creation; it also prevents duplicating PR #239 fidelity/queue/batching work.
+- Task 05 staged: the 05A identity-schema commit merges before the identity-keyed commits (work item 4); full Task 05 migrations merge before the same-node dual-pairing tests. Instrumentation does not wait on Task 05.
 
 ## Files involved
 
