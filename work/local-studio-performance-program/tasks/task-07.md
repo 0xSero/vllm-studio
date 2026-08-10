@@ -7,6 +7,7 @@ Deliver a polished Local Studio Usage surface inspired by the pinned T3 nightly 
 ## Dependencies
 
 - Task 06 contract/collectors/merge semantics passing.
+- The 12c serving-state-contract commit from [Task 12](task-12.md), whose serving-instance fields the fixtures render.
 - Task 10 design contract may refine native semantics, but this task uses the current shared Local Studio UI kit.
 
 ## Files involved
@@ -33,6 +34,7 @@ Deliver a polished Local Studio Usage surface inspired by the pinned T3 nightly 
 ## Tests
 
 - Success, empty, partial, failed, stale-contract, duplicate, unpriced, remote-late, and mixed controller/session fixtures.
+- Fixture rendering of the Task 12 serving-instance fields and Task 06 attribution fields.
 - Filter/range/toggle semantics and cache identity/invalidation.
 - Responsive 390×844, 768×1024, desktop, orientation, safe-area, font scaling, keyboard and reduced-motion checks.
 - No layout overflow except explicit local scrollers; no color-only status.
@@ -50,7 +52,7 @@ Deliver a polished Local Studio Usage surface inspired by the pinned T3 nightly 
 - The page is recognizably Local Studio and meets the pinned interaction intent without unsupported metrics.
 - ChatGPT import coverage is visibly proven or pending; it cannot be silently counted as complete.
 - Desktop and mobile layouts pass responsive/accessibility gates with no heatmap overflow regression.
-- Controller telemetry cannot be mistaken for all AI-session activity, and concurrent serving instances stay visually distinct, including vision-sidecar attribution from [Task 14](task-14.md).
+- Controller telemetry cannot be mistaken for all AI-session activity, and concurrent serving instances stay visually distinct; fixtures render the Task 12 serving-instance fields and Task 06 attribution fields. Live vision-sidecar attribution display is proven at [Task 15](task-15.md), not here.
 - Screenshots and installed-Electron proof are manifest-listed under the exact build.
 
 ## Rollback
