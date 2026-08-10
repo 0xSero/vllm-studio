@@ -6,8 +6,8 @@ Establish one runtime-qualified session identity and one truthful authenticated 
 
 ## Dependencies
 
-- Task 00 immutable refs and separate integration PRs.
-- Explicit Alleycat lineage/protocol decision recorded at Task 00.
+- Schema-only 05A requires only Task 00's Local Studio ref and control plane.
+- The Alleycat authority decision — recorded as selected at the Task 00 closeout (status ledger) — gates work items 1-10 and cross-repository consumers, not 05A. Items 1-10 also wait for the 05A merge and a clean just-in-time cross-repository recut worktree, not for another authority decision.
 
 ## Files involved
 
@@ -21,9 +21,7 @@ Establish one runtime-qualified session identity and one truthful authenticated 
 ## Work
 
 0. Land 05A as the first, separately reviewable commit: versioned `shared/agent/` schemas for runtime-qualified `SessionIdentity`, `EnvironmentRef`, `ExecutionTarget`, `SessionPlacement`, `FilesystemAuthority`, `SessionCapabilities`, revision, and archive state. Schemas only — no migrations, no transport. 05A merges in Wave 1 before any consumer includes those fields; Tasks 02, 04, 06, 08, and 09 consume it and never redefine it.
-1. Choose and document the authoritative Alleycat protocol:
-   - keep the scoped pair-token Pi bridge and remove misleading grants; or
-   - implement signed controller advertisement, forwarding, grant enforcement, revocation, and negative authorization end to end.
+1. The authoritative Alleycat protocol is recorded at the Task 00 closeout (status ledger): fully enforced signed grants on a clean reviewed recut of Alleycat `origin/main` `3f0f8442`. Implement signed controller advertisement, forwarding, grant enforcement, revocation, and negative authorization end to end; the scoped pair-token-only alternative is rejected.
 2. Do not merge the currently staged grant work or conflicting PR #35 as-is. Recut only audited behavior in a clean authority branch.
 3. Define a versioned runtime-qualified identity for saved servers, sessions, and threads. Include transport/provider mode in saved-server dedup and runtime in thread identity unless daemon-global namespacing is proven.
 4. Add migrations for existing iOS/Android saved pairings and stored thread state. Migration must preserve both generic and Local Studio records for the same node and be reversible/idempotent.

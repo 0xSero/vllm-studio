@@ -1,0 +1,263 @@
+{
+  "schemaVersion": "1.0.0",
+  "runId": "2026-08-09-task-00-external-discovery",
+  "task": {
+    "id": "00",
+    "title": "Establish the campaign control plane — closeout of external read-only discovery",
+    "workpack": "work/local-studio-performance-program/tasks/task-00.md"
+  },
+  "createdAt": "2026-08-09T23:10:46-04:00",
+  "updatedAt": "2026-08-09T23:10:46-04:00",
+  "timezone": "America/New_York (EDT, UTC-04:00)",
+  "state": "task_00_complete_no_product_acceptance",
+  "classification": "TASK 00 CLOSEOUT — READ-ONLY DISCOVERY — NO PRODUCT ACCEPTANCE",
+  "supersedes": {
+    "runId": "2026-08-09-task-00-control-plane",
+    "scope": "current-state decisions only; that manifest remains a truthful point-in-time control-plane snapshot and is not rewritten"
+  },
+  "integration": {
+    "repository": "local-studio",
+    "remote": "https://github.com/sybil-solutions/local-studio",
+    "integrationBranch": "codex/local-studio-performance-integration-20260809",
+    "integrationHead": "e125d72cd16557c5f91565f7b45acd0f2e77c7c8",
+    "worktreeAndRemoteRefMatched": true,
+    "umbrellaDraftPr": {
+      "number": 382,
+      "url": "https://github.com/sybil-solutions/local-studio/pull/382",
+      "state": "open draft into dev",
+      "checksAtIntegrationHead": [
+        "gates",
+        "controller",
+        "agent-runtime",
+        "frontend",
+        "desktop-package",
+        "secret scanning",
+        "CodeQL",
+        "dependency review"
+      ],
+      "checksResult": "passed at e125d72cd16557c5f91565f7b45acd0f2e77c7c8"
+    }
+  },
+  "mergedChildPrs": [
+    {
+      "number": 385,
+      "url": "https://github.com/sybil-solutions/local-studio/pull/385",
+      "role": "Task 00 control plane",
+      "state": "MERGED",
+      "mergeCommit": "bd9e8d9ff8781b2068bd7e2e7f705cf4df55b4e5",
+      "finalChildHead": "f90505a76525e5f43a2b53ba9882b02f13392dcf",
+      "note": "the earlier phase-A control-plane commit c30a9216d1cd35824889a3d6009d237e939313ea remains historical, not the final child head"
+    },
+    {
+      "number": 386,
+      "url": "https://github.com/sybil-solutions/local-studio/pull/386",
+      "role": "dependency-review corrections",
+      "state": "MERGED",
+      "mergeCommit": "e125d72cd16557c5f91565f7b45acd0f2e77c7c8",
+      "finalChildHead": "eb4d79f6e19d1a9e17588504c583d82bcac3d56a",
+      "corrections": "explicit 05A, 12c, 12r, 06f, and 03r gates; item-staged Task 09; Task 14 consumes 06f without a reverse dependency; deterministic replica routing; one /v1/models entry per exact served-model name while retaining every instance"
+    }
+  ],
+  "fableSessions": [
+    {
+      "name": "ls-perf-plan-dependency-corrections-20260809",
+      "shortId": "339352c5",
+      "uuid": "339352c5-4187-477c-9590-378dbbd45530",
+      "browser": "disabled",
+      "state": "done",
+      "outcome": "commit eb4d79f6; PR #386 merged"
+    },
+    {
+      "name": "ls-perf-w00-litter-pr239-disposition",
+      "shortId": "64d15e6b",
+      "uuid": "64d15e6b-5ecc-4be1-839f-6a78afb948a4",
+      "browser": "disabled",
+      "mode": "read-only",
+      "state": "done",
+      "outcome": "commit-by-commit disposition recorded in litterPr239Disposition"
+    },
+    {
+      "name": "ls-perf-w00-spark-readonly-discovery",
+      "shortId": "9d971caf",
+      "uuid": "9d971caf-1b22-46f8-b8bd-b1e4ea6bb909",
+      "browser": "disabled",
+      "mode": "read-only",
+      "state": "completed",
+      "outcome": "availability BLOCKED; recorded in sparkObservation"
+    },
+    {
+      "name": "ls-perf-w00-alleycat-authority-review",
+      "shortId": "086267eb",
+      "uuid": "086267eb-a3db-48ab-8ce9-73b9b870dea4",
+      "browser": "disabled",
+      "mode": "read-only",
+      "state": "done",
+      "outcome": "verdict READY AFTER CORRECTIONS; no repository mutation; decision recorded in alleycatDecision"
+    },
+    {
+      "name": "ls-perf-w00-task00-closeout-20260809",
+      "shortId": "26f9bb1c",
+      "uuid": "26f9bb1c-1371-497f-b6cd-9e85aece2e6f",
+      "browser": "disabled",
+      "mode": "documentation and sanitized evidence only",
+      "state": "closeout commit prepared; awaiting Codex review",
+      "branch": "codex/ls-perf-w00-task00-closeout-20260809",
+      "baseCommit": "e125d72cd16557c5f91565f7b45acd0f2e77c7c8"
+    }
+  ],
+  "litterPr239Disposition": {
+    "pullRequest": 239,
+    "merged": false,
+    "nature": "disposition only; no Litter integration worktree or PR exists yet",
+    "commits": [
+      {
+        "commit": "025f7f8b",
+        "disposition": "ACCEPT",
+        "conditions": "preserve legacy JSONL lifecycle/tool normalization and the required iOS activity policy; before integration require Rust and iOS gates plus the narrowly identified ConversationTimelineView follow-up"
+      },
+      {
+        "commit": "f1946f45",
+        "disposition": "ACCEPT",
+        "conditions": "preserve serialized rapid follow-ups and exact-once reservations; run the live probes after the first accepted commit"
+      },
+      {
+        "commit": "96e77deb",
+        "disposition": "ACCEPT AFTER CORRECTION",
+        "conditions": "keep the 16 ms batching intent; replace flaky wall-clock behavior with deterministic/paused-time coverage; require before/after update-count evidence"
+      },
+      {
+        "commit": "a4cbf2df",
+        "disposition": "SPLIT / REIMPLEMENT",
+        "conditions": "release/version stamping is separate release-manager work after product acceptance; it must not ride with the performance fixes"
+      }
+    ],
+    "intendedLandingOrder": ["025f7f8b", "f1946f45", "96e77deb (corrected)"],
+    "releaseStamping": "kept separate from the performance fixes"
+  },
+  "sparkObservation": {
+    "windowStart": "2026-08-10T02:06:29Z",
+    "windowEnd": "2026-08-10T02:31:38Z",
+    "expectedTopology": ["spark-head", "spark-worker"],
+    "reachableNodes": "0 of 2",
+    "additionalLiveNodesObserved": 0,
+    "multiSparkTopologyLiveConfirmed": false,
+    "controllerRuntimeEndpointChecks": "unavailable during the observation",
+    "blockedFields": [
+      "per-node GPU count",
+      "per-node VRAM",
+      "per-node utilization",
+      "per-node temperature",
+      "per-node power",
+      "controller logs",
+      "runtime logs",
+      "instance logs"
+    ],
+    "blockedFieldPolicy": "recorded BLOCKED; never backfilled from stale data",
+    "servedModelNamesObservedLive": [],
+    "servedModelNameTargetsNotObserved": ["deepseek-v4-flash-0731", "gemma-4-12b-it"],
+    "classification": "availability block on the Task 00 discovery surface; not a Task 13 implementation failure and not evidence that the models or topology do not exist outside the observation window",
+    "mutationPerformed": false,
+    "mutationDetail": "no model, node, or controller start, stop, launch, eviction, or reconfiguration occurred",
+    "labels": "logical node labels only; no DNS names, IP addresses, key paths, raw commands, raw logs, or pairing material"
+  },
+  "alleycatDecision": {
+    "state": "SELECTED",
+    "lineage": "clean reviewed recut onto Alleycat origin/main 3f0f84422e977f32cbc98de7a1d6c4e26fb240d1, which contains the #40 realtime contract foundation",
+    "securityPath": "fully enforced signed grants; do not merge the staged proposal wholesale; do not build on the user-owned staged checkout",
+    "ownership": {
+      "alleycat": "authenticated transport and endpoint admission",
+      "localStudio": "schema/capability semantics, gateway credentials, canonical sessions, signature verification, nonce/replay state, expiry, idempotency, revision compare-and-swap, gateway descriptor schema",
+      "litter": "native presentation and shared Rust state"
+    },
+    "mandatoryAttachPathCorrection": "the interactive Local Studio PiBridge path must also enforce grants at attach and thread the authenticated node identity into authorization; the current discarded authenticated-node path is unacceptable",
+    "protocolCrate": "the Rust local-studio protocol crate may remain in the Alleycat workspace only as a fixture-locked mirror of Local Studio-owned Effect Schema definitions, with a closed mirrored capability vocabulary for typed admission; Local Studio remains semantic authority; Pi-specific neutral-contract fields such as pi_session_id become a runtime-qualified runtimeSessionRef",
+    "versionAxes": "transport ALPN, JSON-RPC 2.0 framing, and each contract family's contractVersion are separate version axes",
+    "nonceReplay": "gateway nonce reuse protection covers reads and mutations; the Codex native-resume carve-out is preserved for later Task 09 adapter work",
+    "dormantPrivileges": "split dormant controller-action target grants until a controller-action method is actually enforced; couple grant CLI/IPC availability to live enforcement; correct security-surface naming drift",
+    "fileDisposition": {
+      "rule": "ACCEPT/REWORK/SPLIT at this gate, never wholesale merge",
+      "retain": "audited atomic grant storage, additive advertisement, strict wire DTO/signing primitives, negative-test ideas",
+      "rework": "dispatch, descriptor authority, protocol mirror, runtime-neutral acknowledgements, enforcement coupling",
+      "split": "the multi-concern bridge and dormant privileges"
+    },
+    "implementationOrder": [
+      "05A Local Studio schemas",
+      "clean Alleycat authority recut",
+      "exact Litter pin bump and migrations",
+      "Local Studio/Litter consumers"
+    ],
+    "worktreePolicy": "clean cross-repository worktrees and PRs are created just in time for the first accepted implementation objective",
+    "noMutationProof": {
+      "checkout": "user-owned proposal checkout",
+      "head": "d584a006c75fe744def6cb3f41bcef4991b86b5f",
+      "branch": "codex/local-studio-prod-runtime",
+      "stagedFiles": 14,
+      "stagedDiffSha256": "a2d4a9a928e5ba5776c08f806aa02cb07a7b8efdba23e38dc29048efad9758d9",
+      "unstagedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "porcelainStatusSha256": "4786fc4132bb1405963e92103dd6a71485ad4f6dd87c1a3063aa4ce08383cf33",
+      "untrackedFiles": 0,
+      "auditWorktree": "clean detached audit worktree remained at 3f0f84422e977f32cbc98de7a1d6c4e26fb240d1"
+    }
+  },
+  "browserLease": {
+    "owner": "Codex",
+    "ownerRole": "sole campaign browser/evidence owner",
+    "logicalProfileId": "codex-campaign-browser-profile-01",
+    "state": "reserved_not_started",
+    "processesStarted": "0/1",
+    "browserProcessStarted": false,
+    "leaseStartedAt": null,
+    "leaseEndedAt": null,
+    "journeys": [],
+    "rule": "exactly one persistent browser profile/session for the entire campaign, used serially; every Fable/implementation worker remains browserless"
+  },
+  "requirementMapping": {
+    "R01": {
+      "requirement": "Canonical dated plan/status referenced by AGENTS",
+      "state": "complete_on_source_review_surface",
+      "contributionThisRun": "stale current-state wording repaired; Task 00 closeout snapshot and this manifest recorded"
+    },
+    "R02": {
+      "requirement": "One integration branch/PR with child worktrees and clean history",
+      "state": "task_00_portion_complete_task_15_pending",
+      "contributionThisRun": "merged child PRs #385 and #386 recorded with exact merge commits and final child heads; Task 15 final integration remains pending"
+    },
+    "R17": {
+      "requirement": "One browser/profile total, no fan-out",
+      "state": "enforced_reserved_not_started",
+      "contributionThisRun": "browser lease re-verified: reserved_not_started, 0/1 processes started, Codex sole owner; all discovery sessions browserless"
+    },
+    "R18": {
+      "requirement": "Truthful multi-node cluster/device telemetry with named unified pools counted once",
+      "state": "planned_product_requirement",
+      "task00Precondition": "live topology discovery surface BLOCKED ON AVAILABILITY (0 of 2 nodes reachable in the fresh window); fixtures must be explicitly labeled as fixtures and never presented as live proof"
+    },
+    "R19": {
+      "requirement": "Concurrent multi-model serving inventory, lifecycle, routing, and legacy primary derivation",
+      "state": "planned_product_requirement",
+      "task00Precondition": "exact served-model name targets deepseek-v4-flash-0731 and gemma-4-12b-it recorded; not observed live during the Task 00 window"
+    }
+  },
+  "redactionChecklist": {
+    "appliesTo": "this manifest and every artifact added to it",
+    "items": [
+      { "id": "no-credentials", "rule": "no credentials, API keys, tokens, or key paths", "state": "verified_absent" },
+      { "id": "no-pairing-material", "rule": "no pairing JSON, pair tokens, or node secrets", "state": "verified_absent" },
+      { "id": "no-private-network-identifiers", "rule": "no private DNS names, IP addresses, or hostnames; logical node labels only", "state": "verified_absent" },
+      { "id": "no-local-checkout-paths", "rule": "no local checkout or worktree filesystem paths", "state": "verified_absent" },
+      { "id": "no-raw-commands-or-logs", "rule": "no raw shell commands or raw log content", "state": "verified_absent" },
+      { "id": "no-private-transcripts", "rule": "no user transcripts or external Fable session JSONL paths", "state": "verified_absent" },
+      { "id": "allowed-content-only", "rule": "repository names, branch names, public PR URLs/numbers, commit hashes, logical node labels, run timestamps, and content hashes only", "state": "verified" }
+    ]
+  },
+  "explicitNonClaims": [
+    "Litter PR #239 is not merged; this run records disposition only",
+    "the Spark availability block is not a Task 13 implementation failure and not evidence that the models or topology do not exist outside the observation window",
+    "no product acceptance surface was exercised; control-plane and read-only discovery never promote to product acceptance",
+    "no live model, node, controller, deployment, GPU, or GLM state was mutated by the discovery sessions or by this closeout",
+    "no Litter or Alleycat integration worktree or PR exists yet; none is pretended to exist — they are created just in time for the first accepted implementation objective",
+    "no browser, Chrome integration, Playwright, Electron, simulator, device, or mobile surface was launched by any recorded session",
+    "this manifest lists no artifacts and does not self-hash; integrity comes from Git history and Codex review"
+  ],
+  "artifacts": []
+}

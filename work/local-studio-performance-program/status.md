@@ -1,10 +1,10 @@
 # Local Studio performance program status
 
-Updated: 2026-08-09T22:17:52-04:00
+Updated: 2026-08-09T23:10:46-04:00
 
 Program state: `APPROVED`
 
-Feature implementation: not started; Task 00 control plane is `IMPLEMENTATION COMPLETE — AWAITING CODEX REVIEW` (execution snapshot below)
+Feature implementation: not started; Task 00 is `COMPLETE — CONTROL PLANE AND READ-ONLY DISCOVERY RECORDED; NO PRODUCT ACCEPTANCE` (closeout snapshot below); Wave 1 (Tasks 01, 05A, 12c) is `READY`
 
 This is the canonical campaign ledger for Local Studio, Litter, and Alleycat. It records planning, execution ownership, immutable refs, PRs, Fable sessions, acceptance surfaces, evidence, blockers, and rollback state. `scope.md` defines the architecture and twelve-hour cut; `rules.md` defines how work may be executed; `tasks/` is the dependency-ordered implementation blueprint.
 
@@ -18,12 +18,12 @@ The following remain separate approvals even though the program is approved:
 |---|---|---|
 | Pop GLM maintenance window | All four GPUs are occupied by the active service; onboarding launch/benchmark would require interruption and restoration. | `NOT AUTHORIZED` |
 | Pop destructive cleanup | Root capacity is constrained; deleting caches, images, packages, logs, or any other data requires exact targets, recoverability, and separate approval. | `INVENTORY ONLY — NOT AUTHORIZED` |
-| Alleycat protocol authority | Three divergent histories exist, and staged grant/revoke surfaces are not enforced by live dispatch. | `DECISION REQUIRED AT TASK 00` |
+| Alleycat protocol authority | Three divergent histories exist, and staged grant/revoke surfaces are not enforced by live dispatch. | `SELECTED` 2026-08-09 — fully enforced signed grants on a clean reviewed recut of Alleycat `origin/main` `3f0f8442`; implementation gated by 05A and a just-in-time recut worktree, not another decision |
 | Full controller container | Docker socket, GPU, host-process, workspace, and credential privileges change the security boundary. | `SECURITY REVIEW REQUIRED` |
 | Public Linux publication | Current public releases are macOS-only; a local AppImage is not a public download. | `RELEASE APPROVAL REQUIRED` |
 | Authentication/pairing/signing/release | Credentials, pair tokens, protected signatures, and publication stay user-controlled. | `USER CONTROLLED` |
 | DGX Spark live mutation | Starting, stopping, launching, or reconfiguring models/nodes on live Sparks changes active serving; only read-only discovery is authorized. | `NOT AUTHORIZED — READS FREE` |
-| 2x/4x Spark availability | Whether multi-Spark hardware is live is unknown at planning time. | `UNKNOWN — TASK 00 CONFIRMS READ-ONLY` |
+| 2x/4x Spark availability | Whether multi-Spark hardware is live is unknown at planning time. | `BLOCKED ON AVAILABILITY` — fresh read-only window 2026-08-10T02:06:29Z–02:31:38Z reached 0/2 logical nodes; not proof the topology is absent |
 
 ## Immutable planning snapshot
 
@@ -83,7 +83,17 @@ Task 00 implementation session, `claude-fable-5` and browserless:
 | Browser | disabled; browserless per campaign rule |
 | Owner | Fable implementer for in-repo Task 00 artifacts; Codex owns integration, PRs, merges, browser, and evidence capture |
 | Start | 2026-08-09T20:41:52-04:00 (first verified read-only inspection in the assigned worktree) |
-| State | `IMPLEMENTATION COMPLETE — AWAITING CODEX REVIEW` — commit `c30a9216` pushed via the authorized explicit refspec; child draft PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) open; control-plane only |
+| State | done — PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) merged 2026-08-10 as `bd9e8d9f` from final child head `f90505a7`; the phase-A commit `c30a9216` is historical, not the final head; control-plane only |
+
+Discovery and closeout sessions, all `claude-fable-5` and browserless:
+
+| Name | Short ID | Full UUID | Mode | State |
+|---|---|---|---|---|
+| `ls-perf-plan-dependency-corrections-20260809` | `339352c5` | `339352c5-4187-477c-9590-378dbbd45530` | browserless implementation | done; commit `eb4d79f6`; PR [#386](https://github.com/sybil-solutions/local-studio/pull/386) merged |
+| `ls-perf-w00-litter-pr239-disposition` | `64d15e6b` | `64d15e6b-5ecc-4be1-839f-6a78afb948a4` | browserless, read-only | done; commit-by-commit disposition recorded in the closeout snapshot |
+| `ls-perf-w00-spark-readonly-discovery` | `9d971caf` | `9d971caf-1b22-46f8-b8bd-b1e4ea6bb909` | browserless, read-only | completed; availability `BLOCKED` (closeout snapshot) |
+| `ls-perf-w00-alleycat-authority-review` | `086267eb` | `086267eb-a3db-48ab-8ce9-73b9b870dea4` | browserless, read-only | done; verdict `READY AFTER CORRECTIONS`; no repository mutation |
+| `ls-perf-w00-task00-closeout-20260809` | `26f9bb1c` | `26f9bb1c-1371-497f-b6cd-9e85aece2e6f` | browserless; documentation and sanitized evidence only | closeout commit prepared; awaiting Codex review |
 
 ## Hard resource rule
 
@@ -100,7 +110,7 @@ Exactly one persistent browser profile/session may exist for the entire campaign
 | Checkout | Deployed `.git` points to a nonexistent Mac worktree path | Recreate a clean immutable checkout; do not repair in place. |
 | Recording | Active 2560×1440 X11 with recording/input tools available | One serialized evidence owner can record after approval. |
 | Linux artifact | Public v2.9.10 has macOS assets only | Separate Pop lab proof from public-download proof. |
-| DGX Spark serving | A user-provided screenshot shows the target concurrency example: `deepseek-v4-flash-0731` and `gemma-4-12b-it` served together. This records the user's exact examples, not a verified live process state; 2x/4x rig availability is unknown. | R19 fixture/acceptance examples; Task 00 confirms availability read-only; mutations stay gated. |
+| DGX Spark serving | Planning-time: a user-provided screenshot shows the target concurrency example, `deepseek-v4-flash-0731` and `gemma-4-12b-it` served together — the user's exact examples, not a verified live process state. | R19 fixture/acceptance examples; the fresh Task 00 read-only window found the discovery surface `BLOCKED ON AVAILABILITY` (closeout snapshot); mutations stay gated. |
 
 All live observations are time-sensitive and must be revalidated at execution time.
 
@@ -108,8 +118,8 @@ All live observations are time-sensitive and must be revalidated at execution ti
 
 | ID | Requirement | Task(s) | State | Required acceptance surface |
 |---|---|---|---|---|
-| R01 | Canonical dated plan/status referenced by AGENTS | 00 | `IN PROGRESS — CONTROL PLANE ONLY` | source/review PR |
-| R02 | One integration branch/PR with child worktrees and clean history | 00, 15 | `IN PROGRESS — CONTROL PLANE ONLY` | GitHub/local refs/CI |
+| R01 | Canonical dated plan/status referenced by AGENTS | 00 | `COMPLETE — SOURCE/REVIEW SURFACE` | source/review PR |
+| R02 | One integration branch/PR with child worktrees and clean history | 00, 15 | `IN PROGRESS — TASK 00 COMPLETE; TASK 15 FINAL INTEGRATION PENDING` | GitHub/local refs/CI |
 | R03 | Reproducible 50-session and long-chat performance baselines | 01 | `PLANNED` | hermetic + Pop lab + device |
 | R04 | Instant Local Studio old-chat open, smooth scroll, bounded memory/DOM | 02, 03 | `PLANNED` | benchmark + installed Electron |
 | R05 | Instant Litter inventory/chat open and smooth native scrolling | 04 | `PLANNED` | installed iOS and Android |
@@ -124,29 +134,29 @@ All live observations are time-sensitive and must be revalidated at execution ti
 | R14 | Litter/Alleycat design converges on Local Studio mobile semantics | 10 | `PLANNED — CONTINUATION TRANCHE` | golden native screens |
 | R15 | Pop container lab and first-run/onboarding recording | 11 | `PLANNED`; launch gated | Pop container/web/AppImage surfaces labeled separately |
 | R16 | Screenshots, videos, reports, hashes, and no leftover trash | 15 | `PLANNED` | evidence manifest + clean worktrees |
-| R17 | One browser/profile total, no fan-out | all UI tasks | `ENFORCED IN PLAN` | browser lease log |
-| R18 | Truthful multi-node cluster/device telemetry with named unified pools counted once | 13 | `PLANNED` | topology fixtures + live read-only `PASS`-or-`BLOCKED` |
-| R19 | Concurrent multi-model serving inventory, lifecycle, routing, and legacy primary derivation | 12 | `PLANNED` | serving fixtures + two-instance acceptance |
+| R17 | One browser/profile total, no fan-out | all UI tasks | `ENFORCED — BROWSER RESERVED, 0/1 STARTED` | browser lease log |
+| R18 | Truthful multi-node cluster/device telemetry with named unified pools counted once | 13 | `PLANNED — LIVE SURFACE BLOCKED ON AVAILABILITY AT TASK 00; FIXTURES MUST BE LABELED FIXTURES` | topology fixtures + live read-only `PASS`-or-`BLOCKED` |
+| R19 | Concurrent multi-model serving inventory, lifecycle, routing, and legacy primary derivation | 12 | `PLANNED — TARGET NAMES RECORDED AT TASK 00, NOT OBSERVED LIVE` | serving fixtures + two-instance acceptance |
 | R20 | Configurable same-controller vision-sidecar pairing with routing and attribution | 14 | `PLANNED` | pairing fixtures + routed attribution acceptance |
 
 ## Task ledger
 
 | Task | Title | Dependency | State | Planned owner |
 |---|---|---|---|---|
-| 00 | Control plane, refs, worktrees, PRs, evidence schema | approval | `IMPLEMENTATION COMPLETE — AWAITING CODEX REVIEW` | Codex + Fable `ls-perf-w00-task00-control-plane` (in-repo artifacts) |
-| 01 | Deterministic corpus and clean baseline | 00 | `NOT STARTED` | Fable implementer + Codex measurement |
+| 00 | Control plane, refs, worktrees, PRs, evidence schema | approval | `COMPLETE — CONTROL PLANE AND READ-ONLY DISCOVERY RECORDED; NO PRODUCT ACCEPTANCE` | Codex + Fable `ls-perf-w00-task00-control-plane` (in-repo artifacts) |
+| 01 | Deterministic corpus and clean baseline | 00 | `READY` | Fable implementer + Codex measurement |
 | 02 | Runtime inventory and hydration hot path | 01; 05A for summary identity fields | `NOT STARTED` | Fable implementer |
 | 03 | Electron session store, timeline, inspector, scroll | 01, 02 | `NOT STARTED` | Fable implementer |
 | 04 | Litter native performance and state amplification | 01, 00 #239 disposition; 05A/05 as staged | `NOT STARTED — INSTALLED-DEVICE MATRIX IN CONTINUATION` | Fable implementer |
-| 05 | Identity, Alleycat authority, and cross-surface sync | 00 | `NOT STARTED` | Fable implementer + Codex security review |
+| 05 | Identity, Alleycat authority, and cross-surface sync | 00 | `05A READY` — authority selected; items 1-10 wait for 05A and a clean just-in-time cross-repository recut/worktree, not another authority decision | Fable implementer + Codex security review |
 | 06 | Versioned multi-environment Usage data plane | 00, 01, 05A, 12c | `NOT STARTED` | Fable implementer |
 | 07 | Usage UI and responsive Local Studio presentation | 06 | `NOT STARTED` | Fable implementer + Codex visual review |
 | 08 | Execution targets and remote filesystem vertical slice | 02, 05A, security review | `NOT STARTED` | Fable implementer + Codex isolation review |
 | 09 | Runtime adapters, goals, controls, reliability | 05, 06 gate start; 08 placement/routing items only | `NOT STARTED` | Fable implementer |
 | 10 | Shared design contract and native convergence | 03, 04, 05, 09 | `CONTINUATION — NOT IN TWELVE-HOUR TRANCHE` | Fable implementer + Codex visual review |
 | 11 | Pop lab, Linux surface, onboarding journey | 00, 01, relevant integrated features | `NOT STARTED` | Codex evidence owner |
-| 12 | Concurrent multi-model serving inventory and lifecycle | 00; 01 harness conventions | `NOT STARTED` | Fable implementer |
-| 13 | Multi-Spark topology and telemetry truth | 12c compute-contract foundation; 00 availability discovery | `NOT STARTED` | Fable implementer |
+| 12 | Concurrent multi-model serving inventory and lifecycle | 00; 01 harness conventions | `12c READY` | Fable implementer |
+| 13 | Multi-Spark topology and telemetry truth | 12c compute-contract foundation; 00 availability discovery | `WAITING ON 12c; LIVE ACCEPTANCE SURFACE BLOCKED ON AVAILABILITY` | Fable implementer |
 | 14 | Vision-sidecar pairing, routing, and attribution | 12c, 12r + 06f for 14a; 03r for 14b | `NOT STARTED` | Fable implementer |
 | 15 | Integration, installed acceptance, cleanup, delivery | all accepted tasks 00–14 | `NOT STARTED` | Codex |
 
@@ -156,19 +166,21 @@ Wave plan: 05A (Task 05 identity schemas) and 12c (Task 12 serving-contract/comp
 
 | Repository | Integration branch | Target | PR | State |
 |---|---|---|---|---|
-| Local Studio | `codex/local-studio-performance-integration-20260809` | `dev` | [#382](https://github.com/sybil-solutions/local-studio/pull/382) | draft; planning only |
+| Local Studio | `codex/local-studio-performance-integration-20260809` | `dev` | [#382](https://github.com/sybil-solutions/local-studio/pull/382) | open draft; at integration head `e125d72c` all checks passed — gates, controller, agent-runtime, frontend, desktop-package, secret scanning, CodeQL, dependency review; worktree and remote ref matched |
 | Local Studio workpack revision child | `codex/ls-perf-plan-revision-20260809` | `codex/local-studio-performance-integration-20260809` | [#383](https://github.com/sybil-solutions/local-studio/pull/383) | merged 2026-08-10T00:35:12Z as integration commit `6bdf748a`; verified read-only 2026-08-10T00:45:10Z |
-| Local Studio Task 00 child | `codex/ls-perf-w00-task-00-control-plane` | `codex/local-studio-performance-integration-20260809` | [#385](https://github.com/sybil-solutions/local-studio/pull/385) | draft; head `c30a9216` pushed with all hooks enforced; awaiting Codex review/integration |
-| Litter | create after approval from recorded `origin/main` | `main` | pending | not created |
-| Alleycat | create after authority decision | selected protected branch | pending | blocked by authority |
+| Local Studio Task 00 child | `codex/ls-perf-w00-task-00-control-plane` | `codex/local-studio-performance-integration-20260809` | [#385](https://github.com/sybil-solutions/local-studio/pull/385) | merged 2026-08-10 as `bd9e8d9f` from final child head `f90505a7`; phase-A commit `c30a9216` is historical, not the final head |
+| Local Studio dependency-corrections child | `codex/ls-perf-plan-dependency-corrections-20260809` | `codex/local-studio-performance-integration-20260809` | [#386](https://github.com/sybil-solutions/local-studio/pull/386) | merged as `e125d72c` from child head `eb4d79f6` |
+| Litter | recorded base `origin/main` `5f651a47`; worktree/PR created just in time for the first accepted Litter objective | `main` | pending | base and PR #239 disposition recorded; no empty PR opened |
+| Alleycat | authority selected — clean reviewed recut of `origin/main` `3f0f8442`; worktree/PR created just in time after 05A | selected protected branch | pending | authority selected; recut worktree/PR follows the first accepted objective |
 
 ## Evidence ledger
 
-The Task 00 control-plane run below is `CONTROL PLANE ONLY — NO PRODUCT ACCEPTANCE`; no product execution evidence exists yet. Planning research is not feature acceptance. Use `evidence/<run-id>/manifest.json` and link each run here.
+Both Task 00 runs below are control-plane and read-only discovery only — no product acceptance; no product execution evidence exists yet. Planning research is not feature acceptance. Use `evidence/<run-id>/manifest.json` and link each run here.
 
 | Run ID | Commit | Surface | Requirements | Result | Manifest |
 |---|---|---|---|---|---|
-| `2026-08-09-task-00-control-plane` | `c30a9216d1cd35824889a3d6009d237e939313ea` on `codex/ls-perf-w00-task-00-control-plane` from base `6bdf748a4da0d5634aa944417dcf362023f7ddf8` | control plane only — no product surface | R01, R02, R16, R17 | `CONTROL PLANE ONLY — AWAITING CODEX REVIEW — NO PRODUCT ACCEPTANCE` | [manifest.json](../../evidence/2026-08-09-task-00-control-plane/manifest.json) |
+| `2026-08-09-task-00-control-plane` | `c30a9216d1cd35824889a3d6009d237e939313ea` on `codex/ls-perf-w00-task-00-control-plane` from base `6bdf748a4da0d5634aa944417dcf362023f7ddf8` | control plane only — no product surface | R01, R02, R16, R17 | `CONTROL PLANE ONLY — NO PRODUCT ACCEPTANCE` — truthful historical snapshot; superseded for current-state decisions by `2026-08-09-task-00-external-discovery` | [manifest.json](../../evidence/2026-08-09-task-00-control-plane/manifest.json) |
+| `2026-08-09-task-00-external-discovery` | closeout commit on `codex/ls-perf-w00-task00-closeout-20260809` from base `e125d72cd16557c5f91565f7b45acd0f2e77c7c8` | read-only discovery — no product surface | R01, R02, R17, R18, R19 | `TASK 00 CLOSEOUT — READ-ONLY DISCOVERY — NO PRODUCT ACCEPTANCE` | [manifest.json](../../evidence/2026-08-09-task-00-external-discovery/manifest.json) |
 
 ## Known blockers and stop conditions
 
@@ -183,11 +195,11 @@ The Task 00 control-plane run below is `CONTROL PLANE ONLY — NO PRODUCT ACCEPT
 
 ## Next transition
 
-Approval is recorded above. Task 00's in-repo control plane is delivered on child draft PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) and awaits Codex review/integration; the remaining Task 00 items stay with Codex — PR #239 disposition, the Alleycat authority decision, read-only 2x/4x Spark discovery, and any cross-repository worktrees/PRs. A separate Fable revision session incorporates the active dependency review; this session leaves the dependency graph untouched. Wave 1 (Tasks 01, 05, 12) follows once Task 00 is accepted; the 12c merge gates Task 13 branch creation and the 12r merge gates Task 14a branch creation. Separate gates above remain in force.
+Task 00 is closed: the control plane merged (PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) as `bd9e8d9f`, PR [#386](https://github.com/sybil-solutions/local-studio/pull/386) as `e125d72c`), the external read-only discovery outcomes are recorded in the closeout snapshot below, and no product acceptance is claimed. Wave 1 (Tasks 01, 05A, 12c) is `READY` and starts next under the existing rules. The 12c merge gates Task 13 branch creation; 12r plus 06f gate Task 14a; 03r gates 14b. Litter and Alleycat implementation worktrees/PRs are created just in time for their first accepted objectives. The separate approval gates above remain in force; Codex reviews and owns integration of this closeout commit.
 
-## Task 00 execution snapshot — 2026-08-09
+## Task 00 execution snapshot — 2026-08-09 (historical)
 
-Recorded: 2026-08-09T21:43:08-04:00 (America/New_York, EDT). Task 00 in-repo control-plane work is `IMPLEMENTATION COMPLETE — AWAITING CODEX REVIEW`: commit `c30a9216d1cd35824889a3d6009d237e939313ea` (parent `6bdf748a4da0d5634aa944417dcf362023f7ddf8`; Claude Fable 5 co-author trailer) is pushed and delivered as child draft PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) into the integration branch. This snapshot records control-plane facts only; R03–R20 and every product acceptance surface remain planned, pending, blocked, unknown, or not run as recorded above.
+Historical point-in-time record, superseded for current state by the Task 00 closeout snapshot below; PR #385 has since merged. Recorded: 2026-08-09T21:43:08-04:00 (America/New_York, EDT). At recording time, Task 00 in-repo control-plane work was `IMPLEMENTATION COMPLETE — AWAITING CODEX REVIEW`: commit `c30a9216d1cd35824889a3d6009d237e939313ea` (parent `6bdf748a4da0d5634aa944417dcf362023f7ddf8`; Claude Fable 5 co-author trailer) was pushed and delivered as child draft PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) into the integration branch. This snapshot records control-plane facts only.
 
 Twelve-hour clock: campaign kickoff 2026-08-09T20:41:52-04:00, confirmed by Codex at Phase B.
 
@@ -213,11 +225,7 @@ Run manifest [manifest.json](../../evidence/2026-08-09-task-00-control-plane/man
 
 `reserved_not_started`. Codex solely owns the single campaign lease, logical profile `codex-campaign-browser-profile-01`; no campaign browser, profile, or process has started; all workers stay browserless.
 
-### Decisions required and unknowns
-
-- Alleycat protocol authority: `NOT SELECTED`. Required decision: exactly one truthful protocol path — the scoped pair-token Pi bridge or a fully enforced signed grant protocol — on one lineage: `origin/main` `3f0f8442`, the pinned release lineage `417f2a9f`, or a reviewed recut of the staged `d584a006` grant work. Until recorded: no Alleycat integration worktree/PR, and authority-dependent Task 05 work stays blocked.
-- 2x/4x DGX Spark availability: `UNKNOWN`. No fresh read-only discovery result has been supplied and this session performed none; the user-provided screenshot records the target example, not live proof. Live Spark mutation remains gated.
-- Codex-verified read-only cross-repo facts (supplied 2026-08-09T21:02:54-04:00; reconfirmed by Codex at Phase B): Litter `origin/main` `5f651a475a16c93c273501fd370627f826c5e06f`; Litter primary checkout `codex/post-github-cleanup-20260804` at `9ebb405bb329866e3e3f6e9d16b45a5bb1a91706`, user-owned, dirty only at modified submodules `shared/third_party/codex` and `shared/third_party/ghostty` plus untracked `prompt.md`; Litter PR #239 `OPEN`, clean/mergeable at `a4cbf2df005dd45633d00377678d6adc9cc3146a`, required shared-prep/android/ios/release checks successful or intentionally skipped, disposition still pending (commit-by-commit review not yet performed); Litter PR #240 `OPEN`, clean/mergeable at `b277efd34d9962d3482372067618a3d6bc992e10`, planning reference only; Alleycat `origin/main` `3f0f84422e977f32cbc98de7a1d6c4e26fb240d1`; Alleycat staged checkout `codex/local-studio-prod-runtime` at `d584a006c75fe744def6cb3f41bcef4991b86b5f`, exactly 14 staged files (5829 insertions, 18 deletions). No cross-repository worktree was created; Litter integration worktree creation remains a Codex-owned step.
+The former "Decisions required and unknowns" subsection is resolved and superseded; see "External discovery outcomes and remaining gates" in the Task 00 closeout snapshot below for the selected Alleycat authority, the Spark availability outcome, and the cross-repository fact tables.
 
 ### Worktree inventory (observed 2026-08-10T00:41:52Z)
 
@@ -229,3 +237,60 @@ Clean assertions are scoped to the two campaign worktrees actually checked (refs
 - Root `npm run check`: exit 0, run once unpiped after Codex-authorized frozen-lockfile installs (`bun install --frozen-lockfile` in `shared/`, `controller/`, `services/agent-runtime/`; `npm ci --legacy-peer-deps` in `frontend/` with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` and `ELECTRON_SKIP_BINARY_DOWNLOAD=1`). All seven constituents ran; frontend unit tests 127 passed; all four lockfile SHA-256 values identical before and after; no browser, Electron, Playwright binary, or product service launched.
 - Push: `git push origin codex/ls-perf-w00-task-00-control-plane:codex/ls-perf-w00-task-00-control-plane` completed with every hook enforced (commit-range check, frontend `check:static`, `check:cleanup`, `assert-standalone`); remote ref equals local HEAD; working tree clean after push.
 - Context only, never a substitute for the local aggregate: umbrella PR #382 combined CI green at integration head `6bdf748a`.
+
+## Task 00 closeout snapshot — 2026-08-09
+
+Recorded: 2026-08-09T23:10:46-04:00 (America/New_York, EDT) by closeout session `26f9bb1c`. Task 00 state: `COMPLETE — CONTROL PLANE AND READ-ONLY DISCOVERY RECORDED; NO PRODUCT ACCEPTANCE`. Evidence: [manifest.json](../../evidence/2026-08-09-task-00-external-discovery/manifest.json). The execution snapshot above is historical; this section is current.
+
+### External discovery outcomes and remaining gates
+
+Local Studio integration:
+
+| Fact | Value |
+|---|---|
+| Integration head | `codex/local-studio-performance-integration-20260809` at `e125d72cd16557c5f91565f7b45acd0f2e77c7c8`; integration worktree and remote integration ref matched after merge |
+| Task 00 child PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) | merged as `bd9e8d9ff8781b2068bd7e2e7f705cf4df55b4e5` from final child head `f90505a76525e5f43a2b53ba9882b02f13392dcf`; phase-A commit `c30a9216d1cd35824889a3d6009d237e939313ea` is historical, not the final head |
+| Dependency-corrections child PR [#386](https://github.com/sybil-solutions/local-studio/pull/386) | merged as `e125d72cd16557c5f91565f7b45acd0f2e77c7c8` from child head `eb4d79f6e19d1a9e17588504c583d82bcac3d56a` |
+| PR #386 corrections | explicit 05A, 12c, 12r, 06f, and 03r gates; item-staged Task 09; Task 14 consumes 06f without a reverse dependency; deterministic replica routing; one `/v1/models` entry per exact served-model name while retaining every instance |
+| Umbrella draft PR [#382](https://github.com/sybil-solutions/local-studio/pull/382) | at `e125d72c` passed gates, controller, agent-runtime, frontend, desktop-package, secret scanning, CodeQL, and dependency review |
+
+Litter — PR #239 commit-by-commit disposition (disposition only; PR #239 is not merged):
+
+| Commit | Disposition |
+|---|---|
+| `025f7f8b` | ACCEPT — preserve legacy JSONL lifecycle/tool normalization and the required iOS activity policy; before integration require Rust and iOS gates plus the narrowly identified ConversationTimelineView follow-up |
+| `f1946f45` | ACCEPT — preserve serialized rapid follow-ups and exact-once reservations; run the live probes after the first accepted commit |
+| `96e77deb` | ACCEPT AFTER CORRECTION — keep the 16 ms batching intent, replace flaky wall-clock behavior with deterministic/paused-time coverage, and require before/after update-count evidence |
+| `a4cbf2df` | SPLIT / REIMPLEMENT — release/version stamping is separate release-manager work after product acceptance and must not ride with the performance fixes |
+
+Intended landing order: `025f7f8b`, then `f1946f45`, then the corrected `96e77deb`; release stamping stays separate. Litter base for the future integration worktree remains `origin/main` `5f651a475a16c93c273501fd370627f826c5e06f` (PR #239 head `a4cbf2df005dd45633d00377678d6adc9cc3146a`; PR #240 stays planning reference only); the user-owned primary checkout with its dirty submodules remains untouched.
+
+Alleycat — authority decision `SELECTED`:
+
+| Aspect | Decision |
+|---|---|
+| Lineage | clean reviewed recut onto Alleycat `origin/main` `3f0f84422e977f32cbc98de7a1d6c4e26fb240d1`, which contains the #40 realtime contract foundation |
+| Security path | fully enforced signed grants; do not merge the staged proposal wholesale; do not build on the user-owned staged checkout |
+| Ownership | Alleycat owns authenticated transport and endpoint admission; Local Studio owns schema/capability semantics, gateway credentials, canonical sessions, signature verification, nonce/replay state, expiry, idempotency, revision compare-and-swap, and gateway descriptor schema; Litter owns native presentation and shared Rust state |
+| Attach-path correction (mandatory) | the interactive Local Studio PiBridge path must also enforce grants at attach and thread the authenticated node identity into authorization; the current discarded authenticated-node path is unacceptable |
+| Protocol crate | the Rust local-studio protocol crate may remain in the Alleycat workspace only as a fixture-locked mirror of Local Studio-owned Effect Schema definitions with a closed mirrored capability vocabulary for typed admission; Local Studio remains semantic authority; Pi-specific neutral-contract fields such as `pi_session_id` become a runtime-qualified `runtimeSessionRef` |
+| Version axes | transport ALPN, JSON-RPC 2.0 framing, and each contract family's `contractVersion` stay separate version axes |
+| Nonce/replay | gateway nonce reuse protection covers reads and mutations; the Codex native-resume carve-out is preserved for later Task 09 adapter work |
+| Dormant privileges | split dormant controller-action target grants until a controller-action method is actually enforced; couple grant CLI/IPC availability to live enforcement; correct security-surface naming drift |
+| File disposition | ACCEPT/REWORK/SPLIT, never wholesale merge — retain audited atomic grant storage, additive advertisement, strict wire DTO/signing primitives, and negative-test ideas; rework dispatch, descriptor authority, protocol mirror, runtime-neutral acknowledgements, and enforcement coupling; split the multi-concern bridge and dormant privileges |
+| Implementation order | 05A Local Studio schemas first; clean Alleycat authority recut; exact Litter pin bump and migrations; then Local Studio/Litter consumers — with clean cross-repository worktrees and PRs created just in time for the first accepted implementation objective |
+| No-mutation proof (user-owned proposal checkout) | HEAD `d584a006c75fe744def6cb3f41bcef4991b86b5f` on `codex/local-studio-prod-runtime`; 14 staged files; staged diff SHA-256 `a2d4a9a928e5ba5776c08f806aa02cb07a7b8efdba23e38dc29048efad9758d9`; unstaged diff SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`; porcelain status SHA-256 `4786fc4132bb1405963e92103dd6a71485ad4f6dd87c1a3063aa4ce08383cf33`; untracked files 0; a clean detached audit worktree remained at `3f0f8442` |
+
+DGX Spark — fresh read-only discovery, window 2026-08-10T02:06:29Z through 2026-08-10T02:31:38Z:
+
+| Field | Observation |
+|---|---|
+| Expected topology | two logical nodes, `spark-head` and `spark-worker` |
+| Reachable | 0 of 2; controller/runtime endpoint checks unavailable during the window |
+| Additional nodes | none observed; a 2x or 4x Spark topology is not live-confirmed |
+| Per-node telemetry and logs | live GPU count, VRAM, utilization, temperature, power, controller logs, runtime logs, and instance logs are `BLOCKED` — never backfilled from stale data |
+| Served models | exact names `deepseek-v4-flash-0731` and `gemma-4-12b-it` not observed live |
+| Classification | availability block on the Task 00 discovery surface — not a Task 13 implementation failure and not evidence that the models or topology do not exist outside the observation window |
+| Mutation | none — no model/node/controller start, stop, launch, eviction, or reconfiguration; `mutationPerformed` false |
+
+Remaining gates: Pop GLM maintenance window, Pop destructive cleanup, full controller container security review, public Linux publication, authentication/pairing/signing/release, and DGX Spark live mutation all remain separate and unchanged (approval boundary above). Browser lease: logical profile `codex-campaign-browser-profile-01`, state `reserved_not_started`, processes started 0/1, Codex sole owner; every Fable/implementation worker stays browserless.
