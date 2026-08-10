@@ -259,6 +259,7 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
           nodeId: reservation.nodeId,
           engine: reservation.engine,
           recipeId: reservation.recipeId,
+          servedModelName: null,
           runtime: reservation.runtime,
           ref: null,
           port,
