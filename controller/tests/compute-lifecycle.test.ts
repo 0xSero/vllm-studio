@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect } from "effect";
@@ -18,6 +18,10 @@ import {
   type ComputeLaunchInput,
   type ComputeService,
 } from "../src/modules/compute/lifecycle";
+import {
+  LEGACY_INSTANCE_RECORD_DECODED,
+  LEGACY_INSTANCE_RECORD_JSON,
+} from "./fixtures/serving-state-v1";
 
 const run = <A, E>(effect: Effect.Effect<A, E>): Promise<A> => Effect.runPromise(effect);
 const runExit = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromiseExit(effect);
@@ -142,6 +146,7 @@ describe("reserve is the lease", () => {
           nodeId: "self",
           engine: "llamacpp",
           recipeId: "r",
+          servedModelName: "served-a",
           runtime: "process",
           candidates: ["GPU-a", "GPU-b"],
           need: 2,
@@ -153,6 +158,8 @@ describe("reserve is the lease", () => {
       ),
     );
     expect(first.devices).toEqual(["GPU-a", "GPU-b"]);
+    expect(first.servedModelName).toBe("served-a");
+    expect(store.read("a")?.servedModelName).toBe("served-a");
 
     // Everything is now held — a second reservation must fail with no-capacity.
     const second = await runExit(
@@ -162,6 +169,7 @@ describe("reserve is the lease", () => {
           nodeId: "self",
           engine: "llamacpp",
           recipeId: "r",
+          servedModelName: "served-b",
           runtime: "process",
           candidates: ["GPU-a", "GPU-b"],
           need: 1,
@@ -183,6 +191,7 @@ describe("reserve is the lease", () => {
           nodeId: "self",
           engine: "llamacpp",
           recipeId: "r",
+          servedModelName: "served-c",
           runtime: "process",
           candidates: ["GPU-a", "GPU-b"],
           need: 1,
@@ -208,6 +217,7 @@ describe("reserve is the lease", () => {
           nodeId: "self",
           engine: "llamacpp",
           recipeId: "r",
+          servedModelName: "served-a",
           runtime: "process",
           candidates: ["GPU-a"],
           need: 1,
@@ -237,6 +247,7 @@ describe("reserve is the lease", () => {
           nodeId: "self",
           engine: "llamacpp",
           recipeId: "r",
+          servedModelName: name,
           runtime: "process",
           candidates: ["GPU-a", "GPU-b"],
           need: 1,
@@ -269,6 +280,7 @@ describe("reserve is the lease", () => {
             nodeId: "self",
             engine: "llamacpp",
             recipeId: "r",
+            servedModelName: name,
             runtime: "process",
             candidates: [`GPU-${name}`],
             need: 1,
@@ -396,6 +408,8 @@ describe("ready path with a real health endpoint", () => {
       const record = await launchPromise;
       expect(record.ref?.kind).toBe("process");
       expect(record.port).toBe(port);
+      expect(record.servedModelName).toBe("test");
+      expect(store.read("test-model")?.servedModelName).toBe("test");
       expect(events).toContain("test-model:ready");
       const views = await run(compute.instances());
       expect(views).toHaveLength(1);
@@ -487,5 +501,44 @@ describe("failure mappers", () => {
     );
     // The crash log rides along at a single truncation length.
     expect(toHttp(failures[5] as LaunchFailure).detail).toContain("CUDA OOM");
+  });
+});
+
+describe("served model identity", () => {
+  test("a legacy record without servedModelName decodes to null", () => {
+    const store = makeInstanceStore(freshRoot());
+    writeFileSync(
+      join(store.directory, "legacy-deepseek.json"),
+      JSON.stringify(LEGACY_INSTANCE_RECORD_JSON),
+    );
+    expect(store.read("legacy-deepseek")).toEqual(LEGACY_INSTANCE_RECORD_DECODED);
+    expect(store.read("legacy-deepseek")?.servedModelName).toBeNull();
+  });
+
+  test("a present malformed servedModelName rejects the record", () => {
+    const store = makeInstanceStore(freshRoot());
+    writeFileSync(
+      join(store.directory, "legacy-deepseek.json"),
+      JSON.stringify({ ...LEGACY_INSTANCE_RECORD_JSON, servedModelName: 42 }),
+    );
+    expect(store.read("legacy-deepseek")).toBeNull();
+  });
+
+  test("a present empty-string servedModelName is preserved exactly", () => {
+    const store = makeInstanceStore(freshRoot());
+    store.write({ ...LEGACY_INSTANCE_RECORD_DECODED, servedModelName: "" });
+    const read = store.read("legacy-deepseek");
+    expect(read?.servedModelName).toBe("");
+    expect(typeof read?.servedModelName).toBe("string");
+  });
+
+  test("new writes always persist the servedModelName key", () => {
+    const store = makeInstanceStore(freshRoot());
+    store.write(LEGACY_INSTANCE_RECORD_DECODED);
+    const raw = JSON.parse(
+      readFileSync(join(store.directory, "legacy-deepseek.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect("servedModelName" in raw).toBe(true);
+    expect(raw["servedModelName"]).toBeNull();
   });
 });

@@ -51,6 +51,7 @@ export interface Reservation {
   readonly nodeId: NodeId;
   readonly engine: EngineId;
   readonly recipeId: string;
+  readonly servedModelName: string;
   readonly runtime: EngineRuntimeKind;
   readonly candidates: readonly DeviceId[];
   readonly need: number;
@@ -68,13 +69,22 @@ export interface Reservation {
 /** Names come from recipes but stop/drop accept user input — keep them inside the dir. */
 const safeName = (name: string): string => name.replace(/[/\\]/g, "_");
 
-const isRecord = (value: unknown): value is InstanceRecord =>
+const isRecord = (value: unknown): value is Omit<InstanceRecord, "servedModelName"> =>
   typeof value === "object" &&
   value !== null &&
   typeof (value as InstanceRecord).name === "string" &&
   typeof (value as InstanceRecord).engine === "string" &&
   typeof (value as InstanceRecord).port === "number" &&
   Array.isArray((value as InstanceRecord).devices);
+
+const decodeRecord = (value: unknown): InstanceRecord | null => {
+  if (!isRecord(value)) return null;
+  const servedModelName = (value as { readonly servedModelName?: unknown }).servedModelName;
+  if (servedModelName === undefined) return { ...value, servedModelName: null };
+  return servedModelName === null || typeof servedModelName === "string"
+    ? { ...value, servedModelName }
+    : null;
+};
 
 const pidAlive = (pid: number): boolean => {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -153,7 +163,7 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
   const read = (name: string): InstanceRecord | null => {
     try {
       const parsed: unknown = JSON.parse(readFileSync(recordPath(name), "utf8"));
-      return isRecord(parsed) ? parsed : null;
+      return decodeRecord(parsed);
     } catch {
       return null;
     }
@@ -259,7 +269,7 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
           nodeId: reservation.nodeId,
           engine: reservation.engine,
           recipeId: reservation.recipeId,
-          servedModelName: null,
+          servedModelName: reservation.servedModelName,
           runtime: reservation.runtime,
           ref: null,
           port,

@@ -202,6 +202,7 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
           nodeId: host.nodeId,
           engine: input.engine,
           recipeId: input.recipeId,
+          servedModelName: input.servedModelName,
           runtime: input.runtime,
           candidates,
           need: input.devices
