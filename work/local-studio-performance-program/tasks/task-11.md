@@ -8,7 +8,7 @@ Create a reproducible Pop!_OS acceptance environment and record the first-run jo
 
 - Task 00 immutable refs, evidence manifest, browser lease, and deployment/security decisions.
 - Task 01 benchmark corpus.
-- Accepted integration build for every feature shown.
+- Accepted integration build for every feature shown; once [Task 12](task-12.md)/[Task 13](task-13.md) land, GPU and serving evidence uses their contracts.
 - Explicit maintenance approval before interrupting GLM or launching another model.
 
 ## Files involved
@@ -53,6 +53,7 @@ Codex owns the single persistent browser/profile and records one step at a time 
 - Every journey step is `PASS`, `FAIL`, or `BLOCKED` with evidence; no missing step is implied complete.
 - The active GLM service is untouched without approval, or is restored and proven after the maintenance test.
 - Container, native controller, local AppImage, and public download are labeled as distinct surfaces.
+- Recorded GPU/serving evidence names the Task 13 topology shape (one Pop node, four discrete GPU pools) and the Task 12 serving inventory rather than coordinator-only `/gpus` or singular `/status` output.
 - One browser/profile/session total is demonstrated in the lease log.
 
 ## Rollback

@@ -20,7 +20,7 @@ Deliver a polished Local Studio Usage surface inspired by the pinned T3 nightly 
 
 ## Work
 
-1. Render separate **AI session activity** and **controller serving** sections with plain-language explanations of their overlap and semantics.
+1. Render separate **AI session activity** and **controller serving** sections with plain-language explanations of their overlap and semantics. When models serve concurrently, controller-serving views break down by serving instance/served model from the [Task 12](task-12.md) contract rather than one merged series.
 2. Add 7/30/90-day range, cost/tokens mode, provider/runtime/environment/project/model breakdowns, daily trend, cache savings, and source coverage where the contract supports them.
 3. Show loading only until all queried environments reach terminal status, then present complete/partial/failed/duplicate/unpriced coverage without totals jumping silently.
 4. Show ChatGPT as a distinct imported source when an authorized export/API is configured, or as an explicit unsupported/pending coverage item; do not imply it is scanned automatically.
@@ -50,7 +50,7 @@ Deliver a polished Local Studio Usage surface inspired by the pinned T3 nightly 
 - The page is recognizably Local Studio and meets the pinned interaction intent without unsupported metrics.
 - ChatGPT import coverage is visibly proven or pending; it cannot be silently counted as complete.
 - Desktop and mobile layouts pass responsive/accessibility gates with no heatmap overflow regression.
-- Controller telemetry cannot be mistaken for all AI-session activity.
+- Controller telemetry cannot be mistaken for all AI-session activity, and concurrent serving instances stay visually distinct, including vision-sidecar attribution from [Task 14](task-14.md).
 - Screenshots and installed-Electron proof are manifest-listed under the exact build.
 
 ## Rollback

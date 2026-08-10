@@ -13,7 +13,7 @@ Create reproducible, sanitized fixtures and capture clean cold/warm performance 
 
 - `scripts/project.mjs` for durable benchmark dispatch
 - `services/agent-runtime/test/` and existing session fixture helpers
-- `frontend/e2e/bench/` and performance configuration
+- `frontend/e2e/bench/` (created by this task; it does not exist yet) and performance configuration
 - Litter shared Rust test fixtures plus native benchmark targets selected by its repository rules
 - `evidence/<run-id>/manifest.json` and raw benchmark JSON
 
