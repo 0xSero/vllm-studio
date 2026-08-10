@@ -97,3 +97,4 @@ frontend/dist-desktop-dev/
 frontend/dist-installers/
 .vercel
 .env*
+/evidence/*/.raw/

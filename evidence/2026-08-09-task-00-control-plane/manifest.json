@@ -1,0 +1,315 @@
+{
+  "schemaVersion": "1.0.0",
+  "runId": "2026-08-09-task-00-control-plane",
+  "task": {
+    "id": "00",
+    "title": "Establish the campaign control plane",
+    "workpack": "work/local-studio-performance-program/tasks/task-00.md"
+  },
+  "createdAt": "2026-08-09T20:52:46-04:00",
+  "updatedAt": "2026-08-09T21:43:08-04:00",
+  "timezone": "America/New_York (EDT, UTC-04:00)",
+  "state": "implementation_complete_awaiting_codex_review",
+  "classification": "CONTROL PLANE ONLY — NO PRODUCT ACCEPTANCE",
+  "campaign": {
+    "program": "local-studio-performance-program",
+    "canonicalLedger": "work/local-studio-performance-program/status.md",
+    "integrationBranch": "codex/local-studio-performance-integration-20260809",
+    "integrationBranchOwner": "Codex",
+    "integrationBaseFromOriginDev": "88b56e36bd5c84930dbe364296ba4ae669f72689",
+    "umbrellaDraftPr": {
+      "url": "https://github.com/sybil-solutions/local-studio/pull/382",
+      "base": "dev",
+      "head": "codex/local-studio-performance-integration-20260809",
+      "state": "open draft; final merge into dev stays user/reviewer controlled",
+      "observedAt": "2026-08-10T00:45:10Z"
+    },
+    "childBranch": "codex/ls-perf-w00-task-00-control-plane",
+    "childBranchOwner": "Fable implementation session ls-perf-w00-task00-control-plane (sole owner)",
+    "childExactBaseSha": "6bdf748a4da0d5634aa944417dcf362023f7ddf8",
+    "incorporatedWorkpackHead": "4844b159a80aeb1720a44f2150f87ea6e8d9aea2",
+    "intendedPrTarget": "codex/local-studio-performance-integration-20260809",
+    "childPrUrl": "https://github.com/sybil-solutions/local-studio/pull/385",
+    "childPrState": "draft; head codex/ls-perf-w00-task-00-control-plane at c30a9216d1cd35824889a3d6009d237e939313ea into codex/local-studio-performance-integration-20260809; created by Codex",
+    "phaseACommit": "c30a9216d1cd35824889a3d6009d237e939313ea",
+    "phaseACommitParent": "6bdf748a4da0d5634aa944417dcf362023f7ddf8",
+    "push": "explicit refspec git push origin codex/ls-perf-w00-task-00-control-plane:codex/ls-perf-w00-task-00-control-plane; all hooks enforced; remote ref equals local HEAD; working tree clean after push; lockfiles unchanged"
+  },
+  "repositorySnapshots": [
+    {
+      "repository": "local-studio",
+      "remote": "https://github.com/sybil-solutions/local-studio",
+      "verification": "verified read-only by this session",
+      "refs": [
+        {
+          "ref": "refs/heads/dev",
+          "sha": "88b56e36bd5c84930dbe364296ba4ae669f72689",
+          "observedAt": "2026-08-10T00:45:06Z",
+          "method": "git ls-remote",
+          "note": "unchanged since planning; the integration branch still derives from current origin/dev"
+        },
+        {
+          "ref": "refs/heads/main",
+          "sha": "52c2b20f2994be07186b42da54e2836234785e8a",
+          "observedAt": "2026-08-10T00:45:06Z",
+          "method": "git ls-remote",
+          "note": "unchanged since planning; not the campaign base"
+        },
+        {
+          "ref": "refs/heads/codex/local-studio-performance-integration-20260809",
+          "sha": "6bdf748a4da0d5634aa944417dcf362023f7ddf8",
+          "observedAt": "2026-08-10T00:45:06Z",
+          "method": "git ls-remote",
+          "note": "equals the local integration worktree HEAD and this run's child base"
+        },
+        {
+          "ref": "refs/heads/codex/ls-perf-w00-task-00-control-plane",
+          "sha": "c30a9216d1cd35824889a3d6009d237e939313ea",
+          "observedAt": "2026-08-10T01:37:52Z",
+          "method": "git ls-remote",
+          "note": "Phase A commit pushed with all hooks enforced; equals local HEAD"
+        }
+      ],
+      "pullRequests": [
+        {
+          "number": 383,
+          "url": "https://github.com/sybil-solutions/local-studio/pull/383",
+          "role": "workpack revision child PR",
+          "state": "MERGED",
+          "mergedAt": "2026-08-10T00:35:12Z",
+          "mergeCommit": "6bdf748a4da0d5634aa944417dcf362023f7ddf8",
+          "observedAt": "2026-08-10T00:45:10Z",
+          "method": "gh pr view (read-only)"
+        },
+        {
+          "number": 382,
+          "url": "https://github.com/sybil-solutions/local-studio/pull/382",
+          "role": "umbrella draft integration PR into dev",
+          "state": "OPEN draft",
+          "combinedCi": "all status-check rollup entries for head 6bdf748a (gates, controller, agent-runtime, frontend, desktop-package, Secret Scanning (TruffleHog), CodeQL Analysis, Dependency Review, CodeQL) completed SUCCESS by 2026-08-10T00:41:32Z",
+          "observedAt": "2026-08-10T00:45:10Z",
+          "method": "gh pr view (read-only)"
+        }
+      ],
+      "campaignWorktrees": [
+        {
+          "path": "~/.codex/worktrees/0b96/vllm-studio",
+          "owner": "Codex",
+          "branch": "codex/local-studio-performance-integration-20260809",
+          "head": "6bdf748a4da0d5634aa944417dcf362023f7ddf8",
+          "clean": true,
+          "inSyncWithOrigin": true,
+          "observedAt": "2026-08-10T00:52:46Z",
+          "method": "git status --porcelain (read-only)"
+        },
+        {
+          "path": "~/.codex/worktrees/ls-perf-w00-task-00-control-plane",
+          "owner": "Fable session ls-perf-w00-task00-control-plane",
+          "branch": "codex/ls-perf-w00-task-00-control-plane",
+          "headAtStart": "6bdf748a4da0d5634aa944417dcf362023f7ddf8",
+          "cleanAtStart": true,
+          "branchCheckedOutNowhereElse": true,
+          "observedAt": "2026-08-10T00:41:52Z",
+          "method": "git status --porcelain; git worktree list --porcelain"
+        }
+      ],
+      "workpackAncestry": {
+        "workpackHead": "4844b159a80aeb1720a44f2150f87ea6e8d9aea2",
+        "isAncestorOfChildBase": true,
+        "observedAt": "2026-08-10T00:41:52Z",
+        "method": "git merge-base --is-ancestor"
+      },
+      "nonCampaignWorktrees": "inventoried in the status ledger execution snapshot; existence observed only, untouched, outside campaign clean assertions"
+    },
+    {
+      "repository": "litter",
+      "verification": "Codex-verified read-only facts supplied to this session during the Phase A review",
+      "suppliedAt": "2026-08-09T21:02:54-04:00",
+      "refs": [
+        {
+          "ref": "origin/main",
+          "sha": "5f651a475a16c93c273501fd370627f826c5e06f",
+          "note": "proposed clean integration base; unchanged from planning"
+        },
+        {
+          "ref": "primary checkout codex/post-github-cleanup-20260804",
+          "sha": "9ebb405bb329866e3e3f6e9d16b45a5bb1a91706",
+          "note": "user-owned; dirty only at modified submodules shared/third_party/codex and shared/third_party/ghostty plus untracked prompt.md; excluded from campaign cleanup; do not touch"
+        },
+        {
+          "ref": "Litter's Alleycat pin",
+          "sha": "417f2a9fe38cbed63754f0af7df61f32ec3034e6",
+          "source": "planning snapshot, observed 2026-08-09T18:39:37-04:00",
+          "note": "release lineage; divergent from Alleycat main"
+        }
+      ],
+      "pullRequests": [
+        {
+          "number": 239,
+          "role": "review prerequisite",
+          "state": "OPEN; clean/mergeable at a4cbf2df005dd45633d00377678d6adc9cc3146a; required shared-prep/android/ios/release checks successful or intentionally skipped; disposition pending; commit-by-commit review not yet performed"
+        },
+        {
+          "number": 240,
+          "role": "planning reference only",
+          "state": "OPEN; clean/mergeable at b277efd34d9962d3482372067618a3d6bc992e10; consolidate requirements into the ledger, do not merge"
+        }
+      ]
+    },
+    {
+      "repository": "alleycat",
+      "verification": "Codex-verified read-only facts supplied to this session during the Phase A review",
+      "suppliedAt": "2026-08-09T21:02:54-04:00",
+      "refs": [
+        {
+          "ref": "origin/main",
+          "sha": "3f0f84422e977f32cbc98de7a1d6c4e26fb240d1",
+          "note": "one candidate authority"
+        },
+        {
+          "ref": "staged checkout codex/local-studio-prod-runtime",
+          "sha": "d584a006c75fe744def6cb3f41bcef4991b86b5f",
+          "note": "user-owned; exactly 14 staged files (5829 insertions, 18 deletions); audit only, do not touch"
+        }
+      ],
+      "protocolAuthority": {
+        "state": "not_selected",
+        "decisionRequired": "select exactly one truthful protocol path — the scoped pair-token Pi bridge or a fully enforced signed grant protocol — on one lineage: origin/main 3f0f8442, the pinned release lineage 417f2a9f, or a reviewed recut of the staged d584a006 grant work",
+        "effect": "the Alleycat integration worktree/PR and authority-dependent Task 05 work remain blocked until the decision is recorded"
+      }
+    }
+  ],
+  "validation": {
+    "phaseACommit": "c30a9216d1cd35824889a3d6009d237e939313ea; parent 6bdf748a4da0d5634aa944417dcf362023f7ddf8; git diff --check clean; commit-msg and pre-commit hooks passed; commit trailer identifies Claude Fable 5",
+    "npmRunCheck": "exit 0; run once unpiped after frozen-lockfile installs with PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 and ELECTRON_SKIP_BINARY_DOWNLOAD=1; all seven aggregate constituents ran; frontend unit tests 127 passed",
+    "lockfiles": "shared, controller, services/agent-runtime (bun frozen lockfile) and frontend (npm ci) SHA-256 identical before and after installs",
+    "push": "pre-push hooks enforced: commit-range check, frontend check:static, check:cleanup, assert-standalone; no browser, Electron, Playwright binary, or product service launched",
+    "scope": "control-plane evidence only; not product acceptance"
+  },
+  "requirementMapping": {
+    "R01": {
+      "requirement": "Canonical dated plan/status referenced by AGENTS",
+      "tasks": ["00"],
+      "contributionThisRun": "canonical ledger execution snapshot appended and this evidence manifest created on the Task 00 child branch",
+      "state": "in_progress",
+      "acceptanceSurface": "source/review PR",
+      "productAcceptance": false
+    },
+    "R02": {
+      "requirement": "One integration branch/PR with child worktrees and clean history",
+      "tasks": ["00", "15"],
+      "contributionThisRun": "integration branch and umbrella draft PR topology recorded with verified refs; one dedicated child worktree/branch with a single Fable owner registered",
+      "state": "in_progress",
+      "acceptanceSurface": "GitHub/local refs/CI",
+      "productAcceptance": false
+    },
+    "R16": {
+      "requirement": "Screenshots, videos, reports, hashes, and no leftover trash",
+      "tasks": ["15"],
+      "contributionThisRun": "evidence schema, run directory, ignored .raw staging rule, and redaction checklist established; no artifacts captured",
+      "state": "planned_schema_established",
+      "acceptanceSurface": "evidence manifest + clean worktrees",
+      "productAcceptance": false
+    },
+    "R17": {
+      "requirement": "One browser/profile total, no fan-out",
+      "tasks": ["all UI tasks"],
+      "contributionThisRun": "single campaign browser lease recorded with Codex as sole owner; reserved, not started; this session is browserless",
+      "state": "enforced_reserved_not_started",
+      "acceptanceSurface": "browser lease log",
+      "productAcceptance": false
+    }
+  },
+  "browserLease": {
+    "owner": "Codex",
+    "ownerRole": "sole campaign browser/evidence owner",
+    "logicalProfileId": "codex-campaign-browser-profile-01",
+    "state": "reserved_not_started",
+    "browserProcessStarted": false,
+    "leaseStartedAt": null,
+    "leaseEndedAt": null,
+    "journeys": [],
+    "rule": "exactly one persistent browser profile/session for the entire campaign, used serially, one journey or tab flow at a time; every Fable session, worker, and benchmark lane is browserless; a replacement browser may start only after the previous process is closed and the replacement is recorded"
+  },
+  "redactionChecklist": {
+    "appliesTo": "every artifact added to this manifest",
+    "reviewedBy": null,
+    "items": [
+      {
+        "id": "no-credentials",
+        "rule": "no credentials, API keys, or tokens",
+        "state": "no_artifacts_captured"
+      },
+      {
+        "id": "no-pairing-material",
+        "rule": "no pairing JSON, pair tokens, or node secrets",
+        "state": "no_artifacts_captured"
+      },
+      {
+        "id": "no-auth-prompts",
+        "rule": "no authentication prompts or sign-in surfaces",
+        "state": "no_artifacts_captured"
+      },
+      {
+        "id": "no-private-transcripts",
+        "rule": "no private transcripts or user conversation content",
+        "state": "no_artifacts_captured"
+      },
+      {
+        "id": "no-unrelated-desktop",
+        "rule": "no desktop notifications or unrelated windows",
+        "state": "no_artifacts_captured"
+      },
+      {
+        "id": "no-private-paths",
+        "rule": "no raw private absolute paths beyond declared campaign worktrees",
+        "state": "no_artifacts_captured"
+      },
+      {
+        "id": "raw-staging-discipline",
+        "rule": "raw captures staged only under the ignored evidence/<run-id>/.raw/ directory, uploaded and hashed, then removed before handoff",
+        "state": "no_artifacts_captured"
+      }
+    ]
+  },
+  "artifacts": [],
+  "artifactEntryContract": {
+    "description": "Every future artifacts[] entry must provide all required fields before it may be listed; an unlisted file in this run directory is garbage and must not remain at handoff",
+    "requiredFields": [
+      "requirementOrTaskId",
+      "repository",
+      "branch",
+      "sourceCommitFullSha",
+      "dirtyStateAssertion",
+      "timestamp",
+      "timezone",
+      "acceptanceSurface",
+      "host",
+      "device",
+      "osVersion",
+      "appVersion",
+      "controllerTarget",
+      "executionTarget",
+      "runtime",
+      "model",
+      "commandOrJourney",
+      "expectedResult",
+      "artifactPathOrImmutableUrl",
+      "mimeType",
+      "byteSize",
+      "sha256",
+      "result",
+      "reviewer",
+      "redactionStatus",
+      "knownGap"
+    ]
+  },
+  "explicitNonClaims": [
+    "no browser, Chrome integration, Playwright, Electron, simulator, device, or mobile surface was launched or validated by this run",
+    "no deployment, controller, model, GPU, GLM, or live DGX Spark state was mutated, and no live host was probed",
+    "no product acceptance surface was exercised; source and control-plane checks never promote to product acceptance",
+    "2x/4x DGX Spark availability is UNKNOWN: no fresh read-only discovery result has been supplied and this session performed none; the user's screenshot records the target example, not live proof",
+    "Alleycat protocol authority is not selected; dependent integration work is blocked",
+    "this manifest lists no artifacts and does not self-hash; integrity comes from Git history and Codex review"
+  ]
+}
