@@ -95,7 +95,7 @@ The clock starts at Task 00 kickoff under the `APPROVED` ledger state. Coding la
 
 | Clock | Parallel work | Integration gate | Evidence |
 |---|---|---|---|
-| 00:00–00:45 | Task 00: freeze Local Studio/Litter/Alleycat SHAs; create clean worktrees and draft integration PRs; record dirty checkout boundaries; choose the Alleycat authority path; confirm 2x/4x Spark availability read-only. | No feature code until refs, owners, acceptance surfaces, and rollback are recorded. | Campaign manifest skeleton, Git state, session registry, Spark availability record. |
+| 00:00–00:45 | Task 00: freeze Local Studio/Litter/Alleycat SHAs; create clean worktrees and draft integration PRs; record dirty checkout boundaries; select or explicitly block the Alleycat authority path (this run selected it); confirm 2x/4x Spark availability read-only. | No feature code until refs, owners, acceptance surfaces, and rollback are recorded. | Campaign manifest skeleton, Git state, session registry, Spark availability record. |
 | 00:45–02:30 | Wave 1 — Tasks 01, 05, 12: deterministic corpus and measurement harness; identity and protocol authority, 05A schemas first; serving-state contract with 12c first, primary migration, and 0/1/2/N serving fixtures. | Budgets freeze from reproducible three-run baselines. 05A and 12c merge inside Wave 1 before Wave 2 opens; Task 13 branches only after 12c and Task 14a only after 12r and 06f. | Baseline JSON, hardware/build metadata, fixture hashes, serving-contract goldens. |
 | 02:30–04:30 | Wave 2 — Tasks 02, 06, 13: inventory/hydration hot path; Usage data plane; multi-Spark topology and telemetry. | Each child branch passes repository gates and Codex review before entering integration. | Unit/integration reports, benchmark deltas, topology goldens; no browser use. |
 | 04:30–06:30 | Wave 3 — Tasks 03, 07, 14a: Electron timeline/stores; Usage UI; vision-sidecar pairing/routing/attribution (14b follows 03r or moves to Wave 4/`PENDING`). Tasks 13 and 14 run in parallel only after their respective gates — 13 after 12c, 14a after 12r and 06f — and with disjoint ownership. | Cross-repo contract versions and immutable pins agree; assistant and serving telemetry stay separate. | Contract goldens, routing/attribution fixtures, desktop source proof. |
@@ -130,9 +130,9 @@ Freeze final values after baseline without weakening them merely to make a chang
 | Browser use | One persistent browser profile/session total, one owner, one flow at a time, automated runs with one worker, and no agent-launched browser. |
 | Evidence | Every artifact records timestamp, commit, surface, host/device, controller/runtime target, command/journey, result, SHA-256, and redaction status. |
 
-## Non-goals before approval
+## Separately gated or prohibited work
 
-- No feature implementation, Litter/Alleycat worktree creation, deployment repair, model launch, app rebuild, merge, or release.
+- Feature implementation proceeds only through the approved task order and its gates; cross-repository worktrees and PRs are created just in time for the first accepted implementation objective; deployment repair, model launch, app rebuild, merge, and release stay behind their own gates.
 - No mutation of the dirty Litter checkout, staged Alleycat checkout, active Pop deployment, GLM service, models, credentials, or user transcripts.
 - No private ChatGPT database scraping, credential capture, pairing-token capture, silent permission bypass, or unenforced security UI.
 - No wholesale merge of the historical Local Studio quality branch, Litter PR #240, Alleycat PR #35, or staged Alleycat grant implementation.
@@ -155,4 +155,4 @@ Freeze final values after baseline without weakening them merely to make a chang
 
 ## Approval gate
 
-The user approved this workpack on 2026-08-09 and the status ledger records `APPROVED`. Pop GPU interruption, public Linux publication, DGX Spark live mutation, and the Alleycat protocol authority decision remain separate explicit gates after general approval.
+The user approved this workpack on 2026-08-09 and the status ledger records `APPROVED`. Pop GPU interruption, public Linux publication, and DGX Spark live mutation remain separate explicit gates after general approval; the Alleycat protocol authority decision was recorded as selected at the Task 00 closeout (see the status ledger).
