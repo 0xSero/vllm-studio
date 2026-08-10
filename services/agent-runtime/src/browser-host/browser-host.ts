@@ -150,7 +150,7 @@ export type MouseInput = {
   deltaY?: number;
 };
 
-export type KeyInput = { type: "down" | "up" | "char"; key: string; code: string; text?: string };
+export type KeyInput = { type: "down" | "up"; key: string; code: string };
 
 const clampDelta = (value: number): number => {
   if (!Number.isFinite(value)) return 0;

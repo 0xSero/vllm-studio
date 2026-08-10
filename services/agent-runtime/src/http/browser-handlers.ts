@@ -237,7 +237,6 @@ async function dispatchInput(body: InputBody): Promise<void> {
       type: body.type,
       key: body.key,
       code: body.code,
-      text: body.text,
     });
     return;
   }
