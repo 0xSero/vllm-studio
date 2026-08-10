@@ -1,27 +1,29 @@
 # Local Studio performance program status
 
-Updated: 2026-08-09T19:05:38-04:00
+Updated: 2026-08-09T20:32:14-04:00
 
-Program state: `PLANNED — AWAITING USER APPROVAL`
+Program state: `APPROVED`
 
-Feature implementation: not started
+Feature implementation: not started; Task 00 is the next action
 
 This is the canonical campaign ledger for Local Studio, Litter, and Alleycat. It records planning, execution ownership, immutable refs, PRs, Fable sessions, acceptance surfaces, evidence, blockers, and rollback state. `scope.md` defines the architecture and twelve-hour cut; `rules.md` defines how work may be executed; `tasks/` is the dependency-ordered implementation blueprint.
 
 ## Approval boundary
 
-No feature worker starts until this line is intentionally changed to `APPROVED` after user approval. Preparing this planning branch and draft review PR does not authorize implementation.
+The user approved execution on 2026-08-09 with the instruction "set goal and get to work"; the program state above is `APPROVED` as of 2026-08-09T20:02:10-04:00. Approval authorizes the task blueprint starting at Task 00 and starts the twelve-hour clock at Task 00 kickoff.
 
-The following remain separate approvals even after the program is approved:
+The following remain separate approvals even though the program is approved:
 
 | Gate | Why separate | Current state |
 |---|---|---|
 | Pop GLM maintenance window | All four GPUs are occupied by the active service; onboarding launch/benchmark would require interruption and restoration. | `NOT AUTHORIZED` |
 | Pop destructive cleanup | Root capacity is constrained; deleting caches, images, packages, logs, or any other data requires exact targets, recoverability, and separate approval. | `INVENTORY ONLY — NOT AUTHORIZED` |
-| Alleycat protocol authority | Three divergent histories exist, and staged grant/revoke surfaces are not enforced by live dispatch. | `DECISION REQUIRED IN WAVE 0` |
+| Alleycat protocol authority | Three divergent histories exist, and staged grant/revoke surfaces are not enforced by live dispatch. | `DECISION REQUIRED AT TASK 00` |
 | Full controller container | Docker socket, GPU, host-process, workspace, and credential privileges change the security boundary. | `SECURITY REVIEW REQUIRED` |
 | Public Linux publication | Current public releases are macOS-only; a local AppImage is not a public download. | `RELEASE APPROVAL REQUIRED` |
 | Authentication/pairing/signing/release | Credentials, pair tokens, protected signatures, and publication stay user-controlled. | `USER CONTROLLED` |
+| DGX Spark live mutation | Starting, stopping, launching, or reconfiguring models/nodes on live Sparks changes active serving; only read-only discovery is authorized. | `NOT AUTHORIZED — READS FREE` |
+| 2x/4x Spark availability | Whether multi-Spark hardware is live is unknown at planning time. | `UNKNOWN — TASK 00 CONFIRMS READ-ONLY` |
 
 ## Immutable planning snapshot
 
@@ -42,7 +44,9 @@ Observed at 2026-08-09T18:39:37-04:00.
 | Litter Alleycat pin | `417f2a9fe38cbed63754f0af7df61f32ec3034e6` on release lineage | current mobile authority, divergent from Alleycat main |
 | T3 Code Usage reference | nightly `v0.0.33-nightly.20260809.1047`, commit `062b4618c229f3e2f13e44efd8dab8c71ad33dae` | pinned MIT reference |
 
-## Planning Fable session
+## Fable sessions
+
+Planning session:
 
 | Field | Value |
 |---|---|
@@ -54,6 +58,14 @@ Observed at 2026-08-09T18:39:37-04:00.
 | Permission mode | plan/read-only |
 | Browser | disabled |
 | State | done; structured result delivered, material corrections incorporated, no browser used |
+
+Review and revision sessions, all `claude-fable-5` and browserless:
+
+| Role | Short ID | Full UUID | Mode | State |
+|---|---|---|---|---|
+| Workpack review, first attempt | `e3d66356` | `e3d66356-7d8a-4b22-8c7a-51a49449e21e` | read-only/plan | stopped: a project hook attempted an unauthorized desktop rebuild; the orphaned hook chain was terminated; no tracked change occurred |
+| Workpack review, safe-mode replacement | `9ebfcd5f` | `9ebfcd5f-6cf8-4b9c-a085-0f540db7dc6a` | safe mode, read-only/plan, no Chrome | done: verdict `READY AFTER MANDATORY CORRECTIONS` |
+| Workpack revision `local-studio-plan-revision-20260809` | `53b70cae` | `53b70cae-edca-477a-84a1-5696d3d430fc` | safe mode, `acceptEdits`, max effort, owns only the workpack revision branch | done: reviewed corrections applied on `codex/ls-perf-plan-revision-20260809` with Markdown, link, numbering, and diff validations passed; pushed through the full hook chain and delivered as draft [#383](https://github.com/sybil-solutions/local-studio/pull/383) |
 
 Implementation sessions will be appended here; never replace or reuse an identity for a different objective.
 
@@ -72,6 +84,7 @@ Exactly one persistent browser profile/session may exist for the entire campaign
 | Checkout | Deployed `.git` points to a nonexistent Mac worktree path | Recreate a clean immutable checkout; do not repair in place. |
 | Recording | Active 2560×1440 X11 with recording/input tools available | One serialized evidence owner can record after approval. |
 | Linux artifact | Public v2.9.10 has macOS assets only | Separate Pop lab proof from public-download proof. |
+| DGX Spark serving | A user-provided screenshot shows the target concurrency example: `deepseek-v4-flash-0731` and `gemma-4-12b-it` served together. This records the user's exact examples, not a verified live process state; 2x/4x rig availability is unknown. | R19 fixture/acceptance examples; Task 00 confirms availability read-only; mutations stay gated. |
 
 All live observations are time-sensitive and must be revalidated at execution time.
 
@@ -80,7 +93,7 @@ All live observations are time-sensitive and must be revalidated at execution ti
 | ID | Requirement | Task(s) | State | Required acceptance surface |
 |---|---|---|---|---|
 | R01 | Canonical dated plan/status referenced by AGENTS | 00 | `PLANNED` | source/review PR |
-| R02 | One integration branch/PR with child worktrees and clean history | 00, 12 | `PLANNED` | GitHub/local refs/CI |
+| R02 | One integration branch/PR with child worktrees and clean history | 00, 15 | `PLANNED` | GitHub/local refs/CI |
 | R03 | Reproducible 50-session and long-chat performance baselines | 01 | `PLANNED` | hermetic + Pop lab + device |
 | R04 | Instant Local Studio old-chat open, smooth scroll, bounded memory/DOM | 02, 03 | `PLANNED` | benchmark + installed Electron |
 | R05 | Instant Litter inventory/chat open and smooth native scrolling | 04 | `PLANNED` | installed iOS and Android |
@@ -90,12 +103,15 @@ All live observations are time-sensitive and must be revalidated at execution ti
 | R09 | Track all supported AI sessions across environments with truthful provenance | 06 | `PLANNED` | golden fixtures + multi-environment runtime |
 | R10 | Remote session placement and remote filesystem affinity | 08 | `PLANNED` | local/remote sentinel vertical slice |
 | R11 | Pi/Codex/Claude adapter and capability path | 09 | `PLANNED` | fixtures; supported actions only |
-| R12 | Authorized ChatGPT session import/usage coverage | 06, 07, 09, 12 | `PLANNED — MAY END PENDING, NEVER OMITTED` | authorized export/API fixture and named product surface |
+| R12 | Authorized ChatGPT session import/usage coverage | 06, 07, 09, 15 | `PLANNED — MAY END PENDING, NEVER OMITTED` | authorized export/API fixture and named product surface |
 | R13 | Goals and user toggles visible/reliable across clients | 09 | `PLANNED` | Electron + Litter capability matrix |
-| R14 | Litter/Alleycat design converges on Local Studio mobile semantics | 10 | `PLANNED` | golden native screens |
+| R14 | Litter/Alleycat design converges on Local Studio mobile semantics | 10 | `PLANNED — CONTINUATION TRANCHE` | golden native screens |
 | R15 | Pop container lab and first-run/onboarding recording | 11 | `PLANNED`; launch gated | Pop container/web/AppImage surfaces labeled separately |
-| R16 | Screenshots, videos, reports, hashes, and no leftover trash | 12 | `PLANNED` | evidence manifest + clean worktrees |
+| R16 | Screenshots, videos, reports, hashes, and no leftover trash | 15 | `PLANNED` | evidence manifest + clean worktrees |
 | R17 | One browser/profile total, no fan-out | all UI tasks | `ENFORCED IN PLAN` | browser lease log |
+| R18 | Truthful multi-node cluster/device telemetry with named unified pools counted once | 13 | `PLANNED` | topology fixtures + live read-only `PASS`-or-`BLOCKED` |
+| R19 | Concurrent multi-model serving inventory, lifecycle, routing, and legacy primary derivation | 12 | `PLANNED` | serving fixtures + two-instance acceptance |
+| R20 | Configurable same-controller vision-sidecar pairing with routing and attribution | 14 | `PLANNED` | pairing fixtures + routed attribution acceptance |
 
 ## Task ledger
 
@@ -105,27 +121,31 @@ All live observations are time-sensitive and must be revalidated at execution ti
 | 01 | Deterministic corpus and clean baseline | 00 | `NOT STARTED` | Fable implementer + Codex measurement |
 | 02 | Runtime inventory and hydration hot path | 01 | `NOT STARTED` | Fable implementer |
 | 03 | Electron session store, timeline, inspector, scroll | 01, 02 | `NOT STARTED` | Fable implementer |
-| 04 | Litter native performance and state amplification | 01, 05 authority contracts | `NOT STARTED` | Fable implementer |
+| 04 | Litter native performance and state amplification | 01, 05 authority contracts | `NOT STARTED — INSTALLED-DEVICE MATRIX IN CONTINUATION` | Fable implementer |
 | 05 | Identity, Alleycat authority, and cross-surface sync | 00 | `NOT STARTED` | Fable implementer + Codex security review |
-| 06 | Versioned multi-environment Usage data plane | 00, 01 | `NOT STARTED` | Fable implementer |
+| 06 | Versioned multi-environment Usage data plane | 00, 01, 05 | `NOT STARTED` | Fable implementer |
 | 07 | Usage UI and responsive Local Studio presentation | 06 | `NOT STARTED` | Fable implementer + Codex visual review |
-| 08 | Execution targets and remote filesystem vertical slice | 05 | `NOT STARTED` | Fable implementer + Codex isolation review |
-| 09 | Runtime adapters, goals, controls, reliability | 05, 08 | `NOT STARTED` | Fable implementer |
-| 10 | Shared design contract and native convergence | 03, 04, 05 | `NOT STARTED` | Fable implementer + Codex visual review |
+| 08 | Execution targets and remote filesystem vertical slice | 02, 05 | `NOT STARTED` | Fable implementer + Codex isolation review |
+| 09 | Runtime adapters, goals, controls, reliability | 05, 06, 08 | `NOT STARTED` | Fable implementer |
+| 10 | Shared design contract and native convergence | 03, 04, 05, 09 | `CONTINUATION — NOT IN TWELVE-HOUR TRANCHE` | Fable implementer + Codex visual review |
 | 11 | Pop lab, Linux surface, onboarding journey | 00, 01, relevant integrated features | `NOT STARTED` | Codex evidence owner |
-| 12 | Integration, installed acceptance, cleanup, delivery | all accepted tasks | `NOT STARTED` | Codex |
+| 12 | Concurrent multi-model serving inventory and lifecycle | 00; 01 harness conventions | `NOT STARTED` | Fable implementer |
+| 13 | Multi-Spark topology and telemetry truth | 12 contract merged; 00 availability discovery | `NOT STARTED` | Fable implementer |
+| 14 | Vision-sidecar pairing, routing, and attribution | 12 contract merged | `NOT STARTED` | Fable implementer |
+| 15 | Integration, installed acceptance, cleanup, delivery | all accepted tasks 00–14 | `NOT STARTED` | Codex |
 
 ## Pull request ledger
 
 | Repository | Integration branch | Target | PR | State |
 |---|---|---|---|---|
 | Local Studio | `codex/local-studio-performance-integration-20260809` | `dev` | [#382](https://github.com/sybil-solutions/local-studio/pull/382) | draft; planning only |
+| Local Studio workpack revision child | `codex/ls-perf-plan-revision-20260809` | `codex/local-studio-performance-integration-20260809` | [#383](https://github.com/sybil-solutions/local-studio/pull/383) | draft; awaiting Codex integration review |
 | Litter | create after approval from recorded `origin/main` | `main` | pending | not created |
 | Alleycat | create after authority decision | selected protected branch | pending | blocked by authority |
 
 ## Evidence ledger
 
-No execution evidence exists yet. Planning research is not feature acceptance. After approval, use `evidence/<run-id>/manifest.json` and link each run here.
+No execution evidence exists yet. Planning research is not feature acceptance. Use `evidence/<run-id>/manifest.json` and link each run here.
 
 | Run ID | Commit | Surface | Requirements | Result | Manifest |
 |---|---|---|---|---|---|
@@ -139,8 +159,9 @@ No execution evidence exists yet. Planning research is not feature acceptance. A
 - Stop Pop onboarding before model launch unless a maintenance window authorizes GLM interruption and a restoration checklist is ready.
 - Stop Linux “download” claims unless a public artifact is actually published and fetched from the public surface.
 - Stop visual testing if a second browser process/profile appears; close it, record the incident, and resume serially.
+- Stop before any live DGX Spark mutation — model or node start/stop/launch/reconfigure — until its gate is approved; read-only discovery stays free.
 - At hour ten, stop feature expansion. Hours ten through twelve are reserved for installed acceptance, review, evidence, rollback notes, and cleanup.
 
 ## Next transition
 
-User approval changes program state to `APPROVED`, starts the twelve-hour clock, and authorizes Task 00 only. Task 00 then creates clean cross-repository worktrees, records fresh refs, and opens the integration review topology. Separate gates above remain in force.
+Approval is recorded above. Task 00 starts the twelve-hour clock: it creates clean cross-repository worktrees, records fresh refs, confirms 2x/4x Spark availability through read-only discovery, and opens the integration review topology. Wave 1 (Tasks 01, 05, 12) follows; the Task 12 serving-contract merge gates the creation of Task 13 and Task 14 branches. Separate gates above remain in force.

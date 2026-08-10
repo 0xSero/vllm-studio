@@ -2,8 +2,8 @@
 
 ## Approval and authority
 
-1. The current state is planning only. Do not implement features, create cross-repository worktrees, repair Pop!_OS, stop GLM, rebuild apps, or merge PRs until `status.md` says `APPROVED`.
-2. General approval does not authorize protected authentication, pairing, signing, publication, release, destructive cleanup, or the Pop GPU maintenance window.
+1. `status.md` records the program state. Do not implement features, create cross-repository worktrees, repair Pop!_OS, stop GLM, rebuild apps, or merge PRs unless `status.md` says `APPROVED`.
+2. General approval does not authorize protected authentication, pairing, signing, publication, release, destructive cleanup, the Pop GPU maintenance window, or live DGX Spark mutation.
 3. Preserve user changes. Do not reset, stash, stage, commit, reformat, or clean the dirty Litter checkout or staged Alleycat checkout.
 4. An incomplete, disconnected, paginated, hydrating, or upgrading session source is not deletion. Only explicit archive removes a session from normal inventory.
 5. Never expose credentials, API keys, pairing JSON, node secrets, auth prompts, private transcripts, desktop notifications, or unrelated windows in logs or evidence.
@@ -42,11 +42,14 @@ This rule is literal and campaign-wide.
 5. Browser, Electron, simulator/device, screenshot, and recording acceptance is placed in one explicit evidence queue. Native mobile validation does not open a browser.
 6. The owner logs browser/profile identity, lease start/end, journey, and artifacts in the manifest. If the browser becomes unhealthy, close it before starting one replacement and record the replacement; never overlap them.
 7. Source/unit/integration workers can remain parallel because they are browserless.
+8. GitHub-hosted CI browser jobs run off-machine and sit outside the local lease; they are the only exception and never justify a local launch.
+9. Fable implementation sessions never run `playwright test` or launch Electron/browsers, even to validate their own work; the existing Playwright configs pin `workers: 1` and keep it. Codex rejects child validation output that shows a local browser launch.
 
 ## Engineering rules
 
 - Keep code composable and typed. Use Effect for asynchronous and streaming workflows.
 - Define boundary contracts once in `controller/contracts/` or `shared/agent/` and decode them with Effect Schema.
+- Serving-state, topology, and vision-pairing contracts are owned by `controller/contracts/` as additive extensions of the compute contracts in `controller/src/modules/compute/contracts.ts`; `shared/agent/` consumes them and never redefines serving truth.
 - Use the shared Local Studio UI kit and design tokens. For Litter, adapt a small semantic design contract to native components rather than copying Electron layout code.
 - Leave no code comments in touched code. Put durable behavior in types, names, tests, and the workpack.
 - With vLLM and SGLang, do not disable CUDA graphs, force eager execution, or add forbidden token caps.
@@ -87,6 +90,12 @@ This rule is literal and campaign-wide.
 - Do not stop or evict the active GLM service without an approved maintenance window. Before stopping it, capture service/container/model/health/completion state. After the test, restore and prove the same acceptance surface.
 - Without the maintenance window, record download and recipe creation only. Mark model launch, benchmark, and first completion as pending rather than fabricating them.
 - A locally built AppImage is a package test, not public-download proof. Publication requires its own signed/release workflow and user-controlled release gate.
+
+## DGX Spark safety
+
+- Read-only discovery against live Spark controllers and nodes — status, instances, GPUs, telemetry, logs — is authorized at any time.
+- Starting, stopping, launching, or reconfiguring models or nodes on live Sparks is a separate unapproved gate; record `BLOCKED` instead of mutating.
+- 2x/4x topology claims require live read-only observation or fixtures explicitly labeled as fixtures; fixture output is never presented as live proof.
 
 ## Evidence contract
 

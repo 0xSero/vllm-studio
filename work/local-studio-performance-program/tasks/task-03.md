@@ -13,10 +13,10 @@ Make fifty-session navigation, large old-chat opening, streaming, inspector jump
 
 - `frontend/src/features/agent/ui/projects-nav/`
 - `frontend/src/features/agent/ui/timeline/timeline.tsx`
-- `frontend/src/features/agent/ui/inspector/`
+- `frontend/src/features/agent/ui/inspector-panel.tsx`
 - `frontend/src/features/agent/workspace/`
 - `frontend/src/features/agent/runtime/`
-- `frontend/e2e/bench/` and focused unit/component tests
+- `frontend/e2e/bench/` (created in Task 01; created here if Task 01 has not yet) and focused unit/component tests
 - Historical commits `e9b1869c`, `e4d4e24a`, `a2b47f5f`, `f1cf160a`, `e41b85ce` as reference only
 
 ## Work

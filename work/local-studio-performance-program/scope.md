@@ -2,7 +2,7 @@
 
 Created: 2026-08-09T18:39:37-04:00
 
-State: planning complete; implementation requires user approval
+State: approved 2026-08-09; `status.md` is the canonical ledger
 
 Local Studio integration base: `origin/dev` at `88b56e36bd5c84930dbe364296ba4ae669f72689`
 
@@ -28,6 +28,9 @@ This workpack accounts for the complete requested product direction. It does not
 | Remote sessions | Selecting a remote controller changes model routing. Electron still forks one local loopback agent runtime, and filesystem, Git, terminal, browser, and Pi sessions stay local. | Model execution target and agent/filesystem execution target must become separate typed concepts with fail-closed session affinity. |
 | Agent support | Workbench execution is Pi. Anthropic/OpenAI provider connections expose models to Pi; they are not native Claude Code or Codex runtimes. | Build a runtime-neutral adapter and capability contract before native readers or writers. Unsupported controls remain disabled with a reason. |
 | Goals and controls | Goals are Pi-session sidecars, omitted from inventory and Litter metadata, and polled for the active session. The wire supports `read_only` and `full`, but Workbench hardcodes `full`. | Add goal/capability summaries and a persisted tool-access control before parity claims. |
+| Serving truth | `GET /status` in `controller/src/modules/system/routes.ts` reports one `process` through `findObservedInferenceProcess` and the legacy `LLM_INSTANCE` store read while `/compute/instances` is plural; `frontend/src/hooks/realtime-status-store.ts` derives one model label/running bit; metrics scraping and OpenAI proxying can pin the legacy single `inference_port`. | Concurrent serving — the user's example is `deepseek-v4-flash-0731` plus `gemma-4-12b-it` — cannot be represented. [Task 12](tasks/task-12.md) owns the additive serving-state contract, explicit primary migration, per-instance metrics, and model-name routing. |
+| Cluster topology | `/gpus` runs coordinator-local `nvidia-smi` only, and the GB10 zero-memory fallback substitutes host `totalmem`/`freemem` in `controller/src/modules/compute/devices/host.ts`. | 2x/4x Sparks collapse into one coordinator GB10 and unified memory risks double counting. [Task 13](tasks/task-13.md) owns per-node telemetry and named unified pools counted once. |
+| Vision capability | `resolveModelVision` detection exists in `controller/contracts/model-capabilities.ts`; pairing, routing, persistence, failure semantics, and attribution do not. | [Task 14](tasks/task-14.md) owns same-controller sidecar pairing, proxy routing, and attribution. |
 | Pop!_OS deployment | The live Pop!_OS host runs a native controller/frontend and Docker inference. `docker-compose.yml` provisions PostgreSQL only. The deployed Git worktree pointer is broken. | A containerized app surface is new work, not documentation of the current deployment. Recreate from a clean immutable SHA. |
 | Pop!_OS capacity | Root storage is effectively full; all four 96 GB GPUs are occupied by the active GLM vLLM service. | No worker may reclaim storage, stop GLM, or launch another model without an explicit maintenance window and restoration proof. |
 | Linux download | Public v2.9.10 assets are macOS-only although Electron declares an AppImage target. | A local AppImage or container lab is not public-download proof. Keep these acceptance surfaces separate. |
@@ -49,6 +52,17 @@ Adapt the architecture and interaction model to Local Studio data and design tok
 4. Fail closed when a target disappears. Never fall back from a remote path to a similarly named local path.
 5. Keep explicit archive as the only normal removal signal. Disconnect, incomplete pagination, reconnect, hydration, and upgrade must preserve identity and inventory.
 6. Extract Pi behind the normalized adapter first. Add read-only Codex and Claude Code discovery with golden fixtures before attempting native writes. Use an authorized export/API for ChatGPT; do not scrape private app storage.
+
+### Serving topology and model inventory
+
+1. The serving hierarchy is `Controller -> Node -> Device -> MemoryPool`, with `instances[]` and `servedModels[]` views layered on it. Identity reuses `NodeId`, `DeviceId`, `HandleReference`, `InstanceRecord.nodeId`, and `DeviceSnapshot` from `controller/src/modules/compute/contracts.ts` plus the head/worker/standalone rig roles from `controller/contracts/rigs.ts`; no parallel vocabulary.
+2. One additive versioned serving-state contract ([Task 12](tasks/task-12.md)) exposes `nodes[]`, `instances[]`, `servedModels[]`, `memoryPools[]`, and a reserved `visionPairing` slot; consumers stop re-deriving serving truth from the singular `/status` process.
+3. A served model is a routable name bound to one or more instances with independent endpoints, metrics addresses, and log handles. Model-name routing resolves to a live instance; unknown names fail with a typed error, never the legacy port.
+4. Every telemetry sample carries node provenance and sampled-at staleness; aggregates over missing or stale nodes are explicitly partial. Log streams are scoped `controller|node|instance` with the origin on every line.
+5. GB10 unified memory is one named per-node pool referenced by host and accelerator views and counted once. The Pop host is one node with four discrete per-GPU pools.
+6. Legacy `/status.process` compatibility comes from an explicit persisted primary instance, bootstrapped from the existing `LLM_INSTANCE` record during migration; no permanent magic-name selection rule survives.
+7. Vision pairing is a persisted same-controller primary/vision reference pair, routed and attributed server-side in the controller OpenAI proxy with typed fail-closed errors; no implicit fallback, no cross-host hop.
+8. Node telemetry is an authenticated typed controller/node endpoint on existing `NodeId`/rig identity. Raw SSH is not the product protocol; a lab-only SSH fallback would need separate approval and labeling.
 
 ### Usage
 
@@ -77,22 +91,21 @@ Adapt the architecture and interaction model to Local Studio data and design tok
 
 ## Twelve-hour execution program
 
-The clock begins only after the status ledger is marked `APPROVED`. Coding lanes remain browserless. Codex owns the single serialized browser/evidence lane and merges only reviewed, passing work.
+The clock starts at Task 00 kickoff under the `APPROVED` ledger state. Coding lanes remain browserless. Codex owns the single serialized browser/evidence lane and merges only reviewed, passing work.
 
 | Clock | Parallel work | Integration gate | Evidence |
 |---|---|---|---|
-| 00:00–00:45 | Freeze Local Studio/Litter/Alleycat SHAs; restore workflow truth; create clean worktrees and draft integration PRs; record dirty checkout boundaries; choose Alleycat authority path. | No feature code until refs, owners, acceptance surfaces, and rollback are recorded. | Campaign manifest skeleton, Git state, Fable session registry. |
-| 00:45–02:15 | Build deterministic corpus and measurement harness; re-run the current Local Studio timeline benchmark; measure Litter inventory/long-thread baselines; prepare Pop lab without stopping GLM. | Budgets are frozen from reproducible three-run baselines; no optimization merges without before data. | Baseline JSON, hardware/build metadata, sanitized fixture hashes. |
-| 02:15–05:00 | Lane A: port/checkpoint/index/virtualization work. Lane B: versioned Usage contract and source collectors. Lane C: identity migration, runtime capabilities, protocol-authority tests. | Each child branch passes its repository gates and Codex review before entering its integration branch. | Unit/integration reports and benchmark deltas; no browser use. |
-| 05:00–07:15 | Integrate shared inventory; finish Usage merge/dedup and Local Studio UI; repair goals/tool-access summaries; prove Litter same-node coexistence and reconnect semantics. | Cross-repo contract versions and immutable pins agree. Controller and assistant telemetry remain separate. | Contract goldens, sync traces, desktop/mobile source proof. |
-| 07:15–09:00 | Implement one execution-target vertical slice: local and one remote Pi target with session/FS/Git/terminal affinity. Extract Pi adapter and add read-only Codex/Claude fixtures if stable formats are available. | Sentinel files prove no mixed-host operations. Target outage fails closed. Unsupported adapters are visibly disabled. | Remote isolation report, capability matrix, security negatives. |
-| 09:00–10:15 | Apply focused Litter/Local Studio design convergence after structural work; validate Usage desktop/mobile; review Litter PR #239 as a prerequisite and consolidate, not merge, PR #240 planning. | No broad redesign or drive-by cleanup. iOS and Android parity travels with shared Rust changes. | Golden screens and responsive layout reports. |
-| 10:15–11:15 | Serialized acceptance: rebuilt Local Studio Dev Electron, Pop web/container profile, then Litter installed surfaces. Record download/recipe creation; launch/benchmark only inside an approved GLM maintenance window. | Exactly one browser profile/session and one evidence owner. Every surface is labeled separately. | Screenshots/video, performance trace, controller/runtime identity, restoration proof if GLM is stopped. |
-| 11:15–12:00 | Run combined gates/CI, review every commit, remove generated debris, hash artifacts, update rollback/status, and make the integration PRs review-ready. | Clean campaign worktrees; pre-existing dirty checkouts unchanged; no unexplained Markdown, profiles, fixtures, or logs. | Final manifest, PR/commit table, known-gap ledger. |
+| 00:00–00:45 | Task 00: freeze Local Studio/Litter/Alleycat SHAs; create clean worktrees and draft integration PRs; record dirty checkout boundaries; choose the Alleycat authority path; confirm 2x/4x Spark availability read-only. | No feature code until refs, owners, acceptance surfaces, and rollback are recorded. | Campaign manifest skeleton, Git state, session registry, Spark availability record. |
+| 00:45–02:30 | Wave 1 — Tasks 01, 05, 12: deterministic corpus and measurement harness; identity and protocol authority; serving-state contract, primary migration, and 0/1/2/N serving fixtures. | Budgets freeze from reproducible three-run baselines. The Task 12 schema/contract commit merges before any Task 13 or 14 branch is created. | Baseline JSON, hardware/build metadata, fixture hashes, serving-contract goldens. |
+| 02:30–04:30 | Wave 2 — Tasks 02, 06, 13: inventory/hydration hot path; Usage data plane; multi-Spark topology and telemetry. | Each child branch passes repository gates and Codex review before entering integration. | Unit/integration reports, benchmark deltas, topology goldens; no browser use. |
+| 04:30–06:30 | Wave 3 — Tasks 03, 07, 14: Electron timeline/stores; Usage UI; vision-sidecar pairing/routing/attribution. Tasks 13 and 14 run in parallel only after the Task 12 merge and with disjoint ownership. | Cross-repo contract versions and immutable pins agree; assistant and serving telemetry stay separate. | Contract goldens, routing/attribution fixtures, desktop source proof. |
+| 06:30–08:45 | Wave 4 — Tasks 08, 09, 04: execution-target vertical slice; runtime adapters/goals/controls; Litter structural and shared-Rust performance work, with the installed-device matrix proof continuing after the tranche. | Sentinel files prove no mixed-host operations; unsupported adapters are visibly disabled; iOS/Android parity travels with shared Rust changes. | Remote isolation report, capability matrix, native benchmark deltas. |
+| 08:45–10:15 | Wave 5 — Task 11 serialized Pop lab, onboarding recording, and live Spark read-only checks. Task 10 design convergence stays continuation-only; at most golden design-contract preparation rides along. | Exactly one browser profile/session and one evidence owner; GLM interruption and Spark mutation stay gated. | Screenshots/video, controller/runtime identity, `PASS`-or-`BLOCKED` live surfaces, restoration proof if GLM is stopped. |
+| 10:15–12:00 | Task 15: integration review, combined gates/CI, installed acceptance, evidence hashing, cleanup gates, rollback notes, review-ready PRs. | Clean campaign worktrees; pre-existing dirty checkouts unchanged; every cleanup gate passes. | Final manifest, PR/commit table, known-gap ledger. |
 
 ## Scope cut and continuation rule
 
-The twelve-hour must-pass tranche is instrumentation, session hot-path performance, truthful Usage foundations/UI, identity/capability correctness, goals/tool-access visibility, and one remote Pi vertical slice. Native Codex/Claude writes, authorized ChatGPT import, a public Linux release, full-stack privileged Docker deployment, complete Litter redesign, and exhaustive physical-device coverage continue only when their prerequisite gates pass with time remaining. ChatGPT retains its own requirement row and source status even when pending. Otherwise unfinished work is recorded as `PENDING` with exact evidence and becomes the next workpack; it is never mislabeled complete.
+The twelve-hour must-pass tranche is instrumentation, session hot-path performance, truthful Usage foundations/UI, identity/capability correctness, goals/tool-access visibility, one remote Pi vertical slice, and the serving-truth tasks: multi-model inventory/lifecycle ([Task 12](tasks/task-12.md)), multi-Spark topology fixtures with live read-only `PASS`-or-`BLOCKED` surfaces ([Task 13](tasks/task-13.md)), and vision-sidecar pairing ([Task 14](tasks/task-14.md)). Task 10's broad design convergence and Task 04's installed-device matrix proof move to continuation; Task 04's structural and shared-Rust work stays in the tranche. Native Codex/Claude writes, authorized ChatGPT import, a public Linux release, full-stack privileged Docker deployment, complete Litter redesign, and exhaustive physical-device coverage continue only when their prerequisite gates pass with time remaining. ChatGPT retains its own requirement row and source status even when pending. Unfinished work is recorded as `PENDING` with exact evidence and becomes the next workpack; it is never mislabeled complete.
 
 ## Provisional acceptance budgets
 
@@ -112,6 +125,8 @@ Freeze final values after baseline without weakening them merely to make a chang
 | Remote isolation | Local and remote same-path sentinels never cross; every pane operation uses the bound target; outage fails closed without local fallback. |
 | Mobile | Same-node generic and Local Studio pairings coexist; runtime-collision fixtures pass; no unintended viewport overflow; controls remain reachable on phone/tablet reference sizes. |
 | Pop onboarding | Exact SHA and deployment topology recorded; download/install, model directory, runtime, model download, recipe, launch, benchmark, and first chat are each passed or explicitly labeled blocked. |
+| Serving truth | `/compute/instances`, the serving-state contract, and legacy `/status` agree on 0/1/2/N fixtures; concurrent instances keep model identity, metrics, and logs separated; unknown model names fail with the typed error. |
+| Topology and vision | Aggregates label missing/stale nodes as partial; each GB10 unified pool is counted once; image parts route to the paired sidecar and text to the primary with per-instance attribution. |
 | Browser use | One persistent browser profile/session total, one owner, one flow at a time, automated runs with one worker, and no agent-launched browser. |
 | Evidence | Every artifact records timestamp, commit, surface, host/device, controller/runtime target, command/journey, result, SHA-256, and redaction status. |
 
@@ -140,4 +155,4 @@ Freeze final values after baseline without weakening them merely to make a chang
 
 ## Approval gate
 
-Implementation starts only when the user approves this workpack and the status ledger changes from `PLANNED` to `APPROVED`. Pop GPU interruption, public Linux publication, and the Alleycat protocol authority decision remain separate explicit gates even after general approval.
+The user approved this workpack on 2026-08-09 and the status ledger records `APPROVED`. Pop GPU interruption, public Linux publication, DGX Spark live mutation, and the Alleycat protocol authority decision remain separate explicit gates after general approval.

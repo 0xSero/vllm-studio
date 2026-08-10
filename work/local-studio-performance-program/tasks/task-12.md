@@ -1,68 +1,54 @@
-# Task 12 — Integrate, review, prove, clean, and deliver
+# Task 12 — Represent concurrent multi-model serving truthfully
 
 ## Objective
 
-Finish the twelve-hour tranche with reviewed logical history, passing combined gates, installed-surface evidence, explicit residual gaps, clean campaign worktrees, and synchronized remote integration refs.
+Make the controller represent zero, one, or many concurrently served models with truthful inventory, lifecycle, health, metrics, logs, and routing, while legacy singular consumers keep working through an explicit persisted primary instance.
 
 ## Dependencies
 
-- Every accepted task has a reviewed logical commit or is explicitly pending/blocked.
-- Hours ten through twelve are reserved for this task; no new feature expansion.
+- Task 00 control plane.
+- Task 01 harness conventions where fixtures and benchmarks apply.
+- The serving-state schema/contract commit from this task merges before any Task 13 or Task 14 branch is created.
 
-## Files and systems involved
+## Files involved
 
-- Local Studio, Litter, and Alleycat integration branches/PRs
-- `work/local-studio-performance-program/status.md`
-- `evidence/<run-id>/manifest.json` and immutable external artifacts
-- Local Studio Dev Electron, Pop lab, installed Litter iOS/Android, and selected Alleycat daemon
-- Fable session registry and worktree inventory
+- `controller/src/modules/compute/contracts.ts` (`NodeId`, `DeviceId`, `HandleReference`, `InstanceRecord.nodeId`, `DeviceSnapshot`) and `controller/src/modules/compute/instances/store.ts`
+- New additive versioned serving-state contract in `controller/contracts/`
+- `controller/src/modules/system/routes.ts` (`GET /status`), `controller/src/modules/system/metrics-routes.ts`, `controller/src/modules/proxy/openai-routes.ts`
+- `controller/src/core/function-observability.ts` (`findObservedInferenceProcess`, `LLM_INSTANCE`)
+- `frontend/src/hooks/realtime-status-store.ts` and the dashboard controller-strip stores
+- Deterministic serving fixtures and controller tests
 
 ## Work
 
-1. Freeze child merges. Fetch all remotes and review the integration diff against its recorded base, commit by commit and repository by repository.
-2. Verify contract ownership, dependency pins, migrations, rollback, secrets, permissions, private path handling, and absence of unrelated edits/comments/generated files.
-3. Run required aggregate gates:
-   - Local Studio `npm run check` and `npm run test:integration` when controller/runtime changed;
-   - repository-prescribed Alleycat protocol/security gates;
-   - repository-prescribed Litter shared Rust plus iOS/Android gates.
-4. Keep the Local Studio draft PR into `dev` open so combined CI runs after final child integration. Resolve review/CI failures through the owning Fable session and reviewed repair commits.
-5. Rebuild/install Local Studio Dev through `scripts/install-desktop-app.sh dev`; validate source/CI, installed Electron, Pop lab, Linux artifact/public download if present, simulator, physical mobile, and cross-surface flows separately.
-6. Execute the final acceptance matrix serially: fifty sessions, long chat, streaming/scroll, Usage, identity/sync/reconnect, goals/tool access, local/remote target isolation, onboarding, and design screens.
-7. Hash and reconcile every evidence file. Move large recordings to immutable PR/CI artifacts and retain URL/hash/size metadata.
-8. Update every requirement/task to `PASS`, `FAIL`, `BLOCKED`, or `PENDING` with exact commit, surface, command/journey, artifact, owner, known gap, and next action.
-9. Stop/close completed Fable sessions after capturing structured results. Remove campaign temp profiles, fixtures output, logs, screenshots outside evidence, patch/prompt files, stale worktrees, and irrelevant Markdown owned by the campaign.
-10. Verify pre-existing dirty Litter and staged Alleycat checkouts were not changed.
-11. Push each integration branch, fetch, and verify local/remote SHAs match. Link all PRs and leave merges into protected branches for user/reviewer approval.
+1. Define the serving-state contract in `controller/contracts/` as an additive versioned extension of the compute contracts: `nodes[]`, `instances[]`, `servedModels[]`, `memoryPools[]`, plus a reserved `visionPairing` slot for Task 14. Reuse the existing identity vocabulary; do not invent parallel types.
+2. Represent each instance with health, endpoint/port, runtime/engine, metrics address, log handle, and lifecycle state. A served model maps a routable name to its live instances.
+3. Add an explicit persisted primary-instance field. Migration bootstraps the existing `LLM_INSTANCE` record as the default primary; the magic-name selection rule does not survive the migration.
+4. Derive legacy `GET /status` (`running`, `process`, `inference_port`) from the persisted primary so existing consumers stay truthful during transition; no consumer re-derives serving truth from process observation.
+5. Route OpenAI-proxy requests by served model name to the owning instance endpoint. Unknown or stopped model names return a typed unknown-model error and never fall through to the legacy single `inference_port`.
+6. Scrape metrics per instance at that instance's own address so concurrent instances never mix model identity or metrics.
+7. Update `frontend/src/hooks/realtime-status-store.ts` and the controller strip to present the served-model set with the primary marked, replacing the single model label/running bit.
+8. Build deterministic fixtures for 0, 1, 2, and N instances, including start, stop, crash, port change, restart, and primary re-election.
 
-## Final acceptance matrix
+## Tests
 
-- Fifty-session inventory and 1,000/10,000-row old-chat open meet frozen budgets.
-- Streaming, scrolling, prepend anchoring, DOM/native row bounds, memory, and runtime health pass.
-- Local Studio and Litter converge on runtime-qualified identity across create/open/turn/archive/reconnect/upgrade.
-- Generic and Local Studio pairings coexist; protocol authorization is truthful.
-- Usage goldens, dedup, privacy, coverage, cost provenance, and responsive installed UI pass.
-- Authorized ChatGPT import/usage is proven on its named source and UI surface or remains explicitly `PENDING`; final acceptance cannot omit it.
-- Goals, tool access, target placement, and unsupported capabilities are visible and enforced.
-- Local/remote same-path sentinels prove no mixed-host filesystem/Git/terminal/session operations.
-- Pop onboarding steps and GLM restoration are passed or explicitly blocked.
-- Exactly one browser profile/session was used serially and its lease is recorded.
+- 0/1/2/N-instance inventory, lifecycle transitions, and primary migration/bootstrap goldens.
+- Two-instance metrics separation: per-instance scrape targets with no mixed model identity.
+- Model-name routing to the correct instance; typed unknown-model and stopped-instance errors on every proxy path.
+- Legacy `/status` derivation equals the persisted primary across restart.
+- Additive contract versioning against current consumers.
 
 ## Validation
 
-- All local gates and combined CI results are linked in the ledger.
-- `git status --short --branch` is clean in every campaign worktree.
-- `git diff --check` is clean and no secret/private evidence is present.
-- Manifest entries resolve, sizes/hashes match, and every artifact is accounted for.
-- Local and remote integration refs resolve to the same full commit after fetch.
+- Run focused controller tests while iterating; run `npm run check` and `npm run test:integration` before handoff.
+- Fixture acceptance is browserless; controller-strip verification goes through the Codex browser lease.
 
 ## Acceptance criteria
 
-- No requested feature is unaccounted for; unfinished work is named and owned rather than hidden.
-- The user can review one Local Studio umbrella PR plus linked Litter/Alleycat PRs and one evidence ledger.
-- Every delivery claim names its exact acceptance surface.
-- No trash, stray browser profiles, untracked campaign files, or unexplained planning documents remain.
-- No direct push or merge to `dev`/`main` occurred; final merge remains user/reviewer-controlled.
+- With `deepseek-v4-flash-0731` and `gemma-4-12b-it` served concurrently, the inventory lists both instances with independent health, endpoints, metrics, and logs; chat routed by each model name reaches its own instance; `GET /status` reports the persisted primary; nothing collapses to one process.
+- Unknown model names fail with the typed error on every proxy path.
+- The serving-state contract is additive, versioned, and single-owner; `shared/agent/` consumes it without redefining serving truth.
 
 ## Rollback
 
-Each accepted track is one logical commit and has a recorded revert order. Revert consumers before shared contracts, restore immutable dependency pins, rebuild caches from canonical data, and re-run the affected installed-surface acceptance before declaring rollback complete.
+The contract is additive, so consumers can pin the previous version. The primary field falls back to the migrated `LLM_INSTANCE` bootstrap value, and removing model-name routing restores the legacy port path without deleting instance records.
