@@ -1,6 +1,6 @@
 # Local Studio performance program status
 
-Updated: 2026-08-09T23:38:36-04:00
+Updated: 2026-08-10T10:15:39-04:00
 
 Program state: `APPROVED`
 
@@ -135,9 +135,9 @@ All live observations are time-sensitive and must be revalidated at execution ti
 | R15 | Pop container lab and first-run/onboarding recording | 11 | `PLANNED`; launch gated | Pop container/web/AppImage surfaces labeled separately |
 | R16 | Screenshots, videos, reports, hashes, and no leftover trash | 15 | `PLANNED` | evidence manifest + clean worktrees |
 | R17 | One browser/profile total, no fan-out | all UI tasks | `ENFORCED — BROWSER RESERVED, 0/1 STARTED` | browser lease log |
-| R18 | Truthful multi-node cluster/device telemetry with named unified pools counted once | 13 | `PLANNED — LIVE SURFACE BLOCKED ON AVAILABILITY AT TASK 00; FIXTURES MUST BE LABELED FIXTURES` | topology fixtures + live read-only `PASS`-or-`BLOCKED` |
+| R18 | Truthful networked 2x/4x Spark topology: per-node/per-device VRAM used and total, utilization, temperature, and power with sampled-at/staleness and provenance; all log origins surfaced; named unified pools counted once; unavailable metrics shown unavailable, never zero | 13 | `PLANNED — LIVE SURFACE BLOCKED ON AVAILABILITY AT TASK 00; FIXTURES MUST BE LABELED FIXTURES` | topology fixtures + Local Studio UI values + live read-only `PASS`-or-`BLOCKED` with per-node reachability |
 | R19 | Concurrent multi-model serving inventory, lifecycle, routing, and legacy primary derivation | 12 | `PLANNED — TARGET NAMES RECORDED AT TASK 00, NOT OBSERVED LIVE` | serving fixtures + two-instance acceptance |
-| R20 | Configurable same-controller vision-sidecar pairing with routing and attribution | 14 | `PLANNED` | pairing fixtures + routed attribution acceptance |
+| R20 | End-user Local Studio vision-sidecar flow: a vision sidecar configured for a non-vision primary, persisted same-controller/same-node, both exact model identities in the UI, routing with exact-instance attribution, and the mandatory 14b composer flow | 14 | `PLANNED — PASSES ONLY WHEN 14A AND 14B BOTH PASS` | pairing fixtures + Local Studio UI/composer acceptance + routed attribution |
 
 ## Task ledger
 
@@ -157,10 +157,10 @@ All live observations are time-sensitive and must be revalidated at execution ti
 | 11 | Pop lab, Linux surface, onboarding journey | 00, 01, relevant integrated features | `NOT STARTED` | Codex evidence owner |
 | 12 | Concurrent multi-model serving inventory and lifecycle | 00; 01 harness conventions | `12c READY` | Fable implementer |
 | 13 | Multi-Spark topology and telemetry truth | 12c compute-contract foundation; 00 availability discovery | `WAITING ON 12c; LIVE ACCEPTANCE SURFACE BLOCKED ON AVAILABILITY` | Fable implementer |
-| 14 | Vision-sidecar pairing, routing, and attribution | 12c; the strict 12r -> 06f -> 14a sequence for 14a; 03r for 14b | `NOT STARTED` | Fable implementer |
+| 14 | Vision-sidecar pairing, routing, attribution, and mandatory composer flow | 12c; the strict 12r -> 06f -> 14a sequence for 14a; 03r for the mandatory 14b | `NOT STARTED — PASSES ONLY WITH 14A AND 14B` | Fable implementer |
 | 15 | Integration, installed acceptance, cleanup, delivery | all accepted tasks 00–14 | `NOT STARTED` | Codex |
 
-Wave plan: 05A (Task 05 identity schemas) and 12c (Task 12 serving-contract/compute foundation) both merge inside Wave 1 before Wave 2 opens; the strict sequence 12r -> 06f -> 14a holds — the 12r openai-routes release merges before 06f, whose attribution fields carry Task 12's exact selected route through accounting and never re-resolve an instance from model name, and merged 06f gates any Task 14a branch; 03r releases the composer files to 14b.
+Wave plan: 05A (Task 05 identity schemas) and 12c (Task 12 serving-contract/compute foundation) both merge inside Wave 1 before Wave 2 opens; the strict sequence 12r -> 06f -> 14a holds — the 12r openai-routes release merges before 06f, whose attribution fields carry Task 12's exact selected route through accounting and never re-resolve an instance from model name, and merged 06f gates any Task 14a branch; 03r releases the composer files to the mandatory 14b — scheduled in the first eligible wave, Wave 4 if Task 03 slips — and Task 14/R20 pass only when 14a and 14b both pass.
 
 ## Pull request ledger
 
@@ -195,7 +195,7 @@ Both Task 00 runs below are control-plane and read-only discovery only — no pr
 
 ## Next transition
 
-Task 00 is closed: the control plane merged (PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) as `bd9e8d9f`, PR [#386](https://github.com/sybil-solutions/local-studio/pull/386) as `e125d72c`), the external read-only discovery outcomes are recorded in the closeout snapshot below, and no product acceptance is claimed. Wave 1 (Tasks 01, 05A, 12c) is `READY` and starts next under the existing rules. The 12c merge gates Task 13 branch creation; the strict sequence 12r -> 06f -> 14a gates Task 14a; 03r gates 14b. Litter and Alleycat implementation worktrees/PRs are created just in time for their first accepted objectives. The separate approval gates above remain in force; Codex reviews and owns integration of the closeout branch's commits.
+Task 00 is closed: the control plane merged (PR [#385](https://github.com/sybil-solutions/local-studio/pull/385) as `bd9e8d9f`, PR [#386](https://github.com/sybil-solutions/local-studio/pull/386) as `e125d72c`), the external read-only discovery outcomes are recorded in the closeout snapshot below, and no product acceptance is claimed. Wave 1 (Tasks 01, 05A, 12c) is `READY` and starts next under the existing rules. The 12c merge gates Task 13 branch creation; the strict sequence 12r -> 06f -> 14a gates Task 14a; 03r gates the mandatory 14b, without which Task 14 and R20 cannot pass. Litter and Alleycat implementation worktrees/PRs are created just in time for their first accepted objectives. The separate approval gates above remain in force; Codex reviews and owns integration of the closeout branch's commits.
 
 ## Task 00 execution snapshot — 2026-08-09 (historical)
 
