@@ -1,6 +1,6 @@
 # Local Studio performance program status
 
-Updated: 2026-08-09T20:02:10-04:00
+Updated: 2026-08-09T20:32:14-04:00
 
 Program state: `APPROVED`
 
@@ -65,7 +65,7 @@ Review and revision sessions, all `claude-fable-5` and browserless:
 |---|---|---|---|---|
 | Workpack review, first attempt | `e3d66356` | `e3d66356-7d8a-4b22-8c7a-51a49449e21e` | read-only/plan | stopped: a project hook attempted an unauthorized desktop rebuild; the orphaned hook chain was terminated; no tracked change occurred |
 | Workpack review, safe-mode replacement | `9ebfcd5f` | `9ebfcd5f-6cf8-4b9c-a085-0f540db7dc6a` | safe mode, read-only/plan, no Chrome | done: verdict `READY AFTER MANDATORY CORRECTIONS` |
-| Workpack revision `local-studio-plan-revision-20260809` | `53b70cae` | `53b70cae-edca-477a-84a1-5696d3d430fc` | safe mode, `acceptEdits`, max effort, owns only the workpack revision branch | done: reviewed corrections applied on `codex/ls-perf-plan-revision-20260809` with Markdown, link, numbering, and diff validations passed; delivery pending hook-gated push |
+| Workpack revision `local-studio-plan-revision-20260809` | `53b70cae` | `53b70cae-edca-477a-84a1-5696d3d430fc` | safe mode, `acceptEdits`, max effort, owns only the workpack revision branch | done: reviewed corrections applied on `codex/ls-perf-plan-revision-20260809` with Markdown, link, numbering, and diff validations passed; pushed through the full hook chain and delivered as draft [#383](https://github.com/sybil-solutions/local-studio/pull/383) |
 
 Implementation sessions will be appended here; never replace or reuse an identity for a different objective.
 
@@ -139,6 +139,7 @@ All live observations are time-sensitive and must be revalidated at execution ti
 | Repository | Integration branch | Target | PR | State |
 |---|---|---|---|---|
 | Local Studio | `codex/local-studio-performance-integration-20260809` | `dev` | [#382](https://github.com/sybil-solutions/local-studio/pull/382) | draft; planning only |
+| Local Studio workpack revision child | `codex/ls-perf-plan-revision-20260809` | `codex/local-studio-performance-integration-20260809` | [#383](https://github.com/sybil-solutions/local-studio/pull/383) | draft; awaiting Codex integration review |
 | Litter | create after approval from recorded `origin/main` | `main` | pending | not created |
 | Alleycat | create after authority decision | selected protected branch | pending | blocked by authority |
 
