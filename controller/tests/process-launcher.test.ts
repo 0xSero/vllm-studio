@@ -16,6 +16,7 @@ const record: InstanceRecord = {
   nodeId: "self",
   engine: "vllm",
   recipeId: "recipe",
+  servedModelName: null,
   runtime: "process",
   ref: null,
   port: 8000,

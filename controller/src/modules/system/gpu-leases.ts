@@ -124,6 +124,7 @@ export const createGpuLeaseRegistry = (deps: GpuLeaseShimDependencies): GpuLease
           nodeId: existing?.nodeId ?? "self",
           engine: "llamacpp", // unused for pinned holds; the schema requires an engine
           recipeId: SPEECH_RECORD,
+          servedModelName: null,
           runtime: "process",
           ref: { kind: "pinned", holder: SPEECH_RECORD },
           port: existing?.port ?? 0,

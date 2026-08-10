@@ -185,6 +185,7 @@ export interface InstanceRecord {
   readonly nodeId: NodeId;
   readonly engine: EngineId;
   readonly recipeId: string;
+  readonly servedModelName: string | null;
   readonly runtime: EngineRuntimeKind;
   /** null while the record is a reservation and nothing has spawned yet. */
   readonly ref: HandleReference | null;
