@@ -300,7 +300,6 @@ export function ChatPane({
   const lastAppliedComposerHeightRef = useRef(0);
   const lastComposerValueLengthRef = useRef(0);
   const [stickToBottom, setStickToBottom] = useState(true);
-  const [queueExpanded, setQueueExpanded] = useState(false);
   const [mention, setMention] = useState<ComposerMention | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [fileMentionRows, setFileMentionRows] = useState<FileMentionRow[]>([]);
@@ -679,49 +678,47 @@ export function ChatPane({
         })}
         {subagentChipsFor(activePiSessionId)}
         <AgentComposerFrame
-          attachments={attachments}
-          banner={composerVisual.banner}
-          browserToolEnabled={browserToolEnabled}
-          browserBackend={browserBackend}
-          composerDragActive={composerDragActive}
-          contextWindow={effectiveContextWindow}
-          currentContextTokens={currentContextTokens}
-          cwd={cwd}
-          fileInputRef={fileInputRef}
-          gitBranch={gitBranch}
-          gitSummary={gitSummary}
-          input={composerInput}
-          mention={mention}
-          mentionIndex={mentionIndex}
-          mentionRows={mentionRows}
-          modelSupportsVision={modelSupportsVision}
-          modelSelector={composerModelSelector}
-          onAbortTurn={() => void abortTurn()}
-          onAttachFiles={(files) => void attachFiles(files)}
-          onComposerChange={handleComposerChange}
-          onComposerDragLeave={handleComposerDragLeave}
-          onComposerDragOver={handleComposerDragOver}
-          onComposerDrop={handleComposerDrop}
-          onComposerKeyDown={(event) => {
-            if (goalModeApi.interceptKeyDown(event)) return;
-            handleComposerKeyDown(event);
+          actions={{
+            fileInputRef,
+            onAttachFiles: (files) => void attachFiles(files),
+            readingAttachments,
+            running: Boolean(running),
+            status: activeTab?.status,
+            input: composerInput,
+            attachmentsCount: attachments.length,
+            browserToolEnabled,
+            browserBackend,
+            onToggleBrowserBackend,
+            onToggleBrowserTool,
+            onAbortTurn: () => void abortTurn(),
+            onTranscript: handleTranscript,
+            modelSelector: composerModelSelector,
           }}
-          onComposerPaste={handleComposerPaste}
-          onEditQueued={editQueued}
-          onInitGit={onInitGit}
-          onOpenStatus={openComputerStatus}
-          onOpenDiff={openDiffDrawer}
-          onQueueExpandedChange={setQueueExpanded}
-          onRemoveAttachment={removeAttachment}
-          onRemoveLoadedContext={removeLoadedContext}
-          onRemoveQueued={removeQueued}
-          onSelectMention={(entry) => void handleSelectMention(entry)}
-          onSteerQueued={(queueId) => void steerQueued(queueId)}
+          attachments={{
+            attachments,
+            modelSupportsVision,
+            onRemove: removeAttachment,
+          }}
+          banner={composerVisual.banner}
+          context={{
+            skills: selectedSkills,
+            promptTemplates: selectedPromptTemplates,
+            onRemove: removeLoadedContext,
+          }}
+          drag={{
+            active: composerDragActive,
+            onLeave: handleComposerDragLeave,
+            onOver: handleComposerDragOver,
+            onDrop: handleComposerDrop,
+          }}
+          goal={goalModeApi.goalMode ? { onExit: goalModeApi.exitGoalMode } : undefined}
+          mention={{
+            mention,
+            rows: mentionRows,
+            activeIndex: mentionIndex,
+            onSelect: (entry) => void handleSelectMention(entry),
+          }}
           onSubmit={handleComposerSubmit}
-          onTranscript={handleTranscript}
-          onToggleBrowserBackend={onToggleBrowserBackend}
-          onToggleBrowserTool={onToggleBrowserTool}
-          placeholder={goalModeApi.goalPlaceholder ?? composerVisual.placeholder}
           drawer={
             <SessionProjectDrawer
               tabId={activeTabId}
@@ -742,17 +739,30 @@ export function ChatPane({
               onSteerQueued={(queueId) => void steerQueued(queueId)}
             />
           }
-          showStatusBar={!composerVisual.showProjectRow}
-          promptTemplates={selectedPromptTemplates}
-          queueExpanded={queueExpanded}
-          queueItems={visibleQueueItems}
-          readingAttachments={readingAttachments}
-          running={Boolean(running)}
-          selectedSkills={selectedSkills}
-          status={activeTab?.status}
-          textareaRef={textareaRef}
-          goalMode={goalModeApi.goalMode}
-          onExitGoalMode={goalModeApi.exitGoalMode}
+          statusBar={
+            composerVisual.showProjectRow
+              ? undefined
+              : {
+                  cwd,
+                  gitBranch,
+                  gitSummary,
+                  onInitGit,
+                  currentContextTokens,
+                  contextWindow: effectiveContextWindow,
+                  onOpenStatus: openComputerStatus,
+                  onOpenDiff: openDiffDrawer,
+                }
+          }
+          textarea={{
+            inputRef: textareaRef,
+            value: composerInput,
+            onPaste: handleComposerPaste,
+            onChange: handleComposerChange,
+            onKeyDown: (event) => {
+              if (!goalModeApi.interceptKeyDown(event)) handleComposerKeyDown(event);
+            },
+            placeholder: goalModeApi.goalPlaceholder ?? composerVisual.placeholder,
+          }}
           floating={composerOnly}
           dense={!showHeader && !composerOnly}
         />
