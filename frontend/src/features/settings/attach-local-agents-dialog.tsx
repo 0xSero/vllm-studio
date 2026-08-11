@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Button, Checkbox, UiModal, UiModalHeader } from "@/ui";
+import { Button, Checkbox, UiModal, UiModalBody, UiModalFooter, UiModalHeader } from "@/ui";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import type {
   AttachResult,
@@ -68,8 +68,8 @@ export function AttachLocalAgentsDialog({ modelId, modelName, onClose }: Props) 
   return (
     <UiModal isOpen onClose={onClose} maxWidth="max-w-xl">
       <UiModalHeader title="Attach to local agents" onClose={onClose} />
-      <div className="p-6">
-        <p className="mb-4 text-sm text-(--ui-muted)">
+      <UiModalBody>
+        <p className="mb-4 text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
           Write <span className="font-mono">{modelName}</span> as a provider/model entry into the
           config files of coding agents installed on this machine.
         </p>
@@ -128,19 +128,19 @@ export function AttachLocalAgentsDialog({ modelId, modelName, onClose }: Props) 
           </div>
         ) : null}
 
-        <div className="mt-6 flex justify-end gap-3">
-          <Button variant="secondary" onClick={onClose}>
-            Close
-          </Button>
-          <Button
-            onClick={() => void handleAttach()}
-            loading={attaching}
-            disabled={agents === null || selected.size === 0}
-          >
-            Attach
-          </Button>
-        </div>
-      </div>
+      </UiModalBody>
+      <UiModalFooter>
+        <Button variant="ghost" onClick={onClose}>
+          Close
+        </Button>
+        <Button
+          onClick={() => void handleAttach()}
+          loading={attaching}
+          disabled={agents === null || selected.size === 0}
+        >
+          Attach
+        </Button>
+      </UiModalFooter>
     </UiModal>
   );
 }

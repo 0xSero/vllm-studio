@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, type DragEvent, type ReactNode } from "react";
-import { Button, UiModal, UiModalHeader } from "@/ui";
+import { Button, UiModal, UiModalBody, UiModalFooter, UiModalHeader } from "@/ui";
 import { PlusIcon } from "@/ui/icons";
 import { usePersistentTerminalOwners } from "@/features/agent/ui/use-persistent-terminal-owners";
 import {
@@ -310,26 +310,26 @@ function ProjectRemoveConfirmModal({
   return (
     <UiModal isOpen onClose={removing ? () => {} : onCancel} maxWidth="max-w-md">
       <UiModalHeader title="Remove project" onClose={removing ? undefined : onCancel} />
-      <div className="space-y-5 p-6">
-        <div className="space-y-2 text-[length:var(--fs-sm)] text-(--ui-muted)">
+      <UiModalBody>
+        <div className="space-y-2 text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
           <p>
             Remove <span className="font-medium text-(--ui-fg)">{project.name}</span> from the
             sidebar?
           </p>
-          <p className="break-all font-mono text-[length:var(--fs-xs)] text-(--dim)">
+          <p className="break-all font-mono text-[length:var(--fs-sm)] text-(--dim)">
             {project.path}
           </p>
           <p>This does not delete files from disk or archive existing sessions.</p>
         </div>
-        <div className="flex justify-end gap-3">
-          <Button variant="secondary" onClick={onCancel} disabled={removing}>
-            Cancel
-          </Button>
-          <Button variant="danger" onClick={onConfirm} disabled={removing}>
-            {removing ? "Removing..." : "Remove"}
-          </Button>
-        </div>
-      </div>
+      </UiModalBody>
+      <UiModalFooter>
+        <Button variant="ghost" onClick={onCancel} disabled={removing}>
+          Cancel
+        </Button>
+        <Button variant="danger" onClick={onConfirm} disabled={removing}>
+          {removing ? "Removing..." : "Remove"}
+        </Button>
+      </UiModalFooter>
     </UiModal>
   );
 }

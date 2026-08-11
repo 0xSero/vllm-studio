@@ -1,6 +1,7 @@
 "use client";
 
 import React, { Children, isValidElement, memo, useCallback, useMemo, type ReactNode } from "react";
+import { PreviewScroll } from "@/ui";
 import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -89,14 +90,16 @@ const FencedCodeBlock = memo(function FencedCodeBlock({
   return (
     <div className="assistant-code-block group my-3 overflow-hidden rounded-md border border-(--border) bg-(--color-input)">
       <div className="flex h-7 items-center justify-between border-b border-(--separator) px-3">
-        <span className="font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.1em] text-(--dim)">
+        <span className="font-mono text-[length:var(--fs-sm)] font-medium text-(--dim)">
           {language ?? "code"}
         </span>
         {code ? <CodeBlockCopyButton code={code} /> : null}
       </div>
-      <pre className="m-0 max-w-full overflow-x-auto bg-transparent px-3 py-2.5 text-[length:var(--fs-sm)] leading-[1.6]">
-        <code className={codeClassName}>{code}</code>
-      </pre>
+      <PreviewScroll height="lg" stickToBottom={false} className="max-w-full">
+        <pre className="m-0 overflow-x-auto bg-transparent px-3 py-2.5 text-[length:var(--fs-sm)] leading-[1.6]">
+          <code className={codeClassName}>{code}</code>
+        </pre>
+      </PreviewScroll>
     </div>
   );
 });

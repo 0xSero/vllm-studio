@@ -100,7 +100,7 @@ function ServerHeader({
             </CensoredApiUrl>
           ) : (
             <>
-              <div className="text-[length:var(--fs-xs)] uppercase tracking-[0.16em] text-(--color-foreground-subtle)">
+              <div className="text-[length:var(--fs-sm)] text-(--color-foreground-subtle)">
                 Server
               </div>
               <h1 className="mt-1 text-[length:var(--fs-3xl)] font-semibold tracking-[-0.015em]">
@@ -429,7 +429,7 @@ function DocsPanel() {
 function StatusGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="border-b border-(--border) px-4 py-3">
-      <div className="mb-2 text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.16em] text-(--color-foreground-subtlest)">
+      <div className="mb-2 text-[length:var(--fs-sm)] font-medium text-(--color-foreground-subtlest)">
         {title}
       </div>
       <dl className="space-y-1 text-[length:var(--fs-sm)]">{children}</dl>

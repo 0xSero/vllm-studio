@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { PreviewScroll } from "@/ui";
 import {
   ChevronRight,
   FilePenLine,
@@ -191,7 +192,7 @@ function ShellBlock({
         failed ? "border-(--err)/35" : "border-(--border)"
       }`}
     >
-      <div className="max-h-[340px] overflow-auto px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6]">
+      <PreviewScroll className="px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6]">
         <div className="flex items-start gap-2">
           <span
             className={`select-none ${failed ? "text-(--err)" : "text-(--color-terminal-green)"}`}
@@ -205,27 +206,28 @@ function ShellBlock({
         {trimmedOutput ? (
           <pre className="mt-2 whitespace-pre-wrap break-words text-(--fg)/55">{trimmedOutput}</pre>
         ) : null}
-      </div>
+      </PreviewScroll>
     </div>
   );
 }
 
 function ToolOutput({ children }: { children: ReactNode }) {
   return (
-    <pre className="max-h-[340px] max-w-full overflow-auto whitespace-pre-wrap break-words rounded-md border border-(--border) bg-(--color-input) px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/65">
-      {children}
-    </pre>
+    <PreviewScroll className="max-w-full rounded-md border border-(--border) bg-(--color-input)">
+      <pre className="whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/65">
+        {children}
+      </pre>
+    </PreviewScroll>
   );
 }
 
 function HighlightedToolSource({ body, lang }: { body: string; lang: string }) {
-  const className =
-    "max-h-[420px] max-w-full overflow-auto px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/90";
-
   return (
-    <pre className={className}>
-      <code className={lang ? `language-${lang}` : undefined}>{body || "\u00a0"}</code>
-    </pre>
+    <PreviewScroll height="lg" stickToBottom={false} className="max-w-full">
+      <pre className="px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/90">
+        <code className={lang ? `language-${lang}` : undefined}>{body || "\u00a0"}</code>
+      </pre>
+    </PreviewScroll>
   );
 }
 
@@ -256,7 +258,7 @@ function DiffPreviewSource({ body }: { body: string }) {
           <span className="text-(--err)">−{preview.deletions}</span>
         </span>
       </div>
-      <div className="max-h-[360px] overflow-y-auto overscroll-contain">
+      <PreviewScroll stickToBottom={false}>
         {preview.lines.map((line, index) => (
           <div
             key={`${index}:${line.kind}`}
@@ -272,7 +274,7 @@ function DiffPreviewSource({ body }: { body: string }) {
             </span>
           </div>
         ))}
-      </div>
+      </PreviewScroll>
     </div>
   );
 }

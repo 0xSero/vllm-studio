@@ -154,7 +154,6 @@ export function RecipesContentView(props: Props) {
         </div>
       ) : (
         <TabbedPage
-          eyebrow="Model library"
           title="Models"
           description="Manage model profiles, downloads, and the model marketplace available to Local Studio."
           width="md"

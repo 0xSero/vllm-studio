@@ -107,9 +107,7 @@ export default function UsagePage() {
               onChange={(event) => void updateImage(event.currentTarget.files?.[0])}
             />
             <div className="min-w-0">
-              <h1 className="text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.12em] text-(--ui-muted)">
-                Usage
-              </h1>
+              <h1 className="text-[length:var(--fs-sm)] text-(--ui-muted)">Usage</h1>
               <input
                 value={profile.name}
                 onChange={(event) => updateProfile({ name: event.target.value })}
@@ -130,12 +128,14 @@ export default function UsagePage() {
           </div>
         </header>
 
-        <section className="pt-14 text-center sm:pt-20">
-          <p className="text-[length:var(--fs-sm)] font-medium text-(--ui-muted)">Proxied tokens</p>
-          <div className="mt-2 text-[clamp(2.75rem,7vw,4.75rem)] font-medium leading-none tracking-[-0.055em] tabular-nums text-(--ui-fg)">
+        {/* Left-aligned, not a centered billboard: this is a reading page, and
+            everything below it starts at the same left edge. */}
+        <section className="mx-auto mt-8 max-w-[55rem]">
+          <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">Proxied tokens</p>
+          <div className="mt-1 text-[length:var(--fs-display)] font-medium leading-none tracking-[-0.03em] tabular-nums text-(--ui-fg)">
             {formatNumber(stats.totals.total_tokens)}
           </div>
-          <p className="mt-3 text-[length:var(--fs-sm)] text-(--ui-muted)">
+          <p className="mt-2 text-[length:var(--fs-sm)] text-(--ui-muted)">
             Requests proxied through this controller
           </p>
         </section>
@@ -143,7 +143,7 @@ export default function UsagePage() {
         <Card
           bordered={false}
           padding="sm"
-          className="mx-auto mt-10 max-w-[55rem] bg-(--ui-surface) sm:mt-12"
+          className="mx-auto mt-6 max-w-[55rem] bg-(--ui-surface)"
         >
           <dl className="grid grid-cols-2 divide-x divide-y divide-(--ui-border) sm:grid-cols-3 lg:grid-cols-6">
             <ProfileStat label="Requests" value={formatNumber(stats.totals.total_requests)} />
@@ -155,7 +155,7 @@ export default function UsagePage() {
           </dl>
         </Card>
 
-        <section className="mx-auto mt-12 max-w-[55rem] rounded-[var(--rad-xl)] bg-(--ui-surface)/60 p-4 sm:mt-16 sm:p-5">
+        <section className="mx-auto mt-6 max-w-[55rem] rounded-[var(--rad-xl)] bg-(--ui-surface)/60 p-4 sm:p-5">
           <div className="mb-4 flex items-baseline justify-between gap-4">
             <h2 className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">
               Token activity
@@ -193,11 +193,11 @@ export default function UsagePage() {
 
 function ProfileStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="px-3 py-2.5 text-center first:border-l-0 sm:px-5">
+    <div className="px-3 py-2.5 first:border-l-0 sm:px-5">
       <dd className="text-[length:var(--fs-lg)] font-medium tabular-nums text-(--ui-fg)">
         {value}
       </dd>
-      <dt className="mt-0.5 text-[length:var(--fs-xs)] text-(--ui-muted)">{label}</dt>
+      <dt className="mt-0.5 text-[length:var(--fs-sm)] text-(--ui-muted)">{label}</dt>
     </div>
   );
 }

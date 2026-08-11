@@ -126,7 +126,7 @@ export const ExploreModelRow = memo(function ExploreModelRow({
       value={
         <div className="flex min-w-0 items-center justify-end gap-3">
           {quants.length ? (
-            <span className="min-w-0 truncate font-mono text-[length:var(--fs-xs)] uppercase tracking-[0.08em] text-(--ui-muted)">
+            <span className="min-w-0 truncate font-mono text-[length:var(--fs-sm)] text-(--ui-muted)">
               {quants.slice(0, 2).join(" · ")}
             </span>
           ) : null}

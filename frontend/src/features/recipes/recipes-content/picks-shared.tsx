@@ -202,7 +202,7 @@ export function PickCard({ model, onOpen }: { model: ModelIndexModel; onOpen: ()
               className="rounded-lg"
             />
             <div className="min-w-0">
-              <div className="text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.12em] text-(--ui-muted)">
+              <div className="text-[length:var(--fs-sm)] font-medium text-(--ui-muted)">
                 {brand.label}
               </div>
               <h4 className="mt-0.5 truncate text-[length:var(--fs-lg)] font-medium tracking-tight text-(--ui-fg)">

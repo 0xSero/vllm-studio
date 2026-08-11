@@ -256,7 +256,7 @@ function PlanTodoRow({
               {String(index + 1).padStart(2, "0")}
             </span>
             <span
-              className={`rounded-full border px-1.5 py-0.5 text-[10px] uppercase tracking-[0.14em] ${meta.pillClassName}`}
+              className={`rounded-full border px-1.5 py-0.5 text-[length:var(--fs-sm)] ${meta.pillClassName}`}
             >
               {meta.label}
             </span>

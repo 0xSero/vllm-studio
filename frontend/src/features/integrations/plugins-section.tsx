@@ -7,7 +7,16 @@ import {
   type PluginRuntimeView,
 } from "@local-studio/agent-runtime/plugin-runtime-contract";
 import { ApiErrorResponseSchema } from "@local-studio/agent-runtime/api-contract";
-import { Alert, Button, ModelButton, SearchInput, UiModal, UiModalHeader } from "@/ui";
+import {
+  Alert,
+  Button,
+  ModelButton,
+  SearchInput,
+  UiModal,
+  UiModalBody,
+  UiModalFooter,
+  UiModalHeader,
+} from "@/ui";
 import { Eye, X } from "@/ui/icon-registry";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceLogo } from "@/ui/resource-logo";
@@ -214,7 +223,7 @@ function PluginRow({
           brandColor={plugin.brandColor}
         />
       }
-      value={<ModelValue mono>{`${plugin.source} · ${capabilitySummary(plugin)}`}</ModelValue>}
+      value={<ModelValue>{`${plugin.source} · ${capabilitySummary(plugin)}`}</ModelValue>}
       status={<ModelStatus tone={status.tone}>{status.label}</ModelStatus>}
       actions={
         action || plugin.account?.connected || plugin.hostCapability ? (
@@ -505,28 +514,28 @@ export function PluginsSection() {
           onClose={() => !busyId && setPending(null)}
           closeIcon={<X className="h-4 w-4" />}
         />
-        <div className="space-y-5 px-6 py-5">
+        <UiModalBody className="space-y-4">
           <Alert variant="info">
             Observe mode starts this plugin locally and exposes only tools it declares read-only.
             Desktop actions stay blocked until Local Studio has an action-time approval prompt.
           </Alert>
-          <p className="text-sm leading-6 text-(--ui-muted)">
+          <p className="text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
             The bundle remains in its installed location. Disconnecting stops exposing its tools to
             Workbench sessions.
           </p>
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setPending(null)} disabled={Boolean(busyId)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => pending && void setEnabled(pending, true)}
-              disabled={!pending || Boolean(busyId)}
-              loading={Boolean(busyId)}
-            >
-              Connect in observe mode
-            </Button>
-          </div>
-        </div>
+        </UiModalBody>
+        <UiModalFooter>
+          <Button variant="ghost" onClick={() => setPending(null)} disabled={Boolean(busyId)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => pending && void setEnabled(pending, true)}
+            disabled={!pending || Boolean(busyId)}
+            loading={Boolean(busyId)}
+          >
+            Connect in observe mode
+          </Button>
+        </UiModalFooter>
       </UiModal>
       {accountPlugin?.account?.provider === "google" ? (
         <GoogleAccountModal

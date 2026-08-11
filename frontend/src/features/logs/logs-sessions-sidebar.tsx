@@ -104,7 +104,7 @@ export function LogsSessionsSidebar({
       <div className="w-72 border-r border-(--border) flex-col bg-(--surface) shrink-0 hidden md:flex">
         <div className="p-4 border-b border-(--border)">
           <div className="flex items-center justify-between mb-3">
-            <h1 className="text-sm font-medium text-(--dim) uppercase tracking-wider">
+            <h1 className="text-[length:var(--fs-base)] font-medium text-(--dim)">
               Log Sessions
             </h1>
           </div>
@@ -123,7 +123,7 @@ export function LogsSessionsSidebar({
       >
         <div className="p-4 border-b border-(--border)">
           <div className="flex items-center justify-between mb-3">
-            <h1 className="text-sm font-medium text-(--dim) uppercase tracking-wider">
+            <h1 className="text-[length:var(--fs-base)] font-medium text-(--dim)">
               Log Sessions
             </h1>
             <Button variant="icon" size="sm" onClick={() => onSidebarToggle(false)}>
