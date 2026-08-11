@@ -2243,6 +2243,22 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     pruneCursors(now().getTime());
   };
 
+  const snapshotSection = async <T>(
+    load: () => T | Promise<T>,
+    requestId: string,
+    code: "controller_unavailable" | "section_unavailable" | "agent_runtime_unavailable",
+    message: string,
+    maxAgeMs: number,
+  ): Promise<Section<T>> => {
+    try {
+      const value = await load();
+      const observedAt = now().toISOString();
+      return fulfilledSection(value, observedAt, maxAgeMs);
+    } catch {
+      return failedSection(requestId, code, message, maxAgeMs);
+    }
+  };
+
   const buildSnapshot = async (
     request: LitterBridgeControllerSnapshotRequest,
   ): Promise<LitterBridgeControllerSnapshot> => {
@@ -2252,104 +2268,69 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     const apiKey = options.controllerApiKey ?? settings?.apiKey ?? "";
     const base = resolveControllerBase(backendUrl);
     const requestId = request.auth.requestId;
-    const healthPromise = (async () => {
-      const startedAt = performance.now();
-      try {
+    const healthPromise = snapshotSection(
+      async () => {
+        const startedAt = performance.now();
         const result = await fetchControllerJson(implementation, base, "/health", 1_500, apiKey);
         if (!isRecord(result) || result.status !== "ok") {
           throw new Error("Controller health shape is invalid");
         }
-        const observedAt = now().toISOString();
-        return fulfilledSection(
-          {
-            state: "ok" as const,
-            reachable: true,
-            checkedAt: observedAt,
-            latencyMs: Math.max(0, performance.now() - startedAt),
-            controllerVersion: null,
-          },
-          observedAt,
-          5_000,
-        );
-      } catch {
-        return failedSection(
-          requestId,
-          "controller_unavailable",
-          "Controller health is unavailable",
-          5_000,
-        );
-      }
-    })();
-    const statusPromise = (async () => {
-      try {
-        const value = normalizeStatus(
-          await fetchControllerJson(implementation, base, "/status", 2_000, apiKey),
-        );
-        const observedAt = now().toISOString();
-        return fulfilledSection(value, observedAt, 5_000);
-      } catch {
-        return failedSection(
-          requestId,
-          "section_unavailable",
-          "Controller status is unavailable",
-          5_000,
-        );
-      }
-    })();
-    const gpusPromise = (async () => {
-      try {
-        const value = normalizeGpus(
-          await fetchControllerJson(implementation, base, "/gpus", 2_500, apiKey),
-        );
-        const observedAt = now().toISOString();
-        return fulfilledSection(value, observedAt, 10_000);
-      } catch {
-        return failedSection(
-          requestId,
-          "section_unavailable",
-          "Controller GPU data is unavailable",
-          10_000,
-        );
-      }
-    })();
-    const metricsPromise = (async () => {
-      try {
-        const value = normalizeMetrics(
-          await fetchControllerJson(implementation, base, "/v1/metrics/vllm", 2_500, apiKey),
-        );
-        const observedAt = now().toISOString();
-        return fulfilledSection(value, observedAt, 5_000);
-      } catch {
-        return failedSection(
-          requestId,
-          "section_unavailable",
-          "Controller metrics are unavailable",
-          5_000,
-        );
-      }
-    })();
-    const runtimePromise = Promise.resolve().then(() => {
-      try {
-        const stats = runtimeStats();
-        const observedAt = now().toISOString();
-        return fulfilledSection(
-          {
-            state: "ok" as const,
-            reachable: true,
-            ...stats,
-          },
-          observedAt,
-          5_000,
-        );
-      } catch {
-        return failedSection(
-          requestId,
-          "agent_runtime_unavailable",
-          "Agent runtime statistics are unavailable",
-          5_000,
-        );
-      }
-    });
+        return {
+          state: "ok" as const,
+          reachable: true,
+          checkedAt: now().toISOString(),
+          latencyMs: Math.max(0, performance.now() - startedAt),
+          controllerVersion: null,
+        };
+      },
+      requestId,
+      "controller_unavailable",
+      "Controller health is unavailable",
+      5_000,
+    );
+    const controllerSection = <T>(
+      route: string,
+      timeoutMs: number,
+      maxAgeMs: number,
+      message: string,
+      normalize: (value: unknown) => T,
+    ) =>
+      snapshotSection(
+        async () =>
+          normalize(await fetchControllerJson(implementation, base, route, timeoutMs, apiKey)),
+        requestId,
+        "section_unavailable",
+        message,
+        maxAgeMs,
+      );
+    const statusPromise = controllerSection(
+      "/status",
+      2_000,
+      5_000,
+      "Controller status is unavailable",
+      normalizeStatus,
+    );
+    const gpusPromise = controllerSection(
+      "/gpus",
+      2_500,
+      10_000,
+      "Controller GPU data is unavailable",
+      normalizeGpus,
+    );
+    const metricsPromise = controllerSection(
+      "/v1/metrics/vllm",
+      2_500,
+      5_000,
+      "Controller metrics are unavailable",
+      normalizeMetrics,
+    );
+    const runtimePromise = snapshotSection(
+      () => ({ state: "ok" as const, reachable: true, ...runtimeStats() }),
+      requestId,
+      "agent_runtime_unavailable",
+      "Agent runtime statistics are unavailable",
+      5_000,
+    );
     const [health, status, gpus, metrics, agentRuntime] = await Promise.all([
       healthPromise,
       statusPromise,
@@ -2997,12 +2978,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
       ? liveProjects(projects()).find((entry) => entry.cwd === requestedCwd)
       : null;
     if (!project) {
-      return jsonError(
-        "forbidden",
-        "Working directory is not an allowed project",
-        requestId,
-        403,
-      );
+      return jsonError("forbidden", "Working directory is not an allowed project", requestId, 403);
     }
     const modelId = boundedString(request.modelId);
     if (!modelId) {
@@ -3023,10 +2999,9 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
       const ledger = getMutationLedger();
       const reservation = ledger.reserve(identity, request.auth.bodyHash, mutationOwnerId);
       if (reservation.kind === "cached") {
-        return Response.json(
-          materializeSessionCreateResult(reservation.stored.result, requestId),
-          { status: reservation.stored.status },
-        );
+        return Response.json(materializeSessionCreateResult(reservation.stored.result, requestId), {
+          status: reservation.stored.status,
+        });
       }
       if (reservation.kind === "mismatch") {
         return jsonError(
@@ -3151,11 +3126,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         status.cwd !== project.cwd ||
         status.modelId !== modelId
       ) {
-        return rejectRetryable(
-          "integrity_failed",
-          "Runtime session identity is inconsistent",
-          409,
-        );
+        return rejectRetryable("integrity_failed", "Runtime session identity is inconsistent", 409);
       }
       const dispatchId = randomUUID();
       let boundary: PiDurablePromptBoundary;
@@ -3282,8 +3253,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     const verified = verifyLitterBridgeRequest(parsed, requestNow);
     if (!verified.ok) return verified.response;
     if (
-      (parsed.type === "controller_snapshot_request" ||
-        parsed.type === "session_create_request") &&
+      (parsed.type === "controller_snapshot_request" || parsed.type === "session_create_request") &&
       parsed.controllerId !== controllerId
     ) {
       return jsonError("not_found", "Controller identity was not found", requestId, 404);
