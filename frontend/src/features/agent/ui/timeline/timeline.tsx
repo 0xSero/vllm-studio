@@ -8,10 +8,6 @@ import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { effectTimeout, type EffectTimer } from "@/lib/effect-timers";
 import { patchSessionView, readSessionView } from "@/features/agent/workspace/session-view-state";
 
-// Mirrors `groupAssistantBlocks`: a message renders something only if it has a
-// non-empty text block or any tool/thinking/event block. Assistant messages
-// that produce nothing (e.g. only whitespace text from a stream) would still
-// emit an empty article plus the wrapper's top padding, leaving a blank gap.
 function messageRenders(message: ChatMessage): boolean {
   if (message.role === "system") return false;
   if (message.role === "user") {
@@ -31,7 +27,6 @@ type TimelineProps = {
   onStickToBottomChange?: (value: boolean) => void;
   viewKey: string | null;
   viewAlias: string | null;
-  /** Older history remains unread beyond the loaded tail (shows "Load earlier"). */
   hasEarlier?: boolean;
   onLoadEarlier?: () => Promise<void> | void;
 };
@@ -160,9 +155,6 @@ export function Timeline({
   );
 }
 
-/** Top-of-thread affordance for tail-loaded sessions: fetches the previous page
- * of older history and prepends it. Rendered only while a history cursor
- * remains (older events exist beyond what is loaded). */
 function LoadEarlierButton({ onLoadEarlier }: { onLoadEarlier: () => Promise<void> | void }) {
   const [pending, setPending] = useState(false);
   return (
@@ -183,8 +175,6 @@ function LoadEarlierButton({ onLoadEarlier }: { onLoadEarlier: () => Promise<voi
   );
 }
 
-/** Floating "jump to latest" affordance, shown only when the user has scrolled
- * up off the bottom. Nudges to "New messages" while a turn is streaming. */
 function ScrollToBottomButton({ running, onClick }: { running: boolean; onClick: () => void }) {
   return (
     <button
@@ -232,26 +222,18 @@ function PromptMarkers({
   const promptIds = useMemo(() => prompts.map((prompt) => prompt.id), [prompts]);
   const activeId = useActivePromptId(scroller, promptIds);
   if (!scroller || prompts.length === 0) return null;
-  const maxCount = Math.max(
-    1,
-    Math.floor(
-      (viewportHeight * PROMPT_MARKER_MAX_RATIO + PROMPT_MARKER_GAP_PX) /
-        (PROMPT_MARKER_HEIGHT_PX + PROMPT_MARKER_GAP_PX),
-    ),
-  );
-  // The rail shows a window of prompts. It normally sits at the newest end, but
-  // slides back so the prompt you have scrolled to stays represented.
+  const maxCount = Math.max(1, Math.floor((viewportHeight * PROMPT_MARKER_MAX_RATIO + 10) / 26));
   const activeIndex = activeId ? prompts.findIndex((prompt) => prompt.id === activeId) : -1;
-  let windowStart = Math.max(0, prompts.length - maxCount);
-  if (activeIndex >= 0 && activeIndex < windowStart) {
-    windowStart = Math.max(0, activeIndex - Math.floor(maxCount / 2));
-  }
-  const visible =
-    prompts.length > maxCount ? prompts.slice(windowStart, windowStart + maxCount) : prompts;
+  const defaultStart = Math.max(0, prompts.length - maxCount);
+  const windowStart =
+    activeIndex >= 0 && activeIndex < defaultStart
+      ? Math.max(0, activeIndex - Math.floor(maxCount / 2))
+      : defaultStart;
+  const visible = prompts.slice(windowStart, windowStart + maxCount);
   const scrollToPrompt = (id: string) => {
-    const node = Array.from(
-      scroller.querySelectorAll<HTMLElement>("[data-timeline-message-id]"),
-    ).find((element) => element.dataset.timelineMessageId === id);
+    const node = scroller.querySelector<HTMLElement>(
+      `[data-timeline-message-id="${CSS.escape(id)}"]`,
+    );
     node?.scrollIntoView({ block: "center", behavior: "smooth" });
   };
   return (
@@ -289,19 +271,12 @@ function PromptMarkers({
   );
 }
 
-/** How far below the top of the viewport a prompt has to be before it counts as
- *  the one you are reading. Roughly one header's worth of slack. */
 const ACTIVE_PROMPT_OFFSET_PX = 96;
 
-/** Scroll-spy for the prompt rail: which prompt is currently in view. The rail
- *  used to hardcode the highlight to the newest marker, so scrolling back
- *  through a long thread left the indicator stuck at the end. */
 function useActivePromptId(scroller: HTMLDivElement | null, promptIds: string[]): string | null {
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
       if (!scroller) return () => undefined;
-      // Scroll fires far faster than we can usefully re-render; coalesce to one
-      // read per frame.
       let frame = 0;
       const notify = () => {
         if (frame) return;
@@ -326,8 +301,6 @@ function useActivePromptId(scroller: HTMLDivElement | null, promptIds: string[])
     const threshold = scroller.getBoundingClientRect().top + ACTIVE_PROMPT_OFFSET_PX;
     const wanted = new Set(promptIds);
     let active: string | null = null;
-    // One ordered pass over the rendered messages: the last prompt whose top has
-    // crossed the threshold is the one being read.
     for (const node of scroller.querySelectorAll<HTMLElement>("[data-timeline-message-id]")) {
       const id = node.dataset.timelineMessageId;
       if (!id || !wanted.has(id)) continue;
@@ -359,55 +332,41 @@ function useScrollerViewportHeight(scroller: HTMLDivElement | null): number {
 function userPromptLabel(message: ChatMessage): string {
   const text = message.text.trim();
   if (text) return text.replace(/\s+/g, " ");
-  if (message.attachments?.length) {
-    return message.attachments.map((attachment) => attachment.name).join(", ");
-  }
-  return "";
+  return message.attachments?.map((attachment) => attachment.name).join(", ") ?? "";
 }
 
 function formatPromptTime(timestamp?: string): string {
   const value = timestamp?.trim() ?? "";
-  if (!value) return "";
-  if (/^\d{1,2}:\d{2}(?:\s?[AP]M)?$/i.test(value)) return value;
+  if (!value || /^\d{1,2}:\d{2}(?:\s?[AP]M)?$/i.test(value)) return value;
   const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) return value;
-  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(
-    new Date(parsed),
-  );
+  return Number.isFinite(parsed)
+    ? new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(
+        new Date(parsed),
+      )
+    : value;
 }
 
 type MergedRun = { segments: ChatMessage[]; merged: ChatMessage };
-const MERGE_CACHE_MAX_ENTRIES = 512;
 
-// Streaming commits a fresh `messages` array every animation frame, so this
-// merge runs per frame. The per-run cache keeps a merged turn's object
-// identity stable while its segments are unchanged — otherwise every settled
-// multi-segment turn would get a new identity each frame and its MemoMessage
-// would re-render for the whole stream.
 function mergeConsecutiveAssistantMessages(
   messages: ChatMessage[],
   cache: Map<string, MergedRun>,
 ): ChatMessage[] {
   const merged: ChatMessage[] = [];
   let run: ChatMessage[] = [];
-  const flushRun = () => {
-    if (run.length === 0) return;
-    if (run.length === 1) {
-      merged.push(run[0]);
-    } else {
-      merged.push(mergeRun(run, cache));
-    }
+  const flush = () => {
+    if (run.length === 1) merged.push(run[0]);
+    else if (run.length > 1) merged.push(mergeRun(run, cache));
     run = [];
   };
   for (const message of messages) {
-    if (message.role === "assistant") {
-      run.push(message);
-      continue;
+    if (message.role === "assistant") run.push(message);
+    else {
+      flush();
+      merged.push(message);
     }
-    flushRun();
-    merged.push(message);
   }
-  flushRun();
+  flush();
   return merged;
 }
 
@@ -415,18 +374,13 @@ function mergeRun(run: ChatMessage[], cache: Map<string, MergedRun>): ChatMessag
   const first = run[0];
   const cached = cache.get(first.id);
   if (
-    cached &&
-    cached.segments.length === run.length &&
+    cached?.segments.length === run.length &&
     cached.segments.every((segment, index) => segment === run[index])
   ) {
     return cached.merged;
   }
-  const combined: ChatMessage = {
+  const merged: ChatMessage = {
     ...first,
-    // Anchor the merged id on the first segment (already unique). Concatenating
-    // each new segment's id grew the id — and thus the React key — on every
-    // tool boundary within a turn, remounting the whole assistant <article>
-    // mid-stream and collapsing expanded reasoning/tool disclosures.
     id: first.id,
     text: run
       .map((segment) => segment.text)
@@ -439,35 +393,14 @@ function mergeRun(run: ChatMessage[], cache: Map<string, MergedRun>): ChatMessag
       undefined,
     ),
   };
-  if (cache.size >= MERGE_CACHE_MAX_ENTRIES) cache.clear();
-  cache.set(first.id, { segments: run, merged: combined });
-  return combined;
+  if (cache.size >= 512) cache.clear();
+  cache.set(first.id, { segments: run, merged });
+  return merged;
 }
 
 const AT_BOTTOM_THRESHOLD_PX = 80;
 const USER_HOLD_MS = 700;
 
-/**
- * Keeps the chat locked to the latest message while streaming and re-pins after
- * any layout growth (new tokens, expanded reasoning, async-loaded history), so
- * the view never drifts off the bottom or shifts under the user.
- *
- * Proximity to the bottom is the single source of truth: if the viewport is at
- * the bottom we follow new content, otherwise we leave the user where they are.
- * `scrollTop` can move from three sources — a genuine user scroll, our own pin
- * write, and now native scroll anchoring compensating for above-viewport growth
- * — but all three classify correctly via `atBottom()`: an anchoring adjustment
- * while scrolled up keeps us off-bottom (stays detached), and while pinned the
- * next pin write re-asserts the bottom, so neither is misread as "scrolled up".
- *
- * Upward gestures (wheel/touch/keys) detach synchronously with a short hold
- * window, so the user can still escape mid-stream even when a synchronous DOM
- * mutation would otherwise re-pin before the async scroll event is delivered.
- *
- * The scroller and bottom-sentinel are passed as DOM nodes (not refs) so the
- * observers re-attach whenever the elements mount — critical when a session
- * mounts empty (history loads async) and the scroller appears after first paint.
- */
 function useTimelineScrollEffects({
   scroller,
   bottom,
@@ -483,16 +416,10 @@ function useTimelineScrollEffects({
   viewKey: string | null;
   viewAlias: string | null;
 }) {
-  // Synchronous source of truth the handlers read. The parent's `stickToBottom`
-  // prop is the eventually-consistent mirror (drives chrome and lets submit /
-  // tab-change force a re-stick); `onChangeRef` reports our changes back to it.
   const stickRef = useRef(stickToBottom);
   const onChangeRef = useRef(onStickToBottomChange);
-  // While set, honor a deliberate upward scroll instead of snapping back to the
-  // bottom (e.g. the user grazes the threshold while reading recent history).
   const userHoldUntilRef = useRef(0);
 
-  // Mirror prop + callback into refs in the commit phase (never during render).
   useMountSubscription(() => {
     stickRef.current = stickToBottom;
   }, [stickToBottom]);
@@ -552,8 +479,6 @@ function useTimelineScrollEffects({
         if (pendingRestoreTop !== null) return;
       }
       if (atBottom()) {
-        // Briefly respect a deliberate scroll-up near the bottom instead of
-        // immediately re-locking and fighting the user.
         if (Date.now() < userHoldUntilRef.current) return;
         setStick(true);
         persist();
@@ -600,10 +525,6 @@ function useTimelineScrollEffects({
     el.addEventListener("touchstart", onTouchStart, { passive: true });
     el.addEventListener("touchmove", onTouchMove, { passive: true });
 
-    // Follow content + viewport growth while pinned. Coalesce observer bursts to
-    // one scroll write per animation frame; streamed tool/thinking text can
-    // otherwise trigger a scrollTop write for every token and make the timeline
-    // look like it is flickering or fighting itself.
     const listEl = bottom?.parentElement ?? el;
     const resizeObserver =
       typeof ResizeObserver === "undefined"
@@ -615,9 +536,6 @@ function useTimelineScrollEffects({
     resizeObserver?.observe(el);
     if (listEl !== el) resizeObserver?.observe(listEl);
 
-    // Structural timeline changes need following; characterData streaming is
-    // deliberately excluded and left to ResizeObserver so we don't do a DOM
-    // scroll write on every token.
     const mutationObserver =
       typeof MutationObserver === "undefined"
         ? null
@@ -627,8 +545,6 @@ function useTimelineScrollEffects({
           });
     mutationObserver?.observe(listEl, { childList: true, subtree: true });
 
-    // Initial alignment (also covers async-loaded history once it renders, via
-    // the ResizeObserver above).
     if (restored) {
       stickRef.current = restored.stickToBottom;
       onChangeRef.current?.(restored.stickToBottom);
@@ -655,8 +571,6 @@ function useTimelineScrollEffects({
     };
   }, [bottom, scroller, viewKey, viewAlias]);
 
-  // When the parent forces stick=true (submit, tab change, session load), snap
-  // back to the bottom and clear any lingering hold.
   useMountSubscription(() => {
     if (stickToBottom && scroller) {
       stickRef.current = true;
