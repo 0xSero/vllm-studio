@@ -7,6 +7,36 @@ import {
   type RepositoryError,
 } from "../../stores/sqlite";
 
+const PEAK_FIELDS = [
+  ["prefill_tps", "peak_prefill_tps", ">"],
+  ["generation_tps", "peak_generation_tps", ">"],
+  ["ttft_ms", "best_ttft_ms", "<"],
+] as const;
+
+const peakAssignment = (table: string, column: string, operator: string) => `${column} = CASE
+    WHEN excluded.${column} IS NULL THEN ${table}.${column}
+    WHEN ${table}.${column} IS NULL THEN excluded.${column}
+    WHEN excluded.${column} ${operator} ${table}.${column}
+      THEN excluded.${column}
+    ELSE ${table}.${column}
+  END`;
+
+const peakUpdates = PEAK_FIELDS.map(([column, , operator]) =>
+  peakAssignment("peak_metrics", column, operator),
+).join(",\n");
+const peakImproved = PEAK_FIELDS.map(
+  ([column, , operator]) =>
+    `(excluded.${column} IS NOT NULL AND (peak_metrics.${column} IS NULL OR excluded.${column} ${operator} peak_metrics.${column}))`,
+).join(" OR ");
+const sessionPeakUpdates = PEAK_FIELDS.map(([, column, operator]) =>
+  peakAssignment("peak_metric_sessions", column, operator),
+).join(",\n");
+
+const recordRow = (db: Database, query: string, value: string): Record<string, unknown> | null => {
+  const row = db.query(query).get(value) as Record<string, unknown> | null;
+  return row ? { ...row } : null;
+};
+
 export class PeakMetricsStore {
   private readonly db: Database;
   private readonly closeDatabase: () => Effect.Effect<void, RepositoryError>;
@@ -45,10 +75,7 @@ export class PeakMetricsStore {
   }
 
   public get(modelId: string): Record<string, unknown> | null {
-    const row = this.db
-      .query("SELECT * FROM peak_metrics WHERE model_id = ?")
-      .get(modelId) as Record<string, unknown> | null;
-    return row ? { ...row } : null;
+    return recordRow(this.db, "SELECT * FROM peak_metrics WHERE model_id = ?", modelId);
   }
 
   public getEffect(
@@ -63,68 +90,17 @@ export class PeakMetricsStore {
     generationTps?: number,
     ttftMs?: number,
   ): Record<string, unknown> {
-    const current = this.get(modelId);
-    const updates: Record<string, number> = {};
-
-    if (current) {
-      if (
-        prefillTps !== undefined &&
-        (current["prefill_tps"] === null || Number(prefillTps) > Number(current["prefill_tps"]))
-      ) {
-        updates["prefill_tps"] = prefillTps;
-      }
-      if (
-        generationTps !== undefined &&
-        (current["generation_tps"] === null ||
-          Number(generationTps) > Number(current["generation_tps"]))
-      ) {
-        updates["generation_tps"] = generationTps;
-      }
-      if (
-        ttftMs !== undefined &&
-        (current["ttft_ms"] === null || Number(ttftMs) < Number(current["ttft_ms"]))
-      ) {
-        updates["ttft_ms"] = ttftMs;
-      }
-    } else {
-      if (prefillTps !== undefined) {
-        updates["prefill_tps"] = prefillTps;
-      }
-      if (generationTps !== undefined) {
-        updates["generation_tps"] = generationTps;
-      }
-      if (ttftMs !== undefined) {
-        updates["ttft_ms"] = ttftMs;
-      }
-    }
-
-    if (Object.keys(updates).length > 0) {
-      if (current) {
-        const setClause = Object.keys(updates)
-          .map((key) => `${key} = ?`)
-          .join(", ");
-        this.db
-          .query(
-            `UPDATE peak_metrics SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE model_id = ?`,
-          )
-          .run(...Object.values(updates), modelId);
-      } else {
-        this.db
-          .query(
-            `
-          INSERT INTO peak_metrics (model_id, prefill_tps, generation_tps, ttft_ms)
-          VALUES (?, ?, ?, ?)
-        `,
-          )
-          .run(
-            modelId,
-            updates["prefill_tps"] ?? null,
-            updates["generation_tps"] ?? null,
-            updates["ttft_ms"] ?? null,
-          );
-      }
-    }
-
+    if ([prefillTps, generationTps, ttftMs].every((value) => value === undefined)) return {};
+    this.db
+      .query(
+        `INSERT INTO peak_metrics (model_id, prefill_tps, generation_tps, ttft_ms)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(model_id) DO UPDATE SET
+           ${peakUpdates},
+           updated_at = CURRENT_TIMESTAMP
+         WHERE ${peakImproved}`,
+      )
+      .run(modelId, prefillTps ?? null, generationTps ?? null, ttftMs ?? null);
     return this.get(modelId) ?? {};
   }
 
@@ -184,24 +160,7 @@ export class PeakMetricsStore {
         VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(session_id) DO UPDATE SET
           model_id = excluded.model_id,
-          peak_prefill_tps = CASE
-            WHEN excluded.peak_prefill_tps IS NULL THEN peak_metric_sessions.peak_prefill_tps
-            WHEN peak_metric_sessions.peak_prefill_tps IS NULL THEN excluded.peak_prefill_tps
-            WHEN excluded.peak_prefill_tps > peak_metric_sessions.peak_prefill_tps THEN excluded.peak_prefill_tps
-            ELSE peak_metric_sessions.peak_prefill_tps
-          END,
-          peak_generation_tps = CASE
-            WHEN excluded.peak_generation_tps IS NULL THEN peak_metric_sessions.peak_generation_tps
-            WHEN peak_metric_sessions.peak_generation_tps IS NULL THEN excluded.peak_generation_tps
-            WHEN excluded.peak_generation_tps > peak_metric_sessions.peak_generation_tps THEN excluded.peak_generation_tps
-            ELSE peak_metric_sessions.peak_generation_tps
-          END,
-          best_ttft_ms = CASE
-            WHEN excluded.best_ttft_ms IS NULL THEN peak_metric_sessions.best_ttft_ms
-            WHEN peak_metric_sessions.best_ttft_ms IS NULL THEN excluded.best_ttft_ms
-            WHEN excluded.best_ttft_ms < peak_metric_sessions.best_ttft_ms THEN excluded.best_ttft_ms
-            ELSE peak_metric_sessions.best_ttft_ms
-          END,
+          ${sessionPeakUpdates},
           updated_at = CURRENT_TIMESTAMP
       `,
       )
@@ -223,10 +182,11 @@ export class PeakMetricsStore {
   }
 
   public getSession(sessionId: string): Record<string, unknown> | null {
-    const row = this.db
-      .query("SELECT * FROM peak_metric_sessions WHERE session_id = ?")
-      .get(sessionId) as Record<string, unknown> | null;
-    return row ? { ...row } : null;
+    return recordRow(
+      this.db,
+      "SELECT * FROM peak_metric_sessions WHERE session_id = ?",
+      sessionId,
+    );
   }
 
   public getSessionEffect(
@@ -236,9 +196,9 @@ export class PeakMetricsStore {
   }
 
   public getBestSession(modelId: string): Record<string, unknown> | null {
-    const row = this.db
-      .query(
-        `
+    return recordRow(
+      this.db,
+      `
         SELECT * FROM peak_metric_sessions
         WHERE model_id = ?
         ORDER BY
@@ -247,9 +207,8 @@ export class PeakMetricsStore {
           updated_at DESC
         LIMIT 1
       `,
-      )
-      .get(modelId) as Record<string, unknown> | null;
-    return row ? { ...row } : null;
+      modelId,
+    );
   }
 
   public getBestSessionEffect(
