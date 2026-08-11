@@ -18,7 +18,7 @@ import {
   type WorkspaceWindow,
 } from "@/features/agent/workspace/effects";
 import type { AgentModel, PaneId, WorkspaceState } from "@/features/agent/workspace/types";
-import { useProjects } from "@/features/agent/projects/context";
+import { useProjectsStore } from "@/features/agent/projects/store";
 import { useToolsRef } from "@/features/agent/tools/context";
 import { BACKEND_URL_STORAGE_KEY, getApiKey, getStoredBackendUrl } from "@/lib/api/connection";
 import {
@@ -154,12 +154,7 @@ function api(): WorkspaceEffectDeps["api"] {
 }
 
 export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): UseWorkspaceResult {
-  const projects = useProjects();
-  const projectsRef = useRef(projects);
   const toolsRef = useToolsRef();
-  useMountSubscription(() => {
-    projectsRef.current = projects;
-  }, [projects]);
   const [state, setState] = useState<WorkspaceState>(createInitialState);
   const stateRef = useRef(state);
   const paneHandlesRef = useRef<Map<PaneId, ChatPaneHandle>>(new Map());
@@ -366,7 +361,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
       },
       initGitForActiveProject: async () => {
         try {
-          await projectsRef.current.initGitForActiveProject();
+          await useProjectsStore.getState().initGitForActiveProject();
         } catch (error) {
           dispatch((state) => ({
             ...state,

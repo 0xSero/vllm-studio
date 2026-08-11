@@ -1,14 +1,9 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useSyncExternalStore,
-  type ReactNode,
-} from "react";
-import { createProjectsStore, type ProjectsStore } from "@/features/agent/projects/store";
+import { useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useProjectsStore } from "@/features/agent/projects/store";
 import type { GitSummary, Project, ProjectId } from "@/features/agent/projects/types";
 
 export type ProjectsContextValue = {
@@ -30,83 +25,27 @@ export type ProjectsContextValue = {
   initGitForActiveProject: () => Promise<void>;
 };
 
-const ProjectsContext = createContext<ProjectsStore | null>(null);
-
-export function ProjectsProvider({ children }: { children: ReactNode }) {
-  const store = useMemo(() => createProjectsStore(), []);
-  return <ProjectsContext.Provider value={store}>{children}</ProjectsContext.Provider>;
-}
-
 export function useProjects(): ProjectsContextValue {
-  const store = useContext(ProjectsContext);
-  if (!store) throw new Error("useProjects must be used within a ProjectsProvider");
-  const { projects, loaded, selectedId, gitSummaries } = useSyncExternalStore(
-    store.subscribe,
-    store.getSnapshot,
-    store.getSnapshot,
+  const state = useProjectsStore(
+    useShallow(({ initialize: _initialize, ...projects }) => projects),
   );
-
-  const findById = useCallback(
-    (id: string | null | undefined): Project | null =>
-      (id && projects.find((p) => p.id === id)) || null,
-    [projects],
-  );
-
-  const findByPath = useCallback(
-    (path: string | null | undefined): Project | null =>
-      (path && projects.find((p) => p.path === path)) || null,
-    [projects],
-  );
-
-  const resolveProject = useCallback(
-    (tab: { projectId?: string; cwd?: string } | null | undefined): Project | null => {
-      if (!tab) return findById(selectedId);
-      return findById(tab.projectId) ?? findByPath(tab.cwd) ?? findById(selectedId);
-    },
-    [findById, findByPath, selectedId],
-  );
-
-  const gitSummary = useCallback(
-    (cwd: string | null | undefined): GitSummary | null =>
-      cwd ? (gitSummaries.get(cwd) ?? null) : null,
-    [gitSummaries],
-  );
-
-  const selectedProject = useMemo(() => findById(selectedId), [findById, selectedId]);
-  const agentCwd = selectedProject?.path ?? "";
-
-  const value = useMemo<ProjectsContextValue>(
-    () => ({
-      projects,
-      loaded,
+  useMountSubscription(() => useProjectsStore.getState().initialize(), []);
+  return useMemo(() => {
+    const findById = (id: string | null | undefined): Project | null =>
+      (id && state.projects.find((project) => project.id === id)) || null;
+    const findByPath = (path: string | null | undefined): Project | null =>
+      (path && state.projects.find((project) => project.path === path)) || null;
+    const selectedProject = findById(state.selectedId);
+    return {
+      ...state,
       selectedProject,
-      selectedProjectId: selectedId,
-      agentCwd,
-      gitSummary,
+      selectedProjectId: state.selectedId,
+      agentCwd: selectedProject?.path ?? "",
+      gitSummary: (cwd) => (cwd ? (state.gitSummaries.get(cwd) ?? null) : null),
       findById,
       findByPath,
-      resolveProject,
-      selectProject: store.selectProject,
-      upsertProject: store.upsertProject,
-      removeProject: store.removeProject,
-      moveProjectBefore: store.moveProjectBefore,
-      refresh: store.refresh,
-      loadGitSummary: store.loadGitSummary,
-      initGitForActiveProject: store.initGitForActiveProject,
-    }),
-    [
-      projects,
-      loaded,
-      selectedProject,
-      selectedId,
-      agentCwd,
-      gitSummary,
-      findById,
-      findByPath,
-      resolveProject,
-      store,
-    ],
-  );
-
-  return value;
+      resolveProject: (tab) =>
+        tab ? (findById(tab.projectId) ?? findByPath(tab.cwd) ?? selectedProject) : selectedProject,
+    };
+  }, [state]);
 }
