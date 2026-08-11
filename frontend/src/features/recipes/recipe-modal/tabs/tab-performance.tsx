@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, Database, Settings, Zap } from "@/ui/icon-registry";
+import { Clock, Database, Settings, Zap } from "lucide-react";
 import { FormSection } from "@/ui";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { ENGINE_LABEL, getEngineOptions } from "@/features/recipes/engine-capabilities";

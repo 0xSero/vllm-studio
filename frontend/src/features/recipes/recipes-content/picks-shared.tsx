@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Brain, ChevronRight, DownloadCloud, Eye, Zap } from "@/ui/icon-registry";
+import { Brain, ChevronRight, DownloadCloud, Eye, Zap } from "lucide-react";
 import { ModelButton } from "@/ui";
 import { ModelLogo } from "@/ui/model-logo";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";

@@ -1,6 +1,6 @@
 "use client";
 
-import { Boxes, Layers, Settings } from "@/ui/icon-registry";
+import { Boxes, Layers, Settings } from "lucide-react";
 import { FormSection } from "@/ui";
 import { ENGINE_LABEL, getEngineOptions } from "@/features/recipes/engine-capabilities";
 import { EngineOptionsSection } from "../engine-options-section";

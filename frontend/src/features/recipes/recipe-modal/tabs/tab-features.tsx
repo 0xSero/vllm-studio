@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, Eye, MessageSquare, Settings, Wrench } from "@/ui/icon-registry";
+import { Brain, Eye, MessageSquare, Settings, Wrench } from "lucide-react";
 import { FormField, FormSection, SegmentedControl, type SegmentedItem } from "@/ui";
 import { ENGINE_LABEL, getEngineOptions } from "@/features/recipes/engine-capabilities";
 import {

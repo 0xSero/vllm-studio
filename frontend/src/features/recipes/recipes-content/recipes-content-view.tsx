@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, type ReactNode } from "react";
-import { Compass, Download, HardDrive, Sparkles } from "@/ui/icon-registry";
+import { Compass, Download, HardDrive, Sparkles } from "lucide-react";
 import { RefreshButton, TabbedPage, Tabs } from "@/ui";
 import { useRecipesContentModel, type RecipesContentTab } from "./recipes-content-model";
 import type { RecipesTableProps } from "./types";

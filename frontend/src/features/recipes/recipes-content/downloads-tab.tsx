@@ -1,6 +1,6 @@
 "use client";
 
-import { Pause, Play, Plus, X } from "@/ui/icon-registry";
+import { Pause, Play, Plus, X } from "lucide-react";
 import { useDownloads } from "@/hooks/use-downloads";
 import { formatBytes } from "@/lib/formatters";
 import type { ModelDownload } from "@/lib/types";

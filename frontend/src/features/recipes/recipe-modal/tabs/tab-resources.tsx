@@ -1,6 +1,6 @@
 "use client";
 
-import { Cpu, Database, GitBranch, Settings } from "@/ui/icon-registry";
+import { Cpu, Database, GitBranch, Settings } from "lucide-react";
 import { FormField, FormSection, Input, Slider } from "@/ui";
 import { ENGINE_LABEL, getEngineOptions } from "@/features/recipes/engine-capabilities";
 import { EngineOptionsSection } from "../engine-options-section";

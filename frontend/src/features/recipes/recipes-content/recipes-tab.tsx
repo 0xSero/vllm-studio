@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Search, Square } from "@/ui/icon-registry";
+import { Plus, Search, Square } from "lucide-react";
 import type { RecipeWithStatus } from "@/lib/types";
 import { ModelLogo } from "@/ui/model-logo";
 import { ModelButton, ModelInput } from "@/ui";

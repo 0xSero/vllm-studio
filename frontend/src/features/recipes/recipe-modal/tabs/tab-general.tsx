@@ -1,6 +1,6 @@
 "use client";
 
-import { Cpu, Info, Network, Rocket, Server } from "@/ui/icon-registry";
+import { Cpu, Info, Network, Rocket, Server } from "lucide-react";
 import { Alert, Button, FormField, FormSection, Input, Select, StatusPill } from "@/ui";
 import { ModelLogo } from "@/ui/model-logo";
 import { modelIdFromPath } from "@/lib/huggingface";

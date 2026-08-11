@@ -8,7 +8,7 @@ import {
   ExternalLink,
   Pause,
   Play,
-} from "@/ui/icon-registry";
+} from "lucide-react";
 import type { HuggingFaceModel, ModelDownload } from "@/lib/types";
 import { formatBytes } from "@/lib/formatters";
 import { ModelLogo } from "@/ui/model-logo";

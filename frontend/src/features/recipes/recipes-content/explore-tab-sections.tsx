@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { ArrowDownUp, Check, Filter, Gauge, RefreshCw } from "@/ui/icon-registry";
+import { ArrowDownUp, Check, Filter, Gauge, RefreshCw } from "lucide-react";
 import { ModelButton, SearchInput } from "@/ui";
 import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import { ModelSection, ModelRow, ModelValue, ModelStatus } from "./model-page";

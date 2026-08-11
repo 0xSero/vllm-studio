@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import { RefreshCw } from "@/ui/icon-registry";
+import { RefreshCw } from "lucide-react";
 import { ModelButton } from "@/ui";
 import { cx } from "@/ui/utils";
 import type { ModelIndexVariant } from "@/lib/api/studio";

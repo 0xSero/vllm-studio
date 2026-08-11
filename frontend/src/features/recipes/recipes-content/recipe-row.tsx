@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, type MouseEvent } from "react";
-import { MoreVertical, Play, Square } from "@/ui/icon-registry";
+import { MoreVertical, Play, Square } from "lucide-react";
 import type { RecipeWithStatus } from "@/lib/types";
 import { ModelLogo } from "@/ui/model-logo";
 import { ModelButton } from "@/ui";
