@@ -3,12 +3,9 @@ import { dirname, join } from "node:path";
 import { Effect } from "effect";
 import type { Config } from "../../config/env";
 import { resolveBinary } from "../../core/command";
-import {
-  isInternalRecipeKey,
-  isJsonStringArgumentKey,
-} from "@local-studio/contracts/engine-args";
+import { isInternalRecipeKey, isJsonStringArgumentKey } from "@local-studio/contracts/engine-args";
 import { getExtraArgument } from "../engines/argument-utilities";
-import { resolveLlamaBinary } from "../engines/specs/llamacpp-spec";
+import { resolveLlamaBinary } from "../engines/specs/backend-specs";
 import type { GpuInfo, ProcessInfo, Recipe } from "../models/types";
 import { resolveRecipeGpuUuids } from "../system/gpu-leases";
 import { getGpuInfo } from "../system/platform/gpu";
@@ -94,7 +91,10 @@ export const serializeRecipeExtraArguments = (recipe: Recipe): string[] => {
   if (
     recipe.backend === "vllm" &&
     !argv.includes("--enable-expert-parallel") &&
-    shouldEnableExpertParallel(recipe, getExtraArgument(recipe.extra_args, "enable-expert-parallel"))
+    shouldEnableExpertParallel(
+      recipe,
+      getExtraArgument(recipe.extra_args, "enable-expert-parallel"),
+    )
   ) {
     argv.push("--enable-expert-parallel");
   }
@@ -162,7 +162,8 @@ const siblingBinary = (pythonPath: string | undefined | null, name: string): str
 };
 
 const resolveEngineBinary = (recipe: Recipe, config: Config): string | null => {
-  const recipePython = recipe.python_path && existsSync(recipe.python_path) ? recipe.python_path : null;
+  const recipePython =
+    recipe.python_path && existsSync(recipe.python_path) ? recipe.python_path : null;
   switch (recipe.backend) {
     case "vllm":
       return siblingBinary(recipePython, "vllm") ?? resolveBinary("vllm");
@@ -288,9 +289,7 @@ export const createComputeBridge = (deps: ComputeBridgeDependencies): ComputeBri
           detail: `GPU selectors could not be resolved: ${resolution.unresolvedTokens.join(", ")}`,
         });
       }
-      return yield* deps.compute.launch(
-        recipeToLaunchInput(recipe, deps.config, resolution.uuids),
-      );
+      return yield* deps.compute.launch(recipeToLaunchInput(recipe, deps.config, resolution.uuids));
     });
 
   const waitForHealthy = (timeoutMs: number): Effect.Effect<boolean> =>

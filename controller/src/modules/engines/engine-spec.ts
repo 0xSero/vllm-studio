@@ -31,10 +31,7 @@ export interface InstallOptions {
   onProgress?: ((update: InstallProgressUpdate) => void) | undefined;
   onSpawn?: ((child: ChildProcess) => void) | undefined;
 }
-import { vllmSpec } from "./specs/vllm-spec";
-import { sglangSpec } from "./specs/sglang-spec";
-import { llamacppSpec } from "./specs/llamacpp-spec";
-import { mlxSpec } from "./specs/mlx-spec";
+import { llamacppSpec, mlxSpec, sglangSpec, vllmSpec } from "./specs/backend-specs";
 
 export interface BinaryProbeResult {
   installed: boolean;

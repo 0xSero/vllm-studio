@@ -17,7 +17,7 @@ export interface RuntimeUpgradeOptions {
   pythonPath?: string | null;
 }
 
-export { getSglangRuntimePython } from "../specs/sglang-spec";
+export { getSglangRuntimePython } from "../specs/backend-specs";
 
 const upgradeTimeoutMessage = (): string =>
   `Upgrade command timed out after ${Math.round(RUNTIME_UPGRADE_TIMEOUT_MS / 60_000)} minutes`;
