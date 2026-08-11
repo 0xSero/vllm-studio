@@ -6,6 +6,7 @@ import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api/client";
 import type { ModelDownload } from "@/lib/types";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useAsyncResource } from "@/hooks/use-async-resource";
 
 type StartDownloadParams = {
   model_id: string;
@@ -17,30 +18,18 @@ type StartDownloadParams = {
 };
 
 export function useDownloads(pollIntervalMs = 2500) {
-  const [downloads, setDownloads] = useState<ModelDownload[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [startingModelIds, setStartingModelIds] = useState<Set<string>>(new Set());
-
-  const refresh = useCallback(async () => {
-    try {
-      const data = await api.getDownloads();
-      setDownloads(data.downloads || []);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load downloads");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Only in-flight/resumable-soon states justify the fast poll; terminal
-  // states (failed/canceled/completed) don't change server-side, so they fall
-  // back to the slow poll instead of holding the fast interval forever.
+  const loadDownloads = useCallback(async () => (await api.getDownloads()).downloads || [], []);
+  const {
+    data: downloads,
+    loading,
+    error,
+    setError,
+    refresh,
+  } = useAsyncResource(loadDownloads, [] as ModelDownload[], "Failed to load downloads");
   const hasActive = downloads.some((d) => d.status === "downloading" || d.status === "paused");
 
   useMountSubscription(() => {
-    void refresh();
     if (pollIntervalMs <= 0) return;
     const timer = effectInterval(refresh, hasActive ? pollIntervalMs : 15_000);
     return () => timer.cancel();
@@ -50,7 +39,7 @@ export function useDownloads(pollIntervalMs = 2500) {
     async (params: StartDownloadParams) => {
       const modelId = params.model_id;
       setStartingModelIds((previous) => new Set(previous).add(modelId));
-      setError(null);
+      setError("");
       try {
         const result = await api.startDownload(params);
         await refresh();

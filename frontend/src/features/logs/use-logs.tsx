@@ -6,20 +6,17 @@ import { BACKEND_URL_CHANGED_EVENT, getApiKey } from "@/lib/api/connection";
 import type { LogSession } from "@/lib/types";
 import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useAsyncResource } from "@/hooks/use-async-resource";
 
 const MAX_RENDERED_LINES = 20_000;
 const FAST_LOG_REQUEST = { timeout: 3_000, retries: 0 } as const;
 
 export function useLogs() {
-  // Stale-while-revalidate: paint the last-loaded session list instantly on
-  // navigation while the fresh fetch runs in the background.
   const cachedSessions = readPageCache<LogSession[]>("logs:sessions");
-  const [sessions, setSessions] = useState<LogSession[]>(() => cachedSessions ?? []);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
   const [filter, setFilter] = useState("");
   const [contentFilter, setContentFilter] = useState("");
-  const [loading, setLoading] = useState(cachedSessions === null);
   const [loadingContent, setLoadingContent] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -27,18 +24,23 @@ export function useLogs() {
   const logRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  const loadSessions = useCallback(async () => {
-    try {
-      const data = await api.getLogSessions(FAST_LOG_REQUEST);
-      writePageCache("logs:sessions", data.sessions || []);
-      setSessions(data.sessions || []);
-      if (data.sessions?.length > 0 && !selectedSession) setSelectedSession(data.sessions[0].id);
-    } catch (e) {
-      console.error("Failed to load log sessions:", e);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedSession]);
+  const loadSessionList = useCallback(
+    async () => (await api.getLogSessions(FAST_LOG_REQUEST)).sessions || [],
+    [],
+  );
+  const onSessionsLoaded = useCallback((items: LogSession[]) => {
+    writePageCache("logs:sessions", items);
+    setSelectedSession((current) => current ?? items[0]?.id ?? null);
+  }, []);
+  const {
+    data: sessions,
+    setData: setSessions,
+    loading: sessionsLoading,
+    refresh: loadSessions,
+  } = useAsyncResource(loadSessionList, cachedSessions ?? [], "Failed to load log sessions", {
+    onLoaded: onSessionsLoaded,
+  });
+  const loading = cachedSessions === null && sessionsLoading;
 
   const loadLogContent = useCallback(async (sessionId: string, silent = false) => {
     if (!silent) setLoadingContent(true);
@@ -96,16 +98,12 @@ export function useLogs() {
   }, [filter, sessions]);
 
   useMountSubscription(() => {
-    void loadSessions();
-  }, [loadSessions]);
-  useMountSubscription(() => {
     const handler = () => {
       eventSourceRef.current?.close();
       eventSourceRef.current = null;
       setSessions([]);
       setSelectedSession(null);
       setLogLines([]);
-      setLoading(true);
       void loadSessions();
     };
     window.addEventListener(BACKEND_URL_CHANGED_EVENT, handler);
@@ -149,15 +147,11 @@ export function useLogs() {
           const next = prev.length ? [...prev, line] : [line];
           return next.length > MAX_RENDERED_LINES ? next.slice(-MAX_RENDERED_LINES) : next;
         });
-      } catch {
-        // Ignore malformed events.
-      }
+      } catch {}
     };
 
     es.addEventListener("log", onLog as unknown as EventListener);
-    es.onerror = () => {
-      // EventSource will auto-reconnect; avoid noisy console output.
-    };
+    es.onerror = () => {};
 
     return () => {
       es.close();

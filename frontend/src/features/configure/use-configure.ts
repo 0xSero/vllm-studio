@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import api from "@/lib/api/client";
 import type { RigNodePayload } from "@/lib/api/rigs";
 import { readPageCache, writePageCache } from "@/lib/page-data-cache";
-import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useAsyncResource } from "@/hooks/use-async-resource";
 import type { Rig, RigsPayload } from "@/lib/types";
 
 const RIGS_CACHE_KEY = "configure:rigs";
@@ -26,43 +26,39 @@ export interface ConfigureState {
 }
 
 export function useConfigure(): ConfigureState {
-  const [rigsPayload, setRigsPayload] = useState<RigsPayload | null>(() =>
-    readPageCache<RigsPayload>(RIGS_CACHE_KEY),
+  const initial = readPageCache<RigsPayload>(RIGS_CACHE_KEY);
+  const loadRigs = useCallback(() => api.getRigs(), []);
+  const cacheRigs = useCallback(
+    (payload: RigsPayload | null) => payload && writePageCache(RIGS_CACHE_KEY, payload),
+    [],
   );
-  const [loading, setLoading] = useState(rigsPayload === null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
+  const {
+    data: rigsPayload,
+    setData: setRigsPayload,
+    loading: refreshing,
+    error,
+    refresh,
+  } = useAsyncResource(loadRigs, initial, "Rig configuration unavailable", {
+    onLoaded: cacheRigs,
+  });
   const reload = useCallback(async () => {
-    setRefreshing(true);
-    setError(null);
-    try {
-      const rigs = await api.getRigs();
-      writePageCache(RIGS_CACHE_KEY, rigs);
-      setRigsPayload(rigs);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+    await refresh();
+  }, [refresh]);
 
-  useMountSubscription(() => {
-    void reload();
-  }, [reload]);
-
-  const applyRig = useCallback((rig: Rig) => {
-    setRigsPayload((current) => {
-      if (!current) return current;
-      const rigs = current.rigs.some((entry) => entry.id === rig.id)
-        ? current.rigs.map((entry) => (entry.id === rig.id ? rig : entry))
-        : [...current.rigs, rig];
-      const next = { ...current, rigs };
-      writePageCache(RIGS_CACHE_KEY, next);
-      return next;
-    });
-  }, []);
+  const applyRig = useCallback(
+    (rig: Rig) => {
+      setRigsPayload((current) => {
+        if (!current) return current;
+        const rigs = current.rigs.some((entry) => entry.id === rig.id)
+          ? current.rigs.map((entry) => (entry.id === rig.id ? rig : entry))
+          : [...current.rigs, rig];
+        const next = { ...current, rigs };
+        writePageCache(RIGS_CACHE_KEY, next);
+        return next;
+      });
+    },
+    [setRigsPayload],
+  );
 
   const createRig = useCallback(
     async (name: string) => {
@@ -123,7 +119,7 @@ export function useConfigure(): ConfigureState {
   return {
     rigs: rigsPayload?.rigs ?? [],
     localNodeId: rigsPayload?.local_node_id ?? "local",
-    loading,
+    loading: rigsPayload === null && refreshing,
     refreshing,
     error,
     reload,

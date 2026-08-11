@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { Effect, Schema } from "effect";
 import { RefreshCw } from "@/ui/icon-registry";
 import { Button, StatusPill } from "@/ui";
-import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useAsyncResource } from "@/hooks/use-async-resource";
 
 const OpenApiSpecSchema = Schema.Struct({
   openapi: Schema.String,
@@ -66,26 +66,13 @@ const loadOpenApiSpec = Effect.tryPromise({
 });
 
 function useOpenApiSpec() {
-  const [spec, setSpec] = useState<OpenApiSpec | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    return Effect.runPromise(loadOpenApiSpec)
-      .then(setSpec)
-      .catch((reason: unknown) => {
-        setSpec(null);
-        setError(reason instanceof Error ? reason.message : "API reference unavailable");
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  useMountSubscription(() => {
-    void load();
-  }, [load]);
-
+  const loadSpec = useCallback(() => Effect.runPromise(loadOpenApiSpec), []);
+  const {
+    data: spec,
+    loading,
+    error,
+    refresh: load,
+  } = useAsyncResource(loadSpec, null, "API reference unavailable", { clearOnError: true });
   return { spec, loading, error, load };
 }
 

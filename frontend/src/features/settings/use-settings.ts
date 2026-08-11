@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import api from "@/lib/api/client";
 import { createApiClient } from "@/lib/api/create-api-client";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useAsyncResource } from "@/hooks/use-async-resource";
 import {
   clearApiKey,
   clearStoredBackendUrl,
@@ -44,46 +45,39 @@ const mergeApiSettings = (server?: Partial<ApiConnectionSettings>): ApiConnectio
 };
 
 export function useSettings() {
-  // Stale-while-revalidate: seed from the last-loaded config so navigating to
-  // Settings paints instantly while the controller fetch refreshes it.
   const [data, setData] = useState<ConfigData | null>(() =>
     readPageCache<ConfigData>("settings:config"),
   );
   const [compatibilityReport, setCompatibilityReport] = useState<CompatibilityReport | null>(() =>
     readPageCache<CompatibilityReport>("settings:compat"),
   );
-  // Config/compat (the heavy /config + /compat controller round-trips) are only
-  // consumed by the System section. They load lazily the first time System is
-  // opened, so the default Connection landing paints from /api/settings alone.
-  // `loading` therefore starts false — nothing is in flight until then.
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const configRequestedRef = useRef(false);
 
-  const [apiSettings, setApiSettings] = useState<ApiConnectionSettings>(DEFAULT_API_SETTINGS);
-  const [apiSettingsLoading, setApiSettingsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("unknown");
   const [statusMessage, setStatusMessage] = useState<string>("");
 
-  const loadApiSettings = useCallback(async () => {
+  const loadApiSettings = useCallback(async (): Promise<ApiConnectionSettings> => {
     try {
-      setApiSettingsLoading(true);
       const res = await fetch("/api/settings");
       if (res.ok) {
         const settings = (await res.json()) as Partial<ApiConnectionSettings>;
-        setApiSettings(mergeApiSettings(settings));
-        return;
+        return mergeApiSettings(settings);
       }
     } catch (e) {
       console.error("Failed to load API settings:", e);
-    } finally {
-      setApiSettingsLoading(false);
     }
-    setApiSettings(mergeApiSettings(undefined));
+    return mergeApiSettings(undefined);
   }, []);
+  const {
+    data: apiSettings,
+    setData: setApiSettings,
+    loading: apiSettingsLoading,
+  } = useAsyncResource(loadApiSettings, mergeApiSettings(undefined), "Settings unavailable");
 
   const persistLocalApiSettings = useCallback(() => {
     const backendUrl = normalizeControllerUrl(apiSettings.backendUrl ?? "");
@@ -136,8 +130,6 @@ export function useSettings() {
     try {
       await api.getStatus(FAST_STATUS_REQUEST);
       setBackendOnline(true);
-      // A reachable controller means first-run setup is effectively done. This
-      // flag used to be set by the config fetch, which now loads lazily.
       if (typeof window !== "undefined" && !localStorage.getItem("local-studio-setup-complete")) {
         localStorage.setItem("local-studio-setup-complete", "true");
       }
@@ -214,20 +206,15 @@ export function useSettings() {
       setStatusMessage("Settings saved");
     }
 
-    // Always attempt to refresh config when a backend URL is present.
     if (backendUrl) {
       loadConfig();
     }
 
-    // Avoid showing a hard error when only the server-side save failed.
     if (!savedRemotely) {
       setConnectionStatus("unknown");
     }
   }, [apiSettings, loadConfig, persistLocalApiSettings]);
 
-  // Lazy trigger: called when the System section becomes active. Fires the
-  // config/compat fetch exactly once (subsequent visits reuse the cached data);
-  // explicit refresh via `loadConfig` still forces a reload.
   const ensureConfigLoaded = useCallback(() => {
     if (configRequestedRef.current) return;
     configRequestedRef.current = true;
@@ -235,11 +222,8 @@ export function useSettings() {
   }, [loadConfig]);
 
   useMountSubscription(() => {
-    void loadApiSettings();
-    // Cheap /status probe (not /config) so the first-run setup wizard gate still
-    // knows whether the controller is reachable without the heavy config fetch.
     void checkBackendHealth();
-  }, [checkBackendHealth, loadApiSettings]);
+  }, [checkBackendHealth]);
 
   return {
     data,

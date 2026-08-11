@@ -1,7 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Effect } from "effect";
+import { useCallback, useRef, useState } from "react";
 import { Check, Copy, ExternalLink, Smartphone, Upload } from "@/ui/icon-registry";
 import { Input } from "@/ui";
 import {
@@ -12,7 +11,7 @@ import {
   useLocalProfile,
 } from "@/features/shell/local-profile";
 import { QrCode } from "@/features/shell/qr-code";
-import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useAsyncResource } from "@/hooks/use-async-resource";
 import { writeClipboardText } from "@/lib/clipboard";
 import { SettingsButton, SettingsGroup, SettingsLink } from "./settings-ui";
 
@@ -120,18 +119,13 @@ export function ProfileSettings() {
 }
 
 function PhonePairingSettings() {
-  const [pairingJson, setPairingJson] = useState("");
   const [copied, setCopied] = useState(false);
-  const [pairingError, setPairingError] = useState("");
-  const [pairingBusy, setPairingBusy] = useState(true);
-  const loadPairingJson = async (): Promise<string> => {
+  const loadPairingJson = useCallback(async (): Promise<string> => {
     const desktop = window.localStudioDesktop?.getKittylitterPairingJson;
     if (desktop) {
       const result = await desktop();
       if (!result.ok) throw new Error(result.error);
       if (!result.pairingJson) throw new Error("Connection JSON is unavailable.");
-      setPairingJson(result.pairingJson);
-      setPairingError("");
       return result.pairingJson;
     }
     const response = await fetch("/api/kittylitter/pairing", { method: "POST" });
@@ -141,34 +135,19 @@ function PhonePairingSettings() {
         typeof payload.error === "string" ? payload.error : "Connection JSON is unavailable.",
       );
     }
-    setPairingJson(payload.pairingJson);
-    setPairingError("");
     return payload.pairingJson;
-  };
-  const refreshPairing = (): Promise<void> =>
-    Effect.runPromise(
-      Effect.sync(() => {
-        setPairingBusy(true);
-        setPairingError("");
-      }).pipe(
-        Effect.andThen(Effect.tryPromise({ try: loadPairingJson, catch: (error) => error })),
-        Effect.asVoid,
-        Effect.catch((error) =>
-          Effect.sync(() =>
-            setPairingError(
-              error instanceof Error ? error.message : "Connection JSON is unavailable.",
-            ),
-          ),
-        ),
-        Effect.ensuring(Effect.sync(() => setPairingBusy(false))),
-      ),
-    );
-  useMountSubscription(() => {
-    void refreshPairing();
   }, []);
+  const {
+    data: pairingJson,
+    loading: pairingBusy,
+    error: pairingError,
+    setError: setPairingError,
+    refresh: refreshPairing,
+  } = useAsyncResource(loadPairingJson, "", "Connection JSON is unavailable.");
   const copy = async () => {
     try {
-      const value = pairingJson || (await loadPairingJson());
+      const value = pairingJson || (await refreshPairing());
+      if (!value) throw new Error("Connection JSON is unavailable.");
       const desktop = window.localStudioDesktop?.copyKittylitterPairingJson;
       if (desktop) {
         const result = await desktop(value);
