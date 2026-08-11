@@ -8,13 +8,16 @@ import { useAppUpdate } from "@/features/shell/use-app-update";
 export function AppVersionSection() {
   const update = useAppUpdate();
   const devChannel = update.releaseChannel === "dev";
+  const progress = update.progress === null ? null : Math.round(update.progress);
   const onLatest = update.currentVersion && update.latestVersion && !update.updateAvailable;
   const description = devChannel
     ? "Dev builds update through the local installer."
     : update.updateAvailable
       ? update.phase === "ready"
         ? `v${update.latestVersion} is downloaded — restart to finish updating.`
-        : `v${update.latestVersion} is available on GitHub.`
+        : update.status === "downloading"
+          ? `Downloading v${update.latestVersion}${progress === null ? "." : ` — ${progress}%.`}`
+          : `v${update.latestVersion} is available on GitHub.`
       : onLatest
         ? "You are on the latest version."
         : update.latestVersion
@@ -33,18 +36,22 @@ export function AppVersionSection() {
         actions={
           update.updateAvailable ? (
             <SettingsButton onClick={update.startUpdate} tone="primary">
-              {update.phase === "working" ? (
+              {update.status === "checking" ? (
                 <Spinner size="xs" />
               ) : update.phase === "ready" ? (
                 <RefreshCw className="h-3 w-3" />
               ) : (
                 <Download className="h-3 w-3" />
               )}
-              {update.phase === "working"
-                ? "Updating…"
-                : update.phase === "ready"
-                  ? "Restart to update"
-                  : "Update"}
+              {update.status === "checking"
+                ? "Checking…"
+                : update.status === "downloading"
+                  ? progress === null
+                    ? "Downloading…"
+                    : `Downloading ${progress}%`
+                  : update.phase === "ready"
+                    ? "Restart to update"
+                    : "Update"}
             </SettingsButton>
           ) : undefined
         }
