@@ -24,10 +24,6 @@ import type {
   WorkspaceSessionPayload,
   WorkspaceState,
 } from "@/features/agent/workspace/types";
-import {
-  restoreSessionDraft,
-  updateSessionDrafts,
-} from "@/features/agent/workspace/session-drafts";
 
 function isSession(value: Session | undefined): value is Session {
   return Boolean(value && typeof value.id === "string" && value.id.length > 0);
@@ -60,7 +56,11 @@ function withSessions(state: WorkspaceState, sessions: SessionsMap): WorkspaceSt
 }
 
 function pruneOrphanSessions(state: WorkspaceState): WorkspaceState {
-  return withSessions(state, pruneSessions(state.sessions, referencedSessionIds(state)));
+  const retained = new Set(referencedSessionIds(state));
+  for (const session of state.sessions.values()) {
+    if (session.input.length > 0) retained.add(session.id);
+  }
+  return withSessions(state, pruneSessions(state.sessions, retained));
 }
 
 export function claimCanonicalSession(state: WorkspaceState, canonical: Session): WorkspaceState {
@@ -96,7 +96,6 @@ export function patchWorkspaceSession(
     {
       ...state,
       sessions,
-      sessionDrafts: updateSessionDrafts(state.sessionDrafts, before, after),
     },
     after,
   );
@@ -119,12 +118,11 @@ function replacePaneSession(
 ): WorkspaceState {
   const pane = state.panesById.get(paneId);
   if (!pane || !isSession(session)) return state;
-  const restored = restoreSessionDraft(session, state.sessionDrafts);
-  const sessions = setSessionInMap(state.sessions, restored);
+  const sessions = setSessionInMap(state.sessions, session);
   const next = pruneOrphanSessions(
-    setPane(withSessions(state, sessions), paneId, { sessionId: restored.id }),
+    setPane(withSessions(state, sessions), paneId, { sessionId: session.id }),
   );
-  return claimCanonicalSession({ ...next, focusedPaneId: paneId }, restored);
+  return claimCanonicalSession({ ...next, focusedPaneId: paneId }, session);
 }
 
 function focusSessionAsOnlyPane(
@@ -150,14 +148,13 @@ function replaceWorkspaceSession(
   session: Session | undefined,
 ): WorkspaceState {
   if (!validPaneId(paneId) || !isSession(session)) return state;
-  const restored = restoreSessionDraft(session, state.sessionDrafts);
   const next = pruneOrphanSessions({
-    ...withSessions(state, setSessionInMap(state.sessions, restored)),
+    ...withSessions(state, setSessionInMap(state.sessions, session)),
     layout: { kind: "leaf", paneId },
-    panesById: new Map([[paneId, { sessionId: restored.id }]]),
+    panesById: new Map([[paneId, { sessionId: session.id }]]),
     focusedPaneId: paneId,
   });
-  return claimCanonicalSession(next, restored);
+  return claimCanonicalSession(next, session);
 }
 
 function copySessionWithFreshRuntimeId(
@@ -181,14 +178,13 @@ function splitPaneWithSession(
   const { sourcePaneId, session, newPaneId, direction = "vertical", side = "b" } = payload;
   if (!validPaneId(newPaneId)) return null;
   if (!leafExists(state, sourcePaneId)) return null;
-  const restored = restoreSessionDraft(session, state.sessionDrafts);
   const layout = splitLeafWithinLimits(state.layout, sourcePaneId, newPaneId, direction, side);
   if (!layout) return null;
   const nextPanes = new Map(state.panesById);
-  nextPanes.set(newPaneId, { sessionId: restored.id });
+  nextPanes.set(newPaneId, { sessionId: session.id });
   return {
     ...state,
-    sessions: setSessionInMap(state.sessions, restored),
+    sessions: setSessionInMap(state.sessions, session),
     panesById: nextPanes,
     layout,
     focusedPaneId: newPaneId,
@@ -303,7 +299,6 @@ function adoptReplaySession(
   target: Session,
   payload: ReplaySessionPayload,
 ): WorkspaceState {
-  const input = state.sessionDrafts.get(payload.piSessionId) ?? target.input;
   const sessions = patchSessionInMap(state.sessions, target.id, {
     projectId: target.projectId ?? payload.tab?.projectId,
     cwd: target.cwd ?? payload.tab?.cwd,
@@ -311,7 +306,6 @@ function adoptReplaySession(
     piSessionId: payload.piSessionId,
     title: replaySessionTitle(payload.sessionTitle, target.title || "Loading session"),
     startedAt: target.startedAt ?? payload.tab?.startedAt,
-    input,
   });
   return setPane(withSessions(state, sessions), paneId, { sessionId: target.id });
 }

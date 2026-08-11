@@ -16,7 +16,6 @@ import {
   type WorkspaceStorage,
 } from "@/features/agent/workspace/store";
 import { writePaneState } from "@/features/agent/workspace/persistence";
-import { writeSessionDrafts } from "@/features/agent/workspace/session-drafts";
 import { readDefaultAgentModel } from "@/features/agent/workspace/model-preference";
 import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
 
@@ -274,9 +273,6 @@ function persistActionEffects(
   nextState: WorkspaceState,
   deps: WorkspaceEffectDeps,
 ): void {
-  if (prevState.sessionDrafts !== nextState.sessionDrafts) {
-    writeSessionDrafts(deps.storage, nextState.sessionDrafts);
-  }
   if (
     prevState.hydrated &&
     paneMetadataKey(prevState, deps.selectionFor) !== paneMetadataKey(nextState, deps.selectionFor)

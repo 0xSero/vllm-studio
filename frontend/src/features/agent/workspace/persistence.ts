@@ -11,22 +11,25 @@ import type {
 import {
   PANE_LAYOUT_KEY,
   PANE_STATE_KEY,
+  createInitialState,
   restorePersistedPaneState,
   type PersistedPaneEntry,
   sessionMetaForPersistence,
   type WorkspaceStorage,
 } from "@/features/agent/workspace/store";
 import { makeFreshTab } from "@/features/agent/messages/helpers";
-import {
-  loadSessionDrafts,
-  restoreSessionDrafts,
-  sessionDraftsWithSessions,
-} from "@/features/agent/workspace/session-drafts";
+import { Schema } from "effect";
 
 const SESSIONS_COLLAPSED_KEY = "local-studio.agent.sessionsCollapsed";
 const SESSIONS_COLLAPSED_CLEANED_KEY = "local-studio.agent.sessionsCollapsedCleaned";
 const LEGACY_TRANSCRIPT_CACHE_KEY = "local-studio.agent.transcripts.v1";
 const LEGACY_ACTIVE_SESSIONS_KEY = "local-studio.agent.activeSessions.snapshot";
+const LEGACY_SESSION_DRAFTS_KEY = "local-studio.agent.sessionDrafts.v1";
+const LegacyDraftsSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  drafts: Schema.Record(Schema.String, Schema.String),
+});
+const decodeLegacyDrafts = Schema.decodeUnknownOption(LegacyDraftsSchema);
 
 function readStorage(storage: WorkspaceStorage, key: string): string | null {
   try {
@@ -81,6 +84,32 @@ function migrateStorage(storage: WorkspaceStorage): void {
   removeStorage(storage, LEGACY_ACTIVE_SESSIONS_KEY);
 }
 
+function restoreLegacyDrafts(
+  storage: WorkspaceStorage,
+  sessions: SessionsMap,
+): Map<SessionId, Session> {
+  let drafts: Record<string, string> = {};
+  try {
+    const decoded = decodeLegacyDrafts(
+      JSON.parse(readStorage(storage, LEGACY_SESSION_DRAFTS_KEY) ?? "null"),
+    );
+    if (decoded._tag === "Some") drafts = decoded.value.drafts;
+  } catch {}
+  const next = new Map(sessions);
+  for (const [key, input] of Object.entries(drafts)) {
+    if (!input) continue;
+    const existing = [...next.values()].find(
+      (session) => session.id === key || session.piSessionId === key,
+    );
+    if (existing) next.set(existing.id, { ...existing, input });
+    else {
+      const session = makeFreshTab();
+      next.set(session.id, { ...session, piSessionId: key, input });
+    }
+  }
+  return next;
+}
+
 export type LoadedFromStorage = {
   workspace: Partial<WorkspaceState>;
   selections: Map<SessionId, ToolSelection>;
@@ -89,18 +118,15 @@ export type LoadedFromStorage = {
 
 export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromStorage {
   migrateStorage(storage);
-  const storedDrafts = loadSessionDrafts(storage);
 
   const rawState = readStorage(storage, PANE_STATE_KEY);
   const restoredState = rawState ? restorePersistedPaneState(rawState) : null;
   if (restoredState) {
     const { selections, legacyRuntimeKeys, ...workspace } = restoredState;
-    const sessions = restoreSessionDrafts(workspace.sessions, storedDrafts);
     return {
       workspace: {
         ...workspace,
-        sessions,
-        sessionDrafts: sessionDraftsWithSessions(storedDrafts, sessions),
+        sessions: restoreLegacyDrafts(storage, workspace.sessions),
       },
       selections,
       legacyRuntimeKeys,
@@ -110,18 +136,17 @@ export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromSto
   const rawLayout = readStorage(storage, PANE_LAYOUT_KEY);
   const restoredLayout = rawLayout ? restoreLegacyLayout(rawLayout) : null;
   if (!restoredLayout) {
+    const initial = createInitialState();
     return {
-      workspace: storedDrafts.size > 0 ? { sessionDrafts: storedDrafts } : {},
+      workspace: { ...initial, sessions: restoreLegacyDrafts(storage, initial.sessions) },
       selections: new Map(),
       legacyRuntimeKeys: new Map(),
     };
   }
-  const sessions = restoreSessionDrafts(restoredLayout.sessions, storedDrafts);
   return {
     workspace: {
       ...restoredLayout,
-      sessions,
-      sessionDrafts: sessionDraftsWithSessions(storedDrafts, sessions),
+      sessions: restoreLegacyDrafts(storage, restoredLayout.sessions),
     },
     selections: new Map(),
     legacyRuntimeKeys: new Map(),
@@ -146,6 +171,15 @@ export function writePaneState(
   setStorage(
     storage,
     PANE_STATE_KEY,
-    JSON.stringify({ version: 1, layout: state.layout, focusedPaneId: state.focusedPaneId, panes }),
+    JSON.stringify({
+      version: 1,
+      layout: state.layout,
+      focusedPaneId: state.focusedPaneId,
+      panes,
+      sessions: [...state.sessions.values()].map((session) =>
+        sessionMetaForPersistence(session, selectionFor(session.id) ?? undefined),
+      ),
+    }),
   );
+  removeStorage(storage, LEGACY_SESSION_DRAFTS_KEY);
 }

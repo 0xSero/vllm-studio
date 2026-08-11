@@ -34,6 +34,7 @@ type PersistedPaneState = {
   layout: WorkspaceLayout;
   focusedPaneId: PaneId;
   panes: Record<string, PersistedPaneRecord>;
+  sessions?: unknown[];
 };
 
 export type PersistedPaneEntry = { activeTabId: string; tabs: PersistedSessionMeta[] };
@@ -42,7 +43,6 @@ export function createInitialState(): WorkspaceState {
   const session = makeFreshTab();
   return {
     sessions: new Map([[session.id, session]]),
-    sessionDrafts: new Map(),
     models: [],
     selectedModel: "",
     modelsLoading: true,
@@ -72,7 +72,7 @@ type PersistedTabShape = Partial<Session> & {
 
 export type PersistedSessionMeta = Omit<
   Session,
-  "messages" | "error" | "status" | "activeAssistantId" | "input"
+  "messages" | "error" | "status" | "activeAssistantId"
 > &
   PersistedToolSelectionFields;
 
@@ -146,7 +146,7 @@ function restoreTabsWithSelections(rawTabs: unknown[]): {
       legacyRuntimeKeys.set(session.id, legacyRuntimeKey);
     }
   }
-  return { tabs: tabs.length > 0 ? tabs : [makeFreshTab()], selections, legacyRuntimeKeys };
+  return { tabs, selections, legacyRuntimeKeys };
 }
 
 function activePersistedTabId(
@@ -189,22 +189,22 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
   const leaves = collectLeaves(layout);
   if (leaves.length === 0) return null;
 
+  const stored = restoreTabsWithSelections(Array.isArray(parsed.sessions) ? parsed.sessions : []);
   const panesById = new Map<PaneId, PaneState>();
-  const sessions = new Map<SessionId, Session>();
-  const selections = new Map<SessionId, ToolSelection>();
-  const legacyRuntimeKeys = new Map<SessionId, string>();
+  const sessions = new Map<SessionId, Session>(stored.tabs.map((session) => [session.id, session]));
+  const selections = new Map<SessionId, ToolSelection>(stored.selections);
+  const legacyRuntimeKeys = new Map<SessionId, string>(stored.legacyRuntimeKeys);
 
   for (const paneId of leaves) {
     const pane = persistedPanes[paneId] ?? {};
     const rawTabs = Array.isArray(pane.tabs) ? pane.tabs : [];
     const restored = restoreTabsWithSelections(rawTabs);
-    const activeSessionId = activePersistedTabId(pane, restored.tabs);
-    const session = restored.tabs.find((tab) => tab.id === activeSessionId) ?? restored.tabs[0];
-    sessions.set(session.id, session);
-    const selection = restored.selections.get(session.id);
-    if (selection) selections.set(session.id, selection);
-    const legacyRuntimeKey = restored.legacyRuntimeKeys.get(session.id);
-    if (legacyRuntimeKey) legacyRuntimeKeys.set(session.id, legacyRuntimeKey);
+    const tabs = restored.tabs.length > 0 ? restored.tabs : [makeFreshTab()];
+    const activeSessionId = activePersistedTabId(pane, tabs);
+    const session = tabs.find((tab) => tab.id === activeSessionId) ?? tabs[0];
+    for (const tab of tabs) sessions.set(tab.id, tab);
+    for (const entry of restored.selections) selections.set(...entry);
+    for (const entry of restored.legacyRuntimeKeys) legacyRuntimeKeys.set(...entry);
     panesById.set(paneId, { sessionId: session.id });
   }
 
@@ -230,6 +230,7 @@ export function sessionMetaForPersistence(
     modelId: tab.modelId,
     thinkingLevel: tab.thinkingLevel,
     title: cleanSessionTitle(tab.title) || "New session",
+    input: tab.input,
     startedAt: tab.startedAt,
     tokenStats: tab.tokenStats,
     usedSkills: tab.usedSkills,
