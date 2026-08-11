@@ -1,6 +1,6 @@
 # 60k feature-parity architecture
 
-Baseline: `origin/main` at `abb9f65dd19c451c7b10077ff58469dffe121155`.
+Baseline: `origin/main` at `f2e8911c2e19f3733e2fcd6b753aa9c59bfe1d37`.
 
 ## Completion contract
 
@@ -10,7 +10,7 @@ JavaScript, JSX, TSX, CSS, JSON, YAML, shell, and Python under `controller`, `fr
 `frontend/desktop`, `services`, `shared`, and `scripts`. It excludes dependencies, generated build
 output, fixtures, tests, and symlinks.
 
-The starting count is 107,498 lines. Reaching the cap requires at least 47,498 lines of structural
+The starting count is 107,673 lines. Reaching the cap requires at least 47,673 lines of structural
 reduction. Lockfile deletion, test deletion, generated-code relocation, minification, denser
 formatting, and feature retirement do not count.
 
@@ -28,16 +28,29 @@ Feature parity means preserving all externally visible behavior across:
 
 | Ownership boundary                                   | Current lines | Target lines | Remaining reduction |
 | ---------------------------------------------------- | ------------: | -----------: | ------------------: |
-| Controller and controller contracts                  |        22,401 |       12,500 |               9,901 |
-| Agent runtime and shared agent contracts             |        15,660 |        8,000 |               7,660 |
-| Frontend features                                    |        49,813 |       25,000 |              24,813 |
-| Frontend app, API, hooks, library, store, and UI kit |        11,808 |        8,000 |               3,808 |
-| Electron runtime                                     |         6,753 |        5,000 |               1,753 |
+| Controller and controller contracts                  |        21,969 |       12,500 |               9,469 |
+| Agent runtime and shared agent contracts             |        16,551 |        8,000 |               8,551 |
+| Frontend features                                    |        48,357 |       25,000 |              23,357 |
+| Frontend app, API, hooks, library, store, and UI kit |        11,328 |        8,000 |               3,328 |
+| Electron runtime                                     |         6,433 |        5,000 |               1,433 |
 | Installers and remaining shared production data      |           694 |        1,500 |                -806 |
-| **Total**                                            |   **107,129** |   **60,000** |          **47,129** |
+| **Total**                                            |   **105,332** |   **60,000** |          **45,332** |
 
-The current column is measured from this PR after its first reductions. The authoritative
-acceptance number is the semantic count produced by the command in the measurement section.
+The current column is measured from this PR at `e6b866c89e052fb9ee67c01fdd56fefab298358a`.
+The authoritative acceptance number is the semantic count produced by the command in the
+measurement section.
+
+## Current checkpoint
+
+This PR has structurally removed 2,341 semantic production lines from the current main baseline.
+The delivered slices centralize agent and terminal proxy policy, JSON persistence, usage
+normalization, recipe fields and engine plans, workspace ownership, PTY ownership, page-to-view
+state ownership, and all 85 controller Effect route adapters. The remaining 45,332 lines are not
+claimed as complete work.
+
+Parity evidence at this checkpoint includes 90 controller checks, 97 agent-runtime integration
+checks, recorded browser coverage for every top-level route, and a recorded real-PTY open, command,
+chat switch, reopen, and scrollback path.
 
 ## Target architecture
 
@@ -95,8 +108,9 @@ Acceptance:
 - contract decoding rejects the same invalid boundary values;
 - no route policy exists outside the registry.
 
-The first slice is complete: 35 agent route modules now use one policy-routed catch-all while
-retaining their exact method and access rules.
+The first slices are complete: 35 agent route modules use one policy-routed catch-all, and all 85
+controller product routes use one typed Effect adapter while retaining their exact method, access,
+documentation, response, and Hono RPC typing.
 
 ### Wave 2: one engine control plane
 
@@ -233,5 +247,5 @@ git ls-files -s |
 npx cloc --list-file=production-files.txt
 ```
 
-Each PR update records the commit, total, delta from 107,498, validation commands, recordings, and
+Each PR update records the commit, total, delta from 107,673, validation commands, recordings, and
 remaining gap. Estimates never count as delivered reduction.
