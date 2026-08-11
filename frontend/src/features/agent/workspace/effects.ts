@@ -17,7 +17,6 @@ import {
 } from "@/features/agent/workspace/store";
 import { writePaneState } from "@/features/agent/workspace/persistence";
 import { writeSessionDrafts } from "@/features/agent/workspace/session-drafts";
-import { writeTranscriptSnapshot } from "@/features/agent/workspace/transcript-cache";
 import { readDefaultAgentModel } from "@/features/agent/workspace/model-preference";
 import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
 
@@ -308,45 +307,6 @@ function paneMetadataKey(
   });
 }
 
-function transcriptSignature(session: Session): string {
-  const last = session.messages[session.messages.length - 1];
-  return [
-    session.piSessionId ?? "",
-    session.status,
-    session.messages.length,
-    last?.id ?? "",
-    last?.text.length ?? 0,
-    last?.blocks?.length ?? 0,
-  ].join("|");
-}
-
-function persistTranscripts(
-  prevState: WorkspaceState,
-  nextState: WorkspaceState,
-  deps: WorkspaceEffectDeps,
-): void {
-  const ids = new Set([...prevState.sessions.keys(), ...nextState.sessions.keys()]);
-  for (const id of ids) {
-    const before = prevState.sessions.get(id);
-    const after = nextState.sessions.get(id);
-    const session = after ?? before;
-    if (!session?.piSessionId || session.messages.length === 0) continue;
-    const settled = after?.status === "idle";
-    const turnStarted =
-      after &&
-      (after.status === "running" || after.status === "starting") &&
-      before?.status !== after.status;
-    const changed = !before || !after || transcriptSignature(before) !== transcriptSignature(after);
-    if (!turnStarted && !(settled && changed) && after) continue;
-    writeTranscriptSnapshot(
-      session.piSessionId,
-      session.messages,
-      cleanSessionTitle(session.title),
-      deps.storage,
-    );
-  }
-}
-
 export function runWorkspaceEffect(
   prevState: WorkspaceState,
   nextState: WorkspaceState,
@@ -356,6 +316,5 @@ export function runWorkspaceEffect(
   queueReplayEffects(prevState, nextState, deps);
   if (!prevState.hydrated && nextState.hydrated) runInitialApiEffects(nextState, deps);
   publishWorkspaceSessions(prevState, nextState, deps);
-  persistTranscripts(prevState, nextState, deps);
   if (storedSessionsKey(prevState) !== storedSessionsKey(nextState)) scheduleSessionsRefresh(deps);
 }

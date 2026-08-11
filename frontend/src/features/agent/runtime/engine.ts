@@ -25,7 +25,6 @@ import {
   submitPromptTurn,
   type SubmitArgs,
 } from "@/features/agent/runtime/prompt-stream";
-import { readTranscriptSnapshot } from "@/features/agent/workspace/transcript-cache";
 
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 
@@ -248,19 +247,14 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       inFlightReplays.add(sessionId);
       return Effect.runPromise(
         Effect.gen(function* () {
-          const cachedMessages = readTranscriptSnapshot(piSessionId);
-          const seedCached = (session: Session) =>
-            session.messages.length === 0 && cachedMessages
-              ? { ...session, messages: cachedMessages }
-              : session;
           if (!cwd) {
             updateSession(sessionId, (session) =>
-              seedCached(session.status === "loading" ? { ...session, status: "idle" } : session),
+              session.status === "loading" ? { ...session, status: "idle" } : session,
             );
             return;
           }
           updateSession(sessionId, (session) => ({
-            ...seedCached(session),
+            ...session,
             status: "loading",
             error: "",
           }));

@@ -24,8 +24,10 @@ import type {
   WorkspaceSessionPayload,
   WorkspaceState,
 } from "@/features/agent/workspace/types";
-import { updateSessionDrafts } from "@/features/agent/workspace/session-drafts";
-import { restoreSessionDraft } from "@/features/agent/workspace/session-drafts";
+import {
+  restoreSessionDraft,
+  updateSessionDrafts,
+} from "@/features/agent/workspace/session-drafts";
 
 function isSession(value: Session | undefined): value is Session {
   return Boolean(value && typeof value.id === "string" && value.id.length > 0);
