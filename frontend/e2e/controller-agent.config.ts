@@ -62,6 +62,14 @@ export default defineConfig({
     colorScheme: "dark",
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
+    video: {
+      mode: "on",
+      size: { width: 1440, height: 960 },
+      show: {
+        actions: { duration: 650, position: "bottom-right", fontSize: 14 },
+        test: { level: "step", position: "top-left", fontSize: 14 },
+      },
+    },
   },
   webServer: [
     {

@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 
 const port = Number(process.env.PORT) || 43220;
+const slowResponseDelayMs = 10_000;
 
 function json(response, status, body) {
   response.writeHead(status, { "content-type": "application/json" });
@@ -36,7 +37,7 @@ async function streamCompletion(request, response) {
   const payload = await readJson(request);
   const userText = latestUserText(payload);
   const slow = userText.includes("slow-response-marker");
-  if (slow) await new Promise((resolve) => setTimeout(resolve, 1_500));
+  if (slow) await new Promise((resolve) => setTimeout(resolve, slowResponseDelayMs));
   response.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-store",
