@@ -294,6 +294,95 @@ export function createLitterMutationLedger(
     return row;
   };
 
+  const withRow = <T>(
+    identity: MutationIdentity,
+    bodyHash: string,
+    task: (key: string, row: LedgerRow) => T,
+  ): T =>
+    transaction(() => {
+      const key = entryKey(identity);
+      return task(key, requireBody(key, bodyHash));
+    });
+
+  const requireLease = (
+    row: LedgerRow,
+    lease: MutationLease,
+    message = "Litter mutation reservation is invalid",
+  ): void => {
+    if (
+      row.state !== "reserved" ||
+      row.lease_owner !== lease.ownerId ||
+      row.lease_token !== lease.token
+    ) {
+      throw new Error(message);
+    }
+  };
+
+  const requireDispatch = (row: LedgerRow, dispatchId: string): MutationCorrelation => {
+    if (
+      (row.state !== "dispatching" && row.state !== "indeterminate") ||
+      typeof row.correlation_json !== "string"
+    ) {
+      throw new Error("Litter mutation dispatch is invalid");
+    }
+    const correlation = normalizeCorrelation(JSON.parse(row.correlation_json));
+    if (correlation.dispatchId !== dispatchId) {
+      throw new Error("Litter mutation dispatch is invalid");
+    }
+    return correlation;
+  };
+
+  const encodedResult = (stored: StoredMutationResult): string => {
+    const value = JSON.stringify(stored.result);
+    if (typeof value !== "string" || stored.status < 100 || stored.status > 599) {
+      throw new Error("Litter mutation result is invalid");
+    }
+    return value;
+  };
+
+  const transition = (
+    identity: MutationIdentity,
+    bodyHash: string,
+    source:
+      | { lease: MutationLease }
+      | { dispatchId: string; dispatchingOnly?: boolean; skipUnlessDispatching?: boolean },
+    state: Exclude<LedgerState, "reserved" | "dispatching">,
+    stored?: StoredMutationResult,
+  ): void => {
+    const resultJson = stored ? encodedResult(stored) : null;
+    withRow(identity, bodyHash, (key, row) => {
+      if ("lease" in source) {
+        requireLease(row, source.lease);
+      } else {
+        if (
+          source.skipUnlessDispatching &&
+          (row.state !== "dispatching" || typeof row.correlation_json !== "string")
+        ) {
+          return;
+        }
+        if (source.dispatchingOnly && row.state !== "dispatching") {
+          throw new Error("Litter mutation dispatch is invalid");
+        }
+        requireDispatch(row, source.dispatchId);
+      }
+      const observedAt = now().getTime();
+      const keepCorrelation = "dispatchId" in source && state !== "retryable";
+      database
+        .prepare(
+          "UPDATE mutations SET state = ?, updated_at_ms = ?, expires_at_ms = ?, lease_owner = NULL, lease_token = NULL, lease_expires_at_ms = NULL, correlation_json = ?, result_json = ?, http_status = ? WHERE entry_key = ?",
+        )
+        .run(
+          state,
+          observedAt,
+          observedAt + (state === "indeterminate" ? reconcileWindowMs : retentionMs),
+          keepCorrelation ? row.correlation_json : null,
+          resultJson,
+          stored?.status ?? null,
+          key,
+        );
+    });
+  };
+
   const reserve = (
     identity: MutationIdentity,
     bodyHash: string,
@@ -370,16 +459,13 @@ export function createLitterMutationLedger(
   };
 
   const renew = (identity: MutationIdentity, bodyHash: string, lease: MutationLease): boolean => {
-    const key = entryKey(identity);
-    return transaction(() => {
-      const row = requireBody(key, bodyHash);
+    return withRow(identity, bodyHash, (key, row) => {
       if (
         row.state !== "reserved" ||
         row.lease_owner !== lease.ownerId ||
         row.lease_token !== lease.token
-      ) {
+      )
         return false;
-      }
       const observedAt = now().getTime();
       const expiresAtMs = observedAt + leaseMs;
       const result = database
@@ -399,22 +485,21 @@ export function createLitterMutationLedger(
     correlation: MutationCorrelation,
   ): void => {
     const normalized = normalizeCorrelation(correlation);
-    const key = entryKey(identity);
-    transaction(() => {
-      const row = requireBody(key, bodyHash);
-      if (
-        row.state !== "reserved" ||
-        row.lease_owner !== lease.ownerId ||
-        row.lease_token !== lease.token
-      ) {
-        throw new Error("Litter mutation lease was lost before dispatch");
-      }
+    withRow(identity, bodyHash, (key, row) => {
+      requireLease(row, lease, "Litter mutation lease was lost before dispatch");
       const observedAt = now().getTime();
       const result = database
         .prepare(
           "UPDATE mutations SET state = 'dispatching', updated_at_ms = ?, expires_at_ms = ?, lease_owner = NULL, lease_token = NULL, lease_expires_at_ms = NULL, correlation_json = ? WHERE entry_key = ? AND state = 'reserved' AND lease_owner = ? AND lease_token = ?",
         )
-        .run(observedAt, observedAt + reconcileWindowMs, JSON.stringify(normalized), key, lease.ownerId, lease.token);
+        .run(
+          observedAt,
+          observedAt + reconcileWindowMs,
+          JSON.stringify(normalized),
+          key,
+          lease.ownerId,
+          lease.token,
+        );
       if (result.changes !== 1) throw new Error("Litter mutation lease was lost before dispatch");
     });
   };
@@ -424,77 +509,19 @@ export function createLitterMutationLedger(
     bodyHash: string,
     lease: MutationLease,
     stored: StoredMutationResult,
-  ): void => {
-    const key = entryKey(identity);
-    const resultJson = JSON.stringify(stored.result);
-    if (typeof resultJson !== "string" || stored.status < 100 || stored.status > 599) {
-      throw new Error("Litter mutation result is invalid");
-    }
-    transaction(() => {
-      const row = requireBody(key, bodyHash);
-      if (
-        row.state !== "reserved" ||
-        row.lease_owner !== lease.ownerId ||
-        row.lease_token !== lease.token
-      ) {
-        throw new Error("Litter mutation reservation is invalid");
-      }
-      const observedAt = now().getTime();
-      database
-        .prepare(
-          "UPDATE mutations SET state = 'rejected', updated_at_ms = ?, expires_at_ms = ?, lease_owner = NULL, lease_token = NULL, lease_expires_at_ms = NULL, result_json = ?, http_status = ? WHERE entry_key = ?",
-        )
-        .run(observedAt, observedAt + retentionMs, resultJson, stored.status, key);
-    });
-  };
+  ): void => transition(identity, bodyHash, { lease }, "rejected", stored);
 
   const releaseRetryable = (
     identity: MutationIdentity,
     bodyHash: string,
     lease: MutationLease,
-  ): void => {
-    const key = entryKey(identity);
-    transaction(() => {
-      const row = requireBody(key, bodyHash);
-      if (
-        row.state !== "reserved" ||
-        row.lease_owner !== lease.ownerId ||
-        row.lease_token !== lease.token
-      ) {
-        throw new Error("Litter mutation reservation is invalid");
-      }
-      const observedAt = now().getTime();
-      database
-        .prepare(
-          "UPDATE mutations SET state = 'retryable', updated_at_ms = ?, expires_at_ms = ?, lease_owner = NULL, lease_token = NULL, lease_expires_at_ms = NULL WHERE entry_key = ?",
-        )
-        .run(observedAt, observedAt + retentionMs, key);
-    });
-  };
+  ): void => transition(identity, bodyHash, { lease }, "retryable");
 
   const releaseDispatchRetryable = (
     identity: MutationIdentity,
     bodyHash: string,
     dispatchId: string,
-  ): void => {
-    const key = entryKey(identity);
-    transaction(() => {
-      const row = requireBody(key, bodyHash);
-      if (row.state !== "dispatching" || typeof row.correlation_json !== "string") {
-        throw new Error("Litter mutation dispatch is invalid");
-      }
-      const correlation = normalizeCorrelation(JSON.parse(row.correlation_json));
-      if (correlation.dispatchId !== dispatchId) {
-        throw new Error("Litter mutation dispatch is invalid");
-      }
-      const observedAt = now().getTime();
-      database
-        .prepare(
-          "UPDATE mutations SET state = 'retryable', updated_at_ms = ?, expires_at_ms = ?, correlation_json = NULL WHERE entry_key = ?",
-        )
-        .run(observedAt, observedAt + retentionMs, key);
-    });
-  };
+  ): void => transition(identity, bodyHash, { dispatchId, dispatchingOnly: true }, "retryable");
 
   const settleDispatched = (
     identity: MutationIdentity,
@@ -502,54 +529,19 @@ export function createLitterMutationLedger(
     dispatchId: string,
     state: "accepted" | "rejected",
     stored: StoredMutationResult,
-  ): void => {
-    const key = entryKey(identity);
-    const resultJson = JSON.stringify(stored.result);
-    if (typeof resultJson !== "string" || stored.status < 100 || stored.status > 599) {
-      throw new Error("Litter mutation result is invalid");
-    }
-    transaction(() => {
-      const row = requireBody(key, bodyHash);
-      if (
-        (row.state !== "dispatching" && row.state !== "indeterminate") ||
-        typeof row.correlation_json !== "string"
-      ) {
-        throw new Error("Litter mutation dispatch is invalid");
-      }
-      const correlation = normalizeCorrelation(JSON.parse(row.correlation_json));
-      if (correlation.dispatchId !== dispatchId) {
-        throw new Error("Litter mutation dispatch is invalid");
-      }
-      const observedAt = now().getTime();
-      database
-        .prepare(
-          "UPDATE mutations SET state = ?, updated_at_ms = ?, expires_at_ms = ?, result_json = ?, http_status = ? WHERE entry_key = ?",
-        )
-        .run(state, observedAt, observedAt + retentionMs, resultJson, stored.status, key);
-    });
-  };
+  ): void => transition(identity, bodyHash, { dispatchId }, state, stored);
 
   const markIndeterminate = (
     identity: MutationIdentity,
     bodyHash: string,
     dispatchId: string,
-  ): void => {
-    const key = entryKey(identity);
-    transaction(() => {
-      const row = requireBody(key, bodyHash);
-      if (row.state !== "dispatching" || typeof row.correlation_json !== "string") return;
-      const correlation = normalizeCorrelation(JSON.parse(row.correlation_json));
-      if (correlation.dispatchId !== dispatchId) {
-        throw new Error("Litter mutation dispatch is invalid");
-      }
-      const observedAt = now().getTime();
-      database
-        .prepare(
-          "UPDATE mutations SET state = 'indeterminate', updated_at_ms = ?, expires_at_ms = ? WHERE entry_key = ?",
-        )
-        .run(observedAt, observedAt + reconcileWindowMs, key);
-    });
-  };
+  ): void =>
+    transition(
+      identity,
+      bodyHash,
+      { dispatchId, dispatchingOnly: true, skipUnlessDispatching: true },
+      "indeterminate",
+    );
 
   const close = (): void => database.close();
 
