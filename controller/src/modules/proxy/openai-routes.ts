@@ -1,9 +1,8 @@
 import { performance } from "node:perf_hooks";
 import { Effect, Schema } from "effect";
 import { HttpStatus, notFound } from "../../core/errors";
-import { effectHandler } from "../../http/effect-handler";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
-import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
+import { defineRoutes, mergeRoutes, effectRoute } from "../../http/route-registrar";
 import type { Recipe } from "../models/types";
 import { buildInferenceUrl } from "../../http/local-fetch";
 import {
@@ -27,12 +26,14 @@ import {
   type OpenAIUsage,
 } from "./chat-request";
 import { buildChatCompletionsStreamResponse } from "./chat-completions-stream";
-
 export interface ModelNotRunningError {
-  error: { message: string; type: "model_not_running"; code: "model_not_running" };
+  error: {
+    message: string;
+    type: "model_not_running";
+    code: "model_not_running";
+  };
   detail: string;
 }
-
 export const modelNotRunningError = (
   activeModel: string | null,
   requestedModel: string | null | undefined,
@@ -45,10 +46,8 @@ export const modelNotRunningError = (
     detail: message,
   };
 };
-
 export const registerOpenAIRoutes = defineRoutes((app, context) => {
   const warnNonRunningModel = createNonRunningModelWarner(context.logger);
-
   interface ParsedChatBody {
     parsed: Record<string, unknown>;
     requestedModel: string | null;
@@ -58,7 +57,6 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
     sessionId: string | null;
   }
   const ChatRequestSchema = Schema.Record(Schema.String, Schema.Unknown);
-
   const parseChatBody = (
     bodyBuffer: ArrayBuffer,
     getHeader: (name: string) => string | undefined,
@@ -101,7 +99,6 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
       }
       return { parsed, requestedModel, matchedRecipe, isStreaming, bodyChanged, sessionId };
     });
-
   const resolveChatUpstream = (
     requestedModel: string | null,
     parsed: Record<string, unknown>,
@@ -142,7 +139,6 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
     };
     return { upstreamUrl, headers, requestProvider, providerRouting, rewroteModel };
   };
-
   const gateOnRunningModel = (
     matchedRecipe: Recipe,
     requestedModel: string | null,
@@ -163,7 +159,6 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
         return modelNotRunningError(activeModel, requestedModel);
       }),
     );
-
   const normalizeCompletionChoices = (
     result: Record<string, unknown>,
     recordedModel: string,
@@ -188,144 +183,126 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
       }
     }
   };
-
   return mergeRoutes(
-    app.post(
-      "/v1/chat/completions",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const bodyRead = yield* Effect.tryPromise({
-            try: () => ctx.req.arrayBuffer(),
-            catch: () => new HttpStatus({ status: 400, detail: "Invalid request body" }),
+    effectRoute.post(app, "/v1/chat/completions", (ctx) =>
+      Effect.gen(function* () {
+        const bodyRead = yield* Effect.tryPromise({
+          try: () => ctx.req.arrayBuffer(),
+          catch: () => new HttpStatus({ status: 400, detail: "Invalid request body" }),
+        }).pipe(
+          Effect.match({
+            onFailure: (error) => ({ ok: false as const, error }),
+            onSuccess: (value) => ({ ok: true as const, value }),
+          }),
+        );
+        if (!bodyRead.ok) {
+          return ctx.req.raw.signal.aborted
+            ? new Response(null, { status: 499 })
+            : yield* Effect.fail(bodyRead.error);
+        }
+        const bodyBuffer = bodyRead.value;
+        const { parsed, requestedModel, matchedRecipe, isStreaming, bodyChanged, sessionId } =
+          yield* parseChatBody(bodyBuffer, (name) => ctx.req.header(name));
+        const { upstreamUrl, headers, requestProvider, providerRouting, rewroteModel } =
+          resolveChatUpstream(requestedModel, parsed);
+        const sourceHeader =
+          ctx.req.header("x-vllm-source") ??
+          ctx.req.header("x-source") ??
+          ctx.req.header("user-agent") ??
+          null;
+        if (
+          !matchedRecipe &&
+          requestProvider === DEFAULT_CHAT_PROVIDER &&
+          requestedModel &&
+          context.config.strict_openai_models
+        ) {
+          return yield* Effect.fail(notFound(`Model not managed: ${requestedModel}`));
+        }
+        if (matchedRecipe) {
+          const rejection = yield* gateOnRunningModel(matchedRecipe, requestedModel, sourceHeader);
+          if (rejection) return ctx.json(rejection, { status: 503 });
+        }
+        const finalBody =
+          bodyChanged || rewroteModel
+            ? new TextEncoder().encode(JSON.stringify(parsed)).buffer
+            : bodyBuffer;
+        const clientSignal = ctx.req.raw.signal;
+        const requestStart = performance.now();
+        const recordedModel =
+          matchedRecipe?.served_model_name ?? matchedRecipe?.id ?? requestedModel ?? "unknown";
+        const recordedProvider = providerRouting ? requestProvider : "local";
+        if (!isStreaming) {
+          const fetched = yield* Effect.tryPromise({
+            try: (signal) =>
+              fetch(upstreamUrl, {
+                method: "POST",
+                headers,
+                body: finalBody,
+                signal: AbortSignal.any([clientSignal, signal]),
+              }),
+            catch: (source) => source,
           }).pipe(
             Effect.match({
               onFailure: (error) => ({ ok: false as const, error }),
               onSuccess: (value) => ({ ok: true as const, value }),
             }),
           );
-          if (!bodyRead.ok) {
-            return ctx.req.raw.signal.aborted
+          if (!fetched.ok) {
+            return clientSignal.aborted
               ? new Response(null, { status: 499 })
-              : yield* Effect.fail(bodyRead.error);
+              : yield* Effect.fail(fetched.error);
           }
-          const bodyBuffer = bodyRead.value;
-          const { parsed, requestedModel, matchedRecipe, isStreaming, bodyChanged, sessionId } =
-            yield* parseChatBody(bodyBuffer, (name) => ctx.req.header(name));
-          const { upstreamUrl, headers, requestProvider, providerRouting, rewroteModel } =
-            resolveChatUpstream(requestedModel, parsed);
-          const sourceHeader =
-            ctx.req.header("x-vllm-source") ??
-            ctx.req.header("x-source") ??
-            ctx.req.header("user-agent") ??
-            null;
-
-          if (
-            !matchedRecipe &&
-            requestProvider === DEFAULT_CHAT_PROVIDER &&
-            requestedModel &&
-            context.config.strict_openai_models
-          ) {
-            return yield* Effect.fail(notFound(`Model not managed: ${requestedModel}`));
+          const response = fetched.value;
+          const decoded = yield* Effect.tryPromise({
+            try: () => response.json(),
+            catch: (source) => source,
+          }).pipe(
+            Effect.flatMap(Schema.decodeUnknownEffect(ChatRequestSchema)),
+            Effect.match({
+              onFailure: (error) => ({ ok: false as const, error }),
+              onSuccess: (value) => ({ ok: true as const, value }),
+            }),
+          );
+          if (!decoded.ok) {
+            if (clientSignal.aborted) return new Response(null, { status: 499 });
+            return new Response(null, { status: response.status });
           }
-
-          if (matchedRecipe) {
-            const rejection = yield* gateOnRunningModel(
-              matchedRecipe,
-              requestedModel,
-              sourceHeader,
-            );
-            if (rejection) return ctx.json(rejection, { status: 503 });
-          }
-
-          const finalBody =
-            bodyChanged || rewroteModel
-              ? new TextEncoder().encode(JSON.stringify(parsed)).buffer
-              : bodyBuffer;
-
-          const clientSignal = ctx.req.raw.signal;
-          const requestStart = performance.now();
-          const recordedModel =
-            matchedRecipe?.served_model_name ?? matchedRecipe?.id ?? requestedModel ?? "unknown";
-          const recordedProvider = providerRouting ? requestProvider : "local";
-
-          if (!isStreaming) {
-            const fetched = yield* Effect.tryPromise({
-              try: (signal) =>
-                fetch(upstreamUrl, {
-                  method: "POST",
-                  headers,
-                  body: finalBody,
-                  signal: AbortSignal.any([clientSignal, signal]),
-                }),
-              catch: (source) => source,
-            }).pipe(
-              Effect.match({
-                onFailure: (error) => ({ ok: false as const, error }),
-                onSuccess: (value) => ({ ok: true as const, value }),
-              }),
-            );
-            if (!fetched.ok) {
-              return clientSignal.aborted
-                ? new Response(null, { status: 499 })
-                : yield* Effect.fail(fetched.error);
-            }
-            const response = fetched.value;
-            const decoded = yield* Effect.tryPromise({
-              try: () => response.json(),
-              catch: (source) => source,
-            }).pipe(
-              Effect.flatMap(Schema.decodeUnknownEffect(ChatRequestSchema)),
-              Effect.match({
-                onFailure: (error) => ({ ok: false as const, error }),
-                onSuccess: (value) => ({ ok: true as const, value }),
-              }),
-            );
-            if (!decoded.ok) {
-              if (clientSignal.aborted) return new Response(null, { status: 499 });
-              return new Response(null, { status: response.status });
-            }
-            const result = { ...decoded.value };
-
-            const usage = result["usage"] as OpenAIUsage | undefined;
-            yield* recordNonStreamingInferenceUsage(
-              { logger: context.logger, stores: context.stores },
-              {
-                usage,
-                record: {
-                  model: recordedModel,
-                  source: sourceHeader,
-                  session_id: sessionId,
-                  provider: recordedProvider,
-                  duration_ms: Math.round(performance.now() - requestStart),
-                  status: response.status,
-                },
+          const result = { ...decoded.value };
+          const usage = result["usage"] as OpenAIUsage | undefined;
+          yield* recordNonStreamingInferenceUsage(
+            { logger: context.logger, stores: context.stores },
+            {
+              usage,
+              record: {
+                model: recordedModel,
+                source: sourceHeader,
+                session_id: sessionId,
+                provider: recordedProvider,
+                duration_ms: Math.round(performance.now() - requestStart),
+                status: response.status,
               },
-            );
-
-            attachSessionUsage(result, sessionId, usage);
-            normalizeCompletionChoices(result, recordedModel, sourceHeader);
-
-            return Response.json(result, { status: response.status });
-          }
-
-          return buildChatCompletionsStreamResponse({
-            upstreamUrl,
-            headers,
-            body: finalBody,
-            clientSignal,
-            matchedRecipe,
-            sourceHeader,
-            sessionId,
-            recordedModel,
-            recordedProvider,
-            requestStart,
-            requestProvider,
-            providerRouting,
-            context,
-          });
-        }),
-      ),
+            },
+          );
+          attachSessionUsage(result, sessionId, usage);
+          normalizeCompletionChoices(result, recordedModel, sourceHeader);
+          return Response.json(result, { status: response.status });
+        }
+        return buildChatCompletionsStreamResponse({
+          upstreamUrl,
+          headers,
+          body: finalBody,
+          clientSignal,
+          matchedRecipe,
+          sourceHeader,
+          sessionId,
+          recordedModel,
+          recordedProvider,
+          requestStart,
+          requestProvider,
+          providerRouting,
+          context,
+        });
+      }),
     ),
   );
 });
