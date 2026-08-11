@@ -365,16 +365,18 @@ Upstream evidence:
   spaces and Unicode without elevation. The audit host denies Scheduled Task
   creation, so the validated fallback is the current user's `HKCU` startup
   entry; controller secrets remain in `.env`, not its startup command.
+- An unsigned Windows x64 Electron package boots successfully with the embedded
+  frontend, agent runtime, browser host, desktop bridge, and PowerShell PTY. Its
+  shutdown leaves no owned processes or smoke directories behind.
+- The Windows package contains the controller PowerShell installer and win32
+  ConPTY runtime, and the NSIS target produces an unsigned per-user x64
+  installer without invoking the macOS release flow.
 
 ### Inferred from code, to be validated by milestones
 
 - Controller HTTP, downloads, SQLite, proxy, logs, and usage should work once
   setup and lifecycle blockers are removed because their core code is already
   platform-neutral.
-- The Electron main window should launch on Windows after a complete frontend
-  build/package because its primary lifecycle uses Electron APIs.
-- `@lydell/node-pty` should provide a Windows ConPTY-capable binary for the
-  pinned package, but an actual Node/Electron roundtrip is required.
 
 ### Missing collection or experimental validation
 
@@ -383,8 +385,7 @@ Upstream evidence:
 - Controller-to-llama.cpp lifecycle, graceful stop, forced stop, and stale
   ownership recovery on Windows.
 - OpenAI-compatible chat streaming against native Windows llama.cpp.
-- Packaged Windows Electron launch, embedded frontend, agent runtime, browser,
-  PTY, clean shutdown, and installer behavior.
+- Installed NSIS setup/uninstall behavior.
 - Explicit Windows-to-WSL2 controller/runtime bridge.
 - Any native Windows exllamav3 support.
 

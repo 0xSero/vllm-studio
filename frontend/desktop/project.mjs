@@ -826,8 +826,8 @@ async function waitForPage(browser, origin, timeoutMs) {
   }
   throw Error(`Timed out waiting for Electron page at ${origin}`);
 }
-async function smokeTerminal(page) {
-  return page.evaluate(async () => {
+async function smokeTerminal(page, cwd) {
+  return page.evaluate(async ({ cwd: terminalCwd, command }) => {
     let bridge = globalThis.localStudioDesktop;
     if (!bridge)
       throw Error("Desktop bridge is unavailable");
@@ -835,7 +835,7 @@ async function smokeTerminal(page) {
     if (!status.available)
       throw Error(status.reason || "PTY is unavailable");
     let session = await bridge.terminal.open({
-      cwd: "/tmp",
+      cwd: terminalCwd,
       cols: 80,
       rows: 24,
       ownerKey: "desktop-package-smoke"
@@ -856,13 +856,22 @@ async function smokeTerminal(page) {
           return;
         finish();
       });
-      bridge.terminal.write(session.id, "printf 'LOCAL_STUDIO_PTY_OK\\n'; exit\\n"), finish();
+      bridge.terminal.write(session.id, command), finish();
     });
+  }, { cwd, command: process2.platform === "win32" ? "Write-Output 'LOCAL_STUDIO_PTY_OK'; exit\r\n" : "printf 'LOCAL_STUDIO_PTY_OK\\n'; exit\n" });
+}
+async function taskkill(pid, force) {
+  await new Promise((resolve3) => {
+    let killer = spawn2("taskkill.exe", ["/PID", String(pid), "/T", ...force ? ["/F"] : []], { windowsHide: !0, stdio: "ignore" });
+    killer.once("error", () => resolve3()), killer.once("exit", () => resolve3());
   });
 }
 async function terminate(child) {
   if (!child?.pid)
     return;
+  if (process2.platform === "win32")
+    await taskkill(child.pid, !1);
+  else
   try {
     process2.kill(-child.pid, "SIGTERM");
   } catch {}
@@ -870,12 +879,27 @@ async function terminate(child) {
     child.exitCode === null && child.signalCode === null ? new Promise((resolve3) => child.once("exit", resolve3)) : Promise.resolve(),
     delay(5000)
   ]);
-  try {
-    process2.kill(-child.pid, "SIGKILL");
-  } catch {}
+  if (process2.platform === "win32")
+    await taskkill(child.pid, !0);
+  else
+    try {
+      process2.kill(-child.pid, "SIGKILL");
+    } catch {}
+}
+async function removeSmokeDirectory(directory) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      rmSync4(directory, { recursive: !0, force: !0 });
+      return;
+    } catch (error) {
+      if (attempt === 19 || !["EBUSY", "EPERM", "ENOTEMPTY"].includes(error?.code))
+        throw error;
+      await delay(250);
+    }
+  }
 }
 async function runDesktopPackageSmoke(args2 = process2.argv.slice(2)) {
-  let frontend = path4.resolve(path4.dirname(fileURLToPath3(import.meta.url)), ".."), requestedApp = valueAfter2(args2, "--app"), appPath = requestedApp ? path4.resolve(requestedApp) : path4.join(frontend, "dist-desktop", "mac-arm64", "Local Studio.app"), expectedVersion = valueAfter2(args2, "--expected-version"), executable = path4.join(appPath, "Contents", "MacOS", "Local Studio");
+  let frontend = path4.resolve(path4.dirname(fileURLToPath3(import.meta.url)), ".."), requestedApp = valueAfter2(args2, "--app"), defaultApp = process2.platform === "win32" ? path4.join(frontend, "dist-desktop", "win-unpacked", "Local Studio.exe") : path4.join(frontend, "dist-desktop", "mac-arm64", "Local Studio.app"), appPath = requestedApp ? path4.resolve(requestedApp) : defaultApp, expectedVersion = valueAfter2(args2, "--expected-version"), executable = process2.platform === "win32" ? appPath.toLowerCase().endsWith(".exe") ? appPath : path4.join(appPath, "Local Studio.exe") : path4.join(appPath, "Contents", "MacOS", "Local Studio");
   if (!existsSync6(executable))
     throw Error(`Missing packaged executable: ${executable}`);
   let temp = mkdtempSync2(path4.join(os.tmpdir(), "local-studio-package-smoke-")), userData = path4.join(temp, "user-data"), logFile = path4.join(userData, "logs", "desktop.log"), frontendPortFile = path4.join(userData, "embedded-frontend.port"), debugPort = await reservePort(), stdout = [], stderr = [];
@@ -923,7 +947,7 @@ async function runDesktopPackageSmoke(args2 = process2.argv.slice(2)) {
     });
     if (expectedVersion && runtime.appVersion !== expectedVersion)
       throw Error(`Packaged app version ${runtime.appVersion} does not match ${expectedVersion}`);
-    let terminal = await smokeTerminal(page), result = {
+    let terminal = await smokeTerminal(page, temp), result = {
       appPath,
       agentStatus: agentResponse.status(),
       desktopHealth,
@@ -947,7 +971,7 @@ ${diagnostics}`);
       await browser.close().catch(() => {
         return;
       });
-    await terminate(child), rmSync4(temp, { recursive: !0, force: !0 });
+    await terminate(child), await removeSmokeDirectory(temp);
   }
 }
 var require3, chromium;
@@ -2208,9 +2232,8 @@ async function afterPack(context) {
   let missingPiLauncherMarker = [
     "resolveElectronNodeExecutable",
     "resolvePackagedPiCli",
-    "Frameworks",
-    "Helper.app",
-    "ELECTRON_RUN_AS_NODE"
+    "ELECTRON_RUN_AS_NODE",
+    ...electronPlatformName === "darwin" ? ["Frameworks", "Helper.app"] : []
   ].find((marker) => !agentRuntimeSource.includes(marker));
   if (missingPiLauncherMarker)
     throw Error(`Packaged agent runtime is missing Pi helper launcher: ${missingPiLauncherMarker}`);
@@ -2219,6 +2242,14 @@ async function afterPack(context) {
     if (!existsSync(helperExecutable))
       throw Error(`Packaged app is missing its Pi helper executable: ${helperExecutable}`);
   }
+  if (electronPlatformName === "win32") {
+    let executable = path.join(appOutDir, `${productFilename}.exe`);
+    if (!existsSync(executable))
+      throw Error(`Packaged app is missing its Windows executable: ${executable}`);
+  }
+  let controllerInstaller = path.join(resourcesDir, "app", "scripts", electronPlatformName === "win32" ? "install-controller.ps1" : "install-controller.sh");
+  if (!existsSync(controllerInstaller))
+    throw Error(`Packaged app is missing its controller installer: ${controllerInstaller}`);
   let packagedPiCli = path.join(resourcesDir, "app", "frontend", ".next", "standalone", "frontend", "node_modules", "@earendil-works", "pi-coding-agent", "dist", "cli.js");
   if (!existsSync(packagedPiCli))
     throw Error(`Packaged app is missing its Pi CLI: ${packagedPiCli}`);
