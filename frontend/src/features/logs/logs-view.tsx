@@ -2,60 +2,35 @@
 
 import { ChevronRight, Download, Menu, RefreshCw } from "@/ui/icon-registry";
 import { Button, Checkbox, SearchInput, Spinner } from "@/ui";
-import type { LogSession } from "@/lib/types";
 import { LogsSessionsSidebar } from "./logs-sessions-sidebar";
+import { useLogs } from "./use-logs";
 
-interface LogsViewProps {
-  sessions: LogSession[];
-  filteredSessions: LogSession[];
-  selectedSession: string | null;
-  hasLogContent: boolean;
-  filter: string;
-  contentFilter: string;
-  loading: boolean;
-  loadingContent: boolean;
-  autoScroll: boolean;
-  autoRefresh: boolean;
-  sidebarOpen: boolean;
-  logRef: React.RefObject<HTMLDivElement | null>;
-  onFilterChange: (value: string) => void;
-  onContentFilterChange: (value: string) => void;
-  onAutoScrollChange: (value: boolean) => void;
-  onAutoRefreshChange: (value: boolean) => void;
-  onSidebarToggle: (value: boolean) => void;
-  onLoadLogContent: (sessionId: string) => void;
-  onDeleteSession: (sessionId: string) => void;
-  onDownloadLog: () => void;
-  onRenderLogs: () => React.ReactNode;
-  onSelectSession: (sessionId: string) => void;
-  formatDateTime: (dateValue: string) => string;
-}
-
-export function LogsView({
-  sessions,
-  filteredSessions,
-  selectedSession,
-  hasLogContent,
-  filter,
-  contentFilter,
-  loading,
-  loadingContent,
-  autoScroll,
-  autoRefresh,
-  sidebarOpen,
-  logRef,
-  onFilterChange,
-  onContentFilterChange,
-  onAutoScrollChange,
-  onAutoRefreshChange,
-  onSidebarToggle,
-  onLoadLogContent,
-  onDeleteSession,
-  onDownloadLog,
-  onRenderLogs,
-  onSelectSession,
-  formatDateTime,
-}: LogsViewProps) {
+export function LogsView() {
+  const {
+    sessions,
+    filteredSessions,
+    selectedSession,
+    hasLogContent,
+    filter,
+    contentFilter,
+    loading,
+    loadingContent,
+    autoScroll,
+    autoRefresh,
+    sidebarOpen,
+    logRef,
+    setFilter: onFilterChange,
+    setContentFilter: onContentFilterChange,
+    setAutoScroll: onAutoScrollChange,
+    setAutoRefresh: onAutoRefreshChange,
+    setSidebarOpen: onSidebarToggle,
+    loadLogContent: onLoadLogContent,
+    deleteSession: onDeleteSession,
+    downloadLog: onDownloadLog,
+    renderLogs: onRenderLogs,
+    handleSelectSession: onSelectSession,
+    formatDateTime,
+  } = useLogs();
   if (loading)
     return (
       <div className="flex items-center justify-center h-full bg-(--surface)">
@@ -80,12 +55,9 @@ export function LogsView({
         onDeleteSession={onDeleteSession}
         formatDateTime={formatDateTime}
       />
-
-      {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         {selectedSession ? (
           <>
-            {/* Header */}
             <div className="flex items-center justify-between px-3 sm:px-4 py-3 border-b border-(--border) gap-2">
               <div className="flex items-center gap-2 text-sm min-w-0 flex-1">
                 <Button
@@ -138,8 +110,6 @@ export function LogsView({
                 </Button>
               </div>
             </div>
-
-            {/* Log Content */}
             <div
               ref={logRef}
               className="flex-1 overflow-auto p-2 sm:p-4 font-mono text-[length:var(--fs-xs)] sm:text-xs bg-(--surface) leading-relaxed"
