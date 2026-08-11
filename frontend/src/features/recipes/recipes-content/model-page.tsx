@@ -121,6 +121,33 @@ export function ModelActiveSummary({
   );
 }
 
+/**
+ * The row's second column.
+ *
+ * A read-only value belongs beside the status it qualifies, not stranded
+ * mid-row — left-aligning it opened a dead gap between the text and the badge
+ * at the right edge. Controls stay left: an input floating right of empty space
+ * reads as misplaced.
+ */
+function RowValueCell({
+  control,
+  value,
+  interactive,
+}: {
+  control?: ReactNode;
+  value?: ReactNode;
+  interactive: boolean;
+}) {
+  return (
+    <div
+      className={cx("min-w-0 flex-1", control ? "" : "text-right")}
+      onClick={control && interactive ? (event) => event.stopPropagation() : undefined}
+    >
+      {control ?? value ?? <ModelValue dim>Not reported yet</ModelValue>}
+    </div>
+  );
+}
+
 export function ModelRow({
   label,
   description,
@@ -187,12 +214,7 @@ export function ModelRow({
           </div>
         </div>
         <div className="flex min-w-0 items-center justify-between gap-3">
-          <div
-            className="min-w-0 flex-1"
-            onClick={control && interactive ? (event) => event.stopPropagation() : undefined}
-          >
-            {control ?? value ?? <ModelValue dim>Not reported yet</ModelValue>}
-          </div>
+          <RowValueCell control={control} value={value} interactive={interactive} />
           {status ? (
             <div
               className="shrink-0"

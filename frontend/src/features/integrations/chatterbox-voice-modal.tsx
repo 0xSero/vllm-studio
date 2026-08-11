@@ -3,7 +3,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import api from "@/lib/api/client";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { Alert, Button, UiModal, UiModalHeader } from "@/ui";
+import { Alert, Button, UiModal, UiModalBody, UiModalHeader } from "@/ui";
 import { AudioLines, X } from "@/ui/icon-registry";
 import { VoiceCreator } from "./chatterbox-voice-creator";
 import { actionErrorMessage, type PendingAction } from "./chatterbox-voice-model";
@@ -216,8 +216,8 @@ export function ChatterboxVoiceModal({ onClose }: { onClose: () => void }) {
         showCloseButton
         closeIcon={<X className="h-4 w-4" />}
       />
-      <div className="max-h-[calc(100dvh-5.75rem)] overflow-y-auto">
-        <div className="border-b border-(--ui-border) px-6 py-4">
+      <UiModalBody className="px-0 pb-0">
+        <div className="border-b border-(--ui-border) px-6 pb-4">
           <Alert variant="info">
             Voice cloning runs on your dedicated GPU. Reference audio stays encrypted on the
             selected controller; previews stream directly back to Local Studio.
@@ -234,7 +234,7 @@ export function ChatterboxVoiceModal({ onClose }: { onClose: () => void }) {
           ) : null}
         </div>
         {content}
-      </div>
+      </UiModalBody>
     </UiModal>
   );
 }

@@ -362,7 +362,7 @@ function PrDescription({ body }: { body: string }) {
   const trimmed = body.trim();
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-[length:var(--fs-sm)] font-semibold uppercase tracking-wide text-(--dim)">
+      <h3 className="text-[length:var(--fs-sm)] font-semibold text-(--dim)">
         Description
       </h3>
       {trimmed ? (

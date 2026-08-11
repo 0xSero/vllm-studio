@@ -156,7 +156,7 @@ export function RuntimeOverview({
       <RuntimeInstallProgress status={status} />
       <div className="grid gap-x-8 gap-y-3 border-y border-(--ui-separator) py-3 sm:grid-cols-3">
         <div className="min-w-0">
-          <div className="text-[length:var(--fs-xs)] font-medium uppercase text-(--ui-muted)/70">
+          <div className="text-[length:var(--fs-sm)] font-medium text-(--ui-muted)/70">
             Speech GPU
           </div>
           <div className="mt-1 truncate text-[length:var(--fs-sm)] text-(--ui-fg)">
@@ -164,7 +164,7 @@ export function RuntimeOverview({
           </div>
         </div>
         <div>
-          <div className="text-[length:var(--fs-xs)] font-medium uppercase text-(--ui-muted)/70">
+          <div className="text-[length:var(--fs-sm)] font-medium text-(--ui-muted)/70">
             Runtime
           </div>
           <div className="mt-1 text-[length:var(--fs-sm)] text-(--ui-fg)">
@@ -172,7 +172,7 @@ export function RuntimeOverview({
           </div>
         </div>
         <div>
-          <div className="text-[length:var(--fs-xs)] font-medium uppercase text-(--ui-muted)/70">
+          <div className="text-[length:var(--fs-sm)] font-medium text-(--ui-muted)/70">
             Storage
           </div>
           <div className="mt-1 text-[length:var(--fs-sm)] text-(--ui-fg)">

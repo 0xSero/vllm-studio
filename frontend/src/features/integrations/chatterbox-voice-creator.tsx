@@ -175,7 +175,7 @@ export function VoiceCreator({
           </Button>
         </div>
         <div>
-          <div className="mb-2 text-[length:var(--fs-xs)] font-medium uppercase text-(--ui-muted)/70">
+          <div className="mb-2 text-[length:var(--fs-sm)] font-medium text-(--ui-muted)/70">
             Saved profiles
           </div>
           <VoiceList

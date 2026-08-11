@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Button, EmptySafeNotice, ModelButton, UiModal, UiModalHeader } from "@/ui";
+import {
+  Button,
+  EmptySafeNotice,
+  ModelButton,
+  UiModal,
+  UiModalBody,
+  UiModalFooter,
+  UiModalHeader,
+} from "@/ui";
 import { Plus, Trash2 } from "@/ui/icon-registry";
 import type { Rig, RigNode } from "@/lib/types";
 import type { RigNodePayload } from "@/lib/api/rigs";
@@ -99,24 +107,24 @@ function ConfirmDeleteModal({
   return (
     <UiModal isOpen onClose={onCancel}>
       <UiModalHeader title={title} onClose={onCancel} />
-      <div className="space-y-4 p-4">
-        <p className="text-[length:var(--fs-base)] text-(--ui-muted)">{message}</p>
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button
-            variant="danger"
-            loading={busy}
-            onClick={() => {
-              setBusy(true);
-              void onConfirm().finally(onCancel);
-            }}
-          >
-            Remove
-          </Button>
-        </div>
-      </div>
+      <UiModalBody>
+        <p className="text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">{message}</p>
+      </UiModalBody>
+      <UiModalFooter>
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button
+          variant="danger"
+          loading={busy}
+          onClick={() => {
+            setBusy(true);
+            void onConfirm().finally(onCancel);
+          }}
+        >
+          Remove
+        </Button>
+      </UiModalFooter>
     </UiModal>
   );
 }

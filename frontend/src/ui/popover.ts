@@ -26,5 +26,14 @@ export const POPOVER_MENU_CLASS = `${POPOVER_SURFACE_CLASS} overflow-hidden p-1`
  */
 export const POPOVER_PANEL_CLASS = `${POPOVER_SURFACE_CLASS} overflow-hidden` as const;
 
+/**
+ * Dialog surface. Sits above a translucent scrim rather than replacing the
+ * page, so the app stays visible behind it the way it does in ChatGPT. Larger
+ * radius and a deeper shadow than a menu popover — a dialog reads as a sheet
+ * lifted off the page, not a dropdown pinned to a trigger.
+ */
+export const MODAL_SURFACE_CLASS =
+  "overflow-hidden rounded-[14px] border border-(--color-popover-border) bg-(--color-popover) shadow-[0_24px_64px_-12px_rgba(0,0,0,0.55)]" as const;
+
 /** Hairline separator between groups inside a popover. */
 export const POPOVER_SEPARATOR_CLASS = "my-1 h-px bg-(--border)";

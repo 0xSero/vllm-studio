@@ -348,7 +348,7 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <div className="px-4 pb-1 pt-3 text-[length:var(--fs-xs)] font-medium uppercase tracking-[var(--section-tracking)] text-(--dim)">
+    <div className="px-4 pb-1 pt-3 text-[length:var(--fs-sm)] font-medium text-(--dim)">
       {children}
     </div>
   );
