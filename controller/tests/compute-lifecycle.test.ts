@@ -71,6 +71,7 @@ const input = (overrides: Partial<ComputeLaunchInput> = {}): ComputeLaunchInput 
   env: {},
   dockerImage: null,
   binary: "llama-server",
+  wslDistribution: null,
   ...overrides,
 });
 

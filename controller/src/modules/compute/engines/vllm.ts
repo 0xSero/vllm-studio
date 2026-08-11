@@ -38,7 +38,11 @@ const supports = (host: HostProfile): EngineSupport => {
     return unsupported("vLLM has no Metal backend — use llamacpp or mlx on Apple Silicon");
   }
   if (host.platform === "win32") {
-    return unsupported("vLLM requires a controller running inside WSL2 or on a remote Linux host");
+    if (!host.wsl) return unsupported("vLLM requires an explicit WSL2 or remote Linux runtime");
+    if (host.accelerator !== "cuda") {
+      return unsupported(`vLLM in WSL2 needs a CUDA device; this host reports ${host.accelerator}`);
+    }
+    return supported("wsl2");
   }
   if (host.accelerator === "rocm") {
     // Upstream publishes ROCm images; the PyPI wheels are CUDA-only.

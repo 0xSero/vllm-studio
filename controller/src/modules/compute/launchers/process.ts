@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
-import { openSync, statSync, openSync as open, closeSync, readSync } from "node:fs";
+import { openSync, closeSync } from "node:fs";
 import { Effect } from "effect";
 import type { HandleReference, InstanceRecord, LaunchPlan } from "../contracts";
 import { realProcessPlatform, type ProcessPlatform } from "../../../core/process-platform";
-import { LOG_TAIL_BYTES, spawnFailed, type Launcher } from "./launcher";
+import { readLogTail, spawnFailed, type Launcher } from "./launcher";
 
 /**
  * Detached-daemon launcher, exo-style: stdout+stderr straight into a log file, the whole
@@ -12,25 +12,6 @@ import { LOG_TAIL_BYTES, spawnFailed, type Launcher } from "./launcher";
  */
 
 const STOP_POLL_MS = 250;
-
-const readTailBytes = (path: string, bytes: number): string => {
-  try {
-    const size = statSync(path).size;
-    const start = Math.max(0, size - bytes);
-    const length = size - start;
-    if (length <= 0) return "";
-    const buffer = Buffer.alloc(length);
-    const fd = open(path, "r");
-    try {
-      readSync(fd, buffer, 0, length, start);
-    } finally {
-      closeSync(fd);
-    }
-    return buffer.toString("utf8");
-  } catch {
-    return "";
-  }
-};
 
 export const makeProcessLauncher = (
   logPathFor: (record: InstanceRecord) => string,
@@ -101,5 +82,5 @@ export const makeProcessLauncher = (
     }),
 
   logTail: (reference: HandleReference, record: InstanceRecord) =>
-    Effect.sync(() => readTailBytes(logPathFor(record), LOG_TAIL_BYTES)),
+    Effect.sync(() => readLogTail(logPathFor(record))),
 });
