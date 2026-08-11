@@ -5,7 +5,7 @@ import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import api from "@/lib/api/client";
 import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import type { UsageStats } from "@/lib/types";
-import { normalizeUsageStats } from "@/features/usage/normalize-usage-stats";
+import { normalizeUsageStats } from "@local-studio/contracts/usage";
 
 export function useUsage() {
   const [stats, setStats] = useState<UsageStats | null>(() =>
