@@ -285,5 +285,54 @@ Final regression acceptance:
 - Claiming native Windows vLLM or SGLang support.
 - Claiming native Windows exllamav3 until an independent experimental gate
   passes.
-- Hiding WSL2 behind a native-runtime label.
 - Broad architecture rewrites unrelated to an observed platform boundary.
+
+## Milestone 9 - Explicit WSL2 inference bridge
+
+This milestone was requested after the initial Windows acceptance completed.
+It does not change the native engine matrix: vLLM and SGLang remain Linux
+engines, while llama.cpp remains the native Windows engine.
+
+Scope:
+
+- Add `wsl2` as an explicit recipe and compute runtime, never as an alias for a
+  Windows process runtime.
+- Discover installed WSL2 distributions without starting them and expose
+  opt-in vLLM/SGLang runtime targets for each eligible distribution.
+- Start the selected Linux engine only when a WSL2 recipe is launched.
+- Translate Windows drive paths through the selected distribution's `wslpath`
+  at launch time; preserve Linux-native model paths unchanged.
+- Supervise the Linux PID and process group inside the distribution, including
+  ownership, TERM/KILL escalation, logs, health, cancellation, and stale-record
+  recovery.
+- Forward the selected Windows GPU UUIDs through the WSL environment while
+  retaining the existing controller GPU lease.
+- Keep the distro alive if it was already running before Local Studio. When the
+  bridge started a stopped distro, terminate it after eviction by default so
+  its VM memory is released; allow operators to disable this policy.
+- Do not edit `.wslconfig` automatically. Document Microsoft's
+  `autoMemoryReclaim` option as an independent global WSL policy.
+- Keep llama.cpp, MLX, Docker, native process, remote-controller, macOS, and
+  Linux launch behavior unchanged.
+
+Tests:
+
+- UTF-16/NUL WSL command-output and distribution-list parsing fixtures.
+- WSL command construction, argument isolation, path translation, PID identity,
+  graceful/forced stop, and conditional distro termination tests with injected
+  runners.
+- Recipe serialization and UI runtime-option tests proving `wsl2` is labeled
+  explicitly and only offered for vLLM/SGLang.
+- Real Windows/Ubuntu smoke using a small Linux HTTP fixture: stopped distro,
+  translated non-C: path, Windows localhost health, logs, stop, and distro
+  memory teardown.
+
+Acceptance:
+
+- Merely opening Configure does not start a stopped WSL distribution.
+- A vLLM/SGLang recipe explicitly names `wsl2`, its distro, and Linux binary.
+- Launch, proxy health, logs, cancellation, eviction, and restart recovery work
+  through the Linux PID rather than trusting the transient `wsl.exe` proxy PID.
+- A distro started by the bridge returns to `Stopped` after eviction under the
+  default policy; a distro that was already running is not terminated.
+- Unsupported or missing distros/binaries fail with a precise capability error.

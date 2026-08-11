@@ -108,7 +108,11 @@ destination is not yet claimed as validated.
 ## Deferred work
 
 - Signed and published Windows releases and updater metadata
-- An integrated Windows-to-WSL2 inference bridge
 - Native Windows vLLM, SGLang, or exllamav3 claims
 - Hardware CI; GPU parsers and capability decisions use fixtures in CI
 - A live UNC-share acceptance run
+
+An explicit, opt-in WSL2 bridge for the Linux vLLM and SGLang runtimes is now
+tracked as Milestone 9 in `docs/windows-port-plan.md`. It remains separate from
+native Windows support and is not claimed complete until that milestone's real
+host acceptance passes.
