@@ -51,6 +51,53 @@ function subagentChipsFor(piSessionId: string | null | undefined) {
   return <SubagentChips piSessionId={piSessionId} />;
 }
 
+function useChatPaneTools(insideComputerPanel: boolean) {
+  const tools = useTools();
+  const onToggleBrowserTool = useCallback(() => {
+    if (insideComputerPanel) return tools.toggleBrowser();
+    if (tools.browser.enabled) {
+      tools.setBrowserEnabled(false);
+      tools.closeComputerTab("browser");
+      return;
+    }
+    tools.setBrowserEnabled(true);
+    tools.setComputerTab("browser");
+  }, [insideComputerPanel, tools]);
+  return {
+    tools,
+    browserToolEnabled: tools.browser.enabled,
+    browserBackend: tools.browser.backend,
+    onToggleBrowserTool,
+    rightPanelOpen: insideComputerPanel || tools.computer.open,
+    onToggleRightPanel: insideComputerPanel
+      ? () => tools.setComputerOpen(false)
+      : tools.toggleComputerOpen,
+  };
+}
+
+function terminalAction(
+  terminalOwner: TerminalOwner | null,
+  toggleTerminalView: () => void,
+  insideComputerPanel: boolean,
+  openComputerTerminal: () => void,
+): (() => void) | undefined {
+  if (terminalOwner) return toggleTerminalView;
+  return insideComputerPanel ? undefined : openComputerTerminal;
+}
+
+const when = <Value,>(condition: boolean, value: Value): Value | undefined =>
+  condition ? value : undefined;
+
+function projectPresentation(projects: ProjectsContextValue, session: SessionTab | null) {
+  const project = projects.resolveProject(session);
+  const gitSummary = projects.gitSummary(project?.path);
+  return {
+    projectName: project?.name ?? null,
+    gitSummary,
+    gitBranch: gitSummary?.isRepo === false ? null : (gitSummary?.branch ?? project?.branch),
+  };
+}
+
 import {
   useComposerLoadedContext,
   useComposerMentionRows,
@@ -85,7 +132,7 @@ import { ChatPaneHandle, SessionTab } from "@/features/agent/messages";
 import { useSessionEngine } from "@/features/agent/runtime/engine";
 import type { UpdateSession } from "@/features/agent/runtime/types";
 import { useTools } from "@/features/agent/tools/context";
-import { useProjects } from "@/features/agent/projects/context";
+import { useProjects, type ProjectsContextValue } from "@/features/agent/projects/context";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import type { AgentThinkingLevel } from "@/features/agent/contracts";
 import {
@@ -285,24 +332,15 @@ export function ChatPane({
   const [mention, setMention] = useState<ComposerMention | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [fileMentionRows, setFileMentionRows] = useState<FileMentionRow[]>([]);
-  const tools = useTools();
+  const {
+    tools,
+    browserToolEnabled,
+    browserBackend,
+    onToggleBrowserTool,
+    rightPanelOpen,
+    onToggleRightPanel,
+  } = useChatPaneTools(insideComputerPanel);
   const projects = useProjects();
-  const browserToolEnabled = tools.browser.enabled;
-  const browserBackend = tools.browser.backend;
-  const onToggleBrowserTool = useCallback(() => {
-    if (insideComputerPanel) return tools.toggleBrowser();
-    if (tools.browser.enabled) {
-      tools.setBrowserEnabled(false);
-      tools.closeComputerTab("browser");
-      return;
-    }
-    tools.setBrowserEnabled(true);
-    tools.setComputerTab("browser");
-  }, [insideComputerPanel, tools]);
-  const rightPanelOpen = insideComputerPanel || tools.computer.open;
-  const onToggleRightPanel = insideComputerPanel
-    ? () => tools.setComputerOpen(false)
-    : tools.toggleComputerOpen;
   const {
     activeTab,
     currentContextTokens,
@@ -311,10 +349,7 @@ export function ChatPane({
     showEmptyPrompt,
     visibleQueueItems,
   } = useChatPaneDerivedState({ activeTabId, contextWindow, tabs });
-  const project = projects.resolveProject(activeTab);
-  const projectName = project?.name ?? null;
-  const gitSummary = projects.gitSummary(project?.path);
-  const gitBranch = gitSummary?.isRepo === false ? null : (gitSummary?.branch ?? project?.branch);
+  const { projectName, gitSummary, gitBranch } = projectPresentation(projects, activeTab);
   const [terminalView, setTerminalView] = useState(false);
   const terminalSnapshot = usePersistentTerminalOwners(
     terminalView,
@@ -463,11 +498,12 @@ export function ChatPane({
   const canExport = Boolean(
     activeTab?.messages.some((message) => message.role !== "system" && message.text.trim()),
   );
-  const openTerminalAction = terminalOwner
-    ? toggleTerminalView
-    : insideComputerPanel
-      ? undefined
-      : () => tools.setComputerTab("terminal");
+  const openTerminalAction = terminalAction(
+    terminalOwner,
+    toggleTerminalView,
+    insideComputerPanel,
+    () => tools.setComputerTab("terminal"),
+  );
   const applyTemplate = useCallback(
     (row: ComposerPromptTemplateRef) =>
       activeTab ? applyContextRow(activeTab.id, "promptTemplate", row, tools) : Promise.resolve(),
@@ -710,7 +746,7 @@ export function ChatPane({
             onOver: handleComposerDragOver,
             onDrop: handleComposerDrop,
           }}
-          goal={goalModeApi.goalMode ? { onExit: goalModeApi.exitGoalMode } : undefined}
+          goal={when(goalModeApi.goalMode, { onExit: goalModeApi.exitGoalMode })}
           mention={{
             mention,
             rows: mentionRows,
@@ -738,20 +774,16 @@ export function ChatPane({
               onSteerQueued={(queueId) => void steerQueued(queueId)}
             />
           }
-          statusBar={
-            composerVisual.showProjectRow
-              ? undefined
-              : {
-                  cwd,
-                  gitBranch,
-                  gitSummary,
-                  onInitGit,
-                  currentContextTokens,
-                  contextWindow: effectiveContextWindow,
-                  onOpenStatus: openComputerStatus,
-                  onOpenDiff: openDiffDrawer,
-                }
-          }
+          statusBar={when(!composerVisual.showProjectRow, {
+            cwd,
+            gitBranch,
+            gitSummary,
+            onInitGit,
+            currentContextTokens,
+            contextWindow: effectiveContextWindow,
+            onOpenStatus: openComputerStatus,
+            onOpenDiff: openDiffDrawer,
+          })}
           textarea={{
             inputRef: textareaRef,
             value: composerInput,
