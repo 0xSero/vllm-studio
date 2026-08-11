@@ -18,13 +18,21 @@ export async function requestJson<T>(
   return decode(body);
 }
 
+export const requestDecodedEffect = <T>(
+  url: string,
+  decode: (input: unknown) => T,
+  init?: RequestInit,
+  fallback?: string,
+): Effect.Effect<T, Error> =>
+  Effect.tryPromise({
+    try: () => requestJson(url, decode, init, fallback),
+    catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+  });
+
 export const requestJsonEffect = <T>(
   url: string,
   schema: Schema.ConstraintDecoder<T>,
   init?: RequestInit,
   fallback?: string,
 ): Effect.Effect<T, Error> =>
-  Effect.tryPromise({
-    try: () => requestJson(url, Schema.decodeUnknownSync(schema), init, fallback),
-    catch: (error) => (error instanceof Error ? error : new Error(String(error))),
-  });
+  requestDecodedEffect(url, Schema.decodeUnknownSync(schema), init, fallback);
