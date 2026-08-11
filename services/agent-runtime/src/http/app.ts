@@ -1,5 +1,13 @@
 import { Hono } from "hono";
+import { Effect, Schema } from "effect";
 import { createLitterBridgeGateway } from "../litter-bridge-gateway";
+import { discoverSkills, loadSkillInstructions } from "../skill-discovery";
+import {
+  discoverPromptTemplates,
+  loadPromptTemplateInstructions,
+} from "../prompt-template-discovery";
+import { closePooledConnection } from "../connector-pool";
+import { listPluginRuntimeViews, PluginRuntimeError, setPluginEnabled } from "../plugin-runtime";
 import {
   handleAgentAbort,
   handleAgentCompact,
@@ -54,6 +62,22 @@ import {
   handleSessionsDelete,
   handleSessionsList,
 } from "./session-handlers";
+import {
+  handleConnectorCall,
+  handleConnectorInventory,
+  handleConnectorSshPath,
+  handleConnectorsDelete,
+  handleConnectorsGet,
+  handleConnectorsPost,
+  handleConnectorTest,
+  handleGoogleAccountDelete,
+  handleGoogleAccountGet,
+  handleGoogleAccountPut,
+  handleGoogleAuthorize,
+  handleGoogleAuthorizeDelete,
+} from "./integration-handlers";
+
+const PluginActivationSchema = Schema.Struct({ enabled: Schema.Boolean });
 
 export function createAgentRuntimeApp() {
   const app = new Hono();
@@ -83,9 +107,7 @@ export function createAgentRuntimeApp() {
   app.patch("/api/agent/automations/:id", (c) =>
     handleAutomationPatch(c.req.raw, c.req.param("id")),
   );
-  app.delete("/api/agent/automations/:id", (c) =>
-    handleAutomationDelete(c.req.param("id")),
-  );
+  app.delete("/api/agent/automations/:id", (c) => handleAutomationDelete(c.req.param("id")));
   app.post("/api/agent/automations/:id/run", (c) => handleAutomationRun(c.req.param("id")));
   app.get("/api/agent/pr", (c) => handlePrGet(c.req.raw));
   app.post("/api/agent/pr/merge", (c) => handlePrMerge(c.req.raw));
@@ -110,6 +132,52 @@ export function createAgentRuntimeApp() {
   app.post("/api/agent/providers/:providerId/logout", (c) =>
     handleProviderLogout(c.req.param("providerId")),
   );
+  app.get("/api/agent/skills", (c) => c.json({ skills: discoverSkills() }));
+  app.get("/api/agent/skills/load", (c) => {
+    const path = c.req.query("path") ?? "";
+    const skill = path ? loadSkillInstructions(path) : null;
+    return skill ? c.json({ skill }) : c.json({ error: "Skill not found" }, 404);
+  });
+  app.get("/api/agent/prompt-templates", (c) => c.json({ templates: discoverPromptTemplates() }));
+  app.get("/api/agent/prompt-templates/load", (c) => {
+    const path = c.req.query("path") ?? "";
+    const template = path ? loadPromptTemplateInstructions(path) : null;
+    return template ? c.json({ template }) : c.json({ error: "Template not found" }, 404);
+  });
+  app.get("/api/agent/plugins", async (c) =>
+    c.json({ plugins: await Effect.runPromise(listPluginRuntimeViews()) }),
+  );
+  app.post("/api/agent/plugins/:id", async (c) => {
+    let body: typeof PluginActivationSchema.Type;
+    try {
+      body = Schema.decodeUnknownSync(PluginActivationSchema)(await c.req.json());
+    } catch {
+      return c.json({ error: "enabled must be a boolean" }, 400);
+    }
+    try {
+      const result = await Effect.runPromise(setPluginEnabled(c.req.param("id"), body.enabled));
+      result.connectorIds.forEach(closePooledConnection);
+      return c.json({ plugins: result.plugins });
+    } catch (error) {
+      const status = error instanceof PluginRuntimeError ? error.status : 500;
+      return Response.json(
+        { error: error instanceof Error ? error.message : "Plugin activation failed" },
+        { status },
+      );
+    }
+  });
+  app.get("/api/agent/accounts/google", () => handleGoogleAccountGet());
+  app.put("/api/agent/accounts/google", (c) => handleGoogleAccountPut(c.req.raw));
+  app.delete("/api/agent/accounts/google", (c) => handleGoogleAccountDelete(c.req.raw));
+  app.post("/api/agent/accounts/google/authorize", (c) => handleGoogleAuthorize(c.req.raw));
+  app.delete("/api/agent/accounts/google/authorize", (c) => handleGoogleAuthorizeDelete(c.req.raw));
+  app.get("/api/agent/connectors", () => handleConnectorsGet());
+  app.post("/api/agent/connectors", (c) => handleConnectorsPost(c.req.raw));
+  app.delete("/api/agent/connectors", (c) => handleConnectorsDelete(c.req.raw));
+  app.get("/api/agent/connectors/call", () => handleConnectorInventory());
+  app.post("/api/agent/connectors/call", (c) => handleConnectorCall(c.req.raw));
+  app.post("/api/agent/connectors/test", (c) => handleConnectorTest(c.req.raw));
+  app.get("/api/agent/connectors/ssh-server-path", () => handleConnectorSshPath());
   app.post("/api/agent/terminal/pty/open", (c) => handlePtyOpen(c.req.raw));
   app.get("/api/agent/terminal/pty/stream", (c) => handlePtyStream(c.req.raw));
   app.post("/api/agent/terminal/pty/input", (c) => handlePtyInput(c.req.raw));
