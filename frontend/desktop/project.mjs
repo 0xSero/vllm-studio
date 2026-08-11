@@ -2242,7 +2242,9 @@ var project_entry_default = afterPack, root5 = path11.resolve(path11.dirname(fil
   ["prepare-next", () => Promise.resolve().then(() => (init_prepare_next_build(), exports_prepare_next_build))],
   ["release-notes", () => Promise.resolve().then(() => (init_release_statement(), exports_release_statement))],
   ["self-test", async () => {
-    await Promise.resolve().then(() => (init_install_desktop_app_test(), exports_install_desktop_app_test)), await Promise.resolve().then(() => (init_release_notary_credentials_test(), exports_release_notary_credentials_test)), await Promise.resolve().then(() => (init_release_package_arguments_test(), exports_release_package_arguments_test));
+    if (process.platform !== "win32")
+      await Promise.resolve().then(() => (init_install_desktop_app_test(), exports_install_desktop_app_test));
+    await Promise.resolve().then(() => (init_release_notary_credentials_test(), exports_release_notary_credentials_test)), await Promise.resolve().then(() => (init_release_package_arguments_test(), exports_release_package_arguments_test));
   }],
   ["setup", async () => setupRepository()],
   ["sign-release", () => init_sign_desktop_release().then(() => exports_sign_desktop_release)],
@@ -2267,8 +2269,25 @@ function versionMeetsMinimum(actual, minimum) {
   }
   return true;
 }
+function platformInvocation(command, args3) {
+  if (process.platform !== "win32")
+    return [command, args3];
+  if (command === "bun") {
+    let candidates2 = [
+      path11.join(path11.dirname(process.execPath), "node_modules", "bun", "bin", "bun.exe"),
+      process.env["BUN_INSTALL"] ? path11.join(process.env["BUN_INSTALL"], "bin", "bun.exe") : null
+    ], executable = candidates2.find((candidate) => candidate && existsSync(candidate));
+    if (executable)
+      return [executable, args3];
+    return [command, args3];
+  }
+  if (command !== "npm" && command !== "npx")
+    return [command, args3];
+  let npmCli = process.env["npm_execpath"]?.trim(), cli = command === "npm" ? npmCli : npmCli ? path11.join(path11.dirname(npmCli), "npx-cli.js") : null, fallback = path11.join(path11.dirname(process.execPath), "node_modules", "npm", "bin", `${command}-cli.js`), script = cli && existsSync(cli) ? cli : fallback;
+  return [process.execPath, [script, ...args3]];
+}
 function requireTool(label, command, args3, minimum) {
-  let result = spawnSync4(command, args3, { cwd: root5, encoding: "utf8" });
+  let [resolvedCommand, resolvedArgs] = platformInvocation(command, args3), result = spawnSync4(resolvedCommand, resolvedArgs, { cwd: root5, encoding: "utf8" });
   if (result.error || result.status !== 0)
     throw Error(`${label} is required but unavailable`);
   let output4 = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim(), actual = parsedVersion(output4);
@@ -2276,11 +2295,31 @@ function requireTool(label, command, args3, minimum) {
     throw Error(`${label} ${minimum.join(".")} or newer is required; found ${output4 || "unknown"}`);
   console.log(`${label}: ${actual.join(".")}`);
 }
+function requireToolCandidate(label, candidates2, minimum) {
+  let found = [];
+  for (let [command, args3] of candidates2) {
+    let [resolvedCommand, resolvedArgs] = platformInvocation(command, args3), result = spawnSync4(resolvedCommand, resolvedArgs, { cwd: root5, encoding: "utf8" });
+    if (result.error || result.status !== 0)
+      continue;
+    let output4 = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim(), actual = parsedVersion(output4);
+    if (actual && versionMeetsMinimum(actual, minimum)) {
+      console.log(`${label}: ${actual.join(".")}`);
+      return;
+    }
+    if (output4)
+      found.push(output4);
+  }
+  throw Error(`${label} ${minimum.join(".")} or newer is required${found.length > 0 ? `; found ${found.join(", ")}` : " but unavailable"}`);
+}
 function doctor() {
   requireTool("Node.js", process.execPath, ["--version"], [22, 19, 0]);
   requireTool("npm", "npm", ["--version"], [10, 0, 0]);
   requireTool("Bun", "bun", ["--version"], [1, 3, 14]);
-  requireTool("Python", "python3", ["--version"], [3, 10, 0]);
+  requireToolCandidate("Python", [
+    ["python3", ["--version"]],
+    ["python", ["--version"]],
+    ["py", ["-3", "--version"]]
+  ], [3, 10, 0]);
   requireTool("Git", "git", ["--version"], [2, 0, 0]);
   console.log("Toolchain check passed");
 }
@@ -2292,8 +2331,8 @@ function setupRepository() {
   console.log("Repository setup complete");
 }
 function auditLayout() {
-  let expected = ["frontend/desktop/project.mjs", "scripts/install-controller.sh", "scripts/install-desktop-app.sh"], actual = readdirSync10(path11.join(root5, "scripts"), { withFileTypes: !0 }).filter((entry) => entry.isFile()).map((entry) => `scripts/${entry.name}`).sort(), executable = git(["ls-files", "-s"]).split("\n").filter((line) => line.startsWith("100755 ")).map((line) => line.split("\t")[1]).sort(), stale = ["frontend/scripts", "controller/scripts", "services/agent-runtime/scripts"].filter((directory) => existsSync(path11.join(root5, directory)));
-  if (JSON.stringify(actual) !== JSON.stringify(expected.slice(1)) || JSON.stringify(executable) !== JSON.stringify(expected) || stale.length > 0)
+  let expectedScripts = ["scripts/install-controller.sh", "scripts/install-desktop-app.sh", "scripts/project.mjs"], expectedExecutable = [".githooks/commit-msg", ".githooks/pre-commit", ".githooks/pre-push", "frontend/desktop/project.mjs", ...expectedScripts], actual = readdirSync10(path11.join(root5, "scripts"), { withFileTypes: !0 }).filter((entry) => entry.isFile()).map((entry) => `scripts/${entry.name}`).sort(), executable = git(["ls-files", "-s"]).split("\n").filter((line) => line.startsWith("100755 ")).map((line) => line.split("\t")[1]).sort(), stale = ["frontend/scripts", "controller/scripts", "services/agent-runtime/scripts"].filter((directory) => existsSync(path11.join(root5, directory)));
+  if (JSON.stringify(actual) !== JSON.stringify(expectedScripts) || JSON.stringify(executable) !== JSON.stringify(expectedExecutable) || stale.length > 0)
     throw Error(`Automation layout drifted: scripts=${actual.join(",")}; executable=${executable.join(",")}; stale=${stale.join(",")}`);
   console.log("Automation layout passed: exactly three scripts");
 }
@@ -2301,7 +2340,7 @@ function git(args3, options = {}) {
   return execFileSync6("git", args3, { cwd: root5, encoding: "utf8", ...options }).trim();
 }
 function run3(command, args3, cwd = root5) {
-  let result = spawnSync4(command, args3, { cwd, stdio: "inherit" });
+  let [resolvedCommand, resolvedArgs] = platformInvocation(command, args3), result = spawnSync4(resolvedCommand, resolvedArgs, { cwd, stdio: "inherit" });
   if (result.error)
     throw result.error;
   if (result.status !== 0)
@@ -2365,8 +2404,9 @@ function setupHooks() {
   if (worktree.status !== 0 || worktree.stdout.trim() !== "true")
     return console.log("Skipping Git hook setup outside a worktree");
   git(["rev-parse", "--git-dir"]), git(["config", "core.hooksPath", ".githooks"]);
-  for (let name of readdirSync10(path11.join(root5, ".githooks")))
-    chmodSync2(path11.join(root5, ".githooks", name), 493);
+  if (process.platform !== "win32")
+    for (let name of readdirSync10(path11.join(root5, ".githooks")))
+      chmodSync2(path11.join(root5, ".githooks", name), 493);
 }
 var invoked = path11.basename(process.argv[1] ?? "");
 if (invoked === "commit-msg")
