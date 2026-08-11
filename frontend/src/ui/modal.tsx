@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useId, useRef, useState, type ReactNode } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { X } from "@/ui/icon-registry";
+import { X } from "lucide-react";
 import { POPOVER_PANEL_CLASS } from "./popover";
 import { cx } from "./utils";
 

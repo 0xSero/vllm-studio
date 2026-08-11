@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Download, ExternalLink, Heart, Sparkles } from "@/ui/icon-registry";
+import { Download, ExternalLink, Heart, Sparkles } from "lucide-react";
 import type { HuggingFaceModel } from "@/lib/types";
 import {
   engagementTier,

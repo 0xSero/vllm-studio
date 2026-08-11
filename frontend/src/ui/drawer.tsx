@@ -2,7 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { X } from "@/ui/icon-registry";
+import { X } from "lucide-react";
 import { Button } from "./button";
 import { cx } from "./utils";
 

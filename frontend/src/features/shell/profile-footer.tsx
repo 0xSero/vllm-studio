@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Download, Settings, Smartphone } from "@/ui/icon-registry";
+import { Download, Settings, Smartphone } from "lucide-react";
 import { Spinner } from "@/ui";
 import { ProfileAvatar, useLocalProfile } from "@/features/shell/local-profile";
 import { useAppUpdate } from "@/features/shell/use-app-update";

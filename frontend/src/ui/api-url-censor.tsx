@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore, type ReactNode } from "react";
-import { Eye, EyeOff } from "@/ui/icon-registry";
+import { Eye, EyeOff } from "lucide-react";
 
 const STORAGE_KEY = "localstudio_censor_api_urls";
 const CHANGE_EVENT = "localstudio-api-url-censor-change";

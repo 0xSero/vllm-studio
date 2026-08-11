@@ -7,7 +7,7 @@ import { useUsage } from "@/features/usage/use-usage";
 import { UsageSkeleton } from "@/features/usage/usage-skeleton";
 import { formatNumber } from "@/lib/formatters";
 import type { UsageStats } from "@/lib/types";
-import { Upload } from "@/ui/icon-registry";
+import { Upload } from "lucide-react";
 import {
   ProfileAvatar,
   profileImageFromFile,

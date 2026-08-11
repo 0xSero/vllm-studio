@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { type ComponentType, type MouseEvent } from "react";
-import { Activity, Clock, ServerCog, TrendingUp } from "@/ui/icon-registry";
+import { Activity, Clock, ServerCog, TrendingUp } from "lucide-react";
 
 export type IconComponent = ComponentType<{ className?: string; strokeWidth?: number }>;
 

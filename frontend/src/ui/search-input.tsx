@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, X } from "@/ui/icon-registry";
+import { Search, X } from "lucide-react";
 
 interface SearchInputProps {
   value: string;

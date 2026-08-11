@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw } from "@/ui/icon-registry";
+import { RefreshCw } from "lucide-react";
 import { Button } from "./button";
 
 interface RefreshButtonProps {

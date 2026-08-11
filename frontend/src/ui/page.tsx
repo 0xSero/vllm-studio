@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { RefreshCw } from "@/ui/icon-registry";
+import { RefreshCw } from "lucide-react";
 import { cx } from "./utils";
 import { Tabs, type TabItem } from "./tabs";
 

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { AlertCircle } from "@/ui/icon-registry";
+import { AlertCircle } from "lucide-react";
 import { cx } from "./utils";
 
 export function ErrorBox({ children, className }: { children: ReactNode; className?: string }) {

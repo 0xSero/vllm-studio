@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings, SquarePen, X } from "@/ui/icon-registry";
+import { Settings, SquarePen, X } from "lucide-react";
 import type { ProjectsNavSectionComponent } from "@/features/shell/left-sidebar-lazy";
 import {
   NavItemMobile,
