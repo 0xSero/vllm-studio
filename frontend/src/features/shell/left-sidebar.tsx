@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   useCallback,
   useRef,
@@ -40,6 +40,7 @@ function clampSidebarWidth(width: number): number {
 
 export function LeftSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const hidesAppSidebar = routeHidesAppSidebar(pathname);
   const projectsNavImmediate = pathname.startsWith("/agent");
   const {
@@ -167,8 +168,8 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     [clampedSidebarWidth, isExpanded, setSidebarWidth],
   );
   const openNewTask = useCallback(
-    () => window.location.assign(hrefWithOpenNonce("/agent?new=1&replace=1")),
-    [],
+    () => router.push(hrefWithOpenNonce("/agent?new=1&replace=1")),
+    [router],
   );
 
   if (hidesAppSidebar) {

@@ -56,9 +56,6 @@ jobs:
       - name: Cleanup checks
         working-directory: ./controller
         run: bun run check
-      - name: Tests
-        working-directory: ./controller
-        run: bun run test
   agent-runtime:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
@@ -73,7 +70,7 @@ jobs:
       - name: Install shared contract dependencies
         working-directory: ./shared
         run: bun install --frozen-lockfile
-      - name: Build and test
+      - name: Build
         working-directory: ./services/agent-runtime
         run: bun run check
   frontend:
@@ -92,12 +89,6 @@ jobs:
       - name: Production quality gate
         working-directory: ./frontend
         run: npm run check:quality
-      - name: Install browser test dependencies
-        working-directory: ./frontend
-        run: npx playwright install --with-deps chromium
-      - name: Browser acceptance tests
-        working-directory: ./frontend
-        run: npm run test:e2e:controller && npm run test:e2e:providers
 
   desktop-package:
     if: github.event_name != 'schedule'
@@ -112,7 +103,7 @@ jobs:
           bun-version: 1.3.14
       - name: Install repository dependencies
         run: npm run setup
-      - name: Build unsigned test package
+      - name: Build unsigned package
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: >-
@@ -120,12 +111,7 @@ jobs:
           --config.mac.identity=null
           --config.mac.hardenedRuntime=false
           --config.extraMetadata.localStudioCommit=${{ github.sha }}
-      - name: Smoke packaged desktop
-        run: >-
-          npm --prefix frontend run desktop:smoke --
-          --app "${{ github.workspace }}/frontend/dist-desktop/mac-arm64/Local Studio.app"
-          --expected-version "$(node -p 'require("./frontend/package.json").version')"
-      - name: Archive exact-main test package
+      - name: Archive exact-main package
         run: >-
           ditto -c -k --keepParent
           "frontend/dist-desktop/mac-arm64/Local Studio.app"

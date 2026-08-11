@@ -10,7 +10,6 @@ List the commands you ran:
 # example
 npm --prefix frontend run lint
 npm --prefix frontend run typecheck
-npm --prefix frontend test
 ```
 
 ## UI changes

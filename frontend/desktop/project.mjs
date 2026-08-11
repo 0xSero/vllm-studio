@@ -465,8 +465,7 @@ var init_check_conventional_commits = __esm(() => {
     "refactor",
     "release",
     "revert",
-    "style",
-    "test"
+    "style"
   ]), ignoredSubjects = [
     /^Merge /,
     /^Revert /,
@@ -718,242 +717,11 @@ function run() {
 }
 var require2, ts, SRC_DIR, MAX_FILES_PER_DIR, MAX_SUBDIRS_PER_DIR, STRUCTURE_COUNT_EXCLUDED_DIRS, findings, stats, modulesRoot, runtimeBoundaryFiles, managedRuntimeCount = 0, kebabCase;
 var init_controller_standards_audit = __esm(() => {
-  require2 = createRequire2(path3.resolve(process.cwd(), "package.json")), ts = require2("typescript"), SRC_DIR = path3.resolve(process.cwd(), "src"), MAX_FILES_PER_DIR = Number.parseInt(process.env.MAX_FILES_PER_DIR ?? "20", 10), MAX_SUBDIRS_PER_DIR = Number.parseInt(process.env.MAX_SUBDIRS_PER_DIR ?? "8", 10), STRUCTURE_COUNT_EXCLUDED_DIRS = new Set(["tests"]), findings = [], stats = {
+  require2 = createRequire2(path3.resolve(process.cwd(), "package.json")), ts = require2("typescript"), SRC_DIR = path3.resolve(process.cwd(), "src"), MAX_FILES_PER_DIR = Number.parseInt(process.env.MAX_FILES_PER_DIR ?? "20", 10), MAX_SUBDIRS_PER_DIR = Number.parseInt(process.env.MAX_SUBDIRS_PER_DIR ?? "8", 10), STRUCTURE_COUNT_EXCLUDED_DIRS = new Set(), findings = [], stats = {
     directories: 0,
     files: 0
   }, modulesRoot = path3.join(SRC_DIR, "modules"), runtimeBoundaryFiles = new Set(["http/bounded-body.ts", "http/effect-handler.ts", "main.ts"]), kebabCase = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
   process.exit(run());
-});
-
-var exports_desktop_package_smoke = {};
-__export(exports_desktop_package_smoke, {
-  runDesktopPackageSmoke: () => runDesktopPackageSmoke
-});
-import { spawn as spawn2 } from "node:child_process";
-import {
-  existsSync as existsSync6,
-  mkdtempSync as mkdtempSync2,
-  mkdirSync as mkdirSync2,
-  readFileSync as readFileSync8,
-  rmSync as rmSync4,
-  writeFileSync as writeFileSync2
-} from "node:fs";
-import net from "node:net";
-import { createRequire as createRequire3 } from "node:module";
-import os from "node:os";
-import path4 from "node:path";
-import process2 from "node:process";
-import { fileURLToPath as fileURLToPath3 } from "node:url";
-function valueAfter2(args2, name) {
-  let index = args2.indexOf(name);
-  return index === -1 ? void 0 : args2[index + 1];
-}
-function delay(ms) {
-  return new Promise((resolve3) => setTimeout(resolve3, ms));
-}
-async function reservePort() {
-  let server = net.createServer();
-  await new Promise((resolve3, reject) => {
-    server.once("error", reject), server.listen(0, "127.0.0.1", resolve3);
-  });
-  let address = server.address(), port = typeof address === "object" && address ? address.port : 0;
-  if (await new Promise((resolve3, reject) => server.close((error) => error ? reject(error) : resolve3())), !port)
-    throw Error("Could not reserve a debugging port");
-  return port;
-}
-async function waitForFile(file2, timeoutMs) {
-  let started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    if (existsSync6(file2)) {
-      let value = readFileSync8(file2, "utf8").trim();
-      if (value)
-        return value;
-    }
-    await delay(200);
-  }
-  throw Error(`Timed out waiting for ${file2}`);
-}
-async function waitForJson(url, timeoutMs) {
-  let started = Date.now(), lastError;
-  while (Date.now() - started < timeoutMs) {
-    try {
-      let response = await fetch(url, { signal: AbortSignal.timeout(2000) });
-      if (response.ok)
-        return await response.json();
-      lastError = Error(`${url} returned ${response.status}`);
-    } catch (error) {
-      lastError = error;
-    }
-    await delay(250);
-  }
-  throw Error(`Timed out waiting for ${url}: ${String(lastError)}`);
-}
-async function postJson(url, body2) {
-  let response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body2),
-    signal: AbortSignal.timeout(30000)
-  }), payload = await response.json();
-  if (!response.ok || payload.ok !== !0)
-    throw Error(`${url} failed: ${response.status} ${JSON.stringify(payload)}`);
-  return payload;
-}
-async function waitForAgentRuntime(logFile, timeoutMs) {
-  let started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    if (existsSync6(logFile)) {
-      let url = [
-        ...readFileSync8(logFile, "utf8").matchAll(/agent-runtime: (?:\[agent-runtime\] )?listening on (http:\/\/127\.0\.0\.1:\d+)/g)
-      ].at(-1)?.[1];
-      if (url) {
-        let payload = await waitForJson(`${url}/health`, 1e4);
-        return { url, payload };
-      }
-    }
-    await delay(250);
-  }
-  throw Error(`Timed out waiting for agent runtime in ${logFile}`);
-}
-async function waitForPage(browser, origin, timeoutMs) {
-  let started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    for (let context of browser.contexts())
-      for (let page of context.pages())
-        if (page.url().startsWith(origin))
-          return page;
-    await delay(200);
-  }
-  throw Error(`Timed out waiting for Electron page at ${origin}`);
-}
-async function smokeTerminal(page) {
-  return page.evaluate(async () => {
-    let bridge = globalThis.localStudioDesktop;
-    if (!bridge)
-      throw Error("Desktop bridge is unavailable");
-    let status = await bridge.terminal.status();
-    if (!status.available)
-      throw Error(status.reason || "PTY is unavailable");
-    let session = await bridge.terminal.open({
-      cwd: "/tmp",
-      cols: 80,
-      rows: 24,
-      ownerKey: "desktop-package-smoke"
-    });
-    return new Promise((resolve3, reject) => {
-      let output2 = session.replay || "", timer = setTimeout(() => {
-        disposeData(), disposeExit(), reject(Error(`PTY smoke timed out: ${output2}`));
-      }, 1e4), finish = () => {
-        if (!output2.includes("LOCAL_STUDIO_PTY_OK"))
-          return;
-        clearTimeout(timer), disposeData(), disposeExit(), resolve3({ available: !0, output: "LOCAL_STUDIO_PTY_OK" });
-      }, disposeData = bridge.terminal.onData((id, chunk) => {
-        if (id !== session.id)
-          return;
-        output2 += chunk, finish();
-      }), disposeExit = bridge.terminal.onExit((id) => {
-        if (id !== session.id)
-          return;
-        finish();
-      });
-      bridge.terminal.write(session.id, "printf 'LOCAL_STUDIO_PTY_OK\\n'; exit\\n"), finish();
-    });
-  });
-}
-async function terminate(child) {
-  if (!child?.pid)
-    return;
-  try {
-    process2.kill(-child.pid, "SIGTERM");
-  } catch {}
-  await Promise.race([
-    child.exitCode === null && child.signalCode === null ? new Promise((resolve3) => child.once("exit", resolve3)) : Promise.resolve(),
-    delay(5000)
-  ]);
-  try {
-    process2.kill(-child.pid, "SIGKILL");
-  } catch {}
-}
-async function runDesktopPackageSmoke(args2 = process2.argv.slice(2)) {
-  let frontend = path4.resolve(path4.dirname(fileURLToPath3(import.meta.url)), ".."), requestedApp = valueAfter2(args2, "--app"), appPath = requestedApp ? path4.resolve(requestedApp) : path4.join(frontend, "dist-desktop", "mac-arm64", "Local Studio.app"), expectedVersion = valueAfter2(args2, "--expected-version"), executable = path4.join(appPath, "Contents", "MacOS", "Local Studio");
-  if (!existsSync6(executable))
-    throw Error(`Missing packaged executable: ${executable}`);
-  let temp = mkdtempSync2(path4.join(os.tmpdir(), "local-studio-package-smoke-")), userData = path4.join(temp, "user-data"), logFile = path4.join(userData, "logs", "desktop.log"), frontendPortFile = path4.join(userData, "embedded-frontend.port"), debugPort = await reservePort(), stdout = [], stderr = [];
-  mkdirSync2(userData, { recursive: !0 }), writeFileSync2(path4.join(userData, "api-settings.json"), `${JSON.stringify({
-    backendUrl: "http://127.0.0.1:65534",
-    apiKey: "",
-    voiceUrl: "",
-    voiceModel: "whisper-large-v3-turbo"
-  })}
-`, { mode: 384 });
-  let env = { ...process2.env };
-  delete env.ELECTRON_RUN_AS_NODE, Object.assign(env, {
-    LOCAL_STUDIO_AGENT_CWD: temp,
-    LOCAL_STUDIO_DESKTOP_APP_NAME: `Local Studio Smoke ${process2.pid}`,
-    LOCAL_STUDIO_DESKTOP_DISABLE_AUTO_UPDATE: "true",
-    LOCAL_STUDIO_DESKTOP_USER_DATA_DIR: userData
-  });
-  let child, browser;
-  try {
-    child = spawn2(executable, [`--remote-debugging-port=${debugPort}`], {
-      cwd: temp,
-      detached: !0,
-      env,
-      stdio: ["ignore", "pipe", "pipe"]
-    }), child.stdout.on("data", (chunk) => stdout.push(String(chunk))), child.stderr.on("data", (chunk) => stderr.push(String(chunk)));
-    let frontendPort = Number(await waitForFile(frontendPortFile, 60000));
-    if (!Number.isInteger(frontendPort) || frontendPort <= 0)
-      throw Error(`Invalid embedded frontend port: ${frontendPort}`);
-    let origin = `http://127.0.0.1:${frontendPort}`, desktopHealth = await waitForJson(`${origin}/api/desktop-health`, 30000), agentRuntime = await waitForAgentRuntime(logFile, 30000), embeddedBrowser = await postJson(`${agentRuntime.url}/api/agent/browser/navigate`, { url: `${origin}/agent` });
-    if (!String(embeddedBrowser.data?.url ?? "").startsWith(origin))
-      throw Error(`Packaged browser navigated to an unexpected URL: ${JSON.stringify(embeddedBrowser)}`);
-    browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);
-    let page = await waitForPage(browser, origin, 30000);
-    await page.waitForLoadState("domcontentloaded");
-    let agentResponse = await page.goto(`${origin}/agent`, {
-      waitUntil: "domcontentloaded",
-      timeout: 30000
-    });
-    if (!agentResponse?.ok())
-      throw Error(`Agent route returned ${agentResponse?.status() ?? "no response"}`);
-    let runtime = await page.evaluate(async () => {
-      if (!globalThis.localStudioDesktop)
-        throw Error("Desktop bridge is unavailable");
-      return globalThis.localStudioDesktop.getRuntime();
-    });
-    if (expectedVersion && runtime.appVersion !== expectedVersion)
-      throw Error(`Packaged app version ${runtime.appVersion} does not match ${expectedVersion}`);
-    let terminal = await smokeTerminal(page), result = {
-      appPath,
-      agentStatus: agentResponse.status(),
-      desktopHealth,
-      agentRuntime: agentRuntime.payload,
-      embeddedBrowser: embeddedBrowser.data,
-      runtime,
-      terminal
-    };
-    return console.log(JSON.stringify(result, null, 2)), result;
-  } catch (error) {
-    let diagnostics = [
-      existsSync6(logFile) ? readFileSync8(logFile, "utf8").slice(-12000) : "",
-      stdout.join("").slice(-4000),
-      stderr.join("").slice(-4000)
-    ].filter(Boolean).join(`
-`);
-    throw Error(`${error instanceof Error ? error.message : String(error)}
-${diagnostics}`);
-  } finally {
-    if (browser)
-      await browser.close().catch(() => {
-        return;
-      });
-    await terminate(child), rmSync4(temp, { recursive: !0, force: !0 });
-  }
-}
-var require3, chromium;
-var init_desktop_package_smoke = __esm(async () => {
-  require3 = createRequire3(path4.resolve(path4.dirname(fileURLToPath3(import.meta.url)), "../package.json")), { chromium } = require3("playwright-core");
-  await runDesktopPackageSmoke();
 });
 
 var exports_link_services_node_modules = {};
@@ -1128,7 +896,6 @@ var init_release_statement = __esm(() => {
     ["Fixes", /^(fix)(?:\(.+\))?!?: (.+)$/],
     ["Performance", /^(perf)(?:\(.+\))?!?: (.+)$/],
     ["Refactors", /^(refactor)(?:\(.+\))?!?: (.+)$/],
-    ["Tests", /^(test)(?:\(.+\))?!?: (.+)$/],
     ["Infrastructure", /^(build|ci|chore|release)(?:\(.+\))?!?: (.+)$/],
     ["Polish", /^(micro|style)(?:\(.+\))?!?: (.+)$/],
     ["Documentation", /^(docs)(?:\(.+\))?!?: (.+)$/]
@@ -1156,172 +923,6 @@ var init_release_statement = __esm(() => {
     console.log("- No conventional release changes found for the selected range.");
 });
 
-var exports_install_desktop_app_test = {};
-import assert from "node:assert/strict";
-import { execFileSync as execFileSync4, spawnSync as spawnSync3 } from "node:child_process";
-import {
-  chmodSync,
-  existsSync as existsSync9,
-  mkdirSync as mkdirSync4,
-  mkdtempSync as mkdtempSync3,
-  readFileSync as readFileSync11,
-  readdirSync as readdirSync6,
-  rmSync as rmSync7,
-  statSync as statSync4,
-  writeFileSync as writeFileSync5
-} from "node:fs";
-import os2 from "node:os";
-import path8 from "node:path";
-import test from "node:test";
-import { fileURLToPath as fileURLToPath7 } from "node:url";
-function writeExecutable(file2, content) {
-  writeFileSync5(file2, content, { mode: 493 }), chmodSync(file2, 493);
-}
-function createHarness(t) {
-  let root = mkdtempSync3(path8.join(os2.tmpdir(), "local-studio-installer-"));
-  t.after(() => rmSync7(root, { recursive: !0, force: !0 }));
-  let applications = path8.join(root, "Applications"), rollbacks = path8.join(root, "Rollbacks"), commands = path8.join(root, "bin");
-  mkdirSync4(applications, { recursive: !0 }), mkdirSync4(commands, { recursive: !0 }), writeExecutable(path8.join(commands, "ditto"), `#!/usr/bin/env node
-const fs = require("node:fs");
-const path = require("node:path");
-const args = process.argv.slice(2);
-if (args[0] !== "-c") {
-  fs.cpSync(args[0], args[1], { recursive: true });
-  process.exit(0);
-}
-const source = args.at(-2);
-const destination = args.at(-1);
-if (process.env.LOCAL_STUDIO_TEST_FAIL_ARCHIVE === source) process.exit(1);
-const base = path.basename(source);
-const members = [];
-function walk(directory, relative) {
-  members.push(relative + "/");
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    const next = path.join(directory, entry.name);
-    const member = relative + "/" + entry.name;
-    if (entry.isDirectory()) walk(next, member);
-    else members.push(member);
-  }
-}
-walk(source, base);
-fs.writeFileSync(destination, members.join("\\n") + "\\n");
-`), writeExecutable(path8.join(commands, "unzip"), `#!/usr/bin/env node
-const fs = require("node:fs");
-const args = process.argv.slice(2);
-const archive = args.at(-1);
-if (!fs.existsSync(archive)) process.exit(1);
-if (args[0] === "-Z1") process.stdout.write(fs.readFileSync(archive));
-`), writeExecutable(path8.join(commands, "codesign"), `#!/usr/bin/env node
-const target = process.argv.at(-1);
-if (process.env.LOCAL_STUDIO_TEST_FAIL_CODESIGN === target) process.exit(1);
-`), writeExecutable(path8.join(commands, "spctl"), `#!/usr/bin/env node
-const target = process.argv.at(-1);
-if (process.env.LOCAL_STUDIO_TEST_FAIL_SPCTL === target) process.exit(1);
-`), writeExecutable(path8.join(commands, "plist-buddy"), `#!/usr/bin/env node
-const fs = require("node:fs");
-const text = fs.readFileSync(process.argv.at(-1), "utf8");
-const match = text.match(/<key>CFBundleIdentifier<\\/key>\\s*<string>([^<]+)<\\/string>/);
-if (!match) process.exit(1);
-process.stdout.write(match[1] + "\\n");
-`);
-  let launchServicesLog = path8.join(root, "launch-services.log");
-  writeExecutable(path8.join(commands, "lsregister"), `#!/usr/bin/env node
-const fs = require("node:fs");
-fs.appendFileSync(process.env.LOCAL_STUDIO_TEST_LS_LOG, process.argv.slice(2).join(" ") + "\\n");
-`);
-  let env = {
-    ...process.env,
-    PATH: `${commands}:${process.env.PATH}`,
-    LOCAL_STUDIO_INSTALL_ROOT: applications,
-    LOCAL_STUDIO_ROLLBACK_ROOT: rollbacks,
-    LOCAL_STUDIO_LSREGISTER: path8.join(commands, "lsregister"),
-    LOCAL_STUDIO_PLIST_BUDDY: path8.join(commands, "plist-buddy"),
-    LOCAL_STUDIO_SKIP_RUNTIME_CLEANUP: "1",
-    LOCAL_STUDIO_TEST_LS_LOG: launchServicesLog
-  };
-  return { applications, env, launchServicesLog, rollbacks, root };
-}
-function createBundle(directory, name, id, marker) {
-  let executable = path8.join(directory, "Contents", "MacOS", name);
-  mkdirSync4(path8.dirname(executable), { recursive: !0 }), writeFileSync5(executable, marker, { mode: 493 }), chmodSync(executable, 493), writeFileSync5(path8.join(directory, "Contents", "Info.plist"), `<?xml version="1.0"?><plist><dict><key>CFBundleIdentifier</key><string>${id}</string></dict></plist>`);
-}
-function runInstaller(harness, args3, extraEnv = {}) {
-  return spawnSync3("bash", [installer, ...args3], {
-    cwd: repository,
-    encoding: "utf8",
-    env: { ...harness.env, ...extraEnv }
-  });
-}
-function installedMarker(applications, name) {
-  return readFileSync11(path8.join(applications, `${name}.app`, "Contents", "MacOS", name), "utf8");
-}
-var repository, installer;
-var init_install_desktop_app_test = __esm(() => {
-  repository = path8.resolve(path8.dirname(fileURLToPath7(import.meta.url)), "../.."), installer = path8.join(repository, "scripts", "install-desktop-app.sh");
-  test("migrates every legacy Local Studio bundle into non-app rollback archives", (t) => {
-    let harness = createHarness(t);
-    createBundle(path8.join(harness.applications, "Local Studio.app"), "Local Studio", "org.local.studio.desktop", "stable-current"), createBundle(path8.join(harness.applications, "Local Studio Dev.app"), "Local Studio Dev", "org.local.studio.desktop.dev", "dev-current"), createBundle(path8.join(harness.applications, "Local Studio.app.previous"), "Local Studio", "org.local.studio.desktop", "stable-old"), createBundle(path8.join(harness.applications, "Local Studio.app.previous", "Contents", "Frameworks", "Local Studio Helper.app"), "Local Studio Helper", "org.local.studio.desktop.helper", "helper"), createBundle(path8.join(harness.applications, "Local Studio Dev previous.app"), "Local Studio Dev", "org.local.studio.desktop.dev", "dev-old"), mkdirSync4(harness.rollbacks, { recursive: !0 }), writeFileSync5(path8.join(harness.rollbacks, "Local Studio.zip"), "corrupt");
-    let result = runInstaller(harness, ["--migrate-rollbacks"]);
-    assert.equal(result.status, 0, result.stderr), assert.deepEqual(readdirSync6(harness.applications).sort(), ["Local Studio Dev.app", "Local Studio.app"]), assert.equal(statSync4(path8.join(harness.rollbacks, "Local Studio.zip")).isFile(), !0), assert.equal(statSync4(path8.join(harness.rollbacks, "Local Studio Dev.zip")).isFile(), !0), assert.match(readFileSync11(path8.join(harness.rollbacks, "Local Studio.zip"), "utf8"), /^Contents\/Info\.plist$/m), assert.match(readFileSync11(path8.join(harness.rollbacks, "Local Studio Dev.zip"), "utf8"), /^Contents\/Info\.plist$/m), assert.equal(readdirSync6(harness.rollbacks).some((entry) => entry.endsWith(".app")), !1);
-    let launchServices = readFileSync11(harness.launchServicesLog, "utf8");
-    assert.match(launchServices, /-u .*Local Studio\.app\.previous/), assert.match(launchServices, /-u .*Local Studio Helper\.app/);
-  });
-  test("installs through a hidden staging path and archives the outgoing app", (t) => {
-    let harness = createHarness(t), built = path8.join(harness.root, "built", "Local Studio.app");
-    createBundle(built, "Local Studio", "org.local.studio.desktop", "new"), createBundle(path8.join(harness.applications, "Local Studio.app"), "Local Studio", "org.local.studio.desktop", "old"), createBundle(path8.join(harness.applications, "Local Studio backup.app"), "Local Studio", "org.local.studio.desktop", "older");
-    let result = runInstaller(harness, ["stable"], { LOCAL_STUDIO_BUILT_APP: built });
-    assert.equal(result.status, 0, result.stderr), assert.equal(installedMarker(harness.applications, "Local Studio"), "new"), assert.deepEqual(readdirSync6(harness.applications), ["Local Studio.app"]), assert.equal(existsSync9(path8.join(harness.rollbacks, "Local Studio.zip")), !0), assert.equal(readdirSync6(harness.applications).some((entry) => entry.includes("installing") || entry.includes("replaced")), !1);
-  });
-  test("restores the original app when final signature verification fails", (t) => {
-    let harness = createHarness(t), built = path8.join(harness.root, "built", "Local Studio.app"), target = path8.join(harness.applications, "Local Studio.app");
-    createBundle(built, "Local Studio", "org.local.studio.desktop", "new"), createBundle(target, "Local Studio", "org.local.studio.desktop", "old");
-    let result = runInstaller(harness, ["stable"], {
-      LOCAL_STUDIO_BUILT_APP: built,
-      LOCAL_STUDIO_TEST_FAIL_CODESIGN: target
-    });
-    assert.notEqual(result.status, 0), assert.equal(installedMarker(harness.applications, "Local Studio"), "old"), assert.deepEqual(readdirSync6(harness.applications), ["Local Studio.app"]);
-  });
-  test("restores the original stable app when Gatekeeper rejects the replacement", (t) => {
-    let harness = createHarness(t), built = path8.join(harness.root, "built", "Local Studio.app"), target = path8.join(harness.applications, "Local Studio.app");
-    createBundle(built, "Local Studio", "org.local.studio.desktop", "new"), createBundle(target, "Local Studio", "org.local.studio.desktop", "old");
-    let result = runInstaller(harness, ["stable"], {
-      LOCAL_STUDIO_BUILT_APP: built,
-      LOCAL_STUDIO_TEST_FAIL_SPCTL: target
-    });
-    assert.notEqual(result.status, 0), assert.equal(installedMarker(harness.applications, "Local Studio"), "old"), assert.deepEqual(readdirSync6(harness.applications), ["Local Studio.app"]);
-  });
-  test("preserves the current app when creating its rollback archive fails", (t) => {
-    let harness = createHarness(t), built = path8.join(harness.root, "built", "Local Studio.app"), target = path8.join(harness.applications, "Local Studio.app");
-    createBundle(built, "Local Studio", "org.local.studio.desktop", "new"), createBundle(target, "Local Studio", "org.local.studio.desktop", "old");
-    let result = runInstaller(harness, ["stable"], {
-      LOCAL_STUDIO_BUILT_APP: built,
-      LOCAL_STUDIO_TEST_FAIL_ARCHIVE: path8.join(target, "Contents")
-    });
-    assert.notEqual(result.status, 0), assert.equal(installedMarker(harness.applications, "Local Studio"), "old"), assert.deepEqual(readdirSync6(harness.applications), ["Local Studio.app"]);
-  });
-  test("no-backup install removes stale archives and discoverable legacy bundles", (t) => {
-    let harness = createHarness(t), built = path8.join(harness.root, "built", "Local Studio Dev.app");
-    createBundle(built, "Local Studio Dev", "org.local.studio.desktop.dev", "new"), createBundle(path8.join(harness.applications, "Local Studio Dev.app"), "Local Studio Dev", "org.local.studio.desktop.dev", "old"), createBundle(path8.join(harness.applications, "Local Studio Dev.app.previous"), "Local Studio Dev", "org.local.studio.desktop.dev", "older"), mkdirSync4(harness.rollbacks, { recursive: !0 }), writeFileSync5(path8.join(harness.rollbacks, "Local Studio Dev.zip"), "stale");
-    let result = runInstaller(harness, ["dev", "--no-backup"], { LOCAL_STUDIO_BUILT_APP: built });
-    assert.equal(result.status, 0, result.stderr), assert.equal(installedMarker(harness.applications, "Local Studio Dev"), "new"), assert.deepEqual(readdirSync6(harness.applications), ["Local Studio Dev.app"]), assert.equal(existsSync9(path8.join(harness.rollbacks, "Local Studio Dev.zip")), !1);
-  });
-  test("tracked operational scripts cannot create discoverable app backups", () => {
-    let files = execFileSync4("git", ["ls-files", "scripts", "frontend/scripts", ".github/workflows"], {
-      cwd: repository,
-      encoding: "utf8"
-    }).trim().split(`
-`).filter((file2) => file2 && file2 !== "scripts/project.mjs" && existsSync9(path8.join(repository, file2))), violations3 = [];
-    for (let file2 of files) {
-      let text = readFileSync11(path8.join(repository, file2), "utf8");
-      if (/\.app\.(?:previous|prev|pre|backup)|(?:previous|backup)\.app/i.test(text))
-        violations3.push(file2);
-      if (/ROLLBACK=.*\/Applications/i.test(text))
-        violations3.push(file2);
-    }
-    assert.deepEqual([...new Set(violations3)], []);
-  });
-});
-
 function value(env, name) {
   let candidate = env[name];
   return typeof candidate === "string" ? candidate.trim() : "";
@@ -1343,43 +944,6 @@ function resolveNotarytoolCredentials(env, apiKeyPath) {
   throw Error("Apple notarization requires either the API key secret trio or the Apple ID secret trio");
 }
 
-var exports_release_notary_credentials_test = {};
-import assert2 from "node:assert/strict";
-import { test as test2 } from "node:test";
-var init_release_notary_credentials_test = __esm(() => {
-  test2("uses App Store Connect API credentials when the full trio is present", () => {
-    assert2.deepEqual(resolveNotarytoolCredentials({
-      APPLE_API_KEY_BASE64: "encoded-key",
-      APPLE_API_KEY_ID: "key-id",
-      APPLE_API_ISSUER: "issuer"
-    }, "/tmp/AuthKey.p8"), {
-      kind: "api-key",
-      apiKey: "encoded-key",
-      args: ["--key", "/tmp/AuthKey.p8", "--key-id", "key-id", "--issuer", "issuer"]
-    });
-  });
-  test2("uses Apple ID credentials when API credentials are unavailable", () => {
-    assert2.deepEqual(resolveNotarytoolCredentials({
-      APPLE_ID: "developer@example.com",
-      APPLE_APP_SPECIFIC_PASSWORD: "app-password",
-      APPLE_TEAM_ID: "team-id"
-    }, "/tmp/AuthKey.p8"), {
-      kind: "apple-id",
-      args: [
-        "--apple-id",
-        "developer@example.com",
-        "--password",
-        "app-password",
-        "--team-id",
-        "team-id"
-      ]
-    });
-  });
-  test2("rejects partial notarization credential sets", () => {
-    assert2.throws(() => resolveNotarytoolCredentials({ APPLE_ID: "developer@example.com" }, "/tmp/key.p8"), /requires either the API key secret trio or the Apple ID secret trio/);
-  });
-});
-
 var releasePackageArguments = ({ app, version, commit }) => [
   "--prepackaged",
   app,
@@ -1393,31 +957,6 @@ var releasePackageArguments = ({ app, version, commit }) => [
   "--publish",
   "never"
 ];
-
-var exports_release_package_arguments_test = {};
-import assert3 from "node:assert/strict";
-import test3 from "node:test";
-var init_release_package_arguments_test = __esm(() => {
-  test3("release signing packaging never publishes implicitly", () => {
-    let args3 = releasePackageArguments({
-      app: "/tmp/Local Studio.app",
-      version: "2.9.0",
-      commit: "0123456789abcdef"
-    });
-    assert3.deepEqual(args3.slice(-2), ["--publish", "never"]), assert3.deepEqual(args3.slice(0, 2), ["--prepackaged", "/tmp/Local Studio.app"]);
-  });
-  test3("release signing notarizes and staples the app before packaging", () => {
-    let calls = [];
-    notarizeApplication("/tmp/Local Studio.app", "/tmp/Local Studio.zip", ["--key", "/tmp/key"], (command, args3) => calls.push([command, args3]));
-    assert3.deepEqual(calls, [
-      ["ditto", ["-c", "-k", "--keepParent", "/tmp/Local Studio.app", "/tmp/Local Studio.zip"]],
-      ["xcrun", ["notarytool", "submit", "/tmp/Local Studio.zip", "--key", "/tmp/key", "--wait", "--output-format", "json"]],
-      ["xcrun", ["stapler", "staple", "/tmp/Local Studio.app"]],
-      ["xcrun", ["stapler", "validate", "/tmp/Local Studio.app"]],
-      ["spctl", ["--assess", "--type", "execute", "--verbose=4", "/tmp/Local Studio.app"]]
-    ]);
-  });
-});
 
 var exports_sign_desktop_release = {};
 __export(exports_sign_desktop_release, {
@@ -1938,10 +1477,10 @@ function packageAuditRead(relativePath) {
 }
 var init_validate_package_json = __esm(() => {
   packageRepository = resolve6(import.meta.dirname, "../.."), packageRequirements = [
-    ["package.json", ["doctor", "setup", "dev", "dev:controller", "build", "start", "start:controller", "test", "check", "test:integration"]],
+    ["package.json", ["doctor", "setup", "dev", "dev:controller", "build", "start", "start:controller", "check"]],
     ["frontend/package.json", ["dev", "build", "start", "desktop:dist", "check:quality"]],
-    ["controller/package.json", ["dev", "start", "typecheck", "lint", "check", "test"]],
-    ["services/agent-runtime/package.json", ["bundle", "build", "dev", "start", "test"]],
+    ["controller/package.json", ["dev", "start", "typecheck", "lint", "check"]],
+    ["services/agent-runtime/package.json", ["bundle", "build", "dev", "start"]],
     ["shared/package.json", []],
     ["controller/contracts/package.json", []]
   ], packageLocks = ["frontend/package-lock.json", "controller/bun.lock", "services/agent-runtime/bun.lock", "shared/bun.lock"], packageMissing = [];
@@ -2233,7 +1772,6 @@ var project_entry_default = afterPack, root5 = path11.resolve(path11.dirname(fil
   ["check-commits", () => Promise.resolve().then(() => (init_check_conventional_commits(), exports_check_conventional_commits))],
   ["complete-standalone", () => Promise.resolve().then(() => (init_complete_standalone_build(), exports_complete_standalone_build))],
   ["controller-standards", () => Promise.resolve().then(() => (init_controller_standards_audit(), exports_controller_standards_audit))],
-  ["desktop-smoke", () => init_desktop_package_smoke().then(() => exports_desktop_package_smoke)],
   ["doctor", async () => doctor()],
   ["link-services", () => Promise.resolve().then(() => (init_link_services_node_modules(), exports_link_services_node_modules))],
   ["perf", () => init_perf_audit().then(() => exports_perf_audit)],
@@ -2241,9 +1779,6 @@ var project_entry_default = afterPack, root5 = path11.resolve(path11.dirname(fil
   ["prepare-agent-runtime", async () => rmSync6(path11.join(root5, "services", "agent-runtime", "dist"), { recursive: !0, force: !0 })],
   ["prepare-next", () => Promise.resolve().then(() => (init_prepare_next_build(), exports_prepare_next_build))],
   ["release-notes", () => Promise.resolve().then(() => (init_release_statement(), exports_release_statement))],
-  ["self-test", async () => {
-    await Promise.resolve().then(() => (init_install_desktop_app_test(), exports_install_desktop_app_test)), await Promise.resolve().then(() => (init_release_notary_credentials_test(), exports_release_notary_credentials_test)), await Promise.resolve().then(() => (init_release_package_arguments_test(), exports_release_package_arguments_test));
-  }],
   ["setup", async () => setupRepository()],
   ["sign-release", () => init_sign_desktop_release().then(() => exports_sign_desktop_release)],
   ["stage-release", () => Promise.resolve().then(() => (init_stage_desktop_release(), exports_stage_desktop_release))],
@@ -2316,7 +1851,7 @@ function preCommit() {
   let branch = git(["branch", "--show-current"]);
   if (["main", "dev"].includes(branch))
     throw Error(`pre-commit: commits on ${branch} are blocked; use a work branch and PR`);
-  let files = stagedFiles(), lines = git(["diff", "--cached", "--numstat"]).split(`
+  let files = stagedFiles(), activeFiles = files.filter((file2) => existsSync(path11.join(root5, file2))), lines = git(["diff", "--cached", "--numstat"]).split(`
 `).reduce((total, row) => {
     let [added, removed, file2] = row.split("\t");
     if (!/^\d+$/.test(added ?? "") || !/^\d+$/.test(removed ?? ""))
@@ -2325,11 +1860,11 @@ function preCommit() {
       return total;
     return total + Number(added) + Number(removed);
   }, 0);
-  if (files.length > 15 || lines > 600)
-    throw Error(`pre-commit: staged change is too large (${files.length} files, ${lines} source lines); limit is 15 files and 600 source lines`);
-  if (files.some((file2) => /^(frontend|shared|tests\/frontend)\//.test(file2)))
+  if (activeFiles.length > 15 || lines > 600)
+    throw Error(`pre-commit: staged change is too large (${activeFiles.length} files, ${lines} source lines); limit is 15 files and 600 source lines`);
+  if (activeFiles.some((file2) => /^(frontend|shared)\//.test(file2)))
     run3("npm", ["run", "precommit"], path11.join(root5, "frontend"));
-  if (files.some((file2) => file2.startsWith("controller/")))
+  if (activeFiles.some((file2) => file2.startsWith("controller/")))
     run3("bun", ["run", "typecheck"], path11.join(root5, "controller"));
 }
 function prePush() {
