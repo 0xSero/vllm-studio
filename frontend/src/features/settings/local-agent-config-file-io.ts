@@ -7,7 +7,7 @@ import { chmod, copyFile, mkdir, readFile, rename, stat, writeFile } from "node:
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import YAML from "yaml";
-import { isRecord } from "@/lib/guards";
+import { isRecord } from "@shared/agent/guards";
 
 export type JsonRecord = Record<string, unknown>;
 

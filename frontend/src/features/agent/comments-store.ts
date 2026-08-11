@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { isRecord } from "@/lib/guards";
+import { isRecord } from "@shared/agent/guards";
 
 export type Comment = {
   id: string;

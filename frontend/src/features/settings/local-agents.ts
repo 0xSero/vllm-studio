@@ -6,7 +6,7 @@
  * in the file and backing the file up before the first modification.
  */
 import path from "node:path";
-import { isRecord } from "@/lib/guards";
+import { isRecord } from "@shared/agent/guards";
 import {
   backupExistingFile,
   existingFileMode,

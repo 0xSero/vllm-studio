@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchWithTimeout } from "@/lib/api/http";
 import type { HuggingFaceModelCardPayload } from "@/lib/huggingface";
-import { isRecord } from "@/lib/guards";
+import { isRecord } from "@shared/agent/guards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

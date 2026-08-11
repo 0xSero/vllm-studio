@@ -3,7 +3,7 @@ import type {
   ChatMessage,
   ChatMessageAttachment,
 } from "@/features/agent/messages/types";
-import { isRecord } from "@/lib/guards";
+import { isRecord } from "@shared/agent/guards";
 
 type TranscriptStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 

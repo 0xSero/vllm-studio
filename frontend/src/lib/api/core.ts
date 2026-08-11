@@ -1,7 +1,7 @@
 import { hc } from "hono/client";
 import { clearStoredBackendUrl, getApiKey, getStoredBackendUrl } from "./connection";
 import { delay } from "../async";
-import { isRecord } from "../guards";
+import { isRecord } from "@shared/agent/guards";
 import { formatHttpErrorMessage, isRetryableError } from "./http-error-message";
 import {
   isBenignSseTransportFailure,
