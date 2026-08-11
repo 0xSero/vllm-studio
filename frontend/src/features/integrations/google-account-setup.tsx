@@ -5,6 +5,12 @@ import { Alert, Button, FormField, Input } from "@/ui";
 import { ExternalLink } from "@/ui/icon-registry";
 import { openExternal } from "./google-account-model";
 
+function clientSecretDescription(hasStoredSecret: boolean, needsClientSecret: boolean): string {
+  return hasStoredSecret && !needsClientSecret
+    ? "Leave blank to keep the securely stored secret."
+    : "Required by Google Desktop OAuth and stored with the desktop keychain.";
+}
+
 export function GoogleAccountSetup({
   account,
   editing,
@@ -35,6 +41,8 @@ export function GoogleAccountSetup({
   onConnect: () => void;
 }) {
   const needsClient = !account.configured || editing;
+  const needsClientSecret =
+    !account.hasClientSecret || clientId.trim() !== (account.clientId ?? "").trim();
   return (
     <div className="space-y-4">
       {needsClient ? (
@@ -52,7 +60,11 @@ export function GoogleAccountSetup({
               spellCheck={false}
             />
           </FormField>
-          <FormField label="OAuth client secret" description="Optional for some desktop clients.">
+          <FormField
+            label="OAuth client secret"
+            required={needsClientSecret}
+            description={clientSecretDescription(account.hasClientSecret, needsClientSecret)}
+          >
             <Input
               type="password"
               value={clientSecret}
@@ -113,7 +125,10 @@ export function GoogleAccountSetup({
           <Button
             onClick={onConnect}
             loading={busy && !awaiting}
-            disabled={awaiting || (needsClient && !clientId.trim())}
+            disabled={
+              awaiting ||
+              (needsClient && (!clientId.trim() || (needsClientSecret && !clientSecret.trim())))
+            }
           >
             {awaiting
               ? "Waiting for Google"

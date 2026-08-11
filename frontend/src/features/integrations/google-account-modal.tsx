@@ -251,9 +251,9 @@ export function GoogleAccountModal({
       />
       <div className="space-y-5 px-6 py-5">
         <Alert variant="info">
-          Google&apos;s first-party Workspace MCP is in developer preview. Add a Desktop OAuth
-          client once; Local Studio encrypts it with the desktop keychain and exposes only declared
-          read-only tools.
+          {accountId === "gmail"
+            ? "Gmail uses Google’s stable API with read-only access. Add a Desktop OAuth client once; Local Studio encrypts its secret with the desktop keychain."
+            : "Google’s first-party Workspace MCP is in developer preview. Add a Desktop OAuth client once; Local Studio encrypts its secret with the desktop keychain and exposes only declared read-only tools."}
         </Alert>
         {content}
         {error && account ? <Alert variant="error">{error}</Alert> : null}

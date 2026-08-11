@@ -281,6 +281,9 @@ export function saveGoogleClient(
           (yield* readVaultJson(vault, secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
           emptySecrets();
         const sameClient = current?.clientId === clientId;
+        const clientSecret = incomingSecret ?? (sameClient ? currentSecrets.clientSecret : undefined);
+        if (!clientSecret)
+          return yield* Effect.fail(new GoogleAccountError(400, "Client secret is required"));
         const revokeToken = GOOGLE_WORKSPACE_PLUGIN_IDS.flatMap((id) =>
           currentSecrets.refreshTokens[id] ? [currentSecrets.refreshTokens[id]] : [],
         )[0];
@@ -292,11 +295,7 @@ export function saveGoogleClient(
           if (current) yield* writeMetadataEffect({ ...current, connections: {} });
         }
         const secrets: Secrets = {
-          ...(incomingSecret
-            ? { clientSecret: incomingSecret }
-            : sameClient && currentSecrets.clientSecret
-              ? { clientSecret: currentSecrets.clientSecret }
-              : {}),
+          clientSecret,
           refreshTokens: sameClient ? currentSecrets.refreshTokens : {},
           pendingRevocations: pendingRevocations(currentSecrets),
         };
@@ -348,9 +347,9 @@ export function beginGoogleAuthorization(
         yield* retryPendingGoogleRevocations(vault, dependencies);
         yield* requireGoogleAuthorizationFlow(account, flowId);
         const metadata = yield* metadataEffect();
-        if (!metadata?.clientId) {
+        if (!metadata?.clientId || !metadata.hasClientSecret) {
           return yield* Effect.fail(
-            new GoogleAccountError(409, "Configure a Google OAuth client first"),
+            new GoogleAccountError(409, "Configure a Google OAuth client ID and secret first"),
           );
         }
         const binding = GOOGLE_WORKSPACE_BINDINGS[account];
