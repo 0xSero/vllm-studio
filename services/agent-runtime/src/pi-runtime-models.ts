@@ -205,10 +205,14 @@ function mergeControllers(
   settings: ApiSettings,
   requested: PiControllerModelsRequest[] = [],
 ): PiControllerConfig[] {
-  const requestedController = requested
+  const requestedControllers = requested
     .map(normalizeControllerInput)
-    .find((controller): controller is PiControllerConfig => controller !== null);
-  if (requestedController) return [requestedController];
+    .filter((controller): controller is PiControllerConfig => controller !== null);
+  if (requestedControllers.length > 0) {
+    return [
+      ...new Map(requestedControllers.map((controller) => [controller.url, controller])).values(),
+    ];
+  }
   const primary = normalizeControllerInput({
     url: settings.backendUrl,
     apiKey: settings.apiKey,

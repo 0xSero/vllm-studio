@@ -14,6 +14,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/store";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { useOpenSessions } from "@/features/agent/ui/use-open-sessions";
+import { hrefWithOpenNonce } from "@/features/agent/ui/projects-nav/helpers";
 import { DesktopSidebar } from "@/features/shell/left-sidebar-desktop";
 import {
   loadProjectsNavSection,
@@ -165,6 +166,10 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     },
     [clampedSidebarWidth, isExpanded, setSidebarWidth],
   );
+  const openNewTask = useCallback(
+    () => window.location.assign(hrefWithOpenNonce("/agent?new=1&replace=1")),
+    [],
+  );
 
   if (hidesAppSidebar) {
     return <div className="h-full w-full">{children}</div>;
@@ -185,6 +190,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
         }}
         onSetPinnedOpen={setDesktopSidebarPinnedOpen}
         onOpenSearch={() => setSearchOpen(true)}
+        onNewTask={openNewTask}
       />
 
       {chatSessionRoute ? null : (
@@ -215,6 +221,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
           projectsNavReady={projectsNavReady}
           ProjectsNavSection={ProjectsNavSection}
           onClose={() => setMobileMenuOpen(false)}
+          onNewTask={openNewTask}
         />
       ) : null}
 
