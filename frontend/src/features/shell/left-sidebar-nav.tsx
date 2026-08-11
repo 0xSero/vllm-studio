@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type ComponentType } from "react";
+import { type ComponentType, type MouseEvent } from "react";
 import { Activity, Clock, ServerCog, TrendingUp } from "@/ui/icon-registry";
 
 export type IconComponent = ComponentType<{ className?: string; strokeWidth?: number }>;
@@ -56,7 +56,7 @@ export function NavItemMobile({
   label: string;
   Icon: IconComponent;
   active: boolean;
-  onClick: () => void;
+  onClick: (event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   return (
     <Link

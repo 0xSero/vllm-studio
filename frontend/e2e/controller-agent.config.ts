@@ -6,6 +6,7 @@ import { defineConfig } from "@playwright/test";
 const frontendPort = 43_220;
 const runtimePort = 43_221;
 const controllerPort = 43_222;
+const secondaryControllerPort = 43_223;
 const baseURL = `http://127.0.0.1:${frontendPort}`;
 const dataDir = mkdtempSync(path.join(os.tmpdir(), "local-studio-controller-e2e-data-"));
 const homeDir = mkdtempSync(path.join(os.tmpdir(), "local-studio-controller-e2e-home-"));
@@ -75,6 +76,12 @@ export default defineConfig({
     {
       command: `PORT=${controllerPort} node ${controllerScript}`,
       url: `http://127.0.0.1:${controllerPort}/health`,
+      timeout: 15_000,
+      reuseExistingServer: false,
+    },
+    {
+      command: `PORT=${secondaryControllerPort} MODEL_ID=secondary-model node ${controllerScript}`,
+      url: `http://127.0.0.1:${secondaryControllerPort}/health`,
       timeout: 15_000,
       reuseExistingServer: false,
     },

@@ -14,11 +14,13 @@ export function MobileNavigationDrawer({
   projectsNavReady,
   ProjectsNavSection,
   onClose,
+  onNewTask,
 }: {
   pathname: string;
   projectsNavReady: boolean;
   ProjectsNavSection: ProjectsNavSectionComponent | null;
   onClose: () => void;
+  onNewTask: () => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
@@ -48,11 +50,16 @@ export function MobileNavigationDrawer({
 
         <nav className="min-h-0 flex-1 touch-pan-y overscroll-contain overflow-y-auto px-3 pb-4 pt-1">
           <NavItemMobile
-            href="/agent?new=1"
+            href="/agent?new=1&replace=1"
             label="New task"
             Icon={SquarePen}
             active={false}
-            onClick={onClose}
+            onClick={(event) => {
+              onClose();
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              onNewTask();
+            }}
           />
           {tabs.map((tab) => (
             <NavItemMobile

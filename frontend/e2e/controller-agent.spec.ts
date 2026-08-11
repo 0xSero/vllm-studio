@@ -73,6 +73,41 @@ test("Pi defaults to the active controller and reveals other models on request",
   await expect(page.getByText("Controller scoped Pi reply.")).toBeVisible({ timeout: 60_000 });
 });
 
+test("new task replaces the current chat with a fresh session", async ({ page }) => {
+  const composer = await openControllerChat(page, "Replace current chat");
+  await composer.fill("Keep this chat out of the new session.");
+  await composer.press("Enter");
+  await expect(page.getByText("Controller scoped Pi reply.")).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole("link", { name: "New task" }).click();
+
+  await expect(page.getByPlaceholder(/Do anything|Ask for follow-up changes/)).toHaveCount(1);
+  await expect(page.locator("[data-multi-pane=true]")).toHaveCount(0);
+  await expect(page.getByText("Controller scoped Pi reply.")).toHaveCount(0);
+});
+
+test("model picker includes models from every saved controller", async ({ page }) => {
+  await page.addInitScript(() => {
+    const primaryUrl = "http://127.0.0.1:43222";
+    localStorage.setItem("localstudio_backend_url", primaryUrl);
+    localStorage.setItem(
+      "local-studio.controllers",
+      JSON.stringify([
+        { name: "Primary", url: primaryUrl },
+        { name: "Secondary", url: "http://127.0.0.1:43223" },
+      ]),
+    );
+  });
+  await page.goto(`/agent?new=${encodeURIComponent("All controller models")}`);
+  const picker = page.getByRole("button", { name: /^Model:/ }).first();
+  await expect(picker).toBeEnabled({ timeout: 60_000 });
+  await picker.click();
+  await page.getByRole("menuitem", { name: /^Model\b/ }).click();
+
+  await expect(page.getByRole("menuitemradio", { name: /controller-model/ })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: /secondary-model/ })).toBeVisible();
+});
+
 test("messages containing /goal reach Pi as ordinary text", async ({ page }) => {
   const composer = await openControllerChat(page, "Goal text chat");
   const transcript = page.getByRole("article");

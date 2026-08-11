@@ -34,6 +34,7 @@ export function DesktopSidebar({
   onRevealProjectsNav,
   onSetPinnedOpen,
   onOpenSearch,
+  onNewTask,
 }: {
   pathname: string;
   isExpanded: boolean;
@@ -45,6 +46,7 @@ export function DesktopSidebar({
   onRevealProjectsNav: () => void;
   onSetPinnedOpen: (open: boolean) => void;
   onOpenSearch: () => void;
+  onNewTask: () => void;
 }) {
   return (
     <aside
@@ -127,8 +129,13 @@ export function DesktopSidebar({
 
             <nav className="sidebar-scroller flex min-h-0 flex-1 flex-col gap-[var(--sidebar-row-gap)] overflow-x-hidden overflow-y-auto px-[var(--sidebar-padding-x)] py-0.5 [contain:layout_paint]">
               <Link
-                href="/agent?new=1"
+                href="/agent?new=1&replace=1"
                 prefetch={false}
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                  event.preventDefault();
+                  onNewTask();
+                }}
                 className="flex h-[var(--sidebar-row-height)] shrink-0 items-center gap-2.5 rounded-[var(--sidebar-row-radius)] px-2 text-(--fg) transition-colors hover:bg-(--hover)"
                 title="New task"
               >
