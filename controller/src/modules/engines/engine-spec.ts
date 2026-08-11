@@ -2,6 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import { Schema, type Effect } from "effect";
 import type { Config } from "../../config/env";
 import type { ProcessInfo } from "../models/types";
+import type { ComputeEngineSpec } from "../compute/contracts";
 import type {
   EngineBackend,
   RuntimeBackendInfo,
@@ -46,10 +47,8 @@ export class EngineOperationError extends Schema.TaggedErrorClass<EngineOperatio
   },
 ) {}
 
-export interface EngineSpec {
+export interface EngineSpec extends Omit<ComputeEngineSpec, "id"> {
   readonly id: EngineBackend;
-
-  readonly healthPath: string;
   readonly cliBinary: string | null;
   managedPackageSpec: (version?: string | null) => string;
   install: (options: InstallOptions) => Effect.Effect<RuntimeUpgradeResult, EngineOperationError>;

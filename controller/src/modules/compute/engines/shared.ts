@@ -20,7 +20,10 @@ export const health = (path: string, readyDeadlineMs: number, intervalMs = 2_000
 });
 
 export const unsupported = (reason: string): EngineSupport => ({ ok: false, reason });
-export const supported = (...runtimes: EngineRuntimeKind[]): EngineSupport => ({ ok: true, runtimes });
+export const supported = (...runtimes: EngineRuntimeKind[]): EngineSupport => ({
+  ok: true,
+  runtimes,
+});
 
 export const noMetrics: MetricMap = {
   requestsRunning: [],
@@ -107,9 +110,7 @@ const flagKey = (token: string): string | null =>
  * left to argparse.
  */
 export const mergeArguments = (base: readonly string[], extra: readonly string[]): string[] => {
-  const overridden = new Set(
-    extra.map(flagKey).filter((key): key is string => key !== null),
-  );
+  const overridden = new Set(extra.map(flagKey).filter((key): key is string => key !== null));
   const merged: string[] = [];
   for (let index = 0; index < base.length; index += 1) {
     const token = base[index] ?? "";
@@ -198,13 +199,19 @@ export const plan = (
   };
 };
 
-type ServerEngineDefinition = Omit<ComputeEngineSpec, "health" | "plan"> & {
+type ServerEngineDefinition<Id extends ComputeEngineSpec["id"]> = Omit<
+  ComputeEngineSpec,
+  "id" | "health" | "plan"
+> & {
+  readonly id: Id;
   readonly healthPath: string;
   readonly readyDeadlineMs: number;
   readonly server: ServerArgumentSpec | ((request: LaunchRequest) => ServerArgumentSpec);
 };
 
-export const serverEngine = (definition: ServerEngineDefinition): ComputeEngineSpec => {
+export const serverEngine = <Id extends ComputeEngineSpec["id"]>(
+  definition: ServerEngineDefinition<Id>,
+): ComputeEngineSpec & { readonly id: Id } => {
   const { healthPath, readyDeadlineMs, server, ...spec } = definition;
   const healthCheck = health(healthPath, readyDeadlineMs);
   return {

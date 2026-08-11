@@ -9,16 +9,13 @@ import type {
 } from "../contracts";
 import { applyDevices } from "./devices";
 import { exllamav3 } from "./exllamav3";
-import { llamacpp } from "./llamacpp";
-import { mlx } from "./mlx";
-import { sglang } from "./sglang";
-import { vllm } from "./vllm";
+import { llamacppSpec, mlxSpec, sglangSpec, vllmSpec } from "../../engines/engine-spec";
 
 const SPECS: Readonly<Record<EngineId, ComputeEngineSpec>> = {
-  vllm,
-  sglang,
-  llamacpp,
-  mlx,
+  vllm: vllmSpec,
+  sglang: sglangSpec,
+  llamacpp: llamacppSpec,
+  mlx: mlxSpec,
   exllamav3,
 };
 

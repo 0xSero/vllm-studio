@@ -2,10 +2,29 @@ import { existsSync } from "node:fs";
 import { Effect } from "effect";
 import type { Config } from "../../../config/env";
 import type { ProcessInfo } from "../../models/types";
+import type { EngineSupport, HostProfile } from "../../compute/contracts";
+import {
+  noMetrics,
+  serverEngine,
+  supported,
+  unsupported,
+  type Spelling,
+} from "../../compute/engines/shared";
 import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "@local-studio/contracts/system";
 import type { EngineSpec, InstallOptions } from "../engine-spec";
 import { installIntoManagedVenv, managedVenvPython } from "../runtimes/managed-venv";
 import { probeBackendRuntime, probeRunningProcessPython } from "../runtimes/runtime-target-probes";
+
+const spelling: Spelling = {
+  maxContextLength: { flag: "--max-tokens" },
+  trustRemoteCode: { flag: "--trust-remote-code" },
+};
+
+const supports = (host: HostProfile): EngineSupport => {
+  if (host.platform !== "darwin") return unsupported("MLX runs only on macOS (Apple Silicon)");
+  if (host.arch !== "arm64") return unsupported("MLX requires Apple Silicon; this Mac is Intel");
+  return supported("process");
+};
 
 const managedPackageSpec = (_version?: string | null): string => {
   return "mlx-lm";
@@ -58,8 +77,16 @@ const installMlx = (options: InstallOptions): Effect.Effect<RuntimeUpgradeResult
 };
 
 export const mlxSpec: EngineSpec = {
-  id: "mlx",
-  healthPath: "/v1/models",
+  ...serverEngine({
+    id: "mlx",
+    defaultBinary: "mlx_lm.server",
+    defaultPort: 8080,
+    healthPath: "/v1/models",
+    readyDeadlineMs: 300_000,
+    metrics: noMetrics,
+    supports,
+    server: { modelFlag: "--model", servedNameFlag: null, spelling },
+  }),
   cliBinary: null,
   managedPackageSpec,
   install: installMlx,

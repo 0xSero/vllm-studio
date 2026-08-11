@@ -5,6 +5,13 @@ import type { Config } from "../../../config/env";
 import { resolveBinary, runCommandAsyncEffect } from "../../../core/command";
 import { LLAMACPP_HELP_TIMEOUT_MS } from "../configs";
 import type { ProcessInfo, Recipe } from "../../models/types";
+import type { EngineSupport, HostProfile } from "../../compute/contracts";
+import {
+  prometheusMetrics,
+  serverEngine,
+  supported,
+  type Spelling,
+} from "../../compute/engines/shared";
 import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "@local-studio/contracts/system";
 import { getLlamacppRuntimeInfo } from "../runtimes/runtime-info";
 import { getExtraArgument } from "../argument-utilities";
@@ -15,6 +22,22 @@ import {
   runEnvironmentUpgradeCommand,
 } from "../runtimes/upgrade-config";
 import { installManagedLlamacpp, managedLlamaServerPath } from "../runtimes/managed-llamacpp";
+
+const spelling: Spelling = {
+  maxContextLength: { flag: "--ctx-size" },
+  maxConcurrentRequests: { flag: "--parallel" },
+};
+
+const image = (host: HostProfile): string => {
+  if (host.accelerator === "cuda") return "ghcr.io/ggml-org/llama.cpp:server-cuda";
+  if (host.accelerator === "rocm") return "ghcr.io/ggml-org/llama.cpp:server-rocm";
+  return "ghcr.io/ggml-org/llama.cpp:server";
+};
+
+const supports = (host: HostProfile): EngineSupport =>
+  host.dockerGpu && host.platform !== "darwin"
+    ? supported("process", "docker")
+    : supported("process");
 
 const executableBaseName = (value: string): string => {
   return value.split(/[\\/]/).filter(Boolean).at(-1)?.toLowerCase() ?? value.toLowerCase();
@@ -79,8 +102,22 @@ const installLlamacpp = (options: InstallOptions): Effect.Effect<RuntimeUpgradeR
 const managedPackageSpec = (_version?: string | null): string => "llama.cpp";
 
 export const llamacppSpec: EngineSpec = {
-  id: "llamacpp",
-  healthPath: "/health",
+  ...serverEngine({
+    id: "llamacpp",
+    defaultBinary: "llama-server",
+    defaultPort: 8081,
+    healthPath: "/health",
+    readyDeadlineMs: 600_000,
+    metrics: prometheusMetrics("llamacpp", "kv_cache_usage_ratio"),
+    image,
+    supports,
+    server: {
+      modelFlag: "--model",
+      servedNameFlag: "--alias",
+      spelling,
+      defaults: ["--metrics"],
+    },
+  }),
   cliBinary: "llama-server",
   managedPackageSpec,
   install: installLlamacpp,
