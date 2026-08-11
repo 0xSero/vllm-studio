@@ -71,6 +71,21 @@ const expectedOperations = [
   "GET /api/agent/browser/state",
   "POST /api/agent/browser/viewport",
   "POST /api/agent/browser/:verb",
+  "GET /api/agent/directories",
+  "GET /api/agent/comments",
+  "POST /api/agent/comments",
+  "DELETE /api/agent/comments",
+  "GET /api/agent/projects",
+  "POST /api/agent/projects",
+  "DELETE /api/agent/projects",
+  "GET /api/agent/fs",
+  "GET /api/agent/fs/raw",
+  "GET /api/agent/fs/file",
+  "PUT /api/agent/fs/file",
+  "GET /api/agent/git",
+  "POST /api/agent/git",
+  "POST /api/agent/terminal",
+  "POST /api/agent/terminal/resolve-cwd",
 ].sort();
 
 const routePath = (root: string, directory: string): string =>

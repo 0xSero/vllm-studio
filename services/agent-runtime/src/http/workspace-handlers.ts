@@ -116,6 +116,30 @@ export async function handleWorkspaceFile(request: Request): Promise<Response> {
 }
 
 export async function handleComments(request: Request): Promise<Response> {
+  if (request.method === "POST") {
+    const body = await jsonBody(request);
+    if (body instanceof Response) return body;
+    const record = body as { cwd?: unknown; path?: unknown; line?: unknown; body?: unknown };
+    const cwd = typeof record.cwd === "string" ? record.cwd.trim() : "";
+    const relativePath = typeof record.path === "string" ? record.path.trim() : "";
+    const line = Number(record.line);
+    const text = typeof record.body === "string" ? record.body.trim() : "";
+    if (
+      !cwd ||
+      !relativePath ||
+      !path.isAbsolute(cwd) ||
+      !Number.isFinite(line) ||
+      line < 1 ||
+      !text
+    ) {
+      return jsonError("cwd, path, line, body required");
+    }
+    try {
+      return Response.json({ comment: await addComment(cwd, relativePath, line, text) });
+    } catch (error) {
+      return jsonError(errorMessage(error, "Failed"));
+    }
+  }
   const result = absoluteCwd(request);
   if (result.error) return result.error;
   const relativePath = search(request, "path");
@@ -130,15 +154,7 @@ export async function handleComments(request: Request): Promise<Response> {
       await deleteComment(result.cwd, relativePath, id);
       return Response.json({ ok: true });
     }
-    const body = await jsonBody(request);
-    if (body instanceof Response) return body;
-    const record = body as { line?: unknown; body?: unknown };
-    const line = Number(record.line);
-    const text = typeof record.body === "string" ? record.body.trim() : "";
-    if (!Number.isFinite(line) || line < 1 || !text) {
-      return jsonError("cwd, path, line, body required");
-    }
-    return Response.json({ comment: await addComment(result.cwd, relativePath, line, text) });
+    return jsonError("Method not allowed", 405);
   } catch (error) {
     return jsonError(errorMessage(error, "Failed"));
   }
@@ -216,6 +232,7 @@ export async function handleResolveCwd(request: Request): Promise<Response> {
     if (!previous) return jsonError("OLDPWD not set");
     next = previous;
   } else if (target.startsWith("~/")) next = path.join(os.homedir(), target.slice(2));
+  else if (target.startsWith("~")) next = target;
   else if (path.isAbsolute(target)) next = target;
   else {
     if (!from || !path.isAbsolute(from)) return jsonError("from must be absolute");

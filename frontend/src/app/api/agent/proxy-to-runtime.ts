@@ -21,6 +21,8 @@ export async function proxyToAgentRuntime(
   const target = `${base}${url.pathname}${url.search}`;
 
   const headers = new Headers(request.headers);
+  const originHost = headers.get("host");
+  if (originHost) headers.set("x-local-studio-origin-host", originHost);
   for (const name of HOP_BY_HOP_REQUEST_HEADERS) headers.delete(name);
 
   let body: ArrayBuffer | undefined;
