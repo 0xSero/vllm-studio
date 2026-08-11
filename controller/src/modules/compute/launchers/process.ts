@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
-import { openSync, readFileSync, statSync, openSync as open, closeSync, readSync } from "node:fs";
+import { openSync, statSync, openSync as open, closeSync, readSync } from "node:fs";
 import { Effect } from "effect";
 import type { HandleReference, InstanceRecord, LaunchPlan } from "../contracts";
-import { realProcessRunner } from "../../../core/command";
+import { realProcessPlatform, type ProcessPlatform } from "../../../core/process-platform";
 import { LOG_TAIL_BYTES, spawnFailed, type Launcher } from "./launcher";
 
 /**
@@ -13,46 +13,8 @@ import { LOG_TAIL_BYTES, spawnFailed, type Launcher } from "./launcher";
 
 const STOP_POLL_MS = 250;
 
-const pidAlive = (pid: number): boolean => {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const signal = (pid: number, sig: NodeJS.Signals): void => {
-  try {
-    process.kill(pid, sig);
-  } catch {
-    /* already gone */
-  }
-};
-
-/**
- * Linux: /proc/<pid>/stat field 22 is the process start time in clock ticks — a pid plus
- * its start token survives pid reuse across reboots. Elsewhere there is no equivalent
- * cheap token; ownership falls back to the command-line check alone.
- */
 export const processStartToken = (pid: number): string | null => {
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-    // Field 2 is the comm, which may contain spaces/parens; everything after the last
-    // ')' is fixed-position.
-    const afterComm = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
-    return afterComm[19] ?? null;
-  } catch {
-    return null;
-  }
-};
-
-const pidCommandLine = (pid: number): string => {
-  const result = realProcessRunner.runSync("ps", ["-o", "command=", "-p", String(pid)], {
-    timeoutMs: 3_000,
-  });
-  return result.status === 0 ? result.stdout : "";
+  return realProcessPlatform.inspect(pid)?.startToken ?? null;
 };
 
 const readTailBytes = (path: string, bytes: number): string => {
@@ -74,7 +36,10 @@ const readTailBytes = (path: string, bytes: number): string => {
   }
 };
 
-export const makeProcessLauncher = (logPathFor: (name: string) => string): Launcher => ({
+export const makeProcessLauncher = (
+  logPathFor: (name: string) => string,
+  processPlatform: ProcessPlatform = realProcessPlatform,
+): Launcher => ({
   start: (plan: LaunchPlan, record: InstanceRecord) =>
     Effect.gen(function* () {
       const [binary, ...args] = plan.argv;
@@ -100,22 +65,30 @@ export const makeProcessLauncher = (logPathFor: (name: string) => string): Launc
       closeSync(logFd);
       if (pid <= 0) return yield* spawnFailed(`failed to spawn ${binary}`);
       child.unref();
-      return { kind: "process", pid, startToken: processStartToken(pid) } as const;
+      return {
+        kind: "process",
+        pid,
+        startToken: processPlatform.inspect(pid)?.startToken ?? null,
+      } as const;
     }),
 
   alive: (reference: HandleReference) =>
-    Effect.sync(() => (reference.kind === "process" ? pidAlive(reference.pid) : false)),
+    Effect.sync(() =>
+      reference.kind === "process" ? processPlatform.alive(reference.pid) : false,
+    ),
 
   owns: (reference: HandleReference, record: InstanceRecord) =>
     Effect.sync(() => {
       if (reference.kind !== "process") return false;
-      if (!pidAlive(reference.pid)) return false;
-      // Start token is decisive where the OS provides one (Linux).
-      if (reference.startToken !== null) return processStartToken(reference.pid) === reference.startToken;
+      if (!processPlatform.alive(reference.pid)) return false;
+      const identity = processPlatform.inspect(reference.pid);
+      if (!identity) return false;
+      // Start token is decisive where the OS provides one.
+      if (reference.startToken !== null) return identity.startToken === reference.startToken;
       // Elsewhere the pid's command line must still carry our unmistakable argument:
       // every plan passes `--port <port>`, and the port is unique per node. A recycled
       // pid belonging to something else will not be serving on our port.
-      return pidCommandLine(reference.pid).includes(`--port ${record.port}`);
+      return identity.commandLine.includes(`--port ${record.port}`);
     }),
 
   stop: (reference: HandleReference, graceMs: number) =>
@@ -123,14 +96,12 @@ export const makeProcessLauncher = (logPathFor: (name: string) => string): Launc
       if (reference.kind !== "process") return;
       const { pid } = reference;
       // The group first: -pid reaches children even when the leader is already gone.
-      signal(-pid, "SIGTERM");
-      signal(pid, "SIGTERM");
+      processPlatform.terminateTree(pid, false);
       const deadline = Date.now() + graceMs;
-      while (pidAlive(pid) && Date.now() < deadline) {
+      while (processPlatform.alive(pid) && Date.now() < deadline) {
         yield* Effect.sleep(STOP_POLL_MS);
       }
-      signal(-pid, "SIGKILL");
-      signal(pid, "SIGKILL");
+      processPlatform.terminateTree(pid, true);
     }),
 
   logTail: (reference: HandleReference, record: InstanceRecord) =>
