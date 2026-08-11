@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
+import { resolve } from "node:path";
 import { Effect } from "effect";
 import type { HandleReference, InstanceRecord } from "../contracts";
 import { listRunningWslDistributions, runInWsl, terminateWslDistribution } from "../wsl-platform";
@@ -8,7 +9,7 @@ import { readLogTail, spawnFailed, type Launcher } from "./launcher";
 const START_TIMEOUT_MS = 10_000;
 const STOP_POLL_MS = 250;
 const WRAPPER =
-  'pid_file=$1; workdir=$2; nonce=$3; shift 3; if [ -n "$workdir" ]; then cd -- "$workdir" || exit 126; fi; start_token=$(/usr/bin/awk \'{print $22}\' /proc/$$/stat) || exit 126; /usr/bin/printf \'%s %s %s\\n\' "$$" "$start_token" "$nonce" > "$pid_file" || exit 126; exec "$@"';
+  'pid_file=$1; workdir=$2; nonce=$3; log_file=$4; shift 4; if [ -n "$workdir" ]; then cd -- "$workdir" || exit 126; fi; start_token=$(/usr/bin/awk \'{print $22}\' /proc/$$/stat) || exit 126; /usr/bin/printf \'%s %s %s\\n\' "$$" "$start_token" "$nonce" > "$pid_file" || exit 126; exec >> "$log_file" 2>&1; exec "$@"';
 
 interface WslIdentity {
   readonly pid: number;
@@ -24,6 +25,7 @@ export const buildWslLaunchArguments = (
   pidFile: string,
   workdir: string,
   nonce: string,
+  logFile: string,
   argv: readonly string[],
   env: Readonly<Record<string, string>>,
 ): string[] => [
@@ -39,6 +41,7 @@ export const buildWslLaunchArguments = (
   pidFile,
   workdir,
   nonce,
+  logFile,
   "/usr/bin/env",
   ...Object.entries(env)
     .sort(([left], [right]) => left.localeCompare(right))
@@ -194,8 +197,16 @@ export const makeWsl2Launcher = (logPathFor: (record: InstanceRecord) => string)
           ),
         ),
       );
+      const logPath = resolve(logPathFor(record));
+      const logFile = yield* translateValue(distribution, logPath).pipe(
+        Effect.catch((detail) =>
+          cleanupDistribution(distribution, pidFile, startedDistribution).pipe(
+            Effect.andThen(spawnFailed(detail)),
+          ),
+        ),
+      );
       const logDescriptor = yield* Effect.try({
-        try: () => openSync(logPathFor(record), "w"),
+        try: () => openSync(logPath, "w"),
         catch: (error) => String(error),
       }).pipe(
         Effect.catch((detail) =>
@@ -204,6 +215,7 @@ export const makeWsl2Launcher = (logPathFor: (record: InstanceRecord) => string)
           ),
         ),
       );
+      closeSync(logDescriptor);
       let child: ChildProcess;
       try {
         child = spawn(
@@ -213,21 +225,21 @@ export const makeWsl2Launcher = (logPathFor: (record: InstanceRecord) => string)
             pidFile,
             workdir,
             record.nonce,
+            logFile,
             [binary, ...args],
             translatedEnvironment,
           ),
           {
-            stdio: ["ignore", logDescriptor, logDescriptor],
+            detached: true,
+            stdio: "ignore",
             windowsHide: true,
           },
         );
       } catch (error) {
-        closeSync(logDescriptor);
         yield* cleanupDistribution(distribution, pidFile, startedDistribution);
         return yield* spawnFailed(String(error));
       }
       const spawnedPid = yield* awaitSpawn(child);
-      closeSync(logDescriptor);
       if (!spawnedPid) {
         yield* cleanupDistribution(distribution, pidFile, startedDistribution);
         return yield* spawnFailed("failed to spawn wsl.exe");

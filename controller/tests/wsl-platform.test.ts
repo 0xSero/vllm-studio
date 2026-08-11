@@ -47,6 +47,7 @@ describe("WSL2 launch contract", () => {
       "/tmp/local-studio-nonce.pid",
       "/mnt/f/work space",
       "nonce",
+      "/mnt/f/logs/model.log",
       ["/home/user/.local/bin/vllm", "serve", "/mnt/f/Models/Qwen model"],
       { ZED: "last", ALPHA: "first value" },
     );
@@ -61,6 +62,7 @@ describe("WSL2 launch contract", () => {
       "-c",
     ]);
     expect(args).toContain("ALPHA=first value");
+    expect(args).toContain("/mnt/f/logs/model.log");
     expect(args.indexOf("ALPHA=first value")).toBeLessThan(args.indexOf("ZED=last"));
     expect(args.slice(-3)).toEqual([
       "/home/user/.local/bin/vllm",
