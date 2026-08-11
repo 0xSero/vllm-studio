@@ -8,7 +8,7 @@ import {
   inferVisionSupport,
   normalizeOpenAIModels,
   type OpenAIModelsResponse,
-} from "@/features/agent/models";
+} from "@shared/agent/models";
 import {
   attachModelToAgents,
   detectLocalAgents,

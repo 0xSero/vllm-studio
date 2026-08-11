@@ -28,7 +28,7 @@ import { MAX_COMPUTER_WIDTH, MIN_COMPUTER_WIDTH } from "@/features/agent/tools/p
 import {
   sanitizeBrowserPaneUrl,
   sanitizeLocalFileUrl,
-} from "@/features/agent/sanitize-embedded-browser-url";
+} from "@shared/agent/sanitize-embedded-browser-url";
 import { useTools } from "@/features/agent/tools/context";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import type { GitSummary, Project } from "@/features/agent/projects/types";

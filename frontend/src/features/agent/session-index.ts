@@ -1,7 +1,7 @@
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import { isWorkingStatus } from "@/features/agent/runtime/session-status";
 import type { RuntimeSessionSummary } from "@/features/agent/runtime/api";
-import type { SessionSummary } from "@/features/agent/session-summary";
+import type { SessionSummary } from "@shared/agent/session-summary";
 
 export type OpenAgentSession = {
   id: string;

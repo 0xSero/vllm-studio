@@ -1,4 +1,4 @@
-import type { AgentModel } from "@/features/agent/models";
+import type { AgentModel } from "@shared/agent/models";
 import type { Project } from "@/features/agent/projects/types";
 import type { Session, SessionId, SessionsMap } from "@/features/agent/runtime/types";
 import type { Layout, PaneId } from "@/features/agent/workspace/layout";
@@ -6,7 +6,7 @@ import type { SessionDrafts } from "@/features/agent/workspace/session-drafts";
 
 export type { PaneId } from "@/features/agent/workspace/layout";
 export type { SessionId } from "@/features/agent/runtime/types";
-export type { AgentModel } from "@/features/agent/models";
+export type { AgentModel } from "@shared/agent/models";
 
 export type WorkspaceLayout = Layout;
 
