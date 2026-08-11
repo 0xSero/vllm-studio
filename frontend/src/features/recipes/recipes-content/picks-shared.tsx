@@ -17,6 +17,7 @@ import type {
 } from "@/lib/api/studio";
 import type { GPU, ModelDownload } from "@/lib/types";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useAsyncResource } from "@/hooks/use-async-resource";
 import { downloadProgressText } from "./downloads-tab";
 import { sumGpuMemoryPoolGb } from "./explore-eligibility";
 import { readExplorePoolOverrideGb } from "./explore-pool-storage";
@@ -54,60 +55,47 @@ function formatContextTokens(tokens: number): string {
 }
 
 export function useModelIndex() {
-  const [data, setData] = useState<ModelIndexResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    try {
-      const result = await api.getModelIndex();
-      setData(result);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load the curated catalog");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useMountSubscription(() => {
-    void refresh();
-  }, [refresh]);
-
+  const { data, loading, error, refresh } = useAsyncResource(
+    useCallback(() => api.getModelIndex(), []),
+    null as ModelIndexResponse | null,
+    "Failed to load the curated catalog",
+  );
   return { data, loading, error, refresh };
 }
 
 export function useHardwareProfile() {
-  const [gpus, setGpus] = useState<GPU[]>([]);
-  const [apiMaxVramGb, setApiMaxVramGb] = useState(0);
   const [poolOverrideGb, setPoolOverrideGb] = useState<number | null>(null);
+  const { data: hardware } = useAsyncResource(
+    useCallback(async () => {
+      const [presetsData, gpuData] = await Promise.all([
+        api.getStarterPresets().catch(() => null),
+        api.getGPUs().catch(() => ({ gpus: [] as GPU[] })),
+      ]);
+      return {
+        apiMaxVramGb: typeof presetsData?.max_vram_gb === "number" ? presetsData.max_vram_gb : 0,
+        gpus: gpuData.gpus ?? [],
+      };
+    }, []),
+    { apiMaxVramGb: 0, gpus: [] as GPU[] },
+    "Hardware profile unavailable",
+    { clearOnError: true },
+  );
 
   useMountSubscription(() => {
     setPoolOverrideGb(readExplorePoolOverrideGb());
   }, []);
 
-  useMountSubscription(() => {
-    void (async () => {
-      const [presetsData, gpuData] = await Promise.all([
-        api.getStarterPresets().catch(() => null),
-        api.getGPUs().catch(() => ({ gpus: [] as GPU[] })),
-      ]);
-      setApiMaxVramGb(typeof presetsData?.max_vram_gb === "number" ? presetsData.max_vram_gb : 0);
-      setGpus(gpuData.gpus ?? []);
-    })();
-  }, []);
-
   return useMemo(() => {
-    const poolGbFromGpus = sumGpuMemoryPoolGb(gpus);
-    const detectedPoolGb = poolGbFromGpus > 0 ? poolGbFromGpus : apiMaxVramGb;
+    const poolGbFromGpus = sumGpuMemoryPoolGb(hardware.gpus);
+    const detectedPoolGb = poolGbFromGpus > 0 ? poolGbFromGpus : hardware.apiMaxVramGb;
     const poolGb =
       poolOverrideGb != null && poolOverrideGb > 0
         ? poolOverrideGb
         : detectedPoolGb > 0
           ? detectedPoolGb
           : 0;
-    return buildHardwareProfile({ gpus, poolGb, detectedPoolGb, poolOverrideGb });
-  }, [gpus, apiMaxVramGb, poolOverrideGb]);
+    return buildHardwareProfile({ gpus: hardware.gpus, poolGb, detectedPoolGb, poolOverrideGb });
+  }, [hardware, poolOverrideGb]);
 }
 
 export function TierSection({

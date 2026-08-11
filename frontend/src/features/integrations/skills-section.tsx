@@ -7,7 +7,7 @@ import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resour
 import { ResourceList } from "@/features/resources/resource-list";
 import { ResourceLogo } from "@/ui/resource-logo";
 import { ModelRow, ModelStatus, ModelValue } from "@/features/recipes/recipes-content/model-page";
-import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useAsyncResource } from "@/hooks/use-async-resource";
 import { writeClipboardText } from "@/lib/clipboard";
 import { requestJsonEffect } from "@/lib/api/request-json";
 
@@ -93,42 +93,36 @@ function SkillDrawer({
 }
 
 export function SkillsSection() {
-  const [skills, setSkills] = useState<readonly Skill[]>([]);
-  const [loaded, setLoaded] = useState(false);
   const [selected, setSelected] = useState<Skill | null>(null);
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [detailError, setDetailError] = useState("");
 
-  const loadSkills = useCallback(() => {
-    void Effect.runPromise(
-      requestJsonEffect(
-        "/api/agent/skills",
-        SkillsResponseSchema,
-        { cache: "no-store" },
-        "Skill discovery failed",
-      ),
-    )
-      .then((payload) => {
-        setSkills(payload.skills);
-        setError("");
-      })
-      .catch((loadError: unknown) => {
-        setSkills([]);
-        setError(loadError instanceof Error ? loadError.message : "Skill discovery failed");
-      })
-      .finally(() => setLoaded(true));
-  }, []);
-
-  useMountSubscription(() => {
-    loadSkills();
-  }, [loadSkills]);
+  const loadSkills = useCallback(
+    () =>
+      Effect.runPromise(
+        requestJsonEffect(
+          "/api/agent/skills",
+          SkillsResponseSchema,
+          { cache: "no-store" },
+          "Skill discovery failed",
+        ),
+      ).then((payload) => payload.skills),
+    [],
+  );
+  const {
+    data: skills,
+    loaded,
+    error,
+  } = useAsyncResource(loadSkills, [] as readonly Skill[], "Skill discovery failed", {
+    clearOnError: true,
+  });
 
   const openSkill = (skill: Skill) => {
     setSelected(skill);
     setSelectedSkill(null);
     setDetailLoading(true);
-    setError("");
+    setDetailError("");
     void Effect.runPromise(
       requestJsonEffect(
         `/api/agent/skills/load?path=${encodeURIComponent(skill.path)}`,
@@ -139,7 +133,7 @@ export function SkillsSection() {
     )
       .then((payload) => setSelectedSkill(payload.skill))
       .catch((loadError: unknown) =>
-        setError(loadError instanceof Error ? loadError.message : "Skill loading failed"),
+        setDetailError(loadError instanceof Error ? loadError.message : "Skill loading failed"),
       )
       .finally(() => setDetailLoading(false));
   };
@@ -176,11 +170,11 @@ export function SkillsSection() {
           skill={selected}
           loaded={selectedSkill}
           loading={detailLoading}
-          error={error}
+          error={detailError}
           onClose={() => {
             setSelected(null);
             setSelectedSkill(null);
-            setError("");
+            setDetailError("");
           }}
         />
       ) : null}

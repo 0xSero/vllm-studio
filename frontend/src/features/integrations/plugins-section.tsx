@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { Schema } from "effect";
 import {
   PluginRuntimeResponseSchema,
@@ -11,7 +11,7 @@ import { Eye, X } from "@/ui/icon-registry";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceList } from "@/features/resources/resource-list";
 import { ResourceLogo } from "@/ui/resource-logo";
-import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useAsyncResource } from "@/hooks/use-async-resource";
 import type { StatusTone } from "@/features/settings/settings-ui";
 import { ModelRow, ModelStatus, ModelValue } from "@/features/recipes/recipes-content/model-page";
 import { requestJson } from "@/lib/api/request-json";
@@ -314,48 +314,39 @@ function PluginDrawer({
 
 export function PluginsSection() {
   const speech = useSpeechStore();
-  const [plugins, setPlugins] = useState<readonly PluginRuntimeView[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pending, setPending] = useState<PluginRuntimeView | null>(null);
   const [selectedPlugin, setSelectedPlugin] = useState<PluginRuntimeView | null>(null);
   const [accountPlugin, setAccountPlugin] = useState<PluginRuntimeView | null>(null);
   const [speechPlugin, setSpeechPlugin] = useState<PluginRuntimeView | null>(null);
-  const requestGeneration = useRef(0);
-
-  const loadPlugins = useCallback(() => {
-    const generation = ++requestGeneration.current;
-    return requestJson(
-      "/api/agent/plugins",
-      Schema.decodeUnknownSync(PluginRuntimeResponseSchema),
-      { cache: "no-store" },
-      "Plugin discovery failed",
-    )
-      .then((payload) => {
-        if (generation !== requestGeneration.current) return;
-        setPlugins(payload.plugins);
-        setError("");
-      })
-      .catch((loadError: unknown) => {
-        if (generation !== requestGeneration.current) return;
-        setError(loadError instanceof Error ? loadError.message : "Plugin discovery failed");
-      })
-      .finally(() => {
-        if (generation === requestGeneration.current) setLoaded(true);
-      });
-  }, []);
-
-  useMountSubscription(() => {
-    void loadPlugins();
-  }, [loadPlugins]);
+  const loadPlugins = useCallback(
+    async () =>
+      (
+        await requestJson(
+          "/api/agent/plugins",
+          Schema.decodeUnknownSync(PluginRuntimeResponseSchema),
+          { cache: "no-store" },
+          "Plugin discovery failed",
+        )
+      ).plugins,
+    [],
+  );
+  const {
+    data: plugins,
+    setData: setPlugins,
+    loaded,
+    error,
+    setError,
+    refresh,
+    invalidate,
+  } = useAsyncResource(loadPlugins, [] as readonly PluginRuntimeView[], "Plugin discovery failed");
 
   const handleAccountChanged = useCallback(() => {
-    void loadPlugins();
-  }, [loadPlugins]);
+    void refresh();
+  }, [refresh]);
 
   const setEnabled = async (plugin: PluginRuntimeView, enabled: boolean) => {
-    const generation = ++requestGeneration.current;
+    invalidate();
     setBusyId(plugin.id);
     setError("");
     try {
@@ -369,11 +360,9 @@ export function PluginsSection() {
         },
         "Plugin activation failed",
       );
-      if (generation !== requestGeneration.current) return;
       setPlugins(payload.plugins);
       setPending(null);
     } catch (activationError) {
-      if (generation !== requestGeneration.current) return;
       setError(
         activationError instanceof Error ? activationError.message : "Plugin activation failed",
       );

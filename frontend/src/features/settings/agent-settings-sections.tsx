@@ -10,6 +10,7 @@ import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
 import { useSidebarStatus } from "@/features/settings/use-sidebar-status";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useAsyncResource } from "@/hooks/use-async-resource";
 
 export function ArchivedChatsSettings() {
   type Session = {
@@ -21,30 +22,24 @@ export function ArchivedChatsSettings() {
     archived?: boolean;
     archivedAt?: string | null;
   };
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const loadArchivedSessions = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const response = await fetch("/api/agent/sessions/all?archived=1", {
-        cache: "no-store",
-      });
-      const payload = (await response.json()) as { sessions?: Session[]; error?: string };
-      if (!response.ok) throw new Error(payload.error || "Failed to load archived chats");
-      setSessions(payload.sessions ?? []);
-    } catch (loadError) {
-      setSessions([]);
-      setError(loadError instanceof Error ? loadError.message : "Failed to load archived chats");
-    } finally {
-      setLoading(false);
-    }
+    const response = await fetch("/api/agent/sessions/all?archived=1", { cache: "no-store" });
+    const payload = (await response.json()) as { sessions?: Session[]; error?: string };
+    if (!response.ok) throw new Error(payload.error || "Failed to load archived chats");
+    return payload.sessions ?? [];
   }, []);
+  const {
+    data: sessions,
+    setData: setSessions,
+    loading,
+    error,
+    setError,
+  } = useAsyncResource(loadArchivedSessions, [] as Session[], "Failed to load archived chats", {
+    clearOnError: true,
+  });
 
   useMountSubscription(() => {
-    void loadArchivedSessions();
     window.addEventListener(SESSIONS_CHANGED_EVENT, loadArchivedSessions);
     return () => window.removeEventListener(SESSIONS_CHANGED_EVENT, loadArchivedSessions);
   }, [loadArchivedSessions]);
@@ -126,15 +121,17 @@ export function ArchivedChatsSettings() {
 }
 export function SetupChecksSettings() {
   type Check = { id: string; label: string; ok: boolean; value: string; guidance: string };
-  const [checks, setChecks] = useState<Check[]>([]);
   const controllerStatus = useSidebarStatus();
-
-  useMountSubscription(() => {
-    void fetch("/api/agent/setup-checks", { cache: "no-store" })
-      .then((res) => res.json() as Promise<{ checks?: Check[] }>)
-      .then((payload) => setChecks(payload.checks ?? []))
-      .catch(() => setChecks([]));
-  }, []);
+  const { data: checks } = useAsyncResource(
+    useCallback(async () => {
+      const response = await fetch("/api/agent/setup-checks", { cache: "no-store" });
+      const payload = (await response.json()) as { checks?: Check[] };
+      return payload.checks ?? [];
+    }, []),
+    [] as Check[],
+    "Setup checks unavailable",
+    { clearOnError: true },
+  );
   const controllerCheck: Check = {
     id: "controller",
     label: "Controller connection",

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/ui";
 import { Clock, Plus } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useAsyncResource } from "@/hooks/use-async-resource";
 import type { Automation } from "@shared/agent/automation";
 import {
   createAutomation,
@@ -27,29 +28,28 @@ export default function AutomationsPage() {
   const searchParams = useSearchParams();
   const requestedId = searchParams.get("automation");
   const creating = searchParams.get("new") === "1";
-  const [automations, setAutomations] = useState<Automation[] | null>(null);
   const [models, setModels] = useState<AutomationModel[]>([]);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<AutomationFilter>("all");
   const [action, setAction] = useState<EditorAction>(null);
-  const [error, setError] = useState("");
+  const loadAutomations = useCallback(() => Effect.runPromise(listAutomations()), []);
+  const {
+    data: automations,
+    setData: setAutomations,
+    loaded,
+    error,
+    setError,
+    refresh: reload,
+  } = useAsyncResource(loadAutomations, [] as Automation[], "Could not load automations", {
+    clearOnError: true,
+  });
 
   const selected = useMemo(
     () => automations?.find((automation) => automation.id === requestedId) ?? null,
     [automations, requestedId],
   );
 
-  const reload = useCallback(async () => {
-    try {
-      setAutomations(await Effect.runPromise(listAutomations()));
-    } catch (loadError) {
-      setAutomations([]);
-      setError(loadError instanceof Error ? loadError.message : "Could not load automations");
-    }
-  }, []);
-
   useMountSubscription(() => {
-    void reload();
     const timer = window.setInterval(() => void reload(), 30_000);
     return () => window.clearInterval(timer);
   }, [reload]);
@@ -66,10 +66,8 @@ export default function AutomationsPage() {
     if (!selected?.unread) return;
     void Effect.runPromise(updateAutomation(selected.id, { unread: false }))
       .then((updated) => {
-        setAutomations(
-          (current) =>
-            current?.map((automation) => (automation.id === updated.id ? updated : automation)) ??
-            [],
+        setAutomations((current) =>
+          current.map((automation) => (automation.id === updated.id ? updated : automation)),
         );
       })
       .catch(() => undefined);
@@ -115,11 +113,10 @@ export default function AutomationsPage() {
           : null;
       if (!result) return;
       setAutomations((current) => {
-        const existing = current ?? [];
-        const found = existing.some((automation) => automation.id === result.id);
+        const found = current.some((automation) => automation.id === result.id);
         return found
-          ? existing.map((automation) => (automation.id === result.id ? result : automation))
-          : [...existing, result].sort((a, b) => a.name.localeCompare(b.name));
+          ? current.map((automation) => (automation.id === result.id ? result : automation))
+          : [...current, result].sort((a, b) => a.name.localeCompare(b.name));
       });
       navigate(result);
     },
@@ -141,9 +138,8 @@ export default function AutomationsPage() {
       }),
     );
     if (!updated) return;
-    setAutomations(
-      (current) =>
-        current?.map((automation) => (automation.id === updated.id ? updated : automation)) ?? [],
+    setAutomations((current) =>
+      current.map((automation) => (automation.id === updated.id ? updated : automation)),
     );
   }, [perform, selected]);
 
@@ -151,14 +147,12 @@ export default function AutomationsPage() {
     if (!selected) return;
     const removed = await perform("delete", deleteAutomation(selected.id));
     if (!removed) return;
-    setAutomations(
-      (current) => current?.filter((automation) => automation.id !== selected.id) ?? [],
-    );
+    setAutomations((current) => current.filter((automation) => automation.id !== selected.id));
     navigate("index");
   }, [navigate, perform, selected]);
 
   const editorOpen = creating || requestedId !== null;
-  const missing = !creating && requestedId !== null && automations !== null && selected === null;
+  const missing = !creating && requestedId !== null && loaded && selected === null;
 
   return (
     <div className="flex h-[100dvh] min-h-0 w-full bg-(--ui-bg) text-(--ui-fg)">
@@ -170,8 +164,8 @@ export default function AutomationsPage() {
         }
       >
         <AutomationList
-          automations={automations ?? []}
-          loading={automations === null}
+          automations={automations}
+          loading={!loaded}
           query={query}
           filter={filter}
           selectedId={selected?.id ?? null}

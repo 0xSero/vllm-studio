@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   getQuickPanelBridge,
   type QuickPanelHotkeyState,
 } from "@/features/agent/ui/quick-panel/quick-panel-bridge";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useAsyncResource } from "@/hooks/use-async-resource";
 import { SettingsButton, SettingsGroup, SettingsNotice, SettingsRow } from "./settings-ui";
 
 const MODIFIER_CODES = new Set([
@@ -50,8 +51,6 @@ function isMac(): boolean {
   return typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 }
 
-/** Map a keydown to an Electron accelerator, or null if it isn't a usable
- * combo (needs at least one modifier plus a non-modifier key). */
 function acceleratorFromEvent(event: KeyboardEvent): string | null {
   if (MODIFIER_CODES.has(event.code)) return null;
 
@@ -111,32 +110,26 @@ function HotkeyKeys({ accelerator }: { accelerator: string }) {
 }
 
 export function QuickPanelSettings() {
-  const [state, setState] = useState<QuickPanelHotkeyState | null>(null);
-  const [bridgeAvailable, setBridgeAvailable] = useState<boolean | null>(null);
   const [recording, setRecording] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-
-  useMountSubscription(() => {
-    let cancelled = false;
+  const loadHotkey = useCallback(async () => {
     const bridge = getQuickPanelBridge();
-    if (!bridge?.getHotkey) {
-      setBridgeAvailable(false);
-      return;
-    }
-    setBridgeAvailable(true);
-    void bridge
-      .getHotkey()
-      .then((loaded) => {
-        if (!cancelled) setState(loaded);
-      })
-      .catch(() => {
-        if (!cancelled) setBridgeAvailable(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    if (!bridge?.getHotkey) throw new Error("Desktop quick panel unavailable");
+    return bridge.getHotkey();
   }, []);
+  const {
+    data: state,
+    setData: setState,
+    loaded,
+    error,
+    setError,
+  } = useAsyncResource(
+    loadHotkey,
+    null as QuickPanelHotkeyState | null,
+    "Desktop quick panel unavailable",
+    { clearOnError: true },
+  );
+  const bridgeAvailable = loaded ? state !== null : null;
 
   useMountSubscription(() => {
     if (!recording) return;
@@ -155,7 +148,7 @@ export function QuickPanelSettings() {
       void bridge.setHotkey(accelerator).then((result) => {
         if (result.ok) {
           setState((prev) => (prev ? { ...prev, hotkey: result.hotkey } : prev));
-          setError(null);
+          setError("");
           setSaved(true);
         } else {
           setError(result.error ?? "Could not register that hotkey");
@@ -178,7 +171,7 @@ export function QuickPanelSettings() {
     void bridge.setHotkey(state.defaultHotkey).then((result) => {
       if (result.ok) {
         setState((prev) => (prev ? { ...prev, hotkey: result.hotkey } : prev));
-        setError(null);
+        setError("");
         setSaved(true);
       } else {
         setError(result.error ?? "Could not reset the hotkey");

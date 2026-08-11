@@ -6,6 +6,7 @@ import type { GPU, HuggingFaceModel } from "@/lib/types";
 import type { ModelIndexModel } from "@/lib/api/studio";
 import { useHuggingFaceModelSearch } from "@/features/recipes/use-huggingface-model-search";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useAsyncResource } from "@/hooks/use-async-resource";
 import {
   engagementTier,
   isDerivativeModel,
@@ -34,7 +35,6 @@ export interface ModelGroup {
   key: string;
   lead: HuggingFaceModel;
   variants: HuggingFaceModel[];
-  /** Peak monthly downloads across merged variants (same family, different repos). */
   maxDownloads: number;
   maxLikes: number;
   lastModifiedMs: number;
@@ -45,8 +45,6 @@ export interface ModelGroup {
 
 function groupPassesExploreFilters(group: ModelGroup, search: string): boolean {
   if (!hasHfEngagementStats(group.lead)) return false;
-  // When the user searches, relevance matters more than the Explore recency gate;
-  // otherwise well-known models disappear and the page looks broken.
   if (search.trim().length > 0) return true;
   if (group.tier === "heavy" || group.tier === "warm") return true;
   return isRecentlyCreatedOnHf(group.lead);
@@ -70,17 +68,34 @@ export function derivativeScore(model: HuggingFaceModel, search: string): number
 }
 
 export function useExplore() {
-  const [gpus, setGpus] = useState<GPU[]>([]);
-  const [apiMaxVramGb, setApiMaxVramGb] = useState(0);
   const [search, setSearch] = useState("");
   const [library, setLibrary] = useState("");
   const [sort, setSort] = useState("");
   const [poolOverrideGb, setPoolOverrideGbState] = useState<number | null>(null);
-  const [catalogModels, setCatalogModels] = useState<ModelIndexModel[]>([]);
+  const loadCatalogAndGpus = useCallback(async () => {
+    const [indexData, presetsData, gpuData] = await Promise.all([
+      api.getModelIndex(),
+      api.getStarterPresets().catch(() => null),
+      api.getGPUs().catch(() => ({ gpus: [] as GPU[] })),
+    ]);
+    return {
+      catalogModels: indexData.tiers?.flatMap((tier) => tier.models) ?? [],
+      apiMaxVramGb: typeof presetsData?.max_vram_gb === "number" ? presetsData.max_vram_gb : 0,
+      gpus: gpuData.gpus ?? [],
+    };
+  }, []);
+  const {
+    data: { catalogModels, apiMaxVramGb, gpus },
+    refresh: refreshCatalogAndGpus,
+  } = useAsyncResource(
+    loadCatalogAndGpus,
+    { catalogModels: [] as ModelIndexModel[], apiMaxVramGb: 0, gpus: [] as GPU[] },
+    "Hardware catalog unavailable",
+    { clearOnError: true },
+  );
 
   const configureExploreParams = useCallback(
     (params: URLSearchParams, isBrowsing: boolean) => {
-      // HF `filter` is repeatable (AND logic).
       if (library) params.append("filter", library);
       params.set("sort", isBrowsing ? RECENT_HF_MODEL_SORT : sort || "downloads");
     },
@@ -103,10 +118,8 @@ export function useExplore() {
 
   const poolGbFromGpus = useMemo(() => sumGpuMemoryPoolGb(gpus), [gpus]);
 
-  /** From hardware + API only (no manual override). */
   const detectedPoolGb = poolGbFromGpus > 0 ? poolGbFromGpus : apiMaxVramGb;
 
-  /** User override wins when set; otherwise detected pool. */
   const poolGb =
     poolOverrideGb != null && poolOverrideGb > 0
       ? poolOverrideGb
@@ -122,28 +135,6 @@ export function useExplore() {
   const spotlightCatalog = useMemo(() => {
     return filterIndexModelsWithinPool(catalogModels, poolGb);
   }, [catalogModels, poolGb]);
-
-  const loadCatalogAndGpus = useCallback(async () => {
-    try {
-      const [indexData, presetsData, gpuData] = await Promise.all([
-        api.getModelIndex(),
-        api.getStarterPresets().catch(() => null),
-        api.getGPUs().catch(() => ({ gpus: [] as GPU[] })),
-      ]);
-      setCatalogModels(indexData.tiers?.flatMap((tier) => tier.models) ?? []);
-      const vram = typeof presetsData?.max_vram_gb === "number" ? presetsData.max_vram_gb : 0;
-      setApiMaxVramGb(vram);
-      setGpus(gpuData.gpus ?? []);
-    } catch {
-      setCatalogModels([]);
-      setApiMaxVramGb(0);
-      setGpus([]);
-    }
-  }, []);
-
-  useMountSubscription(() => {
-    void loadCatalogAndGpus();
-  }, [loadCatalogAndGpus]);
 
   const catalogByKey = useMemo(() => {
     const m = new Map<string, ModelIndexModel>();
@@ -238,12 +229,6 @@ export function useExplore() {
       if (!aSpot && bSpot) return 1;
 
       if (isSearching) {
-        // SEARCH MODE: HF already ranked these by relevance (it matched the
-        // search term server-side and returned them in downloads order within
-        // that match set). Preserve HF's order — only break ties by downloads
-        // then recency. The old code discarded HF's relevance ranking and
-        // re-sorted by raw likes, which buried exact matches under popular
-        // unrelated models.
         if (b.maxDownloads !== a.maxDownloads) return b.maxDownloads - a.maxDownloads;
         const ta = a.lastModifiedMs;
         const tb = b.lastModifiedMs;
@@ -251,16 +236,12 @@ export function useExplore() {
         return 0;
       }
 
-      // BROWSE MODE (no search): engagement + freshness matter since there's no
-      // query to prioritize. Likes are a stronger quality signal than downloads
-      // for browsing, so they lead.
       if (b.maxLikes !== a.maxLikes) return b.maxLikes - a.maxLikes;
       if (b.maxDownloads !== a.maxDownloads) return b.maxDownloads - a.maxDownloads;
       const ta = a.lastModifiedMs;
       const tb = b.lastModifiedMs;
       if (tb !== ta) return tb - ta;
 
-      // Final tie-break: prefer models that fit the VRAM pool.
       if (poolGb > 0) {
         const ea = a.needGb;
         const eb = b.needGb;
@@ -272,9 +253,6 @@ export function useExplore() {
     });
   }, [groupedModels, spotlightKeys, poolGb, search]);
 
-  // VRAM-tier interleaving only makes sense when browsing — when the user has
-  // searched for something specific, scrambling the relevance order to mix
-  // footprint sizes would bury the match they typed.
   const mixedGroups = useMemo(
     () =>
       search.trim().length > 0
@@ -289,10 +267,10 @@ export function useExplore() {
 
   const refresh = useCallback(() => {
     void (async () => {
-      await loadCatalogAndGpus();
+      await refreshCatalogAndGpus();
       await fetchModels(false, 0);
     })();
-  }, [loadCatalogAndGpus, fetchModels]);
+  }, [fetchModels, refreshCatalogAndGpus]);
 
   return {
     groups: visibleGroups,
