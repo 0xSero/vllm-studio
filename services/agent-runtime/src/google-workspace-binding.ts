@@ -5,7 +5,9 @@ type GoogleWorkspaceBinding = {
   name: string;
   connectorId: string;
   endpoint: string;
+  legacyEndpoints?: readonly string[];
   resource: string;
+  authorizationResource?: string;
   scopes: readonly string[];
   observeTools: readonly string[];
   verifyTool: string;
@@ -15,8 +17,9 @@ export const GOOGLE_WORKSPACE_BINDINGS: Record<GoogleWorkspacePluginId, GoogleWo
   gmail: {
     name: "Gmail",
     connectorId: "account-google-gmail",
-    endpoint: "https://gmailmcp.googleapis.com/mcp/v1",
-    resource: "https://gmailmcp.googleapis.com/mcp",
+    endpoint: "https://gmail.googleapis.com/gmail/v1/users/me",
+    legacyEndpoints: ["https://gmailmcp.googleapis.com/mcp/v1"],
+    resource: "https://gmail.googleapis.com/",
     scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
     observeTools: ["list_drafts", "get_thread", "get_message", "search_threads", "list_labels"],
     verifyTool: "list_labels",
@@ -26,6 +29,7 @@ export const GOOGLE_WORKSPACE_BINDINGS: Record<GoogleWorkspacePluginId, GoogleWo
     connectorId: "account-google-calendar",
     endpoint: "https://calendarmcp.googleapis.com/mcp/v1",
     resource: "https://calendarmcp.googleapis.com/mcp/v1",
+    authorizationResource: "https://calendarmcp.googleapis.com/mcp/v1",
     scopes: [
       "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
       "https://www.googleapis.com/auth/calendar.events.freebusy",

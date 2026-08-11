@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { Effect, Schema, Semaphore } from "effect";
 import { connectMcp } from "./mcp-client";
+import { verifyGmailApiAccess } from "./gmail-api-mcp";
 import { listConnectors, upsertConnectors } from "./connectors-service";
 import { resolveDataDir } from "./data-dir";
 import {
@@ -54,6 +55,7 @@ const PendingSchema = Schema.Struct({
   verifier: Schema.String,
   redirectUri: Schema.String,
   resource: Schema.String,
+  authorizationResource: Schema.optional(Schema.String),
   expiresAt: Schema.Number,
 });
 
@@ -231,12 +233,14 @@ function connectionView(
   id: GoogleWorkspacePluginId,
   connection?: Connection,
 ): GoogleConnectionView {
+  const current =
+    connection?.resource === GOOGLE_WORKSPACE_BINDINGS[id].resource ? connection : undefined;
   return {
-    connected: Boolean(connection),
-    email: connection?.email ?? null,
-    scopes: connection?.scopes ?? [],
+    connected: Boolean(current),
+    email: current?.email ?? null,
+    scopes: current?.scopes ?? [],
     resource: GOOGLE_WORKSPACE_BINDINGS[id].resource,
-    connectedAt: connection?.connectedAt ?? null,
+    connectedAt: current?.connectedAt ?? null,
   };
 }
 
@@ -359,6 +363,9 @@ export function beginGoogleAuthorization(
           verifier,
           redirectUri: loopbackRedirect(redirectUri),
           resource: binding.resource,
+          ...(binding.authorizationResource
+            ? { authorizationResource: binding.authorizationResource }
+            : {}),
           expiresAt: dependencies.now() + 10 * 60 * 1000,
         };
         yield* writeVaultJson(vault, pendingKey(account), pending);
@@ -378,7 +385,7 @@ export function beginGoogleAuthorization(
           access_type: "offline",
           prompt: "consent",
           include_granted_scopes: "true",
-          resource: binding.resource,
+          ...(binding.authorizationResource ? { resource: binding.authorizationResource } : {}),
         }).toString();
         return { authorizationUrl: url.toString() };
       }),
@@ -424,7 +431,7 @@ async function exchangeAuthorizationCode(
     code_verifier: pending.verifier,
     grant_type: "authorization_code",
     redirect_uri: pending.redirectUri,
-    resource: pending.resource,
+    ...(pending.authorizationResource ? { resource: pending.authorizationResource } : {}),
     ...(secrets.clientSecret ? { client_secret: secrets.clientSecret } : {}),
   });
   const response = await dependencies.fetch("https://oauth2.googleapis.com/token", {
@@ -463,6 +470,10 @@ async function verifyGoogleWorkspaceAccess(
   accessToken: string,
   signal: AbortSignal,
 ): Promise<void> {
+  if (account === "gmail") {
+    await verifyGmailApiAccess(accessToken, signal);
+    return;
+  }
   const binding = GOOGLE_WORKSPACE_BINDINGS[account];
   const connection = connectMcp({
     transport: "http",
@@ -928,7 +939,7 @@ async function refreshAccessToken(
     client_id: metadata.clientId,
     refresh_token: refreshToken,
     grant_type: "refresh_token",
-    resource: binding.resource,
+    ...(binding.authorizationResource ? { resource: binding.authorizationResource } : {}),
     ...(secrets.clientSecret ? { client_secret: secrets.clientSecret } : {}),
   });
   const response = await dependencies.fetch("https://oauth2.googleapis.com/token", {
@@ -959,7 +970,7 @@ export function googleAuthorizationHeaders(
         return { Authorization: `Bearer ${cached.value}` };
       }
       const metadata = yield* metadataEffect();
-      if (!metadata?.connections[account]) {
+      if (metadata?.connections[account]?.resource !== GOOGLE_WORKSPACE_BINDINGS[account].resource) {
         return yield* Effect.fail(new GoogleAccountError(401, "Google account is not connected"));
       }
       const secrets =

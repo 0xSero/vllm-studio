@@ -46,11 +46,14 @@ export function protectManagedConnector(connector: ConnectorConfig): ConnectorCo
   if (!claimsGoogleWorkspace(connector)) return connector;
   const account = googleWorkspaceConnectorAccount(connector.id);
   const binding = account ? GOOGLE_WORKSPACE_BINDINGS[account] : null;
+  const endpointMatches =
+    binding !== null &&
+    (connector.url === binding.endpoint || binding.legacyEndpoints?.includes(connector.url ?? ""));
   const valid =
     account !== null &&
     binding !== null &&
     connector.transport === "http" &&
-    connector.url === binding.endpoint &&
+    endpointMatches &&
     connector.auth?.type === "oauth" &&
     connector.auth.provider === "google-workspace" &&
     connector.auth.account === account &&

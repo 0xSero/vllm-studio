@@ -42,7 +42,7 @@ export function GoogleAccountSetup({
           <FormField
             label="OAuth client ID"
             required
-            description="Use a Google Desktop OAuth client with the Workspace MCP APIs enabled."
+            description="Use a Google Desktop OAuth client with the required Google APIs enabled."
           >
             <Input
               value={clientId}

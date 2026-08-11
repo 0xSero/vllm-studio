@@ -1,6 +1,8 @@
 import { connectMcp, type McpConnection, type McpToolInfo } from "./mcp-client";
 import { connectorAuthorizationHeaders } from "./connector-auth";
 import { listConnectors, type ConnectorConfig } from "./connectors-service";
+import { connectGmailApi } from "./gmail-api-mcp";
+import { googleWorkspaceConnectorAccount } from "./google-workspace-binding";
 
 const pool = new Map<string, McpConnection>();
 
@@ -30,6 +32,14 @@ const toTarget = (connector: ConnectorConfig, signal?: AbortSignal) => {
   };
 };
 
+const connectConnector = (connector: ConnectorConfig, signal?: AbortSignal): McpConnection =>
+  googleWorkspaceConnectorAccount(connector.id) === "gmail"
+    ? connectGmailApi(
+        (forceRefresh) => connectorAuthorizationHeaders(connector, forceRefresh),
+        signal,
+      )
+    : connectMcp(toTarget(connector, signal));
+
 async function enabledConnector(connectorId: string): Promise<ConnectorConfig> {
   const connector = (await listConnectors()).find((entry) => entry.id === connectorId);
   if (!connector) throw new Error(`Unknown connector "${connectorId}"`);
@@ -54,7 +64,7 @@ export async function getPooledConnection(connectorId: string): Promise<McpConne
   const existing = pool.get(connectorId);
   if (existing) return existing;
   const connector = await enabledConnector(connectorId);
-  const connection = connectMcp(toTarget(connector));
+  const connection = connectConnector(connector);
   pool.set(connectorId, connection);
   return connection;
 }
@@ -98,7 +108,7 @@ export async function probeConnector(
 ): Promise<{ ok: boolean; tools: McpToolInfo[]; error?: string }> {
   let connection: McpConnection | null = null;
   try {
-    connection = connectMcp(toTarget(connector, signal));
+    connection = connectConnector(connector, signal);
     const tools = await connection.listTools();
     return { ok: true, tools };
   } catch (error) {
