@@ -2,11 +2,11 @@
 
 import { useCallback, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { useStore } from "zustand";
-import { createStore, type StoreApi } from "zustand/vanilla";
+import type { StoreApi } from "zustand/vanilla";
 import { safeJson } from "@/features/agent/safe-json";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { clampComputerWidth, gentlySnapComputerWidth } from "@/features/agent/tools/persistence";
-import { createInitialState } from "@/features/agent/workspace/store";
+import { ephemeralWorkspaceStore, workspaceStore } from "@/features/agent/workspace/store";
 import {
   createSessionReplayQueue,
   type SessionReplayQueue,
@@ -85,9 +85,6 @@ export type UseWorkspaceResult = {
 export type UseWorkspaceOptions = {
   ephemeral?: boolean;
 };
-
-const workspaceStore = createStore<WorkspaceState>(() => createInitialState());
-const ephemeralWorkspaceStore = createStore<WorkspaceState>(() => createInitialState());
 
 function createMemoryStorage(): Pick<Storage, "getItem" | "setItem" | "removeItem"> {
   const entries = new Map<string, string>();

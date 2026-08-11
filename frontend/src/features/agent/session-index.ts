@@ -1,9 +1,13 @@
 "use client";
 
-import { create } from "zustand";
-import type { ComposerSkillRef } from "@/features/agent/composer-context";
+import { create, useStore } from "zustand";
 import { isWorkingStatus } from "@/features/agent/runtime/session-status";
+import type { SessionId } from "@/features/agent/runtime/types";
+import { paneSessionId } from "@/features/agent/runtime/selectors";
 import type { RuntimeSessionSummary } from "@/features/agent/runtime/api";
+import { cleanSessionTitle } from "@/features/agent/messages/helpers";
+import { workspaceStore } from "@/features/agent/workspace/store";
+import type { WorkspaceState } from "@/features/agent/workspace/types";
 import type { SessionSummary } from "@shared/agent/session-summary";
 
 export type OpenAgentSession = {
@@ -18,8 +22,6 @@ export type OpenAgentSession = {
   focused: boolean;
   startedAt?: string;
   updatedAt: string;
-  skills?: ComposerSkillRef[];
-  usedSkills?: ComposerSkillRef[];
 };
 
 export type SessionIndexRow =
@@ -130,19 +132,58 @@ export function sessionRows(
   return rows.sort((left, right) => right.sortAt - left.sortAt);
 }
 
-const useSessionIndex = create<{
-  openSessions: readonly OpenAgentSession[];
-  activity: SessionActivitySnapshot;
-}>(() => ({ openSessions: [], activity: EMPTY_ACTIVITY }));
+const useSessionIndex = create<{ activity: SessionActivitySnapshot }>(() => ({
+  activity: EMPTY_ACTIVITY,
+}));
 
-export const useOpenSessions = () => useSessionIndex((state) => state.openSessions);
-export const useSessionActivity = () => useSessionIndex((state) => state.activity);
-
-export function publishOpenSessions(incoming: readonly OpenAgentSession[]): void {
-  const next = [...incoming];
-  if (JSON.stringify(next) === JSON.stringify(useSessionIndex.getState().openSessions)) return;
-  useSessionIndex.setState({ openSessions: next });
+function openSession(
+  state: WorkspaceState,
+  sessionId: SessionId,
+  paneId: string,
+  focused: boolean,
+): OpenAgentSession | null {
+  const session = state.sessions.get(sessionId);
+  if (!session) return null;
+  return {
+    id: session.id,
+    threadId: session.piSessionId,
+    projectId: session.projectId ?? "",
+    cwd: session.cwd ?? "",
+    paneId,
+    modelId: session.modelId ?? state.selectedModel,
+    title: cleanSessionTitle(session.title) || (paneId ? "Current session" : "Background session"),
+    status: session.status,
+    focused,
+    startedAt: session.startedAt,
+    updatedAt: session.startedAt ?? "",
+  };
 }
+
+function openSessions(state: WorkspaceState): OpenAgentSession[] {
+  if (!state.hydrated) return [];
+  const sessions: OpenAgentSession[] = [];
+  const inPane = new Set<SessionId>();
+  for (const [paneId, pane] of state.panesById) {
+    const sessionId = paneSessionId(pane);
+    const session = sessionId ? state.sessions.get(sessionId) : undefined;
+    if (!session) continue;
+    inPane.add(session.id);
+    if (!(session.piSessionId || session.messages.length > 0) || session.status === "loading")
+      continue;
+    const projected = openSession(state, session.id, paneId, paneId === state.focusedPaneId);
+    if (projected) sessions.push(projected);
+  }
+  for (const session of state.sessions.values()) {
+    if (inPane.has(session.id) || (session.status !== "running" && session.status !== "starting"))
+      continue;
+    const projected = openSession(state, session.id, "", false);
+    if (projected) sessions.push(projected);
+  }
+  return sessions;
+}
+
+export const useOpenSessions = () => openSessions(useStore(workspaceStore));
+export const useSessionActivity = () => useSessionIndex((state) => state.activity);
 
 function sameIds(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
   return left.size === right.size && [...left].every((id) => right.has(id));

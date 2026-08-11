@@ -1,14 +1,9 @@
 import { Effect } from "effect";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { findPaneByPiSessionId, paneSessionId } from "@/features/agent/runtime/selectors";
-import type { Session, SessionId } from "@/features/agent/runtime/types";
-import {
-  markSessionActivitySeen,
-  publishOpenSessions,
-  type OpenAgentSession,
-} from "@/features/agent/session-index";
+import type { SessionId } from "@/features/agent/runtime/types";
+import { markSessionActivitySeen } from "@/features/agent/session-index";
 import type { ToolSelection } from "@/features/agent/tools/types";
-import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type { AgentModel, PaneId, WorkspaceState } from "@/features/agent/workspace/types";
 import {
   sessionMetaForPersistence,
@@ -18,11 +13,6 @@ import {
 import { writePaneState } from "@/features/agent/workspace/persistence";
 import { readDefaultAgentModel } from "@/features/agent/workspace/model-preference";
 import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
-
-const EMPTY_SELECTION: ToolSelection = {
-  skills: [],
-  promptTemplates: [],
-};
 
 type SetupCheck = { id: string; ok: boolean; guidance?: string };
 
@@ -142,65 +132,6 @@ function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps):
   }
 }
 
-function openSessionSnapshot(
-  state: WorkspaceState,
-  tab: Session,
-  selectionFor: (id: SessionId) => ToolSelection,
-  paneId: string,
-  focused: boolean,
-): OpenAgentSession {
-  const selection = selectionFor(tab.id);
-  const usedSkills = usedSkillsForSession(tab);
-  return {
-    id: tab.id,
-    threadId: tab.piSessionId,
-    projectId: tab.projectId ?? "",
-    cwd: tab.cwd ?? "",
-    paneId,
-    modelId: tab.modelId ?? state.selectedModel,
-    title: cleanSessionTitle(tab.title) || (paneId ? "Current session" : "Background session"),
-    status: tab.status,
-    focused,
-    startedAt: tab.startedAt,
-    updatedAt: tab.startedAt ?? "",
-    skills: selection.skills.length > 0 ? selection.skills : undefined,
-    usedSkills: usedSkills.length > 0 ? usedSkills : undefined,
-  };
-}
-
-function openSessionsFromWorkspace(
-  state: WorkspaceState,
-  selectionFor: (id: SessionId) => ToolSelection,
-): OpenAgentSession[] | null {
-  if (!state.hydrated) return null;
-  const out: OpenAgentSession[] = [];
-  const inPane = new Set<SessionId>();
-  for (const [paneId, pane] of state.panesById.entries()) {
-    const sessionId = paneSessionId(pane);
-    const tab = sessionId ? state.sessions.get(sessionId) : undefined;
-    if (!tab) continue;
-    inPane.add(tab.id);
-    if (!(Boolean(tab.piSessionId) || tab.messages.length > 0) || tab.status === "loading")
-      continue;
-    out.push(openSessionSnapshot(state, tab, selectionFor, paneId, paneId === state.focusedPaneId));
-  }
-  for (const tab of state.sessions.values()) {
-    if (inPane.has(tab.id)) continue;
-    if (tab.status !== "running" && tab.status !== "starting") continue;
-    out.push(openSessionSnapshot(state, tab, selectionFor, "", false));
-  }
-  return out;
-}
-
-function usedSkillsForSession(tab: Pick<Session, "messages" | "usedSkills">): ComposerSkillRef[] {
-  const byId = new Map<string, ComposerSkillRef>();
-  for (const skill of tab.usedSkills ?? []) byId.set(skill.id || skill.path || skill.name, skill);
-  for (const message of tab.messages) {
-    for (const skill of message.skills ?? []) byId.set(skill.id || skill.path || skill.name, skill);
-  }
-  return [...byId.values()];
-}
-
 function storedSessionsKey(state: WorkspaceState): string {
   const entries: Array<{ id: string; title: string; cwd?: string }> = [];
   for (const tab of state.sessions.values()) {
@@ -209,36 +140,6 @@ function storedSessionsKey(state: WorkspaceState): string {
   }
   entries.sort((a, b) => a.id.localeCompare(b.id));
   return JSON.stringify(entries);
-}
-
-function openSessionsSignature(state: WorkspaceState): string {
-  if (!state.hydrated) return "\u0000unhydrated";
-  const parts: string[] = [`m:${state.selectedModel ?? ""}`, `f:${state.focusedPaneId ?? ""}`];
-  for (const [paneId, pane] of state.panesById.entries())
-    parts.push(`P:${paneId}>${pane.sessionId}`);
-  for (const tab of state.sessions.values()) {
-    parts.push(
-      `S:${tab.id}|${tab.status}|${tab.piSessionId ?? ""}|` +
-        `${tab.projectId ?? ""}|${tab.cwd ?? ""}|${tab.modelId ?? ""}|${tab.startedAt ?? ""}|` +
-        `${tab.title ?? ""}|${tab.messages.length}|${tab.usedSkills?.length ?? 0}`,
-    );
-  }
-  return parts.join("\n");
-}
-
-function publishWorkspaceSessions(
-  prevState: WorkspaceState,
-  nextState: WorkspaceState,
-  deps: WorkspaceEffectDeps,
-): void {
-  if (openSessionsSignature(prevState) === openSessionsSignature(nextState)) return;
-  const selectionFor = deps.selectionFor ?? (() => EMPTY_SELECTION);
-  const next = openSessionsFromWorkspace(nextState, selectionFor);
-  if (!next) return;
-  publishOpenSessions(next);
-  for (const session of next) {
-    if (session.focused) markSessionActivitySeen(session.id, session.threadId);
-  }
 }
 
 function queueLocatedReplay(
@@ -311,6 +212,8 @@ export function runWorkspaceEffect(
   persistActionEffects(prevState, nextState, deps);
   queueReplayEffects(prevState, nextState, deps);
   if (!prevState.hydrated && nextState.hydrated) runInitialApiEffects(nextState, deps);
-  publishWorkspaceSessions(prevState, nextState, deps);
+  const focusedPane = nextState.panesById.get(nextState.focusedPaneId);
+  const focusedSession = focusedPane ? nextState.sessions.get(focusedPane.sessionId) : undefined;
+  if (focusedSession) markSessionActivitySeen(focusedSession.id, focusedSession.piSessionId);
   if (storedSessionsKey(prevState) !== storedSessionsKey(nextState)) scheduleSessionsRefresh(deps);
 }
