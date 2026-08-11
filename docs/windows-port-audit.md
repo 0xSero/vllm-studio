@@ -354,6 +354,11 @@ Upstream evidence:
 - vLLM is not supported natively on Windows according to its current official
   installation documentation.
 - llama.cpp publishes native Windows x64 CUDA artifacts.
+- The official `b10355` Windows CUDA 12.4 and CUDA runtime archives install
+  together, `llama-server.exe --version` succeeds, and `--list-devices` reports
+  both host NVIDIA GPUs (RTX 3090 and RTX 3080 Ti).
+- The managed Windows installer completes its release lookup, artifact
+  selection, download, extraction, activation, and version probe end to end.
 
 ### Inferred from code, to be validated by milestones
 
@@ -367,7 +372,7 @@ Upstream evidence:
 
 ### Missing collection or experimental validation
 
-- Native Windows llama.cpp download/install and CUDA model launch.
+- Native Windows llama.cpp CUDA model launch.
 - Model download to paths with spaces, Unicode, a non-C: drive, and UNC.
 - Controller-to-llama.cpp lifecycle, graceful stop, forced stop, and stale
   ownership recovery on Windows.
