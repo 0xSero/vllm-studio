@@ -7,7 +7,7 @@ import { modelIdFromPath } from "@/lib/huggingface";
 import type { ModelInfo, RuntimeTarget } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import {
-  defaultRuntimeForBackend,
+  preferredRuntimeForBackend,
   runtimeId,
   runtimeOptionFor,
   runtimeOptionsFor,
@@ -71,7 +71,7 @@ export function RecipeModalTabGeneral({
 }) {
   const backend = recipe.backend ?? "vllm";
   const options = runtimeOptionsFor(backend, runtimeTargets);
-  const runtime = recipe.runtime ?? defaultRuntimeForBackend(backend);
+  const runtime = recipe.runtime ?? preferredRuntimeForBackend(backend, runtimeTargets);
   const selected = runtimeOptionFor(runtime, options);
   const allOptions = options.some((option) => option.id === selected.id)
     ? options

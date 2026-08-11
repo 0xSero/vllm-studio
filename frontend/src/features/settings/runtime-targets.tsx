@@ -26,6 +26,11 @@ export const MANAGED_RUNTIME_BACKENDS: readonly ManagedRuntimeInstallBackend[] =
   "mlx",
 ] as const;
 
+export const managedRuntimeBackendsFor = (
+  targets: RuntimeTarget[],
+): readonly ManagedRuntimeInstallBackend[] =>
+  targets.some((target) => target.kind === "wsl2") ? [] : MANAGED_RUNTIME_BACKENDS;
+
 export const isRunningEngineJob = (job: EngineJob | undefined): boolean =>
   job?.status === "queued" || job?.status === "running";
 
@@ -401,5 +406,7 @@ function RuntimeUpdateDetails({ update }: { update: NonNullable<RuntimeTarget["u
 }
 
 function pathForTarget(target: RuntimeTarget) {
-  return target.pythonPath ?? target.binaryPath ?? target.dockerImage ?? "";
+  return (
+    target.wslDistribution ?? target.pythonPath ?? target.binaryPath ?? target.dockerImage ?? ""
+  );
 }

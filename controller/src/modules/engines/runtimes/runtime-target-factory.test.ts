@@ -43,4 +43,25 @@ describe("runtime update capabilities", () => {
     expect(target.capabilities.canUpdate).toBe(true);
     expect(target.update?.packageSpec).toBe("mlx-lm");
   });
+
+  test("launches but never updates or inspects an unprobed WSL2 engine", () => {
+    const target = makeRuntimeTarget({
+      backend: "vllm",
+      kind: "wsl2",
+      source: "discovered",
+      key: "Ubuntu",
+      label: "vLLM via WSL2 (Ubuntu)",
+      installed: true,
+      binaryPath: "vllm",
+      wslDistribution: "Ubuntu",
+      healthStatus: "warning",
+      healthMessage: "Engine availability is checked at launch.",
+    });
+
+    expect(target.capabilities.canLaunch).toBe(true);
+    expect(target.capabilities.canUpdate).toBe(false);
+    expect(target.capabilities.canInspectOptions).toBe(false);
+    expect(target.wslDistribution).toBe("Ubuntu");
+    expect(target.health.status).toBe("warning");
+  });
 });

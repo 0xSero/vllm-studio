@@ -4,6 +4,7 @@ import { runCommandAsyncEffect, type AsyncCommandResult } from "../../core/comma
 export interface WslDistribution {
   readonly name: string;
   readonly version: number;
+  readonly default: boolean;
 }
 
 const WSL_TIMEOUT_MS = 15_000;
@@ -17,12 +18,13 @@ export const normalizeWslOutput = (value: string): string =>
 export const parseWslVerboseList = (value: string): WslDistribution[] => {
   const distributions: WslDistribution[] = [];
   for (const rawLine of normalizeWslOutput(value).split(/\r?\n/)) {
+    const isDefault = /^\s*\*/.test(rawLine);
     const line = rawLine.replace(/^\s*\*\s*/, "").trim();
     const columns = line.split(/\s{2,}/).map((column) => column.trim());
     const version = Number(columns.at(-1));
     const name = columns[0] ?? "";
     if (!name || columns.length < 3 || !Number.isInteger(version)) continue;
-    distributions.push({ name, version });
+    distributions.push({ name, version, default: isDefault });
   }
   return distributions;
 };

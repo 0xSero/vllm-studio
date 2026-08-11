@@ -18,11 +18,11 @@ import {
 } from "./settings-ui";
 import {
   ENGINE_META,
-  MANAGED_RUNTIME_BACKENDS,
   ManagedRuntimeInstallRows,
   RuntimeTargetRows,
   RuntimeTargetStatus,
   isManagedRuntimeTarget,
+  managedRuntimeBackendsFor,
   isRunningEngineJob,
   type ManagedRuntimeInstallBackend,
 } from "./runtime-targets";
@@ -206,7 +206,7 @@ function EngineRows({
       <>
         {errorNotice}
         <ManagedRuntimeInstallRows
-          backends={MANAGED_RUNTIME_BACKENDS}
+          backends={managedRuntimeBackendsFor(view.targets)}
           targets={view.targets}
           jobs={jobs}
           onInstall={handleManagedInstall}

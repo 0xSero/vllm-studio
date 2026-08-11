@@ -24,6 +24,10 @@ import {
 } from "./runtime-target-probes";
 import { type EngineOperationError, getEngineSpec } from "../engine-spec";
 import { pythonPathInVenv } from "./python-venv-path";
+import {
+  listWslDistributions,
+  type WslDistribution,
+} from "../../compute/wsl-platform";
 
 /**
  * Runtime-target discovery: every way an engine can exist on this box (running process,
@@ -308,6 +312,27 @@ const bundledCandidates = (): Candidate[] => {
   }
 };
 
+export const runtimeTargetsForWslDistributions = (
+  distributions: readonly WslDistribution[],
+): RuntimeTarget[] =>
+  distributions.flatMap((distribution) =>
+    (["vllm", "sglang"] as const).map((backend) =>
+      makeRuntimeTarget({
+        backend,
+        kind: "wsl2",
+        source: "discovered",
+        key: distribution.name,
+        label: `${ENGINE_LABEL[backend]} via WSL2 (${distribution.name})`,
+        installed: true,
+        binaryPath: backend,
+        wslDistribution: distribution.name,
+        wslDefault: distribution.default,
+        healthStatus: "warning",
+        healthMessage: "Engine availability is checked at launch; discovery does not start WSL2.",
+      }),
+    ),
+  );
+
 /* ── materialize + merge ─────────────────────────────────────────────────── */
 
 const materialize = (candidate: Candidate): Effect.Effect<RuntimeTarget, EngineOperationError> =>
@@ -434,6 +459,7 @@ const sortTargets = (targets: RuntimeTarget[]): RuntimeTarget[] =>
       BACKEND_ORDER[first.backend] - BACKEND_ORDER[second.backend] ||
       Number(second.active) - Number(first.active) ||
       Number(second.installed) - Number(first.installed) ||
+      Number(second.wslDefault) - Number(first.wslDefault) ||
       compareVersions(second.version, first.version) ||
       first.label.localeCompare(second.label),
   );
@@ -458,6 +484,8 @@ export const getRuntimeTargets = (
         Effect.sync(() =>
           backend === "llamacpp"
             ? [...runningCandidates(backend, runningProcess), ...llamacppCandidates(config)]
+            : process.platform === "win32"
+              ? runningCandidates(backend, runningProcess)
             : [
                 ...runningCandidates(backend, runningProcess),
                 ...pythonCandidates(backend as PythonProbeBackend, config),
@@ -466,11 +494,13 @@ export const getRuntimeTargets = (
       { concurrency: "unbounded" },
     );
     const docker = yield* dockerCandidates();
+    const wsl = yield* listWslDistributions();
     const all = [...candidateGroups.flat(), ...docker, ...bundledCandidates()];
 
     const materialized = yield* Effect.forEach(all, materialize, { concurrency: "unbounded" });
     const targets: RuntimeTarget[] = [];
     for (const target of materialized) addTarget(targets, target);
+    for (const target of runtimeTargetsForWslDistributions(wsl)) addTarget(targets, target);
 
     const selectedTargets = sortTargets(withSelection(targets, config));
     targetsCache = {

@@ -22,9 +22,9 @@ describe("WSL2 discovery", () => {
 
     expect(normalizeWslOutput(nulOutput)).toBe(output.trim());
     expect(parseWslVerboseList(nulOutput)).toEqual([
-      { name: "Ubuntu", version: 2 },
-      { name: "docker-desktop", version: 2 },
-      { name: "Legacy", version: 1 },
+      { name: "Ubuntu", version: 2, default: true },
+      { name: "docker-desktop", version: 2, default: false },
+      { name: "Legacy", version: 1, default: false },
     ]);
   });
 

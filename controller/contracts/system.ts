@@ -50,6 +50,7 @@ export interface RuntimeTarget {
   binaryPath?: string | null;
   dockerImage?: string | null;
   wslDistribution?: string | null;
+  wslDefault?: boolean;
   source: "configured" | "discovered" | "running" | "bundled";
   capabilities: {
     canLaunch: boolean;
