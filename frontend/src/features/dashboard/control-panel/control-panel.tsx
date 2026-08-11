@@ -1,6 +1,6 @@
 "use client";
 
-import type { DashboardLayoutProps } from "../layout/dashboard-types";
+import type { useDashboardData } from "../use-dashboard-data";
 import { StatusSection } from "./status-section";
 import { GpuSection } from "./gpu-section";
 import { useApiUrlCensored } from "@/ui/api-url-censor";
@@ -17,7 +17,9 @@ const DOT_BY_STATE: Record<string, string> = {
   offline: "bg-(--err)",
 };
 
-export function ControlPanel(props: DashboardLayoutProps) {
+type DashboardData = ReturnType<typeof useDashboardData>;
+
+export function ControlPanel(props: DashboardData) {
   const { currentProcess, currentRecipe, metrics, gpus, recipes } = props;
 
   return (
@@ -119,7 +121,7 @@ function ControllerTab({
   );
 }
 
-function ActivityStrip({ logs }: DashboardLayoutProps) {
+function ActivityStrip({ logs }: DashboardData) {
   const tail = logs.length > 0 ? logs.slice(-120) : [];
 
   return (
