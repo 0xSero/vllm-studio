@@ -136,7 +136,7 @@ export function DesktopSidebar({
                   event.preventDefault();
                   onNewTask();
                 }}
-                className="flex h-[var(--sidebar-row-height)] shrink-0 items-center gap-2 rounded-[var(--sidebar-row-radius)] px-2 text-(--fg) transition-colors hover:bg-(--hover)"
+                className="flex h-[var(--sidebar-row-height)] shrink-0 items-center gap-2 rounded-[var(--sidebar-row-radius)] px-2 text-(--fg)/85 transition-colors hover:bg-(--hover) hover:text-(--fg)"
                 title="New task"
               >
                 <SquarePen className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.6} />

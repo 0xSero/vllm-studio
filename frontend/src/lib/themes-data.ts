@@ -115,29 +115,29 @@ const ZAI_DARK: ThemeTokens = {
 };
 
 const CHATGPT_DARK: ThemeTokens = {
-  bg: "#212121",
-  fg: "#ececec",
-  dim: "#b4b4b4",
-  border: "#ffffff1a",
-  surface: "#2f2f2f",
-  accent: "#ffffff",
-  hl1: "#b4b4b4",
-  hl2: "#8f8f8f",
-  hl3: "#676767",
+  bg: "#191919",
+  fg: "#d9d9d8",
+  dim: "#a0a09f",
+  border: "#ffffff0d",
+  surface: "#202020",
+  accent: "#d9d9d8",
+  hl1: "#a0a09f",
+  hl2: "#7b7b7b",
+  hl3: "#626262",
   err: "#ff6764",
 };
 
 const CHATGPT_DARK_UI: Partial<ThemeUiTokens> = {
-  "surface-2": "#2f2f2f",
-  "surface-3": "#303030",
-  rail: "#171717",
-  border: "#ffffff1a",
-  separator: "#ffffff0d",
-  hover: "#2f2f2f",
-  active: "#2f2f2f",
-  composer: "#303030",
-  "composer-footer": "#212121",
-  bubble: "#303030",
+  "surface-2": "#202020",
+  "surface-3": "#282828",
+  rail: "#212121",
+  border: "#ffffff0d",
+  separator: "#ffffff08",
+  hover: "#282828",
+  active: "#2e2e2e",
+  composer: "#282828",
+  "composer-footer": "#282828",
+  bubble: "#232323",
 };
 
 // Accent variants keep the canonical dark surfaces; only the brand

@@ -91,7 +91,7 @@ export function NavItemDesktop({
       prefetch={false}
       title={label}
       className={`group flex h-[var(--sidebar-row-height)] shrink-0 items-center gap-2 rounded-[var(--sidebar-row-radius)] px-2 transition-colors ${
-        active ? "bg-(--active) text-(--fg)" : "text-(--fg) hover:bg-(--hover)"
+        active ? "bg-(--active) text-(--fg)" : "text-(--fg)/85 hover:bg-(--hover) hover:text-(--fg)"
       }`}
     >
       <Icon
