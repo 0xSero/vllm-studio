@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { QueuedMessage } from "@/features/agent/messages";
-import { CornerDownRight, Trash2 } from "@/ui/icon-registry";
+import { CornerDownRight, Trash2 } from "lucide-react";
 import { cx } from "@/ui/utils";
 
 type QueuedMessageStackProps = {

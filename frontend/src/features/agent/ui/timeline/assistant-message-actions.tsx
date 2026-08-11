@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Copy, GitFork } from "@/ui/icon-registry";
+import { Copy, GitFork } from "lucide-react";
 import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
 import { writeClipboardText } from "@/lib/clipboard";
 

@@ -3,15 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { ErrorBox, StatusPill } from "@/ui";
-import {
-  Boxes,
-  ChevronRight,
-  Gauge,
-  Monitor,
-  Plug,
-  Server,
-  type LucideIcon,
-} from "@/ui/icon-registry";
+import { Boxes, ChevronRight, Gauge, Monitor, Plug, Server, type LucideIcon } from "lucide-react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { SettingsLayout, type SettingsSectionDef } from "@/features/settings/settings-ui";
 import { RecipesContent } from "@/features/recipes/recipes-content/recipes-content";

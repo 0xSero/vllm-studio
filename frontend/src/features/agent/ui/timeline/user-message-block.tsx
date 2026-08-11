@@ -1,4 +1,4 @@
-import { Copy } from "@/ui/icon-registry";
+import { Copy } from "lucide-react";
 import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
 import type { ChatMessage, ChatMessageAttachment } from "@/features/agent/messages";
 import { AssistantActionButton } from "@/features/agent/ui/timeline/assistant-message-actions";

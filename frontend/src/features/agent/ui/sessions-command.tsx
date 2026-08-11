@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search } from "@/ui/icon-registry";
+import { Search } from "lucide-react";
 import { POPOVER_PANEL_CLASS } from "@/ui/popover";
 import { ChatIcon, Folder } from "@/ui/icons";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";

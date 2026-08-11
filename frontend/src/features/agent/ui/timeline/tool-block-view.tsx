@@ -8,7 +8,7 @@ import {
   TerminalSquare,
   Wrench,
   type LucideIcon,
-} from "@/ui/icon-registry";
+} from "lucide-react";
 import type { ToolBlock } from "@/features/agent/messages";
 import {
   FILE_WRITE_TOOL_NAMES,

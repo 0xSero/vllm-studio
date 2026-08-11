@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button, EmptySafeNotice, ModelButton, UiModal, UiModalHeader } from "@/ui";
-import { Plus, Trash2 } from "@/ui/icon-registry";
+import { Plus, Trash2 } from "lucide-react";
 import type { Rig, RigNode } from "@/lib/types";
 import type { RigNodePayload } from "@/lib/api/rigs";
 import { ModelSection, ModelStatus } from "@/features/recipes/recipes-content/model-page";

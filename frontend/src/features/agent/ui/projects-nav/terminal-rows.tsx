@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { TerminalSquare, X as XIcon } from "@/ui/icon-registry";
+import { TerminalSquare, X as XIcon } from "lucide-react";
 import {
   OPEN_TERMINAL_EVENT,
   terminalOwnerLabel,

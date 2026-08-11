@@ -1,7 +1,7 @@
 "use client";
 
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
-import { ExternalLink, X } from "@/ui/icon-registry";
+import { ExternalLink, X } from "lucide-react";
 import { getQuickPanelBridge } from "@/features/agent/ui/quick-panel/quick-panel-bridge";
 import { QuickProjectPicker } from "@/features/agent/ui/quick-panel/quick-project-picker";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";

@@ -2,7 +2,7 @@
 
 import { RIG_HARDWARE_TYPE_LABELS, RIG_NODE_ROLE_LABELS } from "@local-studio/contracts/rigs";
 import { ModelButton } from "@/ui";
-import { SquarePen, Trash2 } from "@/ui/icon-registry";
+import { SquarePen, Trash2 } from "lucide-react";
 import type { RigAccelerator, RigNode } from "@/lib/types";
 import { ModelRow, ModelStatus, ModelValue } from "@/features/recipes/recipes-content/model-page";
 import { HardwareArt } from "./hardware-art";
