@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { SettingsView } from "@/features/settings/settings-view";
 import { useSettings } from "@/features/settings/use-settings";
 import { SetupView } from "@/features/setup/setup-view/setup-view";
-import { useSetup } from "@/features/setup/use-setup";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { legacyIntegrationHref } from "@/features/integrations/integration-navigation";
 
@@ -17,7 +16,6 @@ const hasSettingsHash = () => {
 export default function SettingsPage() {
   const router = useRouter();
   const configs = useSettings();
-  const setup = useSetup();
   const [setupComplete] = useState(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("local-studio-setup-complete") === "true";
@@ -36,7 +34,7 @@ export default function SettingsPage() {
     !configs.hasConfigData;
 
   if (showSetupWizard) {
-    return <SetupView {...setup} />;
+    return <SetupView />;
   }
 
   return (

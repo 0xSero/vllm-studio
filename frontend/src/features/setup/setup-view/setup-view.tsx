@@ -2,87 +2,12 @@
 
 import { AlertTriangle } from "@/ui/icon-registry";
 import { Alert, Spinner } from "@/ui";
-import type { ManagedRuntimeInstallBackend } from "@/features/settings/runtime-targets";
-import type {
-  EngineJob,
-  ModelDownload,
-  RuntimeTarget,
-  StarterPreset,
-  StudioDiagnostics,
-  StudioSettings,
-} from "@/lib/types";
+import { useSetup } from "../use-setup";
 import { SetupShell, type SetupSurface } from "./setup-shell";
 import { StepBringup } from "./step-bringup";
 import { StepHardware } from "./step-hardware";
 import { StepModel } from "./step-model";
 import { StepWelcome } from "./step-welcome";
-import type { GgufFileOption } from "../setup-model-files";
-
-interface SetupBenchmarkResult {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_time_s: number;
-  generation_tps: number;
-}
-
-interface SetupViewProps {
-  step: number;
-  setStep: (step: number) => void;
-  loading: boolean;
-  error: string | null;
-  loadWarning: string | null;
-  settings: StudioSettings | null;
-  modelsDir: string;
-  setModelsDir: (value: string) => void;
-  diagnostics: StudioDiagnostics | null;
-  presets: StarterPreset[];
-  selectedPreset: StarterPreset | null;
-  beginPresetSetup: (preset: StarterPreset) => void;
-  remoteApiKey: string;
-  setRemoteApiKey: (value: string) => void;
-  connectingRemote: boolean;
-  remoteError: string | null;
-  connectRemotePreset: (preset: StarterPreset) => void;
-  runtimeTargets: RuntimeTarget[];
-  runtimeJobs: EngineJob[];
-  maxVram: number;
-  selectedModel: string;
-  manualModelId: string;
-  setManualModelId: (value: string) => void;
-  manualGgufOptions: GgufFileOption[];
-  manualGgufFile: string;
-  setManualGgufFile: (value: string) => void;
-  resolvingManualModel: boolean;
-  savingSettings: boolean;
-  upgrading: boolean;
-  hardwareConfirmed: boolean;
-  setHardwareConfirmed: (value: boolean) => void;
-  downloads: ModelDownload[];
-  activeDownload: ModelDownload | null;
-  pauseDownload: (id: string) => void;
-  resumeDownload: (id: string) => void;
-  cancelDownload: (id: string) => void;
-  saveSettings: () => void;
-  installRuntime: (backend: ManagedRuntimeInstallBackend) => void;
-  updateRuntimeTarget: (target: RuntimeTarget) => void;
-  beginVariantDownload: (modelId: string, allowPatterns?: string[]) => void;
-  submitManualModel: () => void;
-  continueFromHardware: () => void;
-  configuringRecipe: boolean;
-  launchError: string | null;
-  createdRecipeId: string | null;
-  configureAndLaunch: () => void;
-  benchmarking: boolean;
-  benchmarkResult: SetupBenchmarkResult | null;
-  benchmarkError: string | null;
-  runSetupBenchmark: () => void;
-  openChat: () => void;
-  openDashboard: () => void;
-  skipSetup: () => void;
-}
-
-/** Six wizard steps rendered as three surfaces: where things live, what to run, and a
- *  live bring-up checklist. The state machine in use-setup is untouched. */
 const SURFACES: readonly (SetupSurface & { readonly steps: readonly number[] })[] = [
   {
     steps: [0, 1],
@@ -104,7 +29,8 @@ const SURFACES: readonly (SetupSurface & { readonly steps: readonly number[] })[
   },
 ];
 
-export function SetupView(props: SetupViewProps) {
+export function SetupView() {
+  const props = useSetup();
   const { step, loading, error, loadWarning, skipSetup } = props;
   const surfaceIndex = SURFACES.findIndex((surface) => surface.steps.includes(step));
   const surface = SURFACES[surfaceIndex] ?? SURFACES[0];
