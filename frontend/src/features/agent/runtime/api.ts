@@ -103,9 +103,7 @@ export function loadRuntimeStatus(
         cache: "no-store",
       });
       const payload = yield* safeJsonEffect<unknown>(response);
-      const decoded = decodeRuntimeStatusResponse(payload);
-      if (!decoded) return null;
-      return { ...decoded.status, events: decoded.events ?? [] };
+      return decodeRuntimeStatusResponse(payload);
     }).pipe(Effect.catch(() => Effect.succeed(null))),
   );
 }

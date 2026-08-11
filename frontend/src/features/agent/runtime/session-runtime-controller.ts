@@ -186,13 +186,14 @@ function applyRuntimeSnapshot(session: Session, status?: RuntimeStatus): Session
   const activeAssistantId = status.active
     ? [...messages].reverse().find((message) => message.role === "assistant")?.id
     : undefined;
-  return {
+  const next = {
     ...session,
     messages,
     ...(projection?.tokenStats ? { tokenStats: projection.tokenStats } : {}),
     ...(status.queue ? { queue: projectQueue(status.queue.followUp, session.queue ?? []) } : {}),
     activeAssistantId,
   };
+  return status.extensionUiRequest ? applyAuxiliaryEvent(next, status.extensionUiRequest) : next;
 }
 
 export function createSessionRuntimeController(

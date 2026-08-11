@@ -60,6 +60,7 @@ export type PiAgentStatus = {
   contextUsage: import("../../../shared/agent/context-usage").RuntimeContextUsage | null;
   messages: readonly unknown[];
   queue: { steering: readonly string[]; followUp: readonly string[] };
+  extensionUiRequest: Record<string, unknown> | null;
 };
 
 export interface PiAgentSession {
@@ -94,7 +95,6 @@ export interface PiAgentSession {
   compact(customInstructions?: string): Promise<unknown>;
   stop(): Promise<void>;
   readonly status: PiAgentStatus;
-  getEventsAfter(seq: number): LoggedPiEvent[];
   onLoggedEvent(listener: (event: LoggedPiEvent) => void): () => void;
   adoptPiSessionId(piSessionId: string | null | undefined): void;
   respondExtensionUi(

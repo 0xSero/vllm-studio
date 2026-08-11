@@ -28,11 +28,6 @@ import { isAgentSettledEvent } from "../pi-runtime-state";
 import type { LoggedPiEvent, PiAgentSession, PiAgentStatus } from "../pi-runtime-types";
 import { listSessions } from "../sessions-store";
 import { errorMessage, jsonError } from "./helpers";
-import {
-  initialRuntimeStatusPhase,
-  replayAfterCursor,
-  shouldSendTrailingIdleStatus,
-} from "./stream-order";
 
 // ─── POST /api/agent/turn ─────────────────────────────────────────────────
 
@@ -393,19 +388,13 @@ export function handleRuntimeStatus(request: Request): Response {
   const searchParams = new URL(request.url).searchParams;
   const sessionId = searchParams.get("sessionId")?.trim() || "default";
   const piSessionId = searchParams.get("piSessionId")?.trim() || null;
-  const after = Number(searchParams.get("after") ?? 0);
   const resolved = piRuntimeManager.findSessionForLookup(sessionId, piSessionId);
   if (!resolved) {
-    return Response.json({ sessionId, status: null, events: [] });
+    return Response.json({ sessionId, status: null });
   }
-  const afterSeq = replayAfterCursor(
-    Number.isFinite(after) ? after : 0,
-    resolved.session.status.eventSeq,
-  );
   return Response.json({
     sessionId: resolved.sessionId,
     status: resolved.session.status,
-    events: resolved.session.getEventsAfter(afterSeq),
   });
 }
 
@@ -440,10 +429,7 @@ export function handleRuntimeEvents(request: Request): Response {
       let closed = false;
       let off = () => {};
       let ping: ReturnType<typeof setInterval> | null = null;
-      let replaying = true;
-      const replayQueue: LoggedPiEvent[] = [];
-      const sentSeqs = new Set<number>();
-      let after = replayAfterCursor(requestedAfter, session.status.eventSeq);
+      const after = requestedAfter > session.status.eventSeq ? 0 : requestedAfter;
       const safeSend = (payload: unknown, id?: number) => {
         if (closed) return;
         try {
@@ -465,9 +451,7 @@ export function handleRuntimeEvents(request: Request): Response {
       };
 
       const sendLogged = (logged: LoggedPiEvent) => {
-        after = replayAfterCursor(after, session.status.eventSeq);
-        if (logged.seq <= after || sentSeqs.has(logged.seq)) return;
-        sentSeqs.add(logged.seq);
+        if (logged.seq <= after) return;
         safeSend(
           { type: "pi", seq: logged.seq, event: logged.event, snapshot: session.status },
           logged.seq,
@@ -477,43 +461,12 @@ export function handleRuntimeEvents(request: Request): Response {
           setTimeout(close, 25);
         }
       };
-      const onLiveEvent = (logged: LoggedPiEvent) => {
-        if (replaying) {
-          replayQueue.push(logged);
-          return;
-        }
-        sendLogged(logged);
-      };
-
-      off = session.onLoggedEvent(onLiveEvent);
-      const backlog = session.getEventsAfter(after);
-      const initialPhase = initialRuntimeStatusPhase(session.status.active, backlog.length);
-      if (initialPhase) {
-        safeSend({
-          type: "status",
-          phase: initialPhase,
-          session: session.status,
-        });
-      }
-      let sentTerminalStatus = false;
-      for (const logged of backlog) {
-        sendLogged(logged);
-        if (isAgentSettledEvent(logged.event)) sentTerminalStatus = true;
-      }
-      replaying = false;
-      for (const logged of replayQueue) {
-        sendLogged(logged);
-        if (isAgentSettledEvent(logged.event)) sentTerminalStatus = true;
-      }
-      if (
-        shouldSendTrailingIdleStatus({
-          active: session.status.active,
-          replayBacklogCount: backlog.length + replayQueue.length,
-          sentTerminalStatus,
-        })
-      ) {
-        safeSend({ type: "status", phase: "idle", session: session.status });
-      }
+      off = session.onLoggedEvent(sendLogged);
+      safeSend({
+        type: "status",
+        phase: session.status.active ? "running" : "idle",
+        session: session.status,
+      });
 
       ping = setInterval(() => {
         if (!session.status.active) {

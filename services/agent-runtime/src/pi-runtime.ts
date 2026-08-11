@@ -276,7 +276,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   private runtime: AgentSessionRuntime | null = null;
   private unsubscribe: (() => void) | null = null;
   private eventSeq = 0;
-  private eventLog: LoggedPiEvent[] = [];
   private activePromptCount = 0;
   private lastError: string | null = null;
   private currentFingerprint = "";
@@ -289,7 +288,11 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   private bufferedQueueEvent: PiEvent | null = null;
   private extensionUiPending = new Map<
     string,
-    { method: "select" | "confirm" | "input" | "editor"; resolve: (value: unknown) => void }
+    {
+      method: "select" | "confirm" | "input" | "editor";
+      event: Record<string, unknown>;
+      resolve: (value: unknown) => void;
+    }
   >();
 
   ensureStarted(
@@ -321,7 +324,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
 
         yield* this.stopEffect();
         this.eventSeq = 0;
-        this.eventLog = [];
         this.activePromptCount = 0;
         this.lastError = null;
 
@@ -728,13 +730,13 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
       agentDir: this.agentDir,
       eventSeq: this.eventSeq,
       lastError: this.lastError,
-      eventLog: this.eventLog,
       contextUsage: this.computeContextUsage(),
       messages: sdkSession?.messages ?? [],
       queue: {
         steering: sdkSession?.getSteeringMessages() ?? [],
         followUp: sdkSession?.getFollowUpMessages() ?? [],
       },
+      extensionUiRequest: this.extensionUiPending.values().next().value?.event ?? null,
     });
   }
 
@@ -754,10 +756,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
           ? shouldCompact(tokens, usage.contextWindow, settings)
           : false,
     };
-  }
-
-  getEventsAfter(seq: number): LoggedPiEvent[] {
-    return piEventsAfter(this.eventLog, seq);
   }
 
   onLoggedEvent(listener: (event: LoggedPiEvent) => void) {
@@ -788,8 +786,9 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
           resolve(value);
         };
         const cancel = () => finish(method === "confirm" ? false : undefined);
-        this.extensionUiPending.set(requestId, { method, resolve: finish });
-        this.recordEvent({ type: "extension_ui_request", requestId, method, ...payload });
+        const event = { type: "extension_ui_request", requestId, method, ...payload };
+        this.extensionUiPending.set(requestId, { method, event, resolve: finish });
+        this.recordEvent(event);
         if (timeout && timeout > 0) timer = setTimeout(cancel, timeout);
         signal?.addEventListener("abort", cancel, { once: true });
         if (signal?.aborted) cancel();
@@ -849,8 +848,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
       event: event as PiEvent,
       timestamp: new Date().toISOString(),
     };
-    this.eventLog.push(logged);
-    if (this.eventLog.length > 2_000) this.eventLog.splice(0, this.eventLog.length - 2_000);
     this.emit("loggedEvent", logged);
     this.emit("event", event);
   }
@@ -862,11 +859,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     this.bufferedQueueEvent = null;
     this.recordEvent(event);
   }
-}
-
-function piEventsAfter(eventLog: LoggedPiEvent[], seq: number): LoggedPiEvent[] {
-  const floor = Number.isFinite(seq) ? Math.max(0, Math.trunc(seq)) : 0;
-  return eventLog.filter((entry) => entry.seq > floor);
 }
 
 const DEFAULT_SESSION_ID = "default";

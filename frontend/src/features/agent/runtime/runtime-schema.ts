@@ -7,12 +7,6 @@ export const RuntimeContextUsageSchema = Schema.Struct({
   shouldCompact: Schema.Boolean,
 });
 
-const RuntimeLoggedEventSchema = Schema.Struct({
-  seq: Schema.Number,
-  event: Schema.Record(Schema.String, Schema.Unknown),
-  timestamp: Schema.optional(Schema.String),
-});
-
 const RuntimeQueueSchema = Schema.Struct({
   steering: Schema.Array(Schema.String),
   followUp: Schema.Array(Schema.String),
@@ -24,10 +18,12 @@ export const RuntimeStatusSchema = Schema.Struct({
   piSessionId: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
   modelId: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
   eventSeq: Schema.optional(Schema.Number),
-  events: Schema.optional(Schema.Array(RuntimeLoggedEventSchema)),
   contextUsage: Schema.optional(Schema.Union([Schema.Null, RuntimeContextUsageSchema])),
   messages: Schema.optional(Schema.Array(Schema.Record(Schema.String, Schema.Unknown))),
   queue: Schema.optional(RuntimeQueueSchema),
+  extensionUiRequest: Schema.optional(
+    Schema.Union([Schema.Null, Schema.Record(Schema.String, Schema.Unknown)]),
+  ),
 });
 
 export type RuntimeStatus = Schema.Schema.Type<typeof RuntimeStatusSchema>;
@@ -61,7 +57,6 @@ export function decodeRuntimeEventPayload(raw: unknown): RuntimeEventPayload | n
 
 const RuntimeStatusResponseSchema = Schema.Struct({
   status: Schema.optional(Schema.Union([Schema.Null, RuntimeStatusSchema])),
-  events: Schema.optional(Schema.Array(RuntimeLoggedEventSchema)),
 });
 
 const RuntimeSessionsResponseSchema = Schema.Struct({
@@ -84,13 +79,11 @@ const decodeSessionsResponseOption = Schema.decodeUnknownOption(RuntimeSessionsR
   onExcessProperty: "preserve",
 });
 
-export function decodeRuntimeStatusResponse(
-  raw: unknown,
-): { status: RuntimeStatus; events: RuntimeStatus["events"] } | null {
+export function decodeRuntimeStatusResponse(raw: unknown): RuntimeStatus | null {
   if (!raw || typeof raw !== "object") return null;
   const option = decodeStatusResponseOption(raw);
   if (option._tag !== "Some" || !option.value.status) return null;
-  return { status: option.value.status, events: option.value.events ?? [] };
+  return option.value.status;
 }
 
 export function decodeRuntimeSessions(raw: unknown): RuntimeSessionSummary[] {
