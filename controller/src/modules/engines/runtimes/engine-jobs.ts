@@ -24,6 +24,7 @@ import {
   type InstallProgressUpdate,
 } from "./managed-venv";
 import { pidExists } from "./pid-exists";
+import { terminateChildProcess } from "../../../core/process-platform";
 
 export { managedVenvPath } from "./managed-venv";
 
@@ -290,7 +291,7 @@ const terminateJobChild = (id: string): Effect.Effect<void> =>
       child.exitCode !== null || Boolean(child.pid && !pidExists(child.pid));
     yield* Effect.sync(() => {
       try {
-        return child.kill("SIGTERM");
+        return terminateChildProcess(child, false);
       } catch {
         return false;
       }
@@ -300,7 +301,7 @@ const terminateJobChild = (id: string): Effect.Effect<void> =>
     if (!exited()) {
       yield* Effect.sync(() => {
         try {
-          return child.kill("SIGKILL");
+          return terminateChildProcess(child, true);
         } catch {
           return false;
         }
