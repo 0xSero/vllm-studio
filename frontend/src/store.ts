@@ -40,6 +40,15 @@ export interface AppSlice {
   setLastOpenFileByProject: (cwd: string, rel: string) => void;
 }
 
+export const DEFAULT_SIDEBAR_WIDTH = 224;
+
+const LEGACY_DEFAULT_SIDEBAR_WIDTHS = new Set([204, 220, 224, 240, 260, 275]);
+
+function restoredSidebarWidth(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return LEGACY_DEFAULT_SIDEBAR_WIDTHS.has(value) ? DEFAULT_SIDEBAR_WIDTH : value;
+}
+
 const createAppSlice: StateCreator<AppSlice, [], [], AppSlice> = (set) => ({
   sidebar: { collapsed: false, mobileOpen: false },
   setSidebarCollapsed: (collapsed) =>
@@ -56,7 +65,7 @@ const createAppSlice: StateCreator<AppSlice, [], [], AppSlice> = (set) => ({
     }),
   toggleSidebarMobileOpen: () =>
     set((state) => ({ sidebar: { ...state.sidebar, mobileOpen: !state.sidebar.mobileOpen } })),
-  sidebarWidth: 260,
+  sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
   setSidebarWidth: (sidebarWidth) => set({ sidebarWidth }),
   fileViewerFontSize: 12,
   setFileViewerFontSize: (fileViewerFontSize) => set({ fileViewerFontSize }),
@@ -150,14 +159,7 @@ export const useAppStore = create<AppStore>()(
         return {
           ...current,
           ...persistedStore,
-          sidebarWidth:
-            persistedRecord.sidebarWidth === 275 ||
-            persistedRecord.sidebarWidth === 240 ||
-            persistedRecord.sidebarWidth === 220 ||
-            persistedRecord.sidebarWidth === 224 ||
-            persistedRecord.sidebarWidth === 204
-              ? 260
-              : (persistedStore.sidebarWidth ?? current.sidebarWidth),
+          sidebarWidth: restoredSidebarWidth(persistedRecord.sidebarWidth, current.sidebarWidth),
           sidebar: {
             ...current.sidebar,
             collapsed: persistedRecord.sidebarCollapsed === true,
