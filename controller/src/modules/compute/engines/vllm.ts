@@ -80,5 +80,12 @@ export const vllm: ComputeEngineSpec = {
       health: health("/health", READY_DEADLINE_MS),
       listenPort: request.port,
       image: image(request.host),
+      ...(request.runtime === "wsl2"
+        ? {
+            env: {
+              VLLM_USE_V2_MODEL_RUNNER: request.env["VLLM_USE_V2_MODEL_RUNNER"] ?? "0",
+            },
+          }
+        : {}),
     }),
 };

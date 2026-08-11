@@ -61,6 +61,7 @@ describe("WSL2 launch contract", () => {
       "-c",
     ]);
     expect(args).toContain("ALPHA=first value");
+    expect(args).toContain("/home/user/.local/bin");
     expect(args).toContain("/mnt/f/logs/model.log");
     expect(args.indexOf("ALPHA=first value")).toBeLessThan(args.indexOf("ZED=last"));
     expect(args.slice(-3)).toEqual([

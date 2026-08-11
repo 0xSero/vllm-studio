@@ -196,6 +196,24 @@ describe("docker vs process", () => {
 
     expect(asDocker.image).toBe(customImage);
   });
+
+  test("vLLM uses the WSL2-compatible runner unless the recipe overrides it", () => {
+    const defaultPlan = engineSpec("vllm").plan(
+      request({ runtime: "wsl2", wslDistribution: "Ubuntu" }),
+    );
+    const overriddenPlan = engineSpec("vllm").plan(
+      request({
+        runtime: "wsl2",
+        wslDistribution: "Ubuntu",
+        env: { VLLM_USE_V2_MODEL_RUNNER: "1" },
+      }),
+    );
+    const nativePlan = engineSpec("vllm").plan(request({ runtime: "process" }));
+
+    expect(defaultPlan.env["VLLM_USE_V2_MODEL_RUNNER"]).toBe("0");
+    expect(overriddenPlan.env["VLLM_USE_V2_MODEL_RUNNER"]).toBe("1");
+    expect(nativePlan.env["VLLM_USE_V2_MODEL_RUNNER"]).toBeUndefined();
+  });
 });
 
 describe("device translation", () => {

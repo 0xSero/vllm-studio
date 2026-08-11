@@ -11,6 +11,8 @@ import {
   wslManagedInstallArguments,
   wslManagedPackageSpec,
   wslManagedRuntimePaths,
+  wslSglangKernelWheel,
+  wslSglangTorchPackageSpecs,
 } from "../src/modules/engines/wsl-managed-runtime";
 
 describe("managed WSL2 runtimes", () => {
@@ -18,15 +20,18 @@ describe("managed WSL2 runtimes", () => {
     expect(wslManagedRuntimePaths("/home/pipeline", "vllm", "nonce")).toEqual({
       root: "/home/pipeline/.local/share/local-studio/runtime/venvs/vllm-latest",
       parent: "/home/pipeline/.local/share/local-studio/runtime/venvs",
-      pythonPath: "/home/pipeline/.local/share/local-studio/runtime/venvs/vllm-latest/bin/python",
+      pythonRoot: "/home/pipeline/.local/share/local-studio/runtime/venvs/vllm-latest/python",
+      venvRoot: "/home/pipeline/.local/share/local-studio/runtime/venvs/vllm-latest/venv",
+      pythonPath:
+        "/home/pipeline/.local/share/local-studio/runtime/venvs/vllm-latest/venv/bin/python",
+      packageBinaryPath:
+        "/home/pipeline/.local/share/local-studio/runtime/venvs/vllm-latest/venv/bin/vllm",
       binaryPath: "/home/pipeline/.local/share/local-studio/runtime/venvs/vllm-latest/bin/vllm",
       staging: "/home/pipeline/.local/share/local-studio/runtime/venvs/.vllm-install-nonce",
       backup: "/home/pipeline/.local/share/local-studio/runtime/venvs/.vllm-backup-nonce",
     });
     expect(() => wslManagedRuntimePaths("/", "sglang")).toThrow("Unsafe WSL home directory");
-    expect(() => wslManagedRuntimePaths("relative", "sglang")).toThrow(
-      "Unsafe WSL home directory",
-    );
+    expect(() => wslManagedRuntimePaths("relative", "sglang")).toThrow("Unsafe WSL home directory");
   });
 
   test("accepts versions but not arbitrary package specifications", () => {
@@ -57,16 +62,31 @@ describe("managed WSL2 runtimes", () => {
       ],
     ]);
     expect(
-      wslManagedInstallArguments(
-        "pip",
-        "/unused/uv",
-        "/home/user/venv/bin/python",
-        "sglang",
-      ),
-    ).toEqual([
-      "/home/user/venv/bin/python",
-      ["-m", "pip", "install", "--upgrade", "sglang"],
-    ]);
+      wslManagedInstallArguments("pip", "/unused/uv", "/home/user/venv/bin/python", "sglang"),
+    ).toEqual(["/home/user/venv/bin/python", ["-m", "pip", "install", "--upgrade", "sglang"]]);
+    expect(
+      wslSglangTorchPackageSpecs({
+        torch: "2.9.1",
+        torchvision: "0.24.1",
+        torchaudio: "2.9.1",
+      }),
+    ).toEqual(["torch==2.9.1", "torchvision==0.24.1", "torchaudio==2.9.1"]);
+    expect(
+      wslSglangKernelWheel({
+        version: "0.3.21",
+        cuda: "13.0",
+        architecture: "x86_64",
+      }),
+    ).toBe(
+      "https://github.com/sgl-project/whl/releases/download/v0.3.21/sgl_kernel-0.3.21+cu130-cp310-abi3-manylinux2014_x86_64.whl",
+    );
+    expect(
+      wslSglangKernelWheel({
+        version: "0.3.21",
+        cuda: "12.9",
+        architecture: "x86_64",
+      }),
+    ).toBeNull();
   });
 
   test("installs transactionally and uninstalls only the receipt-backed managed path", async () => {
@@ -84,9 +104,7 @@ describe("managed WSL2 runtimes", () => {
       calls.push([...args]);
       if (args[0] === "/usr/bin/id") return Effect.succeed(result(0, "1000"));
       if (args[0] === "/usr/bin/getent") {
-        return Effect.succeed(
-          result(0, "user:x:1000:1000:User:/home/user:/bin/bash"),
-        );
+        return Effect.succeed(result(0, "user:x:1000:1000:User:/home/user:/bin/bash"));
       }
       if (args[0] === "/bin/sh" && args.at(-1) === "python3") {
         return Effect.succeed(result(0, "/usr/bin/python3"));
@@ -94,7 +112,32 @@ describe("managed WSL2 runtimes", () => {
       if (args[0] === "/bin/sh" && args.at(-1) === "uv") {
         return Effect.succeed(result(0, "/home/user/.local/bin/uv"));
       }
+      if (args[0] === "/usr/bin/find") {
+        const stagingRoot = args[1] ?? "";
+        if (stagingRoot.includes("/nvidia/cu13/lib")) {
+          return Effect.succeed(result(0, `${stagingRoot}/libcudart.so.13`));
+        }
+        return Effect.succeed(
+          result(0, `${stagingRoot}/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12`),
+        );
+      }
       if (args[1] === "-c") {
+        const script = args[2] ?? "";
+        if (script.includes("torch.version.cuda")) return Effect.succeed(result(0, "13.0"));
+        if (script.includes("torchvision") && script.includes("torchaudio")) {
+          return Effect.succeed(
+            result(0, '{"torch":"2.9.1","torchvision":"0.24.1","torchaudio":"2.9.1"}'),
+          );
+        }
+        if (script.includes("site.getsitepackages")) {
+          const stagingPython = args[0] ?? "";
+          return Effect.succeed(
+            result(
+              0,
+              `${stagingPython.slice(0, stagingPython.indexOf("/bin/python"))}/lib/python3.12/site-packages/nvidia/cu13`,
+            ),
+          );
+        }
         return Effect.succeed(result(0, '{"version":"0.19.1","cuda":true,"devices":2}'));
       }
       if (args[0] === "/usr/bin/test" && args[1] === "-e") {
@@ -115,16 +158,24 @@ describe("managed WSL2 runtimes", () => {
 
     expect(install.success).toBe(true);
     expect(receipt?.version).toBe("0.19.1");
-    expect(receipt?.root).toBe(
-      "/home/user/.local/share/local-studio/runtime/venvs/vllm-latest",
-    );
+    expect(receipt?.root).toBe("/home/user/.local/share/local-studio/runtime/venvs/vllm-latest");
     expect(calls.some((args) => args.includes("--torch-backend=auto"))).toBe(true);
     expect(calls.some((args) => args.includes("--relocatable"))).toBe(true);
     expect(
       calls.some(
         (args) =>
-          args[0] ===
-            "/home/user/.local/share/local-studio/runtime/venvs/vllm-latest/bin/vllm" &&
+          args[0] === "/home/user/.local/bin/uv" &&
+          args.slice(1, 4).join(" ") === "python install --no-bin" &&
+          args.includes("--install-dir"),
+      ),
+    ).toBe(true);
+    expect(calls.some((args) => args.includes("nvidia-cuda-nvcc==13.0.*"))).toBe(true);
+    expect(calls.some((args) => args.includes("nvidia-cuda-crt==13.0.*"))).toBe(true);
+    expect(calls.some((args) => args.includes("/usr/lib/wsl/lib/libcuda.so"))).toBe(true);
+    expect(
+      calls.some(
+        (args) =>
+          args[0] === "/home/user/.local/share/local-studio/runtime/venvs/vllm-latest/bin/vllm" &&
           args[1] === "--help",
       ),
     ).toBe(true);

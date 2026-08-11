@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
-import { resolve } from "node:path";
+import { posix, resolve } from "node:path";
 import { Effect } from "effect";
 import type { HandleReference, InstanceRecord } from "../contracts";
 import { listRunningWslDistributions, runInWsl } from "../wsl-platform";
@@ -9,7 +9,7 @@ import { readLogTail, spawnFailed, type Launcher } from "./launcher";
 const START_TIMEOUT_MS = 10_000;
 const STOP_POLL_MS = 250;
 const WRAPPER =
-  'pid_file=$1; workdir=$2; nonce=$3; log_file=$4; shift 4; if [ -n "$workdir" ]; then cd -- "$workdir" || exit 126; fi; start_token=$(/usr/bin/awk \'{print $22}\' /proc/$$/stat) || exit 126; /usr/bin/printf \'%s %s %s\\n\' "$$" "$start_token" "$nonce" > "$pid_file" || exit 126; exec >> "$log_file" 2>&1; exec "$@"';
+  'pid_file=$1; workdir=$2; nonce=$3; log_file=$4; binary_dir=$5; shift 5; if [ -n "$workdir" ]; then cd -- "$workdir" || exit 126; fi; if [ -n "$binary_dir" ]; then PATH="$binary_dir:$PATH"; export PATH; fi; start_token=$(/usr/bin/awk \'{print $22}\' /proc/$$/stat) || exit 126; /usr/bin/printf \'%s %s %s\\n\' "$$" "$start_token" "$nonce" > "$pid_file" || exit 126; exec >> "$log_file" 2>&1; exec "$@"';
 
 interface WslIdentity {
   readonly pid: number;
@@ -42,6 +42,7 @@ export const buildWslLaunchArguments = (
   workdir,
   nonce,
   logFile,
+  argv[0]?.includes("/") ? posix.dirname(argv[0]) : "",
   "/usr/bin/env",
   ...Object.entries(env)
     .sort(([left], [right]) => left.localeCompare(right))

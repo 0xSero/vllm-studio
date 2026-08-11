@@ -52,7 +52,8 @@ describe("WSL2 runtime targets", () => {
         backend: "vllm",
         distribution: "Ubuntu",
         root: "/home/user/.local/share/local-studio/runtime/venvs/vllm-latest",
-        pythonPath: "/home/user/.local/share/local-studio/runtime/venvs/vllm-latest/bin/python",
+        pythonPath:
+          "/home/user/.local/share/local-studio/runtime/venvs/vllm-latest/venv/bin/python",
         binaryPath: "/home/user/.local/share/local-studio/runtime/venvs/vllm-latest/bin/vllm",
         version: "0.19.1",
         installedAt: "2026-08-11T00:00:00.000Z",

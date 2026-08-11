@@ -264,7 +264,7 @@ const runJob = (
       options.type === "uninstall"
     ) {
       clearRuntimeTargetsCache();
-      yield* clearRuntimeInfoCache();
+      if (target?.kind !== "wsl2") yield* clearRuntimeInfoCache();
     }
     const outputTail = tailOutput(result.output ?? result.error);
     const command = result.used_command ?? job.command;
