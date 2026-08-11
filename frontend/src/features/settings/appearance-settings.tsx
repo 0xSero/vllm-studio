@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Check, ChevronDown, Laptop, Moon, RotateCcw, Search, Sun, X } from "@/ui/icon-registry";
 import { useAppStore } from "@/store";
 import {
@@ -87,6 +87,63 @@ function readVar(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function useNumberControl(name: string, fallback: number, suffix = "") {
+  const [value, setValue] = useState(() => readVar(name, fallback));
+  return [
+    value,
+    (next: number) => {
+      setValue(next);
+      applyUiControl(name, `${next}${suffix}`);
+    },
+  ] as const;
+}
+
+function SliderSetting({
+  label,
+  description,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  display,
+  displayClassName = "w-10",
+}: {
+  label: string;
+  description?: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  onChange: (value: number) => void;
+  display: string;
+  displayClassName?: string;
+}) {
+  return (
+    <SettingsRow
+      label={label}
+      description={description}
+      control={
+        <div className="flex w-full items-center gap-3">
+          <Slider
+            value={value}
+            min={min}
+            max={max}
+            step={step}
+            onChange={onChange}
+            aria-label={label}
+          />
+          <span
+            className={`${displayClassName} shrink-0 text-right font-mono text-[length:var(--fs-md)] tabular-nums text-(--ui-muted)`}
+          >
+            {display}
+          </span>
+        </div>
+      }
+    />
+  );
+}
+
 function ThemeSwatches({ theme }: { theme: ThemeMeta }) {
   return (
     <div className="flex items-center gap-1">
@@ -115,35 +172,12 @@ export function AppearanceSettings() {
   const sizeMap: Record<string, number> = { sm: 14, md: 16, lg: 17, xl: 18, "2xl": 20 };
   const [uiFontSize, setUiFontSize] = useState(sizeMap[fontSizeId] ?? 16);
 
-  const [uiScale, setUiScale] = useState(() => readVar("--ui-scale", 1));
-  const [radiusBase, setRadiusBase] = useState(() => readVar("--radius-base", 8));
-  const setScale = (value: number) => {
-    setUiScale(value);
-    applyUiControl("--ui-scale", String(value));
-  };
-  const setRadius = (value: number) => {
-    setRadiusBase(value);
-    applyUiControl("--radius-base", `${value}px`);
-  };
-
-  const [chatFontSize, setChatFontSize] = useState(() => readVar("--codex-chat-font-size", 16));
-  const [chatLineHeight, setChatLineHeight] = useState(() =>
-    readVar("--codex-chat-line-height", 1.5),
-  );
-  const [chatWidth, setChatWidth] = useState(() => readVar("--composer-w", 48));
+  const [uiScale, setScale] = useNumberControl("--ui-scale", 1);
+  const [radiusBase, setRadius] = useNumberControl("--radius-base", 8, "px");
+  const [chatFontSize, setChatFont] = useNumberControl("--codex-chat-font-size", 16, "px");
+  const [chatLineHeight, setChatLeading] = useNumberControl("--codex-chat-line-height", 1.5);
+  const [chatWidth, setChatColumn] = useNumberControl("--composer-w", 48, "rem");
   const [bubbleTone, setBubbleTone] = useState(() => readVarString("--bubble", "#282828"));
-  const setChatFont = (value: number) => {
-    setChatFontSize(value);
-    applyUiControl("--codex-chat-font-size", `${value}px`);
-  };
-  const setChatLeading = (value: number) => {
-    setChatLineHeight(value);
-    applyUiControl("--codex-chat-line-height", String(value));
-  };
-  const setChatColumn = (value: number) => {
-    setChatWidth(value);
-    applyUiControl("--composer-w", `${value}rem`);
-  };
   const setBubble = (value: string) => {
     setBubbleTone(value);
     applyUiControl("--bubble", value);
@@ -331,23 +365,15 @@ export function AppearanceSettings() {
             </div>
           }
         />
-        <SettingsRow
+        <SliderSetting
           label="UI font size"
           description="Base size for the Local Studio UI"
-          control={
-            <div className="flex w-full items-center gap-3">
-              <Slider
-                value={uiFontSize}
-                min={12}
-                max={20}
-                onChange={handleFontSizeChange}
-                aria-label="UI font size"
-              />
-              <span className="w-9 shrink-0 text-right font-mono text-[length:var(--fs-md)] tabular-nums text-(--ui-muted)">
-                {uiFontSize}px
-              </span>
-            </div>
-          }
+          value={uiFontSize}
+          min={12}
+          max={20}
+          onChange={handleFontSizeChange}
+          display={`${uiFontSize}px`}
+          displayClassName="w-9"
         />
       </SettingsGroup>
 
@@ -355,43 +381,24 @@ export function AppearanceSettings() {
         title="Sizing & shape"
         description="Scale the interface and adjust its corner treatment."
       >
-        <SettingsRow
+        <SliderSetting
           label="UI scale"
           description="Scales every text size at once"
-          control={
-            <div className="flex w-full items-center gap-3">
-              <Slider
-                value={uiScale}
-                min={0.8}
-                max={1.3}
-                step={0.05}
-                onChange={setScale}
-                aria-label="UI scale"
-              />
-              <span className="w-10 shrink-0 text-right font-mono text-[length:var(--fs-md)] tabular-nums text-(--ui-muted)">
-                {Math.round(uiScale * 100)}%
-              </span>
-            </div>
-          }
+          value={uiScale}
+          min={0.8}
+          max={1.3}
+          step={0.05}
+          onChange={setScale}
+          display={`${Math.round(uiScale * 100)}%`}
         />
-        <SettingsRow
+        <SliderSetting
           label="Corner radius"
           description="Roundness of cards, buttons, inputs"
-          control={
-            <div className="flex w-full items-center gap-3">
-              <Slider
-                value={radiusBase}
-                min={0}
-                max={16}
-                step={1}
-                onChange={setRadius}
-                aria-label="Corner radius"
-              />
-              <span className="w-10 shrink-0 text-right font-mono text-[length:var(--fs-md)] tabular-nums text-(--ui-muted)">
-                {radiusBase}px
-              </span>
-            </div>
-          }
+          value={radiusBase}
+          min={0}
+          max={16}
+          onChange={setRadius}
+          display={`${radiusBase}px`}
         />
       </SettingsGroup>
 
@@ -399,61 +406,34 @@ export function AppearanceSettings() {
         title="Chat & composer"
         description="Tune the conversation surface independently of the UI chrome."
       >
-        <SettingsRow
+        <SliderSetting
           label="Chat text size"
           description="Message and composer text"
-          control={
-            <div className="flex w-full items-center gap-3">
-              <Slider
-                value={chatFontSize}
-                min={13}
-                max={18}
-                step={1}
-                onChange={setChatFont}
-                aria-label="Chat text size"
-              />
-              <span className="w-9 shrink-0 text-right font-mono text-[length:var(--fs-md)] tabular-nums text-(--ui-muted)">
-                {chatFontSize}px
-              </span>
-            </div>
-          }
+          value={chatFontSize}
+          min={13}
+          max={18}
+          onChange={setChatFont}
+          display={`${chatFontSize}px`}
+          displayClassName="w-9"
         />
-        <SettingsRow
+        <SliderSetting
           label="Chat line height"
-          control={
-            <div className="flex w-full items-center gap-3">
-              <Slider
-                value={chatLineHeight}
-                min={1.3}
-                max={1.8}
-                step={0.05}
-                onChange={setChatLeading}
-                aria-label="Chat line height"
-              />
-              <span className="w-10 shrink-0 text-right font-mono text-[length:var(--fs-md)] tabular-nums text-(--ui-muted)">
-                {chatLineHeight.toFixed(2)}
-              </span>
-            </div>
-          }
+          value={chatLineHeight}
+          min={1.3}
+          max={1.8}
+          step={0.05}
+          onChange={setChatLeading}
+          display={chatLineHeight.toFixed(2)}
         />
-        <SettingsRow
+        <SliderSetting
           label="Chat column width"
           description="Maximum width of the thread and composer"
-          control={
-            <div className="flex w-full items-center gap-3">
-              <Slider
-                value={chatWidth}
-                min={40}
-                max={64}
-                step={1}
-                onChange={setChatColumn}
-                aria-label="Chat column width"
-              />
-              <span className="w-12 shrink-0 text-right font-mono text-[length:var(--fs-md)] tabular-nums text-(--ui-muted)">
-                {chatWidth}rem
-              </span>
-            </div>
-          }
+          value={chatWidth}
+          min={40}
+          max={64}
+          onChange={setChatColumn}
+          display={`${chatWidth}rem`}
+          displayClassName="w-12"
         />
         <SettingsRow
           label="Bubble tone"
