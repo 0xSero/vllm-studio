@@ -9,7 +9,7 @@ import {
   Save,
   Trash2,
   X,
-} from "@/ui/icon-registry";
+} from "lucide-react";
 import type { ApiConnectionSettings, ConnectionStatus } from "./types";
 import {
   loadSavedControllers,

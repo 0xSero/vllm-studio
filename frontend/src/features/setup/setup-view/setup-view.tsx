@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle } from "@/ui/icon-registry";
+import { AlertTriangle } from "lucide-react";
 import { Alert, Spinner } from "@/ui";
 import { useSetup } from "../use-setup";
 import { SetupShell, type SetupSurface } from "./setup-shell";

@@ -3,15 +3,8 @@
 import Link from "next/link";
 import { ProfileFooter } from "@/features/shell/profile-footer";
 import { type MouseEvent as ReactMouseEvent } from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Search as SearchIcon,
-  SquarePen,
-  Settings,
-  PanelLeftHollow,
-  PanelLeftFilled,
-} from "@/ui/icon-registry";
+import { ChevronLeft, ChevronRight, Search as SearchIcon, SquarePen, Settings } from "lucide-react";
+import { PanelLeftHollow, PanelLeftFilled } from "@/ui/panel-toggle-icons";
 import type { ProjectsNavSectionComponent } from "@/features/shell/left-sidebar-lazy";
 import {
   NavItemDesktop,

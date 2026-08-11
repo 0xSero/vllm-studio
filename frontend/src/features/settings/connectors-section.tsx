@@ -9,7 +9,7 @@ import {
   type ConnectorView,
 } from "@local-studio/agent-runtime/connector-contract";
 import { Button, Checkbox, FormField, Input, ModelButton, Spinner } from "@/ui";
-import { Plus, Trash2 } from "@/ui/icon-registry";
+import { Plus, Trash2 } from "lucide-react";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceList } from "@/features/resources/resource-list";
 import { ResourceLogo } from "@/ui/resource-logo";

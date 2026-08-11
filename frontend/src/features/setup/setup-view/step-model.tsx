@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { DownloadCloud, Zap } from "@/ui/icon-registry";
+import { DownloadCloud, Zap } from "lucide-react";
 import { Button, Input, Select, Spinner } from "@/ui";
 import type { ModelDownload, StarterPreset, StudioDiagnostics } from "@/lib/types";
 import type { ModelIndexVariant } from "@/lib/api/studio";
@@ -267,7 +267,9 @@ export function StepModel({
             variant="secondary"
             onClick={submitManualModel}
             disabled={resolvingManualModel}
-            icon={resolvingManualModel ? <Spinner size="xs" /> : <DownloadCloud className="h-4 w-4" />}
+            icon={
+              resolvingManualModel ? <Spinner size="xs" /> : <DownloadCloud className="h-4 w-4" />
+            }
           >
             {resolvingManualModel ? "Inspecting" : "Download"}
           </Button>

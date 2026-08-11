@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, RefreshCw } from "@/ui/icon-registry";
+import { Download, RefreshCw } from "lucide-react";
 import { Spinner } from "@/ui";
 import { SettingsButton, SettingsGroup, SettingsRow, SettingsValue } from "./settings-ui";
 import { useAppUpdate } from "@/features/shell/use-app-update";

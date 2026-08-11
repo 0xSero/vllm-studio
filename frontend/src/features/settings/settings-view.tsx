@@ -10,7 +10,7 @@ import {
   Paintbrush,
   ServerCog,
   Smartphone,
-} from "@/ui/icon-registry";
+} from "lucide-react";
 import { SettingsLayout, type SettingsSectionDef, type SettingsSectionId } from "./settings-ui";
 import { ApiConnectionSection } from "./api-connection-section";
 import { ArchivedChatsSettings, SetupChecksSettings } from "./agent-settings-sections";

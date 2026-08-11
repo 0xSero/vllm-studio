@@ -15,7 +15,7 @@ import {
   type SectionNavItem,
   type UiTone,
 } from "@/ui";
-import { ChevronDown } from "@/ui/icon-registry";
+import { ChevronDown } from "lucide-react";
 import { cx } from "@/ui/utils";
 
 export type SettingsSectionId = string;

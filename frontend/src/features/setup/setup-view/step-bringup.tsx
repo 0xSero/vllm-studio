@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, ProgressBar, Spinner } from "@/ui";
-import { MessageSquare, Pause, Play, X } from "@/ui/icon-registry";
+import { MessageSquare, Pause, Play, X } from "lucide-react";
 import type { ModelDownload } from "@/lib/types";
 import { formatBytes, progressPercent } from "./utils";
 import { ChecklistRow, type ChecklistState } from "./setup-shell";

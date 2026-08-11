@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Check, Copy, ExternalLink, Smartphone, Upload } from "@/ui/icon-registry";
+import { Check, Copy, ExternalLink, Smartphone, Upload } from "lucide-react";
 import { Input } from "@/ui";
 import {
   PROFILE_HUES,

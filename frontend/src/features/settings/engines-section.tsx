@@ -3,7 +3,7 @@
 import { effectInterval, effectTimeout } from "@/lib/effect-timers";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ArrowUpCircle, Check, XCircle } from "@/ui/icon-registry";
+import { ArrowUpCircle, Check, XCircle } from "lucide-react";
 import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import api from "@/lib/api/client";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "@/ui/icon-registry";
+import { Plus } from "lucide-react";
 import { ModelButton } from "@/ui";
 import type { RecipeWithStatus } from "@/lib/types";
 import { ModelRow, ModelSection, ModelStatus, ModelValue } from "./model-page";

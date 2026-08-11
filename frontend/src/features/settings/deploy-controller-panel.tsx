@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Rocket } from "@/ui/icon-registry";
+import { Rocket } from "lucide-react";
 import { Spinner } from "@/ui";
 import { SettingsButton, SettingsGroup } from "./settings-ui";
 import type { SavedController } from "@/lib/api/controllers";

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpCircle, DownloadCloud } from "@/ui/icon-registry";
+import { ArrowUpCircle, DownloadCloud } from "lucide-react";
 import type { EngineBackend, EngineJob, RuntimeTarget } from "@/lib/types";
 import { RowDetailLine, RowFacts, StatusPill, type RowFact, type UiTone, Spinner } from "@/ui";
 import { SettingsButton, SettingsRow, SettingsValue } from "./settings-ui";
