@@ -1,13 +1,7 @@
 "use client";
 
 import { Suspense, lazy, useCallback, type ReactNode } from "react";
-import {
-  FolderTree,
-  GitBranch,
-  Globe2,
-  MessageSquarePlus,
-  TerminalSquare,
-} from "@/ui/icon-registry";
+import { FolderTree, GitBranch, Globe2, MessageSquarePlus, TerminalSquare } from "lucide-react";
 import type { ToolsContextValue } from "@/features/agent/tools/context";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import type { Project, GitSummary } from "@/features/agent/projects/types";

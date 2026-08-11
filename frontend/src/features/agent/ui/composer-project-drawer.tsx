@@ -13,7 +13,7 @@ import {
   Target,
   Trash2,
   X,
-} from "@/ui/icon-registry";
+} from "lucide-react";
 import { GitBranchIcon } from "@/ui/icons";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { useProjects } from "@/features/agent/projects/context";

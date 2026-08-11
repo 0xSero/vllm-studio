@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, SearchInput, SegmentedControl } from "@/ui";
-import { Clock, Plus } from "@/ui/icon-registry";
+import { Clock, Plus } from "lucide-react";
 import type { Automation } from "@shared/agent/automation";
 import {
   filterAutomations,

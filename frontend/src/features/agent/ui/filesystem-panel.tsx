@@ -11,7 +11,7 @@ import {
   Plus,
   Save,
   SquarePen,
-} from "@/ui/icon-registry";
+} from "lucide-react";
 import { useAppStore } from "@/store";
 import { useToolSelections, useToolsActions } from "@/features/agent/tools/context";
 import type { FileComment, FsEntry } from "@/features/agent/filesystem-types";

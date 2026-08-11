@@ -1,6 +1,6 @@
 "use client";
 
-import { Mic, Square } from "@/ui/icon-registry";
+import { Mic, Square } from "lucide-react";
 import { useComposerDictation } from "./use-composer-dictation";
 
 export function ComposerDictationButton({

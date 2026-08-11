@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Button, FormField, Input, Select, Textarea } from "@/ui";
-import { Clock, Pause, Play, Plus, Trash2, X } from "@/ui/icon-registry";
+import { Clock, Pause, Play, Plus, Trash2, X } from "lucide-react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import type { Automation, AutomationSchedule } from "@shared/agent/automation";
 import type { AutomationModel } from "./automation-api";

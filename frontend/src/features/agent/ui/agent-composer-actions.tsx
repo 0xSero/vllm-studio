@@ -2,7 +2,7 @@
 
 import type { ReactNode, RefObject } from "react";
 import { Spinner } from "@/ui";
-import { ArrowUp, Plus } from "@/ui/icon-registry";
+import { ArrowUp, Plus } from "lucide-react";
 import type { BrowserBackend } from "@/features/agent/tools/types";
 import { GlobeIcon, PanelIcon, SitegeistIcon, StopIcon } from "@/ui/icons";
 import { ComposerDictationButton } from "./composer-dictation-button";

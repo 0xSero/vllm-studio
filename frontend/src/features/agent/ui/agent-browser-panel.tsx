@@ -8,11 +8,11 @@ import {
   Globe2,
   MessageSquarePlus,
   PanelRight,
-  PanelRightFilled,
   Plus,
   TerminalSquare,
   type LucideIcon,
-} from "@/ui/icon-registry";
+} from "lucide-react";
+import { PanelRightFilled } from "@/ui/panel-toggle-icons";
 import { CloseIcon } from "@/ui/icons";
 import { MobileSheetGrip } from "@/ui/mobile-sheet-grip";
 import {

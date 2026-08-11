@@ -9,7 +9,7 @@ import {
   type PointerEvent,
 } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Pin } from "@/ui/icon-registry";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Pin } from "lucide-react";
 import { AGENT_THINKING_LEVELS, type AgentThinkingLevel } from "@/features/agent/contracts";
 import type { AgentModel } from "@/features/agent/workspace/types";
 import { POPOVER_MENU_CLASS } from "@/ui/popover";

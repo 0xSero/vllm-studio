@@ -13,7 +13,7 @@ import {
   Sparkles,
   Target,
   TerminalSquare,
-} from "@/ui/icon-registry";
+} from "lucide-react";
 import type {
   ComposerMention,
   ComposerPromptTemplateRef,

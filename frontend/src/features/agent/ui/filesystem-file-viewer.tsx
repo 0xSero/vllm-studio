@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { Virtuoso } from "react-virtuoso";
-import { MessageSquarePlus, Minus } from "@/ui/icon-registry";
+import { MessageSquarePlus, Minus } from "lucide-react";
 import { highlightLines } from "@/features/agent/highlight-cache";
 import type { FileComment } from "@/features/agent/filesystem-types";
 

@@ -10,7 +10,7 @@ import { AgentLoadedContextTabs, AgentMentionPicker } from "./agent-composer-con
 import { AgentComposerStatusBar } from "./agent-composer-status-bar";
 import { AgentComposerTextArea } from "./agent-composer-textarea";
 import { cx } from "@/ui/utils";
-import { Target } from "@/ui/icon-registry";
+import { Target } from "lucide-react";
 import { CloseIcon } from "@/ui/icons";
 
 export type AgentComposerFrameProps = {

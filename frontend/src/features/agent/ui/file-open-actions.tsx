@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { ExternalLink, FolderTree } from "@/ui/icon-registry";
+import { ExternalLink, FolderTree } from "lucide-react";
 import { rawFileUrl } from "@/features/agent/ui/filesystem-preview";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 

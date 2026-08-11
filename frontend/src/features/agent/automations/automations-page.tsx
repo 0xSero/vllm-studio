@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { useCallback, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/ui";
-import { Clock, Plus } from "@/ui/icon-registry";
+import { Clock, Plus } from "lucide-react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { useAsyncResource } from "@/hooks/use-async-resource";
 import type { Automation } from "@shared/agent/automation";
