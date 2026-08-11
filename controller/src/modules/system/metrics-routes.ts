@@ -1,8 +1,7 @@
 import { performance } from "node:perf_hooks";
 import { Effect, Schema } from "effect";
 import { findObservedInferenceProcess } from "../../core/function-observability";
-import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
-import { effectHandler } from "../../http/effect-handler";
+import { defineRoutes, mergeRoutes, effectRoute } from "../../http/route-registrar";
 import { badRequest, serviceUnavailable } from "../../core/errors";
 import type { AppContext } from "../../app-context";
 import { getGpuInfo } from "./platform/gpu";
@@ -14,16 +13,21 @@ import {
   scrapeEngineMetrics,
 } from "./engine-metrics-scrape";
 import { firstMetric, positiveOrUndefined } from "./metrics-peaks";
-
 const throughputSamples = new Map<
   string,
-  { promptTokens: number; genTokens: number; ts: number; promptTps: number; genTps: number }
+  {
+    promptTokens: number;
+    genTokens: number;
+    ts: number;
+    promptTps: number;
+    genTps: number;
+  }
 >();
 const MIN_RATE_INTERVAL_MS = 1500;
 const BenchmarkQuerySchema = Schema.Struct({
   prompt_tokens: Schema.optionalKey(
     Schema.FiniteFromString.pipe(
-      Schema.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 100_000 })),
+      Schema.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 100000 })),
     ),
   ),
 });
@@ -35,7 +39,6 @@ const BenchmarkResponseSchema = Schema.Struct({
     }),
   ),
 });
-
 const buildModelKeys = (modelId: string, modelPath: string | null | undefined): Set<string> => {
   const keys = new Set<string>([modelId]);
   if (modelPath) {
@@ -44,7 +47,6 @@ const buildModelKeys = (modelId: string, modelPath: string | null | undefined): 
   }
   return keys;
 };
-
 const buildCurrentMetrics = (
   context: AppContext,
 ): Effect.Effect<Record<string, unknown>, unknown> =>
@@ -67,10 +69,8 @@ const buildCurrentMetrics = (
       vram_capacity_gb: Math.round(vramCapacityGb * 10) / 10,
       power_limit_watts: Math.round(powerLimitWatts),
     };
-
     const scrape = yield* scrapeEngineMetrics(context.config.inference_port, 1500);
     const engineActive = scrape.hasVllm || scrape.hasSglang || scrape.hasLlamacpp;
-
     if (!current && !engineActive) {
       return {
         ...baseMetrics,
@@ -79,7 +79,6 @@ const buildCurrentMetrics = (
         served_model_name: null,
       };
     }
-
     const isSglang = current?.backend === "sglang" || (!current && scrape.hasSglang);
     const modelId =
       current?.served_model_name ??
@@ -95,7 +94,6 @@ const buildCurrentMetrics = (
     const usageTotals = usageAggregate?.totals;
     const promptTokensTotal = firstMetric(prometheus, names.promptTokens);
     const generationTokensTotal = firstMetric(prometheus, names.generationTokens);
-
     let promptThroughput = isSglang ? firstMetric(prometheus, names.promptThroughput) : 0;
     let generationThroughput = isSglang ? firstMetric(prometheus, names.generationThroughput) : 0;
     if (!isSglang) {
@@ -136,7 +134,6 @@ const buildCurrentMetrics = (
     const peakData = yield* context.stores.peakMetricsStore.getEffect(modelId);
     const bestSessionPeakData =
       yield* context.stores.peakMetricsStore.getBestSessionEffect(modelId);
-
     return {
       ...baseMetrics,
       model_id: modelId,
@@ -165,127 +162,116 @@ const buildCurrentMetrics = (
       peak_ttft_ms: peakData?.["ttft_ms"] ?? null,
     };
   });
-
-const PEAK_METRICS_CACHE_TTL_MS = 15_000;
-
+const PEAK_METRICS_CACHE_TTL_MS = 15000;
 export const registerMonitoringRoutes = defineRoutes((app, context) => {
-  type PeakMetricsBody = Record<string, unknown> | { metrics: Array<Record<string, unknown>> };
-  const peakMetricsCache = new Map<string, { at: number; body: PeakMetricsBody }>();
-
+  type PeakMetricsBody =
+    | Record<string, unknown>
+    | {
+        metrics: Array<Record<string, unknown>>;
+      };
+  const peakMetricsCache = new Map<
+    string,
+    {
+      at: number;
+      body: PeakMetricsBody;
+    }
+  >();
   return mergeRoutes(
-    app.get(
-      "/v1/metrics/vllm",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const current = yield* buildCurrentMetrics(context).pipe(
-            Effect.tap((metrics) => context.eventManager.publishMetrics(metrics)),
-            Effect.catch((error) => {
-              context.logger.warn(`Failed to build current metrics: ${(error as Error).message}`);
-              const latest = context.eventManager.getLatestMetrics();
-              return Object.keys(latest).length > 0 ? Effect.succeed(latest) : Effect.fail(error);
-            }),
-          );
-          return ctx.json(current);
-        }),
-      ),
+    effectRoute.get(app, "/v1/metrics/vllm", (ctx) =>
+      Effect.gen(function* () {
+        const current = yield* buildCurrentMetrics(context).pipe(
+          Effect.tap((metrics) => context.eventManager.publishMetrics(metrics)),
+          Effect.catch((error) => {
+            context.logger.warn(`Failed to build current metrics: ${(error as Error).message}`);
+            const latest = context.eventManager.getLatestMetrics();
+            return Object.keys(latest).length > 0 ? Effect.succeed(latest) : Effect.fail(error);
+          }),
+        );
+        return ctx.json(current);
+      }),
     ),
-
-    app.get(
-      "/peak-metrics",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const modelId = ctx.req.query("model_id");
-          const cacheKey = modelId ?? "\u0000all";
-          const cached = peakMetricsCache.get(cacheKey);
-          if (cached && Date.now() - cached.at < PEAK_METRICS_CACHE_TTL_MS) {
-            return ctx.json(cached.body);
-          }
-          const body = yield* modelId
-            ? context.stores.peakMetricsStore
-                .getEffect(modelId)
-                .pipe(Effect.map((metrics) => metrics ?? { error: "No metrics for this model" }))
-            : context.stores.peakMetricsStore
-                .getAllEffect()
-                .pipe(Effect.map((metrics) => ({ metrics })));
-          peakMetricsCache.set(cacheKey, { at: Date.now(), body });
-          return ctx.json(body);
-        }),
-      ),
+    effectRoute.get(app, "/peak-metrics", (ctx) =>
+      Effect.gen(function* () {
+        const modelId = ctx.req.query("model_id");
+        const cacheKey = modelId ?? "\u0000all";
+        const cached = peakMetricsCache.get(cacheKey);
+        if (cached && Date.now() - cached.at < PEAK_METRICS_CACHE_TTL_MS) {
+          return ctx.json(cached.body);
+        }
+        const body = yield* modelId
+          ? context.stores.peakMetricsStore
+              .getEffect(modelId)
+              .pipe(Effect.map((metrics) => metrics ?? { error: "No metrics for this model" }))
+          : context.stores.peakMetricsStore
+              .getAllEffect()
+              .pipe(Effect.map((metrics) => ({ metrics })));
+        peakMetricsCache.set(cacheKey, { at: Date.now(), body });
+        return ctx.json(body);
+      }),
     ),
-
-    app.post(
-      "/benchmark",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const promptTokensRaw = ctx.req.query("prompt_tokens");
-          const query = yield* Schema.decodeUnknownEffect(BenchmarkQuerySchema)(
-            promptTokensRaw === undefined ? {} : { prompt_tokens: promptTokensRaw },
-          ).pipe(Effect.mapError(() => badRequest("Invalid benchmark query")));
-          const promptTokens = query.prompt_tokens ?? 1000;
-          const current = yield* findObservedInferenceProcess(context, "benchmark");
-          if (!current) {
-            return ctx.json({ error: "No model running" });
-          }
-          const modelId =
-            current.served_model_name ?? current.model_path?.split("/").pop() ?? "unknown";
-          const prompt = `Please count: ${Array.from({ length: Math.floor(promptTokens / 2) })
-            .map((_, index) => index.toString())
-            .join(" ")}`;
-
-          const start = performance.now();
-          const response = yield* fetchInference(context, "/v1/chat/completions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: modelId,
-              messages: [{ role: "user", content: prompt }],
-              stream: false,
-            }),
-          }).pipe(Effect.mapError(() => serviceUnavailable("Benchmark request failed")));
-          const totalTime = (performance.now() - start) / 1000;
-          if (!response.ok) {
-            return ctx.json({ error: `Request failed: ${response.status}` });
-          }
-          const data = yield* Effect.tryPromise({
-            try: () => response.json(),
-            catch: (error) => error,
-          }).pipe(
-            Effect.flatMap((value) => Schema.decodeUnknownEffect(BenchmarkResponseSchema)(value)),
-            Effect.mapError(() => serviceUnavailable("Invalid benchmark response")),
-          );
-          const usage = data.usage ?? {};
-          const promptTokensActual = usage["prompt_tokens"] ?? 0;
-          const completionTokens = usage["completion_tokens"] ?? 0;
-
-          if (completionTokens > 0 && promptTokensActual > 0) {
-            const generationTps = completionTokens / totalTime;
-
-            const result = yield* context.stores.peakMetricsStore
-              .updateIfBetterEffect(modelId, undefined, generationTps, undefined)
-              .pipe(
-                Effect.tap(() =>
-                  context.stores.peakMetricsStore.addTokensEffect(modelId, completionTokens, 1),
-                ),
-              );
-
-            return ctx.json({
-              success: true,
-              model_id: modelId,
-              benchmark: {
-                prompt_tokens: promptTokensActual,
-                completion_tokens: completionTokens,
-                total_time_s: Math.round(totalTime * 100) / 100,
-                generation_tps: Math.round(generationTps * 10) / 10,
-              },
-              peak_metrics: result,
-            });
-          }
-          return ctx.json({ error: "No tokens in response" });
-        }),
-      ),
+    effectRoute.post(app, "/benchmark", (ctx) =>
+      Effect.gen(function* () {
+        const promptTokensRaw = ctx.req.query("prompt_tokens");
+        const query = yield* Schema.decodeUnknownEffect(BenchmarkQuerySchema)(
+          promptTokensRaw === undefined ? {} : { prompt_tokens: promptTokensRaw },
+        ).pipe(Effect.mapError(() => badRequest("Invalid benchmark query")));
+        const promptTokens = query.prompt_tokens ?? 1000;
+        const current = yield* findObservedInferenceProcess(context, "benchmark");
+        if (!current) {
+          return ctx.json({ error: "No model running" });
+        }
+        const modelId =
+          current.served_model_name ?? current.model_path?.split("/").pop() ?? "unknown";
+        const prompt = `Please count: ${Array.from({ length: Math.floor(promptTokens / 2) })
+          .map((_, index) => index.toString())
+          .join(" ")}`;
+        const start = performance.now();
+        const response = yield* fetchInference(context, "/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: modelId,
+            messages: [{ role: "user", content: prompt }],
+            stream: false,
+          }),
+        }).pipe(Effect.mapError(() => serviceUnavailable("Benchmark request failed")));
+        const totalTime = (performance.now() - start) / 1000;
+        if (!response.ok) {
+          return ctx.json({ error: `Request failed: ${response.status}` });
+        }
+        const data = yield* Effect.tryPromise({
+          try: () => response.json(),
+          catch: (error) => error,
+        }).pipe(
+          Effect.flatMap((value) => Schema.decodeUnknownEffect(BenchmarkResponseSchema)(value)),
+          Effect.mapError(() => serviceUnavailable("Invalid benchmark response")),
+        );
+        const usage = data.usage ?? {};
+        const promptTokensActual = usage["prompt_tokens"] ?? 0;
+        const completionTokens = usage["completion_tokens"] ?? 0;
+        if (completionTokens > 0 && promptTokensActual > 0) {
+          const generationTps = completionTokens / totalTime;
+          const result = yield* context.stores.peakMetricsStore
+            .updateIfBetterEffect(modelId, undefined, generationTps, undefined)
+            .pipe(
+              Effect.tap(() =>
+                context.stores.peakMetricsStore.addTokensEffect(modelId, completionTokens, 1),
+              ),
+            );
+          return ctx.json({
+            success: true,
+            model_id: modelId,
+            benchmark: {
+              prompt_tokens: promptTokensActual,
+              completion_tokens: completionTokens,
+              total_time_s: Math.round(totalTime * 100) / 100,
+              generation_tps: Math.round(generationTps * 10) / 10,
+            },
+            peak_metrics: result,
+          });
+        }
+        return ctx.json({ error: "No tokens in response" });
+      }),
     ),
   );
 });
