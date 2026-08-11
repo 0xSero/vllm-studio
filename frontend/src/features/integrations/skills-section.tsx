@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { Effect, Schema } from "effect";
 import { Button } from "@/ui";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
-import { ResourceList } from "@/ui/resource-list";
+import { ResourceList } from "@/features/resources/resource-list";
 import { ResourceLogo } from "@/ui/resource-logo";
 import { ModelRow, ModelStatus, ModelValue } from "@/features/recipes/recipes-content/model-page";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";

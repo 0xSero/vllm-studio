@@ -9,7 +9,7 @@ import {
 import { Alert, Button, ModelButton, UiModal, UiModalHeader } from "@/ui";
 import { Eye, X } from "@/ui/icon-registry";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
-import { ResourceList } from "@/ui/resource-list";
+import { ResourceList } from "@/features/resources/resource-list";
 import { ResourceLogo } from "@/ui/resource-logo";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import type { StatusTone } from "@/features/settings/settings-ui";

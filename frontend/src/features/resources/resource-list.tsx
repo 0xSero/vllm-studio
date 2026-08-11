@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { SearchInput } from "./search-input";
+import { SearchInput } from "@/ui";
 import {
   ModelRow,
   ModelSection,
