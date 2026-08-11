@@ -1,7 +1,6 @@
 import { Effect, Schema } from "effect";
 import type { Logger } from "../../core/logger";
-import { effectHandler } from "../../http/effect-handler";
-import { documentRoute, mergeRoutes, type ControllerRouteApp } from "../../http/route-registrar";
+import { mergeRoutes, type ControllerRouteApp, effectRoute } from "../../http/route-registrar";
 import {
   boundedFormData,
   readBoundedRequestBody,
@@ -11,13 +10,14 @@ import { MAX_VOICE_UPLOAD_BYTES, VoiceReferenceError } from "./reference-audio";
 import { SpeechServiceError } from "./service";
 import type { SpeechInstallInput, SpeechService } from "./service";
 import { VOICE_CONSENT_VERSION, VoiceProfileError } from "./voice-store";
-
 const VOICE_REQUEST_LIMIT = MAX_VOICE_UPLOAD_BYTES + 1024 * 1024;
 const INSTALL_REQUEST_LIMIT = 1024;
 const InstallRequestSchema = Schema.Struct({ repair: Schema.optional(Schema.Boolean) });
-
-type SpeechError = { status: number; code: string; message: string };
-
+type SpeechError = {
+  status: number;
+  code: string;
+  message: string;
+};
 export interface SpeechRoutesContext {
   logger: Pick<Logger, "error">;
   speechService: Pick<
@@ -31,7 +31,6 @@ export interface SpeechRoutesContext {
     | "stop"
   >;
 }
-
 const speechError = (error: unknown): SpeechError | null => {
   if (
     error instanceof SpeechServiceError ||
@@ -49,15 +48,12 @@ const speechError = (error: unknown): SpeechError | null => {
   }
   return null;
 };
-
 const errorResponse = (error: SpeechError): Response =>
   Response.json({ code: error.code, error: error.message }, { status: error.status });
-
 const formText = (form: FormData, name: string): string => {
   const value = form.get(name);
   return typeof value === "string" ? value.trim() : "";
 };
-
 const installInput = (request: Request): Effect.Effect<SpeechInstallInput, unknown> =>
   readBoundedRequestBody(request, INSTALL_REQUEST_LIMIT).pipe(
     Effect.mapError((error) =>
@@ -88,7 +84,6 @@ const installInput = (request: Request): Effect.Effect<SpeechInstallInput, unkno
       );
     }),
   );
-
 const createVoice = (
   context: SpeechRoutesContext,
   request: Request,
@@ -141,7 +136,6 @@ const createVoice = (
     });
     return Response.json({ voice }, { status: 201 });
   });
-
 const handleSpeechRoute = (
   context: SpeechRoutesContext,
   operation: Effect.Effect<Response, unknown>,
@@ -160,98 +154,69 @@ const handleSpeechRoute = (
       });
     }),
   );
-
 export const registerSpeechRoutes = (
   app: ControllerRouteApp,
   context: SpeechRoutesContext,
 ): ControllerRouteApp => {
   return mergeRoutes(
-    app.get(
-      "/v1/audio/status",
-      documentRoute,
-      effectHandler(() =>
-        handleSpeechRoute(
-          context,
-          context.speechService.getStatus().pipe(Effect.map((status) => Response.json({ status }))),
+    effectRoute.get(app, "/v1/audio/status", () =>
+      handleSpeechRoute(
+        context,
+        context.speechService.getStatus().pipe(Effect.map((status) => Response.json({ status }))),
+      ),
+    ),
+    effectRoute.post(app, "/v1/audio/install", (ctx) =>
+      handleSpeechRoute(
+        context,
+        Effect.gen(function* () {
+          const status = yield* context.speechService.install(yield* installInput(ctx.req.raw));
+          return Response.json(
+            { status },
+            { status: status.install.phase === "installing" ? 202 : 200 },
+          );
+        }),
+      ),
+    ),
+    effectRoute.post(app, "/v1/audio/install/cancel", () =>
+      handleSpeechRoute(
+        context,
+        context.speechService.cancelInstall().pipe(
+          Effect.andThen(context.speechService.getStatus()),
+          Effect.map((status) => Response.json({ status })),
         ),
       ),
     ),
-    app.post(
-      "/v1/audio/install",
-      documentRoute,
-      effectHandler((ctx) =>
-        handleSpeechRoute(
-          context,
-          Effect.gen(function* () {
-            const status = yield* context.speechService.install(yield* installInput(ctx.req.raw));
-            return Response.json(
-              { status },
-              { status: status.install.phase === "installing" ? 202 : 200 },
-            );
-          }),
-        ),
+    effectRoute.get(app, "/v1/audio/voices", () =>
+      handleSpeechRoute(
+        context,
+        context.speechService.listVoices().pipe(Effect.map((voices) => Response.json({ voices }))),
       ),
     ),
-    app.post(
-      "/v1/audio/install/cancel",
-      documentRoute,
-      effectHandler(() =>
-        handleSpeechRoute(
-          context,
-          context.speechService.cancelInstall().pipe(
-            Effect.andThen(context.speechService.getStatus()),
-            Effect.map((status) => Response.json({ status })),
+    effectRoute.post(app, "/v1/audio/voices", (ctx) =>
+      handleSpeechRoute(context, createVoice(context, ctx.req.raw)),
+    ),
+    effectRoute.delete(app, "/v1/audio/voices/:voiceId", (ctx) =>
+      handleSpeechRoute(
+        context,
+        context.speechService.deleteVoice(ctx.req.param("voiceId") ?? "").pipe(
+          Effect.map((deleted) =>
+            deleted
+              ? new Response(null, { status: 204 })
+              : errorResponse({
+                  status: 404,
+                  code: "voice_not_found",
+                  message: "Voice profile not found",
+                }),
           ),
         ),
       ),
     ),
-    app.get(
-      "/v1/audio/voices",
-      documentRoute,
-      effectHandler(() =>
-        handleSpeechRoute(
-          context,
-          context.speechService
-            .listVoices()
-            .pipe(Effect.map((voices) => Response.json({ voices }))),
-        ),
-      ),
-    ),
-    app.post(
-      "/v1/audio/voices",
-      documentRoute,
-      effectHandler((ctx) => handleSpeechRoute(context, createVoice(context, ctx.req.raw))),
-    ),
-    app.delete(
-      "/v1/audio/voices/:voiceId",
-      documentRoute,
-      effectHandler((ctx) =>
-        handleSpeechRoute(
-          context,
-          context.speechService.deleteVoice(ctx.req.param("voiceId") ?? "").pipe(
-            Effect.map((deleted) =>
-              deleted
-                ? new Response(null, { status: 204 })
-                : errorResponse({
-                    status: 404,
-                    code: "voice_not_found",
-                    message: "Voice profile not found",
-                  }),
-            ),
-          ),
-        ),
-      ),
-    ),
-    app.post(
-      "/v1/audio/runtime/stop",
-      documentRoute,
-      effectHandler(() =>
-        handleSpeechRoute(
-          context,
-          context.speechService.stop().pipe(
-            Effect.andThen(context.speechService.getStatus()),
-            Effect.map((status) => Response.json({ status })),
-          ),
+    effectRoute.post(app, "/v1/audio/runtime/stop", () =>
+      handleSpeechRoute(
+        context,
+        context.speechService.stop().pipe(
+          Effect.andThen(context.speechService.getStatus()),
+          Effect.map((status) => Response.json({ status })),
         ),
       ),
     ),
