@@ -1,12 +1,5 @@
 "use client";
 
-// THE single owner of controller-level status: reachability, running process,
-// GPUs, metrics, launch progress, runtime summary. Fed by the controller SSE
-// (vllm:controller-event, dispatched by use-controller-events) with a 5s
-// poll+backoff fallback. Views derive from the snapshot via
-// realtime-status-types.ts — nothing else may poll getStatus or listen to
-// controller events for status.
-
 import { useSyncExternalStore } from "react";
 import { Effect, Result } from "effect";
 import { effectInterval, effectTimeout, type EffectTimer } from "@/lib/effect-timers";
@@ -21,16 +14,6 @@ import type {
 import api from "@/lib/api/client";
 import { BACKEND_URL_CHANGED_EVENT, getStoredBackendUrl } from "@/lib/api/connection";
 import { normalizeGpuAliases } from "@/lib/api/system";
-import {
-  areGpusEqual,
-  areLaunchProgressEqual,
-  areLeasesEqual,
-  areMetricsEqual,
-  arePlatformKindsEqual,
-  areRuntimeSummariesEqual,
-  areServicesEqual,
-  areStatusEqual,
-} from "./realtime-status-equality";
 import {
   isActiveLaunchStage,
   type LeaseInfo,
@@ -133,16 +116,7 @@ function processKey(process: ProcessInfo | null | undefined): string {
 
 function emitIfChanged(next: RealtimeStatusSnapshot) {
   const changed =
-    !areStatusEqual(snapshot.status, next.status) ||
-    snapshot.statusLoading !== next.statusLoading ||
-    snapshot.connected !== next.connected ||
-    !areGpusEqual(snapshot.gpus, next.gpus) ||
-    !areMetricsEqual(snapshot.metrics, next.metrics) ||
-    !areLaunchProgressEqual(snapshot.launchProgress, next.launchProgress) ||
-    !arePlatformKindsEqual(snapshot.platformKind, next.platformKind) ||
-    !areRuntimeSummariesEqual(snapshot.runtimeSummary, next.runtimeSummary) ||
-    !areServicesEqual(snapshot.services, next.services) ||
-    !areLeasesEqual(snapshot.lease, next.lease);
+    JSON.stringify({ ...snapshot, lastEventAt: 0 }) !== JSON.stringify({ ...next, lastEventAt: 0 });
 
   snapshot = changed ? next : { ...snapshot, lastEventAt: next.lastEventAt };
   cacheActiveSnapshot();
@@ -241,9 +215,6 @@ function runtimeSummaryFromCompatibility(
 }
 
 function emitNoPolledStatus() {
-  // Keep a warm cache through transient navigation/SSE handoff failures. The
-  // next poll failure marks the controller offline, but a single missed fast
-  // request should not blank the status page or flash "offline".
   const hasCachedStatus = Boolean(
     snapshot.status || snapshot.runtimeSummary || snapshot.gpus.length,
   );
@@ -295,8 +266,6 @@ function metricsForEventProcess(process: ProcessInfo | null): Metrics | null {
 }
 
 function handleStatusEvent(data: Record<string, unknown>, now: number) {
-  // A live status event means the selected backend is reachable; clear any
-  // poll backoff so a recovered connection resumes fast polling.
   notePollOutcome(true);
   const status = statusFromEventData(data);
   emitIfChanged({
@@ -334,8 +303,6 @@ function handleLaunchProgressEvent(data: Record<string, unknown>, now: number) {
   scheduleLaunchClear(progress.stage);
   emitIfChanged({
     ...snapshot,
-    // A live launch event proves the controller is reachable even before the
-    // first successful status poll.
     connected: true,
     launchProgress: progress,
     lastEventAt: now,
@@ -454,8 +421,6 @@ function start() {
   window.addEventListener("vllm:controller-event", onControllerEvent as EventListener);
   window.addEventListener(BACKEND_URL_CHANGED_EVENT, resetForControllerSwitch);
 
-  // Initial fetch + polling fallback in case SSE is blocked. The poll body
-  // checks the SSE freshness window and backoff gate before firing.
   void fetchStatusNow();
   effectInterval(() => {
     const now = Date.now();
