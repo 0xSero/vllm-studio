@@ -126,6 +126,10 @@ directory, installing an engine, downloading a model, launching it, and
 benchmarking. Engine installs (vLLM/SGLang/MLX) land below the data directory at
 `runtime/venvs/<backend>-latest`.
 
+Windows 11 x64 setup, native llama.cpp support, controller startup, Electron
+packaging, and the explicit WSL2/remote engine boundaries are documented in
+[Windows support](docs/windows-support.md).
+
 ## Agent runtime
 
 The agent surface lives at `/agent` in the frontend. It uses
@@ -219,8 +223,10 @@ Deploy with your normal SSH or infrastructure workflow. The repository does not
 maintain a second deployment wrapper alongside the controller installer.
 
 The controller installer registers a persistent user service automatically
-(`launchd` on macOS and `systemd --user` on Linux), so installed controllers
-return after login without a repository daemon wrapper.
+(`launchd` on macOS and `systemd --user` on Linux). Windows uses
+`scripts/install-controller.ps1`, preferring a per-user Scheduled Task with an
+`HKCU` startup fallback. Installed controllers return after login without a
+repository daemon wrapper.
 
 ## Validation
 

@@ -371,21 +371,28 @@ Upstream evidence:
 - The Windows package contains the controller PowerShell installer and win32
   ConPTY runtime, and the NSIS target produces an unsigned per-user x64
   installer without invoking the macOS release flow.
-
-### Inferred from code, to be validated by milestones
-
-- Controller HTTP, downloads, SQLite, proxy, logs, and usage should work once
-  setup and lifecycle blockers are removed because their core code is already
-  platform-neutral.
+- The controller downloaded the 105,454,432-byte
+  `SmolLM2-135M-Instruct-Q4_K_M.gguf` to an `F:` path containing spaces and
+  Unicode, then rediscovered the model through `/v1/studio/models`.
+- Native `llama-server.exe` launched the GGUF with CUDA offload, became healthy
+  in 1.9 seconds, and served both normal and SSE OpenAI-compatible chat
+  completions. The controller recorded 96 tokens across the first two requests,
+  exposed NVIDIA telemetry for both GPUs, persisted recipe-linked logs, and
+  evicted the Windows process tree without an orphan.
+- The aggregated `/config` runtime view recognizes the managed llama.cpp binary
+  immediately after installation, and engine logs remain available through the
+  controller log API after eviction.
+- The unsigned NSIS installer completed a silent ASCII-path install, the
+  installed application passed the full packaged desktop smoke, and its silent
+  uninstaller removed the installation. A bounded custom-destination attempt
+  containing spaces and Unicode did not complete and was terminated; that NSIS
+  path case is not claimed as validated.
 
 ### Missing collection or experimental validation
 
-- Native Windows llama.cpp CUDA model launch.
-- Model download to paths with spaces, Unicode, a non-C: drive, and UNC.
-- Controller-to-llama.cpp lifecycle, graceful stop, forced stop, and stale
-  ownership recovery on Windows.
-- OpenAI-compatible chat streaming against native Windows llama.cpp.
-- Installed NSIS setup/uninstall behavior.
+- Live model download to a UNC share; drive-letter, spaces, Unicode, and non-C:
+  paths are validated.
+- Custom NSIS installation destinations containing spaces and Unicode.
 - Explicit Windows-to-WSL2 controller/runtime bridge.
 - Any native Windows exllamav3 support.
 
