@@ -58,6 +58,8 @@ export type PiAgentStatus = {
   eventSeq: number;
   lastError: string | null;
   contextUsage: import("../../../shared/agent/context-usage").RuntimeContextUsage | null;
+  messages: readonly unknown[];
+  queue: { steering: readonly string[]; followUp: readonly string[] };
 };
 
 export interface PiAgentSession {

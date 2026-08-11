@@ -730,6 +730,11 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
       lastError: this.lastError,
       eventLog: this.eventLog,
       contextUsage: this.computeContextUsage(),
+      messages: sdkSession?.messages ?? [],
+      queue: {
+        steering: sdkSession?.getSteeringMessages() ?? [],
+        followUp: sdkSession?.getFollowUpMessages() ?? [],
+      },
     });
   }
 

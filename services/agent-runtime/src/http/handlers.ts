@@ -468,7 +468,10 @@ export function handleRuntimeEvents(request: Request): Response {
         after = replayAfterCursor(after, session.status.eventSeq);
         if (logged.seq <= after || sentSeqs.has(logged.seq)) return;
         sentSeqs.add(logged.seq);
-        safeSend({ type: "pi", seq: logged.seq, event: logged.event }, logged.seq);
+        safeSend(
+          { type: "pi", seq: logged.seq, event: logged.event, snapshot: session.status },
+          logged.seq,
+        );
         if (isAgentSettledEvent(logged.event)) {
           safeSend({ type: "status", phase: "done", session: session.status });
           setTimeout(close, 25);

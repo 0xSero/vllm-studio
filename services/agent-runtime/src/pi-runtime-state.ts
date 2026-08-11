@@ -77,6 +77,8 @@ export function piStatusFromEvents(input: {
   lastError: string | null;
   eventLog: LoggedPiEvent[];
   contextUsage?: PiContextUsage | null;
+  messages?: readonly unknown[];
+  queue?: { steering: readonly string[]; followUp: readonly string[] };
 }): PiAgentStatus {
   return {
     running: input.running,
@@ -88,6 +90,8 @@ export function piStatusFromEvents(input: {
     eventSeq: input.eventSeq,
     lastError: input.lastError,
     contextUsage: input.contextUsage ?? null,
+    messages: input.messages ?? [],
+    queue: input.queue ?? { steering: [], followUp: [] },
   };
 }
 
