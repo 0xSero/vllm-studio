@@ -4,6 +4,7 @@ import { describe, test } from "node:test";
 import { isRouteActive, mobilePageTitle, tabs } from "./left-sidebar-nav";
 
 const desktopSidebar = readFileSync(new URL("./left-sidebar-desktop.tsx", import.meta.url), "utf8");
+const sidebarShell = readFileSync(new URL("./left-sidebar.tsx", import.meta.url), "utf8");
 const baseStyles = readFileSync(
   new URL("../../app/styles/globals/base.css", import.meta.url),
   "utf8",
@@ -40,6 +41,11 @@ describe("left sidebar navigation", () => {
     assert.match(desktopSidebar, /HISTORY_STEPPER_CLASS[\s\S]*h-6 w-6/);
     assert.match(desktopSidebar, /ChevronLeft className="h-3 w-3"/);
     assert.match(desktopSidebar, /ChevronRight className="h-3 w-3"/);
+  });
+
+  test("opens a fresh task without reloading the application shell", () => {
+    assert.match(sidebarShell, /router\.push\(hrefWithOpenNonce\("\/agent\?new=1&replace=1"\)\)/);
+    assert.doesNotMatch(sidebarShell, /window\.location\.(?:assign|replace)/);
   });
 
   test("uses the shared compact icon scale", () => {
