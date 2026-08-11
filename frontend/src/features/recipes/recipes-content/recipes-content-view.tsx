@@ -1,11 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
 import { Compass, Download, HardDrive, Sparkles } from "@/ui/icon-registry";
-import type { ModelDownload, ModelInfo, RecipeWithStatus, RuntimeTarget } from "@/lib/types";
-import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { RefreshButton, TabbedPage, Tabs } from "@/ui";
-import type { RecipesContentTab } from "./recipes-content-model";
+import { useRecipesContentModel, type RecipesContentTab } from "./recipes-content-model";
 import type { RecipesTableProps } from "./types";
 import { DeleteRecipeConfirmModal } from "./delete-recipe-confirm-modal";
 import { RecipesTab } from "./recipes-tab";
@@ -13,38 +11,6 @@ import { RecipeModal } from "../recipe-modal/recipe-modal";
 import { ExploreTab } from "./explore-tab";
 import { DownloadsTab } from "./downloads-tab";
 import { PicksTab } from "./picks-tab";
-
-type Props = {
-  embedded?: boolean;
-  tab: RecipesContentTab;
-  setTab: (tab: RecipesContentTab) => void;
-  loading: boolean;
-  refreshing: boolean;
-  filter: string;
-  setFilter: (value: string) => void;
-  modalOpen: boolean;
-  modalRecipe: RecipeEditor | null;
-  setModalRecipe: (recipe: RecipeEditor | null) => void;
-  saving: boolean;
-  recipes: RecipeWithStatus[];
-  deleteConfirm: string | null;
-  deleteRecipeName: string;
-  runningRecipeId: string | null;
-  runningRecipeName: string | null;
-  launchProgressMessage: string | null;
-  availableModels: ModelInfo[];
-  runtimeTargets: RuntimeTarget[];
-  sortedRecipes: RecipeWithStatus[];
-  onRefresh: () => void;
-  onNewRecipe: () => void;
-  onCreateServeFromDownload: (download: ModelDownload) => void;
-  onSaveRecipe: () => void;
-  onCloseRecipeModal: () => void;
-  onCancelDelete: () => void;
-  onConfirmDelete: () => void;
-  onEvictModel: () => void;
-  table: RecipesTableProps;
-};
 
 const MODEL_TABS: Array<{ id: RecipesContentTab; label: string; icon: ReactNode }> = [
   { id: "picks", label: "Picks", icon: <Sparkles className="h-3.5 w-3.5" /> },
@@ -72,38 +38,34 @@ const TAB_HEADINGS: Record<RecipesContentTab, { title: string; description: stri
   },
 };
 
-export function RecipesContentView(props: Props) {
-  const {
-    embedded = false,
-    tab,
-    setTab,
-    loading,
-    refreshing,
-    filter,
-    setFilter,
-    modalOpen,
-    modalRecipe,
-    setModalRecipe,
-    saving,
-    recipes,
-    deleteConfirm,
-    deleteRecipeName,
-    runningRecipeId,
-    runningRecipeName,
-    launchProgressMessage,
-    availableModels,
-    runtimeTargets,
-    sortedRecipes,
-    onRefresh,
-    onNewRecipe,
-    onCreateServeFromDownload,
-    onSaveRecipe,
-    onCloseRecipeModal,
-    onCancelDelete,
-    onConfirmDelete,
-    onEvictModel,
-    table,
-  } = props;
+export function RecipesContentView({ embedded = false }: { embedded?: boolean }) {
+  const model = useRecipesContentModel();
+  const setTab = model.setTab;
+  const selectTab = useCallback(
+    (tab: RecipesContentTab) => {
+      setTab(tab);
+      if (!embedded) return;
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", tab);
+      url.hash = "models";
+      window.history.replaceState(null, "", url);
+    },
+    [embedded, setTab],
+  );
+  const table: RecipesTableProps = {
+    recipes: model.derived.sortedRecipes,
+    pinnedRecipes: model.pinnedRecipes,
+    recipeMenuOpen: model.recipeMenuOpen,
+    launching: model.launching,
+    runningRecipeId: model.runningRecipeId,
+    onTogglePin: model.togglePin,
+    onToggleMenu: model.actions.handleToggleRecipeMenu,
+    onLaunch: model.actions.handleLaunchRecipe,
+    onStop: model.actions.handleEvictModel,
+    onEdit: model.actions.handleEditRecipe,
+    onRequestDelete: model.actions.handleRequestDelete,
+  };
+  const tab = model.tab;
   const heading = TAB_HEADINGS[tab];
   const content = (
     <section>
@@ -114,16 +76,16 @@ export function RecipesContentView(props: Props) {
       <div className="mt-6">
         {tab === "serves" ? (
           <RecipesTab
-            loading={loading}
-            filter={filter}
-            setFilter={setFilter}
-            recipes={recipes}
-            sortedRecipes={sortedRecipes}
-            runningRecipeId={runningRecipeId}
-            runningRecipeName={runningRecipeName}
-            launchProgressMessage={launchProgressMessage}
-            onEvictModel={onEvictModel}
-            onNewRecipe={onNewRecipe}
+            loading={model.loading}
+            filter={model.filter}
+            setFilter={model.setFilter}
+            recipes={model.recipes}
+            sortedRecipes={model.derived.sortedRecipes}
+            runningRecipeId={model.runningRecipeId}
+            runningRecipeName={model.derived.runningRecipe?.name ?? null}
+            launchProgressMessage={model.launchProgress?.message ?? null}
+            onEvictModel={model.actions.handleEvictModel}
+            onNewRecipe={model.actions.handleNewRecipe}
             table={table}
           />
         ) : tab === "picks" ? (
@@ -131,7 +93,7 @@ export function RecipesContentView(props: Props) {
         ) : tab === "get" ? (
           <ExploreTab />
         ) : (
-          <DownloadsTab onCreateServe={onCreateServeFromDownload} />
+          <DownloadsTab onCreateServe={model.actions.handleCreateServeFromDownload} />
         )}
       </div>
     </section>
@@ -142,10 +104,10 @@ export function RecipesContentView(props: Props) {
       {embedded ? (
         <div className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-(--ui-separator) pb-3">
-            <Tabs variant="pill" items={MODEL_TABS} activeTab={tab} onSelectTab={setTab} />
+            <Tabs variant="pill" items={MODEL_TABS} activeTab={tab} onSelectTab={selectTab} />
             <RefreshButton
-              onRefresh={onRefresh}
-              loading={refreshing || loading}
+              onRefresh={model.actions.handleRefresh}
+              loading={model.refreshing || model.loading}
               label="Refresh models"
               className="h-8 w-8"
             />
@@ -159,11 +121,11 @@ export function RecipesContentView(props: Props) {
           width="md"
           tabs={MODEL_TABS}
           activeTab={tab}
-          onSelectTab={setTab}
+          onSelectTab={selectTab}
           actions={
             <RefreshButton
-              onRefresh={onRefresh}
-              loading={refreshing || loading}
+              onRefresh={model.actions.handleRefresh}
+              loading={model.refreshing || model.loading}
               label="Refresh models"
               className="h-8 w-8"
             />
@@ -173,32 +135,32 @@ export function RecipesContentView(props: Props) {
         </TabbedPage>
       )}
 
-      {modalOpen && modalRecipe ? (
+      {model.modalOpen && model.modalRecipe ? (
         <div className="fixed inset-0 z-50 flex justify-end">
           <button
             type="button"
             aria-label="Close recipe editor"
             className="absolute inset-0 bg-(--color-scrim) backdrop-blur-[2px]"
-            onClick={onCloseRecipeModal}
+            onClick={model.actions.closeRecipeModal}
           />
           <RecipeModal
-            recipe={modalRecipe}
-            onClose={onCloseRecipeModal}
-            onSave={onSaveRecipe}
-            onChange={setModalRecipe}
-            saving={saving}
-            availableModels={availableModels}
-            runtimeTargets={runtimeTargets}
-            recipes={recipes}
+            recipe={model.modalRecipe}
+            onClose={model.actions.closeRecipeModal}
+            onSave={model.actions.handleSaveRecipe}
+            onChange={model.setModalRecipe}
+            saving={model.saving}
+            availableModels={model.availableModels}
+            runtimeTargets={model.runtimeTargets}
+            recipes={model.recipes}
           />
         </div>
       ) : null}
 
-      {deleteConfirm ? (
+      {model.deleteConfirm ? (
         <DeleteRecipeConfirmModal
-          recipeName={deleteRecipeName}
-          onCancel={onCancelDelete}
-          onConfirm={onConfirmDelete}
+          recipeName={model.derived.deleteRecipe?.name ?? ""}
+          onCancel={() => model.setDeleteConfirm(null)}
+          onConfirm={() => model.actions.handleDeleteRecipe(model.deleteConfirm!)}
         />
       ) : null}
     </>
