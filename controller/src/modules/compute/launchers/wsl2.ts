@@ -75,7 +75,13 @@ const translateValue = (distribution: string, value: string): Effect.Effect<stri
 };
 
 const resolveLinuxBinary = (distribution: string, binary: string): Effect.Effect<string, string> =>
-  runInWsl(distribution, ["/bin/sh", "-lc", 'command -v -- "$1"', "local-studio", binary]).pipe(
+  runInWsl(distribution, [
+    "/bin/sh",
+    "-lc",
+    'candidate=$1; case "$candidate" in "~/"*) candidate="$HOME/${candidate#??}";; esac; command -v -- "$candidate"',
+    "local-studio",
+    binary,
+  ]).pipe(
     Effect.flatMap((result) =>
       result.status === 0 && result.stdout.trim()
         ? Effect.succeed(result.stdout.trim().split(/\r?\n/).at(-1) ?? binary)

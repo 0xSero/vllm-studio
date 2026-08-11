@@ -69,4 +69,21 @@ describe("WSL2 launch contract", () => {
       "/mnt/f/Models/Qwen model",
     ]);
   });
+
+  test("keeps a planned managed home path isolated as one argument", () => {
+    const args = buildWslLaunchArguments(
+      "Ubuntu",
+      "/tmp/local-studio-nonce.pid",
+      "",
+      "nonce",
+      "/mnt/f/logs/model.log",
+      ["~/.local/share/local-studio/runtime/venvs/vllm-latest/bin/vllm", "serve"],
+      {},
+    );
+
+    expect(args.slice(-2)).toEqual([
+      "~/.local/share/local-studio/runtime/venvs/vllm-latest/bin/vllm",
+      "serve",
+    ]);
+  });
 });

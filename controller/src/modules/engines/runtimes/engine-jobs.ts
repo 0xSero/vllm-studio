@@ -26,6 +26,10 @@ import {
 import { pidExists } from "./pid-exists";
 import { terminateChildProcess } from "../../../core/process-platform";
 import { clearRuntimeInfoCache } from "./runtime-info";
+import {
+  installWslManagedRuntime,
+  uninstallWslManagedRuntime,
+} from "../wsl-managed-runtime";
 
 export { managedVenvPath } from "./managed-venv";
 
@@ -84,6 +88,7 @@ const describeDefaultCommand = (options: CreateEngineJobOptions): string => {
   if (isPlatformBackend(options.backend))
     return `configured ${options.backend.toUpperCase()} upgrade command`;
   if (options.backend === "llamacpp") return "configured llama.cpp upgrade command";
+  if (options.type === "uninstall") return `remove managed ${options.backend} runtime`;
   if (options.type === "install" && isManagedPythonBackend(options.backend)) {
     return `python -m venv $DATA_DIR/runtime/venvs/${managedVenvName(options.backend)} && pip install ${managedPackageSpec(options.backend, options.version)}`;
   }
@@ -133,6 +138,39 @@ const runEngineInstall = (
       Effect.succeed(lock),
       () => {
         if (jobs.get(job.id)?.status !== "running") return Effect.succeed(cancelledResult);
+        if (target?.kind === "wsl2") {
+          const distribution = target.wslDistribution?.trim();
+          if (backend !== "vllm" && backend !== "sglang") {
+            return Effect.succeed({
+              success: false,
+              version: null,
+              output: null,
+              error: `Managed WSL2 installation is unsupported for ${backend}`,
+              used_command: null,
+            });
+          }
+          if (!distribution) {
+            return Effect.succeed({
+              success: false,
+              version: null,
+              output: null,
+              error: "WSL2 runtime target has no distribution",
+              used_command: null,
+            });
+          }
+          const operationOptions = {
+            config,
+            backend,
+            distribution,
+            onProgress: (update: InstallProgressUpdate): void => updateRunningJob(job.id, update),
+            onSpawn: (child: ChildProcess): void => {
+              jobChildren.set(job.id, child);
+            },
+          };
+          return options.type === "uninstall"
+            ? uninstallWslManagedRuntime(operationOptions)
+            : installWslManagedRuntime({ ...operationOptions, version: options.version });
+        }
         return getEngineSpec(backend).install({
           config,
           version: options.version,
@@ -177,24 +215,54 @@ const runJob = (
           }),
         );
       }
-      if (options.type !== "inspect" && !target.capabilities.canUpdate) {
+      const supported =
+        options.type === "install"
+          ? target.capabilities.canInstall
+          : options.type === "update"
+            ? target.capabilities.canUpdate
+            : options.type === "uninstall"
+              ? target.capabilities.canUninstall
+              : options.type === "inspect"
+                ? target.capabilities.canInspectOptions
+                : false;
+      if (!supported) {
         return yield* Effect.fail(
           new EngineOperationError({
             operation: "validate-runtime-target",
-            message: target.health.message ?? "Update is unsupported for this target.",
+            message: target.health.message ?? `${options.type} is unsupported for this target.`,
           }),
         );
       }
     }
-    if (!target && options.backend === "vllm") {
-      target = yield* getDefaultRuntimeTarget(config, "vllm", options.runningProcess);
+    if (
+      !target &&
+      (options.backend === "vllm" ||
+        (options.backend === "sglang" && process.platform === "win32"))
+    ) {
+      target = yield* getDefaultRuntimeTarget(config, options.backend, options.runningProcess);
+    }
+    if (
+      options.type === "uninstall" &&
+      target?.kind === "wsl2" &&
+      options.runningProcess?.backend === options.backend
+    ) {
+      return yield* Effect.fail(
+        new EngineOperationError({
+          operation: "validate-runtime-target",
+          message: `Stop the running ${options.backend} engine before uninstalling it.`,
+        }),
+      );
     }
 
     const result = isPlatformBackend(options.backend)
       ? yield* runPlatformUpgrade(options.backend, {})
       : yield* runEngineInstall(config, job, options, options.backend, target);
 
-    if (options.type === "install" || options.type === "update") {
+    if (
+      options.type === "install" ||
+      options.type === "update" ||
+      options.type === "uninstall"
+    ) {
       clearRuntimeTargetsCache();
       yield* clearRuntimeInfoCache();
     }

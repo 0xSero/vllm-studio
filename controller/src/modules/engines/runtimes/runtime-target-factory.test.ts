@@ -44,24 +44,40 @@ describe("runtime update capabilities", () => {
     expect(target.update?.packageSpec).toBe("mlx-lm");
   });
 
-  test("launches but never updates or inspects an unprobed WSL2 engine", () => {
-    const target = makeRuntimeTarget({
+  test("installs an absent WSL2 engine and updates or removes a managed one", () => {
+    const available = makeRuntimeTarget({
+      backend: "vllm",
+      kind: "wsl2",
+      source: "discovered",
+      key: "Ubuntu",
+      label: "vLLM via WSL2 (Ubuntu)",
+      installed: false,
+      binaryPath: "vllm",
+      wslDistribution: "Ubuntu",
+      healthStatus: "warning",
+      healthMessage: "Install required.",
+    });
+    const installed = makeRuntimeTarget({
       backend: "vllm",
       kind: "wsl2",
       source: "discovered",
       key: "Ubuntu",
       label: "vLLM via WSL2 (Ubuntu)",
       installed: true,
-      binaryPath: "vllm",
+      binaryPath: "/home/user/vllm-latest/bin/vllm",
       wslDistribution: "Ubuntu",
-      healthStatus: "warning",
-      healthMessage: "Engine availability is checked at launch.",
+      version: "0.19.1",
     });
 
-    expect(target.capabilities.canLaunch).toBe(true);
-    expect(target.capabilities.canUpdate).toBe(false);
-    expect(target.capabilities.canInspectOptions).toBe(false);
-    expect(target.wslDistribution).toBe("Ubuntu");
-    expect(target.health.status).toBe("warning");
+    expect(available.capabilities.canLaunch).toBe(false);
+    expect(available.capabilities.canInstall).toBe(true);
+    expect(available.capabilities.canUpdate).toBe(false);
+    expect(available.capabilities.canUninstall).toBe(false);
+    expect(installed.capabilities.canLaunch).toBe(true);
+    expect(installed.capabilities.canInstall).toBe(false);
+    expect(installed.capabilities.canUpdate).toBe(true);
+    expect(installed.capabilities.canUninstall).toBe(true);
+    expect(installed.capabilities.canInspectOptions).toBe(false);
+    expect(installed.wslDistribution).toBe("Ubuntu");
   });
 });

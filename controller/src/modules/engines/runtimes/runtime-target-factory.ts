@@ -26,7 +26,9 @@ const createCapabilities = (target: {
   pythonPath?: string | null;
 }): RuntimeTarget["capabilities"] => ({
   canLaunch: target.installed || target.source === "running",
+  canInstall: target.kind === "wsl2" && !target.installed,
   canUpdate:
+    (target.kind === "wsl2" && target.installed) ||
     (target.backend === "vllm" &&
       target.installed &&
       target.kind === "venv") ||
@@ -36,6 +38,7 @@ const createCapabilities = (target: {
         isUpgradeCommandConfigured(SGLANG_UPGRADE_ENV))) ||
     (target.backend === "mlx" && target.installed && target.kind === "venv") ||
     (target.backend === "llamacpp" && isUpgradeCommandConfigured(LLAMACPP_UPGRADE_ENV)),
+  canUninstall: target.kind === "wsl2" && target.installed,
   canInspectOptions:
     target.kind !== "wsl2" &&
     target.backend !== "sglang" &&

@@ -12,6 +12,7 @@ import type {
 } from "@local-studio/contracts/system";
 import { detectBackend, listProcesses } from "./process-scan";
 import { makeRuntimeTarget } from "./runtime-target-factory";
+import { readWslManagedRuntimeReceipt } from "../wsl-managed-runtime";
 import { managedLlamaServerPath } from "./managed-llamacpp";
 import {
   compareVersions,
@@ -313,24 +314,31 @@ const bundledCandidates = (): Candidate[] => {
 };
 
 export const runtimeTargetsForWslDistributions = (
+  config: Pick<Config, "data_dir">,
   distributions: readonly WslDistribution[],
 ): RuntimeTarget[] =>
   distributions.flatMap((distribution) =>
-    (["vllm", "sglang"] as const).map((backend) =>
-      makeRuntimeTarget({
+    (["vllm", "sglang"] as const).map((backend) => {
+      const receipt = readWslManagedRuntimeReceipt(config, distribution.name, backend);
+      const plannedBinary = `~/.local/share/local-studio/runtime/venvs/${backend}-latest/bin/${backend}`;
+      return makeRuntimeTarget({
         backend,
         kind: "wsl2",
         source: "discovered",
         key: distribution.name,
         label: `${ENGINE_LABEL[backend]} via WSL2 (${distribution.name})`,
-        installed: true,
-        binaryPath: backend,
+        installed: Boolean(receipt),
+        version: receipt?.version ?? null,
+        pythonPath: receipt?.pythonPath ?? null,
+        binaryPath: receipt?.binaryPath ?? plannedBinary,
         wslDistribution: distribution.name,
         wslDefault: distribution.default,
-        healthStatus: "warning",
-        healthMessage: "Engine availability is checked at launch; discovery does not start WSL2.",
-      }),
-    ),
+        healthStatus: receipt ? "ok" : "warning",
+        healthMessage: receipt
+          ? "Managed WSL2 runtime is recorded and checked again at launch."
+          : "Install this engine in the selected WSL2 distribution before launch.",
+      });
+    }),
   );
 
 /* ── materialize + merge ─────────────────────────────────────────────────── */
@@ -500,7 +508,7 @@ export const getRuntimeTargets = (
     const materialized = yield* Effect.forEach(all, materialize, { concurrency: "unbounded" });
     const targets: RuntimeTarget[] = [];
     for (const target of materialized) addTarget(targets, target);
-    for (const target of runtimeTargetsForWslDistributions(wsl)) addTarget(targets, target);
+    for (const target of runtimeTargetsForWslDistributions(config, wsl)) addTarget(targets, target);
 
     const selectedTargets = sortTargets(withSelection(targets, config));
     targetsCache = {

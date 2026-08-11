@@ -54,7 +54,9 @@ export interface RuntimeTarget {
   source: "configured" | "discovered" | "running" | "bundled";
   capabilities: {
     canLaunch: boolean;
+    canInstall: boolean;
     canUpdate: boolean;
+    canUninstall: boolean;
     canInspectOptions: boolean;
     supportsDocker: boolean;
   };
@@ -76,7 +78,7 @@ export interface EngineJob {
   id: string;
   backend: EngineBackend;
   targetId?: string;
-  type: "install" | "update" | "download" | "inspect";
+  type: "install" | "update" | "uninstall" | "download" | "inspect";
   status: "queued" | "running" | "success" | "error" | "cancelled";
   progress?: number;
   message: string;
