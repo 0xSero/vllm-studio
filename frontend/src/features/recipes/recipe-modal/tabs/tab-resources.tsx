@@ -1,9 +1,10 @@
 "use client";
 
 import { Cpu, Database, GitBranch, Settings } from "@/ui/icon-registry";
-import { CheckboxRow, FormField, FormSection, Input, Slider } from "@/ui";
+import { FormField, FormSection, Input, Slider } from "@/ui";
 import { ENGINE_LABEL, getEngineOptions } from "@/features/recipes/engine-capabilities";
 import { EngineOptionsSection } from "../engine-options-section";
+import { createRecipeFields } from "../recipe-fields";
 import type { RecipeModalSectionProps, RecipeModalTabProps } from "./tab-props";
 
 export function RecipeModalTabResources({
@@ -14,6 +15,7 @@ export function RecipeModalTabResources({
   setExtraArgValueForKey,
 }: RecipeModalTabProps) {
   const options = getEngineOptions(capabilities.options, "resources");
+  const field = createRecipeFields(recipe, onChange);
   return (
     <div className="space-y-6">
       <ParallelismSection recipe={recipe} onChange={onChange} capabilities={capabilities} />
@@ -21,39 +23,18 @@ export function RecipeModalTabResources({
       {capabilities.memoryManagement ? (
         <FormSection icon={<Database className="h-4 w-4" />} title="Memory Management">
           <div className="grid grid-cols-3 gap-3">
-            <FormField label="Swap Space (GB)">
-              <Input
-                type="number"
-                value={recipe.swap_space || ""}
-                onChange={(e) =>
-                  onChange({ ...recipe, swap_space: Number(e.target.value) || undefined })
-                }
-                placeholder="0"
-              />
-            </FormField>
-            <FormField label="CPU Offload (GB)">
-              <Input
-                type="number"
-                value={recipe.cpu_offload_gb || ""}
-                onChange={(e) =>
-                  onChange({ ...recipe, cpu_offload_gb: Number(e.target.value) || undefined })
-                }
-                placeholder="0"
-              />
-            </FormField>
-            <FormField label="GPU Blocks Override">
-              <Input
-                type="number"
-                value={recipe.num_gpu_blocks_override || ""}
-                onChange={(e) =>
-                  onChange({
-                    ...recipe,
-                    num_gpu_blocks_override: Number(e.target.value) || undefined,
-                  })
-                }
-                placeholder="Auto"
-              />
-            </FormField>
+            {field.input("swap_space", "Swap Space (GB)", {
+              type: "number",
+              placeholder: "0",
+            })}
+            {field.input("cpu_offload_gb", "CPU Offload (GB)", {
+              type: "number",
+              placeholder: "0",
+            })}
+            {field.input("num_gpu_blocks_override", "GPU Blocks Override", {
+              type: "number",
+              placeholder: "Auto",
+            })}
           </div>
         </FormSection>
       ) : null}
@@ -78,6 +59,7 @@ function parallelSize(value: string): number {
 
 function ParallelismSection({ recipe, onChange, capabilities }: SectionProps) {
   if (capabilities.parallelism === "none") return null;
+  const field = createRecipeFields(recipe, onChange);
   return (
     <FormSection icon={<GitBranch className="h-4 w-4" />} title="Parallelism">
       <div className="grid grid-cols-3 gap-3">
@@ -103,28 +85,21 @@ function ParallelismSection({ recipe, onChange, capabilities }: SectionProps) {
             }}
           />
         </FormField>
-        {capabilities.parallelism === "full" ? (
-          <FormField label="Data Parallel">
-            <Input
-              type="number"
-              min={1}
-              value={recipe.data_parallel_size || ""}
-              onChange={(e) =>
-                onChange({ ...recipe, data_parallel_size: Number(e.target.value) || undefined })
-              }
-              placeholder="1"
-            />
-          </FormField>
-        ) : null}
+        {capabilities.parallelism === "full"
+          ? field.input("data_parallel_size", "Data Parallel", {
+              type: "number",
+              min: 1,
+              placeholder: "1",
+            })
+          : null}
       </div>
-      {capabilities.parallelism === "full" ? (
-        <CheckboxRow
-          checked={recipe.enable_expert_parallel || false}
-          onChange={(checked) => onChange({ ...recipe, enable_expert_parallel: checked })}
-          label="Expert Parallel (MoE)"
-          description="Shard MoE experts across the parallel group."
-        />
-      ) : null}
+      {capabilities.parallelism === "full"
+        ? field.checkbox(
+            "enable_expert_parallel",
+            "Expert Parallel (MoE)",
+            "Shard MoE experts across the parallel group.",
+          )
+        : null}
     </FormSection>
   );
 }
