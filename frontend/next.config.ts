@@ -115,15 +115,6 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname, ".."),
   },
-  async redirects() {
-    return [
-      {
-        source: "/models",
-        destination: "/configure#models",
-        permanent: true,
-      },
-    ];
-  },
   async rewrites() {
     return [
       {
