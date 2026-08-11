@@ -108,6 +108,22 @@ test("model picker includes models from every saved controller", async ({ page }
   await expect(page.getByRole("menuitemradio", { name: /secondary-model/ })).toBeVisible();
 });
 
+test("terminal preserves its shell and scrollback across chat navigation", async ({ page }) => {
+  await openControllerChat(page, "Persistent terminal");
+  await page.getByRole("button", { name: "Open terminal" }).click();
+
+  const terminal = page.locator(".xterm").first();
+  const input = terminal.locator(".xterm-helper-textarea");
+  await expect(input).toBeAttached({ timeout: 60_000 });
+  await input.pressSequentially("printf 'terminal-parity-marker\\n'", { delay: 15 });
+  await input.press("Enter");
+  await expect(terminal).toContainText("terminal-parity-marker", { timeout: 60_000 });
+
+  await page.getByRole("button", { name: "Back to chat" }).click();
+  await page.getByRole("button", { name: "Open terminal" }).click();
+  await expect(terminal).toContainText("terminal-parity-marker");
+});
+
 test("messages containing /goal reach Pi as ordinary text", async ({ page }) => {
   const composer = await openControllerChat(page, "Goal text chat");
   const transcript = page.getByRole("article");
