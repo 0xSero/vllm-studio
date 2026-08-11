@@ -332,6 +332,9 @@ Upstream evidence:
 - Session fixtures encode drive-letter paths incorrectly.
 - Permission tests enforce POSIX mode bits on Windows, where those bits do not
   express the Windows ACL security property.
+- Next.js file tracing evaluates runtime home-directory discovery as a recursive
+  build-time glob on Windows and follows protected compatibility junctions such
+  as `Application Data` unless the Windows trace excludes the runtime user home.
 - No Windows runner executes install, typecheck, unit tests, build, or package
   smoke.
 
@@ -346,6 +349,8 @@ Upstream evidence:
   `nvidia-smi` query on the audit host.
 - Windows storage sampling and host snapshot collection execute successfully.
 - Current Windows tests expose concrete path, shell, and permission failures.
+- The Next.js standalone build reaches application compilation but fails during
+  file tracing when runtime user-home discovery is not excluded from packaging.
 - vLLM is not supported natively on Windows according to its current official
   installation documentation.
 - llama.cpp publishes native Windows x64 CUDA artifacts.

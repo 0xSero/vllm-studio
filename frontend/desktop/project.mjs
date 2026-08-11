@@ -378,7 +378,7 @@ import {
 import path2 from "node:path";
 import { spawnSync as spawnSync2 } from "node:child_process";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
-var packageDir, distDir, bundlePath, runtimePackages, build, lydellDir, bundle, sourceRoot;
+var packageDir, distDir, bundlePath, runtimePackages, buildInvocation, build, lydellDir, bundle, sourceRoot;
 var init_bundle = __esm(() => {
   packageDir = path2.resolve(path2.dirname(fileURLToPath2(import.meta.url)), "../../services/agent-runtime"), distDir = path2.join(packageDir, "dist"), bundlePath = path2.join(distDir, "standalone.mjs"), runtimePackages = [
     "playwright-core",
@@ -391,7 +391,7 @@ var init_bundle = __esm(() => {
   ];
   rmSync2(distDir, { recursive: !0, force: !0 });
   mkdirSync(distDir, { recursive: !0 });
-  build = spawnSync2("bun", [
+  buildInvocation = platformInvocation("bun", [
     "build",
     "src/server.ts",
     "--target=node",
@@ -404,7 +404,7 @@ var init_bundle = __esm(() => {
     "--external",
     "undici",
     "--outfile=dist/standalone.mjs"
-  ], { cwd: packageDir, stdio: "inherit" });
+  ]), build = spawnSync2(buildInvocation[0], buildInvocation[1], { cwd: packageDir, stdio: "inherit" });
   if (build.status !== 0)
     throw Error(`Agent runtime bundle failed with status ${build.status ?? "unknown"}`);
   lydellDir = path2.join(packageDir, "node_modules", "@lydell");

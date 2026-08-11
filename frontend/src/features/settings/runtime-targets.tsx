@@ -78,7 +78,11 @@ export const isManagedRuntimeTarget = (target: RuntimeTarget): boolean => {
     return false;
   }
   const normalizedPythonPath = target.pythonPath?.replace(/\\/g, "/") ?? "";
-  return normalizedPythonPath.endsWith(`/runtime/venvs/${target.backend}-latest/bin/python`);
+  const managedRoot = `/runtime/venvs/${target.backend}-latest`;
+  return (
+    normalizedPythonPath.endsWith(`${managedRoot}/bin/python`) ||
+    normalizedPythonPath.endsWith(`${managedRoot}/Scripts/python.exe`)
+  );
 };
 
 const managedTargetForBackend = (
