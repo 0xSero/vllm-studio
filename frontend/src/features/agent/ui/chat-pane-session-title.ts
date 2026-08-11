@@ -1,7 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { cleanSessionTitle, type SessionTab } from "@/features/agent/messages";
-import { patchCanonicalSessionPref } from "@/features/agent/messages/prefs";
-import { useProjectsNavSessionPrefs } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
+import { patchCanonicalSessionPref, useSessionPrefs } from "@/features/agent/messages/prefs";
 
 export function useChatPaneSessionTitle({
   activeTab,
@@ -18,7 +17,7 @@ export function useChatPaneSessionTitle({
   onPiSessionIdChange?: (sessionId: string) => void;
   onRenameSession: (tabId: string, title: string) => void;
 }) {
-  const sessionPrefs = useProjectsNavSessionPrefs();
+  const sessionPrefs = useSessionPrefs();
   const localPrefKey = paneId && activeTab?.id ? `tab:${paneId}:${activeTab.id}` : null;
   const sessionPrefKeys = useMemo(
     () =>
@@ -31,7 +30,6 @@ export function useChatPaneSessionTitle({
     const nextTitle = cleanSessionTitle(sessionPrefs[key]?.title);
     return nextTitle || title;
   }, "");
-  // Empty starter/restored tabs stay visually untitled until user content arrives.
   const sessionLooksEmpty =
     !activeTab || (activeTab.messages.length === 0 && !activeTab.input.trim() && !running);
   const displayedSessionTitle = sessionLooksEmpty
@@ -52,12 +50,6 @@ export function useChatPaneSessionTitle({
   const handlePiSessionIdChange = useCallback(
     (piSessionId: string) => {
       patchCanonicalSessionPref(piSessionId, [activeTabId, `tab:${paneId}:${activeTabId}`]);
-      // Once a fresh chat earns its persistent id, swap the throwaway `?new=`
-      // nonce in the address bar for `?session=<piSessionId>` so a reload
-      // reattaches to (or at least reopens) this conversation instead of
-      // restarting a blank chat and losing the in-flight turn from view. Use
-      // replaceState — it's invisible to Next's `useSearchParams`, so the
-      // running turn's nav effect never re-fires. Side-chat pane excluded.
       if (typeof window !== "undefined" && paneId !== "computer-side-chat" && piSessionId) {
         const params = new URLSearchParams(window.location.search);
         if (params.get("new") !== null && params.get("session") !== piSessionId) {

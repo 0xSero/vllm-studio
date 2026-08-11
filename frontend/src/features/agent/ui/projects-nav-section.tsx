@@ -4,10 +4,8 @@ import { useCallback, useMemo, useState, type DragEvent, type ReactNode } from "
 import { Button, UiModal, UiModalHeader } from "@/ui";
 import { PlusIcon } from "@/ui/icons";
 import { usePersistentTerminalOwners } from "@/features/agent/ui/use-persistent-terminal-owners";
-import {
-  useProjectsNavAddProjectEffect,
-  useProjectsNavSessionPrefs,
-} from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
+import { useProjectsNavAddProjectEffect } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
+import { useSessionPrefs } from "@/features/agent/messages/prefs";
 import {
   sessionActivity,
   useOpenSessions,
@@ -31,7 +29,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const chatProject = projects.find(isChatsProject) ?? null;
   const activeSessions = useOpenSessions();
   const activity = useSessionActivity();
-  const prefs = useProjectsNavSessionPrefs();
+  const prefs = useSessionPrefs();
   const pinned = usePinnedNav({ expanded, projects, activeSessions, prefs });
   const terminalOwners = usePersistentTerminalOwners(false, null).owners;
   const sections = useNavSectionOrder();

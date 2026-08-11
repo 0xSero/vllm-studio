@@ -1,4 +1,8 @@
+"use client";
+
+import { create } from "zustand";
 import { SESSION_PREFS_KEY } from "@/features/agent/workspace/store";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { readStored, readStoredJson, writeStored } from "@/lib/storage";
 import { SESSION_PREFS_CHANGED_EVENT } from "@/lib/workspace-events";
 
@@ -30,18 +34,14 @@ function getDesktopBridge(): {
   };
 }
 
-/** Fast synchronous read from localStorage. Use this during renders. */
 export function loadSessionPrefs(): SessionPrefs {
   return readStoredJson(SESSION_PREFS_KEY, {}, (value) =>
     value && typeof value === "object" ? (value as SessionPrefs) : null,
   );
 }
 
-/** One-time bootstrap: if localStorage is empty, restore from the durable
- *  desktop file (survives killall / crash). Call on app startup. */
 export async function hydrateSessionPrefsFromDesktop(): Promise<void> {
   if (typeof window === "undefined") return;
-  // Only hydrate if localStorage is empty — avoids overwriting newer data.
   if (readStored(SESSION_PREFS_KEY)) return;
   try {
     const bridge = getDesktopBridge();
@@ -51,22 +51,42 @@ export async function hydrateSessionPrefsFromDesktop(): Promise<void> {
       writeStored(SESSION_PREFS_KEY, JSON.stringify(prefs));
       window.dispatchEvent(new Event(SESSION_PREFS_CHANGED_EVENT));
     }
-  } catch {
-    /* ignore */
+  } catch {}
+}
+
+const useSessionPrefsStore = create<{ prefs: SessionPrefs }>(() => ({ prefs: {} }));
+
+function syncSessionPrefs(): void {
+  const prefs = loadSessionPrefs();
+  if (JSON.stringify(prefs) !== JSON.stringify(useSessionPrefsStore.getState().prefs)) {
+    useSessionPrefsStore.setState({ prefs });
   }
+}
+
+export function useSessionPrefs(): SessionPrefs {
+  const prefs = useSessionPrefsStore((state) => state.prefs);
+  useMountSubscription(() => {
+    syncSessionPrefs();
+    void hydrateSessionPrefsFromDesktop();
+    const refresh = () => syncSessionPrefs();
+    window.addEventListener(SESSION_PREFS_CHANGED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(SESSION_PREFS_CHANGED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
+  return prefs;
 }
 
 export function saveSessionPrefs(prefs: SessionPrefs): void {
   if (typeof window === "undefined") return;
-  // Primary: localStorage for fast access.
   writeStored(SESSION_PREFS_KEY, JSON.stringify(prefs));
-  // Backup: durable file via Electron main process (survives killall / crash).
+  useSessionPrefsStore.setState({ prefs });
   try {
     const bridge = getDesktopBridge();
     if (bridge) void bridge.saveSessionPrefs(prefs).catch(() => {});
-  } catch {
-    /* ignore if not in Electron */
-  }
+  } catch {}
   window.dispatchEvent(new Event(SESSION_PREFS_CHANGED_EVENT));
 }
 

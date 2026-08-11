@@ -1,64 +1,5 @@
-import { useCallback, useSyncExternalStore } from "react";
-
-import {
-  ADD_PROJECT_EVENT,
-  SESSION_PREFS_CHANGED_EVENT,
-  SESSIONS_CHANGED_EVENT,
-} from "@/lib/workspace-events";
-import {
-  hydrateSessionPrefsFromDesktop,
-  loadSessionPrefs,
-  type SessionPrefs,
-} from "@/features/agent/messages/prefs";
+import { ADD_PROJECT_EVENT, SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-
-let cachedSessionPrefs: SessionPrefs = {};
-let cachedSessionPrefsKey = "";
-
-function syncSessionPrefsSnapshot(): boolean {
-  const next = loadSessionPrefs();
-  let nextKey = "";
-  try {
-    nextKey = JSON.stringify(next);
-  } catch {
-    nextKey = "";
-  }
-  if (nextKey === cachedSessionPrefsKey) return false;
-  cachedSessionPrefs = next;
-  cachedSessionPrefsKey = nextKey;
-  return true;
-}
-
-function getSessionPrefsSnapshot(): SessionPrefs {
-  syncSessionPrefsSnapshot();
-  return cachedSessionPrefs;
-}
-
-const SESSION_PREFS_SERVER_SNAPSHOT: SessionPrefs = {};
-function getSessionPrefsSnapshotServer(): SessionPrefs {
-  return SESSION_PREFS_SERVER_SNAPSHOT;
-}
-
-export function useProjectsNavSessionPrefs(): SessionPrefs {
-  const subscribeSessionPrefs = useCallback((notify: () => void) => {
-    void hydrateSessionPrefsFromDesktop();
-    const refresh = () => {
-      if (syncSessionPrefsSnapshot()) notify();
-    };
-    window.addEventListener(SESSION_PREFS_CHANGED_EVENT, refresh);
-    window.addEventListener("storage", refresh);
-    return () => {
-      window.removeEventListener(SESSION_PREFS_CHANGED_EVENT, refresh);
-      window.removeEventListener("storage", refresh);
-    };
-  }, []);
-
-  return useSyncExternalStore(
-    subscribeSessionPrefs,
-    getSessionPrefsSnapshot,
-    getSessionPrefsSnapshotServer,
-  );
-}
 
 export function useProjectDirectoryPickerModalEffects({
   loadDirectory,
@@ -85,10 +26,6 @@ const SESSIONS_RELOAD_DEBOUNCE_MS = 300;
 export function useProjectSessionsReloadEffect(reload: () => Promise<void>): void {
   useMountSubscription(() => {
     void reload();
-    // Session lifecycle changes fire SESSIONS_CHANGED_EVENT in bursts (every
-    // mounted project row listens, and workspace effects re-dispatch 1.5s
-    // later). A trailing debounce collapses each burst into one disk scan per
-    // project instead of one per event per row.
     let timer: number | null = null;
     const scheduleReload = () => {
       if (timer !== null) window.clearTimeout(timer);
