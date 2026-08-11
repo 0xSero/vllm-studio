@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveFrontendRestartUrl } from "./frontend-restart";
+import { resolveFrontendRestartUrl, shouldReloadAfterFrontendRestart } from "./frontend-restart";
 
 describe("desktop frontend restart", () => {
   test("preserves the active agent route", () => {
@@ -32,6 +32,31 @@ describe("desktop frontend restart", () => {
   test("uses the desktop origin when the previous URL is invalid", () => {
     expect(resolveFrontendRestartUrl("http://127.0.0.1:49782", "invalid")).toBe(
       "http://127.0.0.1:49782",
+    );
+  });
+
+  test("keeps the live renderer when the restarted server reuses its origin", () => {
+    expect(
+      shouldReloadAfterFrontendRestart(
+        "http://127.0.0.1:49782",
+        "http://127.0.0.1:49782/agent?session=active",
+      ),
+    ).toBe(false);
+  });
+
+  test("reloads when the restarted server moves to a new port", () => {
+    expect(
+      shouldReloadAfterFrontendRestart(
+        "http://127.0.0.1:50000",
+        "http://127.0.0.1:49782/agent?session=active",
+      ),
+    ).toBe(true);
+  });
+
+  test("reloads when the renderer shows no usable page", () => {
+    expect(shouldReloadAfterFrontendRestart("http://127.0.0.1:49782", undefined)).toBe(true);
+    expect(shouldReloadAfterFrontendRestart("http://127.0.0.1:49782", "chrome-error://crash")).toBe(
+      true,
     );
   });
 });

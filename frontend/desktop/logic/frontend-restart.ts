@@ -14,3 +14,12 @@ export function resolveFrontendRestartUrl(nextUrl: string, previousUrl?: string)
     return nextUrl;
   }
 }
+
+export function shouldReloadAfterFrontendRestart(nextUrl: string, rendererUrl?: string): boolean {
+  if (!rendererUrl) return true;
+  try {
+    return new URL(rendererUrl).origin !== new URL(nextUrl).origin;
+  } catch {
+    return true;
+  }
+}

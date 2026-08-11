@@ -18,7 +18,10 @@ import { isHttpUrl } from "./helpers/url";
 import { createMainWindow } from "./logic/window-manager";
 import { registerNavigationPolicy } from "./logic/security";
 import { startFrontendServer, stopFrontendServer, type ServerHandle } from "./logic/app-server";
-import { resolveFrontendRestartUrl } from "./logic/frontend-restart";
+import {
+  resolveFrontendRestartUrl,
+  shouldReloadAfterFrontendRestart,
+} from "./logic/frontend-restart";
 import { getUpdateState, initializeAutoUpdates, startUpdate } from "./logic/update-manager";
 import { addProject, listProjectsWithMeta, removeProject } from "./logic/projects-store";
 import { deployController } from "./logic/controller-deploy";
@@ -216,7 +219,10 @@ async function restartFrontendServer(
     startFrontendHealthMonitor();
     const nextUrl = frontendServer.runtime.url;
     if (mainWindow && !mainWindow.isDestroyed()) {
-      await mainWindow.loadURL(resolveFrontendRestartUrl(nextUrl, rendererUrl));
+      const liveUrl = mainWindow.webContents.getURL() || rendererUrl;
+      if (shouldReloadAfterFrontendRestart(nextUrl, liveUrl)) {
+        await mainWindow.loadURL(resolveFrontendRestartUrl(nextUrl, rendererUrl));
+      }
     } else {
       mainWindow = createMainWindow(nextUrl);
       mainWindow.on("closed", () => {
