@@ -36,7 +36,7 @@ export interface RuntimeBackendInfo {
 
 export type EngineBackend = "vllm" | "sglang" | "llamacpp" | "mlx";
 
-export type RuntimeKind = "venv" | "docker" | "binary" | "system";
+export type RuntimeKind = "venv" | "docker" | "binary" | "system" | "wsl2";
 
 export interface RuntimeTarget {
   id: string;
@@ -49,6 +49,7 @@ export interface RuntimeTarget {
   pythonPath?: string | null;
   binaryPath?: string | null;
   dockerImage?: string | null;
+  wslDistribution?: string | null;
   source: "configured" | "discovered" | "running" | "bundled";
   capabilities: {
     canLaunch: boolean;
