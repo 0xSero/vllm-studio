@@ -23,8 +23,7 @@ export function createRecipesApi(core: ApiCore) {
       ),
 
     launchRecipe: (id: string): Promise<{ success: boolean; message: string }> =>
-      core.request(`/launch/${encodeURIComponent(id)}`, {
-        method: "POST",
+      core.post(`/launch/${encodeURIComponent(id)}`, undefined, {
         timeout: 600_000,
         retries: 0,
       }),

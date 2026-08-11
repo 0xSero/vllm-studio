@@ -4,7 +4,7 @@ import type { ApiCore, RequestOptions } from "./core";
 export function createLogsApi(core: ApiCore) {
   return {
     getLogSessions: (options?: RequestOptions): Promise<{ sessions: LogSession[] }> =>
-      core.request("/logs", options),
+      core.get("/logs", options),
 
     getLogs: (
       sessionId: string,
@@ -12,10 +12,9 @@ export function createLogsApi(core: ApiCore) {
       options?: RequestOptions,
     ): Promise<{ logs: string[] }> => {
       const query = limit ? `?limit=${limit}` : "";
-      return core.request(`/logs/${sessionId}${query}`, options);
+      return core.get(`/logs/${sessionId}${query}`, options);
     },
 
-    deleteLogSession: (sessionId: string): Promise<void> =>
-      core.request(`/logs/${sessionId}`, { method: "DELETE" }),
+    deleteLogSession: (sessionId: string): Promise<void> => core.delete(`/logs/${sessionId}`),
   };
 }

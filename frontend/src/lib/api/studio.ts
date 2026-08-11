@@ -67,27 +67,23 @@ export function createStudioApi(core: ApiCore) {
       models: ModelInfo[];
       roots?: StudioModelsRoot[];
       configured_models_dir?: string;
-    }> => core.request("/v1/studio/models"),
+    }> => core.get("/v1/studio/models"),
 
     getStudioSettings: (options?: RequestOptions): Promise<StudioSettings> =>
-      core.request("/studio/settings", options),
+      core.get("/studio/settings", options),
 
     updateStudioSettings: (payload: {
       models_dir?: string | null;
       ui_preferences?: Record<string, string> | null;
-    }): Promise<StudioSettings & { success: boolean }> =>
-      core.request("/studio/settings", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }),
+    }): Promise<StudioSettings & { success: boolean }> => core.post("/studio/settings", payload),
 
-    getStudioDiagnostics: (): Promise<StudioDiagnostics> => core.request("/studio/diagnostics"),
+    getStudioDiagnostics: (): Promise<StudioDiagnostics> => core.get("/studio/diagnostics"),
 
-    getStudioStorage: (): Promise<StorageInfo> => core.request("/studio/storage"),
+    getStudioStorage: (): Promise<StorageInfo> => core.get("/studio/storage"),
 
     getModelIndex: async (options?: RequestOptions): Promise<ModelIndexResponse> => {
       try {
-        return await core.request("/studio/model-index", options);
+        return await core.get("/studio/model-index", options);
       } catch (error) {
         if (!hasStatus(error, 404)) throw error;
         return bundledModelIndex;
@@ -97,9 +93,9 @@ export function createStudioApi(core: ApiCore) {
     getStarterPresets: (): Promise<{
       presets: StarterPreset[];
       max_vram_gb: number;
-    }> => core.request("/studio/presets"),
+    }> => core.get("/studio/presets"),
 
-    getDownloads: (): Promise<{ downloads: ModelDownload[] }> => core.request("/studio/downloads"),
+    getDownloads: (): Promise<{ downloads: ModelDownload[] }> => core.get("/studio/downloads"),
 
     startDownload: (params: {
       model_id: string;
@@ -109,36 +105,27 @@ export function createStudioApi(core: ApiCore) {
       ignore_patterns?: string[];
       hf_token?: string;
     }): Promise<{ download: ModelDownload }> =>
-      core.request("/studio/downloads", {
-        method: "POST",
-        body: JSON.stringify(params),
-        timeout: 120_000,
-        retries: 0,
-      }),
+      core.post("/studio/downloads", params, { timeout: 120_000, retries: 0 }),
 
     pauseDownload: (id: string): Promise<{ download: ModelDownload }> =>
-      core.request(`/studio/downloads/${encodePathSegments(id)}/pause`, { method: "POST" }),
+      core.post(`/studio/downloads/${encodePathSegments(id)}/pause`),
 
     resumeDownload: (id: string, hfToken?: string): Promise<{ download: ModelDownload }> =>
-      core.request(`/studio/downloads/${encodePathSegments(id)}/resume`, {
-        method: "POST",
-        body: hfToken ? JSON.stringify({ hf_token: hfToken }) : "{}",
+      core.post(`/studio/downloads/${encodePathSegments(id)}/resume`, {
+        ...(hfToken ? { hf_token: hfToken } : {}),
       }),
 
     cancelDownload: (id: string): Promise<{ download: ModelDownload }> =>
-      core.request(`/studio/downloads/${encodePathSegments(id)}/cancel`, { method: "POST" }),
+      core.post(`/studio/downloads/${encodePathSegments(id)}/cancel`),
 
     deleteModel: (path: string): Promise<{ success: boolean }> =>
-      core.request("/studio/models/delete", { method: "POST", body: JSON.stringify({ path }) }),
+      core.post("/studio/models/delete", { path }),
 
     moveModel: (
       sourcePath: string,
       targetRoot: string,
     ): Promise<{ success: boolean; target: string }> =>
-      core.request("/studio/models/move", {
-        method: "POST",
-        body: JSON.stringify({ source_path: sourcePath, target_root: targetRoot }),
-      }),
+      core.post("/studio/models/move", { source_path: sourcePath, target_root: targetRoot }),
 
     getProviders: (): Promise<{
       providers: Array<{
@@ -148,7 +135,7 @@ export function createStudioApi(core: ApiCore) {
         enabled: boolean;
         has_api_key: boolean;
       }>;
-    }> => core.request("/studio/providers"),
+    }> => core.get("/studio/providers"),
 
     createProvider: (payload: {
       id: string;
@@ -165,11 +152,7 @@ export function createStudioApi(core: ApiCore) {
         enabled: boolean;
         has_api_key: boolean;
       };
-    }> =>
-      core.request("/studio/providers", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }),
+    }> => core.post("/studio/providers", payload),
 
     updateProvider: (
       id: string,
@@ -188,28 +171,21 @@ export function createStudioApi(core: ApiCore) {
         enabled: boolean;
         has_api_key: boolean;
       };
-    }> =>
-      core.request(`/studio/providers/${encodePathSegments(id)}`, {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      }),
+    }> => core.put(`/studio/providers/${encodePathSegments(id)}`, payload),
 
     deleteProvider: (id: string): Promise<{ success: boolean }> =>
-      core.request(`/studio/providers/${encodePathSegments(id)}`, {
-        method: "DELETE",
-      }),
+      core.delete(`/studio/providers/${encodePathSegments(id)}`),
 
     getProviderModels: (): Promise<{
       providers: Array<{
         provider: string;
         models: Array<{ id: string; name?: string }>;
       }>;
-    }> => core.request("/studio/provider-models"),
+    }> => core.get("/studio/provider-models"),
 
-    getVllmRuntime: (): Promise<VllmRuntimeInfo> => core.request("/runtime/vllm"),
+    getVllmRuntime: (): Promise<VllmRuntimeInfo> => core.get("/runtime/vllm"),
 
-    getRuntimeTargets: (): Promise<{ targets: RuntimeTarget[] }> =>
-      core.request("/runtime/targets"),
+    getRuntimeTargets: (): Promise<{ targets: RuntimeTarget[] }> => core.get("/runtime/targets"),
 
     createRuntimeJob: (payload: {
       backend: "vllm" | "sglang" | "llamacpp" | "mlx";
@@ -220,53 +196,47 @@ export function createStudioApi(core: ApiCore) {
       version?: string;
       preferBundled?: boolean;
     }): Promise<{ job: EngineJob }> =>
-      core.request("/runtime/jobs", {
-        method: "POST",
-        body: JSON.stringify({
-          backend: payload.backend,
-          targetId: payload.targetId,
-          type: payload.type,
-          command: payload.command,
-          args: payload.args,
-          version: payload.version,
-          prefer_bundled: payload.preferBundled,
-        }),
+      core.post("/runtime/jobs", {
+        backend: payload.backend,
+        targetId: payload.targetId,
+        type: payload.type,
+        command: payload.command,
+        args: payload.args,
+        version: payload.version,
+        prefer_bundled: payload.preferBundled,
       }),
 
-    getRuntimeJobs: (): Promise<{ jobs: EngineJob[] }> => core.request("/runtime/jobs"),
+    getRuntimeJobs: (): Promise<{ jobs: EngineJob[] }> => core.get("/runtime/jobs"),
 
     getRuntimeJob: (id: string): Promise<{ job: EngineJob }> =>
-      core.request(`/runtime/jobs/${encodePathSegments(id)}`),
+      core.get(`/runtime/jobs/${encodePathSegments(id)}`),
 
     cancelRuntimeJob: (id: string): Promise<{ job: EngineJob }> =>
-      core.request(`/runtime/jobs/${encodePathSegments(id)}/cancel`, { method: "POST" }),
+      core.post(`/runtime/jobs/${encodePathSegments(id)}/cancel`),
 
-    getVllmRuntimeConfig: (): Promise<VllmRuntimeConfig> => core.request("/runtime/vllm/config"),
+    getVllmRuntimeConfig: (): Promise<VllmRuntimeConfig> => core.get("/runtime/vllm/config"),
 
-    getSglangRuntime: (): Promise<RuntimeBackendInfo> => core.request("/runtime/sglang"),
+    getSglangRuntime: (): Promise<RuntimeBackendInfo> => core.get("/runtime/sglang"),
 
-    getLlamacppRuntime: (): Promise<RuntimeBackendInfo> => core.request("/runtime/llamacpp"),
+    getLlamacppRuntime: (): Promise<RuntimeBackendInfo> => core.get("/runtime/llamacpp"),
 
-    getMlxRuntime: (): Promise<RuntimeBackendInfo> => core.request("/runtime/mlx"),
+    getMlxRuntime: (): Promise<RuntimeBackendInfo> => core.get("/runtime/mlx"),
 
     getLlamacppRuntimeConfig: (): Promise<{ config: string | null; error?: string | null }> =>
-      core.request("/runtime/llamacpp/config"),
+      core.get("/runtime/llamacpp/config"),
 
-    getCudaRuntime: (): Promise<RuntimeCudaInfo> => core.request("/runtime/cuda"),
+    getCudaRuntime: (): Promise<RuntimeCudaInfo> => core.get("/runtime/cuda"),
 
-    getRocmRuntime: (): Promise<RuntimeRocmInfo> => core.request("/runtime/rocm"),
+    getRocmRuntime: (): Promise<RuntimeRocmInfo> => core.get("/runtime/rocm"),
 
     upgradeRuntime: (
       backend: "vllm" | "sglang" | "llamacpp" | "mlx" | "cuda" | "rocm",
       payload: { preferBundled?: boolean; version?: string; targetId?: string } = {},
     ): Promise<RuntimeJobResponse> =>
-      core.request(`/runtime/${backend}/upgrade`, {
-        method: "POST",
-        body: JSON.stringify({
-          prefer_bundled: payload.preferBundled,
-          version: payload.version,
-          targetId: payload.targetId,
-        }),
+      core.post(`/runtime/${backend}/upgrade`, {
+        prefer_bundled: payload.preferBundled,
+        version: payload.version,
+        targetId: payload.targetId,
       }),
   };
 }

@@ -25,6 +25,8 @@ export interface RequestOptions extends RequestInit {
   retryDelay?: number;
 }
 
+type JsonRequestOptions = Omit<RequestOptions, "body" | "method">;
+
 export interface ChatRunStreamEvent {
   event: string;
   data: Record<string, unknown>;
@@ -255,6 +257,15 @@ export function createApiCore(params: {
     return text ? (JSON.parse(text) as T) : (null as unknown as T);
   };
 
+  const mutate =
+    (method: "POST" | "PUT" | "PATCH") =>
+    <T>(endpoint: string, body?: unknown, options: JsonRequestOptions = {}): Promise<T> =>
+      request(endpoint, {
+        ...options,
+        method,
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+
   const rpcFetch: typeof fetch = async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     return fetchResponse(url, url, init ?? {});
@@ -452,7 +463,12 @@ export function createApiCore(params: {
     useProxy,
     buildUrl,
     buildHeaders,
-    request,
+    get: request,
+    post: mutate("POST"),
+    put: mutate("PUT"),
+    patch: mutate("PATCH"),
+    delete: <T>(endpoint: string, options?: JsonRequestOptions): Promise<T> =>
+      request(endpoint, { ...options, method: "DELETE" }),
     rpc,
     rpcJson,
     postSseJson,

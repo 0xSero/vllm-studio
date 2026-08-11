@@ -33,7 +33,7 @@ const isLocalAgentId = (value: unknown): value is LocalAgentId =>
 
 async function resolveModelImages(core: ApiCore, recipe: RecipeWithStatus, modelId: string) {
   try {
-    const payload = await core.request<OpenAIModelsResponse>("/v1/models", {
+    const payload = await core.get<OpenAIModelsResponse>("/v1/models", {
       timeout: 10_000,
       retries: 0,
     });
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
 
   let recipes: RecipeWithStatus[];
   try {
-    const data = await core.request<RecipeWithStatus[]>("/recipes", {
+    const data = await core.get<RecipeWithStatus[]>("/recipes", {
       timeout: 10_000,
       retries: 0,
       headers: settings.apiKey ? { "X-API-Key": settings.apiKey } : undefined,

@@ -64,40 +64,35 @@ export function normalizeGpuAliases(list: unknown): GPU[] {
 export function createSystemApi(core: ApiCore) {
   return {
     launch: (recipeId: string): Promise<{ success: boolean; pid?: number; message: string }> =>
-      core.request(`/launch/${encodePathSegments(recipeId)}`, {
-        method: "POST",
+      core.post(`/launch/${encodePathSegments(recipeId)}`, undefined, {
         timeout: 360_000,
         retries: 0,
       }),
 
-    evict: (): Promise<{ success: boolean; evicted_pid?: number }> =>
-      core.request("/evict", { method: "POST" }),
+    evict: (): Promise<{ success: boolean; evicted_pid?: number }> => core.post("/evict"),
 
     waitReady: (timeout = 300): Promise<{ ready: boolean; elapsed: number; error?: string }> =>
-      core.request(`/wait-ready?timeout=${timeout}`, {
+      core.get(`/wait-ready?timeout=${timeout}`, {
         timeout: (timeout + 15) * 1000,
         retries: 0,
       }),
 
     getOpenAIModels: (): Promise<{
       data: Array<{ id: string; root?: string; max_model_len?: number }>;
-    }> => core.request("/v1/models"),
+    }> => core.get("/v1/models"),
 
     tokenizeChatCompletions: (data: {
       model: string;
       messages: Record<string, unknown>[];
       tools?: Record<string, unknown>[];
     }): Promise<{ input_tokens?: number; breakdown?: { messages?: number; tools?: number } }> =>
-      core.request("/v1/tokenize-chat-completions", {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
+      core.post("/v1/tokenize-chat-completions", data),
 
     countTextTokens: (data: { model: string; text: string }): Promise<{ num_tokens?: number }> =>
-      core.request("/v1/count-tokens", { method: "POST", body: JSON.stringify(data) }),
+      core.post("/v1/count-tokens", data),
 
     getGPUs: async (options?: RequestOptions): Promise<{ gpus: GPU[] }> => {
-      const payload = await core.request<{ gpus?: unknown }>("/gpus", options);
+      const payload = await core.get<{ gpus?: unknown }>("/gpus", options);
       return { gpus: normalizeGpuAliases(payload.gpus) };
     },
 
@@ -106,10 +101,9 @@ export function createSystemApi(core: ApiCore) {
       context_length: number;
       tp_size: number;
       kv_dtype: string;
-    }): Promise<VRAMCalculation> =>
-      core.request("/vram-calculator", { method: "POST", body: JSON.stringify(data) }),
+    }): Promise<VRAMCalculation> => core.post("/vram-calculator", data),
 
-    getMetrics: (): Promise<Metrics> => core.request("/v1/metrics/vllm"),
+    getMetrics: (): Promise<Metrics> => core.get("/v1/metrics/vllm"),
 
     runBenchmark: (
       promptTokens = 1000,
@@ -132,10 +126,7 @@ export function createSystemApi(core: ApiCore) {
         total_tokens: number;
         total_requests: number;
       };
-    }> =>
-      core.request(`/benchmark?prompt_tokens=${promptTokens}`, {
-        method: "POST",
-      }),
+    }> => core.post(`/benchmark?prompt_tokens=${promptTokens}`),
 
     getPeakMetrics: (): Promise<{
       metrics?: Array<{
@@ -151,9 +142,9 @@ export function createSystemApi(core: ApiCore) {
         total_requests: number;
       }>;
       error?: string;
-    }> => core.request("/peak-metrics", { retries: 0 }),
+    }> => core.get("/peak-metrics", { retries: 0 }),
 
-    getUsageStats: (): Promise<UsageStats> => core.request("/usage", { retries: 0 }),
+    getUsageStats: (): Promise<UsageStats> => core.get("/usage", { retries: 0 }),
 
     getStatus: async (
       options?: RequestOptions,
@@ -163,7 +154,7 @@ export function createSystemApi(core: ApiCore) {
       inference_port: number;
       launching: string | null;
     }> => {
-      const data = await core.request<{
+      const data = await core.get<{
         running: boolean;
         process: ProcessInfo | null;
         inference_port: number;
@@ -179,9 +170,9 @@ export function createSystemApi(core: ApiCore) {
     },
 
     getSystemConfig: (options?: RequestOptions): Promise<ConfigData> =>
-      core.request("/config", options),
+      core.get("/config", options),
 
     getCompatibility: (options?: RequestOptions): Promise<CompatibilityReport> =>
-      core.request("/compat", options),
+      core.get("/compat", options),
   };
 }

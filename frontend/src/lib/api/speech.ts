@@ -225,7 +225,7 @@ export function createSpeechApi(core: ApiCore) {
     },
     getSpeechStatus: async (): Promise<SpeechStatus> =>
       decodeStatus(
-        await core.request<unknown>("/v1/audio/status", {
+        await core.get<unknown>("/v1/audio/status", {
           cache: "no-store",
           retries: 0,
         }),
@@ -252,7 +252,7 @@ export function createSpeechApi(core: ApiCore) {
       ),
     listSpeechVoices: async (): Promise<readonly SpeechVoiceProfile[]> =>
       decodeVoices(
-        await core.request<unknown>("/v1/audio/voices", {
+        await core.get<unknown>("/v1/audio/voices", {
           cache: "no-store",
           retries: 0,
         }),
