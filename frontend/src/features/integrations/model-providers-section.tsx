@@ -11,7 +11,7 @@ import type {
   ProviderLoginStartResponse,
 } from "@local-studio/agent-runtime/provider-hub-contract";
 import { Input, ModelButton, Spinner } from "@/ui";
-import { ExternalLink, LogOut } from "@/ui/icon-registry";
+import { ExternalLink, LogOut } from "lucide-react";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceList } from "@/features/resources/resource-list";
 import { ResourceLogo } from "@/ui/resource-logo";

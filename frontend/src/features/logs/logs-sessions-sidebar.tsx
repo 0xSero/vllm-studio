@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, Trash2 } from "@/ui/icon-registry";
+import { ChevronLeft, Trash2 } from "lucide-react";
 import { Button, SearchInput, StatusPill } from "@/ui";
 import type { LogSession } from "@/lib/types";
 

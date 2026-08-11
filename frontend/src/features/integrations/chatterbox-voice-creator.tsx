@@ -2,7 +2,7 @@
 
 import type { SpeechStatus, SpeechVoiceProfile } from "@local-studio/contracts/speech";
 import { Button, Checkbox, FormField, Input, StatusPill } from "@/ui";
-import { Trash2 } from "@/ui/icon-registry";
+import { Trash2 } from "lucide-react";
 import { formattedVoiceDuration, type PendingAction } from "./chatterbox-voice-model";
 import { useVoiceReference, VoiceReferencePicker } from "./chatterbox-voice-reference";
 

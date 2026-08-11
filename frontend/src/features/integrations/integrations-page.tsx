@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { RefreshButton, Tabs } from "@/ui";
-import { Boxes, Brain, GraduationCap, Plug } from "@/ui/icon-registry";
+import { Boxes, Brain, GraduationCap, Plug } from "lucide-react";
 import { ConnectorsSection } from "@/features/settings/connectors-section";
 import { PluginsSection } from "./plugins-section";
 import { ModelProvidersSection } from "./model-providers-section";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Square, TriangleAlert } from "@/ui/icon-registry";
+import { Square, TriangleAlert } from "lucide-react";
 import { Button, ErrorBox, UiModal, UiModalHeader, Spinner } from "@/ui";
 
 type StopTriggerArgs = {

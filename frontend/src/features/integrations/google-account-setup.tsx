@@ -2,7 +2,7 @@
 
 import type { GoogleAccountView } from "@local-studio/agent-runtime/google-account-contract";
 import { Alert, Button, FormField, Input } from "@/ui";
-import { ExternalLink } from "@/ui/icon-registry";
+import { ExternalLink } from "lucide-react";
 import { openExternal } from "./google-account-model";
 
 export function GoogleAccountSetup({

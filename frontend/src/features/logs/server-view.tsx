@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { ExternalLink, RefreshCw } from "@/ui/icon-registry";
+import { ExternalLink, RefreshCw } from "lucide-react";
 import { AppPage, Button, Checkbox, KeyValueRow, StatusPill, Tabs } from "@/ui";
 import { useLogs } from "@/features/logs/use-logs";
 import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";

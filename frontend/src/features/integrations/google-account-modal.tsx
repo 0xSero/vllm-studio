@@ -9,7 +9,7 @@ import {
 } from "@local-studio/agent-runtime/google-account-contract";
 import type { GoogleWorkspacePluginId } from "@local-studio/agent-runtime/google-workspace-binding";
 import { Alert, UiModal, UiModalHeader } from "@/ui";
-import { KeyRound, X } from "@/ui/icon-registry";
+import { KeyRound, X } from "lucide-react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
   GoogleCancellationResponseSchema,

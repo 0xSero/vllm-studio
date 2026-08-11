@@ -1,6 +1,6 @@
 "use client";
 
-import { Save } from "@/ui/icon-registry";
+import { Save } from "lucide-react";
 import { Button, Spinner } from "@/ui";
 import { DrawerFooter } from "@/ui/drawer";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";

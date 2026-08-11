@@ -4,7 +4,7 @@ import { useRef, useState, type ReactNode } from "react";
 import api from "@/lib/api/client";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { Alert, Button, UiModal, UiModalHeader } from "@/ui";
-import { AudioLines, X } from "@/ui/icon-registry";
+import { AudioLines, X } from "lucide-react";
 import { VoiceCreator } from "./chatterbox-voice-creator";
 import { actionErrorMessage, type PendingAction } from "./chatterbox-voice-model";
 import { PreviewPlayer } from "./chatterbox-voice-preview";

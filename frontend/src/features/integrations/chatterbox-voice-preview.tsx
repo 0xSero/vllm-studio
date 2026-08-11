@@ -2,7 +2,7 @@
 
 import type { SpeechStatus, SpeechVoiceProfile } from "@local-studio/contracts/speech";
 import { Button, FormField, Select, Spinner, Textarea } from "@/ui";
-import { Play, Volume2 } from "@/ui/icon-registry";
+import { Play, Volume2 } from "lucide-react";
 import type { PendingAction } from "./chatterbox-voice-model";
 
 export function PreviewPlayer({

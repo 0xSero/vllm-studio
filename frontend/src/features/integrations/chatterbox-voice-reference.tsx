@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { Effect, Fiber } from "effect";
 import { Button, FormField, Input, SegmentedControl } from "@/ui";
-import { Mic, Square, Upload } from "@/ui/icon-registry";
+import { Mic, Square, Upload } from "lucide-react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 type ReferenceMode = "upload" | "record";

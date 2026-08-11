@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 import { Effect, Schema } from "effect";
-import { RefreshCw } from "@/ui/icon-registry";
+import { RefreshCw } from "lucide-react";
 import { Button, StatusPill } from "@/ui";
 import { useAsyncResource } from "@/hooks/use-async-resource";
 

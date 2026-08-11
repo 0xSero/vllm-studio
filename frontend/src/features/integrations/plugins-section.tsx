@@ -7,7 +7,7 @@ import {
   type PluginRuntimeView,
 } from "@local-studio/agent-runtime/plugin-runtime-contract";
 import { Alert, Button, ModelButton, UiModal, UiModalHeader } from "@/ui";
-import { Eye, X } from "@/ui/icon-registry";
+import { Eye, X } from "lucide-react";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceList } from "@/features/resources/resource-list";
 import { ResourceLogo } from "@/ui/resource-logo";
