@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 
 const port = Number(process.env.PORT) || 43220;
+const modelId = process.env.MODEL_ID || "controller-model";
 
 function json(response, status, body) {
   response.writeHead(status, { "content-type": "application/json" });
@@ -48,7 +49,7 @@ async function streamCompletion(request, response) {
     id,
     object: "chat.completion.chunk",
     created: Math.floor(Date.now() / 1000),
-    model: "controller-model",
+    model: modelId,
     choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }],
   })}\n\n`);
   for (const content of chunks) {
@@ -56,7 +57,7 @@ async function streamCompletion(request, response) {
       id,
       object: "chat.completion.chunk",
       created: Math.floor(Date.now() / 1000),
-      model: "controller-model",
+      model: modelId,
       choices: [{ index: 0, delta: { content }, finish_reason: null }],
     })}\n\n`);
     if (slow) await new Promise((resolve) => setTimeout(resolve, 150));
@@ -65,7 +66,7 @@ async function streamCompletion(request, response) {
     id,
     object: "chat.completion.chunk",
     created: Math.floor(Date.now() / 1000),
-    model: "controller-model",
+    model: modelId,
     choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
   })}\n\n`);
   response.write("data: [DONE]\n\n");
@@ -139,7 +140,7 @@ const server = createServer(async (request, response) => {
   if (url.pathname === "/v1/models") {
     return json(response, 200, {
       object: "list",
-      data: [{ id: "controller-model", object: "model" }],
+      data: [{ id: modelId, object: "model" }],
     });
   }
   if (url.pathname === "/v1/chat/completions" && request.method === "POST") {
