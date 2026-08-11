@@ -31,10 +31,11 @@ import {
 } from "@shared/agent/sanitize-embedded-browser-url";
 import { useTools } from "@/features/agent/tools/context";
 import type { ComputerTab } from "@/features/agent/tools/types";
-import type { GitSummary, Project } from "@/features/agent/projects/types";
+import { useProjects } from "@/features/agent/projects/context";
+import type { Project } from "@/features/agent/projects/types";
 import type { Session } from "@/features/agent/runtime/types";
+import { focusedSession as selectFocusedSession } from "@/features/agent/runtime/selectors";
 import { makeFreshTab } from "@/features/agent/messages/helpers";
-import type { AgentModel } from "@/features/agent/workspace/types";
 import {
   terminalOwnerFor,
   terminalOwnerLabel,
@@ -43,28 +44,7 @@ import {
 import { ComputerTabPanel, type SideChatTabsUpdater } from "@/features/agent/ui/computer-tab-panel";
 import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
 import { webPtyBridge } from "@/features/agent/ui/web-pty-bridge";
-import type { WorkspaceHandles } from "@/features/agent/ui/use-workspace";
-
-type AgentBrowserPanelHandles = Pick<
-  WorkspaceHandles,
-  | "registerComputerAside"
-  | "startComputerResize"
-  | "compactFocusedSession"
-  | "updateDetachedSession"
-  | "removeDetachedSession"
->;
-
-type AgentBrowserPanelProps = {
-  handles: AgentBrowserPanelHandles;
-  activeProject: Project | null;
-  focusedSession: Session | null;
-  sessions: Session[];
-  activeModelId: string;
-  activeModel: AgentModel | null;
-  models: AgentModel[];
-  modelsLoading: boolean;
-  gitSummary?: GitSummary | null;
-};
+import { useWorkspaceContext } from "@/features/agent/ui/use-workspace";
 
 function createSideChatSession(
   activeProject: Project | null,
@@ -95,17 +75,13 @@ function acceptedBrowserUrl(url: string): string | null {
   return /^file:\/\//i.test(url) ? sanitizeLocalFileUrl(url) : sanitizeBrowserPaneUrl(url);
 }
 
-export function AgentBrowserPanel({
-  handles,
-  activeProject,
-  focusedSession,
-  sessions,
-  activeModelId,
-  activeModel,
-  models,
-  modelsLoading,
-  gitSummary,
-}: AgentBrowserPanelProps) {
+export function AgentBrowserPanel() {
+  const { state, handles } = useWorkspaceContext();
+  const projects = useProjects();
+  const focusedSession = selectFocusedSession(state);
+  const activeProject = projects.resolveProject(focusedSession) ?? projects.selectedProject;
+  const sessions = [...state.sessions.values()];
+  const activeModelId = focusedSession?.modelId ?? state.selectedModel;
   const tools = useTools();
   const [sideChatSeed, setSideChatSeed] = useState<Session>(() =>
     createSideChatSession(null, null, ""),
@@ -257,23 +233,13 @@ export function AgentBrowserPanel({
       />
 
       <ComputerTabPanel
-        activeModel={activeModel}
-        activeModelId={activeModelId}
-        activeProject={activeProject}
-        focusedSession={focusedSession}
-        gitSummary={gitSummary}
-        models={models}
-        modelsLoading={modelsLoading}
         onCloseSideChat={closeSideChat}
-        onCompactSession={handles.compactFocusedSession}
         onNavigateBrowser={navigateBrowser}
         onOpenSideChat={openSideChat}
         onOpenTerminal={openTerminalForFocusedSession}
         onRenameSideChat={renameSideChat}
         onUpdateSideChatTabs={updateSideChatTabs}
-        sessions={sessions}
         sideChatSession={sideChatSession}
-        tools={tools}
       />
 
       <PersistentTerminals

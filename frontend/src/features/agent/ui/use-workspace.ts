@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import { useStore } from "zustand";
 import type { StoreApi } from "zustand/vanilla";
 import { safeJson } from "@/features/agent/safe-json";
@@ -78,6 +87,7 @@ export type WorkspaceHandles = {
 
 export type UseWorkspaceResult = {
   state: WorkspaceState;
+  store: StoreApi<WorkspaceState>;
   dispatch: WorkspaceDispatch;
   handles: WorkspaceHandles;
 };
@@ -383,5 +393,23 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
   });
   useWorkspaceRuntimeSync({ dispatch, sessions: [...state.sessions.values()] });
 
-  return { state, dispatch, handles };
+  return { state, store, dispatch, handles };
+}
+
+const WorkspaceContext = createContext<UseWorkspaceResult | null>(null);
+
+export function WorkspaceProvider({
+  value,
+  children,
+}: {
+  value: UseWorkspaceResult;
+  children: ReactNode;
+}) {
+  return createElement(WorkspaceContext.Provider, { value }, children);
+}
+
+export function useWorkspaceContext(): UseWorkspaceResult {
+  const workspace = useContext(WorkspaceContext);
+  if (!workspace) throw new Error("WorkspaceProvider is missing");
+  return workspace;
 }

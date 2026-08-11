@@ -2,10 +2,13 @@
 
 import { Suspense, lazy, useCallback, type ReactNode } from "react";
 import { FolderTree, GitBranch, Globe2, MessageSquarePlus, TerminalSquare } from "lucide-react";
-import type { ToolsContextValue } from "@/features/agent/tools/context";
+import { useTools } from "@/features/agent/tools/context";
 import type { ComputerTab } from "@/features/agent/tools/types";
-import type { Project, GitSummary } from "@/features/agent/projects/types";
+import { useProjects } from "@/features/agent/projects/context";
+import type { Project } from "@/features/agent/projects/types";
 import type { Session, UpdateSession } from "@/features/agent/runtime/types";
+import { focusedSession as selectFocusedSession } from "@/features/agent/runtime/selectors";
+import { useWorkspaceContext } from "@/features/agent/ui/use-workspace";
 import type { AgentModel } from "@/features/agent/workspace/types";
 import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
@@ -34,57 +37,76 @@ const LazyGitDiffPanel = lazy(() =>
 export type SideChatTabsUpdater = Session[] | ((tabs: Session[]) => Session[]);
 
 type ComputerTabPanelProps = {
-  activeModel: AgentModel | null;
-  activeModelId: string;
-  activeProject: Project | null;
-  focusedSession: Session | null;
-  gitSummary?: GitSummary | null;
-  models: AgentModel[];
-  modelsLoading: boolean;
   onCloseSideChat: () => void;
-  onCompactSession?: () => Promise<void>;
   onNavigateBrowser: (value: string) => void;
   onOpenSideChat: () => void;
   onOpenTerminal: () => void;
   onRenameSideChat: (tabId: string, title: string) => void;
   onUpdateSideChatTabs: (nextTabsOrUpdater: SideChatTabsUpdater) => void;
-  sessions: Session[];
   sideChatSession: Session;
-  tools: ToolsContextValue;
 };
 
 export function ComputerTabPanel(props: ComputerTabPanelProps) {
-  const focusedCwd = props.focusedSession?.cwd ?? props.activeProject?.path ?? null;
+  const { state, handles } = useWorkspaceContext();
+  const projects = useProjects();
+  const tools = useTools();
+  const focusedSession = selectFocusedSession(state);
+  const activeProject = projects.resolveProject(focusedSession) ?? projects.selectedProject;
+  const activeModelId = focusedSession?.modelId ?? state.selectedModel;
+  const activeModel = state.models.find((model) => model.id === activeModelId) ?? null;
+  const focusedCwd = focusedSession?.cwd ?? activeProject?.path ?? null;
   const panels: Record<ComputerTab, ReactNode> = {
-    status: <StatusTab {...props} />,
-    tools: <ComputerLauncherPanel activeTab={props.tools.computer.tab} {...props} />,
-    "side-chat": <SideChatTab {...props} />,
-    browser: <BrowserTab {...props} />,
-    files: <FilesTab cwd={focusedCwd} />,
+    status: (
+      <LazyComputerStatusPanel
+        activeProject={activeProject}
+        activeModel={activeModel}
+        focusedSession={focusedSession}
+        sessions={[...state.sessions.values()]}
+        gitSummary={projects.gitSummary(activeProject?.path ?? focusedSession?.cwd)}
+        onCompactSession={handles.compactFocusedSession}
+      />
+    ),
+    tools: (
+      <ComputerLauncherPanel
+        activeTab={tools.computer.tab}
+        onOpenSideChat={props.onOpenSideChat}
+        onOpenTerminal={props.onOpenTerminal}
+        tools={tools}
+      />
+    ),
+    "side-chat": (
+      <SideChatTab
+        activeModel={activeModel}
+        activeModelId={activeModelId}
+        activeProject={activeProject}
+        focusedSession={focusedSession}
+        models={state.models}
+        modelsLoading={state.modelsLoading}
+        {...props}
+      />
+    ),
+    browser: (
+      <LazyAgentBrowser
+        url={tools.browser.url}
+        inputValue={tools.browser.input}
+        onInputChange={tools.setBrowserInput}
+        onNavigate={props.onNavigateBrowser}
+        onLocationChange={(next) => tools.setBrowserUrl(next, next)}
+        onClose={() => tools.setComputerOpen(false)}
+        visible={tools.computer.open}
+      />
+    ),
+    files: (
+      <section className="flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1">
+          <LazyFilesystemPanel cwd={focusedCwd} />
+        </div>
+      </section>
+    ),
     diff: <LazyGitDiffPanel cwd={focusedCwd} />,
     terminal: null,
   };
-  return <Suspense fallback={<ComputerTabFallback />}>{panels[props.tools.computer.tab]}</Suspense>;
-}
-
-function StatusTab({
-  activeModel,
-  activeProject,
-  focusedSession,
-  gitSummary,
-  onCompactSession,
-  sessions,
-}: ComputerTabPanelProps) {
-  return (
-    <LazyComputerStatusPanel
-      activeProject={activeProject}
-      activeModel={activeModel}
-      focusedSession={focusedSession}
-      sessions={sessions}
-      gitSummary={gitSummary}
-      onCompactSession={onCompactSession}
-    />
-  );
+  return <Suspense fallback={<ComputerTabFallback />}>{panels[tools.computer.tab]}</Suspense>;
 }
 
 function SideChatTab({
@@ -98,7 +120,14 @@ function SideChatTab({
   onRenameSideChat,
   onUpdateSideChatTabs,
   sideChatSession,
-}: ComputerTabPanelProps) {
+}: ComputerTabPanelProps & {
+  activeModel: AgentModel | null;
+  activeModelId: string;
+  activeProject: Project | null;
+  focusedSession: Session | null;
+  models: AgentModel[];
+  modelsLoading: boolean;
+}) {
   const modelId = sideChatSession.modelId ?? focusedSession?.modelId ?? activeModelId;
   const selectedModel = models.find((model) => model.id === modelId) ?? activeModel;
   const cwd = sideChatSession.cwd ?? focusedSession?.cwd ?? activeProject?.path ?? "";
@@ -143,30 +172,6 @@ function SideChatTab({
   );
 }
 
-function BrowserTab({ onNavigateBrowser, tools }: ComputerTabPanelProps) {
-  return (
-    <LazyAgentBrowser
-      url={tools.browser.url}
-      inputValue={tools.browser.input}
-      onInputChange={tools.setBrowserInput}
-      onNavigate={onNavigateBrowser}
-      onLocationChange={(next) => tools.setBrowserUrl(next, next)}
-      onClose={() => tools.setComputerOpen(false)}
-      visible={tools.computer.open}
-    />
-  );
-}
-
-function FilesTab({ cwd }: { cwd: string | null }) {
-  return (
-    <section className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1">
-        <LazyFilesystemPanel cwd={cwd} />
-      </div>
-    </section>
-  );
-}
-
 function ComputerTabFallback() {
   return (
     <section className="flex min-h-0 flex-1 items-center justify-center bg-(--color-panel) text-xs text-(--dim)">
@@ -180,7 +185,12 @@ function ComputerLauncherPanel({
   onOpenSideChat,
   onOpenTerminal,
   tools,
-}: ComputerTabPanelProps & { activeTab: ComputerTab }) {
+}: {
+  activeTab: ComputerTab;
+  onOpenSideChat: () => void;
+  onOpenTerminal: () => void;
+  tools: ReturnType<typeof useTools>;
+}) {
   const cards = [
     {
       key: "files",

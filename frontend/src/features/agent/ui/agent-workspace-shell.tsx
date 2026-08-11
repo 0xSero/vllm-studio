@@ -8,14 +8,16 @@ import {
   useQuickPanelExpandEffect,
 } from "@/features/agent/ui/quick-panel/quick-panel-top-bar";
 import { CloseIcon, PlusIcon } from "@/ui/icons";
-import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
-import type { WorkspaceState } from "@/features/agent/workspace/types";
 import { useProjects, type ProjectsContextValue } from "@/features/agent/projects/context";
 import { useTools } from "@/features/agent/tools/context";
 import { focusedSession } from "@/features/agent/runtime/selectors";
 import { PaneGrid } from "@/features/agent/ui/pane-grid";
-import { useWorkspace, type WorkspaceHandles } from "@/features/agent/ui/use-workspace";
-import { renderWorkspacePane } from "@/features/agent/ui/render-workspace-pane";
+import {
+  useWorkspace,
+  useWorkspaceContext,
+  WorkspaceProvider,
+} from "@/features/agent/ui/use-workspace";
+import { WorkspacePane } from "@/features/agent/ui/render-workspace-pane";
 import { useAgentWorkspaceNavigationEffects } from "@/features/agent/ui/agent-workspace-navigation";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { POPOVER_SURFACE_CLASS } from "@/ui/popover";
@@ -68,7 +70,8 @@ export function shouldShowProjectEmptyState(
 }
 
 export function AgentWorkspace({ compact = false }: { compact?: boolean } = {}) {
-  const { state, dispatch, handles } = useWorkspace({ ephemeral: compact });
+  const workspace = useWorkspace({ ephemeral: compact });
+  const { state, dispatch } = workspace;
   const projects = useProjects();
   const tools = useTools();
   const searchParams = useSearchParams();
@@ -88,94 +91,64 @@ export function AgentWorkspace({ compact = false }: { compact?: boolean } = {}) 
     ...activeSessionIdentity,
     setActiveComputerSession: tools.setActiveComputerSession,
   });
-  const focusedModel =
-    state.models.find((model) => model.id === (focusedTab?.modelId ?? state.selectedModel)) ?? null;
-  const focusedGitSummary = projects.gitSummary(activeProject?.path ?? focusedTab?.cwd);
   const showProjectEmptyState = shouldShowProjectEmptyState(projects, projectParam);
   const focusedMessageCount = focusedTab?.messages.length ?? 0;
   const panelMode = quickPanelMode(compact, showProjectEmptyState, focusedMessageCount);
   const composerOnly = panelMode === "composer";
   useQuickPanelExpandEffect(compact, panelMode === "thread");
   return (
-    <div data-quick-panel-state={panelMode} className={workspaceClassName(panelMode)}>
-      <div
-        className="agent-workspace-panel-row relative flex min-h-0 flex-1"
-        data-multi-pane={collectLeaves(state.layout).length > 1 ? "true" : undefined}
-      >
-        <section className="relative flex min-w-0 flex-1 flex-col">
-          <WorkspaceTopBar
-            error={state.error}
-            setupWarning={state.setupWarning}
-            onClearError={() => dispatch((current) => ({ ...current, error: "" }))}
-          />
-          {compact ? (
-            <QuickPanelTopBar
-              projects={projects}
-              projectId={activeProject?.id ?? null}
-              sessionId={focusedTab?.piSessionId ?? null}
-              hasThread={focusedMessageCount > 0}
+    <WorkspaceProvider value={workspace}>
+      <div data-quick-panel-state={panelMode} className={workspaceClassName(panelMode)}>
+        <div
+          className="agent-workspace-panel-row relative flex min-h-0 flex-1"
+          data-multi-pane={collectLeaves(state.layout).length > 1 ? "true" : undefined}
+        >
+          <section className="relative flex min-w-0 flex-1 flex-col">
+            <WorkspaceTopBar
+              error={state.error}
+              setupWarning={state.setupWarning}
+              onClearError={() => dispatch((current) => ({ ...current, error: "" }))}
             />
+            {compact ? (
+              <QuickPanelTopBar
+                projects={projects}
+                projectId={activeProject?.id ?? null}
+                sessionId={focusedTab?.piSessionId ?? null}
+                hasThread={focusedMessageCount > 0}
+              />
+            ) : null}
+            <WorkspacePaneContent
+              showEmptyState={showProjectEmptyState}
+              compact={compact}
+              composerOnly={composerOnly}
+            />
+          </section>
+          {!compact ? (
+            <Suspense fallback={tools.computer.open ? <ComputerPanelFallback /> : null}>
+              <LazyAgentBrowserPanel />
+            </Suspense>
           ) : null}
-          <WorkspacePaneContent
-            showEmptyState={showProjectEmptyState}
-            state={state}
-            projects={projects}
-            dispatch={dispatch}
-            handles={handles}
-            compact={compact}
-            composerOnly={composerOnly}
-          />
-        </section>
-        {!compact ? (
-          <Suspense fallback={tools.computer.open ? <ComputerPanelFallback /> : null}>
-            <LazyAgentBrowserPanel
-              handles={handles}
-              activeProject={activeProject}
-              focusedSession={focusedTab}
-              sessions={[...state.sessions.values()]}
-              activeModelId={focusedTab?.modelId ?? state.selectedModel}
-              activeModel={focusedModel}
-              gitSummary={focusedGitSummary}
-              models={state.models}
-              modelsLoading={state.modelsLoading}
-            />
-          </Suspense>
-        ) : null}
+        </div>
       </div>
-    </div>
+    </WorkspaceProvider>
   );
 }
 
 function WorkspacePaneContent({
   showEmptyState,
-  state,
-  projects,
-  dispatch,
-  handles,
   compact,
   composerOnly,
 }: {
   showEmptyState: boolean;
-  state: WorkspaceState;
-  projects: ProjectsContextValue;
-  dispatch: WorkspaceDispatch;
-  handles: WorkspaceHandles;
   compact?: boolean;
   composerOnly: boolean;
 }) {
+  const { state, handles } = useWorkspaceContext();
   if (showEmptyState) return <ProjectEmptyState />;
   if (compact) {
     return (
       <div className="flex min-h-0 flex-1">
-        {renderWorkspacePane({
-          paneId: state.focusedPaneId,
-          state,
-          projects,
-          dispatch,
-          handles,
-          compact,
-          composerOnly,
-        })}
+        <WorkspacePane paneId={state.focusedPaneId} compact composerOnly={composerOnly} />
       </div>
     );
   }
@@ -183,9 +156,7 @@ function WorkspacePaneContent({
     <div className="min-h-0 flex-1">
       <PaneGrid
         layout={state.layout}
-        renderPane={(paneId) =>
-          renderWorkspacePane({ paneId, state, projects, dispatch, handles, compact })
-        }
+        renderPane={(paneId) => <WorkspacePane paneId={paneId} />}
         onSplit={handles.splitPaneWithPayload}
         onOpenTab={handles.openSessionPayloadInPane}
         onResize={handles.setSplitRatio}
