@@ -1,4 +1,4 @@
-import { Loader2, RefreshCw } from "./icon-registry";
+import { Loader2, RefreshCw } from "lucide-react";
 import { cx } from "./utils";
 
 const SPINNER_SIZES = {
@@ -10,12 +10,6 @@ const SPINNER_SIZES = {
 
 export type SpinnerSize = keyof typeof SPINNER_SIZES;
 
-/**
- * Always-spinning progress glyph. `variant="loader"` renders the lucide
- * loader arc (Loader2); `variant="refresh"` renders the circular-arrows
- * glyph used by list/content reload states. For refresh icons that only
- * spin while loading, use RefreshButton / RefreshIconButton instead.
- */
 export function Spinner({
   size = "md",
   variant = "loader",
