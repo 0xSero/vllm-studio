@@ -1,8 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { PinIcon } from "@/ui/icons";
-import { ChevronDownIcon } from "@/ui/icons";
+import { ChevronDownIcon, PinIcon } from "@/ui/icons";
 
 /** The one pin control for every sidebar row (sessions and projects). It sits in
  *  the row's hover action cluster and, once pinned, stays lit as the pinned
