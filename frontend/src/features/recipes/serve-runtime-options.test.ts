@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { RuntimeTarget } from "@/lib/types";
 import { isManagedRuntimeTarget } from "@/features/settings/runtime-targets";
-import { isManagedServeRuntimeTarget } from "./serve-runtime";
+import { isManagedServeRuntimeTarget } from "@/lib/serve-runtime";
 
 const target = (pythonPath: string): RuntimeTarget =>
   ({ backend: "vllm", kind: "venv", pythonPath }) as RuntimeTarget;
