@@ -3,9 +3,24 @@
 import type { ReactNode } from "react";
 import { cx } from "./utils";
 
+export type ListRowProps = {
+  label: string;
+  description?: ReactNode;
+  leading?: ReactNode;
+  value?: ReactNode;
+  control?: ReactNode;
+  status?: ReactNode;
+  actions?: ReactNode;
+  children?: ReactNode;
+  className?: string;
+  variant?: "settings" | "resource" | "model" | "catalog";
+  onClick?: () => void;
+};
+
 export function ListRow({
   label,
   description,
+  leading,
   value,
   control,
   status,
@@ -13,17 +28,8 @@ export function ListRow({
   children,
   className,
   variant = "settings",
-}: {
-  label: string;
-  description?: ReactNode;
-  value?: ReactNode;
-  control?: ReactNode;
-  status?: ReactNode;
-  actions?: ReactNode;
-  children?: ReactNode;
-  className?: string;
-  variant?: "settings" | "resource";
-}) {
+  onClick,
+}: ListRowProps) {
   const primaryValue = control ?? value;
 
   if (variant === "resource") {
@@ -62,34 +68,114 @@ export function ListRow({
     );
   }
 
+  const model = variant === "model" || variant === "catalog";
+  const interactive = model && Boolean(onClick);
   return (
     <div
-      className={cx("rounded-md px-2 py-2.5 transition-colors hover:bg-(--ui-hover)/30", className)}
+      className={cx(
+        model ? "group px-1 py-2" : "rounded-md px-2 py-2.5 transition-colors",
+        interactive
+          ? "cursor-pointer rounded-md transition-[background-color,transform] hover:bg-(--ui-hover)/35 focus:outline-none focus:ring-1 focus:ring-(--ui-info)/45 active:translate-y-px"
+          : model
+            ? ""
+            : "hover:bg-(--ui-hover)/30",
+        variant === "catalog" ? "py-2.5" : "",
+        className,
+      )}
+      onClick={onClick}
+      onKeyDown={
+        interactive
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onClick?.();
+              }
+            }
+          : undefined
+      }
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
     >
-      <div className="grid min-h-7 grid-cols-1 gap-1.5 md:grid-cols-[minmax(168px,0.3fr)_minmax(0,1fr)] md:items-center md:gap-4">
-        <div className="min-w-0">
-          <div
-            className="truncate text-[length:var(--fs-base)] font-medium text-(--ui-fg)"
-            title={label}
-          >
-            {label}
+      <div
+        className={cx(
+          "grid min-h-7 grid-cols-1 md:items-center",
+          model
+            ? variant === "catalog"
+              ? "gap-2 md:grid-cols-[minmax(260px,0.52fr)_minmax(0,0.48fr)] md:gap-4"
+              : "gap-2 md:grid-cols-[minmax(180px,0.32fr)_minmax(0,1fr)] md:gap-5"
+            : "gap-1.5 md:grid-cols-[minmax(168px,0.3fr)_minmax(0,1fr)] md:gap-4",
+        )}
+      >
+        <div className={cx("min-w-0", model ? "flex items-center gap-2.5" : "")}>
+          {leading ? <span className="shrink-0">{leading}</span> : null}
+          <div className="min-w-0">
+            <div
+              className={cx(
+                "truncate font-medium text-(--ui-fg)",
+                model ? "text-[length:var(--fs-md)]" : "text-[length:var(--fs-base)]",
+              )}
+              title={label}
+            >
+              {label}
+            </div>
+            {description ? (
+              <div
+                className={cx(
+                  "mt-0.5 text-[length:var(--fs-sm)] text-(--ui-muted)",
+                  model ? "truncate" : "leading-relaxed",
+                )}
+                title={model && typeof description === "string" ? description : undefined}
+              >
+                {description}
+              </div>
+            ) : null}
           </div>
-          {description ? (
-            <div className="mt-0.5 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
-              {description}
+        </div>
+        <div
+          className={cx(
+            "flex min-w-0 items-center",
+            model ? "justify-between gap-3" : "justify-end gap-2",
+          )}
+        >
+          {primaryValue ? (
+            <div
+              className="min-w-0 flex-1"
+              onClick={control && interactive ? (event) => event.stopPropagation() : undefined}
+            >
+              {primaryValue}
+            </div>
+          ) : null}
+          {status ? (
+            <div
+              className="shrink-0"
+              onClick={interactive ? (event) => event.stopPropagation() : undefined}
+            >
+              {status}
+            </div>
+          ) : null}
+          {actions ? (
+            <div
+              className={cx("flex shrink-0 items-center", model ? "gap-1" : "gap-1.5")}
+              onClick={interactive ? (event) => event.stopPropagation() : undefined}
+            >
+              {actions}
             </div>
           ) : null}
         </div>
-        <div className="flex min-w-0 items-center justify-end gap-2">
-          {primaryValue ? <div className="min-w-0 flex-1">{primaryValue}</div> : null}
-          {status ? <div className="shrink-0">{status}</div> : null}
-          {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
-        </div>
       </div>
       {children ? (
-        <div className="mt-2 grid grid-cols-1 gap-1.5 md:grid-cols-[minmax(168px,0.3fr)_minmax(0,1fr)] md:gap-4">
-          <div className="hidden md:block" />
-          <div className="min-w-0">{children}</div>
+        <div
+          className={cx(
+            "mt-2",
+            model
+              ? variant === "catalog"
+                ? "md:ml-[calc(260px+1rem)]"
+                : "md:ml-[calc(180px+1.25rem)]"
+              : "grid grid-cols-1 gap-1.5 md:grid-cols-[minmax(168px,0.3fr)_minmax(0,1fr)] md:gap-4",
+          )}
+        >
+          {!model ? <div className="hidden md:block" /> : null}
+          <div className={model ? undefined : "min-w-0"}>{children}</div>
         </div>
       ) : null}
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { StatusPill, type UiTone } from "@/ui";
+import { ListRow, StatusPill, type ListRowProps, type UiTone } from "@/ui";
 import { cx } from "@/ui/utils";
 
 export type ModelStatusTone = UiTone;
@@ -12,19 +12,7 @@ export type ModelSummaryItem = {
   value: ReactNode;
 };
 
-type ModelRowProps = {
-  label: string;
-  description?: string;
-  leading?: ReactNode;
-  value?: ReactNode;
-  control?: ReactNode;
-  status?: ReactNode;
-  actions?: ReactNode;
-  children?: ReactNode;
-  variant?: ModelRowVariant;
-  className?: string;
-  onClick?: () => void;
-};
+type ModelRowProps = Omit<ListRowProps, "variant"> & { variant?: ModelRowVariant };
 
 export function ModelSection({
   title,
@@ -121,108 +109,10 @@ export function ModelActiveSummary({
   );
 }
 
-export function ModelRow({
-  label,
-  description,
-  leading,
-  value,
-  control,
-  status,
-  actions,
-  children,
-  variant = "default",
-  className,
-  onClick,
-}: ModelRowProps) {
-  const interactive = Boolean(onClick);
-  return (
-    <div
-      className={cx(
-        "group px-1 py-2",
-        interactive
-          ? "cursor-pointer rounded-md transition-[background-color,transform] hover:bg-(--ui-hover)/35 focus:outline-none focus:ring-1 focus:ring-(--ui-info)/45 active:translate-y-px"
-          : "",
-        variant === "catalog" ? "py-2.5" : "",
-        className,
-      )}
-      onClick={onClick}
-      onKeyDown={
-        interactive
-          ? (event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onClick?.();
-              }
-            }
-          : undefined
-      }
-      role={interactive ? "button" : undefined}
-      tabIndex={interactive ? 0 : undefined}
-    >
-      <div
-        className={cx(
-          "grid min-h-7 grid-cols-1 gap-2 md:items-center",
-          variant === "catalog"
-            ? "md:grid-cols-[minmax(260px,0.52fr)_minmax(0,0.48fr)] md:gap-4"
-            : "md:grid-cols-[minmax(180px,0.32fr)_minmax(0,1fr)] md:gap-5",
-        )}
-      >
-        <div className="flex min-w-0 items-center gap-2.5">
-          {leading ? <span className="shrink-0">{leading}</span> : null}
-          <div className="min-w-0">
-            <div
-              className="truncate text-[length:var(--fs-md)] font-medium text-(--ui-fg)"
-              title={label}
-            >
-              {label}
-            </div>
-            {description ? (
-              <div
-                className="mt-0.5 truncate text-[length:var(--fs-sm)] text-(--ui-muted)"
-                title={description}
-              >
-                {description}
-              </div>
-            ) : null}
-          </div>
-        </div>
-        <div className="flex min-w-0 items-center justify-between gap-3">
-          <div
-            className="min-w-0 flex-1"
-            onClick={control && interactive ? (event) => event.stopPropagation() : undefined}
-          >
-            {control ?? value ?? <ModelValue dim>Not reported yet</ModelValue>}
-          </div>
-          {status ? (
-            <div
-              className="shrink-0"
-              onClick={interactive ? (event) => event.stopPropagation() : undefined}
-            >
-              {status}
-            </div>
-          ) : null}
-          {actions ? (
-            <div
-              className="flex shrink-0 items-center gap-1"
-              onClick={interactive ? (event) => event.stopPropagation() : undefined}
-            >
-              {actions}
-            </div>
-          ) : null}
-        </div>
-      </div>
-      {children ? (
-        <div
-          className={cx(
-            "mt-2",
-            variant === "catalog" ? "md:ml-[calc(260px+1rem)]" : "md:ml-[calc(180px+1.25rem)]",
-          )}
-        >
-          {children}
-        </div>
-      ) : null}
-    </div>
-  );
+export function ModelRow({ variant = "default", ...props }: ModelRowProps) {
+  const value =
+    props.value ?? (props.control ? undefined : <ModelValue dim>Not reported yet</ModelValue>);
+  return <ListRow {...props} value={value} variant={variant === "catalog" ? "catalog" : "model"} />;
 }
 
 export function ModelValue({
