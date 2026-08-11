@@ -34,25 +34,25 @@ export const effectRoute = {
     app: Hono<ControllerEnvironment>,
     path: Path,
     handler: EffectRouteHandler<Result>,
-  ) => app.get(path, documentRoute, effectHandler(handler)),
+  ): ControllerRouteApp => app.get(path, documentRoute, effectHandler(handler)),
   post: <Path extends string, Result extends Response | TypedResponse<unknown>>(
     app: Hono<ControllerEnvironment>,
     path: Path,
     handler: EffectRouteHandler<Result>,
-  ) => app.post(path, documentRoute, effectHandler(handler)),
+  ): ControllerRouteApp => app.post(path, documentRoute, effectHandler(handler)),
   put: <Path extends string, Result extends Response | TypedResponse<unknown>>(
     app: Hono<ControllerEnvironment>,
     path: Path,
     handler: EffectRouteHandler<Result>,
-  ) => app.put(path, documentRoute, effectHandler(handler)),
+  ): ControllerRouteApp => app.put(path, documentRoute, effectHandler(handler)),
   patch: <Path extends string, Result extends Response | TypedResponse<unknown>>(
     app: Hono<ControllerEnvironment>,
     path: Path,
     handler: EffectRouteHandler<Result>,
-  ) => app.patch(path, documentRoute, effectHandler(handler)),
+  ): ControllerRouteApp => app.patch(path, documentRoute, effectHandler(handler)),
   delete: <Path extends string, Result extends Response | TypedResponse<unknown>>(
     app: Hono<ControllerEnvironment>,
     path: Path,
     handler: EffectRouteHandler<Result>,
-  ) => app.delete(path, documentRoute, effectHandler(handler)),
+  ): ControllerRouteApp => app.delete(path, documentRoute, effectHandler(handler)),
 };

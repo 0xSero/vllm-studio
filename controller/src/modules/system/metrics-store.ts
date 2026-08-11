@@ -13,7 +13,11 @@ const PEAK_FIELDS = [
   ["ttft_ms", "best_ttft_ms", "<"],
 ] as const;
 
-const peakAssignment = (table: string, column: string, operator: string) => `${column} = CASE
+const peakAssignment = (
+  table: string,
+  column: string,
+  operator: string,
+): string => `${column} = CASE
     WHEN excluded.${column} IS NULL THEN ${table}.${column}
     WHEN ${table}.${column} IS NULL THEN excluded.${column}
     WHEN excluded.${column} ${operator} ${table}.${column}
@@ -182,11 +186,7 @@ export class PeakMetricsStore {
   }
 
   public getSession(sessionId: string): Record<string, unknown> | null {
-    return recordRow(
-      this.db,
-      "SELECT * FROM peak_metric_sessions WHERE session_id = ?",
-      sessionId,
-    );
+    return recordRow(this.db, "SELECT * FROM peak_metric_sessions WHERE session_id = ?", sessionId);
   }
 
   public getSessionEffect(
@@ -270,9 +270,7 @@ export class LifetimeMetricsStore {
       ["first_started_at", 0],
     ];
     for (const [key, value] of defaults) {
-      db
-        .query("INSERT OR IGNORE INTO lifetime_metrics (key, value) VALUES (?, ?)")
-        .run(key, value);
+      db.query("INSERT OR IGNORE INTO lifetime_metrics (key, value) VALUES (?, ?)").run(key, value);
     }
   }
 
