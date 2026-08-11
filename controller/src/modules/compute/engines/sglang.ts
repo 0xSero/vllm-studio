@@ -32,7 +32,9 @@ const image = (host: HostProfile): string | null =>
 
 const supports = (host: HostProfile): EngineSupport => {
   if (host.platform === "darwin") return unsupported("SGLang has no Metal backend");
-  if (host.platform === "win32" && !host.wsl) return unsupported("SGLang on Windows requires WSL2");
+  if (host.platform === "win32") {
+    return unsupported("SGLang requires a controller running inside WSL2 or on a remote Linux host");
+  }
   if (host.accelerator !== "cuda") {
     return unsupported(`SGLang needs a CUDA device; this host reports ${host.accelerator}`);
   }

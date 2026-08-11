@@ -37,7 +37,9 @@ const supports = (host: HostProfile): EngineSupport => {
   if (host.platform === "darwin") {
     return unsupported("vLLM has no Metal backend — use llamacpp or mlx on Apple Silicon");
   }
-  if (host.platform === "win32" && !host.wsl) return unsupported("vLLM on Windows requires WSL2");
+  if (host.platform === "win32") {
+    return unsupported("vLLM requires a controller running inside WSL2 or on a remote Linux host");
+  }
   if (host.accelerator === "rocm") {
     // Upstream publishes ROCm images; the PyPI wheels are CUDA-only.
     return host.dockerGpu
