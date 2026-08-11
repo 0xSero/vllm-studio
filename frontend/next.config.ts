@@ -134,7 +134,7 @@ const nextConfig: NextConfig = {
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
-      "font-src 'self' data:",
+      "font-src 'self' data: https://cdn.openai.com",
       "connect-src 'self' https: http: ws: wss:",
       "frame-src 'self' https: http:",
       "media-src 'self' blob: data:",
