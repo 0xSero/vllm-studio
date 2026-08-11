@@ -28,29 +28,31 @@ Feature parity means preserving all externally visible behavior across:
 
 | Ownership boundary                                   | Current lines | Target lines | Remaining reduction |
 | ---------------------------------------------------- | ------------: | -----------: | ------------------: |
-| Controller and controller contracts                  |        21,969 |       12,500 |               9,469 |
+| Controller and controller contracts                  |        21,961 |       12,500 |               9,461 |
 | Agent runtime and shared agent contracts             |        16,551 |        8,000 |               8,551 |
-| Frontend features                                    |        48,357 |       25,000 |              23,357 |
+| Frontend features                                    |        48,180 |       25,000 |              23,180 |
 | Frontend app, API, hooks, library, store, and UI kit |        11,328 |        8,000 |               3,328 |
 | Electron runtime                                     |         6,433 |        5,000 |               1,433 |
-| Installers and remaining shared production data      |           694 |        1,500 |                -806 |
-| **Total**                                            |   **105,332** |   **60,000** |          **45,332** |
+| Installers and remaining shared production data      |           806 |        1,500 |                -694 |
+| **Total**                                            |   **105,259** |   **60,000** |          **45,259** |
 
-The current column is measured from this PR at `e6b866c89e052fb9ee67c01fdd56fefab298358a`.
+The current column is measured from this PR at `1916f164902a437768bc2f4d8405c16be4f2ffc0`.
 The authoritative acceptance number is the semantic count produced by the command in the
 measurement section.
 
 ## Current checkpoint
 
-This PR has structurally removed 2,341 semantic production lines from the current main baseline.
+This PR has structurally removed 2,414 semantic production lines from the current main baseline.
 The delivered slices centralize agent and terminal proxy policy, JSON persistence, usage
 normalization, recipe fields and engine plans, workspace ownership, PTY ownership, page-to-view
-state ownership, and all 85 controller Effect route adapters. The remaining 45,332 lines are not
-claimed as complete work.
+state ownership, searchable resource collections, decoded JSON requests, appearance controls, the
+complete engine specification, and all 85 controller Effect route adapters. The remaining 45,259
+lines are not claimed as complete work.
 
 Parity evidence at this checkpoint includes 90 controller checks, 97 agent-runtime integration
-checks, recorded browser coverage for every top-level route, and a recorded real-PTY open, command,
-chat switch, reopen, and scrollback path.
+checks, recorded browser coverage for every top-level route, a recorded real-PTY open, command,
+chat switch, reopen, and scrollback path, and five recorded provider catalog, OAuth, API-key, and
+cloud-chat integration flows.
 
 ## Target architecture
 
