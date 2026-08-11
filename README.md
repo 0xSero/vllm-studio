@@ -120,6 +120,10 @@ Start the frontend in a second terminal, then open
 npm run dev
 ```
 
+On Windows, the complete Electron development stack can instead be started
+from one PowerShell window with `npm run desktop:dev`. This starts the local
+controller, frontend, agent runtime, and Electron together.
+
 `npm run setup` installs the controller, shared contracts, agent runtime, and
 frontend from their lockfiles. The setup wizard walks through choosing a models
 directory, installing an engine, downloading a model, launching it, and

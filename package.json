@@ -14,6 +14,7 @@
     "release:stage-desktop": "node scripts/project.mjs stage-release",
     "setup:git-hooks": "node scripts/project.mjs setup-hooks",
     "dev:controller": "bun run --cwd controller dev",
+    "desktop:dev": "npm --prefix frontend exec -- concurrently -k -n CONTROLLER,DESKTOP -c blue,magenta \"npm run dev:controller\" \"npm --prefix frontend run desktop:dev\"",
     "dev": "npm --prefix frontend run dev",
     "build": "npm --prefix frontend run build",
     "start:controller": "bun run --cwd controller start",

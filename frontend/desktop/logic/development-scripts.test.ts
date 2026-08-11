@@ -12,6 +12,8 @@ describe("development scripts", () => {
 
     expect(manifest.scripts["dev:controller"]).toBe("bun run --cwd controller dev");
     expect(manifest.scripts["start:controller"]).toBe("bun run --cwd controller start");
+    expect(manifest.scripts["desktop:dev"]).toContain('"npm run dev:controller"');
+    expect(manifest.scripts["desktop:dev"]).toContain('"npm --prefix frontend run desktop:dev"');
   });
 
   test("starts Electron without an inline shell expression", () => {

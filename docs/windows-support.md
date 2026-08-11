@@ -71,12 +71,18 @@ From PowerShell in the repository root:
 ```powershell
 npm run doctor
 npm run setup
-npm run dev:controller
+$env:LOCAL_STUDIO_MODELS_DIR = "F:\Local_Studio\models"
+npm run desktop:dev
 ```
 
-In another PowerShell window:
+That one command starts the local controller on `127.0.0.1:8080`, the Next.js
+frontend on `localhost:3000`, the Pi agent runtime, and the Electron window.
+Press `Ctrl+C` in the same PowerShell window to stop the development stack.
+
+The controller and browser frontend can still be run separately when needed:
 
 ```powershell
+npm run dev:controller
 npm run dev
 ```
 
