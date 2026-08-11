@@ -12,6 +12,7 @@ type Rule = {
   methods: readonly Method[];
   authenticated?: boolean;
   bodyLimits?: Partial<Record<Method, number>>;
+  crossSiteError?: string;
 };
 
 const rules: readonly Rule[] = [
@@ -24,6 +25,14 @@ const rules: readonly Rule[] = [
   { pattern: /^compact$/, methods: ["POST"], authenticated: true },
   { pattern: /^goal$/, methods: ["GET", "PUT", "DELETE"], authenticated: true },
   { pattern: /^models$/, methods: ["GET", "POST"], bodyLimits: { POST: 64 * 1024 } },
+  { pattern: /^pr$/, methods: ["GET"], authenticated: true },
+  {
+    pattern: /^pr\/merge$/,
+    methods: ["POST"],
+    authenticated: true,
+    bodyLimits: { POST: 64 * 1024 },
+    crossSiteError: "Cross-site pull-request access rejected",
+  },
   { pattern: /^providers$/, methods: ["GET"], authenticated: true },
   { pattern: /^providers\/[^/]+\/(?:login|logout)$/, methods: ["POST"], authenticated: true },
   { pattern: /^providers\/login\/[^/]+$/, methods: ["GET"], authenticated: true },
@@ -67,6 +76,12 @@ async function handle(request: NextRequest): Promise<Response> {
   if (rule.authenticated) {
     const denied = requireApiAccess(request);
     if (denied) return denied;
+  }
+  if (
+    rule.crossSiteError &&
+    request.headers.get("sec-fetch-site")?.toLowerCase() === "cross-site"
+  ) {
+    return Response.json({ error: rule.crossSiteError }, { status: 403 });
   }
   return proxyToAgentRuntime(request, { bodyLimitBytes: rule.bodyLimits?.[method] });
 }
