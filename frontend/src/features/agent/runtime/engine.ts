@@ -1,13 +1,11 @@
 import { useCallback, useMemo, useRef } from "react";
 import { Effect } from "effect";
 import {
-  finalizeRunningToolBlocks,
-  mergeCanonicalAndRuntimeEvents,
-  reconcileReplayMessages,
+  mergeLiveTranscript,
+  projectTranscript,
   replayCursorAfterRuntimeHydration,
   runtimeStatusAcceptsControl,
 } from "@/features/agent/messages";
-import { foldSessionEvents } from "@/features/agent/runtime/pi-event-applier";
 import { settleTurnFinalizingTools } from "@/features/agent/runtime/session-status";
 import {
   selectedContextPrompt,
@@ -285,37 +283,29 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             { concurrency: "unbounded" },
           );
           if (replayResult._tag === "Success") {
-            const { events, cursor, meta } = replayResult.success;
+            const { messages: rawMessages, cursor, meta } = replayResult.success;
             const runtimeActive = runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId);
-            const replayEvents = mergeCanonicalAndRuntimeEvents(
-              events,
-              runtimeActive ? runtimeStatus?.events : [],
-            );
-            const {
-              messages,
-              title,
-              startedAt,
-              modelId: replayModelId,
-              tokenStats,
-            } = foldSessionEvents(replayEvents);
+            const canonical = projectTranscript(rawMessages);
+            const live =
+              runtimeActive && runtimeStatus?.messages
+                ? projectTranscript(runtimeStatus.messages, canonical.messages)
+                : null;
+            const messages = live
+              ? mergeLiveTranscript(canonical.messages, live.messages)
+              : canonical.messages;
             const replaySeq = replayCursorAfterRuntimeHydration(runtimeStatus, piSessionId);
             updateSession(sessionId, (session) => ({
               ...session,
-              messages: reconcileReplayMessages(session.messages, messages),
+              messages: messages.length >= session.messages.length ? messages : session.messages,
               piSessionId,
               cwd: session.cwd || cwd,
               // Head-scan meta carries the real session model/title; the fold's
               // own title would be the tail slice's first user message, not the
               // session's first prompt.
-              modelId:
-                session.modelId ||
-                meta?.modelId ||
-                replayModelId ||
-                runtimeStatus?.modelId ||
-                modelId,
-              title: meta?.title ?? title ?? session.title,
-              startedAt: meta?.startedAt ?? startedAt ?? session.startedAt,
-              tokenStats: tokenStats ?? undefined,
+              modelId: session.modelId || meta?.modelId || runtimeStatus?.modelId || modelId,
+              title: meta?.title ?? session.title,
+              startedAt: meta?.startedAt ?? session.startedAt,
+              tokenStats: live?.tokenStats ?? canonical.tokenStats,
               // Lifetime spend is computed server-side from the whole rollout,
               // so it survives both compaction and the tail load's cutoff.
               usageTotals: meta?.usage ?? session.usageTotals,
@@ -384,7 +374,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             catch: (error) => error,
           }).pipe(Effect.result);
           if (result._tag !== "Success") return;
-          const { messages: earlier } = foldSessionEvents(result.success.events);
+          const earlier = projectTranscript(result.success.messages).messages;
           updateSession(sessionId, (current) => ({
             ...current,
             messages: earlier.length > 0 ? [...earlier, ...current.messages] : current.messages,

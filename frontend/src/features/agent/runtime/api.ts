@@ -164,7 +164,7 @@ export type CanonicalSessionMeta = {
 };
 
 export type CanonicalSessionResult = {
-  events: Record<string, unknown>[];
+  messages: Record<string, unknown>[];
   // Byte-offset cursor to pass as `before` to load the previous (older) page,
   // or null when this page already reaches the start of the session log.
   cursor: number | null;
@@ -195,7 +195,7 @@ export function loadCanonicalSession(
         { cache: "no-store" },
       );
       const payload = yield* safeJsonEffect<{
-        events?: Record<string, unknown>[];
+        messages?: Record<string, unknown>[];
         cursor?: number | null;
         meta?: CanonicalSessionMeta | null;
         error?: string;
@@ -203,7 +203,7 @@ export function loadCanonicalSession(
       if (!response.ok)
         return yield* Effect.fail(new Error(payload.error || "Failed to load session"));
       return {
-        events: payload.events ?? [],
+        messages: payload.messages ?? [],
         cursor: payload.cursor ?? null,
         meta: payload.meta ?? null,
       };

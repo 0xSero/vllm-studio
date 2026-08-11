@@ -144,7 +144,12 @@ export async function handleSessionGet(request: Request, id: string): Promise<Re
   const tail = nonNegativeInteger(searchParams.get("tail"));
   const before = nonNegativeInteger(searchParams.get("before"));
   const { events, cursor, meta } = await loadSession(cwd, id, { tail, before });
-  return Response.json({ events, cursor, meta });
+  const messages = events.flatMap((event) => {
+    if (event.type !== "message" && event.type !== "message_end") return [];
+    const message = event.message;
+    return message && typeof message === "object" ? [message] : [];
+  });
+  return Response.json({ messages, cursor, meta });
 }
 
 function optionalString(body: Record<string, unknown>, key: string): string | null {
