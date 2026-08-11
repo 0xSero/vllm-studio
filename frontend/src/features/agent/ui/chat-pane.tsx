@@ -85,8 +85,8 @@ import { ChatPaneHandle, SessionTab } from "@/features/agent/messages";
 import { useSessionEngine } from "@/features/agent/runtime/engine";
 import type { UpdateSession } from "@/features/agent/runtime/types";
 import { useTools } from "@/features/agent/tools/context";
+import { useProjects } from "@/features/agent/projects/context";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
-import type { BrowserBackend } from "@/features/agent/tools/types";
 import type { AgentThinkingLevel } from "@/features/agent/contracts";
 import {
   loadThinkingLevelDefault,
@@ -219,15 +219,8 @@ type Props = {
   modelsLoading: boolean;
   contextWindow: number;
   cwd: string;
-  projectName: string | null;
   modelSelector?: (props: ComposerModelSelectorProps) => ReactNode;
-  gitBranch?: string | null;
-  gitSummary?: GitSummary | null;
   onInitGit?: () => void;
-  browserToolEnabled: boolean;
-  browserBackend: BrowserBackend;
-  onToggleBrowserBackend: () => void;
-  onToggleBrowserTool: () => void;
   isFocused: boolean;
   onFocus: () => void;
   onPiSessionIdChange?: (sessionId: string) => void;
@@ -237,10 +230,8 @@ type Props = {
   onRenameSession: (tabId: string, title: string) => void;
   onClose?: () => void;
   onForkSession?: () => void;
-  onOpenTerminal?: () => void;
   terminalOwner?: TerminalOwner | null;
-  rightPanelOpen: boolean;
-  onToggleRightPanel: () => void;
+  insideComputerPanel?: boolean;
   onRegisterHandle?: (handle: ChatPaneHandle | null) => void;
   showHeader?: boolean;
   composerOnly?: boolean;
@@ -268,15 +259,8 @@ export function ChatPane({
   modelsLoading,
   contextWindow,
   cwd,
-  projectName,
   modelSelector,
-  gitBranch,
-  gitSummary,
   onInitGit,
-  browserToolEnabled,
-  browserBackend,
-  onToggleBrowserBackend,
-  onToggleBrowserTool,
   isFocused,
   onFocus,
   onPiSessionIdChange,
@@ -286,10 +270,8 @@ export function ChatPane({
   onRenameSession,
   onClose,
   onForkSession,
-  onOpenTerminal,
   terminalOwner = null,
-  rightPanelOpen,
-  onToggleRightPanel,
+  insideComputerPanel = false,
   onRegisterHandle,
   showHeader = true,
   composerOnly = false,
@@ -304,6 +286,23 @@ export function ChatPane({
   const [mentionIndex, setMentionIndex] = useState(0);
   const [fileMentionRows, setFileMentionRows] = useState<FileMentionRow[]>([]);
   const tools = useTools();
+  const projects = useProjects();
+  const browserToolEnabled = tools.browser.enabled;
+  const browserBackend = tools.browser.backend;
+  const onToggleBrowserTool = useCallback(() => {
+    if (insideComputerPanel) return tools.toggleBrowser();
+    if (tools.browser.enabled) {
+      tools.setBrowserEnabled(false);
+      tools.closeComputerTab("browser");
+      return;
+    }
+    tools.setBrowserEnabled(true);
+    tools.setComputerTab("browser");
+  }, [insideComputerPanel, tools]);
+  const rightPanelOpen = insideComputerPanel || tools.computer.open;
+  const onToggleRightPanel = insideComputerPanel
+    ? () => tools.setComputerOpen(false)
+    : tools.toggleComputerOpen;
   const {
     activeTab,
     currentContextTokens,
@@ -312,6 +311,10 @@ export function ChatPane({
     showEmptyPrompt,
     visibleQueueItems,
   } = useChatPaneDerivedState({ activeTabId, contextWindow, tabs });
+  const project = projects.resolveProject(activeTab);
+  const projectName = project?.name ?? null;
+  const gitSummary = projects.gitSummary(project?.path);
+  const gitBranch = gitSummary?.isRepo === false ? null : (gitSummary?.branch ?? project?.branch);
   const [terminalView, setTerminalView] = useState(false);
   const terminalSnapshot = usePersistentTerminalOwners(
     terminalView,
@@ -403,9 +406,6 @@ export function ChatPane({
   const { selectedSkills, selectedPromptTemplates, removeLoadedContext } = useComposerLoadedContext(
     { activeTab, tools },
   );
-  // Per-session choice wins; a fresh session (no saved level) falls back to the
-  // level the user last picked, then the model's "high" default. This stops new
-  // sessions from always snapping back to High (issue #277).
   const thinkingLevel = pickThinkingLevel(
     modelThinkingLevels,
     activeTab?.thinkingLevel,
@@ -414,8 +414,6 @@ export function ChatPane({
   const selectThinkingLevel = useCallback(
     (level: AgentThinkingLevel) => {
       if (!activeTab || running) return;
-      // Persist on the session (survives turns + reloads) and remember it as the
-      // default for the next fresh session.
       updateTab(activeTab.id, (session) => ({ ...session, thinkingLevel: level }));
       setThinkingLevelDefault(level);
     },
@@ -465,7 +463,11 @@ export function ChatPane({
   const canExport = Boolean(
     activeTab?.messages.some((message) => message.role !== "system" && message.text.trim()),
   );
-  const openTerminalAction = terminalOwner ? toggleTerminalView : onOpenTerminal;
+  const openTerminalAction = terminalOwner
+    ? toggleTerminalView
+    : insideComputerPanel
+      ? undefined
+      : () => tools.setComputerTab("terminal");
   const applyTemplate = useCallback(
     (row: ComposerPromptTemplateRef) =>
       activeTab ? applyContextRow(activeTab.id, "promptTemplate", row, tools) : Promise.resolve(),
@@ -686,9 +688,6 @@ export function ChatPane({
             status: activeTab?.status,
             input: composerInput,
             attachmentsCount: attachments.length,
-            browserToolEnabled,
-            browserBackend,
-            onToggleBrowserBackend,
             onToggleBrowserTool,
             onAbortTurn: () => void abortTurn(),
             onTranscript: handleTranscript,
@@ -771,9 +770,6 @@ export function ChatPane({
   );
 }
 
-/** The pane's fixed furniture: a pending extension prompt, the header, and the
- *  terminal surface that swaps places with the transcript. Kept out of ChatPane
- *  so the container reads as state and wiring rather than layout. */
 function ChatPaneChrome({
   extensionUiRequest,
   onExtensionUiRespond,
@@ -809,11 +805,6 @@ function ChatPaneChrome({
     </>
   );
 }
-
-/** Remounts per session so the goal poll and project selection never carry
- *  across tabs, and hides project switching while a turn is in flight. */
-// The drawer's Interrupt button has no form event of its own, and sendMessage
-// only ever uses the event to cancel the browser's native submit.
 
 function SessionProjectDrawer({
   tabId,

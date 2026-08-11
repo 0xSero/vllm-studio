@@ -98,7 +98,6 @@ function SideChatTab({
   onRenameSideChat,
   onUpdateSideChatTabs,
   sideChatSession,
-  tools,
 }: ComputerTabPanelProps) {
   const modelId = sideChatSession.modelId ?? focusedSession?.modelId ?? activeModelId;
   const selectedModel = models.find((model) => model.id === modelId) ?? activeModel;
@@ -119,7 +118,6 @@ function SideChatTab({
         modelsLoading={modelsLoading}
         contextWindow={selectedModel?.contextWindow ?? 0}
         cwd={cwd}
-        projectName={activeProject?.name ?? null}
         modelSelector={(reasoning) => (
           <AgentModelPicker
             models={models}
@@ -131,10 +129,6 @@ function SideChatTab({
             {...reasoning}
           />
         )}
-        browserToolEnabled={tools.browser.enabled}
-        browserBackend={tools.browser.backend}
-        onToggleBrowserBackend={tools.toggleBrowserBackend}
-        onToggleBrowserTool={tools.toggleBrowser}
         isFocused
         onFocus={() => undefined}
         tabs={[sideChatSession]}
@@ -142,8 +136,7 @@ function SideChatTab({
         onUpdateSession={updateSession}
         onRenameSession={onRenameSideChat}
         onClose={onCloseSideChat}
-        rightPanelOpen
-        onToggleRightPanel={() => tools.setComputerOpen(false)}
+        insideComputerPanel
         showHeader={false}
       />
     </section>

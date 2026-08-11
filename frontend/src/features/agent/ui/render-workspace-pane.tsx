@@ -5,7 +5,6 @@ import { shallow } from "zustand/shallow";
 import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
-import type { useTools } from "@/features/agent/tools/context";
 import type { Project } from "@/features/agent/projects/types";
 import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
 import type {
@@ -24,7 +23,6 @@ export type WorkspacePaneRenderContext = {
   paneId: PaneId;
   state: WorkspaceState;
   projects: ProjectsContextValue;
-  tools: ReturnType<typeof useTools>;
   dispatch: WorkspaceDispatch;
   handles: WorkspaceHandles;
   compact?: boolean;
@@ -39,19 +37,10 @@ export type WorkspacePaneView = {
   cwd: string;
   modelId: string;
   model: AgentModel | null;
-  gitSummary: ReturnType<ProjectsContextValue["gitSummary"]>;
-  gitBranch: string | null;
   isNewSession: boolean;
   canClose: boolean;
   isFocused: boolean;
 };
-
-function paneGitBranch(
-  summary: ReturnType<ProjectsContextValue["gitSummary"]>,
-  project: Project | null,
-): string | null {
-  return summary?.isRepo === false ? null : (summary?.branch ?? project?.branch ?? null);
-}
 
 function resolvePaneModelId(
   sessionModelId: string | undefined,
@@ -89,7 +78,6 @@ function selectWorkspacePaneView(
   const session = activeSession(state, paneId);
   const project = projects.resolveProject(session);
   const modelId = resolvePaneModelId(session?.modelId, state.selectedModel, state.models);
-  const gitSummary = projects.gitSummary(project?.path);
   return {
     paneId,
     pane,
@@ -98,8 +86,6 @@ function selectWorkspacePaneView(
     cwd: session?.cwd ?? project?.path ?? projects.agentCwd,
     modelId,
     model: state.models.find((model) => model.id === modelId) ?? null,
-    gitSummary,
-    gitBranch: paneGitBranch(gitSummary, project),
     isNewSession: Boolean(session && !session.piSessionId && session.messages.length === 0),
     canClose: collectLeaves(state.layout).length > 1,
     isFocused: state.focusedPaneId === paneId,
@@ -118,7 +104,6 @@ type WorkspacePaneProps = {
   models: AgentModel[];
   modelsLoading: boolean;
   defaultModel: string;
-  tools: ReturnType<typeof useTools>;
   dispatch: WorkspaceDispatch;
   handles: WorkspaceHandles;
   compact: boolean;
@@ -131,7 +116,6 @@ function sameWorkspacePaneProps(previous: WorkspacePaneProps, next: WorkspacePan
     previous.models === next.models &&
     previous.modelsLoading === next.modelsLoading &&
     previous.defaultModel === next.defaultModel &&
-    previous.tools === next.tools &&
     previous.dispatch === next.dispatch &&
     previous.handles === next.handles &&
     previous.compact === next.compact &&
@@ -144,7 +128,6 @@ const WorkspacePane = memo(function WorkspacePane({
   models,
   modelsLoading,
   defaultModel,
-  tools,
   dispatch,
   handles,
   compact,
@@ -161,9 +144,6 @@ const WorkspacePane = memo(function WorkspacePane({
       modelsLoading={modelsLoading}
       contextWindow={view.model?.contextWindow ?? 0}
       cwd={view.cwd}
-      projectName={view.project?.name ?? null}
-      gitBranch={view.gitBranch}
-      gitSummary={view.gitSummary}
       onInitGit={handles.initGitForActiveProject}
       modelSelector={(reasoning) => (
         <AgentModelPicker
@@ -176,18 +156,6 @@ const WorkspacePane = memo(function WorkspacePane({
           {...reasoning}
         />
       )}
-      browserToolEnabled={tools.browser.enabled}
-      browserBackend={tools.browser.backend}
-      onToggleBrowserBackend={tools.toggleBrowserBackend}
-      onToggleBrowserTool={() => {
-        if (tools.browser.enabled) {
-          tools.setBrowserEnabled(false);
-          tools.closeComputerTab("browser");
-          return;
-        }
-        tools.setBrowserEnabled(true);
-        tools.setComputerTab("browser");
-      }}
       onPiSessionIdChange={handles.notifySessionsChanged}
       isFocused={view.isFocused}
       onFocus={() => dispatch((state) => focusPane(state, { paneId: view.paneId }))}
@@ -198,9 +166,6 @@ const WorkspacePane = memo(function WorkspacePane({
       onClose={view.canClose ? () => handles.closePane(view.paneId) : undefined}
       onForkSession={() => handles.splitTabIntoNewPane(view.paneId, view.pane.sessionId)}
       terminalOwner={terminalOwnerFor(view.project, view.session)}
-      onOpenTerminal={() => tools.setComputerTab("terminal")}
-      rightPanelOpen={tools.computer.open}
-      onToggleRightPanel={tools.toggleComputerOpen}
       onRegisterHandle={(handle) => handles.registerPaneHandle(view.paneId, handle)}
       showHeader={!compact}
       composerOnly={composerOnly}
@@ -212,7 +177,6 @@ export function renderWorkspacePane({
   paneId,
   state,
   projects,
-  tools,
   dispatch,
   handles,
   compact = false,
@@ -228,7 +192,6 @@ export function renderWorkspacePane({
       models={state.models}
       modelsLoading={state.modelsLoading}
       defaultModel={state.selectedModel}
-      tools={tools}
       dispatch={dispatch}
       handles={handles}
       compact={compact}

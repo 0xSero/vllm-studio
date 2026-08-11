@@ -132,7 +132,6 @@ export function AgentWorkspaceShell({
             showEmptyState={showProjectEmptyState}
             state={state}
             projects={projects}
-            tools={tools}
             dispatch={dispatch}
             handles={handles}
             compact={compact}
@@ -202,7 +201,6 @@ function WorkspacePaneContent({
   showEmptyState,
   state,
   projects,
-  tools,
   dispatch,
   handles,
   compact,
@@ -211,7 +209,6 @@ function WorkspacePaneContent({
   showEmptyState: boolean;
   state: WorkspaceState;
   projects: ProjectsContextValue;
-  tools: ReturnType<typeof useTools>;
   dispatch: WorkspaceDispatch;
   handles: WorkspaceHandles;
   compact?: boolean;
@@ -225,7 +222,6 @@ function WorkspacePaneContent({
           paneId: state.focusedPaneId,
           state,
           projects,
-          tools,
           dispatch,
           handles,
           compact,
@@ -239,7 +235,7 @@ function WorkspacePaneContent({
       <PaneGrid
         layout={state.layout}
         renderPane={(paneId) =>
-          renderWorkspacePane({ paneId, state, projects, tools, dispatch, handles, compact })
+          renderWorkspacePane({ paneId, state, projects, dispatch, handles, compact })
         }
         onSplit={handles.splitPaneWithPayload}
         onOpenTab={handles.openSessionPayloadInPane}
