@@ -293,6 +293,10 @@ This milestone was requested after the initial Windows acceptance completed.
 It does not change the native engine matrix: vLLM and SGLang remain Linux
 engines, while llama.cpp remains the native Windows engine.
 
+Status: bridge implementation and host-level lifecycle acceptance complete.
+Actual vLLM/SGLang model inference remains deferred until those engines are
+installed and validated inside an operator-provisioned distribution.
+
 Scope:
 
 - Add `wsl2` as an explicit recipe and compute runtime, never as an alias for a
@@ -319,13 +323,13 @@ Tests:
 
 - UTF-16/NUL WSL command-output and distribution-list parsing fixtures.
 - WSL command construction, argument isolation, path translation, PID identity,
-  graceful/forced stop, and conditional distro termination tests with injected
-  runners.
+  log isolation, and conditional distro termination policy tests.
 - Recipe serialization and UI runtime-option tests proving `wsl2` is labeled
   explicitly and only offered for vLLM/SGLang.
 - Real Windows/Ubuntu smoke using a small Linux HTTP fixture: stopped distro,
   translated non-C: path, Windows localhost health, logs, stop, and distro
-  memory teardown.
+  memory teardown. Repeat recovery from a second controller process using the
+  persisted Linux process identity.
 
 Acceptance:
 
@@ -336,3 +340,19 @@ Acceptance:
 - A distro started by the bridge returns to `Stopped` after eviction under the
   default policy; a distro that was already running is not terminated.
 - Unsupported or missing distros/binaries fail with a precise capability error.
+
+Acceptance result:
+
+- Configure/runtime-target discovery left stopped distributions stopped and
+  excluded Docker-owned distributions.
+- Ubuntu launched the fixture only after an explicit WSL2 recipe launch,
+  translated an `F:` path containing spaces and Unicode, preserved Unicode
+  environment data, exposed health through Windows localhost, and captured the
+  Linux log.
+- Linux PID identity survived controller exit and was recovered by a second
+  controller process for health, ownership, logs, and eviction.
+- Default cleanup terminated only the distribution started by the bridge; an
+  already-running Ubuntu instance was preserved. The bridge never used global
+  `wsl --shutdown` or modified `.wslconfig`.
+- Both host NVIDIA GPUs were visible inside Ubuntu. The absent `vllm` executable
+  produced a launch failure and cleanup without claiming engine support.

@@ -387,13 +387,29 @@ Upstream evidence:
   uninstaller removed the installation. A bounded custom-destination attempt
   containing spaces and Unicode did not complete and was terminated; that NSIS
   path case is not claimed as validated.
+- The Windows controller exposes eligible WSL2 distributions only as explicit
+  vLLM/SGLang targets. Distribution discovery did not start stopped
+  distributions, and native Windows Python targets for these engines remained
+  unavailable.
+- A real Ubuntu WSL2 bridge launch translated an `F:` path containing spaces and
+  Unicode, preserved a Unicode environment value, served a fixture through
+  Windows localhost, captured logs, and stopped its Linux process group.
+- Bridge ownership policy returned a distribution started by Local Studio to
+  `Stopped` while leaving an already-running distribution active. Controller
+  restart recovery reattached through the persisted Linux PID/start identity,
+  then health, logs, ownership, and eviction still succeeded.
+- Ubuntu reported both host NVIDIA GPUs through WSL2. A missing real `vllm`
+  executable failed at launch and the bridge cleaned up the distribution.
 
 ### Missing collection or experimental validation
 
 - Live model download to a UNC share; drive-letter, spaces, Unicode, and non-C:
   paths are validated.
 - Custom NSIS installation destinations containing spaces and Unicode.
-- Explicit Windows-to-WSL2 controller/runtime bridge.
+- Actual vLLM and SGLang package/model-server inference inside an
+  operator-provisioned WSL2 distribution; neither engine was installed on the
+  audit host and the port does not modify the user's distribution silently.
+- UNC model-path translation through a selected WSL2 distribution.
 - Any native Windows exllamav3 support.
 
 These items are not claimed as supported until their milestone acceptance

@@ -19,11 +19,41 @@ release. On an NVIDIA host it installs the CUDA 12.4 archive and its companion
 CUDA runtime archive together. A CUDA toolkit is not required for that binary
 distribution, but a compatible NVIDIA driver and working `nvidia-smi` are.
 
-Native vLLM and SGLang are not supported by this port. Run their Linux
-controller inside WSL2 or on a remote Linux host and select that controller
-explicitly. The Windows controller does not disguise WSL2 as a native process
-runtime. MLX remains Apple Silicon-only, and native Windows exllamav3 remains
-disabled until it passes an independent experimental gate.
+Native vLLM and SGLang are not supported by this port. The Windows controller
+offers them only through an explicitly selected WSL2 distribution or an
+unchanged remote Linux controller. WSL2 is a distinct recipe runtime, not a
+native Windows process disguised by the UI. MLX remains Apple Silicon-only, and
+native Windows exllamav3 remains disabled until it passes an independent
+experimental gate.
+
+## Explicit WSL2 bridge
+
+The bridge is opt-in and limited to vLLM and SGLang. Configure lists eligible
+WSL2 distributions without starting them. Selecting or inspecting a target also
+does not start WSL2; the selected distribution starts only when its recipe is
+launched. llama.cpp continues to run natively on Windows and remote controllers
+are unchanged.
+
+Install and validate the Linux engine yourself inside the selected distribution.
+Local Studio does not silently install packages or claim that an importable
+Windows Python package is a supported engine. Engine availability is checked at
+launch, and a missing Linux binary fails the launch with an explicit error.
+
+The bridge supervises the Linux process group, persists Linux PID identity for
+controller restart recovery, translates absolute Windows drive paths with the
+selected distribution's `wslpath`, and captures the engine log in the Windows
+controller data directory. UNC translation depends on the distribution's mount
+and interoperability configuration and has not completed real-host acceptance.
+
+When Local Studio starts a previously stopped distribution, eviction terminates
+that exact distribution by default so its WSL VM memory can be released. A
+distribution that was already running is left running. Set
+`LOCAL_STUDIO_WSL_TERMINATE_ON_STOP=false` before starting the controller to
+disable automatic termination. The bridge never calls global `wsl --shutdown`
+and never edits `.wslconfig`; Microsoft's global WSL memory controls remain an
+independent operator choice. See the official
+[WSL command reference](https://learn.microsoft.com/en-us/windows/wsl/basic-commands)
+and [advanced configuration reference](https://learn.microsoft.com/en-us/windows/wsl/wsl-config).
 
 ## Developer setup
 
@@ -105,14 +135,22 @@ passed. A bounded silent-install attempt to a custom destination containing
 spaces and Unicode did not finish and was terminated, so that custom NSIS
 destination is not yet claimed as validated.
 
+The explicit WSL2 bridge was also exercised against Ubuntu on the same host. A
+Linux HTTP fixture received a translated non-`C:` path containing spaces and
+Unicode, preserved a Unicode environment value, became reachable through
+Windows localhost, wrote controller-visible logs, survived a controller restart,
+and was evicted through its persisted Linux process identity. A distribution
+started by the bridge returned to `Stopped`; one that was already running was
+left running. Ubuntu exposed both NVIDIA GPUs through WSL. Neither vLLM nor
+SGLang was installed in that distribution, so real model inference through
+those engines is not claimed yet; the missing-binary launch failed without
+leaving Ubuntu running.
+
 ## Deferred work
 
 - Signed and published Windows releases and updater metadata
 - Native Windows vLLM, SGLang, or exllamav3 claims
+- Real vLLM and SGLang model-server acceptance inside an operator-provisioned
+  WSL2 distribution
 - Hardware CI; GPU parsers and capability decisions use fixtures in CI
 - A live UNC-share acceptance run
-
-An explicit, opt-in WSL2 bridge for the Linux vLLM and SGLang runtimes is now
-tracked as Milestone 9 in `docs/windows-port-plan.md`. It remains separate from
-native Windows support and is not claimed complete until that milestone's real
-host acceptance passes.
