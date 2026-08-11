@@ -356,3 +356,59 @@ Acceptance result:
   `wsl --shutdown` or modified `.wslconfig`.
 - Both host NVIDIA GPUs were visible inside Ubuntu. The absent `vllm` executable
   produced a launch failure and cleanup without claiming engine support.
+
+## Milestone 10 - Managed WSL2 vLLM and SGLang runtimes
+
+This milestone adds interface-managed Linux packages without changing the
+native Windows engine matrix. It supersedes only Milestone 9's optional
+distribution-termination policy: Local Studio will no longer terminate any WSL
+distribution when an engine stops.
+
+Scope:
+
+- Represent each vLLM/SGLang and WSL2-distribution pair as an available target
+  until its isolated managed environment has passed an install probe.
+- Keep managed environments in the selected distribution's Linux filesystem,
+  separate by engine. Never install into the distribution's system Python or a
+  Windows-mounted virtual environment.
+- Persist a controller-side receipt only after successful activation so target
+  discovery can report managed state without starting a stopped distribution.
+- Install or update through the existing runtime-job API and Settings interface.
+  Resolve the distribution's Python and installer explicitly, stage the new
+  environment, probe its import, version, CLI, and CUDA visibility, then replace
+  the managed environment.
+- Add a target-scoped uninstall job and Settings action. Remove only the exact
+  Local Studio managed environment and receipt after validating their identity.
+- Refuse uninstall while the matching managed engine is running.
+- Stop only the Linux engine process group. Never call `wsl --terminate` or
+  `wsl --shutdown`, including after launch failure, cancellation, eviction, or
+  controller shutdown.
+- Preserve native llama.cpp, Docker targets, remote controllers, macOS, and
+  Linux behavior.
+
+Tests:
+
+- Receipt parsing, target state, managed path validation, install command
+  construction, staged activation, uninstall scope, and failure cleanup.
+- Runtime-job contract and route tests for install, update, and uninstall.
+- Settings tests proving that each explicit WSL2 target offers Install/Update
+  and Remove without restoring native Windows Python installation rows.
+- Launcher tests proving every cleanup path omits distribution termination.
+- Real Windows/Ubuntu acceptance for both engines: interface-equivalent install,
+  package/CLI/CUDA probes, model-server launch, health, OpenAI-compatible request,
+  engine stop, managed uninstall, and absence verification.
+- Record the Docker Desktop process identities and running distribution before
+  acceptance; assert they survive every engine stop and uninstall unchanged.
+
+Acceptance:
+
+- Configure does not start a stopped distribution and reports receipt-backed
+  managed installation state accurately.
+- vLLM and SGLang can each be installed, updated, and uninstalled using the same
+  controller API invoked by the interface.
+- Each engine serves a real model through its WSL2 target and stops without an
+  orphaned engine process.
+- No engine lifecycle or package operation terminates any WSL distribution.
+- Docker Desktop remains running with the same sentinel processes throughout
+  real-host acceptance.
+- Both managed environments and receipts are absent after the final test.

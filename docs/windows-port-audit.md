@@ -406,9 +406,15 @@ Upstream evidence:
 - Live model download to a UNC share; drive-letter, spaces, Unicode, and non-C:
   paths are validated.
 - Custom NSIS installation destinations containing spaces and Unicode.
+- WSL2 targets currently assume engine availability until launch and do not
+  expose managed install or uninstall actions in the interface.
 - Actual vLLM and SGLang package/model-server inference inside an
   operator-provisioned WSL2 distribution; neither engine was installed on the
-  audit host and the port does not modify the user's distribution silently.
+  audit host during Milestone 9.
+- The Milestone 9 cleanup policy may terminate the exact distribution that the
+  bridge started. It does not invoke global WSL shutdown or target Docker's
+  distribution, but the revised acceptance requirement is stricter: stopping
+  an engine must never terminate any WSL distribution.
 - UNC model-path translation through a selected WSL2 distribution.
 - Any native Windows exllamav3 support.
 
