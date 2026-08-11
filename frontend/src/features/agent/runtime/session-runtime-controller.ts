@@ -1,7 +1,7 @@
 // THE single owner of live session event ordering AND of runtime-derived
 // session status. This module — and only this module — opens runtime SSE
 // subscriptions, tracks per-session event cursors, reconnects, flushes the
-// text-delta coalescer, reduces runtime events into session state, and runs
+// canonical transcript snapshots, and runs
 // the runtime-list poll that arbitrates running/idle. React integrates
 // through a thin binding (use-workspace-runtime-sync.ts); nothing else may
 // subscribe to runtime events, gate event seqs, or settle a session's
@@ -9,7 +9,12 @@
 // with prompt-stream/engine; hydration status with loadAndReplay.)
 
 import { isAgentSettledEvent } from "@shared/agent/pi-events";
-import { piSessionIdFromEvent } from "@/features/agent/messages";
+import {
+  mergeLiveTranscript,
+  projectQueue,
+  projectTranscript,
+  settleOptimisticMessages,
+} from "@/features/agent/messages";
 import {
   listRuntimeSessions,
   loadRuntimeStatus,
@@ -21,11 +26,6 @@ import {
   type RuntimeStatus,
 } from "@/features/agent/runtime/api";
 import {
-  clearAwaitingEchoUserMessages,
-  reduceSessionEvent,
-  type SessionStreamContext,
-} from "@/features/agent/runtime/pi-event-applier";
-import {
   acceptRuntimeSeq,
   adoptExternalCursor,
   commitRuntimeSeq,
@@ -33,7 +33,6 @@ import {
   shouldSubscribeRuntimeEvents,
   type RuntimeCursor,
 } from "@/features/agent/runtime/runtime-cursor";
-import { createEffectTextDeltaCoalescer } from "@/features/agent/runtime/effect-coalescer";
 import { Effect, Fiber, Schedule } from "effect";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import { publishRuntimeActivity } from "@/features/agent/session-index";
@@ -142,6 +141,60 @@ function sameRuntimePatch(session: Session, patch: Partial<Session>, status: str
   );
 }
 
+function applyAuxiliaryEvent(session: Session, event: Record<string, unknown>): Session {
+  if (event.type === "notice" && event.level === "error" && typeof event.message === "string") {
+    return { ...session, error: event.message.slice(0, 4_000) };
+  }
+  if (event.type !== "extension_ui_request") return session;
+  const method = event.method;
+  if (
+    typeof event.requestId !== "string" ||
+    typeof event.title !== "string" ||
+    (method !== "select" && method !== "confirm" && method !== "input" && method !== "editor")
+  ) {
+    return session;
+  }
+  return {
+    ...session,
+    extensionUiRequest: {
+      requestId: event.requestId,
+      method,
+      title: event.title.slice(0, 500),
+      ...(typeof event.message === "string" ? { message: event.message.slice(0, 4_000) } : {}),
+      ...(typeof event.placeholder === "string"
+        ? { placeholder: event.placeholder.slice(0, 500) }
+        : {}),
+      ...(typeof event.prefill === "string" ? { prefill: event.prefill.slice(0, 32_000) } : {}),
+      ...(Array.isArray(event.options)
+        ? {
+            options: event.options
+              .filter((option): option is string => typeof option === "string")
+              .slice(0, 100)
+              .map((option) => option.slice(0, 1_000)),
+          }
+        : {}),
+    },
+  };
+}
+
+function applyRuntimeSnapshot(session: Session, status?: RuntimeStatus): Session {
+  if (!status) return session;
+  const projection = status.messages ? projectTranscript(status.messages, session.messages) : null;
+  const messages = projection
+    ? mergeLiveTranscript(session.messages, projection.messages)
+    : session.messages;
+  const activeAssistantId = status.active
+    ? [...messages].reverse().find((message) => message.role === "assistant")?.id
+    : undefined;
+  return {
+    ...session,
+    messages,
+    ...(projection?.tokenStats ? { tokenStats: projection.tokenStats } : {}),
+    ...(status.queue ? { queue: projectQueue(status.queue.followUp, session.queue ?? []) } : {}),
+    activeAssistantId,
+  };
+}
+
 export function createSessionRuntimeController(
   deps: SessionRuntimeControllerDeps = {},
 ): SessionRuntimeController {
@@ -153,7 +206,6 @@ export function createSessionRuntimeController(
 
   let binding: SessionRuntimeBinding | null = null;
   const cursors = new Map<SessionId, RuntimeCursor>();
-  const streamContext: SessionStreamContext = { liveAssistantIds: new Map() };
   const attachments = new Map<SessionId, Attachment>();
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let pollEpoch = 0;
@@ -184,7 +236,6 @@ export function createSessionRuntimeController(
       turnAcceptedAt,
       turnFinishedAt,
       connectionKeyOverrides,
-      streamContext.liveAssistantIds,
     ];
     for (const map of maps) {
       for (const sessionId of [...map.keys()]) {
@@ -210,35 +261,17 @@ export function createSessionRuntimeController(
   const applyEvent = (
     sessionId: SessionId,
     event: Record<string, unknown>,
+    snapshot: RuntimeStatus | undefined,
     seq?: number,
     decorate: (session: Session) => Session = (session) => session,
   ) => {
     commit(sessionId, (session) =>
-      decorate(stampSeq(reduceSessionEvent(session, streamContext, event), seq)),
+      decorate(stampSeq(applyAuxiliaryEvent(applyRuntimeSnapshot(session, snapshot), event), seq)),
     );
     cursors.set(
       sessionId,
       commitRuntimeSeq(cursors.get(sessionId) ?? adoptExternalCursor(undefined), seq),
     );
-  };
-
-  // Text-delta coalescer is now an Effect program (effect-coalescer.ts): a
-  // per-session pending snapshot drained on the animation-frame clock. The
-  // imperative facade is unchanged so the controller's contract holds.
-  const coalescer = createEffectTextDeltaCoalescer({
-    applyPiEvent: applyEvent,
-    scheduleFrame: deps.scheduleFrame,
-  });
-
-  const enqueueEvent = (
-    sessionId: SessionId,
-    event: Record<string, unknown>,
-    seq: number | undefined,
-  ) => {
-    if (coalescer.enqueuePiEvent(sessionId, event, { seq })) return;
-    // Non-delta events flush any pending merge first so ordering is preserved.
-    coalescer.flushNow(sessionId);
-    applyEvent(sessionId, event, seq);
   };
 
   // Receive gate: advance receivedSeq immediately (dedup + reconnect cursor);
@@ -250,10 +283,6 @@ export function createSessionRuntimeController(
   // retargets the NEXT turn's blocks onto a settled bubble (or onto a dead id,
   // where they are discarded silently while the seq cursor advances). That is
   // what erased everything after a follow-up message when the stream dropped.
-  const dropLiveTarget = (sessionId: SessionId) => {
-    streamContext.liveAssistantIds.delete(sessionId);
-  };
-
   const acceptSeq = (sessionId: SessionId, seq?: number): boolean => {
     const current = cursors.get(sessionId) ?? adoptExternalCursor(undefined);
     const decision = acceptRuntimeSeq(current, seq);
@@ -262,7 +291,6 @@ export function createSessionRuntimeController(
   };
 
   const adoptCursor = (sessionId: SessionId, committedSeq: number | undefined) => {
-    coalescer.discard(sessionId);
     cursors.set(sessionId, adoptExternalCursor(committedSeq));
     commit(sessionId, (session) =>
       session.lastEventSeq === committedSeq ? session : { ...session, lastEventSeq: committedSeq },
@@ -274,9 +302,8 @@ export function createSessionRuntimeController(
     payload: Extract<RuntimeEventPayload, { type: "status" }>,
   ) => {
     const idle = payload.phase === "done" || payload.phase === "idle";
-    if (idle) dropLiveTarget(sessionId);
     commit(sessionId, (session) => ({
-      ...session,
+      ...applyRuntimeSnapshot(session, payload.session),
       piSessionId: payload.session?.piSessionId || session.piSessionId,
       contextUsage: runtimeContextUsage(payload.session, session.contextUsage),
       status: idle ? "idle" : session.status === "stopping" ? "stopping" : "running",
@@ -288,7 +315,7 @@ export function createSessionRuntimeController(
     sessionId: SessionId,
     payload: Extract<RuntimeEventPayload, { type: "pi" }>,
   ) => {
-    const eventId = piSessionIdFromEvent(payload.event);
+    const eventId = payload.snapshot?.piSessionId;
     if (!acceptSeq(sessionId, payload.seq)) return;
 
     if (isAgentSettledEvent(payload.event)) {
@@ -298,9 +325,9 @@ export function createSessionRuntimeController(
       // Flush pending deltas first, then settle the turn in ONE commit:
       // finalize tool blocks, stamp the cursor, and clear the live status
       // together.
-      coalescer.flushNow(sessionId);
-      applyEvent(sessionId, payload.event, payload.seq, (session) => ({
-        ...clearAwaitingEchoUserMessages(settleTurn(session)),
+      applyEvent(sessionId, payload.event, payload.snapshot, payload.seq, (session) => ({
+        ...settleTurn(session),
+        messages: settleOptimisticMessages(session.messages),
         piSessionId: eventId || session.piSessionId,
       }));
       // The turn is over: drop any mid-stream user-message redirect. The
@@ -308,7 +335,6 @@ export function createSessionRuntimeController(
       // turn; left set, it would silently retarget the NEXT turn's events onto
       // this (now settled) bubble, so the next bubble renders empty — tool
       // calls and reasoning land off-screen and no final content appears.
-      dropLiveTarget(sessionId);
       // The queue is NOT touched here. Pi owns it: it drains its own follow_up
       // queue server-side and tells us what happened through the delivered user
       // echo and `queue_update`. Dropping items at settle just erased the stack
@@ -330,7 +356,7 @@ export function createSessionRuntimeController(
             status: session.status === "stopping" ? "stopping" : "running",
           },
     );
-    enqueueEvent(sessionId, payload.event, payload.seq);
+    applyEvent(sessionId, payload.event, payload.snapshot, payload.seq);
   };
 
   // True while a session sits in its post-`agent_settled` grace: the SSE already
@@ -477,7 +503,6 @@ export function createSessionRuntimeController(
     const acceptedAt = turnAcceptedAt.get(session.id);
     if (acceptedAt !== undefined && fetchStartedAt - acceptedAt < pollIdleGraceMs) return;
     const patch = patchRuntimeStatus(status);
-    dropLiveTarget(session.id);
     commit(session.id, (current) => {
       if (current.status !== "running" && current.status !== "stopping") return current;
       if (sameRuntimePatch(current, patch, "idle") && !current.activeAssistantId) {
@@ -572,8 +597,6 @@ export function createSessionRuntimeController(
           // a session we just idled.
           cancelReconnect();
           sub?.close();
-          coalescer.flushNow(sessionId);
-          dropLiveTarget(sessionId);
           commit(sessionId, (session) =>
             session.status === "running" ||
             session.status === "starting" ||
@@ -624,7 +647,6 @@ export function createSessionRuntimeController(
         closed = true;
         if (reconnectTimer !== null) clearTimeout(reconnectTimer);
         if (watchdogFiber) void Effect.runPromise(Fiber.interrupt(watchdogFiber));
-        coalescer.flushNow(sessionId);
         sub?.close();
       },
     };
@@ -638,7 +660,7 @@ export function createSessionRuntimeController(
       stopPoll();
       binding = null;
     },
-    noteTurnAccepted: (sessionId, assistantId, runtimeEventSeq) => {
+    noteTurnAccepted: (sessionId, _assistantId, runtimeEventSeq) => {
       turnAcceptedAt.set(sessionId, Date.now());
       // A new turn supersedes any prior finish; drop the stamp so its own
       // eventual end owns the next grace window.
@@ -653,11 +675,6 @@ export function createSessionRuntimeController(
       if (runtimeEventSeq === undefined || runtimeEventSeq < received) {
         adoptCursor(sessionId, 0);
       }
-      // A new turn's authoritative bubble is its optimistic activeAssistantId;
-      // discard any stale mid-stream redirect left over from a prior turn that
-      // settled without an agent_settled (e.g. idled by the runtime poll).
-      if (assistantId) streamContext.liveAssistantIds.set(sessionId, assistantId);
-      else streamContext.liveAssistantIds.delete(sessionId);
     },
     noteReplayHydrated: (sessionId, committedSeq) => {
       // Replay mints fresh ids for every message, so any in-flight live-target
@@ -665,7 +682,6 @@ export function createSessionRuntimeController(
       // events would land on a dead id (silently discarded) while the seq cursor
       // still advances — the reopen-mid-turn content-drop. The reducer's target
       // resolution then falls back to the rebuilt transcript's own bubble.
-      streamContext.liveAssistantIds.delete(sessionId);
       adoptCursor(sessionId, committedSeq);
     },
     reconcile: (sessions) => {
@@ -712,7 +728,7 @@ export function createSessionRuntimeController(
         attachments.set(sessionId, openAttachment(sessionId, want.connectionKey, want.piSessionId));
       }
     },
-    flush: (sessionId) => coalescer.flushNow(sessionId),
+    flush: () => undefined,
     pollNow: () => {
       stopPoll();
       if (!binding || binding.getSessions().length === 0) return;
@@ -728,7 +744,6 @@ export function createSessionRuntimeController(
       publishRuntimeActivity([]);
       for (const attachment of attachments.values()) attachment.close();
       attachments.clear();
-      coalescer.clear();
       // Workspace teardown: drop every per-session map so the app-lifetime
       // singleton doesn't retain one entry per session ever opened. Also drops
       // every live-target pin so a remount can't inherit a stale id.
@@ -736,7 +751,6 @@ export function createSessionRuntimeController(
       turnAcceptedAt.clear();
       turnFinishedAt.clear();
       connectionKeyOverrides.clear();
-      streamContext.liveAssistantIds.clear();
     },
     connectionKey: (sessionId) => connectionKeyOverrides.get(sessionId) ?? sessionId,
     seedConnectionKey: (sessionId, runtimeKey) => {

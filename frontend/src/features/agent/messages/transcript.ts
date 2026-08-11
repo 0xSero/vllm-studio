@@ -200,3 +200,11 @@ export function projectQueue(
     return prior ?? { id: `queue-${index}-${text}`, mode: "follow_up", text, sent: true };
   });
 }
+
+export function settleOptimisticMessages(messages: readonly ChatMessage[]): ChatMessage[] {
+  return messages.map((message) =>
+    message.pending || message.awaitingEcho
+      ? { ...message, pending: false, awaitingEcho: false }
+      : message,
+  );
+}
