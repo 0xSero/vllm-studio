@@ -294,8 +294,8 @@ It does not change the native engine matrix: vLLM and SGLang remain Linux
 engines, while llama.cpp remains the native Windows engine.
 
 Status: bridge implementation and host-level lifecycle acceptance complete.
-Actual vLLM/SGLang model inference remains deferred until those engines are
-installed and validated inside an operator-provisioned distribution.
+Milestone 10 supersedes this milestone's distribution-termination policy and
+completes real vLLM/SGLang model inference acceptance.
 
 Scope:
 
@@ -364,6 +364,9 @@ native Windows engine matrix. It supersedes only Milestone 9's optional
 distribution-termination policy: Local Studio will no longer terminate any WSL
 distribution when an engine stops.
 
+Status: implementation, Settings workflow, real inference, lifecycle, Docker
+isolation, and final cleanup acceptance complete.
+
 Scope:
 
 - Represent each vLLM/SGLang and WSL2-distribution pair as an available target
@@ -394,7 +397,7 @@ Tests:
 - Settings tests proving that each explicit WSL2 target offers Install/Update
   and Remove without restoring native Windows Python installation rows.
 - Launcher tests proving every cleanup path omits distribution termination.
-- Real Windows/Ubuntu acceptance for both engines: interface-equivalent install,
+- Real Windows/Ubuntu acceptance for both engines: Settings-driven install,
   package/CLI/CUDA probes, model-server launch, health, OpenAI-compatible request,
   engine stop, managed uninstall, and absence verification.
 - Record the Docker Desktop process identities and running distribution before
@@ -412,3 +415,22 @@ Acceptance:
 - Docker Desktop remains running with the same sentinel processes throughout
   real-host acceptance.
 - Both managed environments and receipts are absent after the final test.
+
+Acceptance result:
+
+- Settings showed explicit Ubuntu vLLM and SGLang targets with Install, Update,
+  and Remove. Both install jobs completed from button clicks; both final Remove
+  jobs returned their cards to `available / Install`.
+- vLLM 0.27.0 and SGLang 0.5.9 each used a private managed Python 3.12 and
+  virtual environment under `/home/pipeline/.local/share/local-studio`.
+- vLLM served `HuggingFaceTB/SmolLM2-135M-Instruct` through port 8000 and
+  returned an OpenAI-compatible chat completion. SGLang served the same model
+  through port 30000 and returned an OpenAI-compatible chat completion.
+- SGLang CUDA 13 activation used the matching upstream `sgl_kernel` wheel and
+  passed a real kernel import before its receipt was written.
+- Each controller stop removed only the recorded Linux engine process. Ubuntu
+  and `docker-desktop` remained running immediately afterward, and all eight
+  Docker Desktop sentinel process identities were unchanged.
+- Final cleanup removed both managed environments, their receipts, temporary
+  staging/backup paths, isolated model/kernel caches, and the Windows acceptance
+  data directory. The shared `uv` cache was deliberately preserved.

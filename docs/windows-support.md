@@ -34,10 +34,18 @@ does not start WSL2; the selected distribution starts only when its recipe is
 launched. llama.cpp continues to run natively on Windows and remote controllers
 are unchanged.
 
-Install and validate the Linux engine yourself inside the selected distribution.
-Local Studio does not silently install packages or claim that an importable
-Windows Python package is a supported engine. Engine availability is checked at
-launch, and a missing Linux binary fails the launch with an explicit error.
+Settings > System > Runtime engines exposes distribution-scoped Install,
+Update, and Remove actions. Local Studio installs a dedicated Python 3.12 and
+virtual environment below the selected Linux user's home directory; it does
+not modify the distribution's system Python or place a virtual environment on
+a Windows-mounted filesystem. The environment is staged, probed for its CLI,
+CUDA, and GPU visibility, and activated only after validation. A controller-side
+receipt records the exact managed path.
+
+vLLM and SGLang remain separate Linux targets. The SGLang installer also aligns
+its Torch CUDA wheels and selects the matching upstream `sgl_kernel` wheel
+before activation. Installation does not make either engine a native Windows
+capability.
 
 The bridge supervises the Linux process group, persists Linux PID identity for
 controller restart recovery, translates absolute Windows drive paths with the
@@ -45,13 +53,14 @@ selected distribution's `wslpath`, and captures the engine log in the Windows
 controller data directory. UNC translation depends on the distribution's mount
 and interoperability configuration and has not completed real-host acceptance.
 
-When Local Studio starts a previously stopped distribution, eviction terminates
-that exact distribution by default so its WSL VM memory can be released. A
-distribution that was already running is left running. Set
-`LOCAL_STUDIO_WSL_TERMINATE_ON_STOP=false` before starting the controller to
-disable automatic termination. The bridge never calls global `wsl --shutdown`
-and never edits `.wslconfig`; Microsoft's global WSL memory controls remain an
-independent operator choice. See the official
+Engine stop, cancellation, failed launch cleanup, eviction, controller shutdown,
+and managed uninstall target only the recorded Linux engine process group and
+PID file. Local Studio never calls `wsl --terminate` or `wsl --shutdown` and
+never stops a distribution to reclaim memory. WSL may later stop an otherwise
+idle distribution under its own lifecycle policy; Docker Desktop and other WSL
+workloads are not controller-owned. Local Studio also never edits `.wslconfig`;
+Microsoft's global WSL memory controls remain an independent operator choice.
+See the official
 [WSL command reference](https://learn.microsoft.com/en-us/windows/wsl/basic-commands)
 and [advanced configuration reference](https://learn.microsoft.com/en-us/windows/wsl/wsl-config).
 
@@ -138,19 +147,25 @@ destination is not yet claimed as validated.
 The explicit WSL2 bridge was also exercised against Ubuntu on the same host. A
 Linux HTTP fixture received a translated non-`C:` path containing spaces and
 Unicode, preserved a Unicode environment value, became reachable through
-Windows localhost, wrote controller-visible logs, survived a controller restart,
-and was evicted through its persisted Linux process identity. A distribution
-started by the bridge returned to `Stopped`; one that was already running was
-left running. Ubuntu exposed both NVIDIA GPUs through WSL. Neither vLLM nor
-SGLang was installed in that distribution, so real model inference through
-those engines is not claimed yet; the missing-binary launch failed without
-leaving Ubuntu running.
+Windows localhost, wrote controller-visible logs, and survived controller
+restart recovery through its persisted Linux process identity.
+
+Managed acceptance then installed vLLM 0.27.0 and SGLang 0.5.9 in separate
+user-owned environments. Both detected the two WSL NVIDIA devices, served
+`HuggingFaceTB/SmolLM2-135M-Instruct`, and returned OpenAI-compatible chat
+completions through Windows localhost. The Settings interface completed
+Install, Update, and Remove jobs for both Ubuntu targets. Final removal left
+both managed paths and receipts absent and the cards returned to
+`available / Install`.
+
+Stopping either engine left Ubuntu and `docker-desktop` running immediately
+after stop. All eight recorded Docker Desktop sentinel processes kept the same
+PIDs and start times through engine launch, stop, update, install, and uninstall.
+No acceptance step invoked distribution termination or global WSL shutdown.
 
 ## Deferred work
 
 - Signed and published Windows releases and updater metadata
 - Native Windows vLLM, SGLang, or exllamav3 claims
-- Real vLLM and SGLang model-server acceptance inside an operator-provisioned
-  WSL2 distribution
 - Hardware CI; GPU parsers and capability decisions use fixtures in CI
 - A live UNC-share acceptance run

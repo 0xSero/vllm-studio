@@ -394,27 +394,33 @@ Upstream evidence:
 - A real Ubuntu WSL2 bridge launch translated an `F:` path containing spaces and
   Unicode, preserved a Unicode environment value, served a fixture through
   Windows localhost, captured logs, and stopped its Linux process group.
-- Bridge ownership policy returned a distribution started by Local Studio to
-  `Stopped` while leaving an already-running distribution active. Controller
-  restart recovery reattached through the persisted Linux PID/start identity,
-  then health, logs, ownership, and eviction still succeeded.
-- Ubuntu reported both host NVIDIA GPUs through WSL2. A missing real `vllm`
-  executable failed at launch and the bridge cleaned up the distribution.
+- Controller restart recovery reattached through the persisted Linux PID/start
+  identity, then health, logs, ownership, and eviction still succeeded.
+- Milestone 10 removed distribution termination from every cleanup path. Engine
+  stop now signals only the recorded Linux process group and deletes its PID
+  file; no path invokes `wsl --terminate` or `wsl --shutdown`.
+- Settings installed, updated, and removed receipt-backed Ubuntu targets for
+  vLLM 0.27.0 and SGLang 0.5.9. Each target used an isolated managed Python
+  3.12 and virtual environment in `/home/pipeline/.local/share/local-studio`.
+- SGLang's published package initially selected CPU Torch and a CUDA-12 kernel
+  beside CUDA-13 Torch. The managed installer now replaces the Torch family
+  coherently, installs the upstream CUDA-13 `sgl_kernel` wheel, aligns the
+  compiler packages, and rejects activation if `sgl_kernel` cannot import.
+- Both engines detected the two Ubuntu NVIDIA devices, launched
+  `HuggingFaceTB/SmolLM2-135M-Instruct`, and returned OpenAI-compatible chat
+  completions through Windows localhost. Stop removed only the engine process.
+- A second Settings-only cycle clicked Install and Remove for each Ubuntu card.
+  Both cards returned to `available / Install`; managed paths, receipts,
+  staging directories, and isolated acceptance caches were absent afterward.
+- The eight recorded Docker Desktop sentinel PIDs and start times were unchanged
+  through all engine lifecycle and package operations. Immediately after each
+  engine stop, both Ubuntu and `docker-desktop` remained in the running list.
 
 ### Missing collection or experimental validation
 
 - Live model download to a UNC share; drive-letter, spaces, Unicode, and non-C:
   paths are validated.
 - Custom NSIS installation destinations containing spaces and Unicode.
-- WSL2 targets currently assume engine availability until launch and do not
-  expose managed install or uninstall actions in the interface.
-- Actual vLLM and SGLang package/model-server inference inside an
-  operator-provisioned WSL2 distribution; neither engine was installed on the
-  audit host during Milestone 9.
-- The Milestone 9 cleanup policy may terminate the exact distribution that the
-  bridge started. It does not invoke global WSL shutdown or target Docker's
-  distribution, but the revised acceptance requirement is stricter: stopping
-  an engine must never terminate any WSL distribution.
 - UNC model-path translation through a selected WSL2 distribution.
 - Any native Windows exllamav3 support.
 
