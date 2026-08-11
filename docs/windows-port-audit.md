@@ -234,7 +234,8 @@ workflows, excluding lockfiles and binary assets.
   only.
 - The remote deploy flow is intentionally SSH+Bash and remains valid for
   macOS/Linux remote controllers; it is not a local Windows installer.
-- No Windows user startup/task/service implementation exists.
+- At the audit baseline, no Windows user startup/task/service implementation
+  existed.
 
 #### Hardware and engines
 
@@ -359,6 +360,11 @@ Upstream evidence:
   both host NVIDIA GPUs (RTX 3090 and RTX 3080 Ti).
 - The managed Windows installer completes its release lookup, artifact
   selection, download, extraction, activation, and version probe end to end.
+- The Windows controller installer completes install, health, restart, update,
+  configuration reuse, log inspection, and removal from a path containing
+  spaces and Unicode without elevation. The audit host denies Scheduled Task
+  creation, so the validated fallback is the current user's `HKCU` startup
+  entry; controller secrets remain in `.env`, not its startup command.
 
 ### Inferred from code, to be validated by milestones
 
@@ -379,7 +385,6 @@ Upstream evidence:
 - OpenAI-compatible chat streaming against native Windows llama.cpp.
 - Packaged Windows Electron launch, embedded frontend, agent runtime, browser,
   PTY, clean shutdown, and installer behavior.
-- Windows startup task/service install, restart, upgrade, and removal.
 - Explicit Windows-to-WSL2 controller/runtime bridge.
 - Any native Windows exllamav3 support.
 
