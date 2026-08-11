@@ -17,11 +17,9 @@ import {
 } from "@/features/agent/messages";
 import {
   listRuntimeSessions,
-  loadRuntimeStatus,
   runtimeContextUsage,
   subscribeRuntimeEvents,
   type RuntimeEventPayload,
-  type RuntimeEventSubscription,
   type RuntimeSessionSummary,
   type RuntimeStatus,
 } from "@/features/agent/runtime/api";
@@ -33,23 +31,17 @@ import {
   shouldSubscribeRuntimeEvents,
   type RuntimeCursor,
 } from "@/features/agent/runtime/runtime-cursor";
-import { Effect, Fiber, Schedule } from "effect";
+import { Effect } from "effect";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import { publishRuntimeActivity } from "@/features/agent/session-index";
 import { settleTurn } from "@/features/agent/runtime/session-status";
 
-const RESUME_IDLE_RECONNECT_MS = 15_000;
-const RESUME_RECONNECT_DELAY_MS = 1_000;
 const RUNTIME_POLL_INTERVAL_MS = 5_000;
 const RUNTIME_POLL_IDLE_GRACE_MS = 10_000;
-
-type ScheduleFrame = (callback: () => void) => { cancel: () => void };
 
 export type SessionRuntimeBinding = {
   /** Single state commit boundary — one patchSession dispatch per call. */
   commit: (sessionId: SessionId, patch: (session: Session) => Session) => void;
-  /** Read the current session snapshot (never cached by the controller). */
-  getSession: (sessionId: SessionId) => Session | undefined;
   /** Read all current workspace sessions (the binding's live ref). */
   getSessions: () => readonly Session[];
 };
@@ -57,12 +49,8 @@ export type SessionRuntimeBinding = {
 export type SessionRuntimeControllerDeps = {
   api?: Partial<{
     listRuntimeSessions: typeof listRuntimeSessions;
-    loadRuntimeStatus: typeof loadRuntimeStatus;
     subscribeRuntimeEvents: typeof subscribeRuntimeEvents;
   }>;
-  scheduleFrame?: ScheduleFrame;
-  reconnectDelayMs?: number;
-  idleReconnectMs?: number;
   pollIntervalMs?: number;
   pollIdleGraceMs?: number;
 };
@@ -93,8 +81,6 @@ export type SessionRuntimeController = {
    * so EventSource does not replay already-rendered content.
    */
   noteReplayHydrated(sessionId: SessionId, committedSeq: number | undefined): void;
-  /** Apply any coalesced-but-unflushed deltas for a session right now. */
-  flush(sessionId: SessionId): void;
   /**
    * Reconcile every session against the runtime list right now, then restart
    * the steady poll. Called by the React binding when poll-relevant session
@@ -187,9 +173,7 @@ function applyRuntimeSnapshot(session: Session, status?: RuntimeStatus): Session
 export function createSessionRuntimeController(
   deps: SessionRuntimeControllerDeps = {},
 ): SessionRuntimeController {
-  const api = { listRuntimeSessions, loadRuntimeStatus, subscribeRuntimeEvents, ...deps.api };
-  const reconnectDelayMs = deps.reconnectDelayMs ?? RESUME_RECONNECT_DELAY_MS;
-  const idleReconnectMs = deps.idleReconnectMs ?? RESUME_IDLE_RECONNECT_MS;
+  const api = { listRuntimeSessions, subscribeRuntimeEvents, ...deps.api };
   const pollIntervalMs = deps.pollIntervalMs ?? RUNTIME_POLL_INTERVAL_MS;
   const pollIdleGraceMs = deps.pollIdleGraceMs ?? RUNTIME_POLL_IDLE_GRACE_MS;
 
@@ -222,8 +206,6 @@ export function createSessionRuntimeController(
   const commit = (sessionId: SessionId, patch: (session: Session) => Session) => {
     binding?.commit(sessionId, patch);
   };
-  const getSession = (sessionId: SessionId) => binding?.getSession(sessionId);
-
   // Stamp the committed cursor onto the session in the SAME commit that
   // applies the event's effects — content and cursor land atomically, so a
   // teardown can never persist a cursor ahead of rendered content.
@@ -467,110 +449,17 @@ export function createSessionRuntimeController(
     runtime: string,
     piSessionId: string | null,
   ): Attachment => {
-    let closed = false;
-    let reconnecting = false;
-    let sub: RuntimeEventSubscription | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let lastPayloadAt = Date.now();
-
-    const cancelReconnect = () => {
-      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-      reconnecting = false;
-    };
-
-    const reconnect = () => {
-      if (closed || reconnecting) return;
-      reconnecting = true;
-      sub?.close();
-      // Capped fixed-delay reconnect on a real timer so it is interruptible on
-      // close and deterministically drivable under test clocks.
-      reconnectTimer = setTimeout(() => {
-        reconnectTimer = null;
-        reconnecting = false;
-        if (!closed) connect();
-      }, reconnectDelayMs);
-    };
-
-    const reconcileLiveness = () => {
-      void Effect.runPromise(
-        Effect.gen(function* () {
-          const status = yield* Effect.tryPromise({
-            try: () => api.loadRuntimeStatus(runtime, piSessionId),
-            catch: () => null,
-          });
-          if (closed) return;
-          if (!status) {
-            reconnect();
-            return;
-          }
-          if (status.active) {
-            commit(sessionId, (session) => ({
-              ...session,
-              piSessionId: status.piSessionId || session.piSessionId,
-              contextUsage: runtimeContextUsage(status, session.contextUsage),
-              status: session.status === "stopping" ? "stopping" : "running",
-            }));
-            reconnect();
-            return;
-          }
-          // A reconnect armed by a prior onError must not fire connect() after
-          // we've decided this runtime is idle — it would reopen an SSE against
-          // a session we just idled.
-          cancelReconnect();
-          sub?.close();
-          commit(sessionId, (session) =>
-            session.status === "running" ||
-            session.status === "starting" ||
-            session.status === "stopping"
-              ? {
-                  ...settleTurn(session),
-                  contextUsage: runtimeContextUsage(status, session.contextUsage),
-                }
-              : session,
-          );
-        }),
-      );
-    };
-
-    const connect = () => {
-      // (Re)connect from the highest RECEIVED seq — an unflushed coalesced
-      // delta is still in memory, so replaying it would double-apply.
-      const after = reconnectAfter(cursors.get(sessionId) ?? adoptExternalCursor(undefined));
-      sub = api.subscribeRuntimeEvents(runtime, after, piSessionId, {
-        onPayload: (payload) => {
-          if (closed) return;
-          lastPayloadAt = Date.now();
-          if (payload.type === "status") applyStatusPayload(sessionId, payload);
-          else applyPiPayload(sessionId, payload);
-        },
-        onError: () => {
-          if (closed) return;
-          void reconcileLiveness();
-        },
-      });
-    };
-
-    connect();
-
-    const watchdogFiber =
-      idleReconnectMs > 0
-        ? (Effect.runFork(
-            Effect.sync(() => {
-              if (closed || Date.now() - lastPayloadAt < idleReconnectMs) return;
-              void reconcileLiveness();
-            }).pipe(Effect.repeat(Schedule.spaced(idleReconnectMs))),
-          ) as never)
-        : null;
-
+    const after = reconnectAfter(cursors.get(sessionId) ?? adoptExternalCursor(undefined));
+    const subscription = api.subscribeRuntimeEvents(runtime, after, piSessionId, {
+      onPayload: (payload) => {
+        if (payload.type === "status") applyStatusPayload(sessionId, payload);
+        else applyPiPayload(sessionId, payload);
+      },
+      onError: () => undefined,
+    });
     return {
       key: resumeConnectionKey(runtime, piSessionId),
-      close: () => {
-        closed = true;
-        if (reconnectTimer !== null) clearTimeout(reconnectTimer);
-        if (watchdogFiber) void Effect.runPromise(Fiber.interrupt(watchdogFiber));
-        sub?.close();
-      },
+      close: subscription.close,
     };
   };
 
@@ -649,7 +538,6 @@ export function createSessionRuntimeController(
         attachments.set(sessionId, openAttachment(sessionId, sessionId, want.piSessionId));
       }
     },
-    flush: () => undefined,
     pollNow: () => {
       stopPoll();
       if (!binding || binding.getSessions().length === 0) return;

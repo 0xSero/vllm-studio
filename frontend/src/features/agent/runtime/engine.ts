@@ -230,7 +230,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           // lands, any in-flight tool would render a perpetual "running" badge
           // and activeAssistantId would linger. Flush pending deltas first so the
           // last streamed text is committed before we finalize.
-          sessionRuntimeController().flush(sessionId);
           updateSession(sessionId, settleTurnFinalizingTools);
           return cleared;
         }),
