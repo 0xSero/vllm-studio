@@ -13,6 +13,11 @@ const RuntimeLoggedEventSchema = Schema.Struct({
   timestamp: Schema.optional(Schema.String),
 });
 
+const RuntimeQueueSchema = Schema.Struct({
+  steering: Schema.Array(Schema.String),
+  followUp: Schema.Array(Schema.String),
+});
+
 export const RuntimeStatusSchema = Schema.Struct({
   active: Schema.optional(Schema.Boolean),
   running: Schema.optional(Schema.Boolean),
@@ -21,6 +26,8 @@ export const RuntimeStatusSchema = Schema.Struct({
   eventSeq: Schema.optional(Schema.Number),
   events: Schema.optional(Schema.Array(RuntimeLoggedEventSchema)),
   contextUsage: Schema.optional(Schema.Union([Schema.Null, RuntimeContextUsageSchema])),
+  messages: Schema.optional(Schema.Array(Schema.Record(Schema.String, Schema.Unknown))),
+  queue: Schema.optional(RuntimeQueueSchema),
 });
 
 export type RuntimeStatus = Schema.Schema.Type<typeof RuntimeStatusSchema>;
@@ -35,6 +42,7 @@ const RuntimePiEventSchema = Schema.Struct({
   type: Schema.Literal("pi"),
   seq: Schema.optional(Schema.Number),
   event: Schema.Record(Schema.String, Schema.Unknown),
+  snapshot: Schema.optional(RuntimeStatusSchema),
 });
 
 const RuntimeEventPayloadSchema = Schema.Union([RuntimeStatusEventSchema, RuntimePiEventSchema]);
