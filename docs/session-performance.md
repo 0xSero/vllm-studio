@@ -54,12 +54,57 @@ Guarded by three tests in `pi-event-applier.test.ts`: the live reducer must
 still allocate a new array, replay must produce the settled log, and folding
 the same log twice must not bleed state between folds.
 
+**Caveat found afterwards:** the initial open is capped at `tail=500` events
+(`api.ts` `DEFAULT_SESSION_TAIL`), so a normal session open folds ~500 events —
+about 1ms. This change matters for `loadEarlier` paging and long resumes, not
+for the common open. The fold was never the bottleneck; see finding 2.
+
+### 2. Cache the active-branch walk — history paging 100ms → ~10ms (−90%)
+
+`loadSession` bounds the transcript it returns to ~500 events, then calls two
+helpers that read the **whole rollout file** regardless of that bound:
+
+| rollout | usage scan | context-entry walk | total per open |
+|---------|-----------:|-------------------:|---------------:|
+| 9.5 MB  | 19ms       | 7ms                | 26ms           |
+| 40 MB   | 185ms      | 121ms              | 306ms          |
+| 145 MB  | 741ms      | 366ms              | 1107ms         |
+
+(Real rollouts under `~/.pi/agent/sessions`. There is a 3.8 GB one on this
+machine — the largest measured is 145 MB.)
+
+`readSessionUsageTotals` was already memoised on (size, mtime).
+`activeBranchEvents` was not, and it runs on every open *and* every "load
+earlier" page. Gave it the same (size, mtime) cache, for the same reason its
+neighbour states: a rollout is append-only, so a file that has not grown cannot
+have a different active branch, and a file that has grown invalidates on the
+next open — which is correct, since branching and compaction both write.
+
+Measured through `loadSession` itself on the 40 MB rollout:
+
+| | before | after |
+|---|---:|---:|
+| cold open | 321ms | unchanged (must build the cache) |
+| warm reopen | 213ms | ~120ms |
+| one history page | 100ms | ~10ms |
+
+Cold-open numbers swing 320–550ms run to run on disk noise; that path is
+untouched.
+
+```bash
+cd services/agent-runtime && bun run bench/session-load.bench.ts <rollout.jsonl>
+```
+
 ## Open questions — measure before assuming
 
-- **Is the fold even the dominant cost of opening a session?** Network time and
-  `JSON.parse` of the canonical log are unmeasured. A 35k-event log is a lot of
-  bytes; parsing may dwarf the 78ms fold. Measure end-to-end before optimising
-  the fold further.
+- **The cold open still pays a full usage scan.** 741ms on a 145 MB session,
+  every time the file has grown — i.e. every open of a session you are actively
+  using. The totals are append-only sums; they could be computed incrementally
+  from the previous cached value plus the newly appended bytes instead of
+  rescanning from zero. This is the single biggest remaining number.
+- **A 3.8 GB rollout exists on this machine.** Nothing here has been tested at
+  that size; the full scans may simply be unusable. Worth finding out what
+  opening it actually does before assuming the caches are enough.
 - **Timeline virtualization.** Every message subtree stays mounted; a long
   session mounts hundreds of markdown/tool subtrees. Known-deferred from the
   earlier perf pass. Needs a DOM-node and interaction-latency measurement
