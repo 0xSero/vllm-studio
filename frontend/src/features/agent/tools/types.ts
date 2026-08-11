@@ -10,8 +10,6 @@ import type {
   ComposerPromptTemplateRef,
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
-import type { SessionId } from "@/features/agent/runtime/types";
-
 // Single source of truth for the right-sidebar tab ids. The `ComputerTab`
 // union is derived from this list, and persistence validates against it, so a
 // new tab only needs to be added here (plus its panel + label in the UI).
@@ -62,8 +60,6 @@ export type ToolSelection = {
   skills: ComposerSkillRef[];
   promptTemplates: ComposerPromptTemplateRef[];
 };
-
-export type ToolSelectionMap = ReadonlyMap<SessionId, ToolSelection>;
 
 export const EMPTY_SELECTION: ToolSelection = {
   skills: [],
