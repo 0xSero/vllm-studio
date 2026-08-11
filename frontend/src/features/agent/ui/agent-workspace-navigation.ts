@@ -67,7 +67,10 @@ export function workspaceNavigationAction(
     ...(sessionTitle ? { sessionTitle } : {}),
     newSession: params.newParam !== null,
     split: params.splitParam === "1",
-    replaceWorkspace: params.replaceParam === "1",
+    replaceWorkspace:
+      params.replaceParam === "1" ||
+      params.newParam !== null ||
+      (params.sessionId !== null && params.splitParam !== "1"),
     paneId: newPaneId(),
     tab,
   };
