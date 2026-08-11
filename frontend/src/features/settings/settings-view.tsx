@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Archive,
   Cable,
@@ -11,8 +12,6 @@ import {
   Smartphone,
 } from "@/ui/icon-registry";
 import { SettingsLayout, type SettingsSectionDef, type SettingsSectionId } from "./settings-ui";
-import type { CompatibilityReport, ConfigData } from "@/lib/types";
-import type { ApiConnectionSettings, ConnectionStatus } from "./types";
 import { ApiConnectionSection } from "./api-connection-section";
 import { ArchivedChatsSettings, SetupChecksSettings } from "./agent-settings-sections";
 import { AppearanceSettings } from "./appearance-settings";
@@ -21,25 +20,9 @@ import { EnginesSection } from "./engines-section";
 import { ServicesSettings, SystemDetails, SystemOverview } from "./system-settings-section";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { ProfileSettings } from "./profile-settings";
-interface SettingsViewProps {
-  data: ConfigData | null;
-  compatibilityReport: CompatibilityReport | null;
-  loading: boolean;
-  error: string | null;
-  apiSettings: ApiConnectionSettings;
-  apiSettingsLoading: boolean;
-  saving: boolean;
-  testing: boolean;
-  connectionStatus: ConnectionStatus;
-  statusMessage: string;
-  hasConfigData: boolean;
-  isInitialLoading: boolean;
-  onReload: () => void;
-  onApiSettingsChange: (nextSettings: ApiConnectionSettings) => void;
-  onTestConnection: () => void;
-  onSaveSettings: () => void;
-  onSystemSectionActive: () => void;
-}
+import { useSettings } from "./use-settings";
+import { SetupView } from "@/features/setup/setup-view/setup-view";
+import { legacyIntegrationHref } from "@/features/integrations/integration-navigation";
 const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
 const SECTIONS: SettingsSectionDef[] = [
   ["profile", "Profile & phone", "Your identity and phone pairing.", Smartphone],
@@ -63,25 +46,49 @@ const normalizeSectionId = (value: string): SettingsSectionId | null => {
   if (value === "engines" || value === "services") return "system";
   return null;
 };
-export function SettingsView({
-  data,
-  compatibilityReport,
-  loading,
-  error,
-  apiSettings,
-  apiSettingsLoading,
-  saving,
-  testing,
-  connectionStatus,
-  statusMessage,
-  hasConfigData,
-  isInitialLoading,
-  onReload,
-  onApiSettingsChange,
-  onTestConnection,
-  onSaveSettings,
-  onSystemSectionActive,
-}: SettingsViewProps) {
+
+export function SettingsView() {
+  const router = useRouter();
+  const configs = useSettings();
+  const [setupComplete] = useState(() =>
+    typeof window === "undefined"
+      ? false
+      : localStorage.getItem("local-studio-setup-complete") === "true",
+  );
+  useMountSubscription(() => {
+    const integrationHref = legacyIntegrationHref(window.location.hash);
+    if (integrationHref) router.replace(integrationHref);
+  }, [router]);
+  const showSetupWizard =
+    typeof window !== "undefined" &&
+    window.location.hash.length <= 1 &&
+    !configs.isInitialLoading &&
+    configs.backendOnline === false &&
+    !setupComplete &&
+    !configs.hasConfigData;
+  return showSetupWizard ? <SetupView /> : <SettingsContent configs={configs} />;
+}
+
+function SettingsContent({ configs }: { configs: ReturnType<typeof useSettings> }) {
+  const {
+    data,
+    compatibilityReport,
+    loading,
+    error,
+    apiSettings,
+    apiSettingsLoading,
+    saving,
+    testing,
+    connectionStatus,
+    statusMessage,
+    hasConfigData,
+    isInitialLoading,
+    loadConfig: onReload,
+    setApiSettings: onApiSettingsChange,
+    testConnection: onTestConnection,
+    saveApiSettings: onSaveSettings,
+    ensureConfigLoaded: onSystemSectionActive,
+  } = configs;
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("connection");
   useMountSubscription(() => {
     const onHashChange = () => {
