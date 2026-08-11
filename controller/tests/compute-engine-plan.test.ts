@@ -8,7 +8,7 @@ import type {
 } from "../src/modules/compute/contracts";
 import { ENGINE_IDS } from "../src/modules/compute/contracts";
 import { deviceEnvironment, dockerFlagsFor } from "../src/modules/compute/engines/devices";
-import { engineSpec, planLaunch, supportsRuntime } from "../src/modules/compute/engines/registry";
+import { engineSpec, planLaunch, supportsRuntime } from "../src/modules/engines/engine-spec";
 import { mergeArguments } from "../src/modules/compute/engines/shared";
 
 const host = (overrides: Partial<HostProfile> = {}): HostProfile => ({
@@ -138,7 +138,10 @@ describe("tuning knobs", () => {
 describe("extraArgs override the base flags", () => {
   test("a repeated flag appears once, with the recipe's value", () => {
     const argv = planLaunch(
-      request({ options: options({ maxContextLength: 8192 }), extraArgs: ["--max-model-len", "4096"] }),
+      request({
+        options: options({ maxContextLength: 8192 }),
+        extraArgs: ["--max-model-len", "4096"],
+      }),
     ).argv;
     expect(argv.filter((token) => token === "--max-model-len")).toHaveLength(1);
     expect(argv[argv.indexOf("--max-model-len") + 1]).toBe("4096");
@@ -146,11 +149,20 @@ describe("extraArgs override the base flags", () => {
   });
 
   test("mergeArguments drops the base flag and its value", () => {
-    expect(mergeArguments(["--a", "1", "--b", "2"], ["--a", "9"])).toEqual(["--b", "2", "--a", "9"]);
+    expect(mergeArguments(["--a", "1", "--b", "2"], ["--a", "9"])).toEqual([
+      "--b",
+      "2",
+      "--a",
+      "9",
+    ]);
   });
 
   test("mergeArguments handles boolean flags and --flag=value form", () => {
-    expect(mergeArguments(["--verbose", "--b", "2"], ["--verbose"])).toEqual(["--b", "2", "--verbose"]);
+    expect(mergeArguments(["--verbose", "--b", "2"], ["--verbose"])).toEqual([
+      "--b",
+      "2",
+      "--verbose",
+    ]);
     expect(mergeArguments(["--a=1", "--b", "2"], ["--a", "9"])).toEqual(["--b", "2", "--a", "9"]);
   });
 
@@ -216,10 +228,7 @@ describe("device translation", () => {
   });
 
   test("docker flags differ from process env", () => {
-    expect(dockerFlagsFor("cuda", devices).args).toEqual([
-      "--gpus",
-      '"device=GPU-aaa,GPU-bbb"',
-    ]);
+    expect(dockerFlagsFor("cuda", devices).args).toEqual(["--gpus", '"device=GPU-aaa,GPU-bbb"']);
     expect(dockerFlagsFor("rocm", devices).args).toContain("/dev/kfd");
     expect(dockerFlagsFor("rocm", devices).groupAdd).toEqual(["video", "render"]);
   });
@@ -241,15 +250,38 @@ describe("supports() gates by host", () => {
   }[] = [
     { engine: "vllm", host: host({ accelerator: "cuda" }), ok: true, runtime: "process" },
     { engine: "vllm", host: host({ platform: "darwin", accelerator: "metal" }), ok: false },
-    { engine: "vllm", host: host({ platform: "win32", accelerator: "cuda", wsl: false }), ok: false },
+    {
+      engine: "vllm",
+      host: host({ platform: "win32", accelerator: "cuda", wsl: false }),
+      ok: false,
+    },
     { engine: "vllm", host: host({ platform: "win32", accelerator: "cuda", wsl: true }), ok: true },
     { engine: "vllm", host: host({ accelerator: "rocm" }), ok: true, runtime: "docker" },
     { engine: "sglang", host: host({ accelerator: "rocm" }), ok: false },
-    { engine: "mlx", host: host({ platform: "darwin", arch: "arm64", accelerator: "metal" }), ok: true, runtime: "process" },
+    {
+      engine: "mlx",
+      host: host({ platform: "darwin", arch: "arm64", accelerator: "metal" }),
+      ok: true,
+      runtime: "process",
+    },
     { engine: "mlx", host: host({ platform: "linux" }), ok: false },
-    { engine: "mlx", host: host({ platform: "darwin", arch: "x64", accelerator: "metal" }), ok: false },
-    { engine: "llamacpp", host: host({ platform: "darwin", accelerator: "metal" }), ok: true, runtime: "process" },
-    { engine: "llamacpp", host: host({ platform: "win32", accelerator: "rocm" }), ok: true, runtime: "process" },
+    {
+      engine: "mlx",
+      host: host({ platform: "darwin", arch: "x64", accelerator: "metal" }),
+      ok: false,
+    },
+    {
+      engine: "llamacpp",
+      host: host({ platform: "darwin", accelerator: "metal" }),
+      ok: true,
+      runtime: "process",
+    },
+    {
+      engine: "llamacpp",
+      host: host({ platform: "win32", accelerator: "rocm" }),
+      ok: true,
+      runtime: "process",
+    },
     { engine: "exllamav3", host: host({ accelerator: "cuda" }), ok: true, runtime: "process" },
     { engine: "exllamav3", host: host({ accelerator: "rocm" }), ok: false },
   ];
@@ -284,11 +316,18 @@ describe("supports() gates by host", () => {
 });
 
 describe("DGX Spark", () => {
-  const spark = host({ platform: "linux", arch: "arm64", accelerator: "cuda", unifiedMemory: true });
+  const spark = host({
+    platform: "linux",
+    arch: "arm64",
+    accelerator: "cuda",
+    unifiedMemory: true,
+  });
 
   test("is not a special case — CUDA engines run natively", () => {
     expect(engineSpec("vllm").supports(spark).ok).toBe(true);
     expect(engineSpec("llamacpp").supports(spark).ok).toBe(true);
-    expect(planLaunch(request({ host: spark })).env["CUDA_VISIBLE_DEVICES"]).toBe("GPU-aaa,GPU-bbb");
+    expect(planLaunch(request({ host: spark })).env["CUDA_VISIBLE_DEVICES"]).toBe(
+      "GPU-aaa,GPU-bbb",
+    );
   });
 });

@@ -11,7 +11,7 @@ import type {
 } from "./contracts";
 import { fetchLocal } from "../../http/local-fetch";
 import { applyDevices } from "./engines/devices";
-import { engineSpec, planLaunch, supportsRuntime } from "./engines/registry";
+import { engineSpec, planLaunch, supportsRuntime } from "../engines/engine-spec";
 import { toEvent } from "./failures";
 import type { Launcher } from "./launchers/launcher";
 import type { InstanceStore } from "./instances/store";

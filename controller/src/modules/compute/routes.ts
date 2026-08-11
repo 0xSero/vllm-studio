@@ -3,7 +3,7 @@ import { badRequest } from "../../core/errors";
 import { readBoundedRequestBody } from "../../http/bounded-body";
 import { defineRoutes, mergeRoutes, effectRoute } from "../../http/route-registrar";
 import { ENGINE_IDS, type EngineId, type ServingOptions } from "./contracts";
-import { availableEngines } from "./engines/registry";
+import { availableEngines } from "../engines/engine-spec";
 import { toHttp } from "./failures";
 const LAUNCH_REQUEST_LIMIT = 64 * 1024;
 const OptionsSchema = Schema.Struct({

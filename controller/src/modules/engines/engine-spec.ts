@@ -2,7 +2,17 @@ import type { ChildProcess } from "node:child_process";
 import { Schema, type Effect } from "effect";
 import type { Config } from "../../config/env";
 import type { ProcessInfo } from "../models/types";
-import type { ComputeEngineSpec } from "../compute/contracts";
+import type {
+  ComputeEngineSpec,
+  EngineId,
+  EngineRuntimeKind,
+  EngineSupport,
+  HostProfile,
+  LaunchPlan,
+  LaunchRequest,
+} from "../compute/contracts";
+import { applyDevices } from "../compute/engines/devices";
+import { exllamav3 } from "../compute/engines/exllamav3";
 import type {
   EngineBackend,
   RuntimeBackendInfo,
@@ -61,13 +71,35 @@ export interface EngineSpec extends Omit<ComputeEngineSpec, "id"> {
   getConfigHelp?: (config: Config) => Effect.Effect<ConfigHelpResult, EngineOperationError>;
 }
 
-const SPECS: Record<EngineBackend, EngineSpec> = {
+const SPECS = {
   vllm: vllmSpec,
   sglang: sglangSpec,
   llamacpp: llamacppSpec,
   mlx: mlxSpec,
-};
+  exllamav3,
+} satisfies Readonly<Record<EngineId, ComputeEngineSpec>>;
 
 export const getEngineSpec = (backend: EngineBackend): EngineSpec => SPECS[backend];
+
+export const engineSpec = (id: EngineId): ComputeEngineSpec => SPECS[id];
+
+export const allEngineSpecs: readonly ComputeEngineSpec[] = Object.values(SPECS);
+
+export const availableEngines = (
+  host: HostProfile,
+): readonly { readonly id: EngineId; readonly support: EngineSupport }[] =>
+  allEngineSpecs.map((spec) => ({ id: spec.id, support: spec.supports(host) }));
+
+export const supportsRuntime = (
+  id: EngineId,
+  host: HostProfile,
+  runtime: EngineRuntimeKind,
+): boolean => {
+  const support = SPECS[id].supports(host);
+  return support.ok && support.runtimes.includes(runtime);
+};
+
+export const planLaunch = (request: LaunchRequest): LaunchPlan =>
+  applyDevices(SPECS[request.engine].plan(request), request.host.accelerator);
 
 export { vllmSpec, sglangSpec, llamacppSpec, mlxSpec };
