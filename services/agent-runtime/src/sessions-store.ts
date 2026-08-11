@@ -463,13 +463,49 @@ function parseEvent(line: string): SessionEvent | null {
   }
 }
 
+type ActiveBranchCacheEntry = { size: number; mtimeMs: number; ids: Set<string> };
+
+/**
+ * `buildContextEntries()` walks the rollout from the current leaf to the root,
+ * so it costs the whole file — 121ms on a 40MB session, 366ms on a 145MB one —
+ * and `loadSession` calls it on every open AND every "load earlier" page, each
+ * of which returns at most a few hundred events.
+ *
+ * Memoised on (size, mtime) exactly like `readSessionUsageTotals` next door,
+ * and for the same reason: a rollout is append-only, so a file that has not
+ * grown cannot have a different active branch. A session that IS being appended
+ * to invalidates on its next open, which is the correct answer — branching and
+ * compaction both write to the file.
+ */
+const activeBranchCache = new Map<string, ActiveBranchCacheEntry>();
+
+function activeBranchIds(filepath: string): Set<string> | null {
+  let stat: { size: number; mtimeMs: number };
+  try {
+    stat = statSync(filepath);
+  } catch {
+    return null;
+  }
+
+  const cached = activeBranchCache.get(filepath);
+  if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.ids;
+
+  const ids = new Set(
+    SessionManager.open(filepath)
+      .buildContextEntries()
+      .map((entry) => entry.id),
+  );
+  activeBranchCache.set(filepath, { size: stat.size, mtimeMs: stat.mtimeMs, ids });
+  return ids;
+}
+
 function activeBranchEvents(filepath: string, events: SessionEvent[]): SessionEvent[] {
   try {
-    const activeIds = new Set(
-      SessionManager.open(filepath).buildContextEntries().map((entry) => entry.id),
-    );
+    const activeIds = activeBranchIds(filepath);
+    if (!activeIds) return events;
     return events.filter(
-      (event) => event.type === "session" || (typeof event.id === "string" && activeIds.has(event.id)),
+      (event) =>
+        event.type === "session" || (typeof event.id === "string" && activeIds.has(event.id)),
     );
   } catch {
     return events;
