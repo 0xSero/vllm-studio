@@ -70,6 +70,3 @@ export const runInWsl = (
   timeoutMs = WSL_TIMEOUT_MS,
 ): Effect.Effect<AsyncCommandResult> =>
   wsl(["--distribution", distribution, "--exec", ...args], timeoutMs);
-
-export const terminateWslDistribution = (distribution: string): Effect.Effect<AsyncCommandResult> =>
-  wsl(["--terminate", distribution], 30_000);

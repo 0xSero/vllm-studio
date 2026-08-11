@@ -3,7 +3,7 @@ import { closeSync, openSync } from "node:fs";
 import { resolve } from "node:path";
 import { Effect } from "effect";
 import type { HandleReference, InstanceRecord } from "../contracts";
-import { listRunningWslDistributions, runInWsl, terminateWslDistribution } from "../wsl-platform";
+import { listRunningWslDistributions, runInWsl } from "../wsl-platform";
 import { readLogTail, spawnFailed, type Launcher } from "./launcher";
 
 const START_TIMEOUT_MS = 10_000;
@@ -48,11 +48,6 @@ export const buildWslLaunchArguments = (
     .map(([key, value]) => `${key}=${value}`),
   ...argv,
 ];
-
-export const shouldTerminateWslDistribution = (
-  startedDistribution: boolean,
-  value = process.env["LOCAL_STUDIO_WSL_TERMINATE_ON_STOP"],
-): boolean => startedDistribution && value !== "false";
 
 const parseIdentity = (value: string): WslIdentity | null => {
   const match = value.trim().match(/^(\d+)\s+(\S+)\s+(\S+)$/);
@@ -129,17 +124,8 @@ const removePidFile = (distribution: string, pidFile: string): Effect.Effect<voi
     yield* runInWsl(distribution, ["/bin/rm", "-f", pidFile]).pipe(Effect.ignore);
   });
 
-const cleanupDistribution = (
-  distribution: string,
-  pidFile: string,
-  startedDistribution: boolean,
-): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    yield* removePidFile(distribution, pidFile);
-    if (shouldTerminateWslDistribution(startedDistribution)) {
-      yield* terminateWslDistribution(distribution).pipe(Effect.ignore);
-    }
-  });
+const cleanupLaunch = (distribution: string, pidFile: string): Effect.Effect<void> =>
+  removePidFile(distribution, pidFile);
 
 export const makeWsl2Launcher = (logPathFor: (record: InstanceRecord) => string): Launcher => ({
   start: (plan, record) =>
@@ -149,26 +135,24 @@ export const makeWsl2Launcher = (logPathFor: (record: InstanceRecord) => string)
       if (process.platform !== "win32") {
         return yield* spawnFailed("WSL2 launch is available only from a Windows controller");
       }
-      const before = yield* listRunningWslDistributions();
-      const startedDistribution = !includesDistribution(before, distribution);
       const pidFile = `/tmp/local-studio-${record.nonce}.pid`;
       const translated = yield* Effect.all(
         plan.argv.map((value) => translateValue(distribution, value)),
       ).pipe(
         Effect.catch((detail) =>
-          cleanupDistribution(distribution, pidFile, startedDistribution).pipe(
+          cleanupLaunch(distribution, pidFile).pipe(
             Effect.andThen(spawnFailed(detail)),
           ),
         ),
       );
       const [requestedBinary, ...args] = translated;
       if (!requestedBinary) {
-        yield* cleanupDistribution(distribution, pidFile, startedDistribution);
+        yield* cleanupLaunch(distribution, pidFile);
         return yield* spawnFailed("plan.argv is empty");
       }
       const binary = yield* resolveLinuxBinary(distribution, requestedBinary).pipe(
         Effect.catch((detail) =>
-          cleanupDistribution(distribution, pidFile, startedDistribution).pipe(
+          cleanupLaunch(distribution, pidFile).pipe(
             Effect.andThen(spawnFailed(detail)),
           ),
         ),
@@ -176,7 +160,7 @@ export const makeWsl2Launcher = (logPathFor: (record: InstanceRecord) => string)
       const workdir = plan.workdir
         ? yield* translateValue(distribution, plan.workdir).pipe(
             Effect.catch((detail) =>
-              cleanupDistribution(distribution, pidFile, startedDistribution).pipe(
+              cleanupLaunch(distribution, pidFile).pipe(
                 Effect.andThen(spawnFailed(detail)),
               ),
             ),
@@ -191,7 +175,7 @@ export const makeWsl2Launcher = (logPathFor: (record: InstanceRecord) => string)
           ),
         ).pipe(
           Effect.catch((detail) =>
-            cleanupDistribution(distribution, pidFile, startedDistribution).pipe(
+            cleanupLaunch(distribution, pidFile).pipe(
               Effect.andThen(spawnFailed(detail)),
             ),
           ),
@@ -200,7 +184,7 @@ export const makeWsl2Launcher = (logPathFor: (record: InstanceRecord) => string)
       const logPath = resolve(logPathFor(record));
       const logFile = yield* translateValue(distribution, logPath).pipe(
         Effect.catch((detail) =>
-          cleanupDistribution(distribution, pidFile, startedDistribution).pipe(
+          cleanupLaunch(distribution, pidFile).pipe(
             Effect.andThen(spawnFailed(detail)),
           ),
         ),
@@ -210,7 +194,7 @@ export const makeWsl2Launcher = (logPathFor: (record: InstanceRecord) => string)
         catch: (error) => String(error),
       }).pipe(
         Effect.catch((detail) =>
-          cleanupDistribution(distribution, pidFile, startedDistribution).pipe(
+          cleanupLaunch(distribution, pidFile).pipe(
             Effect.andThen(spawnFailed(detail)),
           ),
         ),
@@ -236,12 +220,12 @@ export const makeWsl2Launcher = (logPathFor: (record: InstanceRecord) => string)
           },
         );
       } catch (error) {
-        yield* cleanupDistribution(distribution, pidFile, startedDistribution);
+        yield* cleanupLaunch(distribution, pidFile);
         return yield* spawnFailed(String(error));
       }
       const spawnedPid = yield* awaitSpawn(child);
       if (!spawnedPid) {
-        yield* cleanupDistribution(distribution, pidFile, startedDistribution);
+        yield* cleanupLaunch(distribution, pidFile);
         return yield* spawnFailed("failed to spawn wsl.exe");
       }
       const deadline = Date.now() + START_TIMEOUT_MS;
@@ -252,7 +236,7 @@ export const makeWsl2Launcher = (logPathFor: (record: InstanceRecord) => string)
       }
       if (!identity || identity.nonce !== record.nonce) {
         child.kill();
-        yield* cleanupDistribution(distribution, pidFile, startedDistribution);
+        yield* cleanupLaunch(distribution, pidFile);
         return yield* spawnFailed(`WSL2 process identity was not created in ${distribution}`);
       }
       child.unref();
@@ -263,7 +247,6 @@ export const makeWsl2Launcher = (logPathFor: (record: InstanceRecord) => string)
         startToken: identity.startToken,
         pidFile,
         nonce: identity.nonce,
-        startedDistribution,
       } as const;
     }),
 
@@ -297,11 +280,7 @@ export const makeWsl2Launcher = (logPathFor: (record: InstanceRecord) => string)
               ]).pipe(Effect.ignore);
             }
           }
-          yield* cleanupDistribution(
-            reference.distribution,
-            reference.pidFile,
-            reference.startedDistribution,
-          );
+          yield* cleanupLaunch(reference.distribution, reference.pidFile);
         }),
 
   logTail: (_reference, record) => Effect.sync(() => readLogTail(logPathFor(record))),

@@ -179,7 +179,6 @@ export type HandleReference =
       readonly startToken: string;
       readonly pidFile: string;
       readonly nonce: string;
-      readonly startedDistribution: boolean;
     }
   | { readonly kind: "remote"; readonly nodeId: NodeId; readonly name: string }
   /** A device hold with no supervised process — e.g. the speech worker claims its GPU

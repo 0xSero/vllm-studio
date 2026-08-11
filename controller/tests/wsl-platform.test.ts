@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   isWindowsAbsolutePath,
   buildWslLaunchArguments,
-  shouldTerminateWslDistribution,
 } from "../src/modules/compute/launchers/wsl2";
 import {
   normalizeWslOutput,
@@ -69,11 +68,5 @@ describe("WSL2 launch contract", () => {
       "serve",
       "/mnt/f/Models/Qwen model",
     ]);
-  });
-
-  test("terminates only a distribution started by the bridge unless disabled", () => {
-    expect(shouldTerminateWslDistribution(true, undefined)).toBe(true);
-    expect(shouldTerminateWslDistribution(true, "false")).toBe(false);
-    expect(shouldTerminateWslDistribution(false, undefined)).toBe(false);
   });
 });
