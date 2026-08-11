@@ -11,7 +11,7 @@ import {
 } from "react";
 import { Menu } from "@/ui/icon-registry";
 import { useShallow } from "zustand/react/shallow";
-import { useAppStore } from "@/store";
+import { DEFAULT_SIDEBAR_WIDTH, useAppStore } from "@/store";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { useOpenSessions } from "@/features/agent/ui/use-open-sessions";
 import { hrefWithOpenNonce } from "@/features/agent/ui/projects-nav/helpers";
@@ -31,10 +31,8 @@ import {
 
 const SIDEBAR_MIN_WIDTH = 180;
 const SIDEBAR_MAX_WIDTH = 520;
-const SIDEBAR_DEFAULT_WIDTH = 260;
-
 function clampSidebarWidth(width: number): number {
-  if (!Number.isFinite(width)) return SIDEBAR_DEFAULT_WIDTH;
+  if (!Number.isFinite(width)) return DEFAULT_SIDEBAR_WIDTH;
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
 }
 
