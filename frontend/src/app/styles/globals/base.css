@@ -39,6 +39,11 @@
   scrollbar-color: color-mix(in srgb, var(--hl1) 18%, transparent) transparent;
 }
 
+svg.lucide {
+  scale: var(--icon-scale);
+  transform-origin: center;
+}
+
 html,
 body {
   overflow: hidden;

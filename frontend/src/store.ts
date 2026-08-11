@@ -56,7 +56,7 @@ const createAppSlice: StateCreator<AppSlice, [], [], AppSlice> = (set) => ({
     }),
   toggleSidebarMobileOpen: () =>
     set((state) => ({ sidebar: { ...state.sidebar, mobileOpen: !state.sidebar.mobileOpen } })),
-  sidebarWidth: 275,
+  sidebarWidth: 260,
   setSidebarWidth: (sidebarWidth) => set({ sidebarWidth }),
   fileViewerFontSize: 12,
   setFileViewerFontSize: (fileViewerFontSize) => set({ fileViewerFontSize }),
@@ -151,11 +151,12 @@ export const useAppStore = create<AppStore>()(
           ...current,
           ...persistedStore,
           sidebarWidth:
+            persistedRecord.sidebarWidth === 275 ||
             persistedRecord.sidebarWidth === 240 ||
             persistedRecord.sidebarWidth === 220 ||
             persistedRecord.sidebarWidth === 224 ||
             persistedRecord.sidebarWidth === 204
-              ? 275
+              ? 260
               : (persistedStore.sidebarWidth ?? current.sidebarWidth),
           sidebar: {
             ...current.sidebar,

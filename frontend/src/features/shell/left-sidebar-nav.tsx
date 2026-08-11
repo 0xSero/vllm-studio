@@ -64,11 +64,11 @@ export function NavItemMobile({
       href={href}
       prefetch={false}
       onClick={onClick}
-      className={`flex h-12 items-center gap-4 rounded-xl px-3 text-[17px] transition-colors ${
+      className={`flex h-11 items-center gap-3 rounded-lg px-3 text-[15px] transition-colors ${
         active ? "bg-(--active) font-medium text-(--fg)" : "text-(--fg)/80 active:bg-(--hover)"
       }`}
     >
-      <Icon className="h-[22px] w-[22px] shrink-0" strokeWidth={1.6} />
+      <Icon className="h-5 w-5 shrink-0" strokeWidth={1.6} />
       <span>{label}</span>
     </Link>
   );
@@ -90,7 +90,7 @@ export function NavItemDesktop({
       href={href}
       prefetch={false}
       title={label}
-      className={`group flex h-[var(--sidebar-row-height)] shrink-0 items-center gap-2.5 rounded-[var(--sidebar-row-radius)] px-2 transition-colors ${
+      className={`group flex h-[var(--sidebar-row-height)] shrink-0 items-center gap-2 rounded-[var(--sidebar-row-radius)] px-2 transition-colors ${
         active ? "bg-(--active) text-(--fg)" : "text-(--fg) hover:bg-(--hover)"
       }`}
     >

@@ -42,6 +42,10 @@ describe("left sidebar navigation", () => {
     assert.match(desktopSidebar, /ChevronRight className="h-3 w-3"/);
   });
 
+  test("uses the shared compact icon scale", () => {
+    assert.match(baseStyles, /svg\.lucide\s*\{[\s\S]*scale:\s*var\(--icon-scale\)/);
+  });
+
   test("reserves the scrollbar gutter while only the thumb visibility changes", () => {
     const resting = baseStyles.match(/\.sidebar-scroller \{([\s\S]*?)\}/)?.[1] ?? "";
     const hovered = baseStyles.match(/\.sidebar-scroller:hover \{([\s\S]*?)\}/)?.[1] ?? "";
