@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import path from "node:path";
-import { addComment, deleteComment, listComments } from "@/features/agent/comments-store";
+import {
+  addComment,
+  deleteComment,
+  listComments,
+} from "@local-studio/agent-runtime/comments-store";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 import { requireApiAccess } from "@/lib/auth/guard";
 

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import path from "node:path";
-import { readFileSnippet, writeFileContent } from "@/features/agent/fs-store";
+import { readFileSnippet, writeFileContent } from "@local-studio/agent-runtime/workspace-files";
 import { requireApiAccess } from "@/lib/auth/guard";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 

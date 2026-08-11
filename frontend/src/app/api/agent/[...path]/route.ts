@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import path from "node:path";
 import { AGENT_TURN_BODY_LIMIT_BYTES } from "@shared/agent/agent-turn-body";
 import { proxyToAgentRuntime } from "@/app/api/agent/proxy-to-runtime";
-import { assertWorkspaceRoot } from "@/features/agent/fs-store";
+import { assertWorkspaceRoot } from "@local-studio/agent-runtime/workspace-files";
 import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { GitAction, GitRef, GitState, GitStatusEntry } from "@/features/agent/contracts";
+import type { GitAction, GitRef, GitState, GitStatusEntry } from "../../../shared/agent/workspace";
 
 const execFileAsync = promisify(execFile);
 
@@ -52,37 +52,27 @@ async function git(cwd: string, args: string[]): Promise<string> {
 
 function cleanGitEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
-  delete env.GIT_DIR;
-  delete env.GIT_WORK_TREE;
-  delete env.GIT_INDEX_FILE;
-  delete env.GIT_PREFIX;
+  for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX"]) delete env[key];
   return env;
 }
 
 export async function loadGitState(cwd: string): Promise<GitState> {
-  const inside = await git(cwd, ["rev-parse", "--is-inside-work-tree"]).catch(() => "");
+  const safeGit = (args: string[]) => git(cwd, args).catch(() => "");
+  const inside = await safeGit(["rev-parse", "--is-inside-work-tree"]);
   if (inside.trim() !== "true") return emptyGitState(false);
-  const hasHead = Boolean(
-    (await git(cwd, ["rev-parse", "--verify", "HEAD"]).catch(() => "")).trim(),
-  );
-  const diffArgs = hasHead
-    ? ["diff", "--no-ext-diff", "HEAD", "--src-prefix=a/", "--dst-prefix=b/"]
-    : ["diff", "--no-ext-diff", "--cached", "--src-prefix=a/", "--dst-prefix=b/"];
-  const numstatArgs = hasHead
-    ? ["diff", "--numstat", "HEAD", "--"]
-    : ["diff", "--numstat", "--cached", "--"];
+  const target = (await safeGit(["rev-parse", "--verify", "HEAD"])).trim()
+    ? ["HEAD"]
+    : ["--cached"];
   const [branch, statusRaw, diff, numstat, untrackedRaw, refsRaw, upstream, remoteUrl] =
     await Promise.all([
-      git(cwd, ["branch", "--show-current"]).catch(() => ""),
+      safeGit(["branch", "--show-current"]),
       git(cwd, ["status", "--short"]),
-      git(cwd, diffArgs),
-      git(cwd, numstatArgs).catch(() => ""),
-      git(cwd, ["ls-files", "--others", "--exclude-standard", "-z"]).catch(() => ""),
-      git(cwd, ["for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes"]).catch(
-        () => "",
-      ),
-      git(cwd, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]).catch(() => ""),
-      git(cwd, ["remote", "get-url", "origin"]).catch(() => ""),
+      git(cwd, ["diff", "--no-ext-diff", ...target, "--src-prefix=a/", "--dst-prefix=b/"]),
+      safeGit(["diff", "--numstat", ...target, "--"]),
+      safeGit(["ls-files", "--others", "--exclude-standard", "-z"]),
+      safeGit(["for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes"]),
+      safeGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]),
+      safeGit(["remote", "get-url", "origin"]),
     ]);
   const current = branch.trim() || null;
   const trackedStats = numstatStats(numstat);
@@ -94,10 +84,6 @@ export async function loadGitState(cwd: string): Promise<GitState> {
     branch: current,
     status: statusLines(statusRaw),
     entries: statusEntries(statusRaw),
-    // `git diff HEAD` omits untracked (new) files, so a "build me a site"
-    // session that creates dozens of new files shows an empty diff while the
-    // counter says +N. Append synthesized new-file diffs so the panel reviews
-    // them like GitHub does.
     diff: untracked.diff
       ? `${diff}${diff.endsWith("\n") || !diff ? "" : "\n"}${untracked.diff}`
       : diff,
@@ -109,10 +95,6 @@ export async function loadGitState(cwd: string): Promise<GitState> {
     prUrl: pullRequestUrl(remoteUrl.trim(), current),
   };
 }
-
-// git treats a leading-dash argument as an option, so a ref/branch like
-// `--upload-pack=…` would be interpreted as a flag even through execFile (which
-// only stops shell injection, not argument injection). Reject them.
 function assertNotOption(value: string, label: string): string {
   if (value.startsWith("-")) throw new Error(`Invalid ${label}: must not start with "-"`);
   return value;
@@ -190,20 +172,9 @@ export function numstatStats(numstat: string): { additions: number; deletions: n
   }
   return { additions, deletions };
 }
-
-// Per-file and total caps so a session that generates large bundles (e.g. an
-// 800KB data.js) can't blow up the diff payload; GitHub collapses huge files
-// too. Beyond the cap the file's content is truncated with a marker.
 const MAX_UNTRACKED_LINES_PER_FILE = 1000;
 const MAX_UNTRACKED_DIFF_BYTES = 1_500_000;
 
-/**
- * Synthesize a unified-diff block for one untracked file so it renders as a
- * GitHub-style "new file" (all additions). Binary files emit a marker instead
- * of their bytes; long files are truncated to MAX_UNTRACKED_LINES_PER_FILE.
- * `additions` is the file's true line count (matching git's working-tree count),
- * not the possibly-truncated number of rendered `+` rows.
- */
 export function buildUntrackedFileDiffBlock(
   file: string,
   contents: string,

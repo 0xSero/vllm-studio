@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { realpathSync } from "node:fs";
 import os from "node:os";
-import { assertWorkspaceRoot } from "./fs-store";
+import { assertWorkspaceRoot } from "@local-studio/agent-runtime/workspace-files";
 
 describe("assertWorkspaceRoot", () => {
   test("accepts an ordinary directory under the user's home", () => {

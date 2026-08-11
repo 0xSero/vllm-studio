@@ -1,19 +1,10 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { isRecord } from "@shared/agent/guards";
+import { isRecord } from "../../../shared/agent/guards";
+import type { FileComment } from "../../../shared/agent/workspace";
 
-export type Comment = {
-  id: string;
-  line: number;
-  body: string;
-  createdAt: string;
-};
-
-type CommentsDocument = {
-  // Map of relative path → comments. Stored on disk as
-  // <project>/.local-studio/comments.json.
-  files: Record<string, Comment[]>;
-};
+export type Comment = FileComment;
+type CommentsDocument = { files: Record<string, Comment[]> };
 
 function commentsPath(rootCwd: string): string {
   return path.join(rootCwd, ".local-studio", "comments.json");
@@ -42,6 +33,17 @@ function ensureRel(rel: string): string {
   return rel;
 }
 
+async function changeComments(
+  rootCwd: string,
+  rel: string,
+  change: (comments: Comment[]) => Comment[] | null,
+): Promise<void> {
+  const doc = await readDocument(rootCwd);
+  const safe = ensureRel(rel);
+  const next = change(doc.files[safe] ?? []);
+  if (next) await writeDocument(rootCwd, { files: { ...doc.files, [safe]: next } });
+}
+
 export async function listComments(rootCwd: string, rel: string): Promise<Comment[]> {
   const safe = ensureRel(rel);
   const doc = await readDocument(rootCwd);
@@ -54,8 +56,6 @@ export async function addComment(
   line: number,
   body: string,
 ): Promise<Comment> {
-  const safe = ensureRel(rel);
-  const doc = await readDocument(rootCwd);
   const trimmed = body.trim();
   if (!trimmed) throw new Error("Comment body is required");
   const comment: Comment = {
@@ -64,20 +64,13 @@ export async function addComment(
     body: trimmed,
     createdAt: new Date().toISOString(),
   };
-  await writeDocument(rootCwd, {
-    files: { ...doc.files, [safe]: [...(doc.files[safe] ?? []), comment] },
-  });
+  await changeComments(rootCwd, rel, (comments) => [...comments, comment]);
   return comment;
 }
 
 export async function deleteComment(rootCwd: string, rel: string, id: string): Promise<void> {
-  const safe = ensureRel(rel);
-  const doc = await readDocument(rootCwd);
-  const list = doc.files[safe];
-  if (!list) return;
-  const filtered = list.filter((c) => c.id !== id);
-  if (filtered.length === list.length) return;
-  await writeDocument(rootCwd, {
-    files: { ...doc.files, [safe]: filtered },
+  await changeComments(rootCwd, rel, (comments) => {
+    const next = comments.filter((comment) => comment.id !== id);
+    return next.length === comments.length ? null : next;
   });
 }

@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { NextRequest } from "next/server";
 import { parseTerminalRunRequest } from "@/features/agent/contracts";
 import { requireApiAccess } from "@/lib/auth/guard";
-import { assertWorkspaceRoot } from "@/features/agent/fs-store";
+import { assertWorkspaceRoot } from "@local-studio/agent-runtime/workspace-files";
 import { errorMessage, jsonError, requireAbsoluteCwd } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";

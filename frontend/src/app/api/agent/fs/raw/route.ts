@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import path from "node:path";
-import { readFileBytes } from "@/features/agent/fs-store";
+import { readFileBytes } from "@local-studio/agent-runtime/workspace-files";
 import { requireApiAccess } from "@/lib/auth/guard";
 import { errorMessage, jsonError, requireAbsoluteCwd } from "@/app/api/_lib/route-helpers";
 

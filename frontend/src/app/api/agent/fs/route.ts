@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { listDirectory } from "@/features/agent/fs-store";
+import { listDirectory } from "@local-studio/agent-runtime/workspace-files";
 import { errorMessage, jsonError, requireAbsoluteCwd } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";
