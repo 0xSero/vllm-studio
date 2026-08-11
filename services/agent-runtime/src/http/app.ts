@@ -77,6 +77,17 @@ import {
   handleGoogleAuthorize,
   handleGoogleAuthorizeDelete,
 } from "./integration-handlers";
+import {
+  handleComments,
+  handleDirectories,
+  handleGit,
+  handleProjects,
+  handleResolveCwd,
+  handleTerminalRun,
+  handleWorkspaceFile,
+  handleWorkspaceList,
+  handleWorkspaceRaw,
+} from "./workspace-handlers";
 
 const PluginActivationSchema = Schema.Struct({ enabled: Schema.Boolean });
 
@@ -192,6 +203,15 @@ export function createAgentRuntimeApp() {
   app.get("/api/agent/browser/state", () => handleBrowserState());
   app.post("/api/agent/browser/viewport", (c) => handleBrowserViewport(c.req.raw));
   app.post("/api/agent/browser/:verb", (c) => handleBrowserVerb(c.req.raw, c.req.param("verb")));
+  app.get("/api/agent/directories", (c) => handleDirectories(c.req.raw));
+  app.on(["GET", "POST", "DELETE"], "/api/agent/comments", (c) => handleComments(c.req.raw));
+  app.on(["GET", "POST", "DELETE"], "/api/agent/projects", (c) => handleProjects(c.req.raw));
+  app.get("/api/agent/fs", (c) => handleWorkspaceList(c.req.raw));
+  app.get("/api/agent/fs/raw", (c) => handleWorkspaceRaw(c.req.raw));
+  app.on(["GET", "PUT"], "/api/agent/fs/file", (c) => handleWorkspaceFile(c.req.raw));
+  app.on(["GET", "POST"], "/api/agent/git", (c) => handleGit(c.req.raw));
+  app.post("/api/agent/terminal", (c) => handleTerminalRun(c.req.raw));
+  app.post("/api/agent/terminal/resolve-cwd", (c) => handleResolveCwd(c.req.raw));
 
   return { app, litterBridgeGateway };
 }
