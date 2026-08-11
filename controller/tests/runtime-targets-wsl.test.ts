@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { runtimeTargetsForWslDistributions } from "./runtime-targets";
+import { runtimeTargetsForWslDistributions } from "../src/modules/engines/runtimes/runtime-targets";
 
 describe("WSL2 runtime targets", () => {
   test("offers only vLLM and SGLang without probing or claiming a version", () => {
