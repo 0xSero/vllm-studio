@@ -1,6 +1,15 @@
 "use client";
 
-import { memo, useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  forwardRef,
+  memo,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type HTMLAttributes,
+} from "react";
+import { Virtuoso, type ListRange, type VirtuosoHandle } from "react-virtuoso";
 import type { AssistantBlock, ChatMessage } from "@/features/agent/messages";
 import { SessionPaneBlockRouter } from "@/features/agent/ui/timeline/session-pane-block-router";
 import { ChevronDownIcon } from "@/ui/icons";
@@ -47,12 +56,42 @@ const MemoMessage = memo(
       <MessageView message={message} live={live} running={running} onForkSession={onForkSession} />
     );
   },
-  (prev, next) =>
-    prev.message === next.message &&
-    prev.live === next.live &&
-    prev.running === next.running &&
-    prev.onForkSession === next.onForkSession,
+  (previous, next) =>
+    previous.message === next.message &&
+    previous.live === next.live &&
+    previous.running === next.running &&
+    previous.onForkSession === next.onForkSession,
 );
+
+const TimelineList = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div
+      {...props}
+      ref={ref}
+      data-timeline-list
+      className={`agent-thread-shell mx-auto flex flex-col ${className ?? ""}`}
+    />
+  ),
+);
+TimelineList.displayName = "TimelineList";
+
+function initialView(viewKey: string | null, viewAlias: string | null) {
+  if (!viewKey || typeof window === "undefined") return null;
+  return readSessionView(window.localStorage, {
+    key: viewKey,
+    aliases: viewAlias ? [viewAlias] : [],
+  });
+}
+
+function useFirstItemIndex(messages: ChatMessage[]): number {
+  const id = messages[0]?.id ?? null;
+  const [state, setState] = useState({ first: 1_000_000, id });
+  if (state.id === id) return state.first;
+  const prepended = state.id ? messages.findIndex((message) => message.id === state.id) : 0;
+  const next = { first: state.first - Math.max(0, prepended), id };
+  setState(next);
+  return next.first;
+}
 
 export function Timeline({
   messages,
@@ -66,23 +105,62 @@ export function Timeline({
   hasEarlier = false,
   onLoadEarlier,
 }: TimelineProps) {
-  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
-  const [bottom, setBottom] = useState<HTMLDivElement | null>(null);
-
+  const [scroller, setScroller] = useState<HTMLElement | null>(null);
+  const [range, setRange] = useState<ListRange>({ startIndex: 0, endIndex: 0 });
+  const [restored] = useState(() => initialView(viewKey, viewAlias));
   const [mergeCache] = useState(() => new Map<string, MergedRun>());
+  const virtuoso = useRef<VirtuosoHandle>(null);
+  const stickRef = useRef(restored?.stickToBottom ?? stickToBottom);
   const visibleMessages = useMemo(
     () => mergeConsecutiveAssistantMessages(messages.filter(messageRenders), mergeCache),
     [messages, mergeCache],
   );
+  const firstItemIndex = useFirstItemIndex(visibleMessages);
+  const lastItemIndex = firstItemIndex + visibleMessages.length - 1;
+  const persist = useCallback(() => {
+    if (!viewKey || !scroller) return;
+    patchSessionView(
+      window.localStorage,
+      { key: viewKey, aliases: viewAlias ? [viewAlias] : [] },
+      { scrollTop: scroller.scrollTop, stickToBottom: stickRef.current },
+    );
+  }, [scroller, viewAlias, viewKey]);
 
-  useTimelineScrollEffects({
-    scroller,
-    bottom,
-    stickToBottom,
-    onStickToBottomChange,
-    viewKey,
-    viewAlias,
-  });
+  useMountSubscription(() => {
+    if (restored) onStickToBottomChange?.(restored.stickToBottom);
+  }, []);
+
+  useMountSubscription(() => {
+    stickRef.current = stickToBottom;
+    if (stickToBottom && visibleMessages.length > 0) {
+      virtuoso.current?.scrollToIndex({ index: lastItemIndex, align: "end" });
+    }
+  }, [lastItemIndex, stickToBottom, visibleMessages.length]);
+
+  useMountSubscription(() => {
+    if (!scroller) return;
+    let timer: EffectTimer | null = null;
+    const schedulePersist = () => {
+      timer?.cancel();
+      timer = effectTimeout(persist, 120);
+    };
+    scroller.addEventListener("scroll", schedulePersist, { passive: true });
+    return () => {
+      scroller.removeEventListener("scroll", schedulePersist);
+      timer?.cancel();
+      persist();
+    };
+  }, [persist, scroller]);
+
+  const setAtBottom = useCallback(
+    (atBottom: boolean) => {
+      if (stickRef.current === atBottom) return;
+      stickRef.current = atBottom;
+      onStickToBottomChange?.(atBottom);
+      persist();
+    },
+    [onStickToBottomChange, persist],
+  );
 
   if (emptyPrompt) {
     return (
@@ -101,51 +179,72 @@ export function Timeline({
 
   return (
     <div className="agent-timeline-frame relative flex min-h-0 min-w-0 flex-1">
-      <PromptMarkers scroller={scroller} messages={visibleMessages} />
+      <PromptMarkers
+        scroller={scroller}
+        messages={visibleMessages}
+        activeIndex={Math.max(0, range.startIndex - firstItemIndex)}
+        onSelect={(index) =>
+          virtuoso.current?.scrollToIndex({ index: firstItemIndex + index, align: "center" })
+        }
+      />
       <div className="relative flex min-h-0 min-w-0 flex-1">
-        <div
-          ref={setScroller}
+        <Virtuoso
+          ref={virtuoso}
           data-timeline-scroller
-          className="agent-chat-scroller min-h-0 min-w-0 flex-1 overflow-y-auto bg-(--agent-bg) px-4 pb-0 pt-2 [overflow-anchor:auto] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable] sm:px-5"
-        >
-          <div data-timeline-list className="agent-thread-shell mx-auto flex flex-col">
-            {hasEarlier && onLoadEarlier ? (
-              <LoadEarlierButton onLoadEarlier={onLoadEarlier} />
-            ) : null}
-            {visibleMessages.map((message, index) => {
-              const isLast = index === visibleMessages.length - 1;
-              const prevRole = index > 0 ? visibleMessages[index - 1].role : null;
-              const isGrouped = message.role === prevRole;
-              return (
-                <div
-                  key={message.id}
-                  data-timeline-message-id={message.id}
-                  className={`${isGrouped ? "pt-2" : "pt-4 sm:pt-6"} ${isLast ? "pb-4" : ""}`}
-                >
-                  <MemoMessage
-                    message={message}
-                    live={isLast && running}
-                    running={running}
-                    onForkSession={onForkSession}
-                  />
-                </div>
-              );
-            })}
-            {running && visibleMessages[visibleMessages.length - 1]?.role !== "assistant" ? (
-              <div className="pt-4 pb-4 sm:pt-6">
-                <span className="codex-shimmer-text text-[length:var(--fs-base)] font-normal leading-5">
-                  Thinking
-                </span>
+          className="agent-chat-scroller min-h-0 min-w-0 flex-1 bg-(--agent-bg) px-4 pb-0 pt-2 [overscroll-behavior:contain] [scrollbar-gutter:stable] sm:px-5"
+          data={visibleMessages}
+          firstItemIndex={firstItemIndex}
+          initialScrollTop={restored && !restored.stickToBottom ? restored.scrollTop : undefined}
+          initialTopMostItemIndex={
+            (!restored || restored.stickToBottom) && visibleMessages.length > 0
+              ? { index: lastItemIndex, align: "end" }
+              : undefined
+          }
+          followOutput={() => (stickRef.current ? "auto" : false)}
+          atBottomThreshold={80}
+          atBottomStateChange={setAtBottom}
+          rangeChanged={setRange}
+          scrollerRef={(element) => setScroller(element instanceof HTMLElement ? element : null)}
+          computeItemKey={(_index, message) => message.id}
+          components={{
+            List: TimelineList,
+            Header:
+              hasEarlier && onLoadEarlier
+                ? () => <LoadEarlierButton onLoadEarlier={onLoadEarlier} />
+                : undefined,
+            Footer:
+              running && visibleMessages[visibleMessages.length - 1]?.role !== "assistant"
+                ? ThinkingRow
+                : undefined,
+          }}
+          itemContent={(index, message) => {
+            const relative = index - firstItemIndex;
+            const previous = visibleMessages[relative - 1];
+            return (
+              <div
+                data-timeline-message-id={message.id}
+                className={`${message.role === previous?.role ? "pt-2" : "pt-4 sm:pt-6"} ${relative === visibleMessages.length - 1 ? "pb-4" : ""}`}
+              >
+                <MemoMessage
+                  message={message}
+                  live={relative === visibleMessages.length - 1 && running}
+                  running={running}
+                  onForkSession={onForkSession}
+                />
               </div>
-            ) : null}
-            <div ref={setBottom} aria-hidden="true" className="[overflow-anchor:none]" />
-          </div>
-        </div>
+            );
+          }}
+        />
         {!stickToBottom && visibleMessages.length > 0 ? (
           <ScrollToBottomButton
             running={running}
             onClick={() => {
-              scroller?.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
+              virtuoso.current?.scrollToIndex({
+                index: lastItemIndex,
+                align: "end",
+                behavior: "smooth",
+              });
+              stickRef.current = true;
               onStickToBottomChange?.(true);
             }}
           />
@@ -155,10 +254,20 @@ export function Timeline({
   );
 }
 
+function ThinkingRow() {
+  return (
+    <div className="agent-thread-shell mx-auto pb-4 pt-4 sm:pt-6">
+      <span className="codex-shimmer-text text-[length:var(--fs-base)] font-normal leading-5">
+        Thinking
+      </span>
+    </div>
+  );
+}
+
 function LoadEarlierButton({ onLoadEarlier }: { onLoadEarlier: () => Promise<void> | void }) {
   const [pending, setPending] = useState(false);
   return (
-    <div className="flex justify-center pt-4">
+    <div className="agent-thread-shell mx-auto flex justify-center pt-4">
       <button
         type="button"
         disabled={pending}
@@ -191,141 +300,76 @@ function ScrollToBottomButton({ running, onClick }: { running: boolean; onClick:
 
 const PROMPT_MARKER_HEIGHT_PX = 16;
 const PROMPT_MARKER_GAP_PX = 10;
-const PROMPT_MARKER_MAX_RATIO = 0.6;
-
-type PromptMarkerEntry = {
-  id: string;
-  label: string;
-  time: string;
-};
 
 function PromptMarkers({
   scroller,
   messages,
+  activeIndex,
+  onSelect,
 }: {
-  scroller: HTMLDivElement | null;
+  scroller: HTMLElement | null;
   messages: ChatMessage[];
+  activeIndex: number;
+  onSelect: (index: number) => void;
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [viewportHeight, setViewportHeight] = useState(0);
   const prompts = useMemo(
     () =>
-      messages
-        .filter((message) => message.role === "user" && userPromptLabel(message).length > 0)
-        .map((message) => ({
-          id: message.id,
-          label: userPromptLabel(message),
-          time: formatPromptTime(message.timestamp),
-        })),
+      messages.flatMap((message, index) => {
+        const label = message.role === "user" ? userPromptLabel(message) : "";
+        return label
+          ? [{ id: message.id, label, time: formatPromptTime(message.timestamp), index }]
+          : [];
+      }),
     [messages],
   );
-  const viewportHeight = useScrollerViewportHeight(scroller);
-  const promptIds = useMemo(() => prompts.map((prompt) => prompt.id), [prompts]);
-  const activeId = useActivePromptId(scroller, promptIds);
+  useMountSubscription(() => {
+    if (!scroller) return;
+    const update = () => setViewportHeight(scroller.clientHeight);
+    const observer = new ResizeObserver(update);
+    observer.observe(scroller);
+    update();
+    return () => observer.disconnect();
+  }, [scroller]);
   if (!scroller || prompts.length === 0) return null;
-  const maxCount = Math.max(1, Math.floor((viewportHeight * PROMPT_MARKER_MAX_RATIO + 10) / 26));
-  const activeIndex = activeId ? prompts.findIndex((prompt) => prompt.id === activeId) : -1;
+  const active = [...prompts].reverse().find((prompt) => prompt.index <= activeIndex) ?? prompts[0];
+  const maxCount = Math.max(1, Math.floor((viewportHeight * 0.6 + PROMPT_MARKER_GAP_PX) / 26));
+  const activePromptIndex = prompts.indexOf(active);
   const defaultStart = Math.max(0, prompts.length - maxCount);
-  const windowStart =
-    activeIndex >= 0 && activeIndex < defaultStart
-      ? Math.max(0, activeIndex - Math.floor(maxCount / 2))
+  const start =
+    activePromptIndex < defaultStart
+      ? Math.max(0, activePromptIndex - Math.floor(maxCount / 2))
       : defaultStart;
-  const visible = prompts.slice(windowStart, windowStart + maxCount);
-  const scrollToPrompt = (id: string) => {
-    const node = scroller.querySelector<HTMLElement>(
-      `[data-timeline-message-id="${CSS.escape(id)}"]`,
-    );
-    node?.scrollIntoView({ block: "center", behavior: "smooth" });
-  };
   return (
     <nav className="prompt-minimap" aria-label="Session prompts">
-      {visible.map((marker) => {
-        const active = hoveredId === marker.id;
-        return (
-          <button
-            key={marker.id}
-            type="button"
-            className="prompt-minimap-marker"
-            data-current={marker.id === activeId ? "true" : undefined}
-            aria-label={`Scroll to prompt: ${marker.label}`}
-            onMouseEnter={() => setHoveredId(marker.id)}
-            onMouseLeave={() => setHoveredId((value) => (value === marker.id ? null : value))}
-            onFocus={() => setHoveredId(marker.id)}
-            onBlur={() => setHoveredId((value) => (value === marker.id ? null : value))}
-            onClick={(event) => {
-              scrollToPrompt(marker.id);
-              setHoveredId(null);
-              event.currentTarget.blur();
-            }}
-          >
-            <span className="prompt-minimap-line" />
-            {active ? (
-              <span className="prompt-minimap-card" role="tooltip">
-                <span className="prompt-minimap-card-text">{marker.label}</span>
-                <span className="prompt-minimap-card-time">{marker.time || "Prompt"}</span>
-              </span>
-            ) : null}
-          </button>
-        );
-      })}
+      {prompts.slice(start, start + maxCount).map((prompt) => (
+        <button
+          key={prompt.id}
+          type="button"
+          className="prompt-minimap-marker"
+          data-current={prompt.id === active.id ? "true" : undefined}
+          aria-label={`Scroll to prompt: ${prompt.label}`}
+          onMouseEnter={() => setHoveredId(prompt.id)}
+          onMouseLeave={() => setHoveredId((value) => (value === prompt.id ? null : value))}
+          onFocus={() => setHoveredId(prompt.id)}
+          onBlur={() => setHoveredId((value) => (value === prompt.id ? null : value))}
+          onClick={(event) => {
+            onSelect(prompt.index);
+            setHoveredId(null);
+            event.currentTarget.blur();
+          }}
+        >
+          <span className="prompt-minimap-line" />
+          {hoveredId === prompt.id ? (
+            <span className="prompt-minimap-card" role="tooltip">
+              <span className="prompt-minimap-card-text">{prompt.label}</span>
+              <span className="prompt-minimap-card-time">{prompt.time || "Prompt"}</span>
+            </span>
+          ) : null}
+        </button>
+      ))}
     </nav>
-  );
-}
-
-const ACTIVE_PROMPT_OFFSET_PX = 96;
-
-function useActivePromptId(scroller: HTMLDivElement | null, promptIds: string[]): string | null {
-  const subscribe = useCallback(
-    (onStoreChange: () => void) => {
-      if (!scroller) return () => undefined;
-      let frame = 0;
-      const notify = () => {
-        if (frame) return;
-        frame = requestAnimationFrame(() => {
-          frame = 0;
-          onStoreChange();
-        });
-      };
-      scroller.addEventListener("scroll", notify, { passive: true });
-      const resizeObserver = new ResizeObserver(notify);
-      resizeObserver.observe(scroller);
-      return () => {
-        scroller.removeEventListener("scroll", notify);
-        resizeObserver.disconnect();
-        if (frame) cancelAnimationFrame(frame);
-      };
-    },
-    [scroller],
-  );
-  const getSnapshot = useCallback(() => {
-    if (!scroller || promptIds.length === 0) return null;
-    const threshold = scroller.getBoundingClientRect().top + ACTIVE_PROMPT_OFFSET_PX;
-    const wanted = new Set(promptIds);
-    let active: string | null = null;
-    for (const node of scroller.querySelectorAll<HTMLElement>("[data-timeline-message-id]")) {
-      const id = node.dataset.timelineMessageId;
-      if (!id || !wanted.has(id)) continue;
-      if (node.getBoundingClientRect().top > threshold) break;
-      active = id;
-    }
-    return active ?? promptIds[0] ?? null;
-  }, [promptIds, scroller]);
-  return useSyncExternalStore(subscribe, getSnapshot, () => null);
-}
-
-function useScrollerViewportHeight(scroller: HTMLDivElement | null): number {
-  const subscribe = useCallback(
-    (onStoreChange: () => void) => {
-      if (!scroller) return () => undefined;
-      const resizeObserver = new ResizeObserver(onStoreChange);
-      resizeObserver.observe(scroller);
-      return () => resizeObserver.disconnect();
-    },
-    [scroller],
-  );
-  return useSyncExternalStore(
-    subscribe,
-    () => scroller?.clientHeight ?? 0,
-    () => 0,
   );
 }
 
@@ -396,188 +440,6 @@ function mergeRun(run: ChatMessage[], cache: Map<string, MergedRun>): ChatMessag
   if (cache.size >= 512) cache.clear();
   cache.set(first.id, { segments: run, merged });
   return merged;
-}
-
-const AT_BOTTOM_THRESHOLD_PX = 80;
-const USER_HOLD_MS = 700;
-
-function useTimelineScrollEffects({
-  scroller,
-  bottom,
-  stickToBottom,
-  onStickToBottomChange,
-  viewKey,
-  viewAlias,
-}: {
-  scroller: HTMLDivElement | null;
-  bottom: HTMLDivElement | null;
-  stickToBottom: boolean;
-  onStickToBottomChange?: (value: boolean) => void;
-  viewKey: string | null;
-  viewAlias: string | null;
-}) {
-  const stickRef = useRef(stickToBottom);
-  const onChangeRef = useRef(onStickToBottomChange);
-  const userHoldUntilRef = useRef(0);
-
-  useMountSubscription(() => {
-    stickRef.current = stickToBottom;
-  }, [stickToBottom]);
-  useMountSubscription(() => {
-    onChangeRef.current = onStickToBottomChange;
-  }, [onStickToBottomChange]);
-
-  useMountSubscription(() => {
-    const el = scroller;
-    if (!el) return;
-    const viewIdentity = viewKey ? { key: viewKey, aliases: viewAlias ? [viewAlias] : [] } : null;
-    const restored = viewIdentity ? readSessionView(window.localStorage, viewIdentity) : null;
-    let pendingRestoreTop = restored && !restored.stickToBottom ? restored.scrollTop : null;
-    let persistTimer: EffectTimer | null = null;
-
-    const distanceFromBottom = () => el.scrollHeight - el.scrollTop - el.clientHeight;
-    const atBottom = () => distanceFromBottom() <= AT_BOTTOM_THRESHOLD_PX;
-
-    const pinToBottom = () => {
-      pendingRestoreTop = null;
-      el.scrollTop = el.scrollHeight;
-    };
-    const restoreScrollTop = () => {
-      if (pendingRestoreTop === null) return;
-      const maximum = Math.max(0, el.scrollHeight - el.clientHeight);
-      el.scrollTop = Math.min(pendingRestoreTop, maximum);
-      if (maximum >= pendingRestoreTop) pendingRestoreTop = null;
-    };
-    const persist = () => {
-      if (!viewIdentity) return;
-      persistTimer?.cancel();
-      persistTimer = effectTimeout(() => {
-        patchSessionView(window.localStorage, viewIdentity, {
-          scrollTop: el.scrollTop,
-          stickToBottom: stickRef.current,
-        });
-      }, 120);
-    };
-    let pinFrame: number | null = null;
-    const schedulePinToBottom = () => {
-      if (!stickRef.current || pinFrame !== null) return;
-      pinFrame = window.requestAnimationFrame(() => {
-        pinFrame = null;
-        if (stickRef.current) pinToBottom();
-      });
-    };
-    const setStick = (next: boolean) => {
-      if (stickRef.current === next) return;
-      stickRef.current = next;
-      onChangeRef.current?.(next);
-      persist();
-    };
-
-    const onScroll = () => {
-      if (pendingRestoreTop !== null) {
-        restoreScrollTop();
-        if (pendingRestoreTop !== null) return;
-      }
-      if (atBottom()) {
-        if (Date.now() < userHoldUntilRef.current) return;
-        setStick(true);
-        persist();
-        return;
-      }
-      setStick(false);
-      persist();
-    };
-
-    const holdAndDetach = () => {
-      pendingRestoreTop = null;
-      userHoldUntilRef.current = Date.now() + USER_HOLD_MS;
-      setStick(false);
-    };
-    const releaseHold = () => {
-      pendingRestoreTop = null;
-      userHoldUntilRef.current = 0;
-    };
-
-    const onWheel = (event: WheelEvent) => {
-      if (event.deltaY < 0) holdAndDetach();
-      else if (event.deltaY > 0) releaseHold();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (["ArrowUp", "PageUp", "Home"].includes(event.key)) holdAndDetach();
-      else if (["ArrowDown", "PageDown", "End"].includes(event.key)) releaseHold();
-    };
-    let touchY: number | null = null;
-    const onTouchStart = (event: TouchEvent) => {
-      touchY = event.touches[0]?.clientY ?? null;
-    };
-    const onTouchMove = (event: TouchEvent) => {
-      const y = event.touches[0]?.clientY ?? null;
-      if (touchY !== null && y !== null) {
-        if (y - touchY > 2) holdAndDetach();
-        else if (touchY - y > 2) releaseHold();
-      }
-      touchY = y;
-    };
-
-    el.addEventListener("scroll", onScroll, { passive: true });
-    el.addEventListener("wheel", onWheel, { passive: true });
-    el.addEventListener("keydown", onKeyDown);
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: true });
-
-    const listEl = bottom?.parentElement ?? el;
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(() => {
-            if (pendingRestoreTop !== null) restoreScrollTop();
-            else schedulePinToBottom();
-          });
-    resizeObserver?.observe(el);
-    if (listEl !== el) resizeObserver?.observe(listEl);
-
-    const mutationObserver =
-      typeof MutationObserver === "undefined"
-        ? null
-        : new MutationObserver(() => {
-            if (pendingRestoreTop !== null) restoreScrollTop();
-            else schedulePinToBottom();
-          });
-    mutationObserver?.observe(listEl, { childList: true, subtree: true });
-
-    if (restored) {
-      stickRef.current = restored.stickToBottom;
-      onChangeRef.current?.(restored.stickToBottom);
-    }
-    if (stickRef.current) pinToBottom();
-    else restoreScrollTop();
-
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      el.removeEventListener("wheel", onWheel);
-      el.removeEventListener("keydown", onKeyDown);
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchmove", onTouchMove);
-      resizeObserver?.disconnect();
-      mutationObserver?.disconnect();
-      if (pinFrame !== null) window.cancelAnimationFrame(pinFrame);
-      persistTimer?.cancel();
-      if (viewIdentity) {
-        patchSessionView(window.localStorage, viewIdentity, {
-          scrollTop: el.scrollTop,
-          stickToBottom: stickRef.current,
-        });
-      }
-    };
-  }, [bottom, scroller, viewKey, viewAlias]);
-
-  useMountSubscription(() => {
-    if (stickToBottom && scroller) {
-      stickRef.current = true;
-      userHoldUntilRef.current = 0;
-      scroller.scrollTop = scroller.scrollHeight;
-    }
-  }, [stickToBottom, scroller]);
 }
 
 function MessageView({
