@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { Effect, Schema } from "effect";
 import { parseRecipe } from "./recipe-serializer";
 import type { Recipe } from "../types";
-import { openSqliteDatabase } from "../../../stores/sqlite";
+import { JsonBlobTable, openSqliteDatabase } from "../../../stores/sqlite";
 
 export class RecipeStoreError extends Schema.TaggedErrorClass<RecipeStoreError>()(
   "RecipeStoreError",
@@ -22,12 +22,19 @@ const storeError = (operation: RecipeStoreError["operation"], source: unknown): 
 
 export class RecipeStore {
   private readonly db: ReturnType<typeof openSqliteDatabase>;
-  private useJsonColumn = false;
+  private readonly records: JsonBlobTable<Recipe>;
 
   constructor(dbPath: string) {
     this.db = openSqliteDatabase(dbPath);
     try {
-      this.migrate();
+      const column = this.migrate();
+      this.records = new JsonBlobTable(this.db, {
+        table: "recipes",
+        column,
+        orderBy: "id",
+        idOf: (recipe): string => recipe.id,
+        decode: (value): Recipe => parseRecipe(JSON.parse(value)),
+      });
     } catch (source) {
       try {
         this.db.close();
@@ -43,16 +50,14 @@ export class RecipeStore {
     });
   }
 
-  private migrate(): void {
+  private migrate(): string {
     const table = this.db
       .query("SELECT name FROM sqlite_master WHERE type='table' AND name='recipes'")
       .get();
     if (table) {
       const columns = this.db.query("PRAGMA table_info(recipes)").all() as Array<{ name: string }>;
       const columnNames = new Set(columns.map((column) => column.name));
-      this.useJsonColumn = columnNames.has("json") && !columnNames.has("data");
-      if (!columnNames.has("json") && !columnNames.has("data")) this.useJsonColumn = true;
-      return;
+      return columnNames.has("data") ? "data" : "json";
     }
     this.db.run(`
       CREATE TABLE IF NOT EXISTS recipes (
@@ -62,78 +67,33 @@ export class RecipeStore {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    this.useJsonColumn = false;
+    return "data";
   }
 
   list(): Effect.Effect<Recipe[], RecipeStoreError> {
     return Effect.try({
-      try: () => {
-        const column = this.useJsonColumn ? "json" : "data";
-        const rows = this.db.query(`SELECT ${column} FROM recipes ORDER BY id`).all() as Array<
-          Record<string, string>
-        >;
-        return rows.flatMap((row) => {
-          try {
-            const raw = row[column];
-            return typeof raw === "string" ? [parseRecipe(JSON.parse(raw))] : [];
-          } catch {
-            return [];
-          }
-        });
-      },
+      try: () => this.records.list(),
       catch: (source) => storeError("list", source),
     });
   }
 
   get(recipeId: string): Effect.Effect<Recipe | null, RecipeStoreError> {
     return Effect.try({
-      try: () => {
-        const column = this.useJsonColumn ? "json" : "data";
-        const row = this.db
-          .query(`SELECT ${column} FROM recipes WHERE id = ?`)
-          .get(recipeId) as Record<string, string> | null;
-        if (!row) return null;
-        const raw = row[column];
-        if (typeof raw !== "string") return null;
-        try {
-          return parseRecipe(JSON.parse(raw));
-        } catch {
-          return null;
-        }
-      },
+      try: () => this.records.get(recipeId),
       catch: (source) => storeError("get", source),
     });
   }
 
   save(recipe: Recipe): Effect.Effect<void, RecipeStoreError> {
     return Effect.try({
-      try: () => {
-        const data = JSON.stringify(recipe);
-        const column = this.useJsonColumn ? "json" : "data";
-        if (this.useJsonColumn) {
-          this.db
-            .query(
-              `INSERT INTO recipes (id, ${column}, created_at, updated_at)
-               VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-               ON CONFLICT(id) DO UPDATE SET ${column} = excluded.${column}, updated_at = CURRENT_TIMESTAMP`,
-            )
-            .run(recipe.id, data);
-          return;
-        }
-        this.db
-          .query(
-            `INSERT INTO recipes (id, data, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-             ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP`,
-          )
-          .run(recipe.id, data);
-      },
+      try: () => this.records.save(recipe),
       catch: (source) => storeError("save", source),
     });
   }
 
   delete(recipeId: string): Effect.Effect<boolean, RecipeStoreError> {
     return Effect.try({
-      try: () => this.db.query("DELETE FROM recipes WHERE id = ?").run(recipeId).changes > 0,
+      try: () => this.records.delete(recipeId),
       catch: (source) => storeError("delete", source),
     });
   }

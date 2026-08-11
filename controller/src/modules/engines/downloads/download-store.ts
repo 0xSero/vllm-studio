@@ -1,7 +1,7 @@
-import { Effect, Option, Schema } from "effect";
-import { openSqliteDatabase } from "../../../stores/sqlite";
+import { Effect, Schema } from "effect";
+import { JsonBlobTable, openSqliteDatabase } from "../../../stores/sqlite";
 import type { EngineOperationError } from "../engine-spec";
-import { attempt, operationError } from "../engine-operation";
+import { attempt } from "../engine-operation";
 import type { ModelDownload } from "../types";
 
 const DownloadFileSchema = Schema.Struct({
@@ -28,17 +28,20 @@ const ModelDownloadSchema = Schema.Struct({
   error: Schema.NullOr(Schema.String),
 });
 
-const decodeDownload = (value: unknown): Effect.Effect<ModelDownload, EngineOperationError> =>
-  attempt("parse-download-record", () =>
-    typeof value === "string" ? JSON.parse(value) : value,
-  ).pipe(
-    Effect.flatMap((parsed) => Schema.decodeUnknownEffect(ModelDownloadSchema)(parsed)),
-    Effect.mapError((cause) => operationError("decode-download-record", cause)),
-    Effect.map((download) => download as ModelDownload),
-  );
+const decodeDownload = (value: string): ModelDownload =>
+  Schema.decodeUnknownSync(ModelDownloadSchema)(JSON.parse(value)) as ModelDownload;
 
 export class DownloadStore {
-  private constructor(private readonly db: ReturnType<typeof openSqliteDatabase>) {}
+  private readonly records: JsonBlobTable<ModelDownload>;
+
+  private constructor(private readonly db: ReturnType<typeof openSqliteDatabase>) {
+    this.records = new JsonBlobTable(db, {
+      table: "model_downloads",
+      orderBy: "updated_at DESC",
+      idOf: (download): string => download.id,
+      decode: decodeDownload,
+    });
+  }
 
   public static make(dbPath: string): Effect.Effect<DownloadStore, EngineOperationError> {
     return Effect.gen(function* () {
@@ -67,59 +70,19 @@ export class DownloadStore {
   }
 
   public list(): Effect.Effect<ModelDownload[], EngineOperationError> {
-    const store = this;
-    return Effect.gen(function* () {
-      const rows = yield* attempt(
-        "list-downloads",
-        () =>
-          store.db
-            .query("SELECT data FROM model_downloads ORDER BY updated_at DESC")
-            .all() as Array<{
-            data: string;
-          }>,
-      );
-      const decoded = yield* Effect.forEach(rows, (row) =>
-        decodeDownload(row.data).pipe(Effect.option),
-      );
-      return decoded.filter(Option.isSome).map((entry) => entry.value);
-    });
+    return attempt("list-downloads", () => this.records.list());
   }
 
   public get(id: string): Effect.Effect<ModelDownload | null, EngineOperationError> {
-    const store = this;
-    return Effect.gen(function* () {
-      const row = yield* attempt(
-        "get-download",
-        () =>
-          store.db.query("SELECT data FROM model_downloads WHERE id = ?").get(id) as {
-            data: string;
-          } | null,
-      );
-      if (!row?.data) return null;
-      return yield* decodeDownload(row.data).pipe(Effect.catch(() => Effect.succeed(null)));
-    });
+    return attempt("get-download", () => this.records.get(id));
   }
 
   public save(download: ModelDownload): Effect.Effect<void, EngineOperationError> {
-    return attempt("save-download", () => {
-      const data = JSON.stringify(download);
-      this.db
-        .query(
-          `
-            INSERT INTO model_downloads (id, data, updated_at)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP
-          `,
-        )
-        .run(download.id, data);
-    });
+    return attempt("save-download", () => this.records.save(download));
   }
 
   public delete(id: string): Effect.Effect<boolean, EngineOperationError> {
-    return attempt(
-      "delete-download",
-      () => this.db.query("DELETE FROM model_downloads WHERE id = ?").run(id).changes > 0,
-    );
+    return attempt("delete-download", () => this.records.delete(id));
   }
 
   public close(): Effect.Effect<void, EngineOperationError> {

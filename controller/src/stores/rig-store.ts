@@ -3,18 +3,16 @@ import type { Rig } from "@local-studio/contracts/rigs";
 import type { Effect } from "effect";
 import {
   makeDatabaseCloser,
+  JsonBlobTable,
   openInitializedDatabase,
   repositoryEffect,
   type RepositoryError,
 } from "./sqlite";
 
-type RigRow = {
-  data: string;
-};
-
 export class RigStore {
   private readonly db: Database;
   private readonly closeDatabase: () => Effect.Effect<void, RepositoryError>;
+  private readonly records: JsonBlobTable<Rig>;
 
   public constructor(dbPath: string) {
     this.db = openInitializedDatabase(dbPath, (db) =>
@@ -28,19 +26,16 @@ export class RigStore {
       `),
     );
     this.closeDatabase = makeDatabaseCloser(this.db, "rigs.close");
+    this.records = new JsonBlobTable(this.db, {
+      table: "rigs",
+      orderBy: "created_at",
+      idOf: (rig): string => rig.id,
+      decode: (value): Rig => JSON.parse(value) as Rig,
+    });
   }
 
   public list(): Rig[] {
-    const rows = this.db.query("SELECT data FROM rigs ORDER BY created_at").all() as RigRow[];
-    const rigs: Rig[] = [];
-    for (const row of rows) {
-      try {
-        rigs.push(JSON.parse(row.data) as Rig);
-      } catch {
-        continue;
-      }
-    }
-    return rigs;
+    return this.records.list();
   }
 
   public listEffect(): Effect.Effect<Rig[], RepositoryError> {
@@ -48,13 +43,7 @@ export class RigStore {
   }
 
   public get(rigId: string): Rig | null {
-    const row = this.db.query("SELECT data FROM rigs WHERE id = ?").get(rigId) as RigRow | null;
-    if (!row) return null;
-    try {
-      return JSON.parse(row.data) as Rig;
-    } catch {
-      return null;
-    }
+    return this.records.get(rigId);
   }
 
   public getEffect(rigId: string): Effect.Effect<Rig | null, RepositoryError> {
@@ -62,12 +51,7 @@ export class RigStore {
   }
 
   public save(rig: Rig): void {
-    this.db
-      .query(
-        `INSERT INTO rigs (id, data, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP`,
-      )
-      .run(rig.id, JSON.stringify(rig));
+    this.records.save(rig);
   }
 
   public saveEffect(rig: Rig): Effect.Effect<void, RepositoryError> {
@@ -75,8 +59,7 @@ export class RigStore {
   }
 
   public delete(rigId: string): boolean {
-    const result = this.db.query("DELETE FROM rigs WHERE id = ?").run(rigId);
-    return result.changes > 0;
+    return this.records.delete(rigId);
   }
 
   public deleteEffect(rigId: string): Effect.Effect<boolean, RepositoryError> {

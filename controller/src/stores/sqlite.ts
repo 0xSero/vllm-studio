@@ -103,3 +103,63 @@ export const openInitializedDatabase = (
     throw cause;
   }
 };
+
+type JsonBlobTableOptions<T> = {
+  table: string;
+  column?: string;
+  orderBy: string;
+  idOf: (value: T) => string;
+  decode: (value: string) => T;
+};
+
+export class JsonBlobTable<T> {
+  public constructor(
+    private readonly db: Database,
+    private readonly options: JsonBlobTableOptions<T>,
+  ) {}
+
+  public list(): T[] {
+    const { table, column = "data", orderBy, decode } = this.options;
+    const rows = this.db.query(`SELECT ${column} FROM ${table} ORDER BY ${orderBy}`).all() as Array<
+      Record<string, string>
+    >;
+    return rows.flatMap((row) => {
+      try {
+        const value = row[column];
+        return typeof value === "string" ? [decode(value)] : [];
+      } catch {
+        return [];
+      }
+    });
+  }
+
+  public get(id: string): T | null {
+    const { table, column = "data", decode } = this.options;
+    const row = this.db.query(`SELECT ${column} FROM ${table} WHERE id = ?`).get(id) as Record<
+      string,
+      string
+    > | null;
+    const value = row?.[column];
+    if (typeof value !== "string") return null;
+    try {
+      return decode(value);
+    } catch {
+      return null;
+    }
+  }
+
+  public save(value: T): void {
+    const { table, column = "data", idOf } = this.options;
+    this.db
+      .query(
+        `INSERT INTO ${table} (id, ${column}, created_at, updated_at)
+         VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+         ON CONFLICT(id) DO UPDATE SET ${column} = excluded.${column}, updated_at = CURRENT_TIMESTAMP`,
+      )
+      .run(idOf(value), JSON.stringify(value));
+  }
+
+  public delete(id: string): boolean {
+    return this.db.query(`DELETE FROM ${this.options.table} WHERE id = ?`).run(id).changes > 0;
+  }
+}
