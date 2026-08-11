@@ -10,6 +10,7 @@ export { defaultRuntimeForBackend, runtimeId } from "@/lib/serve-runtime";
 
 export interface ServeRuntimeOption {
   id: string;
+  targetId?: string;
   label: string;
   detail: string;
   runtime: ServeRuntime;
@@ -43,14 +44,15 @@ const optionFromTarget = (target: RuntimeTarget): ServeRuntimeOption | null => {
   } satisfies ServeRuntime;
   return {
     id: runtimeId(runtime),
+    targetId: target.id,
     label: target.label,
     detail:
       target.kind === "wsl2"
-        ? `WSL2 · ${reference} · engine checked at launch`
+        ? `WSL2 · ${reference} · ${target.installed ? (target.version ?? "installed") : "install required"}`
         : [target.kind, target.source, target.version].filter(Boolean).join(" · "),
     runtime,
     installed: target.installed,
-    canInstall: false,
+    canInstall: target.capabilities.canInstall,
     version: target.version,
   };
 };

@@ -167,7 +167,7 @@ function EngineRows({
     async (payload: {
       backend: EngineJob["backend"];
       targetId?: string;
-      type: "install" | "update";
+      type: "install" | "update" | "uninstall";
     }) => {
       setActionError(null);
       try {
@@ -186,6 +186,15 @@ function EngineRows({
         backend: target.backend,
         targetId: target.id,
         type: target.installed ? "update" : "install",
+      }),
+    [runJob],
+  );
+  const handleTargetUninstall = useCallback(
+    (target: RuntimeTarget) =>
+      runJob({
+        backend: target.backend,
+        targetId: target.id,
+        type: "uninstall",
       }),
     [runJob],
   );
@@ -217,6 +226,7 @@ function EngineRows({
             targets={discoveredTargets}
             jobs={jobs}
             onAction={handleTargetAction}
+            onUninstall={handleTargetUninstall}
           />
         ) : null}
       </>

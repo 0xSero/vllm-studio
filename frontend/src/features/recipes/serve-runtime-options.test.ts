@@ -50,7 +50,9 @@ describe("isManagedServeRuntimeTarget", () => {
       wslDefault: true,
       capabilities: {
         canLaunch: true,
-        canUpdate: false,
+        canInstall: false,
+        canUpdate: true,
+        canUninstall: true,
         canInspectOptions: false,
         supportsDocker: false,
       },
@@ -65,7 +67,9 @@ describe("isManagedServeRuntimeTarget", () => {
       binary: "vllm",
       label: "vLLM via WSL2 (Ubuntu)",
     });
-    assert.match(options[0]?.detail ?? "", /engine checked at launch/);
+    assert.equal(options[0]?.targetId, wslTarget.id);
+    assert.match(options[0]?.detail ?? "", /installed/);
+    assert.equal(options[0]?.canInstall, false);
     assert.equal(preferredRuntimeForBackend("vllm", [wslTarget]).kind, "wsl2");
     assert.equal(
       preferredRuntimeForBackend("vllm", [
@@ -75,5 +79,22 @@ describe("isManagedServeRuntimeTarget", () => {
       "Ubuntu",
     );
     assert.deepEqual(managedRuntimeBackendsFor([wslTarget]), []);
+
+    const available = runtimeOptionsFor("vllm", [
+      {
+        ...wslTarget,
+        installed: false,
+        capabilities: {
+          ...wslTarget.capabilities,
+          canLaunch: false,
+          canInstall: true,
+          canUpdate: false,
+          canUninstall: false,
+        },
+      },
+    ]);
+    assert.equal(available[0]?.installed, false);
+    assert.equal(available[0]?.canInstall, true);
+    assert.match(available[0]?.detail ?? "", /install required/);
   });
 });

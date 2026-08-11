@@ -67,7 +67,7 @@ export function RecipeModalTabGeneral({
   runtimeTargets: RuntimeTarget[];
   installingRuntime: boolean;
   runtimeInstallMessage: string | null;
-  onInstallRuntime: () => void;
+  onInstallRuntime: (targetId?: string) => void;
 }) {
   const backend = recipe.backend ?? "vllm";
   const options = runtimeOptionsFor(backend, runtimeTargets);
@@ -124,7 +124,7 @@ export function RecipeModalTabGeneral({
               <Button
                 size="sm"
                 variant="secondary"
-                onClick={onInstallRuntime}
+                onClick={() => onInstallRuntime(selected.targetId)}
                 disabled={installingRuntime}
               >
                 {installingRuntime ? "Starting…" : "Install here"}
