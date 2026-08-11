@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { resolveDataDir } from "@local-studio/agent-runtime/data-dir";
-import { matchSource, readCapped, sortedRows } from "@local-studio/agent-runtime/discovery-core";
+import { resolveDataDir } from "./data-dir";
+import { matchSource, readCapped, sortedRows } from "./discovery-core";
 
 export type PromptTemplateRow = {
   id: string;
@@ -13,10 +13,7 @@ export type PromptTemplateRow = {
   argumentHint?: string;
 };
 
-export type PromptTemplateSource = {
-  source: string;
-  dir: string;
-};
+export type PromptTemplateSource = { source: string; dir: string };
 
 export function defaultPromptTemplateSources(): PromptTemplateSource[] {
   const home = homedir();
@@ -30,26 +27,18 @@ export function defaultPromptTemplateSources(): PromptTemplateSource[] {
   ];
 }
 
-function parseFrontMatter(content: string): {
-  name?: string;
-  description?: string;
-  argumentHint?: string;
-} {
-  // Cheap YAML-like front matter parser — only supports the few keys we care
-  // about, matches both `---\nname: ...\n---` and a single-line markdown
-  // heading fallback.
+function parseFrontMatter(content: string) {
   const match = /^---\s*\n([\s\S]*?)\n---/.exec(content);
   const result: { name?: string; description?: string; argumentHint?: string } = {};
-  if (match) {
-    for (const line of match[1].split(/\r?\n/)) {
-      const kv = /^([A-Za-z_-]+)\s*:\s*(.*)$/.exec(line.trim());
-      if (!kv) continue;
-      const key = kv[1].toLowerCase();
-      const value = kv[2].trim().replace(/^"|"$/g, "");
-      if (key === "name") result.name = value;
-      else if (key === "description") result.description = value;
-      else if (key === "argument-hint" || key === "argumenthint") result.argumentHint = value;
-    }
+  if (!match) return result;
+  for (const line of match[1].split(/\r?\n/)) {
+    const fields = /^([A-Za-z_-]+)\s*:\s*(.*)$/.exec(line.trim());
+    if (!fields) continue;
+    const key = fields[1].toLowerCase();
+    const value = fields[2].trim().replace(/^"|"$/g, "");
+    if (key === "name") result.name = value;
+    else if (key === "description") result.description = value;
+    else if (key === "argument-hint" || key === "argumenthint") result.argumentHint = value;
   }
   return result;
 }
@@ -67,8 +56,7 @@ function templateRowFromFile(
     return null;
   }
   const meta = parseFrontMatter(raw);
-  const baseName = defaultName ?? path.basename(filePath, ".md");
-  const name = meta.name?.trim() || baseName;
+  const name = meta.name?.trim() || defaultName || path.basename(filePath, ".md");
   return {
     id: `${source}:${name.toLowerCase()}`,
     name,
@@ -116,6 +104,5 @@ export function loadPromptTemplateInstructions(
   const row = templateRowFromFile(resolved, match.source);
   if (!row) return null;
   const instructions = readCapped(resolved, maxChars);
-  if (instructions === null) return null;
-  return { ...row, instructions };
+  return instructions === null ? null : { ...row, instructions };
 }
