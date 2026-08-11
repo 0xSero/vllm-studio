@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { Schema } from "effect";
 import {
   ConnectorSshPathResponseSchema,
@@ -8,10 +8,10 @@ import {
   ConnectorsResponseSchema,
   type ConnectorView,
 } from "@local-studio/agent-runtime/connector-contract";
-import { ApiErrorResponseSchema } from "@local-studio/agent-runtime/api-contract";
-import { Button, Checkbox, FormField, Input, ModelButton, SearchInput, Spinner } from "@/ui";
+import { Button, Checkbox, FormField, Input, ModelButton, Spinner } from "@/ui";
 import { Plus, Trash2 } from "@/ui/icon-registry";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
+import { ResourceList } from "@/ui/resource-list";
 import { ResourceLogo } from "@/ui/resource-logo";
 import {
   ModelRow,
@@ -20,6 +20,7 @@ import {
   ModelValue,
 } from "@/features/recipes/recipes-content/model-page";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { requestJson } from "@/lib/api/request-json";
 
 interface CatalogEntry {
   id: string;
@@ -69,25 +70,6 @@ const CATALOG: CatalogEntry[] = [
     envFields: [{ key: "SSH_HOST", label: "SSH host", placeholder: "user@machine" }],
   },
 ];
-
-function responseError(body: unknown, fallback: string): string {
-  try {
-    return Schema.decodeUnknownSync(ApiErrorResponseSchema)(body).error;
-  } catch {
-    return fallback;
-  }
-}
-
-async function requestJson<T>(
-  url: string,
-  decode: (input: unknown) => T,
-  init?: RequestInit,
-): Promise<T> {
-  const response = await fetch(url, init);
-  const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(responseError(body, `HTTP ${response.status}`));
-  return decode(body);
-}
 
 const connectorCommand = (connector: ConnectorView): string =>
   connector.transport === "stdio"
@@ -457,18 +439,6 @@ export function ConnectorsSection() {
   }, [refresh]);
 
   const normalized = query.trim().toLowerCase();
-  const visibleConnectors = useMemo(
-    () =>
-      connectors.filter(
-        (connector) =>
-          connector.origin?.kind !== "account-adapter" &&
-          (!normalized ||
-            `${connector.name} ${connector.id} ${connectorCommand(connector)}`
-              .toLowerCase()
-              .includes(normalized)),
-      ),
-    [connectors, normalized],
-  );
   const visibleCatalog = CATALOG.filter(
     (entry) =>
       !normalized ||
@@ -477,42 +447,33 @@ export function ConnectorsSection() {
 
   return (
     <div className="space-y-7">
-      <ModelSection
+      <ResourceList
         title="Connectors"
         description="MCP servers, accounts, services, and machines available to Workbench."
-        actions={
-          <ModelStatus tone={loaded ? "good" : "default"}>
-            {loaded ? `${visibleConnectors.length} connected` : "discovering"}
-          </ModelStatus>
+        items={connectors}
+        loaded={loaded}
+        searchLabel="Search connectors"
+        searchDescription="Name, company, transport, command, or endpoint."
+        searchPlaceholder="Search connectors"
+        searchableText={(connector) =>
+          `${connector.name} ${connector.id} ${connectorCommand(connector)}`
         }
-      >
-        <ModelRow
-          label="Search connectors"
-          description="Name, company, transport, command, or endpoint."
-          control={
-            <SearchInput
-              value={query}
-              onChange={setQuery}
-              placeholder="Search connectors"
-              className="w-full"
-            />
-          }
-          status={<ModelStatus>{visibleConnectors.length + visibleCatalog.length}</ModelStatus>}
-        />
-        {visibleConnectors.map((connector) => (
+        include={(connector) => connector.origin?.kind !== "account-adapter"}
+        query={query}
+        onQueryChange={setQuery}
+        summary={(visible) => (loaded ? `${visible} connected` : "discovering")}
+        summaryTone={() => (loaded ? "good" : "default")}
+        searchStatus={(visible) => visible + visibleCatalog.length}
+        empty={() => "No connected MCP servers match this search."}
+        renderItem={(connector) => (
           <ConnectorRow
             key={connector.id}
             connector={connector}
             onOpen={() => setSelectedConnector(connector)}
             onChanged={setConnectors}
           />
-        ))}
-        {loaded && visibleConnectors.length === 0 ? (
-          <div className="px-4 py-7 text-center text-[length:var(--fs-md)] text-(--ui-muted)">
-            No connected MCP servers match this search.
-          </div>
-        ) : null}
-      </ModelSection>
+        )}
+      />
 
       <ModelSection
         title="Catalog"

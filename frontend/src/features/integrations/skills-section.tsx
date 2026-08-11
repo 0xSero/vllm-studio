@@ -1,18 +1,15 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { Effect, Schema } from "effect";
-import { Button, SearchInput } from "@/ui";
+import { Button } from "@/ui";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
+import { ResourceList } from "@/ui/resource-list";
 import { ResourceLogo } from "@/ui/resource-logo";
-import {
-  ModelRow,
-  ModelSection,
-  ModelStatus,
-  ModelValue,
-} from "@/features/recipes/recipes-content/model-page";
+import { ModelRow, ModelStatus, ModelValue } from "@/features/recipes/recipes-content/model-page";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { writeClipboardText } from "@/lib/clipboard";
+import { requestJsonEffect } from "@/lib/api/request-json";
 
 const SkillSchema = Schema.Struct({
   id: Schema.String,
@@ -31,17 +28,6 @@ const SkillResponseSchema = Schema.Struct({
 });
 
 type Skill = Schema.Schema.Type<typeof SkillSchema>;
-
-const requestSkills = <T,>(url: string, schema: Schema.ConstraintDecoder<T>) =>
-  Effect.tryPromise({
-    try: async () => {
-      const response = await fetch(url, { cache: "no-store" });
-      const body: unknown = await response.json();
-      if (!response.ok) throw new Error("Skill discovery failed");
-      return Schema.decodeUnknownSync(schema)(body);
-    },
-    catch: (error) => (error instanceof Error ? error : new Error(String(error))),
-  });
 
 function SkillDrawer({
   skill,
@@ -109,14 +95,20 @@ function SkillDrawer({
 export function SkillsSection() {
   const [skills, setSkills] = useState<readonly Skill[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Skill | null>(null);
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
 
   const loadSkills = useCallback(() => {
-    void Effect.runPromise(requestSkills("/api/agent/skills", SkillsResponseSchema))
+    void Effect.runPromise(
+      requestJsonEffect(
+        "/api/agent/skills",
+        SkillsResponseSchema,
+        { cache: "no-store" },
+        "Skill discovery failed",
+      ),
+    )
       .then((payload) => {
         setSkills(payload.skills);
         setError("");
@@ -132,23 +124,17 @@ export function SkillsSection() {
     loadSkills();
   }, [loadSkills]);
 
-  const visibleSkills = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return skills;
-    return skills.filter((skill) =>
-      `${skill.name} ${skill.source} ${skill.path}`.toLowerCase().includes(normalized),
-    );
-  }, [query, skills]);
-
   const openSkill = (skill: Skill) => {
     setSelected(skill);
     setSelectedSkill(null);
     setDetailLoading(true);
     setError("");
     void Effect.runPromise(
-      requestSkills(
+      requestJsonEffect(
         `/api/agent/skills/load?path=${encodeURIComponent(skill.path)}`,
         SkillResponseSchema,
+        undefined,
+        "Skill loading failed",
       ),
     )
       .then((payload) => setSelectedSkill(payload.skill))
@@ -160,29 +146,20 @@ export function SkillsSection() {
 
   return (
     <>
-      <ModelSection
+      <ResourceList
         title="Skills"
         description="Reusable instruction sets discovered across Local Studio, Codex, Claude, Pi, Factory, and OpenCode."
-        actions={
-          <ModelStatus tone={error ? "warning" : loaded ? "good" : "default"}>
-            {loaded ? `${visibleSkills.length} of ${skills.length}` : "discovering"}
-          </ModelStatus>
+        items={skills}
+        loaded={loaded}
+        searchLabel="Search skills"
+        searchDescription="Name, source, company, or path."
+        searchPlaceholder="Search skills"
+        searchableText={(skill) => `${skill.name} ${skill.source} ${skill.path}`}
+        summaryTone={() => (error ? "warning" : loaded ? "good" : "default")}
+        empty={(query, total) =>
+          total ? `No skills match “${query}”.` : "No SKILL.md entries were found."
         }
-      >
-        <ModelRow
-          label="Search skills"
-          description="Name, source, company, or path."
-          control={
-            <SearchInput
-              value={query}
-              onChange={setQuery}
-              placeholder="Search skills"
-              className="w-full"
-            />
-          }
-          status={<ModelStatus>{visibleSkills.length}</ModelStatus>}
-        />
-        {visibleSkills.map((skill) => (
+        renderItem={(skill) => (
           <ModelRow
             key={skill.id}
             label={skill.name}
@@ -192,13 +169,8 @@ export function SkillsSection() {
             status={<ModelStatus tone="info">discovered</ModelStatus>}
             onClick={() => openSkill(skill)}
           />
-        ))}
-        {loaded && visibleSkills.length === 0 ? (
-          <div className="px-4 py-8 text-center text-[length:var(--fs-md)] text-(--ui-muted)">
-            {skills.length ? `No skills match “${query}”.` : "No SKILL.md entries were found."}
-          </div>
-        ) : null}
-      </ModelSection>
+        )}
+      />
       {selected ? (
         <SkillDrawer
           skill={selected}

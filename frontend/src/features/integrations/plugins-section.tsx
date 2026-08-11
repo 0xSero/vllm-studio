@@ -1,44 +1,26 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Schema } from "effect";
 import {
   PluginRuntimeResponseSchema,
   type PluginRuntimeView,
 } from "@local-studio/agent-runtime/plugin-runtime-contract";
-import { ApiErrorResponseSchema } from "@local-studio/agent-runtime/api-contract";
-import { Alert, Button, ModelButton, SearchInput, UiModal, UiModalHeader } from "@/ui";
+import { Alert, Button, ModelButton, UiModal, UiModalHeader } from "@/ui";
 import { Eye, X } from "@/ui/icon-registry";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
+import { ResourceList } from "@/ui/resource-list";
 import { ResourceLogo } from "@/ui/resource-logo";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { SettingsButton, SettingsGroup, type StatusTone } from "@/features/settings/settings-ui";
-import {
-  ModelRow,
-  ModelSection,
-  ModelStatus,
-  ModelValue,
-} from "@/features/recipes/recipes-content/model-page";
+import type { StatusTone } from "@/features/settings/settings-ui";
+import { ModelRow, ModelStatus, ModelValue } from "@/features/recipes/recipes-content/model-page";
+import { requestJson } from "@/lib/api/request-json";
 import { GoogleAccountModal } from "./google-account-modal";
 import { ChatterboxVoiceModal } from "./chatterbox-voice-modal";
 import { speechStatusLabel, speechStatusTone } from "./chatterbox-voice-model";
 import { useSpeechStore, type SpeechSnapshot } from "./chatterbox-voice-store";
 
 type PluginStatus = { label: string; tone: StatusTone };
-
-function responseError(body: unknown, fallback: string): string {
-  try {
-    return Schema.decodeUnknownSync(ApiErrorResponseSchema)(body).error;
-  } catch {
-    return fallback;
-  }
-}
-
-async function pluginResponse(response: Response, fallback: string) {
-  const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(responseError(body, fallback));
-  return Schema.decodeUnknownSync(PluginRuntimeResponseSchema)(body);
-}
 
 function capabilitySummary(plugin: PluginRuntimeView): string {
   if (plugin.hostCapability?.capability === "speech") {
@@ -335,7 +317,6 @@ export function PluginsSection() {
   const [plugins, setPlugins] = useState<readonly PluginRuntimeView[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pending, setPending] = useState<PluginRuntimeView | null>(null);
   const [selectedPlugin, setSelectedPlugin] = useState<PluginRuntimeView | null>(null);
@@ -345,9 +326,13 @@ export function PluginsSection() {
 
   const loadPlugins = useCallback(() => {
     const generation = ++requestGeneration.current;
-    return fetch("/api/agent/plugins", { cache: "no-store" })
-      .then(async (response) => {
-        const payload = await pluginResponse(response, "Plugin discovery failed");
+    return requestJson(
+      "/api/agent/plugins",
+      Schema.decodeUnknownSync(PluginRuntimeResponseSchema),
+      { cache: "no-store" },
+      "Plugin discovery failed",
+    )
+      .then((payload) => {
         if (generation !== requestGeneration.current) return;
         setPlugins(payload.plugins);
         setError("");
@@ -369,27 +354,21 @@ export function PluginsSection() {
     void loadPlugins();
   }, [loadPlugins]);
 
-  const visiblePlugins = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return plugins;
-    return plugins.filter((plugin) =>
-      `${plugin.displayName} ${plugin.description} ${plugin.category} ${capabilitySummary(plugin)}`
-        .toLowerCase()
-        .includes(normalized),
-    );
-  }, [plugins, query]);
-
   const setEnabled = async (plugin: PluginRuntimeView, enabled: boolean) => {
     const generation = ++requestGeneration.current;
     setBusyId(plugin.id);
     setError("");
     try {
-      const response = await fetch(`/api/agent/plugins/${encodeURIComponent(plugin.id)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
-      });
-      const payload = await pluginResponse(response, "Plugin activation failed");
+      const payload = await requestJson(
+        `/api/agent/plugins/${encodeURIComponent(plugin.id)}`,
+        Schema.decodeUnknownSync(PluginRuntimeResponseSchema),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled }),
+        },
+        "Plugin activation failed",
+      );
       if (generation !== requestGeneration.current) return;
       setPlugins(payload.plugins);
       setPending(null);
@@ -410,62 +389,48 @@ export function PluginsSection() {
           <Alert variant="error">{error}</Alert>
         </div>
       ) : null}
-      <ModelSection
+      <ResourceList
         title="Plugins"
         description="Capability bundles from Local Studio and Codex, with their company, tools, accounts, and skills."
-        actions={
-          <ModelStatus tone={error ? "warning" : loaded ? "good" : "default"}>
-            {loaded ? `${visiblePlugins.length} of ${plugins.length}` : "discovering"}
-          </ModelStatus>
+        items={plugins}
+        loaded={loaded}
+        searchLabel="Search plugins"
+        searchDescription="Name, company, category, capability, or version."
+        searchPlaceholder="Search plugins"
+        searchableText={(plugin) =>
+          `${plugin.displayName} ${plugin.description} ${plugin.category} ${capabilitySummary(plugin)}`
         }
-      >
-        <ModelRow
-          label="Search plugins"
-          description="Name, company, category, capability, or version."
-          control={
-            <SearchInput
-              value={query}
-              onChange={setQuery}
-              placeholder="Search plugins"
-              className="w-full"
-            />
-          }
-          status={<ModelStatus>{visiblePlugins.length}</ModelStatus>}
-        />
-        {!loaded ? (
-          <PluginRowsSkeleton />
-        ) : visiblePlugins.length ? (
-          visiblePlugins.map((plugin) => (
-            <PluginRow
-              key={plugin.id}
-              plugin={plugin}
-              speech={speech}
-              busy={busyId === plugin.id}
-              onOpen={() => setSelectedPlugin(plugin)}
-              onConnect={() => {
-                setSelectedPlugin(null);
-                setPending(plugin);
-              }}
-              onDisconnect={() => {
-                setSelectedPlugin(null);
-                void setEnabled(plugin, false);
-              }}
-              onAccount={() => {
-                setSelectedPlugin(null);
-                setAccountPlugin(plugin);
-              }}
-              onHostCapability={() => {
-                setSelectedPlugin(null);
-                setSpeechPlugin(plugin);
-              }}
-            />
-          ))
-        ) : (
-          <div className="px-4 py-8 text-center text-[length:var(--fs-md)] text-(--ui-muted)">
-            {plugins.length ? `No plugins match “${query}”.` : "No plugin manifests found."}
-          </div>
+        summaryTone={() => (error ? "warning" : loaded ? "good" : "default")}
+        loading={<PluginRowsSkeleton />}
+        empty={(query, total) =>
+          total ? `No plugins match “${query}”.` : "No plugin manifests found."
+        }
+        renderItem={(plugin) => (
+          <PluginRow
+            key={plugin.id}
+            plugin={plugin}
+            speech={speech}
+            busy={busyId === plugin.id}
+            onOpen={() => setSelectedPlugin(plugin)}
+            onConnect={() => {
+              setSelectedPlugin(null);
+              setPending(plugin);
+            }}
+            onDisconnect={() => {
+              setSelectedPlugin(null);
+              void setEnabled(plugin, false);
+            }}
+            onAccount={() => {
+              setSelectedPlugin(null);
+              setAccountPlugin(plugin);
+            }}
+            onHostCapability={() => {
+              setSelectedPlugin(null);
+              setSpeechPlugin(plugin);
+            }}
+          />
         )}
-      </ModelSection>
+      />
       {selectedPlugin ? (
         <PluginDrawer
           plugin={selectedPlugin}
