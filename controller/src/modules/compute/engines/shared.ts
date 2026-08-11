@@ -1,4 +1,5 @@
 import type {
+  ComputeEngineSpec,
   EngineSupport,
   HealthCheck,
   LaunchPlan,
@@ -149,13 +150,7 @@ export const serveAddress = (request: LaunchRequest, listenPort: number): string
  */
 export const serverArguments = (
   request: LaunchRequest,
-  spec: {
-    readonly subcommand?: readonly string[];
-    readonly modelFlag: string | null;
-    readonly servedNameFlag: string | null;
-    readonly spelling: Spelling;
-    readonly defaults?: readonly string[];
-  },
+  spec: ServerArgumentSpec,
   listenPort: number,
 ): string[] => {
   const model = modelReference(request);
@@ -168,6 +163,14 @@ export const serverArguments = (
     ...(spec.defaults ?? []),
   ];
   return mergeArguments(base, request.extraArgs);
+};
+
+export type ServerArgumentSpec = {
+  readonly subcommand?: readonly string[];
+  readonly modelFlag: string | null;
+  readonly servedNameFlag: string | null;
+  readonly spelling: Spelling;
+  readonly defaults?: readonly string[];
 };
 
 export const plan = (
@@ -192,5 +195,29 @@ export const plan = (
     mounts: modelMounts(request),
     devices: request.devices,
     health: parts.health,
+  };
+};
+
+type ServerEngineDefinition = Omit<ComputeEngineSpec, "health" | "plan"> & {
+  readonly healthPath: string;
+  readonly readyDeadlineMs: number;
+  readonly server: ServerArgumentSpec | ((request: LaunchRequest) => ServerArgumentSpec);
+};
+
+export const serverEngine = (definition: ServerEngineDefinition): ComputeEngineSpec => {
+  const { healthPath, readyDeadlineMs, server, ...spec } = definition;
+  const healthCheck = health(healthPath, readyDeadlineMs);
+  return {
+    ...spec,
+    health: healthCheck,
+    plan: (request) => {
+      const argumentsSpec = typeof server === "function" ? server(request) : server;
+      return plan(request, {
+        args: serverArguments(request, argumentsSpec, request.port),
+        health: healthCheck,
+        listenPort: request.port,
+        ...(spec.image ? { image: spec.image(request.host) } : {}),
+      });
+    },
   };
 };

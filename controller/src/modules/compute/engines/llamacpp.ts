@@ -1,9 +1,7 @@
-import type { ComputeEngineSpec, EngineSupport, HostProfile } from "../contracts";
+import type { EngineSupport, HostProfile } from "../contracts";
 import {
-  health,
-  plan,
   prometheusMetrics,
-  serverArguments,
+  serverEngine,
   supported,
   type Spelling,
 } from "./shared";
@@ -36,30 +34,19 @@ const image = (host: HostProfile): string | null => {
 const supports = (host: HostProfile): EngineSupport =>
   host.dockerGpu && host.platform !== "darwin" ? supported("process", "docker") : supported("process");
 
-export const llamacpp: ComputeEngineSpec = {
+export const llamacpp = serverEngine({
   id: "llamacpp",
   defaultBinary: "llama-server",
   defaultPort: 8081,
-  health: health("/health", READY_DEADLINE_MS),
+  healthPath: "/health",
+  readyDeadlineMs: READY_DEADLINE_MS,
   metrics: prometheusMetrics("llamacpp", "kv_cache_usage_ratio"),
   image,
   supports,
-  plan: (request) =>
-    plan(request, {
-      args: serverArguments(
-        request,
-        {
-          // llama.cpp takes a single .gguf file, not a directory.
-          modelFlag: "--model",
-          servedNameFlag: "--alias",
-          spelling,
-          // Prometheus endpoint is opt-in, same as SGLang.
-          defaults: ["--metrics"],
-        },
-        request.port,
-      ),
-      health: health("/health", READY_DEADLINE_MS),
-      listenPort: request.port,
-      image: image(request.host),
-    }),
-};
+  server: {
+    modelFlag: "--model",
+    servedNameFlag: "--alias",
+    spelling,
+    defaults: ["--metrics"],
+  },
+});

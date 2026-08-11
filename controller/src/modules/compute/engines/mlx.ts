@@ -1,5 +1,5 @@
-import type { ComputeEngineSpec, EngineSupport, HostProfile } from "../contracts";
-import { health, noMetrics, plan, serverArguments, supported, unsupported, type Spelling } from "./shared";
+import type { EngineSupport, HostProfile } from "../contracts";
+import { noMetrics, serverEngine, supported, unsupported, type Spelling } from "./shared";
 
 const READY_DEADLINE_MS = 300_000;
 
@@ -17,22 +17,13 @@ const supports = (host: HostProfile): EngineSupport => {
   return supported("process");
 };
 
-export const mlx: ComputeEngineSpec = {
+export const mlx = serverEngine({
   id: "mlx",
   defaultBinary: "mlx_lm.server",
   defaultPort: 8080,
-  // mlx_lm.server exposes no /health; /v1/models answers 200 once it is up.
-  health: health("/v1/models", READY_DEADLINE_MS),
+  healthPath: "/v1/models",
+  readyDeadlineMs: READY_DEADLINE_MS,
   metrics: noMetrics,
   supports,
-  plan: (request) =>
-    plan(request, {
-      args: serverArguments(
-        request,
-        { modelFlag: "--model", servedNameFlag: null, spelling },
-        request.port,
-      ),
-      health: health("/v1/models", READY_DEADLINE_MS),
-      listenPort: request.port,
-    }),
-};
+  server: { modelFlag: "--model", servedNameFlag: null, spelling },
+});

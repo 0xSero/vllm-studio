@@ -1,9 +1,7 @@
-import type { ComputeEngineSpec, EngineSupport, HostProfile } from "../contracts";
+import type { EngineSupport, HostProfile } from "../contracts";
 import {
-  health,
-  plan,
   prometheusMetrics,
-  serverArguments,
+  serverEngine,
   supported,
   unsupported,
   type Spelling,
@@ -39,30 +37,20 @@ const supports = (host: HostProfile): EngineSupport => {
   return host.dockerGpu ? supported("process", "docker") : supported("process");
 };
 
-export const sglang: ComputeEngineSpec = {
+export const sglang = serverEngine({
   id: "sglang",
   defaultBinary: "sglang",
   defaultPort: 30000,
-  health: health("/health", READY_DEADLINE_MS),
+  healthPath: "/health",
+  readyDeadlineMs: READY_DEADLINE_MS,
   metrics: prometheusMetrics("sglang", "token_usage"),
   image,
   supports,
-  plan: (request) =>
-    plan(request, {
-      args: serverArguments(
-        request,
-        {
-          subcommand: ["serve"],
-          modelFlag: "--model-path",
-          servedNameFlag: "--served-model-name",
-          spelling,
-          // SGLang serves no /metrics unless asked; the recipe can still override it.
-          defaults: ["--enable-metrics"],
-        },
-        request.port,
-      ),
-      health: health("/health", READY_DEADLINE_MS),
-      listenPort: request.port,
-      image: image(request.host),
-    }),
-};
+  server: {
+    subcommand: ["serve"],
+    modelFlag: "--model-path",
+    servedNameFlag: "--served-model-name",
+    spelling,
+    defaults: ["--enable-metrics"],
+  },
+});

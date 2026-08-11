@@ -1,5 +1,5 @@
-import type { ComputeEngineSpec, EngineSupport, HostProfile } from "../contracts";
-import { health, noMetrics, plan, serverArguments, supported, unsupported, type Spelling } from "./shared";
+import type { EngineSupport, HostProfile } from "../contracts";
+import { noMetrics, serverEngine, supported, unsupported, type Spelling } from "./shared";
 
 const READY_DEADLINE_MS = 900_000;
 
@@ -26,21 +26,13 @@ const supports = (host: HostProfile): EngineSupport => {
   return supported("process");
 };
 
-export const exllamav3: ComputeEngineSpec = {
+export const exllamav3 = serverEngine({
   id: "exllamav3",
   defaultBinary: "tabbyapi",
   defaultPort: 5000,
-  health: health("/health", READY_DEADLINE_MS),
+  healthPath: "/health",
+  readyDeadlineMs: READY_DEADLINE_MS,
   metrics: noMetrics,
   supports,
-  plan: (request) =>
-    plan(request, {
-      args: serverArguments(
-        request,
-        { modelFlag: "--model-dir", servedNameFlag: "--model-name", spelling },
-        request.port,
-      ),
-      health: health("/health", READY_DEADLINE_MS),
-      listenPort: request.port,
-    }),
-};
+  server: { modelFlag: "--model-dir", servedNameFlag: "--model-name", spelling },
+});

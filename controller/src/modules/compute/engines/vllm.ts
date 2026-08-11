@@ -1,9 +1,7 @@
-import type { ComputeEngineSpec, EngineSupport, HostProfile } from "../contracts";
+import type { EngineSupport, HostProfile } from "../contracts";
 import {
-  health,
-  plan,
   prometheusMetrics,
-  serverArguments,
+  serverEngine,
   supported,
   unsupported,
   type Spelling,
@@ -50,29 +48,19 @@ const supports = (host: HostProfile): EngineSupport => {
   return host.dockerGpu ? supported("process", "docker") : supported("process");
 };
 
-export const vllm: ComputeEngineSpec = {
+export const vllm = serverEngine({
   id: "vllm",
   defaultBinary: "vllm",
   defaultPort: 8000,
-  health: health("/health", READY_DEADLINE_MS),
+  healthPath: "/health",
+  readyDeadlineMs: READY_DEADLINE_MS,
   metrics: prometheusMetrics("vllm", "kv_cache_usage_perc"),
   image,
   supports,
-  plan: (request) =>
-    plan(request, {
-      // `vllm serve <path>` takes the model positionally.
-      args: serverArguments(
-        request,
-        {
-          subcommand: request.runtime === "docker" ? [] : ["serve"],
-          modelFlag: null,
-          servedNameFlag: "--served-model-name",
-          spelling,
-        },
-        request.port,
-      ),
-      health: health("/health", READY_DEADLINE_MS),
-      listenPort: request.port,
-      image: image(request.host),
-    }),
-};
+  server: (request) => ({
+    subcommand: request.runtime === "docker" ? [] : ["serve"],
+    modelFlag: null,
+    servedNameFlag: "--served-model-name",
+    spelling,
+  }),
+});
