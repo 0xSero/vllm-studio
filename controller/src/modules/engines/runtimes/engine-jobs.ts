@@ -25,6 +25,7 @@ import {
 } from "./managed-venv";
 import { pidExists } from "./pid-exists";
 import { terminateChildProcess } from "../../../core/process-platform";
+import { clearRuntimeInfoCache } from "./runtime-info";
 
 export { managedVenvPath } from "./managed-venv";
 
@@ -195,6 +196,7 @@ const runJob = (
 
     if (options.type === "install" || options.type === "update") {
       clearRuntimeTargetsCache();
+      yield* clearRuntimeInfoCache();
     }
     const outputTail = tailOutput(result.output ?? result.error);
     const command = result.used_command ?? job.command;

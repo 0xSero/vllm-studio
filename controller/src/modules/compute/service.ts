@@ -74,7 +74,7 @@ export const makeCompute = (config: Config, eventManager: EventManager): Compute
       return profile;
     });
 
-  const processLauncher = makeProcessLauncher(store.logPath);
+  const processLauncher = makeProcessLauncher((record) => store.logPath(record.recipeId));
   const launcherFor = (runtime: EngineRuntimeKind): Launcher =>
     runtime === "docker"
       ? makeDockerLauncher(lastProfile?.accelerator ?? "cuda")

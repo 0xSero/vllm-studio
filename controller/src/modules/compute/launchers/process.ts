@@ -33,7 +33,7 @@ const readTailBytes = (path: string, bytes: number): string => {
 };
 
 export const makeProcessLauncher = (
-  logPathFor: (name: string) => string,
+  logPathFor: (record: InstanceRecord) => string,
   processPlatform: ProcessPlatform = realProcessPlatform,
 ): Launcher => ({
   start: (plan: LaunchPlan, record: InstanceRecord) =>
@@ -41,7 +41,7 @@ export const makeProcessLauncher = (
       const [binary, ...args] = plan.argv;
       if (!binary) return yield* spawnFailed("plan.argv is empty");
       const logFd = yield* Effect.try({
-        try: () => openSync(logPathFor(record.name), "w"),
+        try: () => openSync(logPathFor(record), "w"),
         catch: (error) => error,
       }).pipe(
         Effect.catch((error) =>
@@ -101,5 +101,5 @@ export const makeProcessLauncher = (
     }),
 
   logTail: (reference: HandleReference, record: InstanceRecord) =>
-    Effect.sync(() => readTailBytes(logPathFor(record.name), LOG_TAIL_BYTES)),
+    Effect.sync(() => readTailBytes(logPathFor(record), LOG_TAIL_BYTES)),
 });
