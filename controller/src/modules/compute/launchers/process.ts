@@ -13,10 +13,6 @@ import { LOG_TAIL_BYTES, spawnFailed, type Launcher } from "./launcher";
 
 const STOP_POLL_MS = 250;
 
-export const processStartToken = (pid: number): string | null => {
-  return realProcessPlatform.inspect(pid)?.startToken ?? null;
-};
-
 const readTailBytes = (path: string, bytes: number): string => {
   try {
     const size = statSync(path).size;

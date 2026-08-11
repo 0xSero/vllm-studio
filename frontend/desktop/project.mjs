@@ -631,7 +631,7 @@ function isInsideEffectTryPromise(node) {
 function scanEffectStandards(filePath) {
   if (!filePath.endsWith(".ts") || filePath.endsWith(".d.ts"))
     return;
-  let source = fs.readFileSync(filePath, "utf8"), sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, !0), relativePath = path3.relative(SRC_DIR, filePath), isRuntimeBoundary = runtimeBoundaryFiles.has(relativePath), visit = (node) => {
+  let source = fs.readFileSync(filePath, "utf8"), sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, !0), relativePath = path3.relative(SRC_DIR, filePath).replaceAll("\\", "/"), isRuntimeBoundary = runtimeBoundaryFiles.has(relativePath), visit = (node) => {
     if (ts.canHaveModifiers(node)) {
       if (ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) && !isInsideEffectTryPromise(node))
         addSourceFinding("effect-async-boundary", filePath, node, "Use Effect for controller async work");
