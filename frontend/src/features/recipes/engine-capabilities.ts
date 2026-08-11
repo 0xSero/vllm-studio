@@ -6,140 +6,103 @@ import type { RecipeModalTabId } from "./recipe-modal/tabs/tab-id";
 export type ParallelismMode = "full" | "tp-pp" | "none";
 export type EngineOptionsKind = "none" | "llamacpp" | "mlx";
 
-/**
- * Declarative description of what a given engine supports in the recipe editor.
- * The editor reads this so it only ever renders (and therefore only ever
- * persists) fields the selected engine actually understands. See
- * `shared/contracts/engine-args.ts` for the matching launch-time guard.
- */
 export interface EngineCapabilities {
   backend: Backend;
-  /** Tabs to render, in order. */
   tabs: RecipeModalTabId[];
-  /** Engine-native option panel (llama.cpp / MLX) rendered in place of vLLM forms. */
   options: EngineOptionsKind;
-
-  // Model tab
   contextLength: boolean;
   seed: boolean;
-  advancedModelLoading: boolean; // tokenizer, revision, load-format, quant param path
-  quantization: boolean; // quantization + dtype
+  advancedModelLoading: boolean;
+  quantization: boolean;
   trustRemoteCode: boolean;
-
-  // Resources tab
   parallelism: ParallelismMode;
   gpuMemoryUtil: boolean;
   visibleDevices: boolean;
-  memoryManagement: boolean; // swap / cpu offload / gpu blocks override
-
-  // Performance tab
+  memoryManagement: boolean;
   kvCacheDtype: boolean;
   blockSize: boolean;
-  caching: boolean; // prefix caching + chunked prefill
-  schedulerAdvanced: boolean; // batched tokens, scheduling policy, paddings
+  caching: boolean;
+  schedulerAdvanced: boolean;
   maxNumSeqs: boolean;
   cudaGraphs: boolean;
-
-  // Features tab
   toolCalling: boolean;
   reasoning: boolean;
   chatTemplates: boolean;
 }
 
-const VLLM: EngineCapabilities = {
-  backend: "vllm",
-  tabs: ["general", "model", "resources", "performance", "features", "environment", "command"],
-  options: "none",
-  contextLength: true,
-  seed: true,
-  advancedModelLoading: true,
-  quantization: true,
-  trustRemoteCode: true,
-  parallelism: "full",
-  gpuMemoryUtil: true,
-  visibleDevices: true,
-  memoryManagement: true,
-  kvCacheDtype: true,
-  blockSize: true,
-  caching: true,
-  schedulerAdvanced: true,
-  maxNumSeqs: true,
-  cudaGraphs: true,
-  toolCalling: true,
-  reasoning: true,
-  chatTemplates: true,
-};
+type CapabilityFlag = Exclude<
+  keyof EngineCapabilities,
+  "backend" | "tabs" | "options" | "parallelism"
+>;
 
-const SGLANG: EngineCapabilities = { ...VLLM, backend: "sglang" };
+const FLAGS = [
+  "contextLength",
+  "seed",
+  "advancedModelLoading",
+  "quantization",
+  "trustRemoteCode",
+  "gpuMemoryUtil",
+  "visibleDevices",
+  "memoryManagement",
+  "kvCacheDtype",
+  "blockSize",
+  "caching",
+  "schedulerAdvanced",
+  "maxNumSeqs",
+  "cudaGraphs",
+  "toolCalling",
+  "reasoning",
+  "chatTemplates",
+] as const satisfies readonly CapabilityFlag[];
 
-const LLAMACPP: EngineCapabilities = {
-  backend: "llamacpp",
-  tabs: ["general", "model", "resources", "performance", "features", "environment", "command"],
-  options: "llamacpp",
-  contextLength: true,
-  seed: true,
-  advancedModelLoading: false,
-  quantization: false,
-  trustRemoteCode: false,
-  parallelism: "none",
-  gpuMemoryUtil: false,
-  visibleDevices: false,
-  memoryManagement: false,
-  kvCacheDtype: false,
-  blockSize: false,
-  caching: false,
-  schedulerAdvanced: false,
-  maxNumSeqs: false,
-  cudaGraphs: false,
-  toolCalling: false,
-  reasoning: false,
-  chatTemplates: false,
-};
+const ALL_TABS: RecipeModalTabId[] = [
+  "general",
+  "model",
+  "resources",
+  "performance",
+  "features",
+  "environment",
+  "command",
+];
 
-const MLX: EngineCapabilities = {
-  backend: "mlx",
-  tabs: ["general", "model", "features", "environment", "command"],
-  options: "mlx",
-  contextLength: false,
-  seed: false,
-  advancedModelLoading: false,
-  quantization: false,
-  trustRemoteCode: true,
-  parallelism: "none",
-  gpuMemoryUtil: false,
-  visibleDevices: false,
-  memoryManagement: false,
-  kvCacheDtype: false,
-  blockSize: false,
-  caching: false,
-  schedulerAdvanced: false,
-  maxNumSeqs: false,
-  cudaGraphs: false,
-  toolCalling: false,
-  reasoning: false,
-  chatTemplates: false,
-};
+function capabilities(
+  backend: Backend,
+  options: EngineOptionsKind,
+  tabs: RecipeModalTabId[],
+  parallelism: ParallelismMode,
+  enabled: readonly CapabilityFlag[],
+): EngineCapabilities {
+  const flags = Object.fromEntries(FLAGS.map((flag) => [flag, enabled.includes(flag)])) as Record<
+    CapabilityFlag,
+    boolean
+  >;
+  return { backend, tabs, options, parallelism, ...flags };
+}
 
 const CAPABILITIES: Record<Backend, EngineCapabilities> = {
-  vllm: VLLM,
-  sglang: SGLANG,
-  llamacpp: LLAMACPP,
-  mlx: MLX,
+  vllm: capabilities("vllm", "none", ALL_TABS, "full", FLAGS),
+  sglang: capabilities("sglang", "none", ALL_TABS, "full", FLAGS),
+  llamacpp: capabilities("llamacpp", "llamacpp", ALL_TABS, "none", ["contextLength", "seed"]),
+  mlx: capabilities(
+    "mlx",
+    "mlx",
+    ["general", "model", "features", "environment", "command"],
+    "none",
+    ["trustRemoteCode"],
+  ),
 };
 
 export const getEngineCapabilities = (backend: Backend | undefined): EngineCapabilities =>
-  CAPABILITIES[backend ?? "vllm"] ?? VLLM;
+  CAPABILITIES[backend ?? "vllm"] ?? CAPABILITIES.vllm;
 
-/** Engine-native options (llama.cpp / MLX) for a given editor tab. */
 export const getEngineOptions = (
   kind: EngineOptionsKind,
   tab: LlamacppOption["tab"],
 ): LlamacppOption[] => {
-  const all = kind === "llamacpp" ? LLAMACPP_OPTIONS : kind === "mlx" ? MLX_OPTIONS : [];
-  return all.filter((option) => option.tab === tab);
+  const options = kind === "llamacpp" ? LLAMACPP_OPTIONS : kind === "mlx" ? MLX_OPTIONS : [];
+  return options.filter((option) => option.tab === tab);
 };
 
-/** A short, human-readable engine label. */
 export const ENGINE_LABEL: Record<Backend, string> = {
   vllm: "vLLM",
   sglang: "SGLang",
