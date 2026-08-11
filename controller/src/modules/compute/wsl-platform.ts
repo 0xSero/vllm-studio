@@ -1,5 +1,9 @@
 import { Effect } from "effect";
-import { runCommandAsyncEffect, type AsyncCommandResult } from "../../core/command";
+import {
+  runCommandAsyncEffect,
+  type AsyncCommandOptions,
+  type AsyncCommandResult,
+} from "../../core/command";
 
 export interface WslDistribution {
   readonly name: string;
@@ -70,3 +74,10 @@ export const runInWsl = (
   timeoutMs = WSL_TIMEOUT_MS,
 ): Effect.Effect<AsyncCommandResult> =>
   wsl(["--distribution", distribution, "--exec", ...args], timeoutMs);
+
+export const runInWslWithOptions = (
+  distribution: string,
+  args: readonly string[],
+  options: AsyncCommandOptions,
+): Effect.Effect<AsyncCommandResult> =>
+  runCommandAsyncEffect("wsl.exe", ["--distribution", distribution, "--exec", ...args], options);
