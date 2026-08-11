@@ -6,6 +6,7 @@ import type { ToolsContextValue } from "@/features/agent/tools/context";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import { shouldSubscribeRuntimeEvents } from "@/features/agent/runtime/runtime-cursor";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
+import { patchWorkspaceSession } from "@/features/agent/workspace/pane-controller";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 function currentSearchParams(): URLSearchParams {
@@ -36,7 +37,7 @@ export function useWorkspaceHydrationEffects({
     for (const [sessionId, runtimeKey] of legacyRuntimeKeys) {
       sessionRuntimeController().seedConnectionKey(sessionId, runtimeKey);
     }
-    dispatch({ type: "hydrate", state: workspace, hydrated: true });
+    dispatch((state) => ({ ...state, ...workspace, hydrated: true }));
     if (selections.size > 0) toolsRef.current.hydrateSelections(selections);
 
     workspaceCommands().bind(dispatch);
@@ -74,7 +75,7 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
   useMountSubscription(() => {
     sessionRuntimeController().bind({
       commit: (sessionId: SessionId, patch: (session: Session) => Session) => {
-        dispatch({ type: "patchSession", sessionId, patch });
+        dispatch((state) => patchWorkspaceSession(state, sessionId, patch));
       },
       getSession: (sessionId) => sessionsRef.current.find((session) => session.id === sessionId),
       getSessions: () => sessionsRef.current,

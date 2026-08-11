@@ -44,67 +44,15 @@ export type WorkspaceSessionPayload = {
   title?: string;
 };
 
-export type WorkspaceHydration = Partial<WorkspaceState>;
-
-export type WorkspaceAction =
-  | { type: "hydrate"; state: WorkspaceHydration; hydrated?: boolean }
-  | { type: "setModelsLoading"; loading: boolean }
-  | { type: "setModels"; models: AgentModel[]; preferredModelId?: string }
-  | { type: "setSelectedModel"; modelId: string }
-  | { type: "setSetupWarning"; warning: string }
-  | { type: "setError"; error: string }
-  | { type: "setSplitRatio"; path: number[]; ratio: number }
-  | {
-      type: "openSessionPayloadInPane";
-      paneId: PaneId;
-      payload: WorkspaceSessionPayload;
-      tab: Session;
-    }
-  | {
-      type: "splitPaneWithPayload";
-      paneId: PaneId;
-      direction: "vertical" | "horizontal";
-      side: "a" | "b";
-      payload: WorkspaceSessionPayload;
-      newPaneId: PaneId;
-      tab: Session;
-    }
-  | { type: "focusPane"; paneId: PaneId }
-  | {
-      type: "focusPaneSession";
-      paneId: PaneId;
-      sessionId: SessionId;
-      replaceWorkspace?: boolean;
-    }
-  | { type: "renameTab"; paneId: PaneId; tabId: SessionId; title: string }
-  | {
-      type: "splitTab";
-      sourcePaneId: PaneId;
-      sourceTabId: SessionId;
-      newPaneId: PaneId;
-      tab: Session;
-    }
-  | { type: "closePane"; paneId: PaneId }
-  | { type: "setPaneSession"; paneId: PaneId; session: Session }
-  | { type: "setDetachedSession"; session: Session }
-  | { type: "removeDetachedSession"; sessionId: SessionId }
-  | {
-      type: "patchSession";
-      sessionId: SessionId;
-      patch: Partial<Session> | ((session: Session) => Session);
-    }
-  | { type: "patchActiveTab"; paneId: PaneId; patch: Partial<Session> }
-  | { type: "notifySessionsChanged" }
-  | {
-      type: "urlNavRequested";
-      key: string;
-      intent?: string;
-      project: Project | null;
-      sessionId?: string | null;
-      sessionTitle?: string;
-      newSession?: boolean;
-      split?: boolean;
-      paneId: PaneId;
-      replaceWorkspace?: boolean;
-      tab: Session;
-    };
+export type WorkspaceNavigation = {
+  key: string;
+  intent?: string;
+  project: Project | null;
+  sessionId?: string | null;
+  sessionTitle?: string;
+  newSession?: boolean;
+  split?: boolean;
+  paneId: PaneId;
+  replaceWorkspace?: boolean;
+  tab: Session;
+};

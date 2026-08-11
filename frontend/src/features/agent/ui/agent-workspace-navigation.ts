@@ -4,7 +4,8 @@ import type { ProjectsContextValue } from "@/features/agent/projects/context";
 import type { Project } from "@/features/agent/projects/types";
 import { makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import type { WorkspaceAction } from "@/features/agent/workspace/types";
+import { applyUrlNavigation } from "@/features/agent/workspace/pane-controller";
+import type { WorkspaceNavigation } from "@/features/agent/workspace/types";
 
 export type SearchParamsReader = {
   get: (key: string) => string | null;
@@ -49,7 +50,7 @@ export function workspaceNavigationAction(
   searchParams: SearchParamsReader,
   project: Project | null,
   sessionTitle?: string,
-): Extract<WorkspaceAction, { type: "urlNavRequested" }> | null {
+): WorkspaceNavigation | null {
   const params = navigationParams(searchParams);
   const key = navigationKey(params);
   if (!key) return null;
@@ -59,7 +60,6 @@ export function workspaceNavigationAction(
     cwd: project?.path,
   };
   return {
-    type: "urlNavRequested",
     key,
     ...(params.openParam ? { intent: params.openParam } : {}),
     project,
@@ -105,7 +105,7 @@ function requestWorkspaceUrlNavigation({
   if (project) projects.selectProject(project);
   const sessionTitle = params.sessionId ? consumeAgentSessionNavTitle(params.sessionId) : undefined;
   const action = workspaceNavigationAction(searchParams, project, sessionTitle);
-  if (action) dispatch(action);
+  if (action) dispatch((state) => applyUrlNavigation(state, action));
   consumeOneShotNavParams(params.projectId, params.sessionId);
 }
 

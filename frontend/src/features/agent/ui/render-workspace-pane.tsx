@@ -17,6 +17,7 @@ import type {
 import { activeSession } from "@/features/agent/runtime/selectors";
 import { terminalOwnerFor } from "@/features/agent/terminal-owners";
 import { collectLeaves } from "@/features/agent/workspace/layout";
+import { focusPane } from "@/features/agent/workspace/pane-controller";
 import type { WorkspaceHandles } from "@/features/agent/ui/use-workspace";
 
 export type WorkspacePaneRenderContext = {
@@ -189,7 +190,7 @@ const WorkspacePane = memo(function WorkspacePane({
       }}
       onPiSessionIdChange={handles.notifySessionsChanged}
       isFocused={view.isFocused}
-      onFocus={() => dispatch({ type: "focusPane", paneId: view.paneId })}
+      onFocus={() => dispatch((state) => focusPane(state, { paneId: view.paneId }))}
       tabs={sessions}
       activeTabId={view.pane.sessionId}
       onUpdateSession={handles.updateSession}

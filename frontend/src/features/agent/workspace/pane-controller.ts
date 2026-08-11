@@ -20,9 +20,11 @@ import type { Project } from "@/features/agent/projects/types";
 import type {
   PaneId,
   PaneState,
+  WorkspaceNavigation,
   WorkspaceSessionPayload,
   WorkspaceState,
 } from "@/features/agent/workspace/types";
+import { updateSessionDrafts } from "@/features/agent/workspace/session-drafts";
 import { restoreSessionDraft } from "@/features/agent/workspace/session-drafts";
 
 function isSession(value: Session | undefined): value is Session {
@@ -76,6 +78,26 @@ export function claimCanonicalSession(state: WorkspaceState, canonical: Session)
     if (duplicateIds.has(pane.sessionId)) panesById.set(paneId, { sessionId: canonical.id });
   }
   return { ...state, sessions, panesById };
+}
+
+export function patchWorkspaceSession(
+  state: WorkspaceState,
+  sessionId: SessionId,
+  patch: Partial<Session> | ((session: Session) => Session),
+): WorkspaceState {
+  const before = state.sessions.get(sessionId);
+  if (!before) return state;
+  const sessions = patchSessionInMap(state.sessions, sessionId, patch);
+  const after = sessions.get(sessionId);
+  if (!after || after === before) return state;
+  return claimCanonicalSession(
+    {
+      ...state,
+      sessions,
+      sessionDrafts: updateSessionDrafts(state.sessionDrafts, before, after),
+    },
+    after,
+  );
 }
 
 function focusExistingSession(
@@ -445,13 +467,6 @@ export function closePane(state: WorkspaceState, payload: { paneId: PaneId }): W
   });
 }
 
-export function setPaneSession(
-  state: WorkspaceState,
-  payload: { paneId: PaneId; session: Session },
-): WorkspaceState {
-  return replacePaneSession(state, payload.paneId, payload.session);
-}
-
 export function patchActiveTab(
   state: WorkspaceState,
   payload: { paneId: PaneId; patch: Partial<Session> },
@@ -464,7 +479,7 @@ export function patchActiveTab(
 
 export function applyUrlNavigation(
   state: WorkspaceState,
-  payload: UrlNavigationPayload,
+  payload: WorkspaceNavigation,
 ): WorkspaceState {
   if (state.lastHandledNavKey === payload.key) return state;
   if (supersededNavigationIntent(payload.intent, state.lastHandledNavIntent)) return state;
@@ -536,18 +551,6 @@ type SplitTabPayload = SessionPayload & {
   sourceTabId: SessionId;
   newPaneId?: PaneId;
 };
-type UrlNavigationPayload = SessionPayload & {
-  key: string;
-  intent?: string;
-  project: Project | null;
-  sessionId?: string | null;
-  sessionTitle?: string;
-  newSession?: boolean;
-  split?: boolean;
-  paneId?: PaneId;
-  replaceWorkspace?: boolean;
-};
-
 function navigationIntentParts(intent: string): [number, number] | null {
   const [timestampRaw, sequenceRaw = "0"] = intent.split(".", 2);
   const timestamp = Number.parseInt(timestampRaw, 36);

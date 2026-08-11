@@ -241,5 +241,3 @@ export function sessionMetaForPersistence(
   }
   return base;
 }
-
-export { reducer } from "@/features/agent/workspace/reducer";

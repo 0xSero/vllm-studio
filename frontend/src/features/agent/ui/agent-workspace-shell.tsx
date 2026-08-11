@@ -118,7 +118,7 @@ export function AgentWorkspaceShell({
           <WorkspaceTopBar
             error={state.error}
             setupWarning={state.setupWarning}
-            onClearError={() => dispatch({ type: "setError", error: "" })}
+            onClearError={() => dispatch((current) => ({ ...current, error: "" }))}
           />
           {compact ? (
             <QuickPanelTopBar

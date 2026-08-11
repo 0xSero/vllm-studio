@@ -9,12 +9,7 @@ import {
 } from "@/features/agent/session-index";
 import type { ToolSelection } from "@/features/agent/tools/types";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
-import type {
-  AgentModel,
-  PaneId,
-  WorkspaceAction,
-  WorkspaceState,
-} from "@/features/agent/workspace/types";
+import type { AgentModel, PaneId, WorkspaceState } from "@/features/agent/workspace/types";
 import {
   sessionMetaForPersistence,
   setupWarningFromPiCheck,
@@ -44,7 +39,8 @@ export type WorkspaceWindow = {
   setTimeout?: (handler: () => void, timeout: number) => unknown;
 };
 
-export type WorkspaceDispatch = (action: WorkspaceAction) => void;
+export type WorkspaceMutation = (state: WorkspaceState) => WorkspaceState;
+export type WorkspaceDispatch = (mutation: WorkspaceMutation) => void;
 
 export type WorkspaceEffectDeps = {
   storage: WorkspaceStorage;
@@ -55,44 +51,11 @@ export type WorkspaceEffectDeps = {
   selectionFor?: (sessionId: SessionId) => ToolSelection;
 };
 
-const PANE_STATE_ACTIONS = new Set<WorkspaceAction["type"]>([
-  "setSplitRatio",
-  "openSessionPayloadInPane",
-  "splitPaneWithPayload",
-  "focusPane",
-  "focusPaneSession",
-  "renameTab",
-  "splitTab",
-  "closePane",
-  "urlNavRequested",
-]);
-
-const SESSIONS_CHANGED_ACTIONS = new Set<WorkspaceAction["type"]>([
-  "openSessionPayloadInPane",
-  "splitPaneWithPayload",
-  "renameTab",
-  "splitTab",
-  "closePane",
-  "setPaneSession",
-  "setDetachedSession",
-  "removeDetachedSession",
-  "patchSession",
-  "patchActiveTab",
-  "notifySessionsChanged",
-  "urlNavRequested",
-]);
-
-const METADATA_PATCH_ACTIONS = new Set<WorkspaceAction["type"]>([
-  "setPaneSession",
-  "patchSession",
-  "patchActiveTab",
-]);
-
 function dispatchEvent(deps: WorkspaceEffectDeps, type: string): void {
   deps.window.dispatchEvent(new deps.window.Event(type));
 }
 
-function scheduleSessionsRefresh(deps: WorkspaceEffectDeps): void {
+export function scheduleSessionsRefresh(deps: WorkspaceEffectDeps): void {
   dispatchEvent(deps, SESSIONS_CHANGED_EVENT);
   deps.window.setTimeout?.(() => dispatchEvent(deps, SESSIONS_CHANGED_EVENT), 1_500);
 }
@@ -105,6 +68,16 @@ function normalizeModelsPayload(
     : { models: payload.models ?? [], error: payload.error };
 }
 
+function chooseModelId(models: AgentModel[], current: string, preferred?: string): string {
+  if (preferred && models.some((model) => model.id === preferred)) return preferred;
+  if (current && models.some((model) => model.id === current)) return current;
+  return models.find((model) => model.active)?.id ?? models[0]?.id ?? "";
+}
+
+function patchWorkspace(deps: WorkspaceEffectDeps, patch: Partial<WorkspaceState>): void {
+  deps.dispatch?.((state) => ({ ...state, ...patch }));
+}
+
 function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps): void {
   const loadSetupChecksEffect = deps.api.loadSetupChecks
     ? Effect.tryPromise({
@@ -114,12 +87,8 @@ function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps):
     : Effect.succeed(null);
 
   if (deps.api.loadModels) {
-    // Retry quietly with backoff: transient controller/network failures should
-    // resolve themselves without the user having to reload the page. The error
-    // notice stays visible (dismissible) until an attempt succeeds.
     const attemptLoadModels = (attempt: number): void => {
-      deps.dispatch?.({ type: "setModelsLoading", loading: true });
-      if (attempt === 0) deps.dispatch?.({ type: "setError", error: "" });
+      patchWorkspace(deps, { modelsLoading: true, ...(attempt === 0 ? { error: "" } : {}) });
       void Effect.runPromise(
         Effect.gen(function* () {
           const payload = yield* Effect.tryPromise({
@@ -128,30 +97,31 @@ function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps):
           });
           const normalized = normalizeModelsPayload(payload);
           if (normalized.error) return yield* Effect.fail(new Error(normalized.error));
-          deps.dispatch?.({ type: "setError", error: "" });
-          deps.dispatch?.({
-            type: "setModels",
+          deps.dispatch?.((state) => ({
+            ...state,
+            error: "",
             models: normalized.models,
-            preferredModelId: readDefaultAgentModel(deps.storage),
-          });
+            selectedModel: chooseModelId(
+              normalized.models,
+              state.selectedModel,
+              readDefaultAgentModel(deps.storage),
+            ),
+            modelsLoading: false,
+          }));
           if (normalized.models.length > 0) {
-            deps.dispatch?.({ type: "setSetupWarning", warning: "" });
+            patchWorkspace(deps, { setupWarning: "" });
           } else {
             const setupPayload = yield* loadSetupChecksEffect;
             const pi = setupPayload?.checks?.find((check) => check.id === "pi");
-            deps.dispatch?.({
-              type: "setSetupWarning",
-              warning: setupWarningFromPiCheck(pi, false),
-            });
+            patchWorkspace(deps, { setupWarning: setupWarningFromPiCheck(pi, false) });
           }
         }).pipe(
           Effect.catch((error) =>
             Effect.sync(() => {
-              deps.dispatch?.({
-                type: "setError",
+              patchWorkspace(deps, {
                 error: error instanceof Error ? error.message : "Failed to load models",
+                modelsLoading: false,
               });
-              deps.dispatch?.({ type: "setModelsLoading", loading: false });
               const delay = Math.min(5_000 * 2 ** attempt, 60_000);
               deps.window.setTimeout?.(() => attemptLoadModels(attempt + 1), delay);
             }),
@@ -165,9 +135,8 @@ function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps):
       loadSetupChecksEffect.pipe(
         Effect.map((payload) => {
           const pi = payload?.checks?.find((check) => check.id === "pi");
-          deps.dispatch?.({
-            type: "setSetupWarning",
-            warning: setupWarningFromPiCheck(pi, state.models.length > 0),
+          patchWorkspace(deps, {
+            setupWarning: setupWarningFromPiCheck(pi, state.models.length > 0),
           });
         }),
       ),
@@ -285,33 +254,23 @@ function queueLocatedReplay(
 }
 
 function queueReplayEffects(
-  action: WorkspaceAction,
   prevState: WorkspaceState,
   nextState: WorkspaceState,
   deps: WorkspaceEffectDeps,
 ): void {
-  switch (action.type) {
-    case "openSessionPayloadInPane":
-    case "splitPaneWithPayload":
-      if (
-        action.payload.piSessionId &&
-        !findPaneByPiSessionId(prevState, action.payload.piSessionId)
-      ) {
-        queueLocatedReplay(action.payload.piSessionId, nextState, deps);
-      }
-      return;
-    case "urlNavRequested":
-      if (action.sessionId && !findPaneByPiSessionId(prevState, action.sessionId)) {
-        queueLocatedReplay(action.sessionId, nextState, deps);
-      }
-      return;
-    default:
-      return;
+  for (const pane of nextState.panesById.values()) {
+    const session = nextState.sessions.get(pane.sessionId);
+    if (
+      session?.piSessionId &&
+      session.messages.length === 0 &&
+      !findPaneByPiSessionId(prevState, session.piSessionId)
+    ) {
+      queueLocatedReplay(session.piSessionId, nextState, deps);
+    }
   }
 }
 
 function persistActionEffects(
-  action: WorkspaceAction,
   prevState: WorkspaceState,
   nextState: WorkspaceState,
   deps: WorkspaceEffectDeps,
@@ -319,12 +278,8 @@ function persistActionEffects(
   if (prevState.sessionDrafts !== nextState.sessionDrafts) {
     writeSessionDrafts(deps.storage, nextState.sessionDrafts);
   }
-  if (PANE_STATE_ACTIONS.has(action.type)) {
-    writePaneState(deps.storage, nextState, deps.selectionFor);
-    return;
-  }
   if (
-    METADATA_PATCH_ACTIONS.has(action.type) &&
+    prevState.hydrated &&
     paneMetadataKey(prevState, deps.selectionFor) !== paneMetadataKey(nextState, deps.selectionFor)
   ) {
     writePaneState(deps.storage, nextState, deps.selectionFor);
@@ -353,10 +308,6 @@ function paneMetadataKey(
   });
 }
 
-function isSettledStatus(status: string): boolean {
-  return status === "idle" || status === "done";
-}
-
 function transcriptSignature(session: Session): string {
   const last = session.messages[session.messages.length - 1];
   return [
@@ -369,52 +320,24 @@ function transcriptSignature(session: Session): string {
   ].join("|");
 }
 
-function persistSettledTranscripts(
+function persistTranscripts(
   prevState: WorkspaceState,
   nextState: WorkspaceState,
   deps: WorkspaceEffectDeps,
 ): void {
-  for (const [id, session] of nextState.sessions) {
-    if (!session.piSessionId || session.messages.length === 0) continue;
-    if (!isSettledStatus(session.status)) continue;
+  const ids = new Set([...prevState.sessions.keys(), ...nextState.sessions.keys()]);
+  for (const id of ids) {
     const before = prevState.sessions.get(id);
-    if (before && transcriptSignature(before) === transcriptSignature(session)) continue;
-    writeTranscriptSnapshot(
-      session.piSessionId,
-      session.messages,
-      cleanSessionTitle(session.title),
-      deps.storage,
-    );
-  }
-}
-
-function persistTurnStartTranscripts(
-  prevState: WorkspaceState,
-  nextState: WorkspaceState,
-  deps: WorkspaceEffectDeps,
-): void {
-  for (const [id, session] of nextState.sessions) {
-    if (!session.piSessionId || session.messages.length === 0) continue;
-    if (session.status !== "running" && session.status !== "starting") continue;
-    const before = prevState.sessions.get(id);
-    if (!before || before.status === session.status) continue;
-    writeTranscriptSnapshot(
-      session.piSessionId,
-      session.messages,
-      cleanSessionTitle(session.title),
-      deps.storage,
-    );
-  }
-}
-
-function persistExitedTranscripts(
-  prevState: WorkspaceState,
-  nextState: WorkspaceState,
-  deps: WorkspaceEffectDeps,
-): void {
-  for (const [id, session] of prevState.sessions) {
-    if (!session.piSessionId || session.messages.length === 0) continue;
-    if (nextState.sessions.has(id)) continue;
+    const after = nextState.sessions.get(id);
+    const session = after ?? before;
+    if (!session?.piSessionId || session.messages.length === 0) continue;
+    const settled = after?.status === "idle";
+    const turnStarted =
+      after &&
+      (after.status === "running" || after.status === "starting") &&
+      before?.status !== after.status;
+    const changed = !before || !after || transcriptSignature(before) !== transcriptSignature(after);
+    if (!turnStarted && !(settled && changed) && after) continue;
     writeTranscriptSnapshot(
       session.piSessionId,
       session.messages,
@@ -425,28 +348,14 @@ function persistExitedTranscripts(
 }
 
 export function runWorkspaceEffect(
-  action: WorkspaceAction,
   prevState: WorkspaceState,
   nextState: WorkspaceState,
   deps: WorkspaceEffectDeps,
 ): void {
-  persistActionEffects(action, prevState, nextState, deps);
-  queueReplayEffects(action, prevState, nextState, deps);
-
-  if (action.type === "hydrate") {
-    runInitialApiEffects(nextState, deps);
-  }
-
+  persistActionEffects(prevState, nextState, deps);
+  queueReplayEffects(prevState, nextState, deps);
+  if (!prevState.hydrated && nextState.hydrated) runInitialApiEffects(nextState, deps);
   publishWorkspaceSessions(prevState, nextState, deps);
-  if (SESSIONS_CHANGED_ACTIONS.has(action.type)) {
-    persistSettledTranscripts(prevState, nextState, deps);
-    persistTurnStartTranscripts(prevState, nextState, deps);
-    persistExitedTranscripts(prevState, nextState, deps);
-  }
-  if (
-    SESSIONS_CHANGED_ACTIONS.has(action.type) &&
-    storedSessionsKey(prevState) !== storedSessionsKey(nextState)
-  ) {
-    scheduleSessionsRefresh(deps);
-  }
+  persistTranscripts(prevState, nextState, deps);
+  if (storedSessionsKey(prevState) !== storedSessionsKey(nextState)) scheduleSessionsRefresh(deps);
 }

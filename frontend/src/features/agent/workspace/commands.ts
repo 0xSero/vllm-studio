@@ -1,7 +1,9 @@
-import type { PaneId, SessionId, WorkspaceAction } from "@/features/agent/workspace/types";
+import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
+import { applyUrlNavigation, focusPaneSession, renameTab } from "./pane-controller";
+import type { PaneId, SessionId, WorkspaceNavigation } from "@/features/agent/workspace/types";
 
 export type WorkspaceCommands = {
-  bind(dispatch: (action: WorkspaceAction) => void): void;
+  bind(dispatch: WorkspaceDispatch): void;
   unbind(): void;
   focusSession(
     paneId: PaneId,
@@ -9,11 +11,11 @@ export type WorkspaceCommands = {
     options?: { replaceWorkspace?: boolean },
   ): void;
   renameSession(paneId: PaneId, tabId: SessionId, title: string): void;
-  navigate(action: Extract<WorkspaceAction, { type: "urlNavRequested" }>): boolean;
+  navigate(navigation: WorkspaceNavigation): boolean;
 };
 
 function createWorkspaceCommands(): WorkspaceCommands {
-  let dispatch: ((action: WorkspaceAction) => void) | null = null;
+  let dispatch: WorkspaceDispatch | null = null;
   return {
     bind: (next) => {
       dispatch = next;
@@ -22,20 +24,17 @@ function createWorkspaceCommands(): WorkspaceCommands {
       dispatch = null;
     },
     focusSession: (paneId, sessionId, options) => {
-      dispatch?.({
-        type: "focusPaneSession",
-        paneId,
-        sessionId,
-        replaceWorkspace: options?.replaceWorkspace,
-      });
+      dispatch?.((state) =>
+        focusPaneSession(state, { paneId, sessionId, replaceWorkspace: options?.replaceWorkspace }),
+      );
     },
     renameSession: (paneId, tabId, title) => {
       if (!title.trim()) return;
-      dispatch?.({ type: "renameTab", paneId, tabId, title });
+      dispatch?.((state) => renameTab(state, { paneId, tabId, title }));
     },
-    navigate: (action) => {
+    navigate: (navigation) => {
       if (!dispatch) return false;
-      dispatch(action);
+      dispatch((state) => applyUrlNavigation(state, navigation));
       return true;
     },
   };
