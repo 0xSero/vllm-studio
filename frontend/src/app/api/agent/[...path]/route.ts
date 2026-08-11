@@ -81,7 +81,7 @@ const rules: readonly Rule[] = [
     crossSiteError: "Cross-site terminal access rejected",
   },
   {
-    pattern: /^terminal\/pty\/(?:open|input|resize|close)$/,
+    pattern: /^terminal\/pty\/(?:open|input|resize|close|close-owner)$/,
     methods: ["POST"],
     authenticated: true,
     bodyLimits: { POST: 64 * 1024 },

@@ -4,15 +4,9 @@ asar: true
 
 afterPack: ./desktop/project.mjs
 
-asarUnpack:
-  - "node_modules/@lydell/**/*.node"
-  - "node_modules/@lydell/**/spawn-helper"
-
 files:
   - desktop/dist/**
   - package.json
-  - node_modules/@lydell/node-pty/**
-  - node_modules/@lydell/node-pty-${platform}-${arch}/**
   # electron-builder auto-includes EVERY production dependency, but the Electron
   # main process only requires electron, electron-updater, effect and node-pty
   # (verified: those are the only non-relative requires in desktop/dist). The web
@@ -34,6 +28,7 @@ files:
   - "!node_modules/sharp/**"
   - "!node_modules/playwright-core/**"
   - "!node_modules/@playwright/**"
+  - "!node_modules/@lydell/**"
 
 extraResources:
   - from: desktop/resources/app-update.yml

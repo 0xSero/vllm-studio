@@ -11,6 +11,7 @@ import {
   isPtyAvailable,
   ptyUnavailableReason,
   closePtySession,
+  closePtySessionByOwner,
   openPtySession,
   resizePtySession,
   subscribePtySession,
@@ -154,5 +155,13 @@ export async function handlePtyClose(request: Request): Promise<Response> {
   const id = asString(body?.id)?.trim();
   if (!body || !id) return jsonError("id is required");
   closePtySession(id);
+  return Response.json({ ok: true });
+}
+
+export async function handlePtyCloseOwner(request: Request): Promise<Response> {
+  const body = await readJsonBody(request);
+  const ownerKey = asString(body?.ownerKey)?.trim();
+  if (!body || !ownerKey) return jsonError("ownerKey is required");
+  closePtySessionByOwner(ownerKey);
   return Response.json({ ok: true });
 }

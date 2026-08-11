@@ -71,11 +71,7 @@ type PtyBridge = {
 
 function getPtyBridge(): PtyBridge | null {
   if (typeof window === "undefined") return null;
-  const bridge = (window as unknown as { localStudioDesktop?: { terminal?: PtyBridge } })
-    .localStudioDesktop?.terminal;
-  // Prefer the Electron bridge (local PTY); otherwise the web bridge reaches
-  // the agent runtime's server-side PTY over the authenticated proxy.
-  return bridge ?? webPtyBridge;
+  return webPtyBridge;
 }
 
 type TerminalRefs = {

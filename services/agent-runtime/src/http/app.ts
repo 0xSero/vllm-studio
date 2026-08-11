@@ -49,6 +49,7 @@ import { handleSubagentRun, handleSubagentsList } from "./subagent-handlers";
 import { handlePrGet, handlePrMerge } from "./pr-handlers";
 import {
   handlePtyClose,
+  handlePtyCloseOwner,
   handlePtyInput,
   handlePtyOpen,
   handlePtyResize,
@@ -183,6 +184,7 @@ export function createAgentRuntimeApp() {
   app.post("/api/agent/terminal/pty/input", (c) => handlePtyInput(c.req.raw));
   app.post("/api/agent/terminal/pty/resize", (c) => handlePtyResize(c.req.raw));
   app.post("/api/agent/terminal/pty/close", (c) => handlePtyClose(c.req.raw));
+  app.post("/api/agent/terminal/pty/close-owner", (c) => handlePtyCloseOwner(c.req.raw));
   app.get("/api/agent/browser/fetch", (c) => handleBrowserFetch(c.req.raw));
   app.get("/api/agent/browser/frame", () => handleBrowserFrame());
   app.post("/api/agent/browser/input", (c) => handleBrowserInput(c.req.raw));

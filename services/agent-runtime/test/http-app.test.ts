@@ -35,6 +35,24 @@ const expectedOperations = [
   "PUT /api/agent/goal",
   "DELETE /api/agent/goal",
   "GET /api/agent/providers",
+  "GET /api/agent/plugins",
+  "POST /api/agent/plugins/:id",
+  "GET /api/agent/skills",
+  "GET /api/agent/skills/load",
+  "GET /api/agent/prompt-templates",
+  "GET /api/agent/prompt-templates/load",
+  "GET /api/agent/connectors",
+  "POST /api/agent/connectors",
+  "DELETE /api/agent/connectors",
+  "GET /api/agent/connectors/call",
+  "POST /api/agent/connectors/call",
+  "POST /api/agent/connectors/test",
+  "GET /api/agent/connectors/ssh-server-path",
+  "GET /api/agent/accounts/google",
+  "PUT /api/agent/accounts/google",
+  "DELETE /api/agent/accounts/google",
+  "POST /api/agent/accounts/google/authorize",
+  "DELETE /api/agent/accounts/google/authorize",
   "GET /api/agent/providers/login/:jobId",
   "POST /api/agent/providers/login/:jobId/respond",
   "POST /api/agent/providers/login/:jobId/cancel",
@@ -45,6 +63,7 @@ const expectedOperations = [
   "POST /api/agent/terminal/pty/input",
   "POST /api/agent/terminal/pty/resize",
   "POST /api/agent/terminal/pty/close",
+  "POST /api/agent/terminal/pty/close-owner",
   "GET /api/agent/browser/fetch",
   "GET /api/agent/browser/frame",
   "POST /api/agent/browser/input",
@@ -73,7 +92,7 @@ const collectFrontendOperations = (): Set<string> => {
       else if (entry.name === "route.ts") {
         const source = readFileSync(path, "utf8");
         for (const match of source.matchAll(
-          /export (?:async )?function (GET|POST|PUT|PATCH|DELETE)\b/g,
+          /export (?:async )?(?:function |const )(GET|POST|PUT|PATCH|DELETE)\b/g,
         )) {
           operations.add(`${match[1]} ${routePath(root, directory)}`);
         }
@@ -120,12 +139,11 @@ describe("agent runtime HTTP application", () => {
         .map(({ method, path }) => `${method} ${path}`)
         .filter((operation) => operation.includes(" /api/agent/"))
         .filter((operation) => {
-          if (operation.includes(" /api/agent/terminal/pty/")) {
-            return !frontendOperations.has(
-              operation.replace(/\/terminal\/pty\/[^/]+$/, "/terminal/pty/:action"),
-            );
-          }
-          return !frontendOperations.has(operation);
+          const [method] = operation.split(" ");
+          return (
+            !frontendOperations.has(operation) &&
+            !frontendOperations.has(`${method} /api/agent/:path`)
+          );
         });
       expect(missing).toEqual([]);
     } finally {

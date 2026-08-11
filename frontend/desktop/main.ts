@@ -37,16 +37,6 @@ import {
   toggleQuickPanel,
 } from "./logic/quick-panel-window";
 import { getStoredQuickPanelHotkey, setStoredQuickPanelHotkey } from "./logic/desktop-settings";
-import {
-  closePty,
-  closePtyByOwner,
-  isPtyAvailable,
-  killAllPtys,
-  openPty,
-  ptyUnavailableReason,
-  resizePty,
-  writePty,
-} from "./logic/pty-manager";
 
 let appState: DesktopAppState = "starting";
 let mainWindow: BrowserWindow | null = null;
@@ -394,38 +384,6 @@ function registerIpcHandlers(): void {
     writeUiPreferencesFile(stringPrefs);
   });
 
-  ipcMain.handle("desktop:pty-status", async () => ({
-    available: isPtyAvailable(),
-    reason: ptyUnavailableReason(),
-  }));
-
-  ipcMain.handle(
-    "desktop:pty-open",
-    async (event, opts: { cwd?: string; cols?: number; rows?: number; ownerKey?: string }) => {
-      return openPty(event.sender, opts ?? {});
-    },
-  );
-
-  ipcMain.handle("desktop:pty-write", async (_, id: string, data: string) => {
-    if (typeof id !== "string" || typeof data !== "string") return;
-    writePty(id, data);
-  });
-
-  ipcMain.handle("desktop:pty-resize", async (_, id: string, cols: number, rows: number) => {
-    if (typeof id !== "string") return;
-    resizePty(id, Number(cols), Number(rows));
-  });
-
-  ipcMain.handle("desktop:pty-close", async (_, id: string) => {
-    if (typeof id !== "string") return;
-    closePty(id);
-  });
-
-  ipcMain.handle("desktop:pty-close-owner", async (_, ownerKey: string) => {
-    if (typeof ownerKey !== "string") return;
-    closePtyByOwner(ownerKey);
-  });
-
   ipcMain.handle("desktop:quick-panel-expand", async () => {
     resizeQuickPanelToThread();
   });
@@ -539,7 +497,6 @@ async function shutdown(): Promise<void> {
     appState = "stopping";
     stopFrontendHealthMonitor();
     globalShortcut.unregisterAll();
-    killAllPtys();
     await stopFrontendServer(frontendServer);
     frontendServer = undefined;
   })();
