@@ -1,289 +1,237 @@
-# Codebase reduction audit
+# 60k feature-parity architecture
 
 Baseline: `origin/main` at `abb9f65dd19c451c7b10077ff58469dffe121155`.
 
-## Decision
+## Completion contract
 
-Local Studio cannot lose 50% of its authored production code without losing a major product
-surface or moving that complexity into another package. The repository is already clean by the
-usual mechanical measures: the configured dead-code, dependency, clone, cycle, type, lint, build,
-and test gates all pass.
+Local Studio must contain no more than 60,000 semantic lines of authored production code without
+removing or narrowing any current feature. The count includes tracked production TypeScript,
+JavaScript, JSX, TSX, CSS, JSON, YAML, shell, and Python under `controller`, `frontend/src`,
+`frontend/desktop`, `services`, `shared`, and `scripts`. It excludes dependencies, generated build
+output, fixtures, tests, and symlinks.
 
-The honest target is:
+The starting count is 107,498 lines. Reaching the cap requires at least 47,498 lines of structural
+reduction. Lockfile deletion, test deletion, generated-code relocation, minification, denser
+formatting, and feature retirement do not count.
 
-1. Remove 12,000-24,000 production lines while preserving the current product.
-2. Choose which major product surface to retire before pursuing the remaining reduction to 50%.
+Feature parity means preserving all externally visible behavior across:
 
-Deleting lockfiles, generated artifacts, or existing tests would make the line count look smaller
-without making the shipped system simpler. Those are excluded from the production target.
+- model discovery, recipes, downloads, installation, launch, stop, metrics, logs, and usage;
+- vLLM, SGLang, llama.cpp, MLX, local and remote targets, rigs, and device selection;
+- speech installation, voice management, transcription, synthesis, and runtime recovery;
+- Pi sessions, streaming, queueing, steering, compaction, tools, goals, and subagents;
+- projects, files, Git, pull requests, browser, terminal, automations, plugins, skills, providers,
+  connectors, Google account, and Litter mobile transport;
+- browser and packaged desktop startup, settings, secure storage, pairing, updates, and recovery.
 
-## Baseline
+## Target budget
 
-| Scope                       | Files | Physical lines | Meaning                                        |
-| --------------------------- | ----: | -------------: | ---------------------------------------------- |
-| All tracked Git content     |   949 |        157,746 | Includes configuration, docs, locks, and tests |
-| Authored production content |   856 |        122,544 | Reduction denominator                          |
-| Generated lockfiles         |     4 |         27,027 | Reproducibility data, not product logic        |
-| All tests and fixtures      |    80 |          8,171 | Validation, not production logic               |
-| Recorded E2E suite          |    13 |          1,313 | Browser acceptance surface                     |
-| Non-E2E tests               |    67 |          6,858 | Existing regression coverage                   |
-| Symlinks                    |     4 |              4 | Three hooks and the canonical script link      |
-| Binary assets               |     5 |              0 | Icons and PNG assets                           |
+| Ownership boundary                                   | Current lines | Target lines | Remaining reduction |
+| ---------------------------------------------------- | ------------: | -----------: | ------------------: |
+| Controller and controller contracts                  |        22,401 |       12,500 |               9,901 |
+| Agent runtime and shared agent contracts             |        15,660 |        8,000 |               7,660 |
+| Frontend features                                    |        49,813 |       25,000 |              24,813 |
+| Frontend app, API, hooks, library, store, and UI kit |        11,808 |        8,000 |               3,808 |
+| Electron runtime                                     |         6,753 |        5,000 |               1,753 |
+| Installers and remaining shared production data      |           694 |        1,500 |                -806 |
+| **Total**                                            |   **107,129** |   **60,000** |          **47,129** |
 
-The 50% authored-production target is **61,272 lines removed**.
+The current column is measured from this PR after its first reductions. The authoritative
+acceptance number is the semantic count produced by the command in the measurement section.
 
-Installed and built size is a different metric:
-
-| Surface                    | Current local size |
-| -------------------------- | -----------------: |
-| Frontend dependencies      |             1.5 GB |
-| Controller dependencies    |             291 MB |
-| Agent-runtime dependencies |             268 MB |
-| Shared dependencies        |              54 MB |
-| Next standalone output     |             278 MB |
-| Next static assets         |               7 MB |
-| Standalone agent runtime   |              47 MB |
-
-The 971 MB Next build cache is excluded because it is neither tracked nor shipped.
-
-## Validation evidence
-
-The baseline `npm run check` passes:
-
-- TypeScript, ESLint, package integrity, contract ownership, repository structure, and production
-  builds.
-- Knip reports no dead files or exports in its configured project surfaces.
-- Depcheck reports no unused declared dependencies.
-- jscpd reports no clones at the configured 30-line/200-token threshold in the frontend or
-  controller.
-- Madge scans 559 frontend files and reports no circular dependency.
-- The existing release self-tests and frontend, controller, and agent-runtime suites pass.
-
-Every tracked blob was read for the inventory. TypeScript and JavaScript sources were parsed into
-an import graph and declaration inventory. Binary assets were identified separately. The result is
-a complete module-level map, not a sample of large files.
-
-## Runtime architecture
+## Target architecture
 
 ```mermaid
 flowchart LR
-    User["User"] --> Shell["Electron or browser shell"]
-    Shell --> Next["Next pages and API boundary"]
-    Next --> Agent["Standalone Pi agent runtime"]
-    Next --> Controller["Bun and Hono controller"]
-    Agent --> Pi["Pi sessions, tools, providers, and mobile bridge"]
-    Controller --> Engines["vLLM, SGLang, llama.cpp, and MLX"]
-    Controller --> State["SQLite, filesystem, metrics, and events"]
-    Shared["Canonical contracts"] --> Next
-    Shared --> Agent
-    Shared --> Controller
+    Contracts["Effect Schema operation registry"]
+    Controller["Controller services"]
+    Agent["Pi runtime services"]
+    Client["Generated typed client"]
+    Store["Canonical app projection"]
+    Views["Resource and workbench views"]
+    Desktop["Desktop capability adapter"]
+
+    Contracts --> Controller
+    Contracts --> Agent
+    Contracts --> Client
+    Controller --> Store
+    Agent --> Store
+    Client --> Store
+    Store --> Views
+    Desktop --> Client
 ```
 
-The repository contains two large products sharing one shell:
+The reduction depends on five ownership rules:
 
-- A model-operations workstation: controller, engines, recipes, hardware, downloads, proxy,
-  speech, status, configure, logs, and usage.
-- An agent workstation: Pi sessions, transcript state, tools, projects, browser, terminal,
-  automations, providers, plugins, goals, subagents, and mobile session transport.
+1. Each operation is declared once. The declaration owns path, method, access policy, body limit,
+   input schema, output schema, timeout, and retry policy. Hono routes, Next proxies, and browser
+   clients are derived from it.
+2. Each long-lived fact has one authority. Controller services own model lifecycle and hardware;
+   the Pi runtime owns session lifecycle and transcript state; the desktop owns OS capabilities.
+   Frontend stores project those authorities instead of replaying parallel state machines.
+3. Resource management is schema-driven. Recipes, runtimes, providers, plugins, skills, voices,
+   connectors, rigs, and controllers use shared list, detail, action, field, status, and job
+   primitives with resource-specific data rather than resource-specific screen frameworks.
+4. Engine variation is data. One engine specification owns discovery, installation, launch flags,
+   environment, devices, health, and capability metadata for vLLM, SGLang, llama.cpp, and MLX.
+5. Compatibility is isolated at the boundary. Old payload aliases and persisted-state migrations
+   are decoded once into current contracts and never branch through the rest of the application.
 
-That product split is the central reason a feature-preserving 50% cut is not available.
+## Reduction waves
 
-## Module map
+### Wave 1: one operation registry
 
-Line counts below are production TypeScript and JavaScript. CSS, Python, shell, and configuration
-remain in the repository baseline but are listed separately where material.
+Replace route modules and handwritten client methods with operations declared in canonical
+contracts. The registry generates controller route adapters, agent proxy policy, controller proxy
+policy, browser calls, and consistent errors.
 
-### Controller
+Target reduction: 4,500 lines.
 
-| Module                           | Lines | Responsibility                                                        |
-| -------------------------------- | ----: | --------------------------------------------------------------------- |
-| `controller/contracts`           | 1,407 | Canonical browser/controller HTTP shapes                              |
-| `controller/src/config`          |   358 | Environment and persisted controller configuration                    |
-| `controller/src/core`            |   809 | Commands, Effect runtime, errors, logging, validation, observability  |
-| `controller/src/http`            |   694 | Hono app, middleware, security, SSE, route registration               |
-| `controller/src/modules/compute` | 2,989 | Host/device model, launch plans, reservations, lifecycle, supervision |
-| `controller/src/modules/engines` | 4,498 | Runtime discovery, installs, jobs, recipes, downloads, engine specs   |
-| `controller/src/modules/models`  | 1,177 | Model browsing and recipe persistence                                 |
-| `controller/src/modules/proxy`   | 2,055 | OpenAI routes, streaming, reasoning, tools, accounting                |
-| `controller/src/modules/speech`  | 3,376 | Chatterbox runtime, storage, worker, voices, synthesis                |
-| `controller/src/modules/audio`   |   481 | OpenAI-compatible audio route adapters                                |
-| `controller/src/modules/studio`  | 1,183 | Settings, rigs, providers, diagnostics, storage, presets              |
-| `controller/src/modules/system`  | 3,576 | GPUs, metrics, logs, usage, compatibility, events, leases             |
-| `controller/src/services`        |   304 | Provider routing and STT/TTS adapters                                 |
-| `controller/src/stores`          | 1,058 | SQLite-backed settings, requests, usage, and rigs                     |
-| `controller/src/app-context.ts`  |   244 | Resource construction, ownership, and scoped shutdown                 |
-| `controller/src/main.ts`         |   113 | Process boot, supervisor, collector, server, and signals              |
+Acceptance:
 
-The controller is about 24,300 production TypeScript lines including contracts. Engines, system,
-speech, and compute account for most of it.
+- every current path and HTTP method remains reachable;
+- authentication, origin checks, body limits, abort propagation, streaming, and retry behavior are
+  recorded through browser-to-runtime tests;
+- contract decoding rejects the same invalid boundary values;
+- no route policy exists outside the registry.
 
-### Frontend and desktop
+The first slice is complete: 35 agent route modules now use one policy-routed catch-all while
+retaining their exact method and access rules.
 
-| Module                               |  Lines | Responsibility                                                              |
-| ------------------------------------ | -----: | --------------------------------------------------------------------------- |
-| `frontend/src/features/agent`        | 30,131 | Workbench state, transcript, composer, panes, projects, tools, and UI       |
-| `frontend/src/features/recipes`      |  7,652 | Model discovery, recipe editing, options, launch preparation                |
-| `frontend/src/features/settings`     |  5,327 | App, controller, runtime, agent, profile, terminal, and appearance settings |
-| `frontend/src/features/integrations` |  3,211 | Providers, plugins, skills, Google account, and Chatterbox UI               |
-| `frontend/src/features/dashboard`    |  2,483 | Status, GPUs, controller matrix, launch and stop actions                    |
-| `frontend/src/features/setup`        |  2,448 | First-run hardware, engine, model, launch, and benchmark flow               |
-| `frontend/src/features/logs`         |  1,187 | Log sessions, server log view, OpenAPI panel                                |
-| `frontend/src/features/configure`    |  1,076 | Consolidated machine/model/integration/server navigation                    |
-| `frontend/src/features/shell`        |    938 | Navigation, profile, phone pairing, and updates                             |
-| `frontend/src/features/usage`        |    770 | Usage normalization, heatmap, and page                                      |
-| `frontend/src/ui`                    |  3,510 | Shared controls, drawers, forms, lists, page primitives, icons              |
-| `frontend/src/hooks`                 |  1,007 | Controller events and realtime status projection                            |
-| `frontend/src/lib`                   |  1,886 | Auth, security, themes, formatting, shared browser utilities                |
-| `frontend/src/lib/api`               |  1,840 | Typed controller client and streaming transports                            |
-| `frontend/src/app/api/agent`         |  1,492 | Security-checked Next-to-agent boundary                                     |
-| Other Next API routes                |  1,274 | Controller proxy, settings, bootstrap, updates, Hugging Face                |
-| Pages and instrumentation            |  1,016 | Thin route shells and Node runtime setup                                    |
-| `frontend/desktop`                   |  7,250 | Electron lifecycle, servers, PTY, updates, pairing, secure vault, packaging |
+### Wave 2: one engine control plane
 
-The Workbench UI alone is one quarter of all authored production content. Recipes, settings, and
-desktop are the next largest frontend surfaces.
+Merge `modules/compute` lifecycle ownership with `modules/engines` runtime ownership. Replace the
+compute bridge, per-engine launchers, runtime-target adapters, and duplicated capability probes with
+one `EngineSpec` and one supervised `EngineInstance` lifecycle.
 
-### Agent runtime
+Target reduction: 6,500 lines.
 
-| Module                            | Lines | Responsibility                                                       |
-| --------------------------------- | ----: | -------------------------------------------------------------------- |
-| Litter bridge and mutation ledger | 3,950 | Signed mobile protocol, snapshots, pagination, idempotency, recovery |
-| HTTP handlers and app             | 2,103 | Runtime route contract and adapters                                  |
-| Pi runtime                        | 1,948 | Session lifecycle, events, prompts, models, tools, queueing          |
-| Sessions                          | 1,316 | Discovery, JSONL loading, metadata, text, and usage                  |
-| Google account                    | 1,385 | OAuth, workspace adapter, bindings, activation                       |
-| Plugins                           |   924 | Discovery, resources, runtime activation, connector refresh          |
-| Browser host                      |   870 | Playwright page lifecycle, frames, input, readable extraction        |
-| Providers                         |   458 | Provider catalogue, authentication jobs, model discovery             |
-| Connectors                        |   422 | MCP transport, authorization, pooling, tool calls                    |
-| Automations                       |   357 | Schedules, persistence, execution, result history                    |
-| Goals                             |   317 | Goal persistence, prompt injection, continuation driver              |
-| PTY                               |   294 | Shell sessions, replay, ownership, input, resize                     |
-| Subagents                         |   168 | Child-session discovery and execution                                |
-| OAuth vault client                |   133 | Desktop secure-storage IPC client                                    |
-| Projects                          |    84 | Allowed roots and project persistence                                |
-| Runtime core and configuration    |   563 | Settings, discovery, MCP, data directories, server entry             |
+Acceptance:
 
-The agent runtime is about 15,300 production TypeScript lines. The signed mobile bridge is large
-because it implements an adversarial protocol boundary; shortening it without preserving its
-integrity and replay invariants would be a security regression.
+- install, update, inspect, download, launch, readiness, stop, failure, and recovery pass for every
+  engine;
+- local, SSH, DGX, CUDA, ROCm, Metal, and CPU target selection retain the current behavior;
+- multi-model serving, reservations, process identity, logs, and usage attribution remain intact;
+- real vLLM and SGLang validation never disables CUDA graphs or forces eager execution.
 
-### Shared and operational modules
+### Wave 3: Pi owns sessions and transcripts
 
-| Module                         | Lines | Responsibility                                                          |
-| ------------------------------ | ----: | ----------------------------------------------------------------------- |
-| `shared/agent`                 | 1,848 | Canonical agent, session, model, automation, goal, and bridge contracts |
-| Shared model recommendations   |   134 | Hardware and model recommendation schema                                |
-| `frontend/desktop/project.mjs` | 2,389 | Setup, builds, packaging, release, hooks, audits, and smoke tests       |
-| Shell installers               |   534 | Controller service and desktop installation                             |
-| GitHub workflows               |   465 | CI, package smoke, maintenance, release signing and publication         |
-| Global CSS                     | 2,024 | Tokens, base, chat, mobile, animations, and PWA styles                  |
-| Speech worker                  |   240 | Python Chatterbox worker process                                        |
+Make the runtime's `AgentSession` snapshot the canonical source for current messages, queue, model,
+usage, tools, and turn state. Stream authoritative snapshots and compact mutations to the browser.
+Delete the second transcript state machine assembled from Pi events, the duplicate session-status
+projection, and the replay-specific grouping layer. Keep durable JSONL loading and migrations at
+the runtime boundary.
 
-## Dependency boundaries
+Target reduction: 7,500 lines.
 
-The import graph is mostly directional:
+Acceptance:
 
-- Frontend features depend heavily on `frontend/src/ui`, `frontend/src/lib`, and shared contracts.
-- Controller routes depend on core/http/contracts, with engines and system coupled through runtime
-  discovery and process observability.
-- The agent runtime depends on `shared/agent`; Pi, sessions, connectors, goals, and providers feed
-  the HTTP layer and Litter bridge.
-- Next API routes are an intentional security boundary, not merely pass-through boilerplate.
-- Electron owns OS privileges and secure storage; the standalone runtime owns long-lived Pi and
-  browser state.
+- create, resume, reconnect, rename, archive, fork, queue, steer, follow-up, stop, compact, and
+  context usage are recorded;
+- streaming text, thinking, tool arguments, tool results, errors, aborts, images, and attachments
+  match current rendering;
+- an optimistic user message is reconciled once, including multiple steers and reconnects;
+- Litter identities, signed requests, pagination, idempotency, crash reconciliation, and private
+  runtime metadata remain unchanged.
 
-The highest-value boundary problems are:
+### Wave 4: one resource workspace
 
-1. The frontend agent feature owns too many independent state layers: runtime, workspace, projects,
-   panes, transcript cache, drafts, tools, navigation, and view-local state.
-2. Controller engine discovery and compute lifecycle overlap in runtime identity, process state,
-   device placement, and launch planning.
-3. Resource configuration repeats similar list/drawer/load/save behavior across recipes, settings,
-   integrations, and configure.
-4. Next API route shells repeat method/access/body-limit declarations around a shared runtime proxy.
-5. Contracts are canonical, but hand-written frontend clients still mirror much of their structure.
+Build typed `ResourceDefinition`, `ResourceStore`, `ResourceList`, `ResourceDetail`, `ResourceForm`,
+`ResourceAction`, and `JobProgress` primitives. Express recipes, models, downloads, engines,
+runtime targets, providers, plugins, skills, connectors, voices, rigs, controllers, and automation
+records as definitions.
 
-## Complexity centers
+Target reduction: 11,000 lines.
 
-Large functions are a stronger maintenance signal than large files. The largest are:
+Acceptance:
 
-| Function                         | Lines |
-| -------------------------------- | ----: |
-| `createLitterBridgeGateway`      | 1,234 |
-| `createSessionRuntimeController` |   605 |
-| `ChatPane`                       |   501 |
-| `FilesystemPanel`                |   473 |
-| `AppearanceSettings`             |   444 |
-| `useChatPaneSendFlow`            |   415 |
-| `useSessionEngine`               |   406 |
-| `createApiCore`                  |   404 |
-| `createLitterMutationLedger`     |   372 |
-| `useSetup`                       |   350 |
+- every list field, empty state, filter, selection, edit form, secret field, validation message,
+  destructive confirmation, progress state, and action remains visible and keyboard accessible;
+- Configure, Recipes, Settings, Integrations, Setup, Dashboard, and Logs recordings cover each
+  resource state;
+- secrets remain write-only and no provider, connector, or controller credential enters browser
+  persistence unintentionally.
 
-There are 219 production functions of at least 80 physical lines. Splitting them would improve
-ownership, but splitting alone usually adds lines. Each rewrite must delete state, branches, or
-duplicated concepts rather than only moving code.
+### Wave 5: one Workbench model
 
-## What a feature-preserving reduction can remove
+Replace workspace, project, pane, transcript-cache, draft, navigation, tool, and view-local stores
+with a normalized Workbench store. Keep one record per project, session, pane, terminal, browser,
+draft, and tool selection. Derive navigation and view state through selectors. Use one command
+registry for composer, quick panel, session, tool, file, and workspace actions.
 
-| Work                                                                     | Estimated production reduction | Acceptance gate                                        |
-| ------------------------------------------------------------------------ | -----------------------------: | ------------------------------------------------------ |
-| Replace runtime API route shells with one typed policy/dispatch table    |                      800-1,200 | Recorded route/security E2E                            |
-| Generate or infer the controller client from canonical contracts         |                    1,500-2,500 | Controller/browser contract E2E                        |
-| Unify recipe, runtime, provider, plugin, skill, and voice resource views |                    4,000-6,000 | Recorded Configure workflows                           |
-| Collapse Workbench session/workspace/transcript state ownership          |                    5,000-8,000 | Recorded queue, resume, reopen, pane, and mobile flows |
-| Unify engine target identity, probes, specs, and launch planning         |                    2,000-4,000 | Real runtime launch/stop integration matrix            |
-| Reduce desktop server, package, and update orchestration                 |                    1,000-2,000 | Packaged desktop smoke and update recovery             |
-| Remove remaining compatibility aliases and redundant boundary adapters   |                      500-1,000 | Full build and recorded browser E2E                    |
+Target reduction: 14,000 lines.
 
-Total credible feature-preserving reduction: **14,800-24,700 lines**, or roughly **12-20%** of
-authored production content. Estimates are targets, not proof; every wave needs before/after source,
-bundle, package, and behavior evidence.
+Acceptance:
 
-## What reaching 50% actually requires
+- project and session navigation, pinned order, drafts, multi-pane layout, quick panel, filesystem,
+  Git diff, pull requests, browser, terminal owners, and tool selection persist across restart;
+- no session disappears during reconnect, hydration, update, or controller changes;
+- multiple open sessions and panes do not share transient state;
+- keyboard, mobile, empty, loading, error, and responsive states match recordings.
 
-### Option A: keep model operations, retire Workbench
+### Wave 6: one desktop command runtime
 
-The minimum Workbench slice is 48,763 lines:
+Replace the monolithic repository command script and parallel desktop server lifecycle helpers with
+small declarative command definitions and one supervised child-process primitive. Reuse it for
+frontend, agent runtime, controller, PTY, packaging, smoke, update, and restart flows.
 
-- 30,131 frontend agent lines.
-- 15,292 agent-runtime lines.
-- 1,492 agent API-boundary lines.
-- 1,848 shared agent-contract lines.
+Target reduction: 3,500 lines.
 
-Agent-specific desktop, settings, integrations, pages, CSS, and packaging raise the removable slice
-to roughly 55,000-60,000 lines. Removing one additional ancillary surface, such as speech or the
-desktop quick panel, crosses the 61,272-line target. This retains local model lifecycle, status,
-Configure, recipes, logs, and usage, but loses Pi sessions, tools, mobile session transport,
-providers, plugins, browser, terminal, automations, goals, and subagents.
+Acceptance:
 
-### Option B: keep Workbench, retire controller-owned model operations
+- setup, development, production start, standalone completion, package, signing inputs, desktop
+  smoke, update install intent, server restart, PTY cleanup, and shutdown pass;
+- packaged runtime paths and secure storage remain owned by the desktop process;
+- the installed app is exercised after packaging, not inferred from source or CI.
 
-The controller plus contracts, recipes, dashboard, setup, configure, controller API routes, logs,
-and usage account for at least 41,212 lines. Controller-specific settings, hooks, clients,
-integrations, desktop deployment, and CSS raise the slice to roughly 48,000-55,000 lines. Reaching
-50% requires retiring more desktop/model-management behavior as well. Workbench would connect to
-external OpenAI-compatible endpoints instead of installing and supervising local runtimes.
+### Wave 7: boundary cleanup and cap enforcement
 
-### Option C: keep simple local chat and serving, retire advanced surfaces
+Delete transitional adapters only after all consumers use the canonical boundary. Collapse static
+catalogues into typed tuples, remove re-export-only modules, centralize persisted-state codecs, and
+enforce the line budget in the repository audit command.
 
-Remove the Litter bridge, browser host, PTY, Git/PR UI, filesystem panes, subagents, automations,
-goals, Google/connectors/plugins, speech, advanced recipe editor, multi-pane workspace, and most
-desktop deployment/update management. This can reach 55,000-65,000 lines while retaining basic
-model launch, status, and single-session chat. It has the widest migration surface because nearly
-every layer changes.
+Target reduction: 2,572 lines plus contingency needed to finish below 60,000.
 
-## Recommended sequence
+Acceptance:
 
-1. Keep the current product intact while completing the feature-preserving 12-20% reduction.
-2. Measure tracked production lines, static assets, standalone output, packaged app size, startup,
-   and recorded behavior after every wave.
-3. Do not remove existing regression coverage until an equivalent recorded E2E flow exists.
-4. After the safe waves, choose Option A, B, or C explicitly. Do not disguise feature deletion as
-   refactoring.
-5. Treat 61,272 removed production lines as the completion gate; lockfiles and tests do not count.
+- the production inventory is at or below 60,000 semantic lines;
+- the full repository check, controller/runtime integration suite, browser E2E suite, and packaged
+  desktop smoke pass;
+- recorded artifacts show both the user action and visible result;
+- the branch contains no feature flags that hide removed behavior and no generated implementation
+  moved outside the measured roots.
 
-The first implementation step has already removed four frontend re-export modules so consumers now
-import canonical `shared/agent` contracts directly. Recorded controller E2E is enabled, and its fake
-slow-response fixture now remains deterministic under visible action recording.
+## Dependency order
+
+```mermaid
+flowchart TD
+    W1["1. Operation registry"] --> W2["2. Engine control plane"]
+    W1 --> W3["3. Runtime session authority"]
+    W1 --> W4["4. Resource workspace"]
+    W3 --> W5["5. Workbench model"]
+    W4 --> W5
+    W2 --> W6["6. Desktop command runtime"]
+    W3 --> W6
+    W5 --> W7["7. Cleanup and cap"]
+    W6 --> W7
+```
+
+Waves can contain multiple small commits, but a compatibility adapter is removed only in the same
+commit that moves its final consumer. Every commit must leave the branch buildable.
+
+## Measurement
+
+The acceptance inventory is reproducible from tracked, non-symlink files:
+
+```sh
+git ls-files -s |
+  awk '$1 != "120000" {print substr($0,index($0,"\t")+1)}' |
+  rg '^(controller|frontend/src|frontend/desktop|services|shared|scripts)/' |
+  rg '\.(ts|tsx|js|jsx|mjs|css|json|ya?ml|sh|py)$' |
+  rg -v '(^|/)(node_modules|\.next|dist|build|test|tests|__tests__|fixtures)(/|$)|\.(test|spec)\.' \
+  > production-files.txt
+npx cloc --list-file=production-files.txt
+```
+
+Each PR update records the commit, total, delta from 107,498, validation commands, recordings, and
+remaining gap. Estimates never count as delivered reduction.
