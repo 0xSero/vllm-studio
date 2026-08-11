@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
+import { useStore } from "zustand";
+import { createStore, type StoreApi } from "zustand/vanilla";
 import { safeJson } from "@/features/agent/safe-json";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { clampComputerWidth, gentlySnapComputerWidth } from "@/features/agent/tools/persistence";
@@ -84,6 +86,9 @@ export type UseWorkspaceOptions = {
   ephemeral?: boolean;
 };
 
+const workspaceStore = createStore<WorkspaceState>(() => createInitialState());
+const ephemeralWorkspaceStore = createStore<WorkspaceState>(() => createInitialState());
+
 function createMemoryStorage(): Pick<Storage, "getItem" | "setItem" | "removeItem"> {
   const entries = new Map<string, string>();
   return {
@@ -155,8 +160,8 @@ function api(): WorkspaceEffectDeps["api"] {
 
 export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): UseWorkspaceResult {
   const toolsRef = useToolsRef();
-  const [state, setState] = useState<WorkspaceState>(createInitialState);
-  const stateRef = useRef(state);
+  const store: StoreApi<WorkspaceState> = ephemeral ? ephemeralWorkspaceStore : workspaceStore;
+  const state = useStore(store);
   const paneHandlesRef = useRef<Map<PaneId, ChatPaneHandle>>(new Map());
   const computerAsideRef = useRef<HTMLElement | null>(null);
 
@@ -164,11 +169,11 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
   const getReplayQueue = useCallback(() => {
     replayQueueRef.current ??= createSessionReplayQueue({
       getHandle: (paneId) => paneHandlesRef.current.get(paneId),
-      getState: () => stateRef.current,
+      getState: store.getState,
       setTimeout: (handler, delay) => window.setTimeout(handler, delay),
     });
     return replayQueueRef.current;
-  }, []);
+  }, [store]);
   const queueSessionReplay = useCallback(
     (paneId: PaneId, piSessionId: string) => getReplayQueue().queue(paneId, piSessionId),
     [getReplayQueue],
@@ -189,11 +194,10 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
     };
 
     const workspaceDispatch: WorkspaceDispatch = (mutation) => {
-      const prev = stateRef.current;
+      const prev = store.getState();
       const next = mutation(prev);
       if (next === prev) return;
-      stateRef.current = next;
-      setState(next);
+      store.setState(next, true);
       const deps = makeDeps(workspaceDispatch);
       if (deps) runWorkspaceEffect(prev, next, deps);
     };
@@ -205,7 +209,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         if (deps) scheduleSessionsRefresh(deps);
       },
     };
-  }, [queueSessionReplay, ephemeral]);
+  }, [queueSessionReplay, ephemeral, store]);
 
   const { dispatch } = controller;
 
@@ -244,7 +248,8 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
       reload();
     };
     const recoverIfEmpty = () => {
-      if (stateRef.current.models.length === 0 && !stateRef.current.modelsLoading) reload();
+      const current = store.getState();
+      if (current.models.length === 0 && !current.modelsLoading) reload();
     };
     const retryTimers = [900, 2500, 6000].map((ms) => window.setTimeout(recoverIfEmpty, ms));
     window.addEventListener("storage", onStorage);
@@ -256,7 +261,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
       window.removeEventListener("focus", recoverIfEmpty);
       window.removeEventListener("online", recoverIfEmpty);
     };
-  }, [dispatch]);
+  }, [dispatch, store]);
 
   const handles = useMemo<WorkspaceHandles>(
     () => ({
@@ -284,7 +289,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         if (handle) getReplayQueue().notifyHandleRegistered(paneId);
       },
       compactFocusedSession: async () => {
-        const handle = paneHandlesRef.current.get(stateRef.current.focusedPaneId);
+        const handle = paneHandlesRef.current.get(store.getState().focusedPaneId);
         await handle?.compact();
       },
       setSplitRatio: (path: number[], ratio: number) =>
@@ -292,7 +297,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
       updateSession: (sessionId, patch) =>
         dispatch((state) => patchWorkspaceSession(state, sessionId, patch)),
       updateDetachedSession: (fallback: Session, patch: Parameters<UpdateSession>[1]) => {
-        const current = stateRef.current.sessions.get(fallback.id) ?? fallback;
+        const current = store.getState().sessions.get(fallback.id) ?? fallback;
         dispatch((state) => ({ ...state, sessions: setSession(state.sessions, patch(current)) }));
       },
       removeDetachedSession: (sessionId: string) =>
@@ -370,10 +375,15 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         }
       },
     }),
-    [controller.notifySessionsChanged, dispatch, ephemeral, getReplayQueue],
+    [controller.notifySessionsChanged, dispatch, ephemeral, getReplayQueue, store],
   );
 
-  useWorkspaceHydrationEffects({ dispatch, toolsRef, skipRestore: ephemeral });
+  useWorkspaceHydrationEffects({
+    dispatch,
+    hydrated: state.hydrated,
+    toolsRef,
+    skipRestore: ephemeral,
+  });
   useWorkspaceRuntimeSync({ dispatch, sessions: [...state.sessions.values()] });
 
   return { state, dispatch, handles };

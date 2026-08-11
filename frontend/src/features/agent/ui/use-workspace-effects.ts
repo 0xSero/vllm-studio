@@ -21,27 +21,31 @@ function shouldRestoreWorkspace(params: URLSearchParams): boolean {
 
 export function useWorkspaceHydrationEffects({
   dispatch,
+  hydrated,
   toolsRef,
   skipRestore = false,
 }: {
   dispatch: WorkspaceDispatch;
+  hydrated: boolean;
   toolsRef: RefObject<ToolsContextValue>;
   skipRestore?: boolean;
 }): void {
   useMountSubscription(() => {
-    const params = currentSearchParams();
-    const restoreWorkspace = !skipRestore && shouldRestoreWorkspace(params);
-    const { workspace, selections } = restoreWorkspace
-      ? loadInitialFromStorage(window.localStorage)
-      : { workspace: {}, selections: new Map() };
-    dispatch((state) => ({ ...state, ...workspace, hydrated: true }));
-    if (selections.size > 0) toolsRef.current.hydrateSelections(selections);
+    if (!hydrated) {
+      const params = currentSearchParams();
+      const restoreWorkspace = !skipRestore && shouldRestoreWorkspace(params);
+      const { workspace, selections } = restoreWorkspace
+        ? loadInitialFromStorage(window.localStorage)
+        : { workspace: {}, selections: new Map() };
+      dispatch((state) => ({ ...state, ...workspace, hydrated: true }));
+      if (selections.size > 0) toolsRef.current.hydrateSelections(selections);
+    }
 
     workspaceCommands().bind(dispatch);
     return () => {
       workspaceCommands().unbind();
     };
-  }, [dispatch, toolsRef, skipRestore]);
+  }, [dispatch, hydrated, toolsRef, skipRestore]);
 }
 
 type UseWorkspaceRuntimeSyncDeps = {

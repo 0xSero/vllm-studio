@@ -9,10 +9,9 @@ import {
 } from "@/features/agent/ui/quick-panel/quick-panel-top-bar";
 import { CloseIcon, PlusIcon } from "@/ui/icons";
 import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
-import type { AgentModel, WorkspaceState } from "@/features/agent/workspace/types";
+import type { WorkspaceState } from "@/features/agent/workspace/types";
 import { useProjects, type ProjectsContextValue } from "@/features/agent/projects/context";
 import { useTools } from "@/features/agent/tools/context";
-import type { Project } from "@/features/agent/projects/types";
 import { focusedSession } from "@/features/agent/runtime/selectors";
 import { PaneGrid } from "@/features/agent/ui/pane-grid";
 import { useWorkspace, type WorkspaceHandles } from "@/features/agent/ui/use-workspace";
@@ -28,13 +27,6 @@ const LazyAgentBrowserPanel = lazy(() =>
     default: AgentBrowserPanel,
   })),
 );
-
-type AgentWorkspaceShellProps = {
-  state: WorkspaceState;
-  dispatch: WorkspaceDispatch;
-  handles: WorkspaceHandles;
-  compact?: boolean;
-};
 
 type QuickPanelMode = "composer" | "thread" | undefined;
 
@@ -75,12 +67,8 @@ export function shouldShowProjectEmptyState(
   );
 }
 
-export function AgentWorkspaceShell({
-  state,
-  dispatch,
-  handles,
-  compact = false,
-}: AgentWorkspaceShellProps) {
+export function AgentWorkspace({ compact = false }: { compact?: boolean } = {}) {
+  const { state, dispatch, handles } = useWorkspace({ ephemeral: compact });
   const projects = useProjects();
   const tools = useTools();
   const searchParams = useSearchParams();
@@ -139,61 +127,22 @@ export function AgentWorkspaceShell({
           />
         </section>
         {!compact ? (
-          <WorkspaceComputerPanel
-            open={tools.computer.open}
-            handles={handles}
-            activeProject={activeProject}
-            focusedTab={focusedTab}
-            sessions={state.sessions}
-            selectedModel={state.selectedModel}
-            models={state.models}
-            modelsLoading={state.modelsLoading}
-            focusedModel={focusedModel}
-            focusedGitSummary={focusedGitSummary}
-          />
+          <Suspense fallback={tools.computer.open ? <ComputerPanelFallback /> : null}>
+            <LazyAgentBrowserPanel
+              handles={handles}
+              activeProject={activeProject}
+              focusedSession={focusedTab}
+              sessions={[...state.sessions.values()]}
+              activeModelId={focusedTab?.modelId ?? state.selectedModel}
+              activeModel={focusedModel}
+              gitSummary={focusedGitSummary}
+              models={state.models}
+              modelsLoading={state.modelsLoading}
+            />
+          </Suspense>
         ) : null}
       </div>
     </div>
-  );
-}
-
-function WorkspaceComputerPanel({
-  open,
-  handles,
-  activeProject,
-  focusedTab,
-  sessions,
-  selectedModel,
-  models,
-  modelsLoading,
-  focusedModel,
-  focusedGitSummary,
-}: {
-  open: boolean;
-  handles: WorkspaceHandles;
-  activeProject: Project | null;
-  focusedTab: ReturnType<typeof focusedSession>;
-  sessions: WorkspaceState["sessions"];
-  selectedModel: string;
-  models: AgentModel[];
-  modelsLoading: boolean;
-  focusedModel: AgentModel | null;
-  focusedGitSummary: ReturnType<ProjectsContextValue["gitSummary"]>;
-}) {
-  return (
-    <Suspense fallback={open ? <ComputerPanelFallback /> : null}>
-      <LazyAgentBrowserPanel
-        handles={handles}
-        activeProject={activeProject}
-        focusedSession={focusedTab}
-        sessions={[...sessions.values()]}
-        activeModelId={focusedTab?.modelId ?? selectedModel}
-        activeModel={focusedModel}
-        gitSummary={focusedGitSummary}
-        models={models}
-        modelsLoading={modelsLoading}
-      />
-    </Suspense>
   );
 }
 
@@ -365,11 +314,4 @@ function useActiveSessionEffects({
       viewKey ? { key: viewKey, aliases: viewAlias ? [viewAlias] : [] } : null,
     );
   }, [viewKey, viewAlias, setActiveComputerSession]);
-}
-
-export function AgentWorkspace({ compact }: { compact?: boolean } = {}) {
-  const { state, dispatch, handles } = useWorkspace({ ephemeral: Boolean(compact) });
-  return (
-    <AgentWorkspaceShell state={state} dispatch={dispatch} handles={handles} compact={compact} />
-  );
 }
