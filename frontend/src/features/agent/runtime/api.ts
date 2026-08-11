@@ -108,13 +108,16 @@ export function loadRuntimeStatus(
   );
 }
 
-export function abortSession(sessionId: string): Promise<AbortSessionResult> {
+export function abortSession(
+  sessionId: string,
+  piSessionId?: string | null,
+): Promise<AbortSessionResult> {
   return Effect.runPromise(
     Effect.gen(function* () {
       const response = yield* fetchEffect("/api/agent/abort", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({ sessionId, piSessionId }),
       });
       const payload = yield* safeJsonEffect<unknown>(response);
       return parseAbortSessionResult(payload);

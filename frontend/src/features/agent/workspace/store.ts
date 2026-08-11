@@ -101,20 +101,11 @@ export function normalizePersistedTab(value: unknown): Session | null {
   };
 }
 
-export function legacyRuntimeKeyFromPersistedTab(value: unknown): string | null {
-  if (!value || typeof value !== "object") return null;
-  const tab = value as PersistedTabShape;
-  return typeof tab.runtimeSessionId === "string" && tab.runtimeSessionId.trim()
-    ? tab.runtimeSessionId.trim()
-    : null;
-}
-
 export type RestoredPaneState = {
   layout: WorkspaceLayout;
   panesById: Map<PaneId, PaneState>;
   sessions: Map<SessionId, Session>;
   selections: Map<SessionId, ToolSelection>;
-  legacyRuntimeKeys: Map<SessionId, string>;
   focusedPaneId: PaneId;
 };
 
@@ -130,23 +121,17 @@ function parsePersistedPaneState(raw: string): Partial<PersistedPaneState> | nul
 function restoreTabsWithSelections(rawTabs: unknown[]): {
   tabs: Session[];
   selections: Map<SessionId, ToolSelection>;
-  legacyRuntimeKeys: Map<SessionId, string>;
 } {
   const tabs: Session[] = [];
   const selections = new Map<SessionId, ToolSelection>();
-  const legacyRuntimeKeys = new Map<SessionId, string>();
   for (const raw of rawTabs) {
     const session = normalizePersistedTab(raw);
     if (!session) continue;
     tabs.push(session);
     const selection = toolSelectionFromPersistedTab(raw);
     if (selection) selections.set(session.id, selection);
-    const legacyRuntimeKey = legacyRuntimeKeyFromPersistedTab(raw);
-    if (legacyRuntimeKey && legacyRuntimeKey !== session.id) {
-      legacyRuntimeKeys.set(session.id, legacyRuntimeKey);
-    }
   }
-  return { tabs, selections, legacyRuntimeKeys };
+  return { tabs, selections };
 }
 
 function activePersistedTabId(
@@ -193,7 +178,6 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
   const panesById = new Map<PaneId, PaneState>();
   const sessions = new Map<SessionId, Session>(stored.tabs.map((session) => [session.id, session]));
   const selections = new Map<SessionId, ToolSelection>(stored.selections);
-  const legacyRuntimeKeys = new Map<SessionId, string>(stored.legacyRuntimeKeys);
 
   for (const paneId of leaves) {
     const pane = persistedPanes[paneId] ?? {};
@@ -204,7 +188,6 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
     const session = tabs.find((tab) => tab.id === activeSessionId) ?? tabs[0];
     for (const tab of tabs) sessions.set(tab.id, tab);
     for (const entry of restored.selections) selections.set(...entry);
-    for (const entry of restored.legacyRuntimeKeys) legacyRuntimeKeys.set(...entry);
     panesById.set(paneId, { sessionId: session.id });
   }
 
@@ -213,7 +196,6 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
     panesById,
     sessions,
     selections,
-    legacyRuntimeKeys,
     focusedPaneId: focusedPersistedPaneId(parsed.focusedPaneId, leaves),
   };
 }

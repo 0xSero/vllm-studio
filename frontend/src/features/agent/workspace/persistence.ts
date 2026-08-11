@@ -113,7 +113,6 @@ function restoreLegacyDrafts(
 export type LoadedFromStorage = {
   workspace: Partial<WorkspaceState>;
   selections: Map<SessionId, ToolSelection>;
-  legacyRuntimeKeys: Map<SessionId, string>;
 };
 
 export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromStorage {
@@ -122,14 +121,13 @@ export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromSto
   const rawState = readStorage(storage, PANE_STATE_KEY);
   const restoredState = rawState ? restorePersistedPaneState(rawState) : null;
   if (restoredState) {
-    const { selections, legacyRuntimeKeys, ...workspace } = restoredState;
+    const { selections, ...workspace } = restoredState;
     return {
       workspace: {
         ...workspace,
         sessions: restoreLegacyDrafts(storage, workspace.sessions),
       },
       selections,
-      legacyRuntimeKeys,
     };
   }
 
@@ -140,7 +138,6 @@ export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromSto
     return {
       workspace: { ...initial, sessions: restoreLegacyDrafts(storage, initial.sessions) },
       selections: new Map(),
-      legacyRuntimeKeys: new Map(),
     };
   }
   return {
@@ -149,7 +146,6 @@ export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromSto
       sessions: restoreLegacyDrafts(storage, restoredLayout.sessions),
     },
     selections: new Map(),
-    legacyRuntimeKeys: new Map(),
   };
 }
 

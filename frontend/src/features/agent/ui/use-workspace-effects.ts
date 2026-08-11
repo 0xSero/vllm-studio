@@ -31,12 +31,9 @@ export function useWorkspaceHydrationEffects({
   useMountSubscription(() => {
     const params = currentSearchParams();
     const restoreWorkspace = !skipRestore && shouldRestoreWorkspace(params);
-    const { workspace, selections, legacyRuntimeKeys } = restoreWorkspace
+    const { workspace, selections } = restoreWorkspace
       ? loadInitialFromStorage(window.localStorage)
-      : { workspace: {}, selections: new Map(), legacyRuntimeKeys: new Map() };
-    for (const [sessionId, runtimeKey] of legacyRuntimeKeys) {
-      sessionRuntimeController().seedConnectionKey(sessionId, runtimeKey);
-    }
+      : { workspace: {}, selections: new Map() };
     dispatch((state) => ({ ...state, ...workspace, hydrated: true }));
     if (selections.size > 0) toolsRef.current.hydrateSelections(selections);
 

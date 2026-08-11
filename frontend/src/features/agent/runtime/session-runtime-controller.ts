@@ -103,18 +103,6 @@ export type SessionRuntimeController = {
   pollNow(): void;
   /** Flush everything and close every SSE attachment (workspace unmount). */
   closeAll(): void;
-  /**
-   * The connection key a session is currently addressed by on the runtime API.
-   * Normally the session's own runtime key; after a restart adoption it is the
-   * controller-internal override recorded by the poll's pi-session match.
-   */
-  connectionKey(sessionId: SessionId): string;
-  /**
-   * Seed the connection-key override from a legacy persisted runtime id (a
-   * pre-alias `rt-*` value read once from old localStorage state), so a session
-   * that was RUNNING under that key across the upgrade reattaches to it.
-   */
-  seedConnectionKey(sessionId: SessionId, runtimeKey: string): void;
 };
 
 type Attachment = { key: string; close: () => void };
@@ -218,26 +206,12 @@ export function createSessionRuntimeController(
   // fighting the SSE's idle and oscillating status (visible flicker + SSE
   // reopen churn). This stamp lets the active branch honor the finish grace.
   const turnFinishedAt = new Map<SessionId, number>();
-  // Ephemeral per-session connection-key overrides — reconnection plumbing, not
-  // session state. Set when the poll's pi-session match finds this session's
-  // runtime living under a DIFFERENT server key (a restart adoption, or a
-  // legacy pre-alias `rt-*` key seeded across an upgrade); every runtime API
-  // address for the session then uses the override instead of the session id.
-  const connectionKeyOverrides = new Map<SessionId, string>();
-  const connectionKeyFor = (session: Session): string =>
-    connectionKeyOverrides.get(session.id) ?? session.id;
-
   // Sessions evicted from the workspace registry (closed panes, pruned
   // background sessions) must not leave app-lifetime entries behind in this
   // singleton's per-session maps. Only truly-gone ids are pruned —
   // idle-but-open sessions keep their cursor seed.
   const pruneStaleSessionEntries = (knownIds: ReadonlySet<SessionId>): void => {
-    const maps: Array<Map<SessionId, unknown>> = [
-      cursors,
-      turnAcceptedAt,
-      turnFinishedAt,
-      connectionKeyOverrides,
-    ];
+    const maps: Array<Map<SessionId, unknown>> = [cursors, turnAcceptedAt, turnFinishedAt];
     for (const map of maps) {
       for (const sessionId of [...map.keys()]) {
         if (!knownIds.has(sessionId)) map.delete(sessionId);
@@ -371,40 +345,6 @@ export function createSessionRuntimeController(
     return acceptedAt === undefined || acceptedAt <= finishedAt;
   };
 
-  // Restart adoption: the pi match found this session's runtime under a new
-  // server key. Record the connection-key override (controller-internal —
-  // reconnection plumbing, not session state), reset the cursor, and reopen an
-  // existing attachment under the new key.
-  const adoptConnectionKey = (
-    session: Session,
-    nextConnectionKey: string,
-    piSessionId: string | null,
-  ) => {
-    // Adopting a different server key means the session is now served by a
-    // fresh runtime whose event seq restarts from 0. The cursor is keyed by
-    // the stable sessionId and still holds the OLD runtime's seq, so a
-    // reconnect would resume "after <old seq>" and skip the new runtime's
-    // early events. Reset it (as noteTurnAccepted does on a restart) before
-    // the SSE reopens.
-    adoptCursor(session.id, undefined);
-    if (nextConnectionKey === session.id) {
-      connectionKeyOverrides.delete(session.id);
-    } else {
-      connectionKeyOverrides.set(session.id, nextConnectionKey);
-    }
-    // The override is controller-internal — no session state changes, so the
-    // React binding's reconcile will not fire. Reopen an existing attachment
-    // under the new key ourselves; openAttachment connects from the
-    // freshly-reset in-memory cursor. A session without an attachment
-    // (idle -> running promotion) is picked up by the binding's reconcile
-    // when the status commit lands.
-    const attachment = attachments.get(session.id);
-    if (attachment) {
-      attachment.close();
-      attachments.set(session.id, openAttachment(session.id, nextConnectionKey, piSessionId));
-    }
-  };
-
   // Reconcile the workspace sessions against one runtime-list snapshot. The
   // poll is the second leg of status arbitration next to the SSE attachments:
   // it promotes sessions whose runtime is active (including adopting a new
@@ -415,21 +355,17 @@ export function createSessionRuntimeController(
     const byPi = new Map(
       runtimeSessions
         .filter((entry) => entry.status.piSessionId)
-        .map((entry) => [
-          entry.status.piSessionId!,
-          { serverKey: entry.sessionId, status: entry.status },
-        ]),
+        .map((entry) => [entry.status.piSessionId!, entry.status]),
     );
     const sessions = binding?.getSessions() ?? [];
     const sharedPiIds = collidingPiSessionIds(sessions);
     for (const session of sessions.filter((entry) => entry.status !== "loading")) {
-      const connectionKey = connectionKeyFor(session);
-      const direct = byRuntime.get(connectionKey);
+      const direct = byRuntime.get(session.id);
       const piMatch =
         session.piSessionId && !sharedPiIds.has(session.piSessionId)
           ? byPi.get(session.piSessionId)
           : undefined;
-      const status = direct ?? piMatch?.status;
+      const status = direct ?? piMatch;
       if (!status) continue;
       if (status.active === true) {
         // Post-finish grace (symmetric to the idle branch's accept grace): the
@@ -441,7 +377,7 @@ export function createSessionRuntimeController(
         // branch inside the grace window UNLESS a newer turn was accepted after
         // the finish (a genuine restart supersedes the finish and must recover).
         if (withinFinishGrace(session.id, fetchStartedAt)) continue;
-        promoteFromRuntimeList(session, status, connectionKey, piMatch?.serverKey);
+        promoteFromRuntimeList(session, status);
       } else if (session.status === "running" || session.status === "stopping") {
         idleFromRuntimeList(session, status, fetchStartedAt);
       }
@@ -465,23 +401,8 @@ export function createSessionRuntimeController(
     return shared;
   };
 
-  // The runtime reports this session as active: adopt a new connection key if
-  // the pi match moved it, then promote to running unless it is stopping.
-  const promoteFromRuntimeList = (
-    session: Session,
-    status: RuntimeStatus,
-    connectionKey: string,
-    matchedServerKey: string | undefined,
-  ) => {
+  const promoteFromRuntimeList = (session: Session, status: RuntimeStatus) => {
     const patch = patchRuntimeStatus(status);
-    const nextConnectionKey = matchedServerKey ?? connectionKey;
-    if (nextConnectionKey !== connectionKey) {
-      adoptConnectionKey(
-        session,
-        nextConnectionKey,
-        status.piSessionId ?? session.piSessionId ?? null,
-      );
-    }
     commit(session.id, (current) => {
       const nextStatus = current.status === "stopping" ? "stopping" : "running";
       if (sameRuntimePatch(current, patch, nextStatus)) return current;
@@ -688,12 +609,11 @@ export function createSessionRuntimeController(
     reconcile: (sessions) => {
       const desired = new Map<
         SessionId,
-        { connectionKey: string; piSessionId: string | null; lastEventSeq: number | undefined }
+        { piSessionId: string | null; lastEventSeq: number | undefined }
       >();
       for (const session of sessions) {
         if (shouldSubscribeRuntimeEvents(session.status)) {
           desired.set(session.id, {
-            connectionKey: connectionKeyFor(session),
             piSessionId: session.piSessionId ?? null,
             lastEventSeq: session.lastEventSeq,
           });
@@ -702,7 +622,7 @@ export function createSessionRuntimeController(
 
       for (const [sessionId, attachment] of [...attachments]) {
         const want = desired.get(sessionId);
-        const key = want ? resumeConnectionKey(want.connectionKey, want.piSessionId) : "";
+        const key = want ? resumeConnectionKey(sessionId, want.piSessionId) : "";
         if (!want || attachment.key !== key) {
           attachment.close();
           attachments.delete(sessionId);
@@ -726,7 +646,7 @@ export function createSessionRuntimeController(
         if (!existing || (want.lastEventSeq ?? 0) > (existing.receivedSeq ?? 0)) {
           cursors.set(sessionId, adoptExternalCursor(want.lastEventSeq));
         }
-        attachments.set(sessionId, openAttachment(sessionId, want.connectionKey, want.piSessionId));
+        attachments.set(sessionId, openAttachment(sessionId, sessionId, want.piSessionId));
       }
     },
     flush: () => undefined,
@@ -751,14 +671,6 @@ export function createSessionRuntimeController(
       cursors.clear();
       turnAcceptedAt.clear();
       turnFinishedAt.clear();
-      connectionKeyOverrides.clear();
-    },
-    connectionKey: (sessionId) => connectionKeyOverrides.get(sessionId) ?? sessionId,
-    seedConnectionKey: (sessionId, runtimeKey) => {
-      // One-shot legacy seed: never clobber an override the poll already owns.
-      if (!runtimeKey || runtimeKey === sessionId) return;
-      if (connectionKeyOverrides.has(sessionId)) return;
-      connectionKeyOverrides.set(sessionId, runtimeKey);
     },
   };
 }

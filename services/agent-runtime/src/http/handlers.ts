@@ -260,12 +260,16 @@ function turnRouteEffect(request: Request): Effect.Effect<Response, unknown> {
 // ─── POST /api/agent/abort ────────────────────────────────────────────────
 
 export async function handleAgentAbort(request: Request): Promise<Response> {
-  const body = (await request.json().catch(() => ({}))) as { sessionId?: string };
+  const body = (await request.json().catch(() => ({}))) as {
+    sessionId?: string;
+    piSessionId?: string | null;
+  };
   const sessionId =
     typeof body.sessionId === "string" && body.sessionId.trim() ? body.sessionId.trim() : "default";
-  // Surface what the stop cleared so the client can put those messages back in
-  // front of the user instead of dropping them on the floor.
-  const cleared = await piRuntimeManager.getSession(sessionId).abort();
+  const piSessionId = typeof body.piSessionId === "string" ? body.piSessionId.trim() : null;
+  const resolved = piRuntimeManager.findSessionForLookup(sessionId, piSessionId);
+  if (!resolved) return jsonError("Runtime session not found", 404);
+  const cleared = await resolved.session.abort();
   return Response.json({ ok: true, cleared });
 }
 
@@ -342,7 +346,7 @@ function compactRouteEffect(request: Request): Effect.Effect<Response, unknown> 
     }
 
     return yield* Effect.gen(function* () {
-      const session = piRuntimeManager.getSession(sessionId);
+      const session = piRuntimeManager.getSessionForLookup(sessionId, piSessionId).session;
       const skills = sanitizeComposerSkills(body.skills);
       const promptTemplates = sanitizeComposerPromptTemplates(body.promptTemplates);
       yield* Effect.tryPromise({
