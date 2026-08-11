@@ -1,3 +1,5 @@
+import { readStored } from "@/lib/storage";
+
 const TRACE_STORAGE_KEY = "local-studio:trace-agent-reasoning";
 
 // This flag is consulted on every streaming event and block render, so cache
@@ -10,7 +12,7 @@ export function agentReasoningTraceEnabled(): boolean {
   if (traceEnabledCache !== null) return traceEnabledCache;
   try {
     traceEnabledCache =
-      window.localStorage.getItem(TRACE_STORAGE_KEY) === "1" ||
+      readStored(TRACE_STORAGE_KEY) === "1" ||
       new URLSearchParams(window.location.search).has("traceAgentReasoning");
   } catch {
     traceEnabledCache = false;

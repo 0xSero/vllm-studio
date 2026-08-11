@@ -1,4 +1,5 @@
 import { isAgentThinkingLevel, type AgentThinkingLevel } from "@/features/agent/contracts";
+import { readStored, writeStored } from "@/lib/storage";
 
 // Global, client-only preference for the reasoning ("thinking") level a *new*
 // session should start at. Persisted in localStorage so the last level the user
@@ -12,24 +13,14 @@ const THINKING_LEVEL_DEFAULT_KEY = "local-studio.agent.thinkingLevelDefault";
  *  undefined when unset, off the server, or if storage is unavailable or holds
  *  a value that is no longer a valid level. */
 export function loadThinkingLevelDefault(): AgentThinkingLevel | undefined {
-  if (typeof window === "undefined") return undefined;
-  try {
-    const raw = window.localStorage.getItem(THINKING_LEVEL_DEFAULT_KEY);
-    return isAgentThinkingLevel(raw) ? raw : undefined;
-  } catch {
-    return undefined;
-  }
+  const raw = readStored(THINKING_LEVEL_DEFAULT_KEY);
+  return isAgentThinkingLevel(raw) ? raw : undefined;
 }
 
 /** Remember the level the user just picked so the next fresh session adopts it.
  *  Best-effort — storage failures are swallowed like every other client pref. */
 export function setThinkingLevelDefault(level: AgentThinkingLevel): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(THINKING_LEVEL_DEFAULT_KEY, level);
-  } catch {
-    /* ignore storage failures — persistence here is a convenience, not load-bearing */
-  }
+  writeStored(THINKING_LEVEL_DEFAULT_KEY, level);
 }
 
 /** Resolve the level a session should use: its own saved choice wins, otherwise

@@ -1,4 +1,5 @@
 import { SESSION_PREFS_KEY } from "@/features/agent/workspace/store";
+import { readStored, readStoredJson, writeStored } from "@/lib/storage";
 import { SESSION_PREFS_CHANGED_EVENT } from "@/lib/workspace-events";
 
 export type SessionPref = {
@@ -31,15 +32,9 @@ function getDesktopBridge(): {
 
 /** Fast synchronous read from localStorage. Use this during renders. */
 export function loadSessionPrefs(): SessionPrefs {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(SESSION_PREFS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object" ? (parsed as SessionPrefs) : {};
-  } catch {
-    return {};
-  }
+  return readStoredJson(SESSION_PREFS_KEY, {}, (value) =>
+    value && typeof value === "object" ? (value as SessionPrefs) : null,
+  );
 }
 
 /** One-time bootstrap: if localStorage is empty, restore from the durable
@@ -47,13 +42,13 @@ export function loadSessionPrefs(): SessionPrefs {
 export async function hydrateSessionPrefsFromDesktop(): Promise<void> {
   if (typeof window === "undefined") return;
   // Only hydrate if localStorage is empty — avoids overwriting newer data.
-  if (window.localStorage.getItem(SESSION_PREFS_KEY)) return;
+  if (readStored(SESSION_PREFS_KEY)) return;
   try {
     const bridge = getDesktopBridge();
     if (!bridge) return;
     const prefs = await bridge.loadSessionPrefs();
     if (prefs && typeof prefs === "object" && Object.keys(prefs).length > 0) {
-      window.localStorage.setItem(SESSION_PREFS_KEY, JSON.stringify(prefs));
+      writeStored(SESSION_PREFS_KEY, JSON.stringify(prefs));
       window.dispatchEvent(new Event(SESSION_PREFS_CHANGED_EVENT));
     }
   } catch {
@@ -64,7 +59,7 @@ export async function hydrateSessionPrefsFromDesktop(): Promise<void> {
 export function saveSessionPrefs(prefs: SessionPrefs): void {
   if (typeof window === "undefined") return;
   // Primary: localStorage for fast access.
-  window.localStorage.setItem(SESSION_PREFS_KEY, JSON.stringify(prefs));
+  writeStored(SESSION_PREFS_KEY, JSON.stringify(prefs));
   // Backup: durable file via Electron main process (survives killall / crash).
   try {
     const bridge = getDesktopBridge();

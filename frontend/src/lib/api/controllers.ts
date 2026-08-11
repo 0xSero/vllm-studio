@@ -1,3 +1,5 @@
+import { readStored, writeStored } from "@/lib/storage";
+
 export const CONTROLLERS_STORAGE_KEY = "local-studio.controllers";
 const LEGACY_CONTROLLERS_STORAGE_KEY = [["v", "llm-studio"].join(""), "controllers"].join(".");
 export const CONTROLLERS_CHANGED_EVENT = "vllm:controllers-changed";
@@ -42,9 +44,7 @@ function parseSavedController(entry: unknown): SavedController | null {
 export function loadSavedControllers(): SavedController[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw =
-      window.localStorage.getItem(CONTROLLERS_STORAGE_KEY) ||
-      window.localStorage.getItem(LEGACY_CONTROLLERS_STORAGE_KEY);
+    const raw = readStored(CONTROLLERS_STORAGE_KEY) || readStored(LEGACY_CONTROLLERS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -55,11 +55,8 @@ export function loadSavedControllers(): SavedController[] {
       byUrl.set(controller.url, { ...byUrl.get(controller.url), ...controller });
     }
     const next = [...byUrl.values()];
-    if (
-      JSON.stringify(parsed) !== JSON.stringify(next) ||
-      !window.localStorage.getItem(CONTROLLERS_STORAGE_KEY)
-    ) {
-      window.localStorage.setItem(CONTROLLERS_STORAGE_KEY, JSON.stringify(next));
+    if (JSON.stringify(parsed) !== JSON.stringify(next) || !readStored(CONTROLLERS_STORAGE_KEY)) {
+      writeStored(CONTROLLERS_STORAGE_KEY, JSON.stringify(next));
     }
     return next;
   } catch {
@@ -81,7 +78,7 @@ export function saveSavedControllers(controllers: SavedController[]): SavedContr
     byUrl.set(url, out);
   }
   const next = [...byUrl.values()];
-  window.localStorage.setItem(CONTROLLERS_STORAGE_KEY, JSON.stringify(next));
+  writeStored(CONTROLLERS_STORAGE_KEY, JSON.stringify(next));
   window.dispatchEvent(
     new CustomEvent(CONTROLLERS_CHANGED_EVENT, { detail: { controllers: next } }),
   );

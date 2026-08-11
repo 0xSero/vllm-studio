@@ -4,6 +4,7 @@
  */
 import { pickFirstNonEmpty } from "@shared/agent/backend-url";
 import { getControllerApiKey, normalizeControllerUrl } from "./controllers";
+import { readStored, removeStored, writeStored } from "@/lib/storage";
 
 // --- Env-derived defaults ---
 
@@ -67,14 +68,14 @@ export function getStoredBackendUrl(): string {
   if (typeof window === "undefined") return "";
   try {
     const stored = normalizeControllerUrl(
-      window.localStorage.getItem(BACKEND_URL_STORAGE_KEY) ||
+      readStored(BACKEND_URL_STORAGE_KEY) ||
         getCookieValue(BACKEND_URL_STORAGE_KEY) ||
-        window.localStorage.getItem(LEGACY_BACKEND_URL_STORAGE) ||
+        readStored(LEGACY_BACKEND_URL_STORAGE) ||
         getCookieValue(LEGACY_BACKEND_URL_COOKIE) ||
         "",
     );
-    if (stored && !window.localStorage.getItem(BACKEND_URL_STORAGE_KEY)) {
-      window.localStorage.setItem(BACKEND_URL_STORAGE_KEY, stored);
+    if (stored && !readStored(BACKEND_URL_STORAGE_KEY)) {
+      writeStored(BACKEND_URL_STORAGE_KEY, stored);
       setBackendCookie(stored);
     }
     return stored;
@@ -91,9 +92,9 @@ export function setStoredBackendUrl(url: string): void {
   const trimmed = normalizeControllerUrl(url);
   try {
     if (trimmed) {
-      window.localStorage.setItem(BACKEND_URL_STORAGE_KEY, trimmed);
+      writeStored(BACKEND_URL_STORAGE_KEY, trimmed);
     } else {
-      window.localStorage.removeItem(BACKEND_URL_STORAGE_KEY);
+      removeStored(BACKEND_URL_STORAGE_KEY);
     }
     setBackendCookie(trimmed);
   } catch {
@@ -110,8 +111,8 @@ export function setStoredBackendUrl(url: string): void {
 export function clearStoredBackendUrl(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(BACKEND_URL_STORAGE_KEY);
-    window.localStorage.removeItem(LEGACY_BACKEND_URL_STORAGE);
+    removeStored(BACKEND_URL_STORAGE_KEY);
+    removeStored(LEGACY_BACKEND_URL_STORAGE);
     setBackendCookie("");
     document.cookie = `${encodeURIComponent(LEGACY_BACKEND_URL_COOKIE)}=; Path=/; Max-Age=0; SameSite=Lax`;
   } catch {

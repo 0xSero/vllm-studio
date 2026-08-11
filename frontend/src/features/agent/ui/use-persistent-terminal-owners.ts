@@ -4,6 +4,7 @@ import {
   terminalKeysMatch,
   type TerminalOwner,
 } from "@/features/agent/terminal-owners";
+import { readStored, readStoredJson, removeStored, writeStored } from "@/lib/storage";
 
 const TERMINAL_OWNERS_KEY = "local-studio.agent.terminals.v1";
 const TERMINAL_ACTIVE_OWNER_KEY = "local-studio.agent.terminals.activeOwner";
@@ -18,15 +19,6 @@ let terminalState: TerminalOwnersSnapshot = {
   owners: loadPersistedTerminalOwners(),
   activeOwnerKey: loadActiveOwnerKey(),
 };
-
-function safeStorage(): Storage | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
 
 function sanitizeOwner(value: unknown): TerminalOwner | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -49,15 +41,10 @@ function sanitizeOwner(value: unknown): TerminalOwner | null {
 }
 
 function loadPersistedTerminalOwners(): TerminalOwner[] {
-  const storage = safeStorage();
-  if (!storage) return [];
-  try {
-    const raw = storage.getItem(TERMINAL_OWNERS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
+  return readStoredJson<TerminalOwner[]>(TERMINAL_OWNERS_KEY, [], (value) => {
+    if (!Array.isArray(value)) return null;
     const owners: TerminalOwner[] = [];
-    for (const entry of parsed) {
+    for (const entry of value) {
       const owner = sanitizeOwner(entry);
       if (
         !owner ||
@@ -68,28 +55,18 @@ function loadPersistedTerminalOwners(): TerminalOwner[] {
       owners.push(owner);
     }
     return owners;
-  } catch {
-    return [];
-  }
+  });
 }
 
 function loadActiveOwnerKey(): string | null {
-  const storage = safeStorage();
-  if (!storage) return null;
-  const key = storage.getItem(TERMINAL_ACTIVE_OWNER_KEY)?.trim();
+  const key = readStored(TERMINAL_ACTIVE_OWNER_KEY)?.trim();
   return key || null;
 }
 
 function persistTerminalState(state = terminalState): void {
-  const storage = safeStorage();
-  if (!storage) return;
-  try {
-    storage.setItem(TERMINAL_OWNERS_KEY, JSON.stringify(state.owners));
-    if (state.activeOwnerKey) storage.setItem(TERMINAL_ACTIVE_OWNER_KEY, state.activeOwnerKey);
-    else storage.removeItem(TERMINAL_ACTIVE_OWNER_KEY);
-  } catch {
-    // Keep the in-memory state if storage is unavailable/quota-limited.
-  }
+  writeStored(TERMINAL_OWNERS_KEY, JSON.stringify(state.owners));
+  if (state.activeOwnerKey) writeStored(TERMINAL_ACTIVE_OWNER_KEY, state.activeOwnerKey);
+  else removeStored(TERMINAL_ACTIVE_OWNER_KEY);
 }
 
 function emitTerminalOwnersChanged(): void {

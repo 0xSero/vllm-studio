@@ -1,6 +1,7 @@
 import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
 import * as defaultApi from "@/features/agent/projects/api";
 import type { GitSummary, Project, ProjectId } from "@/features/agent/projects/types";
+import { readStored, readStoredJson, removeStored, writeStored } from "@/lib/storage";
 
 export type ProjectsSnapshot = {
   projects: Project[];
@@ -195,20 +196,13 @@ const PROJECTS_CACHE_KEY = "local-studio.agent.projects.cache.v1";
 const PROJECTS_ORDER_KEY = "local-studio.agent.projects.order.v1";
 
 function readProjectOrder(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(PROJECTS_ORDER_KEY) ?? "[]") as unknown;
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
-  } catch {
-    return [];
-  }
+  return readStoredJson(PROJECTS_ORDER_KEY, [], (value) =>
+    Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : null,
+  );
 }
 
 function writeProjectOrder(ids: string[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(PROJECTS_ORDER_KEY, JSON.stringify(ids));
-  } catch {}
+  writeStored(PROJECTS_ORDER_KEY, JSON.stringify(ids));
 }
 
 /** Apply the user's saved manual order; projects without a saved position keep
@@ -225,42 +219,25 @@ function applyProjectOrder(projects: Project[]): Project[] {
 }
 
 function readCachedProjects(): Project[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(PROJECTS_CACHE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (entry): entry is Project =>
-        Boolean(entry) &&
-        typeof (entry as Project).id === "string" &&
-        typeof (entry as Project).path === "string",
-    );
-  } catch {
-    return [];
-  }
+  return readStoredJson(PROJECTS_CACHE_KEY, [], (value) =>
+    Array.isArray(value)
+      ? value.filter(
+          (entry): entry is Project =>
+            Boolean(entry) &&
+            typeof (entry as Project).id === "string" &&
+            typeof (entry as Project).path === "string",
+        )
+      : null,
+  );
 }
 
 function writeCachedProjects(projects: Project[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(PROJECTS_CACHE_KEY, JSON.stringify(projects));
-  } catch {}
+  writeStored(PROJECTS_CACHE_KEY, JSON.stringify(projects));
 }
 
-function readSelectedProjectId(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(SELECTED_PROJECT_KEY);
-  } catch {
-    return null;
-  }
-}
+const readSelectedProjectId = (): string | null => readStored(SELECTED_PROJECT_KEY);
 
 function writeSelectedProjectId(id: string | null): void {
-  if (typeof window === "undefined") return;
-  try {
-    if (id) window.localStorage.setItem(SELECTED_PROJECT_KEY, id);
-    else window.localStorage.removeItem(SELECTED_PROJECT_KEY);
-  } catch {}
+  if (id) writeStored(SELECTED_PROJECT_KEY, id);
+  else removeStored(SELECTED_PROJECT_KEY);
 }

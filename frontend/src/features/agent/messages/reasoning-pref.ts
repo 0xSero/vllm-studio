@@ -1,4 +1,5 @@
 import { REASONING_VISIBILITY_CHANGED_EVENT } from "@/lib/workspace-events";
+import { readStored, writeStored } from "@/lib/storage";
 
 // Global, client-only preference for whether model reasoning ("Thinking"/
 // "Thought") is shown in the timeline. Stored in localStorage so it survives
@@ -9,22 +10,12 @@ const REASONING_VISIBLE_KEY = "local-studio.agent.reasoningVisible";
 /** Synchronous localStorage read — safe to call during render. Defaults to
  *  `true` when unset, off the server, or if storage is unavailable. */
 export function loadReasoningVisible(): boolean {
-  if (typeof window === "undefined") return true;
-  try {
-    // Only the explicit "0" sentinel hides reasoning; anything else stays on.
-    return window.localStorage.getItem(REASONING_VISIBLE_KEY) !== "0";
-  } catch {
-    return true;
-  }
+  return readStored(REASONING_VISIBLE_KEY) !== "0";
 }
 
 /** Persist the preference and notify open panes so they re-render at once. */
 export function setReasoningVisible(visible: boolean): void {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(REASONING_VISIBLE_KEY, visible ? "1" : "0");
-  } catch {
-    /* ignore storage failures — the dispatch below still updates live state */
-  }
+  writeStored(REASONING_VISIBLE_KEY, visible ? "1" : "0");
   window.dispatchEvent(new Event(REASONING_VISIBILITY_CHANGED_EVENT));
 }

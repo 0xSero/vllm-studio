@@ -5,6 +5,7 @@ import {
   type ComputerState,
   type ComputerTab,
 } from "@/features/agent/tools/types";
+import { readStored, removeStored, writeStored } from "@/lib/storage";
 
 export const BROWSER_TOOL_KEY = "local-studio.agent.browserToolEnabled";
 export const BROWSER_BACKEND_KEY = "local-studio.agent.browserBackend";
@@ -69,66 +70,38 @@ export function gentlySnapComputerWidth(width: number, containerWidth: number): 
   return nearest;
 }
 
-function read(key: string): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function write(key: string, value: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    // Quota / private mode — keep state in memory only.
-  }
-}
-
-function remove(key: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(key);
-  } catch {}
-}
-
 export function migrateToolStorage(): void {
-  if (!read(BROWSER_TOOL_DEFAULT_OFF_MIGRATION_KEY)) {
-    write(BROWSER_TOOL_KEY, "0");
-    write(BROWSER_TOOL_DEFAULT_OFF_MIGRATION_KEY, "1");
+  if (!readStored(BROWSER_TOOL_DEFAULT_OFF_MIGRATION_KEY)) {
+    writeStored(BROWSER_TOOL_KEY, "0");
+    writeStored(BROWSER_TOOL_DEFAULT_OFF_MIGRATION_KEY, "1");
   }
-  if (!read(COMPUTER_DEFAULT_CLOSED_STORAGE_ID)) {
-    write(COMPUTER_BROWSER_OPEN_KEY, "0");
-    write(COMPUTER_FILES_OPEN_KEY, "0");
-    write(COMPUTER_DEFAULT_CLOSED_STORAGE_ID, "1");
+  if (!readStored(COMPUTER_DEFAULT_CLOSED_STORAGE_ID)) {
+    writeStored(COMPUTER_BROWSER_OPEN_KEY, "0");
+    writeStored(COMPUTER_FILES_OPEN_KEY, "0");
+    writeStored(COMPUTER_DEFAULT_CLOSED_STORAGE_ID, "1");
   }
   // Computer panel always boots closed regardless of last session.
-  write(COMPUTER_BROWSER_OPEN_KEY, "0");
+  writeStored(COMPUTER_BROWSER_OPEN_KEY, "0");
   // SESSIONS_COLLAPSED_KEY cleanup is owned by workspace persistence.ts; tools
   // doesn't touch sidebar collapse state.
-  remove("local-studio.agent.sessionsCollapsed");
+  removeStored("local-studio.agent.sessionsCollapsed");
 }
 
 export function loadBrowserState(): BrowserState {
   return {
-    enabled: read(BROWSER_TOOL_KEY) === "1",
-    backend: parseBrowserBackend(read(BROWSER_BACKEND_KEY)),
+    enabled: readStored(BROWSER_TOOL_KEY) === "1",
+    backend: parseBrowserBackend(readStored(BROWSER_BACKEND_KEY)),
     url: DEFAULT_BROWSER_URL,
     input: DEFAULT_BROWSER_URL,
   };
 }
 
 export function loadComputerState(): ComputerState {
-  const storedWidth = Number(read(COMPUTER_WIDTH_KEY));
-  const storedTab = read(COMPUTER_TAB_KEY);
+  const storedWidth = Number(readStored(COMPUTER_WIDTH_KEY));
+  const storedTab = readStored(COMPUTER_TAB_KEY);
   const tab: ComputerTab = isComputerTab(storedTab) ? storedTab : "status";
   const storedTabs = readComputerTabs();
-  const persistedTabs = uniqueComputerTabs([
-    "status",
-    ...(storedTabs.length ? storedTabs : [tab]),
-  ]);
+  const persistedTabs = uniqueComputerTabs(["status", ...(storedTabs.length ? storedTabs : [tab])]);
   const tabs = persistedTabs.includes(tab)
     ? persistedTabs
     : uniqueComputerTabs([...persistedTabs, tab]);
@@ -145,7 +118,7 @@ function isComputerTab(value: unknown): value is ComputerTab {
 }
 
 function readComputerTabs(): ComputerTab[] {
-  const raw = read(COMPUTER_TABS_KEY);
+  const raw = readStored(COMPUTER_TABS_KEY);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -175,7 +148,7 @@ export function computerPanelVisibility(current: ComputerState, open: boolean): 
 }
 
 export function writeBrowserEnabled(enabled: boolean): void {
-  write(BROWSER_TOOL_KEY, enabled ? "1" : "0");
+  writeStored(BROWSER_TOOL_KEY, enabled ? "1" : "0");
 }
 
 function parseBrowserBackend(value: string | null): BrowserBackend {
@@ -185,18 +158,18 @@ function parseBrowserBackend(value: string | null): BrowserBackend {
 }
 
 export function writeBrowserBackend(backend: BrowserBackend): void {
-  write(BROWSER_BACKEND_KEY, backend);
+  writeStored(BROWSER_BACKEND_KEY, backend);
 }
 
 export function writeComputerTab(tab: ComputerTab): void {
-  write(COMPUTER_FILES_OPEN_KEY, tab === "files" ? "1" : "0");
-  write(COMPUTER_TAB_KEY, tab);
+  writeStored(COMPUTER_FILES_OPEN_KEY, tab === "files" ? "1" : "0");
+  writeStored(COMPUTER_TAB_KEY, tab);
 }
 
 export function writeComputerTabs(tabs: ComputerTab[]): void {
-  write(COMPUTER_TABS_KEY, JSON.stringify(uniqueComputerTabs(tabs)));
+  writeStored(COMPUTER_TABS_KEY, JSON.stringify(uniqueComputerTabs(tabs)));
 }
 
 export function writeComputerWidth(width: number): void {
-  write(COMPUTER_WIDTH_KEY, String(clampComputerWidth(width)));
+  writeStored(COMPUTER_WIDTH_KEY, String(clampComputerWidth(width)));
 }

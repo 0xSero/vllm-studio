@@ -5,6 +5,7 @@ import {
   type ComputerTab,
 } from "@/features/agent/tools/types";
 import { clampComputerWidth, uniqueComputerTabs } from "@/features/agent/tools/persistence";
+import { readStoredJson, writeStored } from "@/lib/storage";
 
 export const SESSION_VIEW_STATE_KEY = "local-studio.agent.sessionViewState.v1";
 const MAX_SESSION_VIEWS = 100;
@@ -77,17 +78,18 @@ function normalizeView(value: typeof SessionViewStateSchema.Type): SessionViewSt
 }
 
 function loadSessionViews(storage: ViewStorage): Map<string, SessionViewState> {
-  try {
-    const decoded = decodeSessionViews(
-      JSON.parse(storage.getItem(SESSION_VIEW_STATE_KEY) ?? "null"),
-    );
-    if (decoded._tag === "None") return new Map();
-    return new Map(
-      Object.entries(decoded.value.views).map(([key, value]) => [key, normalizeView(value)]),
-    );
-  } catch {
-    return new Map();
-  }
+  const value = readStoredJson(
+    SESSION_VIEW_STATE_KEY,
+    null,
+    (raw) => {
+      const decoded = decodeSessionViews(raw);
+      return decoded._tag === "Some" ? decoded.value : null;
+    },
+    storage,
+  );
+  return new Map(
+    Object.entries(value?.views ?? {}).map(([key, view]) => [key, normalizeView(view)]),
+  );
 }
 
 function writeSessionViews(
@@ -95,12 +97,11 @@ function writeSessionViews(
   views: ReadonlyMap<string, SessionViewState>,
 ): void {
   const entries = [...views].slice(-MAX_SESSION_VIEWS);
-  try {
-    storage.setItem(
-      SESSION_VIEW_STATE_KEY,
-      JSON.stringify({ version: 1, views: Object.fromEntries(entries) }),
-    );
-  } catch {}
+  writeStored(
+    SESSION_VIEW_STATE_KEY,
+    JSON.stringify({ version: 1, views: Object.fromEntries(entries) }),
+    storage,
+  );
 }
 
 export function readSessionView(

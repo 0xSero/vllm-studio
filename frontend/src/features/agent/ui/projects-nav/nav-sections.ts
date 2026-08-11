@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type DragEvent } from "react";
+import { readStoredJson, writeStored } from "@/lib/storage";
 
 export type SectionId = "projects" | "tasks" | "terminals";
 
@@ -8,29 +9,20 @@ const SECTION_IDS: SectionId[] = ["projects", "tasks", "terminals"];
 const NAV_SECTION_ORDER_KEY = "local-studio.agent.nav-section-order.v1";
 
 function readSectionOrder(): SectionId[] {
-  if (typeof window === "undefined") return [...SECTION_IDS];
-  try {
-    const parsed = JSON.parse(
-      window.localStorage.getItem(NAV_SECTION_ORDER_KEY) ?? "[]",
-    ) as unknown;
-    if (!Array.isArray(parsed)) return [...SECTION_IDS];
-    const valid = parsed.filter((entry): entry is SectionId =>
+  return readStoredJson(NAV_SECTION_ORDER_KEY, [...SECTION_IDS], (value) => {
+    if (!Array.isArray(value)) return null;
+    const valid = value.filter((entry): entry is SectionId =>
       SECTION_IDS.includes(entry as SectionId),
     );
-    if (valid.length === 0) return [...SECTION_IDS];
+    if (valid.length === 0) return null;
     // Tolerate orders saved before new sections existed.
     for (const id of SECTION_IDS) if (!valid.includes(id)) valid.push(id);
     return valid;
-  } catch {
-    return [...SECTION_IDS];
-  }
+  });
 }
 
 function writeSectionOrder(order: readonly SectionId[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(NAV_SECTION_ORDER_KEY, JSON.stringify([...order]));
-  } catch {}
+  writeStored(NAV_SECTION_ORDER_KEY, JSON.stringify([...order]));
 }
 
 /** Drag-to-reorder for the top-level sidebar sections. The header is the drag

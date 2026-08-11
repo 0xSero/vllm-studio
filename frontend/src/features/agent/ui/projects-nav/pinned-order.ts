@@ -1,3 +1,5 @@
+import { readStoredJson, writeStored } from "@/lib/storage";
+
 export type PinnedOrderEntry = {
   id: string;
   identities: readonly string[];
@@ -38,22 +40,13 @@ export function movePinnedEntryBefore<T extends PinnedOrderEntry>(
 }
 
 export function readPinnedSessionOrder(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const parsed = JSON.parse(
-      window.localStorage.getItem(PINNED_SESSION_ORDER_KEY) ?? "[]",
-    ) as unknown;
-    return Array.isArray(parsed)
-      ? parsed.filter((entry): entry is string => typeof entry === "string")
-      : [];
-  } catch {
-    return [];
-  }
+  return readStoredJson(PINNED_SESSION_ORDER_KEY, [], (value) =>
+    Array.isArray(value)
+      ? value.filter((entry): entry is string => typeof entry === "string")
+      : null,
+  );
 }
 
 export function writePinnedSessionOrder(order: readonly string[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(PINNED_SESSION_ORDER_KEY, JSON.stringify([...order]));
-  } catch {}
+  writeStored(PINNED_SESSION_ORDER_KEY, JSON.stringify([...order]));
 }

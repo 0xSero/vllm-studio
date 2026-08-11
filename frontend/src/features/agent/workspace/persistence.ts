@@ -19,6 +19,7 @@ import {
 } from "@/features/agent/workspace/store";
 import { makeFreshTab } from "@/features/agent/messages/helpers";
 import { Schema } from "effect";
+import { readStored, removeStored, writeStored } from "@/lib/storage";
 
 const SESSIONS_COLLAPSED_KEY = "local-studio.agent.sessionsCollapsed";
 const SESSIONS_COLLAPSED_CLEANED_KEY = "local-studio.agent.sessionsCollapsedCleaned";
@@ -30,26 +31,6 @@ const LegacyDraftsSchema = Schema.Struct({
   drafts: Schema.Record(Schema.String, Schema.String),
 });
 const decodeLegacyDrafts = Schema.decodeUnknownOption(LegacyDraftsSchema);
-
-function readStorage(storage: WorkspaceStorage, key: string): string | null {
-  try {
-    return storage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function setStorage(storage: WorkspaceStorage, key: string, value: string): void {
-  try {
-    storage.setItem(key, value);
-  } catch {}
-}
-
-function removeStorage(storage: WorkspaceStorage, key: string): void {
-  try {
-    storage.removeItem(key);
-  } catch {}
-}
 
 function restoreLegacyLayout(rawLayout: string): {
   layout: WorkspaceLayout;
@@ -76,12 +57,12 @@ function restoreLegacyLayout(rawLayout: string): {
 }
 
 function migrateStorage(storage: WorkspaceStorage): void {
-  if (!readStorage(storage, SESSIONS_COLLAPSED_CLEANED_KEY)) {
-    removeStorage(storage, SESSIONS_COLLAPSED_KEY);
-    setStorage(storage, SESSIONS_COLLAPSED_CLEANED_KEY, "1");
+  if (!readStored(SESSIONS_COLLAPSED_CLEANED_KEY, storage)) {
+    removeStored(SESSIONS_COLLAPSED_KEY, storage);
+    writeStored(SESSIONS_COLLAPSED_CLEANED_KEY, "1", storage);
   }
-  removeStorage(storage, LEGACY_TRANSCRIPT_CACHE_KEY);
-  removeStorage(storage, LEGACY_ACTIVE_SESSIONS_KEY);
+  removeStored(LEGACY_TRANSCRIPT_CACHE_KEY, storage);
+  removeStored(LEGACY_ACTIVE_SESSIONS_KEY, storage);
 }
 
 function restoreLegacyDrafts(
@@ -91,7 +72,7 @@ function restoreLegacyDrafts(
   let drafts: Record<string, string> = {};
   try {
     const decoded = decodeLegacyDrafts(
-      JSON.parse(readStorage(storage, LEGACY_SESSION_DRAFTS_KEY) ?? "null"),
+      JSON.parse(readStored(LEGACY_SESSION_DRAFTS_KEY, storage) ?? "null"),
     );
     if (decoded._tag === "Some") drafts = decoded.value.drafts;
   } catch {}
@@ -118,7 +99,7 @@ export type LoadedFromStorage = {
 export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromStorage {
   migrateStorage(storage);
 
-  const rawState = readStorage(storage, PANE_STATE_KEY);
+  const rawState = readStored(PANE_STATE_KEY, storage);
   const restoredState = rawState ? restorePersistedPaneState(rawState) : null;
   if (restoredState) {
     const { selections, ...workspace } = restoredState;
@@ -131,7 +112,7 @@ export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromSto
     };
   }
 
-  const rawLayout = readStorage(storage, PANE_LAYOUT_KEY);
+  const rawLayout = readStored(PANE_LAYOUT_KEY, storage);
   const restoredLayout = rawLayout ? restoreLegacyLayout(rawLayout) : null;
   if (!restoredLayout) {
     const initial = createInitialState();
@@ -164,8 +145,7 @@ export function writePaneState(
         : [],
     };
   }
-  setStorage(
-    storage,
+  writeStored(
     PANE_STATE_KEY,
     JSON.stringify({
       version: 1,
@@ -176,6 +156,7 @@ export function writePaneState(
         sessionMetaForPersistence(session, selectionFor(session.id) ?? undefined),
       ),
     }),
+    storage,
   );
-  removeStorage(storage, LEGACY_SESSION_DRAFTS_KEY);
+  removeStored(LEGACY_SESSION_DRAFTS_KEY, storage);
 }
