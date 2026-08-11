@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useState, useSyncExternalStore } from "react";
+import { createContext, ReactNode, useContext, useState, useSyncExternalStore } from "react";
 import type { Layout, PaneId } from "@/features/agent/workspace/layout";
 
 type RenderPane = (paneId: PaneId) => ReactNode;
@@ -17,6 +17,15 @@ type Props = {
   onOpenTab: (paneId: PaneId, payload: SessionDropPayload) => void;
   onResize: (path: number[], ratio: number) => void;
 };
+
+type PaneGridContextValue = Omit<Props, "layout">;
+const PaneGridContext = createContext<PaneGridContextValue | null>(null);
+
+function usePaneGrid(): PaneGridContextValue {
+  const value = useContext(PaneGridContext);
+  if (!value) throw new Error("PaneGrid context is missing");
+  return value;
+}
 
 export type SessionDropPayload = {
   piSessionId?: string | null;
@@ -41,71 +50,29 @@ function readSessionDrop(event: React.DragEvent): SessionDropPayload | null {
 
 export function PaneGrid({ layout, renderPane, onSplit, onOpenTab, onResize }: Props) {
   return (
-    <div className="flex h-full min-h-0 w-full">
-      <PaneNode
-        layout={layout}
-        path={[]}
-        renderPane={renderPane}
-        onSplit={onSplit}
-        onOpenTab={onOpenTab}
-        onResize={onResize}
-      />
-    </div>
+    <PaneGridContext.Provider value={{ renderPane, onSplit, onOpenTab, onResize }}>
+      <div className="flex h-full min-h-0 w-full">
+        <PaneNode layout={layout} path={[]} />
+      </div>
+    </PaneGridContext.Provider>
   );
 }
 
-function PaneNode({
-  layout,
-  path,
-  renderPane,
-  onSplit,
-  onOpenTab,
-  onResize,
-}: {
-  layout: Layout;
-  path: number[];
-  renderPane: RenderPane;
-  onSplit: Props["onSplit"];
-  onOpenTab: Props["onOpenTab"];
-  onResize: Props["onResize"];
-}) {
+function PaneNode({ layout, path }: { layout: Layout; path: number[] }) {
   if (layout.kind === "leaf") {
-    return (
-      <PaneLeaf
-        paneId={layout.paneId}
-        renderPane={renderPane}
-        onSplit={onSplit}
-        onOpenTab={onOpenTab}
-      />
-    );
+    return <PaneLeaf paneId={layout.paneId} />;
   }
-  return (
-    <SplitNode
-      layout={layout}
-      path={path}
-      renderPane={renderPane}
-      onSplit={onSplit}
-      onOpenTab={onOpenTab}
-      onResize={onResize}
-    />
-  );
+  return <SplitNode layout={layout} path={path} />;
 }
 
 function SplitNode({
   layout,
   path,
-  renderPane,
-  onSplit,
-  onOpenTab,
-  onResize,
 }: {
   layout: Extract<Layout, { kind: "split" }>;
   path: number[];
-  renderPane: RenderPane;
-  onSplit: Props["onSplit"];
-  onOpenTab: Props["onOpenTab"];
-  onResize: Props["onResize"];
 }) {
+  const { onResize } = usePaneGrid();
   const isRow = layout.direction === "vertical";
   const aPct = `${Math.round(layout.ratio * 100)}%`;
   const bPct = `${Math.round((1 - layout.ratio) * 100)}%`;
@@ -132,14 +99,7 @@ function SplitNode({
   return (
     <div className={`flex h-full min-h-0 min-w-0 flex-1 ${isRow ? "flex-row" : "flex-col"}`}>
       <div className="flex min-h-0 min-w-0" style={isRow ? { width: aPct } : { height: aPct }}>
-        <PaneNode
-          layout={layout.a}
-          path={[...path, 0]}
-          renderPane={renderPane}
-          onSplit={onSplit}
-          onOpenTab={onOpenTab}
-          onResize={onResize}
-        />
+        <PaneNode layout={layout.a} path={[...path, 0]} />
       </div>
       <div
         role="separator"
@@ -151,30 +111,14 @@ function SplitNode({
         title="Drag to resize"
       />
       <div className="flex min-h-0 min-w-0" style={isRow ? { width: bPct } : { height: bPct }}>
-        <PaneNode
-          layout={layout.b}
-          path={[...path, 1]}
-          renderPane={renderPane}
-          onSplit={onSplit}
-          onOpenTab={onOpenTab}
-          onResize={onResize}
-        />
+        <PaneNode layout={layout.b} path={[...path, 1]} />
       </div>
     </div>
   );
 }
 
-function PaneLeaf({
-  paneId,
-  renderPane,
-  onSplit,
-  onOpenTab,
-}: {
-  paneId: PaneId;
-  renderPane: RenderPane;
-  onSplit: Props["onSplit"];
-  onOpenTab: Props["onOpenTab"];
-}) {
+function PaneLeaf({ paneId }: { paneId: PaneId }) {
+  const { renderPane, onSplit, onOpenTab } = usePaneGrid();
   const [hoverEdge, setHoverEdge] = useState<null | "center" | "left" | "right" | "top" | "bottom">(
     null,
   );

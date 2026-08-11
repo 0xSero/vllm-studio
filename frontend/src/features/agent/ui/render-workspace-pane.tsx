@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import { shallow } from "zustand/shallow";
 import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
@@ -108,20 +109,7 @@ export function sameWorkspacePaneView(
   previous: WorkspacePaneView,
   next: WorkspacePaneView,
 ): boolean {
-  return (
-    previous.paneId === next.paneId &&
-    previous.pane === next.pane &&
-    previous.session === next.session &&
-    previous.project === next.project &&
-    previous.cwd === next.cwd &&
-    previous.modelId === next.modelId &&
-    previous.model === next.model &&
-    previous.gitSummary === next.gitSummary &&
-    previous.gitBranch === next.gitBranch &&
-    previous.isNewSession === next.isNewSession &&
-    previous.canClose === next.canClose &&
-    previous.isFocused === next.isFocused
-  );
+  return shallow(previous, next);
 }
 
 type WorkspacePaneProps = {
@@ -142,14 +130,7 @@ function sameWorkspacePaneProps(previous: WorkspacePaneProps, next: WorkspacePan
     previous.models === next.models &&
     previous.modelsLoading === next.modelsLoading &&
     previous.defaultModel === next.defaultModel &&
-    previous.tools.browser.enabled === next.tools.browser.enabled &&
-    previous.tools.browser.backend === next.tools.browser.backend &&
-    previous.tools.computer.open === next.tools.computer.open &&
-    previous.tools.toggleBrowserBackend === next.tools.toggleBrowserBackend &&
-    previous.tools.setBrowserEnabled === next.tools.setBrowserEnabled &&
-    previous.tools.closeComputerTab === next.tools.closeComputerTab &&
-    previous.tools.setComputerTab === next.tools.setComputerTab &&
-    previous.tools.toggleComputerOpen === next.tools.toggleComputerOpen &&
+    previous.tools === next.tools &&
     previous.dispatch === next.dispatch &&
     previous.handles === next.handles &&
     previous.compact === next.compact &&
