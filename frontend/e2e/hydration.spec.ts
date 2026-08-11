@@ -4,6 +4,7 @@ import { readLiveControllerConfig, selectLiveController } from "./live-controlle
 for (const path of [
   "/",
   "/usage",
+  "/models",
   "/configure",
   "/settings",
   "/agent",

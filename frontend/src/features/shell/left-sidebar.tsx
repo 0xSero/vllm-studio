@@ -31,7 +31,7 @@ import {
 
 const SIDEBAR_MIN_WIDTH = 180;
 const SIDEBAR_MAX_WIDTH = 520;
-const SIDEBAR_DEFAULT_WIDTH = 275;
+const SIDEBAR_DEFAULT_WIDTH = 260;
 
 function clampSidebarWidth(width: number): number {
   if (!Number.isFinite(width)) return SIDEBAR_DEFAULT_WIDTH;
@@ -209,7 +209,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
               aria-expanded={mobileMenuOpen}
               aria-controls="mobile-navigation-drawer"
             >
-              <Menu className="h-[18px] w-[18px]" />
+              <Menu className="h-[17px] w-[17px]" />
             </button>
           </div>
         </div>

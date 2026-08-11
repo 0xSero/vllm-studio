@@ -35,16 +35,16 @@ export function MobileNavigationDrawer({
         className="mobile-pwa-drawer absolute right-0 top-0 flex h-full w-full flex-col bg-(--bg) md:w-[min(22rem,88vw)] md:border-l md:border-(--border)"
       >
         <div className="mobile-pwa-drawer-header flex shrink-0 items-center justify-between gap-3 px-4">
-          <div className="min-w-0 truncate text-[22px] font-semibold tracking-[-0.01em] text-(--fg)">
+          <div className="min-w-0 truncate text-[19px] font-semibold tracking-[-0.01em] text-(--fg)">
             Local Studio
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--surface) text-(--fg)/70 transition-colors hover:text-(--fg)"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--surface) text-(--fg)/70 transition-colors hover:text-(--fg)"
             aria-label="Close navigation menu"
           >
-            <X className="h-[18px] w-[18px]" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 

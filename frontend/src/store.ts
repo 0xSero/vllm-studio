@@ -7,6 +7,7 @@ import {
 import {
   DEFAULT_FONT_FAMILY_ID,
   DEFAULT_FONT_SIZE_ID,
+  THEME_BY_ID,
   type FontFamilyId,
   type FontSizeId,
   type ThemeId,
@@ -55,7 +56,7 @@ const createAppSlice: StateCreator<AppSlice, [], [], AppSlice> = (set) => ({
     }),
   toggleSidebarMobileOpen: () =>
     set((state) => ({ sidebar: { ...state.sidebar, mobileOpen: !state.sidebar.mobileOpen } })),
-  sidebarWidth: 275,
+  sidebarWidth: 260,
   setSidebarWidth: (sidebarWidth) => set({ sidebarWidth }),
   fileViewerFontSize: 12,
   setFileViewerFontSize: (fileViewerFontSize) => set({ fileViewerFontSize }),
@@ -83,7 +84,14 @@ const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (set) => 
   fontSizeId: DEFAULT_FONT_SIZE_ID,
   setThemeId: (themeId: ThemeId) => {
     const appliedThemeId = applyThemeToDocument(themeId);
-    set({ themeId: appliedThemeId });
+    const preferredFontFamilyId = THEME_BY_ID.get(appliedThemeId)?.fontFamilyId;
+    const appliedFontFamilyId = preferredFontFamilyId
+      ? applyFontFamilyToDocument(preferredFontFamilyId)
+      : undefined;
+    set({
+      themeId: appliedThemeId,
+      ...(appliedFontFamilyId ? { fontFamilyId: appliedFontFamilyId } : {}),
+    });
   },
   setFontFamilyId: (fontFamilyId: FontFamilyId) => {
     const appliedFontFamilyId = applyFontFamilyToDocument(fontFamilyId);
@@ -143,11 +151,12 @@ export const useAppStore = create<AppStore>()(
           ...current,
           ...persistedStore,
           sidebarWidth:
+            persistedRecord.sidebarWidth === 275 ||
             persistedRecord.sidebarWidth === 240 ||
             persistedRecord.sidebarWidth === 220 ||
             persistedRecord.sidebarWidth === 224 ||
             persistedRecord.sidebarWidth === 204
-              ? 275
+              ? 260
               : (persistedStore.sidebarWidth ?? current.sidebarWidth),
           sidebar: {
             ...current.sidebar,
