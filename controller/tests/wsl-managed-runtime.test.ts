@@ -119,6 +119,15 @@ describe("managed WSL2 runtimes", () => {
       "/home/user/.local/share/local-studio/runtime/venvs/vllm-latest",
     );
     expect(calls.some((args) => args.includes("--torch-backend=auto"))).toBe(true);
+    expect(calls.some((args) => args.includes("--relocatable"))).toBe(true);
+    expect(
+      calls.some(
+        (args) =>
+          args[0] ===
+            "/home/user/.local/share/local-studio/runtime/venvs/vllm-latest/bin/vllm" &&
+          args[1] === "--help",
+      ),
+    ).toBe(true);
 
     const uninstall = await Effect.runPromise(
       uninstallWslManagedRuntime({

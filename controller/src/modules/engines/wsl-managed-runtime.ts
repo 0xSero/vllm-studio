@@ -73,6 +73,8 @@ interface WslManagedRuntimeOptions {
 
 const PROBE_SCRIPT =
   'import importlib.metadata as m,json,sys,torch; print(json.dumps({"version":m.version(sys.argv[1]),"cuda":torch.cuda.is_available(),"devices":torch.cuda.device_count()}))';
+const RELOCATE_SCRIPT =
+  "from pathlib import Path; import sys; old,new=sys.argv[1:3]; files=(p for p in (Path(new)/'bin').iterdir() if p.is_file()); [(p.write_text(p.read_text().replace(old,new))) for p in files if old in p.read_text(errors='ignore')]";
 const MAX_OUTPUT_TAIL_LENGTH = 4000;
 const COMMAND_TIMEOUT_MS = 120_000;
 const JOB_OUTPUT_THROTTLE_MS = 1_000;
@@ -288,7 +290,7 @@ const activate = (
   distribution: string,
   paths: WslManagedRuntimePaths,
   options: Pick<WslManagedRuntimeOptions, "onSpawn">,
-): Effect.Effect<RuntimeUpgradeResult | null> =>
+): Effect.Effect<RuntimeUpgradeResult | { hadBackup: boolean }> =>
   Effect.gen(function* () {
     const existing = yield* run(
       runner,
@@ -297,7 +299,8 @@ const activate = (
       COMMAND_TIMEOUT_MS,
       options,
     );
-    if (existing.status === 0) {
+    const hadBackup = existing.status === 0;
+    if (hadBackup) {
       const backup = yield* run(
         runner,
         distribution,
@@ -333,8 +336,27 @@ const activate = (
       }
       return commandFailure("Could not activate the WSL runtime", promote);
     }
-    yield* cleanupPath(runner, distribution, paths.backup, options);
-    return null;
+    return { hadBackup };
+  });
+
+const rollbackActivation = (
+  runner: WslCommandRunner,
+  distribution: string,
+  paths: WslManagedRuntimePaths,
+  hadBackup: boolean,
+  options: Pick<WslManagedRuntimeOptions, "onSpawn">,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* cleanupPath(runner, distribution, paths.root, options);
+    if (hadBackup) {
+      yield* run(
+        runner,
+        distribution,
+        ["/bin/mv", "--", paths.backup, paths.root],
+        COMMAND_TIMEOUT_MS,
+        options,
+      ).pipe(Effect.ignore);
+    }
   });
 
 export const installWslManagedRuntime = (
@@ -366,7 +388,7 @@ export const installWslManagedRuntime = (
     if (parent.status !== 0) return commandFailure("Could not create the WSL runtime directory", parent);
     const createCommand = uv ?? python;
     const createArguments = uv
-      ? ["venv", "--python", python, "--seed", paths.staging]
+      ? ["venv", "--python", python, "--seed", "--relocatable", paths.staging]
       : ["-m", "venv", paths.staging];
     const create = yield* run(
       runner,
@@ -453,11 +475,50 @@ export const installWslManagedRuntime = (
       yield* cleanupPath(runner, options.distribution, paths.staging, options);
       return commandFailure(`${options.backend} CLI probe failed in ${options.distribution}`, cli, usedCommand);
     }
-    const activationFailure = yield* activate(runner, options.distribution, paths, options);
-    if (activationFailure) {
+    const activation = yield* activate(runner, options.distribution, paths, options);
+    if ("success" in activation) {
       yield* cleanupPath(runner, options.distribution, paths.staging, options);
-      return activationFailure;
+      return activation;
     }
+    const relocate = yield* run(
+      runner,
+      options.distribution,
+      [paths.pythonPath, "-c", RELOCATE_SCRIPT, paths.staging, paths.root],
+      COMMAND_TIMEOUT_MS,
+      options,
+    );
+    if (relocate.status !== 0) {
+      yield* rollbackActivation(
+        runner,
+        options.distribution,
+        paths,
+        activation.hadBackup,
+        options,
+      );
+      return commandFailure(`${options.backend} relocation failed in ${options.distribution}`, relocate, usedCommand);
+    }
+    const activatedCli = yield* run(
+      runner,
+      options.distribution,
+      [paths.binaryPath, "--help"],
+      COMMAND_TIMEOUT_MS,
+      options,
+    );
+    if (activatedCli.status !== 0) {
+      yield* rollbackActivation(
+        runner,
+        options.distribution,
+        paths,
+        activation.hadBackup,
+        options,
+      );
+      return commandFailure(
+        `${options.backend} activated CLI probe failed in ${options.distribution}`,
+        activatedCli,
+        usedCommand,
+      );
+    }
+    yield* cleanupPath(runner, options.distribution, paths.backup, options);
     yield* Effect.try({
       try: () =>
         writeReceipt(options.config, {
