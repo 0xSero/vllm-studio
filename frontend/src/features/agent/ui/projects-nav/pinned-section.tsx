@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { sessionActivity } from "@/features/agent/session-index";
-import { useSessionActivity } from "@/features/agent/ui/use-open-sessions";
+import { sessionActivity, useSessionActivity } from "@/features/agent/session-index";
 import type { SessionPrefs } from "@/features/agent/messages/prefs";
 import type { Project as ProjectEntry } from "@/features/agent/projects/types";
 import { mergeActiveSessionPref } from "./helpers";
@@ -11,8 +10,6 @@ import { toggleProjectPin, type PinnedNav, type PinnedNavEntry } from "./pinned"
 import { ActiveSessionRow, ProjectRow, SessionRow } from "./session-rows";
 import type { ActiveAgentSession } from "./types";
 
-/** Pinned projects and sessions, in one drag-orderable rail that matches the
- *  Tasks and Projects rails exactly — same indent, same guide line, same rows. */
 export function PinnedSection({
   pinned,
   activeSessions,

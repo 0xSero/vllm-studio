@@ -13,7 +13,7 @@ import { Menu } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/store";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { useOpenSessions } from "@/features/agent/ui/use-open-sessions";
+import { useOpenSessions } from "@/features/agent/session-index";
 import { hrefWithOpenNonce } from "@/features/agent/ui/projects-nav/helpers";
 import { DesktopSidebar } from "@/features/shell/left-sidebar-desktop";
 import {
@@ -61,8 +61,6 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   );
   const isExpanded = desktopSidebarPinnedOpen;
   const clampedSidebarWidth = clampSidebarWidth(sidebarWidth);
-  // The chat session carries its own header (hamburger + right-panel toggle),
-  // so the app topbar would be a second stacked row there.
   const chatSessionRoute = isRouteActive(pathname, "/agent");
   const [searchOpen, setSearchOpen] = useState(false);
   const activeSessions = useOpenSessions();
@@ -83,8 +81,6 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [mobileMenuOpen, setMobileMenuOpen]);
 
-  // Navigating anywhere dismisses the drawer — it covers the whole screen, so
-  // leaving it open over the destination is never what you want.
   useMountSubscription(() => {
     setMobileMenuOpen(false);
   }, [pathname, setMobileMenuOpen]);

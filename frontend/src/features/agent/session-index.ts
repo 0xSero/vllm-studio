@@ -1,3 +1,6 @@
+"use client";
+
+import { create } from "zustand";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import { isWorkingStatus } from "@/features/agent/runtime/session-status";
 import type { RuntimeSessionSummary } from "@/features/agent/runtime/api";
@@ -42,8 +45,6 @@ export type SessionActivity = "idle" | "running" | "unseen" | "finished";
 export type SessionActivitySnapshot = {
   active: ReadonlySet<string>;
   unseen: ReadonlySet<string>;
-  // Sessions whose run finished while unviewed - a subset of `unseen` that earns
-  // the green "done" dot instead of the plain blue unseen-activity dot.
   finished: ReadonlySet<string>;
 };
 
@@ -129,34 +130,18 @@ export function sessionRows(
   return rows.sort((left, right) => right.sortAt - left.sortAt);
 }
 
-let openSessions: OpenAgentSession[] = [];
-const listeners = new Set<() => void>();
-let activitySnapshot = EMPTY_ACTIVITY;
-const activityListeners = new Set<() => void>();
+const useSessionIndex = create<{
+  openSessions: readonly OpenAgentSession[];
+  activity: SessionActivitySnapshot;
+}>(() => ({ openSessions: [], activity: EMPTY_ACTIVITY }));
 
-export function getOpenSessions(): readonly OpenAgentSession[] {
-  return openSessions;
-}
-
-export function subscribeOpenSessions(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
+export const useOpenSessions = () => useSessionIndex((state) => state.openSessions);
+export const useSessionActivity = () => useSessionIndex((state) => state.activity);
 
 export function publishOpenSessions(incoming: readonly OpenAgentSession[]): void {
   const next = [...incoming];
-  if (JSON.stringify(next) === JSON.stringify(openSessions)) return;
-  openSessions = next;
-  for (const listener of listeners) listener();
-}
-
-export function getSessionActivity(): SessionActivitySnapshot {
-  return activitySnapshot;
-}
-
-export function subscribeSessionActivity(listener: () => void): () => void {
-  activityListeners.add(listener);
-  return () => activityListeners.delete(listener);
+  if (JSON.stringify(next) === JSON.stringify(useSessionIndex.getState().openSessions)) return;
+  useSessionIndex.setState({ openSessions: next });
 }
 
 function sameIds(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
@@ -164,18 +149,16 @@ function sameIds(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean
 }
 
 export function publishRuntimeActivity(entries: readonly RuntimeSessionSummary[]): void {
+  const activity = useSessionIndex.getState().activity;
   const active = new Set<string>();
   for (const entry of entries) {
     if (entry.status.active !== true) continue;
     active.add(entry.sessionId);
     if (entry.status.piSessionId) active.add(entry.status.piSessionId);
   }
-  const unseen = new Set(activitySnapshot.unseen);
-  const finished = new Set(activitySnapshot.finished);
-  // A running->stopped transition (id was active, now isn't) is a run that
-  // finished while unviewed: flag it both as unseen and, for the green dot, as
-  // finished. Becoming active again clears both.
-  for (const id of activitySnapshot.active) {
+  const unseen = new Set(activity.unseen);
+  const finished = new Set(activity.finished);
+  for (const id of activity.active) {
     if (!active.has(id)) {
       unseen.add(id);
       finished.add(id);
@@ -186,25 +169,23 @@ export function publishRuntimeActivity(entries: readonly RuntimeSessionSummary[]
     finished.delete(id);
   }
   if (
-    sameIds(activitySnapshot.active, active) &&
-    sameIds(activitySnapshot.unseen, unseen) &&
-    sameIds(activitySnapshot.finished, finished)
+    sameIds(activity.active, active) &&
+    sameIds(activity.unseen, unseen) &&
+    sameIds(activity.finished, finished)
   )
     return;
-  activitySnapshot = { active, unseen, finished };
-  for (const listener of activityListeners) listener();
+  useSessionIndex.setState({ activity: { active, unseen, finished } });
 }
 
 export function markSessionActivitySeen(...ids: readonly (string | null | undefined)[]): void {
-  const unseen = new Set(activitySnapshot.unseen);
-  const finished = new Set(activitySnapshot.finished);
+  const activity = useSessionIndex.getState().activity;
+  const unseen = new Set(activity.unseen);
+  const finished = new Set(activity.finished);
   for (const id of ids) {
     if (!id) continue;
     unseen.delete(id);
     finished.delete(id);
   }
-  if (sameIds(activitySnapshot.unseen, unseen) && sameIds(activitySnapshot.finished, finished))
-    return;
-  activitySnapshot = { ...activitySnapshot, unseen, finished };
-  for (const listener of activityListeners) listener();
+  if (sameIds(activity.unseen, unseen) && sameIds(activity.finished, finished)) return;
+  useSessionIndex.setState({ activity: { ...activity, unseen, finished } });
 }

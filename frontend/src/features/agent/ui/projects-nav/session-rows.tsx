@@ -7,9 +7,9 @@ import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import {
   markSessionActivitySeen,
   sessionRows,
+  useSessionActivity,
   type SessionActivity,
 } from "@/features/agent/session-index";
-import { useSessionActivity } from "@/features/agent/ui/use-open-sessions";
 import {
   patchSessionPref,
   type SessionPref,
@@ -122,11 +122,7 @@ export function ProjectRow({
         </button>
         <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
           {onTogglePin ? (
-            <PinButton
-              pinned={pinned}
-              onToggle={onTogglePin}
-              target={project.name}
-            />
+            <PinButton pinned={pinned} onToggle={onTogglePin} target={project.name} />
           ) : null}
           {onRemove ? (
             <button
@@ -384,8 +380,6 @@ export function ActiveSessionRow({
         }
       }}
       onPatchPref={(patch) => patchActiveSessionPref(session, patch)}
-      // Archive is keyed on the pi session id, which an open tab only has once
-      // its thread exists; without it there is nothing on disk to archive.
       onArchive={
         session.threadId
           ? () => {
