@@ -7,6 +7,7 @@ import {
 import {
   DEFAULT_FONT_FAMILY_ID,
   DEFAULT_FONT_SIZE_ID,
+  THEME_BY_ID,
   type FontFamilyId,
   type FontSizeId,
   type ThemeId,
@@ -83,7 +84,14 @@ const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (set) => 
   fontSizeId: DEFAULT_FONT_SIZE_ID,
   setThemeId: (themeId: ThemeId) => {
     const appliedThemeId = applyThemeToDocument(themeId);
-    set({ themeId: appliedThemeId });
+    const preferredFontFamilyId = THEME_BY_ID.get(appliedThemeId)?.fontFamilyId;
+    const appliedFontFamilyId = preferredFontFamilyId
+      ? applyFontFamilyToDocument(preferredFontFamilyId)
+      : undefined;
+    set({
+      themeId: appliedThemeId,
+      ...(appliedFontFamilyId ? { fontFamilyId: appliedFontFamilyId } : {}),
+    });
   },
   setFontFamilyId: (fontFamilyId: FontFamilyId) => {
     const appliedFontFamilyId = applyFontFamilyToDocument(fontFamilyId);

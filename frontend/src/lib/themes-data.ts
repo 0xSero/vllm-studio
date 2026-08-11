@@ -1,16 +1,7 @@
-// Theme catalogue.
-//
-// Six themes total: two canonical (Light / Dark) plus four dark accent
-// variants (Sky, Violet, Emerald, Rose). The full surface system lives in
-// `src/app/styles/globals/tokens.css` keyed on `data-theme`/`.theme-zai-*`
-// selectors; the `ThemeTokens` here are the minimal set the runtime bootstrap
-// (`theme-runtime.ts`) writes inline so the picker previews correctly. They
-// resolve to the same workbench values, so picking a theme never fights the token
-// system.
-
 export type ThemeId =
   | "zai-light"
   | "zai-dark"
+  | "chatgpt-dark"
   | "zai-sky"
   | "zai-violet"
   | "zai-emerald"
@@ -22,7 +13,11 @@ export type ThemeId =
   | "graphite"
   | "espresso"
   | "forest"
+  | "nordic-light"
+  | "solarized-dark"
   | "paper";
+
+export type FontFamilyId = "openai" | "geist" | "system" | "avenir" | "serif" | "mono" | "rounded";
 
 export interface ThemeTokens {
   bg: string;
@@ -44,6 +39,21 @@ export interface ThemeMeta {
   group: string;
   swatches: [string, string, string, string];
   tokens: ThemeTokens;
+  fontFamilyId: FontFamilyId;
+  ui?: Partial<ThemeUiTokens>;
+}
+
+export interface ThemeUiTokens {
+  "surface-2": string;
+  "surface-3": string;
+  rail: string;
+  border: string;
+  separator: string;
+  hover: string;
+  active: string;
+  composer: string;
+  "composer-footer": string;
+  bubble: string;
 }
 
 const createTheme = (
@@ -52,6 +62,8 @@ const createTheme = (
   description: string,
   group: string,
   tokens: ThemeTokens,
+  fontFamilyId: FontFamilyId = "geist",
+  ui?: Partial<ThemeUiTokens>,
 ): ThemeMeta => ({
   id,
   name,
@@ -59,6 +71,8 @@ const createTheme = (
   group,
   swatches: [tokens.bg, tokens.surface, tokens.accent, tokens.fg],
   tokens,
+  fontFamilyId,
+  ui,
 });
 
 // Canonical surfaces, expressed as concrete values (the bootstrap script
@@ -88,6 +102,32 @@ const ZAI_DARK: ThemeTokens = {
   hl2: "#ffffff80",
   hl3: "#8f8f8f",
   err: "#ff6764",
+};
+
+const CHATGPT_DARK: ThemeTokens = {
+  bg: "#212121",
+  fg: "#ececec",
+  dim: "#b4b4b4",
+  border: "#ffffff1a",
+  surface: "#2f2f2f",
+  accent: "#ffffff",
+  hl1: "#b4b4b4",
+  hl2: "#8f8f8f",
+  hl3: "#676767",
+  err: "#ff6764",
+};
+
+const CHATGPT_DARK_UI: Partial<ThemeUiTokens> = {
+  "surface-2": "#2f2f2f",
+  "surface-3": "#303030",
+  rail: "#171717",
+  border: "#ffffff1a",
+  separator: "#ffffff0d",
+  hover: "#2f2f2f",
+  active: "#2f2f2f",
+  composer: "#303030",
+  "composer-footer": "#212121",
+  bubble: "#303030",
 };
 
 // Accent variants keep the canonical dark surfaces; only the brand
@@ -156,6 +196,15 @@ export const THEMES: ThemeMeta[] = [
     ZAI_LIGHT,
   ),
   createTheme(
+    "chatgpt-dark",
+    "ChatGPT Dark",
+    "ChatGPT app charcoal surfaces paired with OpenAI Sans",
+    "Reference",
+    CHATGPT_DARK,
+    "openai",
+    CHATGPT_DARK_UI,
+  ),
+  createTheme(
     "zai-sky",
     "Sky",
     "Dark with a sky-blue brand accent",
@@ -183,6 +232,7 @@ export const THEMES: ThemeMeta[] = [
     "Warm charcoal with a terracotta accent, ported from Codex",
     "Ported",
     darkTheme("#2d2d2b", "#f9f9f7", "#373735", "#cc7d5e"),
+    "system",
   ),
   createTheme(
     "raycast-dark",
@@ -190,6 +240,7 @@ export const THEMES: ThemeMeta[] = [
     "Near-black launcher tones with an electric blue accent",
     "Ported",
     darkTheme("#141414", "#ffffff", "#1e1e1e", "#4fa3f8"),
+    "system",
   ),
   createTheme(
     "midnight",
@@ -197,6 +248,7 @@ export const THEMES: ThemeMeta[] = [
     "Blue-black canvas with a soft azure accent",
     "Atmosphere",
     darkTheme("#0d1117", "#e6edf3", "#161b22", "#58a6ff"),
+    "avenir",
   ),
   createTheme(
     "slate",
@@ -204,6 +256,7 @@ export const THEMES: ThemeMeta[] = [
     "Cool graphite blues with a periwinkle accent",
     "Atmosphere",
     darkTheme("#12151a", "#e2e8f0", "#1a1f27", "#7aa2f7"),
+    "system",
   ),
   createTheme(
     "graphite",
@@ -218,6 +271,7 @@ export const THEMES: ThemeMeta[] = [
     "Roasted browns with a caramel accent",
     "Atmosphere",
     darkTheme("#1a1512", "#f2e9df", "#241d18", "#d9954a"),
+    "serif",
   ),
   createTheme(
     "forest",
@@ -225,6 +279,23 @@ export const THEMES: ThemeMeta[] = [
     "Deep evergreen with a spring-green accent",
     "Atmosphere",
     darkTheme("#0f1512", "#e8f2ec", "#18211b", "#4fd08a"),
+    "rounded",
+  ),
+  createTheme(
+    "nordic-light",
+    "Nordic Light",
+    "Cool daylight neutrals with crisp indigo controls",
+    "Studio",
+    lightTheme("#f4f6f8", "#20242a", "#ffffff", "#5e6ad2"),
+    "avenir",
+  ),
+  createTheme(
+    "solarized-dark",
+    "Solarized Dark",
+    "Low-contrast blue-green surfaces with a cyan accent",
+    "Reference",
+    darkTheme("#002b36", "#eee8d5", "#073642", "#2aa198"),
+    "system",
   ),
   createTheme(
     "paper",
@@ -232,5 +303,6 @@ export const THEMES: ThemeMeta[] = [
     "Warm paper white with a burnt-sienna accent",
     "Studio",
     lightTheme("#faf8f2", "#2a2723", "#ffffff", "#b05f2d"),
+    "serif",
   ),
 ];

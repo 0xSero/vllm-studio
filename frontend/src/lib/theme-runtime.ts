@@ -8,6 +8,7 @@ import {
   type FontSizeId,
   type ThemeId,
   type ThemeTokens,
+  type ThemeUiTokens,
 } from "@/lib/themes";
 
 const STORE_KEY = "local-studio-state";
@@ -37,7 +38,10 @@ function lightnessFromColor(value: string): number | null {
   return ((Math.max(r, g, b) + Math.min(r, g, b)) / 2) * 100;
 }
 
-function deriveThemeUiTokens(tokens: ThemeTokens): Record<string, string> {
+function deriveThemeUiTokens(
+  tokens: ThemeTokens,
+  overrides: Partial<ThemeUiTokens> = {},
+): ThemeUiTokens {
   const isLight = (lightnessFromColor(tokens.bg) ?? 0) > 50;
   const ink = isLight ? "26, 28, 31" : "255, 255, 255";
   return {
@@ -54,12 +58,17 @@ function deriveThemeUiTokens(tokens: ThemeTokens): Record<string, string> {
     active: `rgba(${ink}, 0.08)`,
     composer: "var(--sidebar-bg)",
     "composer-footer": "var(--sidebar-bg)",
+    bubble: tokens.surface,
+    ...overrides,
   };
 }
 
 const THEME_UI_TOKENS_BY_ID = Object.fromEntries(
-  Array.from(THEME_BY_ID.entries()).map(([id, theme]) => [id, deriveThemeUiTokens(theme.tokens)]),
-) as Record<string, Record<string, string>>;
+  Array.from(THEME_BY_ID.entries()).map(([id, theme]) => [
+    id,
+    deriveThemeUiTokens(theme.tokens, theme.ui),
+  ]),
+) as Record<string, ThemeUiTokens>;
 
 const FONT_FAMILY_CSS_BY_ID = Object.fromEntries(
   Array.from(FONT_FAMILY_BY_ID.entries()).map(([id, option]) => [id, option.cssValue]),
@@ -69,9 +78,9 @@ const FONT_SIZE_CSS_BY_ID = Object.fromEntries(
   Array.from(FONT_SIZE_BY_ID.entries()).map(([id, option]) => [id, option.cssValue]),
 ) as Record<string, string>;
 
-function setThemeTokens(tokens: ThemeTokens): void {
+function setThemeTokens(tokens: ThemeTokens, ui: Partial<ThemeUiTokens> = {}): void {
   if (typeof document === "undefined") return;
-  for (const [key, value] of Object.entries({ ...tokens, ...deriveThemeUiTokens(tokens) })) {
+  for (const [key, value] of Object.entries({ ...tokens, ...deriveThemeUiTokens(tokens, ui) })) {
     document.documentElement.style.setProperty(`--${key}`, value);
   }
 }
@@ -83,7 +92,7 @@ export function applyThemeToDocument(themeId: ThemeId): ThemeId {
   if (!nextTheme) return themeId;
 
   document.documentElement.setAttribute("data-theme", nextTheme.id);
-  setThemeTokens(nextTheme.tokens);
+  setThemeTokens(nextTheme.tokens, nextTheme.ui);
   return nextTheme.id;
 }
 
