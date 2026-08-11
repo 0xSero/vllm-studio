@@ -55,10 +55,6 @@
   color: "#1d76db"
   description: "Related to CI/CD, Docker, infrastructure"
 
-- name: "Area: Tests"
-  color: "#bfd4f2"
-  description: "Related to testing"
-
 # Status Labels
 - name: "Status: Ready"
   color: "#2da44e"
