@@ -17,6 +17,16 @@ const nullableNum = (value: unknown): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+export const usageRate = (successful: unknown, total: unknown): number => {
+  const count = num(total);
+  return count ? (num(successful) / count) * 100 : 0;
+};
+
+export const usageAverage = (value: unknown, total: unknown): number => {
+  const count = num(total);
+  return count ? Math.round(num(value) / count) : 0;
+};
+
 const text = (value: unknown, fallback = ""): string =>
   typeof value === "string" && value.length > 0 ? value : fallback;
 
@@ -27,14 +37,20 @@ const project = <const Key extends string, Value>(
 ): Record<Key, Value> =>
   Object.fromEntries(keys.map((key) => [key, decode(source[key])])) as Record<Key, Value>;
 
-const numbers = <const Key extends string>(source: UnknownRecord, keys: readonly Key[]) =>
-  project(source, keys, num);
+const numbers = <const Key extends string>(
+  source: UnknownRecord,
+  keys: readonly Key[],
+): Record<Key, number> => project(source, keys, num);
 
-const nullableNumbers = <const Key extends string>(source: UnknownRecord, keys: readonly Key[]) =>
-  project(source, keys, nullableNum);
+const nullableNumbers = <const Key extends string>(
+  source: UnknownRecord,
+  keys: readonly Key[],
+): Record<Key, number | null> => project(source, keys, nullableNum);
 
-const texts = <const Key extends string>(source: UnknownRecord, keys: readonly Key[]) =>
-  project(source, keys, text);
+const texts = <const Key extends string>(
+  source: UnknownRecord,
+  keys: readonly Key[],
+): Record<Key, string> => project(source, keys, text);
 
 export function normalizeControllerUsage(value: unknown) {
   const controller = record(value);
@@ -210,6 +226,7 @@ export function normalizeUsageStats(input: unknown) {
 
 export type ControllerUsageStats = Exclude<ReturnType<typeof normalizeControllerUsage>, undefined>;
 type NormalizedUsageStats = ReturnType<typeof normalizeUsageStats>;
-export type UsageStats = Omit<NormalizedUsageStats, "controller"> & {
+export type UsageStats = Omit<NormalizedUsageStats, "controller" | "daily_by_model"> & {
+  daily_by_model?: NormalizedUsageStats["daily_by_model"];
   controller?: ControllerUsageStats;
 };

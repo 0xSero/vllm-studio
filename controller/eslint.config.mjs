@@ -62,6 +62,7 @@ const config = [
   {
     files: ["contracts/**/*.ts"],
     rules: {
+      "@typescript-eslint/explicit-function-return-type": "off",
       "unicorn/prevent-abbreviations": "off",
     },
   },
