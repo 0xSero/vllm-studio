@@ -1,9 +1,5 @@
 import type { TextContent, ThinkingContent, ToolCall } from "@earendil-works/pi-ai";
-import { newId } from "@/features/agent/messages/helpers";
 import type { AssistantBlock, TextBlock } from "@/features/agent/messages/types";
-
-const isRecordArray = (value: unknown): value is Array<Record<string, unknown>> =>
-  Array.isArray(value);
 
 const toolArgs = (part: { arguments?: unknown }): Record<string, unknown> | undefined => {
   if (part.arguments && typeof part.arguments === "object" && !Array.isArray(part.arguments)) {
@@ -19,96 +15,6 @@ const toolArgs = (part: { arguments?: unknown }): Record<string, unknown> | unde
     return undefined;
   }
 };
-
-export function blockFromContentPart(
-  part: Record<string, unknown>,
-  options: { textAsThinking?: boolean } = {},
-): AssistantBlock[] {
-  if (part.type === "text") {
-    const reasoningText = typeof part.reasoning_content === "string" ? part.reasoning_content : "";
-    const text = typeof part.text === "string" ? part.text : "";
-    if (options.textAsThinking) {
-      const combined = [reasoningText, text].filter(Boolean).join("\n");
-      return combined ? [{ kind: "thinking", id: newId("thinking"), text: combined }] : [];
-    }
-    return [
-      ...(reasoningText
-        ? [{ kind: "thinking" as const, id: newId("thinking"), text: reasoningText }]
-        : []),
-      ...(text ? [{ kind: "text" as const, id: newId("text"), text }] : []),
-    ];
-  }
-  if (part.type === "thinking" && typeof part.thinking === "string") {
-    return [{ kind: "thinking", id: newId("thinking"), text: part.thinking }];
-  }
-  if (part.type === "reasoning") {
-    const text = [part.reasoning, part.thinking, part.text].find(
-      (value): value is string => typeof value === "string",
-    );
-    return text ? [{ kind: "thinking", id: newId("thinking"), text }] : [];
-  }
-  if (part.type !== "toolCall") return [];
-
-  const args = toolArgs(part);
-  const argsText = args
-    ? JSON.stringify(args, null, 2)
-    : typeof part.arguments === "string" && part.arguments.trim()
-      ? part.arguments
-      : "{}";
-  return [
-    {
-      kind: "tool",
-      id: typeof part.id === "string" ? part.id : newId("tool"),
-      name: typeof part.name === "string" ? part.name : "tool",
-      status: "running",
-      argsText,
-      args,
-      text: argsText,
-    },
-  ];
-}
-
-export function blocksFromMessageContent(
-  content: string | Array<Record<string, unknown>> | undefined,
-  options: { stopReason?: string; errorMessage?: string } = {},
-): AssistantBlock[] {
-  const errorBlock = assistantErrorBlock(options.errorMessage);
-  if (typeof content === "string") {
-    const blocks: AssistantBlock[] = content
-      ? [{ kind: "text", id: newId("text"), text: content }]
-      : [];
-    return errorBlock ? [...blocks, errorBlock] : blocks;
-  }
-  if (!isRecordArray(content)) return errorBlock ? [errorBlock] : [];
-  const firstToolCallIndex = content.findIndex((part) => part.type === "toolCall");
-  const textBeforeToolIsThinking = options.stopReason === "toolUse" && firstToolCallIndex > -1;
-  const blocks = content.flatMap((part, index) =>
-    blockFromContentPart(part, {
-      textAsThinking: textBeforeToolIsThinking && index < firstToolCallIndex,
-    }),
-  );
-  const ordered = firstToolCallIndex > -1 ? blocks : reasoningBeforeText(blocks);
-  // Coalesce adjacent same-kind text/thinking exactly like the live snapshot
-  // path (blocksFromTurnSnapshots) does. A settled message can carry two
-  // adjacent {type:"text"} parts whose boundary falls mid-content (mid-table,
-  // mid-code-fence); without this merge the replay/reload path builds one block
-  // per part and the GFM parser sees two raw fragments, so a table that rendered
-  // correctly live mangles after navigate-away/crash-recovery. The error block
-  // is not text-like, so it is never merged into prose.
-  return mergeAdjacentTextLike(errorBlock ? [...ordered, errorBlock] : ordered);
-}
-
-function assistantErrorBlock(message: string | undefined): AssistantBlock | null {
-  const text = message?.trim();
-  return text ? { kind: "event", id: newId("error"), text } : null;
-}
-
-function reasoningBeforeText(blocks: AssistantBlock[]): AssistantBlock[] {
-  const thinking = blocks.filter((block) => block.kind === "thinking");
-  const text = blocks.filter((block) => block.kind === "text");
-  const other = blocks.filter((block) => block.kind !== "thinking" && block.kind !== "text");
-  return [...thinking, ...text, ...other];
-}
 
 export const messageTextFromBlocks = (blocks: AssistantBlock[]): string =>
   blocks
@@ -240,46 +146,3 @@ const asRecordPart = (value: unknown): PiContentPart =>
 // they must be carried over from the previous blocks by stable tool id. Shared
 // by the snapshot reducer and the final-message reconcile.
 // ---------------------------------------------------------------------------
-
-export function usefulToolArgsText(value: string | undefined): string {
-  const text = value ?? "";
-  return text.trim() === "{}" ? "" : text;
-}
-
-function mergedToolArgsText(
-  existingArgsText: string | undefined,
-  incomingArgsText: string | undefined,
-): string | undefined {
-  const existing = usefulToolArgsText(existingArgsText);
-  const incoming = usefulToolArgsText(incomingArgsText);
-  if (!existing) return incoming || undefined;
-  if (!incoming) return existing;
-  if (incoming.startsWith(existing) || incoming.length >= existing.length) return incoming;
-  if (existing.startsWith(incoming)) return existing;
-  return incoming;
-}
-
-export function mergeExistingToolState(
-  existingBlocks: AssistantBlock[],
-  incomingBlocks: AssistantBlock[],
-): AssistantBlock[] {
-  const existingTools = new Map(
-    existingBlocks
-      .filter((block) => block.kind === "tool")
-      .map((block) => [block.id, block] as const),
-  );
-  return incomingBlocks.map((block) => {
-    if (block.kind !== "tool") return block;
-    const existing = existingTools.get(block.id);
-    if (!existing || existing.kind !== "tool") return block;
-    const argsText = mergedToolArgsText(existing.argsText, block.argsText);
-    return {
-      ...block,
-      args: block.args ?? existing.args,
-      argsText,
-      resultText: existing.resultText ?? block.resultText,
-      status: existing.status,
-      text: argsText || block.text || existing.text,
-    };
-  });
-}

@@ -120,8 +120,3 @@ export type SessionTab = {
   queue?: QueuedMessage[];
   extensionUiRequest?: import("@/features/agent/runtime/types").ExtensionUiRequest;
 };
-
-export type RuntimeLoggedEvent = {
-  readonly seq?: number;
-  readonly event?: Record<string, unknown>;
-};
