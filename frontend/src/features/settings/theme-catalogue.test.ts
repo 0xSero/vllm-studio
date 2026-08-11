@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { FONT_FAMILY_BY_ID, THEMES, THEME_BY_ID } from "./themes";
+import { FONT_FAMILY_BY_ID, THEMES, THEME_BY_ID } from "@/lib/themes";
 
 describe("theme catalogue", () => {
   test("keeps theme identifiers unique", () => {
