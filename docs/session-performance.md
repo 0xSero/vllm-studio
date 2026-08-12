@@ -198,16 +198,44 @@ Nothing in this repo can fix the writers. What it means for the reader:
 cd services/agent-runtime && bun run bench/rollout-census.bench.ts <rollout.jsonl>
 ```
 
+### 6. A safety net for paging, before touching it
+
+`tail` / `before` paging had one assertion in the whole suite (a single
+`tail: 100` call). The cursor is a raw byte offset into the rollout, and getting
+it wrong does not throw — it silently drops or duplicates a stretch of someone's
+conversation. `test/session-paging.test.ts` now pins the properties any change
+has to preserve:
+
+- a tail smaller than the transcript leaves a cursor, and the newest turn is on
+  the first page;
+- a tail larger than the transcript ends paging (`cursor === null`);
+- **pages tile the transcript exactly once, in order** — concatenating them
+  oldest-first rebuilds the log verbatim;
+- paging terminates on a rollout padded with inert entries, the shape from
+  finding 5 where the scan crosses long stretches containing no message;
+- inert entries never reach the transcript;
+- cursors decrease strictly, which is what guarantees termination.
+
+Two things worth knowing for anyone writing fixtures here: rollouts must be
+built through `SessionManager`, because entries are a `parentId` tree and
+hand-written JSONL has no valid chain — the active-branch filter then correctly
+discards all of it, and the tests "fail" against perfectly good code. And a
+fixture small enough to run fast finishes in about two pages, since the backward
+scan reads in 8 MB chunks; assert the ordering property, not a page count.
+
 ## Open questions — measure before assuming
 
-- **An offset index is the only remaining reader win.** Record the byte offsets
-  of non-inert lines once (the usage scan already streams the whole file and
-  knows the offsets), cache it with `rollout-cache`, and have `readTailRegion`
-  read only those ranges instead of the whole span. On the 145 MB session that
-  is 6.9 MB of reads instead of 145 MB. **Risk:** `readTailRegion` owns the
-  `cursor` byte offset that drives `before` paging, and reading discrete ranges
-  changes the carry/boundary logic it computes that cursor from. Needs tests
-  pinning cursor continuity across pages before any of it lands.
+- **Materialise the transcript as a sidecar.** The refinement of the offset-index
+  idea, now that finding 5 shows renderable lines are interleaved throughout
+  (so seeking smarter saves nothing — the span from the 500th-last message to
+  EOF is still most of the file). Instead of indexing offsets into the original,
+  write the non-inert lines to a sidecar under `rollout-cache` and page over
+  *that*: 3.6 MB instead of 40 MB, 6.9 MB instead of 145 MB, with
+  `readTailRegion` logic unchanged because it is still a contiguous JSONL file.
+  Cursors stay opaque byte offsets, just into the sidecar. Growth reuses the
+  resume machinery from finding 3 — scan only the appended bytes and append the
+  renderable ones. Expected warm open ~213 ms → tens of ms. Guarded by the
+  paging suite above; add a test that a sidecar and its rollout page identically.
 - **The cold path is still ~1.1–2.8s**, now mostly module load plus the first
   full walk. Unpicked.
 - **Timeline virtualization** — still unmeasured, still deferred. See below.
