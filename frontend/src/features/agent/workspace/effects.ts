@@ -66,61 +66,20 @@ function patchWorkspace(deps: WorkspaceEffectDeps, patch: Partial<WorkspaceState
   deps.dispatch?.((state) => ({ ...state, ...patch }));
 }
 
-function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps): void {
-  const loadSetupChecksEffect = deps.api.loadSetupChecks
+function loadSetupChecks(deps: WorkspaceEffectDeps) {
+  return deps.api.loadSetupChecks
     ? Effect.tryPromise({
         try: () => deps.api.loadSetupChecks?.() ?? Promise.resolve(null),
         catch: () => null,
       }).pipe(Effect.catch(() => Effect.succeed(null)))
     : Effect.succeed(null);
+}
 
-  if (deps.api.loadModels) {
-    const attemptLoadModels = (attempt: number): void => {
-      patchWorkspace(deps, { modelsLoading: true, ...(attempt === 0 ? { error: "" } : {}) });
-      void Effect.runPromise(
-        Effect.gen(function* () {
-          const payload = yield* Effect.tryPromise({
-            try: () => deps.api.loadModels?.() ?? Promise.resolve([]),
-            catch: (error) => error,
-          });
-          const normalized = normalizeModelsPayload(payload);
-          if (normalized.error) return yield* Effect.fail(new Error(normalized.error));
-          deps.dispatch?.((state) => ({
-            ...state,
-            error: "",
-            models: normalized.models,
-            selectedModel: chooseModelId(
-              normalized.models,
-              state.selectedModel,
-              readDefaultAgentModel(deps.storage),
-            ),
-            modelsLoading: false,
-          }));
-          if (normalized.models.length > 0) {
-            patchWorkspace(deps, { setupWarning: "" });
-          } else {
-            const setupPayload = yield* loadSetupChecksEffect;
-            const pi = setupPayload?.checks?.find((check) => check.id === "pi");
-            patchWorkspace(deps, { setupWarning: setupWarningFromPiCheck(pi, false) });
-          }
-        }).pipe(
-          Effect.catch((error) =>
-            Effect.sync(() => {
-              patchWorkspace(deps, {
-                error: error instanceof Error ? error.message : "Failed to load models",
-                modelsLoading: false,
-              });
-              const delay = Math.min(5_000 * 2 ** attempt, 60_000);
-              deps.window.setTimeout?.(() => attemptLoadModels(attempt + 1), delay);
-            }),
-          ),
-        ),
-      );
-    };
-    attemptLoadModels(0);
-  } else if (deps.api.loadSetupChecks) {
+function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps): void {
+  if (deps.api.loadModels) refreshWorkspaceModels(deps);
+  else if (deps.api.loadSetupChecks) {
     void Effect.runPromise(
-      loadSetupChecksEffect.pipe(
+      loadSetupChecks(deps).pipe(
         Effect.map((payload) => {
           const pi = payload?.checks?.find((check) => check.id === "pi");
           patchWorkspace(deps, {
@@ -130,6 +89,49 @@ function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps):
       ),
     );
   }
+}
+
+export function refreshWorkspaceModels(deps: WorkspaceEffectDeps, attempt = 0): void {
+  if (!deps.api.loadModels) return;
+  patchWorkspace(deps, { modelsLoading: true, ...(attempt === 0 ? { error: "" } : {}) });
+  void Effect.runPromise(
+    Effect.gen(function* () {
+      const payload = yield* Effect.tryPromise({
+        try: () => deps.api.loadModels?.() ?? Promise.resolve([]),
+        catch: (error) => error,
+      });
+      const normalized = normalizeModelsPayload(payload);
+      if (normalized.error) return yield* Effect.fail(new Error(normalized.error));
+      deps.dispatch?.((state) => ({
+        ...state,
+        error: "",
+        models: normalized.models,
+        selectedModel: chooseModelId(
+          normalized.models,
+          state.selectedModel,
+          readDefaultAgentModel(deps.storage),
+        ),
+        modelsLoading: false,
+      }));
+      if (normalized.models.length > 0) patchWorkspace(deps, { setupWarning: "" });
+      else {
+        const setupPayload = yield* loadSetupChecks(deps);
+        const pi = setupPayload?.checks?.find((check) => check.id === "pi");
+        patchWorkspace(deps, { setupWarning: setupWarningFromPiCheck(pi, false) });
+      }
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          patchWorkspace(deps, {
+            error: error instanceof Error ? error.message : "Failed to load models",
+            modelsLoading: false,
+          });
+          const delay = Math.min(5_000 * 2 ** attempt, 60_000);
+          deps.window.setTimeout?.(() => refreshWorkspaceModels(deps, attempt + 1), delay);
+        }),
+      ),
+    ),
+  );
 }
 
 function storedSessionsKey(state: WorkspaceState): string {

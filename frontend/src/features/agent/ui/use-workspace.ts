@@ -23,6 +23,7 @@ import {
 import { makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
 import {
   runWorkspaceEffect,
+  refreshWorkspaceModels,
   scheduleSessionsRefresh,
   type WorkspaceDispatch,
   type WorkspaceEffectDeps,
@@ -44,10 +45,7 @@ import {
 } from "@/features/agent/ui/use-workspace-effects";
 import type { ChatPaneHandle } from "@/features/agent/ui/chat-pane";
 import type { SessionDropPayload } from "@/features/agent/ui/pane-grid";
-import {
-  readDefaultAgentModel,
-  writeDefaultAgentModel,
-} from "@/features/agent/workspace/model-preference";
+import { writeDefaultAgentModel } from "@/features/agent/workspace/model-preference";
 import {
   closePane,
   openSessionPayloadInPane,
@@ -215,6 +213,10 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         const deps = makeDeps(workspaceDispatch);
         if (deps) scheduleSessionsRefresh(deps);
       },
+      refreshModels: () => {
+        const deps = makeDeps(workspaceDispatch);
+        if (deps) refreshWorkspaceModels(deps);
+      },
     };
   }, [queueSessionReplay, ephemeral, store]);
 
@@ -222,53 +224,24 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
 
   useMountSubscription(() => {
     if (typeof window === "undefined") return;
-    const reload = () => {
-      dispatch((current) => ({ ...current, modelsLoading: true, error: "" }));
-      void loadAgentModelsPayload()
-        .then((models) => {
-          dispatch((current) => {
-            const available = models.models ?? [];
-            const preferred = readDefaultAgentModel(window.localStorage);
-            const selectedModel =
-              [preferred, current.selectedModel].find(
-                (id) => id && available.some((model) => model.id === id),
-              ) ??
-              available.find((model) => model.active)?.id ??
-              available[0]?.id ??
-              "";
-            return { ...current, models: available, selectedModel, modelsLoading: false };
-          });
-        })
-        .catch((error) => {
-          dispatch((current) => ({
-            ...current,
-            error: error instanceof Error ? error.message : String(error),
-            models: [],
-            selectedModel: "",
-          }));
-        })
-        .finally(() => dispatch((current) => ({ ...current, modelsLoading: false })));
-    };
     const onStorage = (event: StorageEvent | Event) => {
       const key = (event as StorageEvent).key;
       if (key && key !== BACKEND_URL_STORAGE_KEY && key !== CONTROLLERS_STORAGE_KEY) return;
-      reload();
+      controller.refreshModels();
     };
     const recoverIfEmpty = () => {
       const current = store.getState();
-      if (current.models.length === 0 && !current.modelsLoading) reload();
+      if (current.models.length === 0 && !current.modelsLoading) controller.refreshModels();
     };
-    const retryTimers = [900, 2500, 6000].map((ms) => window.setTimeout(recoverIfEmpty, ms));
     window.addEventListener("storage", onStorage);
     window.addEventListener("focus", recoverIfEmpty);
     window.addEventListener("online", recoverIfEmpty);
     return () => {
-      for (const t of retryTimers) window.clearTimeout(t);
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", recoverIfEmpty);
       window.removeEventListener("online", recoverIfEmpty);
     };
-  }, [dispatch, store]);
+  }, [controller, store]);
 
   const handles = useMemo<WorkspaceHandles>(
     () => ({
