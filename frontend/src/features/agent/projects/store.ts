@@ -21,6 +21,10 @@ export type ProjectsStore = {
 
 let lastGitFetch: string | null = null;
 let refreshInFlight: Promise<void> | null = null;
+const SELECTED_PROJECT_KEY = "local-studio.agent.selectedProjectId";
+const PROJECTS_CACHE_KEY = "local-studio.agent.projects.cache.v1";
+const PROJECTS_ORDER_KEY = "local-studio.agent.projects.order.v1";
+const readSelectedProjectId = (): string | null => readStored(SELECTED_PROJECT_KEY);
 
 export const useProjectsStore = create<ProjectsStore>((set, get) => {
   const loadGitSummary = async (cwd: string): Promise<GitSummary | null> => {
@@ -133,10 +137,6 @@ function projectPathById(projects: readonly Project[], projectId: ProjectId | nu
   return projects.find((project) => project.id === projectId)?.path ?? "";
 }
 
-const SELECTED_PROJECT_KEY = "local-studio.agent.selectedProjectId";
-const PROJECTS_CACHE_KEY = "local-studio.agent.projects.cache.v1";
-const PROJECTS_ORDER_KEY = "local-studio.agent.projects.order.v1";
-
 function readProjectOrder(): string[] {
   return readStoredJson(PROJECTS_ORDER_KEY, [], (value) =>
     Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : null,
@@ -174,8 +174,6 @@ function readCachedProjects(): Project[] {
 function writeCachedProjects(projects: Project[]): void {
   writeStored(PROJECTS_CACHE_KEY, JSON.stringify(projects));
 }
-
-const readSelectedProjectId = (): string | null => readStored(SELECTED_PROJECT_KEY);
 
 function writeSelectedProjectId(id: string | null): void {
   if (id) writeStored(SELECTED_PROJECT_KEY, id);
