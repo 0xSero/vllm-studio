@@ -20,7 +20,6 @@ const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
 
 export type UseSessionEngineDeps = {
-  /** Latest `tabs` snapshot — engine reads via a ref so it doesn't restart on every frame. */
   tabs: Session[];
   activeTabId: SessionId;
   modelId: string;
@@ -30,22 +29,17 @@ export type UseSessionEngineDeps = {
   browserToolEnabled: boolean;
   browserBackend: BrowserBackend;
   onPiSessionIdChange?: (piSessionId: string) => void;
-  /** Mutate a single session record. */
   updateSession: UpdateSession;
-  /** Look up the per-session tool selection from the tools subsystem. */
   selectionFor: (sessionId: SessionId) => ToolSelection;
 };
 
 export type SessionEngine = {
-  /** Send a freshly-typed prompt — orchestrates optimistic update + streaming. */
   submitPrompt: (args: SubmitArgs) => Promise<void>;
-  /** Send a steer/follow-up control message while a turn is in progress. */
   sendControl: (request: AgentControlRequest) => Promise<{ ok: boolean; error?: string }>;
   abortTurn: (sessionId: SessionId) => Promise<api.AbortSessionResult>;
-  /** Fetch and prepend the previous page of older history (tail paging). */
+  hydrate: (sessionId: SessionId) => Promise<void>;
   loadEarlier: (sessionId: SessionId) => Promise<void>;
   compact: (sessionId: SessionId) => Promise<void>;
-  /** Report whether the session is in a state that can request steer/follow-up. */
   acceptsControl: (tab: { status: Session["status"] }) => boolean;
 };
 
@@ -78,8 +72,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   tabsRef.current = tabs;
   const selectionForRef = useRef(selectionFor);
   selectionForRef.current = selectionFor;
-  // Sessions with an in-flight "load earlier" page, so a double click / repeated
-  // scroll doesn't fetch and prepend the same chunk twice.
+  const hydratingRef = useRef<Set<SessionId>>(new Set());
   const loadingEarlierRef = useRef<Set<SessionId>>(new Set());
 
   const sendControl = useCallback(
@@ -201,10 +194,65 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     [updateSession],
   );
 
-  // Page the previous (older) chunk of a tail-loaded transcript into view and
-  // prepend it. Each page is snapped to a user-turn boundary and abuts the
-  // current first message exactly (cursor = first loaded byte), so folding the
-  // page on its own and prepending is equivalent to a single larger fold.
+  const hydrate = useCallback(
+    (sessionId: SessionId): Promise<void> => {
+      const session = tabsRef.current.find((tab) => tab.id === sessionId);
+      const sessionCwd = session?.cwd || cwd;
+      if (
+        !session?.piSessionId ||
+        !sessionCwd ||
+        session.messages.length > 0 ||
+        hydratingRef.current.has(sessionId)
+      ) {
+        return Promise.resolve();
+      }
+      hydratingRef.current.add(sessionId);
+      const piSessionId = session.piSessionId;
+      updateSession(sessionId, (current) => ({ ...current, status: "loading", error: "" }));
+      return Effect.runPromise(
+        Effect.gen(function* () {
+          const result = yield* Effect.tryPromise({
+            try: () => api.loadCanonicalSession(piSessionId, sessionCwd),
+            catch: (error) => error,
+          }).pipe(Effect.result);
+          updateSession(sessionId, (current) => {
+            if (current.piSessionId !== piSessionId) return current;
+            if (result._tag !== "Success") {
+              return {
+                ...current,
+                status: current.status === "loading" ? "idle" : current.status,
+                error:
+                  result.failure instanceof Error
+                    ? result.failure.message
+                    : "Failed to load session",
+              };
+            }
+            const { messages, tokenStats, cursor, meta } = result.success;
+            return {
+              ...current,
+              messages: current.messages.length > 0 ? current.messages : messages,
+              tokenStats: tokenStats ?? current.tokenStats,
+              historyCursor: messages.length > 0 ? cursor : current.historyCursor,
+              title: meta?.title ?? current.title,
+              modelId: current.modelId || meta?.modelId || undefined,
+              startedAt: meta?.startedAt ?? current.startedAt,
+              usageTotals: meta?.usage ?? current.usageTotals,
+              status: current.status === "loading" ? "idle" : current.status,
+              error: "",
+            };
+          });
+        }).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              hydratingRef.current.delete(sessionId);
+            }),
+          ),
+        ),
+      );
+    },
+    [cwd, updateSession],
+  );
+
   const loadEarlier = useCallback(
     (sessionId: SessionId): Promise<void> => {
       const session = tabsRef.current.find((tab) => tab.id === sessionId);
@@ -293,10 +341,11 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       submitPrompt,
       sendControl,
       abortTurn,
+      hydrate,
       loadEarlier,
       compact,
       acceptsControl,
     }),
-    [submitPrompt, sendControl, abortTurn, loadEarlier, compact, acceptsControl],
+    [submitPrompt, sendControl, abortTurn, hydrate, loadEarlier, compact, acceptsControl],
   );
 }

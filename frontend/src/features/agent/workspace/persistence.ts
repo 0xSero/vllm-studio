@@ -1,6 +1,11 @@
 import { Schema } from "effect";
 import { cleanSessionTitle, makeFreshTab } from "@/features/agent/messages/helpers";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
+import type {
+  AssistantBlock,
+  ChatMessage,
+  ChatMessageAttachment,
+} from "@/features/agent/messages/types";
 import type { Session, SessionId, SessionsMap } from "@/features/agent/runtime/types";
 import type { ToolSelection } from "@/features/agent/tools/types";
 import { clampLayoutToLimits, collectLeaves, removeLeaf } from "@/features/agent/workspace/layout";
@@ -11,6 +16,7 @@ import type {
   WorkspaceState,
 } from "@/features/agent/workspace/types";
 import { isAgentThinkingLevel } from "@shared/agent/agent-turn";
+import { AgentViewMessageSchema } from "@shared/agent/session-view";
 import { readStored, removeStored, writeStored } from "@/lib/storage";
 
 const PANE_LAYOUT_KEY = "local-studio.agent.paneLayout";
@@ -22,6 +28,12 @@ const LegacyDraftsSchema = Schema.Struct({
   drafts: Schema.Record(Schema.String, Schema.String),
 });
 const decodeLegacyDrafts = Schema.decodeUnknownOption(LegacyDraftsSchema);
+const decodeMessages = Schema.decodeUnknownOption(
+  Schema.mutable(Schema.Array(AgentViewMessageSchema)),
+);
+const MAX_MESSAGES = 200;
+const MAX_TRANSCRIPT_CHARS = 512 * 1024;
+const MAX_BLOCK_CHARS = 16 * 1024;
 
 export type WorkspaceStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 type PersistedPane = { tabs?: unknown[]; activeTabId?: unknown; kind?: unknown };
@@ -37,7 +49,7 @@ type PersistedTab = Partial<Session> & {
   runtimeSessionId?: unknown;
   lastEventSeq?: unknown;
 };
-type PersistedSessionMeta = Omit<Session, "messages" | "error" | "status" | "activeAssistantId"> & {
+type PersistedSessionMeta = Omit<Session, "error" | "status" | "activeAssistantId"> & {
   skills?: ToolSelection["skills"];
   promptTemplates?: ToolSelection["promptTemplates"];
 };
@@ -81,19 +93,66 @@ function persistedPaneState(raw: string): PersistedPaneState | null {
   return state.layout && typeof state.layout === "object" ? state : null;
 }
 
+function truncateText(value: string | undefined): string | undefined {
+  return value && value.length > MAX_BLOCK_CHARS
+    ? `${value.slice(0, MAX_BLOCK_CHARS)}\n…[truncated]`
+    : value;
+}
+
+function boundedBlock(block: AssistantBlock): AssistantBlock {
+  const text = truncateText(block.text) ?? "";
+  return block.kind === "tool"
+    ? {
+        ...block,
+        text,
+        ...(block.argsText !== undefined ? { argsText: truncateText(block.argsText) } : {}),
+        ...(block.resultText !== undefined ? { resultText: truncateText(block.resultText) } : {}),
+      }
+    : { ...block, text };
+}
+
+function boundedAttachment(attachment: ChatMessageAttachment): ChatMessageAttachment {
+  const { previewUrl: _preview, ...persisted } = attachment;
+  return { ...persisted, content: "" };
+}
+
+function boundedMessage(message: ChatMessage): ChatMessage {
+  const { streamCalls: _calls, pending: _pending, awaitingEcho: _echo, ...persisted } = message;
+  return {
+    ...persisted,
+    text: truncateText(message.text) ?? "",
+    ...(message.blocks?.length ? { blocks: message.blocks.map(boundedBlock) } : {}),
+    ...(message.attachments?.length
+      ? { attachments: message.attachments.map(boundedAttachment) }
+      : {}),
+  };
+}
+
+function boundedMessages(messages: ChatMessage[]): ChatMessage[] {
+  const kept = messages.slice(-MAX_MESSAGES).map(boundedMessage);
+  const sizes = kept.map((message) => JSON.stringify(message).length + 1);
+  let total = sizes.reduce((sum, size) => sum + size, 2);
+  let start = 0;
+  while (kept.length - start > 1 && total > MAX_TRANSCRIPT_CHARS) {
+    total -= sizes[start++] ?? 0;
+  }
+  return kept.slice(start);
+}
+
 function normalizeSession(value: unknown): Session | null {
   if (!value || typeof value !== "object") return null;
   const tab = value as PersistedTab;
   if (typeof tab.id !== "string") return null;
   const fallback = makeFreshTab();
   const { runtimeSessionId: _runtime, lastEventSeq: _seq, ...persisted } = tab;
+  const messages = decodeMessages(tab.messages);
   return {
     ...fallback,
     ...persisted,
     id: tab.id,
     piSessionId: typeof tab.piSessionId === "string" ? tab.piSessionId : null,
     title: cleanSessionTitle(tab.title) || fallback.title,
-    messages: [],
+    messages: messages._tag === "Some" ? messages.value : [],
     status: "idle",
     error: "",
     startedAt: typeof tab.startedAt === "string" ? tab.startedAt : undefined,
@@ -148,14 +207,12 @@ function restorePaneState(raw: string): LoadedFromStorage | null {
   for (const paneId of leaves) {
     const pane = state.panes?.[paneId] ?? {};
     const restored = restoreSessions(Array.isArray(pane.tabs) ? pane.tabs : []);
-    const paneSessions = restored.sessions.length ? restored.sessions : [makeFreshTab()];
-    const activeId =
-      typeof pane.activeTabId === "string" &&
-      paneSessions.some((session) => session.id === pane.activeTabId)
-        ? pane.activeTabId
-        : paneSessions[0].id;
-    paneSessions.forEach((session) => sessions.set(session.id, session));
+    restored.sessions.forEach((session) => sessions.set(session.id, session));
     restored.selections.forEach((selection, id) => selections.set(id, selection));
+    const storedId = typeof pane.activeTabId === "string" ? pane.activeTabId : null;
+    const fallback = restored.sessions[0] ?? makeFreshTab();
+    if (!storedId || !sessions.has(storedId)) sessions.set(fallback.id, fallback);
+    const activeId = storedId && sessions.has(storedId) ? storedId : fallback.id;
     panesById.set(paneId, { sessionId: activeId });
   }
 
@@ -234,20 +291,16 @@ export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromSto
   return { workspace: { ...fallback, sessions }, selections: loaded.selections };
 }
 
-function sessionMeta(session: Session, selection?: ToolSelection): PersistedSessionMeta {
+function sessionMeta(
+  session: Session,
+  selection?: ToolSelection,
+  includeMessages = true,
+): PersistedSessionMeta {
+  const { error: _error, status: _status, activeAssistantId: _assistant, ...persisted } = session;
   return {
-    id: session.id,
-    piSessionId: session.piSessionId,
-    projectId: session.projectId,
-    cwd: session.cwd,
-    modelId: session.modelId,
-    thinkingLevel: session.thinkingLevel,
+    ...persisted,
     title: cleanSessionTitle(session.title) || "New session",
-    input: session.input,
-    startedAt: session.startedAt,
-    tokenStats: session.tokenStats,
-    usedSkills: session.usedSkills,
-    queue: session.queue,
+    messages: includeMessages ? boundedMessages(session.messages) : [],
     ...(selection?.skills.length ? { skills: selection.skills } : {}),
     ...(selection?.promptTemplates.length ? { promptTemplates: selection.promptTemplates } : {}),
   };
@@ -256,18 +309,10 @@ function sessionMeta(session: Session, selection?: ToolSelection): PersistedSess
 export function paneStateJson(
   state: WorkspaceState,
   selectionFor: (sessionId: SessionId) => ToolSelection | null = () => null,
+  includeMessages = true,
 ): string {
   const panes = Object.fromEntries(
-    [...state.panesById].map(([paneId, pane]) => {
-      const session = state.sessions.get(pane.sessionId);
-      return [
-        paneId,
-        {
-          activeTabId: pane.sessionId,
-          tabs: session ? [sessionMeta(session, selectionFor(session.id) ?? undefined)] : [],
-        },
-      ];
-    }),
+    [...state.panesById].map(([paneId, pane]) => [paneId, { activeTabId: pane.sessionId }]),
   );
   return JSON.stringify({
     version: 1,
@@ -275,9 +320,24 @@ export function paneStateJson(
     focusedPaneId: state.focusedPaneId,
     panes,
     sessions: [...state.sessions.values()].map((session) =>
-      sessionMeta(session, selectionFor(session.id) ?? undefined),
+      sessionMeta(session, selectionFor(session.id) ?? undefined, includeMessages),
     ),
   });
+}
+
+export function shouldWritePaneState(
+  previous: WorkspaceState,
+  next: WorkspaceState,
+  selectionFor: (sessionId: SessionId) => ToolSelection | null,
+): boolean {
+  if (paneStateJson(previous, selectionFor, false) !== paneStateJson(next, selectionFor, false)) {
+    return true;
+  }
+  for (const [id, session] of next.sessions) {
+    const before = previous.sessions.get(id);
+    if (session.status === "idle" && before?.messages !== session.messages) return true;
+  }
+  return false;
 }
 
 export function writePaneState(

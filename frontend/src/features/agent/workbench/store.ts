@@ -28,7 +28,7 @@ import {
   type WorkspaceStorage,
   createInitialState,
   loadInitialFromStorage,
-  paneStateJson,
+  shouldWritePaneState,
   writePaneState,
 } from "@/features/agent/workspace/persistence";
 import {
@@ -183,10 +183,7 @@ function createWorkbenchStore(ephemeral: boolean) {
     if (next === previous) return;
     store.setState(next);
     if (!previous.hydrated && next.hydrated) refreshModels();
-    if (
-      previous.hydrated &&
-      paneStateJson(previous, selectionFor) !== paneStateJson(next, selectionFor)
-    ) {
+    if (previous.hydrated && shouldWritePaneState(previous, next, selectionFor)) {
       writePaneState(storage(), next, selectionFor);
     }
     if (storedSessionsKey(previous) !== storedSessionsKey(next)) scheduleSessionsRefresh();

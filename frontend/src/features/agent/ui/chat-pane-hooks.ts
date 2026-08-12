@@ -64,6 +64,11 @@ export function useChatPaneRuntimeHandle({
   running: boolean;
 }) {
   const [compacting, setCompacting] = useState(false);
+  useMountSubscription(() => {
+    if (activeTab?.piSessionId && activeTab.messages.length === 0) {
+      void engine.hydrate(activeTab.id);
+    }
+  }, [activeTab?.id, activeTab?.messages.length, activeTab?.piSessionId, engine]);
   const compactSession = useCallback(() => {
     if (!activeTab || running || compacting || !modelId) return Promise.resolve();
     setCompacting(true);
