@@ -261,16 +261,52 @@ function messageDate(message: typeof MessageSchema.Type): string {
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
 }
 
+function htmlPlainText(value: string): string {
+  let output = "";
+  let tag = "";
+  let quote: '"' | "'" | null = null;
+  let insideTag = false;
+  for (const character of value) {
+    if (!insideTag) {
+      if (character === "<") {
+        insideTag = true;
+        tag = "";
+      } else if (character === "&") {
+        output += "&amp;";
+      } else if (character === ">") {
+        output += "&gt;";
+      } else {
+        output += character;
+      }
+      continue;
+    }
+    if (quote) {
+      if (character === quote) quote = null;
+      tag += character;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      tag += character;
+      continue;
+    }
+    if (character === ">") {
+      if (/^\s*br\b/i.test(tag) || /^\s*\/\s*p\b/i.test(tag)) output += "\n";
+      insideTag = false;
+      tag = "";
+      continue;
+    }
+    tag += character;
+  }
+  return output.replace(/&amp;(?:nbsp|#160);/gi, " ");
+}
+
 function plainText(message: typeof MessageSchema.Type): string {
   const parts = allParts(message.payload);
   const text = parts.find((part) => part.mimeType === "text/plain" && part.body?.data);
   if (text?.body?.data) return decodeBase64Url(text.body.data);
   const html = parts.find((part) => part.mimeType === "text/html" && part.body?.data);
-  return decodeBase64Url(html?.body?.data)
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/(?:&nbsp;|&#160;)/gi, " ");
+  return htmlPlainText(decodeBase64Url(html?.body?.data));
 }
 
 function renderedMessage(

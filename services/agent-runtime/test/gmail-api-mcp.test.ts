@@ -149,7 +149,7 @@ describe("gmail api connector", () => {
     })) as { structuredContent: { plaintextBody: string } };
 
     expect(result.structuredContent.plaintextBody).toBe(
-      "Hello there\nignored()&lt;script&gt;encoded()&lt;/script&gt;&amp;lt;script&amp;gt;double()",
+      "Hello there\nignored()&amp;lt;script&amp;gt;encoded()&amp;lt;/script&amp;gt;&amp;amp;lt;script&amp;amp;gt;double()",
     );
   });
 
