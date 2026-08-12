@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { getGlobalSingleton } from "./instances";
 import { piRuntimeManager } from "./pi-runtime";
-import { lastAssistantText } from "./session-text";
+import { lastAssistantResult } from "./pi-runtime-state";
 import { sessionSubagentLink, setSubagentLink } from "./session-metadata-store";
 
 const NICKNAMES = [
@@ -143,7 +143,7 @@ export async function runSubagent(input: {
       registry.childPiSessionIds.add(status.piSessionId);
       await setSubagentLink(status.piSessionId, parentPiSessionId, run.name).catch(() => undefined);
     }
-    const text = status.piSessionId ? lastAssistantText(status.cwd, status.piSessionId) : "";
+    const text = status.piSessionId ? lastAssistantResult(status.messages).text : "";
     void session.stop().catch(() => undefined);
     if (status.lastError) {
       run.status = "error";

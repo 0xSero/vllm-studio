@@ -28,6 +28,7 @@ function latestUserText(payload) {
 }
 
 function replyFor(text) {
+  if (text.includes("goal-complete-marker")) return "Recorded goal work finished. GOAL_COMPLETE";
   if (text.includes("interrupt-now-marker")) return "Steered response acknowledged.";
   if (text.includes("queue-after-marker")) return "Queued response acknowledged.";
   if (text.includes("slow-response-marker")) return "Slow response complete.";

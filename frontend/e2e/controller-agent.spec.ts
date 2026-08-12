@@ -331,6 +331,96 @@ test("signed Litter bridge discovers and pages the recorded session", async ({
   expect(text).toContain("Controller scoped Pi reply.");
 });
 
+test("live runtime results drive subagents, automations, and goals", async ({ page, request }) => {
+  const composer = await openControllerChat(page, "Runtime result authority");
+  await composer.fill("Create the parent runtime session.");
+  await composer.press("Enter");
+  await expect(page.getByText("Controller scoped Pi reply.")).toBeVisible({ timeout: 60_000 });
+  await expect.poll(() => new URL(page.url()).searchParams.get("session")).not.toBeNull();
+  const piSessionId = new URL(page.url()).searchParams.get("session");
+  if (!piSessionId) throw new Error("Recorded Pi session id is unavailable");
+
+  const subagentResponse = await request.post("/api/agent/subagents", {
+    data: {
+      parentPiSessionId: piSessionId,
+      name: "Recorded worker",
+      task: "Return the recorded controller response.",
+    },
+  });
+  expect(subagentResponse.ok(), await subagentResponse.text()).toBe(true);
+  const subagent = (await subagentResponse.json()) as {
+    result: string;
+    piSessionId: string | null;
+  };
+  expect(subagent.result).toBe("Controller scoped Pi reply.");
+  expect(subagent.piSessionId).not.toBeNull();
+  const subagents = await request.get(
+    `/api/agent/subagents?piSessionId=${encodeURIComponent(piSessionId)}`,
+  );
+  expect(subagents.ok(), await subagents.text()).toBe(true);
+  expect((await subagents.json()).subagents).toContainEqual(
+    expect.objectContaining({ name: "Recorded worker", status: "done" }),
+  );
+
+  const createResponse = await request.post("/api/agent/automations", {
+    data: {
+      name: "Recorded runtime result",
+      prompt: "Return the recorded controller response.",
+      modelId: "controller-model",
+      cwd: "",
+      schedule: { kind: "daily", time: "08:00" },
+    },
+  });
+  expect(createResponse.ok(), await createResponse.text()).toBe(true);
+  const created = (await createResponse.json()) as { automation: { id: string } };
+  const automationId = created.automation.id;
+  const runResponse = await request.post(
+    `/api/agent/automations/${encodeURIComponent(automationId)}/run`,
+  );
+  expect(runResponse.ok(), await runResponse.text()).toBe(true);
+  expect(await runResponse.json()).toEqual({ ok: true, started: true });
+  const automationsResponse = await request.get("/api/agent/automations");
+  expect(automationsResponse.ok(), await automationsResponse.text()).toBe(true);
+  const automations = (await automationsResponse.json()) as {
+    automations: Array<{
+      id: string;
+      lastRun: { outcome: string; summary: string; piSessionId: string | null } | null;
+    }>;
+  };
+  expect(automations.automations.find(({ id }) => id === automationId)?.lastRun).toEqual(
+    expect.objectContaining({
+      outcome: "ok",
+      summary: "Controller scoped Pi reply.",
+      piSessionId: expect.any(String),
+    }),
+  );
+  const deleteResponse = await request.delete(
+    `/api/agent/automations/${encodeURIComponent(automationId)}`,
+  );
+  expect(deleteResponse.ok(), await deleteResponse.text()).toBe(true);
+
+  const goalResponse = await request.put(
+    `/api/agent/goal?piSessionId=${encodeURIComponent(piSessionId)}`,
+    { data: { objective: "Finish the recorded goal", status: "active" } },
+  );
+  expect(goalResponse.ok(), await goalResponse.text()).toBe(true);
+  await composer.fill("goal-complete-marker");
+  await composer.press("Enter");
+  await expect(page.getByText("Recorded goal work finished. GOAL_COMPLETE")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect
+    .poll(async () => {
+      const response = await request.get(
+        `/api/agent/goal?piSessionId=${encodeURIComponent(piSessionId)}`,
+      );
+      if (!response.ok()) return null;
+      const payload = (await response.json()) as { goal: { status?: string } | null };
+      return payload.goal?.status ?? null;
+    })
+    .toBe("complete");
+});
+
 test("model picker includes models from every saved controller", async ({ page }) => {
   await page.addInitScript(() => {
     const primaryUrl = "http://127.0.0.1:43222";

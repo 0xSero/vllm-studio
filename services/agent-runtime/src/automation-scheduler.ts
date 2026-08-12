@@ -8,7 +8,7 @@ import {
 } from "./automations-store";
 import { getGlobalSingleton } from "./instances";
 import { piRuntimeManager } from "./pi-runtime";
-import { lastAssistantResult } from "./session-text";
+import { lastAssistantResult } from "./pi-runtime-state";
 import { listProjectsFromStore } from "./projects-store";
 
 const TICK_MS = 30_000;
@@ -49,9 +49,7 @@ export async function runAutomationNow(id: string): Promise<Automation | null> {
     await session.prompt(runPrompt(automation), () => {});
     const status = session.status;
     const piSessionId = status.piSessionId;
-    const result = piSessionId
-      ? lastAssistantResult(status.cwd, piSessionId)
-      : { text: "", error: null };
+    const result = piSessionId ? lastAssistantResult(status.messages) : { text: "", error: null };
     const error = automationRunError(status.lastError ?? result.error, result.text);
     const projectId =
       listProjectsFromStore().find((project) => project.path === status.cwd)?.id ?? null;

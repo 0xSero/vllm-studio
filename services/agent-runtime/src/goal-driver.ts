@@ -9,7 +9,7 @@
 import { isAgentSettledEvent } from "../../../shared/agent/pi-events";
 import type { LoggedPiEvent, PiAgentSession } from "./pi-runtime-types";
 import { readGoal, writeGoal } from "./goals-store";
-import { lastAssistantText } from "./session-text";
+import { lastAssistantResult } from "./pi-runtime-state";
 
 const CONTINUATION_GRACE_MS = 2000;
 
@@ -34,10 +34,7 @@ function eventTouchesTools(event: LoggedPiEvent["event"]): boolean {
   return type.includes("tool");
 }
 
-async function settleGoalAfterTurn(
-  session: PiAgentSession,
-  state: DriverState,
-): Promise<void> {
+async function settleGoalAfterTurn(session: PiAgentSession, state: DriverState): Promise<void> {
   const status = session.status;
   const piSessionId = status.piSessionId;
   if (!piSessionId) return;
@@ -59,7 +56,7 @@ async function settleGoalAfterTurn(
     return;
   }
 
-  const finalText = lastAssistantText(status.cwd, piSessionId);
+  const finalText = lastAssistantResult(status.messages).text;
   if (/\bGOAL_COMPLETE\b/.test(finalText)) {
     await writeGoal(piSessionId, { status: "complete" });
     return;

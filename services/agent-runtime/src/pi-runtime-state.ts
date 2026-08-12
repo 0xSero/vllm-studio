@@ -1,4 +1,5 @@
 import type { RuntimeExtensionUiRequest } from "../../../shared/agent/runtime-status";
+import { isRecord } from "../../../shared/agent/guards";
 import type { PiAgentStatus, PiContextUsage } from "./pi-runtime-types";
 
 type RuntimeLookupEntry<TSession> = {
@@ -92,6 +93,36 @@ export function piStatusFromEvents(input: {
     queue: input.queue ?? { steering: [], followUp: [] },
     extensionUiRequest: input.extensionUiRequest ?? null,
   };
+}
+
+export function lastAssistantResult(messages: readonly unknown[]): {
+  text: string;
+  error: string | null;
+} {
+  let text = "";
+  let error: string | null = null;
+  for (const value of messages) {
+    if (!isRecord(value) || value.role !== "assistant") continue;
+    const content =
+      typeof value.content === "string"
+        ? value.content
+        : Array.isArray(value.content)
+          ? value.content
+              .map((part) =>
+                isRecord(part) && part.type === "text" && typeof part.text === "string"
+                  ? part.text
+                  : "",
+              )
+              .join("")
+          : "";
+    if (content.trim()) {
+      text = content.trim();
+      error = null;
+    } else if (typeof value.errorMessage === "string" && value.errorMessage.trim()) {
+      error = value.errorMessage.trim();
+    }
+  }
+  return { text, error };
 }
 
 export { isAgentEndEvent, isAgentSettledEvent } from "../../../shared/agent/pi-events";
