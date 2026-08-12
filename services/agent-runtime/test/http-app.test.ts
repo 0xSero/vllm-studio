@@ -6,7 +6,6 @@ import { createAgentRuntimeApp } from "../src/http/app";
 
 const expectedOperations = [
   "GET /health",
-  "POST /api/litter-bridge/v1",
   "POST /api/agent/turn",
   "POST /api/agent/abort",
   "POST /api/agent/compact",
@@ -86,50 +85,38 @@ const collectFrontendOperations = (): Set<string> => {
 
 describe("agent runtime HTTP application", () => {
   test("keeps the complete runtime operation contract explicit", () => {
-    const { app, litterBridgeGateway } = createAgentRuntimeApp();
-    try {
-      expect(app.routes.map(({ method, path }) => `${method} ${path}`).sort()).toEqual(
-        expectedOperations,
-      );
-    } finally {
-      litterBridgeGateway.dispose();
-    }
+    const { app } = createAgentRuntimeApp();
+    expect(app.routes.map(({ method, path }) => `${method} ${path}`).sort()).toEqual(
+      expectedOperations,
+    );
   });
 
   test("exposes health without starting a network listener", async () => {
-    const { app, litterBridgeGateway } = createAgentRuntimeApp();
-    try {
-      const response = await app.request("/health");
-      expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
-        ok: true,
-        service: "local-studio-agent-runtime",
-        pid: process.pid,
-      });
-      expect((await app.request("/missing")).status).toBe(404);
-    } finally {
-      litterBridgeGateway.dispose();
-    }
+    const { app } = createAgentRuntimeApp();
+    const response = await app.request("/health");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      service: "local-studio-agent-runtime",
+      pid: process.pid,
+    });
+    expect((await app.request("/missing")).status).toBe(404);
   });
 
   test("keeps every browser-facing runtime operation reachable through Next", () => {
-    const { app, litterBridgeGateway } = createAgentRuntimeApp();
-    try {
-      const frontendOperations = collectFrontendOperations();
-      const missing = app.routes
-        .map(({ method, path }) => `${method} ${path}`)
-        .filter((operation) => operation.includes(" /api/agent/"))
-        .filter((operation) => {
-          if (operation.includes(" /api/agent/terminal/pty/")) {
-            return !frontendOperations.has(
-              operation.replace(/\/terminal\/pty\/[^/]+$/, "/terminal/pty/:action"),
-            );
-          }
-          return !frontendOperations.has(operation);
-        });
-      expect(missing).toEqual([]);
-    } finally {
-      litterBridgeGateway.dispose();
-    }
+    const { app } = createAgentRuntimeApp();
+    const frontendOperations = collectFrontendOperations();
+    const missing = app.routes
+      .map(({ method, path }) => `${method} ${path}`)
+      .filter((operation) => operation.includes(" /api/agent/"))
+      .filter((operation) => {
+        if (operation.includes(" /api/agent/terminal/pty/")) {
+          return !frontendOperations.has(
+            operation.replace(/\/terminal\/pty\/[^/]+$/, "/terminal/pty/:action"),
+          );
+        }
+        return !frontendOperations.has(operation);
+      });
+    expect(missing).toEqual([]);
   });
 });
