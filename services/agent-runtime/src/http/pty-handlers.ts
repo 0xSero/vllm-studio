@@ -1,11 +1,3 @@
-// HTTP surface for server-side PTY sessions. Output travels as SSE so the
-// Next.js proxy streams it through unbuffered (pass-through bodies flush in
-// the standalone server; only locally-generated streams don't). Frames:
-//   event: snapshot  → base64 of the full replay buffer (first frame)
-//   data:            → base64 of a live output chunk
-//   event: exit      → {"exitCode":n,"signal":s}
-// plus `: ping` comments to keep intermediaries from idling the stream out.
-
 import {
   MAX_PTY_INPUT_CHARS,
   isPtyAvailable,
@@ -17,13 +9,10 @@ import {
   subscribePtySession,
   writePtySession,
 } from "../pty-service";
+import { jsonError } from "./helpers";
 
 const PING_INTERVAL_MS = 15_000;
 const MAX_BODY_CHARS = MAX_PTY_INPUT_CHARS + 4_096;
-
-function jsonError(message: string, status = 400): Response {
-  return Response.json({ error: message }, { status });
-}
 
 async function readJsonBody(request: Request): Promise<Record<string, unknown> | null> {
   try {
@@ -77,9 +66,7 @@ export function handlePtyStream(request: Request): Response {
       const send = (frame: string) => {
         try {
           controller.enqueue(encoder.encode(frame));
-        } catch {
-          // Stream already closed by the client.
-        }
+        } catch {}
       };
       const subscription = subscribePtySession(id, {
         onData: (chunk) => send(`data: ${encodeBase64(chunk)}\n\n`),
@@ -88,9 +75,7 @@ export function handlePtyStream(request: Request): Response {
           cleanup();
           try {
             controller.close();
-          } catch {
-            // already closed
-          }
+          } catch {}
         },
       });
       if (!subscription) {
@@ -111,9 +96,7 @@ export function handlePtyStream(request: Request): Response {
         cleanup();
         try {
           controller.close();
-        } catch {
-          // already closed
-        }
+        } catch {}
       });
     },
     cancel() {

@@ -89,6 +89,7 @@ import {
   handleWorkspaceList,
   handleWorkspaceRaw,
 } from "./workspace-handlers";
+import { decodeJson, jsonEffect, jsonError } from "./helpers";
 
 const PluginActivationSchema = Schema.Struct({ enabled: Schema.Boolean });
 
@@ -161,23 +162,20 @@ export function createAgentRuntimeApp() {
     c.json({ plugins: await Effect.runPromise(listPluginRuntimeViews()) }),
   );
   app.post("/api/agent/plugins/:id", async (c) => {
-    let body: typeof PluginActivationSchema.Type;
-    try {
-      body = Schema.decodeUnknownSync(PluginActivationSchema)(await c.req.json());
-    } catch {
-      return c.json({ error: "enabled must be a boolean" }, 400);
-    }
-    try {
-      const result = await Effect.runPromise(setPluginEnabled(c.req.param("id"), body.enabled));
-      result.connectorIds.forEach(closePooledConnection);
-      return c.json({ plugins: result.plugins });
-    } catch (error) {
-      const status = error instanceof PluginRuntimeError ? error.status : 500;
-      return Response.json(
-        { error: error instanceof Error ? error.message : "Plugin activation failed" },
-        { status },
-      );
-    }
+    const body = await decodeJson(c.req.raw, PluginActivationSchema);
+    if (!body) return jsonError("enabled must be a boolean");
+    return jsonEffect(
+      setPluginEnabled(c.req.param("id"), body.enabled).pipe(
+        Effect.tap(({ connectorIds }) =>
+          Effect.sync(() => connectorIds.forEach(closePooledConnection)),
+        ),
+      ),
+      ({ plugins }) => ({ plugins }),
+      {
+        fallback: "Plugin activation failed",
+        status: (error) => (error instanceof PluginRuntimeError ? error.status : 500),
+      },
+    );
   });
   app.get("/api/agent/accounts/google", () => handleGoogleAccountGet());
   app.put("/api/agent/accounts/google", (c) => handleGoogleAccountPut(c.req.raw));

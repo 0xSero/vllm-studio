@@ -4,7 +4,7 @@ import { listProjectsFromStore, resolveAllowedWorkspace } from "../projects-stor
 import { listArchivedSessionMetadata, setSessionArchived } from "../session-metadata-store";
 import { listSessions, loadSession } from "../sessions-store";
 import { projectAgentSessionEvents } from "../session-view";
-import { errorMessage, jsonError } from "./helpers";
+import { errorMessage, jsonError, jsonTask } from "./helpers";
 
 function parseRelativeSince(value: string | null): Date | null {
   if (!value) return null;
@@ -165,8 +165,9 @@ export async function handleSessionPatch(request: Request, id: string): Promise<
   if (!validSessionId(id)) return jsonError("session id is invalid");
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body || typeof body.archived !== "boolean") return jsonError("archived boolean is required");
+  const archived = body.archived;
   const cwdValue = typeof body.cwd === "string" ? body.cwd.trim() : "";
-  if (body.archived && !cwdValue) return jsonError("cwd is required to archive a session");
+  if (archived && !cwdValue) return jsonError("cwd is required to archive a session");
   let cwd = "";
   let summary: Awaited<ReturnType<typeof listSessions>>[number] | null = null;
   if (cwdValue) {
@@ -177,20 +178,20 @@ export async function handleSessionPatch(request: Request, id: string): Promise<
       (await listSessions(cwd, { ids: [id], includeArchived: true })).find(
         (session) => session.id === id,
       ) ?? null;
-    if (body.archived && !summary) return jsonError("session not found", 404);
+    if (archived && !summary) return jsonError("session not found", 404);
   }
-  try {
-    const archiveState = await setSessionArchived(id, body.archived, new Date(), {
-      cwd: summary?.cwd ?? cwd,
-      title: summary?.firstUserMessage ?? optionalString(body, "title"),
-      projectId: optionalString(body, "projectId"),
-      projectName: optionalString(body, "projectName"),
-      sessionUpdatedAt: summary?.updatedAt ?? null,
-    });
-    return Response.json({ session: { id, ...archiveState } });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to update session archive"), 500);
-  }
+  return jsonTask(
+    () =>
+      setSessionArchived(id, archived, new Date(), {
+        cwd: summary?.cwd ?? cwd,
+        title: summary?.firstUserMessage ?? optionalString(body, "title"),
+        projectId: optionalString(body, "projectId"),
+        projectName: optionalString(body, "projectName"),
+        sessionUpdatedAt: summary?.updatedAt ?? null,
+      }),
+    (archiveState) => ({ session: { id, ...archiveState } }),
+    { fallback: "Failed to update session archive" },
+  );
 }
 
 export function handleSessionsDelete(): Response {

@@ -19,12 +19,9 @@ import {
   writeFileContent,
 } from "../workspace-files";
 import { assertGitCwd, loadGitState, runGitAction } from "../workspace-git";
+import { errorMessage, jsonError } from "./helpers";
 
 const execAsync = promisify(exec);
-const jsonError = (message: string, status = 400): Response =>
-  Response.json({ error: message }, { status });
-const errorMessage = (error: unknown, fallback: string): string =>
-  error instanceof Error ? error.message : fallback;
 const search = (request: Request, key: string): string =>
   new URL(request.url).searchParams.get(key)?.trim() ?? "";
 

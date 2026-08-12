@@ -2,7 +2,7 @@ import {
   refreshPiModels,
   type PiControllerModelsRequest,
 } from "../pi-runtime-models";
-import { errorMessage, jsonError } from "./helpers";
+import { jsonTask } from "./helpers";
 
 function parseControllers(value: unknown): PiControllerModelsRequest[] {
   if (!Array.isArray(value)) return [];
@@ -19,13 +19,14 @@ function parseControllers(value: unknown): PiControllerModelsRequest[] {
 }
 
 export async function handleAgentModels(request?: Request): Promise<Response> {
-  try {
-    const body = request
-      ? ((await request.json().catch(() => ({}))) as Record<string, unknown>)
-      : {};
-    const { models } = await refreshPiModels(parseControllers(body.controllers));
-    return Response.json({ provider: "local-studio", models });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to load /v1/models"), 502);
-  }
+  return jsonTask(
+    async () => {
+      const body = request
+        ? ((await request.json().catch(() => ({}))) as Record<string, unknown>)
+        : {};
+      return refreshPiModels(parseControllers(body.controllers));
+    },
+    ({ models }) => ({ provider: "local-studio", models }),
+    { fallback: "Failed to load /v1/models", status: 502 },
+  );
 }

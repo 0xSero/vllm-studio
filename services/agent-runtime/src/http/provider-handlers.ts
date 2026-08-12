@@ -1,9 +1,3 @@
-//
-// HTTP surface for the provider hub. All routes are proxied through the Next
-// server (`/api/agent/providers*`) like the other runtime handlers, so the
-// hub's single ModelRuntime instance serves both sign-in and sessions.
-//
-
 import {
   cancelProviderLogin,
   getProviderLoginJob,
@@ -12,27 +6,23 @@ import {
   respondProviderLogin,
   startProviderLogin,
 } from "../provider-hub";
-import { errorMessage, jsonError, readJsonBody } from "./helpers";
+import { jsonError, jsonTask, readJsonBody } from "./helpers";
 
 export async function handleProvidersList(): Promise<Response> {
-  try {
-    return Response.json({ providers: await listProviders() });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to list providers."), 500);
-  }
+  return jsonTask(listProviders, (providers) => ({ providers }), {
+    fallback: "Failed to list providers.",
+  });
 }
 
 export async function handleProviderLogin(request: Request, providerId: string): Promise<Response> {
   const body = await readJsonBody(request);
   const authType = body?.type === "api_key" ? "api_key" : body?.type === "oauth" ? "oauth" : null;
   if (!authType) return jsonError("Body must include type: \"oauth\" | \"api_key\".");
-  try {
-    const result = await startProviderLogin(providerId, authType);
-    if ("error" in result) return jsonError(result.error, result.status);
-    return Response.json(result);
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to start login."), 500);
-  }
+  return jsonTask(
+    () => startProviderLogin(providerId, authType),
+    (result) => ("error" in result ? jsonError(result.error, result.status) : result),
+    { fallback: "Failed to start login." },
+  );
 }
 
 export function handleProviderLoginJob(request: Request, jobId: string): Response {
@@ -64,11 +54,9 @@ export function handleProviderLoginCancel(jobId: string): Response {
 }
 
 export async function handleProviderLogout(providerId: string): Promise<Response> {
-  try {
-    const result = await logoutProvider(providerId);
-    if ("error" in result) return jsonError(result.error, result.status);
-    return Response.json(result);
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to sign out."), 500);
-  }
+  return jsonTask(
+    () => logoutProvider(providerId),
+    (result) => ("error" in result ? jsonError(result.error, result.status) : result),
+    { fallback: "Failed to sign out." },
+  );
 }

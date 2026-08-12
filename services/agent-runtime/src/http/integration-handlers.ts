@@ -33,6 +33,7 @@ import {
 } from "../google-workspace-binding";
 import { refreshEnabledPluginConnectors } from "../plugin-runtime";
 import { resolveBundledMcpServerPath } from "../pi-runtime-helpers";
+import { decodeJson, jsonEffect, jsonError, jsonTask } from "./helpers";
 
 const GoogleClientInputSchema = Schema.Struct({
   clientId: Schema.String,
@@ -47,20 +48,10 @@ const ConnectorToolCallSchema = Schema.Struct({
   args: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 });
 
-const failure = (error: unknown, fallback: string, status = 500): Response =>
-  Response.json({ error: error instanceof Error ? error.message : fallback }, { status });
-
-async function decode<T>(request: Request, schema: Schema.ConstraintDecoder<T>): Promise<T | null> {
-  try {
-    return Schema.decodeUnknownSync(schema)(await request.json());
-  } catch {
-    return null;
-  }
-}
-
-function googleFailure(error: unknown, fallback: string): Response {
-  return failure(error, fallback, error instanceof GoogleAccountError ? error.status : 500);
-}
+const googleFailure = (fallback: string) => ({
+  fallback,
+  status: (error: unknown) => (error instanceof GoogleAccountError ? error.status : 500),
+});
 
 function closeGoogleConnections(): void {
   GOOGLE_WORKSPACE_PLUGIN_IDS.forEach((id) =>
@@ -69,65 +60,53 @@ function closeGoogleConnections(): void {
 }
 
 export async function handleGoogleAccountGet(): Promise<Response> {
-  try {
-    return Response.json({ account: await Effect.runPromise(getGoogleAccount()) });
-  } catch (error) {
-    return googleFailure(error, "Google account failed");
-  }
+  return jsonEffect(getGoogleAccount(), (account) => ({ account }), googleFailure("Google account failed"));
 }
 
 export async function handleGoogleAccountPut(request: Request): Promise<Response> {
-  const input = await decode(request, GoogleClientInputSchema);
-  if (!input) return Response.json({ error: "clientId must be a string" }, { status: 400 });
-  try {
-    return Response.json({ account: await Effect.runPromise(saveGoogleClient(input)) });
-  } catch (error) {
-    return googleFailure(error, "Google account failed");
-  } finally {
-    closeGoogleConnections();
-  }
+  const input = await decodeJson(request, GoogleClientInputSchema);
+  if (!input) return jsonError("clientId must be a string");
+  return jsonEffect(
+    saveGoogleClient(input).pipe(Effect.ensuring(Effect.sync(closeGoogleConnections))),
+    (account) => ({ account }),
+    googleFailure("Google account failed"),
+  );
 }
 
 export async function handleGoogleAccountDelete(request: Request): Promise<Response> {
-  const input = await decode(request, GoogleAccountInputSchema);
-  if (!input) return Response.json({ error: "account is required" }, { status: 400 });
-  try {
-    const account = await Effect.runPromise(
-      Effect.gen(function* () {
+  const input = await decodeJson(request, GoogleAccountInputSchema);
+  if (!input) return jsonError("account is required");
+  return jsonEffect(
+    Effect.gen(function* () {
         const disconnected = yield* disconnectGoogleAccount(input.account);
         yield* disableGoogleWorkspaceAdapter(input.account).pipe(
           Effect.mapError((error) => new GoogleAccountError(500, error.message)),
         );
         return disconnected;
-      }),
-    );
-    return Response.json({ account });
-  } catch (error) {
-    return googleFailure(error, "Google account failed");
-  } finally {
-    closeGoogleConnections();
-  }
+      }).pipe(Effect.ensuring(Effect.sync(closeGoogleConnections))),
+    (account) => ({ account }),
+    googleFailure("Google account failed"),
+  );
 }
 
 export async function handleGoogleAuthorize(request: Request): Promise<Response> {
-  const input = await decode(request, GoogleAccountInputSchema);
-  if (!input) return Response.json({ error: "account is required" }, { status: 400 });
-  try {
-    return Response.json(await Effect.runPromise(beginGoogleLoopbackAuthorization(input.account)));
-  } catch (error) {
-    return googleFailure(error, "Google sign-in failed");
-  }
+  const input = await decodeJson(request, GoogleAccountInputSchema);
+  if (!input) return jsonError("account is required");
+  return jsonEffect(
+    beginGoogleLoopbackAuthorization(input.account),
+    (authorization) => authorization,
+    googleFailure("Google sign-in failed"),
+  );
 }
 
 export async function handleGoogleAuthorizeDelete(request: Request): Promise<Response> {
-  const input = await decode(request, GoogleAccountInputSchema);
-  if (!input) return Response.json({ error: "account is required" }, { status: 400 });
-  try {
-    await Effect.runPromise(cancelGoogleLoopbackAuthorization(input.account));
-    return Response.json({ cancelled: true });
-  } catch (error) {
-    return googleFailure(error, "Google sign-in cancellation failed");
-  }
+  const input = await decodeJson(request, GoogleAccountInputSchema);
+  if (!input) return jsonError("account is required");
+  return jsonEffect(
+    cancelGoogleLoopbackAuthorization(input.account),
+    () => ({ cancelled: true }),
+    googleFailure("Google sign-in cancellation failed"),
+  );
 }
 
 const connectorViews = async () => (await listConnectors()).map(toConnectorView);
@@ -137,14 +116,11 @@ export async function handleConnectorsGet(): Promise<Response> {
 }
 
 export async function handleConnectorsPost(request: Request): Promise<Response> {
-  const body = await decode(request, ConnectorUpsertInputSchema);
-  if (!body) return Response.json({ error: "invalid connector payload" }, { status: 400 });
-  if (!isValidConnectorId(body.id))
-    return Response.json({ error: "invalid connector id" }, { status: 400 });
-  if (body.transport === "stdio" && !body.command)
-    return Response.json({ error: "command is required for stdio" }, { status: 400 });
-  if (body.transport === "http" && !body.url)
-    return Response.json({ error: "url is required for http" }, { status: 400 });
+  const body = await decodeJson(request, ConnectorUpsertInputSchema);
+  if (!body) return jsonError("invalid connector payload");
+  if (!isValidConnectorId(body.id)) return jsonError("invalid connector id");
+  if (body.transport === "stdio" && !body.command) return jsonError("command is required for stdio");
+  if (body.transport === "http" && !body.url) return jsonError("url is required for http");
   const connector: ConnectorConfig = {
     id: body.id,
     name: body.name?.trim() || body.id,
@@ -158,25 +134,29 @@ export async function handleConnectorsPost(request: Request): Promise<Response> 
     ...(body.allowTools ? { allowTools: body.allowTools } : {}),
     enabled: body.enabled ?? true,
   };
-  try {
-    const connectors = await upsertConnector(connector);
-    closePooledConnection(connector.id);
-    return Response.json({ connectors: connectors.map(toConnectorView) });
-  } catch (error) {
-    return failure(error, "Connector could not be saved", 409);
-  }
+  return jsonTask(
+    async () => {
+      const connectors = await upsertConnector(connector);
+      closePooledConnection(connector.id);
+      return connectors;
+    },
+    (connectors) => ({ connectors: connectors.map(toConnectorView) }),
+    { fallback: "Connector could not be saved", status: 409 },
+  );
 }
 
 export async function handleConnectorsDelete(request: Request): Promise<Response> {
   const id = new URL(request.url).searchParams.get("id") ?? "";
-  if (!id) return Response.json({ error: "id is required" }, { status: 400 });
-  try {
-    const connectors = await removeConnector(id);
-    closePooledConnection(id);
-    return Response.json({ connectors: connectors.map(toConnectorView) });
-  } catch (error) {
-    return failure(error, "Connector could not be removed", 409);
-  }
+  if (!id) return jsonError("id is required");
+  return jsonTask(
+    async () => {
+      const connectors = await removeConnector(id);
+      closePooledConnection(id);
+      return connectors;
+    },
+    (connectors) => ({ connectors: connectors.map(toConnectorView) }),
+    { fallback: "Connector could not be removed", status: 409 },
+  );
 }
 
 export async function handleConnectorInventory(): Promise<Response> {
@@ -203,27 +183,28 @@ export async function handleConnectorInventory(): Promise<Response> {
 }
 
 export async function handleConnectorCall(request: Request): Promise<Response> {
-  const body = await decode(request, ConnectorToolCallSchema);
+  const body = await decodeJson(request, ConnectorToolCallSchema);
   if (!body?.connector_id.trim() || !body.tool.trim())
-    return Response.json({ error: "connector_id and tool are required" }, { status: 400 });
-  try {
-    return Response.json({
-      ok: true,
-      result: await callConnectorTool(body.connector_id, body.tool, body.args ?? {}),
-    });
-  } catch (error) {
-    return Response.json(
-      { ok: false, error: error instanceof Error ? error.message : String(error) },
-      { status: error instanceof ConnectorToolDeniedError ? 403 : 500 },
-    );
-  }
+    return jsonError("connector_id and tool are required");
+  return jsonTask(
+    () => callConnectorTool(body.connector_id, body.tool, body.args ?? {}),
+    (result) => ({ ok: true, result }),
+    {
+      fallback: "Connector call failed",
+      project: (error) =>
+        Response.json(
+          { ok: false, error: error instanceof Error ? error.message : String(error) },
+          { status: error instanceof ConnectorToolDeniedError ? 403 : 500 },
+        ),
+    },
+  );
 }
 
 export async function handleConnectorTest(request: Request): Promise<Response> {
-  const body = await decode(request, ConnectorTestInputSchema);
-  if (!body) return Response.json({ error: "id is required" }, { status: 400 });
+  const body = await decodeJson(request, ConnectorTestInputSchema);
+  if (!body) return jsonError("id is required");
   const connector = (await listConnectors()).find((entry) => entry.id === body.id);
-  if (!connector) return Response.json({ error: "unknown connector" }, { status: 404 });
+  if (!connector) return jsonError("unknown connector", 404);
   const result = await probeConnector(connector);
   return Response.json({
     ok: result.ok,
