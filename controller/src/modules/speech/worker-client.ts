@@ -39,7 +39,7 @@ const ShutdownRequestSchema = Schema.Struct({
   id: Schema.String,
 });
 
-export const SpeechWorkerRequestSchema = Schema.Union([
+const SpeechWorkerRequestSchema = Schema.Union([
   SynthesizeRequestSchema,
   ShutdownRequestSchema,
 ]);
@@ -71,24 +71,24 @@ const ErrorResponseSchema = Schema.Struct({
   message: Schema.String,
 });
 
-export const SpeechWorkerResponseSchema = Schema.Union([
+const SpeechWorkerResponseSchema = Schema.Union([
   ReadyResponseSchema,
   SynthesizeResponseSchema,
   ShutdownResponseSchema,
   ErrorResponseSchema,
 ]);
 
-export type SpeechWorkerRequest = typeof SpeechWorkerRequestSchema.Type;
-export type SpeechWorkerResponse = typeof SpeechWorkerResponseSchema.Type;
+type SpeechWorkerRequest = typeof SpeechWorkerRequestSchema.Type;
+type SpeechWorkerResponse = typeof SpeechWorkerResponseSchema.Type;
 type ReadyResponse = typeof ReadyResponseSchema.Type;
 
-export type SpeechWorkerSpawnOptions = {
+type SpeechWorkerSpawnOptions = {
   readonly command: string;
   readonly args: string[];
   readonly env: NodeJS.ProcessEnv;
 };
 
-export interface SpeechWorkerTransport {
+interface SpeechWorkerTransport {
   write(line: string): void;
   closeInput(): void;
   kill(): void;
@@ -98,22 +98,7 @@ export interface SpeechWorkerTransport {
   onExit(listener: (code: number | null, signal: NodeJS.Signals | null) => void): () => void;
 }
 
-export type SpeechWorkerSpawner = (options: SpeechWorkerSpawnOptions) => SpeechWorkerTransport;
-
-export type ChatterboxWorkerClientOptions = {
-  readonly dataDirectory: string;
-  readonly gpuUuid: string;
-  readonly workerPath?: string | undefined;
-  readonly voiceDirectory?: string | undefined;
-  readonly environment?: NodeJS.ProcessEnv | undefined;
-  readonly spawnWorker?: SpeechWorkerSpawner | undefined;
-  readonly randomId?: (() => string) | undefined;
-  readonly startupTimeoutMs?: number | undefined;
-  readonly synthesisTimeoutMs?: number | undefined;
-  readonly shutdownGraceMs?: number | undefined;
-  readonly shutdownKillTimeoutMs?: number | undefined;
-  readonly onStderr?: ((line: string) => void) | undefined;
-};
+type SpeechWorkerSpawner = (options: SpeechWorkerSpawnOptions) => SpeechWorkerTransport;
 
 export type ChatterboxSynthesisInput = {
   readonly text: string;
@@ -191,7 +176,7 @@ const boundedLineDecoder = (
   };
 };
 
-export const spawnNodeSpeechWorker: SpeechWorkerSpawner = ({ command, args, env }) => {
+const spawnNodeSpeechWorker: SpeechWorkerSpawner = ({ command, args, env }) => {
   const child = spawn(command, args, { env, stdio: ["pipe", "pipe", "pipe"] });
   const lines = new Set<(line: string) => void>();
   const stderrLines = new Set<(line: string) => void>();
@@ -342,43 +327,27 @@ const decodeResponse = (line: string): SpeechWorkerResponse => {
 export class ChatterboxWorkerClient {
   readonly paths: ChatterboxRuntimePaths;
   private readonly gpuUuid: string;
-  private readonly environment: NodeJS.ProcessEnv;
-  private readonly spawnWorker: SpeechWorkerSpawner;
-  private readonly randomId: () => string;
-  private readonly startupTimeoutMs: number;
-  private readonly synthesisTimeoutMs: number;
-  private readonly shutdownGraceMs: number;
-  private readonly shutdownKillTimeoutMs: number;
-  private readonly onStderr: (line: string) => void;
   private readonly voiceDirectory: string;
   private readonly semaphore = Semaphore.makeUnsafe(1);
   private session: WorkerSession | null = null;
   private terminatingSession: WorkerSession | null = null;
 
-  constructor(options: ChatterboxWorkerClientOptions) {
-    if (!validGpuUuid(options.gpuUuid)) {
+  constructor(dataDirectory: string, gpuUuid: string) {
+    if (!validGpuUuid(gpuUuid)) {
       throw new SpeechWorkerError("input", "A full NVIDIA GPU UUID is required");
     }
-    this.paths = chatterboxRuntimePaths(options.dataDirectory, options.workerPath);
-    this.gpuUuid = options.gpuUuid;
-    this.environment = options.environment ?? process.env;
-    this.spawnWorker = options.spawnWorker ?? spawnNodeSpeechWorker;
-    this.randomId = options.randomId ?? randomUUID;
-    this.startupTimeoutMs = options.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS;
-    this.synthesisTimeoutMs = options.synthesisTimeoutMs ?? DEFAULT_SYNTHESIS_TIMEOUT_MS;
-    this.shutdownGraceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS;
-    this.shutdownKillTimeoutMs = options.shutdownKillTimeoutMs ?? DEFAULT_SHUTDOWN_KILL_TIMEOUT_MS;
-    this.onStderr = options.onStderr ?? ((): void => {});
-    this.voiceDirectory = options.voiceDirectory ?? this.paths.voiceDirectory;
+    this.paths = chatterboxRuntimePaths(dataDirectory);
+    this.gpuUuid = gpuUuid;
+    this.voiceDirectory = join(dataDirectory, "runtime", "speech", "tmp");
     prepareChatterboxStorage({ ...this.paths, voiceDirectory: this.voiceDirectory });
   }
 
-  synthesizeEffect(
+  synthesize(
     input: ChatterboxSynthesisInput,
   ): Effect.Effect<ChatterboxSynthesisResult, SpeechWorkerError> {
     return this.semaphore.withPermit(
       Effect.suspend(() => {
-        const id = this.randomId();
+        const id = randomUUID();
         if (!/^[A-Za-z0-9-]+$/.test(id)) {
           return Effect.fail(new SpeechWorkerError("input", "Could not allocate speech output"));
         }
@@ -405,13 +374,7 @@ export class ChatterboxWorkerClient {
     );
   }
 
-  synthesize(
-    input: ChatterboxSynthesisInput,
-  ): Effect.Effect<ChatterboxSynthesisResult, SpeechWorkerError> {
-    return this.synthesizeEffect(input);
-  }
-
-  shutdownEffect(): Effect.Effect<void, SpeechWorkerError> {
+  shutdown(): Effect.Effect<void, SpeechWorkerError> {
     const client = this;
     let activeSession: WorkerSession | null = null;
     const shutdown = Effect.gen(function* () {
@@ -421,7 +384,7 @@ export class ChatterboxWorkerClient {
         yield* client.settleTerminationEffect();
         return;
       }
-      const id = client.randomId();
+      const id = randomUUID();
       const response = yield* client
         .sendRequestEffect(session, { type: "shutdown", id }, 10_000)
         .pipe(
@@ -454,7 +417,7 @@ export class ChatterboxWorkerClient {
         const graceful = yield* Deferred.await(session.exited).pipe(
           Effect.as(true),
           Effect.timeoutOrElse({
-            duration: client.shutdownGraceMs,
+            duration: DEFAULT_SHUTDOWN_GRACE_MS,
             orElse: () => Effect.succeed(false),
           }),
         );
@@ -475,7 +438,7 @@ export class ChatterboxWorkerClient {
     if (!session) return Effect.void;
     return Deferred.await(session.exited).pipe(
       Effect.timeoutOrElse({
-        duration: this.shutdownKillTimeoutMs,
+        duration: DEFAULT_SHUTDOWN_KILL_TIMEOUT_MS,
         orElse: () =>
           Effect.sync(() => session.transport.kill()).pipe(
             Effect.andThen(
@@ -495,21 +458,9 @@ export class ChatterboxWorkerClient {
     );
   }
 
-  settleTermination(): Effect.Effect<void, SpeechWorkerError> {
-    return this.settleTerminationEffect();
-  }
-
-  terminateEffect(): Effect.Effect<void, SpeechWorkerError> {
+  terminate(): Effect.Effect<void, SpeechWorkerError> {
     const session = this.session ?? this.terminatingSession;
     return session ? this.interruptSessionEffect(session) : Effect.void;
-  }
-
-  terminate(): Effect.Effect<void, SpeechWorkerError> {
-    return this.terminateEffect();
-  }
-
-  shutdown(): Effect.Effect<void, SpeechWorkerError> {
-    return this.shutdownEffect();
   }
 
   private synthesizeRequestEffect(request: {
@@ -532,7 +483,7 @@ export class ChatterboxWorkerClient {
           voice_path: request.voicePath,
           output_path: request.outputPath,
         },
-        client.synthesisTimeoutMs,
+        DEFAULT_SYNTHESIS_TIMEOUT_MS,
       );
       if (
         response.type !== "synthesize" ||
@@ -558,7 +509,7 @@ export class ChatterboxWorkerClient {
       yield* client.awaitWithTimeout(
         session,
         Deferred.await(session.ready),
-        client.startupTimeoutMs,
+        DEFAULT_STARTUP_TIMEOUT_MS,
         "Speech worker startup timed out",
       );
       return session;
@@ -568,10 +519,10 @@ export class ChatterboxWorkerClient {
   private spawnEffect(): Effect.Effect<WorkerSession, SpeechWorkerError> {
     return Effect.try({
       try: () => {
-        const transport = this.spawnWorker({
+        const transport = spawnNodeSpeechWorker({
           command: this.paths.pythonPath,
           args: ["-u", this.paths.workerPath],
-          env: chatterboxWorkerEnvironment(this.paths, this.gpuUuid, this.environment),
+          env: chatterboxWorkerEnvironment(this.paths, this.gpuUuid),
         });
         const session: WorkerSession = {
           transport,
@@ -585,7 +536,7 @@ export class ChatterboxWorkerClient {
         this.session = session;
         session.unsubscribe.push(
           transport.onLine((line) => this.receiveLine(session, line)),
-          transport.onStderr(this.onStderr),
+          transport.onStderr(() => {}),
           transport.onError((error) =>
             this.failSession(session, new SpeechWorkerError("worker", error.message), true),
           ),
@@ -663,7 +614,7 @@ export class ChatterboxWorkerClient {
     }).pipe(
       Effect.andThen(Deferred.await(session.exited)),
       Effect.timeoutOrElse({
-        duration: this.shutdownKillTimeoutMs,
+        duration: DEFAULT_SHUTDOWN_KILL_TIMEOUT_MS,
         orElse: () =>
           Effect.sync(() => session.transport.kill()).pipe(
             Effect.andThen(

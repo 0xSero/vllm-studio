@@ -750,11 +750,7 @@ export class SpeechService {
         return yield* Effect.try({
           try: () => {
             service.assertRetainedLease(lease);
-            service.worker = new ChatterboxWorkerClient({
-              dataDirectory: service.dataDirectory,
-              gpuUuid: lease.uuid,
-              voiceDirectory: resolve(service.dataDirectory, "runtime", "speech", "tmp"),
-            });
+            service.worker = new ChatterboxWorkerClient(service.dataDirectory, lease.uuid);
             return service.worker;
           },
           catch: (error) => serviceError(error),

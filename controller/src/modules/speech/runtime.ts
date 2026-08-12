@@ -78,7 +78,6 @@ const defaultWorkerPath = fileURLToPath(new URL("worker.py", import.meta.url));
 
 export const chatterboxRuntimePaths = (
   dataDirectory: string,
-  workerPath = defaultWorkerPath,
 ): ChatterboxRuntimePaths => {
   const runtimeDirectory = join(
     dataDirectory,
@@ -96,14 +95,13 @@ export const chatterboxRuntimePaths = (
     outputDirectory: join(speechDirectory, "outputs"),
     uploadDirectory: join(speechDirectory, "uploads"),
     installRecordPath: join(speechDirectory, `chatterbox-${CHATTERBOX_PACKAGE_VERSION}.json`),
-    workerPath,
+    workerPath: defaultWorkerPath,
   };
 };
 
 export const chatterboxWorkerEnvironment = (
   paths: ChatterboxRuntimePaths,
   gpuUuid: string,
-  environment: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv => {
   const inherited = [
     "PATH",
@@ -114,7 +112,7 @@ export const chatterboxWorkerEnvironment = (
     "LD_LIBRARY_PATH",
     "DYLD_LIBRARY_PATH",
   ].flatMap((name) => {
-    const value = environment[name];
+    const value = process.env[name];
     return value === undefined ? [] : [[name, value] as const];
   });
   return {
