@@ -378,8 +378,54 @@ here are a floor. And `requestAnimationFrame` never ticks while the browser pane
 is hidden, so rAF-based frame timing silently hangs; measure with explicit
 timestamps around forced layout instead.
 
+### 10. Reloading a session silently truncated it
+
+Went looking for where the "load earlier" latency goes; found this instead, and
+it is worth more.
+
+Reload a session and you got **a truncated transcript with no way back to the
+rest of it**. Measured on the 800-turn session:
+
+| | messages shown | "Load earlier" | replay fetches |
+|---|---:|---|---:|
+| reload, cache present | 100 | **absent** | **0** |
+| reload, cache cleared | 250 | present | 1 |
+
+The cause is one clause. `chat-pane-hooks.ts` skips the canonical replay for a
+session that "already has messages":
+
+```ts
+if (!piSessionId || messages.length > 0 || status !== "idle") return;
+```
+
+But `loadInitialFromStorage` seeds messages from the localStorage snapshot
+*before* that runs. The snapshot is a deliberately lossy placeholder — capped
+at 200 messages and 512KB, carrying no history cursor — so it satisfied the
+guard, the replay never fetched, and the session was left showing whatever
+happened to fit in the cache with no affordance to load more. Navigating away
+and back was the only way to see the rest.
+
+Nothing about it fails loudly. The transcript is just quietly short.
+
+Fixed by marking snapshot-seeded messages `hydratedFromCache` so the guard can
+tell a placeholder from the real transcript; the flag is cleared when a replay
+lands. The cache keeps doing its job — the reloaded session still paints in
+**2ms** — and the replay now runs behind it:
+
+| | messages | "Load earlier" | replay fetches |
+|---|---:|---|---:|
+| reload, cache present, after fix | 250 | present | 1 |
+
+Two tests pin it in `persistence.test.ts`, on the marking rather than on the
+symptom.
+
 ## Open questions — measure before assuming
 
+- **The load-earlier attribution is still not done.** That was this round's
+  goal; the truncation bug displaced it. Known: the fetch is 14–40ms of a
+  635–1891ms click, so it is client-side, and it grows with transcript length
+  while the work added per page is constant. Not yet split between fold, merge,
+  mount of the 250 new subtrees, and reconciliation of the existing list.
 - **Nothing has been measured during a live stream**, only on static
   transcripts. Finding 8's fix is proven on identity counts, not on observed
   frame timing with a model actually generating.
