@@ -15,6 +15,7 @@ import type { Session, UpdateSession } from "@/features/agent/runtime/types";
 import type { AgentModel } from "@/features/agent/workspace/types";
 import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
+import type { BrowserMutationResult } from "@/features/agent/ui/agent-browser-effects";
 
 const LazyAgentBrowser = lazy(() =>
   import("@/features/agent/ui/agent-browser").then(({ AgentBrowser }) => ({
@@ -49,7 +50,7 @@ type ComputerTabPanelProps = {
   modelsLoading: boolean;
   onCloseSideChat: () => void;
   onCompactSession?: () => Promise<void>;
-  onNavigateBrowser: (value: string) => void;
+  onNavigateBrowser: (value: string) => Promise<BrowserMutationResult>;
   onOpenSideChat: () => void;
   onOpenTerminal: () => void;
   onRenameSideChat: (tabId: string, title: string) => void;

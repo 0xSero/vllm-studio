@@ -3,14 +3,14 @@
 import { useCallback, useState, type FormEvent } from "react";
 import { ArrowLeftIcon, ArrowRightIcon, CloseIcon, ReloadIcon } from "@/ui/icons";
 import { DEFAULT_BROWSER_URL } from "@/features/agent/tools/persistence";
+import { ScreencastSurface } from "@/features/agent/ui/agent-browser-screencast";
 import {
-  ScreencastSurface,
-  type BrowserPaneState,
-} from "@/features/agent/ui/agent-browser-screencast";
-import {
+  mutateBrowserHost,
   useAgentBrowserEffects,
   useBrowserLiveStateSync,
   useLocalhostSitesEffects,
+  type BrowserMutationResult,
+  type BrowserPaneState,
   type LocalhostSite,
 } from "@/features/agent/ui/agent-browser-effects";
 import { LocalhostStartPage } from "@/features/agent/ui/agent-browser-start-page";
@@ -20,12 +20,15 @@ type Props = {
   url: string;
   inputValue: string;
   onInputChange: (value: string) => void;
-  onNavigate: (value: string) => void;
+  onNavigate: (value: string) => Promise<BrowserMutationResult>;
   onLocationChange: (value: string) => void;
   onClose: () => void;
   /** Screencast polling pauses while the hosting panel is hidden. */
   visible?: boolean;
 };
+
+const browserAddressValue = (showStartPage: boolean, inputValue: string) =>
+  showStartPage && inputValue === DEFAULT_BROWSER_URL ? "" : inputValue;
 
 export function AgentBrowser({
   url,
@@ -37,6 +40,7 @@ export function AgentBrowser({
   visible = true,
 }: Props) {
   const [readingMode, setReadingMode] = useState(false);
+  const [navigationError, setNavigationError] = useState<string | null>(null);
   const [liveUnavailable, setLiveUnavailable] = useState<string | null>(null);
   const [navState, setNavState] = useState<BrowserPaneState | null>(null);
   const [readable, setReadable] = useState<ReadablePage | null>(null);
@@ -49,7 +53,7 @@ export function AgentBrowser({
   const [localSitesLoading, setLocalSitesLoading] = useState(false);
   const [localSitesError, setLocalSitesError] = useState<string | null>(null);
   const showStartPage = !hasOpenedUrl && url === DEFAULT_BROWSER_URL;
-  const addressValue = showStartPage && inputValue === DEFAULT_BROWSER_URL ? "" : inputValue;
+  const addressValue = browserAddressValue(showStartPage, inputValue);
 
   const fetchReadable = useCallback(async (target: string) => {
     setReadingLoading(true);
@@ -94,9 +98,9 @@ export function AgentBrowser({
     enabled: showStartPage && visible,
     onLiveUrl: adoptLiveUrl,
   });
-
   const postLiveVerb = useCallback((verb: "back" | "forward" | "reload") => {
-    void fetch(`/api/agent/browser/${verb}`, { method: "POST" }).catch(() => undefined);
+    setNavigationError(null);
+    void mutateBrowserHost(verb).then((result) => setNavigationError(result.error));
   }, []);
   const handleReload = () => {
     if (showStartPage) {
@@ -124,8 +128,14 @@ export function AgentBrowser({
   const navigateFromBrowser = (value: string) => {
     const clean = value.trim();
     if (!clean) return;
-    setHasOpenedUrl(true);
-    onNavigate(clean);
+    setNavigationError(null);
+    void onNavigate(clean).then((result) => {
+      setNavigationError(result.error);
+      if (result.error) return;
+      setHasOpenedUrl(true);
+      if (result.readingMode) setReadingMode(true);
+      if (result.readingMode && result.url) onLocationChange(result.url);
+    });
   };
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -215,6 +225,11 @@ export function AgentBrowser({
           enable the live view and screenshots; reading mode is active meanwhile.
         </div>
       ) : null}
+      {navigationError ? (
+        <div className="shrink-0 border-b border-(--err)/40 bg-(--err)/10 px-3 py-2 text-[length:var(--fs-xs)] text-(--err)">
+          {navigationError}
+        </div>
+      ) : null}
 
       <div className="min-h-0 flex-1 bg-(--bg)">
         {showStartPage ? (
@@ -232,15 +247,18 @@ export function AgentBrowser({
             page={readable}
             error={readingError}
             loading={readingLoading}
-            onLinkClick={onNavigate}
+            onLinkClick={navigateFromBrowser}
           />
         ) : (
           <ScreencastSurface
-            url={url}
             visible={visible}
-            onState={(state) => {
+            onState={(state, locationIsAuthoritative) => {
+              setLiveUnavailable(null);
               setNavState(state);
-              if (state.url && state.url !== url) onLocationChange(state.url);
+              if (!locationIsAuthoritative) return;
+              const observedUrl = /^https?:\/\//i.test(state.url) ? state.url : "";
+              if (observedUrl && observedUrl !== DEFAULT_BROWSER_URL) setHasOpenedUrl(true);
+              if (observedUrl && observedUrl !== url) onLocationChange(observedUrl);
             }}
             onUnavailable={(error) => {
               setLiveUnavailable(error);

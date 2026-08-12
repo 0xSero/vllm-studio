@@ -5,6 +5,7 @@ import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
+import { mutateBrowserHost } from "@/features/agent/ui/agent-browser-effects";
 import { useToolsActions } from "@/features/agent/tools/context";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import { writeClipboardText } from "@/lib/clipboard";
@@ -163,6 +164,7 @@ function normalizeLooseMarkdownEmphasis(text: string): string {
 type ToolHandlers = {
   setComputerOpen: (open: boolean) => void;
   setComputerTab: (tab: ComputerTab) => void;
+  setBrowserInput: (input: string) => void;
   setBrowserUrl: (url: string, input?: string) => void;
   requestFileOpen: (path: string) => void;
 };
@@ -232,12 +234,17 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
           rel="noreferrer noopener"
           onClick={(event) => {
             if (!href) return;
-            const next = normalizeBrowserInput(href, "");
+            const next = normalizeBrowserInput(href);
             if (!next) return;
             event.preventDefault();
             tools.setComputerOpen(true);
             tools.setComputerTab("browser");
-            tools.setBrowserUrl(next, next);
+            tools.setBrowserInput(next);
+            void mutateBrowserHost("navigate", { url: next }).then((result) => {
+              if (!result.error && result.readingMode && result.url) {
+                tools.setBrowserUrl(result.url, result.url);
+              }
+            });
           }}
           title={href}
         >
@@ -286,10 +293,17 @@ function AssistantMarkdownInner({ text }: { text: string }) {
       buildComponentsWithAppLinks({
         setComputerOpen: tools.setComputerOpen,
         setComputerTab: tools.setComputerTab,
+        setBrowserInput: tools.setBrowserInput,
         setBrowserUrl: tools.setBrowserUrl,
         requestFileOpen: tools.requestFileOpen,
       }),
-    [tools.setComputerOpen, tools.setComputerTab, tools.setBrowserUrl, tools.requestFileOpen],
+    [
+      tools.requestFileOpen,
+      tools.setBrowserInput,
+      tools.setBrowserUrl,
+      tools.setComputerOpen,
+      tools.setComputerTab,
+    ],
   );
   return (
     <div className="chat-markdown min-w-0 max-w-full overflow-x-hidden [overflow-wrap:anywhere]">
