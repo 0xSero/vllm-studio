@@ -1973,7 +1973,7 @@ export function createLitterBridgeGateway() {
   const now = () => new Date();
   let mutationLedger: ReturnType<typeof createLitterMutationLedger> | null = null;
   const getMutationLedger = () =>
-    (mutationLedger ??= createLitterMutationLedger(dataDir, now));
+    (mutationLedger ??= createLitterMutationLedger(dataDir));
   const mutationOwnerId = `${process.pid}-${randomUUID()}`;
   type MutationFlow =
     | {
