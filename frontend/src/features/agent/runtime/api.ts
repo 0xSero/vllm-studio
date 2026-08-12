@@ -120,7 +120,8 @@ export type CanonicalSessionMeta = {
 };
 
 export type CanonicalSessionResult = {
-  messages: Record<string, unknown>[];
+  messages: import("@/features/agent/messages").ChatMessage[];
+  tokenStats?: import("@/features/agent/messages").TokenStats;
   // Byte-offset cursor to pass as `before` to load the previous (older) page,
   // or null when this page already reaches the start of the session log.
   cursor: number | null;
@@ -150,6 +151,7 @@ export function loadCanonicalSession(
         const payload = input as Partial<CanonicalSessionResult>;
         return {
           messages: payload.messages ?? [],
+          tokenStats: payload.tokenStats,
           cursor: payload.cursor ?? null,
           meta: payload.meta ?? null,
         };

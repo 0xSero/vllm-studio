@@ -31,6 +31,7 @@ import { findRuntimeSessionForLookup, piStatusFromEvents } from "./pi-runtime-st
 import { configuredPiSessionDir, findSessionFile } from "./sessions-store";
 import { getGlobalSingleton } from "./instances";
 import { connectorsRevisionSync } from "./connectors-service";
+import { projectAgentTranscript } from "./session-view";
 import type {
   LoggedPiEvent,
   PiAgentSession,
@@ -725,6 +726,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
 
   get status() {
     const sdkSession = this.runtime?.session;
+    const transcript = projectAgentTranscript(sdkSession?.messages ?? []);
     return piStatusFromEvents({
       running: Boolean(this.runtime),
       activePromptCount: this.activePromptCount,
@@ -739,7 +741,8 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
       eventSeq: this.eventSeq,
       lastError: this.lastError,
       contextUsage: this.computeContextUsage(),
-      messages: sdkSession?.messages ?? [],
+      messages: transcript.messages,
+      tokenStats: transcript.tokenStats,
       queue: {
         steering: sdkSession?.getSteeringMessages() ?? [],
         followUp: sdkSession?.getFollowUpMessages() ?? [],

@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { RuntimeContextUsageSchema } from "./context-usage";
+import { AgentViewMessageSchema, AgentViewTokenStatsSchema } from "./session-view";
 
 const RuntimeQueueSchema = Schema.Struct({
   steering: Schema.Array(Schema.String),
@@ -24,7 +25,8 @@ export const RuntimeStatusSchema = Schema.Struct({
   cwd: Schema.optional(Schema.String),
   eventSeq: Schema.optional(Schema.Number),
   contextUsage: Schema.optional(Schema.Union([Schema.Null, RuntimeContextUsageSchema])),
-  messages: Schema.optional(Schema.Array(Schema.Record(Schema.String, Schema.Unknown))),
+  messages: Schema.optional(Schema.mutable(Schema.Array(AgentViewMessageSchema))),
+  tokenStats: Schema.optional(AgentViewTokenStatsSchema),
   queue: Schema.optional(RuntimeQueueSchema),
   extensionUiRequest: Schema.optional(Schema.Union([Schema.Null, RuntimeExtensionUiRequestSchema])),
 });

@@ -1,10 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
 import { Effect } from "effect";
-import {
-  mergeLiveTranscript,
-  projectTranscript,
-  runtimeStatusAcceptsControl,
-} from "@/features/agent/messages";
+import { mergeLiveTranscript, runtimeStatusAcceptsControl } from "@/features/agent/messages";
 import { settleTurnFinalizingTools } from "@/features/agent/runtime/session-status";
 import {
   selectedContextPrompt,
@@ -263,14 +259,10 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           if (replayResult._tag === "Success") {
             const { messages: rawMessages, cursor, meta } = replayResult.success;
             const runtimeActive = runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId);
-            const canonical = projectTranscript(rawMessages);
-            const live =
+            const messages =
               runtimeActive && runtimeStatus?.messages
-                ? projectTranscript(runtimeStatus.messages, canonical.messages)
-                : null;
-            const messages = live
-              ? mergeLiveTranscript(canonical.messages, live.messages)
-              : canonical.messages;
+                ? mergeLiveTranscript(rawMessages, runtimeStatus.messages)
+                : rawMessages;
             updateSession(sessionId, (session) => ({
               ...session,
               messages: messages.length >= session.messages.length ? messages : session.messages,
@@ -282,7 +274,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               modelId: session.modelId || meta?.modelId || runtimeStatus?.modelId || modelId,
               title: meta?.title ?? session.title,
               startedAt: meta?.startedAt ?? session.startedAt,
-              tokenStats: live?.tokenStats ?? canonical.tokenStats,
+              tokenStats: runtimeStatus?.tokenStats ?? replayResult.success.tokenStats,
               // Lifetime spend is computed server-side from the whole rollout,
               // so it survives both compaction and the tail load's cutoff.
               usageTotals: meta?.usage ?? session.usageTotals,
@@ -347,7 +339,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             catch: (error) => error,
           }).pipe(Effect.result);
           if (result._tag !== "Success") return;
-          const earlier = projectTranscript(result.success.messages).messages;
+          const earlier = result.success.messages;
           updateSession(sessionId, (current) => ({
             ...current,
             messages: earlier.length > 0 ? [...earlier, ...current.messages] : current.messages,

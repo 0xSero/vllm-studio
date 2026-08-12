@@ -1,5 +1,5 @@
 import type { RuntimeExtensionUiRequest } from "../../../shared/agent/runtime-status";
-import { isRecord } from "../../../shared/agent/guards";
+import type { ChatMessage, TokenStats } from "../../../shared/agent/session-view";
 import type { PiAgentStatus, PiContextUsage } from "./pi-runtime-types";
 
 type RuntimeLookupEntry<TSession> = {
@@ -75,7 +75,8 @@ export function piStatusFromEvents(input: {
   eventSeq: number;
   lastError: string | null;
   contextUsage?: PiContextUsage | null;
-  messages?: readonly unknown[];
+  messages?: readonly ChatMessage[];
+  tokenStats?: TokenStats;
   queue?: { steering: readonly string[]; followUp: readonly string[] };
   extensionUiRequest?: RuntimeExtensionUiRequest | null;
 }): PiAgentStatus {
@@ -90,36 +91,26 @@ export function piStatusFromEvents(input: {
     lastError: input.lastError,
     contextUsage: input.contextUsage ?? null,
     messages: input.messages ?? [],
+    tokenStats: input.tokenStats,
     queue: input.queue ?? { steering: [], followUp: [] },
     extensionUiRequest: input.extensionUiRequest ?? null,
   };
 }
 
-export function lastAssistantResult(messages: readonly unknown[]): {
+export function lastAssistantResult(messages: readonly ChatMessage[]): {
   text: string;
   error: string | null;
 } {
   let text = "";
   let error: string | null = null;
-  for (const value of messages) {
-    if (!isRecord(value) || value.role !== "assistant") continue;
-    const content =
-      typeof value.content === "string"
-        ? value.content
-        : Array.isArray(value.content)
-          ? value.content
-              .map((part) =>
-                isRecord(part) && part.type === "text" && typeof part.text === "string"
-                  ? part.text
-                  : "",
-              )
-              .join("")
-          : "";
-    if (content.trim()) {
-      text = content.trim();
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    if (message.text.trim()) {
+      text = message.text.trim();
       error = null;
-    } else if (typeof value.errorMessage === "string" && value.errorMessage.trim()) {
-      error = value.errorMessage.trim();
+    } else {
+      const event = message.blocks?.find((block) => block.kind === "event");
+      if (event?.text.trim()) error = event.text.trim();
     }
   }
   return { text, error };

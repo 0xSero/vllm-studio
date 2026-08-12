@@ -2,7 +2,6 @@ import { isAgentSettledEvent } from "@shared/agent/pi-events";
 import {
   mergeLiveTranscript,
   projectQueue,
-  projectTranscript,
   settleOptimisticMessages,
 } from "@/features/agent/messages";
 import {
@@ -44,14 +43,13 @@ function sameActivity(
 
 function projectRuntimeStatus(session: Session, status: RuntimeStatus): Session {
   if (session.status === "loading") return session;
-  const projection = status.messages ? projectTranscript(status.messages, session.messages) : null;
-  const messages = projection
-    ? mergeLiveTranscript(session.messages, projection.messages)
+  const messages = status.messages
+    ? mergeLiveTranscript(session.messages, status.messages)
     : session.messages;
   const next: Session = {
     ...session,
     messages,
-    ...(projection?.tokenStats ? { tokenStats: projection.tokenStats } : {}),
+    ...(status.tokenStats ? { tokenStats: status.tokenStats } : {}),
     ...(status.piSessionId ? { piSessionId: status.piSessionId } : {}),
     ...(status.modelId ? { modelId: status.modelId } : {}),
     ...(status.contextUsage !== undefined ? { contextUsage: status.contextUsage } : {}),

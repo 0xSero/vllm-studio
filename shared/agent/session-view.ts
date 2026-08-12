@@ -2,6 +2,13 @@ import { Schema } from "effect";
 import type { ComposerSkillRef } from "./composer-refs";
 
 const RecordSchema = Schema.Record(Schema.String, Schema.Unknown);
+const ComposerSkillRefSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  source: Schema.optional(Schema.String),
+  path: Schema.optional(Schema.String),
+  instructions: Schema.optional(Schema.String),
+});
 
 export const AgentViewToolBlockSchema = Schema.Struct({
   kind: Schema.Literal("tool"),
@@ -37,10 +44,12 @@ export const AgentViewMessageSchema = Schema.Struct({
   id: Schema.String,
   role: Schema.Literals(["user", "assistant", "system"]),
   text: Schema.String,
-  attachments: Schema.optional(Schema.Array(AgentViewAttachmentSchema)),
-  skills: Schema.optional(Schema.Array(RecordSchema)),
-  blocks: Schema.optional(Schema.Array(AgentViewBlockSchema)),
-  streamCalls: Schema.optional(Schema.Array(Schema.Array(RecordSchema))),
+  attachments: Schema.optional(Schema.mutable(Schema.Array(AgentViewAttachmentSchema))),
+  skills: Schema.optional(Schema.mutable(Schema.Array(ComposerSkillRefSchema))),
+  blocks: Schema.optional(Schema.mutable(Schema.Array(AgentViewBlockSchema))),
+  streamCalls: Schema.optional(
+    Schema.mutable(Schema.Array(Schema.mutable(Schema.Array(RecordSchema)))),
+  ),
   pending: Schema.optional(Schema.Boolean),
   awaitingEcho: Schema.optional(Schema.Boolean),
   timestamp: Schema.optional(Schema.String),
