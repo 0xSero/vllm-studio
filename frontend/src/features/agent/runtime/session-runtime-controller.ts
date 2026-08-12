@@ -8,12 +8,13 @@ import {
 import {
   subscribeRuntimeActivity,
   type RuntimeActivityPayload,
-  type RuntimeSessionSummary,
   type RuntimeStatus,
 } from "@/features/agent/runtime/api";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
-import { publishRuntimeActivity } from "@/features/agent/session-index";
 import { settleTurn } from "@/features/agent/runtime/session-status";
+
+export type RuntimeSessionActivity = "running" | "unseen" | "finished";
+export type RuntimeSessionActivitySnapshot = ReadonlyMap<string, RuntimeSessionActivity>;
 
 export type SessionRuntimeBinding = {
   commit: (sessionId: SessionId, patch: (session: Session) => Session) => void;
@@ -29,7 +30,17 @@ export type SessionRuntimeController = {
   unbind(): void;
   reconcile(sessions: readonly Session[]): void;
   closeAll(): void;
+  activitySnapshot(): RuntimeSessionActivitySnapshot;
+  subscribeActivity(listener: () => void): () => void;
+  markActivitySeen(ids: readonly (string | null | undefined)[]): void;
 };
+
+function sameActivity(
+  left: RuntimeSessionActivitySnapshot,
+  right: RuntimeSessionActivitySnapshot,
+): boolean {
+  return left.size === right.size && [...left].every(([id, state]) => right.get(id) === state);
+}
 
 function projectRuntimeStatus(session: Session, status: RuntimeStatus): Session {
   if (session.status === "loading") return session;
@@ -75,11 +86,10 @@ export function createSessionRuntimeController(
 ): SessionRuntimeController {
   const subscribe = deps.subscribe ?? subscribeRuntimeActivity;
   const runtimeStatuses = new Map<string, RuntimeStatus>();
+  const activityListeners = new Set<() => void>();
+  let activity: RuntimeSessionActivitySnapshot = new Map();
   let binding: SessionRuntimeBinding | null = null;
   let closeSubscription: (() => void) | null = null;
-
-  const summaries = (): RuntimeSessionSummary[] =>
-    [...runtimeStatuses].map(([sessionId, status]) => ({ sessionId, status }));
 
   const applyStatus = (runtimeSessionId: string, status: RuntimeStatus) => {
     if (!binding) return;
@@ -88,19 +98,34 @@ export function createSessionRuntimeController(
     binding.commit(target.id, (session) => projectRuntimeStatus(session, status));
   };
 
-  const publish = () => publishRuntimeActivity(summaries());
+  const publishActivity = () => {
+    const active = new Set<string>();
+    for (const [sessionId, status] of runtimeStatuses) {
+      if (status.active !== true) continue;
+      active.add(sessionId);
+      if (status.piSessionId) active.add(status.piSessionId);
+    }
+    const next = new Map(activity);
+    for (const [id, state] of next) {
+      if (state === "running" && !active.has(id)) next.set(id, "finished");
+    }
+    for (const id of active) next.set(id, "running");
+    if (sameActivity(activity, next)) return;
+    activity = next;
+    activityListeners.forEach((listener) => listener());
+  };
 
   const applyPayload = (payload: RuntimeActivityPayload) => {
     if (payload.type === "sessions") {
       runtimeStatuses.clear();
       payload.sessions.forEach(({ sessionId, status }) => runtimeStatuses.set(sessionId, status));
-      publish();
+      publishActivity();
       runtimeStatuses.forEach((status, sessionId) => applyStatus(sessionId, status));
       return;
     }
     const status = payload.type === "status" ? payload.session : payload.snapshot;
     runtimeStatuses.set(payload.sessionId, status);
-    publish();
+    publishActivity();
     if (payload.type === "status") {
       applyStatus(payload.sessionId, status);
       return;
@@ -144,7 +169,21 @@ export function createSessionRuntimeController(
       closeSubscription?.();
       closeSubscription = null;
       runtimeStatuses.clear();
-      publishRuntimeActivity([]);
+      publishActivity();
+    },
+    activitySnapshot: () => activity,
+    subscribeActivity: (listener) => {
+      activityListeners.add(listener);
+      return () => activityListeners.delete(listener);
+    },
+    markActivitySeen: (ids) => {
+      const next = new Map(activity);
+      for (const id of ids) {
+        if (id) next.delete(id);
+      }
+      if (sameActivity(activity, next)) return;
+      activity = next;
+      activityListeners.forEach((listener) => listener());
     },
   };
 }

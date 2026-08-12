@@ -7,6 +7,7 @@ import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { applyUrlNavigation } from "@/features/agent/workspace/pane-controller";
 import type { WorkspaceNavigation } from "@/features/agent/workspace/types";
 import { useRouter } from "next/navigation";
+import { CHATS_PROJECT_ID } from "@shared/agent/project-ids";
 
 export type SearchParamsReader = {
   get: (key: string) => string | null;
@@ -58,7 +59,7 @@ export function workspaceNavigationAction(
   if (!key) return null;
   const tab = {
     ...makeFreshTab(),
-    projectId: project?.id,
+    projectId: project?.id ?? CHATS_PROJECT_ID,
     cwd: project?.path,
   };
   return {
@@ -86,8 +87,7 @@ export function sessionIdForNavigation(
 }
 
 function projectForNavigation(projects: ProjectsContextValue, projectId: string | null) {
-  if (projectId) return projects.findById(projectId);
-  return null;
+  return projects.findById(projectId ?? CHATS_PROJECT_ID);
 }
 
 function requestWorkspaceUrlNavigation({

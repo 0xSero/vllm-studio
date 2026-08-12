@@ -1,10 +1,14 @@
 "use client";
 
-import { create, useStore } from "zustand";
+import { useSyncExternalStore } from "react";
+import { useStore } from "zustand";
 import { isWorkingStatus } from "@/features/agent/runtime/session-status";
 import type { SessionId } from "@/features/agent/runtime/types";
 import { paneSessionId } from "@/features/agent/runtime/selectors";
-import type { RuntimeSessionSummary } from "@/features/agent/runtime/api";
+import {
+  sessionRuntimeController,
+  type RuntimeSessionActivitySnapshot,
+} from "@/features/agent/runtime/session-runtime-controller";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { workspaceStore } from "@/features/agent/workspace/store";
 import type { WorkspaceState } from "@/features/agent/workspace/types";
@@ -44,25 +48,21 @@ export type SessionIndexRow =
 
 export type SessionActivity = "idle" | "running" | "unseen" | "finished";
 
-export type SessionActivitySnapshot = {
-  active: ReadonlySet<string>;
-  unseen: ReadonlySet<string>;
-  finished: ReadonlySet<string>;
-};
+export type SessionActivitySnapshot = RuntimeSessionActivitySnapshot;
 
-const EMPTY_ACTIVITY: SessionActivitySnapshot = {
-  active: new Set(),
-  unseen: new Set(),
-  finished: new Set(),
-};
+const EMPTY_ACTIVITY: SessionActivitySnapshot = new Map();
 
 function timestamp(value?: string | null): number {
   const parsed = value ? Date.parse(value) : NaN;
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function hasIdentity(ids: ReadonlySet<string>, identity: readonly (string | null)[]): boolean {
-  return identity.some((id) => Boolean(id && ids.has(id)));
+function hasActivity(
+  snapshot: SessionActivitySnapshot,
+  identity: readonly (string | null)[],
+  activity: Exclude<SessionActivity, "idle">,
+): boolean {
+  return identity.some((id) => Boolean(id && snapshot.get(id) === activity));
 }
 
 export function sessionActivity(
@@ -71,9 +71,10 @@ export function sessionActivity(
   optimisticStatus = "idle",
   focused = false,
 ): SessionActivity {
-  if (isWorkingStatus(optimisticStatus) || hasIdentity(snapshot.active, identity)) return "running";
-  if (!focused && hasIdentity(snapshot.finished, identity)) return "finished";
-  if (!focused && hasIdentity(snapshot.unseen, identity)) return "unseen";
+  if (isWorkingStatus(optimisticStatus) || hasActivity(snapshot, identity, "running"))
+    return "running";
+  if (!focused && hasActivity(snapshot, identity, "finished")) return "finished";
+  if (!focused && hasActivity(snapshot, identity, "unseen")) return "unseen";
   return "idle";
 }
 
@@ -132,10 +133,6 @@ export function sessionRows(
   return rows.sort((left, right) => right.sortAt - left.sortAt);
 }
 
-const useSessionIndex = create<{ activity: SessionActivitySnapshot }>(() => ({
-  activity: EMPTY_ACTIVITY,
-}));
-
 function openSession(
   state: WorkspaceState,
   sessionId: SessionId,
@@ -174,8 +171,7 @@ function openSessions(state: WorkspaceState): OpenAgentSession[] {
     if (projected) sessions.push(projected);
   }
   for (const session of state.sessions.values()) {
-    if (inPane.has(session.id) || (session.status !== "running" && session.status !== "starting"))
-      continue;
+    if (inPane.has(session.id) || !(session.piSessionId || session.messages.length > 0)) continue;
     const projected = openSession(state, session.id, "", false);
     if (projected) sessions.push(projected);
   }
@@ -183,50 +179,15 @@ function openSessions(state: WorkspaceState): OpenAgentSession[] {
 }
 
 export const useOpenSessions = () => openSessions(useStore(workspaceStore));
-export const useSessionActivity = () => useSessionIndex((state) => state.activity);
-
-function sameIds(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
-  return left.size === right.size && [...left].every((id) => right.has(id));
-}
-
-export function publishRuntimeActivity(entries: readonly RuntimeSessionSummary[]): void {
-  const activity = useSessionIndex.getState().activity;
-  const active = new Set<string>();
-  for (const entry of entries) {
-    if (entry.status.active !== true) continue;
-    active.add(entry.sessionId);
-    if (entry.status.piSessionId) active.add(entry.status.piSessionId);
-  }
-  const unseen = new Set(activity.unseen);
-  const finished = new Set(activity.finished);
-  for (const id of activity.active) {
-    if (!active.has(id)) {
-      unseen.add(id);
-      finished.add(id);
-    }
-  }
-  for (const id of active) {
-    unseen.delete(id);
-    finished.delete(id);
-  }
-  if (
-    sameIds(activity.active, active) &&
-    sameIds(activity.unseen, unseen) &&
-    sameIds(activity.finished, finished)
-  )
-    return;
-  useSessionIndex.setState({ activity: { active, unseen, finished } });
-}
+export const useSessionActivity = () => {
+  const controller = sessionRuntimeController();
+  return useSyncExternalStore(
+    controller.subscribeActivity,
+    controller.activitySnapshot,
+    controller.activitySnapshot,
+  );
+};
 
 export function markSessionActivitySeen(...ids: readonly (string | null | undefined)[]): void {
-  const activity = useSessionIndex.getState().activity;
-  const unseen = new Set(activity.unseen);
-  const finished = new Set(activity.finished);
-  for (const id of ids) {
-    if (!id) continue;
-    unseen.delete(id);
-    finished.delete(id);
-  }
-  if (sameIds(activity.unseen, unseen) && sameIds(activity.finished, finished)) return;
-  useSessionIndex.setState({ activity: { ...activity, unseen, finished } });
+  sessionRuntimeController().markActivitySeen(ids);
 }

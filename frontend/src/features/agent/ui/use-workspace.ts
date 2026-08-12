@@ -260,7 +260,6 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
             sourcePaneId: paneId,
             sourceTabId: tabId,
             newPaneId: newPaneId(),
-            tab: makeFreshTab(),
           }),
         ),
       registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => {

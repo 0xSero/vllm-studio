@@ -275,6 +275,63 @@ test("new task replaces the current chat with a fresh session", async ({ page })
   await expect(page.locator("[data-multi-pane=true]")).toHaveCount(0);
 });
 
+test("fork opens a copied session in a second pane and closing it preserves the source", async ({
+  page,
+}) => {
+  const composer = await openControllerChat(page, "Forked pane parity");
+  const opening = "Keep this transcript visible in both recorded panes.";
+  await composer.fill(opening);
+  await composer.press("Enter");
+  await expect(page.getByText("Controller scoped Pi reply.")).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole("button", { name: "Session settings" }).click();
+  await page.getByRole("menuitem", { name: "Fork" }).click();
+
+  await expect(page.locator("[data-multi-pane=true]")).toBeVisible();
+  const panes = page.locator("[data-pane-id]");
+  await expect(panes).toHaveCount(2);
+  await expect(page.getByPlaceholder(/Do anything|Ask for follow-up changes/)).toHaveCount(2);
+  await expect(panes.getByText(opening, { exact: true })).toHaveCount(2);
+  await expect(panes.getByText("Controller scoped Pi reply.", { exact: true })).toHaveCount(2);
+
+  await panes.last().getByRole("button", { name: "Close pane" }).click();
+  await expect(page.locator("[data-multi-pane=true]")).toHaveCount(0);
+  await expect(page.locator("[data-pane-id]")).toHaveCount(1);
+  await expect(panes.getByText(opening, { exact: true })).toBeVisible();
+  await expect(panes.getByText("Controller scoped Pi reply.", { exact: true })).toBeVisible();
+});
+
+test("a background session reports completion and reopens without losing its transcript", async ({
+  page,
+}) => {
+  const composer = await openControllerChat(page, "Background completion parity");
+  const opening = "slow-response-marker background completion";
+  await composer.fill(opening);
+  await composer.press("Enter");
+  await expect(page.getByRole("button", { name: "Stop" })).toBeEnabled({ timeout: 60_000 });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem("local-studio.agent.paneState");
+        if (!raw) return false;
+        const sessions = JSON.parse(raw).sessions;
+        return Array.isArray(sessions) && sessions.some((session) => Boolean(session.piSessionId));
+      }),
+    )
+    .toBe(true);
+
+  await page.getByRole("link", { name: "New task" }).click();
+  await expect(page.locator("[data-multi-pane=true]")).toHaveCount(0);
+  await expect(page.getByLabel("Session running")).toBeVisible();
+  await expect(page.getByLabel("Run finished")).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole("link", { name: opening }).click();
+  const transcript = page.getByRole("article");
+  await expect(transcript.getByText(opening, { exact: true })).toBeVisible();
+  await expect(transcript.getByText("Slow response complete.", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Run finished")).toHaveCount(0);
+});
+
 test("signed Litter bridge discovers and pages the recorded session", async ({
   page,
   request,

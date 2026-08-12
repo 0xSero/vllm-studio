@@ -72,34 +72,14 @@ export function claimCanonicalSession(state: WorkspaceState, canonical: Session)
       )
       .map(([id]) => id),
   );
+  if (duplicateIds.size === 0) return state;
   const sessions = new Map(state.sessions);
   for (const id of duplicateIds) sessions.delete(id);
   const panesById = new Map(state.panesById);
   for (const [paneId, pane] of panesById) {
     if (duplicateIds.has(pane.sessionId)) panesById.set(paneId, { sessionId: canonical.id });
   }
-  const canonicalPanes = [...panesById]
-    .filter(([, pane]) => pane.sessionId === canonical.id)
-    .map(([paneId]) => paneId);
-  if (duplicateIds.size === 0 && canonicalPanes.length <= 1) return state;
-  if (canonicalPanes.length <= 1) return { ...state, sessions, panesById };
-  const keptPaneId = canonicalPanes.includes(state.focusedPaneId)
-    ? state.focusedPaneId
-    : canonicalPanes[0];
-  const nextPanes = new Map(panesById);
-  let layout = state.layout;
-  for (const paneId of canonicalPanes) {
-    if (paneId === keptPaneId) continue;
-    nextPanes.delete(paneId);
-    layout = removeLeaf(layout, paneId) ?? layout;
-  }
-  return {
-    ...state,
-    sessions,
-    panesById: nextPanes,
-    layout,
-    focusedPaneId: keptPaneId,
-  };
+  return { ...state, sessions, panesById };
 }
 
 export function patchWorkspaceSession(
@@ -257,8 +237,8 @@ function openNewSessionInFocusedPane(
   if (!isSession(payload.tab)) return state;
   const session: Session = {
     ...payload.tab,
-    projectId: payload.project?.id,
-    cwd: payload.project?.path,
+    projectId: payload.project?.id ?? payload.tab.projectId,
+    cwd: payload.project?.path ?? payload.tab.cwd,
     modelId: payload.tab.modelId || state.selectedModel || undefined,
   };
   if (payload.replaceWorkspace) {
@@ -424,12 +404,10 @@ export function splitTabIntoNewPane(
   const sourcePane = state.panesById.get(payload.sourcePaneId);
   if (!sourcePane || paneSessionId(sourcePane) !== payload.sourceTabId) return state;
   const sourceSession = state.sessions.get(payload.sourceTabId);
-  if (!sourceSession || !isSession(payload.tab)) return state;
-  const session = copySessionWithFreshRuntimeId(sourceSession, payload.tab);
-  if (!session) return state;
+  if (!sourceSession) return state;
   const targetPaneId = leaves.length >= 2 ? siblingPaneId(state, state.focusedPaneId) : null;
-  if (targetPaneId) return replacePaneSession(state, targetPaneId, session);
-  return splitSession(state, state.focusedPaneId, session, payload.newPaneId);
+  if (targetPaneId) return replacePaneSession(state, targetPaneId, sourceSession);
+  return splitSession(state, state.focusedPaneId, sourceSession, payload.newPaneId);
 }
 
 export function closePane(state: WorkspaceState, payload: { paneId: PaneId }): WorkspaceState {
@@ -527,7 +505,7 @@ type SplitPaneWithPayloadPayload = SessionPayload & {
   side: "a" | "b";
   payload: WorkspaceSessionPayload;
 };
-type SplitTabPayload = SessionPayload & {
+type SplitTabPayload = {
   sourcePaneId: PaneId;
   sourceTabId: SessionId;
   newPaneId?: PaneId;
