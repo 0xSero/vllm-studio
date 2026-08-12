@@ -233,13 +233,38 @@ export function useChatPaneSendFlow({
     [setMention],
   );
 
+  const sendPromptOrControl = useCallback(
+    (tab: SessionTab, text: string, mode: "steer" | "follow_up", cwdHint?: string) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const runtime = tab.id;
+          const acceptsControl = yield* Effect.tryPromise({
+            try: () => engine.acceptsControl(tab, runtime),
+            catch: () => running,
+          });
+          if (acceptsControl && !text) return;
+          const guard = acceptsControl
+            ? controlSubmitInFlightRef.current
+            : composerSubmitInFlightRef.current;
+          yield* Effect.tryPromise({
+            try: () =>
+              runGuardedSubmit(guard, tab.id, () =>
+                acceptsControl
+                  ? queueAndSendControl(mode, text, tab, runtime, cwdHint)
+                  : submitPrompt(text, tab.id),
+              ),
+            catch: (error) => error,
+          });
+        }),
+      ),
+    [engine, queueAndSendControl, runGuardedSubmit, running, submitPrompt],
+  );
+
   const sendMessage = useCallback(
     (event: FormEvent) => {
       event.preventDefault();
       if (!activeTab) return Promise.resolve();
       const text = activeTab.input.trim();
-      // The session id is the opaque runtime key.
-      const runtime = activeTab.id;
       if (
         ((!text || isPlaceholderSessionTitle(text)) && attachments.length === 0) ||
         readingAttachments
@@ -250,47 +275,9 @@ export function useChatPaneSendFlow({
         updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
         return Promise.resolve();
       }
-      return Effect.runPromise(
-        Effect.gen(function* () {
-          // Fail open, same reasoning as runtimeStatusAcceptsControl: a probe
-          // that throws tells us nothing, and guessing "not running" mid-turn
-          // silently reroutes the message into a fresh prompt.
-          const acceptsControl = yield* Effect.tryPromise({
-            try: () => engine.acceptsControl(activeTab, runtime),
-            catch: () => running,
-          });
-          if (acceptsControl) {
-            if (!text) return;
-            yield* Effect.tryPromise({
-              try: () =>
-                runGuardedSubmit(controlSubmitInFlightRef.current, activeTab.id, () =>
-                  queueAndSendControl("steer", text, activeTab, runtime),
-                ),
-              catch: (error) => error,
-            });
-            return;
-          }
-          yield* Effect.tryPromise({
-            try: () =>
-              runGuardedSubmit(composerSubmitInFlightRef.current, activeTab.id, () =>
-                submitPrompt(text, activeTab.id),
-              ),
-            catch: (error) => error,
-          });
-        }),
-      );
+      return sendPromptOrControl(activeTab, text, "steer");
     },
-    [
-      activeTab,
-      attachments.length,
-      engine,
-      modelId,
-      queueAndSendControl,
-      readingAttachments,
-      runGuardedSubmit,
-      submitPrompt,
-      updateTab,
-    ],
+    [activeTab, attachments.length, modelId, readingAttachments, sendPromptOrControl, updateTab],
   );
 
   const queueMessage = useCallback(() => {
@@ -301,124 +288,51 @@ export function useChatPaneSendFlow({
       updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
       return Promise.resolve();
     }
-    const runtime = activeTab.id;
-    return Effect.runPromise(
-      Effect.gen(function* () {
-        const acceptsControl = yield* Effect.tryPromise({
-          try: () => engine.acceptsControl(activeTab, runtime),
-          catch: () => running,
-        });
-        if (acceptsControl) {
-          yield* Effect.tryPromise({
-            try: () =>
-              runGuardedSubmit(controlSubmitInFlightRef.current, activeTab.id, () =>
-                queueAndSendControl("follow_up", text, activeTab, runtime, cwd),
-              ),
-            catch: (error) => error,
-          });
-          return;
-        }
-        yield* Effect.tryPromise({
-          try: () =>
-            runGuardedSubmit(composerSubmitInFlightRef.current, activeTab.id, () =>
-              submitPrompt(text, activeTab.id),
-            ),
-          catch: (error) => error,
-        });
-      }),
-    );
-  }, [
-    activeTab,
-    cwd,
-    engine,
-    modelId,
-    queueAndSendControl,
-    runGuardedSubmit,
-    submitPrompt,
-    updateTab,
-  ]);
+    return sendPromptOrControl(activeTab, text, "follow_up", cwd);
+  }, [activeTab, cwd, modelId, sendPromptOrControl, updateTab]);
 
-  const removeQueued = useCallback(
-    (queueId: string) => {
+  const mutateQueued = useCallback(
+    (queueId: string, queueAction: "remove" | "replace" | "promote", queueReplacement?: string) => {
       if (!activeTab) return Promise.resolve();
       const item = (activeTab.queue ?? []).find((entry) => entry.id === queueId);
       if (!item) return Promise.resolve();
+      const fallback =
+        queueAction === "remove"
+          ? "Remove failed"
+          : queueAction === "replace"
+            ? "Edit failed"
+            : "Steer failed";
       return engine
         .sendControl({
-          mode: "follow_up",
+          mode: queueAction === "promote" ? "steer" : "follow_up",
           text: item.text,
           runtime: activeTab.id,
           sessionId: activeTab.id,
           piSessionId: activeTab.piSessionId,
-          queueAction: "remove",
+          queueAction,
+          ...(queueReplacement === undefined ? {} : { queueReplacement }),
         })
         .then((result) => {
           if (result.ok) return;
-          updateTab(activeTab.id, (tab) => ({
-            ...tab,
-            error: result.error || "Remove failed",
-          }));
+          updateTab(activeTab.id, (tab) => ({ ...tab, error: result.error || fallback }));
         });
     },
     [activeTab, engine, updateTab],
+  );
+
+  const removeQueued = useCallback(
+    (queueId: string) => mutateQueued(queueId, "remove"),
+    [mutateQueued],
   );
 
   const editQueued = useCallback(
-    (queueId: string, text: string) => {
-      if (!activeTab) return Promise.resolve();
-      const item = (activeTab.queue ?? []).find((entry) => entry.id === queueId);
-      if (!item) return Promise.resolve();
-      return engine
-        .sendControl({
-          mode: "follow_up",
-          text: item.text,
-          runtime: activeTab.id,
-          sessionId: activeTab.id,
-          piSessionId: activeTab.piSessionId,
-          queueAction: "replace",
-          queueReplacement: text,
-        })
-        .then((result) => {
-          if (result.ok) return;
-          updateTab(activeTab.id, (tab) => ({
-            ...tab,
-            error: result.error || "Edit failed",
-          }));
-        });
-    },
-    [activeTab, engine, updateTab],
+    (queueId: string, text: string) => mutateQueued(queueId, "replace", text),
+    [mutateQueued],
   );
 
   const steerQueued = useCallback(
-    (queueId: string) => {
-      if (!activeTab) return Promise.resolve();
-      const item = (activeTab.queue ?? []).find((entry) => entry.id === queueId);
-      if (!item) return Promise.resolve();
-      const runtime = activeTab.id;
-      return Effect.runPromise(
-        Effect.gen(function* () {
-          const result = yield* Effect.tryPromise({
-            try: () =>
-              engine.sendControl({
-                mode: "steer",
-                text: item.text,
-                runtime,
-                sessionId: activeTab.id,
-                piSessionId: activeTab.piSessionId,
-                queueAction: "promote",
-              }),
-            catch: (error) => error,
-          });
-          if (!result.ok) {
-            updateTab(activeTab.id, (t) => ({
-              ...t,
-              error: result.error || "Steer failed",
-            }));
-          }
-        }),
-      );
-    },
-    [activeTab, engine, updateTab],
+    (queueId: string) => mutateQueued(queueId, "promote"),
+    [mutateQueued],
   );
 
   const abortTurn = useCallback(() => {
