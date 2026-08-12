@@ -5,7 +5,7 @@ import { isWorkingStatus } from "@/features/agent/runtime/session-status";
 import type { SessionId } from "@/features/agent/runtime/types";
 import { paneSessionId } from "@/features/agent/runtime/selectors";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
-import { workspaceStore } from "@/features/agent/workspace/store";
+import { workbenchStore } from "@/features/agent/workbench/store";
 import type { WorkspaceState } from "@/features/agent/workspace/types";
 import type { SessionSummary } from "@shared/agent/session-summary";
 
@@ -173,13 +173,9 @@ function openSessions(state: WorkspaceState): OpenAgentSession[] {
   return sessions;
 }
 
-export const useOpenSessions = () => openSessions(useStore(workspaceStore));
-export const useSessionActivity = () => useStore(workspaceStore, (state) => state.runtimeActivity);
+export const useOpenSessions = () => openSessions(useStore(workbenchStore));
+export const useSessionActivity = () => useStore(workbenchStore, (state) => state.runtimeActivity);
 
 export function markSessionActivitySeen(...ids: readonly (string | null | undefined)[]): void {
-  workspaceStore.setState((state) => {
-    const runtimeActivity = new Map(state.runtimeActivity);
-    ids.forEach((id) => id && runtimeActivity.delete(id));
-    return { ...state, runtimeActivity };
-  });
+  workbenchStore.getState().markActivitySeen(ids);
 }

@@ -1,4 +1,3 @@
-import { createStore } from "zustand/vanilla";
 import { clampLayoutToLimits, collectLeaves, removeLeaf } from "@/features/agent/workspace/layout";
 import { cleanSessionTitle, makeFreshTab } from "@/features/agent/messages/helpers";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
@@ -53,9 +52,6 @@ export function createInitialState(): WorkspaceState {
     runtimeActivity: new Map(),
   };
 }
-
-export const workspaceStore = createStore<WorkspaceState>(() => createInitialState());
-export const ephemeralWorkspaceStore = createStore<WorkspaceState>(() => createInitialState());
 
 export function setupWarningFromPiCheck(
   piCheck: { ok: boolean; guidance?: string } | undefined,

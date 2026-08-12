@@ -1,5 +1,5 @@
 import { consumeAgentSessionNavTitle } from "@/features/agent/ui/projects-nav/helpers";
-import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
+import type { WorkspaceDispatch } from "@/features/agent/workbench/store";
 import type { ProjectsStore } from "@/features/agent/projects/store";
 import type { Project } from "@/features/agent/projects/types";
 import { makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";

@@ -2,6 +2,7 @@
 
 import { Suspense, lazy, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
+import { useStore } from "zustand";
 import { triggerAddProjectFlow } from "@/features/agent/ui/projects-nav/helpers";
 import {
   QuickPanelTopBar,
@@ -12,7 +13,11 @@ import { useProjectsStore, type ProjectsStore } from "@/features/agent/projects/
 import { useToolsStore, type ToolsContextValue } from "@/features/agent/tools/store";
 import { activeSession, focusedSession } from "@/features/agent/runtime/selectors";
 import { PaneGrid } from "@/features/agent/ui/pane-grid";
-import { useWorkspace, type UseWorkspaceResult } from "@/features/agent/ui/use-workspace";
+import {
+  ephemeralWorkbenchStore,
+  workbenchStore,
+  type WorkbenchState,
+} from "@/features/agent/workbench/store";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
 import { useAgentWorkspaceNavigationEffects } from "@/features/agent/ui/agent-workspace-navigation";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -92,8 +97,9 @@ export function shouldShowProjectEmptyState(
 }
 
 export function AgentWorkspace({ compact = false }: { compact?: boolean } = {}) {
-  const workspace = useWorkspace({ ephemeral: compact });
-  const { state, dispatch } = workspace;
+  const workbench = useStore(compact ? ephemeralWorkbenchStore : workbenchStore);
+  const state = workbench;
+  const { dispatch } = workbench;
   const projects = useProjectsStore();
   const tools = useToolsStore();
   const searchParams = useSearchParams();
@@ -118,6 +124,7 @@ export function AgentWorkspace({ compact = false }: { compact?: boolean } = {}) 
   const panelMode = quickPanelMode(compact, showProjectEmptyState, focusedMessageCount);
   const composerOnly = panelMode === "composer";
   useQuickPanelExpandEffect(compact, panelMode === "thread");
+  useMountSubscription(workbench.initialize, [workbench.initialize]);
   return (
     <div data-quick-panel-state={panelMode} className={workspaceClassName(panelMode)}>
       <div
@@ -139,7 +146,7 @@ export function AgentWorkspace({ compact = false }: { compact?: boolean } = {}) 
             />
           ) : null}
           <WorkspacePaneContent
-            workspace={workspace}
+            workbench={workbench}
             showEmptyState={showProjectEmptyState}
             compact={compact}
             composerOnly={composerOnly}
@@ -147,7 +154,7 @@ export function AgentWorkspace({ compact = false }: { compact?: boolean } = {}) 
         </section>
         {!compact ? (
           <Suspense fallback={tools.computer.open ? <ComputerPanelFallback /> : null}>
-            <LazyAgentBrowserPanel workspace={workspace} />
+            <LazyAgentBrowserPanel workbench={workbench} />
           </Suspense>
         ) : null}
       </div>
@@ -156,23 +163,23 @@ export function AgentWorkspace({ compact = false }: { compact?: boolean } = {}) 
 }
 
 function WorkspacePaneContent({
-  workspace,
+  workbench,
   showEmptyState,
   compact,
   composerOnly,
 }: {
-  workspace: UseWorkspaceResult;
+  workbench: WorkbenchState;
   showEmptyState: boolean;
   compact?: boolean;
   composerOnly: boolean;
 }) {
-  const { state, handles } = workspace;
+  const state = workbench;
   if (showEmptyState) return <ProjectEmptyState />;
   if (compact) {
     return (
       <div className="flex min-h-0 flex-1">
         <WorkspacePane
-          workspace={workspace}
+          workbench={workbench}
           paneId={state.focusedPaneId}
           compact
           composerOnly={composerOnly}
@@ -184,27 +191,28 @@ function WorkspacePaneContent({
     <div className="min-h-0 flex-1">
       <PaneGrid
         layout={state.layout}
-        renderPane={(paneId) => <WorkspacePane workspace={workspace} paneId={paneId} />}
-        onSplit={handles.splitPaneWithPayload}
-        onOpenTab={handles.openSessionPayloadInPane}
-        onResize={handles.setSplitRatio}
+        renderPane={(paneId) => <WorkspacePane workbench={workbench} paneId={paneId} />}
+        onSplit={workbench.splitPaneWithPayload}
+        onOpenTab={workbench.openSessionPayloadInPane}
+        onResize={workbench.setSplitRatio}
       />
     </div>
   );
 }
 
 function WorkspacePane({
-  workspace,
+  workbench,
   paneId,
   compact = false,
   composerOnly = false,
 }: {
-  workspace: UseWorkspaceResult;
+  workbench: WorkbenchState;
   paneId: PaneId;
   compact?: boolean;
   composerOnly?: boolean;
 }) {
-  const { state, dispatch, handles } = workspace;
+  const state = workbench;
+  const { dispatch } = workbench;
   const projects = useProjectsStore();
   const pane = state.panesById.get(paneId);
   const session = activeSession(state, paneId);
@@ -217,21 +225,23 @@ function WorkspacePane({
       modelId={modelId}
       models={state.models}
       defaultModel={state.selectedModel}
-      onSelectModel={(next) => handles.selectPaneModel(paneId, next)}
-      onSetDefaultModel={handles.setDefaultModel}
+      onSelectModel={(next) => workbench.selectPaneModel(paneId, next)}
+      onSetDefaultModel={workbench.setDefaultModel}
       modelsLoading={state.modelsLoading}
       cwd={firstValue(session.cwd, project?.path, projects.selectedProject()?.path)}
-      onInitGit={handles.initGitForActiveProject}
-      onPiSessionIdChange={handles.notifySessionsChanged}
+      onInitGit={workbench.initGitForActiveProject}
+      onPiSessionIdChange={workbench.notifySessionsChanged}
       isFocused={state.focusedPaneId === paneId}
       onFocus={() => dispatch((current) => focusPane(current, { paneId }))}
       session={session}
-      onUpdateSession={handles.updateSession}
-      onRenameSession={(tabId, title) => handles.renameTab(paneId, tabId, title)}
-      onClose={collectLeaves(state.layout).length > 1 ? () => handles.closePane(paneId) : undefined}
-      onForkSession={() => handles.splitTabIntoNewPane(paneId, pane.sessionId)}
+      onUpdateSession={workbench.updateSession}
+      onRenameSession={(tabId, title) => workbench.renameTab(paneId, tabId, title)}
+      onClose={
+        collectLeaves(state.layout).length > 1 ? () => workbench.closePane(paneId) : undefined
+      }
+      onForkSession={() => workbench.splitTabIntoNewPane(paneId, pane.sessionId)}
       terminalOwner={terminalOwnerFor(project, session)}
-      onRegisterHandle={(handle) => handles.registerPaneHandle(paneId, handle)}
+      onRegisterHandle={(handle) => workbench.registerPaneHandle(paneId, handle)}
       showHeader={!compact}
       composerOnly={composerOnly}
     />

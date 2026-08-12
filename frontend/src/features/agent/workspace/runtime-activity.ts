@@ -1,12 +1,12 @@
 import type { StoreApi } from "zustand";
 import { subscribeRuntimeActivity } from "@/features/agent/runtime/api";
 import { applyRuntimeActivity } from "@/features/agent/workspace/pane-controller";
-import type { WorkspaceState } from "@/features/agent/workspace/types";
+import type { WorkbenchState } from "@/features/agent/workbench/store";
 
-const stores = new Set<StoreApi<WorkspaceState>>();
+const stores = new Set<StoreApi<WorkbenchState>>();
 let close: (() => void) | null = null;
 
-export function connectWorkspaceRuntime(store: StoreApi<WorkspaceState>): () => void {
+export function connectWorkspaceRuntime(store: StoreApi<WorkbenchState>): () => void {
   stores.add(store);
   close ??= subscribeRuntimeActivity((payload) => {
     stores.forEach((activeStore) =>

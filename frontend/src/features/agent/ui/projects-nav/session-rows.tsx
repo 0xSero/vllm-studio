@@ -18,7 +18,7 @@ import {
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { useProjectSessionsReloadEffect } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import { focusPaneSession, renameTab } from "@/features/agent/workspace/pane-controller";
-import { workspaceStore } from "@/features/agent/workspace/store";
+import { workbenchStore } from "@/features/agent/workbench/store";
 import type { Project as ProjectEntry } from "@/features/agent/projects/types";
 import { ChatIcon, Folder, FolderOpen, PlusIcon, TrashIcon } from "@/ui/icons";
 import {
@@ -375,7 +375,7 @@ export function ActiveSessionRow({
       }`}
       onOpen={() => {
         if (session.paneId && !session.threadId) {
-          workspaceStore.setState((state) =>
+          workbenchStore.setState((state) =>
             focusPaneSession(state, {
               paneId: session.paneId,
               sessionId: session.id,
@@ -399,7 +399,7 @@ export function ActiveSessionRow({
       }
       onRenameCommit={(trimmed) => {
         const title = cleanSessionTitle(trimmed) || cleanSessionTitle(session.title) || label;
-        workspaceStore.setState((state) =>
+        workbenchStore.setState((state) =>
           renameTab(state, { paneId: session.paneId, tabId: session.id, title }),
         );
       }}
