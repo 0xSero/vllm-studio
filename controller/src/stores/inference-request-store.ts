@@ -7,9 +7,7 @@ import {
 } from "@local-studio/contracts/usage";
 import type { Effect } from "effect";
 import {
-  openInitializedDatabase,
-  makeDatabaseCloser,
-  repositoryEffect,
+  RepositoryStore,
   type RepositoryError,
   toFiniteNumber,
   toNullableNumber,
@@ -46,17 +44,8 @@ const buildModelFilter = (
   return { clause: ` AND model IN (${placeholders})`, params };
 };
 
-export class InferenceRequestStore {
-  private readonly db: Database;
-  private readonly closeDatabase: () => Effect.Effect<void, RepositoryError>;
-
-  public constructor(dbPath: string) {
-    this.db = openInitializedDatabase(dbPath, (db) => this.migrate(db));
-    this.closeDatabase = makeDatabaseCloser(this.db, "inference-requests.close");
-  }
-
-  private migrate(db: Database): void {
-    db.run(`
+const migrateInferenceRequests = (db: Database): void => {
+  db.run(`
       CREATE TABLE IF NOT EXISTS inference_requests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -76,12 +65,17 @@ export class InferenceRequestStore {
         streamed INTEGER NOT NULL DEFAULT 0
       )
     `);
-    db.run(
-      `CREATE INDEX IF NOT EXISTS idx_inference_requests_created_at ON inference_requests(created_at)`,
-    );
-    db.run(
-      `CREATE INDEX IF NOT EXISTS idx_inference_requests_model_created ON inference_requests(model, created_at)`,
-    );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_inference_requests_created_at ON inference_requests(created_at)`,
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_inference_requests_model_created ON inference_requests(model, created_at)`,
+  );
+};
+
+export class InferenceRequestStore extends RepositoryStore {
+  public constructor(dbPath: string) {
+    super(dbPath, "inference-requests.close", migrateInferenceRequests);
   }
 
   private recordSync(record: InferenceRequestRecord): void {
@@ -120,7 +114,7 @@ export class InferenceRequestStore {
   }
 
   public record(record: InferenceRequestRecord): Effect.Effect<void, RepositoryError> {
-    return repositoryEffect("inference-requests.record", () => this.recordSync(record));
+    return this.effect("inference-requests.record", () => this.recordSync(record));
   }
 
   public aggregate(knownModels?: ReadonlySet<string>): UsageAggregate | null {
@@ -371,10 +365,6 @@ export class InferenceRequestStore {
   public aggregateEffect(
     knownModels?: ReadonlySet<string>,
   ): Effect.Effect<UsageAggregate | null, RepositoryError> {
-    return repositoryEffect("inference-requests.aggregate", () => this.aggregate(knownModels));
-  }
-
-  public close(): Effect.Effect<void, RepositoryError> {
-    return this.closeDatabase();
+    return this.effect("inference-requests.aggregate", () => this.aggregate(knownModels));
   }
 }
