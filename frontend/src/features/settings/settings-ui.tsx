@@ -8,8 +8,8 @@ import {
   Input,
   RefreshIconButton,
   SectionNav,
-  ListRow,
-  RowValue,
+  ListRow as SettingsRow,
+  RowValue as SettingsValue,
   EmptySafeNotice,
   StatusPill,
   type SectionNavItem,
@@ -36,17 +36,6 @@ type LayoutProps<Id extends SettingsSectionId = SettingsSectionId> = {
   showRefresh?: boolean;
   width?: "default" | "wide";
   children: ReactNode;
-};
-
-type RowProps = {
-  label: string;
-  description?: ReactNode;
-  value?: ReactNode;
-  control?: ReactNode;
-  status?: ReactNode;
-  actions?: ReactNode;
-  children?: ReactNode;
-  variant?: "settings" | "resource";
 };
 
 export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>({
@@ -187,30 +176,6 @@ export function SettingsGroup({
         </div>
       ) : null}
     </section>
-  );
-}
-
-export function SettingsRow(props: RowProps) {
-  return <ListRow {...props} />;
-}
-
-export function SettingsValue({
-  children,
-  mono = false,
-  dim = false,
-  truncate = false,
-  wrap = false,
-}: {
-  children: ReactNode;
-  mono?: boolean;
-  dim?: boolean;
-  truncate?: boolean;
-  wrap?: boolean;
-}) {
-  return (
-    <RowValue mono={mono} dim={dim} truncate={truncate} wrap={wrap}>
-      {children}
-    </RowValue>
   );
 }
 
@@ -386,4 +351,4 @@ export function SettingsInput({
   );
 }
 
-export { EmptySafeNotice, StatusPill };
+export { EmptySafeNotice, SettingsRow, SettingsValue, StatusPill };
