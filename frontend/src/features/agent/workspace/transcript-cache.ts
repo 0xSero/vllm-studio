@@ -109,17 +109,27 @@ function cacheKeys(storage: TranscriptStorage): string[] {
   return keys;
 }
 
+function trySetItem(storage: TranscriptStorage, key: string, payload: string): boolean {
+  try {
+    storage.setItem(key, payload);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function oldestFirst(storage: TranscriptStorage, keepKey: string): string[] {
+  return cacheKeys(storage)
+    .filter((key) => key !== keepKey)
+    .map((key) => ({ key, updatedAt: parseCachedTranscript(storage.getItem(key))?.updatedAt ?? 0 }))
+    .sort((a, b) => a.updatedAt - b.updatedAt)
+    .map((entry) => entry.key);
+}
+
 function evictStaleSessions(storage: TranscriptStorage, keepKey: string): void {
   const keys = cacheKeys(storage);
   if (keys.length <= MAX_SESSIONS) return;
-  const dated = keys
-    .filter((key) => key !== keepKey)
-    .map((key) => {
-      const entry = parseCachedTranscript(storage.getItem(key));
-      return { key, updatedAt: entry?.updatedAt ?? 0 };
-    })
-    .sort((a, b) => a.updatedAt - b.updatedAt);
-  for (const { key } of dated.slice(0, keys.length - MAX_SESSIONS)) {
+  for (const key of oldestFirst(storage, keepKey).slice(0, keys.length - MAX_SESSIONS)) {
     storage.removeItem(key);
   }
 }
@@ -159,17 +169,13 @@ export function writeTranscriptSnapshot(
     ...(title ? { title } : {}),
     messages: boundMessagesForCache(messages),
   };
-  try {
-    storage.setItem(key, JSON.stringify(entry));
+  const payload = JSON.stringify(entry);
+  if (trySetItem(storage, key, payload)) {
     evictStaleSessions(storage, key);
-  } catch {
-    try {
-      for (const stale of cacheKeys(storage)) {
-        if (stale !== key) storage.removeItem(stale);
-      }
-      storage.setItem(key, JSON.stringify(entry));
-    } catch {
-      return;
-    }
+    return;
+  }
+  for (const stale of oldestFirst(storage, key)) {
+    storage.removeItem(stale);
+    if (trySetItem(storage, key, payload)) return;
   }
 }
