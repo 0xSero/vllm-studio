@@ -1,6 +1,6 @@
 import { constants, existsSync, statfsSync } from "node:fs";
 import { open, unlink } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { Effect, Fiber, Schema, Semaphore } from "effect";
 import {
   CHATTERBOX_BACKEND,
@@ -20,20 +20,11 @@ import { resolveBinary } from "../../core/command";
 import {
   ChatterboxRuntime,
   chatterboxRuntimePaths,
-  type ChatterboxInstallOptions,
   type ChatterboxRuntimeState,
 } from "./runtime";
-import {
-  ChatterboxWorkerClient,
-  type ChatterboxSynthesisInput,
-  type ChatterboxSynthesisResult,
-} from "./worker-client";
-import {
-  normalizeVoiceReference,
-  VoiceReferenceError,
-  type NormalizedVoiceReference,
-} from "./reference-audio";
-import { VoiceStore, type VoiceProfile } from "./voice-store";
+import { ChatterboxWorkerClient } from "./worker-client";
+import { normalizeVoiceReference, VoiceReferenceError } from "./reference-audio";
+import { VoiceStore } from "./voice-store";
 import { secureSpeechDirectory } from "./storage";
 import { queryNvidiaComputeGpuUuids } from "../system/platform/nvidia-compute-processes";
 
@@ -62,46 +53,12 @@ export interface SpeechEngineState {
   getCurrentRecipe(): Effect.Effect<Recipe | null, unknown>;
 }
 
-export interface SpeechRuntime {
-  readonly paths: { readonly pythonPath: string };
-  getState(): ChatterboxRuntimeState;
-  startInstall(
-    gpuUuid: string,
-    options?: ChatterboxInstallOptions,
-  ): Effect.Effect<ChatterboxRuntimeState, unknown>;
-  waitForInstall(): Effect.Effect<ChatterboxRuntimeState, unknown>;
-  cancelInstall(): Effect.Effect<void, unknown>;
-}
-
-export interface SpeechWorker {
-  synthesize(input: ChatterboxSynthesisInput): Effect.Effect<ChatterboxSynthesisResult, unknown>;
-  shutdown(): Effect.Effect<void, unknown>;
-  settleTermination(): Effect.Effect<void, unknown>;
-  terminate(): Effect.Effect<void, unknown>;
-}
-
 const speechGpuLeaseBrand: unique symbol = Symbol("SpeechGpuLeaseGuard");
 
-export interface SpeechGpuLeaseGuard {
+interface SpeechGpuLeaseGuard {
   readonly uuid: string;
   readonly generation: number;
   readonly [speechGpuLeaseBrand]: true;
-}
-
-export interface SpeechVoiceStore {
-  list(): Effect.Effect<VoiceProfile[], unknown>;
-  create(input: {
-    name: string;
-    durationMs: number;
-    consent: string;
-    audio: Uint8Array;
-  }): Effect.Effect<VoiceProfile, unknown>;
-  delete(id: string): Effect.Effect<boolean, unknown>;
-  withPlaintext<A, E, R>(
-    id: string,
-    use: (path: string) => Effect.Effect<A, E, R>,
-  ): Effect.Effect<A, E | unknown, R>;
-  close(): Effect.Effect<void, unknown>;
 }
 
 export interface SpeechDiskAvailability {
@@ -136,19 +93,6 @@ export interface SpeechServiceOptions {
   readonly engine: SpeechEngineState;
   readonly gpuLeaseRegistry: GpuLeaseRegistry;
   readonly gpuInfo: () => Effect.Effect<GpuInfo[], unknown>;
-  readonly environment?: NodeJS.ProcessEnv | undefined;
-  readonly runtime?: SpeechRuntime | undefined;
-  readonly voiceStore?: SpeechVoiceStore | undefined;
-  readonly workerFactory?: ((lease: SpeechGpuLeaseGuard) => SpeechWorker) | undefined;
-  readonly normalizeReference?:
-    | ((
-        input: Uint8Array,
-        dataDirectory: string,
-      ) => Effect.Effect<NormalizedVoiceReference, VoiceReferenceError>)
-    | undefined;
-  readonly diskAvailability?: (() => SpeechDiskAvailability | null) | undefined;
-  readonly resolveBinary?: ((name: string) => string | null) | undefined;
-  readonly computeGpuUuids?: (() => Effect.Effect<readonly string[], unknown>) | undefined;
 }
 
 const canonicalUuid = (uuid: string): string => `GPU-${uuid.slice(4).toLowerCase()}`;
@@ -295,22 +239,13 @@ const stoppingError = (): SpeechServiceError =>
 
 export class SpeechService {
   private readonly dataDirectory: string;
-  private readonly environment: NodeJS.ProcessEnv;
-  private readonly runtime: SpeechRuntime;
-  private readonly voiceStore: SpeechVoiceStore;
-  private readonly workerFactory: (lease: SpeechGpuLeaseGuard) => SpeechWorker;
-  private readonly normalizeReference: (
-    input: Uint8Array,
-    dataDirectory: string,
-  ) => Effect.Effect<NormalizedVoiceReference, VoiceReferenceError>;
-  private readonly getDiskAvailability: () => SpeechDiskAvailability | null;
-  private readonly findBinary: (name: string) => string | null;
-  private readonly computeGpuUuids: () => Effect.Effect<readonly string[], unknown>;
+  private readonly runtime: ChatterboxRuntime;
+  private readonly voiceStore: VoiceStore;
   private readonly outputDirectory: string;
   private readonly activation = Semaphore.makeUnsafe(1);
   private readonly synthesis = Semaphore.makeUnsafe(1);
   private readonly voiceNormalization = Semaphore.makeUnsafe(1);
-  private worker: SpeechWorker | null = null;
+  private worker: ChatterboxWorkerClient | null = null;
   private workerPhase: SpeechStatus["worker"]["phase"] = "stopped";
   private workerError: string | null = null;
   private leasedGpuUuid: string | null = null;
@@ -328,36 +263,18 @@ export class SpeechService {
   private closed = false;
 
   constructor(private readonly options: SpeechServiceOptions) {
-    this.environment = options.environment ?? process.env;
     this.dataDirectory = resolve(
-      this.environment["LOCAL_STUDIO_SPEECH_DATA_DIR"] ?? options.dataDirectory,
+      process.env["LOCAL_STUDIO_SPEECH_DATA_DIR"] ?? options.dataDirectory,
     );
     const paths = chatterboxRuntimePaths(this.dataDirectory);
     this.outputDirectory = paths.outputDirectory;
     secureSpeechDirectory(paths.speechDirectory);
-    this.runtime = options.runtime ?? new ChatterboxRuntime({ dataDirectory: this.dataDirectory });
-    this.voiceStore =
-      options.voiceStore ?? new VoiceStore(options.databasePath, this.dataDirectory);
-    this.workerFactory =
-      options.workerFactory ??
-      ((lease): SpeechWorker =>
-        new ChatterboxWorkerClient({
-          dataDirectory: this.dataDirectory,
-          gpuUuid: lease.uuid,
-          voiceDirectory: join(this.dataDirectory, "runtime", "speech", "tmp"),
-        }));
-    this.normalizeReference = options.normalizeReference ?? normalizeVoiceReference;
-    this.getDiskAvailability =
-      options.diskAvailability ??
-      ((): SpeechDiskAvailability | null => diskAvailability(this.dataDirectory));
-    this.findBinary = options.resolveBinary ?? resolveBinary;
-    this.computeGpuUuids =
-      options.computeGpuUuids ??
-      ((): Effect.Effect<readonly string[], unknown> => queryNvidiaComputeGpuUuids());
+    this.runtime = new ChatterboxRuntime({ dataDirectory: this.dataDirectory });
+    this.voiceStore = new VoiceStore(options.databasePath, this.dataDirectory);
   }
 
   getStatus(): Effect.Effect<SpeechStatus, unknown> {
-    const storage = this.getDiskAvailability();
+    const storage = diskAvailability(this.dataDirectory);
     return Effect.all([this.statusTarget(), this.voiceStore.list()]).pipe(
       Effect.map(([target, voices]) => ({
         backend: CHATTERBOX_BACKEND,
@@ -371,11 +288,11 @@ export class SpeechService {
         },
         gpu: target,
         prerequisites: {
-          ffmpeg: Boolean(this.findBinary(this.environment["LOCAL_STUDIO_FFMPEG_CLI"] ?? "ffmpeg")),
+          ffmpeg: Boolean(resolveBinary(process.env["LOCAL_STUDIO_FFMPEG_CLI"] ?? "ffmpeg")),
           python_311: Boolean(
             existsSync(this.runtime.paths.pythonPath) ||
-              this.findBinary("python3.11") ||
-              this.findBinary("uv"),
+              resolveBinary("python3.11") ||
+              resolveBinary("uv"),
           ),
           storage: {
             available_bytes: storage?.availableBytes ?? null,
@@ -438,7 +355,7 @@ export class SpeechService {
     this.pendingNormalization += 1;
     return this.voiceNormalization
       .withPermit(
-        this.normalizeReference(input.audio, this.dataDirectory).pipe(
+        normalizeVoiceReference(input.audio, this.dataDirectory).pipe(
           Effect.flatMap((normalized) =>
             this.voiceStore.create({
               name: input.name,
@@ -528,7 +445,7 @@ export class SpeechService {
         "GPU telemetry is unavailable",
       );
     }
-    const configured = this.environment["LOCAL_STUDIO_SPEECH_GPU_UUID"]?.trim();
+    const configured = process.env["LOCAL_STUDIO_SPEECH_GPU_UUID"]?.trim();
     if (configured) {
       if (!FULL_NVIDIA_UUID.test(configured)) {
         throw new SpeechServiceError(
@@ -576,7 +493,7 @@ export class SpeechService {
   }
 
   private assertInstallCapacity(): void {
-    const availability = this.getDiskAvailability();
+    const availability = diskAvailability(this.dataDirectory);
     if (!availability) {
       throw new SpeechServiceError(
         503,
@@ -656,7 +573,7 @@ export class SpeechService {
   }
 
   private assertComputeGpuIdle(uuid: string): Effect.Effect<void, SpeechServiceError> {
-    return this.computeGpuUuids().pipe(
+    return queryNvidiaComputeGpuUuids().pipe(
       Effect.mapError(
         () =>
           new SpeechServiceError(
@@ -785,7 +702,7 @@ export class SpeechService {
     });
   }
 
-  private ensureWorker(): Effect.Effect<SpeechWorker, unknown> {
+  private ensureWorker(): Effect.Effect<ChatterboxWorkerClient, unknown> {
     const service = this;
     return this.activation.withPermit(
       Effect.gen(function* () {
@@ -833,7 +750,11 @@ export class SpeechService {
         return yield* Effect.try({
           try: () => {
             service.assertRetainedLease(lease);
-            service.worker = service.workerFactory(lease);
+            service.worker = new ChatterboxWorkerClient({
+              dataDirectory: service.dataDirectory,
+              gpuUuid: lease.uuid,
+              voiceDirectory: resolve(service.dataDirectory, "runtime", "speech", "tmp"),
+            });
             return service.worker;
           },
           catch: (error) => serviceError(error),
@@ -925,7 +846,9 @@ export class SpeechService {
     if (!this.acceptingSynthesis || epoch !== this.synthesisEpoch) throw stoppingError();
   }
 
-  private terminateWorker(worker: SpeechWorker): Effect.Effect<void, SpeechServiceError> {
+  private terminateWorker(
+    worker: ChatterboxWorkerClient,
+  ): Effect.Effect<void, SpeechServiceError> {
     return worker.terminate().pipe(
       Effect.mapError((error) => {
         this.quarantineWorker(error);
