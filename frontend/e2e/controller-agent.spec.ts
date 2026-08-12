@@ -51,6 +51,32 @@ for (const [route, destination] of [
   });
 }
 
+test("appearance mode resolves the shared semantic palette", async ({ page }) => {
+  const terminalRed = () =>
+    page.evaluate(() => {
+      const swatch = document.createElement("span");
+      swatch.style.color = "var(--color-terminal-red)";
+      document.body.appendChild(swatch);
+      const color = getComputedStyle(swatch).color;
+      swatch.remove();
+      return color;
+    });
+
+  await page.goto("/settings#appearance");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "zai-dark");
+  expect(await terminalRed()).toBe("rgb(246, 117, 118)");
+
+  await page.getByRole("tab", { name: "Light", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "zai-light");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  expect(await terminalRed()).toBe("rgb(224, 46, 42)");
+
+  await page.getByRole("tab", { name: "Dark", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "zai-dark");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(24, 24, 24)");
+  expect(await terminalRed()).toBe("rgb(246, 117, 118)");
+});
+
 test("Pi defaults to the active controller and reveals other models on request", async ({
   page,
 }) => {
