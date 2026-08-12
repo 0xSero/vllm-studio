@@ -6,7 +6,7 @@ import { Button } from "@/ui";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceList } from "@/features/resources/resource-list";
 import { ResourceLogo } from "@/ui/resource-logo";
-import { ModelRow, ModelStatus, ModelValue } from "@/features/recipes/recipes-content/model-page";
+import { ModelStatus } from "@/features/recipes/recipes-content/model-page";
 import { useAsyncResource } from "@/hooks/use-async-resource";
 import { writeClipboardText } from "@/lib/clipboard";
 import { requestJsonEffect } from "@/lib/api/request-json";
@@ -153,17 +153,16 @@ export function SkillsSection() {
         empty={(query, total) =>
           total ? `No skills match “${query}”.` : "No SKILL.md entries were found."
         }
-        renderItem={(skill) => (
-          <ModelRow
-            key={skill.id}
-            label={skill.name}
-            description={`Available in Workbench · ${skill.source}`}
-            leading={<ResourceLogo identity={skill.source} label={skill.name} />}
-            value={<ModelValue mono>{skill.path}</ModelValue>}
-            status={<ModelStatus tone="info">discovered</ModelStatus>}
-            onClick={() => openSkill(skill)}
-          />
-        )}
+        row={(skill) => ({
+          key: skill.id,
+          label: skill.name,
+          identity: skill.source,
+          description: `Available in Workbench · ${skill.source}`,
+          value: skill.path,
+          status: "discovered",
+          statusTone: "info",
+          onOpen: () => openSkill(skill),
+        })}
       />
       {selected ? (
         <SkillDrawer

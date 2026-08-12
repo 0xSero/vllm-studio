@@ -13,11 +13,11 @@ import type {
 import { Input, ModelButton, Spinner } from "@/ui";
 import { ExternalLink, LogOut } from "lucide-react";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
-import { ResourceList } from "@/features/resources/resource-list";
+import { ResourceList, ResourceRowsSkeleton } from "@/features/resources/resource-list";
 import { ResourceLogo } from "@/ui/resource-logo";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { SettingsButton } from "@/features/settings/settings-ui";
-import { ModelRow, ModelStatus, ModelValue } from "@/features/recipes/recipes-content/model-page";
+import { ModelStatus } from "@/features/recipes/recipes-content/model-page";
 import { requestJson } from "@/lib/api/request-json";
 import { openExternal } from "./google-account-model";
 
@@ -452,45 +452,29 @@ export function ModelProvidersSection() {
           providers ? `${connectedCount} connected · ${visible} shown` : "loading"
         }
         summaryTone={() => (connectedCount ? "good" : providers ? "default" : "info")}
-        loading={
-          <div className="px-4 py-5">
-            <Spinner size="xs" />
-          </div>
-        }
+        loading={<ResourceRowsSkeleton count={1} />}
         empty={() => "No model companies match this search."}
-        renderItem={(provider) => (
-          <ModelRow
-            key={provider.id}
-            label={provider.name}
-            description={
-              provider.configured
-                ? credentialBadge(provider) || "Connected provider"
-                : provider.oauth?.label || provider.apiKey?.label || provider.id
-            }
-            leading={<ResourceLogo identity={provider.id} label={provider.name} />}
-            value={
-              <ModelValue mono>
-                {`${provider.modelCount} models · ${[
-                  provider.oauth ? "OAuth" : null,
-                  provider.apiKey ? "API key" : null,
-                ]
-                  .filter(Boolean)
-                  .join(" / ")}`}
-              </ModelValue>
-            }
-            status={
-              <ModelStatus tone={provider.configured ? "good" : "default"}>
-                {provider.configured ? "connected" : "available"}
-              </ModelStatus>
-            }
-            actions={
-              <ModelButton onClick={() => setSelectedProvider(provider)}>
-                {provider.configured ? "Manage" : "Connect"}
-              </ModelButton>
-            }
-            onClick={() => setSelectedProvider(provider)}
-          />
-        )}
+        row={(provider) => ({
+          key: provider.id,
+          label: provider.name,
+          description: provider.configured
+            ? credentialBadge(provider) || "Connected provider"
+            : provider.oauth?.label || provider.apiKey?.label || provider.id,
+          value: `${provider.modelCount} models · ${[
+            provider.oauth ? "OAuth" : null,
+            provider.apiKey ? "API key" : null,
+          ]
+            .filter(Boolean)
+            .join(" / ")}`,
+          status: provider.configured ? "connected" : "available",
+          statusTone: provider.configured ? "good" : "default",
+          actions: (
+            <ModelButton onClick={() => setSelectedProvider(provider)}>
+              {provider.configured ? "Manage" : "Connect"}
+            </ModelButton>
+          ),
+          onOpen: () => setSelectedProvider(provider),
+        })}
       />
       {error ? (
         <div className="mt-4 text-[length:var(--fs-sm)] text-(--ui-danger)">{error}</div>
