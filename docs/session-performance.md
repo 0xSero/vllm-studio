@@ -294,6 +294,48 @@ cd frontend && bun run ../scripts/bench/timeline-merge.bench.ts
 
 `rebuilt/frame` must read 1 at every size.
 
+## Standing up a local stack with a long synthetic session
+
+Needed to measure anything in a real browser. Written down because getting here
+cost most of an iteration and none of it is discoverable.
+
+1. Generate a session (the generator lives in the scratchpad, not the repo —
+   it is ~30 lines using `SessionManager`, same shape as the fixture in
+   `test/session-paging.test.ts`; rollouts **must** be built through
+   `SessionManager` or the active-branch filter discards them).
+2. Start the runtime, by absolute script path — `bun --cwd X run src/server.ts`
+   resolves as a package script and just prints the script list:
+   ```bash
+   env PI_CODING_AGENT_DIR=$S/pi-agent LOCAL_STUDIO_DATA_DIR=$S/data \
+       WORKSPACE_ROOTS="$S:/Users/<you>" PORT=8081 \
+       bun /abs/path/services/agent-runtime/src/server.ts
+   ```
+3. Start the frontend against it:
+   ```bash
+   env LOCAL_STUDIO_AGENT_RUNTIME_URL=http://127.0.0.1:8081 \
+       WORKSPACE_ROOTS="$S:/Users/<you>" PORT=3111 npm --prefix frontend run start
+   ```
+4. `POST /api/agent/projects {"path": "$S/project"}` to register it.
+
+Three traps, each of which fails silently or misleadingly:
+
+- **`WORKSPACE_ROOTS` is enforced by both processes independently.** Set it on
+  only one and the other 403s. Worse, `GET /api/agent/sessions/:id` returns
+  `{events: []}` rather than an error when the path is outside the roots, so it
+  reads as "empty session" rather than "rejected". Separator is `path.delimiter`.
+- The roots must include the real home dir too, not just the scratch dir: the
+  sidebar queries a "Chats" pseudo-project at `~/.local-studio`.
+- Env passed with a leading `cd … &&` may not reach the process in this shell.
+  Use `env VAR=… <abs path>`.
+
+**Still blocked:** with all of the above green — runtime serving 501 events for
+`tail: 500`, frontend proxying them, project registered and selected in the
+composer — the sidebar shows "No chats" and never lists the session, so the
+timeline never mounts. `GET /api/agent/sessions?cwd=…` returns the session
+correctly, so the gap is between that response and the sidebar's rendering of
+it. Worth finding out whether that is harness-specific or a real bug in how
+sessions are listed for a freshly added project.
+
 ## Open questions — measure before assuming
 
 - **Nothing has been measured in a real browser yet.** Findings 2–8 are all
@@ -302,6 +344,10 @@ cd frontend && bun run ../scripts/bench/timeline-merge.bench.ts
   during a live stream are unknown. Timeline virtualization is still unjustified
   until those exist — finding 8 may already have removed the pain it was meant
   to address.
+- **7 identical `GET /api/agent/runtime/sessions` within 6ms at mount**,
+  observed on an idle page. Steady state is correct (12 requests in 61s = the
+  5s poll), so this is a mount-time burst only, and small. Not investigated —
+  noted so it is not rediscovered as a "storm".
 - **Multi-session retained memory** — still unmeasured. `SessionsMap` holds full
   transcripts and `pruneSessions` deliberately keeps mid-turn sessions alive;
   nobody has checked what N open sessions actually costs.
