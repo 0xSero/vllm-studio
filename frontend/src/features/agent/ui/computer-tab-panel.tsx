@@ -8,7 +8,7 @@ import { useProjects } from "@/features/agent/projects/context";
 import type { Project } from "@/features/agent/projects/types";
 import type { Session, UpdateSession } from "@/features/agent/runtime/types";
 import { focusedSession as selectFocusedSession } from "@/features/agent/runtime/selectors";
-import { useWorkspaceContext } from "@/features/agent/ui/use-workspace";
+import type { UseWorkspaceResult } from "@/features/agent/ui/use-workspace";
 import type { AgentModel } from "@/features/agent/workspace/types";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
 
@@ -36,6 +36,7 @@ const LazyGitDiffPanel = lazy(() =>
 export type SideChatTabsUpdater = Session[] | ((tabs: Session[]) => Session[]);
 
 type ComputerTabPanelProps = {
+  workspace: UseWorkspaceResult;
   onCloseSideChat: () => void;
   onNavigateBrowser: (value: string) => void;
   onOpenSideChat: () => void;
@@ -46,7 +47,7 @@ type ComputerTabPanelProps = {
 };
 
 export function ComputerTabPanel(props: ComputerTabPanelProps) {
-  const { state, handles } = useWorkspaceContext();
+  const { state, handles } = props.workspace;
   const projects = useProjects();
   const tools = useToolsStore();
   const focusedSession = selectFocusedSession(state);

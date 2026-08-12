@@ -29,7 +29,7 @@ import {
 import { ComputerTabPanel, type SideChatTabsUpdater } from "@/features/agent/ui/computer-tab-panel";
 import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
 import { webPtyBridge } from "@/features/agent/ui/web-pty-bridge";
-import { useWorkspaceContext } from "@/features/agent/ui/use-workspace";
+import type { UseWorkspaceResult } from "@/features/agent/ui/use-workspace";
 
 function createSideChatSession(
   activeProject: Project | null,
@@ -50,8 +50,8 @@ function acceptedBrowserUrl(url: string): string | null {
   return /^file:\/\//i.test(url) ? sanitizeLocalFileUrl(url) : sanitizeBrowserPaneUrl(url);
 }
 
-export function AgentBrowserPanel() {
-  const { state, handles } = useWorkspaceContext();
+export function AgentBrowserPanel({ workspace }: { workspace: UseWorkspaceResult }) {
+  const { state, handles } = workspace;
   const projects = useProjects();
   const focusedSession = selectFocusedSession(state);
   const activeProject = projects.resolveProject(focusedSession) ?? projects.selectedProject;
@@ -207,6 +207,7 @@ export function AgentBrowserPanel() {
       />
 
       <ComputerTabPanel
+        workspace={workspace}
         onCloseSideChat={closeSideChat}
         onNavigateBrowser={navigateBrowser}
         onOpenSideChat={openSideChat}

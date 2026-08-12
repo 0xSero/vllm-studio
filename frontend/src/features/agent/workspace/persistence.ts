@@ -135,6 +135,14 @@ export function writePaneState(
   state: WorkspaceState,
   selectionFor: (sessionId: SessionId) => ToolSelection | null = () => null,
 ): void {
+  writeStored(PANE_STATE_KEY, paneStateJson(state, selectionFor), storage);
+  removeStored(LEGACY_SESSION_DRAFTS_KEY, storage);
+}
+
+export function paneStateJson(
+  state: WorkspaceState,
+  selectionFor: (sessionId: SessionId) => ToolSelection | null = () => null,
+): string {
   const panes: Record<string, PersistedPaneEntry> = {};
   for (const [paneId, pane] of state.panesById.entries()) {
     const session = state.sessions.get(pane.sessionId);
@@ -145,18 +153,13 @@ export function writePaneState(
         : [],
     };
   }
-  writeStored(
-    PANE_STATE_KEY,
-    JSON.stringify({
-      version: 1,
-      layout: state.layout,
-      focusedPaneId: state.focusedPaneId,
-      panes,
-      sessions: [...state.sessions.values()].map((session) =>
-        sessionMetaForPersistence(session, selectionFor(session.id) ?? undefined),
-      ),
-    }),
-    storage,
-  );
-  removeStored(LEGACY_SESSION_DRAFTS_KEY, storage);
+  return JSON.stringify({
+    version: 1,
+    layout: state.layout,
+    focusedPaneId: state.focusedPaneId,
+    panes,
+    sessions: [...state.sessions.values()].map((session) =>
+      sessionMetaForPersistence(session, selectionFor(session.id) ?? undefined),
+    ),
+  });
 }

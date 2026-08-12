@@ -1,17 +1,7 @@
 "use client";
 
-import {
-  createContext,
-  createElement,
-  useCallback,
-  useContext,
-  useMemo,
-  useRef,
-  type MouseEvent as ReactMouseEvent,
-  type ReactNode,
-} from "react";
+import { useCallback, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { useStore } from "zustand";
-import type { StoreApi } from "zustand/vanilla";
 import { safeJson } from "@/features/agent/safe-json";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { clampComputerWidth, gentlySnapComputerWidth } from "@/features/agent/tools/persistence";
@@ -23,7 +13,6 @@ import {
   scheduleSessionsRefresh,
   type WorkspaceDispatch,
   type WorkspaceEffectDeps,
-  type WorkspaceWindow,
 } from "@/features/agent/workspace/effects";
 import type { AgentModel, PaneId, WorkspaceState } from "@/features/agent/workspace/types";
 import { useProjectsStore } from "@/features/agent/projects/store";
@@ -35,10 +24,6 @@ import {
   normalizeControllerUrl,
 } from "@/lib/api/controllers";
 import type { Session, UpdateSession } from "@/features/agent/runtime/types";
-import {
-  useWorkspaceHydrationEffects,
-  useWorkspaceRuntimeSync,
-} from "@/features/agent/ui/use-workspace-effects";
 import type { ChatPaneHandle } from "@/features/agent/ui/chat-pane";
 import type { SessionDropPayload } from "@/features/agent/ui/pane-grid";
 import { writeDefaultAgentModel } from "@/features/agent/workspace/model-preference";
@@ -53,6 +38,8 @@ import {
   splitTabIntoNewPane,
 } from "@/features/agent/workspace/pane-controller";
 import { removeSession, setSession } from "@/features/agent/runtime/store";
+import { loadInitialFromStorage } from "@/features/agent/workspace/persistence";
+import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 
 export type WorkspaceHandles = {
   registerComputerAside: (element: HTMLElement | null) => void;
@@ -81,7 +68,6 @@ export type WorkspaceHandles = {
 
 export type UseWorkspaceResult = {
   state: WorkspaceState;
-  store: StoreApi<WorkspaceState>;
   dispatch: WorkspaceDispatch;
   handles: WorkspaceHandles;
 };
@@ -100,14 +86,6 @@ function createMemoryStorage(): Pick<Storage, "getItem" | "setItem" | "removeIte
     removeItem: (key) => {
       entries.delete(key);
     },
-  };
-}
-
-function createWorkspaceWindow(source: Window): WorkspaceWindow {
-  return {
-    Event,
-    dispatchEvent: source.dispatchEvent.bind(source),
-    setTimeout: source.setTimeout.bind(source),
   };
 }
 
@@ -160,7 +138,7 @@ function api(): WorkspaceEffectDeps["api"] {
 }
 
 export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): UseWorkspaceResult {
-  const store: StoreApi<WorkspaceState> = ephemeral ? ephemeralWorkspaceStore : workspaceStore;
+  const store = ephemeral ? ephemeralWorkspaceStore : workspaceStore;
   const state = useStore(store);
   const paneHandlesRef = useRef<Map<PaneId, ChatPaneHandle>>(new Map());
   const computerAsideRef = useRef<HTMLElement | null>(null);
@@ -171,7 +149,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
       if (typeof window === "undefined") return null;
       return {
         storage: ephemeralStorage ?? window.localStorage,
-        window: createWorkspaceWindow(window),
+        window,
         api: api(),
         dispatch: workspaceDispatch,
         selectionFor: (id) => toolsRef.current.selectionFor(id),
@@ -336,31 +314,30 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
     [controller.notifySessionsChanged, dispatch, ephemeral, store],
   );
 
-  useWorkspaceHydrationEffects({
-    dispatch,
-    hydrated: state.hydrated,
-    toolsRef,
-    skipRestore: ephemeral,
-  });
-  useWorkspaceRuntimeSync({ dispatch, store });
+  useMountSubscription(() => {
+    if (state.hydrated) return;
+    const restore =
+      !ephemeral && new URLSearchParams(window.location.search).get("restore") !== "0";
+    const loaded = restore
+      ? loadInitialFromStorage(window.localStorage)
+      : { workspace: {}, selections: new Map() };
+    dispatch((current) => ({ ...current, ...loaded.workspace, hydrated: true }));
+    if (loaded.selections.size > 0) toolsRef.current.hydrateSelections(loaded.selections);
+  }, [dispatch, ephemeral, state.hydrated]);
 
-  return { state, store, dispatch, handles };
-}
+  useMountSubscription(() => {
+    const runtime = sessionRuntimeController();
+    runtime.bind({
+      commit: (sessionId, patch) => {
+        dispatch((current) => patchWorkspaceSession(current, sessionId, patch));
+      },
+      getSessions: () => [...store.getState().sessions.values()],
+    });
+    return () => {
+      runtime.closeAll();
+      runtime.unbind();
+    };
+  }, [dispatch, store]);
 
-const WorkspaceContext = createContext<UseWorkspaceResult | null>(null);
-
-export function WorkspaceProvider({
-  value,
-  children,
-}: {
-  value: UseWorkspaceResult;
-  children: ReactNode;
-}) {
-  return createElement(WorkspaceContext.Provider, { value }, children);
-}
-
-export function useWorkspaceContext(): UseWorkspaceResult {
-  const workspace = useContext(WorkspaceContext);
-  if (!workspace) throw new Error("WorkspaceProvider is missing");
-  return workspace;
+  return { state, dispatch, handles };
 }

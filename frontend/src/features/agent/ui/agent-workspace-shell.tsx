@@ -1,7 +1,6 @@
 "use client";
 
 import { Suspense, lazy, type ReactNode } from "react";
-import { useStore } from "zustand";
 import { useSearchParams } from "next/navigation";
 import { triggerAddProjectFlow } from "@/features/agent/ui/projects-nav/helpers";
 import {
@@ -13,11 +12,7 @@ import { useProjects, type ProjectsContextValue } from "@/features/agent/project
 import { useToolsStore, type ToolsContextValue } from "@/features/agent/tools/store";
 import { activeSession, focusedSession } from "@/features/agent/runtime/selectors";
 import { PaneGrid } from "@/features/agent/ui/pane-grid";
-import {
-  useWorkspace,
-  useWorkspaceContext,
-  WorkspaceProvider,
-} from "@/features/agent/ui/use-workspace";
+import { useWorkspace, type UseWorkspaceResult } from "@/features/agent/ui/use-workspace";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
 import { useAgentWorkspaceNavigationEffects } from "@/features/agent/ui/agent-workspace-navigation";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -129,58 +124,64 @@ export function AgentWorkspace({ compact = false }: { compact?: boolean } = {}) 
   const composerOnly = panelMode === "composer";
   useQuickPanelExpandEffect(compact, panelMode === "thread");
   return (
-    <WorkspaceProvider value={workspace}>
-      <div data-quick-panel-state={panelMode} className={workspaceClassName(panelMode)}>
-        <div
-          className="agent-workspace-panel-row relative flex min-h-0 flex-1"
-          data-multi-pane={collectLeaves(state.layout).length > 1 ? "true" : undefined}
-        >
-          <section className="relative flex min-w-0 flex-1 flex-col">
-            <WorkspaceTopBar
-              error={state.error}
-              setupWarning={state.setupWarning}
-              onClearError={() => dispatch((current) => ({ ...current, error: "" }))}
+    <div data-quick-panel-state={panelMode} className={workspaceClassName(panelMode)}>
+      <div
+        className="agent-workspace-panel-row relative flex min-h-0 flex-1"
+        data-multi-pane={collectLeaves(state.layout).length > 1 ? "true" : undefined}
+      >
+        <section className="relative flex min-w-0 flex-1 flex-col">
+          <WorkspaceTopBar
+            error={state.error}
+            setupWarning={state.setupWarning}
+            onClearError={() => dispatch((current) => ({ ...current, error: "" }))}
+          />
+          {compact ? (
+            <QuickPanelTopBar
+              projects={projects}
+              projectId={activeProject?.id ?? null}
+              sessionId={focusedTab?.piSessionId ?? null}
+              hasThread={focusedMessageCount > 0}
             />
-            {compact ? (
-              <QuickPanelTopBar
-                projects={projects}
-                projectId={activeProject?.id ?? null}
-                sessionId={focusedTab?.piSessionId ?? null}
-                hasThread={focusedMessageCount > 0}
-              />
-            ) : null}
-            <WorkspacePaneContent
-              showEmptyState={showProjectEmptyState}
-              compact={compact}
-              composerOnly={composerOnly}
-            />
-          </section>
-          {!compact ? (
-            <Suspense fallback={tools.computer.open ? <ComputerPanelFallback /> : null}>
-              <LazyAgentBrowserPanel />
-            </Suspense>
           ) : null}
-        </div>
+          <WorkspacePaneContent
+            workspace={workspace}
+            showEmptyState={showProjectEmptyState}
+            compact={compact}
+            composerOnly={composerOnly}
+          />
+        </section>
+        {!compact ? (
+          <Suspense fallback={tools.computer.open ? <ComputerPanelFallback /> : null}>
+            <LazyAgentBrowserPanel workspace={workspace} />
+          </Suspense>
+        ) : null}
       </div>
-    </WorkspaceProvider>
+    </div>
   );
 }
 
 function WorkspacePaneContent({
+  workspace,
   showEmptyState,
   compact,
   composerOnly,
 }: {
+  workspace: UseWorkspaceResult;
   showEmptyState: boolean;
   compact?: boolean;
   composerOnly: boolean;
 }) {
-  const { state, handles } = useWorkspaceContext();
+  const { state, handles } = workspace;
   if (showEmptyState) return <ProjectEmptyState />;
   if (compact) {
     return (
       <div className="flex min-h-0 flex-1">
-        <WorkspacePane paneId={state.focusedPaneId} compact composerOnly={composerOnly} />
+        <WorkspacePane
+          workspace={workspace}
+          paneId={state.focusedPaneId}
+          compact
+          composerOnly={composerOnly}
+        />
       </div>
     );
   }
@@ -188,7 +189,7 @@ function WorkspacePaneContent({
     <div className="min-h-0 flex-1">
       <PaneGrid
         layout={state.layout}
-        renderPane={(paneId) => <WorkspacePane paneId={paneId} />}
+        renderPane={(paneId) => <WorkspacePane workspace={workspace} paneId={paneId} />}
         onSplit={handles.splitPaneWithPayload}
         onOpenTab={handles.openSessionPayloadInPane}
         onResize={handles.setSplitRatio}
@@ -198,16 +199,17 @@ function WorkspacePaneContent({
 }
 
 function WorkspacePane({
+  workspace,
   paneId,
   compact = false,
   composerOnly = false,
 }: {
+  workspace: UseWorkspaceResult;
   paneId: PaneId;
   compact?: boolean;
   composerOnly?: boolean;
 }) {
-  const { store, dispatch, handles } = useWorkspaceContext();
-  const state = useStore(store);
+  const { state, dispatch, handles } = workspace;
   const projects = useProjects();
   const pane = state.panesById.get(paneId);
   const session = activeSession(state, paneId);
