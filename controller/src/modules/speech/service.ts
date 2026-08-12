@@ -269,7 +269,7 @@ export class SpeechService {
     const paths = chatterboxRuntimePaths(this.dataDirectory);
     this.outputDirectory = paths.outputDirectory;
     secureSpeechDirectory(paths.speechDirectory);
-    this.runtime = new ChatterboxRuntime({ dataDirectory: this.dataDirectory });
+    this.runtime = new ChatterboxRuntime(this.dataDirectory);
     this.voiceStore = new VoiceStore(options.databasePath, this.dataDirectory);
   }
 

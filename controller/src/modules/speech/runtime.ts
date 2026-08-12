@@ -14,7 +14,13 @@ import {
   CHATTERBOX_MODEL_REVISION,
   CHATTERBOX_PACKAGE_VERSION,
 } from "@local-studio/contracts/speech";
-import { CommandTerminationError, resolveBinary, runCommandAsyncEffect } from "../../core/command";
+import {
+  CommandTerminationError,
+  resolveBinary,
+  runCommandAsyncEffect,
+  type AsyncCommandOptions,
+  type AsyncCommandResult,
+} from "../../core/command";
 import { prepareChatterboxStorage, secureSpeechDirectory } from "./storage";
 
 export const CHATTERBOX_PACKAGE_SPEC = `chatterbox-tts==${CHATTERBOX_PACKAGE_VERSION}`;
@@ -64,48 +70,8 @@ export type ChatterboxRuntimePaths = {
   readonly workerPath: string;
 };
 
-export type SpeechRuntimeCommandResult = {
-  readonly status: number | null;
-  readonly stdout: string;
-  readonly stderr: string;
-  readonly timedOut: boolean;
-  readonly exitConfirmed?: boolean | undefined;
-};
-
-export type SpeechRuntimeCommandOptions = {
-  readonly env?: NodeJS.ProcessEnv | undefined;
-  readonly signal?: AbortSignal | undefined;
-  readonly timeoutMs: number;
-};
-
 export type ChatterboxInstallOptions = {
   readonly repair?: boolean | undefined;
-};
-
-export type SpeechRuntimeCommand = (
-  command: string,
-  args: string[],
-  options: SpeechRuntimeCommandOptions,
-) => Effect.Effect<SpeechRuntimeCommandResult, Error>;
-
-export type ChatterboxRuntimeOptions = {
-  readonly dataDirectory: string;
-  readonly workerPath?: string | undefined;
-  readonly environment?: NodeJS.ProcessEnv | undefined;
-  readonly resolveBinary?: ((name: string) => string | null) | undefined;
-  readonly runCommand?: SpeechRuntimeCommand | undefined;
-  readonly now?: (() => Date) | undefined;
-  readonly installTimeoutMs?: number | undefined;
-  readonly prefetchTimeoutMs?: number | undefined;
-};
-
-type RuntimeDependencies = {
-  readonly resolveBinary: (name: string) => string | null;
-  readonly runCommand: SpeechRuntimeCommand;
-  readonly now: () => Date;
-  readonly installTimeoutMs: number;
-  readonly prefetchTimeoutMs: number;
-  readonly environment: NodeJS.ProcessEnv;
 };
 
 const defaultWorkerPath = fileURLToPath(new URL("worker.py", import.meta.url));
@@ -162,14 +128,6 @@ export const chatterboxWorkerEnvironment = (
   };
 };
 
-const defaultRunCommand: SpeechRuntimeCommand = (command, args, options) =>
-  runCommandAsyncEffect(command, args, {
-    timeoutMs: options.timeoutMs,
-    maxOutputBytes: 64 * 1024,
-    ...(options.env ? { env: options.env } : {}),
-    ...(options.signal ? { signal: options.signal } : {}),
-  });
-
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
@@ -190,31 +148,22 @@ const readInstalledState = (paths: ChatterboxRuntimePaths): ChatterboxRuntimeSta
   }
 };
 
-const failedCommandMessage = (label: string, result: SpeechRuntimeCommandResult): string => {
+const failedCommandMessage = (label: string, result: AsyncCommandResult): string => {
   if (result.timedOut) return `${label} timed out`;
   return result.stderr.trim() || result.stdout.trim() || `${label} failed`;
 };
 
 export class ChatterboxRuntime {
   readonly paths: ChatterboxRuntimePaths;
-  private readonly dependencies: RuntimeDependencies;
   private readonly installSemaphore = Semaphore.makeUnsafe(1);
   private state: ChatterboxRuntimeState;
   private installFiber: Fiber.Fiber<ChatterboxRuntimeState, never> | null = null;
   private installGeneration = 0;
   private installAbort: AbortController | null = null;
 
-  constructor(options: ChatterboxRuntimeOptions) {
-    this.paths = chatterboxRuntimePaths(options.dataDirectory, options.workerPath);
+  constructor(dataDirectory: string) {
+    this.paths = chatterboxRuntimePaths(dataDirectory);
     prepareChatterboxStorage(this.paths);
-    this.dependencies = {
-      resolveBinary: options.resolveBinary ?? resolveBinary,
-      runCommand: options.runCommand ?? defaultRunCommand,
-      now: options.now ?? ((): Date => new Date()),
-      installTimeoutMs: options.installTimeoutMs ?? INSTALL_TIMEOUT_MS,
-      prefetchTimeoutMs: options.prefetchTimeoutMs ?? PREFETCH_TIMEOUT_MS,
-      environment: options.environment ?? process.env,
-    };
     this.state = readInstalledState(this.paths);
   }
 
@@ -336,19 +285,17 @@ export class ChatterboxRuntime {
     label: string,
     command: string,
     args: string[],
-    options: SpeechRuntimeCommandOptions,
+    options: AsyncCommandOptions,
   ): Effect.Effect<void, Error> {
-    return this.dependencies
-      .runCommand(command, args, options)
-      .pipe(
-        Effect.flatMap((result) =>
-          result.exitConfirmed === false
-            ? Effect.fail(new CommandTerminationError())
-            : result.status === 0
-              ? Effect.void
-              : Effect.fail(new Error(failedCommandMessage(label, result))),
-        ),
-      );
+    return runCommandAsyncEffect(command, args, { ...options, maxOutputBytes: 64 * 1024 }).pipe(
+      Effect.flatMap((result) =>
+        result.exitConfirmed === false
+          ? Effect.fail(new CommandTerminationError())
+          : result.status === 0
+            ? Effect.void
+            : Effect.fail(new Error(failedCommandMessage(label, result))),
+      ),
+    );
   }
 
   private installEffect(
@@ -356,7 +303,6 @@ export class ChatterboxRuntime {
     signal: AbortSignal,
   ): Effect.Effect<ChatterboxRuntimeState, Error> {
     const paths = this.paths;
-    const dependencies = this.dependencies;
     const runtime = this;
     return Effect.gen(function* () {
       if (!existsSync(paths.workerPath)) {
@@ -370,9 +316,9 @@ export class ChatterboxRuntime {
         catch: (error) => new Error(`Could not prepare Chatterbox storage: ${errorMessage(error)}`),
       });
 
-      const uv = dependencies.resolveBinary("uv");
-      const python = dependencies.resolveBinary("python3.11");
-      const environment = chatterboxWorkerEnvironment(paths, gpuUuid, dependencies.environment);
+      const uv = resolveBinary("uv");
+      const python = resolveBinary("python3.11");
+      const environment = chatterboxWorkerEnvironment(paths, gpuUuid);
       if (!uv && !python) {
         return yield* Effect.fail(new Error("Python 3.11 is required to install Chatterbox"));
       }
@@ -384,14 +330,14 @@ export class ChatterboxRuntime {
             "Creating the Chatterbox runtime",
             uv,
             ["venv", "--python", "3.11", paths.runtimeDirectory],
-            { timeoutMs: dependencies.installTimeoutMs, env: environment, signal },
+            { timeoutMs: INSTALL_TIMEOUT_MS, env: environment, signal },
           );
         } else if (python) {
           yield* runtime.commandEffect(
             "Creating the Chatterbox runtime",
             python,
             ["-m", "venv", paths.runtimeDirectory],
-            { timeoutMs: dependencies.installTimeoutMs, env: environment, signal },
+            { timeoutMs: INSTALL_TIMEOUT_MS, env: environment, signal },
           );
         }
       }
@@ -411,7 +357,7 @@ export class ChatterboxRuntime {
             "--upgrade",
             CHATTERBOX_PACKAGE_SPEC,
           ],
-          { timeoutMs: dependencies.installTimeoutMs, env: environment, signal },
+          { timeoutMs: INSTALL_TIMEOUT_MS, env: environment, signal },
         );
       } else {
         yield* runtime.commandEffect("Checking pip", paths.pythonPath, ["-m", "pip", "--version"], {
@@ -432,13 +378,13 @@ export class ChatterboxRuntime {
             "--index-url",
             "https://download.pytorch.org/whl/cu124",
           ],
-          { timeoutMs: dependencies.installTimeoutMs, env: environment, signal },
+          { timeoutMs: INSTALL_TIMEOUT_MS, env: environment, signal },
         );
         yield* runtime.commandEffect(
           "Installing Chatterbox",
           paths.pythonPath,
           ["-m", "pip", "install", "--upgrade", CHATTERBOX_PACKAGE_SPEC],
-          { timeoutMs: dependencies.installTimeoutMs, env: environment, signal },
+          { timeoutMs: INSTALL_TIMEOUT_MS, env: environment, signal },
         );
       }
 
@@ -448,7 +394,7 @@ export class ChatterboxRuntime {
         paths.pythonPath,
         [paths.workerPath, "--prefetch"],
         {
-          timeoutMs: dependencies.prefetchTimeoutMs,
+          timeoutMs: PREFETCH_TIMEOUT_MS,
           env: environment,
           signal,
         },
@@ -456,7 +402,7 @@ export class ChatterboxRuntime {
 
       if (signal.aborted) return yield* Effect.fail(new Error("Chatterbox install cancelled"));
 
-      const installedAt = dependencies.now().toISOString();
+      const installedAt = new Date().toISOString();
       const installed: ChatterboxRuntimeState = {
         status: "installed",
         packageVersion: CHATTERBOX_PACKAGE_VERSION,
