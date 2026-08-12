@@ -223,19 +223,51 @@ discards all of it, and the tests "fail" against perfectly good code. And a
 fixture small enough to run fast finishes in about two pages, since the backward
 scan reads in 8 MB chunks; assert the ordering property, not a page count.
 
+### 7. Page the transcript from a de-noised sidecar — restart open 213ms → 28ms
+
+Given finding 5, the fix is not to index offsets into the rollout (renderable
+lines are interleaved, so the span from the 500th-last message to EOF is still
+most of the file) but to keep a second copy without the noise.
+`transcript-sidecar.ts` writes the non-inert lines to a plain `.jsonl` under
+`rollout-cache/transcript/`. That format is the point: `readTailRegion` runs
+over it unchanged and cursors stay opaque byte offsets, just into a file that is
+20× smaller. Both files are append-only, so the sidecar is extended rather than
+rebuilt, and a cursor handed out for an earlier page stays valid.
+
+| rollout | sidecar | restart open before | after |
+|---------|--------:|--------------------:|------:|
+| 40 MB   | 3.6 MB  | 213–229ms           | **28–29ms** |
+| 145 MB  | 7.2 MB  | 396–540ms           | **61–62ms** |
+
+Event counts are identical before and after (64 and 12142), which is the check
+that matters — this substitutes the file the transcript is read from.
+
+Cold opens also dropped (1086→213ms, 2766→719ms) but treat that as soft: these
+rollouts have been read many times during this pass and the OS page cache is
+warm. The restart numbers are the solid ones.
+
+The sidecar is an optimisation, never a dependency: every failure path in
+`transcriptSource` returns the original rollout, which reads identically and
+only costs time. A test occupies the sidecar directory's name with a regular
+file to prove that path.
+
+Three more tests: the sidecar is <1/5 the rollout and holds no inert entries; a
+grown session extends it rather than rebuilding and still tiles correctly; an
+unbuildable sidecar falls back cleanly.
+
 ## Open questions — measure before assuming
 
-- **Materialise the transcript as a sidecar.** The refinement of the offset-index
-  idea, now that finding 5 shows renderable lines are interleaved throughout
-  (so seeking smarter saves nothing — the span from the 500th-last message to
-  EOF is still most of the file). Instead of indexing offsets into the original,
-  write the non-inert lines to a sidecar under `rollout-cache` and page over
-  *that*: 3.6 MB instead of 40 MB, 6.9 MB instead of 145 MB, with
-  `readTailRegion` logic unchanged because it is still a contiguous JSONL file.
-  Cursors stay opaque byte offsets, just into the sidecar. Growth reuses the
-  resume machinery from finding 3 — scan only the appended bytes and append the
-  renderable ones. Expected warm open ~213 ms → tens of ms. Guarded by the
-  paging suite above; add a test that a sidecar and its rollout page identically.
+- **Disk cost.** A sidecar is ~5% of its rollout, one per session opened. Capped
+  at 512 files like the envelopes, but 512 sidecars of large sessions is real
+  disk. Nobody has looked at what that totals on a heavy install.
+- **The cold path still builds the sidecar with a full scan**, on top of the
+  usage scan and the branch walk — three passes over the same bytes on first
+  open. They could be fused into one. Unmeasured whether that matters now that
+  it happens once ever rather than once per boot.
+- **Frontend-side work is entirely untouched.** Everything in findings 2–7 is
+  server-side. Timeline virtualization, the per-frame merge, and multi-session
+  retained memory are still unmeasured, and are where the remaining
+  *interaction* latency probably lives now that opens are tens of ms.
 - **The cold path is still ~1.1–2.8s**, now mostly module load plus the first
   full walk. Unpicked.
 - **Timeline virtualization** — still unmeasured, still deferred. See below.

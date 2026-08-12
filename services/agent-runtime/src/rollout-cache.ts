@@ -53,13 +53,22 @@ function cacheRoot(): string {
  * Rollout paths are long, contain the encoded cwd, and are not filename-safe.
  * Hash them, and keep a readable prefix so the directory can be eyeballed.
  */
-function cacheFileFor(kind: string, filepath: string): string {
+function cacheFileFor(kind: string, filepath: string, extension = ".json"): string {
   const digest = createHash("sha256").update(path.resolve(filepath)).digest("hex").slice(0, 32);
   const readable = (path.basename(filepath).match(/^[\w.-]{0,40}/)?.[0] ?? "rollout").replace(
     /\.jsonl$/,
     "",
   );
-  return path.join(cacheRoot(), kind, `${readable}.${digest}.json`);
+  return path.join(cacheRoot(), kind, `${readable}.${digest}${extension}`);
+}
+
+/**
+ * A path this rollout owns inside the cache, for callers that need a real file
+ * rather than a JSON envelope — the transcript sidecar is a `.jsonl` that gets
+ * read with the same tail scanner as the rollout itself.
+ */
+export function rolloutCacheFilePath(kind: string, filepath: string, extension: string): string {
+  return cacheFileFor(kind, filepath, extension);
 }
 
 /** Omit size/mtime to accept the entry whatever the rollout looks like now. */
@@ -86,10 +95,18 @@ function readEnvelope<T>(file: string, size?: number, mtimeMs?: number): T | und
  */
 const MAX_ENTRIES_PER_KIND = 512;
 
-function evictIfCrowded(directory: string): void {
+/**
+ * Evict least-recently-used entries from a cache directory.
+ *
+ * Exported because the transcript sidecar is a `.jsonl` living in its own
+ * directory rather than a JSON envelope, so it does not pass through
+ * `writeEnvelope` and would otherwise accumulate one file per session opened,
+ * forever, at roughly 5% of each rollout's size.
+ */
+export function evictIfCrowded(directory: string, extension = ".json"): void {
   let names: string[];
   try {
-    names = readdirSync(directory).filter((name) => name.endsWith(".json"));
+    names = readdirSync(directory).filter((name) => name.endsWith(extension));
   } catch {
     return;
   }
