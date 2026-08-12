@@ -29,6 +29,7 @@ type BridgeSessionPage = {
   messages: Array<{ role: string; parts: Array<{ type: string; text?: string }> }>;
   cursor: BridgeCursor | null;
 };
+type BridgeCapability = "sessions.read" | "sessions.write" | "agent.turn";
 
 const bridgeKeys = generateKeyPairSync("ed25519");
 const bridgeDeviceId = (bridgeKeys.publicKey.export({ format: "der", type: "spki" }) as Buffer)
@@ -60,7 +61,8 @@ function bridgeSignaturePreimage(fields: string[]): Buffer {
 
 function signedBridgeRequest(
   body: { [key: string]: JsonValue },
-  capability: "sessions.read",
+  capability: BridgeCapability,
+  idempotencyKey?: string,
   privateKey: KeyObject = bridgeKeys.privateKey,
 ): { [key: string]: JsonValue } {
   const requestId = randomUUID();
@@ -68,7 +70,17 @@ function signedBridgeRequest(
   const expiresAt = new Date(issuedAt.getTime() + 30_000);
   const nonce = randomBytes(16).toString("base64url");
   const bodyHash = createHash("sha256").update(canonicalJson(body), "utf8").digest("hex");
-  const auth = {
+  const auth: {
+    device: { deviceId: string; keyId: string; algorithm: "ed25519" };
+    requestId: string;
+    issuedAt: string;
+    expiresAt: string;
+    nonce: string;
+    capability: BridgeCapability;
+    bodyHash: string;
+    signature: string;
+    idempotencyKey?: string;
+  } = {
     device: { deviceId: bridgeDeviceId, keyId: bridgeDeviceId, algorithm: "ed25519" },
     requestId,
     issuedAt: issuedAt.toISOString(),
@@ -78,6 +90,7 @@ function signedBridgeRequest(
     bodyHash,
     signature: "",
   };
+  if (idempotencyKey) auth.idempotencyKey = idempotencyKey;
   auth.signature = sign(
     null,
     bridgeSignaturePreimage([
@@ -88,7 +101,7 @@ function signedBridgeRequest(
       auth.expiresAt,
       nonce,
       capability,
-      "",
+      idempotencyKey ?? "",
       bodyHash,
     ]),
     privateKey,
@@ -110,10 +123,12 @@ async function postBridge(
   request: APIRequestContext,
   metadata: BridgeMetadata,
   body: { [key: string]: JsonValue },
+  capability: BridgeCapability = "sessions.read",
+  idempotencyKey?: string,
 ): Promise<unknown> {
   const response = await request.post(metadata.url, {
     headers: { [metadata.secretHeader]: metadata.secret },
-    data: signedBridgeRequest(body, "sessions.read"),
+    data: signedBridgeRequest(body, capability, idempotencyKey),
   });
   expect(response.ok(), await response.text()).toBe(true);
   return response.json();
@@ -386,6 +401,113 @@ test("signed Litter bridge discovers and pages the recorded session", async ({
   );
   expect(text).toContain(opening);
   expect(text).toContain("Controller scoped Pi reply.");
+});
+
+test("signed Litter bridge creates and continues a recorded session", async ({
+  page,
+  request,
+}, testInfo) => {
+  const homeDir = testInfo.config.metadata.localStudioHomeDir;
+  if (typeof homeDir !== "string") throw new Error("Recorded project directory is unavailable");
+  const projectResponse = await request.post("/api/agent/projects", { data: { path: homeDir } });
+  expect(projectResponse.ok(), await projectResponse.text()).toBe(true);
+
+  const metadata = await bridgeMetadata(testInfo);
+  const opening = "Create this session through the signed mobile bridge.";
+  const openingHash = createHash("sha256").update(opening, "utf8").digest("hex");
+  const created = (await postBridge(
+    request,
+    metadata,
+    {
+      type: "session_create_request",
+      protocolVersion: 1,
+      controllerId: metadata.controllerId,
+      cwd: homeDir,
+      modelId: "controller-model",
+      title: "Recorded mobile session",
+      messageId: randomUUID(),
+      content: opening,
+      contentHash: openingHash,
+    },
+    "sessions.write",
+    randomUUID(),
+  )) as {
+    type: string;
+    dispatchId: string;
+    piSessionId: string;
+    canonicalSession: {
+      kind: "external_session";
+      authority: "local-studio";
+      installationId: string;
+      sessionId: string;
+    };
+  };
+  expect(created.type).toBe("session_create_ack");
+
+  await page.goto(`/agent?session=${encodeURIComponent(created.piSessionId)}`);
+  const transcript = page.getByRole("article");
+  await expect(transcript.getByText(opening, { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(transcript.getByText("Controller scoped Pi reply.", { exact: true })).toBeVisible({
+    timeout: 60_000,
+  });
+
+  let revision = -1;
+  await expect
+    .poll(
+      async () => {
+        const listed = (await postBridge(request, metadata, {
+          type: "session_list_request",
+          protocolVersion: 1,
+          cursor: null,
+          limit: 200,
+        })) as {
+          sessions: Array<{
+            session: { sessionId: string };
+            revision: number;
+            active: boolean;
+          }>;
+        };
+        const descriptor = listed.sessions.find(
+          (session) => session.session.sessionId === created.piSessionId,
+        );
+        revision = descriptor?.revision ?? -1;
+        return descriptor ? `${descriptor.active}:${descriptor.revision}` : "missing";
+      },
+      { timeout: 60_000 },
+    )
+    .toMatch(/^false:\d+$/);
+
+  const followUp = "Continue this same session through the signed mobile bridge.";
+  const followUpHash = createHash("sha256").update(followUp, "utf8").digest("hex");
+  const idempotencyKey = randomUUID();
+  const turn = {
+    type: "agent_turn_request",
+    protocolVersion: 1,
+    session: created.canonicalSession,
+    expectedRevision: revision,
+    messageId: randomUUID(),
+    modelId: null,
+    content: followUp,
+    contentHash: followUpHash,
+  } as const;
+  const accepted = (await postBridge(request, metadata, turn, "agent.turn", idempotencyKey)) as {
+    type: string;
+    dispatchId: string;
+  };
+  expect(accepted.type).toBe("agent_turn_ack");
+  const replayed = (await postBridge(request, metadata, turn, "agent.turn", idempotencyKey)) as {
+    type: string;
+    dispatchId: string;
+  };
+  expect(replayed).toMatchObject({ type: "agent_turn_ack", dispatchId: accepted.dispatchId });
+
+  await expect(transcript.getByText(followUp, { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(transcript.getByText("Controller scoped Pi reply.", { exact: true })).toHaveCount(
+    2,
+    {
+      timeout: 60_000,
+    },
+  );
 });
 
 test("live runtime results drive subagents, automations, and goals", async ({ page, request }) => {
