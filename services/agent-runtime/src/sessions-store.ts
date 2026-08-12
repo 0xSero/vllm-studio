@@ -17,6 +17,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { resolveDataDir } from "./data-dir";
+import { rolloutCache, statRollout } from "./rollout-cache";
 import {
   cleanSessionTitle,
   sessionTitleFromUserPrompt,
@@ -479,16 +480,28 @@ type ActiveBranchCacheEntry = { size: number; mtimeMs: number; ids: Set<string> 
  */
 const activeBranchCache = new Map<string, ActiveBranchCacheEntry>();
 
+/**
+ * The in-process map is dropped on every controller restart, and the sessions
+ * this walk is expensive for are precisely the ones a user keeps coming back
+ * to. Backing it with disk makes the cost once-ever instead of once-per-boot.
+ */
+const activeBranchDisk = rolloutCache<Set<string>, string[]>("active-branch", {
+  serialize: (ids) => [...ids],
+  deserialize: (raw) => new Set(raw),
+});
+
 function activeBranchIds(filepath: string): Set<string> | null {
-  let stat: { size: number; mtimeMs: number };
-  try {
-    stat = statSync(filepath);
-  } catch {
-    return null;
-  }
+  const stat = statRollout(filepath);
+  if (!stat) return null;
 
   const cached = activeBranchCache.get(filepath);
   if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.ids;
+
+  const fromDisk = activeBranchDisk.read(filepath, stat);
+  if (fromDisk) {
+    activeBranchCache.set(filepath, { size: stat.size, mtimeMs: stat.mtimeMs, ids: fromDisk });
+    return fromDisk;
+  }
 
   const ids = new Set(
     SessionManager.open(filepath)
@@ -496,6 +509,7 @@ function activeBranchIds(filepath: string): Set<string> | null {
       .map((entry) => entry.id),
   );
   activeBranchCache.set(filepath, { size: stat.size, mtimeMs: stat.mtimeMs, ids });
+  activeBranchDisk.write(filepath, stat, ids);
   return ids;
 }
 

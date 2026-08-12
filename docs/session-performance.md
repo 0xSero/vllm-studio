@@ -126,20 +126,45 @@ these throw when wrong; they silently report a wrong lifetime spend.
 cd services/agent-runtime && bun run bench/session-usage.bench.ts <rollout.jsonl>
 ```
 
+### 4. Persist both rollout caches — restart open ~1200ms → ~220ms (−82%)
+
+Findings 2 and 3 memoise in process, which a controller restart throws away —
+and the sessions the walk is expensive for are the ones a user keeps returning
+to. `rollout-cache.ts` backs both with a small JSON entry per rollout under
+`<dataDir>/rollout-cache/<kind>/`, validated on (size, mtime) and versioned by
+schema. It is strictly derived data: a miss, a corrupt entry, an unwritable
+directory or a schema bump all degrade to "recompute", never to a wrong answer.
+
+Measured with a fresh process per open, which is what a restart is:
+
+| rollout | no persistence (per process) | first open | every open after |
+|---------|-----------------------------:|-----------:|-----------------:|
+| 40 MB   | 1159–1272ms                  | 1086ms     | **213–229ms**    |
+| 145 MB  | 1394–2746ms                  | 2766ms     | **396–540ms**    |
+
+The usage entry stores its own resume offset, so a restart resumes the scan
+rather than restarting it — `readStale` exists for exactly that: a stale entry
+is useless for a whole-file answer but is the whole point for a resumable one.
+
+Three more tests spawn real subprocesses (not a cleared Map) to prove a second
+process reuses the first one's scan, resumes a grown file without
+double-counting, and still refuses to resume a rewritten one.
+
+**Checked and rejected:** skipping `buildContextEntries` for "linear" sessions.
+The filter is not close to a no-op — on the 40 MB rollout it drops 3161 of 4562
+entries (69%), because compaction prunes aggressively and real sessions compact
+(that one has 3 compactions). The walk has to happen; it just should not happen
+twice.
+
 ## Open questions — measure before assuming
 
-- **The 3.56 GB rollout takes ~32s to open cold** (measured, read-only, on
-  `--Users-sero-projects-vllm-studio--/2026-06-27T07-33-03-397Z_*.jsonl`):
-  25.1s in `buildContextEntries` (269,592 entries) plus 7.0s in the usage scan.
-  Both are now cached, so it is paid once — but **once per agent-runtime
-  process**, so every controller restart re-pays it for every large session
-  opened afterwards. Two directions, neither measured yet:
-  - Persist both caches to disk keyed on (path, size, mtime), turning
-    once-per-process into once-ever.
-  - Avoid `buildContextEntries` entirely when a session has never branched.
-    `activeBranchEvents` only needs to filter the ≤500 events in the tail
-    slice, but pi's API resolves the branch leaf-to-root with no partial mode,
-    so this needs a cheap "has this session ever branched" signal first.
+- **A 500-event tail can return very few renderable events.** The 40 MB session
+  returns **64** events from a `tail: 500` request once the active-branch filter
+  runs, because most of the tail is pre-compaction. Worth checking what that
+  looks like in the UI — an open that paints almost nothing and needs an
+  immediate "load earlier" is a worse bug than a slow one. Not investigated.
+- **The cold path is still ~1.1–2.8s** and is now dominated by module load plus
+  the first walk. Unpicked.
 - **Timeline virtualization** — still unmeasured, still deferred. See below.
 - **Per-frame merge cost** and **multi-session retained memory** — unmeasured.
 - **Timeline virtualization.** Every message subtree stays mounted; a long

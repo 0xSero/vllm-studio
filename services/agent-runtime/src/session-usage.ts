@@ -1,4 +1,5 @@
 import { createReadStream, statSync } from "node:fs";
+import { rolloutCache } from "./rollout-cache";
 
 /** Everything the session has spent, for the whole of its life.
  *
@@ -53,6 +54,13 @@ type CacheEntry = {
 // unchanged totals — and one that has only grown needs just its new bytes read.
 // Keyed by path; one entry per session file.
 const cache = new Map<string, CacheEntry>();
+
+/**
+ * The same memo, on disk, so a controller restart does not re-scan every large
+ * rollout from zero. The stored entry carries its own size/mtime/head, so a
+ * stale read is still useful: it is the prefix to resume from.
+ */
+const usageDisk = rolloutCache<CacheEntry>("usage-totals");
 
 /**
  * Guard against the append-only assumption being wrong. If a session file is
@@ -196,20 +204,33 @@ export async function readSessionUsageTotals(filepath: string): Promise<SessionU
 
   try {
     const head = await readHead(filepath);
+
+    // Nothing in memory — but a previous process may have scanned this file.
+    // Read the stored prefix even though the rollout has since grown: that is
+    // exactly what makes the scan resumable across a restart.
+    const previous = cached ?? usageDisk.readStale(filepath);
+
     // Resume only when this is the same file, grown. A shrunken file or a
     // changed head means it was rewritten, and the cached prefix is no longer
     // ours to trust.
     const resumable =
-      cached !== undefined &&
-      cached.head === head &&
-      stat.size >= cached.scannedBytes &&
-      cached.scannedBytes > 0;
+      previous !== undefined &&
+      previous.head === head &&
+      stat.size >= previous.scannedBytes &&
+      previous.scannedBytes > 0;
+
+    if (resumable && previous.size === stat.size && previous.mtimeMs === stat.mtimeMs) {
+      cache.set(filepath, previous);
+      return previous.totals;
+    }
 
     const { totals, scannedBytes } = resumable
-      ? await scanFrom(filepath, cached.scannedBytes, cached.totals)
+      ? await scanFrom(filepath, previous.scannedBytes, previous.totals)
       : await scanFrom(filepath, 0, emptyUsageTotals());
 
-    cache.set(filepath, { size: stat.size, mtimeMs: stat.mtimeMs, totals, scannedBytes, head });
+    const entry = { size: stat.size, mtimeMs: stat.mtimeMs, totals, scannedBytes, head };
+    cache.set(filepath, entry);
+    usageDisk.write(filepath, stat, entry);
     return totals;
   } catch {
     return emptyUsageTotals();
