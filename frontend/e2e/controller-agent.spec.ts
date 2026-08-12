@@ -807,18 +807,56 @@ test("serve editor preserves every capability tab", async ({ page }) => {
   await page.getByRole("button", { name: "Model", exact: true }).click();
   await expect(page.getByText("Model & Context", { exact: true })).toBeVisible();
   await expect(page.getByText("Weights & Quantization", { exact: true })).toBeVisible();
+  await page.getByLabel("Context Length").fill("16384");
 
   await page.getByRole("button", { name: "Resources", exact: true }).click();
   await expect(page.getByText("Parallelism", { exact: true })).toBeVisible();
   await expect(page.getByText("GPU", { exact: true })).toBeVisible();
+  await page.getByLabel("Tensor Parallel").fill("2");
+  await page.getByLabel("Visible Devices").fill("0,1");
 
   await page.getByRole("button", { name: "Performance", exact: true }).click();
   await expect(page.getByText("CUDA Graphs & Compilation", { exact: true })).toBeVisible();
   await expect(page.getByText("KV Cache & Memory", { exact: true })).toBeVisible();
+  await page.getByRole("checkbox", { name: "Prefix Caching" }).check();
 
   await page.getByRole("button", { name: "Features", exact: true }).click();
   await expect(page.getByText("Model Input", { exact: true })).toBeVisible();
   await expect(page.getByText("Tool Calling", { exact: true })).toBeVisible();
+  await page.getByLabel("Tool Call Parser").selectOption("hermes");
+  await page.getByRole("checkbox", { name: "Enable Thinking Mode" }).check();
+  await page.getByLabel("Thinking Budget (tokens)").fill("2048");
+
+  await page.getByRole("tab", { name: "SGLang", exact: true }).click();
+  await page.getByRole("button", { name: "Resources", exact: true }).click();
+  await expect(page.getByText("Parallelism", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Maps to SGLang --mem-fraction-static.", { exact: true }),
+  ).toBeVisible();
+
+  await page.getByRole("tab", { name: "llama.cpp", exact: true }).click();
+  await page.getByRole("button", { name: "Model", exact: true }).click();
+  await expect(page.getByText("llama.cpp Model Options", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Resources", exact: true }).click();
+  await expect(page.getByText("llama.cpp Resource Options", { exact: true })).toBeVisible();
+
+  await page.getByRole("tab", { name: "MLX", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Resources", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Features", exact: true }).click();
+  await expect(page.getByText("MLX Sampling & Features", { exact: true })).toBeVisible();
+
+  await page.getByRole("tab", { name: "vLLM", exact: true }).click();
+  await page.getByRole("button", { name: "Model", exact: true }).click();
+  await expect(page.getByLabel("Context Length")).toHaveValue("16384");
+  await page.getByRole("button", { name: "Resources", exact: true }).click();
+  await expect(page.getByLabel("Tensor Parallel")).toHaveValue("2");
+  await expect(page.getByLabel("Visible Devices")).toHaveValue("0,1");
+  await page.getByRole("button", { name: "Performance", exact: true }).click();
+  await expect(page.getByRole("checkbox", { name: "Prefix Caching" })).toBeChecked();
+  await page.getByRole("button", { name: "Features", exact: true }).click();
+  await expect(page.getByLabel("Tool Call Parser")).toHaveValue("hermes");
+  await expect(page.getByRole("checkbox", { name: "Enable Thinking Mode" })).toBeChecked();
+  await expect(page.getByLabel("Thinking Budget (tokens)")).toHaveValue("2048");
   expect(errors).toEqual([]);
 });
 
