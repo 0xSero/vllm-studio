@@ -110,9 +110,13 @@ export function SessionNavRow({
     return (
       <ArchiveConfirmRow
         className={renameRowClass}
-        onCancel={() => setConfirmingArchive(false)}
+        onCancel={() => {
+          setConfirmingArchive(false);
+          setMenuOpen(false);
+        }}
         onConfirm={() => {
           setConfirmingArchive(false);
+          setMenuOpen(false);
           onArchive();
         }}
       />
@@ -177,7 +181,14 @@ export function SessionNavRow({
         </button>
         {menuOpen ? (
           <SessionOptionsMenu
-            onArchive={onArchive ? () => setConfirmingArchive(true) : undefined}
+            onArchive={
+              onArchive
+                ? () => {
+                    setMenuOpen(false);
+                    setConfirmingArchive(true);
+                  }
+                : undefined
+            }
             onClear={() => onPatchPref({ title: undefined, pinned: undefined })}
             onClose={() => setMenuOpen(false)}
             onPin={() => onPatchPref({ pinned: !pref.pinned })}

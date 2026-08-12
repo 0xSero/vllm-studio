@@ -41,9 +41,11 @@ function withActiveRowVisible(
 ): SessionIndexRow[] {
   const visible = ordered.slice(0, limit);
   if (visible.length === ordered.length) return visible;
-  const activeIndex = ordered.findIndex(
-    (row) => row.kind === "open" && (row.session.focused || row.activity === "running"),
-  );
+  const focusedIndex = ordered.findIndex((row) => row.kind === "open" && row.session.focused);
+  const activeIndex =
+    focusedIndex >= 0
+      ? focusedIndex
+      : ordered.findIndex((row) => row.kind === "open" && row.activity === "running");
   if (activeIndex < 0 || activeIndex < limit) return visible;
   return [...visible.slice(0, Math.max(0, limit - 1)), ordered[activeIndex]];
 }

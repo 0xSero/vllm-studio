@@ -79,8 +79,6 @@ export function AgentChatPaneHeader({
             <input
               autoFocus
               value={draftTitle}
-              // Select the whole existing name on entry so a click-to-rename can
-              // be overwritten by typing straight away (issue #274).
               onFocus={(event) => event.currentTarget.select()}
               onChange={(event) => setDraftTitle(event.target.value)}
               onBlur={finishRename}
