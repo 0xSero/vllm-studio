@@ -15,7 +15,7 @@ import {
   endSessionSubmit,
   type SessionSubmitGuard,
 } from "@/features/agent/runtime/prompt-stream";
-import { type ToolsContextValue } from "@/features/agent/tools/context";
+import { type ToolsContextValue } from "@/features/agent/tools/store";
 import {
   attachmentPrompt,
   imageInputsFromAttachments,

@@ -53,7 +53,7 @@ function subagentChipsFor(piSessionId: string | null | undefined) {
 }
 
 function useChatPaneTools(insideComputerPanel: boolean) {
-  const tools = useTools();
+  const tools = useToolsStore();
   const onToggleBrowserTool = useCallback(() => {
     if (insideComputerPanel) return tools.toggleBrowser();
     if (tools.browser.enabled) {
@@ -132,7 +132,7 @@ import { useChatPaneSendFlow } from "@/features/agent/ui/chat-pane-send-flow";
 import { ChatPaneHandle, SessionTab } from "@/features/agent/messages";
 import { useSessionEngine } from "@/features/agent/runtime/engine";
 import type { UpdateSession } from "@/features/agent/runtime/types";
-import { useTools } from "@/features/agent/tools/context";
+import { useToolsStore } from "@/features/agent/tools/store";
 import { useProjects, type ProjectsContextValue } from "@/features/agent/projects/context";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import type { AgentThinkingLevel } from "@shared/agent/agent-turn";

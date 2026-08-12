@@ -22,7 +22,7 @@ import {
   sanitizeBrowserPaneUrl,
   sanitizeLocalFileUrl,
 } from "@shared/agent/sanitize-embedded-browser-url";
-import { useTools } from "@/features/agent/tools/context";
+import { useToolsStore } from "@/features/agent/tools/store";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import { useProjects } from "@/features/agent/projects/context";
 import type { Project } from "@/features/agent/projects/types";
@@ -66,7 +66,7 @@ export function AgentBrowserPanel() {
   const activeProject = projects.resolveProject(focusedSession) ?? projects.selectedProject;
   const sessions = [...state.sessions.values()];
   const activeModelId = focusedSession?.modelId ?? state.selectedModel;
-  const tools = useTools();
+  const tools = useToolsStore();
   const [sideChatSeed, setSideChatSeed] = useState<Session>(() =>
     createSideChatSession(null, null, ""),
   );

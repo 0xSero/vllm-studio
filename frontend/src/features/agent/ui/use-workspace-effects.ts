@@ -1,7 +1,7 @@
 import { useMemo, useRef, type RefObject } from "react";
 import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
 import { loadInitialFromStorage } from "@/features/agent/workspace/persistence";
-import type { ToolsContextValue } from "@/features/agent/tools/context";
+import type { ToolsContextValue } from "@/features/agent/tools/store";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 import { patchWorkspaceSession } from "@/features/agent/workspace/pane-controller";

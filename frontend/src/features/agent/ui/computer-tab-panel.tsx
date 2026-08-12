@@ -2,7 +2,7 @@
 
 import { Suspense, lazy, useCallback, type ReactNode } from "react";
 import { FolderTree, GitBranch, Globe2, MessageSquarePlus, TerminalSquare } from "lucide-react";
-import { useTools } from "@/features/agent/tools/context";
+import { useToolsStore, type ToolsContextValue } from "@/features/agent/tools/store";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import { useProjects } from "@/features/agent/projects/context";
 import type { Project } from "@/features/agent/projects/types";
@@ -48,7 +48,7 @@ type ComputerTabPanelProps = {
 export function ComputerTabPanel(props: ComputerTabPanelProps) {
   const { state, handles } = useWorkspaceContext();
   const projects = useProjects();
-  const tools = useTools();
+  const tools = useToolsStore();
   const focusedSession = selectFocusedSession(state);
   const activeProject = projects.resolveProject(focusedSession) ?? projects.selectedProject;
   const activeModelId = focusedSession?.modelId ?? state.selectedModel;
@@ -176,7 +176,7 @@ function ComputerLauncherPanel({
   activeTab: ComputerTab;
   onOpenSideChat: () => void;
   onOpenTerminal: () => void;
-  tools: ReturnType<typeof useTools>;
+  tools: ToolsContextValue;
 }) {
   const cards = [
     {

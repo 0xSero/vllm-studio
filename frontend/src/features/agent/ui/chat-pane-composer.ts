@@ -24,7 +24,7 @@ import {
 } from "@/features/agent/composer-context";
 import type { ComposerCommand } from "@/features/agent/composer/command-types";
 import { type SessionTab } from "@/features/agent/messages";
-import type { ToolsContextValue } from "@/features/agent/tools/context";
+import type { ToolsContextValue } from "@/features/agent/tools/store";
 import {
   filesFromDataTransfer,
   imageFileFromDataUrlText,

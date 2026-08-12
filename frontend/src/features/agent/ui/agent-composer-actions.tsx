@@ -3,7 +3,7 @@
 import type { ReactNode, RefObject } from "react";
 import { Spinner } from "@/ui";
 import { ArrowUp, Plus } from "lucide-react";
-import { useTools } from "@/features/agent/tools/context";
+import { useToolsStore } from "@/features/agent/tools/store";
 import { GlobeIcon, PanelIcon, SitegeistIcon, StopIcon } from "@/ui/icons";
 import { ComposerDictationButton } from "./composer-dictation-button";
 
@@ -32,7 +32,7 @@ export function AgentComposerActions({
   onTranscript: (text: string) => void;
   modelSelector?: ReactNode;
 }) {
-  const tools = useTools();
+  const tools = useToolsStore();
   const browserToolEnabled = tools.browser.enabled;
   const browserBackend = tools.browser.backend;
   const inputHasText = Boolean(input.trim());

@@ -5,7 +5,7 @@ import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
-import { useToolsActions } from "@/features/agent/tools/context";
+import { useToolsStore } from "@/features/agent/tools/store";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import { writeClipboardText } from "@/lib/clipboard";
 
@@ -275,21 +275,20 @@ function FileLink({
 }
 
 function AssistantMarkdownInner({ text }: { text: string }) {
-  // Actions-only subscription: tools state churn (browser typing, selections)
-  // never re-renders frozen markdown blocks.
-  const tools = useToolsActions();
+  const setComputerOpen = useToolsStore((state) => state.setComputerOpen);
+  const setComputerTab = useToolsStore((state) => state.setComputerTab);
+  const setBrowserUrl = useToolsStore((state) => state.setBrowserUrl);
+  const requestFileOpen = useToolsStore((state) => state.requestFileOpen);
   const normalizedText = useMemo(() => normalizeLooseMarkdownEmphasis(text), [text]);
-  // Stable `components` map: only changes when any of the tool callbacks it
-  // captures changes identity (they're useCallback-stable in ToolsProvider).
   const componentsWithAppLinks = useMemo<Components>(
     () =>
       buildComponentsWithAppLinks({
-        setComputerOpen: tools.setComputerOpen,
-        setComputerTab: tools.setComputerTab,
-        setBrowserUrl: tools.setBrowserUrl,
-        requestFileOpen: tools.requestFileOpen,
+        setComputerOpen,
+        setComputerTab,
+        setBrowserUrl,
+        requestFileOpen,
       }),
-    [tools.setComputerOpen, tools.setComputerTab, tools.setBrowserUrl, tools.requestFileOpen],
+    [requestFileOpen, setBrowserUrl, setComputerOpen, setComputerTab],
   );
   return (
     <div className="chat-markdown min-w-0 max-w-full overflow-x-hidden [overflow-wrap:anywhere]">

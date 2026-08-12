@@ -27,7 +27,7 @@ import {
 } from "@/features/agent/workspace/effects";
 import type { AgentModel, PaneId, WorkspaceState } from "@/features/agent/workspace/types";
 import { useProjectsStore } from "@/features/agent/projects/store";
-import { useToolsRef } from "@/features/agent/tools/context";
+import { toolsRef } from "@/features/agent/tools/store";
 import { BACKEND_URL_STORAGE_KEY, getApiKey, getStoredBackendUrl } from "@/lib/api/connection";
 import {
   CONTROLLERS_STORAGE_KEY,
@@ -160,7 +160,6 @@ function api(): WorkspaceEffectDeps["api"] {
 }
 
 export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): UseWorkspaceResult {
-  const toolsRef = useToolsRef();
   const store: StoreApi<WorkspaceState> = ephemeral ? ephemeralWorkspaceStore : workspaceStore;
   const state = useStore(store);
   const paneHandlesRef = useRef<Map<PaneId, ChatPaneHandle>>(new Map());

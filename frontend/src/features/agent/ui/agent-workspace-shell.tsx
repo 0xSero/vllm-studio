@@ -10,7 +10,7 @@ import {
 } from "@/features/agent/ui/quick-panel/quick-panel-top-bar";
 import { CloseIcon, PlusIcon } from "@/ui/icons";
 import { useProjects, type ProjectsContextValue } from "@/features/agent/projects/context";
-import { useTools } from "@/features/agent/tools/context";
+import { useToolsStore, type ToolsContextValue } from "@/features/agent/tools/store";
 import { activeSession, focusedSession } from "@/features/agent/runtime/selectors";
 import { PaneGrid } from "@/features/agent/ui/pane-grid";
 import {
@@ -105,7 +105,7 @@ export function AgentWorkspace({ compact = false }: { compact?: boolean } = {}) 
   const workspace = useWorkspace({ ephemeral: compact });
   const { state, dispatch } = workspace;
   const projects = useProjects();
-  const tools = useTools();
+  const tools = useToolsStore();
   const searchParams = useSearchParams();
   const projectParam = searchParams.get("project");
 
@@ -354,7 +354,7 @@ function useActiveSessionEffects({
 }: {
   viewKey: string | null;
   viewAlias: string | null;
-  setActiveComputerSession: ReturnType<typeof useTools>["setActiveComputerSession"];
+  setActiveComputerSession: ToolsContextValue["setActiveComputerSession"];
 }): void {
   useMountSubscription(() => {
     setActiveComputerSession(

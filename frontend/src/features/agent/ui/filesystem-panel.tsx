@@ -13,7 +13,7 @@ import {
   SquarePen,
 } from "lucide-react";
 import { useAppStore } from "@/store";
-import { useToolSelections, useToolsActions } from "@/features/agent/tools/context";
+import { useToolsStore } from "@/features/agent/tools/store";
 import type { FileComment, FsEntry } from "@/features/agent/filesystem-types";
 import { FileViewer } from "@/features/agent/ui/filesystem-file-viewer";
 import {
@@ -56,8 +56,8 @@ export function FilesystemPanel({ cwd }: Props) {
   const [dirLoading, setDirLoading] = useState<Set<string>>(new Set());
   const [fileListOpen, setFileListOpen] = useState(true);
   const searchRef = useRef<HTMLInputElement>(null);
-  const { fileOpenRequest } = useToolSelections();
-  const { requestContextAttach } = useToolsActions();
+  const fileOpenRequest = useToolsStore((state) => state.fileOpenRequest);
+  const requestContextAttach = useToolsStore((state) => state.requestContextAttach);
   const fontSize = useAppStore((s) => s.fileViewerFontSize);
   const setFontSize = useAppStore((s) => s.setFileViewerFontSize);
   const lastOpenFileByProject = useAppStore((s) => s.lastOpenFileByProject);

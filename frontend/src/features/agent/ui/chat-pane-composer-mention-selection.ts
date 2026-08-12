@@ -8,7 +8,7 @@ import {
   type ComposerSkillRef,
 } from "@/features/agent/composer-context";
 import { type SessionTab } from "@/features/agent/messages";
-import type { ToolsContextValue } from "@/features/agent/tools/context";
+import type { ToolsContextValue } from "@/features/agent/tools/store";
 import {
   attachmentDedupKey,
   createProjectFileAttachment,

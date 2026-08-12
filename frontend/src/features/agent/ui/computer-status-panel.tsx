@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Spinner } from "@/ui";
 import { formatTokenCount } from "@/features/agent/messages";
-import { useBrowserTools } from "@/features/agent/tools/context";
+import { useToolsStore } from "@/features/agent/tools/store";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import type { Session } from "@/features/agent/runtime/types";
@@ -35,7 +35,7 @@ export function ComputerStatusPanel({
   gitSummary?: GitSummary | null;
   onCompactSession?: () => Promise<void>;
 }) {
-  const browser = useBrowserTools();
+  const browser = useToolsStore((state) => state.browser);
   const [compacting, setCompacting] = useState(false);
   const totals = useMemo(() => summarizeSessions(sessions), [sessions]);
   const sessionSkills = useMemo(() => usedSkillsForSession(focusedSession), [focusedSession]);
