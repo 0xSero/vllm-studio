@@ -16,7 +16,7 @@ import {
 } from "@/features/agent/workspace/effects";
 import type { AgentModel, PaneId, WorkspaceState } from "@/features/agent/workspace/types";
 import { useProjectsStore } from "@/features/agent/projects/store";
-import { toolsRef } from "@/features/agent/tools/store";
+import { useToolsStore } from "@/features/agent/tools/store";
 import { BACKEND_URL_STORAGE_KEY, getApiKey, getStoredBackendUrl } from "@/lib/api/connection";
 import {
   CONTROLLERS_STORAGE_KEY,
@@ -152,7 +152,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         window,
         api: api(),
         dispatch: workspaceDispatch,
-        selectionFor: (id) => toolsRef.current.selectionFor(id),
+        selectionFor: (id) => useToolsStore.getState().selectionFor(id),
       };
     };
 
@@ -268,7 +268,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         const startX = event.clientX;
         const startWidth =
           computerAsideRef.current?.getBoundingClientRect().width ??
-          toolsRef.current.computer.width;
+          useToolsStore.getState().computer.width;
         const containerWidth =
           computerAsideRef.current?.parentElement?.getBoundingClientRect().width ??
           window.innerWidth;
@@ -293,7 +293,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
               if (computerAsideRef.current) computerAsideRef.current.style.transition = "";
             }, 170);
           }
-          toolsRef.current.setComputerWidth(next);
+          useToolsStore.getState().setComputerWidth(next);
           window.removeEventListener("mousemove", onMove);
           window.removeEventListener("mouseup", onUp);
         };
@@ -322,7 +322,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
       ? loadInitialFromStorage(window.localStorage)
       : { workspace: {}, selections: new Map() };
     dispatch((current) => ({ ...current, ...loaded.workspace, hydrated: true }));
-    if (loaded.selections.size > 0) toolsRef.current.hydrateSelections(loaded.selections);
+    if (loaded.selections.size > 0) useToolsStore.getState().hydrateSelections(loaded.selections);
   }, [dispatch, ephemeral, state.hydrated]);
 
   useMountSubscription(() => {

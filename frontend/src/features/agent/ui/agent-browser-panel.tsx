@@ -27,7 +27,7 @@ import {
   type TerminalOwnersState,
 } from "@/features/agent/terminal-owners";
 import { ComputerTabPanel, type SideChatTabsUpdater } from "@/features/agent/ui/computer-tab-panel";
-import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
+import { TerminalPanel } from "@/features/agent/ui/terminal-panel";
 import { webPtyBridge } from "@/features/agent/ui/web-pty-bridge";
 import type { UseWorkspaceResult } from "@/features/agent/ui/use-workspace";
 
@@ -69,6 +69,9 @@ export function AgentBrowserPanel({ workspace }: { workspace: UseWorkspaceResult
     [activeProject, focusedSession],
   );
   const terminalState = tools.terminals;
+  const activeTerminal = terminalState.owners.find(
+    (owner) => owner.mountKey === terminalState.activeOwnerKey,
+  );
   useMountSubscription(() => {
     if (tools.computer.open && tools.computer.tab === "terminal" && terminalOwner) {
       queueMicrotask(() => tools.rememberTerminalOwner(terminalOwner, { select: true }));
@@ -217,11 +220,9 @@ export function AgentBrowserPanel({ workspace }: { workspace: UseWorkspaceResult
         sideChatSession={sideChatSession}
       />
 
-      <PersistentTerminals
-        active={tools.computer.open && tools.computer.tab === "terminal"}
-        activeOwnerKey={terminalState.activeOwnerKey}
-        terminals={terminalState.owners}
-      />
+      {tools.computer.tab === "terminal" && activeTerminal ? (
+        <TerminalPanel cwd={activeTerminal.cwd} ownerKey={activeTerminal.mountKey} />
+      ) : null}
     </aside>
   );
 }

@@ -152,7 +152,7 @@ import {
   type TerminalOwner,
   type TerminalOwnersState,
 } from "@/features/agent/terminal-owners";
-import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
+import { TerminalPanel } from "@/features/agent/ui/terminal-panel";
 import { cx } from "@/ui/utils";
 import { ExtensionUiDialog } from "@/features/agent/ui/extension-ui-dialog";
 import {
@@ -828,6 +828,9 @@ function ChatPaneChrome({
   terminalSnapshot: TerminalOwnersState;
   header: ComponentProps<typeof AgentChatPaneHeader>;
 }) {
+  const activeTerminal = terminalSnapshot.owners.find(
+    (owner) => owner.mountKey === terminalSnapshot.activeOwnerKey,
+  );
   return (
     <>
       {extensionUiRequest ? (
@@ -835,11 +838,9 @@ function ChatPaneChrome({
       ) : null}
       {showHeader ? <AgentChatPaneHeader {...header} /> : null}
       <div className={terminalView ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
-        <PersistentTerminals
-          active={terminalView}
-          activeOwnerKey={terminalSnapshot.activeOwnerKey}
-          terminals={terminalSnapshot.owners}
-        />
+        {activeTerminal ? (
+          <TerminalPanel cwd={activeTerminal.cwd} ownerKey={activeTerminal.mountKey} />
+        ) : null}
       </div>
     </>
   );

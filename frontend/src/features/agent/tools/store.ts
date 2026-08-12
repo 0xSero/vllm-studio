@@ -307,8 +307,3 @@ export const useToolsStore = create<ToolsStore>((set, get) => {
     },
   };
 });
-
-export const toolsRef: { current: ToolsContextValue } = { current: useToolsStore.getState() };
-useToolsStore.subscribe((state) => {
-  toolsRef.current = state;
-});
