@@ -115,6 +115,7 @@ export async function handleAllSessions(request: Request): Promise<Response> {
         modelId: null,
         provider: null,
         firstUserMessage: metadata.title,
+        name: metadata.title,
         archived: true,
         archivedAt: metadata.archivedAt,
         parentSessionId: null,

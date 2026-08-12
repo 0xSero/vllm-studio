@@ -68,7 +68,7 @@ import {
 } from "../../../shared/agent/litter-bridge";
 import { readJsonRequestWithinLimit } from "../../../shared/agent/agent-turn-body";
 import { isRecord } from "../../../shared/agent/guards";
-import { cleanSessionTitle } from "../../../shared/agent/session-title";
+import type { SessionSummary } from "../../../shared/agent/session-summary";
 import { resolveDataDir } from "./data-dir";
 import { listProjectsFromStore, type ProjectEntry } from "./projects-store";
 import {
@@ -98,8 +98,6 @@ const CURSOR_STATE_ITEM_LIMIT = 100_000;
 const CURSOR_TTL_MS = 5 * 60_000;
 const SESSION_LINE_LIMIT_BYTES = 1_000_000;
 const SESSION_READ_CHUNK_BYTES = 64 * 1024;
-const SESSION_METADATA_SCAN_BYTES = 1_000_000;
-const SESSION_METADATA_SCAN_LINES = 400;
 const SESSION_LINEAGE_LIMIT = 50_000;
 const SESSION_TOOL_LIMIT = 10_000;
 const SESSION_PAGE_ITEM_LIMIT = 200;
@@ -983,18 +981,6 @@ const optionalIdentifier = (value: unknown): string | null =>
     ? value
     : null;
 
-const shortText = (value: string): string => {
-  let output = "";
-  let bytes = 0;
-  for (const character of value) {
-    const next = Buffer.byteLength(character, "utf8");
-    if (bytes + next > 4_096) break;
-    output += character;
-    bytes += next;
-  }
-  return output;
-};
-
 const liveProjects = (projects: TrustedProject[]): LiveProject[] => {
   const byCwd = new Map<string, LiveProject>();
   for (const project of projects) {
@@ -1113,71 +1099,38 @@ const resolveSessionFile = (
   return resolved;
 };
 
-const firstText = (content: unknown): string | null => {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return null;
-  for (const part of content) {
-    if (isRecord(part) && part.type === "text" && typeof part.text === "string") {
-      return part.text;
-    }
-  }
-  return null;
-};
-
-const readSessionMetadata = (resolved: ResolvedSessionFile): LitterBridgeSessionMetadata => {
+const sessionMetadata = (
+  resolved: ResolvedSessionFile,
+  summary: SessionSummary,
+): LitterBridgeSessionMetadata => {
   if (Buffer.byteLength(resolved.cwd, "utf8") > 512 || resolved.cwd.trim() !== resolved.cwd) {
     throw new SessionReadError("section_unavailable", "Session project path is unsupported", 422);
   }
-  let title: string | null = null;
-  let namedTitle: string | null = null;
-  let modelId = optionalIdentifier(resolved.header.modelId ?? resolved.header.model);
-  let providerId = optionalIdentifier(resolved.header.provider);
-  let offset = resolved.headerEnd;
-  let scannedLines = 0;
-  const scanEnd = Math.min(resolved.size, resolved.headerEnd + SESSION_METADATA_SCAN_BYTES);
-  const fd = openSync(resolved.filepath, "r");
-  try {
-    while (offset < scanEnd && scannedLines < SESSION_METADATA_SCAN_LINES) {
-      const line = readSessionLine(fd, resolved.size, offset);
-      if (!line || line.end > scanEnd) break;
-      offset = line.end;
-      scannedLines += 1;
-      const event = parseSessionLine(line);
-      if (!event) continue;
-      if (event.type === "session_info") {
-        const name = typeof event.name === "string" ? shortText(cleanSessionTitle(event.name)) : "";
-        if (name) namedTitle = name;
-      }
-      if (event.type === "model_change") {
-        modelId = optionalIdentifier(event.modelId ?? event.model) ?? modelId;
-        providerId = optionalIdentifier(event.provider) ?? providerId;
-      }
-      if ((event.type === "message" || event.type === "message_end") && isRecord(event.message)) {
-        const message = event.message;
-        if (message.role === "user" && !title) {
-          const text = firstText(message.content);
-          const cleaned = cleanSessionTitle(text?.slice(0, 120));
-          if (cleaned) title = cleaned;
-        }
-        if (message.role === "assistant") {
-          modelId = optionalIdentifier(message.model) ?? modelId;
-          providerId = optionalIdentifier(message.provider) ?? providerId;
-        }
-      }
-    }
-  } catch (error) {
-    if (!(error instanceof SessionReadError) || error.code !== "payload_too_large") throw error;
-  } finally {
-    closeSync(fd);
-  }
   return {
-    title: namedTitle ?? title,
+    title: summary.name ?? summary.firstUserMessage,
     cwd: resolved.cwd,
-    createdAt: strictTimestamp(resolved.header.timestamp) ?? resolved.createdAt,
+    createdAt: strictTimestamp(summary.startedAt) ?? resolved.createdAt,
     updatedAt: resolved.updatedAt,
-    modelId,
-    providerId,
+    modelId: optionalIdentifier(summary.modelId),
+    providerId: optionalIdentifier(summary.provider),
   };
+};
+
+const readSessionMetadata = async (
+  resolved: ResolvedSessionFile,
+  roots: string[],
+): Promise<LitterBridgeSessionMetadata> => {
+  const summary = (
+    await listSessions(resolved.cwd, {
+      ids: [resolved.sessionId],
+      includeArchived: true,
+      sessionRoots: roots,
+    })
+  )[0];
+  if (!summary) {
+    throw new SessionReadError("section_unavailable", "Session metadata is unavailable", 422);
+  }
+  return sessionMetadata(resolved, summary);
 };
 
 const enumerateSessionInventory = async (input: {
@@ -1188,7 +1141,10 @@ const enumerateSessionInventory = async (input: {
   activeSessionIds: ReadonlySet<string>;
   archivedSessionIds: ReadonlySet<string>;
 }): Promise<SessionInventory> => {
-  const matches = new Map<string, Map<string, ResolvedSessionFile>>();
+  const matches = new Map<
+    string,
+    Map<string, { resolved: ResolvedSessionFile; summary: SessionSummary }>
+  >();
   const scannedFiles = new Set<string>();
   try {
     for (const project of liveProjects(input.projects)) {
@@ -1206,8 +1162,13 @@ const enumerateSessionInventory = async (input: {
           const version =
             candidate.header.version === undefined ? 1 : safeInteger(candidate.header.version);
           if (version === null || version < 1 || version > 3) continue;
-          const candidates = matches.get(summary.id) ?? new Map<string, ResolvedSessionFile>();
-          candidates.set(candidate.filepath, { ...candidate, cwd: project.cwd });
+          const candidates =
+            matches.get(summary.id) ??
+            new Map<string, { resolved: ResolvedSessionFile; summary: SessionSummary }>();
+          candidates.set(candidate.filepath, {
+            resolved: { ...candidate, cwd: project.cwd },
+            summary,
+          });
           matches.set(summary.id, candidates);
         }
       }
@@ -1225,8 +1186,8 @@ const enumerateSessionInventory = async (input: {
   const sessions: LitterBridgeSessionDescriptor[] = [];
   for (const [sessionId, candidates] of matches) {
     if (candidates.size !== 1) continue;
-    const resolved = candidates.values().next().value;
-    if (!resolved) continue;
+    const candidate = candidates.values().next().value;
+    if (!candidate) continue;
     try {
       sessions.push({
         session: {
@@ -1235,8 +1196,8 @@ const enumerateSessionInventory = async (input: {
           installationId: input.controllerId,
           sessionId,
         },
-        metadata: readSessionMetadata(resolved),
-        revision: resolved.revision,
+        metadata: sessionMetadata(candidate.resolved, candidate.summary),
+        revision: candidate.resolved.revision,
         archived: input.archivedSessionIds.has(sessionId),
         active: input.activeSessionIds.has(sessionId),
       });
@@ -2291,10 +2252,10 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     });
   };
 
-  const handleSessionRead = (
+  const handleSessionRead = async (
     request: LitterBridgeSessionReadRequest,
     requestNow: Date,
-  ): Response => {
+  ): Promise<Response> => {
     pruneCursors(requestNow.getTime());
     let filepath: string;
     let cwd: string;
@@ -2312,7 +2273,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         throw new SessionReadError("not_found", "Session identity was not found", 404);
       }
       const resolved = resolveSessionFile(request.session.sessionId, projects(), roots);
-      metadata = readSessionMetadata(resolved);
+      metadata = await readSessionMetadata(resolved, roots);
       const afterMetadata = fingerprintSessionFile(resolved.filepath);
       if (afterMetadata.value !== resolved.value) {
         throw new SessionReadError(
@@ -2568,7 +2529,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
 
       let metadata: LitterBridgeSessionMetadata;
       try {
-        metadata = readSessionMetadata(resolved);
+        metadata = await readSessionMetadata(resolved, roots);
       } catch {
         return rejectRetryable(
           errorResult("section_unavailable", "Session metadata is unavailable", requestId, true),
@@ -2748,7 +2709,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
   // new session id is server-minted, so the descriptor is authoritative from
   // disk; if the file isn't yet visible to inventory (project-cwd variant
   // race) we fall back to a minimal descriptor derived from the dispatch.
-  const buildSessionCreateAck = (input: {
+  const buildSessionCreateAck = async (input: {
     requestId: string;
     request: LitterBridgeSessionCreateRequest;
     dispatchId: string;
@@ -2768,7 +2729,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     let active = true;
     try {
       const resolved = resolveSessionFile(input.sessionId, projects(), roots);
-      metadata = readSessionMetadata(resolved);
+      metadata = await readSessionMetadata(resolved, roots);
       revision = resolved.revision;
       active = activeSessionIds().has(input.sessionId);
     } catch {
@@ -2898,7 +2859,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
             true,
           );
         }
-        const ack = buildSessionCreateAck({
+        const ack = await buildSessionCreateAck({
           requestId,
           request,
           dispatchId: correlation.dispatchId,
@@ -3040,7 +3001,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         dispatchedAt: now().toISOString(),
       };
       ledger.markDispatching(identity, request.auth.bodyHash, lease, correlation);
-      const acknowledgement = buildSessionCreateAck({
+      const acknowledgement = await buildSessionCreateAck({
         requestId,
         request,
         dispatchId,
@@ -3142,7 +3103,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     }
     if (parsed.type === "session_read_request") {
       try {
-        return handleSessionRead(parsed, requestNow);
+        return await handleSessionRead(parsed, requestNow);
       } catch (error) {
         if (error instanceof SessionReadError) {
           return jsonError(error.code, error.message, requestId, error.status, error.retriable);

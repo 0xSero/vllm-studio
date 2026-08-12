@@ -135,6 +135,7 @@ function userTurnFromEvent(event: Record<string, unknown>): UserTurn {
 }
 
 const SUMMARY_SCAN_LINE_CAP = 2000;
+const SUMMARY_METADATA_LINE_CAP = 400;
 
 // Summary scans are the sidebar's hot path: every refresh re-lists every
 // session file for every project. The scanned fields (header + first user
@@ -185,6 +186,9 @@ async function readSessionSummary(
   }
   let header: Record<string, unknown> | null = null;
   let firstUserMessage: string | null = null;
+  let name: string | null = null;
+  let modelId: string | null = null;
+  let provider: string | null = null;
 
   const stream = createReadStream(filepath, { encoding: "utf-8" });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
@@ -200,6 +204,27 @@ async function readSessionSummary(
         continue;
       }
       if (!header && event.type === "session") header = event;
+      if (event.type === "session_info" && typeof event.name === "string") {
+        name = cleanSessionTitle(event.name).slice(0, 4_096) || null;
+      }
+      if (event.type === "model_change") {
+        modelId =
+          [event.modelId, event.model].find(
+            (value): value is string => typeof value === "string",
+          ) ?? modelId;
+        provider = typeof event.provider === "string" ? event.provider : provider;
+      }
+      if (
+        (event.type === "message" || event.type === "message_end") &&
+        event.message &&
+        typeof event.message === "object"
+      ) {
+        const message = event.message as Record<string, unknown>;
+        if (message.role === "assistant") {
+          modelId = typeof message.model === "string" ? message.model : modelId;
+          provider = typeof message.provider === "string" ? message.provider : provider;
+        }
+      }
       if (!firstUserMessage) {
         const userTurn = userTurnFromEvent(event);
         if (userTurn.isUser && userTurn.text) {
@@ -207,7 +232,7 @@ async function readSessionSummary(
             cleanSessionTitle(sessionTitleFromUserPrompt(userTurn.text).slice(0, 120)) || null;
         }
       }
-      if (header && firstUserMessage) break;
+      if (header && firstUserMessage && scanned >= SUMMARY_METADATA_LINE_CAP) break;
       if (scanned >= SUMMARY_SCAN_LINE_CAP) break;
     }
   } finally {
@@ -221,9 +246,10 @@ async function readSessionSummary(
         cwd: typeof header.cwd === "string" ? header.cwd : "",
         startedAt:
           typeof header.timestamp === "string" ? header.timestamp : stats.birthtime.toISOString(),
-        modelId: typeof header.modelId === "string" ? header.modelId : null,
-        provider: typeof header.provider === "string" ? header.provider : null,
+        modelId: modelId ?? (typeof header.modelId === "string" ? header.modelId : null),
+        provider: provider ?? (typeof header.provider === "string" ? header.provider : null),
         firstUserMessage,
+        name,
       }
     : null;
   rememberSummary(filepath, {

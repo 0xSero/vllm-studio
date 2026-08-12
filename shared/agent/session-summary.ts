@@ -7,6 +7,7 @@ export type SessionSummary = {
   modelId: string | null;
   provider: string | null;
   firstUserMessage: string | null;
+  name: string | null;
   archived: boolean;
   archivedAt: string | null;
   parentSessionId: string | null;
