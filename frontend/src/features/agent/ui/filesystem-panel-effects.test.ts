@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { resolveFileOpenTarget } from "./filesystem-panel-effects";
+import { resolveFileOpenTarget, resolveWorkspaceFileOpenTarget } from "./filesystem-panel-effects";
 
 const CWD = "/Users/me/projects/app";
 
@@ -80,5 +80,21 @@ describe("resolveFileOpenTarget", () => {
     assert.equal(resolveFileOpenTarget("../outside.ts", CWD), null);
     assert.equal(resolveFileOpenTarget("src/in\0dex.ts", CWD), null);
     assert.equal(resolveFileOpenTarget("src/index.ts", null), null);
+  });
+});
+
+describe("resolveWorkspaceFileOpenTarget", () => {
+  test("normalizes contained paths and rejects lexical escapes", () => {
+    assert.deepEqual(resolveWorkspaceFileOpenTarget("src/lib/../index.ts", CWD), {
+      root: CWD,
+      rel: "src/index.ts",
+      kind: "file",
+    });
+    assert.equal(resolveWorkspaceFileOpenTarget("src/../../secret.ts", CWD), null);
+    assert.equal(resolveWorkspaceFileOpenTarget(`${CWD}2/secret.ts`, CWD), null);
+    assert.equal(
+      resolveWorkspaceFileOpenTarget(`file://${CWD}/src/%2E%2E/%2E%2E/secret.ts`, CWD),
+      null,
+    );
   });
 });
