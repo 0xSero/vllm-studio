@@ -34,7 +34,7 @@ export function TerminalRow({ owner, index }: { owner: TerminalOwner; index: num
           className="h-3.5 w-3.5 shrink-0 opacity-70 transition-opacity group-hover:opacity-90"
           strokeWidth={1.75}
         />
-        <span className="truncate text-[length:var(--fs-md)] font-normal">{label}</span>
+        <span className="truncate text-[length:var(--fs-base)] font-normal leading-5">{label}</span>
       </button>
       <button
         type="button"

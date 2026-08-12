@@ -31,9 +31,7 @@ export function PinButton({
       // it slides in from the left over the trailing text with a fade.
       className={`inline-flex h-5 w-5 items-center justify-center rounded-[var(--rad-xs)] transition-[opacity,transform,color] duration-150 hover:text-(--fg) ${
         pinned ? "text-(--fg)/75" : "text-(--dim)/70"
-      } ${
-        "-translate-x-1.5 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 focus-visible:translate-x-0 focus-visible:opacity-100 pointer-coarse:translate-x-0 pointer-coarse:opacity-100"
-      }`}
+      } ${"-translate-x-1.5 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 focus-visible:translate-x-0 focus-visible:opacity-100 pointer-coarse:translate-x-0 pointer-coarse:opacity-100"}`}
     >
       <PinIcon className="pointer-events-none h-3 w-3" />
     </button>
@@ -67,7 +65,7 @@ export function SidebarSectionHeader({
 }) {
   return (
     <div
-      className="group flex cursor-default items-center justify-between px-2 pb-1 pt-5 text-[length:var(--fs-sm)] font-normal text-(--hl2)"
+      className="group flex cursor-default items-center justify-between px-2 pb-1 pt-5 text-[length:var(--fs-sm)] font-normal leading-4 text-(--hl2)"
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}

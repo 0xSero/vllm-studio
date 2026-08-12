@@ -12,6 +12,7 @@ export type OpenAgentSession = {
   modelId?: string;
   title: string;
   status: string;
+  failed: boolean;
   focused: boolean;
   startedAt?: string;
   updatedAt: string;

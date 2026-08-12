@@ -68,13 +68,16 @@
   padding-bottom: 0;
 }
 
-/* The one column the transcript, its composer and the prompt rail all measure
-   against. Full width up to a fixed measure, centred in whatever pane it lands
-   in; the scroller's own padding supplies the gutter, so the column never
-   double-margins on a narrow window. */
 .agent-thread-shell {
   width: 100%;
   max-width: calc(var(--composer-w) * 0.9);
+}
+
+.agent-pane-header {
+  padding-inline-start: max(
+    var(--thread-content-inline-padding),
+    (100% - calc(var(--composer-w) * 0.9)) / 2
+  );
 }
 
 @media (max-width: 768px) {
@@ -297,9 +300,6 @@
   container-type: inline-size;
 }
 
-/* Parked immediately outside the reading column rather than against the pane
-   edge: pinned to the pane it drifted further from the thread the wider the
-   window got, and at fullscreen it stranded itself in the empty gutter. */
 .prompt-minimap {
   position: absolute;
   top: 0;
@@ -316,7 +316,6 @@
   pointer-events: none;
 }
 
-/* Below this the rail would sit on top of the prose instead of beside it. */
 @container (max-width: 58rem) {
   .prompt-minimap {
     display: none;
@@ -338,9 +337,6 @@
   pointer-events: auto;
 }
 
-/* One marker, one width, scaled from the left edge. Pointing at a marker also
-   part-extends its neighbours, so the rail reads as a single object being
-   pushed rather than a row of independent ticks. */
 .prompt-minimap-line {
   --marker-progress: 0;
   display: block;

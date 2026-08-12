@@ -593,11 +593,9 @@
   --sidebar-w: 275px;
   --sidebar-w-min: 240px;
   --sidebar-w-max: 520px;
-  /* The rail never eats the pane it opens onto: past this the window has no
-     room left for a readable thread beside it. */
   --sidebar-w-viewport-cap: calc(100vw - 320px);
   --sidebar-w-collapsed: 48px;
-  --sidebar-row-height: 30px;
+  --sidebar-row-height: 31px;
   /* Rows sat at a 30px pitch against a 30px height, i.e. touching, with no gap
      anywhere in the sidebar. That reads as a wall of text rather than a list.
      Costs 2px per row and no change to the row itself. */
@@ -611,16 +609,9 @@
   --h-toolbar: 46px;
   --h-toolbar-sm: 36px;
   --h-toolbar-pane: 40px;
-  /* Reading column. A fixed measure, not a share of the viewport: the thread
-     lives inside a pane whose width also depends on the sidebar, the split
-     layout and the right panel, so `vw` sized it wrong in every arrangement but
-     one — widest and worst at fullscreen. `--composer-w` stays the knob the
-     Appearance editor writes, and the column is the 0.9 inset of it. */
   --thread-content-max-width: 48rem;
   --composer-w: calc(var(--thread-content-max-width) / 0.9);
-  /* Horizontal breathing room between the column and its pane edges. */
   --thread-content-inline-padding: 20px;
-  /* Width of the prompt navigation rail parked beside the column. */
   --thread-rail-width: 4.75rem;
   --composer-radius: 25px;
   --composer-radius-inner: 20px;

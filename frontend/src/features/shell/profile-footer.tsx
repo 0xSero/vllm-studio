@@ -44,7 +44,9 @@ export function ProfileFooter({ settingsActive }: { settingsActive: boolean }) {
         aria-label="Profile settings"
       >
         <ProfileAvatar profile={profile} />
-        <span className="truncate text-[length:var(--fs-md)] text-(--fg)">{profile.name}</span>
+        <span className="truncate text-[length:var(--fs-base)] leading-5 text-(--fg)">
+          {profile.name}
+        </span>
       </Link>
       <UpdateButton />
       <Link

@@ -41,7 +41,9 @@ export function routeHidesAppSidebar(pathname: string): boolean {
 
 export function ProjectsNavPlaceholder() {
   return (
-    <div className="px-2 py-1 text-[length:var(--fs-md)] text-(--dim)">Loading projects...</div>
+    <div className="px-2 py-1 text-[length:var(--fs-sm)] leading-4 text-(--dim)">
+      Loading projects...
+    </div>
   );
 }
 
@@ -97,7 +99,7 @@ export function NavItemDesktop({
         className={`h-4 w-4 shrink-0 ${active ? "opacity-90" : "opacity-70"}`}
         strokeWidth={1.6}
       />
-      <span className="text-[length:var(--fs-md)] whitespace-nowrap">{label}</span>
+      <span className="text-[length:var(--fs-base)] leading-5 whitespace-nowrap">{label}</span>
     </Link>
   );
 }

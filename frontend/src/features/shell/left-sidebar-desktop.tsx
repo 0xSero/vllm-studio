@@ -126,10 +126,6 @@ export function DesktopSidebar({
               </button>
             </div>
 
-            {/* Destinations stay put; only the session/project list scrolls.
-                Sharing one scroller pushed "New task" and the app tabs off the
-                top the moment a project was expanded, so the rail lost its
-                navigation exactly when a long list made it most useful. */}
             <nav className="flex shrink-0 flex-col gap-[var(--sidebar-row-gap)] px-[var(--sidebar-padding-x)] pt-0.5">
               <Link
                 href="/agent?new=1"
@@ -138,7 +134,7 @@ export function DesktopSidebar({
                 title="New task"
               >
                 <SquarePen className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.6} />
-                <span className="flex-1 truncate text-left text-[length:var(--fs-md)] font-normal">
+                <span className="flex-1 truncate text-left text-[length:var(--fs-base)] font-normal leading-5">
                   New task
                 </span>
               </Link>

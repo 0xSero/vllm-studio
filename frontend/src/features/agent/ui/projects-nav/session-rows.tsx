@@ -8,6 +8,7 @@ import {
   markSessionActivitySeen,
   sessionRows,
   type SessionActivity,
+  type SessionIndexRow,
 } from "@/features/agent/session-index";
 import { useSessionActivity } from "@/features/agent/ui/use-open-sessions";
 import {
@@ -32,7 +33,20 @@ import { PinButton, SidebarRail } from "./nav-chrome";
 import { SessionNavRow } from "./session-nav-row";
 import type { ActiveAgentSession, SessionSummary } from "./types";
 
-const SESSIONS_PAGE_SIZE = 5;
+const SESSIONS_PAGE_SIZE = 10;
+
+function withActiveRowVisible(
+  ordered: readonly SessionIndexRow[],
+  limit: number,
+): SessionIndexRow[] {
+  const visible = ordered.slice(0, limit);
+  if (visible.length === ordered.length) return visible;
+  const activeIndex = ordered.findIndex(
+    (row) => row.kind === "open" && (row.session.focused || row.activity === "running"),
+  );
+  if (activeIndex < 0 || activeIndex < limit) return visible;
+  return [...visible.slice(0, Math.max(0, limit - 1)), ordered[activeIndex]];
+}
 
 export function ProjectRow({
   project,
@@ -111,7 +125,9 @@ export function ProjectRow({
               />
             </span>
           )}
-          <span className="truncate text-[length:var(--fs-md)] font-normal">{project.name}</span>
+          <span className="truncate text-[length:var(--fs-base)] font-normal leading-5">
+            {project.name}
+          </span>
           {!project.exists ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--warn)"
@@ -122,11 +138,7 @@ export function ProjectRow({
         </button>
         <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
           {onTogglePin ? (
-            <PinButton
-              pinned={pinned}
-              onToggle={onTogglePin}
-              target={project.name}
-            />
+            <PinButton pinned={pinned} onToggle={onTogglePin} target={project.name} />
           ) : null}
           {onRemove ? (
             <button
@@ -152,7 +164,7 @@ export function ProjectRow({
         </div>
       </div>
       {missingErrorVisible && !project.exists ? (
-        <div className="pl-12 pr-2 pb-1 text-[length:var(--fs-md)] text-(--err)">
+        <div className="pl-12 pr-2 pb-1 text-[length:var(--fs-sm)] leading-4 text-(--err)">
           <span>Folder not found at {project.path}</span>
           <button
             type="button"
@@ -199,7 +211,7 @@ export function ProjectSessions({
     setLoading(true);
     try {
       const response = await fetch(
-        `/api/agent/sessions?cwd=${encodeURIComponent(project.path)}&since=7d&limit=${visibleLimit + 9}`,
+        `/api/agent/sessions?cwd=${encodeURIComponent(project.path)}&since=7d&limit=${visibleLimit + SESSIONS_PAGE_SIZE}`,
         { cache: "no-store" },
       );
       const payload = await safeJson<{ sessions?: SessionSummary[] }>(response);
@@ -246,15 +258,19 @@ export function ProjectSessions({
     () => sessionRows(visibleActiveSessions, recent, activity),
     [visibleActiveSessions, recent, activity],
   );
-  const visibleRows = orderedRows.slice(0, visibleLimit);
+  const visibleRows = withActiveRowVisible(orderedRows, visibleLimit);
   const hasMore = orderedRows.length > visibleLimit || (sessions?.length ?? 0) > visibleLimit;
 
   return (
     <SidebarRail>
       {loading && !sessions ? (
-        <div className="pl-2 pr-2 py-0.5 text-[length:var(--fs-sm)] text-(--dim)">Loading...</div>
+        <div className="px-2 py-1 text-[length:var(--fs-sm)] leading-4 text-(--dim)">
+          Loading sessions...
+        </div>
       ) : orderedRows.length === 0 ? (
-        <div className="pl-2 pr-2 py-0.5 text-[length:var(--fs-sm)] text-(--dim)">No chats</div>
+        <div className="px-2 py-1 text-[length:var(--fs-sm)] leading-4 text-(--dim)">
+          No sessions yet
+        </div>
       ) : (
         visibleRows.map((row) => {
           const parentId = row.kind === "open" ? row.session.threadId : row.session.id;
@@ -267,6 +283,7 @@ export function ProjectSessions({
                   session={row.session}
                   pref={mergeActiveSessionPref(row.session, prefs)}
                   activity={row.activity}
+                  failed={row.session.failed}
                 />
               ) : (
                 <SessionRow
@@ -289,7 +306,7 @@ export function ProjectSessions({
         <button
           type="button"
           onClick={() => setVisibleLimit((value) => value + SESSIONS_PAGE_SIZE)}
-          className="flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-3 pr-2 text-left text-[length:var(--fs-sm)] text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+          className="flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-3 pr-2 text-left text-[length:var(--fs-sm)] leading-4 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
         >
           Show more
         </button>
@@ -313,7 +330,7 @@ function SubagentSessionRows({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex h-[var(--sidebar-row-height)] items-center gap-1.5 rounded-[var(--sidebar-row-radius)] pl-2 pr-2 text-left text-[length:var(--fs-sm)] text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+        className="flex h-[var(--sidebar-row-height)] items-center gap-1.5 rounded-[var(--sidebar-row-radius)] pl-2 pr-2 text-left text-[length:var(--fs-sm)] leading-4 text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
         aria-expanded={open}
       >
         <span
@@ -346,6 +363,7 @@ export function ActiveSessionRow({
   session,
   pref,
   activity,
+  failed = false,
   dragging = false,
   onReorderDragStart,
   onReorderDragEnd,
@@ -356,6 +374,7 @@ export function ActiveSessionRow({
   session: ActiveAgentSession;
   pref: SessionPref;
   activity: SessionActivity;
+  failed?: boolean;
   dragging?: boolean;
   onReorderDragStart?: () => void;
   onReorderDragEnd?: () => void;
@@ -426,9 +445,10 @@ export function ActiveSessionRow({
       isRunning={activity === "running"}
       unseen={activity === "unseen" && !isFocused}
       finished={activity === "finished" && !isFocused}
+      failed={failed && activity !== "running"}
       timestamp={session.updatedAt || session.startedAt}
       canDoubleClickRename
-      renameInputClass="text-[length:var(--fs-xs)]"
+      renameInputClass="text-[length:var(--fs-base)] leading-5"
     />
   );
 }

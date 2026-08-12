@@ -33,6 +33,7 @@ type SessionNavRowProps = {
   isRunning?: boolean;
   unseen?: boolean;
   finished?: boolean;
+  failed?: boolean;
   timestamp?: string | null;
   canDoubleClickRename?: boolean;
   showClearAction?: boolean;
@@ -59,14 +60,16 @@ export function SessionNavRow({
   isRunning = false,
   unseen = false,
   finished = false,
+  failed = false,
   timestamp,
   canDoubleClickRename = false,
   showClearAction = false,
-  renameInputClass = "text-[length:var(--fs-md)]",
+  renameInputClass = "text-[length:var(--fs-base)] leading-5",
 }: SessionNavRowProps) {
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(initialDraft);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useClickOutside(menuRef, menuOpen, () => setMenuOpen(false));
   const startRename = () => {
@@ -103,6 +106,19 @@ export function SessionNavRow({
     );
   }
 
+  if (confirmingArchive && onArchive) {
+    return (
+      <ArchiveConfirmRow
+        className={renameRowClass}
+        onCancel={() => setConfirmingArchive(false)}
+        onConfirm={() => {
+          setConfirmingArchive(false);
+          onArchive();
+        }}
+      />
+    );
+  }
+
   return (
     <div
       className={`${rowClass} ${menuOpen ? "z-[900]" : "z-0"}`}
@@ -117,6 +133,7 @@ export function SessionNavRow({
         isRunning={isRunning}
         unseen={unseen}
         finished={finished}
+        failed={failed}
         pinned={Boolean(pref.pinned)}
         timestamp={timestamp}
         label={label}
@@ -160,7 +177,7 @@ export function SessionNavRow({
         </button>
         {menuOpen ? (
           <SessionOptionsMenu
-            onArchive={onArchive}
+            onArchive={onArchive ? () => setConfirmingArchive(true) : undefined}
             onClear={() => onPatchPref({ title: undefined, pinned: undefined })}
             onClose={() => setMenuOpen(false)}
             onPin={() => onPatchPref({ pinned: !pref.pinned })}
@@ -170,6 +187,45 @@ export function SessionNavRow({
           />
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function ArchiveConfirmRow({
+  className,
+  onCancel,
+  onConfirm,
+}: {
+  className: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className={`${className} gap-1.5`}>
+      <span className="min-w-0 flex-1 truncate text-[length:var(--fs-sm)] leading-4 text-(--dim)">
+        Archive session?
+      </span>
+      <button
+        type="button"
+        autoFocus
+        onClick={onConfirm}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") onCancel();
+        }}
+        className="shrink-0 rounded-[var(--rad-xs)] px-1.5 text-[length:var(--fs-sm)] leading-4 text-(--err) hover:bg-(--hover)"
+      >
+        Archive
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") onCancel();
+        }}
+        className="shrink-0 rounded-[var(--rad-xs)] px-1.5 text-[length:var(--fs-sm)] leading-4 text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+      >
+        Cancel
+      </button>
     </div>
   );
 }
@@ -217,6 +273,7 @@ function SessionOpenTarget({
   isRunning,
   unseen,
   finished,
+  failed,
   pinned,
   timestamp,
   label,
@@ -230,6 +287,7 @@ function SessionOpenTarget({
   isRunning: boolean;
   unseen: boolean;
   finished: boolean;
+  failed: boolean;
   pinned: boolean;
   timestamp?: string | null;
   label: string;
@@ -258,6 +316,7 @@ function SessionOpenTarget({
       isRunning={isRunning}
       unseen={unseen}
       finished={finished}
+      failed={failed}
       timestamp={timestamp}
       label={label}
     />
@@ -308,25 +367,33 @@ function SessionRowContent({
   isRunning,
   unseen,
   finished,
+  failed,
   timestamp,
   label,
 }: {
   isRunning: boolean;
   unseen: boolean;
   finished: boolean;
+  failed: boolean;
   timestamp?: string | null;
   label: string;
 }) {
   const age = visibleSessionAge(isRunning, timestamp, finished);
   return (
     <>
-      <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[length:var(--fs-md)] font-normal leading-5 [mask-image:linear-gradient(to_right,black_calc(100%-20px),transparent)]">
+      <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[length:var(--fs-base)] font-normal leading-5 [mask-image:linear-gradient(to_right,black_calc(100%-20px),transparent)]">
         {label}
       </span>
       {isRunning ? (
         <span className="ml-auto flex w-8 shrink-0 justify-end" aria-label="Session running">
           <Spinner size="xs" className="text-(--link)" />
         </span>
+      ) : failed ? (
+        <span
+          className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--err)"
+          aria-label="Last run failed"
+          title="Last run failed"
+        />
       ) : finished ? (
         <span
           className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--ok)"
@@ -341,7 +408,7 @@ function SessionRowContent({
         />
       ) : null}
       {age ? (
-        <span className="shrink-0 pl-3 text-[length:var(--fs-sm)] tabular-nums text-(--hl2) transition-opacity duration-150 group-hover:opacity-0">
+        <span className="shrink-0 pl-3 text-[length:var(--fs-sm)] leading-4 tabular-nums text-(--hl2) transition-opacity duration-150 group-hover:opacity-0">
           {age}
         </span>
       ) : null}

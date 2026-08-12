@@ -193,6 +193,7 @@ function openSessionSnapshot(
     modelId: tab.modelId ?? state.selectedModel,
     title: cleanSessionTitle(tab.title) || (paneId ? "Current session" : "Background session"),
     status: tab.status,
+    failed: tab.error.trim().length > 0,
     focused,
     startedAt: tab.startedAt,
     updatedAt: tab.startedAt ?? "",
@@ -251,7 +252,7 @@ function openSessionsSignature(state: WorkspaceState): string {
     parts.push(`P:${paneId}>${pane.sessionId}`);
   for (const tab of state.sessions.values()) {
     parts.push(
-      `S:${tab.id}|${tab.status}|${tab.piSessionId ?? ""}|` +
+      `S:${tab.id}|${tab.status}|${tab.error ? "e" : ""}|${tab.piSessionId ?? ""}|` +
         `${tab.projectId ?? ""}|${tab.cwd ?? ""}|${tab.modelId ?? ""}|${tab.startedAt ?? ""}|` +
         `${tab.title ?? ""}|${tab.messages.length}|${tab.usedSkills?.length ?? 0}`,
     );
