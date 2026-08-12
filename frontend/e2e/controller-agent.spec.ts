@@ -1,137 +1,34 @@
-import {
-  createHash,
-  generateKeyPairSync,
-  randomBytes,
-  randomUUID,
-  sign,
-  type KeyObject,
-} from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { expect, test, type APIRequestContext, type Page, type TestInfo } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
-type JsonValue = null | boolean | string | number | JsonValue[] | { [key: string]: JsonValue };
-type BridgeMetadata = {
-  url: string;
-  secretHeader: string;
-  secret: string;
-  controllerId: string;
-};
-type BridgeCursor = {
-  type: "session_transfer_cursor";
-  token: string;
-  revision: number;
-  afterSequence: number;
-  hasMore: boolean;
-};
-type BridgeSessionPage = {
-  type: "session_page";
-  messages: Array<{ role: string; parts: Array<{ type: string; text?: string }> }>;
-  cursor: BridgeCursor | null;
-};
-type BridgeCapability = "sessions.read" | "sessions.write" | "agent.turn";
-
-const bridgeKeys = generateKeyPairSync("ed25519");
-const bridgeDeviceId = (bridgeKeys.publicKey.export({ format: "der", type: "spki" }) as Buffer)
-  .subarray(-32)
-  .toString("hex");
-
-function canonicalJson(value: JsonValue): string {
-  if (value === null) return "null";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  if (typeof value === "string") return JSON.stringify(value);
-  if (typeof value === "number") return String(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  return `{${Object.keys(value)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
-    .join(",")}}`;
-}
-
-function bridgeSignaturePreimage(fields: string[]): Buffer {
-  const parts = [Buffer.from("litter-bridge-request-v1", "ascii")];
-  for (const field of fields) {
-    const bytes = Buffer.from(field, "utf8");
-    const length = Buffer.allocUnsafe(4);
-    length.writeUInt32BE(bytes.length);
-    parts.push(length, bytes);
-  }
-  return Buffer.concat(parts);
-}
-
-function signedBridgeRequest(
-  body: { [key: string]: JsonValue },
-  capability: BridgeCapability,
-  idempotencyKey?: string,
-  privateKey: KeyObject = bridgeKeys.privateKey,
-): { [key: string]: JsonValue } {
-  const requestId = randomUUID();
-  const issuedAt = new Date();
-  const expiresAt = new Date(issuedAt.getTime() + 30_000);
-  const nonce = randomBytes(16).toString("base64url");
-  const bodyHash = createHash("sha256").update(canonicalJson(body), "utf8").digest("hex");
-  const auth: {
-    device: { deviceId: string; keyId: string; algorithm: "ed25519" };
-    requestId: string;
-    issuedAt: string;
-    expiresAt: string;
-    nonce: string;
-    capability: BridgeCapability;
-    bodyHash: string;
-    signature: string;
-    idempotencyKey?: string;
-  } = {
-    device: { deviceId: bridgeDeviceId, keyId: bridgeDeviceId, algorithm: "ed25519" },
-    requestId,
-    issuedAt: issuedAt.toISOString(),
-    expiresAt: expiresAt.toISOString(),
-    nonce,
-    capability,
-    bodyHash,
-    signature: "",
+type RuntimeMetadata = {
+  piAgentDir: string;
+  piRuntime: {
+    program: string;
+    args: string[];
+    env: Record<string, string>;
   };
-  if (idempotencyKey) auth.idempotencyKey = idempotencyKey;
-  auth.signature = sign(
-    null,
-    bridgeSignaturePreimage([
-      bridgeDeviceId,
-      bridgeDeviceId,
-      requestId,
-      auth.issuedAt,
-      auth.expiresAt,
-      nonce,
-      capability,
-      idempotencyKey ?? "",
-      bodyHash,
-    ]),
-    privateKey,
-  ).toString("base64url");
-  return { ...body, auth };
-}
+};
 
-async function bridgeMetadata(testInfo: TestInfo): Promise<BridgeMetadata> {
+async function runtimeMetadata(testInfo: TestInfo): Promise<RuntimeMetadata> {
   const dataDir = testInfo.config.metadata.localStudioDataDir;
   if (typeof dataDir !== "string") {
-    throw new Error("Litter bridge test data directory is unavailable");
+    throw new Error("Litter runtime metadata directory is unavailable");
   }
   const filepath = path.join(dataDir, "litter-bridge.json");
   await expect.poll(() => existsSync(filepath)).toBe(true);
-  return JSON.parse(readFileSync(filepath, "utf8")) as BridgeMetadata;
+  return JSON.parse(readFileSync(filepath, "utf8")) as RuntimeMetadata;
 }
 
-async function postBridge(
-  request: APIRequestContext,
-  metadata: BridgeMetadata,
-  body: { [key: string]: JsonValue },
-  capability: BridgeCapability = "sessions.read",
-  idempotencyKey?: string,
-): Promise<unknown> {
-  const response = await request.post(metadata.url, {
-    headers: { [metadata.secretHeader]: metadata.secret },
-    data: signedBridgeRequest(body, capability, idempotencyKey),
-  });
-  expect(response.ok(), await response.text()).toBe(true);
-  return response.json();
+function publishedSessionFile(piAgentDir: string, sessionId: string): string | null {
+  const sessionsDir = path.join(piAgentDir, "sessions");
+  if (!existsSync(sessionsDir)) return null;
+  const entry = readdirSync(sessionsDir, { recursive: true }).find((candidate) =>
+    String(candidate).includes(sessionId),
+  );
+  return entry ? path.join(sessionsDir, String(entry)) : null;
 }
 
 async function openControllerChat(page: Page, title: string) {
@@ -390,12 +287,11 @@ test("a background session reports completion and reopens without losing its tra
   await expect(page.getByLabel("Run finished")).toHaveCount(0);
 });
 
-test("signed Litter bridge discovers and pages the recorded session", async ({
+test("Litter runtime metadata publishes the recorded Pi session store", async ({
   page,
-  request,
 }, testInfo) => {
-  const composer = await openControllerChat(page, "Litter bridge parity");
-  const opening = "Export this conversation through the signed bridge.";
+  const composer = await openControllerChat(page, "Litter runtime parity");
+  const opening = "Keep this conversation in the published Local Studio session store.";
   await composer.fill(opening);
   await composer.press("Enter");
   await expect(page.getByText("Controller scoped Pi reply.")).toBeVisible({ timeout: 60_000 });
@@ -403,203 +299,88 @@ test("signed Litter bridge discovers and pages the recorded session", async ({
   const sessionId = new URL(page.url()).searchParams.get("session");
   if (!sessionId) throw new Error("Recorded Pi session id is unavailable");
 
-  const metadata = await bridgeMetadata(testInfo);
-  const listed = (await postBridge(request, metadata, {
-    type: "session_list_request",
-    protocolVersion: 1,
-    cursor: null,
-    limit: 200,
-  })) as {
-    type: string;
-    sessions: Array<{
-      session: { sessionId: string };
-      metadata: { title: string | null; cwd: string };
-    }>;
-  };
-  expect(listed.type).toBe("session_list_page");
-  expect(listed.sessions).toContainEqual(
-    expect.objectContaining({ session: expect.objectContaining({ sessionId }) }),
-  );
-  const descriptor = listed.sessions.find((session) => session.session.sessionId === sessionId);
-  if (!descriptor) throw new Error("Recorded Pi session descriptor is unavailable");
-
-  const identity = {
-    kind: "external_session",
-    authority: "local-studio",
-    installationId: metadata.controllerId,
-    sessionId,
-  };
-  const messages: BridgeSessionPage["messages"] = [];
-  let cursor: BridgeCursor | null = null;
-  do {
-    const result = (await postBridge(request, metadata, {
-      type: "session_read_request",
-      protocolVersion: 1,
-      session: cursor ? null : identity,
-      cursor,
-      limit: 1,
-    })) as BridgeSessionPage;
-    expect(result.type).toBe("session_page");
-    messages.push(...result.messages);
-    cursor = result.cursor;
-  } while (cursor);
-
-  const text = messages.flatMap((message) =>
-    message.parts.filter((part) => part.type === "text").map((part) => part.text),
-  );
-  expect(text).toContain(opening);
-  expect(text).toContain("Controller scoped Pi reply.");
-
-  const archived = await request.patch(`/api/agent/sessions/${encodeURIComponent(sessionId)}`, {
-    data: { archived: true, cwd: descriptor.metadata.cwd },
-  });
-  expect(archived.ok(), await archived.text()).toBe(true);
-  const archivedInventory = (await postBridge(request, metadata, {
-    type: "session_list_request",
-    protocolVersion: 1,
-    cursor: null,
-    limit: 200,
-  })) as {
-    sessions: Array<{ session: { sessionId: string }; archived: boolean }>;
-  };
-  expect(
-    archivedInventory.sessions.find((session) => session.session.sessionId === sessionId),
-  ).toMatchObject({ archived: true });
-  const archivedRead = (await postBridge(request, metadata, {
-    type: "session_read_request",
-    protocolVersion: 1,
-    session: identity,
-    cursor: null,
-    limit: 200,
-  })) as BridgeSessionPage;
-  expect(
-    archivedRead.messages.flatMap((message) =>
-      message.parts.filter((part) => part.type === "text").map((part) => part.text),
-    ),
-  ).toContain(opening);
-
-  const restored = await request.patch(`/api/agent/sessions/${encodeURIComponent(sessionId)}`, {
-    data: { archived: false },
-  });
-  expect(restored.ok(), await restored.text()).toBe(true);
-  const restoredInventory = (await postBridge(request, metadata, {
-    type: "session_list_request",
-    protocolVersion: 1,
-    cursor: null,
-    limit: 200,
-  })) as {
-    sessions: Array<{ session: { sessionId: string }; archived: boolean }>;
-  };
-  expect(
-    restoredInventory.sessions.find((session) => session.session.sessionId === sessionId),
-  ).toMatchObject({ archived: false });
-});
-
-test("signed Litter bridge creates and continues a recorded session", async ({
-  page,
-  request,
-}, testInfo) => {
-  const homeDir = testInfo.config.metadata.localStudioHomeDir;
-  if (typeof homeDir !== "string") throw new Error("Recorded project directory is unavailable");
-  const projectResponse = await request.post("/api/agent/projects", { data: { path: homeDir } });
-  expect(projectResponse.ok(), await projectResponse.text()).toBe(true);
-
-  const metadata = await bridgeMetadata(testInfo);
-  const opening = "Create this session through the signed mobile bridge.";
-  const openingHash = createHash("sha256").update(opening, "utf8").digest("hex");
-  const created = (await postBridge(
-    request,
-    metadata,
+  const metadata = await runtimeMetadata(testInfo);
+  const dataDir = testInfo.config.metadata.localStudioDataDir;
+  expect(metadata.piAgentDir).toBe(path.join(String(dataDir), "pi-agent"));
+  const version = execFileSync(
+    metadata.piRuntime.program,
+    [...metadata.piRuntime.args, "--version"],
     {
-      type: "session_create_request",
-      protocolVersion: 1,
-      controllerId: metadata.controllerId,
-      cwd: homeDir,
-      modelId: "controller-model",
-      title: "Recorded mobile session",
-      messageId: randomUUID(),
-      content: opening,
-      contentHash: openingHash,
+      encoding: "utf8",
+      env: { ...process.env, ...metadata.piRuntime.env },
     },
-    "sessions.write",
-    randomUUID(),
-  )) as {
-    type: string;
-    dispatchId: string;
-    piSessionId: string;
-    canonicalSession: {
-      kind: "external_session";
-      authority: "local-studio";
-      installationId: string;
-      sessionId: string;
-    };
-  };
-  expect(created.type).toBe("session_create_ack");
+  ).trim();
+  expect(version).toMatch(/^\d+\.\d+\.\d+/);
+  await expect.poll(() => Boolean(publishedSessionFile(metadata.piAgentDir, sessionId))).toBe(true);
 
-  await page.goto(`/agent?session=${encodeURIComponent(created.piSessionId)}`);
-  const transcript = page.getByRole("article");
-  await expect(transcript.getByText(opening, { exact: true })).toBeVisible({ timeout: 60_000 });
-  await expect(transcript.getByText("Controller scoped Pi reply.", { exact: true })).toBeVisible({
+  const followUp = "Continue the same published Local Studio session.";
+  await composer.fill(followUp);
+  await composer.press("Enter");
+  await expect(page.getByText(followUp, { exact: true })).toBeVisible();
+  await expect(page.getByText("Controller scoped Pi reply.", { exact: true })).toHaveCount(2, {
     timeout: 60_000,
   });
 
-  let revision = -1;
-  await expect
-    .poll(
-      async () => {
-        const listed = (await postBridge(request, metadata, {
-          type: "session_list_request",
-          protocolVersion: 1,
-          cursor: null,
-          limit: 200,
-        })) as {
-          sessions: Array<{
-            session: { sessionId: string };
-            revision: number;
-            active: boolean;
-          }>;
-        };
-        const descriptor = listed.sessions.find(
-          (session) => session.session.sessionId === created.piSessionId,
-        );
-        revision = descriptor?.revision ?? -1;
-        return descriptor ? `${descriptor.active}:${descriptor.revision}` : "missing";
-      },
-      { timeout: 60_000 },
-    )
-    .toMatch(/^false:\d+$/);
-
-  const followUp = "Continue this same session through the signed mobile bridge.";
-  const followUpHash = createHash("sha256").update(followUp, "utf8").digest("hex");
-  const idempotencyKey = randomUUID();
-  const turn = {
-    type: "agent_turn_request",
-    protocolVersion: 1,
-    session: created.canonicalSession,
-    expectedRevision: revision,
-    messageId: randomUUID(),
-    modelId: null,
-    content: followUp,
-    contentHash: followUpHash,
-  } as const;
-  const accepted = (await postBridge(request, metadata, turn, "agent.turn", idempotencyKey)) as {
-    type: string;
-    dispatchId: string;
+  const sessionFile = publishedSessionFile(metadata.piAgentDir, sessionId);
+  if (!sessionFile) throw new Error("Published Pi session file is unavailable");
+  const runtimeEnv = {
+    ...process.env,
+    ...metadata.piRuntime.env,
+    PI_CODING_AGENT_DIR: metadata.piAgentDir,
   };
-  expect(accepted.type).toBe("agent_turn_ack");
-  const replayed = (await postBridge(request, metadata, turn, "agent.turn", idempotencyKey)) as {
-    type: string;
-    dispatchId: string;
-  };
-  expect(replayed).toMatchObject({ type: "agent_turn_ack", dispatchId: accepted.dispatchId });
-
-  await expect(transcript.getByText(followUp, { exact: true })).toBeVisible({ timeout: 60_000 });
-  await expect(transcript.getByText("Controller scoped Pi reply.", { exact: true })).toHaveCount(
-    2,
+  const externalFollowUp = "Continue this session through the published Pi runtime.";
+  const runtimeOutput = execFileSync(
+    metadata.piRuntime.program,
+    [
+      ...metadata.piRuntime.args,
+      "--mode",
+      "json",
+      "--session",
+      sessionFile,
+      "--no-extensions",
+      "--no-skills",
+      "--no-prompt-templates",
+      "--no-context-files",
+      externalFollowUp,
+    ],
     {
-      timeout: 60_000,
+      encoding: "utf8",
+      env: runtimeEnv,
     },
   );
+  expect(runtimeOutput).toContain("Controller scoped Pi reply.");
+  const rpcOutput = execFileSync(
+    metadata.piRuntime.program,
+    [
+      ...metadata.piRuntime.args,
+      "--mode",
+      "rpc",
+      "--session",
+      sessionFile,
+      "--no-extensions",
+      "--no-skills",
+      "--no-prompt-templates",
+      "--no-context-files",
+    ],
+    {
+      encoding: "utf8",
+      env: runtimeEnv,
+      input: `${JSON.stringify({ type: "get_entries" })}\n`,
+    },
+  );
+  const rpcSession = JSON.parse(rpcOutput.trim()) as { success: boolean; data: unknown };
+  expect(rpcSession.success).toBe(true);
+  const publishedTranscript = JSON.stringify(rpcSession.data);
+  expect(publishedTranscript).toContain(opening);
+  expect(publishedTranscript).toContain(followUp);
+  expect(publishedTranscript).toContain(externalFollowUp);
+
+  await page.goto(`/agent?session=${encodeURIComponent(sessionId)}`);
+  const transcript = page.getByRole("article");
+  await expect(transcript.getByText(opening, { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(transcript.getByText(followUp, { exact: true })).toBeVisible();
+  await expect(transcript.getByText(externalFollowUp, { exact: true })).toBeVisible();
+  await expect(transcript.getByText("Controller scoped Pi reply.", { exact: true })).toHaveCount(3);
 });
 
 test("live runtime results drive subagents, automations, and goals", async ({ page, request }) => {

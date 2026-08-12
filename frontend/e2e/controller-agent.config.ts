@@ -107,6 +107,7 @@ export default defineConfig({
         `HOME=${homeDir}`,
         `LOCAL_STUDIO_AGENT_RUNTIME_URL=http://127.0.0.1:${runtimePort}`,
         `LOCAL_STUDIO_DATA_DIR=${dataDir}`,
+        `PI_CODING_AGENT_DIR=${path.join(dataDir, "pi-agent")}`,
         `LOCAL_STUDIO_RESOURCES_PATH=${resourcesPath}`,
         `KITTYLITTER_BIN=${kittylitterBin}`,
         `node ${projectScript} start`,
