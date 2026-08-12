@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Button, Checkbox, UiModal, UiModalBody, UiModalFooter, UiModalHeader } from "@/ui";
+import { Button, UiModal, UiModalBody, UiModalFooter, UiModalHeader } from "@/ui";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import type {
   AttachResult,
@@ -14,6 +14,60 @@ type Props = {
   modelName: string;
   onClose: () => void;
 };
+
+const LOGO_COLORS: Record<LocalAgentId, { background: string; foreground: string }> = {
+  pi: { background: "#e8b931", foreground: "#171717" },
+  opencode: { background: "#374151", foreground: "#f9fafb" },
+  droid: { background: "#4f46e5", foreground: "#eef2ff" },
+  hermes: { background: "#b45309", foreground: "#fffbeb" },
+  omp: { background: "#0f766e", foreground: "#f0fdfa" },
+};
+
+function LocalAgentLogo({ agent }: { agent: LocalAgentId }) {
+  const colors = LOGO_COLORS[agent];
+  return (
+    <span
+      aria-hidden="true"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg shadow-sm"
+      style={{ background: colors.background, color: colors.foreground }}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+      >
+        {agent === "pi" ? (
+          <path d="M5 6h14M8.5 6v12M15.5 6v12" strokeLinecap="round" />
+        ) : agent === "opencode" ? (
+          <>
+            <path d="m9 7-5 5 5 5M15 7l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="m14 5-4 14" strokeLinecap="round" />
+          </>
+        ) : agent === "droid" ? (
+          <>
+            <path d="M5 10.5A3.5 3.5 0 0 1 8.5 7h7a3.5 3.5 0 0 1 3.5 3.5v5A3.5 3.5 0 0 1 15.5 19h-7A3.5 3.5 0 0 1 5 15.5v-5Z" />
+            <path d="M12 7V4M10 14h.01M14 14h.01" strokeLinecap="round" />
+          </>
+        ) : agent === "hermes" ? (
+          <>
+            <path
+              d="M6 17c4.6-1.2 7.4-4.4 9-10 1.8 3.3 2.6 6.7 2.4 10.2-3.7.3-7.5.2-11.4-.2Z"
+              strokeLinejoin="round"
+            />
+            <path d="M8 15.5 15.5 9M9.5 17l6.5-1.5" strokeLinecap="round" />
+          </>
+        ) : (
+          <>
+            <circle cx="9" cy="12" r="4.5" />
+            <circle cx="15" cy="12" r="4.5" />
+          </>
+        )}
+      </svg>
+    </span>
+  );
+}
 
 export function AttachLocalAgentsDialog({ modelId, modelName, onClose }: Props) {
   const [agents, setAgents] = useState<LocalAgentTarget[] | null>(null);
@@ -84,13 +138,25 @@ export function AttachLocalAgentsDialog({ modelId, modelName, onClose }: Props) 
         ) : (
           <div className="space-y-3">
             {agents.map((agent) => (
-              <Checkbox
+              <label
                 key={agent.agent}
-                checked={selected.has(agent.agent)}
-                onChange={(checked) => toggleAgent(agent.agent, checked)}
-                label={agent.label}
-                description={`${agent.configPath}${agent.exists ? "" : " (will be created)"} — writes on this machine`}
-              />
+                className="flex cursor-pointer items-center gap-3 rounded-lg border border-(--ui-border) bg-(--ui-bg) p-3 transition-colors hover:bg-(--ui-hover)"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(agent.agent)}
+                  onChange={(event) => toggleAgent(agent.agent, event.target.checked)}
+                  className="h-4 w-4 rounded border-(--ui-border) bg-(--ui-bg)"
+                />
+                <LocalAgentLogo agent={agent.agent} />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-(--ui-fg)">{agent.label}</span>
+                  <span className="mt-0.5 block truncate font-mono text-xs text-(--ui-muted)">
+                    {agent.configPath}
+                    {agent.exists ? "" : " (will be created)"} — writes on this machine
+                  </span>
+                </span>
+              </label>
             ))}
           </div>
         )}
@@ -127,7 +193,6 @@ export function AttachLocalAgentsDialog({ modelId, modelName, onClose }: Props) 
             ))}
           </div>
         ) : null}
-
       </UiModalBody>
       <UiModalFooter>
         <Button variant="ghost" onClick={onClose}>
