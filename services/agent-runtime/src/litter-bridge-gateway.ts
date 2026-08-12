@@ -104,7 +104,6 @@ const SIGNATURE_DOMAIN = Buffer.from("litter-bridge-request-v1", "ascii");
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 
 type JsonRecord = Record<string, unknown>;
-type FetchImplementation = typeof fetch;
 type RuntimeStats = {
   runningSessionCount: number;
   activeTurnCount: number;
@@ -113,26 +112,6 @@ type RuntimeStats = {
 };
 type TrustedProject = Pick<ProjectEntry, "path" | "exists">;
 type LiveProject = { cwd: string; variants: string[] };
-type GatewayOptions = {
-  secret?: string;
-  controllerId?: string;
-  dataDir?: string;
-  displayName?: string;
-  controllerUrl?: string;
-  controllerApiKey?: string;
-  now?: () => Date;
-  fetch?: FetchImplementation;
-  runtimeStats?: () => RuntimeStats;
-  projects?: () => TrustedProject[];
-  sessionRoots?: string[];
-  sessionCursorTtlMs?: number;
-  sessionInventoryLimit?: number;
-  activeSessionIds?: () => ReadonlySet<string>;
-  archivedSessionIds?: () => ReadonlySet<string>;
-  turnRuntime?: TurnRuntimeManager;
-  mutationLeaseMs?: number;
-  mutationRetentionMs?: number;
-};
 type GatewayPiRuntime = {
   program: string;
   args: string[];
@@ -159,14 +138,6 @@ type Section<T> = {
   freshness: LitterBridgeFreshness;
 };
 type SignedMutationRequest = LitterBridgeSessionCreateRequest | LitterBridgeAgentTurnRequest;
-type TurnRuntimeEntry = {
-  sessionId: string;
-  session: Pick<PiAgentSession, "ensureStarted" | "promptDurably" | "status">;
-};
-type TurnRuntimeManager = {
-  findSessionForLookup(sessionId: string, piSessionId?: string | null): TurnRuntimeEntry | null;
-  getSessionForLookup(sessionId: string, piSessionId?: string | null): TurnRuntimeEntry;
-};
 type ToolOwner = {
   toolCallId: string;
   messageId: string;
@@ -831,7 +802,6 @@ const readBoundedResponse = async (response: Response): Promise<unknown> => {
 };
 
 const fetchControllerJson = async (
-  implementation: FetchImplementation,
   base: URL,
   route: string,
   timeoutMs: number,
@@ -839,7 +809,7 @@ const fetchControllerJson = async (
 ): Promise<unknown> => {
   const headers = new Headers({ Accept: "application/json" });
   if (apiKey) headers.set("Authorization", `Bearer ${apiKey}`);
-  const response = await implementation(new URL(route, base), {
+  const response = await fetch(new URL(route, base), {
     method: "GET",
     headers,
     redirect: "manual",
@@ -1036,16 +1006,14 @@ const liveProjects = (projects: TrustedProject[]): LiveProject[] => {
   return [...byCwd.values()].sort((left, right) => left.cwd.localeCompare(right.cwd));
 };
 
-const sessionRootPaths = (dataDir: string, configured?: string[]): string[] => {
-  const roots =
-    configured ??
-    [
-      process.env.PI_CODING_AGENT_DIR
-        ? path.join(process.env.PI_CODING_AGENT_DIR, "sessions")
-        : null,
-      path.join(dataDir, "pi-agent", "sessions"),
-      path.join(homedir(), ".pi", "agent", "sessions"),
-    ].filter((value): value is string => Boolean(value));
+const sessionRootPaths = (dataDir: string): string[] => {
+  const roots = [
+    process.env.PI_CODING_AGENT_DIR
+      ? path.join(process.env.PI_CODING_AGENT_DIR, "sessions")
+      : null,
+    path.join(dataDir, "pi-agent", "sessions"),
+    path.join(homedir(), ".pi", "agent", "sessions"),
+  ].filter((value): value is string => Boolean(value));
   return [...new Set(roots.map((root) => path.resolve(root)))];
 };
 
@@ -1995,26 +1963,17 @@ const readSessionSlice = (input: {
   };
 };
 
-export function createLitterBridgeGateway(options: GatewayOptions = {}) {
-  const dataDir = options.dataDir ?? resolveDataDir();
+export function createLitterBridgeGateway() {
+  const dataDir = resolveDataDir();
   const secret =
-    options.secret ??
-    process.env.LOCAL_STUDIO_LITTER_BRIDGE_SECRET?.trim() ??
-    randomBytes(32).toString("base64url");
+    process.env.LOCAL_STUDIO_LITTER_BRIDGE_SECRET?.trim() ?? randomBytes(32).toString("base64url");
   if (secret.length < 32 || secret.length > 512) throw new Error("Invalid Litter bridge secret");
-  const controllerId = options.controllerId ?? loadControllerId(dataDir);
-  const displayName = options.displayName ?? `Local Studio on ${hostname()}`;
-  const now = options.now ?? (() => new Date());
-  const implementation = options.fetch ?? globalThis.fetch;
-  const turnRuntime = options.turnRuntime ?? piRuntimeManager;
+  const controllerId = loadControllerId(dataDir);
+  const displayName = `Local Studio on ${hostname()}`;
+  const now = () => new Date();
   let mutationLedger: ReturnType<typeof createLitterMutationLedger> | null = null;
   const getMutationLedger = () =>
-    (mutationLedger ??= createLitterMutationLedger(dataDir, now, {
-      ...(options.mutationLeaseMs === undefined ? {} : { leaseMs: options.mutationLeaseMs }),
-      ...(options.mutationRetentionMs === undefined
-        ? {}
-        : { retentionMs: options.mutationRetentionMs }),
-    }));
+    (mutationLedger ??= createLitterMutationLedger(dataDir, now));
   const mutationOwnerId = `${process.pid}-${randomUUID()}`;
   type MutationFlow =
     | {
@@ -2108,29 +2067,16 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
       settle,
     };
   };
-  const runtimeStats = options.runtimeStats ?? defaultRuntimeStats;
-  const projects = options.projects ?? listProjectsFromStore;
-  const roots = sessionRootPaths(dataDir, options.sessionRoots);
-  const cursorTtlMs = options.sessionCursorTtlMs ?? CURSOR_TTL_MS;
-  if (!Number.isSafeInteger(cursorTtlMs) || cursorTtlMs <= 0 || cursorTtlMs > 86_400_000) {
-    throw new Error("Invalid Litter bridge cursor lifetime");
-  }
-  const inventoryLimit = options.sessionInventoryLimit ?? SESSION_INVENTORY_LIMIT;
-  if (!Number.isSafeInteger(inventoryLimit) || inventoryLimit <= 0 || inventoryLimit > 100_000) {
-    throw new Error("Invalid Litter bridge session inventory limit");
-  }
-  const activeSessionIds =
-    options.activeSessionIds ??
-    (() =>
-      new Set(
-        piRuntimeManager
-          .listSessions()
-          .filter(({ session }) => session.status.active && session.status.piSessionId)
-          .map(({ session }) => session.status.piSessionId as string),
-      ));
-  const archivedSessionIds =
-    options.archivedSessionIds ??
-    (() => new Set(listArchivedSessionMetadata().map((metadata) => metadata.id)));
+  const roots = sessionRootPaths(dataDir);
+  const activeSessionIds = () =>
+    new Set(
+      piRuntimeManager
+        .listSessions()
+        .filter(({ session }) => session.status.active && session.status.piSessionId)
+        .map(({ session }) => session.status.piSessionId as string),
+    );
+  const archivedSessionIds = () =>
+    new Set(listArchivedSessionMetadata().map((metadata) => metadata.id));
   const replay = new Map<string, number>();
   const cursors = new Map<string, SessionCursorState>();
   const listCursors = new Map<string, SessionListCursorState>();
@@ -2206,16 +2152,16 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
   const buildSnapshot = async (
     request: LitterBridgeControllerSnapshotRequest,
   ): Promise<LitterBridgeControllerSnapshot> => {
-    const settings = options.controllerUrl === undefined ? await getApiSettings() : null;
-    const backendUrl = options.controllerUrl ?? settings?.backendUrl;
+    const settings = await getApiSettings();
+    const backendUrl = settings?.backendUrl;
     if (!backendUrl) throw new Error("Controller settings are unavailable");
-    const apiKey = options.controllerApiKey ?? settings?.apiKey ?? "";
+    const apiKey = settings?.apiKey ?? "";
     const base = resolveControllerBase(backendUrl);
     const requestId = request.auth.requestId;
     const healthPromise = snapshotSection(
       async () => {
         const startedAt = performance.now();
-        const result = await fetchControllerJson(implementation, base, "/health", 1_500, apiKey);
+        const result = await fetchControllerJson(base, "/health", 1_500, apiKey);
         if (!isRecord(result) || result.status !== "ok") {
           throw new Error("Controller health shape is invalid");
         }
@@ -2241,7 +2187,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     ) =>
       snapshotSection(
         async () =>
-          normalize(await fetchControllerJson(implementation, base, route, timeoutMs, apiKey)),
+          normalize(await fetchControllerJson(base, route, timeoutMs, apiKey)),
         requestId,
         "section_unavailable",
         message,
@@ -2269,7 +2215,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
       normalizeMetrics,
     );
     const runtimePromise = snapshotSection(
-      () => ({ state: "ok" as const, reachable: true, ...runtimeStats() }),
+      () => ({ state: "ok" as const, reachable: true, ...defaultRuntimeStats() }),
       requestId,
       "agent_runtime_unavailable",
       "Agent runtime statistics are unavailable",
@@ -2346,9 +2292,9 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     }
     const inventory = await enumerateSessionInventory({
       controllerId,
-      projects: projects(),
+      projects: listProjectsFromStore(),
       roots,
-      inventoryLimit,
+      inventoryLimit: SESSION_INVENTORY_LIMIT,
       activeSessionIds: activeSessionIds(),
       archivedSessionIds: archivedSessionIds(),
     });
@@ -2371,7 +2317,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         revision: inventory.revision,
         inventoryHash: inventory.hash,
         offset: result.nextOffset,
-        expiresAt: requestNow.getTime() + cursorTtlMs,
+        expiresAt: requestNow.getTime() + CURSOR_TTL_MS,
       });
     }
     return new Response(result.json, {
@@ -2403,7 +2349,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
       ) {
         throw new SessionReadError("not_found", "Session identity was not found", 404);
       }
-      const resolved = resolveSessionFile(request.session.sessionId, projects(), roots);
+      const resolved = resolveSessionFile(request.session.sessionId, listProjectsFromStore(), roots);
       metadata = await readSessionMetadata(resolved, roots);
       const afterMetadata = fingerprintSessionFile(resolved.filepath);
       if (afterMetadata.value !== resolved.value) {
@@ -2449,7 +2395,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
       ) {
         throw new SessionReadError("invalid_request", "Session cursor is invalid", 400);
       }
-      if (!liveProjects(projects()).some((project) => project.cwd === state.cwd)) {
+      if (!liveProjects(listProjectsFromStore()).some((project) => project.cwd === state.cwd)) {
         throw new SessionReadError("not_found", "Session project was not found", 404);
       }
       cursors.delete(supplied.token);
@@ -2474,7 +2420,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
       metadata,
       translation,
       now: requestNow,
-      cursorTtlMs,
+      cursorTtlMs: CURSOR_TTL_MS,
     });
     if (result.page.cursor && result.cursorState) {
       rememberCursor(result.page.cursor.token, result.cursorState);
@@ -2518,7 +2464,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         }
         let resolved: ResolvedSessionFile;
         try {
-          resolved = resolveSessionFile(request.session.sessionId, projects(), roots);
+          resolved = resolveSessionFile(request.session.sessionId, listProjectsFromStore(), roots);
         } catch {
           return jsonError(
             "internal",
@@ -2562,7 +2508,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
 
       let resolved: ResolvedSessionFile;
       try {
-        resolved = resolveSessionFile(request.session.sessionId, projects(), roots);
+        resolved = resolveSessionFile(request.session.sessionId, listProjectsFromStore(), roots);
       } catch (error) {
         if (error instanceof SessionReadError) {
           return rejectPermanent(
@@ -2593,7 +2539,10 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
           request.session.sessionId,
         ]),
       )}`;
-      const existing = turnRuntime.findSessionForLookup(runtimeAffinity, request.session.sessionId);
+      const existing = piRuntimeManager.findSessionForLookup(
+        runtimeAffinity,
+        request.session.sessionId,
+      );
       if (existing?.session.status.active) {
         return rejectRetryable(
           errorResult(
@@ -2621,7 +2570,8 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         );
       }
       const target =
-        existing ?? turnRuntime.getSessionForLookup(runtimeAffinity, request.session.sessionId);
+        existing ??
+        piRuntimeManager.getSessionForLookup(runtimeAffinity, request.session.sessionId);
       try {
         await target.session.ensureStarted(modelId, resolved.cwd, request.session.sessionId);
       } catch {
@@ -2755,7 +2705,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     let revision = 0;
     let active = true;
     try {
-      const resolved = resolveSessionFile(input.sessionId, projects(), roots);
+      const resolved = resolveSessionFile(input.sessionId, listProjectsFromStore(), roots);
       metadata = await readSessionMetadata(resolved, roots);
       revision = resolved.revision;
       active = activeSessionIds().has(input.sessionId);
@@ -2807,7 +2757,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
       }
     })();
     const project = requestedCwd
-      ? liveProjects(projects()).find((entry) => entry.cwd === requestedCwd)
+      ? liveProjects(listProjectsFromStore()).find((entry) => entry.cwd === requestedCwd)
       : null;
     if (!project) {
       return jsonError("forbidden", "Working directory is not an allowed project", requestId, 403);
@@ -2871,7 +2821,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
           request.auth.idempotencyKey,
         ]),
       )}`;
-      const target = turnRuntime.getSessionForLookup(runtimeAffinity, null);
+      const target = piRuntimeManager.getSessionForLookup(runtimeAffinity, null);
       try {
         await target.session.ensureStarted(modelId, project.cwd, null);
       } catch {
