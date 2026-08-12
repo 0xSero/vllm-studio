@@ -13,6 +13,8 @@ const expectedOperations = [
   "GET /api/agent/runtime/sessions",
   "GET /api/agent/runtime/status",
   "GET /api/agent/runtime/events",
+  "POST /api/agent/transcribe",
+  "GET /api/agent/transcribe/engine",
   "GET /api/agent/setup-checks",
   "GET /api/agent/models",
   "POST /api/agent/models",
