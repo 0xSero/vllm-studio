@@ -5,7 +5,7 @@ import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
-import { useToolsStore } from "@/features/agent/tools/store";
+import { useWorkbench } from "@/features/agent/workbench/context";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import { writeClipboardText } from "@/lib/clipboard";
 
@@ -121,8 +121,6 @@ const components: Components = {
       <span>{children}</span>
     ),
   img: ({ alt }) => <span>{alt ? `[Image: ${alt}]` : "[Remote image hidden]"}</span>,
-  // Cells/rows are styled entirely via `.chat-markdown` in chat.css; only the
-  // scroll wrapper needs a component override.
   table: ({ node: _n, ...props }) => (
     <div className="my-3 max-w-full overflow-x-auto">
       <table {...props} />
@@ -139,21 +137,8 @@ function safeExternalHref(value: string | undefined): boolean {
   }
 }
 
-// The remark/rehype plugin lists are constant. Hoisted out of render so the
-// `ReactMarkdown` reconciler sees the same array identity each commit.
 const REMARK_PLUGINS = [remarkGfm];
 
-// Repair a single emphasis run whose closing delimiter has a stray leading
-// space (`**text **`), which CommonMark won't parse as bold. Two guards keep us
-// from collapsing the space *between* two adjacent runs:
-//   1. the content must START with a non-space, non-delimiter char, so we anchor
-//      on a real opener rather than a previous run's closing `**` — blocks
-//      `**a** and **b**` (gap starts with a space);
-//   2. the trailing `**` must NOT be immediately followed by a word or `*` char,
-//      otherwise it's the OPENER of the next run, not a closer — blocks
-//      `**a**, **b**` (gap starts with punctuation).
-// Only spaces/tabs are stripped (not newlines), since the symptom is a lost
-// inline space.
 function normalizeLooseMarkdownEmphasis(text: string): string {
   return text
     .replace(/\*\*([^\s*][^\n*]*?)[ \t]+\*\*(?![*\w])/g, "**$1**")
@@ -175,16 +160,6 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
       .replace(/^file:\/\//, "")
       .replace(/:\d+(?::\d+)?$/, "");
 
-  // Clicking a file reference opens it in the right panel's Files view with the
-  // file selected — on both web and desktop. `requestFileOpen` opens the panel,
-  // switches to the files tab, and the filesystem effect resolves the path
-  // (file://, :line suffix, cwd-relative, or absolute-under-cwd) and previews
-  // images/markdown/etc via its own previewKind logic.
-  //
-  // Alt-click is the explicit "Reveal" affordance: on desktop it reveals the
-  // file in Finder/Explorer (server-side path resolution), falling back to the
-  // in-app Files view when reveal is unavailable or fails; on web there is no OS
-  // file manager, so it just opens the Files view like a plain click.
   const openFileReference = (raw: string, revealInOs: boolean) => {
     const cleaned = stripPath(raw);
     if (!cleaned) return;
@@ -248,8 +223,6 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
   };
 }
 
-// A file path renders as a plain blue link (monospace, so paths stay legible)
-// rather than a chip — no icon, no background, no inline copy button.
 function FileLink({
   children,
   onOpen,
@@ -275,10 +248,10 @@ function FileLink({
 }
 
 function AssistantMarkdownInner({ text }: { text: string }) {
-  const setComputerOpen = useToolsStore((state) => state.setComputerOpen);
-  const setComputerTab = useToolsStore((state) => state.setComputerTab);
-  const setBrowserUrl = useToolsStore((state) => state.setBrowserUrl);
-  const requestFileOpen = useToolsStore((state) => state.requestFileOpen);
+  const setComputerOpen = useWorkbench((state) => state.setComputerOpen);
+  const setComputerTab = useWorkbench((state) => state.setComputerTab);
+  const setBrowserUrl = useWorkbench((state) => state.setBrowserUrl);
+  const requestFileOpen = useWorkbench((state) => state.requestFileOpen);
   const normalizedText = useMemo(() => normalizeLooseMarkdownEmphasis(text), [text]);
   const componentsWithAppLinks = useMemo<Components>(
     () =>
@@ -307,8 +280,5 @@ function AssistantMarkdownInner({ text }: { text: string }) {
   );
 }
 
-// React.memo on `text` lets prior text blocks skip re-rendering entirely once
-// they're frozen. The streaming text block keeps changing identity per delta
-// (via appendDelta), which still re-renders correctly through this memo.
 export const AssistantMarkdown = memo(AssistantMarkdownInner);
 AssistantMarkdown.displayName = "AssistantMarkdown";

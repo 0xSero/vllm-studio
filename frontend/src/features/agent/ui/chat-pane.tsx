@@ -53,26 +53,26 @@ function subagentChipsFor(piSessionId: string | null | undefined) {
 }
 
 function useChatPaneTools(insideComputerPanel: boolean) {
-  const tools = useToolsStore();
+  const workbench = useWorkbench((state) => state);
   const onToggleBrowserTool = useCallback(() => {
-    if (insideComputerPanel) return tools.toggleBrowser();
-    if (tools.browser.enabled) {
-      tools.setBrowserEnabled(false);
-      tools.closeComputerTab("browser");
+    if (insideComputerPanel) return workbench.setBrowserEnabled(!workbench.browser.enabled);
+    if (workbench.browser.enabled) {
+      workbench.setBrowserEnabled(false);
+      workbench.closeComputerTab("browser");
       return;
     }
-    tools.setBrowserEnabled(true);
-    tools.setComputerTab("browser");
-  }, [insideComputerPanel, tools]);
+    workbench.setBrowserEnabled(true);
+    workbench.setComputerTab("browser");
+  }, [insideComputerPanel, workbench]);
   return {
-    tools,
-    browserToolEnabled: tools.browser.enabled,
-    browserBackend: tools.browser.backend,
+    workbench,
+    browserToolEnabled: workbench.browser.enabled,
+    browserBackend: workbench.browser.backend,
     onToggleBrowserTool,
-    rightPanelOpen: insideComputerPanel || tools.computer.open,
+    rightPanelOpen: insideComputerPanel || workbench.computer.open,
     onToggleRightPanel: insideComputerPanel
-      ? () => tools.setComputerOpen(false)
-      : tools.toggleComputerOpen,
+      ? () => workbench.setComputerOpen(false)
+      : workbench.toggleComputerOpen,
   };
 }
 
@@ -132,7 +132,7 @@ import { useChatPaneSendFlow } from "@/features/agent/ui/chat-pane-send-flow";
 import { ChatPaneHandle, SessionTab } from "@/features/agent/messages";
 import { useSessionEngine } from "@/features/agent/runtime/engine";
 import type { UpdateSession } from "@/features/agent/runtime/types";
-import { useToolsStore } from "@/features/agent/tools/store";
+import { useWorkbench } from "@/features/agent/workbench/context";
 import { useProjectsStore, type ProjectsStore } from "@/features/agent/projects/store";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import type { AgentThinkingLevel } from "@shared/agent/agent-turn";
@@ -331,13 +331,14 @@ export function ChatPane({
   const [mentionIndex, setMentionIndex] = useState(0);
   const [fileMentionRows, setFileMentionRows] = useState<FileMentionRow[]>([]);
   const {
-    tools,
+    workbench,
     browserToolEnabled,
     browserBackend,
     onToggleBrowserTool,
     rightPanelOpen,
     onToggleRightPanel,
   } = useChatPaneTools(insideComputerPanel);
+  const tools = workbench;
   const projects = useProjectsStore();
   const {
     activeTab,
@@ -349,30 +350,30 @@ export function ChatPane({
   } = useChatPaneDerivedState({ activeTabId, contextWindow, tabs });
   const { projectName, gitSummary, gitBranch } = projectPresentation(projects, activeTab);
   const [terminalView, setTerminalView] = useState(false);
-  const terminalSnapshot = tools.terminals;
+  const terminalSnapshot = workbench.terminals;
   useMountSubscription(() => {
     if (terminalView && terminalOwner) {
-      queueMicrotask(() => tools.rememberTerminalOwner(terminalOwner, { select: true }));
+      queueMicrotask(() => workbench.rememberTerminalOwner(terminalOwner, { select: true }));
     }
-  }, [terminalOwner, terminalView, tools]);
+  }, [terminalOwner, terminalView, workbench]);
   const toggleTerminalView = useCallback(() => {
     setTerminalView((open) => {
       const next = !open;
-      if (next && terminalOwner) tools.rememberTerminalOwner(terminalOwner, { select: true });
+      if (next && terminalOwner) workbench.rememberTerminalOwner(terminalOwner, { select: true });
       return next;
     });
-  }, [terminalOwner, tools]);
+  }, [terminalOwner, workbench]);
   useMountSubscription(() => {
     if (!isFocused) return;
     const onOpenTerminalEvent = (event: Event) => {
       const detail = (event as CustomEvent<OpenTerminalEventDetail>).detail;
       if (!detail?.mountKey) return;
-      tools.selectTerminalOwner(detail.mountKey);
+      workbench.selectTerminalOwner(detail.mountKey);
       setTerminalView(true);
     };
     window.addEventListener(OPEN_TERMINAL_EVENT, onOpenTerminalEvent);
     return () => window.removeEventListener(OPEN_TERMINAL_EVENT, onOpenTerminalEvent);
-  }, [isFocused, tools]);
+  }, [isFocused, workbench]);
   const updateTab = onUpdateSession;
   const {
     attachments,
@@ -392,7 +393,7 @@ export function ChatPane({
     fileInputRef,
   });
   useChatPaneContextAttachEffect({
-    contextAttachRequest: tools.contextAttachRequest,
+    contextAttachRequest: workbench.contextAttachRequest,
     isFocused,
     setAttachments,
   });
@@ -491,9 +492,9 @@ export function ChatPane({
     running: Boolean(running),
   });
   const openComputerStatus = useCallback(() => {
-    tools.setComputerTab("status");
-    tools.setComputerOpen(true);
-  }, [tools]);
+    workbench.setComputerTab("status");
+    workbench.setComputerOpen(true);
+  }, [workbench]);
   const [diffDrawerOpen, setDiffDrawerOpen] = useState(false);
   const openDiffDrawer = useCallback(() => setDiffDrawerOpen(true), []);
   const closeDiffDrawer = useCallback(() => setDiffDrawerOpen(false), []);
@@ -509,7 +510,7 @@ export function ChatPane({
     terminalOwner,
     toggleTerminalView,
     insideComputerPanel,
-    () => tools.setComputerTab("terminal"),
+    () => workbench.setComputerTab("terminal"),
   );
   const applyTemplate = useCallback(
     (row: ComposerPromptTemplateRef) =>
@@ -600,7 +601,9 @@ export function ChatPane({
     useChatPaneSendFlow({
       activeTab,
       attachments,
+      browserBackend,
       browserToolEnabled,
+      browserUrl: workbench.browser.url,
       clearAttachments,
       cwd,
       engine,

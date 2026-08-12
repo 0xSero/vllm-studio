@@ -7,7 +7,6 @@ import { PanelRightFilled } from "@/ui/panel-toggle-icons";
 import { CloseIcon } from "@/ui/icons";
 import { MobileSheetGrip } from "@/ui/mobile-sheet-grip";
 import { MAX_COMPUTER_WIDTH, MIN_COMPUTER_WIDTH } from "@/features/agent/tools/persistence";
-import { useToolsStore } from "@/features/agent/tools/store";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import { computerResource } from "@/features/agent/tools/resources";
 import { useProjectsStore } from "@/features/agent/projects/store";
@@ -21,7 +20,6 @@ export function AgentBrowserPanel({ workbench }: { workbench: WorkbenchState }) 
   const projects = useProjectsStore();
   const focusedSession = selectFocusedSession(workbench);
   const activeProject = projects.resolveProject(focusedSession);
-  const tools = useToolsStore();
   const { registerComputerAside, startComputerResize } = workbench;
   const resourceContext = useMemo(
     () => ({
@@ -31,15 +29,15 @@ export function AgentBrowserPanel({ workbench }: { workbench: WorkbenchState }) 
     }),
     [activeProject, focusedSession, workbench.selectedModel],
   );
-  const terminalState = tools.terminals;
+  const terminalState = workbench.terminals;
   const activeTerminal = terminalState.owners.find(
     (owner) => owner.mountKey === terminalState.activeOwnerKey,
   );
   useMountSubscription(() => {
-    if (tools.computer.open && tools.computer.tab === "terminal") {
+    if (workbench.computer.open && workbench.computer.tab === "terminal") {
       queueMicrotask(() => workbench.openResource("terminal", resourceContext));
     }
-  }, [resourceContext, tools.computer.open, tools.computer.tab, workbench]);
+  }, [resourceContext, workbench]);
   const handleComputerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLElement>) => {
       if (!(event.metaKey || event.ctrlKey) || !event.altKey) return;
@@ -54,12 +52,12 @@ export function AgentBrowserPanel({ workbench }: { workbench: WorkbenchState }) 
   );
   return (
     <aside
-      className={`agent-computer-panel ${tools.computer.open ? "relative flex" : "hidden"} min-h-0 shrink-0 flex-col border-l border-(--border) bg-(--color-panel)`}
+      className={`agent-computer-panel ${workbench.computer.open ? "relative flex" : "hidden"} min-h-0 shrink-0 flex-col border-l border-(--border) bg-(--color-panel)`}
       ref={registerComputerAside}
       tabIndex={-1}
       onKeyDown={handleComputerKeyDown}
       style={{
-        width: `${tools.computer.width}px`,
+        width: `${workbench.computer.width}px`,
         minWidth: MIN_COMPUTER_WIDTH,
         maxWidth: MAX_COMPUTER_WIDTH,
       }}
@@ -71,34 +69,31 @@ export function AgentBrowserPanel({ workbench }: { workbench: WorkbenchState }) 
         onMouseDown={startComputerResize}
         className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize hover:bg-(--fg)/8"
       />
-      <MobileSheetGrip label="Close panel" onDismiss={() => tools.setComputerOpen(false)} />
+      <MobileSheetGrip label="Close panel" onDismiss={() => workbench.setComputerOpen(false)} />
       <ComputerHeader
-        tab={tools.computer.tab}
-        openTabs={tools.computer.tabs}
+        tab={workbench.computer.tab}
+        openTabs={workbench.computer.tabs}
         terminalState={terminalState}
-        onSelectTab={tools.setComputerTab}
+        onSelectTab={workbench.setComputerTab}
         onOpenCurrentTerminal={() => workbench.openResource("terminal", resourceContext)}
         onSelectTerminalOwner={(ownerKey) =>
           workbench.openResource("terminal", resourceContext, ownerKey)
         }
         onCloseTerminalOwner={(ownerKey) => workbench.closeResource("terminal", ownerKey)}
         onCloseTab={workbench.closeResource}
-        onShowLauncher={() => tools.setComputerTab("tools")}
-        onClosePanel={() => tools.setComputerOpen(false)}
+        onShowLauncher={() => workbench.setComputerTab("tools")}
+        onClosePanel={() => workbench.setComputerOpen(false)}
       />
 
       <ComputerTabPanel workbench={workbench} />
 
-      {tools.computer.tab === "terminal" && activeTerminal ? (
+      {workbench.computer.tab === "terminal" && activeTerminal ? (
         <TerminalPanel cwd={activeTerminal.cwd} ownerKey={activeTerminal.mountKey} />
       ) : null}
     </aside>
   );
 }
 
-// Compact Codex-style pill: active gets a subtle fill; inactive is text-only
-// and lifts to full contrast on hover. The close × fades in on hover (and stays
-// on for the active pill). Shared by the tab list and the terminal-owner rows.
 function TabPill({
   icon: Icon,
   label,
@@ -154,8 +149,6 @@ function TabPill({
   );
 }
 
-// A round icon-only control that matches the pill height. Used for the tools
-// launcher (+) and the panel-close button on the right edge of the strip.
 function HeaderIconButton({
   icon: Icon,
   label,

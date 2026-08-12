@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Spinner } from "@/ui";
 import { formatTokenCount } from "@/features/agent/messages";
-import { useToolsStore } from "@/features/agent/tools/store";
+import { useWorkbench } from "@/features/agent/workbench/context";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import type { Session } from "@/features/agent/runtime/types";
@@ -35,7 +35,7 @@ export function ComputerStatusPanel({
   gitSummary?: GitSummary | null;
   onCompactSession?: () => Promise<void>;
 }) {
-  const browser = useToolsStore((state) => state.browser);
+  const browser = useWorkbench((state) => state.browser);
   const [compacting, setCompacting] = useState(false);
   const totals = useMemo(() => summarizeSessions(sessions), [sessions]);
   const sessionSkills = useMemo(() => usedSkillsForSession(focusedSession), [focusedSession]);
@@ -140,8 +140,6 @@ function sessionTokenCount(session: Session | null): number {
 
 function sessionTopRows(activeModel: AgentModel | null, session: Session | null): StatusRowData[] {
   const contextWindow = activeModel?.contextWindow ?? 0;
-  // Prefer the runtime's own context reading: tokenStats is only the last
-  // model call, so it reads far too low on a session mid-turn.
   const contextTokens = session?.contextUsage?.tokens ?? sessionTokenCount(session);
   const percent = session?.contextUsage?.percent;
   return [
@@ -156,9 +154,6 @@ function sessionTopRows(activeModel: AgentModel | null, session: Session | null)
   ];
 }
 
-/** Lifetime spend. The context row above shows what the model can currently
- *  see; these rows show what the session has actually cost, which compaction
- *  does not reset and a tail-loaded transcript cannot reconstruct. */
 function sessionUsageRows(session: Session | null): StatusRowData[] {
   const usage = session?.usageTotals;
   if (!usage) return [];

@@ -24,7 +24,7 @@ import {
 } from "@/features/agent/composer-context";
 import type { ComposerCommand } from "@/features/agent/composer/command-types";
 import { type SessionTab } from "@/features/agent/messages";
-import type { ToolsContextValue } from "@/features/agent/tools/store";
+import type { WorkbenchState } from "@/features/agent/workbench/store";
 import {
   filesFromDataTransfer,
   imageFileFromDataUrlText,
@@ -43,7 +43,7 @@ export function useComposerLoadedContext({
   tools,
 }: {
   activeTab: SessionTab | null;
-  tools: ToolsContextValue;
+  tools: Pick<WorkbenchState, "selectionFor" | "setSelection">;
 }) {
   const activeSelection = tools.selectionFor(activeTab?.id);
   const removeLoadedContext = useCallback(
@@ -88,7 +88,6 @@ export function useComposerMentionRows({
       return byQuery(skillRows, mention.query, 8).map((row) => ({ kind: "skill", row }));
     }
     if (mention.kind === "command") {
-      // Already registry-matched against the query; just wrap for the picker.
       return commandRows.map((row) => ({ kind: "command" as const, row }));
     }
     const q = mention.query.trim().toLowerCase();
@@ -202,7 +201,6 @@ export function useComposerTextareaBehavior({
         }
         if (!text || !activeTab) return;
         event.preventDefault();
-        // Apply large text pastes as one controlled update to avoid composer resize flicker.
         const element = event.currentTarget;
         const start = element.selectionStart ?? element.value.length;
         const end = element.selectionEnd ?? element.value.length;
@@ -254,8 +252,6 @@ export function useComposerTextareaBehavior({
     ],
   );
 
-  /** Arrow/Escape/accept keys while the @-mention or /-command popup is open.
-   *  Returns true when the key was consumed by the popup. */
   const handleMentionKey = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -325,11 +321,6 @@ export function useComposerTextareaBehavior({
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if (mention && handleMentionKey(event)) return;
       if (handleComposerHistoryKey(event)) return;
-      // While a turn is running, Enter QUEUES rather than steers. Steering
-      // interrupts the agent's plan mid-flight, so it stays a deliberate act —
-      // the drawer's "Interrupt now" button, promoting an item in the queue
-      // stack, or Alt+Enter. Tab used to queue too; it is back to moving focus,
-      // since the drawer now offers both choices as buttons.
       if (event.key === "Enter" && !event.shiftKey) {
         if (running && !event.altKey && activeTab?.input.trim()) {
           event.preventDefault();

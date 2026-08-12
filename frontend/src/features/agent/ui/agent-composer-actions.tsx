@@ -3,7 +3,7 @@
 import type { ReactNode, RefObject } from "react";
 import { Spinner } from "@/ui";
 import { ArrowUp, Plus } from "lucide-react";
-import { useToolsStore } from "@/features/agent/tools/store";
+import { useWorkbench } from "@/features/agent/workbench/context";
 import { GlobeIcon, PanelIcon, SitegeistIcon, StopIcon } from "@/ui/icons";
 import { ComposerDictationButton } from "./composer-dictation-button";
 
@@ -32,9 +32,9 @@ export function AgentComposerActions({
   onTranscript: (text: string) => void;
   modelSelector?: ReactNode;
 }) {
-  const tools = useToolsStore();
-  const browserToolEnabled = tools.browser.enabled;
-  const browserBackend = tools.browser.backend;
+  const browserToolEnabled = useWorkbench((state) => state.browser.enabled);
+  const browserBackend = useWorkbench((state) => state.browser.backend);
+  const toggleBrowserBackend = useWorkbench((state) => state.toggleBrowserBackend);
   const inputHasText = Boolean(input.trim());
   const starting = status === "starting";
   const stopping = status === "stopping";
@@ -82,7 +82,7 @@ export function AgentComposerActions({
       {browserToolEnabled ? (
         <button
           type="button"
-          onClick={tools.toggleBrowserBackend}
+          onClick={toggleBrowserBackend}
           aria-label={`Browser backend: ${browserBackendLabel}. Switch to ${browserBackendTarget}.`}
           className={`composer-action-optional inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-full ${usingSitegeist ? activeIconClass : inactiveIconClass}`}
           title={`Browser: ${browserBackendLabel}. Click to use ${browserBackendTarget}.`}

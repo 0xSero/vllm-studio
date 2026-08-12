@@ -15,7 +15,7 @@ import {
   endSessionSubmit,
   type SessionSubmitGuard,
 } from "@/features/agent/runtime/prompt-stream";
-import { type ToolsContextValue } from "@/features/agent/tools/store";
+import type { WorkbenchState } from "@/features/agent/workbench/store";
 import {
   attachmentPrompt,
   imageInputsFromAttachments,
@@ -30,6 +30,8 @@ type UseChatPaneSendFlowOptions = {
   activeTab: SessionTab | null;
   attachments: ChatAttachment[];
   browserToolEnabled: boolean;
+  browserBackend: import("@/features/agent/tools/types").BrowserBackend;
+  browserUrl: string;
   clearAttachments: () => void;
   cwd: string;
   engine: SessionEngine;
@@ -40,7 +42,7 @@ type UseChatPaneSendFlowOptions = {
   running: boolean;
   setMention: (mention: ComposerMention | null) => void;
   setStickToBottom: (stickToBottom: boolean) => void;
-  tools: ToolsContextValue;
+  tools: Pick<WorkbenchState, "selectionFor" | "setSelection">;
   updateTab: UpdateTab;
 };
 
@@ -48,6 +50,8 @@ export function useChatPaneSendFlow({
   activeTab,
   attachments,
   browserToolEnabled,
+  browserBackend,
+  browserUrl,
   clearAttachments,
   cwd,
   engine,
@@ -79,16 +83,13 @@ export function useChatPaneSendFlow({
       const contextText = selectedContextPrompt(text, selection.skills);
       const browserContextText = browserContextPrompt({
         enabled: effectiveBrowserEnabled,
-        backend: tools.browser.backend,
-        url: tools.browser.url,
+        backend: browserBackend,
+        url: browserUrl,
         vision: modelSupportsVision,
       });
       const prompt = [browserContextText, contextText, attachedText].filter(Boolean).join("\n\n");
       const images = modelSupportsVision ? imageInputsFromAttachments(attachments) : [];
       const messageAttachments = attachments.map((file) => {
-        // Prefer the durable inline data URL over the ephemeral blob: URL when
-        // available; blob URLs are tied to the composer document and can go stale
-        // after a session is persisted and replayed.
         const durablePreviewUrl =
           file.mode === "data-url" && file.content.startsWith("data:")
             ? file.content
@@ -117,7 +118,15 @@ export function useChatPaneSendFlow({
         promptTemplates: selection.promptTemplates,
       };
     },
-    [attachments, browserToolEnabled, modelId, modelSupportsVision, tools],
+    [
+      attachments,
+      browserBackend,
+      browserToolEnabled,
+      browserUrl,
+      modelId,
+      modelSupportsVision,
+      tools,
+    ],
   );
 
   const submitPrompt = useCallback(
@@ -161,9 +170,6 @@ export function useChatPaneSendFlow({
       cwdHint?: string,
     ) => {
       const queuedId = newId("queue");
-      // A steer lands in the transcript immediately, dimmed, so the user sees it
-      // the moment they send it; the runtime echo clears `pending` once Pi shows
-      // it to the model. (Follow-ups keep their own queue-chip affordance.)
       const pendingSteerId = mode === "steer" ? newId("user") : null;
       updateTab(tab.id, (t) => ({
         ...t,
@@ -217,9 +223,6 @@ export function useChatPaneSendFlow({
     [engine, resetComposerHeight, updateTab],
   );
 
-  // Single-flight a submit through one of the in-flight guards: bail if this
-  // session already has a submit pending, clear any open @mention, then run and
-  // always release the guard. Shared by composer send, queue, and retry.
   const runGuardedSubmit = useCallback(
     (guard: SessionSubmitGuard, sessionId: string, run: () => Promise<void>) => {
       if (!beginSessionSubmit(guard, sessionId)) return Promise.resolve();
@@ -353,10 +356,6 @@ export function useChatPaneSendFlow({
     });
   }, [activeTab, cwd, engine, queueAndSendControl, runGuardedSubmit, submitPrompt, updateTab]);
 
-  // Re-run the last user turn after a failure (a 503, a network blip). On a
-  // *send* failure the text is restored to the composer, but a turn that errors
-  // mid-stream leaves the prompt only in the transcript with an empty composer —
-  // so retry resends the last user message directly.
   const retryLast = useCallback(() => {
     if (!activeTab || !modelId) return Promise.resolve();
     const lastUserText = [...activeTab.messages].reverse().find((m) => m.role === "user")?.text;

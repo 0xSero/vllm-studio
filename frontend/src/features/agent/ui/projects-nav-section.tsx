@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState, type DragEvent, type ReactNode } from "react";
 import { Button, UiModal, UiModalHeader } from "@/ui";
 import { PlusIcon } from "@/ui/icons";
-import { useToolsStore } from "@/features/agent/tools/store";
+import { useWorkbench } from "@/features/agent/workbench/context";
 import { useProjectsNavAddProjectEffect } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import { useSessionPrefs } from "@/features/agent/messages/prefs";
 import {
@@ -31,7 +31,7 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   const activity = useSessionActivity();
   const prefs = useSessionPrefs();
   const pinned = usePinnedNav({ expanded, projects, activeSessions, prefs });
-  const terminalOwners = useToolsStore((state) => state.terminals.owners);
+  const terminalOwners = useWorkbench((state) => state.terminals.owners);
   const sections = useNavSectionOrder();
 
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(new Set());

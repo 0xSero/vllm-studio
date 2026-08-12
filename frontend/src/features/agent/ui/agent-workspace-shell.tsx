@@ -2,7 +2,6 @@
 
 import { Suspense, lazy, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import { useStore } from "zustand";
 import { triggerAddProjectFlow } from "@/features/agent/ui/projects-nav/helpers";
 import {
   QuickPanelTopBar,
@@ -10,7 +9,6 @@ import {
 } from "@/features/agent/ui/quick-panel/quick-panel-top-bar";
 import { CloseIcon, PlusIcon } from "@/ui/icons";
 import { useProjectsStore, type ProjectsStore } from "@/features/agent/projects/store";
-import { useToolsStore, type ToolsContextValue } from "@/features/agent/tools/store";
 import { activeSession, focusedSession } from "@/features/agent/runtime/selectors";
 import { PaneGrid } from "@/features/agent/ui/pane-grid";
 import {
@@ -18,6 +16,7 @@ import {
   workbenchStore,
   type WorkbenchState,
 } from "@/features/agent/workbench/store";
+import { WorkbenchProvider, useWorkbench } from "@/features/agent/workbench/context";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
 import { useAgentWorkspaceNavigationEffects } from "@/features/agent/ui/agent-workspace-navigation";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -51,14 +50,6 @@ function workspaceClassName(mode: QuickPanelMode): string {
     mode === "composer" ? "bg-transparent" : "bg-(--agent-bg)",
     mode === "thread" && "overflow-hidden rounded-[var(--rad-xl)] shadow-[var(--shadow-2xl)]",
   );
-}
-
-function workspaceSessionIdentity(session: ReturnType<typeof focusedSession>) {
-  if (!session) return { viewKey: null, viewAlias: null };
-  if (!session.piSessionId) {
-    return { viewKey: session.id, viewAlias: null };
-  }
-  return { viewKey: session.piSessionId, viewAlias: session.id };
 }
 
 const firstValue = (...values: Array<string | undefined>): string =>
@@ -97,11 +88,18 @@ export function shouldShowProjectEmptyState(
 }
 
 export function AgentWorkspace({ compact = false }: { compact?: boolean } = {}) {
-  const workbench = useStore(compact ? ephemeralWorkbenchStore : workbenchStore);
+  return (
+    <WorkbenchProvider store={compact ? ephemeralWorkbenchStore : workbenchStore}>
+      <AgentWorkspaceContent compact={compact} />
+    </WorkbenchProvider>
+  );
+}
+
+function AgentWorkspaceContent({ compact }: { compact: boolean }) {
+  const workbench = useWorkbench((state) => state);
   const state = workbench;
   const { dispatch } = workbench;
   const projects = useProjectsStore();
-  const tools = useToolsStore();
   const searchParams = useSearchParams();
   const projectParam = searchParams.get("project");
 
@@ -113,12 +111,7 @@ export function AgentWorkspace({ compact = false }: { compact?: boolean } = {}) 
   });
 
   const focusedTab = focusedSession(state);
-  const activeSessionIdentity = workspaceSessionIdentity(focusedTab);
   const activeProject = projects.resolveProject(focusedTab);
-  useActiveSessionEffects({
-    ...activeSessionIdentity,
-    setActiveComputerSession: tools.setActiveComputerSession,
-  });
   const showProjectEmptyState = shouldShowProjectEmptyState(projects, projectParam);
   const focusedMessageCount = focusedTab?.messages.length ?? 0;
   const panelMode = quickPanelMode(compact, showProjectEmptyState, focusedMessageCount);
@@ -153,7 +146,7 @@ export function AgentWorkspace({ compact = false }: { compact?: boolean } = {}) 
           />
         </section>
         {!compact ? (
-          <Suspense fallback={tools.computer.open ? <ComputerPanelFallback /> : null}>
+          <Suspense fallback={workbench.computer.open ? <ComputerPanelFallback /> : null}>
             <LazyAgentBrowserPanel workbench={workbench} />
           </Suspense>
         ) : null}
@@ -352,20 +345,4 @@ function ProjectEmptyState() {
       </div>
     </div>
   );
-}
-
-function useActiveSessionEffects({
-  viewKey,
-  viewAlias,
-  setActiveComputerSession,
-}: {
-  viewKey: string | null;
-  viewAlias: string | null;
-  setActiveComputerSession: ToolsContextValue["setActiveComputerSession"];
-}): void {
-  useMountSubscription(() => {
-    setActiveComputerSession(
-      viewKey ? { key: viewKey, aliases: viewAlias ? [viewAlias] : [] } : null,
-    );
-  }, [viewKey, viewAlias, setActiveComputerSession]);
 }

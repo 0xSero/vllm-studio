@@ -11,10 +11,34 @@ import type { Session, SessionId, UpdateSession } from "@/features/agent/runtime
 import { useProjectsStore } from "@/features/agent/projects/store";
 import type { Project } from "@/features/agent/projects/types";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
-import { clampComputerWidth, gentlySnapComputerWidth } from "@/features/agent/tools/persistence";
-import { useToolsStore } from "@/features/agent/tools/store";
-import type { ComputerTab, ToolSelection } from "@/features/agent/tools/types";
-import { terminalOwnerFor } from "@/features/agent/terminal-owners";
+import {
+  clampComputerWidth,
+  computerPanelVisibility,
+  computerSessionView,
+  gentlySnapComputerWidth,
+  loadToolState,
+  patchSessionView,
+  readSessionView,
+  uniqueComputerTabs,
+  writeToolState,
+  type SessionViewIdentity,
+} from "@/features/agent/tools/persistence";
+import {
+  EMPTY_SELECTION,
+  type BrowserState,
+  type ComputerState,
+  type ComputerTab,
+  type ContextAttachRequest,
+  type FileOpenRequest,
+  type ToolSelection,
+} from "@/features/agent/tools/types";
+import {
+  mergeTerminalKeys,
+  terminalKeysMatch,
+  terminalOwnerFor,
+  type TerminalOwner,
+  type TerminalOwnersState,
+} from "@/features/agent/terminal-owners";
 import type { ChatPaneHandle } from "@/features/agent/ui/chat-pane";
 import type { SessionDropPayload } from "@/features/agent/ui/pane-grid";
 import { webPtyBridge } from "@/features/agent/ui/web-pty-bridge";
@@ -63,6 +87,14 @@ export type WorkbenchResourceContext = {
 };
 
 export type WorkbenchState = WorkspaceState & {
+  browser: BrowserState;
+  computer: ComputerState;
+  terminals: TerminalOwnersState;
+  fileOpenRequest: FileOpenRequest | null;
+  contextAttachRequest: ContextAttachRequest | null;
+  skillCatalogue: ComposerSkillRef[];
+  promptTemplateCatalogue: ComposerPromptTemplateRef[];
+  selections: ReadonlyMap<SessionId, ToolSelection>;
   dispatch: WorkspaceDispatch;
   initialize: () => () => void;
   registerComputerAside: (element: HTMLElement | null) => void;
@@ -90,6 +122,21 @@ export type WorkbenchState = WorkspaceState & {
   startComputerResize: (event: ComputerResizeStart) => void;
   initGitForActiveProject: () => Promise<void>;
   markActivitySeen: (ids: readonly (string | null | undefined)[]) => void;
+  setBrowserEnabled: (enabled: boolean) => void;
+  toggleBrowserBackend: () => void;
+  setBrowserUrl: (url: string, input?: string) => void;
+  setBrowserInput: (input: string) => void;
+  setComputerOpen: (open: boolean) => void;
+  toggleComputerOpen: () => void;
+  setComputerTab: (tab: ComputerTab) => void;
+  closeComputerTab: (tab: ComputerTab) => void;
+  rememberTerminalOwner: (owner: TerminalOwner, options?: { select?: boolean }) => void;
+  selectTerminalOwner: (ownerKey: string) => void;
+  removeTerminalOwner: (ownerKey: string) => TerminalOwner | null;
+  requestFileOpen: (path: string) => void;
+  requestContextAttach: (request: { label: string; path?: string; content: string }) => void;
+  selectionFor: (sessionId: SessionId | null | undefined) => ToolSelection;
+  setSelection: (sessionId: SessionId, selection: ToolSelection | null) => void;
 };
 
 type SetupCheck = { id: string; ok: boolean; guidance?: string };
@@ -156,17 +203,14 @@ function loadCatalogueList<T>(url: string, key: string): Effect.Effect<T[]> {
   }).pipe(Effect.catch(() => Effect.succeed([])));
 }
 
-function refreshToolCatalogues(): void {
-  void Effect.runPromise(
-    Effect.all({
-      skills: loadCatalogueList<ComposerSkillRef>("/api/agent/skills", "skills"),
-      promptTemplates: loadCatalogueList<ComposerPromptTemplateRef>(
-        "/api/agent/prompt-templates",
-        "templates",
-      ),
-    }).pipe(Effect.map((catalogues) => useToolsStore.getState().setCatalogues(catalogues))),
-  );
-}
+const loadToolCatalogues = () =>
+  Effect.all({
+    skills: loadCatalogueList<ComposerSkillRef>("/api/agent/skills", "skills"),
+    promptTemplates: loadCatalogueList<ComposerPromptTemplateRef>(
+      "/api/agent/prompt-templates",
+      "templates",
+    ),
+  });
 
 function chooseModelId(models: AgentModel[], current: string, preferred?: string): string {
   if (preferred && models.some((model) => model.id === preferred)) return preferred;
@@ -201,9 +245,35 @@ function createWorkbenchStore(ephemeral: boolean) {
   const paneHandles = new Map<PaneId, ChatPaneHandle>();
   let sideChatSeed = createSideChatSession({ project: null, session: null, modelId: "" });
   let computerAside: HTMLElement | null = null;
+  let activeComputerSession: SessionViewIdentity | null = null;
+  let resourcesInitialized = false;
   let mounts = 0;
   let cleanup: (() => void) | null = null;
   const storage = () => (ephemeral ? memoryStorage : window.localStorage);
+  const syncComputerSession = (session: Session | null) => {
+    const identity: SessionViewIdentity | null = session
+      ? {
+          key: session.piSessionId ?? session.id,
+          aliases: session.piSessionId ? [session.id] : [],
+        }
+      : null;
+    if (activeComputerSession?.key === identity?.key) return;
+    if (activeComputerSession && typeof window !== "undefined") {
+      patchSessionView(window.localStorage, activeComputerSession, {
+        computer: computerSessionView(store.getState().computer),
+      });
+    }
+    activeComputerSession = identity;
+    const restored =
+      identity && typeof window !== "undefined"
+        ? readSessionView(window.localStorage, identity)?.computer
+        : null;
+    store.setState((current) => ({
+      computer: restored
+        ? { ...current.computer, ...restored }
+        : { ...current.computer, open: false },
+    }));
+  };
   const dispatch: WorkspaceDispatch = (mutation) => {
     const previous = store.getState();
     const next = mutation(previous);
@@ -216,10 +286,11 @@ function createWorkbenchStore(ephemeral: boolean) {
     if (storedSessionsKey(previous) !== storedSessionsKey(next)) scheduleSessionsRefresh();
     const focused = next.panesById.get(next.focusedPaneId);
     const session = focused ? next.sessions.get(focused.sessionId) : null;
+    syncComputerSession(session ?? null);
     if (session) markActivitySeen([session.id, session.piSessionId]);
   };
   const selectionFor = (sessionId: SessionId): ToolSelection =>
-    useToolsStore.getState().selectionFor(sessionId);
+    store.getState().selectionFor(sessionId);
   const scheduleSessionsRefresh = () => {
     window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT));
     window.setTimeout(() => window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT)), 1_500);
@@ -288,12 +359,64 @@ function createWorkbenchStore(ephemeral: boolean) {
     ids.forEach((id) => id && runtimeActivity.delete(id));
     store.setState({ runtimeActivity });
   };
+  const persistResources = () => writeToolState(store.getState());
+  const updateComputer = (update: (current: ComputerState) => ComputerState) => {
+    const current = store.getState().computer;
+    const next = update(current);
+    if (next === current) return;
+    if (activeComputerSession && typeof window !== "undefined") {
+      patchSessionView(window.localStorage, activeComputerSession, {
+        computer: computerSessionView(next),
+      });
+    }
+    store.setState({ computer: next });
+    persistResources();
+  };
+  const selectComputerTab = (tab: ComputerTab, open: boolean) => {
+    updateComputer((current) => ({
+      ...current,
+      open: open || current.open,
+      tab,
+      tabs: uniqueComputerTabs([...current.tabs, tab]),
+    }));
+    if (tab === "browser" && !store.getState().browser.enabled) {
+      store.setState((current) => ({ browser: { ...current.browser, enabled: true } }));
+      persistResources();
+    }
+  };
+  const updateTerminals = (terminals: TerminalOwnersState) => {
+    store.setState({ terminals });
+    persistResources();
+  };
+  const removeTerminalOwners = (ownerKeys: readonly string[]): TerminalOwner[] => {
+    const current = store.getState().terminals;
+    const keys = new Set(ownerKeys);
+    const removed = current.owners.filter((owner) => keys.has(owner.mountKey));
+    if (!removed.length) return [];
+    const owners = current.owners.filter((owner) => !keys.has(owner.mountKey));
+    updateTerminals({
+      owners,
+      activeOwnerKey: owners.some((owner) => owner.mountKey === current.activeOwnerKey)
+        ? current.activeOwnerKey
+        : (owners[0]?.mountKey ?? null),
+    });
+    return removed;
+  };
   const initialize = () => {
     mounts += 1;
     if (mounts === 1) {
       useProjectsStore.getState().initialize();
-      useToolsStore.getState().initialize();
-      refreshToolCatalogues();
+      if (!resourcesInitialized) {
+        resourcesInitialized = true;
+        store.setState(loadToolState());
+      }
+      void Effect.runPromise(
+        loadToolCatalogues().pipe(
+          Effect.map(({ skills, promptTemplates }) =>
+            store.setState({ skillCatalogue: skills, promptTemplateCatalogue: promptTemplates }),
+          ),
+        ),
+      );
       const disconnectRuntime = connectWorkspaceRuntime(store);
       const onStorage = (event: StorageEvent | Event) => {
         const key = (event as StorageEvent).key;
@@ -320,8 +443,7 @@ function createWorkbenchStore(ephemeral: boolean) {
           ? loadInitialFromStorage(window.localStorage)
           : { workspace: {}, selections: new Map<SessionId, ToolSelection>() };
         dispatch((state) => ({ ...state, ...loaded.workspace, hydrated: true }));
-        if (loaded.selections.size > 0)
-          useToolsStore.getState().hydrateSelections(loaded.selections);
+        if (loaded.selections.size > 0) store.setState({ selections: loaded.selections });
       }
     }
     return () => {
@@ -333,6 +455,14 @@ function createWorkbenchStore(ephemeral: boolean) {
   };
   const store: StoreApi<WorkbenchState> = createStore<WorkbenchState>(() => ({
     ...createInitialState(),
+    browser: { enabled: false, backend: "embedded", url: "", input: "" },
+    computer: { open: false, tab: "status", tabs: ["status"], width: 0 },
+    terminals: { owners: [], activeOwnerKey: null },
+    fileOpenRequest: null,
+    contextAttachRequest: null,
+    skillCatalogue: [],
+    promptTemplateCatalogue: [],
+    selections: new Map(),
     dispatch,
     initialize,
     registerComputerAside: (element) => {
@@ -365,7 +495,6 @@ function createWorkbenchStore(ephemeral: boolean) {
       dispatch((state) => patchWorkspaceSession(state, sessionId, patch)),
     sideChatSession: (): Session => store.getState().sessions.get(sideChatSeed.id) ?? sideChatSeed,
     openResource: (tab, context, ownerKey) => {
-      const tools = useToolsStore.getState();
       if (tab === "side-chat") {
         const current = store.getState().sessions.get(sideChatSeed.id) ?? sideChatSeed;
         const session = current.messages.length
@@ -379,28 +508,28 @@ function createWorkbenchStore(ephemeral: boolean) {
             };
         dispatch((state) => ({ ...state, sessions: setSession(state.sessions, session) }));
       } else if (tab === "terminal") {
-        if (ownerKey) tools.selectTerminalOwner(ownerKey);
+        if (ownerKey) store.getState().selectTerminalOwner(ownerKey);
         else {
           const owner = terminalOwnerFor(context.project, context.session);
-          if (owner) tools.rememberTerminalOwner(owner, { select: true });
+          if (owner) store.getState().rememberTerminalOwner(owner, { select: true });
         }
       }
-      tools.setComputerTab(tab);
+      store.getState().setComputerTab(tab);
     },
     closeResource: (tab, ownerKey) => {
-      const tools = useToolsStore.getState();
       if (tab === "side-chat") {
         const closingId = sideChatSeed.id;
         sideChatSeed = createSideChatSession({ project: null, session: null, modelId: "" });
         dispatch((state) => ({ ...state, sessions: removeSession(state.sessions, closingId) }));
       } else if (tab === "terminal") {
+        const terminals = store.getState().terminals;
         const removed = ownerKey
-          ? [tools.removeTerminalOwner(ownerKey)].filter((owner) => owner !== null)
-          : tools.removeTerminalOwners(tools.terminals.owners.map((owner) => owner.mountKey));
+          ? [store.getState().removeTerminalOwner(ownerKey)].filter((owner) => owner !== null)
+          : removeTerminalOwners(terminals.owners.map((owner) => owner.mountKey));
         for (const owner of removed) void webPtyBridge.closeOwner(owner.mountKey);
-        if (ownerKey && tools.terminals.owners.length > 1) return;
+        if (ownerKey && terminals.owners.length > 1) return;
       }
-      tools.closeComputerTab(tab);
+      store.getState().closeComputerTab(tab);
     },
     navigateBrowser: (value, context) => {
       const next = normalizeBrowserInput(
@@ -412,7 +541,7 @@ function createWorkbenchStore(ephemeral: boolean) {
         ? sanitizeLocalFileUrl(next)
         : sanitizeBrowserPaneUrl(next);
       if (!accepted) return;
-      useToolsStore.getState().setBrowserUrl(accepted, accepted);
+      store.getState().setBrowserUrl(accepted, accepted);
       if (/^file:\/\//i.test(accepted)) return;
       void fetch("/api/agent/browser/navigate", {
         method: "POST",
@@ -443,7 +572,7 @@ function createWorkbenchStore(ephemeral: boolean) {
       event.preventDefault();
       const startX = event.clientX;
       const startWidth =
-        computerAside?.getBoundingClientRect().width ?? useToolsStore.getState().computer.width;
+        computerAside?.getBoundingClientRect().width ?? store.getState().computer.width;
       const containerWidth =
         computerAside?.parentElement?.getBoundingClientRect().width ?? window.innerWidth;
       let frame = 0;
@@ -465,7 +594,9 @@ function createWorkbenchStore(ephemeral: boolean) {
             if (computerAside) computerAside.style.transition = "";
           }, 170);
         }
-        useToolsStore.getState().setComputerWidth(next);
+        updateComputer((current) =>
+          current.width === next ? current : { ...current, width: next },
+        );
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
@@ -483,6 +614,96 @@ function createWorkbenchStore(ephemeral: boolean) {
       }
     },
     markActivitySeen,
+    setBrowserEnabled: (enabled) => {
+      store.setState((current) => ({ browser: { ...current.browser, enabled } }));
+      persistResources();
+    },
+    toggleBrowserBackend: () => {
+      const backend = store.getState().browser.backend === "sitegeist" ? "embedded" : "sitegeist";
+      store.setState((current) => ({ browser: { ...current.browser, backend } }));
+      persistResources();
+    },
+    setBrowserUrl: (url, input) => {
+      if (!url.trim()) return;
+      store.setState((current) => ({
+        browser: { ...current.browser, url, input: input ?? current.browser.input },
+      }));
+    },
+    setBrowserInput: (input) =>
+      store.setState((current) => ({ browser: { ...current.browser, input } })),
+    setComputerOpen: (open) => updateComputer((current) => computerPanelVisibility(current, open)),
+    toggleComputerOpen: () =>
+      updateComputer((current) => computerPanelVisibility(current, !current.open)),
+    setComputerTab: (tab) => selectComputerTab(tab, true),
+    closeComputerTab: (tab) => {
+      if (tab === "status" || tab === "tools") return;
+      if (tab === "browser") store.getState().setBrowserEnabled(false);
+      updateComputer((current) => {
+        const tabs = uniqueComputerTabs(current.tabs.filter((item) => item !== tab));
+        return {
+          ...current,
+          tab: current.tab === tab ? (tabs.at(-1) ?? "status") : current.tab,
+          tabs,
+        };
+      });
+    },
+    rememberTerminalOwner: (owner, options = {}) => {
+      const current = store.getState().terminals;
+      const index = current.owners.findIndex((item) =>
+        terminalKeysMatch(item.matchKeys, owner.matchKeys),
+      );
+      const existing = current.owners[index];
+      const nextOwner = existing
+        ? {
+            ...existing,
+            ...owner,
+            mountKey: existing.mountKey,
+            matchKeys: mergeTerminalKeys(existing.matchKeys, owner.matchKeys),
+            cwd: owner.cwd ?? existing.cwd,
+            title: owner.title || existing.title,
+          }
+        : owner;
+      const owners = existing
+        ? current.owners.map((item, ownerIndex) => (ownerIndex === index ? nextOwner : item))
+        : [...current.owners, nextOwner];
+      const activeOwnerKey =
+        options.select || !current.activeOwnerKey ? nextOwner.mountKey : current.activeOwnerKey;
+      updateTerminals({ owners, activeOwnerKey });
+    },
+    selectTerminalOwner: (ownerKey) => {
+      const current = store.getState().terminals;
+      if (!current.owners.some((owner) => owner.mountKey === ownerKey)) return;
+      updateTerminals({ ...current, activeOwnerKey: ownerKey });
+    },
+    removeTerminalOwner: (ownerKey) => removeTerminalOwners([ownerKey])[0] ?? null,
+    requestFileOpen: (path) => {
+      const clean = path.trim();
+      if (!clean) return;
+      selectComputerTab("files", true);
+      store.setState((current) => ({
+        fileOpenRequest: { id: (current.fileOpenRequest?.id ?? 0) + 1, path: clean },
+      }));
+    },
+    requestContextAttach: (request) => {
+      const content = request.content.trim();
+      if (!content) return;
+      store.setState((current) => ({
+        contextAttachRequest: {
+          id: (current.contextAttachRequest?.id ?? 0) + 1,
+          label: request.label.trim() || "context",
+          ...(request.path ? { path: request.path } : {}),
+          content,
+        },
+      }));
+    },
+    selectionFor: (sessionId) =>
+      sessionId ? (store.getState().selections.get(sessionId) ?? EMPTY_SELECTION) : EMPTY_SELECTION,
+    setSelection: (sessionId, selection) => {
+      const selections = new Map(store.getState().selections);
+      if (selection) selections.set(sessionId, selection);
+      else if (!selections.delete(sessionId)) return;
+      store.setState({ selections });
+    },
   }));
   return store;
 }

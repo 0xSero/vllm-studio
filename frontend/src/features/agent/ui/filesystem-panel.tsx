@@ -13,7 +13,7 @@ import {
   SquarePen,
 } from "lucide-react";
 import { useAppStore } from "@/store";
-import { useToolsStore } from "@/features/agent/tools/store";
+import { useWorkbench } from "@/features/agent/workbench/context";
 import type { FileComment, FsEntry } from "@/features/agent/filesystem-types";
 import { FileViewer } from "@/features/agent/ui/filesystem-file-viewer";
 import {
@@ -28,14 +28,8 @@ import { Breadcrumb, fileTone, TreeFileList } from "@/features/agent/ui/filesyst
 import { useFilesystemPanelEffects } from "@/features/agent/ui/filesystem-panel-effects";
 
 type Props = { cwd: string | null };
-// eslint-disable-next-line complexity
 export function FilesystemPanel({ cwd }: Props) {
-  // A file reference can point outside the session project (a PDF on the
-  // Desktop). The panel then adopts that file's own directory as its root
-  // instead of refusing to open it; `cwd` remains the project to return to.
   const [rootOverride, setRootOverride] = useState<string | null>(null);
-  // Normalized once here so every root comparison (override vs project, parked
-  // open request vs current root) comes down to plain string equality.
   const projectRoot = cwd ? cwd.replace(/\/+$/, "") : null;
   const root = rootOverride ?? projectRoot;
   const [relPath, setRelPath] = useState("");
@@ -56,8 +50,8 @@ export function FilesystemPanel({ cwd }: Props) {
   const [dirLoading, setDirLoading] = useState<Set<string>>(new Set());
   const [fileListOpen, setFileListOpen] = useState(true);
   const searchRef = useRef<HTMLInputElement>(null);
-  const fileOpenRequest = useToolsStore((state) => state.fileOpenRequest);
-  const requestContextAttach = useToolsStore((state) => state.requestContextAttach);
+  const fileOpenRequest = useWorkbench((state) => state.fileOpenRequest);
+  const requestContextAttach = useWorkbench((state) => state.requestContextAttach);
   const fontSize = useAppStore((s) => s.fileViewerFontSize);
   const setFontSize = useAppStore((s) => s.setFileViewerFontSize);
   const lastOpenFileByProject = useAppStore((s) => s.lastOpenFileByProject);

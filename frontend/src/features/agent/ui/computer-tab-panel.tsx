@@ -1,7 +1,6 @@
 "use client";
 
 import { Suspense, lazy, type ReactNode } from "react";
-import { useToolsStore } from "@/features/agent/tools/store";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import { LAUNCHER_RESOURCES } from "@/features/agent/tools/resources";
 import { useProjectsStore } from "@/features/agent/projects/store";
@@ -35,7 +34,6 @@ const LazyGitDiffPanel = lazy(() =>
 
 export function ComputerTabPanel({ workbench: state }: { workbench: WorkbenchState }) {
   const projects = useProjectsStore();
-  const tools = useToolsStore();
   const focusedSession = selectFocusedSession(state);
   const activeProject = projects.resolveProject(focusedSession);
   const activeModelId = focusedSession?.modelId ?? state.selectedModel;
@@ -59,7 +57,7 @@ export function ComputerTabPanel({ workbench: state }: { workbench: WorkbenchSta
     ),
     tools: (
       <ComputerLauncherPanel
-        activeTab={tools.computer.tab}
+        activeTab={state.computer.tab}
         context={resourceContext}
         workbench={state}
       />
@@ -78,13 +76,13 @@ export function ComputerTabPanel({ workbench: state }: { workbench: WorkbenchSta
     ),
     browser: (
       <LazyAgentBrowser
-        url={tools.browser.url}
-        inputValue={tools.browser.input}
-        onInputChange={tools.setBrowserInput}
+        url={state.browser.url}
+        inputValue={state.browser.input}
+        onInputChange={state.setBrowserInput}
         onNavigate={(value) => state.navigateBrowser(value, resourceContext)}
-        onLocationChange={(next) => tools.setBrowserUrl(next, next)}
-        onClose={() => tools.setComputerOpen(false)}
-        visible={tools.computer.open}
+        onLocationChange={(next) => state.setBrowserUrl(next, next)}
+        onClose={() => state.setComputerOpen(false)}
+        visible={state.computer.open}
       />
     ),
     files: (
@@ -97,7 +95,7 @@ export function ComputerTabPanel({ workbench: state }: { workbench: WorkbenchSta
     diff: <LazyGitDiffPanel cwd={focusedCwd} />,
     terminal: null,
   };
-  return <Suspense fallback={<ComputerTabFallback />}>{panels[tools.computer.tab]}</Suspense>;
+  return <Suspense fallback={<ComputerTabFallback />}>{panels[state.computer.tab]}</Suspense>;
 }
 
 function SideChatTab({

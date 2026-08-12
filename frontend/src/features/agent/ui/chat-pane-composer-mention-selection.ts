@@ -8,7 +8,7 @@ import {
   type ComposerSkillRef,
 } from "@/features/agent/composer-context";
 import { type SessionTab } from "@/features/agent/messages";
-import type { ToolsContextValue } from "@/features/agent/tools/store";
+import type { WorkbenchState } from "@/features/agent/workbench/store";
 import {
   attachmentDedupKey,
   createProjectFileAttachment,
@@ -20,7 +20,7 @@ type LoadedContextRow = {
   skill?: ComposerSkillRef;
   template?: ComposerPromptTemplateRef;
 };
-type SelectionTools = Pick<ToolsContextValue, "selectionFor" | "setSelection">;
+type SelectionTools = Pick<WorkbenchState, "selectionFor" | "setSelection">;
 
 export function useComposerMentionSelection({
   activeTab,
@@ -43,7 +43,6 @@ export function useComposerMentionSelection({
 }) {
   return useCallback(
     (entry: MentionRow) => {
-      // Command rows are executed by the pane's command runner, not here.
       if (!activeTab || !mention || entry.kind === "command") return Promise.resolve();
 
       return Effect.runPromise(
@@ -69,11 +68,6 @@ export function useComposerMentionSelection({
   );
 }
 
-/**
- * Load a skill or prompt template's full body and add it to the session's
- * tool selection. Shared by `$`-mention selection and the composer command
- * providers, so both paths stay behaviourally identical.
- */
 export function applyContextRow(
   sessionId: string,
   kind: "skill" | "promptTemplate",
