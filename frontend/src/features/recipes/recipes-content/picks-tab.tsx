@@ -32,7 +32,7 @@ export function PicksTab() {
   const tiers = data?.tiers ?? [];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-7">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <ModelStatus
