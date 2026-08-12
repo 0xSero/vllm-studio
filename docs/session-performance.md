@@ -476,15 +476,52 @@ it helps is exactly the case the fixture over-represents.
 it: `MessageView` → `SessionPaneBlockRouter` → per-block components, wrappers,
 actions. There is no single thing to make cheaper.
 
-**Which finally justifies virtualization, on a number.** At ~3.5ms per mounted
-message, mounting a 250-message page costs ~0.9s — and that is paid on the
-*initial session open* too, not just "load earlier". Against a server side that
-now answers in 30–60ms, client-side mounting is the dominant cost of opening a
-session. Bounding mounted subtrees to what is visible (~30) would cut both.
+**Which looked like it justified virtualization.** At ~3.5ms per mounted
+message a 250-message page is ~0.9s, and finding 12 asserted that cost is paid
+on the initial session open too. **That assertion was wrong — see finding 13.**
 
-Note this is a different justification from the one this ledger carried for
-most of the pass. It is not about scroll jank — finding 9 measured scrolling at
-6–9ms and found none. It is about never mounting 250 subtrees at once.
+### 13. Don't build virtualization — a cold session open is ~220ms
+
+Finding 12 extrapolated 3.5ms × 250 messages and concluded a cold open costs
+~0.9s of mounting. Measured it directly instead, with `buffered: true` longtask
+entries so the profile covers the load rather than starting when the probe
+happens to run. Two cold opens, snapshot cleared so the replay really runs:
+
+| | fetch | total blocking | messages |
+|---|---:|---:|---:|
+| run 1 | 67ms | **204ms** | 250 |
+| run 2 | 72ms | **230ms** | 250 |
+
+So a cold open is ~220ms, not ~900ms, and mounting into an *empty* list costs
+**~0.9ms per message, not 3.5ms.**
+
+The 3.5ms figure was measured while prepending 250 messages into a list that
+already held 1000+. Both numbers are real; they measure different things.
+Mounting is cheap — **prepending into a long keyed list is what is expensive**,
+which also fits finding 11's other result that re-rendering that same list in
+place produces zero long tasks. A prepend makes every existing key shift
+position; an in-place re-render lets every memo bail.
+
+That removes the case for virtualizing:
+
+- **Cold open: ~220ms.** Fine. Not worth touching anything for.
+- **Scrolling: 6–9ms** at 1250 messages (finding 9). No jank to fix.
+- **Deep history paging: ~0.9s per click.** The only slow path, it is an
+  explicit user action with a pending state, and it costs that much only once a
+  transcript is already ~1000 messages deep.
+
+Virtualization would put `useTimelineScrollEffects` at risk — stick-to-bottom
+with its user-hold window, localStorage scroll restore, the ResizeObserver pin
+coalesced to one write per frame, and the native scroll-anchoring interplay,
+each documented as fixing a specific bug — for a benefit confined to repeated
+history paging. **Recommendation: do not build it.** If deep paging becomes a
+real complaint, halving the page size is the cheap lever and touches none of
+that code.
+
+Also worth keeping: a first attempt at this measurement read 10.2s, because
+`performance.now()` counts from navigation while the polling only started when
+the probe ran. It measured when the probe looked, not when the work happened.
+Use `buffered: true`, or measure nothing.
 
 ## Open questions — measure before assuming
 - **Nothing has been measured during a live stream**, only on static
