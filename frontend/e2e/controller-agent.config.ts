@@ -50,6 +50,7 @@ const projectScript = path.resolve(__dirname, "..", "..", "scripts", "project.mj
 const resourcesPath = path.resolve(__dirname, "..");
 
 export default defineConfig({
+  metadata: { localStudioDataDir: dataDir },
   testDir: ".",
   testMatch: ["controller-agent.spec.ts"],
   outputDir: "../test-results/controller-agent",

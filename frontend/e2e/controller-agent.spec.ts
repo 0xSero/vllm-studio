@@ -1,4 +1,123 @@
-import { expect, test, type Page } from "@playwright/test";
+import {
+  createHash,
+  generateKeyPairSync,
+  randomBytes,
+  randomUUID,
+  sign,
+  type KeyObject,
+} from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { expect, test, type APIRequestContext, type Page, type TestInfo } from "@playwright/test";
+
+type JsonValue = null | boolean | string | number | JsonValue[] | { [key: string]: JsonValue };
+type BridgeMetadata = {
+  url: string;
+  secretHeader: string;
+  secret: string;
+  controllerId: string;
+};
+type BridgeCursor = {
+  type: "session_transfer_cursor";
+  token: string;
+  revision: number;
+  afterSequence: number;
+  hasMore: boolean;
+};
+type BridgeSessionPage = {
+  type: "session_page";
+  messages: Array<{ role: string; parts: Array<{ type: string; text?: string }> }>;
+  cursor: BridgeCursor | null;
+};
+
+const bridgeKeys = generateKeyPairSync("ed25519");
+const bridgeDeviceId = (bridgeKeys.publicKey.export({ format: "der", type: "spki" }) as Buffer)
+  .subarray(-32)
+  .toString("hex");
+
+function canonicalJson(value: JsonValue): string {
+  if (value === null) return "null";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number") return String(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  return `{${Object.keys(value)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+    .join(",")}}`;
+}
+
+function bridgeSignaturePreimage(fields: string[]): Buffer {
+  const parts = [Buffer.from("litter-bridge-request-v1", "ascii")];
+  for (const field of fields) {
+    const bytes = Buffer.from(field, "utf8");
+    const length = Buffer.allocUnsafe(4);
+    length.writeUInt32BE(bytes.length);
+    parts.push(length, bytes);
+  }
+  return Buffer.concat(parts);
+}
+
+function signedBridgeRequest(
+  body: { [key: string]: JsonValue },
+  capability: "sessions.read",
+  privateKey: KeyObject = bridgeKeys.privateKey,
+): { [key: string]: JsonValue } {
+  const requestId = randomUUID();
+  const issuedAt = new Date();
+  const expiresAt = new Date(issuedAt.getTime() + 30_000);
+  const nonce = randomBytes(16).toString("base64url");
+  const bodyHash = createHash("sha256").update(canonicalJson(body), "utf8").digest("hex");
+  const auth = {
+    device: { deviceId: bridgeDeviceId, keyId: bridgeDeviceId, algorithm: "ed25519" },
+    requestId,
+    issuedAt: issuedAt.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+    nonce,
+    capability,
+    bodyHash,
+    signature: "",
+  };
+  auth.signature = sign(
+    null,
+    bridgeSignaturePreimage([
+      bridgeDeviceId,
+      bridgeDeviceId,
+      requestId,
+      auth.issuedAt,
+      auth.expiresAt,
+      nonce,
+      capability,
+      "",
+      bodyHash,
+    ]),
+    privateKey,
+  ).toString("base64url");
+  return { ...body, auth };
+}
+
+async function bridgeMetadata(testInfo: TestInfo): Promise<BridgeMetadata> {
+  const dataDir = testInfo.config.metadata.localStudioDataDir;
+  if (typeof dataDir !== "string") {
+    throw new Error("Litter bridge test data directory is unavailable");
+  }
+  const filepath = path.join(dataDir, "litter-bridge.json");
+  await expect.poll(() => existsSync(filepath)).toBe(true);
+  return JSON.parse(readFileSync(filepath, "utf8")) as BridgeMetadata;
+}
+
+async function postBridge(
+  request: APIRequestContext,
+  metadata: BridgeMetadata,
+  body: { [key: string]: JsonValue },
+): Promise<unknown> {
+  const response = await request.post(metadata.url, {
+    headers: { [metadata.secretHeader]: metadata.secret },
+    data: signedBridgeRequest(body, "sessions.read"),
+  });
+  expect(response.ok(), await response.text()).toBe(true);
+  return response.json();
+}
 
 async function openControllerChat(page: Page, title: string) {
   await page.goto(`/agent?new=${encodeURIComponent(title)}`);
@@ -154,6 +273,62 @@ test("new task replaces the current chat with a fresh session", async ({ page })
     timeout: 60_000,
   });
   await expect(page.locator("[data-multi-pane=true]")).toHaveCount(0);
+});
+
+test("signed Litter bridge discovers and pages the recorded session", async ({
+  page,
+  request,
+}, testInfo) => {
+  const composer = await openControllerChat(page, "Litter bridge parity");
+  const opening = "Export this conversation through the signed bridge.";
+  await composer.fill(opening);
+  await composer.press("Enter");
+  await expect(page.getByText("Controller scoped Pi reply.")).toBeVisible({ timeout: 60_000 });
+  await expect.poll(() => new URL(page.url()).searchParams.get("session")).not.toBeNull();
+  const sessionId = new URL(page.url()).searchParams.get("session");
+  if (!sessionId) throw new Error("Recorded Pi session id is unavailable");
+
+  const metadata = await bridgeMetadata(testInfo);
+  const listed = (await postBridge(request, metadata, {
+    type: "session_list_request",
+    protocolVersion: 1,
+    cursor: null,
+    limit: 200,
+  })) as {
+    type: string;
+    sessions: Array<{ session: { sessionId: string }; metadata: { title: string | null } }>;
+  };
+  expect(listed.type).toBe("session_list_page");
+  expect(listed.sessions).toContainEqual(
+    expect.objectContaining({ session: expect.objectContaining({ sessionId }) }),
+  );
+
+  const identity = {
+    kind: "external_session",
+    authority: "local-studio",
+    installationId: metadata.controllerId,
+    sessionId,
+  };
+  const messages: BridgeSessionPage["messages"] = [];
+  let cursor: BridgeCursor | null = null;
+  do {
+    const result = (await postBridge(request, metadata, {
+      type: "session_read_request",
+      protocolVersion: 1,
+      session: cursor ? null : identity,
+      cursor,
+      limit: 1,
+    })) as BridgeSessionPage;
+    expect(result.type).toBe("session_page");
+    messages.push(...result.messages);
+    cursor = result.cursor;
+  } while (cursor);
+
+  const text = messages.flatMap((message) =>
+    message.parts.filter((part) => part.type === "text").map((part) => part.text),
+  );
+  expect(text).toContain(opening);
+  expect(text).toContain("Controller scoped Pi reply.");
 });
 
 test("model picker includes models from every saved controller", async ({ page }) => {
