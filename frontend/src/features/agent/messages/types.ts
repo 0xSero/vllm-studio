@@ -113,6 +113,9 @@ export type SessionTab = {
   // Byte-offset cursor into the canonical log for paging older history into
   // view ("load earlier"); null/undefined once the whole log is loaded.
   historyCursor?: number | null;
+  /** See `Session.hydratedFromCache` — these messages are the lossy snapshot,
+   *  not the transcript, and the replay still has to run. */
+  hydratedFromCache?: boolean;
   skills?: ComposerSkillRef[];
   // Outgoing pending follow-up messages. Drawn as chips above the input until
   // Pi `queue_update` reconciles the canonical queue. Steering messages are
