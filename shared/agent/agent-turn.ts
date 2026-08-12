@@ -112,6 +112,29 @@ export type AgentTurnCommandResult = {
   error?: string;
 };
 
+export function parseAgentTurnCommandResult(input: unknown): AgentTurnCommandResult | null {
+  const payload = objectRecord(input);
+  if (!payload || payload.type !== "command") return null;
+  const outcome =
+    payload.outcome === "accepted" || payload.outcome === "queued" || payload.outcome === "rejected"
+      ? payload.outcome
+      : null;
+  const runtimeSessionId =
+    typeof payload.runtimeSessionId === "string" && payload.runtimeSessionId.trim()
+      ? payload.runtimeSessionId.trim()
+      : "";
+  if (!outcome || !runtimeSessionId) return null;
+  return {
+    type: "command",
+    outcome,
+    runtimeSessionId,
+    piSessionId: typeof payload.piSessionId === "string" ? payload.piSessionId : null,
+    active: payload.active === true,
+    status: objectRecord(payload.status) ? (payload.status as AgentTurnRuntimeStatus) : undefined,
+    error: typeof payload.error === "string" ? payload.error : undefined,
+  };
+}
+
 export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequest> {
   const body = objectRecord(input);
   if (!body) return { ok: false, error: "Invalid JSON body" };

@@ -10,6 +10,7 @@ export {
   stringArray,
   boolField,
   parseAgentTurnRequest,
+  parseAgentTurnCommandResult,
   AGENT_THINKING_LEVELS,
   AgentThinkingLevelSchema,
   isAgentThinkingLevel,
@@ -25,11 +26,6 @@ export type {
   AgentThinkingLevel,
   AgentToolAccess,
 } from "@shared/agent/agent-turn";
-import {
-  objectRecord,
-  type AgentTurnRuntimeStatus,
-  type AgentTurnCommandResult,
-} from "@shared/agent/agent-turn";
 export { parseGitAction, parseTerminalRunRequest } from "@shared/agent/workspace";
 export type {
   GitAction,
@@ -39,26 +35,3 @@ export type {
   TerminalRunRequest,
   TerminalRunResult,
 } from "@shared/agent/workspace";
-
-export function parseAgentTurnCommandResult(input: unknown): AgentTurnCommandResult | null {
-  const payload = objectRecord(input);
-  if (!payload || payload.type !== "command") return null;
-  const outcome =
-    payload.outcome === "accepted" || payload.outcome === "queued" || payload.outcome === "rejected"
-      ? payload.outcome
-      : null;
-  const runtimeSessionId =
-    typeof payload.runtimeSessionId === "string" && payload.runtimeSessionId.trim()
-      ? payload.runtimeSessionId.trim()
-      : "";
-  if (!outcome || !runtimeSessionId) return null;
-  return {
-    type: "command",
-    outcome,
-    runtimeSessionId,
-    piSessionId: typeof payload.piSessionId === "string" ? payload.piSessionId : null,
-    active: payload.active === true,
-    status: objectRecord(payload.status) ? (payload.status as AgentTurnRuntimeStatus) : undefined,
-    error: typeof payload.error === "string" ? payload.error : undefined,
-  };
-}

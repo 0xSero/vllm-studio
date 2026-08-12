@@ -1,4 +1,4 @@
-import { isAgentThinkingLevel, type AgentThinkingLevel } from "@/features/agent/contracts";
+import { isAgentThinkingLevel, type AgentThinkingLevel } from "@shared/agent/agent-turn";
 import { readStored, writeStored } from "@/lib/storage";
 
 // Global, client-only preference for the reasoning ("thinking") level a *new*

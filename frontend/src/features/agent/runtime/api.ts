@@ -10,11 +10,8 @@ import {
   parseAgentTurnCommandResult,
   type AgentTurnCommandResult,
 } from "@/features/agent/messages";
-import type {
-  AgentImageInput,
-  AgentQueueAction,
-  AgentToolAccess,
-} from "@/features/agent/contracts";
+import type { AgentQueueAction, AgentToolAccess } from "@shared/agent/agent-turn";
+import type { AgentImageInput } from "@shared/agent/agent-image-input";
 import type { BrowserBackend } from "@/features/agent/tools/types";
 import type {
   ComposerPromptTemplateRef,

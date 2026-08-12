@@ -17,7 +17,7 @@ import type {
   AgentQueueAction,
   AgentThinkingLevel,
   AgentToolAccess,
-} from "@/features/agent/contracts";
+} from "@shared/agent/agent-turn";
 import * as api from "@/features/agent/runtime/api";
 import {
   runtimeCanHydrateCanonicalSession,

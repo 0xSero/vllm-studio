@@ -1,5 +1,5 @@
 import { safeJson } from "@/features/agent/safe-json";
-import type { GitState } from "@/features/agent/contracts";
+import type { GitState } from "@shared/agent/workspace";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 
 type DesktopBridge = {

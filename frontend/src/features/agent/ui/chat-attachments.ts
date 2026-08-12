@@ -1,9 +1,12 @@
 "use client";
 
 import { newId, randomIdSegment } from "@/features/agent/messages/helpers";
-import type { AgentImageInput } from "@/features/agent/contracts";
 import { formatBytes } from "@/lib/formatters";
-import { AGENT_IMAGE_LIMITS, agentImageSizesLimitError } from "@shared/agent/agent-image-input";
+import {
+  AGENT_IMAGE_LIMITS,
+  agentImageSizesLimitError,
+  type AgentImageInput,
+} from "@shared/agent/agent-image-input";
 
 export type ChatAttachment = {
   id: string;

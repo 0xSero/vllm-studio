@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { ErrorBox, Button } from "@/ui";
-import type { GitAction, GitState } from "@/features/agent/contracts";
+import type { GitAction, GitState } from "@shared/agent/workspace";
 import { safeJson } from "@/features/agent/safe-json";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {

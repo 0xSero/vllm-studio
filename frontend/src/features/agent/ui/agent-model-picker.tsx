@@ -10,7 +10,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Pin } from "lucide-react";
-import { AGENT_THINKING_LEVELS, type AgentThinkingLevel } from "@/features/agent/contracts";
+import { AGENT_THINKING_LEVELS, type AgentThinkingLevel } from "@shared/agent/agent-turn";
 import type { AgentModel } from "@/features/agent/workspace/types";
 import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import { cx } from "@/ui/utils";

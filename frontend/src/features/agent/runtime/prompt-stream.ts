@@ -10,11 +10,8 @@ import type {
   ComposerPromptTemplateRef,
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
-import type {
-  AgentImageInput,
-  AgentThinkingLevel,
-  AgentToolAccess,
-} from "@/features/agent/contracts";
+import type { AgentThinkingLevel, AgentToolAccess } from "@shared/agent/agent-turn";
+import type { AgentImageInput } from "@shared/agent/agent-image-input";
 import type { BrowserBackend, ToolSelection } from "@/features/agent/tools/types";
 import * as api from "@/features/agent/runtime/api";
 import type { RuntimeStatus } from "@/features/agent/runtime/api";

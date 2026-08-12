@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { GitBranchIcon, ReloadIcon } from "@/ui/icons";
 import { Input, Button } from "@/ui";
-import type { GitAction, GitRef, GitState } from "@/features/agent/contracts";
+import type { GitAction, GitRef, GitState } from "@shared/agent/workspace";
 import { safeJson } from "@/features/agent/safe-json";
 import { gitDiffHeaderTitle } from "@/features/agent/ui/git-diff-panel-model";
 
