@@ -67,6 +67,36 @@ for (const route of [
   });
 }
 
+test("the runtime target registry drives recorded controller status", async ({
+  page,
+}, testInfo) => {
+  const port = testInfo.config.metadata.recordedControllerPort;
+  if (typeof port !== "number") throw new Error("Recorded controller port is unavailable");
+  const origin = `http://127.0.0.1:${port}`;
+
+  await page.goto(`${origin}/runtime/targets`);
+  const targets = JSON.parse(await page.locator("body").innerText()) as {
+    targets: Array<{ backend: string; version: string | null; installed: boolean }>;
+  };
+  const versions = Object.fromEntries(
+    targets.targets.map((target) => [target.backend, target.version]),
+  );
+  expect(versions).toMatchObject({
+    vllm: "0.9.1",
+    sglang: "0.4.2",
+    llamacpp: "4321 (recorded)",
+    mlx: "0.26.0",
+  });
+
+  await page.goto(`${origin}/config`);
+  const config = JSON.parse(await page.locator("body").innerText()) as {
+    runtime: { backends: Record<string, { installed: boolean; version: string | null }> };
+  };
+  for (const [backend, version] of Object.entries(versions)) {
+    expect(config.runtime.backends[backend]).toMatchObject({ installed: true, version });
+  }
+});
+
 for (const [route, destination] of [
   ["/discover", "/models"],
   ["/integrations", "/configure?section=integrations#integrations"],
