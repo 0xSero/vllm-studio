@@ -168,6 +168,7 @@ type SignedGatewayRequest =
   | LitterBridgeSessionReadRequest
   | LitterBridgeSessionCreateRequest
   | LitterBridgeAgentTurnRequest;
+type SignedMutationRequest = LitterBridgeSessionCreateRequest | LitterBridgeAgentTurnRequest;
 type TurnRuntimeEntry = {
   sessionId: string;
   session: Pick<PiAgentSession, "ensureStarted" | "promptDurably" | "status">;
@@ -596,6 +597,38 @@ const materializeSessionCreateResult = (
   });
 };
 
+const promptIntegrityError = (request: SignedMutationRequest): Response | null =>
+  litterBridgeSha256Utf8(request.content) === request.contentHash
+    ? null
+    : jsonError(
+        "integrity_failed",
+        "Prompt content hash does not match the signed request",
+        request.auth.requestId,
+        422,
+      );
+
+const buildAgentTurnAck = (
+  request: LitterBridgeAgentTurnRequest,
+  dispatchId: string,
+  modelId: string,
+  acceptedAt: string,
+) =>
+  Schema.decodeUnknownSync(LitterBridgeAgentTurnAckSchema)({
+    type: "agent_turn_ack",
+    protocolVersion: LITTER_BRIDGE_PROTOCOL_VERSION,
+    requestId: request.auth.requestId,
+    idempotencyKey: request.auth.idempotencyKey,
+    dispatchId,
+    canonicalSession: request.session,
+    messageId: request.messageId,
+    contentHash: request.contentHash,
+    baseRevision: request.expectedRevision,
+    piSessionId: request.session.sessionId,
+    modelId,
+    outcome: "accepted",
+    acceptedAt,
+  });
+
 class AgentTurnPreflightRejected extends Error {}
 class AgentTurnDispatchIndeterminate extends Error {}
 
@@ -669,6 +702,22 @@ const reconcileAgentTurnTranscript = (
     closeSync(descriptor);
   }
   return null;
+};
+
+const reconcileMutationTranscript = (
+  correlation: MutationCorrelation,
+  requestId: string,
+  missingMessage: string,
+): { acceptedAt: string } | Response => {
+  try {
+    const evidence = reconcileAgentTurnTranscript(correlation);
+    return evidence ?? jsonError("internal", missingMessage, requestId, 409, true);
+  } catch (error) {
+    if (error instanceof SessionReadError) {
+      return jsonError(error.code, error.message, requestId, 409, true);
+    }
+    throw error;
+  }
 };
 
 const unsignedRequest = (request: LitterBridgeRequest): JsonRecord => {
@@ -1977,6 +2026,98 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         : { retentionMs: options.mutationRetentionMs }),
     }));
   const mutationOwnerId = `${process.pid}-${randomUUID()}`;
+  type MutationFlow =
+    | {
+        kind: "reconcile";
+        correlation: MutationCorrelation;
+        settle: (dispatchId: string, result: unknown) => void;
+      }
+    | {
+        kind: "reserved";
+        lost: () => boolean;
+        stop: () => void;
+        reject: (result: unknown, status: number, permanent: boolean) => Response;
+        markDispatching: (correlation: MutationCorrelation) => void;
+        releaseDispatch: (dispatchId: string) => void;
+        markIndeterminate: (dispatchId: string) => void;
+        settle: (dispatchId: string, result: unknown) => void;
+      };
+  const beginMutation = (
+    request: SignedMutationRequest,
+    materialize: (value: unknown, requestId: string) => unknown,
+    mismatchMessage: string,
+    busyMessage: string,
+  ): MutationFlow | Response => {
+    const requestId = request.auth.requestId;
+    const ledger = getMutationLedger();
+    const identity: MutationIdentity = {
+      controllerId,
+      deviceId: request.auth.device.deviceId,
+      idempotencyKey: request.auth.idempotencyKey,
+    };
+    const bodyHash = request.auth.bodyHash;
+    const reservation = ledger.reserve(identity, bodyHash, mutationOwnerId);
+    if (reservation.kind === "cached") {
+      return Response.json(materialize(reservation.stored.result, requestId), {
+        status: reservation.stored.status,
+      });
+    }
+    if (reservation.kind === "mismatch") {
+      return jsonError("integrity_failed", mismatchMessage, requestId, 409);
+    }
+    if (reservation.kind === "busy") {
+      return jsonRateLimited(busyMessage, requestId, reservation.retryAfterMs);
+    }
+    const settle = (dispatchId: string, result: unknown): void =>
+      ledger.settleDispatched(identity, bodyHash, dispatchId, "accepted", {
+        status: 200,
+        result,
+      });
+    if (reservation.kind === "reconcile") {
+      return { kind: "reconcile", correlation: reservation.correlation, settle };
+    }
+    const lease = reservation.lease;
+    let lost = false;
+    const renewal = setInterval(
+      () => {
+        try {
+          if (!ledger.renew(identity, bodyHash, lease)) lost = true;
+        } catch {
+          lost = true;
+        }
+      },
+      Math.max(1_000, Math.floor(ledger.leaseMs / 3)),
+    );
+    renewal.unref?.();
+    let stopped = false;
+    const stop = (): void => {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(renewal);
+    };
+    return {
+      kind: "reserved",
+      lost: () => lost,
+      stop,
+      reject: (result, status, permanent) => {
+        stop();
+        if (permanent) {
+          ledger.settleReservedRejected(identity, bodyHash, lease, { status, result });
+        } else {
+          ledger.releaseRetryable(identity, bodyHash, lease);
+        }
+        return Response.json(result, { status });
+      },
+      markDispatching: (correlation) => {
+        stop();
+        ledger.markDispatching(identity, bodyHash, lease, correlation);
+      },
+      releaseDispatch: (dispatchId) =>
+        ledger.releaseDispatchRetryable(identity, bodyHash, dispatchId),
+      markIndeterminate: (dispatchId) => ledger.markIndeterminate(identity, bodyHash, dispatchId),
+      settle,
+    };
+  };
   const runtimeStats = options.runtimeStats ?? defaultRuntimeStats;
   const projects = options.projects ?? listProjectsFromStore;
   const roots = sessionRootPaths(dataDir, options.sessionRoots);
@@ -2359,50 +2500,25 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
 
   const handleAgentTurn = async (request: LitterBridgeAgentTurnRequest): Promise<Response> => {
     const requestId = request.auth.requestId;
-    if (litterBridgeSha256Utf8(request.content) !== request.contentHash) {
-      return jsonError(
-        "integrity_failed",
-        "Prompt content hash does not match the signed request",
-        requestId,
-        422,
-      );
-    }
+    const integrityError = promptIntegrityError(request);
+    if (integrityError) return integrityError;
     if (
       request.session.authority !== "local-studio" ||
       request.session.installationId !== controllerId
     ) {
       return jsonError("not_found", "Session identity was not found", requestId, 404);
     }
-    const identity: MutationIdentity = {
-      controllerId,
-      deviceId: request.auth.device.deviceId,
-      idempotencyKey: request.auth.idempotencyKey,
-    };
-    let stopLeaseRenewal: (() => void) | null = null;
+    let mutation: Extract<MutationFlow, { kind: "reserved" }> | null = null;
     try {
-      const ledger = getMutationLedger();
-      const reservation = ledger.reserve(identity, request.auth.bodyHash, mutationOwnerId);
-      if (reservation.kind === "cached") {
-        const result = materializeAgentTurnResult(reservation.stored.result, requestId);
-        return Response.json(result, { status: reservation.stored.status });
-      }
-      if (reservation.kind === "mismatch") {
-        return jsonError(
-          "integrity_failed",
-          "Idempotency key was already used for another signed prompt",
-          requestId,
-          409,
-        );
-      }
-      if (reservation.kind === "busy") {
-        return jsonRateLimited(
-          "Prompt preparation is already in progress",
-          requestId,
-          reservation.retryAfterMs,
-        );
-      }
-      if (reservation.kind === "reconcile") {
-        const correlation = reservation.correlation;
+      const flow = beginMutation(
+        request,
+        materializeAgentTurnResult,
+        "Idempotency key was already used for another signed prompt",
+        "Prompt preparation is already in progress",
+      );
+      if (flow instanceof Response) return flow;
+      if (flow.kind === "reconcile") {
+        const correlation = flow.correlation;
         if (
           correlation.sessionId !== request.session.sessionId ||
           correlation.messageId !== request.messageId ||
@@ -2433,83 +2549,26 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         if (correlation.baseRevision !== request.expectedRevision) {
           return Response.json(agentTurnConflict(request, resolved.revision), { status: 409 });
         }
-        let evidence: { acceptedAt: string } | null;
-        try {
-          evidence = reconcileAgentTurnTranscript(correlation);
-        } catch (error) {
-          if (error instanceof SessionReadError) {
-            return jsonError(error.code, error.message, requestId, 409, true);
-          }
-          throw error;
-        }
-        if (!evidence) {
-          return jsonError(
-            "internal",
-            "Prompt dispatch outcome is indeterminate and requires transcript reconciliation",
-            requestId,
-            409,
-            true,
-          );
-        }
-        const acknowledgement = Schema.decodeUnknownSync(LitterBridgeAgentTurnAckSchema)({
-          type: "agent_turn_ack",
-          protocolVersion: LITTER_BRIDGE_PROTOCOL_VERSION,
+        const evidence = reconcileMutationTranscript(
+          correlation,
           requestId,
-          idempotencyKey: request.auth.idempotencyKey,
-          dispatchId: correlation.dispatchId,
-          canonicalSession: request.session,
-          messageId: request.messageId,
-          contentHash: request.contentHash,
-          baseRevision: request.expectedRevision,
-          piSessionId: request.session.sessionId,
-          modelId: correlation.modelId,
-          outcome: "accepted",
-          acceptedAt: evidence.acceptedAt,
-        });
-        ledger.settleDispatched(
-          identity,
-          request.auth.bodyHash,
-          correlation.dispatchId,
-          "accepted",
-          {
-            status: 200,
-            result: acknowledgement,
-          },
+          "Prompt dispatch outcome is indeterminate and requires transcript reconciliation",
         );
+        if (evidence instanceof Response) return evidence;
+        const acknowledgement = buildAgentTurnAck(
+          request,
+          correlation.dispatchId,
+          correlation.modelId,
+          evidence.acceptedAt,
+        );
+        flow.settle(correlation.dispatchId, acknowledgement);
         return Response.json(acknowledgement);
       }
-
-      const lease = reservation.lease;
-      let leaseLost = false;
-      const renewal = setInterval(
-        () => {
-          try {
-            if (!ledger.renew(identity, request.auth.bodyHash, lease)) leaseLost = true;
-          } catch {
-            leaseLost = true;
-          }
-        },
-        Math.max(1_000, Math.floor(ledger.leaseMs / 3)),
-      );
-      renewal.unref?.();
-      const stopRenewal = (): void => clearInterval(renewal);
-      stopLeaseRenewal = stopRenewal;
-      const rejectPermanent = (
-        result: Exclude<LitterBridgeAgentTurnResult, { type: "agent_turn_ack" }>,
-        status: number,
-      ): Response => {
-        stopRenewal();
-        ledger.settleReservedRejected(identity, request.auth.bodyHash, lease, { status, result });
-        return Response.json(result, { status });
-      };
-      const rejectRetryable = (
-        result: Exclude<LitterBridgeAgentTurnResult, { type: "agent_turn_ack" }>,
-        status: number,
-      ): Response => {
-        stopRenewal();
-        ledger.releaseRetryable(identity, request.auth.bodyHash, lease);
-        return Response.json(result, { status });
-      };
+      mutation = flow;
+      const rejectPermanent = (result: LitterBridgeAgentTurnResult, status: number): Response =>
+        flow.reject(result, status, true);
+      const rejectRetryable = (result: LitterBridgeAgentTurnResult, status: number): Response =>
+        flow.reject(result, status, false);
 
       let resolved: ResolvedSessionFile;
       try {
@@ -2587,8 +2646,8 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         );
       }
       const runtimeStatus = target.session.status;
-      if (leaseLost) {
-        stopRenewal();
+      if (flow.lost()) {
+        flow.stop();
         return jsonError(
           "rate_limited",
           "Prompt preparation lease was lost before dispatch",
@@ -2636,8 +2695,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         modelId,
         dispatchedAt: now().toISOString(),
       };
-      stopRenewal();
-      ledger.markDispatching(identity, request.auth.bodyHash, lease, correlation);
+      flow.markDispatching(correlation);
       let boundary: PiDurablePromptBoundary;
       try {
         boundary = await acceptAgentTurnPrompt(target.session, request.content, {
@@ -2647,7 +2705,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         });
       } catch (error) {
         if (error instanceof AgentTurnPreflightRejected) {
-          ledger.releaseDispatchRetryable(identity, request.auth.bodyHash, dispatchId);
+          flow.releaseDispatch(dispatchId);
           return jsonError(
             "agent_runtime_unavailable",
             "Prompt preflight was rejected by the session runtime",
@@ -2656,7 +2714,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
             true,
           );
         }
-        ledger.markIndeterminate(identity, request.auth.bodyHash, dispatchId);
+        flow.markIndeterminate(dispatchId);
         throw error;
       }
       if (
@@ -2666,28 +2724,11 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         boundary.cwd !== resolved.cwd ||
         boundary.modelId !== modelId
       ) {
-        ledger.markIndeterminate(identity, request.auth.bodyHash, dispatchId);
+        flow.markIndeterminate(dispatchId);
         throw new AgentTurnDispatchIndeterminate("Durable prompt boundary identity changed");
       }
-      const acknowledgement = Schema.decodeUnknownSync(LitterBridgeAgentTurnAckSchema)({
-        type: "agent_turn_ack",
-        protocolVersion: LITTER_BRIDGE_PROTOCOL_VERSION,
-        requestId,
-        idempotencyKey: request.auth.idempotencyKey,
-        dispatchId,
-        canonicalSession: request.session,
-        messageId: request.messageId,
-        contentHash: request.contentHash,
-        baseRevision: request.expectedRevision,
-        piSessionId: request.session.sessionId,
-        modelId,
-        outcome: "accepted",
-        acceptedAt: boundary.acceptedAt,
-      });
-      ledger.settleDispatched(identity, request.auth.bodyHash, dispatchId, "accepted", {
-        status: 200,
-        result: acknowledgement,
-      });
+      const acknowledgement = buildAgentTurnAck(request, dispatchId, modelId, boundary.acceptedAt);
+      flow.settle(dispatchId, acknowledgement);
       return Response.json(acknowledgement);
     } catch (error) {
       if (error instanceof AgentTurnDispatchIndeterminate) {
@@ -2701,14 +2742,10 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
       }
       return jsonError("internal", "Prompt dispatch failed closed", requestId, 500);
     } finally {
-      stopLeaseRenewal?.();
+      mutation?.stop();
     }
   };
 
-  // Build the create ack by reading back the freshly-written session file. The
-  // new session id is server-minted, so the descriptor is authoritative from
-  // disk; if the file isn't yet visible to inventory (project-cwd variant
-  // race) we fall back to a minimal descriptor derived from the dispatch.
   const buildSessionCreateAck = async (input: {
     requestId: string;
     request: LitterBridgeSessionCreateRequest;
@@ -2770,16 +2807,8 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     request: LitterBridgeSessionCreateRequest,
   ): Promise<Response> => {
     const requestId = request.auth.requestId;
-    if (litterBridgeSha256Utf8(request.content) !== request.contentHash) {
-      return jsonError(
-        "integrity_failed",
-        "Prompt content hash does not match the signed request",
-        requestId,
-        422,
-      );
-    }
-    // The target cwd must canonicalize to a currently-trusted live project —
-    // mobile can only create sessions inside projects the host already trusts.
+    const integrityError = promptIntegrityError(request);
+    if (integrityError) return integrityError;
     const requestedCwd = (() => {
       try {
         return realpathSync.native(path.resolve(request.cwd));
@@ -2802,63 +2831,29 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         400,
       );
     }
-    const identity: MutationIdentity = {
-      controllerId,
-      deviceId: request.auth.device.deviceId,
-      idempotencyKey: request.auth.idempotencyKey,
-    };
-    let stopLeaseRenewal: (() => void) | null = null;
+    let mutation: Extract<MutationFlow, { kind: "reserved" }> | null = null;
     try {
-      const ledger = getMutationLedger();
-      const reservation = ledger.reserve(identity, request.auth.bodyHash, mutationOwnerId);
-      if (reservation.kind === "cached") {
-        return Response.json(materializeSessionCreateResult(reservation.stored.result, requestId), {
-          status: reservation.stored.status,
-        });
-      }
-      if (reservation.kind === "mismatch") {
-        return jsonError(
-          "integrity_failed",
-          "Idempotency key was already used for another signed request",
-          requestId,
-          409,
-        );
-      }
-      if (reservation.kind === "busy") {
-        return jsonRateLimited(
-          "Session creation is already in progress",
-          requestId,
-          reservation.retryAfterMs,
-        );
-      }
-      if (reservation.kind === "reconcile") {
-        // A prior attempt marked a dispatch but crashed before settling. Verify
-        // the same request and recover the outcome from the transcript.
-        const correlation = reservation.correlation;
+      const flow = beginMutation(
+        request,
+        materializeSessionCreateResult,
+        "Idempotency key was already used for another signed request",
+        "Session creation is already in progress",
+      );
+      if (flow instanceof Response) return flow;
+      if (flow.kind === "reconcile") {
+        const correlation = flow.correlation;
         if (
           correlation.messageId !== request.messageId ||
           correlation.contentHash !== request.contentHash
         ) {
           return jsonError("integrity_failed", "Dispatch correlation is invalid", requestId, 409);
         }
-        let evidence: { acceptedAt: string } | null;
-        try {
-          evidence = reconcileAgentTurnTranscript(correlation);
-        } catch (error) {
-          if (error instanceof SessionReadError) {
-            return jsonError(error.code, error.message, requestId, 409, true);
-          }
-          throw error;
-        }
-        if (!evidence) {
-          return jsonError(
-            "internal",
-            "Session creation outcome is indeterminate; retry",
-            requestId,
-            409,
-            true,
-          );
-        }
+        const evidence = reconcileMutationTranscript(
+          correlation,
+          requestId,
+          "Session creation outcome is indeterminate; retry",
+        );
+        if (evidence instanceof Response) return evidence;
         const ack = await buildSessionCreateAck({
           requestId,
           request,
@@ -2868,40 +2863,15 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
           modelId: correlation.modelId,
           acceptedAt: evidence.acceptedAt,
         });
-        ledger.settleDispatched(
-          identity,
-          request.auth.bodyHash,
-          correlation.dispatchId,
-          "accepted",
-          { status: 200, result: ack },
-        );
+        flow.settle(correlation.dispatchId, ack);
         return Response.json(ack);
       }
-
-      const lease = reservation.lease;
-      let leaseLost = false;
-      const renewal = setInterval(
-        () => {
-          try {
-            if (!ledger.renew(identity, request.auth.bodyHash, lease)) leaseLost = true;
-          } catch {
-            leaseLost = true;
-          }
-        },
-        Math.max(1_000, Math.floor(ledger.leaseMs / 3)),
-      );
-      renewal.unref?.();
-      const stopRenewal = (): void => clearInterval(renewal);
-      stopLeaseRenewal = stopRenewal;
+      mutation = flow;
       const rejectRetryable = (
         code: LitterBridgeErrorCode,
         message: string,
         status: number,
-      ): Response => {
-        stopRenewal();
-        ledger.releaseRetryable(identity, request.auth.bodyHash, lease);
-        return jsonError(code, message, requestId, status, true);
-      };
+      ): Response => flow.reject(errorResult(code, message, requestId, true), status, false);
 
       const runtimeAffinity = `litter-create-${litterBridgeSha256Utf8(
         canonicalLitterBridgeJson([
@@ -2922,8 +2892,8 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         );
       }
       const status = target.session.status;
-      if (leaseLost) {
-        stopRenewal();
+      if (flow.lost()) {
+        flow.stop();
         return jsonError(
           "rate_limited",
           "Session preparation lease was lost before dispatch",
@@ -2950,23 +2920,27 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
           contentHash: request.contentHash,
         });
       } catch (error) {
-        stopRenewal();
-        ledger.releaseRetryable(identity, request.auth.bodyHash, lease);
         if (error instanceof AgentTurnPreflightRejected) {
-          return jsonError(
-            "agent_runtime_unavailable",
-            "Prompt preflight was rejected by the session runtime",
-            requestId,
+          return flow.reject(
+            errorResult(
+              "agent_runtime_unavailable",
+              "Prompt preflight was rejected by the session runtime",
+              requestId,
+              true,
+            ),
             503,
-            true,
+            false,
           );
         }
-        return jsonError(
-          "internal",
-          "Session creation outcome is indeterminate; retry",
-          requestId,
+        return flow.reject(
+          errorResult(
+            "internal",
+            "Session creation outcome is indeterminate; retry",
+            requestId,
+            true,
+          ),
           500,
-          true,
+          false,
         );
       }
       if (
@@ -2975,20 +2949,8 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         boundary.cwd !== project.cwd ||
         boundary.modelId !== modelId
       ) {
-        stopRenewal();
-        ledger.releaseRetryable(identity, request.auth.bodyHash, lease);
-        return jsonError(
-          "integrity_failed",
-          "Durable prompt boundary identity changed",
-          requestId,
-          409,
-          true,
-        );
+        return rejectRetryable("integrity_failed", "Durable prompt boundary identity changed", 409);
       }
-      // Record the dispatch correlation (reserved → dispatching) before we
-      // settle: it satisfies the ledger state machine and lets a crashed retry
-      // reconcile from the transcript. The session file now exists (the prompt
-      // wrote it), so the correlation carries its authoritative path.
       const correlation: MutationCorrelation = {
         dispatchId,
         sessionId: newSessionId,
@@ -3000,7 +2962,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         modelId,
         dispatchedAt: now().toISOString(),
       };
-      ledger.markDispatching(identity, request.auth.bodyHash, lease, correlation);
+      flow.markDispatching(correlation);
       const acknowledgement = await buildSessionCreateAck({
         requestId,
         request,
@@ -3010,11 +2972,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         modelId,
         acceptedAt: boundary.acceptedAt,
       });
-      stopRenewal();
-      ledger.settleDispatched(identity, request.auth.bodyHash, dispatchId, "accepted", {
-        status: 200,
-        result: acknowledgement,
-      });
+      flow.settle(dispatchId, acknowledgement);
       return Response.json(acknowledgement);
     } catch (error) {
       console.error(
@@ -3024,7 +2982,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
       );
       return jsonError("internal", "Session creation failed closed", requestId, 500);
     } finally {
-      stopLeaseRenewal?.();
+      mutation?.stop();
     }
   };
 
