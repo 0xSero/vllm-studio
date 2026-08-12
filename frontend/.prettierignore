@@ -1,4 +1,3 @@
 node_modules
 .next
-playwright-report
 package-lock.json

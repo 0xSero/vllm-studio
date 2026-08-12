@@ -9,8 +9,8 @@
 // bundled extension could only see an RPC session id that differed from the id
 // the goal store is keyed by, so the goal was always read as null (#284).
 //
-// This file is retained as the shared, pure section builder (and its tests).
-// It is no longer registered as a runtime extension.
+// This file is retained as the shared, pure section builder. It is no longer
+// registered as a runtime extension.
 
 const MARKER = "Local Studio session goal:";
 
@@ -48,7 +48,9 @@ export function goalSystemPromptSection(goal: SessionGoal): string | null {
   if (turnBudget !== null) {
     lines.push("", `Turn budget: ${turnsUsed} of ${turnBudget} used.`);
     if (status === "budget_limited") {
-      lines.push("The budget is spent. Summarise progress and what remains; do not start new work.");
+      lines.push(
+        "The budget is spent. Summarise progress and what remains; do not start new work.",
+      );
     }
   } else if (turnsUsed > 0) {
     lines.push("", `Turns spent on this goal so far: ${turnsUsed}.`);
@@ -57,7 +59,7 @@ export function goalSystemPromptSection(goal: SessionGoal): string | null {
   lines.push(
     "",
     "Before claiming the objective is met, audit it against concrete evidence —",
-    "files written, command output, tests run — not intent. Say GOAL_COMPLETE only",
+    "files written, command output, and runtime evidence — not intent. Say GOAL_COMPLETE only",
     "when that evidence exists, and GOAL_BLOCKED with the reason only when you",
     "genuinely cannot proceed.",
   );

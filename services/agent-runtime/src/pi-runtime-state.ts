@@ -1,6 +1,6 @@
-// Pure pi-runtime state derivation. This module must stay free of runtime
-// imports of @earendil-works/pi-coding-agent (ESM-only) so the node test
-// runner can load it; pi-runtime-types only contributes erased type imports.
+// Pure pi-runtime state derivation. This module stays free of runtime imports
+// from @earendil-works/pi-coding-agent; pi-runtime-types contributes only
+// erased type imports.
 import type { LoggedPiEvent, PiAgentStatus, PiContextUsage } from "./pi-runtime-types";
 
 type RuntimeLookupEntry<TSession> = {

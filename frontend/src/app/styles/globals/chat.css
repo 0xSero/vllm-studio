@@ -41,11 +41,7 @@
 
 /* Chat markdown */
 :root {
-  /* Codex desktop v26.7, exact: the ChatGPT text-md ladder — 16px system UI
-     with 24px leading (1.5) for chat prose AND the composer (one shared chat
-     size token, `text-size-chat` upstream); 13px monospace for code.
-     Weight 400 — calm, document-like. */
-  --codex-chat-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --codex-chat-font-family: var(--font-sans);
   --codex-chat-mono-font-family:
     ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --codex-chat-font-size: 16px;

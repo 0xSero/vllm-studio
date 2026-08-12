@@ -1,22 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { Download, Settings, Smartphone } from "@/ui/icon-registry";
+import { Download, RefreshCw, Settings, Smartphone } from "@/ui/icon-registry";
 import { Spinner } from "@/ui";
 import { ProfileAvatar, useLocalProfile } from "@/features/shell/local-profile";
 import { useAppUpdate } from "@/features/shell/use-app-update";
 
-// Visible only when a newer release exists. One click downloads the update in
-// place; once it is ready, the next click relaunches into the new version.
 function UpdateButton() {
   const update = useAppUpdate();
   if (!update.updateAvailable) return null;
+  const progress = update.progress === null ? null : Math.round(update.progress);
   const label =
     update.phase === "ready"
       ? `Restart to update to v${update.latestVersion}`
-      : update.phase === "working"
-        ? `Downloading v${update.latestVersion}…`
-        : `Update to v${update.latestVersion}`;
+      : update.status === "downloading"
+        ? `Downloading v${update.latestVersion}${progress === null ? "" : ` — ${progress}%`}`
+        : update.status === "checking"
+          ? `Checking for v${update.latestVersion}…`
+          : `Update to v${update.latestVersion}`;
   return (
     <button
       type="button"
@@ -25,8 +26,12 @@ function UpdateButton() {
       aria-label={label}
       className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--sidebar-row-radius)] text-(--color-primary) transition-colors hover:bg-(--hover) hover:text-(--fg)"
     >
-      {update.phase === "working" ? (
+      {update.status === "checking" ? (
         <Spinner size="xs" />
+      ) : update.status === "downloading" && progress !== null ? (
+        <span className="text-[8px] font-medium tabular-nums">{progress}%</span>
+      ) : update.phase === "ready" ? (
+        <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />
       ) : (
         <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
       )}

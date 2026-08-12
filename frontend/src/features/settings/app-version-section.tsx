@@ -5,22 +5,19 @@ import { Spinner } from "@/ui";
 import { SettingsButton, SettingsGroup, SettingsRow, SettingsValue } from "./settings-ui";
 import { useAppUpdate } from "@/features/shell/use-app-update";
 
-// "Application" block for the General settings section: the installed version
-// plus a one-click update against the newest GitHub release.
 export function AppVersionSection() {
   const update = useAppUpdate();
-  // No installed-version signal (web build or dev run): offer the plain
-  // download whenever the newest release is known.
-  const webDownload =
-    update.releaseChannel === null && !update.currentVersion && update.downloadUrl;
   const devChannel = update.releaseChannel === "dev";
+  const progress = update.progress === null ? null : Math.round(update.progress);
   const onLatest = update.currentVersion && update.latestVersion && !update.updateAvailable;
   const description = devChannel
     ? "Dev builds update through the local installer."
     : update.updateAvailable
       ? update.phase === "ready"
         ? `v${update.latestVersion} is downloaded — restart to finish updating.`
-        : `v${update.latestVersion} is available on GitHub.`
+        : update.status === "downloading"
+          ? `Downloading v${update.latestVersion}${progress === null ? "." : ` — ${progress}%.`}`
+          : `v${update.latestVersion} is available on GitHub.`
       : onLatest
         ? "You are on the latest version."
         : update.latestVersion
@@ -37,16 +34,24 @@ export function AppVersionSection() {
           </SettingsValue>
         }
         actions={
-          update.updateAvailable || webDownload ? (
+          update.updateAvailable ? (
             <SettingsButton onClick={update.startUpdate} tone="primary">
-              {update.phase === "working" ? (
+              {update.status === "checking" ? (
                 <Spinner size="xs" />
               ) : update.phase === "ready" ? (
                 <RefreshCw className="h-3 w-3" />
               ) : (
                 <Download className="h-3 w-3" />
               )}
-              {update.phase === "ready" ? "Restart to update" : webDownload ? "Download" : "Update"}
+              {update.status === "checking"
+                ? "Checking…"
+                : update.status === "downloading"
+                  ? progress === null
+                    ? "Downloading…"
+                    : `Downloading ${progress}%`
+                  : update.phase === "ready"
+                    ? "Restart to update"
+                    : "Update"}
             </SettingsButton>
           ) : undefined
         }

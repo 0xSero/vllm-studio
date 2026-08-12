@@ -9,9 +9,18 @@ interface Window {
       packaged: boolean;
       releaseChannel: "dev" | "stable";
     }>;
-    getUpdateStatus?(): Promise<{ status: string; version?: string; message?: string }>;
-    checkForUpdates?(): Promise<{ status: string; version?: string; message?: string }>;
-    installUpdate?(): Promise<boolean>;
+    getUpdateStatus?(): Promise<{
+      status: string;
+      version?: string;
+      message?: string;
+      progress?: number;
+    }>;
+    startUpdate?(): Promise<{
+      status: string;
+      version?: string;
+      message?: string;
+      progress?: number;
+    }>;
     getKittylitterPairingJson?(): Promise<import("../desktop/interfaces").KittylitterPairingResult>;
     copyKittylitterPairingJson?(pairingJson: string): Promise<{
       ok: boolean;

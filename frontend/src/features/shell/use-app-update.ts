@@ -4,24 +4,26 @@ import { useCallback, useRef, useState } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 export type AppUpdatePhase = "idle" | "working" | "ready" | "failed";
+export type AppUpdateStatus =
+  | "idle"
+  | "checking"
+  | "available"
+  | "not-available"
+  | "downloading"
+  | "downloaded"
+  | "error";
 
 export type AppUpdate = {
-  /** Installed app version (desktop bridge); null on the plain web app. */
   currentVersion: string | null;
   releaseChannel: "dev" | "stable" | null;
-  /** Newest published release, when reachable. */
   latestVersion: string | null;
-  downloadUrl: string | null;
   updateAvailable: boolean;
   phase: AppUpdatePhase;
-  /**
-   * Desktop: download the update in place (data is untouched), then a second
-   * activation relaunches into the new version. Web: open the DMG download.
-   */
+  status: AppUpdateStatus;
+  progress: number | null;
   startUpdate: () => void;
 };
 
-// "2.10.1" vs "2.9.0" — numeric per segment, missing segments are 0.
 export function isNewerVersion(candidate: string, current: string): boolean {
   const a = candidate.split(".").map((part) => Number.parseInt(part, 10) || 0);
   const b = current.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -56,48 +58,73 @@ function phaseForStatus(status: string): AppUpdatePhase {
   return "idle";
 }
 
+function normalizedStatus(status: string): AppUpdateStatus {
+  if (
+    status === "checking" ||
+    status === "available" ||
+    status === "not-available" ||
+    status === "downloading" ||
+    status === "downloaded" ||
+    status === "error"
+  ) {
+    return status;
+  }
+  return "idle";
+}
+
+function snapshotProgress(snapshot: { progress?: number; message?: string }): number | null {
+  const parsed =
+    typeof snapshot.progress === "number"
+      ? snapshot.progress
+      : Number.parseFloat(snapshot.message ?? "");
+  if (!Number.isFinite(parsed)) return null;
+  return Math.min(100, Math.max(0, parsed));
+}
+
 export function useAppUpdate(): AppUpdate {
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
   const [releaseChannel, setReleaseChannel] = useState<"dev" | "stable" | null>(null);
-  const [latest, setLatest] = useState<{ version: string | null; url: string | null }>({
-    version: null,
-    url: null,
-  });
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [phase, setPhase] = useState<AppUpdatePhase>("idle");
+  const [status, setStatus] = useState<AppUpdateStatus>("idle");
+  const [progress, setProgress] = useState<number | null>(null);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Poll the desktop updater snapshot while a download is in flight. The main
-  // process auto-downloads in the background, so this also catches an update
-  // that finished before the user clicked anything.
   const syncDesktopPhase = useCallback(() => {
     const getStatus = bridge().getUpdateStatus;
     if (!getStatus) return;
     void getStatus().then(
       (snapshot) => {
-        const next = phaseForStatus(snapshot.status);
+        const nextStatus = normalizedStatus(snapshot.status);
+        const next = phaseForStatus(nextStatus);
+        setStatus(nextStatus);
         setPhase(next);
+        setProgress(nextStatus === "downloading" ? snapshotProgress(snapshot) : null);
+        if (snapshot.version) setLatestVersion(snapshot.version);
         if (next === "working") {
           if (pollTimer.current) clearTimeout(pollTimer.current);
           pollTimer.current = setTimeout(syncDesktopPhase, 2_000);
         }
       },
-      () => setPhase("failed"),
+      () => {
+        setStatus("error");
+        setPhase("failed");
+        setProgress(null);
+      },
     );
   }, []);
 
   useMountSubscription(() => {
     let cancelled = false;
     void fetch("/api/app-update", { cache: "no-store" })
-      .then((response) => response.json() as Promise<{ latest?: string; downloadUrl?: string }>)
+      .then((response) => response.json() as Promise<{ latest?: string }>)
       .then((body) => {
-        if (!cancelled) setLatest({ version: body.latest ?? null, url: body.downloadUrl ?? null });
+        if (!cancelled) setLatestVersion(body.latest ?? null);
       })
       .catch(() => undefined);
     void bridge()
       .getRuntime?.()
       .then((runtime) => {
-        // An unpackaged dev run reports the repo's package.json version, which
-        // trails every published release — it must not claim an update.
         if (!cancelled && runtime.packaged) {
           setCurrentVersion(runtime.appVersion);
           setReleaseChannel(runtime.releaseChannel);
@@ -111,31 +138,33 @@ export function useAppUpdate(): AppUpdate {
     };
   }, [syncDesktopPhase]);
 
-  const updateAvailable = isReleaseUpdateAvailable(latest.version, currentVersion, releaseChannel);
+  const updateAvailable = isReleaseUpdateAvailable(latestVersion, currentVersion, releaseChannel);
 
   const startUpdate = useCallback(() => {
     const desktop = bridge();
-    if (phase === "ready" && desktop.installUpdate) {
-      void desktop.installUpdate();
+    if (!desktop.startUpdate) {
+      setStatus("error");
+      setPhase("failed");
       return;
     }
-    // A failed in-place update (or no desktop bridge) falls back to the plain
-    // DMG download in the browser — reinstalling keeps user data as well.
-    if (!desktop.checkForUpdates || phase === "failed") {
-      if (latest.url) window.open(latest.url, "_blank", "noopener");
-      return;
-    }
+    setStatus("checking");
     setPhase("working");
-    void desktop.checkForUpdates().then(syncDesktopPhase, () => setPhase("failed"));
-  }, [latest.url, phase, syncDesktopPhase]);
+    setProgress(null);
+    void desktop.startUpdate().then(syncDesktopPhase, () => {
+      setStatus("error");
+      setPhase("failed");
+      setProgress(null);
+    });
+  }, [syncDesktopPhase]);
 
   return {
     currentVersion,
     releaseChannel,
-    latestVersion: latest.version,
-    downloadUrl: latest.url,
+    latestVersion,
     updateAvailable,
     phase,
+    status,
+    progress,
     startUpdate,
   };
 }

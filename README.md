@@ -226,7 +226,6 @@ return after login without a repository daemon wrapper.
 
 ```bash
 npm run check
-npm run test:integration
 ```
 
 The configured pre-push hook (`.githooks/pre-push`) checks conventional commits
@@ -235,13 +234,12 @@ symlinks to `scripts/project.mjs`; they do not contain separate automation logic
 
 ## Releases
 
-Every successful `main` CI run builds and boots an isolated unsigned macOS app,
-checks the embedded frontend, agent runtime, native desktop bridge, and PTY, and
-keeps the exact-SHA package as a GitHub Actions artifact. Conventional commits
+Every successful `main` CI run builds an unsigned macOS app and keeps the
+exact-SHA package as a GitHub Actions artifact. Conventional commits
 then trigger `release.yml`. Semantic Release chooses the next version (`feat` →
 minor, breaking → major, all other allowed commit types → patch).
 
-The release workflow builds the exact tested revision without Apple credentials,
+The release workflow builds the exact revision without Apple credentials,
 then passes only that unsigned app bundle to a separate signing job. The signing
 job installs the lockfile-pinned signing tooling without lifecycle scripts,
 signs, notarizes and staples the release assets, and hands them to a final
@@ -250,12 +248,26 @@ the final stage can create the GitHub release with the DMG, updater files,
 stable website alias, checksums, and source manifest. There is no npm publish
 and tags are never created by hand.
 
+## Acknowledgements
+
+Local Studio is built with and inspired by exceptional open-source work:
+
+- [Pi](https://github.com/earendil-works/pi) — the agent runtime and native
+  session model behind Workbench.
+- [T3 Code](https://github.com/pingdotgg/t3code) — inspiration for a focused,
+  developer-first coding workbench.
+- [SGLang](https://github.com/sgl-project/sglang) — a high-performance model
+  serving backend supported by Local Studio recipes.
+- [vLLM](https://github.com/vllm-project/vllm) — a high-throughput inference
+  and serving backend supported throughout Local Studio.
+- [Convex](https://github.com/get-convex/convex-backend) — inspiration for
+  reactive, real-time application architecture.
+
 ## Contributing
 
 Contributions should be small, focused, and easy to review. Start from the
 latest `dev`, one logical change per branch, no formatting-only rewrites, no
-secrets or build artifacts. Run `npm run check` (and `npm run test:integration` for
-behavior changes) before opening a PR; include a concise summary, the validation
+secrets or build artifacts. Run `npm run check` before opening a PR; include a concise summary, the validation
 commands you ran, and screenshots for UI changes. See AGENTS.md for the full
 code standards an agent (or contributor) must follow.
 

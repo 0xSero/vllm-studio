@@ -5,11 +5,20 @@ import { DESKTOP_CONFIG } from "../configs";
 import type { DesktopUpdateSnapshot } from "../types";
 import { log } from "../helpers/logger";
 import { isLoopbackHttpUrl } from "../helpers/url";
+import { UpdateInstallIntent } from "./update-install-intent";
 
 let latestUpdateState: DesktopUpdateSnapshot = { status: "idle" };
+const installIntent = new UpdateInstallIntent();
 
 function setUpdateState(nextState: DesktopUpdateSnapshot): void {
   latestUpdateState = nextState;
+}
+
+function setUpdateError(error: unknown): void {
+  installIntent.clear();
+  const message = String(error);
+  setUpdateState({ status: "error", message });
+  log.error(`Auto update error: ${message}`);
 }
 
 function resolveFeedUrl(): string | null {
@@ -57,8 +66,7 @@ export function getUpdateState(): DesktopUpdateSnapshot {
   return latestUpdateState;
 }
 
-/** Quit and install a downloaded update; user data directories are untouched. */
-export function installDownloadedUpdate(): void {
+function installDownloadedUpdate(): void {
   autoUpdater.quitAndInstall();
 }
 
@@ -99,6 +107,7 @@ export async function checkForUpdates(force = false): Promise<DesktopUpdateSnaps
     setUpdateState({ status: "checking" });
     autoUpdater.allowPrerelease = false;
     const result = await autoUpdater.checkForUpdates();
+    if (result?.downloadPromise) void result.downloadPromise.catch(setUpdateError);
     // An unpackaged app resolves null without emitting any status event; leave
     // "checking" behind and the renderer would poll forever.
     if (!result && latestUpdateState.status === "checking") {
@@ -113,6 +122,25 @@ export async function checkForUpdates(force = false): Promise<DesktopUpdateSnaps
     setUpdateState(errorState);
     return errorState;
   }
+}
+
+export async function startUpdate(): Promise<DesktopUpdateSnapshot> {
+  const action = installIntent.request(latestUpdateState.status);
+  if (action === "install") {
+    installDownloadedUpdate();
+    return latestUpdateState;
+  }
+  if (action === "wait") return latestUpdateState;
+
+  const snapshot = await checkForUpdates(true);
+  if (
+    snapshot.status === "idle" ||
+    snapshot.status === "not-available" ||
+    snapshot.status === "error"
+  ) {
+    installIntent.clear();
+  }
+  return snapshot;
 }
 
 export function initializeAutoUpdates(): void {
@@ -132,6 +160,7 @@ export function initializeAutoUpdates(): void {
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoRunAppAfterInstall = true;
 
   autoUpdater.on("checking-for-update", () => {
     setUpdateState({ status: "checking" });
@@ -144,6 +173,7 @@ export function initializeAutoUpdates(): void {
   });
 
   autoUpdater.on("update-not-available", (info) => {
+    installIntent.clear();
     setUpdateState({ status: "not-available", version: info.version });
     log.info("No update available");
   });
@@ -151,18 +181,23 @@ export function initializeAutoUpdates(): void {
   autoUpdater.on("download-progress", (progress) => {
     setUpdateState({
       status: "downloading",
+      version: latestUpdateState.version,
       message: `${progress.percent.toFixed(1)}%`,
+      progress: progress.percent,
     });
   });
 
   autoUpdater.on("update-downloaded", (info) => {
     setUpdateState({ status: "downloaded", version: info.version });
     log.info(`Update downloaded: ${info.version}`);
+    if (installIntent.downloadCompleted()) {
+      log.info(`Restarting to install update: ${info.version}`);
+      installDownloadedUpdate();
+    }
   });
 
   autoUpdater.on("error", (error) => {
-    setUpdateState({ status: "error", message: String(error) });
-    log.error(`Auto update error: ${String(error)}`);
+    setUpdateError(error);
   });
 
   if (app.isPackaged) {
