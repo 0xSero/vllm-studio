@@ -6,71 +6,40 @@ import { Plus, TerminalSquare, type LucideIcon } from "lucide-react";
 import { PanelRightFilled } from "@/ui/panel-toggle-icons";
 import { CloseIcon } from "@/ui/icons";
 import { MobileSheetGrip } from "@/ui/mobile-sheet-grip";
-import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
 import { MAX_COMPUTER_WIDTH, MIN_COMPUTER_WIDTH } from "@/features/agent/tools/persistence";
-import {
-  sanitizeBrowserPaneUrl,
-  sanitizeLocalFileUrl,
-} from "@shared/agent/sanitize-embedded-browser-url";
 import { useToolsStore } from "@/features/agent/tools/store";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import { computerResource } from "@/features/agent/tools/resources";
 import { useProjectsStore } from "@/features/agent/projects/store";
 import { focusedSession as selectFocusedSession } from "@/features/agent/runtime/selectors";
-import {
-  terminalOwnerFor,
-  terminalOwnerLabel,
-  type TerminalOwner,
-  type TerminalOwnersState,
-} from "@/features/agent/terminal-owners";
+import { terminalOwnerLabel, type TerminalOwnersState } from "@/features/agent/terminal-owners";
 import { ComputerTabPanel } from "@/features/agent/ui/computer-tab-panel";
 import { TerminalPanel } from "@/features/agent/ui/terminal-panel";
-import { webPtyBridge } from "@/features/agent/ui/web-pty-bridge";
 import type { WorkbenchState } from "@/features/agent/workbench/store";
 
-function acceptedBrowserUrl(url: string): string | null {
-  return /^file:\/\//i.test(url) ? sanitizeLocalFileUrl(url) : sanitizeBrowserPaneUrl(url);
-}
-
 export function AgentBrowserPanel({ workbench }: { workbench: WorkbenchState }) {
-  const state = workbench;
   const projects = useProjectsStore();
-  const focusedSession = selectFocusedSession(state);
+  const focusedSession = selectFocusedSession(workbench);
   const activeProject = projects.resolveProject(focusedSession);
   const tools = useToolsStore();
   const { registerComputerAside, startComputerResize } = workbench;
-  const terminalOwner = useMemo(
-    () => terminalOwnerFor(activeProject, focusedSession),
-    [activeProject, focusedSession],
+  const resourceContext = useMemo(
+    () => ({
+      project: activeProject,
+      session: focusedSession,
+      modelId: focusedSession?.modelId ?? workbench.selectedModel,
+    }),
+    [activeProject, focusedSession, workbench.selectedModel],
   );
   const terminalState = tools.terminals;
   const activeTerminal = terminalState.owners.find(
     (owner) => owner.mountKey === terminalState.activeOwnerKey,
   );
   useMountSubscription(() => {
-    if (tools.computer.open && tools.computer.tab === "terminal" && terminalOwner) {
-      queueMicrotask(() => tools.rememberTerminalOwner(terminalOwner, { select: true }));
+    if (tools.computer.open && tools.computer.tab === "terminal") {
+      queueMicrotask(() => workbench.openResource("terminal", resourceContext));
     }
-  }, [terminalOwner, tools]);
-  const openTerminalForFocusedSession = useCallback(() => {
-    if (terminalOwner) tools.rememberTerminalOwner(terminalOwner, { select: true });
-    tools.setComputerTab("terminal");
-  }, [terminalOwner, tools]);
-  const selectTerminalOwner = useCallback(
-    (ownerKey: string) => {
-      tools.selectTerminalOwner(ownerKey);
-      tools.setComputerTab("terminal");
-    },
-    [tools],
-  );
-  const closeTerminalOwner = useCallback(
-    (ownerKey: string) => {
-      const owner = tools.removeTerminalOwner(ownerKey);
-      if (owner) void webPtyBridge.closeOwner(owner.mountKey);
-      if (terminalState.owners.length <= 1) tools.closeComputerTab("terminal");
-    },
-    [terminalState.owners.length, tools],
-  );
+  }, [resourceContext, tools.computer.open, tools.computer.tab, workbench]);
   const handleComputerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLElement>) => {
       if (!(event.metaKey || event.ctrlKey) || !event.altKey) return;
@@ -79,38 +48,9 @@ export function AgentBrowserPanel({ workbench }: { workbench: WorkbenchState }) 
       const owner = terminalState.owners[index];
       if (!owner) return;
       event.preventDefault();
-      selectTerminalOwner(owner.mountKey);
+      workbench.openResource("terminal", resourceContext, owner.mountKey);
     },
-    [selectTerminalOwner, terminalState.owners],
-  );
-  const navigateBrowser = (value: string) => {
-    const next = normalizeBrowserInput(value, focusedSession?.cwd ?? activeProject?.path ?? "");
-    if (!next) return;
-    const accepted = acceptedBrowserUrl(next);
-    if (!accepted) return;
-    tools.setBrowserUrl(accepted, accepted);
-    if (/^file:\/\//i.test(accepted)) return;
-    void fetch("/api/agent/browser/navigate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: accepted }),
-    }).catch(() => undefined);
-  };
-  const closeComputerTab = useCallback(
-    (closing: ComputerTab) => {
-      if (closing === "side-chat") {
-        workbench.closeSideChat();
-        return;
-      }
-      if (closing === "terminal") {
-        const owners = tools.removeTerminalOwners(
-          terminalState.owners.map((owner) => owner.mountKey),
-        );
-        for (const owner of owners) void webPtyBridge.closeOwner(owner.mountKey);
-      }
-      tools.closeComputerTab(closing);
-    },
-    [terminalState.owners, tools, workbench],
+    [resourceContext, terminalState.owners, workbench],
   );
   return (
     <aside
@@ -137,19 +77,17 @@ export function AgentBrowserPanel({ workbench }: { workbench: WorkbenchState }) 
         openTabs={tools.computer.tabs}
         terminalState={terminalState}
         onSelectTab={tools.setComputerTab}
-        onOpenCurrentTerminal={openTerminalForFocusedSession}
-        onSelectTerminalOwner={selectTerminalOwner}
-        onCloseTerminalOwner={closeTerminalOwner}
-        onCloseTab={closeComputerTab}
+        onOpenCurrentTerminal={() => workbench.openResource("terminal", resourceContext)}
+        onSelectTerminalOwner={(ownerKey) =>
+          workbench.openResource("terminal", resourceContext, ownerKey)
+        }
+        onCloseTerminalOwner={(ownerKey) => workbench.closeResource("terminal", ownerKey)}
+        onCloseTab={workbench.closeResource}
         onShowLauncher={() => tools.setComputerTab("tools")}
         onClosePanel={() => tools.setComputerOpen(false)}
       />
 
-      <ComputerTabPanel
-        workbench={workbench}
-        onNavigateBrowser={navigateBrowser}
-        onOpenTerminal={openTerminalForFocusedSession}
-      />
+      <ComputerTabPanel workbench={workbench} />
 
       {tools.computer.tab === "terminal" && activeTerminal ? (
         <TerminalPanel cwd={activeTerminal.cwd} ownerKey={activeTerminal.mountKey} />

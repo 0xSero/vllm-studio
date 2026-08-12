@@ -6,11 +6,14 @@ import { removeSession, setSession } from "@/features/agent/runtime/store";
 import type { Session, SessionId, UpdateSession } from "@/features/agent/runtime/types";
 import { useProjectsStore } from "@/features/agent/projects/store";
 import type { Project } from "@/features/agent/projects/types";
+import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
 import { clampComputerWidth, gentlySnapComputerWidth } from "@/features/agent/tools/persistence";
 import { useToolsStore } from "@/features/agent/tools/store";
-import type { ToolSelection } from "@/features/agent/tools/types";
+import type { ComputerTab, ToolSelection } from "@/features/agent/tools/types";
+import { terminalOwnerFor } from "@/features/agent/terminal-owners";
 import type { ChatPaneHandle } from "@/features/agent/ui/chat-pane";
 import type { SessionDropPayload } from "@/features/agent/ui/pane-grid";
+import { webPtyBridge } from "@/features/agent/ui/web-pty-bridge";
 import {
   closePane,
   openSessionPayloadInPane,
@@ -44,11 +47,19 @@ import {
   normalizeControllerUrl,
 } from "@/lib/api/controllers";
 import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
+import {
+  sanitizeBrowserPaneUrl,
+  sanitizeLocalFileUrl,
+} from "@shared/agent/sanitize-embedded-browser-url";
 
 export type WorkspaceMutation = (state: WorkspaceState) => WorkspaceState;
 export type WorkspaceDispatch = (mutation: WorkspaceMutation) => void;
 type ComputerResizeStart = { clientX: number; preventDefault: () => void };
-type SideChatContext = { project: Project | null; session: Session | null; modelId: string };
+export type WorkbenchResourceContext = {
+  project: Project | null;
+  session: Session | null;
+  modelId: string;
+};
 
 export type WorkbenchState = WorkspaceState & {
   dispatch: WorkspaceDispatch;
@@ -62,8 +73,9 @@ export type WorkbenchState = WorkspaceState & {
   setSplitRatio: (path: number[], ratio: number) => void;
   updateSession: UpdateSession;
   sideChatSession: () => Session;
-  openSideChat: (context: SideChatContext) => void;
-  closeSideChat: () => void;
+  openResource: (tab: ComputerTab, context: WorkbenchResourceContext, ownerKey?: string) => void;
+  closeResource: (tab: ComputerTab, ownerKey?: string) => void;
+  navigateBrowser: (value: string, context: WorkbenchResourceContext) => void;
   closePane: (paneId: PaneId) => void;
   splitPaneWithPayload: (
     paneId: PaneId,
@@ -130,7 +142,7 @@ function chooseModelId(models: AgentModel[], current: string, preferred?: string
   return models.find((model) => model.active)?.id ?? models[0]?.id ?? "";
 }
 
-function createSideChatSession(context: SideChatContext): Session {
+function createSideChatSession(context: WorkbenchResourceContext): Session {
   return {
     ...makeFreshTab(),
     title: "Side chat",
@@ -320,25 +332,61 @@ function createWorkbenchStore(ephemeral: boolean) {
     updateSession: (sessionId, patch) =>
       dispatch((state) => patchWorkspaceSession(state, sessionId, patch)),
     sideChatSession: (): Session => store.getState().sessions.get(sideChatSeed.id) ?? sideChatSeed,
-    openSideChat: (context) => {
-      const current = store.getState().sessions.get(sideChatSeed.id) ?? sideChatSeed;
-      const session = current.messages.length
-        ? current
-        : {
-            ...current,
-            ...createSideChatSession(context),
-            id: current.id,
-            status: current.status === "loading" ? "idle" : current.status,
-            modelId: current.modelId || context.session?.modelId || context.modelId,
-          };
-      dispatch((state) => ({ ...state, sessions: setSession(state.sessions, session) }));
-      useToolsStore.getState().setComputerTab("side-chat");
+    openResource: (tab, context, ownerKey) => {
+      const tools = useToolsStore.getState();
+      if (tab === "side-chat") {
+        const current = store.getState().sessions.get(sideChatSeed.id) ?? sideChatSeed;
+        const session = current.messages.length
+          ? current
+          : {
+              ...current,
+              ...createSideChatSession(context),
+              id: current.id,
+              status: current.status === "loading" ? "idle" : current.status,
+              modelId: current.modelId || context.session?.modelId || context.modelId,
+            };
+        dispatch((state) => ({ ...state, sessions: setSession(state.sessions, session) }));
+      } else if (tab === "terminal") {
+        if (ownerKey) tools.selectTerminalOwner(ownerKey);
+        else {
+          const owner = terminalOwnerFor(context.project, context.session);
+          if (owner) tools.rememberTerminalOwner(owner, { select: true });
+        }
+      }
+      tools.setComputerTab(tab);
     },
-    closeSideChat: () => {
-      const closingId = sideChatSeed.id;
-      sideChatSeed = createSideChatSession({ project: null, session: null, modelId: "" });
-      dispatch((state) => ({ ...state, sessions: removeSession(state.sessions, closingId) }));
-      useToolsStore.getState().closeComputerTab("side-chat");
+    closeResource: (tab, ownerKey) => {
+      const tools = useToolsStore.getState();
+      if (tab === "side-chat") {
+        const closingId = sideChatSeed.id;
+        sideChatSeed = createSideChatSession({ project: null, session: null, modelId: "" });
+        dispatch((state) => ({ ...state, sessions: removeSession(state.sessions, closingId) }));
+      } else if (tab === "terminal") {
+        const removed = ownerKey
+          ? [tools.removeTerminalOwner(ownerKey)].filter((owner) => owner !== null)
+          : tools.removeTerminalOwners(tools.terminals.owners.map((owner) => owner.mountKey));
+        for (const owner of removed) void webPtyBridge.closeOwner(owner.mountKey);
+        if (ownerKey && tools.terminals.owners.length > 1) return;
+      }
+      tools.closeComputerTab(tab);
+    },
+    navigateBrowser: (value, context) => {
+      const next = normalizeBrowserInput(
+        value,
+        context.session?.cwd ?? context.project?.path ?? "",
+      );
+      if (!next) return;
+      const accepted = /^file:\/\//i.test(next)
+        ? sanitizeLocalFileUrl(next)
+        : sanitizeBrowserPaneUrl(next);
+      if (!accepted) return;
+      useToolsStore.getState().setBrowserUrl(accepted, accepted);
+      if (/^file:\/\//i.test(accepted)) return;
+      void fetch("/api/agent/browser/navigate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: accepted }),
+      }).catch(() => undefined);
     },
     closePane: (paneId) => dispatch((state) => closePane(state, { paneId })),
     splitPaneWithPayload: (paneId, direction, side, payload) =>

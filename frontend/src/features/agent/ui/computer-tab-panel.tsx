@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, lazy, type ReactNode } from "react";
-import { useToolsStore, type ToolsContextValue } from "@/features/agent/tools/store";
+import { useToolsStore } from "@/features/agent/tools/store";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import { LAUNCHER_RESOURCES } from "@/features/agent/tools/resources";
 import { useProjectsStore } from "@/features/agent/projects/store";
@@ -33,14 +33,7 @@ const LazyGitDiffPanel = lazy(() =>
   })),
 );
 
-type ComputerTabPanelProps = {
-  workbench: WorkbenchState;
-  onNavigateBrowser: (value: string) => void;
-  onOpenTerminal: () => void;
-};
-
-export function ComputerTabPanel(props: ComputerTabPanelProps) {
-  const state = props.workbench;
+export function ComputerTabPanel({ workbench: state }: { workbench: WorkbenchState }) {
   const projects = useProjectsStore();
   const tools = useToolsStore();
   const focusedSession = selectFocusedSession(state);
@@ -48,6 +41,11 @@ export function ComputerTabPanel(props: ComputerTabPanelProps) {
   const activeModelId = focusedSession?.modelId ?? state.selectedModel;
   const activeModel = state.models.find((model) => model.id === activeModelId) ?? null;
   const focusedCwd = focusedSession?.cwd ?? activeProject?.path ?? null;
+  const resourceContext = {
+    project: activeProject,
+    session: focusedSession,
+    modelId: activeModelId,
+  };
   const panels: Record<ComputerTab, ReactNode> = {
     status: (
       <LazyComputerStatusPanel
@@ -56,21 +54,14 @@ export function ComputerTabPanel(props: ComputerTabPanelProps) {
         focusedSession={focusedSession}
         sessions={[...state.sessions.values()]}
         gitSummary={projects.gitSummary(activeProject?.path ?? focusedSession?.cwd)}
-        onCompactSession={props.workbench.compactFocusedSession}
+        onCompactSession={state.compactFocusedSession}
       />
     ),
     tools: (
       <ComputerLauncherPanel
         activeTab={tools.computer.tab}
-        onOpenSideChat={() =>
-          state.openSideChat({
-            project: activeProject,
-            session: focusedSession,
-            modelId: activeModelId,
-          })
-        }
-        onOpenTerminal={props.onOpenTerminal}
-        tools={tools}
+        context={resourceContext}
+        workbench={state}
       />
     ),
     "side-chat": (
@@ -90,7 +81,7 @@ export function ComputerTabPanel(props: ComputerTabPanelProps) {
         url={tools.browser.url}
         inputValue={tools.browser.input}
         onInputChange={tools.setBrowserInput}
-        onNavigate={props.onNavigateBrowser}
+        onNavigate={(value) => state.navigateBrowser(value, resourceContext)}
         onLocationChange={(next) => tools.setBrowserUrl(next, next)}
         onClose={() => tools.setComputerOpen(false)}
         visible={tools.computer.open}
@@ -152,7 +143,7 @@ function SideChatTab({
         onRenameSession={(sessionId, title) =>
           workbench.updateSession(sessionId, (session) => ({ ...session, title }))
         }
-        onClose={workbench.closeSideChat}
+        onClose={() => workbench.closeResource("side-chat")}
         insideComputerPanel
         showHeader={false}
       />
@@ -170,20 +161,13 @@ function ComputerTabFallback() {
 
 function ComputerLauncherPanel({
   activeTab,
-  onOpenSideChat,
-  onOpenTerminal,
-  tools,
+  context,
+  workbench,
 }: {
   activeTab: ComputerTab;
-  onOpenSideChat: () => void;
-  onOpenTerminal: () => void;
-  tools: ToolsContextValue;
+  context: Parameters<WorkbenchState["openResource"]>[1];
+  workbench: WorkbenchState;
 }) {
-  const open = (tab: ComputerTab) => {
-    if (tab === "side-chat") onOpenSideChat();
-    else if (tab === "terminal") onOpenTerminal();
-    else tools.setComputerTab(tab);
-  };
   return (
     <section className="min-h-0 flex-1 overflow-y-auto bg-(--color-panel) px-3 py-3">
       <div className="flex flex-col gap-1">
@@ -194,7 +178,7 @@ function ComputerLauncherPanel({
             <button
               key={resource.tab}
               type="button"
-              onClick={() => open(resource.tab)}
+              onClick={() => workbench.openResource(resource.tab, context)}
               className={`group flex min-h-0 items-center gap-3 rounded-md px-3 py-2 text-left transition-colors ${
                 selected
                   ? "bg-(--color-surface-hover) text-(--fg)"

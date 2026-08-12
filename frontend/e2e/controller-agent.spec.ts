@@ -578,6 +578,28 @@ test("side chat owns and resets its independent session", async ({ page }) => {
   await expect(panel.getByPlaceholder(/Do anything|Ask for follow-up changes/)).toBeVisible();
 });
 
+test("workbench terminal resource opens and closes its shell", async ({ page }) => {
+  await openControllerChat(page, "Workbench terminal lifecycle");
+  await page.getByRole("button", { name: "Show right sidebar" }).click();
+  await page.getByRole("button", { name: "Show tools" }).click();
+  await page.getByRole("button", { name: /Terminal Start an interactive shell/ }).click();
+
+  const panel = page.locator("aside.agent-computer-panel");
+  const terminal = panel.locator(".xterm");
+  const input = terminal.locator(".xterm-helper-textarea");
+  await expect(input).toBeAttached({ timeout: 60_000 });
+  await input.pressSequentially("printf 'workbench-terminal-marker\\n'", { delay: 15 });
+  await input.press("Enter");
+  await expect(terminal).toContainText("workbench-terminal-marker", { timeout: 60_000 });
+
+  await panel
+    .locator(
+      'button[aria-label^="Close "]:not([aria-label="Close panel"]):not([aria-label="Close controller panel"])',
+    )
+    .click();
+  await expect(panel.locator(".xterm")).toHaveCount(0);
+});
+
 test("messages containing /goal reach Pi as ordinary text", async ({ page }) => {
   const composer = await openControllerChat(page, "Goal text chat");
   const transcript = page.getByRole("article");
