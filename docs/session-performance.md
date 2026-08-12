@@ -156,15 +156,60 @@ entries (69%), because compaction prunes aggressively and real sessions compact
 (that one has 3 compactions). The walk has to happen; it just should not happen
 twice.
 
+### 5. Why the files are big at all: 91–95% of a rollout is not transcript
+
+Investigated the "64 events from a 500-event tail" flag. **It is not a bug and
+not the branch filter** — every one of the last 500 lines survives that filter.
+That session genuinely has ~64 renderable entries on its active branch.
+
+The census found something else, and it reframes this whole pass:
+
+| rollout | transcript | inert | inert share |
+|---------|-----------:|------:|------------:|
+| 40 MB   | 802 entries, 3.6 MB | 3760 entries, 36.3 MB | **91.0%** |
+| 145 MB  | 12142 entries, 6.9 MB | 23816 entries, 138.5 MB | **95.3%** |
+
+The inert bytes are `custom` / `custom_message` entries, and they are
+attributable:
+
+| writer | entries | bytes | avg |
+|--------|--------:|------:|----:|
+| `pi-goal-event` | 11808 | 98.5 MB | 8.7 KB |
+| `pi-goal` | 11978 | 39.8 MB | 3.5 KB |
+| `vstack-background-tasks:state` | 3759 | 36.3 MB | 10.1 KB |
+
+Both are **third-party pi extensions**, listed under `packages` in
+`~/.pi/agent/settings.json` (`npm:pi-goal`,
+`npm:@vanillagreen/pi-background-tasks`). Neither is Local Studio code — our own
+goal feature uses `goals-store.ts` and does not write to the rollout. They
+re-serialise their entire state into the session log on every turn, so a session
+whose transcript is 7 MB occupies 145 MB.
+
+Nothing in this repo can fix the writers. What it means for the reader:
+
+- The remaining per-open cost **is** reading those bytes. `readTailRegion`
+  already avoids `JSON.parse` on inert lines via a byte-prefix check, so what is
+  left is the unavoidable cost of scanning 40–145 MB to find a few hundred
+  messages. That matches the measured ~213 ms / ~400 ms warm opens exactly.
+- Seeking "smarter" does not help: renderable lines are interleaved throughout,
+  so the span from the 500th-last message to EOF is still most of the file.
+
+```bash
+cd services/agent-runtime && bun run bench/rollout-census.bench.ts <rollout.jsonl>
+```
+
 ## Open questions — measure before assuming
 
-- **A 500-event tail can return very few renderable events.** The 40 MB session
-  returns **64** events from a `tail: 500` request once the active-branch filter
-  runs, because most of the tail is pre-compaction. Worth checking what that
-  looks like in the UI — an open that paints almost nothing and needs an
-  immediate "load earlier" is a worse bug than a slow one. Not investigated.
-- **The cold path is still ~1.1–2.8s** and is now dominated by module load plus
-  the first walk. Unpicked.
+- **An offset index is the only remaining reader win.** Record the byte offsets
+  of non-inert lines once (the usage scan already streams the whole file and
+  knows the offsets), cache it with `rollout-cache`, and have `readTailRegion`
+  read only those ranges instead of the whole span. On the 145 MB session that
+  is 6.9 MB of reads instead of 145 MB. **Risk:** `readTailRegion` owns the
+  `cursor` byte offset that drives `before` paging, and reading discrete ranges
+  changes the carry/boundary logic it computes that cursor from. Needs tests
+  pinning cursor continuity across pages before any of it lands.
+- **The cold path is still ~1.1–2.8s**, now mostly module load plus the first
+  full walk. Unpicked.
 - **Timeline virtualization** — still unmeasured, still deferred. See below.
 - **Per-frame merge cost** and **multi-session retained memory** — unmeasured.
 - **Timeline virtualization.** Every message subtree stays mounted; a long
