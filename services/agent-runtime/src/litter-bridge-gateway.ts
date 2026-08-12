@@ -11,10 +11,8 @@ import {
   closeSync,
   existsSync,
   openSync,
-  opendirSync,
   readFileSync,
   readSync,
-  readdirSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -73,7 +71,13 @@ import { isRecord } from "../../../shared/agent/guards";
 import { cleanSessionTitle } from "../../../shared/agent/session-title";
 import { resolveDataDir } from "./data-dir";
 import { listProjectsFromStore, type ProjectEntry } from "./projects-store";
-import { encodeCwdForPi } from "./sessions-store";
+import {
+  fingerprintSessionFile,
+  listSessions,
+  resolveSessionFile as resolvePiSessionFile,
+  SessionInventoryLimitError,
+  type ResolvedSessionFile,
+} from "./sessions-store";
 import { getApiSettings } from "./settings-service";
 import {
   createLitterMutationLedger,
@@ -94,14 +98,12 @@ const CURSOR_STATE_ITEM_LIMIT = 100_000;
 const CURSOR_TTL_MS = 5 * 60_000;
 const SESSION_LINE_LIMIT_BYTES = 1_000_000;
 const SESSION_READ_CHUNK_BYTES = 64 * 1024;
-const SESSION_HEADER_LIMIT_BYTES = 64 * 1024;
 const SESSION_METADATA_SCAN_BYTES = 1_000_000;
 const SESSION_METADATA_SCAN_LINES = 400;
 const SESSION_LINEAGE_LIMIT = 50_000;
 const SESSION_TOOL_LIMIT = 10_000;
 const SESSION_PAGE_ITEM_LIMIT = 200;
 const SESSION_INVENTORY_LIMIT = 10_000;
-const PI_SESSION_ID_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/;
 const SECRET_HEADER = "x-local-studio-litter-bridge-secret";
 const ROUTE_PATH = "/api/litter-bridge/v1";
 const SIGNATURE_DOMAIN = Buffer.from("litter-bridge-request-v1", "ascii");
@@ -175,20 +177,6 @@ type TurnRuntimeEntry = {
 type TurnRuntimeManager = {
   findSessionForLookup(sessionId: string, piSessionId?: string | null): TurnRuntimeEntry | null;
   getSessionForLookup(sessionId: string, piSessionId?: string | null): TurnRuntimeEntry;
-};
-type SessionFileFingerprint = {
-  value: string;
-  revision: number;
-  size: number;
-  createdAt: string;
-  updatedAt: string;
-};
-type ResolvedSessionFile = SessionFileFingerprint & {
-  filepath: string;
-  cwd: string;
-  sessionId: string;
-  header: JsonRecord;
-  headerEnd: number;
 };
 type ToolOwner = {
   toolCallId: string;
@@ -653,7 +641,7 @@ const qualifiedSessionModel = (metadata: LitterBridgeSessionMetadata): string | 
 const reconcileAgentTurnTranscript = (
   correlation: MutationCorrelation,
 ): { acceptedAt: string } | null => {
-  const metadata = sessionFileFingerprint(correlation.sessionFile);
+  const metadata = fingerprintSessionFile(correlation.sessionFile);
   if (metadata.size < correlation.baseOffset) return null;
   const descriptor = openSync(correlation.sessionFile, "r");
   let offset = correlation.baseOffset;
@@ -1007,23 +995,6 @@ const shortText = (value: string): string => {
   return output;
 };
 
-const sessionFileFingerprint = (filepath: string): SessionFileFingerprint => {
-  const stats = statSync(filepath, { bigint: true });
-  if (!stats.isFile() || stats.size > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new SessionReadError("integrity_failed", "Session file is invalid", 422);
-  }
-  const value = litterBridgeSha256Utf8(
-    [stats.dev, stats.ino, stats.size, stats.mtimeNs, stats.ctimeNs].map(String).join(":"),
-  );
-  return {
-    value,
-    revision: Number.parseInt(value.slice(0, 13), 16),
-    size: Number(stats.size),
-    createdAt: new Date(Number(stats.birthtimeMs)).toISOString(),
-    updatedAt: new Date(Number(stats.mtimeMs)).toISOString(),
-  };
-};
-
 const liveProjects = (projects: TrustedProject[]): LiveProject[] => {
   const byCwd = new Map<string, LiveProject>();
   for (const project of projects) {
@@ -1112,100 +1083,28 @@ const parseSessionLine = (line: SessionLine): JsonRecord | null => {
   }
 };
 
-const readSessionHeader = (
-  filepath: string,
-  expectedSessionId: string | null,
-  project: LiveProject,
-): { header: JsonRecord; headerEnd: number } | null => {
-  const fingerprint = sessionFileFingerprint(filepath);
-  const fd = openSync(filepath, "r");
-  try {
-    const line = readSessionLine(fd, fingerprint.size, 0, SESSION_HEADER_LIMIT_BYTES);
-    if (!line) return null;
-    const header = parseSessionLine(line);
-    if (
-      !header ||
-      header.type !== "session" ||
-      typeof header.id !== "string" ||
-      !PI_SESSION_ID_PATTERN.test(header.id) ||
-      (expectedSessionId !== null && header.id !== expectedSessionId)
-    ) {
-      return null;
-    }
-    const version = header.version === undefined ? 1 : safeInteger(header.version);
-    if (version === null || version < 1 || version > 3) {
-      throw new SessionReadError("section_unavailable", "Session version is unsupported", 422);
-    }
-    if (typeof header.cwd !== "string") {
-      throw new SessionReadError("integrity_failed", "Session project identity is invalid", 422);
-    }
-    const headerCwd = path.resolve(header.cwd);
-    let canonicalHeaderCwd = headerCwd;
-    try {
-      canonicalHeaderCwd = realpathSync.native(headerCwd);
-    } catch {}
-    if (!project.variants.includes(headerCwd) && canonicalHeaderCwd !== project.cwd) {
-      throw new SessionReadError("integrity_failed", "Session project identity is invalid", 422);
-    }
-    return { header, headerEnd: line.end };
-  } finally {
-    closeSync(fd);
-  }
-};
-
 const resolveSessionFile = (
   sessionId: string,
   projects: TrustedProject[],
   roots: string[],
 ): ResolvedSessionFile => {
-  if (!PI_SESSION_ID_PATTERN.test(sessionId)) {
-    throw new SessionReadError("not_found", "Session identity was not found", 404);
-  }
   const matches = new Map<string, ResolvedSessionFile>();
   for (const project of liveProjects(projects)) {
-    const directories = new Set<string>();
-    for (const root of roots) {
-      for (const variant of project.variants) {
-        directories.add(path.join(root, encodeCwdForPi(variant)));
+    for (const variant of project.variants) {
+      const candidate = resolvePiSessionFile(variant, sessionId, roots);
+      if (!candidate) continue;
+      const version =
+        candidate.header.version === undefined ? 1 : safeInteger(candidate.header.version);
+      if (version === null || version < 1 || version > 3) {
+        throw new SessionReadError("section_unavailable", "Session version is unsupported", 422);
       }
-    }
-    for (const directory of directories) {
-      let entries;
-      try {
-        entries = readdirSync(directory, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-      for (const entry of entries) {
-        if (!entry.isFile() || !entry.name.endsWith(`_${sessionId}.jsonl`)) continue;
-        const candidate = path.join(directory, entry.name);
-        const headerResult = readSessionHeader(candidate, sessionId, project);
-        if (!headerResult) continue;
-        const filepath = realpathSync.native(candidate);
-        const fingerprint = sessionFileFingerprint(filepath);
-        const existing = matches.get(filepath);
-        if (existing && existing.cwd !== project.cwd) {
-          throw new SessionReadError(
-            "not_found",
-            "Session identity was not found or was ambiguous",
-            404,
-          );
-        }
-        matches.set(filepath, {
-          ...fingerprint,
-          filepath,
-          cwd: project.cwd,
-          sessionId,
-          header: headerResult.header,
-          headerEnd: headerResult.headerEnd,
-        });
-        if (matches.size > 1) {
-          throw new SessionReadError(
-            "not_found",
-            "Session identity was not found or was ambiguous",
-            404,
-          );
-        }
+      matches.set(candidate.filepath, { ...candidate, cwd: project.cwd });
+      if (matches.size > 1) {
+        throw new SessionReadError(
+          "not_found",
+          "Session identity was not found or was ambiguous",
+          404,
+        );
       }
     }
   }
@@ -1281,94 +1180,47 @@ const readSessionMetadata = (resolved: ResolvedSessionFile): LitterBridgeSession
   };
 };
 
-const enumerateSessionInventory = (input: {
+const enumerateSessionInventory = async (input: {
   controllerId: string;
   projects: TrustedProject[];
   roots: string[];
   inventoryLimit: number;
   activeSessionIds: ReadonlySet<string>;
   archivedSessionIds: ReadonlySet<string>;
-}): SessionInventory => {
+}): Promise<SessionInventory> => {
   const matches = new Map<string, Map<string, ResolvedSessionFile>>();
   const scannedFiles = new Set<string>();
-  const scannedContexts = new Set<string>();
-  const scannedDirectories = new Set<string>();
-  for (const project of liveProjects(input.projects)) {
-    for (const root of input.roots) {
+  try {
+    for (const project of liveProjects(input.projects)) {
       for (const variant of project.variants) {
-        const directory = path.join(root, encodeCwdForPi(variant));
-        let canonicalDirectory: string;
-        try {
-          canonicalDirectory = realpathSync.native(directory);
-          if (!statSync(canonicalDirectory).isDirectory()) continue;
-        } catch {
-          continue;
-        }
-        const directoryContext = `${project.cwd}\0${canonicalDirectory}`;
-        if (scannedDirectories.has(directoryContext)) continue;
-        scannedDirectories.add(directoryContext);
-        let handle;
-        try {
-          handle = opendirSync(canonicalDirectory);
-        } catch {
-          continue;
-        }
-        try {
-          for (let entry = handle.readSync(); entry; entry = handle.readSync()) {
-            if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
-            const candidate = path.join(canonicalDirectory, entry.name);
-            let filepath: string;
-            try {
-              filepath = realpathSync.native(candidate);
-              const relative = path.relative(canonicalDirectory, filepath);
-              if (
-                relative === ".." ||
-                relative.startsWith(`..${path.sep}`) ||
-                path.isAbsolute(relative)
-              ) {
-                continue;
-              }
-            } catch {
-              continue;
-            }
-            if (!scannedFiles.has(filepath)) {
-              scannedFiles.add(filepath);
-              if (scannedFiles.size > input.inventoryLimit) {
-                throw new SessionReadError(
-                  "payload_too_large",
-                  "Session inventory exceeds the discovery limit",
-                  413,
-                );
-              }
-            }
-            const contextKey = `${project.cwd}\0${filepath}`;
-            if (scannedContexts.has(contextKey)) continue;
-            scannedContexts.add(contextKey);
-            try {
-              const headerResult = readSessionHeader(filepath, null, project);
-              if (!headerResult || typeof headerResult.header.id !== "string") continue;
-              const sessionId = headerResult.header.id;
-              const fingerprint = sessionFileFingerprint(filepath);
-              const candidates = matches.get(sessionId) ?? new Map<string, ResolvedSessionFile>();
-              candidates.set(filepath, {
-                ...fingerprint,
-                filepath,
-                cwd: project.cwd,
-                sessionId,
-                header: headerResult.header,
-                headerEnd: headerResult.headerEnd,
-              });
-              matches.set(sessionId, candidates);
-            } catch (error) {
-              if (error instanceof SessionReadError && error.code === "payload_too_large")
-                throw error;
-            }
-          }
-        } finally {
-          handle.closeSync();
+        const summaries = await listSessions(variant, {
+          includeArchived: true,
+          sessionRoots: input.roots,
+          inventoryLimit: input.inventoryLimit,
+        });
+        for (const summary of summaries) {
+          const candidate = resolvePiSessionFile(variant, summary.id, input.roots);
+          if (!candidate) continue;
+          scannedFiles.add(candidate.filepath);
+          if (scannedFiles.size > input.inventoryLimit) throw new SessionInventoryLimitError();
+          const version =
+            candidate.header.version === undefined ? 1 : safeInteger(candidate.header.version);
+          if (version === null || version < 1 || version > 3) continue;
+          const candidates = matches.get(summary.id) ?? new Map<string, ResolvedSessionFile>();
+          candidates.set(candidate.filepath, { ...candidate, cwd: project.cwd });
+          matches.set(summary.id, candidates);
         }
       }
     }
+  } catch (error) {
+    if (error instanceof SessionInventoryLimitError) {
+      throw new SessionReadError(
+        "payload_too_large",
+        "Session inventory exceeds the discovery limit",
+        413,
+      );
+    }
+    throw error;
   }
   const sessions: LitterBridgeSessionDescriptor[] = [];
   for (const [sessionId, candidates] of matches) {
@@ -2006,7 +1858,7 @@ const readSessionSlice = (input: {
   now: Date;
   cursorTtlMs: number;
 }): { page: LitterBridgeSessionPage; json: string; cursorState: SessionCursorState | null } => {
-  const before = sessionFileFingerprint(input.filepath);
+  const before = fingerprintSessionFile(input.filepath);
   if (before.value !== input.fingerprint || before.revision !== input.revision) {
     throw new SessionReadError("revision_conflict", "Session changed during transfer", 409, true);
   }
@@ -2098,7 +1950,7 @@ const readSessionSlice = (input: {
   } finally {
     closeSync(fd);
   }
-  const after = sessionFileFingerprint(input.filepath);
+  const after = fingerprintSessionFile(input.filepath);
   if (after.value !== before.value) {
     throw new SessionReadError("revision_conflict", "Session changed during transfer", 409, true);
   }
@@ -2366,10 +2218,10 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     });
   };
 
-  const handleSessionList = (
+  const handleSessionList = async (
     request: LitterBridgeSessionListRequest,
     requestNow: Date,
-  ): Response => {
+  ): Promise<Response> => {
     pruneCursors(requestNow.getTime());
     let offset = 0;
     let expected: SessionListCursorState | null = null;
@@ -2400,7 +2252,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
       offset = state.offset;
       expected = state;
     }
-    const inventory = enumerateSessionInventory({
+    const inventory = await enumerateSessionInventory({
       controllerId,
       projects: projects(),
       roots,
@@ -2461,7 +2313,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
       }
       const resolved = resolveSessionFile(request.session.sessionId, projects(), roots);
       metadata = readSessionMetadata(resolved);
-      const afterMetadata = sessionFileFingerprint(resolved.filepath);
+      const afterMetadata = fingerprintSessionFile(resolved.filepath);
       if (afterMetadata.value !== resolved.value) {
         throw new SessionReadError(
           "revision_conflict",
@@ -2806,7 +2658,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
           409,
         );
       }
-      const current = sessionFileFingerprint(resolved.filepath);
+      const current = fingerprintSessionFile(resolved.filepath);
       if (current.value !== resolved.value || current.revision !== request.expectedRevision) {
         return rejectPermanent(agentTurnConflict(request, current.revision), 409);
       }
@@ -3280,7 +3132,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
     replay.set(verified.replayKey, verified.expiresAt);
     if (parsed.type === "session_list_request") {
       try {
-        return handleSessionList(parsed, requestNow);
+        return await handleSessionList(parsed, requestNow);
       } catch (error) {
         if (error instanceof SessionReadError) {
           return jsonError(error.code, error.message, requestId, error.status, error.retriable);

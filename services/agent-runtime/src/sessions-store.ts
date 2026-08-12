@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   closeSync,
   createReadStream,
@@ -11,33 +12,24 @@ import {
 import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
-import {
-  getAgentDir,
-  SessionManager,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+import { getAgentDir, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { resolveDataDir } from "./data-dir";
-import {
-  cleanSessionTitle,
-  sessionTitleFromUserPrompt,
-} from "../../../shared/agent/session-title";
+import { cleanSessionTitle, sessionTitleFromUserPrompt } from "../../../shared/agent/session-title";
 import { readSessionListMetadata } from "./session-metadata-store";
 import type { SessionSummary } from "../../../shared/agent/session-summary";
-import {
-  emptyUsageTotals,
-  readSessionUsageTotals,
-  type SessionUsageTotals,
-} from "./session-usage";
+import { emptyUsageTotals, readSessionUsageTotals, type SessionUsageTotals } from "./session-usage";
 export type { SessionSummary } from "../../../shared/agent/session-summary";
 
 export type SessionEvent = Record<string, unknown> & { type?: string };
 
-type ListSessionsOptions = {
+export type ListSessionsOptions = {
   since?: Date;
   ids?: string[];
   includeArchived?: boolean;
   archivedOnly?: boolean;
   limit?: number;
+  sessionRoots?: string[];
+  inventoryLimit?: number;
 };
 
 type NormalizedListSessionsOptions = {
@@ -69,11 +61,12 @@ export function encodeCwdForPi(cwd: string): string {
 export function configuredPiSessionDir(cwd: string): string | undefined {
   const envSessionDir = process.env.PI_CODING_AGENT_SESSION_DIR?.trim();
   if (envSessionDir) {
-    const expanded = envSessionDir === "~"
-      ? homedir()
-      : envSessionDir.startsWith(`~${path.sep}`)
-        ? path.join(homedir(), envSessionDir.slice(2))
-        : envSessionDir;
+    const expanded =
+      envSessionDir === "~"
+        ? homedir()
+        : envSessionDir.startsWith(`~${path.sep}`)
+          ? path.join(homedir(), envSessionDir.slice(2))
+          : envSessionDir;
     return path.resolve(expanded);
   }
   return SettingsManager.create(cwd, getAgentDir()).getSessionDir();
@@ -94,8 +87,13 @@ function cwdVariants(cwd: string): string[] {
   return [...new Set(variants.map((value) => path.resolve(value)))];
 }
 
-function sessionsDirsForCwd(cwd: string): string[] {
+function sessionsDirsForCwd(cwd: string, roots?: string[]): string[] {
   const encodedCwds = [...new Set(cwdVariants(cwd).map(encodeCwdForPi))];
+  if (roots) {
+    return roots
+      .flatMap((root) => encodedCwds.map((encoded) => path.join(path.resolve(root), encoded)))
+      .filter((value, index, values) => values.indexOf(value) === index);
+  }
   const nativeDir = configuredPiSessionDir(cwd) ?? SessionManager.create(cwd).getSessionDir();
   const legacyRoot = path.join(resolveDataDir(), "pi-agent", "sessions");
   return [
@@ -315,15 +313,29 @@ async function readListCandidate(
 
 function listCandidateFiles(
   cwd: string,
+  roots?: string[],
+  inventoryLimit?: number,
 ): Array<{ dir: string; filename: string; mtimeMs: number }> {
   const candidates: Array<{ dir: string; filename: string; mtimeMs: number }> = [];
-  for (const dir of sessionsDirsForCwd(cwd)) {
+  const seen = new Set<string>();
+  for (const dir of sessionsDirsForCwd(cwd, roots)) {
     if (!existsSync(dir)) continue;
     for (const filename of readdirSync(dir)) {
       if (!filename.endsWith(".jsonl")) continue;
       try {
-        candidates.push({ dir, filename, mtimeMs: statSync(path.join(dir, filename)).mtimeMs });
-      } catch {
+        const filepath = realpathSync.native(path.join(dir, filename));
+        if (seen.has(filepath)) continue;
+        seen.add(filepath);
+        if (inventoryLimit && seen.size > inventoryLimit) {
+          throw new SessionInventoryLimitError();
+        }
+        candidates.push({
+          dir: path.dirname(filepath),
+          filename: path.basename(filepath),
+          mtimeMs: statSync(filepath).mtimeMs,
+        });
+      } catch (error) {
+        if (error instanceof SessionInventoryLimitError) throw error;
         continue;
       }
     }
@@ -348,7 +360,7 @@ export async function listSessions(
   const summariesById = new Map<string, SessionSummary>();
   const normalizedOptions = normalizeListOptions(options);
   const metadataFor = readSessionListMetadata();
-  for (const candidate of listCandidateFiles(cwd)) {
+  for (const candidate of listCandidateFiles(cwd, options.sessionRoots, options.inventoryLimit)) {
     if (limitSatisfied(summariesById, options.limit, candidate.mtimeMs)) break;
     const summary = await readListCandidate(
       cwd,
@@ -370,7 +382,44 @@ export async function listSessions(
 const PI_SESSION_ID_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/;
 const PI_SESSION_HEADER_BYTE_CAP = 64 * 1024;
 
-function readPiSessionHeader(filepath: string): { id: string; cwd: string } | null {
+export class SessionInventoryLimitError extends Error {}
+
+export type SessionFileFingerprint = {
+  value: string;
+  revision: number;
+  size: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ResolvedSessionFile = SessionFileFingerprint & {
+  filepath: string;
+  cwd: string;
+  sessionId: string;
+  header: Record<string, unknown>;
+  headerEnd: number;
+};
+
+export function fingerprintSessionFile(filepath: string): SessionFileFingerprint {
+  const stats = statSync(filepath, { bigint: true });
+  if (!stats.isFile() || stats.size > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error("Session file is invalid");
+  }
+  const value = createHash("sha256")
+    .update([stats.dev, stats.ino, stats.size, stats.mtimeNs, stats.ctimeNs].map(String).join(":"))
+    .digest("hex");
+  return {
+    value,
+    revision: Number.parseInt(value.slice(0, 13), 16),
+    size: Number(stats.size),
+    createdAt: new Date(Number(stats.birthtimeMs)).toISOString(),
+    updatedAt: new Date(Number(stats.mtimeMs)).toISOString(),
+  };
+}
+
+function readPiSessionHeader(
+  filepath: string,
+): { header: Record<string, unknown>; headerEnd: number } | null {
   let fd: number | null = null;
   try {
     const size = statSync(filepath).size;
@@ -383,7 +432,7 @@ function readPiSessionHeader(filepath: string): { id: string; cwd: string } | nu
     const lineEnd = newline >= 0 ? newline : bytesRead;
     const header = JSON.parse(buffer.toString("utf8", 0, lineEnd)) as Record<string, unknown>;
     return header.type === "session" && typeof header.id === "string"
-      ? { id: header.id, cwd: typeof header.cwd === "string" ? header.cwd : "" }
+      ? { header, headerEnd: newline >= 0 ? newline + 1 : bytesRead }
       : null;
   } catch {
     return null;
@@ -392,20 +441,37 @@ function readPiSessionHeader(filepath: string): { id: string; cwd: string } | nu
   }
 }
 
-export function findSessionFile(cwd: string, sessionId: string): string | null {
+export function resolveSessionFile(
+  cwd: string,
+  sessionId: string,
+  sessionRoots?: string[],
+): ResolvedSessionFile | null {
   if (!PI_SESSION_ID_PATTERN.test(sessionId)) return null;
 
   const filenameSuffix = `_${sessionId}.jsonl`;
-  const matches = new Set<string>();
-  for (const dir of sessionsDirsForCwd(cwd)) {
+  const matches = new Map<string, ResolvedSessionFile>();
+  for (const dir of sessionsDirsForCwd(cwd, sessionRoots)) {
     if (!existsSync(dir)) continue;
     try {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         if (!entry.isFile() || !entry.name.endsWith(filenameSuffix)) continue;
-        const filepath = path.join(dir, entry.name);
+        const filepath = realpathSync.native(path.join(dir, entry.name));
         const header = readPiSessionHeader(filepath);
-        if (header?.id !== sessionId || !sessionCwdMatches(header.cwd, cwd)) continue;
-        matches.add(filepath);
+        if (
+          header?.header.id !== sessionId ||
+          typeof header.header.cwd !== "string" ||
+          !sessionCwdMatches(header.header.cwd, cwd)
+        ) {
+          continue;
+        }
+        matches.set(filepath, {
+          ...fingerprintSessionFile(filepath),
+          filepath,
+          cwd: path.resolve(cwd),
+          sessionId,
+          header: header.header,
+          headerEnd: header.headerEnd,
+        });
         if (matches.size > 1) return null;
       }
     } catch {
@@ -413,6 +479,10 @@ export function findSessionFile(cwd: string, sessionId: string): string | null {
     }
   }
   return matches.values().next().value ?? null;
+}
+
+export function findSessionFile(cwd: string, sessionId: string): string | null {
+  return resolveSessionFile(cwd, sessionId)?.filepath ?? null;
 }
 
 export type LoadSessionOptions = {
@@ -466,10 +536,13 @@ function parseEvent(line: string): SessionEvent | null {
 function activeBranchEvents(filepath: string, events: SessionEvent[]): SessionEvent[] {
   try {
     const activeIds = new Set(
-      SessionManager.open(filepath).buildContextEntries().map((entry) => entry.id),
+      SessionManager.open(filepath)
+        .buildContextEntries()
+        .map((entry) => entry.id),
     );
     return events.filter(
-      (event) => event.type === "session" || (typeof event.id === "string" && activeIds.has(event.id)),
+      (event) =>
+        event.type === "session" || (typeof event.id === "string" && activeIds.has(event.id)),
     );
   } catch {
     return events;
