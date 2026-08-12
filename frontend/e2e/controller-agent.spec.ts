@@ -600,6 +600,47 @@ test("workbench terminal resource opens and closes its shell", async ({ page }) 
   await expect(panel.locator(".xterm")).toHaveCount(0);
 });
 
+test("browser runtime preserves command, viewport, input, and frame contracts", async ({
+  page,
+  request,
+}, testInfo) => {
+  const port = testInfo.config.metadata.recordedControllerPort;
+  if (typeof port !== "number") throw new Error("Recorded controller port is unavailable");
+  await page.goto("/agent");
+
+  const viewport = await request.post("/api/agent/browser/viewport", {
+    data: { width: 920, height: 640 },
+  });
+  expect(viewport.ok(), await viewport.text()).toBe(true);
+  expect(await viewport.json()).toMatchObject({
+    ok: true,
+    data: { width: 920, height: 640 },
+  });
+
+  const navigate = await request.post("/api/agent/browser/navigate", {
+    data: { url: `http://127.0.0.1:${port}/health` },
+  });
+  expect(navigate.ok(), await navigate.text()).toBe(true);
+  expect(await navigate.json()).toMatchObject({ ok: true });
+
+  const input = await request.post("/api/agent/browser/input", {
+    data: { kind: "mouse", type: "move", x: 20, y: 20 },
+  });
+  expect(input.ok(), await input.text()).toBe(true);
+  expect(await input.json()).toEqual({ ok: true });
+
+  const state = await request.get("/api/agent/browser/state");
+  expect(state.ok(), await state.text()).toBe(true);
+  expect(await state.json()).toMatchObject({
+    ok: true,
+    data: { url: `http://127.0.0.1:${port}/health` },
+  });
+
+  const frame = await request.get("/api/agent/browser/frame");
+  expect(frame.ok(), await frame.text()).toBe(true);
+  expect(await frame.json()).toMatchObject({ ok: true, data: { frame: expect.any(String) } });
+});
+
 test("messages containing /goal reach Pi as ordinary text", async ({ page }) => {
   const composer = await openControllerChat(page, "Goal text chat");
   const transcript = page.getByRole("article");

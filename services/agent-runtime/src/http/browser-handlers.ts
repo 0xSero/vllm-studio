@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { sanitizeBrowserPaneUrl } from "../../../../shared/agent/sanitize-embedded-browser-url";
 import { browserHost, type KeyInput, type MouseInput } from "../browser-host/browser-host";
 import { fetchReadable } from "../browser-host/reader";
+import { errorMessage, jsonError, jsonTask, readJsonBody } from "./helpers";
 
 const ALLOWED_VERBS = new Set([
   "navigate",
@@ -24,34 +25,27 @@ let lastFallbackUrl = "";
 
 type VerbResult = { ok: boolean; data?: unknown; error?: string };
 
+const browserError = (error: string, status = 200): Response =>
+  Response.json({ ok: false, error }, { status });
+
+const browserFailure = (fallback: string, status = 200) => ({
+  fallback,
+  project: (error: unknown) => browserError(errorMessage(error, fallback), status),
+});
+
 export async function handleBrowserVerb(request: Request, verb: string): Promise<Response> {
   if (!ALLOWED_VERBS.has(verb)) {
-    return Response.json({ ok: false, error: `Unknown browser verb: ${verb}` }, { status: 400 });
+    return browserError(`Unknown browser verb: ${verb}`, 400);
   }
   const payload = await readPayload(request);
-  try {
-    const result = await dispatchVerb(verb, payload);
-    return Response.json(result);
-  } catch (error) {
-    return Response.json({
-      ok: false,
-      error: error instanceof Error ? error.message : "Browser command failed",
-    });
-  }
+  return jsonTask(() => dispatchVerb(verb, payload), (result) => result, browserFailure("Browser command failed"));
 }
 
 async function readPayload(request: Request): Promise<Record<string, unknown>> {
-  try {
-    const body = (await request.json()) as Record<string, unknown> | null;
-    if (body && typeof body === "object") {
-      // sessionId was a renderer-bridge affinity hint; the host is global now.
-      const { sessionId: _sessionId, ...rest } = body;
-      return rest;
-    }
-  } catch {
-    // empty body is fine
-  }
-  return {};
+  const body = await readJsonBody(request);
+  if (!body) return {};
+  const { sessionId: _sessionId, ...rest } = body;
+  return rest;
 }
 
 async function dispatchVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
@@ -59,8 +53,6 @@ async function dispatchVerb(verb: string, payload: Record<string, unknown>): Pro
   try {
     return await runHostVerb(verb, payload);
   } catch (error) {
-    // A launch/connection failure for the reading verbs still degrades to
-    // reading mode rather than failing the tool call outright.
     if (verb === "navigate" || verb === "get-text") return fallbackVerb(verb, payload);
     throw error;
   }
@@ -104,8 +96,6 @@ async function runHostVerb(verb: string, payload: Record<string, unknown>): Prom
 }
 
 async function navigateVerb(payload: Record<string, unknown>): Promise<VerbResult> {
-  // Pane rules: public web plus loopback (previewing local dev servers is the
-  // pane's main job); other private ranges stay blocked.
   const url = sanitizeBrowserPaneUrl(String(payload.url ?? ""));
   if (!url) return { ok: false, error: "valid public or localhost http(s) url required" };
   const result = await browserHost.navigate(url);
@@ -132,11 +122,6 @@ function requireSelector(payload: Record<string, unknown>): string {
   return selector;
 }
 
-// Chromium-unavailable fallbacks. navigate/get-url/get-text/get-html degrade to
-// reading mode (remembering the last navigated URL per process so reads work
-// without a url arg); every other verb returns the clear unavailable error. The
-// fallback honors pane rules (public + loopback) so local dev servers stay
-// previewable even when there's no headless Chromium to drive a full surface.
 async function fallbackVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
   if (verb === "navigate") {
     const url = sanitizeBrowserPaneUrl(String(payload.url ?? ""));
@@ -162,32 +147,20 @@ async function fallbackVerb(verb: string, payload: Record<string, unknown>): Pro
 
 export async function handleBrowserFetch(request: Request): Promise<Response> {
   const raw = new URL(request.url).searchParams.get("url");
-  if (!raw) return Response.json({ error: "url is required" }, { status: 400 });
-  try {
-    const result = await fetchReadable(raw);
-    return Response.json(result);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Fetch failed";
-    // Only the initial url-rejection is a client error (400); resolved-host,
-    // redirect, and upstream failures are bad-gateway (502) like before.
-    const status = message.startsWith("url rejected") ? 400 : 502;
-    return Response.json({ error: message }, { status });
-  }
+  if (!raw) return jsonError("url is required");
+  return jsonTask(() => fetchReadable(raw), (result) => result, {
+    fallback: "Fetch failed",
+    status: (error) => errorMessage(error, "Fetch failed").startsWith("url rejected") ? 400 : 502,
+  });
 }
-
-// ─── GET /api/agent/browser/frame ─────────────────────────────────────────
-//
-// Frame poll for the visible browser panel (~10fps JSON poll instead of SSE:
-// Next's standalone server buffers locally-built event streams, and polling
-// survives buffering proxies for remote deploys).
 
 export async function handleBrowserFrame(): Promise<Response> {
   if (!browserHost.isAvailable()) {
-    return Response.json({ ok: false, error: UNAVAILABLE_ERROR }, { status: 503 });
+    return browserError(UNAVAILABLE_ERROR, 503);
   }
-  try {
-    const { frame, state } = await browserHost.pollFrame();
-    return Response.json({
+  return jsonTask(
+    () => browserHost.pollFrame(),
+    ({ frame, state }) => ({
       ok: true,
       data: {
         frame: frame?.data ?? null,
@@ -196,13 +169,9 @@ export async function handleBrowserFrame(): Promise<Response> {
         canGoBack: state.canGoBack,
         canGoForward: state.canGoForward,
       },
-    });
-  } catch (error) {
-    return Response.json({
-      ok: false,
-      error: error instanceof Error ? error.message : "frame poll failed",
-    });
-  }
+    }),
+    browserFailure("frame poll failed"),
+  );
 }
 
 type InputBody =
@@ -212,23 +181,15 @@ type InputBody =
 
 export async function handleBrowserInput(request: Request): Promise<Response> {
   if (!browserHost.isAvailable()) {
-    return Response.json({ ok: false, error: "Browser unavailable" }, { status: 503 });
+    return browserError("Browser unavailable", 503);
   }
-  let body: InputBody;
-  try {
-    body = (await request.json()) as InputBody;
-  } catch {
-    return Response.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
-  }
-  try {
-    await dispatchInput(body);
-    return Response.json({ ok: true });
-  } catch (error) {
-    return Response.json({
-      ok: false,
-      error: error instanceof Error ? error.message : "input dispatch failed",
-    });
-  }
+  const body = await readJsonBody(request);
+  if (!body) return browserError("Invalid JSON", 400);
+  return jsonTask(
+    () => dispatchInput(body as InputBody),
+    () => ({ ok: true }),
+    browserFailure("input dispatch failed"),
+  );
 }
 
 async function dispatchInput(body: InputBody): Promise<void> {
@@ -258,11 +219,6 @@ async function dispatchInput(body: InputBody): Promise<void> {
     clickCount: body.clickCount,
   });
 }
-
-// ─── GET /api/agent/browser/localhosts ────────────────────────────────────
-//
-// Discovers locally listening HTTP dev servers for the browser panel's
-// localhost picker.
 
 const execFileAsync = promisify(execFile);
 const PROBE_TIMEOUT_MS = 650;
@@ -324,9 +280,7 @@ async function listListeningPorts(): Promise<PortCandidate[]> {
     });
     const ports = parseLsof(stdout);
     if (ports.length > 0) return ports;
-  } catch {
-    // Fall through to common dev-server ports.
-  }
+  } catch {}
   return FALLBACK_PORTS.map((port) => ({ port }));
 }
 
@@ -379,52 +333,31 @@ export async function handleBrowserLocalhosts(request: Request): Promise<Respons
   return Response.json({ sites });
 }
 
-// ─── GET /api/agent/browser/state ─────────────────────────────────────────
-
 export async function handleBrowserState(): Promise<Response> {
   if (!browserHost.isAvailable()) {
-    return Response.json({ ok: false, error: "Browser unavailable" }, { status: 503 });
+    return browserError("Browser unavailable", 503);
   }
-  try {
-    return Response.json({ ok: true, data: await browserHost.peekState() });
-  } catch (error) {
-    return Response.json({
-      ok: false,
-      error: error instanceof Error ? error.message : "getState failed",
-    });
-  }
+  return jsonTask(
+    () => browserHost.peekState(),
+    (data) => ({ ok: true, data }),
+    browserFailure("getState failed"),
+  );
 }
-
-// ─── POST /api/agent/browser/viewport ─────────────────────────────────────
-//
-// Sets the headless Chromium viewport so it matches the visible panel's
-// dimensions. Body: { width, height }.
 
 export async function handleBrowserViewport(request: Request): Promise<Response> {
   if (!browserHost.isAvailable()) {
-    return Response.json({ ok: false, error: "Browser unavailable" }, { status: 503 });
+    return browserError("Browser unavailable", 503);
   }
-  let body: { width?: unknown; height?: unknown };
-  try {
-    body = (await request.json()) as { width?: unknown; height?: unknown };
-  } catch {
-    return Response.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
-  }
+  const body = await readJsonBody(request);
+  if (!body) return browserError("Invalid JSON", 400);
   const width = Number(body.width);
   const height = Number(body.height);
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    return Response.json({ ok: false, error: "width and height are required" }, { status: 400 });
+    return browserError("width and height are required", 400);
   }
-  try {
-    await browserHost.setViewport(width, height);
-    return Response.json({
-      ok: true,
-      data: { width: Math.round(width), height: Math.round(height) },
-    });
-  } catch (error) {
-    return Response.json({
-      ok: false,
-      error: error instanceof Error ? error.message : "setViewport failed",
-    });
-  }
+  return jsonTask(
+    () => browserHost.setViewport(width, height),
+    () => ({ ok: true, data: { width: Math.round(width), height: Math.round(height) } }),
+    browserFailure("setViewport failed"),
+  );
 }
