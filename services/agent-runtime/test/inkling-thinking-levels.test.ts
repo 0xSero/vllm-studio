@@ -19,6 +19,17 @@ describe("Inkling thinking levels", () => {
     ]);
   });
 
+  test("exposes every supported controller effort", () => {
+    expect(controllerModelThinkingLevels(true, "deepseek-v4")).toEqual([
+      "auto",
+      "low",
+      "medium",
+      "high",
+      "max",
+      "off",
+    ]);
+  });
+
   test("maps Local Studio levels to Inkling reasoning_effort values", () => {
     const [model] = modelsToPiModels([
       {
