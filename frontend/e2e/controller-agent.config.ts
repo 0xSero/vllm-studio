@@ -24,6 +24,20 @@ writeFileSync(
 );
 const piAgentDir = path.join(homeDir, ".pi", "agent");
 mkdirSync(piAgentDir, { recursive: true });
+const recordedSkillDir = path.join(homeDir, ".codex", "skills", "recorded-resource");
+mkdirSync(recordedSkillDir, { recursive: true });
+writeFileSync(
+  path.join(recordedSkillDir, "SKILL.md"),
+  `---
+name: recorded-resource
+description: Recorded integration resource
+---
+
+# Recorded resource
+
+This instruction proves the discovered skill detail flow.
+`,
+);
 writeFileSync(
   path.join(piAgentDir, "models.json"),
   JSON.stringify({

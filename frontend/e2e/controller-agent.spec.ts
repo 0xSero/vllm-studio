@@ -832,3 +832,28 @@ test("voice plugin validates the controller speech contract", async ({ page }) =
   await expect(page.getByText("Recorded parity voice", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Test RTX 3090", { exact: true })).toBeVisible();
 });
+
+test("integration resources preserve plugin and skill details", async ({ context, page }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/configure?section=integrations&integration=plugins#integrations");
+  const plugin = page.locator('[role="button"]').filter({ hasText: "Chatterbox Voice" }).first();
+  await expect(plugin).toBeVisible({ timeout: 20_000 });
+  await plugin.click();
+  const pluginDialog = page.getByRole("dialog");
+  await expect(pluginDialog.getByText("Identity", { exact: true })).toBeVisible();
+  await expect(pluginDialog.getByText("Capabilities", { exact: true })).toBeVisible();
+  await expect(pluginDialog.getByText("chatterbox-voice", { exact: true })).toBeVisible();
+
+  await page.goto("/configure?section=integrations&integration=skills#integrations");
+  const skill = page.locator('[role="button"]').filter({ hasText: "recorded-resource" }).first();
+  await expect(skill).toBeVisible({ timeout: 20_000 });
+  await skill.click();
+  const skillDialog = page.getByRole("dialog");
+  await expect(skillDialog.getByText("recorded resource", { exact: true })).toBeVisible();
+  await expect(skillDialog.locator("pre")).toContainText(
+    "This instruction proves the discovered skill detail flow.",
+  );
+  const copy = skillDialog.getByRole("button", { name: "Copy path" });
+  await copy.click();
+  await expect(skillDialog.getByRole("button", { name: "Copied" })).toBeVisible();
+});
