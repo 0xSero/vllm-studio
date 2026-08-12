@@ -10,19 +10,9 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { bridgeJson, textResult } from "./bridge.ts";
 
-const FRONTEND_BASE = process.env.LOCAL_STUDIO_FRONTEND_BASE ?? "http://127.0.0.1:3000";
 const RUN_TIMEOUT_MS = 15 * 60_000;
-
-type ToolResult = {
-  content: Array<{ type: "text"; text: string }>;
-  details: Record<string, unknown>;
-};
-
-const textResult = (text: string, details: Record<string, unknown>): ToolResult => ({
-  content: [{ type: "text", text }],
-  details,
-});
 
 export default function subagentsExtension(pi: ExtensionAPI): void {
   let sessionId: string | null = null;
@@ -54,28 +44,27 @@ export default function subagentsExtension(pi: ExtensionAPI): void {
           failed: true,
         });
       }
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), RUN_TIMEOUT_MS);
-      const abort = () => controller.abort();
-      signal?.addEventListener("abort", abort, { once: true });
-      if (signal?.aborted) controller.abort();
       try {
-        const response = await fetch(`${FRONTEND_BASE}/api/agent/subagents`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            parentPiSessionId: sessionId,
-            name: args.name ?? "Subagent",
-            task: args.task ?? "",
-          }),
-          signal: controller.signal,
-        });
-        const payload = (await response.json()) as {
+        const { response, body } = await bridgeJson<{
           ok?: boolean;
           result?: string;
           piSessionId?: string | null;
           error?: string;
-        };
+        }>(
+          "/api/agent/subagents",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              parentPiSessionId: sessionId,
+              name: args.name ?? "Subagent",
+              task: args.task ?? "",
+            }),
+          },
+          signal,
+          RUN_TIMEOUT_MS,
+        );
+        const payload = body ?? {};
         if (!response.ok || !payload.ok) {
           return textResult(`Subagent failed: ${payload.error ?? response.status}`, {
             failed: true,
@@ -89,9 +78,6 @@ export default function subagentsExtension(pi: ExtensionAPI): void {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return textResult(`Subagent failed: ${message}`, { failed: true, name: args.name });
-      } finally {
-        clearTimeout(timeout);
-        signal?.removeEventListener("abort", abort);
       }
     },
   });

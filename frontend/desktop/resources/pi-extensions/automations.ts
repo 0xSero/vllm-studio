@@ -10,19 +10,9 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { bridgeJson, errorText, textResult } from "./bridge.ts";
 
-const FRONTEND_BASE = process.env.LOCAL_STUDIO_FRONTEND_BASE ?? "http://127.0.0.1:3000";
 const CALL_TIMEOUT_MS = 30_000;
-
-type ToolResult = {
-  content: Array<{ type: "text"; text: string }>;
-  details: Record<string, unknown>;
-};
-
-const textResult = (text: string, details: Record<string, unknown>): ToolResult => ({
-  content: [{ type: "text", text }],
-  details,
-});
 
 // ─── Schedule shapes (mirror shared/agent/automation.ts) ────────────────────
 
@@ -39,7 +29,15 @@ type ScheduleArg = {
   weekdaysOnly?: unknown;
 };
 
-const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WEEKDAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
 
 function isValidTime(value: unknown): value is string {
   return typeof value === "string" && /^([01]?\d|2[0-3]):[0-5]\d$/.test(value.trim());
@@ -103,35 +101,8 @@ async function httpJson(
   init: RequestInit,
   signal: AbortSignal | undefined,
 ): Promise<{ ok: boolean; status: number; body: unknown }> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
-  const abort = () => controller.abort();
-  signal?.addEventListener("abort", abort, { once: true });
-  if (signal?.aborted) controller.abort();
-  try {
-    const response = await fetch(`${FRONTEND_BASE}${path}`, {
-      ...init,
-      signal: controller.signal,
-    });
-    let body: unknown = null;
-    try {
-      body = await response.json();
-    } catch {
-      body = null;
-    }
-    return { ok: response.ok, status: response.status, body };
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener("abort", abort);
-  }
-}
-
-function errorText(body: unknown, status: number): string {
-  if (body && typeof body === "object" && "error" in body) {
-    const message = (body as { error?: unknown }).error;
-    if (typeof message === "string") return message;
-  }
-  return `HTTP ${status}`;
+  const { response, body } = await bridgeJson(path, init, signal, CALL_TIMEOUT_MS);
+  return { ok: response.ok, status: response.status, body };
 }
 
 /** Resolve the model an automation should run under: explicit arg, else the
@@ -202,9 +173,7 @@ export default function automationsExtension(pi: ExtensionAPI): void {
           ),
           minutes: Type.Optional(Type.Number({ description: "interval only: minutes, >= 1" })),
           time: Type.Optional(Type.String({ description: "daily/weekly only: 'HH:MM' 24h" })),
-          day: Type.Optional(
-            Type.Number({ description: "weekly only: 0-6, 0 = Sunday" }),
-          ),
+          day: Type.Optional(Type.Number({ description: "weekly only: 0-6, 0 = Sunday" })),
           weekdaysOnly: Type.Optional(
             Type.Boolean({ description: "daily only: skip Saturday/Sunday" }),
           ),
@@ -228,16 +197,16 @@ export default function automationsExtension(pi: ExtensionAPI): void {
         cwd?: string;
       };
       const prompt = typeof args.prompt === "string" ? args.prompt.trim() : "";
-      if (!prompt) return textResult("schedule_automation needs a non-empty prompt.", { failed: true });
+      if (!prompt)
+        return textResult("schedule_automation needs a non-empty prompt.", { failed: true });
       const scheduleResult = normalizeScheduleArg(args.schedule);
       if (!scheduleResult.ok) return textResult(scheduleResult.error, { failed: true });
       try {
         const modelId = await resolveModelId(args.model, signal);
         if (!modelId) {
-          return textResult(
-            "No model available to run the automation. Pass a 'model' id.",
-            { failed: true },
-          );
+          return textResult("No model available to run the automation. Pass a 'model' id.", {
+            failed: true,
+          });
         }
         const { ok, status, body } = await httpJson(
           "/api/agent/automations",
@@ -254,11 +223,14 @@ export default function automationsExtension(pi: ExtensionAPI): void {
           },
           signal,
         );
-        if (!ok) return textResult(`Failed to create automation: ${errorText(body, status)}`, { failed: true });
+        if (!ok)
+          return textResult(`Failed to create automation: ${errorText(body, status)}`, {
+            failed: true,
+          });
         const automation = (body as { automation?: AutomationRecord }).automation ?? {};
         const id = typeof automation.id === "string" ? automation.id : "(unknown)";
         return textResult(
-          `Created automation "${typeof automation.name === "string" ? automation.name : args.name ?? "Untitled"}" [${id}] — ` +
+          `Created automation "${typeof automation.name === "string" ? automation.name : (args.name ?? "Untitled")}" [${id}] — ` +
             `${describeSchedule(scheduleResult.schedule)}. Next run ${typeof automation.nextRunAt === "string" ? automation.nextRunAt : "pending"}.`,
           { id, schedule: scheduleResult.schedule, modelId },
         );
@@ -281,11 +253,15 @@ export default function automationsExtension(pi: ExtensionAPI): void {
           { method: "GET" },
           signal,
         );
-        if (!ok) return textResult(`Failed to list automations: ${errorText(body, status)}`, { failed: true });
+        if (!ok)
+          return textResult(`Failed to list automations: ${errorText(body, status)}`, {
+            failed: true,
+          });
         const automations = Array.isArray((body as { automations?: unknown }).automations)
-          ? ((body as { automations: AutomationRecord[] }).automations)
+          ? (body as { automations: AutomationRecord[] }).automations
           : [];
-        if (automations.length === 0) return textResult("No automations are scheduled.", { count: 0 });
+        if (automations.length === 0)
+          return textResult("No automations are scheduled.", { count: 0 });
         const lines = automations.map(formatAutomationLine);
         return textResult(`${automations.length} automation(s):\n${lines.join("\n")}`, {
           count: automations.length,
@@ -305,7 +281,10 @@ export default function automationsExtension(pi: ExtensionAPI): void {
       id: Type.String({ description: "The automation id, e.g. 'auto-1a2b3c4d'." }),
     }),
     async execute(_id, params, signal) {
-      const id = typeof (params as { id?: unknown })?.id === "string" ? (params as { id: string }).id.trim() : "";
+      const id =
+        typeof (params as { id?: unknown })?.id === "string"
+          ? (params as { id: string }).id.trim()
+          : "";
       if (!id) return textResult("delete_automation needs an automation id.", { failed: true });
       try {
         const { ok, status, body } = await httpJson(
@@ -313,7 +292,10 @@ export default function automationsExtension(pi: ExtensionAPI): void {
           { method: "DELETE" },
           signal,
         );
-        if (!ok) return textResult(`Failed to delete automation: ${errorText(body, status)}`, { failed: true });
+        if (!ok)
+          return textResult(`Failed to delete automation: ${errorText(body, status)}`, {
+            failed: true,
+          });
         return textResult(`Deleted automation ${id}.`, { id });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

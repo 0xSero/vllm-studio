@@ -1,12 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { bridgeFetch, type ToolResult } from "./bridge.ts";
 
-type ToolResult = {
-  content: Array<{ type: "text"; text: string }>;
-  details: Record<string, unknown>;
-};
-
-const FRONTEND_BASE = process.env.LOCAL_STUDIO_FRONTEND_BASE ?? "http://127.0.0.1:3000";
 const BROWSER_SESSION_ID = process.env.LOCAL_STUDIO_BROWSER_SESSION_ID ?? "";
 const DEFAULT_BROWSER_TOOL_TIMEOUT_MS = 60_000;
 
@@ -37,22 +32,18 @@ async function callBrowserAction(
   payload: Record<string, unknown>,
   signal: AbortSignal | undefined,
 ): Promise<ToolResult> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), BROWSER_TOOL_TIMEOUT_MS);
-  const abort = () => controller.abort();
-  signal?.addEventListener("abort", abort, { once: true });
-  if (signal?.aborted) controller.abort();
-  const response = await fetch(`${FRONTEND_BASE}/api/agent/browser/${verb}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(
-      BROWSER_SESSION_ID ? { ...payload, sessionId: BROWSER_SESSION_ID } : payload,
-    ),
-    signal: controller.signal,
-  }).finally(() => {
-    clearTimeout(timeout);
-    signal?.removeEventListener("abort", abort);
-  });
+  const response = await bridgeFetch(
+    `/api/agent/browser/${verb}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        BROWSER_SESSION_ID ? { ...payload, sessionId: BROWSER_SESSION_ID } : payload,
+      ),
+    },
+    signal,
+    BROWSER_TOOL_TIMEOUT_MS,
+  );
   if (!response.ok) {
     const errBody = await response.text().catch(() => "");
     throw new Error(`HTTP ${response.status} ${errBody}`);

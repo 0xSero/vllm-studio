@@ -1,27 +1,3 @@
-//
-// Server-side session-goal injection.
-//
-// `/goal <objective>` stores an objective per pi session; goal-driver.ts
-// re-prompts the agent whenever it settles. But on a turn the user types
-// themselves the model never saw the objective, so the goal only nudged the
-// session between turns instead of steering it.
-//
-// The old fix was a bundled pi extension (goal.ts) that read the goal off disk
-// inside `before_agent_start`. It relied on `ctx.sessionManager.getSessionId()`
-// to key the read — but extensions bind over RPC and that id does NOT match the
-// canonical piSessionId the goal store is keyed by (a live breadcrumb showed a
-// different id on every before_agent_start, so the goal was always null and the
-// section never reached the model).
-//
-// This module moves the injection in-process. pi-runtime registers the factory
-// below as an `extensionFactories` entry on the session's resource loader; the
-// closure captures the runtime's own SessionManager, so it reads the goal with
-// the SAME canonical piSessionId the store writes. `before_agent_start` fires
-// once per prompt (SDK: agent-session.js emits it in _prompt, and the returned
-// systemPrompt overrides that turn only), so reading the goal live inside the
-// handler picks up mid-session edits and budget/turn changes.
-//
-
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -43,11 +19,6 @@ export type GoalPromptInput = {
   turnsUsed?: unknown;
 };
 
-/** Codex wraps the objective in tags and states plainly that it is instruction,
- *  not data, then reports budget so the model can pace itself.
- *
- *  Kept format-identical to the bundled goal.ts builder so the two stay in
- *  sync; goal.ts's tests still cover this shape from the extension side. */
 export function goalSystemPromptSection(goal: GoalPromptInput): string | null {
   const objective = typeof goal.objective === "string" ? goal.objective.trim() : "";
   if (!objective) return null;

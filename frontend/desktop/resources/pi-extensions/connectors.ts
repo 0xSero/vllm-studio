@@ -10,13 +10,8 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { bridgeJson, textResult, type ToolResult } from "./bridge.ts";
 
-type ToolResult = {
-  content: Array<{ type: "text"; text: string }>;
-  details: Record<string, unknown>;
-};
-
-const FRONTEND_BASE = process.env.LOCAL_STUDIO_FRONTEND_BASE ?? "http://127.0.0.1:3000";
 const CALL_TIMEOUT_MS = 120_000;
 
 interface InventoryTool {
@@ -32,14 +27,13 @@ interface InventoryConnector {
   error?: string;
 }
 
-const textResult = (text: string, details: Record<string, unknown>): ToolResult => ({
-  content: [{ type: "text", text }],
-  details,
-});
-
 /** Render an MCP tools/call result (content blocks) as plain text. */
 const renderMcpResult = (result: unknown): string => {
-  if (result && typeof result === "object" && Array.isArray((result as { content?: unknown[] }).content)) {
+  if (
+    result &&
+    typeof result === "object" &&
+    Array.isArray((result as { content?: unknown[] }).content)
+  ) {
     const blocks = (result as { content: Array<{ type?: string; text?: string }> }).content;
     const texts = blocks
       .map((block) => (block.type === "text" && block.text ? block.text : JSON.stringify(block)))
@@ -55,19 +49,22 @@ async function callConnectorTool(
   args: Record<string, unknown>,
   signal: AbortSignal | undefined,
 ): Promise<ToolResult> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
-  const abort = () => controller.abort();
-  signal?.addEventListener("abort", abort, { once: true });
-  if (signal?.aborted) controller.abort();
   try {
-    const response = await fetch(`${FRONTEND_BASE}/api/agent/connectors/call`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ connector_id: connectorId, tool, args }),
-      signal: controller.signal,
-    });
-    const payload = (await response.json()) as { ok?: boolean; result?: unknown; error?: string };
+    const { response, body } = await bridgeJson<{
+      ok?: boolean;
+      result?: unknown;
+      error?: string;
+    }>(
+      "/api/agent/connectors/call",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connector_id: connectorId, tool, args }),
+      },
+      signal,
+      CALL_TIMEOUT_MS,
+    );
+    const payload = body ?? {};
     if (!response.ok || !payload.ok) {
       return textResult(`${connectorId}/${tool} failed: ${payload.error ?? response.status}`, {
         connectorId,
@@ -84,20 +81,19 @@ async function callConnectorTool(
       error: message,
       failed: true,
     });
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener("abort", abort);
   }
 }
 
 export default async function connectorsExtension(pi: ExtensionAPI): Promise<void> {
   let inventory: InventoryConnector[] = [];
   try {
-    const response = await fetch(`${FRONTEND_BASE}/api/agent/connectors/call`, {
-      signal: AbortSignal.timeout(30_000),
-    });
-    const payload = (await response.json()) as { connectors?: InventoryConnector[] };
-    inventory = payload.connectors ?? [];
+    const { body } = await bridgeJson<{ connectors?: InventoryConnector[] }>(
+      "/api/agent/connectors/call",
+      {},
+      undefined,
+      30_000,
+    );
+    inventory = body?.connectors ?? [];
   } catch {
     // Frontend unreachable or no connectors — register nothing.
     return;
