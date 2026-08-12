@@ -565,6 +565,52 @@ every eviction path silently no-opped and the run reported a clean
 `1…10,10,10…` — the exact shape of a healthy cache. It looked like proof there
 was no problem. `length` has to be a live getter; the test carries that note.
 
+### 15. Holding many sessions does not leak
+
+Fifteen session switches across eight sessions, measured with
+`performance.memory` in a real browser:
+
+| pass | heap across 5 switches | DOM nodes |
+|---|---|---|
+| 1 | 12.7 – 22.5 MB | 2058 |
+| 2 | 23.9 – 29.4 MB | 2058 |
+| 3 | **25.3 → 26.3 MB** | 2058 |
+
+Heap climbs while bounded caches fill — transcript snapshots, merge caches,
+module-level maps — and then plateaus: the third pass moves 1MB across five
+switches, against 12MB over the first ten. DOM node count never moves, because
+only the active pane's session is mounted and `pruneSessions` drops the one it
+replaced.
+
+That is the shape of caches warming, not a leak. Three passes is a short
+window and would not catch a slow one, but nothing here scales with the number
+of sessions visited.
+
+Nothing to fix. Recorded so it is not re-investigated.
+
+## Where this pass ended up
+
+Session opens went from ~1.2s per process — and ~32s for the 3.56GB rollout —
+to **~30–60ms server-side and ~220ms cold in the browser**. Six measured
+optimisations, two correctness bugs that were not performance problems at all,
+and four things checked and rejected on evidence.
+
+Rejected, so nobody rebuilds them:
+
+- **Timeline virtualization** (finding 13) — cold open is 220ms and scrolling
+  is 6–9ms. Not worth risking the scroll machinery.
+- **A markdown fast path** (finding 12) — the whole pipeline is ≤0.69ms of a
+  3.5ms mount.
+- **Skipping the active-branch walk for "linear" sessions** (finding 2) — it
+  drops 69% of entries on a real rollout.
+- **LRU for the merge cache** (finding 8) — a sequential walk longer than the
+  cache evicts exactly what it is about to need.
+
+The single biggest remaining lever is not in this repo: `npm:pi-goal` and
+`npm:@vanillagreen/pi-background-tasks` write 91–95% of the bytes in these
+rollouts (finding 5). Removing or pinning them shrinks future sessions ~20x,
+which beats anything the reader can do.
+
 ## Open questions — measure before assuming
 - **Nothing has been measured during a live stream**, only on static
   transcripts. Finding 8's fix is proven on identity counts, not on observed
