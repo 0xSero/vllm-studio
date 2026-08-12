@@ -104,6 +104,28 @@ export const openInitializedDatabase = (
   }
 };
 
+export class RepositoryStore {
+  protected readonly db: Database;
+  private readonly closeDatabase: () => Effect.Effect<void, RepositoryError>;
+
+  public constructor(
+    dbPath: string,
+    closeOperation: string,
+    initialize: (db: Database) => void,
+  ) {
+    this.db = openInitializedDatabase(dbPath, initialize);
+    this.closeDatabase = makeDatabaseCloser(this.db, closeOperation);
+  }
+
+  protected effect<A>(operation: string, execute: () => A): Effect.Effect<A, RepositoryError> {
+    return repositoryEffect(operation, execute);
+  }
+
+  public close(): Effect.Effect<void, RepositoryError> {
+    return this.closeDatabase();
+  }
+}
+
 type JsonBlobTableOptions<T> = {
   table: string;
   column?: string;
