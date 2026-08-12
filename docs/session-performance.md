@@ -419,13 +419,46 @@ lands. The cache keeps doing its job — the reloaded session still paints in
 Two tests pin it in `persistence.test.ts`, on the marking rather than on the
 symptom.
 
-## Open questions — measure before assuming
+### 11. Where the "load earlier" second actually goes
 
-- **The load-earlier attribution is still not done.** That was this round's
-  goal; the truncation bug displaced it. Known: the fetch is 14–40ms of a
-  635–1891ms click, so it is client-side, and it grows with transcript length
-  while the work added per page is constant. Not yet split between fold, merge,
-  mount of the 250 new subtrees, and reconciliation of the existing list.
+Attributed by elimination, each step measured rather than reasoned about:
+
+| candidate | measured | verdict |
+|---|---|---|
+| network fetch | 14–40ms for 303KB | not it |
+| `foldSessionEvents` on the page | ~1ms for 500 events | not it |
+| `mergeConsecutiveAssistantMessages` | 0.42ms at 2000 turns (finding 8) | not it |
+| transcript snapshot write | 0.2ms (200 messages, 134KB) | not it |
+| React reconciling the existing list | **zero long tasks** on a pure state-change re-render at 1250 messages | not it |
+| layout/paint of the growing document | `content-visibility: auto` changed per-message cost 3.59ms → 3.42ms | not it |
+| **mounting the new subtrees** | **~3.5ms per message mounted** | **this** |
+
+`loadEarlier` is clean — it folds only the new page and prepends, O(page) not
+O(total). The cost is that a page is 250 messages and each one costs ~3.5ms to
+mount, so the click is ~0.9s of main-thread JS regardless of how long the
+conversation is.
+
+The `content-visibility` A/B is the useful half of this. It skips layout and
+paint for offscreen subtrees but cannot skip React mounting or markdown
+parsing, so a per-message cost that barely moves says the work is JS, not
+rendering. Two runs: 250 mounted / 898ms of long tasks, and 100 mounted / 342ms
+— 3.59 and 3.42ms each. That also rules out CSS containment as a fix, which was
+the cheap thing worth trying first.
+
+Earlier rounds recorded this as "grows with transcript length". That reading
+was wrong: per-message cost is flat, and the apparent growth was long-task
+chunking plus a busier browser. What is constant is the page size.
+
+Two directions, neither attempted:
+
+- **Mount fewer per page.** Halving the load-earlier page halves the click.
+  Straightforward, but it is a UX trade — more clicks to reach the same place.
+- **Make a message cheaper to mount.** 3.5ms each is a lot for mostly-plain
+  text; `assistant-markdown` runs ReactMarkdown + remark-gfm per message. Worth
+  checking whether there is a fast path for messages containing no markdown
+  before reaching for anything structural.
+
+## Open questions — measure before assuming
 - **Nothing has been measured during a live stream**, only on static
   transcripts. Finding 8's fix is proven on identity counts, not on observed
   frame timing with a model actually generating.
