@@ -2,12 +2,12 @@
 
 import { useState, type MouseEvent, type PointerEvent } from "react";
 import { Folder } from "@/ui/icons";
-import type { ProjectsContextValue } from "@/features/agent/projects/context";
+import type { ProjectsStore } from "@/features/agent/projects/store";
 import { POPOVER_SURFACE_CLASS } from "@/ui/popover";
 import { cx } from "@/ui/utils";
 
 type Props = {
-  projects: ProjectsContextValue;
+  projects: ProjectsStore;
 };
 
 function stopToolbarEvent(event: MouseEvent | PointerEvent) {
@@ -16,7 +16,7 @@ function stopToolbarEvent(event: MouseEvent | PointerEvent) {
 
 export function QuickProjectPicker({ projects }: Props) {
   const [open, setOpen] = useState(false);
-  const active = projects.selectedProject ?? projects.projects[0] ?? null;
+  const active = projects.selectedProject() ?? projects.projects[0] ?? null;
 
   return (
     <div

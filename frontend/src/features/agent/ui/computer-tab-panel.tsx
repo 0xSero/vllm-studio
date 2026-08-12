@@ -4,7 +4,7 @@ import { Suspense, lazy, useCallback, type ReactNode } from "react";
 import { useToolsStore, type ToolsContextValue } from "@/features/agent/tools/store";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import { LAUNCHER_RESOURCES } from "@/features/agent/tools/resources";
-import { useProjects } from "@/features/agent/projects/context";
+import { useProjectsStore } from "@/features/agent/projects/store";
 import type { Project } from "@/features/agent/projects/types";
 import type { Session, UpdateSession } from "@/features/agent/runtime/types";
 import { focusedSession as selectFocusedSession } from "@/features/agent/runtime/selectors";
@@ -48,10 +48,10 @@ type ComputerTabPanelProps = {
 
 export function ComputerTabPanel(props: ComputerTabPanelProps) {
   const { state, handles } = props.workspace;
-  const projects = useProjects();
+  const projects = useProjectsStore();
   const tools = useToolsStore();
   const focusedSession = selectFocusedSession(state);
-  const activeProject = projects.resolveProject(focusedSession) ?? projects.selectedProject;
+  const activeProject = projects.resolveProject(focusedSession);
   const activeModelId = focusedSession?.modelId ?? state.selectedModel;
   const activeModel = state.models.find((model) => model.id === activeModelId) ?? null;
   const focusedCwd = focusedSession?.cwd ?? activeProject?.path ?? null;

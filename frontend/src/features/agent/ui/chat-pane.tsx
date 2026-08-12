@@ -89,7 +89,7 @@ function terminalAction(
 const when = <Value,>(condition: boolean, value: Value): Value | undefined =>
   condition ? value : undefined;
 
-function projectPresentation(projects: ProjectsContextValue, session: SessionTab | null) {
+function projectPresentation(projects: ProjectsStore, session: SessionTab | null) {
   const project = projects.resolveProject(session);
   const gitSummary = projects.gitSummary(project?.path);
   return {
@@ -133,7 +133,7 @@ import { ChatPaneHandle, SessionTab } from "@/features/agent/messages";
 import { useSessionEngine } from "@/features/agent/runtime/engine";
 import type { UpdateSession } from "@/features/agent/runtime/types";
 import { useToolsStore } from "@/features/agent/tools/store";
-import { useProjects, type ProjectsContextValue } from "@/features/agent/projects/context";
+import { useProjectsStore, type ProjectsStore } from "@/features/agent/projects/store";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import type { AgentThinkingLevel } from "@shared/agent/agent-turn";
 import type { AgentModel } from "@/features/agent/workspace/types";
@@ -338,7 +338,7 @@ export function ChatPane({
     rightPanelOpen,
     onToggleRightPanel,
   } = useChatPaneTools(insideComputerPanel);
-  const projects = useProjects();
+  const projects = useProjectsStore();
   const {
     activeTab,
     currentContextTokens,

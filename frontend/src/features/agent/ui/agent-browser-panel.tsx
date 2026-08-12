@@ -15,7 +15,7 @@ import {
 import { useToolsStore } from "@/features/agent/tools/store";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import { computerResource } from "@/features/agent/tools/resources";
-import { useProjects } from "@/features/agent/projects/context";
+import { useProjectsStore } from "@/features/agent/projects/store";
 import type { Project } from "@/features/agent/projects/types";
 import type { Session } from "@/features/agent/runtime/types";
 import { focusedSession as selectFocusedSession } from "@/features/agent/runtime/selectors";
@@ -52,9 +52,9 @@ function acceptedBrowserUrl(url: string): string | null {
 
 export function AgentBrowserPanel({ workspace }: { workspace: UseWorkspaceResult }) {
   const { state, handles } = workspace;
-  const projects = useProjects();
+  const projects = useProjectsStore();
   const focusedSession = selectFocusedSession(state);
-  const activeProject = projects.resolveProject(focusedSession) ?? projects.selectedProject;
+  const activeProject = projects.resolveProject(focusedSession);
   const sessions = [...state.sessions.values()];
   const activeModelId = focusedSession?.modelId ?? state.selectedModel;
   const tools = useToolsStore();

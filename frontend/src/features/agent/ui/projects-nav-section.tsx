@@ -11,7 +11,7 @@ import {
   useOpenSessions,
   useSessionActivity,
 } from "@/features/agent/session-index";
-import { useProjects } from "@/features/agent/projects/context";
+import { useProjectsStore } from "@/features/agent/projects/store";
 import { addProjectFromPath, openProjectDirectory } from "@/features/agent/projects/api";
 import { isChatsProject, type Project as ProjectEntry } from "@/features/agent/projects/types";
 import { ProjectDirectoryPickerModal } from "./projects-nav/directory-picker-modal";
@@ -23,7 +23,7 @@ import { NewChatPlusButton, ProjectRow, ProjectSessions } from "./projects-nav/s
 import { TerminalRow } from "./projects-nav/terminal-rows";
 
 export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
-  const projectsContext = useProjects();
+  const projectsContext = useProjectsStore();
   const projects = projectsContext.projects;
   const { moveProjectBefore, refresh: refreshProjects, upsertProject } = projectsContext;
   const chatProject = projects.find(isChatsProject) ?? null;

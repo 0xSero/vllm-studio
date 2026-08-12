@@ -8,7 +8,7 @@ import {
   useQuickPanelExpandEffect,
 } from "@/features/agent/ui/quick-panel/quick-panel-top-bar";
 import { CloseIcon, PlusIcon } from "@/ui/icons";
-import { useProjects, type ProjectsContextValue } from "@/features/agent/projects/context";
+import { useProjectsStore, type ProjectsStore } from "@/features/agent/projects/store";
 import { useToolsStore, type ToolsContextValue } from "@/features/agent/tools/store";
 import { activeSession, focusedSession } from "@/features/agent/runtime/selectors";
 import { PaneGrid } from "@/features/agent/ui/pane-grid";
@@ -85,21 +85,16 @@ function modelIdFor(
 }
 
 export function shouldShowProjectEmptyState(
-  projects: ProjectsContextValue,
+  projects: ProjectsStore,
   projectParam: string | null,
 ): boolean {
-  return (
-    projects.loaded &&
-    !projectParam &&
-    !projects.selectedProjectId &&
-    projects.projects.length === 0
-  );
+  return projects.loaded && !projectParam && !projects.selectedId && projects.projects.length === 0;
 }
 
 export function AgentWorkspace({ compact = false }: { compact?: boolean } = {}) {
   const workspace = useWorkspace({ ephemeral: compact });
   const { state, dispatch } = workspace;
-  const projects = useProjects();
+  const projects = useProjectsStore();
   const tools = useToolsStore();
   const searchParams = useSearchParams();
   const projectParam = searchParams.get("project");
@@ -113,7 +108,7 @@ export function AgentWorkspace({ compact = false }: { compact?: boolean } = {}) 
 
   const focusedTab = focusedSession(state);
   const activeSessionIdentity = workspaceSessionIdentity(focusedTab);
-  const activeProject = projects.resolveProject(focusedTab) ?? projects.selectedProject;
+  const activeProject = projects.resolveProject(focusedTab);
   useActiveSessionEffects({
     ...activeSessionIdentity,
     setActiveComputerSession: tools.setActiveComputerSession,
@@ -210,7 +205,7 @@ function WorkspacePane({
   composerOnly?: boolean;
 }) {
   const { state, dispatch, handles } = workspace;
-  const projects = useProjects();
+  const projects = useProjectsStore();
   const pane = state.panesById.get(paneId);
   const session = activeSession(state, paneId);
   if (!pane || !session) return null;
@@ -225,7 +220,7 @@ function WorkspacePane({
       onSelectModel={(next) => handles.selectPaneModel(paneId, next)}
       onSetDefaultModel={handles.setDefaultModel}
       modelsLoading={state.modelsLoading}
-      cwd={firstValue(session.cwd, project?.path, projects.agentCwd)}
+      cwd={firstValue(session.cwd, project?.path, projects.selectedProject()?.path)}
       onInitGit={handles.initGitForActiveProject}
       onPiSessionIdChange={handles.notifySessionsChanged}
       isFocused={state.focusedPaneId === paneId}

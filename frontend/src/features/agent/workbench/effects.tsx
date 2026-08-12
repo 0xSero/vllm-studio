@@ -6,6 +6,7 @@ import type {
   ComposerPromptTemplateRef,
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
+import { useProjectsStore } from "@/features/agent/projects/store";
 import { useToolsStore } from "@/features/agent/tools/store";
 
 type CatalogueBridge = ComponentType<{
@@ -18,9 +19,10 @@ type CatalogueBridge = ComponentType<{
 
 let bridgePromise: Promise<CatalogueBridge> | null = null;
 
-export function ToolsEffects() {
+export function WorkbenchEffects() {
   const [Bridge, setBridge] = useState<CatalogueBridge | null>(null);
   useMountSubscription(() => {
+    useProjectsStore.getState().initialize();
     useToolsStore.getState().initialize();
     if (Bridge) return;
     let cancelled = false;

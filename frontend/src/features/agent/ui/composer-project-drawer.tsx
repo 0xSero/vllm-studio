@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { GitBranchIcon } from "@/ui/icons";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { useProjects } from "@/features/agent/projects/context";
+import { useProjectsStore } from "@/features/agent/projects/store";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import { clearSessionGoal, loadSessionGoal, updateSessionGoal } from "@/features/agent/runtime/api";
 import type { GoalStatus, SessionGoal, SessionGoalPatch } from "@shared/agent/session-goal";
@@ -83,7 +83,7 @@ export function ComposerProjectDrawer({
   onRemoveQueued: (queueId: string) => void;
   onSteerQueued: (queueId: string) => void;
 }) {
-  const projects = useProjects();
+  const projects = useProjectsStore();
   const [open, setOpen] = useState(false);
   const [goal, setGoal] = useState<SessionGoal | null>(null);
   const [editing, setEditing] = useState(false);
@@ -126,7 +126,7 @@ export function ComposerProjectDrawer({
     } catch {}
   }, [piSessionId]);
 
-  const activeProject = projects.findByPath(cwd) ?? projects.selectedProject;
+  const activeProject = projects.findByPath(cwd) ?? projects.selectedProject();
   const label = projectName ?? activeProject?.name ?? "Choose project";
   const hasQueue = queueItems.length > 0;
   const paused = goal?.status === "paused";

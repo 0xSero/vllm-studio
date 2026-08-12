@@ -1,6 +1,6 @@
 import { consumeAgentSessionNavTitle } from "@/features/agent/ui/projects-nav/helpers";
 import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
-import type { ProjectsContextValue } from "@/features/agent/projects/context";
+import type { ProjectsStore } from "@/features/agent/projects/store";
 import type { Project } from "@/features/agent/projects/types";
 import { makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -15,7 +15,7 @@ export type SearchParamsReader = {
 
 type WorkspaceNavigationDeps = {
   lastHandledNavKey: string;
-  projects: ProjectsContextValue;
+  projects: ProjectsStore;
   searchParams: SearchParamsReader;
   dispatch: WorkspaceDispatch;
   replaceHref: (href: string) => void;
@@ -86,7 +86,7 @@ export function sessionIdForNavigation(
   return newParam === null ? sessionId : null;
 }
 
-function projectForNavigation(projects: ProjectsContextValue, projectId: string | null) {
+function projectForNavigation(projects: ProjectsStore, projectId: string | null) {
   return projects.findById(projectId ?? CHATS_PROJECT_ID);
 }
 

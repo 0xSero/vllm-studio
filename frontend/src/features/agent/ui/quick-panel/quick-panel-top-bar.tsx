@@ -1,6 +1,6 @@
 "use client";
 
-import type { ProjectsContextValue } from "@/features/agent/projects/context";
+import type { ProjectsStore } from "@/features/agent/projects/store";
 import { ExternalLink, X } from "lucide-react";
 import { getQuickPanelBridge } from "@/features/agent/ui/quick-panel/quick-panel-bridge";
 import { QuickProjectPicker } from "@/features/agent/ui/quick-panel/quick-project-picker";
@@ -20,7 +20,7 @@ export function QuickPanelTopBar({
   sessionId,
   hasThread,
 }: {
-  projects: ProjectsContextValue;
+  projects: ProjectsStore;
   projectId: string | null;
   sessionId: string | null;
   hasThread: boolean;

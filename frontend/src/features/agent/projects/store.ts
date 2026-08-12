@@ -17,6 +17,13 @@ export type ProjectsStore = {
   moveProjectBefore: (dragId: string, targetId: string | null) => void;
   loadGitSummary: (cwd: string) => Promise<GitSummary | null>;
   initGitForActiveProject: () => Promise<void>;
+  selectedProject: () => Project | null;
+  gitSummary: (cwd: string | null | undefined) => GitSummary | null;
+  findById: (id: string | null | undefined) => Project | null;
+  findByPath: (path: string | null | undefined) => Project | null;
+  resolveProject: (
+    session: { projectId?: string; cwd?: string } | null | undefined,
+  ) => Project | null;
 };
 
 let lastGitFetch: string | null = null;
@@ -114,6 +121,15 @@ export const useProjectsStore = create<ProjectsStore>((set, get) => {
       set({ projects });
     },
     loadGitSummary,
+    selectedProject: () => projectById(get().projects, get().selectedId),
+    gitSummary: (cwd) => (cwd ? (get().gitSummaries.get(cwd) ?? null) : null),
+    findById: (id) => projectById(get().projects, id),
+    findByPath: (path) => projectByPath(get().projects, path),
+    resolveProject: (session) =>
+      (session &&
+        (projectById(get().projects, session.projectId) ??
+          projectByPath(get().projects, session.cwd))) ||
+      projectById(get().projects, get().selectedId),
     initGitForActiveProject: async () => {
       const cwd = projectPathById(get().projects, get().selectedId);
       if (!cwd) return;
@@ -125,6 +141,17 @@ export const useProjectsStore = create<ProjectsStore>((set, get) => {
   };
 });
 
+function projectById(projects: readonly Project[], id: string | null | undefined): Project | null {
+  return (id && projects.find((project) => project.id === id)) || null;
+}
+
+function projectByPath(
+  projects: readonly Project[],
+  path: string | null | undefined,
+): Project | null {
+  return (path && projects.find((project) => project.path === path)) || null;
+}
+
 function resolveSelectedProjectId(
   current: ProjectId | null,
   projects: readonly Project[],
@@ -134,7 +161,7 @@ function resolveSelectedProjectId(
 }
 
 function projectPathById(projects: readonly Project[], projectId: ProjectId | null): string {
-  return projects.find((project) => project.id === projectId)?.path ?? "";
+  return projectById(projects, projectId)?.path ?? "";
 }
 
 function readProjectOrder(): string[] {
