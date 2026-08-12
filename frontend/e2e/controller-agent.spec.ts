@@ -411,12 +411,17 @@ test("signed Litter bridge discovers and pages the recorded session", async ({
     limit: 200,
   })) as {
     type: string;
-    sessions: Array<{ session: { sessionId: string }; metadata: { title: string | null } }>;
+    sessions: Array<{
+      session: { sessionId: string };
+      metadata: { title: string | null; cwd: string };
+    }>;
   };
   expect(listed.type).toBe("session_list_page");
   expect(listed.sessions).toContainEqual(
     expect.objectContaining({ session: expect.objectContaining({ sessionId }) }),
   );
+  const descriptor = listed.sessions.find((session) => session.session.sessionId === sessionId);
+  if (!descriptor) throw new Error("Recorded Pi session descriptor is unavailable");
 
   const identity = {
     kind: "external_session",
@@ -444,6 +449,50 @@ test("signed Litter bridge discovers and pages the recorded session", async ({
   );
   expect(text).toContain(opening);
   expect(text).toContain("Controller scoped Pi reply.");
+
+  const archived = await request.patch(`/api/agent/sessions/${encodeURIComponent(sessionId)}`, {
+    data: { archived: true, cwd: descriptor.metadata.cwd },
+  });
+  expect(archived.ok(), await archived.text()).toBe(true);
+  const archivedInventory = (await postBridge(request, metadata, {
+    type: "session_list_request",
+    protocolVersion: 1,
+    cursor: null,
+    limit: 200,
+  })) as {
+    sessions: Array<{ session: { sessionId: string }; archived: boolean }>;
+  };
+  expect(
+    archivedInventory.sessions.find((session) => session.session.sessionId === sessionId),
+  ).toMatchObject({ archived: true });
+  const archivedRead = (await postBridge(request, metadata, {
+    type: "session_read_request",
+    protocolVersion: 1,
+    session: identity,
+    cursor: null,
+    limit: 200,
+  })) as BridgeSessionPage;
+  expect(
+    archivedRead.messages.flatMap((message) =>
+      message.parts.filter((part) => part.type === "text").map((part) => part.text),
+    ),
+  ).toContain(opening);
+
+  const restored = await request.patch(`/api/agent/sessions/${encodeURIComponent(sessionId)}`, {
+    data: { archived: false },
+  });
+  expect(restored.ok(), await restored.text()).toBe(true);
+  const restoredInventory = (await postBridge(request, metadata, {
+    type: "session_list_request",
+    protocolVersion: 1,
+    cursor: null,
+    limit: 200,
+  })) as {
+    sessions: Array<{ session: { sessionId: string }; archived: boolean }>;
+  };
+  expect(
+    restoredInventory.sessions.find((session) => session.session.sessionId === sessionId),
+  ).toMatchObject({ archived: false });
 });
 
 test("signed Litter bridge creates and continues a recorded session", async ({
