@@ -1,6 +1,5 @@
 import { app } from "electron";
 import { existsSync } from "node:fs";
-import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { fork, type ChildProcess } from "node:child_process";
 import { DESKTOP_CONFIG } from "../configs";
@@ -106,7 +105,6 @@ export async function startAgentRuntime(
 
   const port = await resolveStablePort(options.preferredPort);
   const url = `http://127.0.0.1:${port}`;
-  const litterBridgeSecret = randomBytes(32).toString("base64url");
   const child = fork(entry, {
     stdio: "pipe",
     detached: false,
@@ -120,7 +118,6 @@ export async function startAgentRuntime(
       LOCAL_STUDIO_RESOURCES_PATH: process.resourcesPath,
       LOCAL_STUDIO_AGENT_CWD: process.env.LOCAL_STUDIO_AGENT_CWD || app.getPath("home"),
       LOCAL_STUDIO_FRONTEND_BASE: options.frontendUrl,
-      LOCAL_STUDIO_LITTER_BRIDGE_SECRET: litterBridgeSecret,
     },
   });
 

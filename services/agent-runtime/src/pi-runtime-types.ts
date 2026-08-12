@@ -29,23 +29,6 @@ export type PiPromptOptions = {
   restartOnContinuationError?: boolean;
 };
 
-export type PiDurablePromptMarker = {
-  dispatchId: string;
-  messageId: string;
-  contentHash: string;
-};
-
-export type PiDurablePromptBoundary = {
-  dispatchId: string;
-  markerEntryId: string;
-  userEntryId: string;
-  piSessionId: string;
-  sessionFile: string;
-  cwd: string;
-  modelId: string;
-  acceptedAt: string;
-};
-
 // Re-exported from the canonical Effect-schema-derived type in runtime-schema.ts
 // so all context-usage shapes resolve to one source of truth.
 export type { RuntimeContextUsage as PiContextUsage } from "../../../shared/agent/context-usage";
@@ -80,12 +63,6 @@ export interface PiAgentSession {
     onEvent: (event: PiEvent, seq: number) => void,
     options?: PiPromptOptions,
   ): Promise<void>;
-  promptDurably(
-    message: string,
-    onEvent: (event: PiEvent, seq: number) => void,
-    marker: PiDurablePromptMarker,
-    options?: PiPromptOptions,
-  ): Promise<PiDurablePromptBoundary>;
   steer(message: string, images?: AgentImageInput[]): Promise<void>;
   mutateQueuedFollowUp(
     message: string,
@@ -100,6 +77,7 @@ export interface PiAgentSession {
   compact(customInstructions?: string): Promise<unknown>;
   stop(): Promise<void>;
   readonly status: PiAgentStatus;
+  refreshExternalChanges(): Promise<void>;
   onLoggedEvent(listener: (event: LoggedPiEvent) => void): () => void;
   onStatus(listener: (status: PiAgentStatus) => void): () => void;
   adoptPiSessionId(piSessionId: string | null | undefined): void;

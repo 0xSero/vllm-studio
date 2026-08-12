@@ -14,7 +14,7 @@ export type { ProjectEntry };
 const PROJECTS_RELATIVE = path.join("data", "agentfs", "projects.json");
 
 // The projects store is canonical for both the frontend (which proxies
-// /api/agent/projects here) and the Litter bridge. It must resolve to the same
+// /api/agent/projects here) and the Litter runtime. It must resolve to the same
 // <repo>/data/agentfs/projects.json regardless of which subdirectory the
 // process runs from — the frontend standalone server, `bun run src/…`, and the
 // agent-runtime systemd unit (cwd services/agent-runtime) all differ. Anchoring

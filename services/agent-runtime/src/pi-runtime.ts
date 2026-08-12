@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
-import { closeSync, constants, fsyncSync, openSync, readSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import {
   createAgentSessionFromServices,
   createAgentSessionRuntime,
@@ -47,8 +47,6 @@ import type {
   PiAgentSession,
   PiAgentStatus,
   PiContextUsage,
-  PiDurablePromptBoundary,
-  PiDurablePromptMarker,
   PiPromptOptions,
 } from "./pi-runtime-types";
 
@@ -114,103 +112,10 @@ export async function restoreQueuedMessages(
   for (const queued of mutation?.followUp ?? cleared.followUp) await session.followUp(queued);
 }
 
-type DurableSessionManager = Pick<
-  SessionManager,
-  "appendCustomEntry" | "getCwd" | "getEntries" | "getSessionFile" | "getSessionId"
->;
-
 /** Appended to the system prompt for vision-capable models. Kept as an extra
  *  section rather than a replacement so first-party extensions still apply. */
 const VISION_GUIDANCE =
   "When an image is attached, inspect it carefully before answering. State only details visible in the image. Never invent labels, UI elements, text, or facts. Say when details are too small or uncertain. Give a concise answer. Use available tools to inspect supplied files when helpful.";
-
-const messageText = (message: unknown): string | null => {
-  if (!message || typeof message !== "object" || Array.isArray(message)) return null;
-  const record = message as Record<string, unknown>;
-  if (record.role !== "user") return null;
-  if (typeof record.content === "string") return record.content;
-  if (!Array.isArray(record.content)) return null;
-  let text = "";
-  for (const part of record.content) {
-    if (!part || typeof part !== "object" || Array.isArray(part)) continue;
-    const item = part as Record<string, unknown>;
-    if (item.type === "text" && typeof item.text === "string") text += item.text;
-  }
-  return text;
-};
-
-export function persistLitterPromptBoundary(input: {
-  sessionManager: DurableSessionManager;
-  startEntryCount: number;
-  message: string;
-  marker: PiDurablePromptMarker;
-  modelId: string;
-}): PiDurablePromptBoundary {
-  const beforeMarker = input.sessionManager.getEntries();
-  const matches = beforeMarker.slice(input.startEntryCount).filter((entry) => {
-    if (!entry || typeof entry !== "object" || !("message" in entry)) return false;
-    return messageText(entry.message) === input.message;
-  });
-  if (matches.length !== 1) throw new Error("Prompt transcript boundary is ambiguous");
-  const userEntryId = matches[0]?.id;
-  const piSessionId = input.sessionManager.getSessionId();
-  const sessionFile = input.sessionManager.getSessionFile();
-  const cwd = input.sessionManager.getCwd();
-  if (!userEntryId || !piSessionId || !sessionFile || !cwd || !input.modelId) {
-    throw new Error("Prompt transcript boundary identity is incomplete");
-  }
-  const markerEntryId = input.sessionManager.appendCustomEntry("local_studio_litter_turn_v1", {
-    version: 1,
-    dispatchId: input.marker.dispatchId,
-    messageId: input.marker.messageId,
-    contentHash: input.marker.contentHash,
-    userEntryId,
-  });
-  const markerEntry = input.sessionManager.getEntries().find((entry) => entry.id === markerEntryId);
-  if (!markerEntry || typeof markerEntry.timestamp !== "string") {
-    throw new Error("Prompt transcript marker was not persisted");
-  }
-  const descriptor = openSync(sessionFile, constants.O_RDONLY);
-  try {
-    fsyncSync(descriptor);
-  } finally {
-    closeSync(descriptor);
-  }
-  const size = statSync(sessionFile).size;
-  const length = Math.min(size, 256 * 1024);
-  const buffer = Buffer.allocUnsafe(length);
-  const reader = openSync(sessionFile, constants.O_RDONLY);
-  let bytesRead = 0;
-  try {
-    bytesRead = readSync(reader, buffer, 0, length, size - length);
-  } finally {
-    closeSync(reader);
-  }
-  const encodedMarker = buffer
-    .subarray(0, bytesRead)
-    .toString("utf8")
-    .split("\n")
-    .filter(Boolean)
-    .find((line) => {
-      try {
-        const entry = JSON.parse(line) as Record<string, unknown>;
-        return entry.id === markerEntryId && entry.customType === "local_studio_litter_turn_v1";
-      } catch {
-        return false;
-      }
-    });
-  if (!encodedMarker) throw new Error("Prompt transcript marker durability check failed");
-  return {
-    dispatchId: input.marker.dispatchId,
-    markerEntryId,
-    userEntryId,
-    piSessionId,
-    sessionFile,
-    cwd,
-    modelId: input.modelId,
-    acceptedAt: markerEntry.timestamp,
-  };
-}
 
 export function selectPiRuntimeModel(
   models: Awaited<ReturnType<typeof refreshPiModels>>["models"],
@@ -299,6 +204,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   private historyCursor: number | null | undefined;
   private sessionMeta: LoadSessionMeta | null = null;
   private agentDir = "";
+  private sessionFileSize: number | null = null;
   private queueEventBufferDepth = 0;
   private bufferedQueueEvent: PiEvent | null = null;
   private extensionUiPending = new Map<
@@ -517,6 +423,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         this.transcript = durable ? projectAgentSessionEvents(durable.events) : { messages: [] };
         this.historyCursor = durable?.cursor;
         this.sessionMeta = durable?.meta ?? null;
+        this.sessionFileSize = this.readSessionFileSize();
         this.unsubscribe = runtime.session.subscribe((event) => this.recordEvent(event));
         this.emitStatus();
       }.bind(this),
@@ -529,24 +436,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     options: PiPromptOptions = {},
   ): Promise<void> {
     return Effect.runPromise(this.promptEffect(message, onEvent, options));
-  }
-
-  async promptDurably(
-    message: string,
-    onEvent: (event: PiEvent, seq: number) => void,
-    marker: PiDurablePromptMarker,
-    options: PiPromptOptions = {},
-  ): Promise<PiDurablePromptBoundary> {
-    const runtimeSession = this.requireSession();
-    const startEntryCount = runtimeSession.sessionManager.getEntries().length;
-    await this.prompt(message, onEvent, options);
-    return persistLitterPromptBoundary({
-      sessionManager: runtimeSession.sessionManager,
-      startEntryCount,
-      message,
-      marker,
-      modelId: this.currentModelId,
-    });
   }
 
   private promptEffect(
@@ -669,6 +558,44 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
       this.currentPiSessionId = next;
       this.emitStatus();
     }
+  }
+
+  async refreshExternalChanges(): Promise<void> {
+    const session = this.runtime?.session;
+    if (
+      !session ||
+      this.activePromptCount > 0 ||
+      session.isStreaming ||
+      session.isCompacting ||
+      session.pendingMessageCount > 0
+    ) {
+      return;
+    }
+    const filepath = session.sessionManager.getSessionFile();
+    if (!filepath) return;
+    const size = this.readSessionFileSize();
+    if (size === null || size === this.sessionFileSize) return;
+    let persisted: SessionManager;
+    try {
+      persisted = SessionManager.open(
+        filepath,
+        session.sessionManager.getSessionDir(),
+        this.currentCwd,
+      );
+    } catch {
+      return;
+    }
+    if (persisted.getLeafId() === session.sessionManager.getLeafId()) {
+      this.sessionFileSize = size;
+      return;
+    }
+    this.currentFingerprint = "";
+    await this.ensureStarted(
+      this.currentModelId,
+      this.currentCwd,
+      this.currentPiSessionId,
+      this.currentStartOptions,
+    );
   }
 
   compact(customInstructions?: string): Promise<unknown> {
@@ -816,6 +743,16 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     const session = this.runtime?.session;
     if (!session) throw new Error("pi sdk session is not running");
     return session;
+  }
+
+  private readSessionFileSize(): number | null {
+    const filepath = this.runtime?.session.sessionManager.getSessionFile();
+    if (!filepath) return null;
+    try {
+      return statSync(filepath).size;
+    } catch {
+      return null;
+    }
   }
 
   private extensionUiContext(): ExtensionUIContext {

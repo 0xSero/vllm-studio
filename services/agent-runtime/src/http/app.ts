@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { Effect, Schema } from "effect";
-import { createLitterBridgeGateway } from "../litter-bridge-gateway";
+import { createLitterRuntimeMetadataPublisher } from "../litter-runtime-metadata";
 import { discoverSkills, loadSkillInstructions } from "../skill-discovery";
 import {
   discoverPromptTemplates,
@@ -94,12 +94,11 @@ const PluginActivationSchema = Schema.Struct({ enabled: Schema.Boolean });
 
 export function createAgentRuntimeApp() {
   const app = new Hono();
-  const litterBridgeGateway = createLitterBridgeGateway();
+  const litterRuntimeMetadata = createLitterRuntimeMetadataPublisher();
 
   app.get("/health", (c) =>
     c.json({ ok: true, service: "local-studio-agent-runtime", pid: process.pid }),
   );
-  app.post("/api/litter-bridge/v1", (c) => litterBridgeGateway.handle(c.req.raw));
   app.post("/api/agent/turn", (c) => handleAgentTurn(c.req.raw));
   app.post("/api/agent/abort", (c) => handleAgentAbort(c.req.raw));
   app.post("/api/agent/compact", (c) => handleAgentCompact(c.req.raw));
@@ -215,5 +214,5 @@ export function createAgentRuntimeApp() {
   app.post("/api/agent/terminal", (c) => handleTerminalRun(c.req.raw));
   app.post("/api/agent/terminal/resolve-cwd", (c) => handleResolveCwd(c.req.raw));
 
-  return { app, litterBridgeGateway };
+  return { app, litterRuntimeMetadata };
 }

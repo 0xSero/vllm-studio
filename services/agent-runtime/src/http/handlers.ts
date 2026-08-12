@@ -398,15 +398,21 @@ export function handleRuntimeActivity(request: Request): Response {
           close();
         }
       };
-      const snapshot = () =>
+      const snapshot = async () => {
+        await Promise.all(
+          piRuntimeManager
+            .listSessions()
+            .map(({ session }) => session.refreshExternalChanges().catch(() => undefined)),
+        );
         safeSend({
           type: "sessions",
           sessions: piRuntimeManager
             .listSessions()
             .map(({ sessionId, session }) => ({ sessionId, status: session.status })),
         });
+      };
       const off = piRuntimeManager.onActivity(safeSend);
-      const ping = setInterval(snapshot, 20_000);
+      const ping = setInterval(() => void snapshot(), 20_000);
       const close = () => {
         if (closed) return;
         closed = true;
@@ -416,7 +422,7 @@ export function handleRuntimeActivity(request: Request): Response {
           controller.close();
         } catch {}
       };
-      snapshot();
+      void snapshot();
       request.signal.addEventListener("abort", close);
     },
   });
@@ -432,7 +438,7 @@ export function handleRuntimeActivity(request: Request): Response {
 
 // ─── GET /api/agent/runtime/status ────────────────────────────────────────
 
-export function handleRuntimeStatus(request: Request): Response {
+export async function handleRuntimeStatus(request: Request): Promise<Response> {
   const searchParams = new URL(request.url).searchParams;
   const sessionId = searchParams.get("sessionId")?.trim() || "default";
   const piSessionId = searchParams.get("piSessionId")?.trim() || null;
@@ -440,6 +446,7 @@ export function handleRuntimeStatus(request: Request): Response {
   if (!resolved) {
     return Response.json({ sessionId, status: null });
   }
+  await resolved.session.refreshExternalChanges().catch(() => undefined);
   return Response.json({
     sessionId: resolved.sessionId,
     status: resolved.session.status,
