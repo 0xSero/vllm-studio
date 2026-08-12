@@ -11,7 +11,7 @@ import {
   GOOGLE_WORKSPACE_PLUGIN_IDS,
   type GoogleWorkspacePluginId,
 } from "./google-workspace-binding";
-import { desktopOAuthVault, type OAuthVault } from "./oauth-vault";
+import { desktopOAuthVault } from "./oauth-vault";
 import type { GoogleAccountView, GoogleConnectionView } from "./google-account-contract";
 
 export type { GoogleAccountView, GoogleConnectionView } from "./google-account-contract";
@@ -72,18 +72,6 @@ type Secrets = typeof SecretsSchema.Type;
 type Pending = typeof PendingSchema.Type;
 type TokenResponse = typeof TokenResponseSchema.Type;
 
-export type GoogleOAuthDependencies = {
-  fetch: typeof fetch;
-  now: () => number;
-  random: (size: number) => Buffer;
-  requestTimeoutMs?: number;
-  verifyAccess: (
-    account: GoogleWorkspacePluginId,
-    accessToken: string,
-    signal: AbortSignal,
-  ) => Promise<void>;
-};
-
 export class GoogleAccountError extends Error {
   constructor(
     readonly status: number,
@@ -92,13 +80,6 @@ export class GoogleAccountError extends Error {
     super(message);
   }
 }
-
-const defaultDependencies: GoogleOAuthDependencies = {
-  fetch,
-  now: Date.now,
-  random: randomBytes,
-  verifyAccess: verifyGoogleWorkspaceAccess,
-};
 
 const secretsKey = "google-workspace";
 const accessTokens = new Map<GoogleWorkspacePluginId, { value: string; expiresAt: number }>();
@@ -195,11 +176,10 @@ function vaultError(): GoogleAccountError {
 }
 
 function readVaultJson<A>(
-  vault: OAuthVault,
   key: string,
   decode: (input: unknown) => A,
 ): Effect.Effect<A | null, GoogleAccountError> {
-  return vault.read(key).pipe(
+  return desktopOAuthVault.read(key).pipe(
     Effect.mapError(vaultError),
     Effect.flatMap((raw) => {
       if (!raw) return Effect.succeed(null);
@@ -212,15 +192,14 @@ function readVaultJson<A>(
 }
 
 function writeVaultJson(
-  vault: OAuthVault,
   key: string,
   value: unknown,
 ): Effect.Effect<void, GoogleAccountError> {
-  return vault.write(key, JSON.stringify(value)).pipe(Effect.mapError(vaultError));
+  return desktopOAuthVault.write(key, JSON.stringify(value)).pipe(Effect.mapError(vaultError));
 }
 
-function removeVaultValue(vault: OAuthVault, key: string): Effect.Effect<void, GoogleAccountError> {
-  return vault.remove(key).pipe(Effect.mapError(vaultError));
+function removeVaultValue(key: string): Effect.Effect<void, GoogleAccountError> {
+  return desktopOAuthVault.remove(key).pipe(Effect.mapError(vaultError));
 }
 
 function emptySecrets(): Secrets {
@@ -261,8 +240,6 @@ export function getGoogleAccount(): Effect.Effect<GoogleAccountView, GoogleAccou
 
 export function saveGoogleClient(
   input: { clientId: string; clientSecret?: string },
-  vault: OAuthVault = desktopOAuthVault,
-  dependencies: GoogleOAuthDependencies = defaultDependencies,
 ): Effect.Effect<GoogleAccountView, GoogleAccountError> {
   return authorizationLifecycle.withPermit(
     accountMutation.withPermit(
@@ -271,17 +248,17 @@ export function saveGoogleClient(
         const incomingSecret = input.clientSecret?.trim();
         if (!clientId)
           return yield* Effect.fail(new GoogleAccountError(400, "Client ID is required"));
-        yield* retryPendingGoogleRevocations(vault, dependencies);
+        yield* retryPendingGoogleRevocations();
         const current = yield* metadataEffect();
         const currentSecrets =
-          (yield* readVaultJson(vault, secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
+          (yield* readVaultJson(secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
           emptySecrets();
         const sameClient = current?.clientId === clientId;
         const revokeToken = GOOGLE_WORKSPACE_PLUGIN_IDS.flatMap((id) =>
           currentSecrets.refreshTokens[id] ? [currentSecrets.refreshTokens[id]] : [],
         )[0];
         if (!sameClient && revokeToken) {
-          yield* promiseEffect(() => revokeGoogleGrant(revokeToken, dependencies));
+          yield* promiseEffect(() => revokeGoogleGrant(revokeToken));
           invalidateGoogleWorkspaceAuthorizations();
           accessTokens.clear();
           yield* disableGoogleWorkspaceConnectors();
@@ -304,10 +281,10 @@ export function saveGoogleClient(
         if (!sameClient) {
           invalidateGoogleWorkspaceAuthorizations();
           yield* Effect.forEach(GOOGLE_WORKSPACE_PLUGIN_IDS, (id) =>
-            removeVaultValue(vault, pendingKey(id)),
+            removeVaultValue(pendingKey(id)),
           );
         }
-        yield* writeVaultJson(vault, secretsKey, secrets);
+        yield* writeVaultJson(secretsKey, secrets);
         yield* writeMetadataEffect(metadata);
         accessTokens.clear();
         if (!sameClient) yield* disableGoogleWorkspaceConnectors();
@@ -332,8 +309,6 @@ function codeChallenge(verifier: string): string {
 export function beginGoogleAuthorization(
   account: GoogleWorkspacePluginId,
   redirectUri: string,
-  dependencies: GoogleOAuthDependencies = defaultDependencies,
-  vault: OAuthVault = desktopOAuthVault,
   requestedFlowId?: string,
 ): Effect.Effect<{ authorizationUrl: string }, GoogleAccountError> {
   return Effect.suspend(() => {
@@ -341,7 +316,7 @@ export function beginGoogleAuthorization(
     return accountMutation.withPermit(
       Effect.gen(function* () {
         yield* requireGoogleAuthorizationFlow(account, flowId);
-        yield* retryPendingGoogleRevocations(vault, dependencies);
+        yield* retryPendingGoogleRevocations();
         yield* requireGoogleAuthorizationFlow(account, flowId);
         const metadata = yield* metadataEffect();
         if (!metadata?.clientId) {
@@ -350,20 +325,20 @@ export function beginGoogleAuthorization(
           );
         }
         const binding = GOOGLE_WORKSPACE_BINDINGS[account];
-        const verifier = dependencies.random(64).toString("base64url");
+        const verifier = randomBytes(64).toString("base64url");
         const pending: Pending = {
           account,
           clientId: metadata.clientId,
           flowId,
-          state: dependencies.random(32).toString("base64url"),
+          state: randomBytes(32).toString("base64url"),
           verifier,
           redirectUri: loopbackRedirect(redirectUri),
           resource: binding.resource,
-          expiresAt: dependencies.now() + 10 * 60 * 1000,
+          expiresAt: Date.now() + 10 * 60 * 1000,
         };
-        yield* writeVaultJson(vault, pendingKey(account), pending);
+        yield* writeVaultJson(pendingKey(account), pending);
         if (!ownsGoogleAuthorizationFlow(account, flowId)) {
-          yield* removeVaultValue(vault, pendingKey(account));
+          yield* removeVaultValue(pendingKey(account));
           return yield* Effect.fail(authorizationFlowError());
         }
         const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -388,25 +363,21 @@ export function beginGoogleAuthorization(
 
 export function cancelGoogleAuthorization(
   account: GoogleWorkspacePluginId,
-  vault: OAuthVault = desktopOAuthVault,
 ): Effect.Effect<void, GoogleAccountError> {
   return Effect.suspend(() => {
     const cancellationId = createGoogleAuthorizationFlow(account);
     return authorizationLifecycle.withPermit(
       accountMutation.withPermit(
         ownsGoogleAuthorizationFlow(account, cancellationId)
-          ? removeVaultValue(vault, pendingKey(account))
+          ? removeVaultValue(pendingKey(account))
           : Effect.void,
       ),
     );
   });
 }
 
-function googleRequestSignal(
-  dependencies: GoogleOAuthDependencies,
-  cancellation?: AbortSignal,
-): AbortSignal {
-  const timeout = AbortSignal.timeout(dependencies.requestTimeoutMs ?? 15_000);
+function googleRequestSignal(cancellation?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(15_000);
   return cancellation ? AbortSignal.any([timeout, cancellation]) : timeout;
 }
 
@@ -415,7 +386,6 @@ async function exchangeAuthorizationCode(
   secrets: Secrets,
   pending: Pending,
   code: string,
-  dependencies: GoogleOAuthDependencies,
   cancellation: AbortSignal,
 ): Promise<TokenResponse> {
   const body = new URLSearchParams({
@@ -427,11 +397,11 @@ async function exchangeAuthorizationCode(
     resource: pending.resource,
     ...(secrets.clientSecret ? { client_secret: secrets.clientSecret } : {}),
   });
-  const response = await dependencies.fetch("https://oauth2.googleapis.com/token", {
+  const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body,
-    signal: googleRequestSignal(dependencies, cancellation),
+    signal: googleRequestSignal(cancellation),
   });
   if (!response.ok) throw new GoogleAccountError(502, "Google rejected the authorization code");
   try {
@@ -443,12 +413,11 @@ async function exchangeAuthorizationCode(
 
 async function verifiedEmail(
   accessToken: string,
-  dependencies: GoogleOAuthDependencies,
   cancellation: AbortSignal,
 ): Promise<string> {
-  const response = await dependencies.fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+  const response = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
     headers: { Authorization: `Bearer ${accessToken}` },
-    signal: googleRequestSignal(dependencies, cancellation),
+    signal: googleRequestSignal(cancellation),
   });
   if (!response.ok) throw new GoogleAccountError(502, "Google account verification failed");
   try {
@@ -514,15 +483,12 @@ function disableGoogleWorkspaceConnectors(): Effect.Effect<void> {
   }).pipe(Effect.catch(() => Effect.void));
 }
 
-async function revokeGoogleGrant(
-  token: string,
-  dependencies: GoogleOAuthDependencies,
-): Promise<void> {
-  const response = await dependencies.fetch("https://oauth2.googleapis.com/revoke", {
+async function revokeGoogleGrant(token: string): Promise<void> {
+  const response = await fetch("https://oauth2.googleapis.com/revoke", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ token }),
-    signal: googleRequestSignal(dependencies),
+    signal: googleRequestSignal(),
   });
   if (response.ok) return;
   const body: unknown = await response.json().catch(() => null);
@@ -550,18 +516,17 @@ function pendingRevocations(secrets: Secrets): string[] {
 }
 
 function updatePendingRevocation(
-  vault: OAuthVault,
   token: string,
   present: boolean,
 ): Effect.Effect<void, GoogleAccountError> {
   return Effect.gen(function* () {
     const secrets =
-      (yield* readVaultJson(vault, secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
+      (yield* readVaultJson(secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
       emptySecrets();
     const tokens = new Set(pendingRevocations(secrets));
     if (present) tokens.add(token);
     else tokens.delete(token);
-    yield* writeVaultJson(vault, secretsKey, {
+    yield* writeVaultJson(secretsKey, {
       ...secrets,
       pendingRevocations: [...tokens],
     });
@@ -569,12 +534,10 @@ function updatePendingRevocation(
 }
 
 function revokeQueuedGoogleGrant(
-  vault: OAuthVault,
   token: string,
-  dependencies: GoogleOAuthDependencies,
 ): Effect.Effect<void, GoogleAccountError> {
-  const revoke = promiseEffect(() => revokeGoogleGrant(token, dependencies));
-  return updatePendingRevocation(vault, token, true).pipe(
+  const revoke = promiseEffect(() => revokeGoogleGrant(token));
+  return updatePendingRevocation(token, true).pipe(
     Effect.as(true),
     Effect.catch((queueError) =>
       revoke.pipe(
@@ -584,23 +547,20 @@ function revokeQueuedGoogleGrant(
     ),
     Effect.flatMap((queued) =>
       queued
-        ? revoke.pipe(Effect.andThen(updatePendingRevocation(vault, token, false)))
+        ? revoke.pipe(Effect.andThen(updatePendingRevocation(token, false)))
         : Effect.void,
     ),
   );
 }
 
-function retryPendingGoogleRevocations(
-  vault: OAuthVault,
-  dependencies: GoogleOAuthDependencies,
-): Effect.Effect<void, GoogleAccountError> {
+function retryPendingGoogleRevocations(): Effect.Effect<void, GoogleAccountError> {
   return Effect.gen(function* () {
     const secrets =
-      (yield* readVaultJson(vault, secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
+      (yield* readVaultJson(secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
       emptySecrets();
     yield* Effect.forEach(pendingRevocations(secrets), (token) =>
-      promiseEffect(() => revokeGoogleGrant(token, dependencies)).pipe(
-        Effect.andThen(updatePendingRevocation(vault, token, false)),
+      promiseEffect(() => revokeGoogleGrant(token)).pipe(
+        Effect.andThen(updatePendingRevocation(token, false)),
       ),
     );
   });
@@ -632,13 +592,12 @@ type AuthorizationCommit = {
 };
 
 function restoreGoogleAuthorization(
-  vault: OAuthVault,
   commit: AuthorizationCommit,
 ): Effect.Effect<void, GoogleAccountError> {
   return Effect.gen(function* () {
     const currentMetadata = (yield* metadataEffect()) ?? commit.previousMetadata;
     const currentSecrets =
-      (yield* readVaultJson(vault, secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
+      (yield* readVaultJson(secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
       commit.previousSecrets;
     const connections: Partial<Record<GoogleWorkspacePluginId, Connection>> = {
       ...currentMetadata.connections,
@@ -656,7 +615,7 @@ function restoreGoogleAuthorization(
       if (previous) refreshTokens[commit.accountId] = previous;
       else delete refreshTokens[commit.accountId];
     }
-    yield* writeVaultJson(vault, secretsKey, { ...currentSecrets, refreshTokens });
+    yield* writeVaultJson(secretsKey, { ...currentSecrets, refreshTokens });
     yield* writeMetadataEffect({ ...currentMetadata, connections });
   });
 }
@@ -668,24 +627,20 @@ function rollbackTokenFor(secrets: Secrets, token: TokenResponse): string | unde
 
 function failAfterGoogleGrantRollback(
   error: GoogleAccountError,
-  vault: OAuthVault,
   token: string | undefined,
-  dependencies: GoogleOAuthDependencies,
 ): Effect.Effect<never, GoogleAccountError> {
   return token
-    ? revokeQueuedGoogleGrant(vault, token, dependencies).pipe(Effect.andThen(Effect.fail(error)))
+    ? revokeQueuedGoogleGrant(token).pipe(Effect.andThen(Effect.fail(error)))
     : Effect.fail(error);
 }
 
 function rollbackGoogleAuthorization(
-  vault: OAuthVault,
   commit: AuthorizationCommit,
-  dependencies: GoogleOAuthDependencies,
 ): Effect.Effect<void, GoogleAccountError> {
-  const restore = restoreGoogleAuthorization(vault, commit);
+  const restore = restoreGoogleAuthorization(commit);
   const token = commit.rollbackToken;
   return token
-    ? revokeQueuedGoogleGrant(vault, token, dependencies).pipe(
+    ? revokeQueuedGoogleGrant(token).pipe(
         Effect.catch((revokeError) =>
           restore.pipe(
             Effect.catch(() => Effect.void),
@@ -701,12 +656,9 @@ function completeGoogleAuthorizationUnlocked(
   account: GoogleWorkspacePluginId,
   input: { state: string; code: string },
   expectedFlowId: string | undefined,
-  dependencies: GoogleOAuthDependencies,
-  vault: OAuthVault,
 ): Effect.Effect<AuthorizationCommit, GoogleAccountError> {
   return Effect.gen(function* () {
     const pending = yield* readVaultJson(
-      vault,
       pendingKey(account),
       Schema.decodeUnknownSync(PendingSchema),
     );
@@ -720,11 +672,11 @@ function completeGoogleAuthorizationUnlocked(
     }
     yield* requireGoogleAuthorizationFlow(account, pending.flowId);
     const cancellation = googleAuthorizationFlowSignal(account, pending.flowId);
-    if (pending.expiresAt < dependencies.now()) {
-      yield* removeVaultValue(vault, pendingKey(account));
+    if (pending.expiresAt < Date.now()) {
+      yield* removeVaultValue(pendingKey(account));
       return yield* Effect.fail(new GoogleAccountError(400, "Google sign-in expired; start again"));
     }
-    yield* removeVaultValue(vault, pendingKey(account));
+    yield* removeVaultValue(pendingKey(account));
     const metadata = yield* metadataEffect();
     if (!metadata || metadata.clientId !== pending.clientId) {
       return yield* Effect.fail(
@@ -732,14 +684,14 @@ function completeGoogleAuthorizationUnlocked(
       );
     }
     const secrets =
-      (yield* readVaultJson(vault, secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
+      (yield* readVaultJson(secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
       emptySecrets();
     const token = yield* authorizationRequestEffect(account, pending.flowId, () =>
-      exchangeAuthorizationCode(metadata, secrets, pending, input.code, dependencies, cancellation),
+      exchangeAuthorizationCode(metadata, secrets, pending, input.code, cancellation),
     );
     const rollbackToken = rollbackTokenFor(secrets, token);
     const rollbackFailure = (error: GoogleAccountError) =>
-      failAfterGoogleGrantRollback(error, vault, rollbackToken, dependencies);
+      failAfterGoogleGrantRollback(error, rollbackToken);
     yield* requireGoogleAuthorizationFlow(account, pending.flowId).pipe(
       Effect.catch(rollbackFailure),
     );
@@ -757,13 +709,13 @@ function completeGoogleAuthorizationUnlocked(
           : new GoogleAccountError(403, "Google scope verification failed"),
     }).pipe(Effect.catch(rollbackFailure));
     const email = yield* authorizationRequestEffect(account, pending.flowId, () =>
-      verifiedEmail(token.access_token, dependencies, cancellation),
+      verifiedEmail(token.access_token, cancellation),
     ).pipe(Effect.catch(rollbackFailure));
     yield* requireGoogleAuthorizationFlow(account, pending.flowId).pipe(
       Effect.catch(rollbackFailure),
     );
     yield* authorizationRequestEffect(account, pending.flowId, () =>
-      dependencies.verifyAccess(account, token.access_token, cancellation),
+      verifyGoogleWorkspaceAccess(account, token.access_token, cancellation),
     ).pipe(Effect.catch(rollbackFailure));
     yield* requireGoogleAuthorizationFlow(account, pending.flowId).pipe(
       Effect.catch(rollbackFailure),
@@ -773,7 +725,7 @@ function completeGoogleAuthorizationUnlocked(
       email,
       scopes,
       resource: pending.resource,
-      connectedAt: new Date(dependencies.now()).toISOString(),
+      connectedAt: new Date().toISOString(),
       revision: connectionRevision,
     };
     const updatedSecrets: Secrets = {
@@ -795,22 +747,22 @@ function completeGoogleAuthorizationUnlocked(
       previousSecrets: secrets,
       ...(rollbackToken ? { rollbackToken } : {}),
     };
-    yield* writeVaultJson(vault, secretsKey, updatedSecrets).pipe(
+    yield* writeVaultJson(secretsKey, updatedSecrets).pipe(
       Effect.andThen(writeMetadataEffect(updatedMetadata)),
       Effect.catch((error: GoogleAccountError) =>
-        rollbackGoogleAuthorization(vault, commit, dependencies).pipe(
+        rollbackGoogleAuthorization(commit).pipe(
           Effect.catch(() => Effect.void),
           Effect.andThen(Effect.fail(error)),
         ),
       ),
     );
     if (!ownsGoogleAuthorizationFlow(account, pending.flowId)) {
-      yield* rollbackGoogleAuthorization(vault, commit, dependencies);
+      yield* rollbackGoogleAuthorization(commit);
       return yield* Effect.fail(authorizationFlowError());
     }
     accessTokens.set(account, {
       value: token.access_token,
-      expiresAt: dependencies.now() + Math.max(30, (token.expires_in ?? 3600) - 60) * 1000,
+      expiresAt: Date.now() + Math.max(30, (token.expires_in ?? 3600) - 60) * 1000,
     });
     return commit;
   });
@@ -819,11 +771,9 @@ function completeGoogleAuthorizationUnlocked(
 export function completeGoogleAuthorization(
   account: GoogleWorkspacePluginId,
   input: { state: string; code: string },
-  dependencies: GoogleOAuthDependencies = defaultDependencies,
-  vault: OAuthVault = desktopOAuthVault,
 ): Effect.Effect<GoogleAccountView, GoogleAccountError> {
   return accountMutation.withPermit(
-    completeGoogleAuthorizationUnlocked(account, input, undefined, dependencies, vault).pipe(
+    completeGoogleAuthorizationUnlocked(account, input, undefined).pipe(
       Effect.map((commit) => commit.account),
     ),
   );
@@ -835,19 +785,17 @@ export function completeGoogleAuthorizationWithActivation<A>(
   flowId: string,
   activation: (signal: AbortSignal) => Effect.Effect<A, Error>,
   rollback: Effect.Effect<unknown, Error>,
-  dependencies: GoogleOAuthDependencies = defaultDependencies,
-  vault: OAuthVault = desktopOAuthVault,
 ): Effect.Effect<{ account: GoogleAccountView; activation: A }, Error | GoogleAccountError> {
   return authorizationLifecycle.withPermit(
     Effect.gen(function* () {
       const cancellation = googleAuthorizationFlowSignal(account, flowId);
       const commit = yield* accountMutation.withPermit(
-        completeGoogleAuthorizationUnlocked(account, input, flowId, dependencies, vault),
+        completeGoogleAuthorizationUnlocked(account, input, flowId),
       );
       const activated = yield* activation(cancellation);
       if (!ownsGoogleAuthorizationFlow(account, flowId)) {
         yield* accountMutation
-          .withPermit(rollbackGoogleAuthorization(vault, commit, dependencies))
+          .withPermit(rollbackGoogleAuthorization(commit))
           .pipe(
             Effect.ensuring(
               rollback.pipe(
@@ -865,18 +813,16 @@ export function completeGoogleAuthorizationWithActivation<A>(
 
 export function disconnectGoogleAccount(
   account: GoogleWorkspacePluginId,
-  vault: OAuthVault = desktopOAuthVault,
-  dependencies: GoogleOAuthDependencies = defaultDependencies,
 ): Effect.Effect<GoogleAccountView, GoogleAccountError> {
   return Effect.suspend(() => {
     invalidateGoogleWorkspaceAuthorizations();
     return authorizationLifecycle.withPermit(
       accountMutation.withPermit(
         Effect.gen(function* () {
-          yield* retryPendingGoogleRevocations(vault, dependencies);
+          yield* retryPendingGoogleRevocations();
           const metadata = yield* metadataEffect();
           const secrets =
-            (yield* readVaultJson(vault, secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
+            (yield* readVaultJson(secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
             emptySecrets();
           const revokeToken =
             secrets.refreshTokens[account] ??
@@ -884,7 +830,7 @@ export function disconnectGoogleAccount(
               secrets.refreshTokens[id] ? [secrets.refreshTokens[id]] : [],
             )[0];
           if (revokeToken) {
-            yield* promiseEffect(() => revokeGoogleGrant(revokeToken, dependencies));
+            yield* promiseEffect(() => revokeGoogleGrant(revokeToken));
           }
           const updatedMetadata: Metadata | null = metadata
             ? { ...metadata, connections: {} }
@@ -897,10 +843,10 @@ export function disconnectGoogleAccount(
           return yield* Effect.gen(function* () {
             if (updatedMetadata) yield* writeMetadataEffect(updatedMetadata);
             yield* Effect.forEach(GOOGLE_WORKSPACE_PLUGIN_IDS, (id) =>
-              removeVaultValue(vault, pendingKey(id)),
+              removeVaultValue(pendingKey(id)),
             );
-            if (metadata) yield* writeVaultJson(vault, secretsKey, updatedSecrets);
-            else yield* removeVaultValue(vault, secretsKey);
+            if (metadata) yield* writeVaultJson(secretsKey, updatedSecrets);
+            else yield* removeVaultValue(secretsKey);
             return accountView(updatedMetadata);
           }).pipe(
             Effect.ensuring(
@@ -919,7 +865,6 @@ async function refreshAccessToken(
   account: GoogleWorkspacePluginId,
   metadata: Metadata,
   secrets: Secrets,
-  dependencies: GoogleOAuthDependencies,
 ): Promise<TokenResponse> {
   const refreshToken = secrets.refreshTokens[account];
   if (!refreshToken) throw new GoogleAccountError(401, "Google account is not connected");
@@ -931,11 +876,11 @@ async function refreshAccessToken(
     resource: binding.resource,
     ...(secrets.clientSecret ? { client_secret: secrets.clientSecret } : {}),
   });
-  const response = await dependencies.fetch("https://oauth2.googleapis.com/token", {
+  const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body,
-    signal: googleRequestSignal(dependencies),
+    signal: googleRequestSignal(),
   });
   if (!response.ok) throw new GoogleAccountError(401, "Google account authorization expired");
   try {
@@ -948,14 +893,12 @@ async function refreshAccessToken(
 export function googleAuthorizationHeaders(
   account: GoogleWorkspacePluginId,
   forceRefresh = false,
-  dependencies: GoogleOAuthDependencies = defaultDependencies,
-  vault: OAuthVault = desktopOAuthVault,
 ): Effect.Effect<Record<string, string>, GoogleAccountError> {
   return accountMutation.withPermit(
     Effect.gen(function* () {
       if (forceRefresh) accessTokens.delete(account);
       const cached = accessTokens.get(account);
-      if (cached && cached.expiresAt > dependencies.now()) {
+      if (cached && cached.expiresAt > Date.now()) {
         return { Authorization: `Bearer ${cached.value}` };
       }
       const metadata = yield* metadataEffect();
@@ -963,18 +906,18 @@ export function googleAuthorizationHeaders(
         return yield* Effect.fail(new GoogleAccountError(401, "Google account is not connected"));
       }
       const secrets =
-        (yield* readVaultJson(vault, secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
+        (yield* readVaultJson(secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
         emptySecrets();
       const token = yield* promiseEffect(() =>
-        refreshAccessToken(account, metadata, secrets, dependencies),
+        refreshAccessToken(account, metadata, secrets),
       );
       if (token.refresh_token) {
-        yield* writeVaultJson(vault, secretsKey, {
+        yield* writeVaultJson(secretsKey, {
           ...secrets,
           refreshTokens: { ...secrets.refreshTokens, [account]: token.refresh_token },
         });
       }
-      const expiresAt = dependencies.now() + Math.max(30, (token.expires_in ?? 3600) - 60) * 1000;
+      const expiresAt = Date.now() + Math.max(30, (token.expires_in ?? 3600) - 60) * 1000;
       accessTokens.set(account, { value: token.access_token, expiresAt });
       return { Authorization: `Bearer ${token.access_token}` };
     }),

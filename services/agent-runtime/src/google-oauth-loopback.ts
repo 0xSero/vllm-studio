@@ -152,8 +152,6 @@ export function beginGoogleLoopbackAuthorization(
       return yield* beginGoogleAuthorization(
         account,
         `http://127.0.0.1:${port}/callback`,
-        undefined,
-        undefined,
         flowId,
       ).pipe(Effect.tapError(() => Effect.sync(() => closeFlow(account, flowId))));
     }),
