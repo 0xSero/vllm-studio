@@ -165,40 +165,6 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
   const paneHandlesRef = useRef<Map<PaneId, ChatPaneHandle>>(new Map());
   const computerAsideRef = useRef<HTMLElement | null>(null);
 
-  const pendingReplaysRef = useRef(new Map<PaneId, string>());
-  const drainSessionReplay = useCallback(
-    (paneId: PaneId) => {
-      const piSessionId = pendingReplaysRef.current.get(paneId);
-      const handle = paneHandlesRef.current.get(paneId);
-      if (!piSessionId || !handle) return;
-      const current = store.getState();
-      const pane = current.panesById.get(paneId);
-      const session = pane ? current.sessions.get(pane.sessionId) : undefined;
-      if (
-        !session ||
-        (session.piSessionId == null &&
-          session.messages.length === 0 &&
-          session.status === "idle") ||
-        session.messages.length > 0 ||
-        (session.piSessionId && session.piSessionId !== piSessionId)
-      ) {
-        pendingReplaysRef.current.delete(paneId);
-        return;
-      }
-      if (handle.sessionId !== session.id) return;
-      pendingReplaysRef.current.delete(paneId);
-      void handle.loadAndReplay(piSessionId);
-    },
-    [store],
-  );
-  const queueSessionReplay = useCallback(
-    (paneId: PaneId, piSessionId: string) => {
-      pendingReplaysRef.current.set(paneId, piSessionId);
-      window.setTimeout(() => drainSessionReplay(paneId), 0);
-    },
-    [drainSessionReplay],
-  );
-
   const controller = useMemo(() => {
     const ephemeralStorage = ephemeral ? createMemoryStorage() : null;
     const makeDeps = (workspaceDispatch: WorkspaceDispatch): WorkspaceEffectDeps | null => {
@@ -208,7 +174,6 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         window: createWorkspaceWindow(window),
         api: api(),
         dispatch: workspaceDispatch,
-        queueReplay: queueSessionReplay,
         selectionFor: (id) => toolsRef.current.selectionFor(id),
       };
     };
@@ -233,7 +198,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         if (deps) refreshWorkspaceModels(deps);
       },
     };
-  }, [queueSessionReplay, ephemeral, store]);
+  }, [ephemeral, store]);
 
   const { dispatch } = controller;
 
@@ -280,7 +245,6 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
       registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => {
         if (handle) paneHandlesRef.current.set(paneId, handle);
         else paneHandlesRef.current.delete(paneId);
-        if (handle) drainSessionReplay(paneId);
       },
       compactFocusedSession: async () => {
         const handle = paneHandlesRef.current.get(store.getState().focusedPaneId);
@@ -369,7 +333,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         }
       },
     }),
-    [controller.notifySessionsChanged, dispatch, drainSessionReplay, ephemeral, store],
+    [controller.notifySessionsChanged, dispatch, ephemeral, store],
   );
 
   useWorkspaceHydrationEffects({

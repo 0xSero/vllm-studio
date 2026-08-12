@@ -15,15 +15,11 @@ import type {
   AgentToolAccess,
 } from "@shared/agent/agent-turn";
 import * as api from "@/features/agent/runtime/api";
-import {
-  runtimeCanHydrateCanonicalSession,
-  submitPromptTurn,
-  type SubmitArgs,
-} from "@/features/agent/runtime/prompt-stream";
+import { submitPromptTurn, type SubmitArgs } from "@/features/agent/runtime/prompt-stream";
+import { projectRuntimeStatus } from "@/features/agent/runtime/session-runtime-controller";
 
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
-const inFlightReplays = new Set<SessionId>();
 
 export type UseSessionEngineDeps = {
   /** Latest `tabs` snapshot — engine reads via a ref so it doesn't restart on every frame. */
@@ -52,7 +48,6 @@ export type SessionEngine = {
     piSessionId?: string | null,
   ) => Promise<api.RuntimeStatus | null>;
   abortTurn: (sessionId: SessionId) => Promise<api.AbortSessionResult>;
-  loadAndReplay: (piSessionId: string, sessionId: SessionId) => Promise<void>;
   /** Fetch and prepend the previous page of older history (tail paging). */
   loadEarlier: (sessionId: SessionId) => Promise<void>;
   compact: (sessionId: SessionId) => Promise<void>;
@@ -221,107 +216,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     [updateSession],
   );
 
-  const loadAndReplay = useCallback(
-    (piSessionId: string, sessionId: SessionId) => {
-      if (inFlightReplays.has(sessionId)) return Promise.resolve();
-      inFlightReplays.add(sessionId);
-      return Effect.runPromise(
-        Effect.gen(function* () {
-          updateSession(sessionId, (session) => ({
-            ...session,
-            status: "loading",
-            error: "",
-          }));
-          const runtimeStatus = yield* Effect.tryPromise({
-            try: () => api.loadRuntimeStatus(sessionId, piSessionId),
-            catch: () => null,
-          });
-          const sessionCwd = cwd || runtimeStatus?.cwd || "";
-          if (!sessionCwd) {
-            updateSession(sessionId, (session) => ({ ...session, status: "idle" }));
-            return;
-          }
-          const runtimeActive = runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId);
-          const runtimeReplay =
-            runtimeActive && runtimeStatus?.messages
-              ? {
-                  messages: [...runtimeStatus.messages],
-                  tokenStats: runtimeStatus.tokenStats,
-                  cursor: runtimeStatus.historyCursor ?? null,
-                  meta: {
-                    title: runtimeStatus.title ?? null,
-                    modelId: runtimeStatus.modelId ?? null,
-                    startedAt: runtimeStatus.startedAt ?? null,
-                    piSessionId: runtimeStatus.piSessionId ?? null,
-                    usage: runtimeStatus.usageTotals ?? null,
-                  },
-                }
-              : null;
-          const replayResult = runtimeReplay
-            ? ({ _tag: "Success", success: runtimeReplay } as const)
-            : yield* Effect.tryPromise({
-                try: () => api.loadCanonicalSession(piSessionId, sessionCwd),
-                catch: (error) => error,
-              }).pipe(Effect.result);
-          if (replayResult._tag === "Success") {
-            const { messages, cursor, meta } = replayResult.success;
-            updateSession(sessionId, (session) => ({
-              ...session,
-              messages: messages.length >= session.messages.length ? messages : session.messages,
-              piSessionId,
-              cwd: session.cwd || sessionCwd,
-              // Head-scan meta carries the real session model/title; the fold's
-              // own title would be the tail slice's first user message, not the
-              // session's first prompt.
-              modelId: session.modelId || meta?.modelId || runtimeStatus?.modelId || modelId,
-              title: meta?.title ?? session.title,
-              startedAt: meta?.startedAt ?? session.startedAt,
-              tokenStats: replayResult.success.tokenStats,
-              // Lifetime spend is computed server-side from the whole rollout,
-              // so it survives both compaction and the tail load's cutoff.
-              usageTotals: meta?.usage ?? session.usageTotals,
-              contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
-              status: runtimeActive ? "running" : "idle",
-              activeAssistantId: undefined,
-              // A non-null cursor means the tail load left older history unread;
-              // the timeline shows a "Load earlier" affordance while it is set.
-              historyCursor: messages.length > 0 ? cursor : (session.historyCursor ?? null),
-              error: "",
-            }));
-          } else {
-            const err = replayResult.failure;
-            // Canonical read failed. If the runtime is still alive, don't strand the
-            // session idle (which would drop the live stream — reconcile only
-            // subscribes for live statuses): keep the seeded history, mark it running,
-            // and reset the cursor so the reattached SSE replays the runtime backlog.
-            if (runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId)) {
-              updateSession(sessionId, (session) => ({
-                ...session,
-                contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
-                status: "running",
-                activeAssistantId: undefined,
-                error: "",
-              }));
-              return;
-            }
-            updateSession(sessionId, (session) => ({
-              ...session,
-              error: err instanceof Error ? err.message : "Failed to load session",
-              status: "idle",
-            }));
-          }
-        }).pipe(
-          Effect.ensuring(
-            Effect.sync(() => {
-              inFlightReplays.delete(sessionId);
-            }),
-          ),
-        ),
-      );
-    },
-    [cwd, modelId, updateSession],
-  );
-
   // Page the previous (older) chunk of a tail-loaded transcript into view and
   // prepend it. Each page is snapped to a user-turn boundary and abuts the
   // current first message exactly (cursor = first loaded byte), so folding the
@@ -384,15 +278,8 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               }),
             catch: (error) => error,
           });
-          const nextSessionId = result.status?.piSessionId || session.piSessionId;
-          if (nextSessionId) {
-            yield* Effect.tryPromise({
-              try: () => loadAndReplay(nextSessionId, sessionId),
-              catch: (error) => error,
-            });
-          }
           updateSession(sessionId, (s) => ({
-            ...s,
+            ...(result.status ? projectRuntimeStatus(s, result.status) : s),
             contextUsage: api.runtimeContextUsage(result.status ?? null, null),
             tokenStats: undefined,
           }));
@@ -407,7 +294,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           ),
         ),
       ),
-    [browserToolEnabled, browserBackend, cwd, loadAndReplay, modelId, thinkingLevel, updateSession],
+    [browserToolEnabled, browserBackend, cwd, modelId, thinkingLevel, updateSession],
   );
 
   const acceptsControl = useCallback(
@@ -432,7 +319,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       sendControl,
       loadRuntimeStatus: loadRuntimeStatusCb,
       abortTurn,
-      loadAndReplay,
       loadEarlier,
       compact,
       acceptsControl,
@@ -442,7 +328,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       sendControl,
       loadRuntimeStatusCb,
       abortTurn,
-      loadAndReplay,
       loadEarlier,
       compact,
       acceptsControl,

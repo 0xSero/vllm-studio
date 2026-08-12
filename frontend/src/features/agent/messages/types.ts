@@ -12,7 +12,6 @@ export type {
 
 export type ChatPaneHandle = {
   sessionId: string;
-  loadAndReplay: (piSessionId: string) => Promise<void>;
   compact: () => Promise<void>;
 };
 

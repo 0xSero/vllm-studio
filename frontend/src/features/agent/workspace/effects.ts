@@ -1,10 +1,10 @@
 import { Effect } from "effect";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
-import { findPaneByPiSessionId, paneSessionId } from "@/features/agent/runtime/selectors";
+import { paneSessionId } from "@/features/agent/runtime/selectors";
 import type { SessionId } from "@/features/agent/runtime/types";
 import { markSessionActivitySeen } from "@/features/agent/session-index";
 import type { ToolSelection } from "@/features/agent/tools/types";
-import type { AgentModel, PaneId, WorkspaceState } from "@/features/agent/workspace/types";
+import type { AgentModel, WorkspaceState } from "@/features/agent/workspace/types";
 import {
   sessionMetaForPersistence,
   setupWarningFromPiCheck,
@@ -35,7 +35,6 @@ export type WorkspaceEffectDeps = {
   window: WorkspaceWindow;
   api: WorkspaceApi;
   dispatch?: WorkspaceDispatch;
-  queueReplay: (paneId: PaneId, piSessionId: string) => void;
   selectionFor?: (sessionId: SessionId) => ToolSelection;
 };
 
@@ -144,33 +143,6 @@ function storedSessionsKey(state: WorkspaceState): string {
   return JSON.stringify(entries);
 }
 
-function queueLocatedReplay(
-  piSessionId: string | null | undefined,
-  state: WorkspaceState,
-  deps: WorkspaceEffectDeps,
-): void {
-  if (!piSessionId) return;
-  const located = findPaneByPiSessionId(state, piSessionId);
-  if (located) deps.queueReplay(located.paneId, piSessionId);
-}
-
-function queueReplayEffects(
-  prevState: WorkspaceState,
-  nextState: WorkspaceState,
-  deps: WorkspaceEffectDeps,
-): void {
-  for (const pane of nextState.panesById.values()) {
-    const session = nextState.sessions.get(pane.sessionId);
-    if (
-      session?.piSessionId &&
-      session.messages.length === 0 &&
-      !findPaneByPiSessionId(prevState, session.piSessionId)
-    ) {
-      queueLocatedReplay(session.piSessionId, nextState, deps);
-    }
-  }
-}
-
 function persistActionEffects(
   prevState: WorkspaceState,
   nextState: WorkspaceState,
@@ -212,7 +184,6 @@ export function runWorkspaceEffect(
   deps: WorkspaceEffectDeps,
 ): void {
   persistActionEffects(prevState, nextState, deps);
-  queueReplayEffects(prevState, nextState, deps);
   if (!prevState.hydrated && nextState.hydrated) runInitialApiEffects(nextState, deps);
   const focusedPane = nextState.panesById.get(nextState.focusedPaneId);
   const focusedSession = focusedPane ? nextState.sessions.get(focusedPane.sessionId) : undefined;

@@ -269,13 +269,3 @@ export function runtimeIsActiveForPiSession(
     (!runtimeStatus.piSessionId || !piSessionId || runtimeStatus.piSessionId === piSessionId),
   );
 }
-
-export function runtimeCanHydrateCanonicalSession(
-  runtimeStatus: RuntimeStatus | null | undefined,
-  piSessionId: string,
-): boolean {
-  return Boolean(
-    runtimeStatus?.active === true &&
-    (!runtimeStatus.piSessionId || runtimeStatus.piSessionId === piSessionId),
-  );
-}

@@ -26,7 +26,7 @@ function matchingSession(
   return matches.length === 1 ? matches[0]! : null;
 }
 
-function projectStatus(session: Session, status: RuntimeStatus): Session {
+export function projectRuntimeStatus(session: Session, status: RuntimeStatus): Session {
   if (session.status === "loading") return session;
   const messages = status.messages
     ? optimisticOverlay(session.messages, status.messages)
@@ -121,7 +121,7 @@ export function createSessionRuntimeController(
     if (!binding) return;
     const target = matchingSession(binding.getSessions(), sessionId, status);
     if (!target) return;
-    binding.commit(target.id, (session) => projectStatus(session, status));
+    binding.commit(target.id, (session) => projectRuntimeStatus(session, status));
   };
 
   const receive = (payload: RuntimeActivityPayload) => {

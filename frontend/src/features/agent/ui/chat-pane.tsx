@@ -487,7 +487,6 @@ export function ChatPane({
     activeTabId,
     engine,
     modelId,
-    isFocused,
     onRegisterHandle,
     running: Boolean(running),
   });
