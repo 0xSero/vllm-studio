@@ -343,7 +343,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
                 contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
                 status: "running",
                 activeAssistantId: undefined,
-                hydratedFromCache: session.hydratedFromCache === true,
                 error: "",
               }));
               sessionRuntimeController().noteReplayHydrated(sessionId, undefined);
