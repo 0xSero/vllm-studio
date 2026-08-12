@@ -95,16 +95,53 @@ untouched.
 cd services/agent-runtime && bun run bench/session-load.bench.ts <rollout.jsonl>
 ```
 
+### 3. Resume the usage scan instead of restarting it — live-session open 493ms → 3ms
+
+The usage totals are append-only sums, but a grown file was rescanned from
+byte zero. That made the session you are actively working in the slowest one to
+open, because it is the one whose file keeps changing.
+
+The cache now also stores the byte offset just past the last **complete** line
+folded in, and resumes from there. The "complete line" part is the whole
+correctness story: a rollout is appended to while being read, so a scan's last
+line is often half-written — counting it as scanned would drop that turn's
+usage permanently. A head fingerprint and a size check catch the two ways the
+append-only assumption can break (rewrite, truncation) and force a full rescan.
+
+| rollout | cold before | cold after | after one appended turn |
+|---------|------------:|-----------:|------------------------:|
+| 40 MB   | 197ms       | 127ms      | 200ms → **5ms**         |
+| 145 MB  | 608ms       | 524ms      | 493ms → **3ms**         |
+
+Cold got faster too (−35% / −14%) as a side effect of hand-rolling the line
+split instead of using `readline`; the resume point has to be a byte offset and
+`readline` does not give one.
+
+Seven tests in `test/session-usage.test.ts` pin the offset arithmetic — append,
+half-written final line, multi-byte characters (character offsets ≠ byte
+offsets), rewrite, truncation, and compaction counting across a resume. None of
+these throw when wrong; they silently report a wrong lifetime spend.
+
+```bash
+cd services/agent-runtime && bun run bench/session-usage.bench.ts <rollout.jsonl>
+```
+
 ## Open questions — measure before assuming
 
-- **The cold open still pays a full usage scan.** 741ms on a 145 MB session,
-  every time the file has grown — i.e. every open of a session you are actively
-  using. The totals are append-only sums; they could be computed incrementally
-  from the previous cached value plus the newly appended bytes instead of
-  rescanning from zero. This is the single biggest remaining number.
-- **A 3.8 GB rollout exists on this machine.** Nothing here has been tested at
-  that size; the full scans may simply be unusable. Worth finding out what
-  opening it actually does before assuming the caches are enough.
+- **The 3.56 GB rollout takes ~32s to open cold** (measured, read-only, on
+  `--Users-sero-projects-vllm-studio--/2026-06-27T07-33-03-397Z_*.jsonl`):
+  25.1s in `buildContextEntries` (269,592 entries) plus 7.0s in the usage scan.
+  Both are now cached, so it is paid once — but **once per agent-runtime
+  process**, so every controller restart re-pays it for every large session
+  opened afterwards. Two directions, neither measured yet:
+  - Persist both caches to disk keyed on (path, size, mtime), turning
+    once-per-process into once-ever.
+  - Avoid `buildContextEntries` entirely when a session has never branched.
+    `activeBranchEvents` only needs to filter the ≤500 events in the tail
+    slice, but pi's API resolves the branch leaf-to-root with no partial mode,
+    so this needs a cheap "has this session ever branched" signal first.
+- **Timeline virtualization** — still unmeasured, still deferred. See below.
+- **Per-frame merge cost** and **multi-session retained memory** — unmeasured.
 - **Timeline virtualization.** Every message subtree stays mounted; a long
   session mounts hundreds of markdown/tool subtrees. Known-deferred from the
   earlier perf pass. Needs a DOM-node and interaction-latency measurement
