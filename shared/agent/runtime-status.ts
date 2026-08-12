@@ -6,6 +6,16 @@ const RuntimeQueueSchema = Schema.Struct({
   followUp: Schema.Array(Schema.String),
 });
 
+export const RuntimeExtensionUiRequestSchema = Schema.Struct({
+  requestId: Schema.String,
+  method: Schema.Literals(["select", "confirm", "input", "editor"]),
+  title: Schema.String,
+  message: Schema.optional(Schema.String),
+  placeholder: Schema.optional(Schema.String),
+  prefill: Schema.optional(Schema.String),
+  options: Schema.optional(Schema.Array(Schema.String)),
+});
+
 export const RuntimeStatusSchema = Schema.Struct({
   active: Schema.optional(Schema.Boolean),
   running: Schema.optional(Schema.Boolean),
@@ -15,9 +25,10 @@ export const RuntimeStatusSchema = Schema.Struct({
   contextUsage: Schema.optional(Schema.Union([Schema.Null, RuntimeContextUsageSchema])),
   messages: Schema.optional(Schema.Array(Schema.Record(Schema.String, Schema.Unknown))),
   queue: Schema.optional(RuntimeQueueSchema),
-  extensionUiRequest: Schema.optional(
-    Schema.Union([Schema.Null, Schema.Record(Schema.String, Schema.Unknown)]),
-  ),
+  extensionUiRequest: Schema.optional(Schema.Union([Schema.Null, RuntimeExtensionUiRequestSchema])),
 });
 
+export type RuntimeExtensionUiRequest = Schema.Schema.Type<
+  typeof RuntimeExtensionUiRequestSchema
+>;
 export type RuntimeStatus = Schema.Schema.Type<typeof RuntimeStatusSchema>;

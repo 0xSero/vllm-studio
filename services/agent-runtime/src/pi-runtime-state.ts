@@ -1,6 +1,7 @@
 // Pure pi-runtime state derivation. This module must stay free of runtime
 // imports of @earendil-works/pi-coding-agent (ESM-only) so the node test
 // runner can load it; pi-runtime-types only contributes erased type imports.
+import type { RuntimeExtensionUiRequest } from "../../../shared/agent/runtime-status";
 import type { PiAgentStatus, PiContextUsage } from "./pi-runtime-types";
 
 type RuntimeLookupEntry<TSession> = {
@@ -78,7 +79,7 @@ export function piStatusFromEvents(input: {
   contextUsage?: PiContextUsage | null;
   messages?: readonly unknown[];
   queue?: { steering: readonly string[]; followUp: readonly string[] };
-  extensionUiRequest?: Record<string, unknown> | null;
+  extensionUiRequest?: RuntimeExtensionUiRequest | null;
 }): PiAgentStatus {
   return {
     running: input.running,

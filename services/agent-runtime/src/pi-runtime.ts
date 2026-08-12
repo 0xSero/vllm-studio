@@ -15,6 +15,7 @@ import {
 import { Effect } from "effect";
 import type { AgentImageInput } from "../../../shared/agent/agent-image-input";
 import type { AgentQueueAction } from "../../../shared/agent/agent-turn";
+import type { RuntimeExtensionUiRequest } from "../../../shared/agent/runtime-status";
 import {
   applyRuntimeEnvInjections,
   buildAgentSessionOptionsSync,
@@ -290,7 +291,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     string,
     {
       method: "select" | "confirm" | "input" | "editor";
-      event: Record<string, unknown>;
+      event: RuntimeExtensionUiRequest & { type: "extension_ui_request" };
       resolve: (value: unknown) => void;
     }
   >();
@@ -786,7 +787,29 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
           resolve(value);
         };
         const cancel = () => finish(method === "confirm" ? false : undefined);
-        const event = { type: "extension_ui_request", requestId, method, ...payload };
+        const event = {
+          type: "extension_ui_request" as const,
+          requestId,
+          method,
+          title: String(payload.title ?? "").slice(0, 500),
+          ...(Array.isArray(payload.options)
+            ? {
+                options: payload.options
+                  .filter((option): option is string => typeof option === "string")
+                  .slice(0, 100)
+                  .map((option) => option.slice(0, 1_000)),
+              }
+            : {}),
+          ...(typeof payload.message === "string"
+            ? { message: payload.message.slice(0, 4_000) }
+            : {}),
+          ...(typeof payload.placeholder === "string"
+            ? { placeholder: payload.placeholder.slice(0, 500) }
+            : {}),
+          ...(typeof payload.prefill === "string"
+            ? { prefill: payload.prefill.slice(0, 32_000) }
+            : {}),
+        };
         this.extensionUiPending.set(requestId, { method, event, resolve: finish });
         this.recordEvent(event);
         if (timeout && timeout > 0) timer = setTimeout(cancel, timeout);

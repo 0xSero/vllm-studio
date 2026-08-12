@@ -7,21 +7,14 @@ import type { ChatMessage, QueuedMessage, TokenStats } from "@/features/agent/me
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type { RuntimeContextUsage } from "@/features/agent/runtime/api";
 import type { AgentThinkingLevel } from "@/features/agent/contracts";
+import type { RuntimeExtensionUiRequest } from "@shared/agent/runtime-status";
 
 // The session identity string — the same value a pane stores as `sessionId`.
 export type SessionId = string;
 
 export type SessionStatus = "idle" | "starting" | "running" | "stopping" | "loading";
 
-export type ExtensionUiRequest = {
-  requestId: string;
-  method: "select" | "confirm" | "input" | "editor";
-  title: string;
-  message?: string;
-  placeholder?: string;
-  prefill?: string;
-  options?: string[];
-};
+export type ExtensionUiRequest = RuntimeExtensionUiRequest;
 
 /**
  * A `Session` is a conversation record — domain content and runtime status,

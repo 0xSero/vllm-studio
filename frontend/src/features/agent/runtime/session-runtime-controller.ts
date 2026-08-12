@@ -119,36 +119,7 @@ function applyAuxiliaryEvent(session: Session, event: Record<string, unknown>): 
   if (event.type === "notice" && event.level === "error" && typeof event.message === "string") {
     return { ...session, error: event.message.slice(0, 4_000) };
   }
-  if (event.type !== "extension_ui_request") return session;
-  const method = event.method;
-  if (
-    typeof event.requestId !== "string" ||
-    typeof event.title !== "string" ||
-    (method !== "select" && method !== "confirm" && method !== "input" && method !== "editor")
-  ) {
-    return session;
-  }
-  return {
-    ...session,
-    extensionUiRequest: {
-      requestId: event.requestId,
-      method,
-      title: event.title.slice(0, 500),
-      ...(typeof event.message === "string" ? { message: event.message.slice(0, 4_000) } : {}),
-      ...(typeof event.placeholder === "string"
-        ? { placeholder: event.placeholder.slice(0, 500) }
-        : {}),
-      ...(typeof event.prefill === "string" ? { prefill: event.prefill.slice(0, 32_000) } : {}),
-      ...(Array.isArray(event.options)
-        ? {
-            options: event.options
-              .filter((option): option is string => typeof option === "string")
-              .slice(0, 100)
-              .map((option) => option.slice(0, 1_000)),
-          }
-        : {}),
-    },
-  };
+  return session;
 }
 
 function applyRuntimeSnapshot(session: Session, status?: RuntimeStatus): Session {
@@ -166,8 +137,9 @@ function applyRuntimeSnapshot(session: Session, status?: RuntimeStatus): Session
     ...(projection?.tokenStats ? { tokenStats: projection.tokenStats } : {}),
     ...(status.queue ? { queue: projectQueue(status.queue.followUp, session.queue ?? []) } : {}),
     activeAssistantId,
+    extensionUiRequest: status.extensionUiRequest ?? undefined,
   };
-  return status.extensionUiRequest ? applyAuxiliaryEvent(next, status.extensionUiRequest) : next;
+  return next;
 }
 
 export function createSessionRuntimeController(
