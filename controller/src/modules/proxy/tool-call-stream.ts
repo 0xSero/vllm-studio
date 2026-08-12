@@ -23,6 +23,16 @@ export interface ToolCallStreamOptions {
   bufferImplicitReasoningContent?: boolean;
 }
 
+// DeepSeek V4 occasionally emits these control tokens as visible text around
+// long, tool-heavy conversations. They are prompt delimiters, never intended
+// for the client, and replaying them in the next assistant message amplifies
+// the leak. The tokenizer normally hides them, but strip the literal fallback
+// here as well so every controller client gets a clean stream.
+const stripLeakedDeepSeekControlTokens = (text: string): string =>
+  text
+    .replaceAll("<｜begin▁of▁sentence｜>", "")
+    .replaceAll("<｜end▁of▁sentence｜>", "");
+
 export const createToolCallStream = (
   source: ReadableStream<Uint8Array>,
   onUsage?: (usage: StreamUsage) => void,
@@ -41,7 +51,7 @@ export const createToolCallStream = (
   const reasoningHistory = new Map<string, { text: string; snapshot: boolean }>();
   const replayCursors = new Map<string, number>();
   const stripToolXmlDelta = (text: string): string => {
-    return stripToolCallsFromContent(text);
+    return stripToolCallsFromContent(stripLeakedDeepSeekControlTokens(text));
   };
 
   const normalizeTextDelta = (
@@ -142,8 +152,9 @@ export const createToolCallStream = (
     content: string,
   ): void => {
     if (!content) return;
-    visibleContentBuffer += content;
-    const cleaned = stripToolXmlDelta(content);
+    const controlTokensStripped = stripLeakedDeepSeekControlTokens(content);
+    visibleContentBuffer += controlTokensStripped;
+    const cleaned = stripToolXmlDelta(controlTokensStripped);
     const chunk = buildFlushChunk({ content: cleaned });
     if (chunk) enqueueDataEvent(controller, chunk);
   };
@@ -286,10 +297,11 @@ export const createToolCallStream = (
         let reasoningFromContent = "";
         if (content) {
           const rewritten = contentThink.rewrite(content, false);
-          if (rewritten.content) {
-            visibleContentBuffer += rewritten.content;
+          const controlTokensStripped = stripLeakedDeepSeekControlTokens(rewritten.content);
+          if (controlTokensStripped) {
+            visibleContentBuffer += controlTokensStripped;
           }
-          const cleanedContent = stripToolXmlDelta(rewritten.content);
+          const cleanedContent = stripToolXmlDelta(controlTokensStripped);
           if (cleanedContent) {
             delta["content"] = cleanedContent;
           } else if ("content" in delta) {
