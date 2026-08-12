@@ -3,7 +3,6 @@ import {
   type ChatMessageAttachment,
   newId,
   nowLabel,
-  runtimeStatusLooksActive,
   sessionTitleFromPrompt,
 } from "@/features/agent/messages";
 import type {
@@ -16,7 +15,7 @@ import type { BrowserBackend, ToolSelection } from "@/features/agent/tools/types
 import * as api from "@/features/agent/runtime/api";
 import type { RuntimeStatus } from "@/features/agent/runtime/api";
 import type { Session, SessionId, UpdateSession } from "@/features/agent/runtime/types";
-import { settleTurn } from "@/features/agent/runtime/session-status";
+import { projectRuntimeStatus, settleTurn } from "@/features/agent/runtime/session-status";
 
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
@@ -143,9 +142,10 @@ function appendOptimisticPrompt(
         text: args.displayText,
         attachments: args.attachments,
         skills: context.skills,
+        pending: true,
+        awaitingEcho: true,
         timestamp: nowLabel(),
       },
-      { id: context.assistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
     ],
   }));
 }
@@ -160,13 +160,16 @@ function startPromptCommand(
       try: () => api.submitTurnCommand(promptTurnRequest(deps, context, args)),
       catch: (error) => ({ _tag: "SubmitFailed" as const, error }),
     });
-    deps.updateSession(context.sessionId, (session) => ({
-      ...session,
-      piSessionId: result.piSessionId || session.piSessionId,
-      contextUsage: api.runtimeContextUsage(result.status, session.contextUsage),
-      status: "running",
-      activeAssistantId: session.activeAssistantId ?? context.assistantId,
-    }));
+    deps.updateSession(context.sessionId, (session) => {
+      const next = result.status
+        ? projectRuntimeStatus(session, result.status)
+        : {
+            ...session,
+            piSessionId: result.piSessionId || session.piSessionId,
+            status: "running" as const,
+          };
+      return { ...next, activeAssistantId: next.activeAssistantId ?? context.assistantId };
+    });
     if (result.piSessionId) deps.onPiSessionIdChange?.(result.piSessionId);
   }).pipe(
     Effect.catch(({ error }) =>
@@ -177,13 +180,12 @@ function startPromptCommand(
           catch: () => null,
         });
         if (runtimeIsActiveForPiSession(status, currentPiSessionId)) {
-          deps.updateSession(context.sessionId, (session) => ({
-            ...session,
-            piSessionId: status?.piSessionId || session.piSessionId,
-            contextUsage: api.runtimeContextUsage(status, session.contextUsage),
-            status: "running",
-            activeAssistantId: session.activeAssistantId ?? context.assistantId,
-          }));
+          deps.updateSession(context.sessionId, (session) => {
+            const next = status
+              ? projectRuntimeStatus(session, status)
+              : { ...session, status: "running" as const };
+            return { ...next, activeAssistantId: next.activeAssistantId ?? context.assistantId };
+          });
           if (status?.piSessionId) deps.onPiSessionIdChange?.(status?.piSessionId);
           return;
         }
@@ -208,7 +210,15 @@ function startPromptCommand(
  */
 export function settleFailedTurn(session: Session, assistantId: string, message: string): Session {
   if (session.activeAssistantId && session.activeAssistantId !== assistantId) return session;
-  return { ...settleTurn(session), error: message };
+  return {
+    ...settleTurn(session),
+    error: message,
+    messages: session.messages.map((entry) =>
+      entry.pending || entry.awaitingEcho
+        ? { ...entry, pending: false, awaitingEcho: false }
+        : entry,
+    ),
+  };
 }
 
 function promptTurnRequest(
@@ -265,7 +275,7 @@ export function runtimeIsActiveForPiSession(
 ): boolean {
   return Boolean(
     runtimeStatus &&
-    runtimeStatusLooksActive(runtimeStatus) &&
+    runtimeStatus.active === true &&
     (!runtimeStatus.piSessionId || !piSessionId || runtimeStatus.piSessionId === piSessionId),
   );
 }

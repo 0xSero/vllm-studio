@@ -2,7 +2,7 @@ import type { RuntimeExtensionUiRequest } from "../../../shared/agent/runtime-st
 import type { ChatMessage, TokenStats } from "../../../shared/agent/session-view";
 import type { SessionUsageTotals } from "../../../shared/agent/session-summary";
 import type { PiAgentStatus, PiContextUsage } from "./pi-runtime-types";
-import { projectAgentQueue } from "./session-view";
+import { projectAgentQueue, settleAgentMessages } from "./session-view";
 
 type RuntimeLookupEntry<TSession> = {
   sessionId: string;
@@ -77,7 +77,7 @@ export function piStatusFromEvents(input: {
   eventSeq: number;
   lastError: string | null;
   contextUsage?: PiContextUsage | null;
-  messages?: readonly ChatMessage[];
+  messages?: ChatMessage[];
   tokenStats?: TokenStats;
   historyCursor?: number | null;
   title?: string | null;
@@ -86,9 +86,10 @@ export function piStatusFromEvents(input: {
   queue?: { steering: readonly string[]; followUp: readonly string[] };
   extensionUiRequest?: RuntimeExtensionUiRequest | null;
 }): PiAgentStatus {
+  const active = input.activePromptCount > 0 || input.sdkActive === true;
   return {
     running: input.running,
-    active: input.activePromptCount > 0 || input.sdkActive === true,
+    active,
     modelId: input.modelId,
     cwd: input.cwd,
     piSessionId: input.piSessionId,
@@ -96,7 +97,7 @@ export function piStatusFromEvents(input: {
     eventSeq: input.eventSeq,
     lastError: input.lastError,
     contextUsage: input.contextUsage ?? null,
-    messages: input.messages ?? [],
+    messages: active ? (input.messages ?? []) : settleAgentMessages(input.messages ?? []),
     tokenStats: input.tokenStats,
     historyCursor: input.historyCursor,
     title: input.title ?? null,

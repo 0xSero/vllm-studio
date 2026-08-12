@@ -43,7 +43,7 @@ export type PiAgentStatus = Required<
   cwd: string;
   agentDir: string;
   lastError: string | null;
-  messages: readonly ChatMessage[];
+  messages: ChatMessage[];
   tokenStats?: RuntimeStatus["tokenStats"];
   historyCursor?: number | null;
   startedAt?: string | null;

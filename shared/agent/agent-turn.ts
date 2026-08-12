@@ -5,7 +5,7 @@ import {
 } from "./agent-image-input";
 import { sanitizeComposerPromptTemplates, sanitizeComposerSkills } from "./composer-refs";
 import { Schema } from "effect";
-import type { RuntimeStatus } from "./runtime-status";
+import { RuntimeStatusSchema, type RuntimeStatus } from "./runtime-status";
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -79,11 +79,6 @@ export type AgentTurnRequest = {
   streamingBehavior?: AgentStreamingBehavior;
 };
 
-export type AgentTurnRuntimeStatus = Pick<
-  RuntimeStatus,
-  "active" | "running" | "piSessionId" | "modelId" | "eventSeq" | "contextUsage"
->;
-
 export type AgentTurnCommandResult = {
   type: "command";
   outcome: "accepted" | "queued" | "rejected";
@@ -93,9 +88,13 @@ export type AgentTurnCommandResult = {
   runtimeSessionId: string;
   piSessionId?: string | null;
   active: boolean;
-  status?: AgentTurnRuntimeStatus;
+  status?: RuntimeStatus;
   error?: string;
 };
+
+const decodeRuntimeStatus = Schema.decodeUnknownOption(RuntimeStatusSchema, {
+  onExcessProperty: "preserve",
+});
 
 export function parseAgentTurnCommandResult(input: unknown): AgentTurnCommandResult | null {
   const payload = objectRecord(input);
@@ -109,13 +108,14 @@ export function parseAgentTurnCommandResult(input: unknown): AgentTurnCommandRes
       ? payload.runtimeSessionId.trim()
       : "";
   if (!outcome || !runtimeSessionId) return null;
+  const decodedStatus = decodeRuntimeStatus(payload.status);
   return {
     type: "command",
     outcome,
     runtimeSessionId,
     piSessionId: typeof payload.piSessionId === "string" ? payload.piSessionId : null,
     active: payload.active === true,
-    status: objectRecord(payload.status) ? (payload.status as AgentTurnRuntimeStatus) : undefined,
+    status: decodedStatus._tag === "Some" ? decodedStatus.value : undefined,
     error: typeof payload.error === "string" ? payload.error : undefined,
   };
 }

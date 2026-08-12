@@ -270,19 +270,17 @@ export async function handleAgentAbort(request: Request): Promise<Response> {
   const resolved = piRuntimeManager.findSessionForLookup(sessionId, piSessionId);
   if (!resolved) return jsonError("Runtime session not found", 404);
   const cleared = await resolved.session.abort();
-  return Response.json({ ok: true, cleared });
+  return Response.json({ ok: true, cleared, status: resolved.session.status });
 }
 
 export async function handleExtensionUiResponse(request: Request): Promise<Response> {
-  const body = (await request.json().catch(() => null)) as
-    | {
-        sessionId?: unknown;
-        requestId?: unknown;
-        value?: unknown;
-        confirmed?: unknown;
-        cancelled?: unknown;
-      }
-    | null;
+  const body = (await request.json().catch(() => null)) as {
+    sessionId?: unknown;
+    requestId?: unknown;
+    value?: unknown;
+    confirmed?: unknown;
+    cancelled?: unknown;
+  } | null;
   const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
   const requestId = typeof body?.requestId === "string" ? body.requestId.trim() : "";
   if (!sessionId || !requestId) return jsonError("sessionId and requestId are required");
@@ -293,7 +291,9 @@ export async function handleExtensionUiResponse(request: Request): Promise<Respo
     ...(typeof body?.confirmed === "boolean" ? { confirmed: body.confirmed } : {}),
     cancelled: body?.cancelled === true,
   });
-  return accepted ? Response.json({ ok: true }) : jsonError("Extension request is no longer active", 409);
+  return accepted
+    ? Response.json({ ok: true })
+    : jsonError("Extension request is no longer active", 409);
 }
 
 // ─── POST /api/agent/compact ──────────────────────────────────────────────

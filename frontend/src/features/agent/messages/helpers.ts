@@ -66,29 +66,6 @@ function stripAttachmentPromptText(text: string): string {
   return text.slice(0, attachmentStart).trim();
 }
 
-export function runtimeStatusLooksActive(status: { active?: boolean }): boolean {
-  return status.active === true;
-}
-
-/** Whether a runtime status snapshot says the session can take a steer or a
- *  follow-up right now.
- *
- *  A MISSING status means "we could not tell", not "no". The probe reads
- *  `/api/agent/runtime/status`, and its loader collapses every timeout, 404,
- *  decode miss and network blip into null; treating that as a refusal drops the
- *  message into the fresh-prompt path mid-turn, which the server then converts
- *  back into a steer anyway — so the user sees their queued message vanish into
- *  the transcript instead. The turn API is the real authority and rejects with
- *  409 if the session is not actually controllable, so fail open here. */
-export function runtimeStatusAcceptsControl(
-  status: { active?: boolean; piSessionId?: string | null } | null,
-  piSessionId?: string | null,
-): boolean {
-  if (!status) return true;
-  if (!status.active) return false;
-  return !status.piSessionId || !piSessionId || status.piSessionId === piSessionId;
-}
-
 /** Every item still in the queue is pending delivery, so all of them show.
  *
  * This used to hide `sent` items, which meant EVERY follow-up — they are

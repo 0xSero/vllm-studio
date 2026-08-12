@@ -269,6 +269,22 @@ export function mergeAgentTranscript(
   };
 }
 
+export function settleAgentMessages(messages: readonly ChatMessage[]): ChatMessage[] {
+  return messages.map((message) =>
+    message.role === "assistant" &&
+    message.blocks?.some((block) => block.kind === "tool" && block.status === "running")
+      ? {
+          ...message,
+          blocks: message.blocks.map((block) =>
+            block.kind === "tool" && block.status === "running"
+              ? { ...block, status: "done" as const }
+              : block,
+          ),
+        }
+      : message,
+  );
+}
+
 function mergeTranscriptMessages(
   current: readonly ChatMessage[],
   live: readonly ChatMessage[],

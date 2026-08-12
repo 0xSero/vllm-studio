@@ -1,4 +1,3 @@
-import type { AssistantBlock } from "@/features/agent/messages";
 import type { RuntimeStatus } from "@/features/agent/runtime/api";
 import type { Session } from "./types";
 
@@ -10,23 +9,6 @@ export function isWorkingStatus(status: string): boolean {
 
 export function settleTurn(session: Session): Session {
   return { ...session, status: "idle", activeAssistantId: undefined };
-}
-
-function finalizeRunningToolBlocks(blocks: AssistantBlock[]): AssistantBlock[] {
-  return blocks.map((block) =>
-    block.kind === "tool" && block.status === "running" ? { ...block, status: "done" } : block,
-  );
-}
-
-export function settleTurnFinalizingTools(session: Session): Session {
-  return {
-    ...settleTurn(session),
-    messages: session.messages.map((message) =>
-      message.role === "assistant" && message.blocks
-        ? { ...message, blocks: finalizeRunningToolBlocks(message.blocks) }
-        : message,
-    ),
-  };
 }
 
 export function projectRuntimeStatus(session: Session, status: RuntimeStatus): Session {
@@ -49,7 +31,7 @@ export function projectRuntimeStatus(session: Session, status: RuntimeStatus): S
     ...(status.title ? { title: status.title } : {}),
     ...(status.startedAt ? { startedAt: status.startedAt } : {}),
     ...(status.usageTotals ? { usageTotals: status.usageTotals } : {}),
-    ...(status.error ? { error: status.error } : {}),
+    ...(status.error !== undefined ? { error: status.error ?? "" } : {}),
     ...(status.piSessionId ? { piSessionId: status.piSessionId } : {}),
     ...(status.modelId ? { modelId: status.modelId } : {}),
     ...(status.contextUsage !== undefined ? { contextUsage: status.contextUsage } : {}),

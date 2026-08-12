@@ -1,10 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
 import { Effect } from "effect";
-import { runtimeStatusAcceptsControl } from "@/features/agent/messages";
-import {
-  projectRuntimeStatus,
-  settleTurnFinalizingTools,
-} from "@/features/agent/runtime/session-status";
+import { projectRuntimeStatus, settleTurn } from "@/features/agent/runtime/session-status";
 import {
   selectedContextPrompt,
   type ComposerPromptTemplateRef,
@@ -45,22 +41,12 @@ export type SessionEngine = {
   submitPrompt: (args: SubmitArgs) => Promise<void>;
   /** Send a steer/follow-up control message while a turn is in progress. */
   sendControl: (request: AgentControlRequest) => Promise<{ ok: boolean; error?: string }>;
-  loadRuntimeStatus: (
-    runtime: string,
-    piSessionId?: string | null,
-  ) => Promise<api.RuntimeStatus | null>;
   abortTurn: (sessionId: SessionId) => Promise<api.AbortSessionResult>;
   /** Fetch and prepend the previous page of older history (tail paging). */
   loadEarlier: (sessionId: SessionId) => Promise<void>;
   compact: (sessionId: SessionId) => Promise<void>;
-  /** Probe whether the session's live runtime accepts steer/follow-up right
-   * now: running/starting locally, and the runtime's reported pi session (if
-   * any) matches ours. A failed probe counts as accepting — the turn API
-   * itself is the authority and will reject if not. */
-  acceptsControl: (
-    tab: { status: Session["status"]; piSessionId?: string | null },
-    runtime: string,
-  ) => Promise<boolean>;
+  /** Report whether the session is in a state that can request steer/follow-up. */
+  acceptsControl: (tab: { status: Session["status"] }) => boolean;
 };
 
 export type AgentControlRequest = {
@@ -95,8 +81,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   // Sessions with an in-flight "load earlier" page, so a double click / repeated
   // scroll doesn't fetch and prepend the same chunk twice.
   const loadingEarlierRef = useRef<Set<SessionId>>(new Set());
-
-  const loadRuntimeStatusCb = useCallback(api.loadRuntimeStatus, []);
 
   const sendControl = useCallback(
     (request: AgentControlRequest): Promise<{ ok: boolean; error?: string }> => {
@@ -134,12 +118,15 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               }),
             catch: (error) => error,
           });
-          updateSession(sessionId, (session) => ({
-            ...session,
-            piSessionId: result.piSessionId || session.piSessionId,
-            contextUsage: api.runtimeContextUsage(result.status, session.contextUsage),
-            status: "running",
-          }));
+          updateSession(sessionId, (session) =>
+            result.status
+              ? projectRuntimeStatus(session, result.status)
+              : {
+                  ...session,
+                  piSessionId: result.piSessionId || session.piSessionId,
+                  status: "running",
+                },
+          );
           if (result.piSessionId) onPiSessionIdChange?.(result.piSessionId);
           return { ok: true };
         }).pipe(
@@ -201,18 +188,14 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
         Effect.gen(function* () {
           const session = tabsRef.current.find((entry) => entry.id === sessionId);
           updateSession(sessionId, (session) => ({ ...session, status: "stopping" }));
-          const cleared = yield* Effect.tryPromise({
+          const result = yield* Effect.tryPromise({
             try: () => api.abortSession(sessionId, session?.piSessionId),
             catch: (error) => error,
           });
-          // Settle the session fully. A direct status write bypasses the reducer
-          // that normally finalizes tool badges on agent_end, and idling the
-          // session detaches the SSE — so if the runtime's terminal event never
-          // lands, any in-flight tool would render a perpetual "running" badge
-          // and activeAssistantId would linger. Flush pending deltas first so the
-          // last streamed text is committed before we finalize.
-          updateSession(sessionId, settleTurnFinalizingTools);
-          return cleared;
+          updateSession(sessionId, (current) =>
+            result.status ? projectRuntimeStatus(current, result.status) : settleTurn(current),
+          );
+          return result;
         }),
       ),
     [updateSession],
@@ -280,9 +263,9 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               }),
             catch: (error) => error,
           });
-          updateSession(sessionId, (s) => ({
-            ...(result.status ? projectRuntimeStatus(s, result.status) : s),
-            contextUsage: api.runtimeContextUsage(result.status ?? null, null),
+          updateSession(sessionId, (current) => ({
+            ...(result.status ? projectRuntimeStatus(current, result.status) : current),
+            contextUsage: result.status?.contextUsage ?? null,
             tokenStats: undefined,
           }));
         }).pipe(
@@ -300,39 +283,20 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   );
 
   const acceptsControl = useCallback(
-    async (
-      tab: { status: Session["status"]; piSessionId?: string | null },
-      runtime: string,
-    ): Promise<boolean> => {
-      // "stopping" counts: the composer still draws itself as running there, and
-      // a turn being torn down can still take a follow-up for the next one.
-      if (tab.status !== "running" && tab.status !== "starting" && tab.status !== "stopping") {
-        return false;
-      }
-      const status = await loadRuntimeStatusCb(runtime, tab.piSessionId).catch(() => null);
-      return runtimeStatusAcceptsControl(status, tab.piSessionId);
-    },
-    [loadRuntimeStatusCb],
+    (tab: { status: Session["status"] }): boolean =>
+      tab.status === "running" || tab.status === "starting" || tab.status === "stopping",
+    [],
   );
 
   return useMemo<SessionEngine>(
     () => ({
       submitPrompt,
       sendControl,
-      loadRuntimeStatus: loadRuntimeStatusCb,
       abortTurn,
       loadEarlier,
       compact,
       acceptsControl,
     }),
-    [
-      submitPrompt,
-      sendControl,
-      loadRuntimeStatusCb,
-      abortTurn,
-      loadEarlier,
-      compact,
-      acceptsControl,
-    ],
+    [submitPrompt, sendControl, abortTurn, loadEarlier, compact, acceptsControl],
   );
 }

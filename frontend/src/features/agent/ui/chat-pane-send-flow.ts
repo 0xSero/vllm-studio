@@ -238,10 +238,7 @@ export function useChatPaneSendFlow({
       Effect.runPromise(
         Effect.gen(function* () {
           const runtime = tab.id;
-          const acceptsControl = yield* Effect.tryPromise({
-            try: () => engine.acceptsControl(tab, runtime),
-            catch: () => running,
-          });
+          const acceptsControl = engine.acceptsControl(tab);
           if (acceptsControl && !text) return;
           const guard = acceptsControl
             ? controlSubmitInFlightRef.current
@@ -257,7 +254,7 @@ export function useChatPaneSendFlow({
           });
         }),
       ),
-    [engine, queueAndSendControl, runGuardedSubmit, running, submitPrompt],
+    [engine, queueAndSendControl, runGuardedSubmit, submitPrompt],
   );
 
   const sendMessage = useCallback(

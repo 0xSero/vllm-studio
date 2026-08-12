@@ -20,6 +20,7 @@ import type {
 
 import {
   RuntimeActivityPayloadSchema,
+  RuntimeStatusSchema,
   RuntimeStatusResponseSchema,
   type RuntimeActivityPayload,
   type RuntimeContextUsage,
@@ -46,20 +47,13 @@ function decodeRuntimeStatusResponse(raw: unknown): RuntimeStatus | null {
   return option._tag === "Some" ? (option.value.status ?? null) : null;
 }
 
-export function runtimeContextUsage(
-  status: RuntimeStatus | null | undefined,
-  fallback: RuntimeContextUsage | null | undefined,
-): RuntimeContextUsage | null {
-  if (status) return status.contextUsage ?? null;
-  return fallback ?? null;
-}
-
 const AbortSessionResponseSchema = Schema.Struct({
   ok: Schema.Boolean,
   cleared: Schema.Struct({
     steering: Schema.Array(Schema.String),
     followUp: Schema.Array(Schema.String),
   }),
+  status: RuntimeStatusSchema,
 });
 
 const decodeAbortSessionResponse = Schema.decodeUnknownOption(AbortSessionResponseSchema, {
@@ -69,6 +63,7 @@ const decodeAbortSessionResponse = Schema.decodeUnknownOption(AbortSessionRespon
 export type AbortSessionResult = {
   steering: string[];
   followUp: string[];
+  status?: RuntimeStatus;
 };
 
 export function parseAbortSessionResult(input: unknown): AbortSessionResult {
@@ -77,6 +72,7 @@ export function parseAbortSessionResult(input: unknown): AbortSessionResult {
     ? {
         steering: [...decoded.value.cleared.steering],
         followUp: [...decoded.value.cleared.followUp],
+        status: decoded.value.status,
       }
     : { steering: [], followUp: [] };
 }

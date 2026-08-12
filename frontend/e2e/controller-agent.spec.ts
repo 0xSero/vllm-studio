@@ -609,6 +609,21 @@ test("Alt+Enter steers instead of queueing", async ({ page }) => {
   await expect(page.getByTestId("queued-message-stack")).toHaveCount(0);
 });
 
+test("stopping an active turn preserves the authoritative transcript", async ({ page }) => {
+  const composer = await openControllerChat(page, "Runtime stop chat");
+  const transcript = page.getByRole("article");
+  await composer.fill("slow-response-marker");
+  await composer.press("Enter");
+  await expect(transcript.getByText("slow-response-marker", { exact: true })).toBeVisible();
+  const stop = page.getByRole("button", { name: "Stop" });
+  await expect(stop).toBeEnabled({ timeout: 60_000 });
+
+  await stop.click();
+
+  await expect(page.getByRole("button", { name: "Send" })).toBeVisible({ timeout: 60_000 });
+  await expect(transcript.getByText("slow-response-marker", { exact: true })).toHaveCount(1);
+});
+
 test("active runtime reconnects without duplicating the transcript", async ({ page }) => {
   const composer = await openControllerChat(page, "Runtime reconnect chat");
   await composer.fill("slow-response-marker");
