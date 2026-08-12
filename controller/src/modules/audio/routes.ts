@@ -12,7 +12,6 @@ import {
 } from "../../http/bounded-body";
 import { mergeRoutes, type ControllerRouteApp, effectRoute } from "../../http/route-registrar";
 import { AudioIntegrationError, synthesizeSpeech, transcribeAudio } from "../../services/audio-cli";
-import type { AudioRouteDependencies } from "./interfaces";
 import { SpeechServiceError } from "../speech/service";
 import { VoiceProfileError } from "../speech/voice-store";
 import {
@@ -89,11 +88,7 @@ const audioErrorResponse = (
 export const registerAudioRoutes = (
   app: ControllerRouteApp,
   context: AppContext,
-  dependencies: AudioRouteDependencies = {},
 ): ControllerRouteApp => {
-  const transcribe = dependencies.transcribe ?? transcribeAudio;
-  const transcodeToWav = dependencies.transcodeToWav ?? defaultTranscodeToWav;
-  const synthesize = dependencies.synthesize ?? synthesizeSpeech;
   return mergeRoutes(
     effectRoute.post(app, "/v1/audio/transcriptions", (ctx) =>
       Effect.scoped(
@@ -166,9 +161,12 @@ export const registerAudioRoutes = (
             ? uploadPath
             : yield* Effect.gen(function* () {
                 const wavPath = yield* temporaryPath(join(directory, `${randomUUID()}.wav`));
-                return yield* transcodeToWav({ sourcePath: uploadPath, outputPath: wavPath });
+                return yield* defaultTranscodeToWav({
+                  sourcePath: uploadPath,
+                  outputPath: wavPath,
+                });
               });
-          const transcription = yield* transcribe({
+          const transcription = yield* transcribeAudio({
             audioPath,
             modelPath,
             ...(language ? { language } : {}),
@@ -249,7 +247,7 @@ export const registerAudioRoutes = (
               }),
           });
           const outputPath = yield* temporaryPath(join(directory, `${randomUUID()}.wav`));
-          yield* synthesize({ text: input, modelPath, outputPath });
+          yield* synthesizeSpeech({ text: input, modelPath, outputPath });
           const audio = yield* Effect.tryPromise({
             try: () => readFile(outputPath),
             catch: (source) =>

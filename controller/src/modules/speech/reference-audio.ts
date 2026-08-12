@@ -26,16 +26,6 @@ export interface NormalizedVoiceReference {
 
 type VoiceInputFormat = "aiff" | "caf" | "flac" | "matroska" | "mov" | "mp3" | "ogg" | "wav";
 
-interface VoiceReferenceDependencies {
-  ffmpegPath: () => string | null;
-  transcode: (
-    command: string,
-    input: Uint8Array,
-    format: VoiceInputFormat,
-    output: string,
-  ) => Effect.Effect<void, VoiceReferenceError>;
-}
-
 const FFMPEG_ARGS = [
   "-hide_banner",
   "-nostdin",
@@ -134,11 +124,6 @@ const transcode = (
     }),
   );
 
-const defaultDependencies: VoiceReferenceDependencies = {
-  ffmpegPath: () => resolveBinary(process.env["LOCAL_STUDIO_FFMPEG_CLI"] ?? "ffmpeg"),
-  transcode,
-};
-
 const ascii = (bytes: Buffer, offset: number): string =>
   bytes.subarray(offset, offset + 4).toString("ascii");
 
@@ -196,7 +181,6 @@ const storageError = (error: unknown): VoiceReferenceError =>
 export const normalizeVoiceReference = (
   input: Uint8Array,
   dataDirectory: string,
-  dependencies: VoiceReferenceDependencies = defaultDependencies,
 ): Effect.Effect<NormalizedVoiceReference, VoiceReferenceError> =>
   Effect.gen(function* () {
     if (!input.length) {
@@ -220,7 +204,7 @@ export const normalizeVoiceReference = (
           ? error
           : new VoiceReferenceError(400, "voice_audio_invalid", String(error)),
     });
-    const ffmpeg = dependencies.ffmpegPath();
+    const ffmpeg = resolveBinary(process.env["LOCAL_STUDIO_FFMPEG_CLI"] ?? "ffmpeg");
     if (!ffmpeg) {
       return yield* Effect.fail(
         new VoiceReferenceError(
@@ -243,7 +227,7 @@ export const normalizeVoiceReference = (
       }),
       (path) =>
         Effect.gen(function* () {
-          yield* dependencies.transcode(ffmpeg, input, format, path);
+          yield* transcode(ffmpeg, input, format, path);
           const audio = yield* Effect.tryPromise({
             try: async () => {
               await chmod(path, 0o600);
