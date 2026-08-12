@@ -133,9 +133,21 @@ const createAppStoreImpl: StateCreator<AppStore, [], [], AppStore> = (set, ...ar
   setMobileNavOpen: (mobileNavOpen) => set({ mobileNavOpen }),
 });
 
-const storage = createJSONStorage(() =>
+let appStorePersistenceReady = false;
+
+const baseStorage = createJSONStorage(() =>
   typeof window !== "undefined" ? localStorage : (undefined as unknown as Storage),
 );
+
+const storage = baseStorage
+  ? {
+      ...baseStorage,
+      setItem: (...args: Parameters<typeof baseStorage.setItem>) =>
+        appStorePersistenceReady ? baseStorage.setItem(...args) : undefined,
+      removeItem: (...args: Parameters<typeof baseStorage.removeItem>) =>
+        appStorePersistenceReady ? baseStorage.removeItem(...args) : undefined,
+    }
+  : undefined;
 
 export const useAppStore = create<AppStore>()(
   devtools(
@@ -179,10 +191,14 @@ export const useAppStore = create<AppStore>()(
 
 if (typeof window !== "undefined") {
   void (async () => {
-    await hydrateDurableUiPreferences();
-    await useAppStore.persist.rehydrate();
-    scheduleDurableUiPreferencesSave();
-    useAppStore.subscribe(() => scheduleDurableUiPreferencesSave());
+    try {
+      await hydrateDurableUiPreferences();
+      await useAppStore.persist.rehydrate();
+    } finally {
+      appStorePersistenceReady = true;
+      scheduleDurableUiPreferencesSave();
+      useAppStore.subscribe(() => scheduleDurableUiPreferencesSave());
+    }
   })();
 }
 
