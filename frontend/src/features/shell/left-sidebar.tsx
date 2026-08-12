@@ -28,7 +28,7 @@ import {
   routeHidesAppSidebar,
 } from "@/features/shell/left-sidebar-nav";
 
-const SIDEBAR_MIN_WIDTH = 180;
+const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 520;
 const SIDEBAR_DEFAULT_WIDTH = 275;
 
@@ -226,9 +226,14 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
         />
       ) : null}
 
+      {/* The session route owns its own scrolling (transcript, terminal, right
+          panel each scroll independently), so an outer scroller here would
+          double up and let the whole workbench slide under its own composer. */}
       <main
         data-no-topbar={chatSessionRoute ? "true" : undefined}
-        className="mobile-pwa-main flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden bg-(--agent-bg) md:pt-0"
+        className={`mobile-pwa-main flex-1 min-w-0 min-h-0 overflow-x-hidden bg-(--agent-bg) md:pt-0 ${
+          chatSessionRoute ? "overflow-y-hidden" : "overflow-y-auto"
+        }`}
       >
         {children}
       </main>

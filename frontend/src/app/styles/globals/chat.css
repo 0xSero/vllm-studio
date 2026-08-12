@@ -68,17 +68,13 @@
   padding-bottom: 0;
 }
 
+/* The one column the transcript, its composer and the prompt rail all measure
+   against. Full width up to a fixed measure, centred in whatever pane it lands
+   in; the scroller's own padding supplies the gutter, so the column never
+   double-margins on a narrow window. */
 .agent-thread-shell {
-  width: 90%;
+  width: 100%;
   max-width: calc(var(--composer-w) * 0.9);
-}
-
-/* Phone widths: give the thread the full column — the 90% inset plus the
-   scroller padding otherwise double-margins an already narrow screen. */
-@media (max-width: 640px) {
-  .agent-thread-shell {
-    width: 100%;
-  }
 }
 
 @media (max-width: 768px) {
@@ -301,12 +297,14 @@
   container-type: inline-size;
 }
 
+/* Parked immediately outside the reading column rather than against the pane
+   edge: pinned to the pane it drifted further from the thread the wider the
+   window got, and at fullscreen it stranded itself in the empty gutter. */
 .prompt-minimap {
   position: absolute;
   top: 0;
   bottom: 0;
-  /* Codex pins the prompt steppers to the pane's left edge. */
-  left: 0.5rem;
+  left: max(0.5rem, calc(50% - var(--thread-content-max-width) / 2 - var(--thread-rail-width)));
   z-index: 12;
   display: flex;
   flex-direction: column;
@@ -314,11 +312,12 @@
   justify-content: center;
   gap: 4px;
   max-height: 40vh;
-  width: 4.75rem;
+  width: var(--thread-rail-width);
   pointer-events: none;
 }
 
-@container (max-width: 54rem) {
+/* Below this the rail would sit on top of the prose instead of beside it. */
+@container (max-width: 58rem) {
   .prompt-minimap {
     display: none;
   }
@@ -339,28 +338,68 @@
   pointer-events: auto;
 }
 
+/* One marker, one width, scaled from the left edge. Pointing at a marker also
+   part-extends its neighbours, so the rail reads as a single object being
+   pushed rather than a row of independent ticks. */
 .prompt-minimap-line {
+  --marker-progress: 0;
   display: block;
-  width: 0.6rem;
+  width: 1.625rem;
   height: 2px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--fg) 20%, transparent);
+  transform: scaleX(calc(0.23 + 0.77 * var(--marker-progress)));
+  transform-origin: 0 50%;
   transition:
-    width 0.14s ease,
-    background-color 0.14s ease,
-    box-shadow 0.14s ease;
+    transform 0.16s var(--ease-enter-snappy),
+    background-color 0.14s ease;
 }
 
 .prompt-minimap-marker[data-current="true"] .prompt-minimap-line {
-  width: 0.72rem;
+  --marker-progress: 0.12;
   background: color-mix(in srgb, var(--fg) 82%, transparent);
 }
 
 .prompt-minimap-marker:hover .prompt-minimap-line,
 .prompt-minimap-marker:focus-visible .prompt-minimap-line {
-  width: 1.6rem;
+  --marker-progress: 1;
   background: color-mix(in srgb, var(--fg) 88%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--agent-bg) 72%, transparent);
+}
+
+.prompt-minimap:hover .prompt-minimap-marker[data-current="true"]:not(:hover) .prompt-minimap-line {
+  background: color-mix(in srgb, var(--fg) 20%, transparent);
+}
+
+.prompt-minimap-marker:has(+ .prompt-minimap-marker:hover) .prompt-minimap-line,
+.prompt-minimap-marker:hover + .prompt-minimap-marker .prompt-minimap-line {
+  --marker-progress: 0.7;
+}
+
+.prompt-minimap-marker:has(+ .prompt-minimap-marker + .prompt-minimap-marker:hover)
+  .prompt-minimap-line,
+.prompt-minimap-marker:hover
+  + .prompt-minimap-marker
+  + .prompt-minimap-marker
+  .prompt-minimap-line {
+  --marker-progress: 0.4;
+}
+
+.prompt-minimap-marker:has(
+    + .prompt-minimap-marker + .prompt-minimap-marker + .prompt-minimap-marker:hover
+  )
+  .prompt-minimap-line,
+.prompt-minimap-marker:hover
+  + .prompt-minimap-marker
+  + .prompt-minimap-marker
+  + .prompt-minimap-marker
+  .prompt-minimap-line {
+  --marker-progress: 0.2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prompt-minimap-line {
+    transition-duration: 0s;
+  }
 }
 
 .prompt-minimap-card {

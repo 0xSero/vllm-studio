@@ -55,6 +55,7 @@ export function DesktopSidebar({
       }`}
       style={{
         width: isExpanded ? `${width}px` : 44,
+        maxWidth: isExpanded ? "var(--sidebar-w-viewport-cap)" : undefined,
       }}
     >
       {isExpanded ? (
@@ -125,7 +126,11 @@ export function DesktopSidebar({
               </button>
             </div>
 
-            <nav className="sidebar-scroller flex min-h-0 flex-1 flex-col gap-[var(--sidebar-row-gap)] overflow-x-hidden overflow-y-auto px-[var(--sidebar-padding-x)] py-0.5 [contain:layout_paint]">
+            {/* Destinations stay put; only the session/project list scrolls.
+                Sharing one scroller pushed "New task" and the app tabs off the
+                top the moment a project was expanded, so the rail lost its
+                navigation exactly when a long list made it most useful. */}
+            <nav className="flex shrink-0 flex-col gap-[var(--sidebar-row-gap)] px-[var(--sidebar-padding-x)] pt-0.5">
               <Link
                 href="/agent?new=1"
                 prefetch={false}
@@ -146,6 +151,9 @@ export function DesktopSidebar({
                   active={isRouteActive(pathname, tab.href)}
                 />
               ))}
+            </nav>
+
+            <div className="sidebar-scroller flex min-h-0 flex-1 flex-col gap-[var(--sidebar-row-gap)] overflow-x-hidden overflow-y-auto px-[var(--sidebar-padding-x)] pb-0.5 [contain:layout_paint]">
               {projectsNavReady ? (
                 ProjectsNavSection ? (
                   <ProjectsNavSection expanded={isExpanded} />
@@ -153,7 +161,7 @@ export function DesktopSidebar({
                   <ProjectsNavPlaceholder />
                 )
               ) : null}
-            </nav>
+            </div>
 
             <div className="shrink-0 bg-(--sidebar-bg) px-[var(--sidebar-padding-x)] pb-2 pt-1">
               <ProfileFooter settingsActive={isRouteActive(pathname, "/settings")} />
