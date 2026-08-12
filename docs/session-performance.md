@@ -449,14 +449,42 @@ Earlier rounds recorded this as "grows with transcript length". That reading
 was wrong: per-message cost is flat, and the apparent growth was long-task
 chunking plus a busier browser. What is constant is the page size.
 
-Two directions, neither attempted:
+### 12. Markdown is not the mount cost — rejected before building it
 
-- **Mount fewer per page.** Halving the load-earlier page halves the click.
-  Straightforward, but it is a UX trade — more clicks to reach the same place.
-- **Make a message cheaper to mount.** 3.5ms each is a lot for mostly-plain
-  text; `assistant-markdown` runs ReactMarkdown + remark-gfm per message. Worth
-  checking whether there is a fast path for messages containing no markdown
-  before reaching for anything structural.
+The obvious next move was a fast path in `assistant-markdown`: skip
+ReactMarkdown for messages containing no markdown. Measured first
+(`frontend/bench/markdown-render.bench.ts`, median of 200 server renders):
+
+| | per message |
+|---|---:|
+| plain text through ReactMarkdown | 0.288ms |
+| marked-up text through ReactMarkdown | 0.687ms |
+| plain text as a bare div | 0.006ms |
+
+So the entire markdown pipeline is **at most 0.69ms of the 3.5ms**, and a plain
+text fast path would save 0.28ms — **8% of mount cost**, only on messages that
+happen to be plain. Not worth the risk: misclassifying a marked-up message
+renders its syntax as literal text, which is a visible regression traded for
+nothing.
+
+The benchmark deliberately measures marked-up text too. Measuring only plain
+text — which is what the synthetic transcript in the harness contains — would
+have made the fast path look several times better than it is, because the case
+it helps is exactly the case the fixture over-represents.
+
+**So the ~3.5ms is the aggregate message subtree**, not any one hotspot inside
+it: `MessageView` → `SessionPaneBlockRouter` → per-block components, wrappers,
+actions. There is no single thing to make cheaper.
+
+**Which finally justifies virtualization, on a number.** At ~3.5ms per mounted
+message, mounting a 250-message page costs ~0.9s — and that is paid on the
+*initial session open* too, not just "load earlier". Against a server side that
+now answers in 30–60ms, client-side mounting is the dominant cost of opening a
+session. Bounding mounted subtrees to what is visible (~30) would cut both.
+
+Note this is a different justification from the one this ledger carried for
+most of the pass. It is not about scroll jank — finding 9 measured scrolling at
+6–9ms and found none. It is about never mounting 250 subtrees at once.
 
 ## Open questions — measure before assuming
 - **Nothing has been measured during a live stream**, only on static
