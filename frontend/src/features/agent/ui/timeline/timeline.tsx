@@ -25,6 +25,7 @@ function messageRenders(message: ChatMessage): boolean {
 type TimelineProps = {
   messages: ChatMessage[];
   running: boolean;
+  cwd: string | null;
   onForkSession?: () => void;
   emptyPrompt?: boolean;
   stickToBottom?: boolean;
@@ -41,27 +42,37 @@ const MemoMessage = memo(
     message,
     live,
     running,
+    cwd,
     onForkSession,
   }: {
     message: ChatMessage;
     live: boolean;
     running: boolean;
+    cwd: string | null;
     onForkSession?: () => void;
   }) {
     return (
-      <MessageView message={message} live={live} running={running} onForkSession={onForkSession} />
+      <MessageView
+        message={message}
+        live={live}
+        running={running}
+        cwd={cwd}
+        onForkSession={onForkSession}
+      />
     );
   },
   (prev, next) =>
     prev.message === next.message &&
     prev.live === next.live &&
     prev.running === next.running &&
+    prev.cwd === next.cwd &&
     prev.onForkSession === next.onForkSession,
 );
 
 export function Timeline({
   messages,
   running,
+  cwd,
   onForkSession,
   emptyPrompt = false,
   stickToBottom = true,
@@ -131,6 +142,7 @@ export function Timeline({
                     message={message}
                     live={isLast && running}
                     running={running}
+                    cwd={cwd}
                     onForkSession={onForkSession}
                   />
                 </div>
@@ -670,11 +682,13 @@ function MessageView({
   message,
   live = false,
   running = false,
+  cwd = null,
   onForkSession,
 }: {
   message: ChatMessage;
   live?: boolean;
   running?: boolean;
+  cwd?: string | null;
   onForkSession?: () => void;
 }) {
   return (
@@ -682,6 +696,7 @@ function MessageView({
       message={message}
       live={live}
       running={running}
+      cwd={cwd}
       onForkSession={onForkSession}
     />
   );
