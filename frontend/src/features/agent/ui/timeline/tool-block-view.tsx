@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { PreviewScroll } from "@/ui";
+import { PREVIEW_HEIGHT_PX, type PreviewHeight } from "@/ui/preview-scroll";
 import {
   ChevronRight,
   FilePenLine,
@@ -11,6 +12,10 @@ import {
   type LucideIcon,
 } from "@/ui/icon-registry";
 import type { ToolBlock } from "@/features/agent/messages";
+import { highlightLines } from "@/features/agent/highlight-cache";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useAppStore } from "@/store";
+import { FILESYSTEM_CHANGED_EVENT } from "@/lib/workspace-events";
 import {
   FILE_WRITE_TOOL_NAMES,
   classifyTool,
@@ -22,6 +27,7 @@ import {
   humanizeToolName,
   toolArg,
   toolKindNodeColor,
+  toolPreviewHeightFor,
   toolVerb,
   type ToolKind,
 } from "@/features/agent/ui/timeline/tool-metadata";
@@ -29,6 +35,12 @@ import {
   parseDiffPreview,
   type DiffPreviewLine,
 } from "@/features/agent/ui/timeline/diff-preview-model";
+
+const ToolPreviewHeightContext = createContext<PreviewHeight>("md");
+
+function useToolPreviewHeight(): PreviewHeight {
+  return useContext(ToolPreviewHeightContext);
+}
 
 export const TOOL_ICONS: Record<ToolKind, LucideIcon> = {
   edit: FilePenLine,
@@ -186,13 +198,17 @@ function ShellBlock({
 }) {
   const failed = status === "error";
   const trimmedOutput = output?.replace(/\s+$/, "") || null;
+  const height = useToolPreviewHeight();
   return (
     <div
       className={`overflow-hidden rounded-md border bg-(--color-input) ${
         failed ? "border-(--err)/35" : "border-(--border)"
       }`}
     >
-      <PreviewScroll className="px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6]">
+      <PreviewScroll
+        height={height}
+        className="px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6]"
+      >
         <div className="flex items-start gap-2">
           <span
             className={`select-none ${failed ? "text-(--err)" : "text-(--color-terminal-green)"}`}
@@ -212,8 +228,12 @@ function ShellBlock({
 }
 
 function ToolOutput({ children }: { children: ReactNode }) {
+  const height = useToolPreviewHeight();
   return (
-    <PreviewScroll className="max-w-full rounded-md border border-(--border) bg-(--color-input)">
+    <PreviewScroll
+      height={height}
+      className="max-w-full rounded-md border border-(--border) bg-(--color-input)"
+    >
       <pre className="whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/65">
         {children}
       </pre>
@@ -222,10 +242,22 @@ function ToolOutput({ children }: { children: ReactNode }) {
 }
 
 function HighlightedToolSource({ body, lang }: { body: string; lang: string }) {
+  const height = useToolPreviewHeight();
+  const highlighted = useMemo(
+    () => (lang ? highlightLines(lang, body.split("\n")).join("\n") : null),
+    [body, lang],
+  );
   return (
-    <PreviewScroll height="lg" stickToBottom={false} className="max-w-full">
+    <PreviewScroll height={height} stickToBottom={false} className="max-w-full">
       <pre className="px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/90">
-        <code className={lang ? `language-${lang}` : undefined}>{body || "\u00a0"}</code>
+        {highlighted !== null ? (
+          <code
+            className={`language-${lang} syntax-highlight`}
+            dangerouslySetInnerHTML={{ __html: highlighted || "&nbsp;" }}
+          />
+        ) : (
+          <code>{body || "\u00a0"}</code>
+        )}
       </pre>
     </PreviewScroll>
   );
@@ -247,8 +279,20 @@ const DIFF_MARKER_STYLES: Record<DiffPreviewLine["kind"], string> = {
   meta: "text-(--dim)/45",
 };
 
-function DiffPreviewSource({ body }: { body: string }) {
-  const preview = parseDiffPreview(body);
+function DiffPreviewSource({ body, filePath }: { body: string; filePath?: string | null }) {
+  const height = useToolPreviewHeight();
+  const preview = useMemo(() => parseDiffPreview(body), [body]);
+  const language = detectLang(filePath);
+  const highlightedLines = useMemo(
+    () =>
+      language
+        ? highlightLines(
+            language,
+            preview.lines.map((line) => line.content),
+          )
+        : null,
+    [language, preview.lines],
+  );
   return (
     <div className="overflow-hidden rounded-md border border-(--border) bg-(--color-input)">
       <div className="flex h-7 items-center justify-between border-b border-(--separator) px-3 text-[length:var(--fs-xs)]">
@@ -258,22 +302,35 @@ function DiffPreviewSource({ body }: { body: string }) {
           <span className="text-(--err)">−{preview.deletions}</span>
         </span>
       </div>
-      <PreviewScroll stickToBottom={false}>
-        {preview.lines.map((line, index) => (
-          <div
-            key={`${index}:${line.kind}`}
-            className={`grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] font-mono text-[length:var(--fs-sm)] leading-5 ${DIFF_ROW_STYLES[line.kind]} ${line.content ? "min-h-5" : "h-3"}`}
-          >
-            <span
-              className={`flex select-none items-start justify-center border-r border-(--separator)/45 ${DIFF_MARKER_STYLES[line.kind]}`}
+      <PreviewScroll height={height} stickToBottom={false}>
+        {preview.lines.map((line, index) => {
+          const highlighted =
+            line.kind === "addition" || line.kind === "deletion" || line.kind === "context"
+              ? highlightedLines?.[index]
+              : undefined;
+          return (
+            <div
+              key={`${index}:${line.kind}`}
+              className={`grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] font-mono text-[length:var(--fs-sm)] leading-5 ${DIFF_ROW_STYLES[line.kind]} ${line.content ? "min-h-5" : "h-3"}`}
             >
-              {line.marker}
-            </span>
-            <span className="min-w-0 whitespace-pre-wrap break-words px-3 text-(--fg)/82">
-              {line.content || "\u00a0"}
-            </span>
-          </div>
-        ))}
+              <span
+                className={`flex select-none items-start justify-center border-r border-(--separator)/45 ${DIFF_MARKER_STYLES[line.kind]}`}
+              >
+                {line.marker}
+              </span>
+              {highlighted !== undefined ? (
+                <span
+                  className="syntax-highlight min-w-0 whitespace-pre-wrap break-words px-3 text-(--fg)/82"
+                  dangerouslySetInnerHTML={{ __html: highlighted || "&nbsp;" }}
+                />
+              ) : (
+                <span className="min-w-0 whitespace-pre-wrap break-words px-3 text-(--fg)/82">
+                  {line.content || "\u00a0"}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </PreviewScroll>
     </div>
   );
@@ -374,6 +431,8 @@ function FileWritePreview({
   fileContent: string | null;
   patchContent: string | null;
 }) {
+  const height = useToolPreviewHeight();
+  const previewHeightPx = PREVIEW_HEIGHT_PX[height];
   const lang = detectLang(filePath);
   const isHtml = lang === "html";
   const body = fileContent ?? patchContent ?? "";
@@ -385,7 +444,7 @@ function FileWritePreview({
   return (
     <ToolSummary block={block} filePath={filePath} open>
       {patchContent ? (
-        <DiffPreviewSource body={patchContent} />
+        <DiffPreviewSource body={patchContent} filePath={filePath} />
       ) : (
         <div className="overflow-hidden rounded-md border border-(--border) bg-(--color-input)">
           <div className="flex items-center justify-between gap-2 border-b border-(--separator) px-3 py-1.5 text-[length:var(--fs-sm)] text-(--dim)">
@@ -403,11 +462,14 @@ function FileWritePreview({
             ) : null}
           </div>
           {isSvg && showPreview ? (
-            <div className="flex max-h-80 min-h-40 items-center justify-center overflow-auto bg-white p-4">
+            <div
+              className="flex min-h-40 items-center justify-center overflow-auto bg-white p-4"
+              style={{ height: previewHeightPx }}
+            >
               <img
                 src={`data:image/svg+xml;utf8,${encodeURIComponent(body)}`}
                 alt={fileBasename(filePath) ?? "svg preview"}
-                className="max-h-72 max-w-full object-contain"
+                className="max-h-full max-w-full object-contain"
               />
             </div>
           ) : isHtml && showPreview ? (
@@ -415,7 +477,8 @@ function FileWritePreview({
               sandbox="allow-scripts"
               referrerPolicy="no-referrer"
               srcDoc={previewHtmlDocument(body)}
-              className="m-0 h-72 w-full border-0 bg-white p-0"
+              className="m-0 w-full border-0 bg-white p-0"
+              style={{ height: previewHeightPx }}
               title={filePath ?? "preview"}
             />
           ) : (
@@ -445,7 +508,7 @@ function DiffPreview({ block, diffText }: { block: ToolBlock; diffText: string }
   const filePath = toolArg(block, ["path", "file_path", "filePath", "file", "filename"]);
   return (
     <ToolSummary block={block} filePath={filePath} open>
-      <DiffPreviewSource body={diffText} />
+      <DiffPreviewSource body={diffText} filePath={filePath} />
     </ToolSummary>
   );
 }
@@ -493,36 +556,72 @@ function compactBrowserResult(result: string | null | undefined): string | null 
   return compactToolText(result, 1200);
 }
 
+function ToolPreviewHeightProvider({ kind, children }: { kind: ToolKind; children: ReactNode }) {
+  const defaultHeight = useAppStore((state) => state.toolPreviewHeight);
+  const overrides = useAppStore((state) => state.toolPreviewHeightOverrides);
+  const height = toolPreviewHeightFor(kind, defaultHeight, overrides);
+  return (
+    <ToolPreviewHeightContext.Provider value={height}>{children}</ToolPreviewHeightContext.Provider>
+  );
+}
+
 export function ToolBlockView({ block }: { block: ToolBlock }) {
+  useFilesystemRefresh(block);
+  const kind = classifyTool(block);
   const fileWritePreview = FILE_WRITE_TOOL_NAMES.has(block.name.toLowerCase())
     ? fileWritePreviewData(block)
     : null;
   if (fileWritePreview) {
-    return <FileWritePreview block={block} {...fileWritePreview} />;
+    return (
+      <ToolPreviewHeightProvider kind={kind}>
+        <FileWritePreview block={block} {...fileWritePreview} />
+      </ToolPreviewHeightProvider>
+    );
   }
   const diffPreview = diffPreviewData(block);
   if (diffPreview) {
-    return <DiffPreview block={block} diffText={diffPreview} />;
+    return (
+      <ToolPreviewHeightProvider kind={kind}>
+        <DiffPreview block={block} diffText={diffPreview} />
+      </ToolPreviewHeightProvider>
+    );
   }
-  if (classifyTool(block) === "exec") {
+  if (kind === "exec") {
     const command = execCommand(block);
     if (command) {
       return (
-        <ToolSummary block={block} open={block.status === "running"}>
-          <ShellBlock command={command} output={block.resultText || null} status={block.status} />
-        </ToolSummary>
+        <ToolPreviewHeightProvider kind={kind}>
+          <ToolSummary block={block} open={block.status === "running"}>
+            <ShellBlock command={command} output={block.resultText || null} status={block.status} />
+          </ToolSummary>
+        </ToolPreviewHeightProvider>
       );
     }
   }
-  if (classifyTool(block) === "browser") {
-    return <BrowserPreview block={block} />;
+  if (kind === "browser") {
+    return (
+      <ToolPreviewHeightProvider kind={kind}>
+        <BrowserPreview block={block} />
+      </ToolPreviewHeightProvider>
+    );
   }
 
   const display =
     block.resultText || (block.text && block.text !== block.argsText ? block.text : "");
   return (
-    <ToolSummary block={block} open={block.status === "running"}>
-      {display ? <ToolOutput>{display}</ToolOutput> : null}
-    </ToolSummary>
+    <ToolPreviewHeightProvider kind={kind}>
+      <ToolSummary block={block} open={block.status === "running"}>
+        {display ? <ToolOutput>{display}</ToolOutput> : null}
+      </ToolSummary>
+    </ToolPreviewHeightProvider>
   );
+}
+
+function useFilesystemRefresh(block: ToolBlock): void {
+  const refreshesFilesystem =
+    FILE_WRITE_TOOL_NAMES.has(block.name.toLowerCase()) || classifyTool(block) === "exec";
+  useMountSubscription(() => {
+    if (block.status !== "done" || !refreshesFilesystem) return;
+    window.dispatchEvent(new Event(FILESYSTEM_CHANGED_EVENT));
+  }, [block.id, block.status, refreshesFilesystem]);
 }
