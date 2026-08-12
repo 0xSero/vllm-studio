@@ -212,3 +212,27 @@ test("pairing JSON is copyable from laptop and phone web layouts", async ({ cont
   await expect(copy).toContainText("Copied");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(desktopValue);
 });
+
+test("serve editor preserves every capability tab", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/configure?section=models&tab=serves&new=1#models");
+  await expect(page.getByText("New Serve", { exact: true }).last()).toBeVisible();
+
+  await page.getByRole("button", { name: "Model", exact: true }).click();
+  await expect(page.getByText("Model & Context", { exact: true })).toBeVisible();
+  await expect(page.getByText("Weights & Quantization", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Resources", exact: true }).click();
+  await expect(page.getByText("Parallelism", { exact: true })).toBeVisible();
+  await expect(page.getByText("GPU", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Performance", exact: true }).click();
+  await expect(page.getByText("CUDA Graphs & Compilation", { exact: true })).toBeVisible();
+  await expect(page.getByText("KV Cache & Memory", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Features", exact: true }).click();
+  await expect(page.getByText("Model Input", { exact: true })).toBeVisible();
+  await expect(page.getByText("Tool Calling", { exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
