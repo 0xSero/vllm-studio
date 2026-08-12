@@ -11,6 +11,9 @@ import { focusPane } from "@/features/agent/workspace/pane-controller";
 import type { AgentModel, PaneId } from "@/features/agent/workspace/types";
 import { useWorkspaceContext } from "@/features/agent/ui/use-workspace";
 
+const firstValue = (...values: Array<string | undefined>): string =>
+  values.find((value) => Boolean(value)) ?? "";
+
 function modelIdFor(
   sessionModelId: string | undefined,
   selectedModelId: string,
@@ -63,7 +66,7 @@ export function WorkspacePane({
       modelThinkingLevels={model?.thinkingLevels ?? ["off"]}
       modelsLoading={state.modelsLoading}
       contextWindow={model?.contextWindow ?? 0}
-      cwd={session?.cwd ?? project?.path ?? projects.agentCwd}
+      cwd={firstValue(session?.cwd, project?.path, projects.agentCwd)}
       onInitGit={handles.initGitForActiveProject}
       modelSelector={(reasoning) => (
         <AgentModelPicker

@@ -179,46 +179,36 @@ function PickerRoot({
   onOpenModels: () => void;
   onOpenReasoning: () => void;
 }) {
+  const rows = [
+    { label: "Model", value: modelLabel, disabled: false, onClick: onOpenModels },
+    {
+      label: "Reasoning",
+      value: reasoningLabel,
+      disabled: reasoningFixed,
+      onClick: onOpenReasoning,
+    },
+  ];
   return (
     <div className="grid gap-0.5">
-      <PickerRootRow label="Model" value={modelLabel} onClick={onOpenModels} />
-      <PickerRootRow
-        label="Reasoning"
-        value={reasoningLabel}
-        disabled={reasoningFixed}
-        onClick={onOpenReasoning}
-      />
+      {rows.map((row) => (
+        <button
+          key={row.label}
+          type="button"
+          role="menuitem"
+          disabled={row.disabled}
+          onClick={row.onClick}
+          className="flex h-10 min-w-0 items-center gap-3 rounded-lg px-2.5 text-[length:var(--fs-base)] text-(--fg) transition-colors hover:bg-(--hover) disabled:cursor-default disabled:opacity-55"
+        >
+          <span className="w-20 shrink-0 text-left font-medium">{row.label}</span>
+          <span className="min-w-0 flex-1 truncate text-right text-(--fg)/60">{row.value}</span>
+          {row.disabled ? (
+            <span className="w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 text-(--dim)" />
+          )}
+        </button>
+      ))}
     </div>
-  );
-}
-
-function PickerRootRow({
-  label,
-  value,
-  disabled = false,
-  onClick,
-}: {
-  label: string;
-  value: string;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      disabled={disabled}
-      onClick={onClick}
-      className="flex h-10 min-w-0 items-center gap-3 rounded-lg px-2.5 text-[length:var(--fs-base)] text-(--fg) transition-colors hover:bg-(--hover) disabled:cursor-default disabled:opacity-55"
-    >
-      <span className="w-20 shrink-0 text-left font-medium">{label}</span>
-      <span className="min-w-0 flex-1 truncate text-right text-(--fg)/60">{value}</span>
-      {disabled ? (
-        <span className="w-3.5" />
-      ) : (
-        <ChevronRight className="h-3.5 w-3.5 text-(--dim)" />
-      )}
-    </button>
   );
 }
 
@@ -323,13 +313,16 @@ function ModelList({
                   </span>
                 </div>
               ) : null}
-              <ModelOptions
-                models={group.models}
-                selectedModel={selectedModel}
-                defaultModel={defaultModel}
-                onSelect={onSelect}
-                onSetDefault={onSetDefault}
-              />
+              {group.models.map((model) => (
+                <ModelOption
+                  key={model.id}
+                  model={model}
+                  selected={model.id === selectedModel}
+                  isDefault={model.id === defaultModel}
+                  onSelect={onSelect}
+                  onSetDefault={onSetDefault}
+                />
+              ))}
             </div>
           ))
         )}
@@ -400,8 +393,6 @@ function ModelPickerTrigger({
       onClick={onToggle}
       disabled={disabled}
       className={cx(
-        // Codex: the model control sits at the shared chat size (16px) with
-        // primary-strength text; only the chevron reads dim.
         "group/model inline-flex !h-[30px] !min-h-[30px] !min-w-0 max-w-full items-center justify-between gap-1 rounded-lg bg-transparent pl-2 pr-1.5 text-[length:var(--fs-base)] whitespace-nowrap text-(--fg)/85 transition-colors hover:bg-(--hover) hover:text-(--fg) active:translate-y-px disabled:opacity-60",
         open && "bg-(--hover) text-(--fg)",
       )}
@@ -415,31 +406,6 @@ function ModelPickerTrigger({
       <ChevronDown className="pointer-events-none h-3.5 w-3.5 shrink-0 text-(--dim)" />
     </button>
   );
-}
-
-function ModelOptions({
-  models,
-  selectedModel,
-  defaultModel,
-  onSelect,
-  onSetDefault,
-}: {
-  models: AgentModel[];
-  selectedModel: string;
-  defaultModel?: string;
-  onSelect: (modelId: string) => void;
-  onSetDefault?: (modelId: string) => void;
-}) {
-  return models.map((model) => (
-    <ModelOption
-      key={model.id}
-      model={model}
-      selected={model.id === selectedModel}
-      isDefault={model.id === defaultModel}
-      onSelect={onSelect}
-      onSetDefault={onSetDefault}
-    />
-  ));
 }
 
 function ModelOption({
