@@ -55,10 +55,18 @@ const CODE_KEY: Record<string, string> = {
   BracketRight: "]",
   Backquote: "`",
   Space: "space",
+  Enter: "enter",
+  Backspace: "backspace",
+  Delete: "delete",
+  Tab: "tab",
   ArrowUp: "up",
   ArrowDown: "down",
   ArrowLeft: "left",
   ArrowRight: "right",
+  Home: "home",
+  End: "end",
+  PageUp: "pageup",
+  PageDown: "pagedown",
 };
 
 function codeToKey(code: string): string | null {
@@ -94,6 +102,7 @@ const MAC_GLYPH: Record<string, string> = {
   cmd: "⌘",
   meta: "⌘",
   command: "⌘",
+  commandorcontrol: "⌘",
   ctrl: "⌃",
   control: "⌃",
   alt: "⌥",
@@ -106,11 +115,29 @@ const GENERIC_GLYPH: Record<string, string> = {
   cmd: "Win",
   meta: "Win",
   command: "Win",
+  commandorcontrol: "Ctrl",
+  super: "Win",
   ctrl: "Ctrl",
   control: "Ctrl",
   alt: "Alt",
   option: "Alt",
   shift: "Shift",
+};
+
+const KEY_LABEL: Record<string, string> = {
+  space: "Space",
+  enter: "Enter",
+  backspace: "Backspace",
+  delete: "Delete",
+  tab: "Tab",
+  up: "Up",
+  down: "Down",
+  left: "Left",
+  right: "Right",
+  home: "Home",
+  end: "End",
+  pageup: "PageUp",
+  pagedown: "PageDown",
 };
 
 export function formatKeybind(binding: string): string[] {
@@ -121,9 +148,23 @@ export function formatKeybind(binding: string): string[] {
     .map((part) => {
       const token = part.toLowerCase();
       if (table[token]) return table[token];
-      if (token === "space") return "Space";
+      if (KEY_LABEL[token]) return KEY_LABEL[token];
       return token.length === 1 ? token.toUpperCase() : token[0].toUpperCase() + token.slice(1);
     });
+}
+
+export function eventToAccelerator(event: KeyboardEvent): string | null {
+  const key = codeToKey(event.code);
+  if (!key) return null;
+  const mac = isMac();
+  const parts: string[] = [];
+  if (event.metaKey) parts.push(mac ? "Command" : "Super");
+  if (event.ctrlKey) parts.push("Control");
+  if (event.altKey) parts.push("Alt");
+  if (event.shiftKey) parts.push("Shift");
+  if (parts.length === 0) return null;
+  parts.push(KEY_LABEL[key] ?? (key.length === 1 || /^f\d+$/.test(key) ? key.toUpperCase() : key));
+  return parts.join("+");
 }
 
 export function matchKeybind(event: KeyboardEvent, binding: string): boolean {

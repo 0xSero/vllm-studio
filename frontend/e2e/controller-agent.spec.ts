@@ -77,6 +77,41 @@ test("appearance mode resolves the shared semantic palette", async ({ page }) =>
   expect(await terminalRed()).toBe("rgb(246, 117, 118)");
 });
 
+test("shortcut settings share keyboard capture and keycap rendering", async ({ page }) => {
+  await page.addInitScript(() => {
+    let hotkey = "CommandOrControl+Shift+Space";
+    Reflect.set(window, "localStudioDesktop", {
+      quickPanel: {
+        getHotkey: async () => ({ hotkey, defaultHotkey: "CommandOrControl+Shift+Space" }),
+        setHotkey: async (next: string) => {
+          hotkey = next;
+          Reflect.set(window, "recordedQuickPanelHotkey", next);
+          return { ok: true, hotkey };
+        },
+      },
+    });
+  });
+  await page.goto("/settings#terminal");
+
+  const quickPanelRow = page.getByText("Global hotkey", { exact: true }).locator("xpath=../../..");
+  await expect(quickPanelRow.locator("kbd")).toHaveText([/Ctrl|⌘/, /Shift|⇧/, "Space"]);
+  await quickPanelRow.getByRole("button", { name: "Change" }).click();
+  await page.keyboard.press("Control+Alt+P");
+  await expect(quickPanelRow.locator("kbd")).toHaveText([/Ctrl|⌃/, /Alt|⌥/, "P"]);
+  expect(await page.evaluate(() => Reflect.get(window, "recordedQuickPanelHotkey"))).toBe(
+    "Control+Alt+P",
+  );
+
+  const terminalRow = page.getByText("Clear terminal", { exact: true }).locator("xpath=../../..");
+  await terminalRow.getByRole("button", { name: "Rebind" }).click();
+  await page.keyboard.press("Control+Shift+L");
+  await expect(terminalRow.locator("kbd")).toHaveText([/Ctrl|⌃/, /Shift|⇧/, "L"]);
+  const saved = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("local-studio.terminalKeybinds.v1") ?? "{}"),
+  );
+  expect(saved.clearTerminal).toMatch(/^(mod|ctrl)\+shift\+l$/);
+});
+
 test("Pi defaults to the active controller and reveals other models on request", async ({
   page,
 }) => {

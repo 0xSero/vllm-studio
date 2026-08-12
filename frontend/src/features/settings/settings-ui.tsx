@@ -16,6 +16,7 @@ import {
   type UiTone,
 } from "@/ui";
 import { ChevronDown } from "lucide-react";
+import { formatKeybind } from "@/lib/terminal-keybinds";
 import { cx } from "@/ui/utils";
 
 export type SettingsSectionId = string;
@@ -251,6 +252,21 @@ export function SettingsButton({
     >
       {children}
     </Button>
+  );
+}
+
+export function ShortcutKeys({ binding }: { binding: string }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {formatKeybind(binding).map((part, index) => (
+        <kbd
+          key={`${part}-${index}`}
+          className="rounded-sm border border-(--ui-separator) bg-(--ui-hover)/60 px-1.5 py-0.5 font-mono text-[length:var(--fs-xs)] text-(--ui-fg)"
+        >
+          {part}
+        </kbd>
+      ))}
+    </span>
   );
 }
 

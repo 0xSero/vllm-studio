@@ -7,107 +7,14 @@ import {
 } from "@/features/agent/ui/quick-panel/quick-panel-bridge";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { useAsyncResource } from "@/hooks/use-async-resource";
-import { SettingsButton, SettingsGroup, SettingsNotice, SettingsRow } from "./settings-ui";
-
-const MODIFIER_CODES = new Set([
-  "MetaLeft",
-  "MetaRight",
-  "ControlLeft",
-  "ControlRight",
-  "AltLeft",
-  "AltRight",
-  "ShiftLeft",
-  "ShiftRight",
-]);
-
-const CODE_TO_KEY: Record<string, string> = {
-  Comma: ",",
-  Period: ".",
-  Slash: "/",
-  Backslash: "\\",
-  Semicolon: ";",
-  Quote: "'",
-  BracketLeft: "[",
-  BracketRight: "]",
-  Backquote: "`",
-  Minus: "-",
-  Equal: "=",
-  Space: "Space",
-  Enter: "Enter",
-  Backspace: "Backspace",
-  Delete: "Delete",
-  Tab: "Tab",
-  ArrowUp: "Up",
-  ArrowDown: "Down",
-  ArrowLeft: "Left",
-  ArrowRight: "Right",
-  Home: "Home",
-  End: "End",
-  PageUp: "PageUp",
-  PageDown: "PageDown",
-};
-
-function isMac(): boolean {
-  return typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
-}
-
-function acceleratorFromEvent(event: KeyboardEvent): string | null {
-  if (MODIFIER_CODES.has(event.code)) return null;
-
-  const modifiers: string[] = [];
-  if (event.metaKey) modifiers.push(isMac() ? "Command" : "Super");
-  if (event.ctrlKey) modifiers.push("Control");
-  if (event.altKey) modifiers.push("Alt");
-  if (event.shiftKey) modifiers.push("Shift");
-  if (modifiers.length === 0) return null;
-
-  let key: string | null = null;
-  const { code } = event;
-  if (/^Key[A-Z]$/.test(code)) key = code.slice(3);
-  else if (/^Digit[0-9]$/.test(code)) key = code.slice(5);
-  else if (/^F([1-9]|1[0-9]|2[0-4])$/.test(code)) key = code;
-  else key = CODE_TO_KEY[code] ?? null;
-  if (!key) return null;
-
-  return [...modifiers, key].join("+");
-}
-
-const MAC_KEY_GLYPHS: Record<string, string> = {
-  Command: "⌘",
-  CommandOrControl: "⌘",
-  Control: "⌃",
-  Alt: "⌥",
-  Shift: "⇧",
-};
-
-const GENERIC_KEY_LABELS: Record<string, string> = {
-  CommandOrControl: "Ctrl",
-  Control: "Ctrl",
-  Super: "Win",
-};
-
-function hotkeyParts(accelerator: string): string[] {
-  const mac = isMac();
-  return accelerator
-    .split("+")
-    .filter(Boolean)
-    .map((part) => (mac ? (MAC_KEY_GLYPHS[part] ?? part) : (GENERIC_KEY_LABELS[part] ?? part)));
-}
-
-function HotkeyKeys({ accelerator }: { accelerator: string }) {
-  return (
-    <span className="inline-flex items-center gap-1">
-      {hotkeyParts(accelerator).map((part, index) => (
-        <kbd
-          key={`${part}-${index}`}
-          className="rounded-sm border border-(--ui-separator) bg-(--ui-hover)/60 px-1.5 py-0.5 font-mono text-[length:var(--fs-xs)] text-(--ui-fg)"
-        >
-          {part}
-        </kbd>
-      ))}
-    </span>
-  );
-}
+import { eventToAccelerator } from "@/lib/terminal-keybinds";
+import {
+  SettingsButton,
+  SettingsGroup,
+  SettingsNotice,
+  SettingsRow,
+  ShortcutKeys,
+} from "./settings-ui";
 
 export function QuickPanelSettings() {
   const [recording, setRecording] = useState(false);
@@ -140,7 +47,7 @@ export function QuickPanelSettings() {
         setRecording(false);
         return;
       }
-      const accelerator = acceleratorFromEvent(event);
+      const accelerator = eventToAccelerator(event);
       if (!accelerator) return;
       setRecording(false);
       const bridge = getQuickPanelBridge();
@@ -202,7 +109,7 @@ export function QuickPanelSettings() {
                   Press a key combination… (Esc to cancel)
                 </span>
               ) : state ? (
-                <HotkeyKeys accelerator={state.hotkey} />
+                <ShortcutKeys binding={state.hotkey} />
               ) : (
                 <span className="text-(--ui-muted)">Loading…</span>
               )

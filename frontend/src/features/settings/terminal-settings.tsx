@@ -10,7 +10,6 @@ import {
   TERMINAL_FONT_SIZE_MAX,
   TERMINAL_FONT_SIZE_MIN,
   eventToKeybind,
-  formatKeybind,
   resetTerminalFontSize,
   resetTerminalKeybind,
   resetTerminalKeybinds,
@@ -22,22 +21,13 @@ import {
   type TerminalKeybinds,
 } from "@/lib/terminal-keybinds";
 import { QuickPanelSettings } from "./quick-panel-settings";
-import { SettingsButton, SettingsGroup, SettingsNotice, SettingsRow } from "./settings-ui";
-
-function Keycaps({ binding }: { binding: string }) {
-  return (
-    <span className="inline-flex items-center gap-1">
-      {formatKeybind(binding).map((part, index) => (
-        <kbd
-          key={`${part}-${index}`}
-          className="rounded-sm border border-(--ui-separator) bg-(--ui-hover)/60 px-1.5 py-0.5 font-mono text-[length:var(--fs-xs)] text-(--ui-fg)"
-        >
-          {part}
-        </kbd>
-      ))}
-    </span>
-  );
-}
+import {
+  SettingsButton,
+  SettingsGroup,
+  SettingsNotice,
+  SettingsRow,
+  ShortcutKeys,
+} from "./settings-ui";
 
 function conflictCounts(keybinds: TerminalKeybinds): Record<string, number> {
   const counts: Record<string, number> = {};
@@ -100,7 +90,7 @@ function TerminalSettings() {
                     Press a combination… (Esc to cancel)
                   </span>
                 ) : (
-                  <Keycaps binding={binding} />
+                  <ShortcutKeys binding={binding} />
                 )
               }
               status={
