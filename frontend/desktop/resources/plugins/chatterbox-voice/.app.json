@@ -1,9 +1,0 @@
-{
-  "apps": {
-    "chatterbox-voice": {
-      "adapter": "local-studio-controller",
-      "capability": "speech",
-      "actions": ["synthesize"]
-    }
-  }
-}
