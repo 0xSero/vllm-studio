@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { Effect, Schema, Semaphore } from "effect";
 import { connectMcp } from "./mcp-client";
-import { listConnectors, upsertConnectors } from "./connectors-service";
+import { connectorsByOrigin, listConnectors, upsertConnectors } from "./connectors-service";
 import { resolveDataDir } from "./data-dir";
 import {
   GOOGLE_WORKSPACE_BINDINGS,
@@ -469,13 +469,11 @@ function disableGoogleWorkspaceConnectors(): Effect.Effect<void> {
   return Effect.tryPromise({
     try: async () => {
       const connectors = await listConnectors();
-      const changed = connectors
-        .filter(
-          (connector) =>
-            connector.enabled &&
-            connector.origin?.kind === "account-adapter" &&
-            connector.origin.binding === "google-workspace",
-        )
+      const changed = connectorsByOrigin(connectors, {
+        kind: "account-adapter",
+        binding: "google-workspace",
+      })
+        .filter((connector) => connector.enabled)
         .map((connector) => ({ ...connector, enabled: false }));
       if (changed.length) await upsertConnectors(changed);
     },

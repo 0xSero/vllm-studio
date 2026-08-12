@@ -7,6 +7,7 @@ import { Schema } from "effect";
 import {
   ConnectorsFileSchema,
   type ConnectorConfig,
+  type ConnectorOrigin,
   type ConnectorView,
 } from "./connector-contract";
 import {
@@ -112,6 +113,16 @@ async function writeConnectors(connectors: ConnectorConfig[]): Promise<void> {
 
 export function saveConnectors(connectors: ConnectorConfig[]): Promise<void> {
   return withConnectorAccess(() => writeConnectors(connectors));
+}
+
+export function connectorsByOrigin(
+  connectors: ConnectorConfig[],
+  query: Partial<ConnectorOrigin>,
+): ConnectorConfig[] {
+  const fields = Object.entries(query);
+  return connectors.filter(({ origin }) =>
+    fields.every(([key, value]) => origin?.[key as keyof ConnectorOrigin] === value),
+  );
 }
 
 export async function upsertConnector(connector: ConnectorConfig): Promise<ConnectorConfig[]> {

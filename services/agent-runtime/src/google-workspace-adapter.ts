@@ -2,7 +2,12 @@ import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { Effect, Schema } from "effect";
 import { closePooledConnection, probeConnector } from "./connector-pool";
-import { listConnectors, upsertConnectors, type ConnectorConfig } from "./connectors-service";
+import {
+  connectorsByOrigin,
+  listConnectors,
+  upsertConnectors,
+  type ConnectorConfig,
+} from "./connectors-service";
 import {
   GOOGLE_WORKSPACE_BINDINGS,
   isGoogleWorkspacePlugin,
@@ -12,6 +17,28 @@ import type { PluginBundle } from "./plugin-discovery";
 
 export { GOOGLE_WORKSPACE_PLUGIN_IDS, isGoogleWorkspacePlugin } from "./google-workspace-binding";
 export type { GoogleWorkspacePluginId } from "./google-workspace-binding";
+
+export class GoogleWorkspaceAdapterError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+function adapterEffect<A>(
+  message: string,
+  task: () => Promise<A>,
+): Effect.Effect<A, GoogleWorkspaceAdapterError> {
+  return Effect.tryPromise({
+    try: task,
+    catch: (error) =>
+      error instanceof GoogleWorkspaceAdapterError
+        ? error
+        : new GoogleWorkspaceAdapterError(500, `${message}: ${error}`),
+  });
+}
 
 const AppsSchema = Schema.Struct({ apps: Schema.Record(Schema.String, Schema.Unknown) });
 const GoogleWorkspaceAppSchema = Schema.Struct({
@@ -69,87 +96,77 @@ export function googleWorkspaceConnector(
 export function enableGoogleWorkspaceAdapter(
   id: GoogleWorkspacePluginId,
   signal?: AbortSignal,
-): Effect.Effect<ConnectorConfig[], Error> {
-  return Effect.tryPromise({
-    try: async () => {
-      const connector = googleWorkspaceConnector(id, false);
-      const probe = await probeConnector(connector, signal);
-      if (!probe.ok) throw new Error(probe.error ?? "Remote MCP probe failed");
-      const declaredReadOnly = new Set(
-        probe.tools
-          .filter((tool) => tool.annotations?.readOnlyHint === true)
-          .map((tool) => tool.name),
+): Effect.Effect<string[], GoogleWorkspaceAdapterError> {
+  return adapterEffect("Google Workspace adapter failed", async () => {
+    const connector = googleWorkspaceConnector(id, false);
+    const probe = await probeConnector(connector, signal);
+    if (!probe.ok) {
+      throw new GoogleWorkspaceAdapterError(
+        502,
+        `${connector.name} failed to start: ${probe.error ?? "MCP probe failed"}`,
       );
-      const allowTools = GOOGLE_WORKSPACE_BINDINGS[id].observeTools.filter((tool) =>
-        declaredReadOnly.has(tool),
-      );
-      if (allowTools.length !== GOOGLE_WORKSPACE_BINDINGS[id].observeTools.length) {
-        throw new Error("Remote MCP read-only contract changed");
-      }
-      const enabled = { ...connector, enabled: true, allowTools };
-      const saved = await upsertConnectors([enabled]);
-      closePooledConnection(enabled.id);
-      return saved;
-    },
-    catch: (error) => new Error(`Google Workspace adapter failed: ${error}`),
+    }
+    const declaredReadOnly = new Set(
+      probe.tools
+        .filter((tool) => tool.annotations?.readOnlyHint === true)
+        .map((tool) => tool.name),
+    );
+    const allowTools = GOOGLE_WORKSPACE_BINDINGS[id].observeTools.filter((tool) =>
+      declaredReadOnly.has(tool),
+    );
+    if (allowTools.length !== GOOGLE_WORKSPACE_BINDINGS[id].observeTools.length) {
+      throw new GoogleWorkspaceAdapterError(409, `${connector.name} read-only contract changed`);
+    }
+    const enabled = { ...connector, enabled: true, allowTools };
+    await upsertConnectors([enabled]);
+    closePooledConnection(enabled.id);
+    return [enabled.id];
   });
-}
-
-function ownedGoogleWorkspaceConnectors(
-  connectors: ConnectorConfig[],
-  id: GoogleWorkspacePluginId,
-): ConnectorConfig[] {
-  return connectors.filter(
-    (connector) =>
-      connector.origin?.kind === "account-adapter" &&
-      connector.origin.id === id &&
-      connector.origin.binding === "google-workspace",
-  );
 }
 
 export function googleWorkspaceAdapterEnabled(
   id: GoogleWorkspacePluginId,
-): Effect.Effect<boolean, Error> {
-  return Effect.tryPromise({
-    try: async () =>
-      ownedGoogleWorkspaceConnectors(await listConnectors(), id).some(
-        (connector) => connector.enabled,
-      ),
-    catch: (error) => new Error(`Google Workspace adapter state failed: ${error}`),
-  });
+): Effect.Effect<boolean, GoogleWorkspaceAdapterError> {
+  return adapterEffect("Google Workspace adapter state failed", async () =>
+    connectorsByOrigin(await listConnectors(), {
+      kind: "account-adapter",
+      id,
+      binding: "google-workspace",
+    }).some((connector) => connector.enabled),
+  );
 }
 
 export function restoreGoogleWorkspaceAdapter(
   id: GoogleWorkspacePluginId,
   enabled: boolean,
-): Effect.Effect<ConnectorConfig[], Error> {
-  return Effect.tryPromise({
-    try: async () => {
-      const current = await listConnectors();
-      const owned = ownedGoogleWorkspaceConnectors(current, id);
-      const saved =
-        owned.length || enabled
-          ? await upsertConnectors([googleWorkspaceConnector(id, enabled)])
-          : current;
-      closePooledConnection(GOOGLE_WORKSPACE_BINDINGS[id].connectorId);
-      return saved;
-    },
-    catch: (error) => new Error(`Google Workspace adapter restore failed: ${error}`),
+): Effect.Effect<string[], GoogleWorkspaceAdapterError> {
+  return adapterEffect("Google Workspace adapter restore failed", async () => {
+    const current = await listConnectors();
+    const owned = connectorsByOrigin(current, {
+      kind: "account-adapter",
+      id,
+      binding: "google-workspace",
+    });
+    const changed = owned.length || enabled ? [googleWorkspaceConnector(id, enabled)] : [];
+    if (changed.length > 0) await upsertConnectors(changed);
+    closePooledConnection(GOOGLE_WORKSPACE_BINDINGS[id].connectorId);
+    return changed.map((connector) => connector.id);
   });
 }
 
 export function disableGoogleWorkspaceAdapter(
   id: GoogleWorkspacePluginId,
-): Effect.Effect<ConnectorConfig[], Error> {
-  return Effect.tryPromise({
-    try: async () => {
-      const current = await listConnectors();
-      const owned = ownedGoogleWorkspaceConnectors(current, id);
-      const disabled = owned.map((connector) => ({ ...connector, enabled: false }));
-      const saved = disabled.length ? await upsertConnectors(disabled) : current;
-      owned.forEach((connector) => closePooledConnection(connector.id));
-      return saved;
-    },
-    catch: (error) => new Error(`Google Workspace disconnect failed: ${error}`),
+): Effect.Effect<string[], GoogleWorkspaceAdapterError> {
+  return adapterEffect("Google Workspace disconnect failed", async () => {
+    const current = await listConnectors();
+    const owned = connectorsByOrigin(current, {
+      kind: "account-adapter",
+      id,
+      binding: "google-workspace",
+    });
+    const disabled = owned.map((connector) => ({ ...connector, enabled: false }));
+    if (disabled.length) await upsertConnectors(disabled);
+    owned.forEach((connector) => closePooledConnection(connector.id));
+    return disabled.map((connector) => connector.id);
   });
 }

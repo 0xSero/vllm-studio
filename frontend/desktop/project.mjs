@@ -6,7 +6,6 @@ import fs, {
   cpSync,
   existsSync,
   lstatSync,
-  mkdtempSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -20,7 +19,7 @@ import fs, {
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
-import os, { tmpdir } from "node:os";
+import os from "node:os";
 import path, { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -179,117 +178,35 @@ var init_perf_routes = __esm(() => {
   ]), defaultHttpBudget = { medianMs: 50, p90Ms: 150, assetKiB: 1100 }, defaultBrowserBudget = { dclMs: 500, fcpMs: 700, taskMs: 250, nodes: 1200, heapMiB: 24, textChars: 8 };
 });
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-function timeoutAfter(ms, message) {
-  return new Promise((_, reject) => setTimeout(() => reject(Error(message)), ms));
-}
-function connectToTarget(webSocketDebuggerUrl) {
-  let websocket = new WebSocket(webSocketDebuggerUrl), id = 0, pending = new Map;
-  return websocket.addEventListener("message", (message) => {
-    let data = JSON.parse(message.data);
-    if (!data.id || !pending.has(data.id))
-      return;
-    let { resolve: resolve, reject } = pending.get(data.id);
-    if (pending.delete(data.id), data.error)
-      reject(Error(JSON.stringify(data.error)));
-    else
-      resolve(data.result);
-  }), new Promise((resolve, reject) => {
-    websocket.addEventListener("open", () => resolve({
-      send(method, params = {}) {
-        let callId = id += 1;
-        return websocket.send(JSON.stringify({ id: callId, method, params })), new Promise((callResolve, callReject) => pending.set(callId, { resolve: callResolve, reject: callReject }));
-      },
-      close() {
-        websocket.close();
-      }
-    })), websocket.addEventListener("error", reject);
-  });
-}
-async function debugPortFor(userDataDir) {
-  let activePortPath = join(userDataDir, "DevToolsActivePort");
-  for (let attempt = 0;attempt < 100; attempt += 1) {
-    try {
-      let port = readFileSync(activePortPath, "utf8").split(`
-`)[0]?.trim();
-      if (/^\d+$/u.test(port ?? ""))
-        return port;
-    } catch {}
-    await sleep(50);
-  }
-  throw Error("Chrome DevToolsActivePort did not appear");
-}
-async function pageTarget(debugPort) {
-  for (let attempt = 0;attempt < 100; attempt += 1) {
-    let target = (await fetch(`http://127.0.0.1:${debugPort}/json/list`).then((response) => response.json())).find((entry) => entry.type === "page" && entry.url.startsWith(baseUrl));
-    if (target)
-      return target;
-    await sleep(50);
-  }
-  throw Error("Chrome page target did not appear");
-}
-async function waitForComplete(page) {
-  for (let attempt = 0;attempt < 100; attempt += 1) {
-    if ((await page.send("Runtime.evaluate", { returnByValue: !0, expression: "document.readyState" })).result.value === "complete")
-      return;
-    await sleep(50);
-  }
-  throw Error("Page did not reach readyState=complete");
-}
-async function pageMetrics(page) {
-  let evaluated = await page.send("Runtime.evaluate", {
-    returnByValue: !0,
-    expression: `(() => {
-      const nav = performance.getEntriesByType("navigation")[0];
-      const paints = Object.fromEntries(performance.getEntriesByType("paint").map((entry) => [entry.name, entry.startTime]));
-      const resources = performance.getEntriesByType("resource");
+async function browserRouteResult(browser, route) {
+  let context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  try {
+    let page = await context.newPage(), cdp = await context.newCDPSession(page);
+    await cdp.send("Performance.enable");
+    await page.goto(`${baseUrl}${route.path}`, { waitUntil: "load", timeout: routeTimeoutMs });
+    await page.waitForTimeout(100);
+    let value = await page.evaluate(() => {
+      let nav = performance.getEntriesByType("navigation")[0], paints = Object.fromEntries(performance.getEntriesByType("paint").map((entry) => [entry.name, entry.startTime])), resources = performance.getEntriesByType("resource");
       return {
-        nav: nav ? nav.toJSON() : null,
-        paints,
+        dclMs: nav?.domContentLoadedEventEnd ?? 0,
+        loadMs: nav?.loadEventEnd ?? 0,
+        fcpMs: paints["first-contentful-paint"] ?? 0,
         resources: resources.length,
         scripts: resources.filter((entry) => entry.initiatorType === "script").length,
         css: resources.filter((entry) => entry.initiatorType === "link" || entry.name.endsWith(".css")).length,
         nodes: document.getElementsByTagName("*").length,
-        textChars: document.body ? document.body.innerText.trim().length : 0,
+        textChars: document.body?.innerText.trim().length ?? 0
       };
-    })()`
-  }), performanceMetrics = await page.send("Performance.getMetrics"), metric = Object.fromEntries(performanceMetrics.metrics.map((entry) => [entry.name, entry.value])), value = evaluated.result.value;
-  return {
-    dclMs: value.nav.domContentLoadedEventEnd,
-    loadMs: value.nav.loadEventEnd,
-    fcpMs: value.paints["first-contentful-paint"] || 0,
-    resources: value.resources,
-    scripts: value.scripts,
-    css: value.css,
-    nodes: value.nodes,
-    textChars: value.textChars,
-    heapMiB: (metric.JSHeapUsedSize || 0) / 1024 / 1024,
-    taskMs: (metric.TaskDuration || 0) * 1000
-  };
-}
-async function routeResult(route) {
-  let userDataDir = mkdtempSync(join(tmpdir(), "local-studio-browser-perf-")), child = spawn(chromePath, [
-    "--headless=new",
-    "--remote-debugging-port=0",
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--disable-background-networking",
-    "--disable-dev-shm-usage",
-    "--window-size=1440,1000",
-    `--user-data-dir=${userDataDir}`,
-    `${baseUrl}${route.path}`
-  ], { stdio: ["ignore", "ignore", "ignore"] });
-  try {
-    let debugPort = await debugPortFor(userDataDir), target = await pageTarget(debugPort), page = await connectToTarget(target.webSocketDebuggerUrl);
-    try {
-      return await page.send("Performance.enable"), await waitForComplete(page), await sleep(100), { path: route.path, ...await pageMetrics(page), budget: route };
-    } finally {
-      page.close();
-    }
+    }), performanceMetrics = await cdp.send("Performance.getMetrics"), metric = Object.fromEntries(performanceMetrics.metrics.map((entry) => [entry.name, entry.value]));
+    return {
+      path: route.path,
+      ...value,
+      heapMiB: (metric.JSHeapUsedSize || 0) / 1024 / 1024,
+      taskMs: (metric.TaskDuration || 0) * 1000,
+      budget: route
+    };
   } finally {
-    child.kill("SIGTERM"), await sleep(100), rmSync(userDataDir, { recursive: !0, force: !0, maxRetries: 5, retryDelay: 50 });
+    await context.close();
   }
 }
 function formatNumber(value) {
@@ -327,15 +244,17 @@ var init_browser_perf_audit = __esm(async () => {
   console.log(`Local Studio browser perf audit: ${baseUrl}`);
   console.log("route              dcl    load     fcp    task    heap nodes  text res scripts css");
   failures = [];
-  for (let route of routes) {
-    let result = await Promise.race([
-      routeResult(route).catch((error) => {
+  let { chromium } = await import("playwright-core"), browser = await chromium.launch({ executablePath: chromePath, headless: !0, args: ["--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--disable-dev-shm-usage"] });
+  try {
+    for (let route of routes) {
+      let result = await browserRouteResult(browser, route).catch((error) => {
         throw Error(`${route.path}: ${error instanceof Error ? error.message : String(error)}`);
-      }),
-      timeoutAfter(routeTimeoutMs, `${route.path} timed out after ${routeTimeoutMs}ms`)
-    ]), bad = violations(result);
-    if (console.log(`${result.path.padEnd(16)} ${formatNumber(result.dclMs)}ms ${formatNumber(result.loadMs)}ms ${formatNumber(result.fcpMs)}ms ${formatNumber(result.taskMs)}ms ${formatNumber(result.heapMiB)}MiB ${String(result.nodes).padStart(5, " ")} ${String(result.textChars).padStart(5, " ")} ${String(result.resources).padStart(3, " ")} ${String(result.scripts).padStart(7, " ")} ${String(result.css).padStart(3, " ")}`), bad.length > 0)
-      failures.push(`${result.path}: ${bad.join(", ")}`);
+      }), bad = violations(result);
+      if (console.log(`${result.path.padEnd(16)} ${formatNumber(result.dclMs)}ms ${formatNumber(result.loadMs)}ms ${formatNumber(result.fcpMs)}ms ${formatNumber(result.taskMs)}ms ${formatNumber(result.heapMiB)}MiB ${String(result.nodes).padStart(5, " ")} ${String(result.textChars).padStart(5, " ")} ${String(result.resources).padStart(3, " ")} ${String(result.scripts).padStart(7, " ")} ${String(result.css).padStart(3, " ")}`), bad.length > 0)
+        failures.push(`${result.path}: ${bad.join(", ")}`);
+    }
+  } finally {
+    await browser.close();
   }
   if (failures.length > 0) {
     console.error("Browser perf budget violations:");
