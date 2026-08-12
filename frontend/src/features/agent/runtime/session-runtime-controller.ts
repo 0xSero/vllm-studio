@@ -28,9 +28,6 @@ export type SessionRuntimeController = {
   bind(binding: SessionRuntimeBinding): void;
   unbind(): void;
   reconcile(sessions: readonly Session[]): void;
-  noteTurnAccepted(sessionId: SessionId, assistantId?: string, runtimeEventSeq?: number): void;
-  noteReplayHydrated(sessionId: SessionId, committedSeq: number | undefined): void;
-  pollNow(): void;
   closeAll(): void;
 };
 
@@ -143,9 +140,6 @@ export function createSessionRuntimeController(
     reconcile: () => {
       runtimeStatuses.forEach((status, sessionId) => applyStatus(sessionId, status));
     },
-    noteTurnAccepted: () => undefined,
-    noteReplayHydrated: () => undefined,
-    pollNow: () => undefined,
     closeAll: () => {
       closeSubscription?.();
       closeSubscription = null;

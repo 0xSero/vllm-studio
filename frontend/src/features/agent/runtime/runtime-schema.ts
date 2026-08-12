@@ -34,27 +34,7 @@ const RuntimeActivityPayloadSchema = Schema.Union([
 
 export type RuntimeActivityPayload = Schema.Schema.Type<typeof RuntimeActivityPayloadSchema>;
 
-const RuntimeEventPayloadSchema = Schema.Union([
-  Schema.Struct({
-    type: Schema.Literal("status"),
-    phase: Schema.String,
-    session: Schema.optional(RuntimeStatusSchema),
-  }),
-  Schema.Struct({
-    type: Schema.Literal("pi"),
-    seq: Schema.optional(Schema.Number),
-    event: Schema.Record(Schema.String, Schema.Unknown),
-    snapshot: Schema.optional(RuntimeStatusSchema),
-  }),
-]);
-
-export type RuntimeEventPayload = Schema.Schema.Type<typeof RuntimeEventPayloadSchema>;
-
 const decodeActivityOption = Schema.decodeUnknownOption(RuntimeActivityPayloadSchema, {
-  onExcessProperty: "preserve",
-});
-
-const decodePayloadOption = Schema.decodeUnknownOption(RuntimeEventPayloadSchema, {
   onExcessProperty: "preserve",
 });
 
@@ -64,31 +44,13 @@ export function decodeRuntimeActivityPayload(raw: unknown): RuntimeActivityPaylo
   return option._tag === "Some" ? option.value : null;
 }
 
-export function decodeRuntimeEventPayload(raw: unknown): RuntimeEventPayload | null {
-  if (!raw || typeof raw !== "object") return null;
-  const option = decodePayloadOption(raw);
-  return option._tag === "Some" ? option.value : null;
-}
-
 const RuntimeStatusResponseSchema = Schema.Struct({
   status: Schema.optional(Schema.Union([Schema.Null, RuntimeStatusSchema])),
 });
 
-const RuntimeSessionsResponseSchema = Schema.Struct({
-  sessions: Schema.optional(Schema.Array(RuntimeSessionSummarySchema)),
-});
-
-export type RuntimeSessionSummary = Schema.Schema.Type<
-  typeof RuntimeSessionsResponseSchema
->["sessions"] extends readonly (infer T)[] | undefined
-  ? T
-  : never;
+export type RuntimeSessionSummary = Schema.Schema.Type<typeof RuntimeSessionSummarySchema>;
 
 const decodeStatusResponseOption = Schema.decodeUnknownOption(RuntimeStatusResponseSchema, {
-  onExcessProperty: "preserve",
-});
-
-const decodeSessionsResponseOption = Schema.decodeUnknownOption(RuntimeSessionsResponseSchema, {
   onExcessProperty: "preserve",
 });
 
@@ -97,12 +59,6 @@ export function decodeRuntimeStatusResponse(raw: unknown): RuntimeStatus | null 
   const option = decodeStatusResponseOption(raw);
   if (option._tag !== "Some" || !option.value.status) return null;
   return option.value.status;
-}
-
-export function decodeRuntimeSessions(raw: unknown): RuntimeSessionSummary[] {
-  if (!raw || typeof raw !== "object") return [];
-  const option = decodeSessionsResponseOption(raw);
-  return option._tag === "Some" ? [...(option.value.sessions ?? [])] : [];
 }
 
 export type { RuntimeContextUsage } from "@shared/agent/context-usage";

@@ -3,7 +3,6 @@ import { Effect } from "effect";
 import {
   mergeLiveTranscript,
   projectTranscript,
-  replayCursorAfterRuntimeHydration,
   runtimeStatusAcceptsControl,
 } from "@/features/agent/messages";
 import { settleTurnFinalizingTools } from "@/features/agent/runtime/session-status";
@@ -25,8 +24,6 @@ import {
   submitPromptTurn,
   type SubmitArgs,
 } from "@/features/agent/runtime/prompt-stream";
-
-import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
@@ -150,15 +147,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             contextUsage: api.runtimeContextUsage(result.status, session.contextUsage),
             status: "running",
           }));
-          // Same acceptance bookkeeping the prompt path does. Without it a
-          // steer/follow-up got no accept-grace (so a stale runtime-list
-          // snapshot could idle the session and tear down its stream
-          // mid-turn) and no cursor rewind if the runtime's seq had restarted.
-          sessionRuntimeController().noteTurnAccepted(
-            sessionId,
-            undefined,
-            result.status?.eventSeq,
-          );
           if (result.piSessionId) onPiSessionIdChange?.(result.piSessionId);
           return { ok: true };
         }).pipe(
@@ -283,7 +271,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             const messages = live
               ? mergeLiveTranscript(canonical.messages, live.messages)
               : canonical.messages;
-            const replaySeq = replayCursorAfterRuntimeHydration(runtimeStatus, piSessionId);
             updateSession(sessionId, (session) => ({
               ...session,
               messages: messages.length >= session.messages.length ? messages : session.messages,
@@ -307,9 +294,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               historyCursor: messages.length > 0 ? cursor : (session.historyCursor ?? null),
               error: "",
             }));
-            // Reattach the live stream from the hydrated cursor so EventSource
-            // does not replay already-rendered content.
-            sessionRuntimeController().noteReplayHydrated(sessionId, replaySeq);
           } else {
             const err = replayResult.failure;
             // Canonical read failed. If the runtime is still alive, don't strand the
@@ -324,7 +308,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
                 activeAssistantId: undefined,
                 error: "",
               }));
-              sessionRuntimeController().noteReplayHydrated(sessionId, undefined);
               return;
             }
             updateSession(sessionId, (session) => ({

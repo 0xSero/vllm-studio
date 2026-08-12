@@ -51,7 +51,7 @@ function sessionOutranks(candidate: Session, current: Session): boolean {
   if (candidate.messages.length !== current.messages.length) {
     return candidate.messages.length > current.messages.length;
   }
-  return (candidate.lastEventSeq ?? 0) > (current.lastEventSeq ?? 0);
+  return (candidate.startedAt ?? "") > (current.startedAt ?? "");
 }
 
 export function referencedSessionIds(state: WorkspaceState): Set<SessionId> {

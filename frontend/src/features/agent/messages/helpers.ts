@@ -120,25 +120,6 @@ export function runtimeStatusAcceptsControl(
   return !status.piSessionId || !piSessionId || status.piSessionId === piSessionId;
 }
 
-export function replayCursorAfterRuntimeHydration(
-  runtimeStatus: { active?: boolean; piSessionId?: string | null; eventSeq?: number } | null,
-  piSessionId: string,
-): number | undefined {
-  // loadAndReplay hydrates messages from the canonical session log, which
-  // already contains everything the matched runtime session has in its event
-  // buffer. Reattach from the runtime's current cursor whenever that runtime
-  // IS this pi session — active or idle — otherwise the next SSE subscribe
-  // starts at seq 0 and the server replays the whole retained backlog on top
-  // of the hydrated transcript (the reopened-old-session double-history bug).
-  // An idle runtime with no reported piSessionId is not provably ours, so its
-  // cursor is not adopted; an active one keeps the historical behavior of
-  // being treated as this session's runtime.
-  if (!runtimeStatus) return undefined;
-  const matchesSession = runtimeStatus.piSessionId === piSessionId;
-  const activeUnclaimed = runtimeStatus.active === true && !runtimeStatus.piSessionId;
-  return matchesSession || activeUnclaimed ? runtimeStatus.eventSeq : undefined;
-}
-
 /** Every item still in the queue is pending delivery, so all of them show.
  *
  * This used to hide `sent` items, which meant EVERY follow-up — they are

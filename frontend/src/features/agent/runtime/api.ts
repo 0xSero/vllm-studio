@@ -23,22 +23,13 @@ import type {
 
 import {
   decodeRuntimeActivityPayload,
-  decodeRuntimeEventPayload,
-  decodeRuntimeSessions,
   decodeRuntimeStatusResponse,
-  type RuntimeContextUsage,
   type RuntimeActivityPayload,
-  type RuntimeEventPayload,
+  type RuntimeContextUsage,
   type RuntimeSessionSummary,
   type RuntimeStatus,
 } from "@/features/agent/runtime/runtime-schema";
-export type {
-  RuntimeActivityPayload,
-  RuntimeContextUsage,
-  RuntimeEventPayload,
-  RuntimeSessionSummary,
-  RuntimeStatus,
-};
+export type { RuntimeActivityPayload, RuntimeContextUsage, RuntimeSessionSummary, RuntimeStatus };
 export type { SessionUsageTotals };
 
 export function runtimeContextUsage(
@@ -74,14 +65,6 @@ export function parseAbortSessionResult(input: unknown): AbortSessionResult {
         followUp: [...decoded.value.cleared.followUp],
       }
     : { steering: [], followUp: [] };
-}
-
-export function listRuntimeSessions(): Promise<RuntimeSessionSummary[]> {
-  return Effect.runPromise(
-    requestDecodedEffect("/api/agent/runtime/sessions", decodeRuntimeSessions, {
-      cache: "no-store",
-    }).pipe(Effect.catch(() => Effect.succeed([]))),
-  );
 }
 
 export function loadRuntimeStatus(
@@ -274,32 +257,6 @@ export function subscribeRuntimeActivity(
   return {
     close: () => source.close(),
   };
-}
-
-export function subscribeRuntimeEvents(
-  sessionId: string,
-  after: number,
-  piSessionId: string | null | undefined,
-  handlers: {
-    onPayload: (payload: RuntimeEventPayload) => void;
-    onError: () => void;
-  },
-): RuntimeActivitySubscription {
-  const params = new URLSearchParams({ sessionId, after: String(after) });
-  if (piSessionId) params.set("piSessionId", piSessionId);
-  const source = new EventSource(`/api/agent/runtime/events?${params.toString()}`);
-  source.onmessage = (event) => {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(event.data);
-    } catch {
-      return;
-    }
-    const payload = decodeRuntimeEventPayload(parsed);
-    if (payload) handlers.onPayload(payload);
-  };
-  source.onerror = handlers.onError;
-  return { close: () => source.close() };
 }
 
 const decodeSessionGoalResponseOption = Schema.decodeUnknownOption(SessionGoalResponseSchema, {

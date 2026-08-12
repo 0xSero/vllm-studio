@@ -42,7 +42,6 @@ export type Session = {
   usedSkills?: ComposerSkillRef[];
   contextUsage?: RuntimeContextUsage | null;
   activeAssistantId?: string;
-  lastEventSeq?: number;
   queue?: QueuedMessage[];
   extensionUiRequest?: ExtensionUiRequest;
   // Byte-offset cursor into the canonical log for paging older history into

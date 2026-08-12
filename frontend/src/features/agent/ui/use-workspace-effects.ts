@@ -4,7 +4,6 @@ import { workspaceCommands } from "@/features/agent/workspace/commands";
 import { loadInitialFromStorage } from "@/features/agent/workspace/persistence";
 import type { ToolsContextValue } from "@/features/agent/tools/context";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
-import { shouldSubscribeRuntimeEvents } from "@/features/agent/runtime/runtime-cursor";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 import { patchWorkspaceSession } from "@/features/agent/workspace/pane-controller";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -53,13 +52,6 @@ type UseWorkspaceRuntimeSyncDeps = {
   sessions: Session[];
 };
 
-function runtimeSubscriptionKey(sessions: Session[]): string {
-  return sessions
-    .filter((session) => shouldSubscribeRuntimeEvents(session.status))
-    .map((session) => `${session.id}:${session.piSessionId ?? ""}`)
-    .join("\n");
-}
-
 function runtimeRegistryKey(sessions: Session[]): string {
   return sessions
     .map((session) => `${session.id}:${session.piSessionId ?? ""}:${session.status}`)
@@ -82,16 +74,10 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
     });
   }, [dispatch]);
 
-  const subscriptionKey = useMemo(() => runtimeSubscriptionKey(sessions), [sessions]);
-
-  useMountSubscription(() => {
-    sessionRuntimeController().reconcile(sessionsRef.current);
-  }, [subscriptionKey]);
-
   const registryKey = useMemo(() => runtimeRegistryKey(sessions), [sessions]);
 
   useMountSubscription(() => {
-    sessionRuntimeController().pollNow();
+    sessionRuntimeController().reconcile(sessionsRef.current);
   }, [registryKey]);
 
   useMountSubscription(

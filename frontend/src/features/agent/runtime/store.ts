@@ -67,7 +67,6 @@ export function isEmptyStarterSession(session: Session): boolean {
     !session.input.trim() &&
     !session.startedAt &&
     !session.activeAssistantId &&
-    session.lastEventSeq === undefined &&
     !hasQueuedWork &&
     !isLiveStatus
   );

@@ -18,7 +18,6 @@ import type {
 import type { BrowserBackend, ToolSelection } from "@/features/agent/tools/types";
 import * as api from "@/features/agent/runtime/api";
 import type { RuntimeStatus } from "@/features/agent/runtime/api";
-import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 import type { Session, SessionId, UpdateSession } from "@/features/agent/runtime/types";
 import { settleTurn } from "@/features/agent/runtime/session-status";
 
@@ -171,11 +170,6 @@ function startPromptCommand(
       status: "running",
       activeAssistantId: session.activeAssistantId ?? context.assistantId,
     }));
-    sessionRuntimeController().noteTurnAccepted(
-      context.sessionId,
-      context.assistantId,
-      result.status?.eventSeq,
-    );
     if (result.piSessionId) deps.onPiSessionIdChange?.(result.piSessionId);
   }).pipe(
     Effect.catch(({ error }) =>
@@ -193,11 +187,6 @@ function startPromptCommand(
             status: "running",
             activeAssistantId: session.activeAssistantId ?? context.assistantId,
           }));
-          sessionRuntimeController().noteTurnAccepted(
-            context.sessionId,
-            context.assistantId,
-            status?.eventSeq,
-          );
           if (status?.piSessionId) deps.onPiSessionIdChange?.(status?.piSessionId);
           return;
         }

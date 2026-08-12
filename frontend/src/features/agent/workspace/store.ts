@@ -72,6 +72,7 @@ export function setupWarningFromPiCheck(
 type PersistedTabShape = Partial<Session> & {
   skills?: ComposerSkillRef[];
   runtimeSessionId?: unknown;
+  lastEventSeq?: unknown;
 };
 
 export type PersistedSessionMeta = Omit<
@@ -85,7 +86,7 @@ export function normalizePersistedTab(value: unknown): Session | null {
   const tab = value as PersistedTabShape;
   if (typeof tab.id !== "string") return null;
   const fallback = makeFreshTab();
-  const { runtimeSessionId: _legacyRuntimeKey, ...persisted } = tab;
+  const { runtimeSessionId: _legacyRuntimeKey, lastEventSeq: _legacyEventSeq, ...persisted } = tab;
   return {
     ...fallback,
     ...persisted,
@@ -100,7 +101,6 @@ export function normalizePersistedTab(value: unknown): Session | null {
     input: typeof tab.input === "string" ? tab.input : "",
     queue: Array.isArray(tab.queue) ? tab.queue : undefined,
     activeAssistantId: undefined,
-    lastEventSeq: typeof tab.lastEventSeq === "number" ? tab.lastEventSeq : undefined,
     usedSkills: Array.isArray(tab.usedSkills) ? (tab.usedSkills as ComposerSkillRef[]) : undefined,
   };
 }
@@ -220,7 +220,6 @@ export function sessionMetaForPersistence(
     startedAt: tab.startedAt,
     tokenStats: tab.tokenStats,
     usedSkills: tab.usedSkills,
-    lastEventSeq: tab.lastEventSeq,
     queue: tab.queue,
   };
   if (selection) {
