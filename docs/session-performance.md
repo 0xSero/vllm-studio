@@ -328,22 +328,61 @@ Three traps, each of which fails silently or misleadingly:
 - Env passed with a leading `cd … &&` may not reach the process in this shell.
   Use `env VAR=… <abs path>`.
 
-**Still blocked:** with all of the above green — runtime serving 501 events for
-`tail: 500`, frontend proxying them, project registered and selected in the
-composer — the sidebar shows "No chats" and never lists the session, so the
-timeline never mounts. `GET /api/agent/sessions?cwd=…` returns the session
-correctly, so the gap is between that response and the sidebar's rendering of
-it. Worth finding out whether that is harness-specific or a real bug in how
-sessions are listed for a freshly added project.
+**Resolved — it was not a bug.** The previous round recorded the sidebar as
+"never lists the session" and flagged it as a possible defect. It is not:
+`session-rows.tsx` renders `{open && project.exists ? <ProjectSessions/> : null}`,
+so the list only mounts once the project row is **expanded**. The click that
+looked like it should expand had selected the project instead. Expand it and the
+session appears immediately. Nothing to fix.
+
+### 9. Browser measurements: what virtualization is and is not for
+
+First numbers taken in a real browser, on an 800-turn synthetic session through
+the stack above.
+
+**Opening a session** paints 250 merged bubbles from a 500-event tail: 4,516 DOM
+nodes, ~18 per message.
+
+**Scrolling never becomes the problem.** Even after loading four extra pages —
+1,250 messages, 21,016 nodes, a 317,567px scroll height — a scroll jump costs
+6–9ms, under a 16.7ms frame. It is 1–2ms at the initial 250.
+
+**"Load earlier" does.** Each page adds a constant 250 messages / ~4,100 nodes,
+but the click gets slower as the transcript grows:
+
+| page | messages after | DOM nodes | click → painted |
+|------|---------------:|----------:|----------------:|
+| 1    | 500            | 8,641     | 635ms |
+| 2    | 750            | 12,766    | 1001ms |
+| 3    | 1000           | 16,891    | 1891ms |
+| 4    | 1250           | 21,016    | 1113ms |
+
+(Measured by polling for the message count every 150ms, so each figure carries
+up to 150ms of quantisation. Page 3 vs 4 is noise; the trend is not.)
+
+**Where that time goes is the useful part.** The `sessions/:id` fetch for those
+same pages took **14–40ms** for 303KB. So ~95%+ of the latency is client-side —
+folding, merging and React mounting/reconciling a list that keeps growing —
+not the server. The six server-side findings above did their job; what is left
+is render.
+
+So: **virtualization is not justified by scroll jank** (there is none), and is
+justified — if anything is — by bounding the mount and reconcile cost of "load
+earlier". That is a much narrower claim than the ledger has been carrying, and
+it changes the design: what needs bounding is the number of *mounted* subtrees,
+not the scroll container.
+
+Two caveats on these numbers. The synthetic transcript is plain text with no
+tool blocks, diffs or code — real turns render more per message, so node counts
+here are a floor. And `requestAnimationFrame` never ticks while the browser pane
+is hidden, so rAF-based frame timing silently hangs; measure with explicit
+timestamps around forced layout instead.
 
 ## Open questions — measure before assuming
 
-- **Nothing has been measured in a real browser yet.** Findings 2–8 are all
-  measured outside React: the server in isolation, the derivation in isolation.
-  DOM node count, mount cost for a long transcript, and actual frame timing
-  during a live stream are unknown. Timeline virtualization is still unjustified
-  until those exist — finding 8 may already have removed the pain it was meant
-  to address.
+- **Nothing has been measured during a live stream**, only on static
+  transcripts. Finding 8's fix is proven on identity counts, not on observed
+  frame timing with a model actually generating.
 - **7 identical `GET /api/agent/runtime/sessions` within 6ms at mount**,
   observed on an idle page. Steady state is correct (12 requests in 61s = the
   5s poll), so this is a mount-time burst only, and small. Not investigated —
