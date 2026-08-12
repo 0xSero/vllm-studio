@@ -125,6 +125,34 @@ describe("gmail api connector", () => {
     });
   });
 
+  test("does not reconstruct markup from encoded HTML", async () => {
+    const connection = connectGmailApi(
+      async () => ({ Authorization: "Bearer token" }),
+      undefined,
+      async () =>
+        jsonResponse({
+          id: "message-1",
+          payload: {
+            mimeType: "text/html",
+            body: {
+              data: Buffer.from(
+                "<p>Hello&nbsp;there</p><script>ignored()</script>&lt;script&gt;encoded()&lt;/script&gt;&amp;lt;script&amp;gt;double()",
+              ).toString("base64url"),
+            },
+          },
+        }),
+    );
+
+    const result = (await connection.callTool("get_message", {
+      messageId: "message-1",
+      messageFormat: "PLAIN_TEXT",
+    })) as { structuredContent: { plaintextBody: string } };
+
+    expect(result.structuredContent.plaintextBody).toBe(
+      "Hello there\nignored()&lt;script&gt;encoded()&lt;/script&gt;&amp;lt;script&amp;gt;double()",
+    );
+  });
+
   test("verifies the same stable Gmail API used by the connector", async () => {
     let authorization = "";
 

@@ -270,10 +270,7 @@ function plainText(message: typeof MessageSchema.Type): string {
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/p>/gi, "\n")
     .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
+    .replace(/(?:&nbsp;|&#160;)/gi, " ");
 }
 
 function renderedMessage(
