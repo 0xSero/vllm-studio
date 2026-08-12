@@ -22,17 +22,15 @@ import {
 } from "@/features/agent/tools/types";
 import {
   clampComputerWidth,
+  computerSessionView,
   computerPanelVisibility,
   loadToolState,
-  uniqueComputerTabs,
-  writeToolState,
-} from "@/features/agent/tools/persistence";
-import {
-  computerSessionView,
   patchSessionView,
   readSessionView,
+  uniqueComputerTabs,
+  writeToolState,
   type SessionViewIdentity,
-} from "@/features/agent/workspace/session-view-state";
+} from "@/features/agent/tools/persistence";
 
 export type ToolsActions = {
   setBrowserEnabled: (enabled: boolean) => void;

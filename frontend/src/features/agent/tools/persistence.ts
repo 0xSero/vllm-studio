@@ -26,6 +26,7 @@ const KEYS = {
   tabs: "local-studio.agent.computer.tabs",
   terminals: "local-studio.agent.terminals.v1",
   activeTerminal: "local-studio.agent.terminals.activeOwner",
+  sessionViews: "local-studio.agent.sessionViewState.v1",
 } as const;
 
 export const DEFAULT_BROWSER_URL = "about:blank";
@@ -45,11 +46,36 @@ const TerminalOwnerSchema = Schema.Struct({
   projectId: Schema.optional(Schema.NullOr(Schema.String)),
 });
 const decodeTerminalOwners = Schema.decodeUnknownOption(Schema.Array(TerminalOwnerSchema));
+const SessionComputerSchema = Schema.Struct({
+  open: Schema.Boolean,
+  tab: Schema.String,
+  tabs: Schema.Array(Schema.String),
+  width: Schema.Number,
+});
+const SessionViewSchema = Schema.Struct({
+  scrollTop: Schema.Number,
+  stickToBottom: Schema.Boolean,
+  computer: Schema.optional(SessionComputerSchema),
+});
+const decodeSessionViews = Schema.decodeUnknownOption(
+  Schema.Struct({
+    version: Schema.Literal(1),
+    views: Schema.Record(Schema.String, SessionViewSchema),
+  }),
+);
 
 export type PersistedToolState = {
   browser: BrowserState;
   computer: ComputerState;
   terminals: TerminalOwnersState;
+};
+
+export type SessionViewIdentity = { key: string; aliases: string[] };
+export type SessionComputerState = Pick<ComputerState, "open" | "tab" | "tabs" | "width">;
+export type SessionViewState = {
+  scrollTop: number;
+  stickToBottom: boolean;
+  computer?: SessionComputerState;
 };
 
 function widthBounds(
@@ -90,6 +116,28 @@ function computerTab(value: unknown): ComputerTab | null {
   return typeof value === "string"
     ? (COMPUTER_TAB_IDS.find((candidate) => candidate === value) ?? null)
     : null;
+}
+
+function normalizedComputer(value: {
+  open: boolean;
+  tab: string;
+  tabs: readonly string[];
+  width: number;
+}): SessionComputerState | null {
+  const tab = computerTab(value.tab);
+  if (!tab) return null;
+  const tabs = uniqueComputerTabs(
+    value.tabs.flatMap((item) => {
+      const resolved = computerTab(item);
+      return resolved ? [resolved] : [];
+    }),
+  );
+  return {
+    open: value.open,
+    tab,
+    tabs: tabs.includes(tab) ? tabs : uniqueComputerTabs([...tabs, tab]),
+    width: clampComputerWidth(value.width),
+  };
 }
 
 export function uniqueComputerTabs(values: readonly ComputerTab[]): ComputerTab[] {
@@ -190,4 +238,73 @@ export function writeToolState(state: PersistedToolState): void {
   } else {
     removeStored(KEYS.activeTerminal);
   }
+}
+
+function loadSessionViews(storage: Pick<Storage, "getItem">): Map<string, SessionViewState> {
+  const value = readStoredJson(
+    KEYS.sessionViews,
+    null,
+    (raw) => {
+      const decoded = decodeSessionViews(raw);
+      return decoded._tag === "Some" ? decoded.value : null;
+    },
+    storage,
+  );
+  return new Map(
+    Object.entries(value?.views ?? {}).map(([key, view]) => {
+      const computer = view.computer ? normalizedComputer(view.computer) : null;
+      return [
+        key,
+        {
+          scrollTop: Math.max(0, view.scrollTop),
+          stickToBottom: view.stickToBottom,
+          ...(computer ? { computer } : {}),
+        },
+      ];
+    }),
+  );
+}
+
+export function readSessionView(
+  storage: Pick<Storage, "getItem">,
+  identity: SessionViewIdentity,
+): SessionViewState | null {
+  const views = loadSessionViews(storage);
+  return (
+    views.get(identity.key) ?? identity.aliases.flatMap((key) => views.get(key) ?? []).at(0) ?? null
+  );
+}
+
+export function patchSessionView(
+  storage: Pick<Storage, "getItem" | "setItem">,
+  identity: SessionViewIdentity,
+  patch: Partial<SessionViewState>,
+): SessionViewState {
+  const views = loadSessionViews(storage);
+  const current = views.get(identity.key) ??
+    identity.aliases.flatMap((key) => views.get(key) ?? []).at(0) ?? {
+      scrollTop: 0,
+      stickToBottom: true,
+    };
+  const computer = patch.computer ? normalizedComputer(patch.computer) : current.computer;
+  const next: SessionViewState = {
+    ...current,
+    ...patch,
+    scrollTop: Math.max(0, patch.scrollTop ?? current.scrollTop),
+    ...(computer ? { computer } : {}),
+  };
+  identity.aliases.forEach((key) => views.delete(key));
+  views.delete(identity.key);
+  views.set(identity.key, next);
+  writeStored(
+    KEYS.sessionViews,
+    JSON.stringify({ version: 1, views: Object.fromEntries([...views].slice(-100)) }),
+    storage,
+  );
+  return next;
+}
+
+export function computerSessionView(computer: ComputerState): SessionComputerState {
+  const { open, tab, tabs, width } = computer;
+  return { open, tab, tabs, width };
 }

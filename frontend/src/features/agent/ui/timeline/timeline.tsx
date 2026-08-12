@@ -15,7 +15,7 @@ import { SessionPaneBlockRouter } from "@/features/agent/ui/timeline/session-pan
 import { ChevronDownIcon } from "@/ui/icons";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { effectTimeout, type EffectTimer } from "@/lib/effect-timers";
-import { patchSessionView, readSessionView } from "@/features/agent/workspace/session-view-state";
+import { patchSessionView, readSessionView } from "@/features/agent/tools/persistence";
 
 function messageRenders(message: ChatMessage): boolean {
   if (message.role === "system") return false;

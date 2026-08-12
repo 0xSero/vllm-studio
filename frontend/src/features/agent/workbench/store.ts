@@ -25,6 +25,8 @@ import {
   splitTabIntoNewPane,
 } from "@/features/agent/workspace/pane-controller";
 import {
+  type WorkspaceStorage,
+  createInitialState,
   loadInitialFromStorage,
   paneStateJson,
   writePaneState,
@@ -34,11 +36,6 @@ import {
   writeDefaultAgentModel,
 } from "@/features/agent/workspace/model-preference";
 import { connectWorkspaceRuntime } from "@/features/agent/workspace/runtime-activity";
-import {
-  createInitialState,
-  setupWarningFromPiCheck,
-  type WorkspaceStorage,
-} from "@/features/agent/workspace/store";
 import type { AgentModel, PaneId, WorkspaceState } from "@/features/agent/workspace/types";
 import { BACKEND_URL_STORAGE_KEY, getApiKey, getStoredBackendUrl } from "@/lib/api/connection";
 import {
@@ -92,6 +89,14 @@ export type WorkbenchState = WorkspaceState & {
 };
 
 type SetupCheck = { id: string; ok: boolean; guidance?: string };
+
+function setupWarningFromPiCheck(
+  piCheck: { ok: boolean; guidance?: string } | undefined,
+  hasUsableModels: boolean,
+): string {
+  if (hasUsableModels || !piCheck || piCheck.ok) return "";
+  return piCheck.guidance ?? "Pi is not installed.";
+}
 
 function createMemoryStorage(): WorkspaceStorage {
   const entries = new Map<string, string>();

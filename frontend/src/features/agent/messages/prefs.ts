@@ -1,10 +1,11 @@
 "use client";
 
 import { create } from "zustand";
-import { SESSION_PREFS_KEY } from "@/features/agent/workspace/store";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { readStored, readStoredJson, writeStored } from "@/lib/storage";
 import { SESSION_PREFS_CHANGED_EVENT } from "@/lib/workspace-events";
+
+const SESSION_PREFS_KEY = "local-studio.agent.sessionPrefs";
 
 export type SessionPref = {
   title?: string;
