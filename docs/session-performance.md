@@ -523,6 +523,48 @@ Also worth keeping: a first attempt at this measurement read 10.2s, because
 the probe ran. It measured when the probe looked, not when the work happened.
 Use `buffered: true`, or measure nothing.
 
+### 14. Many sessions: the snapshot cache emptied itself under quota
+
+The multi-session question, finally measured. Most of it is fine — the runtime
+poll is one global request, SSE attaches per *live* session only, and
+`pruneSessions` drops settled sessions that lose their pane. What was not fine
+is the transcript snapshot cache.
+
+Its own ceiling is 24 sessions × 512KB ≈ 12.6MB, above the ~5MB most browsers
+give an origin. On overflow it removed **every other session's** entry and
+retried. Driving 24 writes into a 5MB quota:
+
+| transcript | written per session | cached sessions over 24 writes |
+|---|---:|---|
+| text-only | ~98KB | `1,2,3…24` — never overflows |
+| tool-heavy | ~506KB | `1…10, 1…10, 1,2,3,4` — **collapses to 1 twice** |
+
+So with tool-heavy sessions you lost every cached transcript about every tenth
+write, and the cache that exists to make reopening instant was empty precisely
+when the most sessions were open. Silent: sessions just stop reopening fast.
+
+Now it drops the least-recently-updated entries one at a time until the write
+fits. Same 24 writes:
+
+| | before | after |
+|---|---|---|
+| tool-heavy | `1…10, 1…10, 1,2,3,4` | `1…10, 10,10,10…` — steady |
+| mass evictions | 2 | **0** |
+| cached at the end | 4 | **10** |
+
+Three tests pin it, including that an entry too large to ever fit is dropped
+rather than thrown — the cache must never surface as an error.
+
+```bash
+cd frontend && bun run bench/transcript-cache-quota.bench.ts
+```
+
+**A measurement error worth keeping.** The first version of that harness
+hardcoded `length: 0` on its fake storage. `cacheKeys` walks `0..length-1`, so
+every eviction path silently no-opped and the run reported a clean
+`1…10,10,10…` — the exact shape of a healthy cache. It looked like proof there
+was no problem. `length` has to be a live getter; the test carries that note.
+
 ## Open questions — measure before assuming
 - **Nothing has been measured during a live stream**, only on static
   transcripts. Finding 8's fix is proven on identity counts, not on observed
