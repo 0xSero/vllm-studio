@@ -1,8 +1,16 @@
 import { Effect, Schema } from "effect";
-import { JsonBlobTable, openSqliteDatabase } from "../../../stores/sqlite";
+import { JsonRepository, openSqliteDatabase } from "../../../stores/sqlite";
 import type { EngineOperationError } from "../engine-spec";
-import { attempt } from "../engine-operation";
+import { attempt, operationError } from "../engine-operation";
 import type { ModelDownload } from "../types";
+
+const DOWNLOAD_OPERATIONS = {
+  list: "list-downloads",
+  get: "get-download",
+  save: "save-download",
+  delete: "delete-download",
+  close: "close-download-database",
+} as const;
 
 const DownloadFileSchema = Schema.Struct({
   path: Schema.String,
@@ -31,16 +39,18 @@ const ModelDownloadSchema = Schema.Struct({
 const decodeDownload = (value: string): ModelDownload =>
   Schema.decodeUnknownSync(ModelDownloadSchema)(JSON.parse(value)) as ModelDownload;
 
-export class DownloadStore {
-  private readonly records: JsonBlobTable<ModelDownload>;
-
-  private constructor(private readonly db: ReturnType<typeof openSqliteDatabase>) {
-    this.records = new JsonBlobTable(db, {
-      table: "model_downloads",
-      orderBy: "updated_at DESC",
-      idOf: (download): string => download.id,
-      decode: decodeDownload,
-    });
+export class DownloadStore extends JsonRepository<ModelDownload, EngineOperationError> {
+  private constructor(db: ReturnType<typeof openSqliteDatabase>) {
+    super(
+      db,
+      {
+        table: "model_downloads",
+        orderBy: "updated_at DESC",
+        idOf: (download): string => download.id,
+        decode: decodeDownload,
+      },
+      (operation, cause) => operationError(DOWNLOAD_OPERATIONS[operation], cause),
+    );
   }
 
   public static make(dbPath: string): Effect.Effect<DownloadStore, EngineOperationError> {
@@ -67,25 +77,5 @@ export class DownloadStore {
         )
       `);
     });
-  }
-
-  public list(): Effect.Effect<ModelDownload[], EngineOperationError> {
-    return attempt("list-downloads", () => this.records.list());
-  }
-
-  public get(id: string): Effect.Effect<ModelDownload | null, EngineOperationError> {
-    return attempt("get-download", () => this.records.get(id));
-  }
-
-  public save(download: ModelDownload): Effect.Effect<void, EngineOperationError> {
-    return attempt("save-download", () => this.records.save(download));
-  }
-
-  public delete(id: string): Effect.Effect<boolean, EngineOperationError> {
-    return attempt("delete-download", () => this.records.delete(id));
-  }
-
-  public close(): Effect.Effect<void, EngineOperationError> {
-    return attempt("close-download-database", () => this.db.close());
   }
 }

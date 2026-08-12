@@ -47,8 +47,7 @@ const positiveOrNull = (
     : Effect.fail(badRequest(`${label} must be a positive number`));
 };
 type AcceleratorInput = Schema.Schema.Type<typeof RigNodeCreateSchema>["accelerators"] extends
-  | ReadonlyArray<infer A>
-  | undefined
+  ReadonlyArray<infer A> | undefined
   ? A
   : never;
 const accelerators = (
@@ -82,10 +81,10 @@ const accelerators = (
       );
 export const registerStudioRigRoutes = defineRoutes((app, context) => {
   const store = context.stores.rigStore;
-  const listRigs = store.listEffect();
-  const getRig = (rigId: string): Effect.Effect<Rig | null, unknown> => store.getEffect(rigId);
-  const saveRig = (rig: Rig): Effect.Effect<void, unknown> => store.saveEffect(rig);
-  const deleteRig = (rigId: string): Effect.Effect<boolean, unknown> => store.deleteEffect(rigId);
+  const listRigs = store.list();
+  const getRig = (rigId: string): Effect.Effect<Rig | null, unknown> => store.get(rigId);
+  const saveRig = (rig: Rig): Effect.Effect<void, unknown> => store.save(rig);
+  const deleteRig = (rigId: string): Effect.Effect<boolean, unknown> => store.delete(rigId);
   const publishRigUpdate = (): Effect.Effect<void, unknown> =>
     context.eventManager.publish(new Event(CONTROLLER_EVENTS.RIG_UPDATED, {}));
   const loadRigsWithLocalNode = Effect.gen(function* () {

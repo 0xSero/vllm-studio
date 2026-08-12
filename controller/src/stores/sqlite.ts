@@ -112,6 +112,8 @@ type JsonBlobTableOptions<T> = {
   decode: (value: string) => T;
 };
 
+export type JsonRepositoryOperation = "list" | "get" | "save" | "delete" | "close";
+
 export class JsonBlobTable<T> {
   public constructor(
     private readonly db: Database,
@@ -161,5 +163,46 @@ export class JsonBlobTable<T> {
 
   public delete(id: string): boolean {
     return this.db.query(`DELETE FROM ${this.options.table} WHERE id = ?`).run(id).changes > 0;
+  }
+}
+
+export class JsonRepository<T, E> {
+  private readonly records: JsonBlobTable<T>;
+  private closed = false;
+
+  public constructor(
+    protected readonly db: Database,
+    options: JsonBlobTableOptions<T>,
+    private readonly failure: (operation: JsonRepositoryOperation, cause: unknown) => E,
+  ) {
+    this.records = new JsonBlobTable(db, options);
+  }
+
+  private effect<A>(operation: JsonRepositoryOperation, execute: () => A): Effect.Effect<A, E> {
+    return Effect.try({ try: execute, catch: (cause) => this.failure(operation, cause) });
+  }
+
+  public list(): Effect.Effect<T[], E> {
+    return this.effect("list", () => this.records.list());
+  }
+
+  public get(id: string): Effect.Effect<T | null, E> {
+    return this.effect("get", () => this.records.get(id));
+  }
+
+  public save(value: T): Effect.Effect<void, E> {
+    return this.effect("save", () => this.records.save(value));
+  }
+
+  public delete(id: string): Effect.Effect<boolean, E> {
+    return this.effect("delete", () => this.records.delete(id));
+  }
+
+  public close(): Effect.Effect<void, E> {
+    return this.effect("close", () => {
+      if (this.closed) return;
+      this.db.close();
+      this.closed = true;
+    });
   }
 }

@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
+import type { Database } from "bun:sqlite";
 import { Effect, Schema } from "effect";
 import { parseRecipe } from "./recipe-serializer";
 import type { Recipe } from "../types";
-import { JsonBlobTable, openSqliteDatabase } from "../../../stores/sqlite";
+import { JsonRepository, openSqliteDatabase } from "../../../stores/sqlite";
 
 export class RecipeStoreError extends Schema.TaggedErrorClass<RecipeStoreError>()(
   "RecipeStoreError",
@@ -20,81 +21,54 @@ const storeError = (operation: RecipeStoreError["operation"], source: unknown): 
     source,
   });
 
-export class RecipeStore {
-  private readonly db: ReturnType<typeof openSqliteDatabase>;
-  private readonly records: JsonBlobTable<Recipe>;
+const migrateRecipes = (db: Database): string => {
+  const table = db
+    .query("SELECT name FROM sqlite_master WHERE type='table' AND name='recipes'")
+    .get();
+  if (table) {
+    const columns = db.query("PRAGMA table_info(recipes)").all() as Array<{ name: string }>;
+    return columns.some((column) => column.name === "data") ? "data" : "json";
+  }
+  db.run(`
+    CREATE TABLE IF NOT EXISTS recipes (
+      id TEXT PRIMARY KEY,
+      data TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  return "data";
+};
 
-  constructor(dbPath: string) {
-    this.db = openSqliteDatabase(dbPath);
-    try {
-      const column = this.migrate();
-      this.records = new JsonBlobTable(this.db, {
+export class RecipeStore extends JsonRepository<Recipe, RecipeStoreError> {
+  private constructor(db: Database, column: string) {
+    super(
+      db,
+      {
         table: "recipes",
         column,
         orderBy: "id",
         idOf: (recipe): string => recipe.id,
         decode: (value): Recipe => parseRecipe(JSON.parse(value)),
-      });
-    } catch (source) {
-      try {
-        this.db.close();
-      } catch {}
-      throw storeError("open", source);
-    }
+      },
+      storeError,
+    );
   }
 
   static open(dbPath: string): Effect.Effect<RecipeStore, RecipeStoreError> {
     return Effect.try({
-      try: () => new RecipeStore(dbPath),
+      try: () => {
+        const db = openSqliteDatabase(dbPath);
+        try {
+          return new RecipeStore(db, migrateRecipes(db));
+        } catch (source) {
+          try {
+            db.close();
+          } catch {}
+          throw source;
+        }
+      },
       catch: (source) => (source instanceof RecipeStoreError ? source : storeError("open", source)),
-    });
-  }
-
-  private migrate(): string {
-    const table = this.db
-      .query("SELECT name FROM sqlite_master WHERE type='table' AND name='recipes'")
-      .get();
-    if (table) {
-      const columns = this.db.query("PRAGMA table_info(recipes)").all() as Array<{ name: string }>;
-      const columnNames = new Set(columns.map((column) => column.name));
-      return columnNames.has("data") ? "data" : "json";
-    }
-    this.db.run(`
-      CREATE TABLE IF NOT EXISTS recipes (
-        id TEXT PRIMARY KEY,
-        data TEXT NOT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    return "data";
-  }
-
-  list(): Effect.Effect<Recipe[], RecipeStoreError> {
-    return Effect.try({
-      try: () => this.records.list(),
-      catch: (source) => storeError("list", source),
-    });
-  }
-
-  get(recipeId: string): Effect.Effect<Recipe | null, RecipeStoreError> {
-    return Effect.try({
-      try: () => this.records.get(recipeId),
-      catch: (source) => storeError("get", source),
-    });
-  }
-
-  save(recipe: Recipe): Effect.Effect<void, RecipeStoreError> {
-    return Effect.try({
-      try: () => this.records.save(recipe),
-      catch: (source) => storeError("save", source),
-    });
-  }
-
-  delete(recipeId: string): Effect.Effect<boolean, RecipeStoreError> {
-    return Effect.try({
-      try: () => this.records.delete(recipeId),
-      catch: (source) => storeError("delete", source),
     });
   }
 
@@ -127,12 +101,5 @@ export class RecipeStore {
       }),
       Effect.map((counts) => counts.reduce((total, count) => total + count, 0)),
     );
-  }
-
-  close(): Effect.Effect<void, RecipeStoreError> {
-    return Effect.try({
-      try: () => this.db.close(),
-      catch: (source) => storeError("close", source),
-    });
   }
 }

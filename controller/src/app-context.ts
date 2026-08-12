@@ -23,7 +23,7 @@ import { getGpuInfo } from "./modules/system/platform/gpu";
 import { ControllerRequestStore } from "./stores/controller-request-store";
 import { ControllerSettingsStore } from "./stores/controller-settings-store";
 import { InferenceRequestStore } from "./stores/inference-request-store";
-import { RigStore } from "./stores/rig-store";
+import { makeRigStore, type RigStore } from "./stores/rig-store";
 
 export interface AppContext {
   config: Config;
@@ -158,7 +158,7 @@ export const makeAppContext = Effect.gen(function* () {
     (resource) => releaseSafely("controller-request-store.close", logger, resource.close()),
   );
   const rigStore = yield* Effect.acquireRelease(
-    initializeSync("rig-store.open", () => new RigStore(dbPath)),
+    initializeSync("rig-store.open", () => makeRigStore(dbPath)),
     (resource) => releaseSafely("rig-store.close", logger, resource.close()),
   );
   yield* initialize(
