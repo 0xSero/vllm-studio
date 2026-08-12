@@ -1,9 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { encodeCwdForPi, loadSession } from "../src/sessions-store";
+import { encodeCwdForPi, findSessionFile, loadSession } from "../src/sessions-store";
 
 // Characterisation of `tail` / `before` paging.
 //
@@ -53,6 +61,8 @@ const NO_USAGE = {
 function writeRollout(options: { turns: number; inertPerTurn?: number; inertBytes?: number }): {
   cwd: string;
   sessionId: string;
+  /** Continue the same session, so the sidecar has to extend rather than rebuild. */
+  appendTurns: (count: number) => void;
 } {
   const root = mkdtempSync(path.join(tmpdir(), "session-paging-"));
   temporaryRoots.push(root);
@@ -65,27 +75,34 @@ function writeRollout(options: { turns: number; inertPerTurn?: number; inertByte
 
   const manager = SessionManager.create(cwd, sessionDir, { id: "paging-session" });
   const padding = "x".repeat(options.inertBytes ?? 512);
-  for (let turn = 0; turn < options.turns; turn += 1) {
-    manager.appendMessage({
-      role: "user",
-      content: [{ type: "text", text: `ask ${turn}` }],
-      timestamp: Date.now(),
-    });
-    manager.appendMessage({
-      role: "assistant",
-      content: [{ type: "text", text: `answer ${turn}` }],
-      provider: "fake",
-      model: "fake",
-      usage: NO_USAGE,
-      stopReason: "stop",
-      timestamp: Date.now(),
-    });
-    for (let n = 0; n < (options.inertPerTurn ?? 0); n += 1) {
-      manager.appendCustomEntry("noisy-extension:state", { padding, turn, n });
-    }
-  }
+  let written = 0;
 
-  return { cwd, sessionId: manager.getSessionId() };
+  const appendTurns = (count: number) => {
+    for (let index = 0; index < count; index += 1) {
+      const turn = written + index;
+      manager.appendMessage({
+        role: "user",
+        content: [{ type: "text", text: `ask ${turn}` }],
+        timestamp: Date.now(),
+      });
+      manager.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: `answer ${turn}` }],
+        provider: "fake",
+        model: "fake",
+        usage: NO_USAGE,
+        stopReason: "stop",
+        timestamp: Date.now(),
+      });
+      for (let n = 0; n < (options.inertPerTurn ?? 0); n += 1) {
+        manager.appendCustomEntry("noisy-extension:state", { padding, turn, n });
+      }
+    }
+    written += count;
+  };
+
+  appendTurns(options.turns);
+  return { cwd, sessionId: manager.getSessionId(), appendTurns };
 }
 
 const textOf = (event: Record<string, unknown>): string => {
@@ -196,5 +213,63 @@ describe("session paging", () => {
     for (let index = 1; index < cursors.length; index += 1) {
       expect(cursors[index]).toBeLessThan(cursors[index - 1]);
     }
+  });
+});
+
+// --- the de-noised sidecar ---------------------------------------------------
+
+/**
+ * Paging reads from a sidecar containing only the non-inert lines. These pin
+ * the properties that makes that substitution safe: same transcript, same
+ * order, and a clean fall back to the rollout when the sidecar cannot be built.
+ */
+describe("transcript sidecar", () => {
+  test("is smaller than the rollout and holds no inert entries", async () => {
+    const { cwd, sessionId } = writeRollout({ turns: 20, inertPerTurn: 10, inertBytes: 4096 });
+
+    await loadSession(cwd, sessionId, { tail: 500 });
+
+    const cacheDir = path.join(process.env.LOCAL_STUDIO_DATA_DIR as string, "rollout-cache");
+    const sidecars = readdirSync(path.join(cacheDir, "transcript"));
+    expect(sidecars.length).toBe(1);
+
+    const sidecar = path.join(cacheDir, "transcript", sidecars[0]);
+    const body = readFileSync(sidecar, "utf-8");
+    expect(body).not.toContain("noisy-extension:state");
+    expect(body).toContain("answer 19");
+
+    const rollout = findSessionFile(cwd, sessionId) as string;
+    expect(statSync(sidecar).size).toBeLessThan(statSync(rollout).size / 5);
+  });
+
+  test("extends rather than rebuilds when the session grows, and still tiles", async () => {
+    const { cwd, sessionId, appendTurns } = writeRollout({ turns: 10, inertPerTurn: 4 });
+    await loadSession(cwd, sessionId, { tail: 500 });
+
+    appendTurns(10);
+
+    const { pages } = await readAllPages(cwd, sessionId, 4);
+    const rebuilt = pages.reverse().flat();
+    const expected: string[] = [];
+    for (let turn = 0; turn < 20; turn += 1) expected.push(`ask ${turn}`, `answer ${turn}`);
+
+    expect(rebuilt).toEqual(expected);
+  });
+
+  test("falls back to the rollout when the sidecar cannot be written", async () => {
+    const { cwd, sessionId } = writeRollout({ turns: 12, inertPerTurn: 3 });
+    // Occupy the sidecar directory's name with a regular file, so creating it
+    // fails. The reader has to carry on against the original rollout rather
+    // than returning nothing — the sidecar is an optimisation, never a
+    // dependency.
+    const cacheDir = path.join(process.env.LOCAL_STUDIO_DATA_DIR as string, "rollout-cache");
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(path.join(cacheDir, "transcript"), "not a directory", "utf-8");
+
+    const page = await loadSession(cwd, sessionId, { tail: 500 });
+
+    expect(page.events.map(textOf)).toContain("ask 0");
+    expect(page.events.map(textOf)).toContain("answer 11");
+    expect(page.events.some((event) => event.type === "custom")).toBe(false);
   });
 });

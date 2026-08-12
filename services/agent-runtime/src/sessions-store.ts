@@ -18,6 +18,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { resolveDataDir } from "./data-dir";
 import { rolloutCache, statRollout } from "./rollout-cache";
+import { transcriptSource } from "./transcript-sidecar";
 import {
   cleanSessionTitle,
   sessionTitleFromUserPrompt,
@@ -770,7 +771,17 @@ export async function loadSession(
   }
 
   const effectiveTail = tail ?? 500;
-  const { events, cursor } = readTailRegion(filepath, size, effectiveTail, options.before);
+  // Page the transcript out of the de-noised sidecar when there is one. It is
+  // the same JSONL in the same order with the inert entries dropped, so the
+  // scan below is unchanged and cursors remain opaque byte offsets — into a
+  // file that is 10-20x smaller. Falls back to the rollout on any problem.
+  const transcript = await transcriptSource(filepath);
+  const { events, cursor } = readTailRegion(
+    transcript.filepath,
+    transcript.size,
+    effectiveTail,
+    options.before,
+  );
 
   // Initial tail load: prefix the header block (model/started metadata the fold
   // needs) and return real session metadata from the head-scan. Paged `before`
