@@ -13,6 +13,7 @@ import {
   handleAgentCompact,
   handleAgentTurn,
   handleExtensionUiResponse,
+  handleRuntimeActivity,
   handleRuntimeEvents,
   handleRuntimeSessions,
   handleRuntimeStatus,
@@ -103,6 +104,7 @@ export function createAgentRuntimeApp() {
   app.post("/api/agent/abort", (c) => handleAgentAbort(c.req.raw));
   app.post("/api/agent/compact", (c) => handleAgentCompact(c.req.raw));
   app.post("/api/agent/runtime/extension-ui", (c) => handleExtensionUiResponse(c.req.raw));
+  app.get("/api/agent/runtime/activity", (c) => handleRuntimeActivity(c.req.raw));
   app.get("/api/agent/runtime/sessions", () => handleRuntimeSessions());
   app.get("/api/agent/runtime/status", (c) => handleRuntimeStatus(c.req.raw));
   app.get("/api/agent/runtime/events", (c) => handleRuntimeEvents(c.req.raw));

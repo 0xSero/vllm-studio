@@ -57,7 +57,7 @@ const operationGroups = [
   [["plugins"], get, auth],
   [["plugins/:id"], post, auth],
   [["projects"], getPostDelete],
-  [["runtime/events", "runtime/sessions", "runtime/status"], get],
+  [["runtime/activity", "runtime/events", "runtime/sessions", "runtime/status"], get],
   [["runtime/extension-ui"], post, { ...auth, bodyLimit: 40_000 }],
   [["sessions"], ["GET", "DELETE"]],
   [["sessions/all"], get],

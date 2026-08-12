@@ -323,7 +323,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         const fingerprint = runtimeFingerprint(modelId, resolvedCwd, desiredSessionId, options);
         if (this.runtime && this.currentFingerprint === fingerprint) return;
 
-        yield* this.stopEffect();
+        yield* this.stopEffect(false);
         this.eventSeq = 0;
         this.activePromptCount = 0;
         this.lastError = null;
@@ -496,6 +496,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         this.currentFingerprint = fingerprint;
         this.currentStartOptions = options;
         this.unsubscribe = runtime.session.subscribe((event) => this.recordEvent(event));
+        this.emitStatus();
       }.bind(this),
     );
   }
@@ -535,6 +536,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     this.on("loggedEvent", listener);
     this.activePromptCount += 1;
     this.lastError = null;
+    this.emitStatus();
     return Effect.tryPromise({
       try: () => this.promptSession(message, options),
       catch: (error) => error,
@@ -553,6 +555,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         Effect.sync(() => {
           this.activePromptCount = Math.max(0, this.activePromptCount - 1);
           this.off("loggedEvent", listener);
+          this.emitStatus();
         }),
       ),
     );
@@ -640,7 +643,10 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
 
   adoptPiSessionId(piSessionId: string | null | undefined): void {
     const next = piSessionId?.trim();
-    if (next && !this.currentPiSessionId) this.currentPiSessionId = next;
+    if (next && !this.currentPiSessionId) {
+      this.currentPiSessionId = next;
+      this.emitStatus();
+    }
   }
 
   compact(customInstructions?: string): Promise<unknown> {
@@ -700,7 +706,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     return Effect.runPromise(this.stopEffect());
   }
 
-  private stopEffect(): Effect.Effect<void> {
+  private stopEffect(notify = true): Effect.Effect<void> {
     this.unsubscribe?.();
     this.unsubscribe = null;
     const runtime = this.runtime;
@@ -709,11 +715,13 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
       pending.resolve(pending.method === "confirm" ? false : undefined);
     }
     this.extensionUiPending.clear();
-    if (!runtime) return Effect.void;
-    return Effect.tryPromise({
-      try: () => runtime.dispose(),
-      catch: () => undefined,
-    }).pipe(Effect.catch(() => Effect.void));
+    const stopped = runtime
+      ? Effect.tryPromise({
+          try: () => runtime.dispose(),
+          catch: () => undefined,
+        }).pipe(Effect.catch(() => Effect.void))
+      : Effect.void;
+    return notify ? stopped.pipe(Effect.ensuring(Effect.sync(() => this.emitStatus()))) : stopped;
   }
 
   get status() {
@@ -762,6 +770,15 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   onLoggedEvent(listener: (event: LoggedPiEvent) => void) {
     this.on("loggedEvent", listener);
     return () => this.off("loggedEvent", listener);
+  }
+
+  onStatus(listener: (status: PiAgentStatus) => void) {
+    this.on("status", listener);
+    return () => this.off("status", listener);
+  }
+
+  private emitStatus() {
+    this.emit("status", this.status);
   }
 
   private requireSession() {
@@ -888,6 +905,7 @@ const DEFAULT_SESSION_ID = "default";
 
 class PiRuntimeManager {
   private sessions = new Map<string, PiAgentSession>();
+  private activityListeners = new Set<(activity: PiRuntimeActivity) => void>();
 
   getSession(sessionId = DEFAULT_SESSION_ID): PiAgentSession {
     const existing = this.sessions.get(sessionId);
@@ -896,6 +914,29 @@ class PiRuntimeManager {
     const created = new PiSdkSession();
     attachGoalDriver(created);
     this.sessions.set(sessionId, created);
+    created.onLoggedEvent((logged) =>
+      this.publish({
+        type: "pi",
+        sessionId,
+        seq: logged.seq,
+        event: logged.event,
+        snapshot: created.status,
+      }),
+    );
+    created.onStatus((status) =>
+      this.publish({
+        type: "status",
+        sessionId,
+        phase: status.active ? "running" : "idle",
+        session: status,
+      }),
+    );
+    this.publish({
+      type: "status",
+      sessionId,
+      phase: "idle",
+      session: created.status,
+    });
     return created;
   }
 
@@ -926,7 +967,31 @@ class PiRuntimeManager {
   listSessions(): Array<{ sessionId: string; session: PiAgentSession }> {
     return [...this.sessions.entries()].map(([sessionId, session]) => ({ sessionId, session }));
   }
+
+  onActivity(listener: (activity: PiRuntimeActivity) => void): () => void {
+    this.activityListeners.add(listener);
+    return () => this.activityListeners.delete(listener);
+  }
+
+  private publish(activity: PiRuntimeActivity): void {
+    this.activityListeners.forEach((listener) => listener(activity));
+  }
 }
+
+export type PiRuntimeActivity =
+  | {
+      type: "status";
+      sessionId: string;
+      phase: "running" | "idle";
+      session: PiAgentStatus;
+    }
+  | {
+      type: "pi";
+      sessionId: string;
+      seq: number;
+      event: PiEvent;
+      snapshot: PiAgentStatus;
+    };
 
 export const piRuntimeManager = getGlobalSingleton(
   "piRuntimeManager",

@@ -90,6 +90,7 @@ export interface PiAgentSession {
   stop(): Promise<void>;
   readonly status: PiAgentStatus;
   onLoggedEvent(listener: (event: LoggedPiEvent) => void): () => void;
+  onStatus(listener: (status: PiAgentStatus) => void): () => void;
   adoptPiSessionId(piSessionId: string | null | undefined): void;
   respondExtensionUi(
     requestId: string,

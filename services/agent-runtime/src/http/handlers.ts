@@ -386,6 +386,50 @@ export function handleRuntimeSessions(): Response {
   });
 }
 
+export function handleRuntimeActivity(request: Request): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      let closed = false;
+      const safeSend = (payload: unknown) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encode(payload));
+        } catch {
+          close();
+        }
+      };
+      const snapshot = () =>
+        safeSend({
+          type: "sessions",
+          sessions: piRuntimeManager
+            .listSessions()
+            .map(({ sessionId, session }) => ({ sessionId, status: session.status })),
+        });
+      const off = piRuntimeManager.onActivity(safeSend);
+      const ping = setInterval(snapshot, 20_000);
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        off();
+        clearInterval(ping);
+        try {
+          controller.close();
+        } catch {}
+      };
+      snapshot();
+      request.signal.addEventListener("abort", close);
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
 // ─── GET /api/agent/runtime/status ────────────────────────────────────────
 
 export function handleRuntimeStatus(request: Request): Response {
