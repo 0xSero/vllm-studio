@@ -6,6 +6,7 @@ import { makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { applyUrlNavigation } from "@/features/agent/workspace/pane-controller";
 import type { WorkspaceNavigation } from "@/features/agent/workspace/types";
+import { useRouter } from "next/navigation";
 
 export type SearchParamsReader = {
   get: (key: string) => string | null;
@@ -16,6 +17,7 @@ type WorkspaceNavigationDeps = {
   projects: ProjectsContextValue;
   searchParams: SearchParamsReader;
   dispatch: WorkspaceDispatch;
+  replaceHref: (href: string) => void;
 };
 
 type NavigationParams = {
@@ -67,7 +69,10 @@ export function workspaceNavigationAction(
     ...(sessionTitle ? { sessionTitle } : {}),
     newSession: params.newParam !== null,
     split: params.splitParam === "1",
-    replaceWorkspace: params.replaceParam === "1",
+    replaceWorkspace:
+      params.replaceParam === "1" ||
+      params.newParam !== null ||
+      (params.sessionId !== null && params.splitParam !== "1"),
     paneId: newPaneId(),
     tab,
   };
@@ -90,12 +95,13 @@ function requestWorkspaceUrlNavigation({
   projects,
   searchParams,
   dispatch,
+  replaceHref,
 }: WorkspaceNavigationDeps): void {
   const params = navigationParams(searchParams);
   const key = navigationKey(params);
   if (!key) return;
   if (lastHandledNavKey === key) {
-    consumeOneShotNavParams(params.projectId, params.sessionId);
+    consumeOneShotNavParams(params.projectId, params.sessionId, replaceHref);
     return;
   }
 
@@ -106,7 +112,7 @@ function requestWorkspaceUrlNavigation({
   const sessionTitle = params.sessionId ? consumeAgentSessionNavTitle(params.sessionId) : undefined;
   const action = workspaceNavigationAction(searchParams, project, sessionTitle);
   if (action) dispatch((state) => applyUrlNavigation(state, action));
-  consumeOneShotNavParams(params.projectId, params.sessionId);
+  consumeOneShotNavParams(params.projectId, params.sessionId, replaceHref);
 }
 
 export function settledAgentNavigationHref(
@@ -119,15 +125,20 @@ export function settledAgentNavigationHref(
   else url.searchParams.delete("project");
   if (sessionId) url.searchParams.set("session", sessionId);
   else url.searchParams.delete("session");
-  for (const param of ["new", "terminal", "split", "open", "replace"])
+  for (const param of ["new", "terminal", "split", "open", "replace", "restore"])
     url.searchParams.delete(param);
-  return url.toString();
+  return `${url.pathname}${url.search}${url.hash}`;
 }
 
-function consumeOneShotNavParams(projectId: string | null, sessionId: string | null): void {
+function consumeOneShotNavParams(
+  projectId: string | null,
+  sessionId: string | null,
+  replaceHref: (href: string) => void,
+): void {
   if (typeof window === "undefined") return;
   const href = settledAgentNavigationHref(window.location.href, projectId, sessionId);
-  if (href !== window.location.href) window.history.replaceState(window.history.state, "", href);
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (href !== current) replaceHref(href);
 }
 
 export function useAgentWorkspaceNavigationEffects({
@@ -135,8 +146,15 @@ export function useAgentWorkspaceNavigationEffects({
   projects,
   searchParams,
   dispatch,
-}: WorkspaceNavigationDeps): void {
+}: Omit<WorkspaceNavigationDeps, "replaceHref">): void {
+  const router = useRouter();
   useMountSubscription(() => {
-    requestWorkspaceUrlNavigation({ lastHandledNavKey, projects, searchParams, dispatch });
-  }, [lastHandledNavKey, projects, searchParams, dispatch]);
+    requestWorkspaceUrlNavigation({
+      lastHandledNavKey,
+      projects,
+      searchParams,
+      dispatch,
+      replaceHref: router.replace,
+    });
+  }, [lastHandledNavKey, projects, searchParams, dispatch, router]);
 }

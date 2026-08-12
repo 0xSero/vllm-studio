@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   useCallback,
   useRef,
@@ -11,7 +11,7 @@ import {
 } from "react";
 import { Menu } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
-import { useAppStore } from "@/store";
+import { DEFAULT_SIDEBAR_WIDTH, useAppStore } from "@/store";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { useOpenSessions } from "@/features/agent/session-index";
 import { hrefWithOpenNonce } from "@/features/agent/ui/projects-nav/helpers";
@@ -31,15 +31,14 @@ import {
 
 const SIDEBAR_MIN_WIDTH = 180;
 const SIDEBAR_MAX_WIDTH = 520;
-const SIDEBAR_DEFAULT_WIDTH = 275;
-
 function clampSidebarWidth(width: number): number {
-  if (!Number.isFinite(width)) return SIDEBAR_DEFAULT_WIDTH;
+  if (!Number.isFinite(width)) return DEFAULT_SIDEBAR_WIDTH;
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
 }
 
 export function LeftSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const hidesAppSidebar = routeHidesAppSidebar(pathname);
   const projectsNavImmediate = pathname.startsWith("/agent");
   const {
@@ -163,8 +162,8 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     [clampedSidebarWidth, isExpanded, setSidebarWidth],
   );
   const openNewTask = useCallback(
-    () => window.location.assign(hrefWithOpenNonce("/agent?new=1&replace=1")),
-    [],
+    () => router.push(hrefWithOpenNonce("/agent?new=1&replace=1&restore=0")),
+    [router],
   );
 
   if (hidesAppSidebar) {
@@ -205,7 +204,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
               aria-expanded={mobileMenuOpen}
               aria-controls="mobile-navigation-drawer"
             >
-              <Menu className="h-[18px] w-[18px]" />
+              <Menu className="h-[17px] w-[17px]" />
             </button>
           </div>
         </div>

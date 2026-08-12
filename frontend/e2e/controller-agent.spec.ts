@@ -37,9 +37,9 @@ for (const route of [
 }
 
 for (const [route, destination] of [
-  ["/discover", "/configure?section=models#models"],
+  ["/discover", "/models"],
   ["/integrations", "/configure?section=integrations#integrations"],
-  ["/recipes", "/configure?section=models#models"],
+  ["/recipes", "/models"],
   ["/server", "/configure?section=server#server"],
 ] as const) {
   test(`${route} redirects to ${destination}`, async ({ page }) => {

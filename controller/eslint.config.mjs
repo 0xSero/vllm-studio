@@ -66,17 +66,6 @@ const config = [
       "unicorn/prevent-abbreviations": "off",
     },
   },
-  {
-    files: ["tests/**/*.ts"],
-    languageOptions: {
-      parserOptions: { project: "./tests/tsconfig.json" },
-    },
-    rules: {
-      "@typescript-eslint/explicit-function-return-type": "off",
-      "unicorn/prevent-abbreviations": "off",
-      "max-lines-per-function": "off",
-    },
-  },
 ];
 
 export default config;

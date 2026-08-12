@@ -343,8 +343,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         const backendModelId = selectedModel.rawId ?? resolvedSelection.modelId;
 
         // One shared ModelRuntime across sessions and the provider hub: a
-        // sign-in completed in settings is live for the next turn, and
-        // hub-registered providers (including the e2e seam) resolve here.
+        // sign-in completed in settings is live for the next turn.
         const sharedModelRuntime = yield* Effect.tryPromise({
           try: () => getProviderHub(),
           catch: (error) => error,

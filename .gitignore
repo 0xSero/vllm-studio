@@ -60,9 +60,6 @@ Thumbs.db
 frontend/playwright-report/
 frontend/test-results/
 frontend/test-output/
-# Note: frontend/e2e/ was ignored wholesale, which kept 8 real spec files out of
-# the repo entirely — they existed only on one machine and could never run in
-# CI. Ignore the generated artifacts, never the specs.
 frontend/e2e/**/.auth/
 frontend/e2e/**/videos/
 controller/test-output/

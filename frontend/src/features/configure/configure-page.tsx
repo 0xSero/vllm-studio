@@ -29,12 +29,6 @@ const CONFIGURE_SECTIONS: SettingsSectionDef<ConfigureSectionId>[] = [
     icon: sectionIcon(Monitor),
   },
   {
-    id: "models",
-    label: "Models",
-    description: "Find weights, manage serves, and monitor downloads.",
-    icon: sectionIcon(Boxes),
-  },
-  {
     id: "integrations",
     label: "Integrations",
     description: "Plugins, connectors, accounts, and reusable skills.",
@@ -167,7 +161,7 @@ export default function ConfigurePage() {
                 title="Models"
                 description="Find weights, create serving profiles, and manage downloads."
                 detail="Get · serve · download"
-                onOpen={() => selectSection("models")}
+                onOpen={() => window.location.assign("/models")}
               />
               <OverviewRow
                 icon={<Plug className="h-5 w-5" />}

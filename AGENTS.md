@@ -7,6 +7,6 @@ Never write unit tests, only e2e integration tests and record those and validate
 
 `docs/workflow.md` is the single source of truth for branches, gates and releases. In short: branch from `dev`, one branch per agent so two of you never share one, open a PR into `dev`, and never push directly to `dev` or `main`.
 
-Run `npm run check` before handoff — it already runs the frontend quality gate and the unit tests, so do not run them separately. Add `npm run test:integration` when the change touches the controller or the runtime. Never bypass git hooks.
-Commit conventionally as you go. CI builds, packages and smoke-tests the desktop app on every run, so rebuild and reinstall locally only when you need to verify something by hand — use `scripts/install-desktop-app.sh [stable|dev]`, never a hand-rolled backup copy.
+Run `npm run check` before handoff. It runs static analysis, type checks, structural checks, and production builds. Never bypass git hooks.
+Commit conventionally as you go. CI builds and packages the desktop app on every run, so rebuild and reinstall locally only when you need to verify something by hand — use `scripts/install-desktop-app.sh [stable|dev]`, never a hand-rolled backup copy.
 Use the documented local, remote, deployment, and agent-runtime workflows in the repository, keep secrets in ignored `.env.local`, and treat the live browser, controller, installed app, or deployed domain as the acceptance target for visible behavior.

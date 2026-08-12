@@ -46,7 +46,7 @@ export function PageContainer({
   return (
     <div
       className={cx(
-        "mx-auto w-full px-4 pt-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 sm:pt-6",
+        "mx-auto w-full px-4 pt-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 sm:pt-5",
         pageWidthClasses[width],
         className,
       )}
@@ -70,7 +70,7 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-5 flex min-h-8 items-center justify-between gap-3">
+    <div className="mb-4 flex min-h-8 items-center justify-between gap-3">
       <div className="min-w-0">
         {eyebrow ? (
           <div className="text-[length:var(--fs-xs)] uppercase tracking-[0.14em] text-(--ui-muted)">
@@ -116,7 +116,7 @@ export function SectionNav<Id extends string = string>({
               type="button"
               onClick={() => onSelectItem(item.id)}
               className={cx(
-                "group grid h-9 max-w-[calc(50%_-_0.125rem)] min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-2 rounded-[10px] px-2 text-left text-[length:var(--fs-base)] transition-[transform,color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:scale-[0.99] sm:max-w-none lg:w-full",
+                "group grid h-8 max-w-[calc(50%_-_0.125rem)] min-w-0 grid-cols-[16px_minmax(0,1fr)] items-center gap-2 rounded-[8px] px-2 text-left text-[length:var(--fs-md)] transition-[transform,color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:scale-[0.99] sm:max-w-none lg:w-full",
                 active
                   ? "bg-(--ui-active) text-(--ui-fg)"
                   : "text-(--ui-muted) hover:bg-(--ui-hover)/70 hover:text-(--ui-fg)",
@@ -125,7 +125,7 @@ export function SectionNav<Id extends string = string>({
             >
               <span
                 className={cx(
-                  "flex h-4 w-4 items-center justify-center text-(--ui-muted)",
+                  "flex h-3.5 w-3.5 items-center justify-center text-(--ui-muted)",
                   active ? "opacity-100" : "opacity-70 group-hover:opacity-100",
                 )}
               >

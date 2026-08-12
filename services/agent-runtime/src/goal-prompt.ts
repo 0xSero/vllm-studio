@@ -5,13 +5,8 @@ import { resolveDataDir } from "./data-dir";
 
 const MARKER = "Local Studio session goal:";
 
-/** Statuses where the goal should steer the turn. A paused/complete/blocked
- *  goal stays in the store (so the UI can show and resume it) but must not keep
- *  pushing the model. */
 const STEERING_STATUSES = new Set(["active", "budget_limited"]);
 
-/** Loose shape: the on-disk goal is normalized elsewhere, but the pure builder
- *  must tolerate partial/legacy documents so a bad field never crashes a turn. */
 export type GoalPromptInput = {
   objective?: unknown;
   status?: unknown;
@@ -39,7 +34,9 @@ export function goalSystemPromptSection(goal: GoalPromptInput): string | null {
   if (turnBudget !== null) {
     lines.push("", `Turn budget: ${turnsUsed} of ${turnBudget} used.`);
     if (status === "budget_limited") {
-      lines.push("The budget is spent. Summarise progress and what remains; do not start new work.");
+      lines.push(
+        "The budget is spent. Summarise progress and what remains; do not start new work.",
+      );
     }
   } else if (turnsUsed > 0) {
     lines.push("", `Turns spent on this goal so far: ${turnsUsed}.`);
@@ -48,7 +45,7 @@ export function goalSystemPromptSection(goal: GoalPromptInput): string | null {
   lines.push(
     "",
     "Before claiming the objective is met, audit it against concrete evidence —",
-    "files written, command output, tests run — not intent. Say GOAL_COMPLETE only",
+    "files written, command output, and runtime evidence — not intent. Say GOAL_COMPLETE only",
     "when that evidence exists, and GOAL_BLOCKED with the reason only when you",
     "genuinely cannot proceed.",
   );
@@ -56,9 +53,6 @@ export function goalSystemPromptSection(goal: GoalPromptInput): string | null {
   return lines.join("\n");
 }
 
-/** goals-store keys files as <dataDir>/goals/<piSessionId>.json (see
- *  session-json-store). readGoal there is async; the before_agent_start hook
- *  needs a synchronous read, so mirror the same path + id rules here. */
 function goalFilePath(piSessionId: string): string | null {
   const id = piSessionId.trim();
   if (!id || !/^[a-zA-Z0-9_.:-]{1,128}$/.test(id)) return null;
@@ -72,14 +66,10 @@ export function readGoalSync(piSessionId: string): GoalPromptInput | null {
     const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
     return parsed && typeof parsed === "object" ? (parsed as GoalPromptInput) : null;
   } catch {
-    // No goal for this session (the common case) — stay silent.
     return null;
   }
 }
 
-/** Append the steering section for `piSessionId` to `systemPrompt`, or return
- *  null when there is nothing to add (no goal, non-steering status, or the
- *  section is already present — chained overrides could re-run this). */
 export function appendGoalSystemPrompt(systemPrompt: string, piSessionId: string): string | null {
   const goal = readGoalSync(piSessionId);
   if (!goal) return null;
@@ -89,9 +79,6 @@ export function appendGoalSystemPrompt(systemPrompt: string, piSessionId: string
   return `${systemPrompt.trimEnd()}\n\n${section}`;
 }
 
-/** Build the in-process extension factory. `getPiSessionId` is evaluated per
- *  turn (inside before_agent_start), so it always reflects the runtime's live
- *  canonical id even if the session was resumed or adopted a new id. */
 export function createGoalPromptExtension(getPiSessionId: () => string | null) {
   return (pi: ExtensionAPI): void => {
     pi.on("before_agent_start", (event) => {

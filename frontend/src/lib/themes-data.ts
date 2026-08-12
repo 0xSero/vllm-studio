@@ -1,6 +1,7 @@
 export type ThemeId =
   | "zai-light"
   | "zai-dark"
+  | "chatgpt-dark"
   | "zai-sky"
   | "zai-violet"
   | "zai-emerald"
@@ -12,7 +13,11 @@ export type ThemeId =
   | "graphite"
   | "espresso"
   | "forest"
+  | "nordic-light"
+  | "solarized-dark"
   | "paper";
+
+export type FontFamilyId = "openai" | "geist" | "system" | "avenir" | "serif" | "mono" | "rounded";
 
 export interface ThemeTokens {
   bg: string;
@@ -27,6 +32,19 @@ export interface ThemeTokens {
   err: string;
 }
 
+export interface ThemeUiTokens {
+  "surface-2": string;
+  "surface-3": string;
+  rail: string;
+  border: string;
+  separator: string;
+  hover: string;
+  active: string;
+  composer: string;
+  "composer-footer": string;
+  bubble: string;
+}
+
 export interface ThemeMeta {
   id: ThemeId;
   name: string;
@@ -34,20 +52,9 @@ export interface ThemeMeta {
   group: string;
   swatches: [string, string, string, string];
   tokens: ThemeTokens;
+  fontFamilyId: FontFamilyId;
+  ui?: Partial<ThemeUiTokens>;
 }
-
-const studioLight: ThemeTokens = {
-  bg: "#ffffff",
-  fg: "#1a1c1f",
-  dim: "#5f6165",
-  border: "#1a1c1f14",
-  surface: "#ffffff",
-  accent: "#0d0d0d",
-  hl1: "#5f6165",
-  hl2: "#8c8e91",
-  hl3: "#8f8f8f",
-  err: "#e02e2a",
-};
 
 const palette = (
   mode: "dark" | "light",
@@ -68,9 +75,48 @@ const palette = (
   err: mode === "dark" ? "#ff6764" : "#e02e2a",
 });
 
-type ThemeDefinition = readonly [ThemeId, string, string, string, ThemeTokens];
-
+const studioLight: ThemeTokens = {
+  ...palette("light", "#ffffff", "#1a1c1f", "#ffffff", "#0d0d0d"),
+  dim: "#5f6165",
+  border: "#1a1c1f14",
+  hl1: "#5f6165",
+  hl2: "#8c8e91",
+};
 const studioDark = palette("dark", "#181818", "#ffffff", "#212121", "#ffffff");
+const chatGptDark: ThemeTokens = {
+  bg: "#191919",
+  fg: "#d9d9d8",
+  dim: "#a0a09f",
+  border: "#ffffff0d",
+  surface: "#202020",
+  accent: "#d9d9d8",
+  hl1: "#a0a09f",
+  hl2: "#7b7b7b",
+  hl3: "#626262",
+  err: "#ff6764",
+};
+const chatGptDarkUi: Partial<ThemeUiTokens> = {
+  "surface-2": "#202020",
+  "surface-3": "#282828",
+  rail: "#212121",
+  border: "#ffffff0d",
+  separator: "#ffffff08",
+  hover: "#282828",
+  active: "#2e2e2e",
+  composer: "#282828",
+  "composer-footer": "#282828",
+  bubble: "#232323",
+};
+
+type ThemeDefinition = readonly [
+  ThemeId,
+  string,
+  string,
+  string,
+  ThemeTokens,
+  Partial<ThemeUiTokens>?,
+];
+
 const accentTheme = (
   id: ThemeId,
   name: string,
@@ -98,6 +144,14 @@ const definitions = [
     "Pure white canvas, near-black brand, one blue accent",
     "Studio",
     studioLight,
+  ],
+  [
+    "chatgpt-dark",
+    "ChatGPT Dark",
+    "ChatGPT app charcoal surfaces paired with OpenAI Sans",
+    "Reference",
+    chatGptDark,
+    chatGptDarkUi,
   ],
   accentTheme("zai-sky", "Sky", "a sky-blue", "#339cff"),
   accentTheme("zai-violet", "Violet", "a violet", "#ad7bf9"),
@@ -153,6 +207,20 @@ const definitions = [
     palette("dark", "#0f1512", "#e8f2ec", "#18211b", "#4fd08a"),
   ],
   [
+    "nordic-light",
+    "Nordic Light",
+    "Cool daylight neutrals with crisp indigo controls",
+    "Studio",
+    palette("light", "#f4f6f8", "#20242a", "#ffffff", "#5e6ad2"),
+  ],
+  [
+    "solarized-dark",
+    "Solarized Dark",
+    "Low-contrast blue-green surfaces with a cyan accent",
+    "Reference",
+    palette("dark", "#002b36", "#eee8d5", "#073642", "#2aa198"),
+  ],
+  [
     "paper",
     "Paper",
     "Warm paper white with a burnt-sienna accent",
@@ -161,11 +229,28 @@ const definitions = [
   ],
 ] satisfies ThemeDefinition[];
 
-export const THEMES: ThemeMeta[] = definitions.map(([id, name, description, group, tokens]) => ({
-  id,
-  name,
-  description,
-  group,
-  swatches: [tokens.bg, tokens.surface, tokens.accent, tokens.fg],
-  tokens,
-}));
+const fontFamilyByTheme: Partial<Record<ThemeId, FontFamilyId>> = {
+  "chatgpt-dark": "openai",
+  "absolutely-dark": "system",
+  "raycast-dark": "system",
+  midnight: "avenir",
+  slate: "system",
+  espresso: "serif",
+  forest: "rounded",
+  "nordic-light": "avenir",
+  "solarized-dark": "system",
+  paper: "serif",
+};
+
+export const THEMES: ThemeMeta[] = definitions.map(
+  ([id, name, description, group, tokens, ui]) => ({
+    id,
+    name,
+    description,
+    group,
+    swatches: [tokens.bg, tokens.surface, tokens.accent, tokens.fg],
+    tokens,
+    fontFamilyId: fontFamilyByTheme[id] ?? "geist",
+    ...(ui ? { ui } : {}),
+  }),
+);

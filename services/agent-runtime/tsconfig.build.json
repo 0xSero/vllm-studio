@@ -21,6 +21,5 @@
     // program does (its lib includes dom); mirror that here.
     "lib": ["esnext", "dom"]
   },
-  "include": ["src/**/*.ts", "typings/*.d.ts", "../../shared/agent/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "../../shared/agent/**/*.test.ts"]
+  "include": ["src/**/*.ts", "typings/*.d.ts", "../../shared/agent/**/*.ts"]
 }

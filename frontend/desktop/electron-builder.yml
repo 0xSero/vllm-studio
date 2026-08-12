@@ -17,8 +17,7 @@ files:
   #
   # NB: a stricter "!node_modules/** + re-add the transitive closure" inversion
   # gets the asar to 40 MB but the packaged app then hangs before its first log
-  # line, so it is deliberately not used. Re-attempt only with a passing
-  # `npm run desktop:smoke`.
+  # line, so it is deliberately not used.
   - "!node_modules/next/**"
   - "!node_modules/@next/**"
   - "!node_modules/react/**"

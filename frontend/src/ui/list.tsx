@@ -34,7 +34,7 @@ export function ListRow({
 
   if (variant === "resource") {
     return (
-      <div className={cx("px-3 py-3 transition-colors hover:bg-(--ui-hover)/30", className)}>
+      <div className={cx("px-3 py-2.5 transition-colors hover:bg-(--ui-hover)/30", className)}>
         <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
           <div className="min-w-0 space-y-1">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -73,7 +73,7 @@ export function ListRow({
   return (
     <div
       className={cx(
-        model ? "group px-1 py-2" : "rounded-md px-2 py-2.5 transition-colors",
+        model ? "group px-1 py-2" : "rounded-md px-2 py-2 transition-colors",
         interactive
           ? "cursor-pointer rounded-md transition-[background-color,transform] hover:bg-(--ui-hover)/35 focus:outline-none focus:ring-1 focus:ring-(--ui-info)/45 active:translate-y-px"
           : model

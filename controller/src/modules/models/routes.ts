@@ -38,11 +38,7 @@ import { buildModelInfo, discoverModelDirectories } from "./model-browser";
 import { isRecipeRunning } from "./recipes/recipe-matching";
 import { notFound } from "../../core/errors";
 import { findObservedInferenceProcess } from "../../core/function-observability";
-import { parseBooleanFlag } from "../../core/validation";
 import { fetchInference } from "../../http/local-fetch";
-function isMockInferenceEnabled(): boolean {
-  return parseBooleanFlag(process.env["LOCAL_STUDIO_MOCK_INFERENCE"]);
-}
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -106,12 +102,11 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
             metadata: resolvedRecipeMetadata(recipe, modelId),
           });
         }
-        if (models.length === 0 && (isMockInferenceEnabled() || current)) {
+        if (models.length === 0 && current) {
           const inferredId =
-            process.env["LOCAL_STUDIO_MOCK_MODEL_ID"]?.trim() ||
             current?.served_model_name ||
             (current?.model_path ? basename(current.model_path) : "") ||
-            "mock";
+            "active-model";
           models.push({
             id: inferredId,
             object: "model",
