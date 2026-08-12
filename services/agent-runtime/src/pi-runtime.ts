@@ -22,7 +22,11 @@ import {
   resolveAgentCwdEffect,
   type RuntimeStartOptions,
 } from "./pi-runtime-helpers";
-import { refreshPiModels, resolvePiModelSelection } from "./pi-runtime-models";
+import {
+  refreshPiModels,
+  resolvePiModelSelection,
+  toPiThinkingLevel,
+} from "./pi-runtime-models";
 import { getProviderHub } from "./provider-hub";
 import { attachGoalDriver } from "./goal-driver";
 import { createGoalPromptExtension } from "./goal-prompt";
@@ -329,7 +333,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
                           sessionStartEvent,
                           model,
                           thinkingLevel: selectedModel.reasoning
-                            ? (options.thinkingLevel ?? "high")
+                            ? toPiThinkingLevel(options.thinkingLevel ?? "high")
                             : undefined,
                         }),
                       catch: (error) => error,
