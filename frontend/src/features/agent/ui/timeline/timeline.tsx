@@ -377,7 +377,6 @@ function formatPromptTime(timestamp?: string): string {
 }
 
 type MergedRun = { segments: ChatMessage[]; merged: ChatMessage };
-const MERGE_CACHE_MAX_ENTRIES = 512;
 
 // Streaming commits a fresh `messages` array every animation frame, so this
 // merge runs per frame. The per-run cache keeps a merged turn's object
@@ -389,12 +388,14 @@ function mergeConsecutiveAssistantMessages(
   cache: Map<string, MergedRun>,
 ): ChatMessage[] {
   const merged: ChatMessage[] = [];
+  const seen = new Set<string>();
   let run: ChatMessage[] = [];
   const flushRun = () => {
     if (run.length === 0) return;
     if (run.length === 1) {
       merged.push(run[0]);
     } else {
+      seen.add(run[0].id);
       merged.push(mergeRun(run, cache));
     }
     run = [];
@@ -408,6 +409,9 @@ function mergeConsecutiveAssistantMessages(
     merged.push(message);
   }
   flushRun();
+  for (const key of cache.keys()) {
+    if (!seen.has(key)) cache.delete(key);
+  }
   return merged;
 }
 
@@ -439,7 +443,6 @@ function mergeRun(run: ChatMessage[], cache: Map<string, MergedRun>): ChatMessag
       undefined,
     ),
   };
-  if (cache.size >= MERGE_CACHE_MAX_ENTRIES) cache.clear();
   cache.set(first.id, { segments: run, merged: combined });
   return combined;
 }
