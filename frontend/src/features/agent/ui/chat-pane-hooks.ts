@@ -69,8 +69,9 @@ export function useChatPaneRuntimeHandle({
   const replayedRef = useRef<Set<string>>(new Set());
   useMountSubscription(() => {
     if (!isFocused || !activeTab) return;
-    const { piSessionId, messages, status } = activeTab;
-    if (!piSessionId || messages.length > 0 || status !== "idle") return;
+    const { piSessionId, messages, status, hydratedFromCache } = activeTab;
+    const hasRealTranscript = messages.length > 0 && !hydratedFromCache;
+    if (!piSessionId || hasRealTranscript || status !== "idle") return;
     if (replayedRef.current.has(activeTabId)) return;
     replayedRef.current.add(activeTabId);
     void engine.loadAndReplay(piSessionId, activeTabId);

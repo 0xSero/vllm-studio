@@ -56,6 +56,7 @@ export type Session = {
   // view ("load earlier"). Set when a tail load left earlier events unread;
   // null/undefined once the whole log is loaded.
   historyCursor?: number | null;
+  hydratedFromCache?: boolean;
 };
 
 export type SessionsMap = ReadonlyMap<SessionId, Session>;

@@ -146,6 +146,7 @@ function seedCachedTranscripts(
       ...session,
       ...(cached.title ? { title: cached.title } : {}),
       messages: cached.messages,
+      hydratedFromCache: true,
     });
   }
   return next ?? sessions;
