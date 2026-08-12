@@ -255,8 +255,56 @@ Three more tests: the sidecar is <1/5 the rollout and holds no inert entries; a
 grown session extends it rather than rebuilding and still tiles correctly; an
 unbuildable sidecar falls back cleanly.
 
+### 8. The merge cache inverted itself past 512 turns
+
+First frontend finding, and the likeliest cause of "long sessions get slower".
+
+The timeline stitches each turn's assistant segments into one bubble on every
+streamed frame, and caches the result so a settled turn keeps its object
+identity — without that, `MemoMessage` sees a new object and React re-renders
+the whole transcript for every token. The cache was capped at 512 entries and
+**cleared wholesale** when full.
+
+Any conversation with more runs than the cap therefore could never hold them
+all, so each frame missed on entries it had just evicted:
+
+| turns | turns re-rendered per streamed token (before) | after |
+|-------|---------------------------------------------:|------:|
+| 100   | 1   | 1 |
+| 500   | 1   | 1 |
+| 600   | **600** | 1 |
+| 1000  | **1000** | 1 |
+| 2000  | **2000** | 1 |
+
+An LRU bound measures no better (600 turns → still 600 rebuilt): a sequential
+walk longer than the cache evicts precisely the entries it is about to ask for.
+The bound itself was the bug. The cache is now scoped to the transcript —
+entries leave when their run leaves, never because a counter filled.
+
+The derivation's own cost also dropped (2000 turns: 1.03 → 0.42 ms/frame) but
+that is the small part. The real cost was 2000 React subtree re-renders per
+token, which no measurement here captures directly.
+
+Pure logic moved to `visible-messages.ts` so it can be tested and benchmarked
+against the shipping implementation rather than a copy.
+
+```bash
+cd frontend && bun run ../scripts/bench/timeline-merge.bench.ts
+```
+
+`rebuilt/frame` must read 1 at every size.
+
 ## Open questions — measure before assuming
 
+- **Nothing has been measured in a real browser yet.** Findings 2–8 are all
+  measured outside React: the server in isolation, the derivation in isolation.
+  DOM node count, mount cost for a long transcript, and actual frame timing
+  during a live stream are unknown. Timeline virtualization is still unjustified
+  until those exist — finding 8 may already have removed the pain it was meant
+  to address.
+- **Multi-session retained memory** — still unmeasured. `SessionsMap` holds full
+  transcripts and `pruneSessions` deliberately keeps mid-turn sessions alive;
+  nobody has checked what N open sessions actually costs.
 - **Disk cost.** A sidecar is ~5% of its rollout, one per session opened. Capped
   at 512 files like the envelopes, but 512 sidecars of large sessions is real
   disk. Nobody has looked at what that totals on a heavy install.
