@@ -13,6 +13,7 @@ import {
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { AgentChatPaneHeader } from "@/features/agent/ui/agent-chat-pane-header";
 import { AgentComposerFrame } from "@/features/agent/ui/agent-composer-frame";
+import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
 import { type FileMentionRow, type MentionRow } from "@/features/agent/ui/agent-composer-context";
 import { builtinCommandProvider } from "@/features/agent/composer/builtin-commands";
 import { ComposerProjectDrawer } from "@/features/agent/ui/composer-project-drawer";
@@ -135,6 +136,7 @@ import { useTools } from "@/features/agent/tools/context";
 import { useProjects, type ProjectsContextValue } from "@/features/agent/projects/context";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import type { AgentThinkingLevel } from "@shared/agent/agent-turn";
+import type { AgentModel } from "@/features/agent/workspace/types";
 import {
   loadThinkingLevelDefault,
   pickThinkingLevel,
@@ -260,19 +262,18 @@ function ChatTranscript({
 type Props = {
   paneId: string;
   modelId: string;
-  modelName: string | null;
-  modelSupportsVision: boolean;
-  modelThinkingLevels: readonly AgentThinkingLevel[];
+  models: AgentModel[];
+  modelFallback?: AgentModel | null;
   modelsLoading: boolean;
-  contextWindow: number;
   cwd: string;
-  modelSelector?: (props: ComposerModelSelectorProps) => ReactNode;
+  defaultModel?: string;
+  onSelectModel: (modelId: string) => void;
+  onSetDefaultModel?: (modelId: string) => void;
   onInitGit?: () => void;
   isFocused: boolean;
   onFocus: () => void;
   onPiSessionIdChange?: (sessionId: string) => void;
-  tabs: SessionTab[];
-  activeTabId: string;
+  session: SessionTab;
   onUpdateSession: UpdateSession;
   onRenameSession: (tabId: string, title: string) => void;
   onClose?: () => void;
@@ -284,35 +285,30 @@ type Props = {
   composerOnly?: boolean;
 };
 
-export type ComposerModelSelectorProps = {
-  reasoningLevel: AgentThinkingLevel;
-  reasoningLevels: readonly AgentThinkingLevel[];
-  reasoningDisabled: boolean;
-  onSelectReasoning: (level: AgentThinkingLevel) => void;
-};
-
-function renderComposerModelSelector(
-  renderer: Props["modelSelector"],
-  props: ComposerModelSelectorProps,
-): ReactNode {
-  return renderer ? renderer(props) : null;
+function chatModelProfile(models: AgentModel[], modelId: string, fallback?: AgentModel | null) {
+  const model = models.find((entry) => entry.id === modelId) ?? fallback;
+  return {
+    contextWindow: model?.contextWindow ?? 0,
+    modelSupportsVision: model?.vision ?? false,
+    modelThinkingLevels: model?.thinkingLevels ?? (["off"] as const),
+  };
 }
+
 export function ChatPane({
   paneId,
   modelId,
-  modelName,
-  modelSupportsVision,
-  modelThinkingLevels,
+  models,
+  modelFallback,
   modelsLoading,
-  contextWindow,
   cwd,
-  modelSelector,
+  defaultModel,
+  onSelectModel,
+  onSetDefaultModel,
   onInitGit,
   isFocused,
   onFocus,
   onPiSessionIdChange,
-  tabs,
-  activeTabId,
+  session,
   onUpdateSession,
   onRenameSession,
   onClose,
@@ -323,6 +319,13 @@ export function ChatPane({
   showHeader = true,
   composerOnly = false,
 }: Props) {
+  const tabs = [session];
+  const activeTabId = session.id;
+  const { contextWindow, modelSupportsVision, modelThinkingLevels } = chatModelProfile(
+    models,
+    modelId,
+    modelFallback,
+  );
   const router = useRouter();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -454,12 +457,20 @@ export function ChatPane({
     },
     [activeTab, running, updateTab],
   );
-  const composerModelSelector = renderComposerModelSelector(modelSelector, {
-    reasoningLevel: thinkingLevel,
-    reasoningLevels: modelThinkingLevels,
-    reasoningDisabled: Boolean(running),
-    onSelectReasoning: selectThinkingLevel,
-  });
+  const composerModelSelector = (
+    <AgentModelPicker
+      models={models}
+      selectedModel={modelId}
+      defaultModel={defaultModel}
+      onSelect={onSelectModel}
+      onSetDefault={onSetDefaultModel}
+      loading={modelsLoading}
+      reasoningLevel={thinkingLevel}
+      reasoningLevels={modelThinkingLevels}
+      reasoningDisabled={Boolean(running)}
+      onSelectReasoning={selectThinkingLevel}
+    />
+  );
 
   const engine = useSessionEngine({
     tabs,

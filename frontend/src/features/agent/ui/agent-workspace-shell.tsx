@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, lazy, type ReactNode } from "react";
+import { useStore } from "zustand";
 import { useSearchParams } from "next/navigation";
 import { triggerAddProjectFlow } from "@/features/agent/ui/projects-nav/helpers";
 import {
@@ -10,19 +11,22 @@ import {
 import { CloseIcon, PlusIcon } from "@/ui/icons";
 import { useProjects, type ProjectsContextValue } from "@/features/agent/projects/context";
 import { useTools } from "@/features/agent/tools/context";
-import { focusedSession } from "@/features/agent/runtime/selectors";
+import { activeSession, focusedSession } from "@/features/agent/runtime/selectors";
 import { PaneGrid } from "@/features/agent/ui/pane-grid";
 import {
   useWorkspace,
   useWorkspaceContext,
   WorkspaceProvider,
 } from "@/features/agent/ui/use-workspace";
-import { WorkspacePane } from "@/features/agent/ui/render-workspace-pane";
+import { ChatPane } from "@/features/agent/ui/chat-pane";
 import { useAgentWorkspaceNavigationEffects } from "@/features/agent/ui/agent-workspace-navigation";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { POPOVER_SURFACE_CLASS } from "@/ui/popover";
 import { cx } from "@/ui/utils";
 import { collectLeaves } from "@/features/agent/workspace/layout";
+import { focusPane } from "@/features/agent/workspace/pane-controller";
+import { terminalOwnerFor } from "@/features/agent/terminal-owners";
+import type { AgentModel, PaneId } from "@/features/agent/workspace/types";
 
 const LazyAgentBrowserPanel = lazy(() =>
   import("@/features/agent/ui/agent-browser-panel").then(({ AgentBrowserPanel }) => ({
@@ -55,6 +59,34 @@ function workspaceSessionIdentity(session: ReturnType<typeof focusedSession>) {
     return { viewKey: session.id, viewAlias: null };
   }
   return { viewKey: session.piSessionId, viewAlias: session.id };
+}
+
+const firstValue = (...values: Array<string | undefined>): string =>
+  values.find((value) => Boolean(value)) ?? "";
+
+function modelIdFor(
+  sessionModelId: string | undefined,
+  selectedModelId: string,
+  models: AgentModel[],
+): string {
+  for (const candidate of [sessionModelId, selectedModelId]) {
+    if (!candidate?.trim()) continue;
+    const model = models.find(
+      (entry) =>
+        entry.id === candidate ||
+        entry.rawId === candidate ||
+        entry.name === candidate ||
+        entry.id.endsWith(`/${candidate}`),
+    );
+    if (model) return model.id;
+  }
+  return (
+    selectedModelId ||
+    sessionModelId ||
+    models.find((model) => model.active)?.id ||
+    models[0]?.id ||
+    ""
+  );
 }
 
 export function shouldShowProjectEmptyState(
@@ -162,6 +194,50 @@ function WorkspacePaneContent({
         onResize={handles.setSplitRatio}
       />
     </div>
+  );
+}
+
+function WorkspacePane({
+  paneId,
+  compact = false,
+  composerOnly = false,
+}: {
+  paneId: PaneId;
+  compact?: boolean;
+  composerOnly?: boolean;
+}) {
+  const { store, dispatch, handles } = useWorkspaceContext();
+  const state = useStore(store);
+  const projects = useProjects();
+  const pane = state.panesById.get(paneId);
+  const session = activeSession(state, paneId);
+  if (!pane || !session) return null;
+  const project = projects.resolveProject(session);
+  const modelId = modelIdFor(session.modelId, state.selectedModel, state.models);
+  return (
+    <ChatPane
+      paneId={paneId}
+      modelId={modelId}
+      models={state.models}
+      defaultModel={state.selectedModel}
+      onSelectModel={(next) => handles.selectPaneModel(paneId, next)}
+      onSetDefaultModel={handles.setDefaultModel}
+      modelsLoading={state.modelsLoading}
+      cwd={firstValue(session.cwd, project?.path, projects.agentCwd)}
+      onInitGit={handles.initGitForActiveProject}
+      onPiSessionIdChange={handles.notifySessionsChanged}
+      isFocused={state.focusedPaneId === paneId}
+      onFocus={() => dispatch((current) => focusPane(current, { paneId }))}
+      session={session}
+      onUpdateSession={handles.updateSession}
+      onRenameSession={(tabId, title) => handles.renameTab(paneId, tabId, title)}
+      onClose={collectLeaves(state.layout).length > 1 ? () => handles.closePane(paneId) : undefined}
+      onForkSession={() => handles.splitTabIntoNewPane(paneId, pane.sessionId)}
+      terminalOwner={terminalOwnerFor(project, session)}
+      onRegisterHandle={(handle) => handles.registerPaneHandle(paneId, handle)}
+      showHeader={!compact}
+      composerOnly={composerOnly}
+    />
   );
 }
 

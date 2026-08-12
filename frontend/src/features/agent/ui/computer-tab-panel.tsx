@@ -10,7 +10,6 @@ import type { Session, UpdateSession } from "@/features/agent/runtime/types";
 import { focusedSession as selectFocusedSession } from "@/features/agent/runtime/selectors";
 import { useWorkspaceContext } from "@/features/agent/ui/use-workspace";
 import type { AgentModel } from "@/features/agent/workspace/types";
-import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
 
 const LazyAgentBrowser = lazy(() =>
@@ -129,7 +128,6 @@ function SideChatTab({
   modelsLoading: boolean;
 }) {
   const modelId = sideChatSession.modelId ?? focusedSession?.modelId ?? activeModelId;
-  const selectedModel = models.find((model) => model.id === modelId) ?? activeModel;
   const cwd = sideChatSession.cwd ?? focusedSession?.cwd ?? activeProject?.path ?? "";
   const updateSession = useCallback<UpdateSession>(
     (sessionId, patch) =>
@@ -141,27 +139,16 @@ function SideChatTab({
       <ChatPane
         paneId="computer-side-chat"
         modelId={modelId}
-        modelName={selectedModel?.name ?? modelId}
-        modelSupportsVision={selectedModel?.vision ?? false}
-        modelThinkingLevels={selectedModel?.thinkingLevels ?? ["off"]}
+        models={models}
+        modelFallback={activeModel}
         modelsLoading={modelsLoading}
-        contextWindow={selectedModel?.contextWindow ?? 0}
         cwd={cwd}
-        modelSelector={(reasoning) => (
-          <AgentModelPicker
-            models={models}
-            selectedModel={modelId}
-            onSelect={(nextModelId) =>
-              onUpdateSideChatTabs((tabs) => tabs.map((tab) => ({ ...tab, modelId: nextModelId })))
-            }
-            loading={modelsLoading}
-            {...reasoning}
-          />
-        )}
+        onSelectModel={(nextModelId) =>
+          onUpdateSideChatTabs((tabs) => tabs.map((tab) => ({ ...tab, modelId: nextModelId })))
+        }
         isFocused
         onFocus={() => undefined}
-        tabs={[sideChatSession]}
-        activeTabId={sideChatSession.id}
+        session={sideChatSession}
         onUpdateSession={updateSession}
         onRenameSession={onRenameSideChat}
         onClose={onCloseSideChat}
