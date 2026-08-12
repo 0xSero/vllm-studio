@@ -41,15 +41,13 @@ const parseRuntimeJobBody = (
   ctx: Parameters<typeof decodeJsonBody>[0],
 ): Effect.Effect<RuntimeJobBody, ReturnType<typeof badRequest>> =>
   decodeJsonBody(ctx, RuntimeJobBodySchema).pipe(
-    Effect.map(
-      (body): RuntimeJobBody => ({
-        ...(body.backend ? { backend: body.backend } : {}),
-        ...(body.targetId ? { targetId: body.targetId } : {}),
-        ...(body.type ? { type: body.type } : {}),
-        ...(body.version ? { version: body.version } : {}),
-        ...(body.prefer_bundled !== undefined ? { preferBundled: body.prefer_bundled } : {}),
-      }),
-    ),
+    Effect.map((body): RuntimeJobBody => ({
+      ...(body.backend ? { backend: body.backend } : {}),
+      ...(body.targetId ? { targetId: body.targetId } : {}),
+      ...(body.type ? { type: body.type } : {}),
+      ...(body.version ? { version: body.version } : {}),
+      ...(body.prefer_bundled !== undefined ? { preferBundled: body.prefer_bundled } : {}),
+    })),
   );
 export const registerRuntimeRoutes = defineRoutes((app, context) => {
   const getObservedProcess = createGetObservedProcess(context);
@@ -135,8 +133,8 @@ export const registerRuntimeRoutes = defineRoutes((app, context) => {
     effectRoute.get(app, "/runtime/mlx", (ctx) =>
       Effect.gen(function* () {
         const current = yield* getObservedProcess("runtime.backend.mlx");
-        const info = yield* getEngineSpec("mlx").getRuntimeInfo!(context.config, current);
-        return ctx.json(info);
+        const target = yield* getDefaultRuntimeTarget(context.config, "mlx", current);
+        return ctx.json(runtimeTargetToBackendInfo(target));
       }),
     ),
     effectRoute.get(app, "/runtime/cuda", (ctx) =>

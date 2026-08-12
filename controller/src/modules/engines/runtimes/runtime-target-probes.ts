@@ -153,17 +153,6 @@ export const probeBackendRuntime = (
     );
   });
 
-export const probeRunningProcessPython = (pid: number): Effect.Effect<string | null> =>
-  runCommandAsyncEffect("ps", ["-p", String(pid), "-o", "args="], {
-    timeoutMs: 3_000,
-  }).pipe(
-    Effect.map((result) =>
-      result.status !== 0 || !result.stdout
-        ? null
-        : parseCommandPython(result.stdout.trim().split(/\s+/)),
-    ),
-  );
-
 const parseLlamaVersion = (output: string): string | null => {
   const match = output.match(/version\s*[:=]\s*(\d+\s*\([^)]+\)|\S+)/i);
   return match?.[1]?.trim() ?? output.split("\n")[0]?.trim() ?? null;

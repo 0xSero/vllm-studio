@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { Effect } from "effect";
-import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "@local-studio/contracts/system";
+import type { RuntimeUpgradeResult } from "@local-studio/contracts/system";
 import type { Config } from "../../../config/env";
 import { resolveBinary, runCommandAsyncEffect } from "../../../core/command";
 import type { EngineSupport, HostProfile } from "../../compute/contracts";
@@ -13,7 +13,7 @@ import {
   unsupported,
   type Spelling,
 } from "../../compute/engines/shared";
-import type { ProcessInfo, Recipe } from "../../models/types";
+import type { Recipe } from "../../models/types";
 import { getExtraArgument } from "../argument-utilities";
 import { LLAMACPP_HELP_TIMEOUT_MS } from "../configs";
 import type {
@@ -24,11 +24,8 @@ import type {
 } from "../engine-spec";
 import { installManagedLlamacpp, managedLlamaServerPath } from "../runtimes/managed-llamacpp";
 import { installIntoManagedVenv, managedVenvPython } from "../runtimes/managed-venv";
-import { getLlamacppRuntimeInfo } from "../runtimes/runtime-info";
 import {
   normalizePackageSpec,
-  probeBackendRuntime,
-  probeRunningProcessPython,
   probeVllmBinaryRuntime,
   resolvePythonFromScript,
 } from "../runtimes/runtime-target-probes";
@@ -45,39 +42,10 @@ import {
 } from "../runtimes/vllm-runtime";
 import { resolveVllmPythonPath } from "../runtimes/vllm-python-path";
 
-type RunningProcess = Pick<ProcessInfo, "pid" | "backend"> | null | undefined;
-
 const packageSpec =
   (name: string) =>
   (version?: string | null): string =>
     normalizePackageSpec(name, version);
-
-const pythonRuntimeInfo = (
-  backend: "sglang" | "mlx",
-  configured: string | null | undefined,
-  candidates: Array<string | null | undefined>,
-  runningProcess: RunningProcess,
-  upgradeCommandAvailable: (runnable: boolean) => boolean,
-): Effect.Effect<RuntimeBackendInfo> =>
-  Effect.gen(function* () {
-    const runningPython =
-      runningProcess?.backend === backend
-        ? yield* probeRunningProcessPython(runningProcess.pid)
-        : null;
-    const probe = yield* probeBackendRuntime(backend, [
-      runningPython,
-      configured,
-      ...candidates,
-      "python3",
-      "python",
-    ]);
-    return {
-      installed: probe.installed,
-      version: probe.version,
-      python_path: probe.pythonPath ?? configured ?? null,
-      upgrade_command_available: upgradeCommandAvailable(probe.runnable),
-    };
-  });
 
 const installPythonBackend = (
   options: InstallOptions,
@@ -178,16 +146,6 @@ export const vllmSpec: EngineSpec = {
   install: installVllmRuntime,
   probeBinary: probeVllm,
   resolvePythonPath: (config) => resolveVllmPythonPath(config.data_dir),
-  getRuntimeInfo: () =>
-    getVllmRuntimeInfo().pipe(
-      Effect.map((info) => ({
-        installed: info.installed,
-        version: info.version,
-        python_path: info.python_path,
-        binary_path: info.vllm_bin,
-        upgrade_command_available: Boolean(info.python_path),
-      })),
-    ),
   getConfigHelp: () => getVllmConfigHelp(),
 };
 
@@ -313,14 +271,6 @@ export const sglangSpec: EngineSpec = {
   install: installSglang,
   probeBinary: probeSglang,
   resolvePythonPath: resolveSglangPython,
-  getRuntimeInfo: (config, running) =>
-    pythonRuntimeInfo(
-      "sglang",
-      config.sglang_python,
-      [resolveSglangPython(config)],
-      running,
-      Boolean,
-    ),
   getConfigHelp: sglangConfigHelp,
 };
 
@@ -387,7 +337,6 @@ export const llamacppSpec: EngineSpec = {
   cliBinary: "llama-server",
   managedPackageSpec: () => "llama.cpp",
   install: installLlamacpp,
-  getRuntimeInfo: (config) => getLlamacppRuntimeInfo(config),
   getConfigHelp: (config) => {
     const configured = config.llama_bin || "llama-server";
     const binary =
@@ -440,6 +389,4 @@ export const mlxSpec: EngineSpec = {
   managedPackageSpec: () => "mlx-lm",
   install: installMlx,
   resolvePythonPath: resolveMlxPython,
-  getRuntimeInfo: (config, running) =>
-    pythonRuntimeInfo("mlx", config.mlx_python, [resolveMlxPython(config)], running, () => false),
 };

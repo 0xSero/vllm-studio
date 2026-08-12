@@ -1,7 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import { Schema, type Effect } from "effect";
 import type { Config } from "../../config/env";
-import type { ProcessInfo } from "../models/types";
 import type {
   ComputeEngineSpec,
   EngineId,
@@ -13,11 +12,7 @@ import type {
 } from "../compute/contracts";
 import { applyDevices } from "../compute/engines/devices";
 import { exllamav3 } from "../compute/engines/exllamav3";
-import type {
-  EngineBackend,
-  RuntimeBackendInfo,
-  RuntimeUpgradeResult,
-} from "@local-studio/contracts/system";
+import type { EngineBackend, RuntimeUpgradeResult } from "@local-studio/contracts/system";
 import type { InstallProgressUpdate } from "./runtimes/managed-venv";
 
 export type { InstallProgressUpdate };
@@ -61,10 +56,6 @@ export interface EngineSpec extends Omit<ComputeEngineSpec, "id"> {
   install: (options: InstallOptions) => Effect.Effect<RuntimeUpgradeResult, EngineOperationError>;
   probeBinary?: (binary: string) => Effect.Effect<BinaryProbeResult, EngineOperationError>;
   resolvePythonPath?: (config: Config) => string | null;
-  getRuntimeInfo?: (
-    config: Config,
-    runningProcess?: Pick<ProcessInfo, "pid" | "backend"> | null,
-  ) => Effect.Effect<RuntimeBackendInfo, EngineOperationError>;
   getConfigHelp?: (config: Config) => Effect.Effect<ConfigHelpResult, EngineOperationError>;
 }
 

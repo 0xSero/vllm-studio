@@ -113,9 +113,10 @@ const configuredPythons = (backend: PythonProbeBackend, config: Config): string[
           config.sglang_python,
           ...splitEnvironmentList(process.env["LOCAL_STUDIO_SGLANG_PYTHONS"]),
         ].filter((value): value is string => Boolean(value))
-      : [config.mlx_python, ...splitEnvironmentList(process.env["LOCAL_STUDIO_MLX_PYTHONS"])].filter(
-          (value): value is string => Boolean(value),
-        );
+      : [
+          config.mlx_python,
+          ...splitEnvironmentList(process.env["LOCAL_STUDIO_MLX_PYTHONS"]),
+        ].filter((value): value is string => Boolean(value));
 
 const venvPythonsOnDisk = (config: Config): string[] => {
   const roots = unique([
@@ -307,9 +308,7 @@ const bundledCandidates = (): Candidate[] => {
 
 /* ── materialize + merge ─────────────────────────────────────────────────── */
 
-const materialize = (
-  candidate: Candidate,
-): Effect.Effect<RuntimeTarget, EngineOperationError> =>
+const materialize = (candidate: Candidate): Effect.Effect<RuntimeTarget, EngineOperationError> =>
   Effect.gen(function* () {
     if (candidate.probe === "none") {
       return makeRuntimeTarget({
@@ -536,3 +535,22 @@ export const runtimeTargetToBackendInfo = (target: RuntimeTarget | null): Runtim
   binary_path: target?.binaryPath ?? null,
   upgrade_command_available: target?.capabilities.canUpdate ?? false,
 });
+
+export const runtimeTargetsToBackendInfo = (
+  targets: readonly RuntimeTarget[],
+  backend: EngineBackend,
+): RuntimeBackendInfo => {
+  const candidates = targets.filter((target) => target.backend === backend);
+  const target =
+    candidates.find((candidate) => candidate.active && candidate.installed) ??
+    candidates
+      .filter((candidate) => candidate.installed)
+      .sort((first, second) => compareVersions(second.version, first.version))[0] ??
+    candidates.find((candidate) => candidate.active) ??
+    candidates[0] ??
+    null;
+  const info = runtimeTargetToBackendInfo(target);
+  return backend === "sglang"
+    ? { ...info, upgrade_command_available: Boolean(target?.pythonPath) }
+    : info;
+};

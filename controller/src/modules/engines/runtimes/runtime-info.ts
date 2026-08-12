@@ -1,10 +1,7 @@
-import { existsSync } from "node:fs";
 import { arch, platform as operatingSystem } from "node:os";
-import { resolve } from "node:path";
 import { Effect, Fiber, Semaphore } from "effect";
 import type {
   ProcessInfo,
-  RuntimeBackendInfo,
   RuntimeCudaInfo,
   RuntimePlatformInfo,
   RuntimePlatformKind,
@@ -12,7 +9,7 @@ import type {
   SystemRuntimeInfo,
 } from "../../models/types";
 import type { Config } from "../../../config/env";
-import { resolveBinary, runCommandEffect, runCommandAsyncEffect } from "../../../core/command";
+import { runCommandAsyncEffect } from "../../../core/command";
 import { getGpuInfo, queryNvidiaSmiSnapshot } from "../../system/platform/gpu";
 import { extractCudaVersion } from "./cuda-version";
 import { getVllmRuntimeInfo } from "./vllm-runtime";
@@ -20,13 +17,9 @@ import { probeGpuMonitoring } from "../../system/platform/compatibility-report";
 import { getRocmInfo, resolveRocmSmiTool } from "../../system/platform/rocm-info";
 import { resolveNvidiaSmiBinary } from "../../system/platform/smi-tools";
 import { getTorchBuildInfo } from "../../system/platform/torch-info";
-import { getEngineSpec } from "../engine-spec";
 import type { EngineOperationError } from "../engine-spec";
-import {
-  isUpgradeCommandConfigured,
-  CUDA_UPGRADE_ENV,
-  LLAMACPP_UPGRADE_ENV,
-} from "./upgrade-config";
+import { getRuntimeTargets, runtimeTargetsToBackendInfo } from "./runtime-targets";
+import { isUpgradeCommandConfigured, CUDA_UPGRADE_ENV } from "./upgrade-config";
 
 const SYSTEM_RUNTIME_CACHE_TTL_MS = 30_000;
 let systemRuntimeCache: { expiresAt: number; value: SystemRuntimeInfo } | null = null;
@@ -88,23 +81,20 @@ const computeSystemRuntimeInfo = (
     const nvidiaAllowed = !forcedSmiTool?.trim() || forcedSmiTool.trim() === "nvidia-smi";
 
     const vllmFiber = yield* Effect.forkChild(getVllmRuntimeInfo());
-    const [nvidiaSnapshot, vllmInfo, sglangInfo, llamaInfo, mlxInfo, torch, detectedGpus] =
-      yield* Effect.all(
-        [
-          nvidiaAllowed && hasNvidiaSmi ? queryNvidiaSmiSnapshot() : Effect.succeed(null),
-          Fiber.join(vllmFiber),
-          getEngineSpec("sglang").getRuntimeInfo!(config, runningProcess),
-          getEngineSpec("llamacpp").getRuntimeInfo!(config, runningProcess),
-          getEngineSpec("mlx").getRuntimeInfo!(config, runningProcess),
-          Fiber.join(vllmFiber).pipe(
-            Effect.flatMap((vllmInfo) =>
-              getTorchBuildInfo(config.sglang_python || vllmInfo.python_path || "python3"),
-            ),
+    const [nvidiaSnapshot, vllmInfo, targets, torch, detectedGpus] = yield* Effect.all(
+      [
+        nvidiaAllowed && hasNvidiaSmi ? queryNvidiaSmiSnapshot() : Effect.succeed(null),
+        Fiber.join(vllmFiber),
+        getRuntimeTargets(config, runningProcess),
+        Fiber.join(vllmFiber).pipe(
+          Effect.flatMap((vllmInfo) =>
+            getTorchBuildInfo(config.sglang_python || vllmInfo.python_path || "python3"),
           ),
-          getGpuInfo(),
-        ] as const,
-        { concurrency: "unbounded" },
-      );
+        ),
+        getGpuInfo(),
+      ] as const,
+      { concurrency: "unbounded" },
+    );
     const gpus =
       nvidiaSnapshot && nvidiaSnapshot.gpus.length > 0 ? nvidiaSnapshot.gpus : detectedGpus;
     const types = Array.from(
@@ -130,8 +120,8 @@ const computeSystemRuntimeInfo = (
         kind === "metal"
           ? Effect.succeed({ available: false, tool: "apple-metal" as const })
           : kind === "cuda" && nvidiaSnapshot
-          ? Effect.succeed({ available: nvidiaSnapshot.available, tool: "nvidia-smi" as const })
-          : probeGpuMonitoring(kind, rocmSmiTool),
+            ? Effect.succeed({ available: nvidiaSnapshot.available, tool: "nvidia-smi" as const })
+            : probeGpuMonitoring(kind, rocmSmiTool),
         kind === "cuda"
           ? getCudaInfo(nvidiaSnapshot?.driverVersion ?? null)
           : Effect.succeed({
@@ -155,9 +145,9 @@ const computeSystemRuntimeInfo = (
           binary_path: vllmInfo.vllm_bin,
           upgrade_command_available: Boolean(vllmInfo.python_path),
         },
-        sglang: sglangInfo,
-        llamacpp: llamaInfo,
-        mlx: mlxInfo,
+        sglang: runtimeTargetsToBackendInfo(targets, "sglang"),
+        llamacpp: runtimeTargetsToBackendInfo(targets, "llamacpp"),
+        mlx: runtimeTargetsToBackendInfo(targets, "mlx"),
       },
     };
   });
@@ -179,49 +169,6 @@ export const detectPlatformKind = (args: {
   if (args.isAppleSilicon) return "metal";
   return "unknown";
 };
-
-const parseLlamaVersion = (output: string): string | null => {
-  if (!output) return null;
-  const match = output.match(/version\s*[:=]\s*(\d+\s*\([^)]+\)|\S+)/i);
-  if (match) return match[1]?.trim() ?? null;
-  const fallback = output.split("\n")[0]?.trim();
-  return fallback || null;
-};
-
-export const getLlamacppRuntimeInfo = (config: Config): Effect.Effect<RuntimeBackendInfo> =>
-  Effect.gen(function* () {
-    const configured = config.llama_bin || "llama-server";
-    const resolved =
-      resolveBinary(configured) ?? (existsSync(configured) ? resolve(configured) : null);
-    const binary = resolved ?? configured;
-    const versionResult = yield* runCommandEffect(binary, ["--version"]);
-    if (versionResult.status !== 0) {
-      const helpResult = yield* runCommandEffect(binary, ["--help"]);
-      if (helpResult.status !== 0) {
-        return {
-          installed: false,
-          version: null,
-          binary_path: resolved,
-          upgrade_command_available: isUpgradeCommandConfigured(LLAMACPP_UPGRADE_ENV),
-        };
-      }
-      const version = parseLlamaVersion(helpResult.stdout) ?? parseLlamaVersion(helpResult.stderr);
-      return {
-        installed: Boolean(version),
-        version,
-        binary_path: resolved,
-        upgrade_command_available: isUpgradeCommandConfigured(LLAMACPP_UPGRADE_ENV),
-      };
-    }
-    const version =
-      parseLlamaVersion(versionResult.stdout) ?? parseLlamaVersion(versionResult.stderr);
-    return {
-      installed: Boolean(version),
-      version,
-      binary_path: resolved,
-      upgrade_command_available: isUpgradeCommandConfigured(LLAMACPP_UPGRADE_ENV),
-    };
-  });
 
 const extractNvccVersion = (output: string): string | null => {
   const match = output.match(/release\s+([0-9.]+)/i);
