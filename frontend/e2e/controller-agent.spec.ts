@@ -246,6 +246,34 @@ test("Alt+Enter steers instead of queueing", async ({ page }) => {
   await expect(page.getByTestId("queued-message-stack")).toHaveCount(0);
 });
 
+test("active runtime reconnects without duplicating the transcript", async ({ page }) => {
+  const composer = await openControllerChat(page, "Runtime reconnect chat");
+  await composer.fill("slow-response-marker");
+  await composer.press("Enter");
+  await expect(page.getByRole("button", { name: "Stop" })).toBeEnabled({ timeout: 60_000 });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem("local-studio.agent.paneState");
+        if (!raw) return false;
+        const sessions = JSON.parse(raw).sessions;
+        return Array.isArray(sessions) && sessions.some((session) => Boolean(session.piSessionId));
+      }),
+    )
+    .toBe(true);
+
+  await page.reload();
+
+  const transcript = page.getByRole("article");
+  await expect(transcript.getByText("slow-response-marker", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeEnabled();
+  await expect(transcript.getByText("Slow response complete.", { exact: true })).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(transcript.getByText("slow-response-marker", { exact: true })).toHaveCount(1);
+  await expect(transcript.getByText("Slow response complete.", { exact: true })).toHaveCount(1);
+});
+
 test("mobile navigation and composer remain usable at 390px", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/agent");
