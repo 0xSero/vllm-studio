@@ -167,13 +167,15 @@ function ToolSummary({
           strokeWidth={1.7}
         />
       </summary>
-      {expanded && children ? <div className="mb-1.5 ml-1.5 mt-1 min-w-0">{children}</div> : null}
+      {expanded && children ? (
+        <div className="mb-1.5 ml-2.5 mt-1 min-w-0 border-l border-(--separator) pl-3">
+          {children}
+        </div>
+      ) : null}
     </details>
   );
 }
 
-/* The shell block: a single flat terminal surface — `$ command` line, then
-   dim scrollback-style output. Failure tints the prompt; no chips, no rows. */
 function ShellBlock({
   command,
   output,
@@ -186,33 +188,23 @@ function ShellBlock({
   const failed = status === "error";
   const trimmedOutput = output?.replace(/\s+$/, "") || null;
   return (
-    <div
-      className={`overflow-hidden rounded-md border bg-(--color-input) ${
-        failed ? "border-(--err)/35" : "border-(--border)"
-      }`}
-    >
-      <div className="max-h-[340px] overflow-auto px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6]">
-        <div className="flex items-start gap-2">
-          <span
-            className={`select-none ${failed ? "text-(--err)" : "text-(--color-terminal-green)"}`}
-          >
-            $
-          </span>
-          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-(--fg)/90">
-            {command}
-          </span>
-        </div>
-        {trimmedOutput ? (
-          <pre className="mt-2 whitespace-pre-wrap break-words text-(--fg)/55">{trimmedOutput}</pre>
-        ) : null}
+    <div className="max-h-[280px] overflow-auto overscroll-contain font-mono text-[length:var(--fs-sm)] leading-[1.6]">
+      <div className="flex items-start gap-2">
+        <span className={`select-none ${failed ? "text-(--err)" : "text-(--dim)/60"}`}>$</span>
+        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-(--fg)/85">
+          {command}
+        </span>
       </div>
+      {trimmedOutput ? (
+        <pre className="mt-1.5 whitespace-pre-wrap break-words text-(--fg)/50">{trimmedOutput}</pre>
+      ) : null}
     </div>
   );
 }
 
 function ToolOutput({ children }: { children: ReactNode }) {
   return (
-    <pre className="max-h-[340px] max-w-full overflow-auto whitespace-pre-wrap break-words rounded-md border border-(--border) bg-(--color-input) px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/65">
+    <pre className="max-h-[280px] max-w-full overflow-auto overscroll-contain whitespace-pre-wrap break-words font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/55">
       {children}
     </pre>
   );
@@ -220,7 +212,7 @@ function ToolOutput({ children }: { children: ReactNode }) {
 
 function HighlightedToolSource({ body, lang }: { body: string; lang: string }) {
   const className =
-    "max-h-[420px] max-w-full overflow-auto px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/90";
+    "max-h-[280px] max-w-full overflow-auto overscroll-contain font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/85";
 
   return (
     <pre className={className}>
@@ -248,26 +240,23 @@ const DIFF_MARKER_STYLES: Record<DiffPreviewLine["kind"], string> = {
 function DiffPreviewSource({ body }: { body: string }) {
   const preview = parseDiffPreview(body);
   return (
-    <div className="overflow-hidden rounded-md border border-(--border) bg-(--color-input)">
-      <div className="flex h-7 items-center justify-between border-b border-(--separator) px-3 text-[length:var(--fs-xs)]">
-        <span className="text-(--dim)">Changes</span>
-        <span className="flex items-center gap-2 font-mono">
-          <span className="text-(--ok)">+{preview.additions}</span>
-          <span className="text-(--err)">−{preview.deletions}</span>
-        </span>
+    <div className="min-w-0">
+      <div className="flex items-center gap-2 pb-1 font-mono text-[length:var(--fs-xs)] leading-4">
+        <span className="text-(--ok)">+{preview.additions}</span>
+        <span className="text-(--err)">−{preview.deletions}</span>
       </div>
-      <div className="max-h-[360px] overflow-y-auto overscroll-contain">
+      <div className="max-h-[280px] overflow-y-auto overscroll-contain">
         {preview.lines.map((line, index) => (
           <div
             key={`${index}:${line.kind}`}
-            className={`grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] font-mono text-[length:var(--fs-sm)] leading-5 ${DIFF_ROW_STYLES[line.kind]} ${line.content ? "min-h-5" : "h-3"}`}
+            className={`grid min-w-0 grid-cols-[1.25rem_minmax(0,1fr)] font-mono text-[length:var(--fs-sm)] leading-5 ${DIFF_ROW_STYLES[line.kind]} ${line.content ? "min-h-5" : "h-3"}`}
           >
             <span
-              className={`flex select-none items-start justify-center border-r border-(--separator)/45 ${DIFF_MARKER_STYLES[line.kind]}`}
+              className={`flex select-none items-start justify-center ${DIFF_MARKER_STYLES[line.kind]}`}
             >
               {line.marker}
             </span>
-            <span className="min-w-0 whitespace-pre-wrap break-words px-3 text-(--fg)/82">
+            <span className="min-w-0 whitespace-pre-wrap break-words pl-2 pr-1 text-(--fg)/82">
               {line.content || "\u00a0"}
             </span>
           </div>

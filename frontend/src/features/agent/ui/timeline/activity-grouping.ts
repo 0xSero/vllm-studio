@@ -158,6 +158,13 @@ export function summaryIconKind(segments: ActivitySegment[]): ToolKind | null {
   return kinds.size === 1 ? [...kinds][0] : "exec";
 }
 
+export function activityFailed(segments: ActivitySegment[]): boolean {
+  return segments.some(
+    (segment) =>
+      segment.kind === "tools" && segment.blocks.some((block) => block.status === "error"),
+  );
+}
+
 export function summarizeActivity(segments: ActivitySegment[]): string {
   let thoughts = 0;
   const counts: Record<string, number> = {};

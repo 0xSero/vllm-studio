@@ -5,6 +5,7 @@ import type { ToolKind } from "@/features/agent/ui/timeline/tool-metadata";
 import { useReasoningVisible } from "@/features/agent/messages/use-reasoning-visible";
 import { TOOL_ICONS, ToolBlockView } from "@/features/agent/ui/timeline/tool-block-view";
 import {
+  activityFailed,
   buildActivityItems,
   exploreCounts,
   summarizeActivity,
@@ -117,6 +118,7 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
     );
   const busy = working || live;
   const summary = useMemo(() => summarizeActivity(visibleSegments), [visibleSegments]);
+  const failed = useMemo(() => activityFailed(visibleSegments), [visibleSegments]);
   // One kind of tool -> that tool's glyph; a mixed turn -> the terminal glyph.
   const summaryIcon = useMemo(() => summaryIconKind(visibleSegments), [visibleSegments]);
   const preview = live ? activityPreview(visibleSegments) : null;
@@ -153,7 +155,7 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
             collapsed summary grows with the turn ("Ran 20 commands · edited 13
             files · …") and will not fit a phone column — let it truncate
             instead of forcing the row wider than the thread. */}
-        {!(busy) ? <SummaryGlyph kind={summaryIcon} /> : null}
+        {!busy ? <SummaryGlyph kind={summaryIcon} /> : null}
         <span
           className={`text-[length:var(--fs-base)] font-normal leading-5 ${
             busy ? "codex-shimmer-text shrink-0" : "min-w-0 flex-1 truncate"
@@ -161,7 +163,7 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
         >
           {busy ? "Working" : summary}
         </span>
-        {!expanded && (busy) && preview ? (
+        {!expanded && busy && preview ? (
           <span className="flex min-w-0 flex-1 items-center gap-1.5 text-(--dim)/70">
             <PreviewGlyph kind={preview.kind} verb={preview.verb} />
             <span className="min-w-0 flex-1 truncate font-mono text-[length:var(--codex-chat-code-font-size)] leading-5">
@@ -170,6 +172,9 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
           </span>
         ) : busy ? (
           <span className="min-w-0 flex-1" />
+        ) : null}
+        {!busy && failed ? (
+          <span className="shrink-0 text-[length:var(--fs-sm)] leading-4 text-(--err)">failed</span>
         ) : null}
         <ChevronRight className="h-3 w-3 shrink-0 text-(--dim)/50 transition-transform group-open:rotate-90" />
       </summary>
