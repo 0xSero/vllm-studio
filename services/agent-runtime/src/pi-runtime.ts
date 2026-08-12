@@ -948,13 +948,12 @@ class PiRuntimeManager {
     const created = new PiSdkSession();
     attachGoalDriver(created);
     this.sessions.set(sessionId, created);
-    created.onLoggedEvent((logged) =>
+    created.onLoggedEvent(() =>
       this.publish({
-        type: "pi",
+        type: "status",
         sessionId,
-        seq: logged.seq,
-        event: logged.event,
-        snapshot: created.status,
+        phase: created.status.active ? "running" : "idle",
+        session: created.status,
       }),
     );
     created.onStatus((status) =>
@@ -1012,20 +1011,12 @@ class PiRuntimeManager {
   }
 }
 
-export type PiRuntimeActivity =
-  | {
-      type: "status";
-      sessionId: string;
-      phase: "running" | "idle";
-      session: PiAgentStatus;
-    }
-  | {
-      type: "pi";
-      sessionId: string;
-      seq: number;
-      event: PiEvent;
-      snapshot: PiAgentStatus;
-    };
+export type PiRuntimeActivity = {
+  type: "status";
+  sessionId: string;
+  phase: "running" | "idle";
+  session: PiAgentStatus;
+};
 
 export const piRuntimeManager = getGlobalSingleton(
   "piRuntimeManager",

@@ -52,14 +52,6 @@ export const RuntimeStatusEventSchema = Schema.Struct({
   session: RuntimeStatusSchema,
 });
 
-export const RuntimePiEventSchema = Schema.Struct({
-  type: Schema.Literal("pi"),
-  sessionId: Schema.String,
-  seq: Schema.Number,
-  event: Schema.Record(Schema.String, Schema.Unknown),
-  snapshot: RuntimeStatusSchema,
-});
-
 export const RuntimeSessionSummarySchema = Schema.Struct({
   sessionId: Schema.String,
   status: RuntimeStatusSchema,
@@ -73,7 +65,6 @@ export const RuntimeSessionsEventSchema = Schema.Struct({
 export const RuntimeActivityPayloadSchema = Schema.Union([
   RuntimeSessionsEventSchema,
   RuntimeStatusEventSchema,
-  RuntimePiEventSchema,
 ]);
 
 export const RuntimeStatusResponseSchema = Schema.Struct({

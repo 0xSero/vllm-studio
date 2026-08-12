@@ -129,7 +129,7 @@ export function createSessionRuntimeController(
       statuses.clear();
       payload.sessions.forEach(({ sessionId, status }) => apply(sessionId, status));
     } else {
-      apply(payload.sessionId, payload.type === "status" ? payload.session : payload.snapshot);
+      apply(payload.sessionId, payload.session);
     }
     publish();
   };
