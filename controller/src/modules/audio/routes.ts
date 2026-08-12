@@ -11,8 +11,7 @@ import {
   RequestBodyTooLargeError,
 } from "../../http/bounded-body";
 import { mergeRoutes, type ControllerRouteApp, effectRoute } from "../../http/route-registrar";
-import { SttIntegrationError, transcribeAudio } from "../../services/stt";
-import { synthesizeSpeech, TtsIntegrationError } from "../../services/tts";
+import { AudioIntegrationError, synthesizeSpeech, transcribeAudio } from "../../services/audio-cli";
 import type { AudioRouteDependencies } from "./interfaces";
 import { SpeechServiceError } from "../speech/service";
 import { VoiceProfileError } from "../speech/voice-store";
@@ -62,8 +61,7 @@ const audioErrorResponse = (
     );
   }
   if (
-    error instanceof SttIntegrationError ||
-    error instanceof TtsIntegrationError ||
+    error instanceof AudioIntegrationError ||
     error instanceof SpeechServiceError ||
     error instanceof VoiceProfileError
   ) {
@@ -104,7 +102,7 @@ export const registerAudioRoutes = (
             Effect.mapError((error) =>
               error instanceof RequestBodyTooLargeError
                 ? error
-                : new SttIntegrationError(
+                : new AudioIntegrationError(
                     400,
                     "invalid_multipart",
                     "Request body must be multipart/form-data",
@@ -114,12 +112,12 @@ export const registerAudioRoutes = (
           const file = formData.get("file");
           if (!(file instanceof File)) {
             return yield* Effect.fail(
-              new SttIntegrationError(400, "file_missing", "Multipart field 'file' is required"),
+              new AudioIntegrationError(400, "file_missing", "Multipart field 'file' is required"),
             );
           }
           if (file.size > MAX_STT_UPLOAD_BYTES) {
             return yield* Effect.fail(
-              new SttIntegrationError(
+              new AudioIntegrationError(
                 413,
                 "file_too_large",
                 `Audio upload exceeds the ${Math.round(MAX_STT_UPLOAD_BYTES / (1024 * 1024))} MB limit`,
@@ -177,7 +175,7 @@ export const registerAudioRoutes = (
           });
           if (!transcription.text.trim()) {
             return yield* Effect.fail(
-              new SttIntegrationError(
+              new AudioIntegrationError(
                 502,
                 "stt_empty_result",
                 "STT completed but returned an empty transcript",
@@ -194,12 +192,12 @@ export const registerAudioRoutes = (
           const bytes = yield* readBoundedRequestBody(ctx.req.raw, MAX_TTS_REQUEST_BYTES);
           const body = yield* Effect.try({
             try: () => JSON.parse(new TextDecoder().decode(bytes)),
-            catch: () => new TtsIntegrationError(400, "invalid_json", "Invalid speech request"),
+            catch: () => new AudioIntegrationError(400, "invalid_json", "Invalid speech request"),
           }).pipe(Effect.flatMap(Schema.decodeUnknownEffect(TtsRequestSchema)));
           const input = body.input.trim();
           if (!input)
             return yield* Effect.fail(
-              new TtsIntegrationError(
+              new AudioIntegrationError(
                 400,
                 "input_missing",
                 "input is required and cannot be empty",
@@ -208,7 +206,7 @@ export const registerAudioRoutes = (
           const format = body.response_format?.trim().toLowerCase() ?? "wav";
           if (format !== "wav") {
             return yield* Effect.fail(
-              new TtsIntegrationError(
+              new AudioIntegrationError(
                 400,
                 "unsupported_response_format",
                 "Only response_format='wav' is supported",

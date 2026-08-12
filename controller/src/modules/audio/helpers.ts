@@ -3,10 +3,7 @@ import { resolve } from "node:path";
 import { Effect, Schema } from "effect";
 import type { AppContext } from "../../app-context";
 import { resolveBinary, runCommandAsyncEffect } from "../../core/command";
-import { SttIntegrationError } from "../../services/stt";
-import type { SttMode } from "../../services/stt";
-import { TtsIntegrationError } from "../../services/tts";
-import type { TtsMode } from "../../services/tts";
+import { AudioIntegrationError, type AudioMode } from "../../services/audio-cli";
 const AUDIO_DEFAULT_MODE = "strict";
 const AUDIO_TRANSCODE_TIMEOUT_MS = 60_000;
 
@@ -16,12 +13,12 @@ export const parseField = (value: FormDataEntryValue | null): string | undefined
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
-export const parseMode = (value: FormDataEntryValue | null): SttMode => {
+export const parseMode = (value: FormDataEntryValue | null): AudioMode => {
   const modeValue = (parseField(value) ?? AUDIO_DEFAULT_MODE).toLowerCase();
   if (modeValue === "strict" || modeValue === "best_effort") {
     return modeValue;
   }
-  throw new SttIntegrationError(400, "invalid_mode", "mode must be strict or best_effort");
+  throw new AudioIntegrationError(400, "invalid_mode", "mode must be strict or best_effort");
 };
 
 export const looksLikeWav = (bytes: Uint8Array): boolean => {
@@ -31,23 +28,15 @@ export const looksLikeWav = (bytes: Uint8Array): boolean => {
   return riff === "RIFF" && wave === "WAVE";
 };
 
-type AudioModelError = new (
-  status: number,
-  code: string,
-  message: string,
-  details?: Record<string, unknown>,
-) => Error;
-
 const resolveAudioModelPath = (
   context: AppContext,
   requested: string | undefined,
   subdir: "stt" | "tts",
   envVariable: string,
-  IntegrationError: AudioModelError,
 ): { requestedModel: string; modelPath: string } => {
   const requestedModel = requested || process.env[envVariable]?.trim();
   if (!requestedModel) {
-    throw new IntegrationError(
+    throw new AudioIntegrationError(
       400,
       "model_missing",
       `No ${subdir.toUpperCase()} model provided. Set model field or ${envVariable}.`,
@@ -59,7 +48,7 @@ const resolveAudioModelPath = (
     : resolve(context.config.models_dir, subdir, requestedModel);
 
   if (!existsSync(modelPath)) {
-    throw new IntegrationError(
+    throw new AudioIntegrationError(
       400,
       "model_not_found",
       `${subdir.toUpperCase()} model path does not exist`,
@@ -74,13 +63,7 @@ export const resolveSttModelPath = (
   context: AppContext,
   modelField: FormDataEntryValue | null,
 ): { requestedModel: string; modelPath: string } =>
-  resolveAudioModelPath(
-    context,
-    parseField(modelField),
-    "stt",
-    "LOCAL_STUDIO_STT_MODEL",
-    SttIntegrationError,
-  );
+  resolveAudioModelPath(context, parseField(modelField), "stt", "LOCAL_STUDIO_STT_MODEL");
 
 export const resolveTtsModelPath = (
   context: AppContext,
@@ -91,12 +74,11 @@ export const resolveTtsModelPath = (
     typeof modelValue === "string" ? modelValue.trim() : undefined,
     "tts",
     "LOCAL_STUDIO_TTS_MODEL",
-    TtsIntegrationError,
   );
 
 export const ensureServiceLease = (
   context: AppContext,
-  mode: SttMode | TtsMode,
+  mode: AudioMode,
   serviceId: "stt" | "tts",
 ): Effect.Effect<Record<string, unknown> | null, AudioDependencyError> =>
   context.compute.findInferenceProcess().pipe(
@@ -131,12 +113,12 @@ export class AudioDependencyError extends Schema.TaggedErrorClass<AudioDependenc
 export const defaultTranscodeToWav = (options: {
   sourcePath: string;
   outputPath: string;
-}): Effect.Effect<string, SttIntegrationError> =>
+}): Effect.Effect<string, AudioIntegrationError> =>
   Effect.gen(function* () {
     const ffmpegPath = resolveBinary(process.env["LOCAL_STUDIO_FFMPEG_CLI"] ?? "ffmpeg");
     if (!ffmpegPath) {
       return yield* Effect.fail(
-        new SttIntegrationError(
+        new AudioIntegrationError(
           503,
           "ffmpeg_missing",
           "ffmpeg is required for non-WAV uploads. Install ffmpeg or upload WAV input.",
@@ -152,7 +134,7 @@ export const defaultTranscodeToWav = (options: {
 
     if (result.timedOut) {
       return yield* Effect.fail(
-        new SttIntegrationError(504, "audio_transcode_timeout", "Audio transcode timed out", {
+        new AudioIntegrationError(504, "audio_transcode_timeout", "Audio transcode timed out", {
           stderr: result.stderr,
           stdout: result.stdout,
         }),
@@ -161,12 +143,17 @@ export const defaultTranscodeToWav = (options: {
 
     if (result.status !== 0) {
       return yield* Effect.fail(
-        new SttIntegrationError(400, "audio_transcode_failed", "Failed to transcode audio to WAV", {
-          exit_code: result.status,
-          signal: result.signal,
-          stderr: result.stderr,
-          stdout: result.stdout,
-        }),
+        new AudioIntegrationError(
+          400,
+          "audio_transcode_failed",
+          "Failed to transcode audio to WAV",
+          {
+            exit_code: result.status,
+            signal: result.signal,
+            stderr: result.stderr,
+            stdout: result.stdout,
+          },
+        ),
       );
     }
 
