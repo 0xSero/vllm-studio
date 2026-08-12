@@ -35,22 +35,6 @@ export function nowLabel(): string {
   );
 }
 
-export function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-export function numberFromRecord(record: Record<string, unknown>, keys: string[]): number {
-  for (const key of keys) {
-    const value = record[key];
-    const parsed =
-      typeof value === "number" ? value : typeof value === "string" ? Number(value) : 0;
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  }
-  return 0;
-}
-
 export function formatTokenCount(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
   if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`;
@@ -80,21 +64,6 @@ function stripAttachmentPromptText(text: string): string {
   const attachmentStart = text.search(/(?:^|\n\n)Attachment \d+:/);
   if (attachmentStart === -1) return text;
   return text.slice(0, attachmentStart).trim();
-}
-
-export function messageText(
-  content: string | Array<Record<string, unknown>> | undefined,
-  separator = "\n",
-): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((part) => {
-      if (part?.type === "text" && typeof part.text === "string") return part.text;
-      return "";
-    })
-    .filter(Boolean)
-    .join(separator);
 }
 
 export function runtimeStatusLooksActive(status: { active?: boolean }): boolean {
