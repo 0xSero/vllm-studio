@@ -1,6 +1,5 @@
 import { useMemo, useRef, type RefObject } from "react";
 import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
-import { workspaceCommands } from "@/features/agent/workspace/commands";
 import { loadInitialFromStorage } from "@/features/agent/workspace/persistence";
 import type { ToolsContextValue } from "@/features/agent/tools/context";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
@@ -39,11 +38,6 @@ export function useWorkspaceHydrationEffects({
       dispatch((state) => ({ ...state, ...workspace, hydrated: true }));
       if (selections.size > 0) toolsRef.current.hydrateSelections(selections);
     }
-
-    workspaceCommands().bind(dispatch);
-    return () => {
-      workspaceCommands().unbind();
-    };
   }, [dispatch, hydrated, toolsRef, skipRestore]);
 }
 
