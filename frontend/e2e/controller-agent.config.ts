@@ -47,6 +47,7 @@ writeFileSync(
 );
 const controllerScript = path.resolve(__dirname, "fixtures", "fake-controller.mjs");
 const projectScript = path.resolve(__dirname, "..", "..", "scripts", "project.mjs");
+const resourcesPath = path.resolve(__dirname, "..");
 
 export default defineConfig({
   testDir: ".",
@@ -91,6 +92,7 @@ export default defineConfig({
         `HOME=${homeDir}`,
         `LOCAL_STUDIO_AGENT_RUNTIME_URL=http://127.0.0.1:${runtimePort}`,
         `LOCAL_STUDIO_DATA_DIR=${dataDir}`,
+        `LOCAL_STUDIO_RESOURCES_PATH=${resourcesPath}`,
         `KITTYLITTER_BIN=${kittylitterBin}`,
         `node ${projectScript} start`,
       ].join(" "),

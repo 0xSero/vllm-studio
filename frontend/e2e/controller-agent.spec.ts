@@ -236,3 +236,14 @@ test("serve editor preserves every capability tab", async ({ page }) => {
   await expect(page.getByText("Tool Calling", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("voice plugin validates the controller speech contract", async ({ page }) => {
+  await page.goto("/configure?section=integrations&integration=plugins#integrations");
+  const plugin = page.locator('[role="button"]').filter({ hasText: "Chatterbox Voice" }).first();
+  await expect(plugin).toBeVisible({ timeout: 20_000 });
+  await plugin.click();
+  await page.getByRole("dialog").getByRole("button", { name: "Manage Chatterbox Voice" }).click();
+  await expect(page.getByText("Chatterbox Turbo", { exact: true })).toBeVisible();
+  await expect(page.getByText("Recorded parity voice", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Test RTX 3090", { exact: true })).toBeVisible();
+});

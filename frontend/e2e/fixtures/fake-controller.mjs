@@ -46,30 +46,36 @@ async function streamCompletion(request, response) {
   });
   const id = `controller-${Date.now()}`;
   const chunks = replyFor(userText).match(/.{1,12}/g) ?? [];
-  response.write(`data: ${JSON.stringify({
-    id,
-    object: "chat.completion.chunk",
-    created: Math.floor(Date.now() / 1000),
-    model: modelId,
-    choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }],
-  })}\n\n`);
-  for (const content of chunks) {
-    response.write(`data: ${JSON.stringify({
+  response.write(
+    `data: ${JSON.stringify({
       id,
       object: "chat.completion.chunk",
       created: Math.floor(Date.now() / 1000),
       model: modelId,
-      choices: [{ index: 0, delta: { content }, finish_reason: null }],
-    })}\n\n`);
+      choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }],
+    })}\n\n`,
+  );
+  for (const content of chunks) {
+    response.write(
+      `data: ${JSON.stringify({
+        id,
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model: modelId,
+        choices: [{ index: 0, delta: { content }, finish_reason: null }],
+      })}\n\n`,
+    );
     if (slow) await new Promise((resolve) => setTimeout(resolve, 150));
   }
-  response.write(`data: ${JSON.stringify({
-    id,
-    object: "chat.completion.chunk",
-    created: Math.floor(Date.now() / 1000),
-    model: modelId,
-    choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-  })}\n\n`);
+  response.write(
+    `data: ${JSON.stringify({
+      id,
+      object: "chat.completion.chunk",
+      created: Math.floor(Date.now() / 1000),
+      model: modelId,
+      choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+    })}\n\n`,
+  );
   response.write("data: [DONE]\n\n");
   response.end();
 }
@@ -122,6 +128,40 @@ const server = createServer(async (request, response) => {
   }
   if (url.pathname === "/studio/downloads") {
     return json(response, 200, { downloads: [] });
+  }
+  if (url.pathname === "/v1/audio/status") {
+    return json(response, 200, {
+      status: {
+        backend: "chatterbox-turbo",
+        package_version: "0.1.7",
+        model_revision: "749d1c1a46eb10492095d68fbcf55691ccf137cd",
+        install: { phase: "ready", progress: 1, message: "Chatterbox Turbo is ready", error: null },
+        worker: { phase: "stopped", queue_depth: 0, error: null },
+        gpu: {
+          uuid: "GPU-00000000-0000-0000-0000-000000000001",
+          name: "Test RTX 3090",
+          pci_bus_id: "0000:01:00.0",
+        },
+        prerequisites: {
+          ffmpeg: true,
+          python_311: true,
+          storage: { available_bytes: 68_719_476_736, required_bytes: 42_949_672_960, ready: true },
+        },
+        voice_count: 1,
+      },
+    });
+  }
+  if (url.pathname === "/v1/audio/voices") {
+    return json(response, 200, {
+      voices: [
+        {
+          id: "voice_00000000000000000000000000000001",
+          name: "Recorded parity voice",
+          duration_ms: 8_000,
+          created_at: "2026-08-11T00:00:00.000Z",
+        },
+      ],
+    });
   }
   if (url.pathname === "/runtime/targets") {
     return json(response, 200, { targets: [] });

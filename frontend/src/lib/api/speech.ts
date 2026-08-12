@@ -1,74 +1,14 @@
 import { Schema } from "effect";
 import {
   CHATTERBOX_BACKEND,
-  CHATTERBOX_MODEL_REVISION,
-  CHATTERBOX_PACKAGE_VERSION,
+  SpeechStatusResponseSchema,
+  SpeechVoiceResponseSchema,
+  SpeechVoicesResponseSchema,
   type SpeechStatus,
   type SpeechVoiceProfile,
 } from "@local-studio/contracts/speech";
 import type { ApiCore } from "./core";
 
-const SpeechInstallPhaseSchema = Schema.Union([
-  Schema.Literal("missing"),
-  Schema.Literal("installing"),
-  Schema.Literal("ready"),
-  Schema.Literal("failed"),
-]);
-
-const SpeechWorkerPhaseSchema = Schema.Union([
-  Schema.Literal("stopped"),
-  Schema.Literal("starting"),
-  Schema.Literal("ready"),
-  Schema.Literal("busy"),
-  Schema.Literal("failed"),
-]);
-
-export const SpeechVoiceProfileSchema = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  duration_ms: Schema.Number,
-  created_at: Schema.String,
-});
-
-export const SpeechStatusSchema = Schema.Struct({
-  backend: Schema.Literal(CHATTERBOX_BACKEND),
-  package_version: Schema.Literal(CHATTERBOX_PACKAGE_VERSION),
-  model_revision: Schema.Literal(CHATTERBOX_MODEL_REVISION),
-  install: Schema.Struct({
-    phase: SpeechInstallPhaseSchema,
-    progress: Schema.Number,
-    message: Schema.String,
-    error: Schema.NullOr(Schema.String),
-  }),
-  worker: Schema.Struct({
-    phase: SpeechWorkerPhaseSchema,
-    queue_depth: Schema.Number,
-    error: Schema.NullOr(Schema.String),
-  }),
-  gpu: Schema.NullOr(
-    Schema.Struct({
-      uuid: Schema.String,
-      name: Schema.String,
-      pci_bus_id: Schema.optional(Schema.String),
-    }),
-  ),
-  prerequisites: Schema.Struct({
-    ffmpeg: Schema.Boolean,
-    python_311: Schema.Boolean,
-    storage: Schema.Struct({
-      available_bytes: Schema.NullOr(Schema.Number),
-      required_bytes: Schema.Number,
-      ready: Schema.Boolean,
-    }),
-  }),
-  voice_count: Schema.Number,
-});
-
-const SpeechStatusResponseSchema = Schema.Struct({ status: SpeechStatusSchema });
-const SpeechVoicesResponseSchema = Schema.Struct({
-  voices: Schema.Array(SpeechVoiceProfileSchema),
-});
-const SpeechVoiceResponseSchema = Schema.Struct({ voice: SpeechVoiceProfileSchema });
 const ErrorResponseSchema = Schema.Struct({
   code: Schema.optional(Schema.String),
   error: Schema.optional(Schema.String),
