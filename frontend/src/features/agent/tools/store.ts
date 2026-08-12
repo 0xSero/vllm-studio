@@ -23,17 +23,9 @@ import {
 import {
   clampComputerWidth,
   computerPanelVisibility,
-  loadBrowserState,
-  loadComputerState,
-  loadTerminalState,
-  migrateToolStorage,
+  loadToolState,
   uniqueComputerTabs,
-  writeBrowserBackend,
-  writeBrowserEnabled,
-  writeComputerTab,
-  writeComputerTabs,
-  writeComputerWidth,
-  writeTerminalState,
+  writeToolState,
 } from "@/features/agent/tools/persistence";
 import {
   computerSessionView,
@@ -106,22 +98,21 @@ export const useToolsStore = create<ToolsStore>((set, get) => {
       });
     }
     set({ computer: next });
+    writeToolState(get());
   };
   const selectComputerTab = (tab: ComputerTab, open: boolean) => {
     updateComputer((current) => {
       const tabs = uniqueComputerTabs([...current.tabs, tab]);
       return { ...current, open: open || current.open, tab, tabs };
     });
-    writeComputerTabs(get().computer.tabs);
-    writeComputerTab(tab);
     if (tab === "browser" && !get().browser.enabled) {
-      writeBrowserEnabled(true);
       set({ browser: { ...get().browser, enabled: true } });
+      writeToolState(get());
     }
   };
   const updateTerminals = (next: TerminalOwnersState) => {
-    writeTerminalState(next);
     set({ terminals: next });
+    writeToolState(get());
   };
   return {
     browser: initialBrowser,
@@ -135,29 +126,24 @@ export const useToolsStore = create<ToolsStore>((set, get) => {
     initialize: () => {
       if (initialized || typeof window === "undefined") return;
       initialized = true;
-      migrateToolStorage();
-      set({
-        browser: loadBrowserState(),
-        computer: loadComputerState(),
-        terminals: loadTerminalState(),
-      });
+      set(loadToolState());
     },
     setCatalogues: ({ skills, promptTemplates }) =>
       set({ skillCatalogue: skills, promptTemplateCatalogue: promptTemplates }),
     selectionFor: (sessionId) =>
       sessionId ? (get().selections.get(sessionId) ?? EMPTY_SELECTION) : EMPTY_SELECTION,
     setBrowserEnabled: (enabled) => {
-      writeBrowserEnabled(enabled);
       set({ browser: { ...get().browser, enabled } });
+      writeToolState(get());
     },
     setBrowserBackend: (backend) => {
-      writeBrowserBackend(backend);
       set({ browser: { ...get().browser, backend } });
+      writeToolState(get());
     },
     toggleBrowserBackend: () => {
       const backend = get().browser.backend === "sitegeist" ? "embedded" : "sitegeist";
-      writeBrowserBackend(backend);
       set({ browser: { ...get().browser, backend } });
+      writeToolState(get());
     },
     toggleBrowser: () => get().setBrowserEnabled(!get().browser.enabled),
     setBrowserUrl: (url, input) => {
@@ -176,8 +162,6 @@ export const useToolsStore = create<ToolsStore>((set, get) => {
       updateComputer((current) => {
         const tabs = uniqueComputerTabs(current.tabs.filter((item) => item !== tab));
         const active = current.tab === tab ? (tabs.at(-1) ?? "status") : current.tab;
-        writeComputerTabs(tabs);
-        writeComputerTab(active);
         return { ...current, tab: active, tabs };
       });
     },
@@ -187,7 +171,6 @@ export const useToolsStore = create<ToolsStore>((set, get) => {
       updateComputer((current) =>
         current.width === clamped ? current : { ...current, width: clamped },
       );
-      writeComputerWidth(clamped);
     },
     setActiveComputerSession: (identity) => {
       if (activeComputerSession?.key === identity?.key) return;

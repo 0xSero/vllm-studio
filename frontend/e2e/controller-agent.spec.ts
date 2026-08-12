@@ -511,6 +511,22 @@ test("terminal preserves its shell and scrollback across chat navigation", async
   await expect(terminal).toContainText("terminal-parity-marker");
 });
 
+test("the focused session restores its recorded workbench resource", async ({ page }) => {
+  const composer = await openControllerChat(page, "Persistent workbench resource");
+  await composer.fill("Create a durable workbench session");
+  await composer.press("Enter");
+  await expect(page.getByText("Controller scoped Pi reply.")).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Show right sidebar" }).click();
+  await page.getByRole("button", { name: "Show tools" }).click();
+  await page.getByRole("button", { name: /Files Browse project files/ }).click();
+  await expect(page.getByText("Select a file to view.")).toBeVisible();
+
+  await page.reload();
+
+  await expect(page.getByText("Select a file to view.")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTitle("Files", { exact: true })).toBeVisible();
+});
+
 test("messages containing /goal reach Pi as ordinary text", async ({ page }) => {
   const composer = await openControllerChat(page, "Goal text chat");
   const transcript = page.getByRole("article");
