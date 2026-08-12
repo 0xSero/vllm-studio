@@ -1,4 +1,5 @@
 import { hc } from "hono/client";
+import { createParser } from "eventsource-parser";
 import { clearStoredBackendUrl, getApiKey, getStoredBackendUrl } from "./connection";
 import { delay } from "../async";
 import { isRecord } from "@shared/agent/guards";
@@ -281,69 +282,59 @@ export function createApiCore(params: {
     signal?: AbortSignal,
   ): AsyncGenerator<ChatRunStreamEvent> {
     const decoder = new TextDecoder();
-    let buffer = "";
-    let eventType = "";
-    let dataLines: string[] = [];
-
-    const flushEvent = (): ChatRunStreamEvent | null => {
-      if (dataLines.length === 0) return null;
-      const dataString = dataLines.join("\n");
-      let data: Record<string, unknown>;
-      try {
-        data = JSON.parse(dataString) as Record<string, unknown>;
-      } catch {
-        data = { raw: dataString };
-      }
-      const payload = normalizeSsePayload(eventType, data);
-      eventType = "";
-      dataLines = [];
-      return payload;
-    };
+    const events: ChatRunStreamEvent[] = [];
+    const parser = createParser({
+      onComment: () => events.push({ event: "keepalive", data: {} }),
+      onEvent: ({ event, data: text }) => {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          parsed = null;
+        }
+        events.push(
+          normalizeSsePayload(event ?? "message", isRecord(parsed) ? parsed : { raw: text }),
+        );
+      },
+    });
 
     while (true) {
-      let chunk: Uint8Array | undefined;
       try {
         const result = await reader.read();
         if (result.done) break;
-        chunk = result.value;
+        parser.feed(decoder.decode(result.value, { stream: true }));
       } catch (err) {
-        if (isBenignSseTransportFailure(err, signal)) {
-          break;
-        }
+        if (isBenignSseTransportFailure(err, signal)) break;
         throw err;
       }
-
-      if (!chunk) break;
-
-      buffer += decoder.decode(chunk, { stream: true });
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line) {
-          const payload = flushEvent();
-          if (payload) yield payload;
-          continue;
-        }
-
-        if (line.startsWith(":")) {
-          yield { event: "keepalive", data: {} };
-          continue;
-        }
-
-        if (line.startsWith("event:")) {
-          eventType = line.slice(6).trim();
-          continue;
-        }
-
-        if (line.startsWith("data:")) {
-          dataLines.push(line.slice(5).trim());
-        }
-      }
+      while (events.length) yield events.shift()!;
     }
+    parser.feed(decoder.decode());
+    parser.reset({ consume: true });
+    while (events.length) yield events.shift()!;
+  };
 
-    const finalPayload = flushEvent();
-    if (finalPayload) yield finalPayload;
+  const responseSseStream = async (
+    response: Response,
+    signal?: AbortSignal,
+  ): Promise<AsyncGenerator<ChatRunStreamEvent>> => {
+    if (!response.ok || !response.body) {
+      const errorBody = await response.json().catch(() => ({ detail: "Request failed" }));
+      const errorMessage =
+        errorBody.detail || errorBody.error?.message || `HTTP ${response.status}`;
+      throw new Error(errorMessage);
+    }
+    const reader = response.body.getReader();
+    if (signal) {
+      const onAbort = () => {
+        try {
+          void reader.cancel();
+        } catch {}
+      };
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+    }
+    return parseSseStream(reader, signal);
   };
 
   const getSseJson = async (
@@ -360,30 +351,7 @@ export function createApiCore(params: {
       credentials: "include",
     });
 
-    if (!response.ok || !response.body) {
-      const errorBody = await response.json().catch(() => ({ detail: "Request failed" }));
-      const errorMessage =
-        errorBody.detail || errorBody.error?.message || `HTTP ${response.status}`;
-      throw new Error(errorMessage);
-    }
-
-    const reader = response.body.getReader();
-    const signal = options.signal;
-
-    if (signal) {
-      const onAbort = () => {
-        try {
-          void reader.cancel();
-        } catch {}
-      };
-      if (signal.aborted) {
-        onAbort();
-      } else {
-        signal.addEventListener("abort", onAbort, { once: true });
-      }
-    }
-
-    return parseSseStream(reader, signal);
+    return responseSseStream(response, options.signal);
   };
 
   const postSseJson = async (
@@ -414,31 +382,8 @@ export function createApiCore(params: {
     }
     maybeClearInvalidBackendOverride(response);
 
-    if (!response.ok || !response.body) {
-      const errorBody = await response.json().catch(() => ({ detail: "Request failed" }));
-      const errorMessage =
-        errorBody.detail || errorBody.error?.message || `HTTP ${response.status}`;
-      throw new Error(errorMessage);
-    }
-
     const runId = response.headers.get("x-run-id");
-    const reader = response.body.getReader();
-    const signal = options.signal;
-
-    if (signal) {
-      const onAbort = () => {
-        try {
-          void reader.cancel();
-        } catch {}
-      };
-      if (signal.aborted) {
-        onAbort();
-      } else {
-        signal.addEventListener("abort", onAbort, { once: true });
-      }
-    }
-
-    return { runId, stream: parseSseStream(reader, signal) };
+    return { runId, stream: await responseSseStream(response, options.signal) };
   };
 
   const healthPoll = async (timeoutMs = 5_000): Promise<boolean> => {
