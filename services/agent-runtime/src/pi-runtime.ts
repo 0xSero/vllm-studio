@@ -28,10 +28,20 @@ import { getProviderHub } from "./provider-hub";
 import { attachGoalDriver } from "./goal-driver";
 import { createGoalPromptExtension } from "./goal-prompt";
 import { findRuntimeSessionForLookup, piStatusFromEvents } from "./pi-runtime-state";
-import { configuredPiSessionDir, findSessionFile } from "./sessions-store";
+import {
+  configuredPiSessionDir,
+  findSessionFile,
+  loadSession,
+  type LoadSessionMeta,
+} from "./sessions-store";
 import { getGlobalSingleton } from "./instances";
 import { connectorsRevisionSync } from "./connectors-service";
-import { projectAgentTranscript } from "./session-view";
+import {
+  mergeAgentTranscript,
+  projectAgentSessionEvents,
+  projectAgentTranscript,
+  type TranscriptProjection,
+} from "./session-view";
 import type {
   LoggedPiEvent,
   PiAgentSession,
@@ -285,6 +295,9 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   private currentCwd = "";
   private currentModelId = "";
   private currentStartOptions: RuntimeStartOptions = {};
+  private transcript: TranscriptProjection = { messages: [] };
+  private historyCursor: number | null | undefined;
+  private sessionMeta: LoadSessionMeta | null = null;
   private agentDir = "";
   private queueEventBufferDepth = 0;
   private bufferedQueueEvent: PiEvent | null = null;
@@ -361,6 +374,12 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
           ? SessionManager.open(resumeFile, sessionDir, resolvedCwd)
           : SessionManager.create(resolvedCwd, sessionDir);
         const resuming = Boolean(resumeFile);
+        const durable = resumeFile
+          ? yield* Effect.tryPromise({
+              try: () => loadSession(resolvedCwd, desiredSessionId!, { tail: 500 }),
+              catch: () => null,
+            }).pipe(Effect.catch(() => Effect.succeed(null)))
+          : null;
         const agentDir = getAgentDir();
         const extensionUiContext = this.extensionUiContext();
         const recordExtensionEvent = (event: PiEvent) => this.recordEvent(event);
@@ -495,6 +514,9 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         this.currentPiSessionId = runtime.session.sessionId || desiredSessionId;
         this.currentFingerprint = fingerprint;
         this.currentStartOptions = options;
+        this.transcript = durable ? projectAgentSessionEvents(durable.events) : { messages: [] };
+        this.historyCursor = durable?.cursor;
+        this.sessionMeta = durable?.meta ?? null;
         this.unsubscribe = runtime.session.subscribe((event) => this.recordEvent(event));
         this.emitStatus();
       }.bind(this),
@@ -726,7 +748,10 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
 
   get status() {
     const sdkSession = this.runtime?.session;
-    const transcript = projectAgentTranscript(sdkSession?.messages ?? []);
+    this.transcript = mergeAgentTranscript(
+      this.transcript,
+      projectAgentTranscript(sdkSession?.messages ?? []),
+    );
     return piStatusFromEvents({
       running: Boolean(this.runtime),
       activePromptCount: this.activePromptCount,
@@ -741,8 +766,12 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
       eventSeq: this.eventSeq,
       lastError: this.lastError,
       contextUsage: this.computeContextUsage(),
-      messages: transcript.messages,
-      tokenStats: transcript.tokenStats,
+      messages: this.transcript.messages,
+      tokenStats: this.transcript.tokenStats,
+      historyCursor: this.historyCursor,
+      title: this.sessionMeta?.title,
+      startedAt: this.sessionMeta?.startedAt,
+      usageTotals: this.sessionMeta?.usage,
       queue: {
         steering: sdkSession?.getSteeringMessages() ?? [],
         followUp: sdkSession?.getFollowUpMessages() ?? [],

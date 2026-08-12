@@ -3,7 +3,7 @@ import type { AggregatedSession } from "../../../../shared/agent/session-summary
 import { listProjectsFromStore, resolveAllowedWorkspace } from "../projects-store";
 import { listArchivedSessionMetadata, setSessionArchived } from "../session-metadata-store";
 import { listSessions, loadSession } from "../sessions-store";
-import { projectAgentTranscript } from "../session-view";
+import { projectAgentSessionEvents } from "../session-view";
 import { errorMessage, jsonError } from "./helpers";
 
 function parseRelativeSince(value: string | null): Date | null {
@@ -152,12 +152,7 @@ export async function handleSessionGet(request: Request, id: string): Promise<Re
   const tail = nonNegativeInteger(searchParams.get("tail"));
   const before = nonNegativeInteger(searchParams.get("before"));
   const { events, cursor, meta } = await loadSession(cwd, id, { tail, before });
-  const rawMessages = events.flatMap((event) => {
-    if (event.type !== "message" && event.type !== "message_end") return [];
-    const message = event.message;
-    return message && typeof message === "object" ? [message] : [];
-  });
-  const transcript = projectAgentTranscript(rawMessages);
+  const transcript = projectAgentSessionEvents(events);
   return Response.json({ ...transcript, cursor, meta });
 }
 

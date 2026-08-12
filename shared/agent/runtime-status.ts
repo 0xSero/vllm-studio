@@ -1,10 +1,15 @@
 import { Schema } from "effect";
 import { RuntimeContextUsageSchema } from "./context-usage";
-import { AgentViewMessageSchema, AgentViewTokenStatsSchema } from "./session-view";
+import { SessionUsageTotalsSchema } from "./session-summary";
+import {
+  AgentViewMessageSchema,
+  AgentViewQueuedMessageSchema,
+  AgentViewTokenStatsSchema,
+} from "./session-view";
 
 const RuntimeQueueSchema = Schema.Struct({
   steering: Schema.Array(Schema.String),
-  followUp: Schema.Array(Schema.String),
+  followUp: Schema.Array(AgentViewQueuedMessageSchema),
 });
 
 export const RuntimeExtensionUiRequestSchema = Schema.Struct({
@@ -27,6 +32,10 @@ export const RuntimeStatusSchema = Schema.Struct({
   contextUsage: Schema.optional(Schema.Union([Schema.Null, RuntimeContextUsageSchema])),
   messages: Schema.optional(Schema.mutable(Schema.Array(AgentViewMessageSchema))),
   tokenStats: Schema.optional(AgentViewTokenStatsSchema),
+  historyCursor: Schema.optional(Schema.Union([Schema.Null, Schema.Number])),
+  title: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
+  startedAt: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
+  usageTotals: Schema.optional(Schema.Union([Schema.Null, SessionUsageTotalsSchema])),
   queue: Schema.optional(RuntimeQueueSchema),
   extensionUiRequest: Schema.optional(Schema.Union([Schema.Null, RuntimeExtensionUiRequestSchema])),
 });

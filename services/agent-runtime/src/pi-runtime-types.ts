@@ -50,13 +50,22 @@ export type PiDurablePromptBoundary = {
 // so all context-usage shapes resolve to one source of truth.
 export type { RuntimeContextUsage as PiContextUsage } from "../../../shared/agent/context-usage";
 
-export type PiAgentStatus = Required<Omit<RuntimeStatus, "messages" | "modelId" | "tokenStats">> & {
+export type PiAgentStatus = Required<
+  Omit<
+    RuntimeStatus,
+    "historyCursor" | "messages" | "modelId" | "startedAt" | "title" | "tokenStats" | "usageTotals"
+  >
+> & {
   modelId: string;
   cwd: string;
   agentDir: string;
   lastError: string | null;
   messages: readonly ChatMessage[];
   tokenStats?: RuntimeStatus["tokenStats"];
+  historyCursor?: number | null;
+  startedAt?: string | null;
+  title?: string | null;
+  usageTotals?: RuntimeStatus["usageTotals"];
 };
 
 export interface PiAgentSession {

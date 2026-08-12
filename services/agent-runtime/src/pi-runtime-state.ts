@@ -1,6 +1,8 @@
 import type { RuntimeExtensionUiRequest } from "../../../shared/agent/runtime-status";
 import type { ChatMessage, TokenStats } from "../../../shared/agent/session-view";
+import type { SessionUsageTotals } from "../../../shared/agent/session-summary";
 import type { PiAgentStatus, PiContextUsage } from "./pi-runtime-types";
+import { projectAgentQueue } from "./session-view";
 
 type RuntimeLookupEntry<TSession> = {
   sessionId: string;
@@ -77,6 +79,10 @@ export function piStatusFromEvents(input: {
   contextUsage?: PiContextUsage | null;
   messages?: readonly ChatMessage[];
   tokenStats?: TokenStats;
+  historyCursor?: number | null;
+  title?: string | null;
+  startedAt?: string | null;
+  usageTotals?: SessionUsageTotals | null;
   queue?: { steering: readonly string[]; followUp: readonly string[] };
   extensionUiRequest?: RuntimeExtensionUiRequest | null;
 }): PiAgentStatus {
@@ -92,7 +98,14 @@ export function piStatusFromEvents(input: {
     contextUsage: input.contextUsage ?? null,
     messages: input.messages ?? [],
     tokenStats: input.tokenStats,
-    queue: input.queue ?? { steering: [], followUp: [] },
+    historyCursor: input.historyCursor,
+    title: input.title ?? null,
+    startedAt: input.startedAt ?? null,
+    usageTotals: input.usageTotals ?? null,
+    queue: {
+      steering: [...(input.queue?.steering ?? [])],
+      followUp: projectAgentQueue(input.queue?.followUp ?? []),
+    },
     extensionUiRequest: input.extensionUiRequest ?? null,
   };
 }

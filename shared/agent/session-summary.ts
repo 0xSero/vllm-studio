@@ -1,3 +1,5 @@
+import { Schema } from "effect";
+
 export type SessionSummary = {
   id: string;
   filename: string;
@@ -20,14 +22,16 @@ export type AggregatedSession = SessionSummary & {
   projectPath: string;
 };
 
-export type SessionUsageTotals = {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  reasoning: number;
-  total: number;
-  cost: number;
-  calls: number;
-  compactions: number;
-};
+export const SessionUsageTotalsSchema = Schema.Struct({
+  input: Schema.Number,
+  output: Schema.Number,
+  cacheRead: Schema.Number,
+  cacheWrite: Schema.Number,
+  reasoning: Schema.Number,
+  total: Schema.Number,
+  cost: Schema.Number,
+  calls: Schema.Number,
+  compactions: Schema.Number,
+});
+
+export type SessionUsageTotals = Schema.Schema.Type<typeof SessionUsageTotalsSchema>;

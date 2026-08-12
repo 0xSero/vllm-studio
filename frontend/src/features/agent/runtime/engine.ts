@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
 import { Effect } from "effect";
-import { mergeLiveTranscript, runtimeStatusAcceptsControl } from "@/features/agent/messages";
+import { runtimeStatusAcceptsControl } from "@/features/agent/messages";
 import { settleTurnFinalizingTools } from "@/features/agent/runtime/session-status";
 import {
   selectedContextPrompt,
@@ -232,37 +232,39 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             status: "loading",
             error: "",
           }));
-          const statusEffect = Effect.tryPromise({
+          const runtimeStatus = yield* Effect.tryPromise({
             try: () => api.loadRuntimeStatus(sessionId, piSessionId),
             catch: () => null,
           });
-          const discoveredStatus = cwd ? null : yield* statusEffect;
-          const sessionCwd = cwd || discoveredStatus?.cwd || "";
+          const sessionCwd = cwd || runtimeStatus?.cwd || "";
           if (!sessionCwd) {
             updateSession(sessionId, (session) => ({ ...session, status: "idle" }));
             return;
           }
-          // Canonical replay and the runtime-status probe are independent — the
-          // status key is derived synchronously — so run them concurrently
-          // instead of blocking the (now tail-limited) canonical read on the
-          // status round-trip.
-          const [replayResult, runtimeStatus] = yield* Effect.all(
-            [
-              Effect.tryPromise({
+          const runtimeActive = runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId);
+          const runtimeReplay =
+            runtimeActive && runtimeStatus?.messages
+              ? {
+                  messages: [...runtimeStatus.messages],
+                  tokenStats: runtimeStatus.tokenStats,
+                  cursor: runtimeStatus.historyCursor ?? null,
+                  meta: {
+                    title: runtimeStatus.title ?? null,
+                    modelId: runtimeStatus.modelId ?? null,
+                    startedAt: runtimeStatus.startedAt ?? null,
+                    piSessionId: runtimeStatus.piSessionId ?? null,
+                    usage: runtimeStatus.usageTotals ?? null,
+                  },
+                }
+              : null;
+          const replayResult = runtimeReplay
+            ? ({ _tag: "Success", success: runtimeReplay } as const)
+            : yield* Effect.tryPromise({
                 try: () => api.loadCanonicalSession(piSessionId, sessionCwd),
                 catch: (error) => error,
-              }).pipe(Effect.result),
-              discoveredStatus ? Effect.succeed(discoveredStatus) : statusEffect,
-            ],
-            { concurrency: "unbounded" },
-          );
+              }).pipe(Effect.result);
           if (replayResult._tag === "Success") {
-            const { messages: rawMessages, cursor, meta } = replayResult.success;
-            const runtimeActive = runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId);
-            const messages =
-              runtimeActive && runtimeStatus?.messages
-                ? mergeLiveTranscript(rawMessages, runtimeStatus.messages)
-                : rawMessages;
+            const { messages, cursor, meta } = replayResult.success;
             updateSession(sessionId, (session) => ({
               ...session,
               messages: messages.length >= session.messages.length ? messages : session.messages,
@@ -274,7 +276,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               modelId: session.modelId || meta?.modelId || runtimeStatus?.modelId || modelId,
               title: meta?.title ?? session.title,
               startedAt: meta?.startedAt ?? session.startedAt,
-              tokenStats: runtimeStatus?.tokenStats ?? replayResult.success.tokenStats,
+              tokenStats: replayResult.success.tokenStats,
               // Lifetime spend is computed server-side from the whole rollout,
               // so it survives both compaction and the tail load's cutoff.
               usageTotals: meta?.usage ?? session.usageTotals,

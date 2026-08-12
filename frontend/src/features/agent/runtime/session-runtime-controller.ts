@@ -1,9 +1,5 @@
 import { isAgentSettledEvent } from "@shared/agent/pi-events";
-import {
-  mergeLiveTranscript,
-  projectQueue,
-  settleOptimisticMessages,
-} from "@/features/agent/messages";
+import { mergeAgentViewMessages } from "@shared/agent/session-view";
 import {
   subscribeRuntimeActivity,
   type RuntimeActivityPayload,
@@ -35,16 +31,20 @@ function matchingSession(
 function projectStatus(session: Session, status: RuntimeStatus): Session {
   if (session.status === "loading") return session;
   const messages = status.messages
-    ? mergeLiveTranscript(session.messages, status.messages)
+    ? mergeAgentViewMessages(session.messages, status.messages)
     : session.messages;
   const next: Session = {
     ...session,
     messages,
     ...(status.tokenStats ? { tokenStats: status.tokenStats } : {}),
+    ...(status.historyCursor !== undefined ? { historyCursor: status.historyCursor } : {}),
+    ...(status.title ? { title: status.title } : {}),
+    ...(status.startedAt ? { startedAt: status.startedAt } : {}),
+    ...(status.usageTotals ? { usageTotals: status.usageTotals } : {}),
     ...(status.piSessionId ? { piSessionId: status.piSessionId } : {}),
     ...(status.modelId ? { modelId: status.modelId } : {}),
     ...(status.contextUsage !== undefined ? { contextUsage: status.contextUsage } : {}),
-    ...(status.queue ? { queue: projectQueue(status.queue.followUp, session.queue ?? []) } : {}),
+    ...(status.queue ? { queue: [...status.queue.followUp] } : {}),
     extensionUiRequest: status.extensionUiRequest ?? undefined,
   };
   if (status.active !== true) {
@@ -107,7 +107,14 @@ export function createSessionRuntimeController(
           ? { ...projected, error: payload.event.message.slice(0, 4_000) }
           : projected;
       return isAgentSettledEvent(payload.event)
-        ? { ...settleTurn(error), messages: settleOptimisticMessages(error.messages) }
+        ? {
+            ...settleTurn(error),
+            messages: error.messages.map((message) =>
+              message.pending || message.awaitingEcho
+                ? { ...message, pending: false, awaitingEcho: false }
+                : message,
+            ),
+          }
         : { ...error, status: session.status === "stopping" ? "stopping" : "running" };
     });
   };

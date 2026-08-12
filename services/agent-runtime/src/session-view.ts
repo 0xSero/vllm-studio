@@ -5,8 +5,10 @@ import type {
   TextBlock,
   TokenStats,
 } from "../../../shared/agent/session-view";
+import { mergeAgentViewMessages } from "../../../shared/agent/session-view";
+import type { SessionEvent } from "./sessions-store";
 
-type TranscriptProjection = { messages: ChatMessage[]; tokenStats?: TokenStats };
+export type TranscriptProjection = { messages: ChatMessage[]; tokenStats?: TokenStats };
 type PiContentPart = Record<string, unknown> & { type?: string };
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -244,6 +246,28 @@ export function projectAgentTranscript(rawMessages: readonly unknown[]): Transcr
     }
   }
   return { messages, tokenStats: latestStats };
+}
+
+export function projectAgentSessionEvents(events: readonly SessionEvent[]): TranscriptProjection {
+  return projectAgentTranscript(
+    events.flatMap((event) =>
+      (event.type === "message" || event.type === "message_end") &&
+      event.message &&
+      typeof event.message === "object"
+        ? [event.message]
+        : [],
+    ),
+  );
+}
+
+export function mergeAgentTranscript(
+  current: TranscriptProjection,
+  live: TranscriptProjection,
+): TranscriptProjection {
+  return {
+    messages: mergeAgentViewMessages(current.messages, live.messages),
+    tokenStats: live.tokenStats ?? current.tokenStats,
+  };
 }
 
 export function projectAgentQueue(followUp: readonly string[]): QueuedMessage[] {
