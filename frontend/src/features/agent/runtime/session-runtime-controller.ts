@@ -1,13 +1,3 @@
-// THE single owner of live session event ordering AND of runtime-derived
-// session status. This module — and only this module — opens runtime SSE
-// subscriptions, tracks per-session event cursors, reconnects, flushes the
-// canonical transcript snapshots, and runs
-// the runtime-list poll that arbitrates running/idle. React integrates
-// through a thin binding (use-workspace-runtime-sync.ts); nothing else may
-// subscribe to runtime events, gate event seqs, or settle a session's
-// runtime status. (Turn-intent status — "starting", accept, abort — stays
-// with prompt-stream/engine; hydration status with loadAndReplay.)
-
 import { isAgentSettledEvent } from "@shared/agent/pi-events";
 import {
   mergeLiveTranscript,
@@ -16,528 +6,157 @@ import {
   settleOptimisticMessages,
 } from "@/features/agent/messages";
 import {
-  listRuntimeSessions,
-  runtimeContextUsage,
-  subscribeRuntimeEvents,
-  type RuntimeEventPayload,
+  subscribeRuntimeActivity,
+  type RuntimeActivityPayload,
   type RuntimeSessionSummary,
   type RuntimeStatus,
 } from "@/features/agent/runtime/api";
-import {
-  acceptRuntimeSeq,
-  adoptExternalCursor,
-  commitRuntimeSeq,
-  reconnectAfter,
-  shouldSubscribeRuntimeEvents,
-  type RuntimeCursor,
-} from "@/features/agent/runtime/runtime-cursor";
-import { Effect } from "effect";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import { publishRuntimeActivity } from "@/features/agent/session-index";
 import { settleTurn } from "@/features/agent/runtime/session-status";
 
-const RUNTIME_POLL_INTERVAL_MS = 5_000;
-const RUNTIME_POLL_IDLE_GRACE_MS = 10_000;
-
 export type SessionRuntimeBinding = {
-  /** Single state commit boundary — one patchSession dispatch per call. */
   commit: (sessionId: SessionId, patch: (session: Session) => Session) => void;
-  /** Read all current workspace sessions (the binding's live ref). */
   getSessions: () => readonly Session[];
 };
 
 export type SessionRuntimeControllerDeps = {
-  api?: Partial<{
-    listRuntimeSessions: typeof listRuntimeSessions;
-    subscribeRuntimeEvents: typeof subscribeRuntimeEvents;
-  }>;
-  pollIntervalMs?: number;
-  pollIdleGraceMs?: number;
+  subscribe?: typeof subscribeRuntimeActivity;
 };
 
 export type SessionRuntimeController = {
   bind(binding: SessionRuntimeBinding): void;
   unbind(): void;
-  /**
-   * Reconcile live SSE attachments against the session set: attach sessions
-   * entering the live set, detach those leaving, recreate only when the
-   * connection params (runtime/pi id) change.
-   */
   reconcile(sessions: readonly Session[]): void;
-  /**
-   * A `/turn` command was accepted. Pi's per-runtime event seq restarts ONLY
-   * when the runtime itself restarts (piSessionId adoption on the second turn,
-   * or a post-compaction/session swap) — `runtimeEventSeq` is the runtime's
-   * current seq from the accept response. Rewind the gate to 0 only when that
-   * seq sits below what we've already received (a genuine restart); otherwise
-   * keep the cursor where it is. Rewinding on every steady-state turn would make
-   * the next SSE reconnect re-apply the entire accumulated event log and
-   * duplicate every prior turn — the 502-retry-storm message explosion.
-   */
   noteTurnAccepted(sessionId: SessionId, assistantId?: string, runtimeEventSeq?: number): void;
-  /**
-   * loadAndReplay hydrated the transcript from canonical + runtime logs up to
-   * `committedSeq` (undefined when the runtime is idle): reattach from there
-   * so EventSource does not replay already-rendered content.
-   */
   noteReplayHydrated(sessionId: SessionId, committedSeq: number | undefined): void;
-  /**
-   * Reconcile every session against the runtime list right now, then restart
-   * the steady poll. Called by the React binding when poll-relevant session
-   * identity (membership / pi id / status) changes.
-   */
   pollNow(): void;
-  /** Flush everything and close every SSE attachment (workspace unmount). */
   closeAll(): void;
 };
 
-type Attachment = { key: string; close: () => void };
-
-function resumeConnectionKey(connectionKey: string, piSessionId: string | null): string {
-  return `${connectionKey}|${piSessionId ?? ""}`;
-}
-
-function patchRuntimeStatus(status: RuntimeStatus): Partial<Session> {
-  return {
-    ...(status.piSessionId ? { piSessionId: status.piSessionId } : {}),
-    ...(status.modelId ? { modelId: status.modelId } : {}),
-    ...(status.contextUsage !== undefined ? { contextUsage: status.contextUsage } : {}),
-  };
-}
-
-function sameRuntimePatch(session: Session, patch: Partial<Session>, status: string): boolean {
-  return (
-    session.status === status &&
-    (patch.piSessionId === undefined || session.piSessionId === patch.piSessionId) &&
-    (patch.modelId === undefined || session.modelId === patch.modelId) &&
-    (patch.contextUsage === undefined ||
-      JSON.stringify(session.contextUsage ?? null) === JSON.stringify(patch.contextUsage ?? null))
-  );
-}
-
-function applyAuxiliaryEvent(session: Session, event: Record<string, unknown>): Session {
-  if (event.type === "notice" && event.level === "error" && typeof event.message === "string") {
-    return { ...session, error: event.message.slice(0, 4_000) };
-  }
-  return session;
-}
-
-function applyRuntimeSnapshot(session: Session, status?: RuntimeStatus): Session {
-  if (!status) return session;
+function projectRuntimeStatus(session: Session, status: RuntimeStatus): Session {
+  if (session.status === "loading") return session;
   const projection = status.messages ? projectTranscript(status.messages, session.messages) : null;
   const messages = projection
     ? mergeLiveTranscript(session.messages, projection.messages)
     : session.messages;
-  const activeAssistantId = status.active
-    ? [...messages].reverse().find((message) => message.role === "assistant")?.id
-    : undefined;
-  const next = {
+  const next: Session = {
     ...session,
     messages,
     ...(projection?.tokenStats ? { tokenStats: projection.tokenStats } : {}),
+    ...(status.piSessionId ? { piSessionId: status.piSessionId } : {}),
+    ...(status.modelId ? { modelId: status.modelId } : {}),
+    ...(status.contextUsage !== undefined ? { contextUsage: status.contextUsage } : {}),
     ...(status.queue ? { queue: projectQueue(status.queue.followUp, session.queue ?? []) } : {}),
-    activeAssistantId,
     extensionUiRequest: status.extensionUiRequest ?? undefined,
   };
-  return next;
+  if (status.active === true) {
+    return {
+      ...next,
+      status: session.status === "stopping" ? "stopping" : "running",
+      activeAssistantId: [...messages].reverse().find((message) => message.role === "assistant")
+        ?.id,
+    };
+  }
+  return session.status === "running" || session.status === "stopping" ? settleTurn(next) : next;
+}
+
+function matchingSession(
+  sessions: readonly Session[],
+  runtimeSessionId: string,
+  status: RuntimeStatus,
+): Session | null {
+  const direct = sessions.find((session) => session.id === runtimeSessionId);
+  if (direct) return direct;
+  if (!status.piSessionId) return null;
+  const matches = sessions.filter((session) => session.piSessionId === status.piSessionId);
+  return matches.length === 1 ? matches[0]! : null;
 }
 
 export function createSessionRuntimeController(
   deps: SessionRuntimeControllerDeps = {},
 ): SessionRuntimeController {
-  const api = { listRuntimeSessions, subscribeRuntimeEvents, ...deps.api };
-  const pollIntervalMs = deps.pollIntervalMs ?? RUNTIME_POLL_INTERVAL_MS;
-  const pollIdleGraceMs = deps.pollIdleGraceMs ?? RUNTIME_POLL_IDLE_GRACE_MS;
-
+  const subscribe = deps.subscribe ?? subscribeRuntimeActivity;
+  const runtimeStatuses = new Map<string, RuntimeStatus>();
   let binding: SessionRuntimeBinding | null = null;
-  const cursors = new Map<SessionId, RuntimeCursor>();
-  const attachments = new Map<SessionId, Attachment>();
-  let pollTimer: ReturnType<typeof setInterval> | null = null;
-  let pollEpoch = 0;
-  const turnAcceptedAt = new Map<SessionId, number>();
-  // When the SSE delivered an authoritative `agent_settled` for a session. The
-  // server's runtime list drops the just-finished runtime lazily, so for a few
-  // seconds after the turn ends the poll can still see it as active. Without a
-  // guard the poll's active branch re-promotes the session to "running",
-  // fighting the SSE's idle and oscillating status (visible flicker + SSE
-  // reopen churn). This stamp lets the active branch honor the finish grace.
-  const turnFinishedAt = new Map<SessionId, number>();
-  // Sessions evicted from the workspace registry (closed panes, pruned
-  // background sessions) must not leave app-lifetime entries behind in this
-  // singleton's per-session maps. Only truly-gone ids are pruned —
-  // idle-but-open sessions keep their cursor seed.
-  const pruneStaleSessionEntries = (knownIds: ReadonlySet<SessionId>): void => {
-    const maps: Array<Map<SessionId, unknown>> = [cursors, turnAcceptedAt, turnFinishedAt];
-    for (const map of maps) {
-      for (const sessionId of [...map.keys()]) {
-        if (!knownIds.has(sessionId)) map.delete(sessionId);
-      }
-    }
+  let closeSubscription: (() => void) | null = null;
+
+  const summaries = (): RuntimeSessionSummary[] =>
+    [...runtimeStatuses].map(([sessionId, status]) => ({ sessionId, status }));
+
+  const applyStatus = (runtimeSessionId: string, status: RuntimeStatus) => {
+    if (!binding) return;
+    const target = matchingSession(binding.getSessions(), runtimeSessionId, status);
+    if (!target) return;
+    binding.commit(target.id, (session) => projectRuntimeStatus(session, status));
   };
 
-  const commit = (sessionId: SessionId, patch: (session: Session) => Session) => {
-    binding?.commit(sessionId, patch);
-  };
-  // Stamp the committed cursor onto the session in the SAME commit that
-  // applies the event's effects — content and cursor land atomically, so a
-  // teardown can never persist a cursor ahead of rendered content.
-  const stampSeq = (session: Session, seq: number | undefined): Session => {
-    if (typeof seq !== "number") return session;
-    if (typeof session.lastEventSeq === "number" && seq <= session.lastEventSeq) return session;
-    return { ...session, lastEventSeq: seq };
-  };
+  const publish = () => publishRuntimeActivity(summaries());
 
-  const applyEvent = (
-    sessionId: SessionId,
-    event: Record<string, unknown>,
-    snapshot: RuntimeStatus | undefined,
-    seq?: number,
-    decorate: (session: Session) => Session = (session) => session,
-  ) => {
-    commit(sessionId, (session) =>
-      decorate(stampSeq(applyAuxiliaryEvent(applyRuntimeSnapshot(session, snapshot), event), seq)),
-    );
-    cursors.set(
-      sessionId,
-      commitRuntimeSeq(cursors.get(sessionId) ?? adoptExternalCursor(undefined), seq),
-    );
-  };
-
-  // Receive gate: advance receivedSeq immediately (dedup + reconnect cursor);
-  // committedSeq — and the persisted lastEventSeq — only advance when the
-  // event's effects are actually committed (see applyEvent).
-  // A turn can settle four ways: the authoritative `agent_settled` event, an
-  // idle status frame, the liveness reconcile, and the runtime-list poll. The
-  // live-target pin must drop on ALL of them — a pin that outlives its turn
-  // retargets the NEXT turn's blocks onto a settled bubble (or onto a dead id,
-  // where they are discarded silently while the seq cursor advances). That is
-  // what erased everything after a follow-up message when the stream dropped.
-  const acceptSeq = (sessionId: SessionId, seq?: number): boolean => {
-    const current = cursors.get(sessionId) ?? adoptExternalCursor(undefined);
-    const decision = acceptRuntimeSeq(current, seq);
-    if (decision.accept) cursors.set(sessionId, decision.cursor);
-    return decision.accept;
-  };
-
-  const adoptCursor = (sessionId: SessionId, committedSeq: number | undefined) => {
-    cursors.set(sessionId, adoptExternalCursor(committedSeq));
-    commit(sessionId, (session) =>
-      session.lastEventSeq === committedSeq ? session : { ...session, lastEventSeq: committedSeq },
-    );
-  };
-
-  const applyStatusPayload = (
-    sessionId: SessionId,
-    payload: Extract<RuntimeEventPayload, { type: "status" }>,
-  ) => {
-    const idle = payload.phase === "done" || payload.phase === "idle";
-    commit(sessionId, (session) => ({
-      ...applyRuntimeSnapshot(session, payload.session),
-      piSessionId: payload.session?.piSessionId || session.piSessionId,
-      contextUsage: runtimeContextUsage(payload.session, session.contextUsage),
-      status: idle ? "idle" : session.status === "stopping" ? "stopping" : "running",
-      activeAssistantId: idle ? undefined : session.activeAssistantId,
-    }));
-  };
-
-  const applyPiPayload = (
-    sessionId: SessionId,
-    payload: Extract<RuntimeEventPayload, { type: "pi" }>,
-  ) => {
-    const eventId = payload.snapshot?.piSessionId;
-    if (!acceptSeq(sessionId, payload.seq)) return;
-
-    if (isAgentSettledEvent(payload.event)) {
-      // Record the authoritative end-of-turn so the runtime poll won't
-      // resurrect "running" off a stale still-active list snapshot.
-      turnFinishedAt.set(sessionId, Date.now());
-      // Flush pending deltas first, then settle the turn in ONE commit:
-      // finalize tool blocks, stamp the cursor, and clear the live status
-      // together.
-      applyEvent(sessionId, payload.event, payload.snapshot, payload.seq, (session) => ({
-        ...settleTurn(session),
-        messages: settleOptimisticMessages(session.messages),
-        piSessionId: eventId || session.piSessionId,
-      }));
-      // The turn is over: drop any mid-stream user-message redirect. The
-      // liveAssistantIds override only bridges the React-commit lag WITHIN a
-      // turn; left set, it would silently retarget the NEXT turn's events onto
-      // this (now settled) bubble, so the next bubble renders empty — tool
-      // calls and reasoning land off-screen and no final content appears.
-      // The queue is NOT touched here. Pi owns it: it drains its own follow_up
-      // queue server-side and tells us what happened through the delivered user
-      // echo and `queue_update`. Dropping items at settle just erased the stack
-      // a beat before pi delivered them.
+  const applyPayload = (payload: RuntimeActivityPayload) => {
+    if (payload.type === "sessions") {
+      runtimeStatuses.clear();
+      payload.sessions.forEach(({ sessionId, status }) => runtimeStatuses.set(sessionId, status));
+      publish();
+      runtimeStatuses.forEach((status, sessionId) => applyStatus(sessionId, status));
       return;
     }
-
-    // Status-only commit: promote to running and adopt the pi session id. The
-    // assistant bubble itself is resolved inside reduceSessionEvent when the
-    // event's effects commit (targeting lives in the reducer now), so this
-    // leaves activeAssistantId to the reducer.
-    commit(sessionId, (session) =>
-      (session.status === "running" || session.status === "stopping") &&
-      (!eventId || session.piSessionId === eventId)
-        ? session
-        : {
-            ...session,
-            piSessionId: eventId || session.piSessionId,
-            status: session.status === "stopping" ? "stopping" : "running",
-          },
-    );
-    applyEvent(sessionId, payload.event, payload.snapshot, payload.seq);
-  };
-
-  // True while a session sits in its post-`agent_settled` grace: the SSE already
-  // settled the turn to idle, but the server's runtime list can still report
-  // the finished runtime as active for a beat. A newer accepted turn supersedes
-  // the finish (genuine restart) and ends the grace early.
-  const withinFinishGrace = (sessionId: SessionId, fetchStartedAt: number): boolean => {
-    const finishedAt = turnFinishedAt.get(sessionId);
-    if (finishedAt === undefined || fetchStartedAt - finishedAt >= pollIdleGraceMs) return false;
-    const acceptedAt = turnAcceptedAt.get(sessionId);
-    return acceptedAt === undefined || acceptedAt <= finishedAt;
-  };
-
-  // Reconcile the workspace sessions against one runtime-list snapshot. The
-  // poll is the second leg of status arbitration next to the SSE attachments:
-  // it promotes sessions whose runtime is active (including adopting a new
-  // connection key via the pi-session match) and idles sessions the runtime
-  // no longer reports as active.
-  const applyRuntimeList = (runtimeSessions: RuntimeSessionSummary[], fetchStartedAt: number) => {
-    const byRuntime = new Map(runtimeSessions.map((entry) => [entry.sessionId, entry.status]));
-    const byPi = new Map(
-      runtimeSessions
-        .filter((entry) => entry.status.piSessionId)
-        .map((entry) => [entry.status.piSessionId!, entry.status]),
-    );
-    const sessions = binding?.getSessions() ?? [];
-    const sharedPiIds = collidingPiSessionIds(sessions);
-    for (const session of sessions.filter((entry) => entry.status !== "loading")) {
-      const direct = byRuntime.get(session.id);
-      const piMatch =
-        session.piSessionId && !sharedPiIds.has(session.piSessionId)
-          ? byPi.get(session.piSessionId)
-          : undefined;
-      const status = direct ?? piMatch;
-      if (!status) continue;
-      if (status.active === true) {
-        // Post-finish grace (symmetric to the idle branch's accept grace): the
-        // SSE's `agent_settled` is the authoritative end of a turn. For a few
-        // seconds after it, the server's runtime list can still report the
-        // just-finished runtime as active. Re-promoting to "running" off that
-        // stale snapshot fights the SSE's idle and oscillates status —
-        // flicker plus SSE reopen churn on every poll tick. Suppress the active
-        // branch inside the grace window UNLESS a newer turn was accepted after
-        // the finish (a genuine restart supersedes the finish and must recover).
-        if (withinFinishGrace(session.id, fetchStartedAt)) continue;
-        promoteFromRuntimeList(session, status);
-      } else if (session.status === "running" || session.status === "stopping") {
-        idleFromRuntimeList(session, status, fetchStartedAt);
+    const status = payload.type === "status" ? payload.session : payload.snapshot;
+    runtimeStatuses.set(payload.sessionId, status);
+    publish();
+    if (payload.type === "status") {
+      applyStatus(payload.sessionId, status);
+      return;
+    }
+    if (!binding) return;
+    const target = matchingSession(binding.getSessions(), payload.sessionId, status);
+    if (!target) return;
+    binding.commit(target.id, (session) => {
+      const projected = projectRuntimeStatus(session, status);
+      const withError =
+        payload.event.type === "notice" &&
+        payload.event.level === "error" &&
+        typeof payload.event.message === "string"
+          ? { ...projected, error: payload.event.message.slice(0, 4_000) }
+          : projected;
+      if (isAgentSettledEvent(payload.event)) {
+        return {
+          ...settleTurn(withError),
+          messages: settleOptimisticMessages(withError.messages),
+        };
       }
-    }
-  };
-
-  // A piSessionId held by 2+ open sessions (forked/duplicated tab, pref copy, or
-  // the mid-turn adoption window before one settles) can't disambiguate which
-  // session a runtime entry belongs to. Trusting the pi reverse-index there
-  // would let ONE runtime entry promote/idle AND repoint every session sharing
-  // the id — direct two-session crosstalk. Collect the collided ids so the
-  // caller falls back to the unambiguous direct runtime match for them.
-  const collidingPiSessionIds = (sessions: readonly Session[]): Set<string> => {
-    const shared = new Set<string>();
-    const seen = new Set<string>();
-    for (const session of sessions) {
-      if (!session.piSessionId) continue;
-      if (seen.has(session.piSessionId)) shared.add(session.piSessionId);
-      else seen.add(session.piSessionId);
-    }
-    return shared;
-  };
-
-  const promoteFromRuntimeList = (session: Session, status: RuntimeStatus) => {
-    const patch = patchRuntimeStatus(status);
-    commit(session.id, (current) => {
-      const nextStatus = current.status === "stopping" ? "stopping" : "running";
-      if (sameRuntimePatch(current, patch, nextStatus)) return current;
-      return { ...current, ...patch, status: nextStatus };
+      return {
+        ...withError,
+        status: session.status === "stopping" ? "stopping" : "running",
+      };
     });
-  };
-
-  // Only a session the runtime once acknowledged (status "running") may be
-  // idled by the poll. A freshly-sent "starting" turn is not yet in the
-  // runtime list during prefill/TTFT; idling it here would hide the
-  // working indicator for several seconds until the first token lands.
-  // The prompt stream's own `finally` owns the starting->terminal
-  // transition, so the poll must not race it.
-  //
-  // Accept-vs-poll grace: a list snapshot fetched before — or shortly
-  // after — a `/turn` acceptance cannot speak for the new turn, so it
-  // may not idle the session either. Only the idle branch is suppressed;
-  // the active branch is the recovery path and must always apply.
-  const idleFromRuntimeList = (session: Session, status: RuntimeStatus, fetchStartedAt: number) => {
-    const acceptedAt = turnAcceptedAt.get(session.id);
-    if (acceptedAt !== undefined && fetchStartedAt - acceptedAt < pollIdleGraceMs) return;
-    const patch = patchRuntimeStatus(status);
-    commit(session.id, (current) => {
-      if (current.status !== "running" && current.status !== "stopping") return current;
-      if (sameRuntimePatch(current, patch, "idle") && !current.activeAssistantId) {
-        return current;
-      }
-      return { ...settleTurn(current), ...patch };
-    });
-  };
-
-  const stopPoll = () => {
-    if (pollTimer !== null) {
-      clearInterval(pollTimer);
-      pollTimer = null;
-    }
-    // Invalidate any in-flight fetch: a stale snapshot from the previous
-    // session registry must not apply after a fresher immediate reconcile.
-    pollEpoch += 1;
-  };
-
-  const pollOnce = () => {
-    void Effect.runPromise(
-      Effect.gen(function* () {
-        const epoch = pollEpoch;
-        const fetchStartedAt = Date.now();
-        const entries = yield* Effect.tryPromise({
-          try: () => api.listRuntimeSessions(),
-          catch: (error) => error,
-        });
-        if (epoch !== pollEpoch || !binding) return;
-        publishRuntimeActivity(entries);
-        applyRuntimeList(entries, fetchStartedAt);
-      }),
-    );
-  };
-
-  // One SSE attachment per live session: connect, reconnect with a fixed
-  // delay, watchdog the stream, and probe runtime liveness on errors.
-  const openAttachment = (
-    sessionId: SessionId,
-    runtime: string,
-    piSessionId: string | null,
-  ): Attachment => {
-    const after = reconnectAfter(cursors.get(sessionId) ?? adoptExternalCursor(undefined));
-    const subscription = api.subscribeRuntimeEvents(runtime, after, piSessionId, {
-      onPayload: (payload) => {
-        if (payload.type === "status") applyStatusPayload(sessionId, payload);
-        else applyPiPayload(sessionId, payload);
-      },
-      onError: () => undefined,
-    });
-    return {
-      key: resumeConnectionKey(runtime, piSessionId),
-      close: subscription.close,
-    };
   };
 
   return {
     bind: (next) => {
       binding = next;
+      closeSubscription ??= subscribe(applyPayload).close;
     },
     unbind: () => {
-      stopPoll();
       binding = null;
     },
-    noteTurnAccepted: (sessionId, _assistantId, runtimeEventSeq) => {
-      turnAcceptedAt.set(sessionId, Date.now());
-      // A new turn supersedes any prior finish; drop the stamp so its own
-      // eventual end owns the next grace window.
-      turnFinishedAt.delete(sessionId);
-      // Rewind the gate to 0 only on a genuine runtime restart — when the
-      // runtime's reported seq is now below what we've already received. On a
-      // steady-state turn the seq keeps climbing, so an unconditional rewind
-      // would make the next reconnect re-apply the whole accumulated log (the
-      // 502-retry-storm duplication). A missing seq falls back to the old
-      // always-rewind behavior to preserve the dropped-second-turn guarantee.
-      const received = (cursors.get(sessionId) ?? adoptExternalCursor(undefined)).receivedSeq ?? 0;
-      if (runtimeEventSeq === undefined || runtimeEventSeq < received) {
-        adoptCursor(sessionId, 0);
-      }
+    reconcile: () => {
+      runtimeStatuses.forEach((status, sessionId) => applyStatus(sessionId, status));
     },
-    noteReplayHydrated: (sessionId, committedSeq) => {
-      // Replay mints fresh ids for every message, so any in-flight live-target
-      // pin now points at a bubble that no longer exists. Drop it or post-replay
-      // events would land on a dead id (silently discarded) while the seq cursor
-      // still advances — the reopen-mid-turn content-drop. The reducer's target
-      // resolution then falls back to the rebuilt transcript's own bubble.
-      adoptCursor(sessionId, committedSeq);
-    },
-    reconcile: (sessions) => {
-      const desired = new Map<
-        SessionId,
-        { piSessionId: string | null; lastEventSeq: number | undefined }
-      >();
-      for (const session of sessions) {
-        if (shouldSubscribeRuntimeEvents(session.status)) {
-          desired.set(session.id, {
-            piSessionId: session.piSessionId ?? null,
-            lastEventSeq: session.lastEventSeq,
-          });
-        }
-      }
-
-      for (const [sessionId, attachment] of [...attachments]) {
-        const want = desired.get(sessionId);
-        const key = want ? resumeConnectionKey(sessionId, want.piSessionId) : "";
-        if (!want || attachment.key !== key) {
-          attachment.close();
-          attachments.delete(sessionId);
-        }
-      }
-
-      pruneStaleSessionEntries(new Set(sessions.map((session) => session.id)));
-
-      for (const [sessionId, want] of desired) {
-        if (attachments.has(sessionId)) continue;
-        // Seed the gate from the persisted cursor ONLY on a genuine first attach
-        // (no live cursor yet) — e.g. a session restored from storage as
-        // "running". When an attachment is torn down and reopened for an
-        // already-live session — a mid-turn piSessionId adoption changes the
-        // connection key, so reconcile closes the old SSE and opens a new one —
-        // the in-memory cursor already holds the highest RECEIVED seq.
-        // Overwriting it with the persisted lastEventSeq, which only tracks
-        // COMMITTED seqs and therefore lags, would rewind the gate and make the
-        // reopened SSE re-deliver the backlog (the first-turn duplication).
-        const existing = cursors.get(sessionId);
-        if (!existing || (want.lastEventSeq ?? 0) > (existing.receivedSeq ?? 0)) {
-          cursors.set(sessionId, adoptExternalCursor(want.lastEventSeq));
-        }
-        attachments.set(sessionId, openAttachment(sessionId, sessionId, want.piSessionId));
-      }
-    },
-    pollNow: () => {
-      stopPoll();
-      if (!binding || binding.getSessions().length === 0) return;
-      // One immediate reconcile, then a steady interval. setInterval (unlike
-      // Effect.repeat) does not fire an extra immediate iteration, so pollNow
-      // produces exactly one fetch up front, and the timer is drivable under a
-      // test clock.
-      void pollOnce();
-      pollTimer = setInterval(() => void pollOnce(), pollIntervalMs);
-    },
+    noteTurnAccepted: () => undefined,
+    noteReplayHydrated: () => undefined,
+    pollNow: () => undefined,
     closeAll: () => {
-      stopPoll();
+      closeSubscription?.();
+      closeSubscription = null;
+      runtimeStatuses.clear();
       publishRuntimeActivity([]);
-      for (const attachment of attachments.values()) attachment.close();
-      attachments.clear();
-      // Workspace teardown: drop every per-session map so the app-lifetime
-      // singleton doesn't retain one entry per session ever opened. Also drops
-      // every live-target pin so a remount can't inherit a stale id.
-      cursors.clear();
-      turnAcceptedAt.clear();
-      turnFinishedAt.clear();
     },
   };
 }
 
 let singleton: SessionRuntimeController | null = null;
 
-/** Lazy app-wide controller instance (one per page lifetime). */
 export function sessionRuntimeController(): SessionRuntimeController {
   singleton ??= createSessionRuntimeController();
   return singleton;
