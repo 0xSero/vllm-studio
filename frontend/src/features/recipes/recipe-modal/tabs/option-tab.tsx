@@ -82,14 +82,10 @@ function Weights({ recipe, onChange, capabilities }: SectionProps) {
         <>
           <div className="grid grid-cols-2 gap-3">
             {field.input("tokenizer", "Tokenizer", { placeholder: "Path or name" })}
-            {field.select(
+            {field.choices(
               "tokenizer_mode",
               "Tokenizer Mode",
-              <>
-                <option value="auto">Auto</option>
-                <option value="slow">Slow</option>
-                <option value="mistral">Mistral</option>
-              </>,
+              { auto: "Auto", slow: "Slow", mistral: "Mistral" },
               { fallback: "auto", empty: "auto" },
             )}
           </div>
@@ -105,15 +101,10 @@ function Weights({ recipe, onChange, capabilities }: SectionProps) {
       {capabilities.quantization ? (
         <div className="grid grid-cols-2 gap-3">
           {field.input("quantization", "Quantization", { placeholder: "awq, gptq, fp8" })}
-          {field.select(
+          {field.choices(
             "dtype",
             "Dtype",
-            <>
-              <option value="auto">Auto</option>
-              <option value="float16">float16</option>
-              <option value="bfloat16">bfloat16</option>
-              <option value="float32">float32</option>
-            </>,
+            { auto: "Auto", float16: "float16", bfloat16: "bfloat16", float32: "float32" },
             { fallback: "auto", empty: "auto" },
           )}
         </div>
@@ -256,27 +247,18 @@ function KvCache({ recipe, onChange, capabilities }: SectionProps) {
     <FormSection icon={<Database className="h-4 w-4" />} title="KV Cache & Memory">
       <div className="grid grid-cols-2 gap-3">
         {capabilities.kvCacheDtype
-          ? field.select(
+          ? field.choices(
               "kv_cache_dtype",
               "KV Cache Dtype",
-              <>
-                <option value="auto">Auto</option>
-                <option value="fp8">FP8</option>
-                <option value="fp8_e5m2">FP8 E5M2</option>
-                <option value="fp8_e4m3">FP8 E4M3</option>
-              </>,
+              { auto: "Auto", fp8: "FP8", fp8_e5m2: "FP8 E5M2", fp8_e4m3: "FP8 E4M3" },
               { fallback: "auto", empty: "auto" },
             )
           : null}
         {capabilities.blockSize
-          ? field.select(
+          ? field.choices(
               "block_size",
               "Block Size",
-              <>
-                <option value="8">8</option>
-                <option value="16">16</option>
-                <option value="32">32</option>
-              </>,
+              { "8": "8", "16": "16", "32": "32" },
               { fallback: "16", numeric: true },
             )
           : null}
@@ -315,15 +297,11 @@ function Scheduler({ recipe, onChange, capabilities }: SectionProps) {
         ) : null}
       </div>
       {capabilities.schedulerAdvanced
-        ? field.select(
-            "scheduling_policy",
-            "Scheduling Policy",
-            <>
-              <option value="">Default</option>
-              <option value="fcfs">FCFS (First Come First Serve)</option>
-              <option value="priority">Priority</option>
-            </>,
-          )
+        ? field.choices("scheduling_policy", "Scheduling Policy", {
+            "": "Default",
+            fcfs: "FCFS (First Come First Serve)",
+            priority: "Priority",
+          })
         : null}
     </FormSection>
   );
@@ -375,42 +353,23 @@ function ToolCalling({ recipe, onChange, capabilities }: SectionProps) {
   const field = createRecipeFields(recipe, onChange);
   return (
     <FormSection icon={<Wrench className="h-4 w-4" />} title="Tool Calling">
-      {field.select(
-        "tool_call_parser",
-        "Tool Call Parser",
-        <>
-          <option value="">None</option>
-          <optgroup label="General">
-            <option value="hermes">Hermes</option>
-            <option value="pythonic">Pythonic</option>
-            <option value="openai">OpenAI</option>
-          </optgroup>
-          <optgroup label="Llama">
-            <option value="llama3_json">Llama 3 JSON</option>
-            <option value="llama4_json">Llama 4 JSON</option>
-            <option value="llama4_pythonic">Llama 4 Pythonic</option>
-          </optgroup>
-          <optgroup label="DeepSeek">
-            <option value="deepseek_v3">DeepSeek V3</option>
-            <option value="deepseek_v31">DeepSeek V3.1</option>
-            <option value="deepseek_v32">DeepSeek V3.2</option>
-          </optgroup>
-          <optgroup label="Qwen">
-            <option value="qwen3_xml">Qwen3 XML</option>
-            <option value="qwen3_coder">Qwen3 Coder</option>
-          </optgroup>
-          <optgroup label="GLM">
-            <option value="glm45">GLM-4.5</option>
-            <option value="glm47">GLM-4.7</option>
-          </optgroup>
-          <optgroup label="Other">
-            <option value="mistral">Mistral</option>
-            <option value="granite">Granite</option>
-            <option value="minimax">MiniMax</option>
-            <option value="kimi_k2">Kimi K2</option>
-          </optgroup>
-        </>,
-      )}
+      {field.choices("tool_call_parser", "Tool Call Parser", {
+        "": "None",
+        General: { hermes: "Hermes", pythonic: "Pythonic", openai: "OpenAI" },
+        Llama: {
+          llama3_json: "Llama 3 JSON",
+          llama4_json: "Llama 4 JSON",
+          llama4_pythonic: "Llama 4 Pythonic",
+        },
+        DeepSeek: {
+          deepseek_v3: "DeepSeek V3",
+          deepseek_v31: "DeepSeek V3.1",
+          deepseek_v32: "DeepSeek V3.2",
+        },
+        Qwen: { qwen3_xml: "Qwen3 XML", qwen3_coder: "Qwen3 Coder" },
+        GLM: { glm45: "GLM-4.5", glm47: "GLM-4.7" },
+        Other: { mistral: "Mistral", granite: "Granite", minimax: "MiniMax", kimi_k2: "Kimi K2" },
+      })}
       {capabilities.backend === "vllm" ? (
         <>
           {field.input("tool_parser_plugin", "Tool Parser Plugin", {
@@ -432,22 +391,11 @@ function Reasoning({ recipe, onChange, capabilities }: SectionProps) {
   const field = createRecipeFields(recipe, onChange);
   return (
     <FormSection icon={<Brain className="h-4 w-4" />} title="Reasoning & Thinking">
-      {field.select(
-        "reasoning_parser",
-        "Reasoning Parser",
-        <>
-          <option value="">None</option>
-          <optgroup label="DeepSeek">
-            <option value="deepseek_r1">DeepSeek R1</option>
-            <option value="deepseek_v3">DeepSeek V3</option>
-          </optgroup>
-          <optgroup label="Others">
-            <option value="qwen3">Qwen3</option>
-            <option value="glm45">GLM-4.5</option>
-            <option value="granite">Granite</option>
-          </optgroup>
-        </>,
-      )}
+      {field.choices("reasoning_parser", "Reasoning Parser", {
+        "": "None",
+        DeepSeek: { deepseek_r1: "DeepSeek R1", deepseek_v3: "DeepSeek V3" },
+        Others: { qwen3: "Qwen3", glm45: "GLM-4.5", granite: "Granite" },
+      })}
       {capabilities.backend === "vllm" ? (
         <>
           {field.input("guided_decoding_backend", "Guided Decoding Backend", {
@@ -481,14 +429,10 @@ function ChatTemplates({ recipe, onChange, capabilities }: SectionProps) {
         {vllm ? field.input("response_role", "Response Role", { placeholder: "assistant" }) : null}
       </div>
       {vllm
-        ? field.select(
+        ? field.choices(
             "chat_template_content_format",
             "Chat Template Format",
-            <>
-              <option value="auto">Auto</option>
-              <option value="string">String</option>
-              <option value="openai">OpenAI</option>
-            </>,
+            { auto: "Auto", string: "String", openai: "OpenAI" },
             { fallback: "auto", empty: "auto" },
           )
         : null}

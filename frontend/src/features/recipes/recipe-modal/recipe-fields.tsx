@@ -14,6 +14,24 @@ type InputOptions = FieldOptions & {
   preserveEmpty?: boolean;
 };
 type SelectOptions = FieldOptions & { fallback?: string; numeric?: boolean; empty?: string };
+type SelectChoices = Readonly<Record<string, string | Readonly<Record<string, string>>>>;
+
+const renderChoices = (choices: SelectChoices): ReactNode =>
+  Object.entries(choices).map(([value, label]) =>
+    typeof label === "string" ? (
+      <option key={value} value={value}>
+        {label}
+      </option>
+    ) : (
+      <optgroup key={value} label={value}>
+        {Object.entries(label).map(([option, text]) => (
+          <option key={option} value={option}>
+            {text}
+          </option>
+        ))}
+      </optgroup>
+    ),
+  );
 
 export function createRecipeFields(recipe: RecipeEditor, onChange: (next: RecipeEditor) => void) {
   const update = (name: keyof RecipeEditor, value: unknown) =>
@@ -68,6 +86,14 @@ export function createRecipeFields(recipe: RecipeEditor, onChange: (next: Recipe
           </Select>
         </FormField>
       );
+    },
+    choices(
+      name: keyof RecipeEditor,
+      label: string,
+      choices: SelectChoices,
+      options: SelectOptions = {},
+    ) {
+      return this.select(name, label, renderChoices(choices), options);
     },
     checkbox(name: keyof RecipeEditor, label: string, description?: string) {
       return (
