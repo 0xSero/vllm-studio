@@ -4,18 +4,19 @@ import type { Session } from "@/features/agent/runtime/types";
 export type TerminalOwnerKind = "project" | "session";
 
 export type TerminalOwner = {
-  /** Stable PTY owner key. Electron reuses this key to reattach to a live PTY. */
   mountKey: string;
-  /** Alternate identities that should resolve to this same terminal tab. */
   matchKeys: string[];
-  /** cwd used when the PTY is first created. Existing PTYs keep their own cwd. */
   cwd: string | null;
-  /** Human label for the right-sidebar terminal tab. */
   title: string;
   kind: TerminalOwnerKind;
   sessionId?: string | null;
   piSessionId?: string | null;
   projectId?: string | null;
+};
+
+export type TerminalOwnersState = {
+  owners: TerminalOwner[];
+  activeOwnerKey: string | null;
 };
 
 export function uniqueTerminalKeys(keys: string[]): string[] {
@@ -68,7 +69,6 @@ export function terminalOwnerLabel(owner: TerminalOwner, index: number): string 
   return owner.kind === "project" ? "Project terminal" : `Terminal ${index + 1}`;
 }
 
-/** Cross-surface request to open a persistent terminal in the focused pane. */
 export const OPEN_TERMINAL_EVENT = "local-studio:open-terminal";
 
 export type OpenTerminalEventDetail = { mountKey: string };

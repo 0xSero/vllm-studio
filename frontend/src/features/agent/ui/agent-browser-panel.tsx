@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, type ComponentType, type KeyboardEvent } from "react";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
   Activity,
   FolderTree,
@@ -15,14 +16,6 @@ import {
 import { PanelRightFilled } from "@/ui/panel-toggle-icons";
 import { CloseIcon } from "@/ui/icons";
 import { MobileSheetGrip } from "@/ui/mobile-sheet-grip";
-import {
-  rememberPersistentTerminalOwner,
-  removePersistentTerminalOwner,
-  removePersistentTerminalOwners,
-  selectPersistentTerminalOwner,
-  usePersistentTerminalOwners,
-  type TerminalOwnersSnapshot,
-} from "@/features/agent/ui/use-persistent-terminal-owners";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
 import { MAX_COMPUTER_WIDTH, MIN_COMPUTER_WIDTH } from "@/features/agent/tools/persistence";
 import {
@@ -40,6 +33,7 @@ import {
   terminalOwnerFor,
   terminalOwnerLabel,
   type TerminalOwner,
+  type TerminalOwnersState,
 } from "@/features/agent/terminal-owners";
 import { ComputerTabPanel, type SideChatTabsUpdater } from "@/features/agent/ui/computer-tab-panel";
 import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
@@ -59,16 +53,6 @@ function createSideChatSession(
     projectId: focusedSession?.projectId ?? activeProject?.id,
     modelId: focusedSession?.modelId ?? activeModelId,
   };
-}
-
-function closePersistedTerminalOwners(owners: readonly TerminalOwner[]) {
-  const closedOwners = removePersistentTerminalOwners(owners.map((owner) => owner.mountKey));
-  for (const owner of closedOwners) void webPtyBridge.closeOwner(owner.mountKey);
-}
-
-function closePersistedTerminalOwner(ownerKey: string) {
-  const owner = removePersistentTerminalOwner(ownerKey);
-  if (owner) void webPtyBridge.closeOwner(owner.mountKey);
 }
 
 function acceptedBrowserUrl(url: string): string | null {
@@ -93,46 +77,42 @@ export function AgentBrowserPanel() {
     () => terminalOwnerFor(activeProject, focusedSession),
     [activeProject, focusedSession],
   );
-  const terminalState = usePersistentTerminalOwners(
-    tools.computer.open && tools.computer.tab === "terminal",
-    terminalOwner,
-  );
-  const visibleTerminalState = useMemo<TerminalOwnersSnapshot>(() => {
-    const owners = terminalState.owners;
-    const activeOwnerKey = owners.some((owner) => owner.mountKey === terminalState.activeOwnerKey)
-      ? terminalState.activeOwnerKey
-      : (owners[0]?.mountKey ?? null);
-    return { owners, activeOwnerKey };
-  }, [terminalState]);
+  const terminalState = tools.terminals;
+  useMountSubscription(() => {
+    if (tools.computer.open && tools.computer.tab === "terminal" && terminalOwner) {
+      queueMicrotask(() => tools.rememberTerminalOwner(terminalOwner, { select: true }));
+    }
+  }, [terminalOwner, tools]);
   const openTerminalForFocusedSession = useCallback(() => {
-    if (terminalOwner) rememberPersistentTerminalOwner(terminalOwner, { select: true });
+    if (terminalOwner) tools.rememberTerminalOwner(terminalOwner, { select: true });
     tools.setComputerTab("terminal");
   }, [terminalOwner, tools]);
   const selectTerminalOwner = useCallback(
     (ownerKey: string) => {
-      selectPersistentTerminalOwner(ownerKey);
+      tools.selectTerminalOwner(ownerKey);
       tools.setComputerTab("terminal");
     },
     [tools],
   );
   const closeTerminalOwner = useCallback(
     (ownerKey: string) => {
-      closePersistedTerminalOwner(ownerKey);
-      if (visibleTerminalState.owners.length <= 1) tools.closeComputerTab("terminal");
+      const owner = tools.removeTerminalOwner(ownerKey);
+      if (owner) void webPtyBridge.closeOwner(owner.mountKey);
+      if (terminalState.owners.length <= 1) tools.closeComputerTab("terminal");
     },
-    [visibleTerminalState.owners.length, tools],
+    [terminalState.owners.length, tools],
   );
   const handleComputerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLElement>) => {
       if (!(event.metaKey || event.ctrlKey) || !event.altKey) return;
       const index = Number(event.key) - 1;
       if (!Number.isInteger(index) || index < 0) return;
-      const owner = visibleTerminalState.owners[index];
+      const owner = terminalState.owners[index];
       if (!owner) return;
       event.preventDefault();
       selectTerminalOwner(owner.mountKey);
     },
-    [selectTerminalOwner, visibleTerminalState.owners],
+    [selectTerminalOwner, terminalState.owners],
   );
   const navigateBrowser = (value: string) => {
     const next = normalizeBrowserInput(value, focusedSession?.cwd ?? activeProject?.path ?? "");
@@ -193,11 +173,14 @@ export function AgentBrowserPanel() {
         return;
       }
       if (closing === "terminal") {
-        closePersistedTerminalOwners(visibleTerminalState.owners);
+        const owners = tools.removeTerminalOwners(
+          terminalState.owners.map((owner) => owner.mountKey),
+        );
+        for (const owner of owners) void webPtyBridge.closeOwner(owner.mountKey);
       }
       tools.closeComputerTab(closing);
     },
-    [closeSideChat, tools, visibleTerminalState.owners],
+    [closeSideChat, terminalState.owners, tools],
   );
   return (
     <aside
@@ -222,7 +205,7 @@ export function AgentBrowserPanel() {
       <ComputerHeader
         tab={tools.computer.tab}
         openTabs={tools.computer.tabs}
-        terminalState={visibleTerminalState}
+        terminalState={terminalState}
         onSelectTab={tools.setComputerTab}
         onOpenCurrentTerminal={openTerminalForFocusedSession}
         onSelectTerminalOwner={selectTerminalOwner}
@@ -244,7 +227,7 @@ export function AgentBrowserPanel() {
 
       <PersistentTerminals
         active={tools.computer.open && tools.computer.tab === "terminal"}
-        activeOwnerKey={visibleTerminalState.activeOwnerKey}
+        activeOwnerKey={terminalState.activeOwnerKey}
         terminals={terminalState.owners}
       />
     </aside>
@@ -395,7 +378,7 @@ function ComputerHeader({
 }: {
   tab: ComputerTab;
   openTabs: ComputerTab[];
-  terminalState: TerminalOwnersSnapshot;
+  terminalState: TerminalOwnersState;
   onSelectTab: (tab: ComputerTab) => void;
   onOpenCurrentTerminal: () => void;
   onSelectTerminalOwner: (ownerKey: string) => void;

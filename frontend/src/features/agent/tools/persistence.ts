@@ -5,7 +5,13 @@ import {
   type ComputerState,
   type ComputerTab,
 } from "@/features/agent/tools/types";
-import { readStored, removeStored, writeStored } from "@/lib/storage";
+import {
+  mergeTerminalKeys,
+  terminalKeysMatch,
+  type TerminalOwner,
+  type TerminalOwnersState,
+} from "@/features/agent/terminal-owners";
+import { readStored, readStoredJson, removeStored, writeStored } from "@/lib/storage";
 
 export const BROWSER_TOOL_KEY = "local-studio.agent.browserToolEnabled";
 export const BROWSER_BACKEND_KEY = "local-studio.agent.browserBackend";
@@ -17,6 +23,8 @@ export const COMPUTER_DEFAULT_CLOSED_STORAGE_ID = "local-studio.agent.computer.d
 export const COMPUTER_WIDTH_KEY = "local-studio.agent.computer.width";
 export const COMPUTER_TAB_KEY = "local-studio.agent.computer.tab";
 export const COMPUTER_TABS_KEY = "local-studio.agent.computer.tabs";
+const TERMINAL_OWNERS_KEY = "local-studio.agent.terminals.v1";
+const TERMINAL_ACTIVE_OWNER_KEY = "local-studio.agent.terminals.activeOwner";
 
 export const DEFAULT_BROWSER_URL = "about:blank";
 export const DEFAULT_BROWSER_BACKEND: BrowserBackend = "embedded";
@@ -80,11 +88,55 @@ export function migrateToolStorage(): void {
     writeStored(COMPUTER_FILES_OPEN_KEY, "0");
     writeStored(COMPUTER_DEFAULT_CLOSED_STORAGE_ID, "1");
   }
-  // Computer panel always boots closed regardless of last session.
   writeStored(COMPUTER_BROWSER_OPEN_KEY, "0");
-  // SESSIONS_COLLAPSED_KEY cleanup is owned by workspace persistence.ts; tools
-  // doesn't touch sidebar collapse state.
   removeStored("local-studio.agent.sessionsCollapsed");
+}
+
+function parseTerminalOwner(value: unknown): TerminalOwner | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const mountKey = typeof record.mountKey === "string" ? record.mountKey.trim() : "";
+  if (!mountKey) return null;
+  const matchKeys = Array.isArray(record.matchKeys)
+    ? record.matchKeys.filter((item): item is string => typeof item === "string" && Boolean(item))
+    : [];
+  return {
+    mountKey,
+    matchKeys: mergeTerminalKeys([mountKey], matchKeys),
+    cwd: typeof record.cwd === "string" && record.cwd.trim() ? record.cwd : null,
+    title: typeof record.title === "string" ? record.title.trim() : "Terminal",
+    kind: record.kind === "project" ? "project" : "session",
+    sessionId: typeof record.sessionId === "string" ? record.sessionId : null,
+    piSessionId: typeof record.piSessionId === "string" ? record.piSessionId : null,
+    projectId: typeof record.projectId === "string" ? record.projectId : null,
+  };
+}
+
+export function loadTerminalState(): TerminalOwnersState {
+  const owners = readStoredJson<TerminalOwner[]>(TERMINAL_OWNERS_KEY, [], (value) => {
+    if (!Array.isArray(value)) return null;
+    return value.reduce<TerminalOwner[]>((result, entry) => {
+      const owner = parseTerminalOwner(entry);
+      if (owner && !result.some((item) => terminalKeysMatch(item.matchKeys, owner.matchKeys))) {
+        result.push(owner);
+      }
+      return result;
+    }, []);
+  });
+  const storedActiveKey = readStored(TERMINAL_ACTIVE_OWNER_KEY)?.trim();
+  return {
+    owners,
+    activeOwnerKey:
+      storedActiveKey && owners.some((owner) => owner.mountKey === storedActiveKey)
+        ? storedActiveKey
+        : (owners[0]?.mountKey ?? null),
+  };
+}
+
+export function writeTerminalState(state: TerminalOwnersState): void {
+  writeStored(TERMINAL_OWNERS_KEY, JSON.stringify(state.owners));
+  if (state.activeOwnerKey) writeStored(TERMINAL_ACTIVE_OWNER_KEY, state.activeOwnerKey);
+  else removeStored(TERMINAL_ACTIVE_OWNER_KEY);
 }
 
 export function loadBrowserState(): BrowserState {
@@ -152,8 +204,6 @@ export function writeBrowserEnabled(enabled: boolean): void {
 }
 
 function parseBrowserBackend(value: string | null): BrowserBackend {
-  // A previously-stored "parchi" (now removed) falls back to the default so
-  // existing installs don't break on reload.
   return value === "embedded" || value === "sitegeist" ? value : DEFAULT_BROWSER_BACKEND;
 }
 

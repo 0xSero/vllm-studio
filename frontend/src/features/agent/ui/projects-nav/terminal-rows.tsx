@@ -8,7 +8,7 @@ import {
   type OpenTerminalEventDetail,
   type TerminalOwner,
 } from "@/features/agent/terminal-owners";
-import { removePersistentTerminalOwner } from "@/features/agent/ui/use-persistent-terminal-owners";
+import { useToolsStore } from "@/features/agent/tools/store";
 
 export function TerminalRow({ owner, index }: { owner: TerminalOwner; index: number }) {
   const router = useRouter();
@@ -38,7 +38,7 @@ export function TerminalRow({ owner, index }: { owner: TerminalOwner; index: num
       </button>
       <button
         type="button"
-        onClick={() => removePersistentTerminalOwner(owner.mountKey)}
+        onClick={() => useToolsStore.getState().removeTerminalOwner(owner.mountKey)}
         className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center text-(--dim)/55 opacity-0 transition-opacity hover:text-(--err) group-hover:opacity-100"
         title="Close terminal"
         aria-label={`Close terminal ${label}`}

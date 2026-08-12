@@ -73,6 +73,10 @@ const actionSelector = (state: ToolsContextValue): ToolsActions => ({
   closeComputerTab: state.closeComputerTab,
   setComputerWidth: state.setComputerWidth,
   setActiveComputerSession: state.setActiveComputerSession,
+  rememberTerminalOwner: state.rememberTerminalOwner,
+  selectTerminalOwner: state.selectTerminalOwner,
+  removeTerminalOwner: state.removeTerminalOwner,
+  removeTerminalOwners: state.removeTerminalOwners,
   requestFileOpen: state.requestFileOpen,
   requestContextAttach: state.requestContextAttach,
   setSelection: state.setSelection,
@@ -113,10 +117,11 @@ export function useTools(): ToolsContextValue {
   const actions = useToolsActions();
   const computer = useComputerTools();
   const browser = useBrowserTools();
+  const terminals = useToolsStore((state) => state.terminals);
   const selections = useToolSelections();
   return useMemo(
-    () => ({ browser, computer, ...selections, ...actions }),
-    [browser, computer, selections, actions],
+    () => ({ browser, computer, terminals, ...selections, ...actions }),
+    [browser, computer, terminals, selections, actions],
   );
 }
 

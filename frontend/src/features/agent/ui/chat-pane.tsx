@@ -150,13 +150,8 @@ import {
   OPEN_TERMINAL_EVENT,
   type OpenTerminalEventDetail,
   type TerminalOwner,
+  type TerminalOwnersState,
 } from "@/features/agent/terminal-owners";
-import {
-  rememberPersistentTerminalOwner,
-  selectPersistentTerminalOwner,
-  usePersistentTerminalOwners,
-  type TerminalOwnersSnapshot,
-} from "@/features/agent/ui/use-persistent-terminal-owners";
 import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
 import { cx } from "@/ui/utils";
 import { ExtensionUiDialog } from "@/features/agent/ui/extension-ui-dialog";
@@ -354,28 +349,30 @@ export function ChatPane({
   } = useChatPaneDerivedState({ activeTabId, contextWindow, tabs });
   const { projectName, gitSummary, gitBranch } = projectPresentation(projects, activeTab);
   const [terminalView, setTerminalView] = useState(false);
-  const terminalSnapshot = usePersistentTerminalOwners(
-    terminalView,
-    terminalView ? terminalOwner : null,
-  );
+  const terminalSnapshot = tools.terminals;
+  useMountSubscription(() => {
+    if (terminalView && terminalOwner) {
+      queueMicrotask(() => tools.rememberTerminalOwner(terminalOwner, { select: true }));
+    }
+  }, [terminalOwner, terminalView, tools]);
   const toggleTerminalView = useCallback(() => {
     setTerminalView((open) => {
       const next = !open;
-      if (next && terminalOwner) rememberPersistentTerminalOwner(terminalOwner, { select: true });
+      if (next && terminalOwner) tools.rememberTerminalOwner(terminalOwner, { select: true });
       return next;
     });
-  }, [terminalOwner]);
+  }, [terminalOwner, tools]);
   useMountSubscription(() => {
     if (!isFocused) return;
     const onOpenTerminalEvent = (event: Event) => {
       const detail = (event as CustomEvent<OpenTerminalEventDetail>).detail;
       if (!detail?.mountKey) return;
-      selectPersistentTerminalOwner(detail.mountKey);
+      tools.selectTerminalOwner(detail.mountKey);
       setTerminalView(true);
     };
     window.addEventListener(OPEN_TERMINAL_EVENT, onOpenTerminalEvent);
     return () => window.removeEventListener(OPEN_TERMINAL_EVENT, onOpenTerminalEvent);
-  }, [isFocused]);
+  }, [isFocused, tools]);
   const updateTab = onUpdateSession;
   const {
     attachments,
@@ -829,7 +826,7 @@ function ChatPaneChrome({
   }) => void;
   showHeader: boolean;
   terminalView: boolean;
-  terminalSnapshot: TerminalOwnersSnapshot;
+  terminalSnapshot: TerminalOwnersState;
   header: ComponentProps<typeof AgentChatPaneHeader>;
 }) {
   return (
