@@ -817,6 +817,14 @@ export const LitterBridgeSessionCreateResultSchema = Schema.Union([
   LitterBridgeErrorResultSchema,
 ]).pipe(strict);
 
+export const LitterBridgeGatewayRequestSchema = Schema.Union([
+  LitterBridgeControllerSnapshotRequestSchema,
+  LitterBridgeSessionListRequestSchema,
+  LitterBridgeSessionReadRequestSchema,
+  LitterBridgeSessionCreateRequestSchema,
+  LitterBridgeAgentTurnRequestSchema,
+]).pipe(strict);
+
 export const LitterBridgeRequestSchema = Schema.Union([
   LitterBridgeControllerSnapshotRequestSchema,
   LitterBridgeControllerActionRequestSchema,
@@ -914,4 +922,5 @@ export type LitterBridgeAgentTurnResult = typeof LitterBridgeAgentTurnResultSche
 export type LitterBridgeSessionCreateRequest = typeof LitterBridgeSessionCreateRequestSchema.Type;
 export type LitterBridgeSessionCreateAck = typeof LitterBridgeSessionCreateAckSchema.Type;
 export type LitterBridgeSessionCreateResult = typeof LitterBridgeSessionCreateResultSchema.Type;
+export type LitterBridgeGatewayRequest = typeof LitterBridgeGatewayRequestSchema.Type;
 export type LitterBridgeRequest = typeof LitterBridgeRequestSchema.Type;

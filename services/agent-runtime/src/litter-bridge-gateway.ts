@@ -26,19 +26,15 @@ import { Schema } from "effect";
 import {
   LITTER_BRIDGE_PROTOCOL_VERSION,
   LitterBridgeAgentTurnAckSchema,
-  LitterBridgeAgentTurnRequestSchema,
   LitterBridgeAgentTurnResultSchema,
   LitterBridgeConflictResultSchema,
-  LitterBridgeControllerSnapshotRequestSchema,
   LitterBridgeControllerSnapshotSchema,
   LitterBridgeErrorResultSchema,
+  LitterBridgeGatewayRequestSchema,
   LitterBridgeSessionCreateAckSchema,
-  LitterBridgeSessionCreateRequestSchema,
   LitterBridgeSessionCreateResultSchema,
   LitterBridgeSessionListPageSchema,
-  LitterBridgeSessionListRequestSchema,
   LitterBridgeSessionPageSchema,
-  LitterBridgeSessionReadRequestSchema,
   type LitterBridgeAttachmentDescriptor,
   type LitterBridgeAgentTurnRequest,
   type LitterBridgeAgentTurnResult,
@@ -50,10 +46,10 @@ import {
   type LitterBridgeErrorResult,
   type LitterBridgeExternalSessionIdentity,
   type LitterBridgeFreshness,
+  type LitterBridgeGatewayRequest,
   type LitterBridgeHashReference,
   type LitterBridgeMessageDescriptor,
   type LitterBridgeMessagePart,
-  type LitterBridgeRequest,
   type LitterBridgeSessionDescriptor,
   type LitterBridgeSessionListCursor,
   type LitterBridgeSessionListPage,
@@ -162,12 +158,6 @@ type Section<T> = {
   error: LitterBridgeError | null;
   freshness: LitterBridgeFreshness;
 };
-type SignedGatewayRequest =
-  | LitterBridgeControllerSnapshotRequest
-  | LitterBridgeSessionListRequest
-  | LitterBridgeSessionReadRequest
-  | LitterBridgeSessionCreateRequest
-  | LitterBridgeAgentTurnRequest;
 type SignedMutationRequest = LitterBridgeSessionCreateRequest | LitterBridgeAgentTurnRequest;
 type TurnRuntimeEntry = {
   sessionId: string;
@@ -720,13 +710,13 @@ const reconcileMutationTranscript = (
   }
 };
 
-const unsignedRequest = (request: LitterBridgeRequest): JsonRecord => {
+const unsignedRequest = (request: LitterBridgeGatewayRequest): JsonRecord => {
   const { auth: _auth, ...unsigned } = request;
   return unsigned;
 };
 
 export const verifyLitterBridgeRequest = (
-  request: LitterBridgeRequest,
+  request: LitterBridgeGatewayRequest,
   now: Date,
 ): { ok: true; replayKey: string; expiresAt: number } | { ok: false; response: Response } => {
   const { auth } = request;
@@ -2997,21 +2987,9 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
       return jsonError(code, "Gateway request body is invalid", randomUUID(), body.status);
     }
     const requestId = requestIdFrom(body.value);
-    let parsed: SignedGatewayRequest;
+    let parsed: LitterBridgeGatewayRequest;
     try {
-      if (isRecord(body.value) && body.value.type === "controller_snapshot_request") {
-        parsed = Schema.decodeUnknownSync(LitterBridgeControllerSnapshotRequestSchema)(body.value);
-      } else if (isRecord(body.value) && body.value.type === "session_list_request") {
-        parsed = Schema.decodeUnknownSync(LitterBridgeSessionListRequestSchema)(body.value);
-      } else if (isRecord(body.value) && body.value.type === "session_read_request") {
-        parsed = Schema.decodeUnknownSync(LitterBridgeSessionReadRequestSchema)(body.value);
-      } else if (isRecord(body.value) && body.value.type === "agent_turn_request") {
-        parsed = Schema.decodeUnknownSync(LitterBridgeAgentTurnRequestSchema)(body.value);
-      } else if (isRecord(body.value) && body.value.type === "session_create_request") {
-        parsed = Schema.decodeUnknownSync(LitterBridgeSessionCreateRequestSchema)(body.value);
-      } else {
-        throw new Error("Unsupported request");
-      }
+      parsed = Schema.decodeUnknownSync(LitterBridgeGatewayRequestSchema)(body.value);
     } catch {
       const suppliedVersion = isRecord(body.value) ? body.value.protocolVersion : null;
       const code =
