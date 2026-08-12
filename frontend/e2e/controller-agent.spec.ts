@@ -557,6 +557,27 @@ test("the focused session restores its recorded workbench resource", async ({ pa
   await expect(page.getByTitle("Files", { exact: true })).toBeVisible();
 });
 
+test("side chat owns and resets its independent session", async ({ page }) => {
+  await openControllerChat(page, "Side chat lifecycle");
+  await page.getByRole("button", { name: "Show right sidebar" }).click();
+  await page.getByRole("button", { name: "Show tools" }).click();
+  await page.getByRole("button", { name: /Side chat Start a side conversation/ }).click();
+
+  const panel = page.locator("aside.agent-computer-panel");
+  const composer = panel.getByPlaceholder(/Do anything|Ask for follow-up changes/);
+  await composer.fill("independent-side-chat-marker");
+  await composer.press("Enter");
+  await expect(panel.getByText("independent-side-chat-marker", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Controller scoped Pi reply.", { exact: true })).toBeVisible({
+    timeout: 60_000,
+  });
+
+  await panel.getByRole("button", { name: "Close Side chat" }).click();
+  await page.getByRole("button", { name: /Side chat Start a side conversation/ }).click();
+  await expect(panel.getByText("independent-side-chat-marker", { exact: true })).toHaveCount(0);
+  await expect(panel.getByPlaceholder(/Do anything|Ask for follow-up changes/)).toBeVisible();
+});
+
 test("messages containing /goal reach Pi as ordinary text", async ({ page }) => {
   const composer = await openControllerChat(page, "Goal text chat");
   const transcript = page.getByRole("article");

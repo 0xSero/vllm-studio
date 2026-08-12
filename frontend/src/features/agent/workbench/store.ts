@@ -1,10 +1,11 @@
 import { Effect } from "effect";
-import { createStore } from "zustand/vanilla";
+import { createStore, type StoreApi } from "zustand/vanilla";
 import { safeJson } from "@/features/agent/safe-json";
 import { cleanSessionTitle, makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
 import { removeSession, setSession } from "@/features/agent/runtime/store";
 import type { Session, SessionId, UpdateSession } from "@/features/agent/runtime/types";
 import { useProjectsStore } from "@/features/agent/projects/store";
+import type { Project } from "@/features/agent/projects/types";
 import { clampComputerWidth, gentlySnapComputerWidth } from "@/features/agent/tools/persistence";
 import { useToolsStore } from "@/features/agent/tools/store";
 import type { ToolSelection } from "@/features/agent/tools/types";
@@ -47,6 +48,7 @@ import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
 export type WorkspaceMutation = (state: WorkspaceState) => WorkspaceState;
 export type WorkspaceDispatch = (mutation: WorkspaceMutation) => void;
 type ComputerResizeStart = { clientX: number; preventDefault: () => void };
+type SideChatContext = { project: Project | null; session: Session | null; modelId: string };
 
 export type WorkbenchState = WorkspaceState & {
   dispatch: WorkspaceDispatch;
@@ -59,8 +61,9 @@ export type WorkbenchState = WorkspaceState & {
   compactFocusedSession: () => Promise<void>;
   setSplitRatio: (path: number[], ratio: number) => void;
   updateSession: UpdateSession;
-  updateDetachedSession: (fallback: Session, patch: Parameters<UpdateSession>[1]) => void;
-  removeDetachedSession: (sessionId: string) => void;
+  sideChatSession: () => Session;
+  openSideChat: (context: SideChatContext) => void;
+  closeSideChat: () => void;
   closePane: (paneId: PaneId) => void;
   splitPaneWithPayload: (
     paneId: PaneId,
@@ -127,6 +130,16 @@ function chooseModelId(models: AgentModel[], current: string, preferred?: string
   return models.find((model) => model.active)?.id ?? models[0]?.id ?? "";
 }
 
+function createSideChatSession(context: SideChatContext): Session {
+  return {
+    ...makeFreshTab(),
+    title: "Side chat",
+    cwd: context.session?.cwd ?? context.project?.path,
+    projectId: context.session?.projectId ?? context.project?.id,
+    modelId: context.session?.modelId ?? context.modelId,
+  };
+}
+
 function storedSessionsKey(state: WorkspaceState): string {
   const entries = [...state.sessions.values()]
     .filter((session) => session.piSessionId)
@@ -142,6 +155,7 @@ function storedSessionsKey(state: WorkspaceState): string {
 function createWorkbenchStore(ephemeral: boolean) {
   const memoryStorage = createMemoryStorage();
   const paneHandles = new Map<PaneId, ChatPaneHandle>();
+  let sideChatSeed = createSideChatSession({ project: null, session: null, modelId: "" });
   let computerAside: HTMLElement | null = null;
   let mounts = 0;
   let cleanup: (() => void) | null = null;
@@ -273,7 +287,7 @@ function createWorkbenchStore(ephemeral: boolean) {
       cleanup = null;
     };
   };
-  const store = createStore<WorkbenchState>(() => ({
+  const store: StoreApi<WorkbenchState> = createStore<WorkbenchState>(() => ({
     ...createInitialState(),
     dispatch,
     initialize,
@@ -305,12 +319,27 @@ function createWorkbenchStore(ephemeral: boolean) {
       dispatch((state) => setWorkspaceSplitRatio(state, { path, ratio })),
     updateSession: (sessionId, patch) =>
       dispatch((state) => patchWorkspaceSession(state, sessionId, patch)),
-    updateDetachedSession: (fallback, patch) => {
-      const current = store.getState().sessions.get(fallback.id) ?? fallback;
-      dispatch((state) => ({ ...state, sessions: setSession(state.sessions, patch(current)) }));
+    sideChatSession: (): Session => store.getState().sessions.get(sideChatSeed.id) ?? sideChatSeed,
+    openSideChat: (context) => {
+      const current = store.getState().sessions.get(sideChatSeed.id) ?? sideChatSeed;
+      const session = current.messages.length
+        ? current
+        : {
+            ...current,
+            ...createSideChatSession(context),
+            id: current.id,
+            status: current.status === "loading" ? "idle" : current.status,
+            modelId: current.modelId || context.session?.modelId || context.modelId,
+          };
+      dispatch((state) => ({ ...state, sessions: setSession(state.sessions, session) }));
+      useToolsStore.getState().setComputerTab("side-chat");
     },
-    removeDetachedSession: (sessionId) =>
-      dispatch((state) => ({ ...state, sessions: removeSession(state.sessions, sessionId) })),
+    closeSideChat: () => {
+      const closingId = sideChatSeed.id;
+      sideChatSeed = createSideChatSession({ project: null, session: null, modelId: "" });
+      dispatch((state) => ({ ...state, sessions: removeSession(state.sessions, closingId) }));
+      useToolsStore.getState().closeComputerTab("side-chat");
+    },
     closePane: (paneId) => dispatch((state) => closePane(state, { paneId })),
     splitPaneWithPayload: (paneId, direction, side, payload) =>
       dispatch((state) =>

@@ -1,12 +1,12 @@
 "use client";
 
-import { Suspense, lazy, useCallback, type ReactNode } from "react";
+import { Suspense, lazy, type ReactNode } from "react";
 import { useToolsStore, type ToolsContextValue } from "@/features/agent/tools/store";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import { LAUNCHER_RESOURCES } from "@/features/agent/tools/resources";
 import { useProjectsStore } from "@/features/agent/projects/store";
 import type { Project } from "@/features/agent/projects/types";
-import type { Session, UpdateSession } from "@/features/agent/runtime/types";
+import type { Session } from "@/features/agent/runtime/types";
 import { focusedSession as selectFocusedSession } from "@/features/agent/runtime/selectors";
 import type { WorkbenchState } from "@/features/agent/workbench/store";
 import type { AgentModel } from "@/features/agent/workspace/types";
@@ -33,17 +33,10 @@ const LazyGitDiffPanel = lazy(() =>
   })),
 );
 
-export type SideChatTabsUpdater = Session[] | ((tabs: Session[]) => Session[]);
-
 type ComputerTabPanelProps = {
   workbench: WorkbenchState;
-  onCloseSideChat: () => void;
   onNavigateBrowser: (value: string) => void;
-  onOpenSideChat: () => void;
   onOpenTerminal: () => void;
-  onRenameSideChat: (tabId: string, title: string) => void;
-  onUpdateSideChatTabs: (nextTabsOrUpdater: SideChatTabsUpdater) => void;
-  sideChatSession: Session;
 };
 
 export function ComputerTabPanel(props: ComputerTabPanelProps) {
@@ -69,7 +62,13 @@ export function ComputerTabPanel(props: ComputerTabPanelProps) {
     tools: (
       <ComputerLauncherPanel
         activeTab={tools.computer.tab}
-        onOpenSideChat={props.onOpenSideChat}
+        onOpenSideChat={() =>
+          state.openSideChat({
+            project: activeProject,
+            session: focusedSession,
+            modelId: activeModelId,
+          })
+        }
         onOpenTerminal={props.onOpenTerminal}
         tools={tools}
       />
@@ -82,7 +81,8 @@ export function ComputerTabPanel(props: ComputerTabPanelProps) {
         focusedSession={focusedSession}
         models={state.models}
         modelsLoading={state.modelsLoading}
-        {...props}
+        sideChatSession={state.sideChatSession()}
+        workbench={state}
       />
     ),
     browser: (
@@ -110,31 +110,26 @@ export function ComputerTabPanel(props: ComputerTabPanelProps) {
 }
 
 function SideChatTab({
+  workbench,
   activeModel,
   activeModelId,
   activeProject,
   focusedSession,
   models,
   modelsLoading,
-  onCloseSideChat,
-  onRenameSideChat,
-  onUpdateSideChatTabs,
   sideChatSession,
-}: ComputerTabPanelProps & {
+}: {
+  workbench: WorkbenchState;
   activeModel: AgentModel | null;
   activeModelId: string;
   activeProject: Project | null;
   focusedSession: Session | null;
   models: AgentModel[];
   modelsLoading: boolean;
+  sideChatSession: Session;
 }) {
   const modelId = sideChatSession.modelId ?? focusedSession?.modelId ?? activeModelId;
   const cwd = sideChatSession.cwd ?? focusedSession?.cwd ?? activeProject?.path ?? "";
-  const updateSession = useCallback<UpdateSession>(
-    (sessionId, patch) =>
-      onUpdateSideChatTabs((tabs) => tabs.map((tab) => (tab.id === sessionId ? patch(tab) : tab))),
-    [onUpdateSideChatTabs],
-  );
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <ChatPane
@@ -145,14 +140,19 @@ function SideChatTab({
         modelsLoading={modelsLoading}
         cwd={cwd}
         onSelectModel={(nextModelId) =>
-          onUpdateSideChatTabs((tabs) => tabs.map((tab) => ({ ...tab, modelId: nextModelId })))
+          workbench.updateSession(sideChatSession.id, (session) => ({
+            ...session,
+            modelId: nextModelId,
+          }))
         }
         isFocused
         onFocus={() => undefined}
         session={sideChatSession}
-        onUpdateSession={updateSession}
-        onRenameSession={onRenameSideChat}
-        onClose={onCloseSideChat}
+        onUpdateSession={workbench.updateSession}
+        onRenameSession={(sessionId, title) =>
+          workbench.updateSession(sessionId, (session) => ({ ...session, title }))
+        }
+        onClose={workbench.closeSideChat}
         insideComputerPanel
         showHeader={false}
       />

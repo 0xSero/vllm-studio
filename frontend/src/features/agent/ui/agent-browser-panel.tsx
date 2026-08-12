@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, type ComponentType, type KeyboardEvent } from "react";
+import { useCallback, useMemo, type ComponentType, type KeyboardEvent } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { Plus, TerminalSquare, type LucideIcon } from "lucide-react";
 import { PanelRightFilled } from "@/ui/panel-toggle-icons";
@@ -16,35 +16,17 @@ import { useToolsStore } from "@/features/agent/tools/store";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import { computerResource } from "@/features/agent/tools/resources";
 import { useProjectsStore } from "@/features/agent/projects/store";
-import type { Project } from "@/features/agent/projects/types";
-import type { Session } from "@/features/agent/runtime/types";
 import { focusedSession as selectFocusedSession } from "@/features/agent/runtime/selectors";
-import { makeFreshTab } from "@/features/agent/messages/helpers";
 import {
   terminalOwnerFor,
   terminalOwnerLabel,
   type TerminalOwner,
   type TerminalOwnersState,
 } from "@/features/agent/terminal-owners";
-import { ComputerTabPanel, type SideChatTabsUpdater } from "@/features/agent/ui/computer-tab-panel";
+import { ComputerTabPanel } from "@/features/agent/ui/computer-tab-panel";
 import { TerminalPanel } from "@/features/agent/ui/terminal-panel";
 import { webPtyBridge } from "@/features/agent/ui/web-pty-bridge";
 import type { WorkbenchState } from "@/features/agent/workbench/store";
-
-function createSideChatSession(
-  activeProject: Project | null,
-  focusedSession: Session | null,
-  activeModelId: string,
-): Session {
-  const tab = makeFreshTab();
-  return {
-    ...tab,
-    title: "Side chat",
-    cwd: focusedSession?.cwd ?? activeProject?.path,
-    projectId: focusedSession?.projectId ?? activeProject?.id,
-    modelId: focusedSession?.modelId ?? activeModelId,
-  };
-}
 
 function acceptedBrowserUrl(url: string): string | null {
   return /^file:\/\//i.test(url) ? sanitizeLocalFileUrl(url) : sanitizeBrowserPaneUrl(url);
@@ -52,19 +34,11 @@ function acceptedBrowserUrl(url: string): string | null {
 
 export function AgentBrowserPanel({ workbench }: { workbench: WorkbenchState }) {
   const state = workbench;
-  const handles = workbench;
   const projects = useProjectsStore();
   const focusedSession = selectFocusedSession(state);
   const activeProject = projects.resolveProject(focusedSession);
-  const sessions = [...state.sessions.values()];
-  const activeModelId = focusedSession?.modelId ?? state.selectedModel;
   const tools = useToolsStore();
-  const [sideChatSeed, setSideChatSeed] = useState<Session>(() =>
-    createSideChatSession(null, null, ""),
-  );
-  const sideChatSession =
-    sessions.find((session) => session.id === sideChatSeed.id) ?? sideChatSeed;
-  const { registerComputerAside, startComputerResize } = handles;
+  const { registerComputerAside, startComputerResize } = workbench;
   const terminalOwner = useMemo(
     () => terminalOwnerFor(activeProject, focusedSession),
     [activeProject, focusedSession],
@@ -122,49 +96,10 @@ export function AgentBrowserPanel({ workbench }: { workbench: WorkbenchState }) 
       body: JSON.stringify({ url: accepted }),
     }).catch(() => undefined);
   };
-  const openSideChat = useCallback(() => {
-    handles.updateDetachedSession(sideChatSeed, (current) =>
-      current.messages.length
-        ? current
-        : {
-            ...current,
-            status: current.status === "loading" ? "idle" : current.status,
-            cwd: focusedSession?.cwd ?? activeProject?.path,
-            projectId: focusedSession?.projectId ?? activeProject?.id,
-            modelId: current.modelId || focusedSession?.modelId || activeModelId,
-          },
-    );
-    tools.setComputerTab("side-chat");
-  }, [activeModelId, activeProject, focusedSession, handles, sideChatSeed, tools]);
-  const updateSideChatTabs = useCallback(
-    (nextTabsOrUpdater: SideChatTabsUpdater) => {
-      handles.updateDetachedSession(sideChatSeed, (current) => {
-        const nextTabs =
-          typeof nextTabsOrUpdater === "function"
-            ? nextTabsOrUpdater([current])
-            : nextTabsOrUpdater;
-        return nextTabs.at(-1) ?? current;
-      });
-    },
-    [handles, sideChatSeed],
-  );
-  const renameSideChat = useCallback(
-    (tabId: string, title: string) => {
-      handles.updateDetachedSession(sideChatSeed, (current) =>
-        current.id === tabId ? { ...current, title } : current,
-      );
-    },
-    [handles, sideChatSeed],
-  );
-  const closeSideChat = useCallback(() => {
-    handles.removeDetachedSession(sideChatSeed.id);
-    setSideChatSeed(createSideChatSession(activeProject ?? null, focusedSession, activeModelId));
-    tools.closeComputerTab("side-chat");
-  }, [activeModelId, activeProject, focusedSession, handles, sideChatSeed.id, tools]);
   const closeComputerTab = useCallback(
     (closing: ComputerTab) => {
       if (closing === "side-chat") {
-        closeSideChat();
+        workbench.closeSideChat();
         return;
       }
       if (closing === "terminal") {
@@ -175,7 +110,7 @@ export function AgentBrowserPanel({ workbench }: { workbench: WorkbenchState }) 
       }
       tools.closeComputerTab(closing);
     },
-    [closeSideChat, terminalState.owners, tools],
+    [terminalState.owners, tools, workbench],
   );
   return (
     <aside
@@ -212,13 +147,8 @@ export function AgentBrowserPanel({ workbench }: { workbench: WorkbenchState }) 
 
       <ComputerTabPanel
         workbench={workbench}
-        onCloseSideChat={closeSideChat}
         onNavigateBrowser={navigateBrowser}
-        onOpenSideChat={openSideChat}
         onOpenTerminal={openTerminalForFocusedSession}
-        onRenameSideChat={renameSideChat}
-        onUpdateSideChatTabs={updateSideChatTabs}
-        sideChatSession={sideChatSession}
       />
 
       {tools.computer.tab === "terminal" && activeTerminal ? (
