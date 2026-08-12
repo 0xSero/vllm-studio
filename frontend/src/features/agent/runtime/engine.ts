@@ -1,7 +1,10 @@
 import { useCallback, useMemo, useRef } from "react";
 import { Effect } from "effect";
 import { runtimeStatusAcceptsControl } from "@/features/agent/messages";
-import { settleTurnFinalizingTools } from "@/features/agent/runtime/session-status";
+import {
+  projectRuntimeStatus,
+  settleTurnFinalizingTools,
+} from "@/features/agent/runtime/session-status";
 import {
   selectedContextPrompt,
   type ComposerPromptTemplateRef,
@@ -16,7 +19,6 @@ import type {
 } from "@shared/agent/agent-turn";
 import * as api from "@/features/agent/runtime/api";
 import { submitPromptTurn, type SubmitArgs } from "@/features/agent/runtime/prompt-stream";
-import { projectRuntimeStatus } from "@/features/agent/runtime/session-runtime-controller";
 
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];

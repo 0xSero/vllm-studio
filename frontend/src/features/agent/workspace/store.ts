@@ -50,6 +50,7 @@ export function createInitialState(): WorkspaceState {
     hydrated: false,
     lastHandledNavKey: "",
     lastHandledNavIntent: "",
+    runtimeActivity: new Map(),
   };
 }
 

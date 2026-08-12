@@ -1,14 +1,9 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
 import { useStore } from "zustand";
 import { isWorkingStatus } from "@/features/agent/runtime/session-status";
 import type { SessionId } from "@/features/agent/runtime/types";
 import { paneSessionId } from "@/features/agent/runtime/selectors";
-import {
-  sessionRuntimeController,
-  type RuntimeSessionActivitySnapshot,
-} from "@/features/agent/runtime/session-runtime-controller";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { workspaceStore } from "@/features/agent/workspace/store";
 import type { WorkspaceState } from "@/features/agent/workspace/types";
@@ -48,7 +43,7 @@ export type SessionIndexRow =
 
 export type SessionActivity = "idle" | "running" | "unseen" | "finished";
 
-export type SessionActivitySnapshot = RuntimeSessionActivitySnapshot;
+export type SessionActivitySnapshot = WorkspaceState["runtimeActivity"];
 
 const EMPTY_ACTIVITY: SessionActivitySnapshot = new Map();
 
@@ -179,15 +174,12 @@ function openSessions(state: WorkspaceState): OpenAgentSession[] {
 }
 
 export const useOpenSessions = () => openSessions(useStore(workspaceStore));
-export const useSessionActivity = () => {
-  const controller = sessionRuntimeController();
-  return useSyncExternalStore(
-    controller.subscribeActivity,
-    controller.activitySnapshot,
-    controller.activitySnapshot,
-  );
-};
+export const useSessionActivity = () => useStore(workspaceStore, (state) => state.runtimeActivity);
 
 export function markSessionActivitySeen(...ids: readonly (string | null | undefined)[]): void {
-  sessionRuntimeController().markActivitySeen(ids);
+  workspaceStore.setState((state) => {
+    const runtimeActivity = new Map(state.runtimeActivity);
+    ids.forEach((id) => id && runtimeActivity.delete(id));
+    return { ...state, runtimeActivity };
+  });
 }

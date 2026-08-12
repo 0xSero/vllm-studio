@@ -3,6 +3,8 @@ import type { Project } from "@/features/agent/projects/types";
 import type { Session, SessionId, SessionsMap } from "@/features/agent/runtime/types";
 import type { Layout, PaneId } from "@/features/agent/workspace/layout";
 
+export type RuntimeSessionActivity = "running" | "finished";
+
 export type { PaneId } from "@/features/agent/workspace/layout";
 export type { SessionId } from "@/features/agent/runtime/types";
 export type { AgentModel } from "@shared/agent/models";
@@ -31,6 +33,7 @@ export type WorkspaceState = {
   hydrated: boolean;
   lastHandledNavKey: string;
   lastHandledNavIntent: string;
+  runtimeActivity: ReadonlyMap<string, RuntimeSessionActivity>;
 };
 
 export type WorkspaceSessionPayload = {

@@ -39,7 +39,7 @@ import {
 } from "@/features/agent/workspace/pane-controller";
 import { removeSession, setSession } from "@/features/agent/runtime/store";
 import { loadInitialFromStorage } from "@/features/agent/workspace/persistence";
-import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
+import { connectWorkspaceRuntime } from "@/features/agent/workspace/runtime-activity";
 
 export type WorkspaceHandles = {
   registerComputerAside: (element: HTMLElement | null) => void;
@@ -326,18 +326,8 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
   }, [dispatch, ephemeral, state.hydrated]);
 
   useMountSubscription(() => {
-    const runtime = sessionRuntimeController();
-    runtime.bind({
-      commit: (sessionId, patch) => {
-        dispatch((current) => patchWorkspaceSession(current, sessionId, patch));
-      },
-      getSessions: () => [...store.getState().sessions.values()],
-    });
-    return () => {
-      runtime.closeAll();
-      runtime.unbind();
-    };
-  }, [dispatch, store]);
+    return connectWorkspaceRuntime(store);
+  }, [store]);
 
   return { state, dispatch, handles };
 }

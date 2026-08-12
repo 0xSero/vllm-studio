@@ -17,6 +17,8 @@ import {
   referencedSessionIds,
 } from "@/features/agent/runtime/selectors";
 import type { Project } from "@/features/agent/projects/types";
+import type { RuntimeActivityPayload, RuntimeStatus } from "@/features/agent/runtime/api";
+import { projectRuntimeStatus } from "@/features/agent/runtime/session-status";
 import type {
   PaneId,
   PaneState,
@@ -99,6 +101,56 @@ export function patchWorkspaceSession(
     },
     after,
   );
+}
+
+function runtimeSessionId(
+  state: WorkspaceState,
+  sessionId: string,
+  status: RuntimeStatus,
+): SessionId | null {
+  if (state.sessions.has(sessionId)) return sessionId;
+  if (!status.piSessionId) return null;
+  const matches = [...state.sessions.values()].filter(
+    (session) => session.piSessionId === status.piSessionId,
+  );
+  return matches.length === 1 ? matches[0]!.id : null;
+}
+
+function applyRuntimeStatus(
+  state: WorkspaceState,
+  sessionId: string,
+  status: RuntimeStatus,
+): WorkspaceState {
+  const targetId = runtimeSessionId(state, sessionId, status);
+  return targetId
+    ? patchWorkspaceSession(state, targetId, (session) => projectRuntimeStatus(session, status))
+    : state;
+}
+
+export function applyRuntimeActivity(
+  state: WorkspaceState,
+  payload: RuntimeActivityPayload,
+): WorkspaceState {
+  const entries =
+    payload.type === "sessions"
+      ? payload.sessions
+      : [{ sessionId: payload.sessionId, status: payload.session }];
+  let next = state;
+  const activity = new Map(state.runtimeActivity);
+  if (payload.type === "sessions") {
+    activity.forEach((value, id) => value === "running" && activity.set(id, "finished"));
+  }
+  for (const { sessionId, status } of entries) {
+    const targetId = runtimeSessionId(next, sessionId, status);
+    const previousPiSessionId = targetId ? next.sessions.get(targetId)?.piSessionId : null;
+    for (const id of [sessionId, previousPiSessionId, status.piSessionId]) {
+      if (!id) continue;
+      if (status.active === true) activity.set(id, "running");
+      else if (activity.get(id) === "running") activity.set(id, "finished");
+    }
+    next = applyRuntimeStatus(next, sessionId, status);
+  }
+  return { ...next, runtimeActivity: activity };
 }
 
 function focusSession(
