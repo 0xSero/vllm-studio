@@ -3,11 +3,6 @@ import { clampLayoutToLimits, collectLeaves, removeLeaf } from "@/features/agent
 import { cleanSessionTitle, makeFreshTab } from "@/features/agent/messages/helpers";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import type { ToolSelection } from "@/features/agent/tools/types";
-import {
-  persistedTabFieldsFromSelection,
-  toolSelectionFromPersistedTab,
-  type PersistedToolSelectionFields,
-} from "@/features/agent/tools/selection-persistence";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import { isAgentThinkingLevel } from "@shared/agent/agent-turn";
 import type {
@@ -74,6 +69,25 @@ type PersistedTabShape = Partial<Session> & {
   runtimeSessionId?: unknown;
   lastEventSeq?: unknown;
 };
+
+type PersistedToolSelectionFields = {
+  skills?: ToolSelection["skills"];
+  promptTemplates?: ToolSelection["promptTemplates"];
+};
+
+function toolSelectionFromPersistedTab(tab: unknown): ToolSelection | null {
+  const fields = tab && typeof tab === "object" ? (tab as PersistedToolSelectionFields) : {};
+  const skills = Array.isArray(fields.skills) ? fields.skills : [];
+  const promptTemplates = Array.isArray(fields.promptTemplates) ? fields.promptTemplates : [];
+  return skills.length || promptTemplates.length ? { skills, promptTemplates } : null;
+}
+
+function persistedTabFieldsFromSelection(selection: ToolSelection): PersistedToolSelectionFields {
+  return {
+    ...(selection.skills.length ? { skills: selection.skills } : {}),
+    ...(selection.promptTemplates.length ? { promptTemplates: selection.promptTemplates } : {}),
+  };
+}
 
 export type PersistedSessionMeta = Omit<
   Session,

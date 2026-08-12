@@ -142,8 +142,6 @@ export function createSessionRuntimeController(
     unbind: () => {
       binding = null;
     },
-    reconcile: (_sessions?: readonly Session[]) =>
-      statuses.forEach((status, id) => apply(id, status)),
     closeAll: () => {
       close?.();
       close = null;

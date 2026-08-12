@@ -10,20 +10,8 @@ import type {
   ComposerPromptTemplateRef,
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
-// Single source of truth for the right-sidebar tab ids. The `ComputerTab`
-// union is derived from this list, and persistence validates against it, so a
-// new tab only needs to be added here (plus its panel + label in the UI).
-export const COMPUTER_TAB_IDS = [
-  "status",
-  "tools",
-  "side-chat",
-  "browser",
-  "files",
-  "diff",
-  "terminal",
-] as const;
-
-export type ComputerTab = (typeof COMPUTER_TAB_IDS)[number];
+import type { ComputerTab } from "@/features/agent/tools/resources";
+export type { ComputerTab } from "@/features/agent/tools/resources";
 
 export type BrowserBackend = "embedded" | "sitegeist";
 

@@ -378,7 +378,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
     toolsRef,
     skipRestore: ephemeral,
   });
-  useWorkspaceRuntimeSync({ dispatch, sessions: [...state.sessions.values()] });
+  useWorkspaceRuntimeSync({ dispatch, store });
 
   return { state, store, dispatch, handles };
 }

@@ -1,9 +1,9 @@
-import {
-  COMPUTER_TAB_IDS,
-  type BrowserBackend,
-  type BrowserState,
-  type ComputerState,
-  type ComputerTab,
+import { COMPUTER_TAB_IDS } from "@/features/agent/tools/resources";
+import type {
+  BrowserBackend,
+  BrowserState,
+  ComputerState,
+  ComputerTab,
 } from "@/features/agent/tools/types";
 import {
   mergeTerminalKeys,

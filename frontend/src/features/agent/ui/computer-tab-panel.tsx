@@ -1,9 +1,9 @@
 "use client";
 
 import { Suspense, lazy, useCallback, type ReactNode } from "react";
-import { FolderTree, GitBranch, Globe2, MessageSquarePlus, TerminalSquare } from "lucide-react";
 import { useToolsStore, type ToolsContextValue } from "@/features/agent/tools/store";
 import type { ComputerTab } from "@/features/agent/tools/types";
+import { LAUNCHER_RESOURCES } from "@/features/agent/tools/resources";
 import { useProjects } from "@/features/agent/projects/context";
 import type { Project } from "@/features/agent/projects/types";
 import type { Session, UpdateSession } from "@/features/agent/runtime/types";
@@ -178,69 +178,35 @@ function ComputerLauncherPanel({
   onOpenTerminal: () => void;
   tools: ToolsContextValue;
 }) {
-  const cards = [
-    {
-      key: "files",
-      title: "Files",
-      description: "Browse project files",
-      icon: FolderTree,
-      onClick: () => tools.setComputerTab("files"),
-    },
-    {
-      key: "side-chat",
-      title: "Side chat",
-      description: "Start a side conversation",
-      icon: MessageSquarePlus,
-      onClick: () => onOpenSideChat(),
-    },
-    {
-      key: "browser",
-      title: "Browser",
-      description: "Open a website",
-      icon: Globe2,
-      onClick: () => tools.setComputerTab("browser"),
-    },
-    {
-      key: "diff",
-      title: "Review",
-      description: "Diff, commit, push, and PR",
-      icon: GitBranch,
-      onClick: () => tools.setComputerTab("diff"),
-    },
-    {
-      key: "terminal",
-      title: "Terminal",
-      description: "Start an interactive shell",
-      icon: TerminalSquare,
-      onClick: onOpenTerminal,
-    },
-  ] as const;
+  const open = (tab: ComputerTab) => {
+    if (tab === "side-chat") onOpenSideChat();
+    else if (tab === "terminal") onOpenTerminal();
+    else tools.setComputerTab(tab);
+  };
   return (
     <section className="min-h-0 flex-1 overflow-y-auto bg-(--color-panel) px-3 py-3">
       <div className="flex flex-col gap-1">
-        {cards.map((card) => {
-          const Icon = "icon" in card ? card.icon : null;
-          const selected = card.key !== "side-chat" && activeTab === card.key;
+        {LAUNCHER_RESOURCES.map((resource) => {
+          const Icon = resource.icon;
+          const selected = resource.tab !== "side-chat" && activeTab === resource.tab;
           return (
             <button
-              key={card.key}
+              key={resource.tab}
               type="button"
-              onClick={card.onClick}
+              onClick={() => open(resource.tab)}
               className={`group flex min-h-0 items-center gap-3 rounded-md px-3 py-2 text-left transition-colors ${
                 selected
                   ? "bg-(--color-surface-hover) text-(--fg)"
                   : "text-(--fg)/75 hover:bg-(--hover) hover:text-(--fg)"
               }`}
             >
-              {Icon ? (
-                <Icon className="h-4 w-4 shrink-0 text-(--dim)/75 transition-colors group-hover:text-(--fg)/80" />
-              ) : null}
+              <Icon className="h-4 w-4 shrink-0 text-(--dim)/75 transition-colors group-hover:text-(--fg)/80" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[length:var(--fs-lg)] font-medium">
-                  {card.title}
+                  {resource.label}
                 </span>
                 <span className="block truncate text-[length:var(--fs-sm)] text-(--dim)">
-                  {card.description}
+                  {resource.description}
                 </span>
               </span>
             </button>

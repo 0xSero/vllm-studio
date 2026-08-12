@@ -1,4 +1,5 @@
-import { useMemo, useRef, type RefObject } from "react";
+import type { RefObject } from "react";
+import type { StoreApi } from "zustand/vanilla";
 import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
 import { loadInitialFromStorage } from "@/features/agent/workspace/persistence";
 import type { ToolsContextValue } from "@/features/agent/tools/store";
@@ -6,6 +7,7 @@ import type { Session, SessionId } from "@/features/agent/runtime/types";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 import { patchWorkspaceSession } from "@/features/agent/workspace/pane-controller";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import type { WorkspaceState } from "@/features/agent/workspace/types";
 
 function currentSearchParams(): URLSearchParams {
   return typeof window === "undefined"
@@ -43,36 +45,18 @@ export function useWorkspaceHydrationEffects({
 
 type UseWorkspaceRuntimeSyncDeps = {
   dispatch: WorkspaceDispatch;
-  sessions: Session[];
+  store: StoreApi<WorkspaceState>;
 };
 
-function runtimeRegistryKey(sessions: Session[]): string {
-  return sessions
-    .map((session) => `${session.id}:${session.piSessionId ?? ""}:${session.status}`)
-    .join("\n");
-}
-
-export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRuntimeSyncDeps): void {
-  const sessionsRef = useRef(sessions);
-
-  useMountSubscription(() => {
-    sessionsRef.current = sessions;
-  }, [sessions]);
-
+export function useWorkspaceRuntimeSync({ dispatch, store }: UseWorkspaceRuntimeSyncDeps): void {
   useMountSubscription(() => {
     sessionRuntimeController().bind({
       commit: (sessionId: SessionId, patch: (session: Session) => Session) => {
         dispatch((state) => patchWorkspaceSession(state, sessionId, patch));
       },
-      getSessions: () => sessionsRef.current,
+      getSessions: () => [...store.getState().sessions.values()],
     });
-  }, [dispatch]);
-
-  const registryKey = useMemo(() => runtimeRegistryKey(sessions), [sessions]);
-
-  useMountSubscription(() => {
-    sessionRuntimeController().reconcile(sessionsRef.current);
-  }, [registryKey]);
+  }, [dispatch, store]);
 
   useMountSubscription(
     () => () => {

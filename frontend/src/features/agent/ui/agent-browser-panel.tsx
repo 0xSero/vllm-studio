@@ -2,17 +2,7 @@
 
 import { useCallback, useMemo, useState, type ComponentType, type KeyboardEvent } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import {
-  Activity,
-  FolderTree,
-  GitBranch,
-  Globe2,
-  MessageSquarePlus,
-  PanelRight,
-  Plus,
-  TerminalSquare,
-  type LucideIcon,
-} from "lucide-react";
+import { Plus, TerminalSquare, type LucideIcon } from "lucide-react";
 import { PanelRightFilled } from "@/ui/panel-toggle-icons";
 import { CloseIcon } from "@/ui/icons";
 import { MobileSheetGrip } from "@/ui/mobile-sheet-grip";
@@ -24,6 +14,7 @@ import {
 } from "@shared/agent/sanitize-embedded-browser-url";
 import { useToolsStore } from "@/features/agent/tools/store";
 import type { ComputerTab } from "@/features/agent/tools/types";
+import { computerResource } from "@/features/agent/tools/resources";
 import { useProjects } from "@/features/agent/projects/context";
 import type { Project } from "@/features/agent/projects/types";
 import type { Session } from "@/features/agent/runtime/types";
@@ -234,49 +225,6 @@ export function AgentBrowserPanel() {
   );
 }
 
-const TAB_LABELS: Record<ComputerTab, string> = {
-  status: "Status",
-  tools: "Tools",
-  "side-chat": "Side chat",
-  browser: "Browser",
-  files: "Filesystem",
-  diff: "Review",
-  terminal: "Terminal",
-};
-
-const TAB_OPTIONS: Array<{
-  tab: ComputerTab;
-  label: string;
-  description: string;
-  icon?: LucideIcon;
-}> = [
-  {
-    tab: "side-chat",
-    label: "Side chat",
-    description: "Focused side conversation",
-    icon: MessageSquarePlus,
-  },
-  {
-    tab: "browser",
-    label: "Browser",
-    description: "Web, localhost, and file previews",
-    icon: Globe2,
-  },
-  {
-    tab: "diff",
-    label: "Review",
-    description: "Diff, commit, push, and PR",
-    icon: GitBranch,
-  },
-  {
-    tab: "files",
-    label: "Filesystem",
-    description: "Project files and rendered previews",
-    icon: FolderTree,
-  },
-  { tab: "terminal", label: "Terminal", description: "Project shell", icon: TerminalSquare },
-];
-
 // Compact Codex-style pill: active gets a subtle fill; inactive is text-only
 // and lifts to full contrast on hover. The close × fades in on hover (and stays
 // on for the active pill). Shared by the tab list and the terminal-owner rows.
@@ -391,18 +339,11 @@ function ComputerHeader({
     (openTab) =>
       openTab !== "tools" && (openTab !== "terminal" || terminalState.owners.length === 0),
   );
-  const tabMeta = (candidate: ComputerTab) =>
-    candidate === "status"
-      ? { label: "Status", icon: Activity }
-      : {
-          label: TAB_LABELS[candidate],
-          icon: TAB_OPTIONS.find((item) => item.tab === candidate)?.icon ?? PanelRight,
-        };
   return (
     <div className="relative flex h-[var(--h-toolbar-pane)] shrink-0 items-center gap-1 border-b border-(--border) bg-(--color-header) px-1.5 text-[length:var(--fs-sm)]">
       <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overflow-y-hidden px-0.5 [scrollbar-width:thin]">
         {visibleTabs.map((openTab) => {
-          const meta = tabMeta(openTab);
+          const meta = computerResource(openTab);
           return (
             <TabPill
               key={openTab}

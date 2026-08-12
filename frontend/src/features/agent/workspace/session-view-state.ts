@@ -1,9 +1,6 @@
 import { Schema } from "effect";
-import {
-  COMPUTER_TAB_IDS,
-  type ComputerState,
-  type ComputerTab,
-} from "@/features/agent/tools/types";
+import { COMPUTER_TAB_IDS } from "@/features/agent/tools/resources";
+import type { ComputerState, ComputerTab } from "@/features/agent/tools/types";
 import { clampComputerWidth, uniqueComputerTabs } from "@/features/agent/tools/persistence";
 import { readStoredJson, writeStored } from "@/lib/storage";
 
