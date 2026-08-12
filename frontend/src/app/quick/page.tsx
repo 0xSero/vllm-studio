@@ -2,7 +2,6 @@
 
 import { Suspense } from "react";
 import { AgentWorkspace } from "@/features/agent/ui/agent-workspace-shell";
-import { WorkbenchEffects } from "@/features/agent/workbench/effects";
 import { getQuickPanelBridge } from "@/features/agent/ui/quick-panel/quick-panel-bridge";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
@@ -23,11 +22,8 @@ function useDismissOnEscape(): void {
 export default function QuickPanelPage() {
   useDismissOnEscape();
   return (
-    <>
-      <WorkbenchEffects />
-      <Suspense fallback={null}>
-        <AgentWorkspace compact />
-      </Suspense>
-    </>
+    <Suspense fallback={null}>
+      <AgentWorkspace compact />
+    </Suspense>
   );
 }

@@ -1,5 +1,9 @@
 import { Effect } from "effect";
 import { createStore, type StoreApi } from "zustand/vanilla";
+import type {
+  ComposerPromptTemplateRef,
+  ComposerSkillRef,
+} from "@/features/agent/composer-context";
 import { safeJson } from "@/features/agent/safe-json";
 import { cleanSessionTitle, makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
 import { removeSession, setSession } from "@/features/agent/runtime/store";
@@ -141,6 +145,29 @@ async function loadAgentModelsPayload(): Promise<{ models?: AgentModel[]; error?
   return payload;
 }
 
+function loadCatalogueList<T>(url: string, key: string): Effect.Effect<T[]> {
+  return Effect.tryPromise({
+    try: async () => {
+      const response = await fetch(url, { cache: "no-store" });
+      const payload = (await response.json()) as Record<string, T[] | undefined>;
+      return payload[key] ?? [];
+    },
+    catch: (error) => error,
+  }).pipe(Effect.catch(() => Effect.succeed([])));
+}
+
+function refreshToolCatalogues(): void {
+  void Effect.runPromise(
+    Effect.all({
+      skills: loadCatalogueList<ComposerSkillRef>("/api/agent/skills", "skills"),
+      promptTemplates: loadCatalogueList<ComposerPromptTemplateRef>(
+        "/api/agent/prompt-templates",
+        "templates",
+      ),
+    }).pipe(Effect.map((catalogues) => useToolsStore.getState().setCatalogues(catalogues))),
+  );
+}
+
 function chooseModelId(models: AgentModel[], current: string, preferred?: string): string {
   if (preferred && models.some((model) => model.id === preferred)) return preferred;
   if (current && models.some((model) => model.id === current)) return current;
@@ -264,6 +291,9 @@ function createWorkbenchStore(ephemeral: boolean) {
   const initialize = () => {
     mounts += 1;
     if (mounts === 1) {
+      useProjectsStore.getState().initialize();
+      useToolsStore.getState().initialize();
+      refreshToolCatalogues();
       const disconnectRuntime = connectWorkspaceRuntime(store);
       const onStorage = (event: StorageEvent | Event) => {
         const key = (event as StorageEvent).key;
