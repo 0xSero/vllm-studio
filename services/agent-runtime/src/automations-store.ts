@@ -12,6 +12,7 @@ import type {
 
 export type {
   Automation,
+  AutomationFallbackReason,
   AutomationRun,
   AutomationSchedule,
 } from "../../../shared/agent/automation";
@@ -64,6 +65,13 @@ function normalizeRun(value: unknown): AutomationRun | null {
     outcome: value.outcome === "error" ? "error" : "ok",
     summary: typeof value.summary === "string" ? value.summary.slice(0, MAX_SUMMARY_CHARS) : "",
     ...(typeof value.error === "string" ? { error: value.error } : {}),
+    ...(typeof value.requestedModelId === "string"
+      ? { requestedModelId: value.requestedModelId }
+      : {}),
+    ...(typeof value.actualModelId === "string" ? { actualModelId: value.actualModelId } : {}),
+    ...(value.fallbackReason === "requested_model_inactive"
+      ? { fallbackReason: "requested_model_inactive" as const }
+      : {}),
   };
 }
 

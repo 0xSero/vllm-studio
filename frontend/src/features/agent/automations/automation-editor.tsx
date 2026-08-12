@@ -78,7 +78,8 @@ export function AutomationEditor({
 
   useMountSubscription(() => {
     if (draft.modelId || models.length === 0) return;
-    setDraft((current) => ({ ...current, modelId: models[0]?.id ?? "" }));
+    const active = models.find((model) => model.active);
+    setDraft((current) => ({ ...current, modelId: active?.id ?? models[0]?.id ?? "" }));
   }, [draft.modelId, models]);
 
   const updateSchedule = (schedule: AutomationSchedule) => {
@@ -348,6 +349,13 @@ function RunHistory({ automation }: { automation: Automation }) {
                   </span>
                 )}
               </div>
+              {run.actualModelId &&
+              run.requestedModelId &&
+              run.actualModelId !== run.requestedModelId ? (
+                <p className="mt-1 text-[length:var(--fs-xs)] text-(--ui-muted)">
+                  Ran on {run.actualModelId} because {run.requestedModelId} was not loaded.
+                </p>
+              ) : null}
               {run.error ? (
                 <p className="mt-2 whitespace-pre-wrap text-[length:var(--fs-sm)] leading-5 text-(--ui-danger)">
                   {run.error}

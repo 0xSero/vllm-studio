@@ -9,6 +9,7 @@ import type { AutomationDraft } from "./automation-model";
 const AgentModelSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
+  active: Schema.optional(Schema.Boolean),
 });
 
 const AgentModelsResponseSchema = Schema.Struct({
