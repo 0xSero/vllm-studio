@@ -247,8 +247,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         const backendModelId = selectedModel.rawId ?? resolvedSelection.modelId;
 
         // One shared ModelRuntime across sessions and the provider hub: a
-        // sign-in completed in settings is live for the next turn, and
-        // hub-registered providers (including the e2e seam) resolve here.
+        // sign-in completed in settings is live for the next turn.
         const sharedModelRuntime = yield* Effect.tryPromise({
           try: () => getProviderHub(),
           catch: (error) => error,
@@ -300,7 +299,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
                             // Vision guidance is APPENDED, not substituted. This branch used to
                             // set noExtensions/noSkills/noContextFiles and replace the whole
                             // system prompt, which silently disabled every first-party extension
-                            // (session goal, artifact policy, plan, subagents) on any
+                            // (session goal, artifact policy, subagents) on any
                             // vision-capable model — i.e. on the primary model.
                             ...(selectedModel.vision
                               ? {

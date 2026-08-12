@@ -49,6 +49,7 @@ export function inferReasoningSupport(modelId: string): boolean {
     normalized.includes("thinking") ||
     normalized.includes("r1") ||
     normalized.includes("deepseek") ||
+    normalized.includes("inkling") ||
     normalized.includes("qwen3") ||
     normalized.includes("glm-5") ||
     normalized.includes("mimo")

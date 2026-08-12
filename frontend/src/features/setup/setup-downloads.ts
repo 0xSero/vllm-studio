@@ -34,12 +34,3 @@ export function selectSetupDownload(
     null
   );
 }
-
-export function countAdditionalQueuedDownloads(
-  downloads: ModelDownload[],
-  activeDownloadId?: string,
-): number {
-  return downloads.filter(
-    (download) => download.id !== activeDownloadId && ACTIVE_DOWNLOAD_STATUSES.has(download.status),
-  ).length;
-}

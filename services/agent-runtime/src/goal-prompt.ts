@@ -47,7 +47,7 @@ export type GoalPromptInput = {
  *  not data, then reports budget so the model can pace itself.
  *
  *  Kept format-identical to the bundled goal.ts builder so the two stay in
- *  sync; goal.ts's tests still cover this shape from the extension side. */
+ *  sync. */
 export function goalSystemPromptSection(goal: GoalPromptInput): string | null {
   const objective = typeof goal.objective === "string" ? goal.objective.trim() : "";
   if (!objective) return null;
@@ -77,7 +77,7 @@ export function goalSystemPromptSection(goal: GoalPromptInput): string | null {
   lines.push(
     "",
     "Before claiming the objective is met, audit it against concrete evidence —",
-    "files written, command output, tests run — not intent. Say GOAL_COMPLETE only",
+    "files written, command output, and runtime evidence — not intent. Say GOAL_COMPLETE only",
     "when that evidence exists, and GOAL_BLOCKED with the reason only when you",
     "genuinely cannot proceed.",
   );

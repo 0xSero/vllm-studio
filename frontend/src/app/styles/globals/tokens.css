@@ -603,20 +603,20 @@
 
 :root {
   /* Density / dimensions */
-  --sidebar-w: 275px;
+  --sidebar-w: 260px;
   --sidebar-w-collapsed: 48px;
   --sidebar-row-height: 30px;
   /* Rows sat at a 30px pitch against a 30px height, i.e. touching, with no gap
      anywhere in the sidebar. That reads as a wall of text rather than a list.
      Costs 2px per row and no change to the row itself. */
-  --sidebar-row-gap: 2px;
-  --sidebar-row-radius: 10px;
-  --sidebar-padding-x: 8px;
+  --sidebar-row-gap: 1px;
+  --sidebar-row-radius: 8px;
+  --sidebar-padding-x: 7px;
   --row-h: 36px;
   --row-h-sm: 28px;
   --row-radius: var(--rad-md);
   /* Toolbar heights — main bar, small bar, pane header. */
-  --h-toolbar: 46px;
+  --h-toolbar: 44px;
   --h-toolbar-sm: 36px;
   --h-toolbar-pane: 40px;
   --composer-w: clamp(28rem, 42rem, 48vw);
@@ -638,6 +638,7 @@
   --app-height: 100vh;
   --app-font-size: 16px;
   --app-font-weight: 400;
+  --icon-scale: 0.84;
 
   /* Type ramp — fixed steps × --ui-scale. Base is 14px. */
   --fs-2xs: calc(10px * var(--ui-scale));
