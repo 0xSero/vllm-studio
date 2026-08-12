@@ -19,7 +19,7 @@ export const registerRecipeRoutes = defineRoutes((app, context) => {
       Effect.gen(function* () {
         const recipes = yield* context.stores.recipeStore.list();
         const current = yield* getObservedProcess("recipes.list");
-        const launchingId = context.bridge.launchingRecipeId();
+        const launchingId = context.compute.launchingRecipeId();
         const result = recipes.map((recipe) => {
           const crashLoop = context.launchFailureBudget.get(recipe.id);
           let status = crashLoop?.blocked ? "error" : "stopped";

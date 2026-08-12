@@ -144,7 +144,7 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
     requestedModel: string | null,
     sourceHeader: string | null,
   ): Effect.Effect<ModelNotRunningError | null, unknown> =>
-    context.bridge.findInferenceProcess().pipe(
+    context.compute.findInferenceProcess().pipe(
       Effect.map((current) => {
         const matches =
           current && isRecipeRunning(matchedRecipe, current, { allowEitherPathContains: true });

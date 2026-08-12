@@ -11,7 +11,6 @@ import {
   createLaunchFailureBudget,
   type LaunchFailureBudget,
 } from "./modules/engines/launch-failure-budget";
-import { createComputeBridge, type ComputeBridge } from "./modules/compute/bridge";
 import { makeCompute, type Compute } from "./modules/compute/service";
 import { shutdownEngineJobs } from "./modules/engines/runtimes/engine-jobs";
 import { shutdownRuntimeInfo } from "./modules/engines/runtimes/runtime-info";
@@ -33,7 +32,6 @@ export interface AppContext {
   launchFailureBudget: LaunchFailureBudget;
   downloadManager: DownloadManager;
   compute: Compute;
-  bridge: ComputeBridge;
   gpuLeaseRegistry: GpuLeaseRegistry;
   speechService: SpeechService;
   stores: {
@@ -169,13 +167,9 @@ export const makeAppContext = Effect.gen(function* () {
   );
 
   const launchFailureBudget = createLaunchFailureBudget();
-  const compute = yield* initializeSync("compute.open", () => makeCompute(config, eventManager));
-  const bridge = createComputeBridge({
-    config,
-    compute: compute.service,
-    store: compute.store,
-    getRecipe: (recipeId) => recipeStore.get(recipeId),
-  });
+  const compute = yield* initializeSync("compute.open", () =>
+    makeCompute(config, eventManager, (recipeId) => recipeStore.get(recipeId)),
+  );
   const gpuLeaseRegistry = createGpuLeaseRegistry({
     store: compute.store,
     recordAlive: (record) =>
@@ -202,10 +196,10 @@ export const makeAppContext = Effect.gen(function* () {
           dataDirectory: config.data_dir,
           databasePath: dbPath,
           engine: {
-            getCurrentProcess: (): ReturnType<ComputeBridge["findInferenceProcess"]> =>
-              bridge.findInferenceProcess(),
-            getCurrentRecipe: (): ReturnType<ComputeBridge["getCurrentRecipe"]> =>
-              bridge.getCurrentRecipe(),
+            getCurrentProcess: (): ReturnType<Compute["findInferenceProcess"]> =>
+              compute.findInferenceProcess(),
+            getCurrentRecipe: (): ReturnType<Compute["getCurrentRecipe"]> =>
+              compute.getCurrentRecipe(),
           },
           gpuLeaseRegistry,
           gpuInfo: getGpuInfo,
@@ -221,7 +215,6 @@ export const makeAppContext = Effect.gen(function* () {
     launchFailureBudget,
     downloadManager,
     compute,
-    bridge,
     gpuLeaseRegistry,
     speechService,
     stores: {

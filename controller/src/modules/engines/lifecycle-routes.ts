@@ -3,8 +3,6 @@ import { HttpStatus, notFound, serviceUnavailable } from "../../core/errors";
 import { defineRoutes, mergeRoutes, effectRoute } from "../../http/route-registrar";
 import { toHttp } from "../compute/failures";
 import { formatLaunchFailureBudgetMessage } from "./launch-failure-budget";
-/** Model lifecycle over the compute bridge: one active model, served on the legacy
- *  inference port. Failure mapping is the compute union -> HTTP, never string matching. */
 export const registerLifecycleRoutes = defineRoutes((app, context) =>
   mergeRoutes(
     effectRoute.post(app, "/launch/:recipeId", (ctx) =>
@@ -18,7 +16,7 @@ export const registerLifecycleRoutes = defineRoutes((app, context) =>
             new HttpStatus({ status: 429, detail: formatLaunchFailureBudgetMessage(blocked) }),
           );
         }
-        yield* context.bridge.launchRecipe(recipe).pipe(
+        yield* context.compute.launchRecipe(recipe).pipe(
           Effect.mapError((failure) => {
             if (failure.kind !== "already-running" && failure.kind !== "cancelled") {
               context.launchFailureBudget.recordFailure(recipeId);
@@ -33,7 +31,7 @@ export const registerLifecycleRoutes = defineRoutes((app, context) =>
     effectRoute.post(app, "/launch/:recipeId/cancel", (ctx) =>
       Effect.gen(function* () {
         const recipeId = ctx.req.param("recipeId") ?? "";
-        const cancelled = yield* context.bridge.cancelLaunch();
+        const cancelled = yield* context.compute.cancelLaunch();
         if (!cancelled) {
           return yield* Effect.fail(notFound(`No launch in progress for ${recipeId}`));
         }
@@ -42,7 +40,7 @@ export const registerLifecycleRoutes = defineRoutes((app, context) =>
     ),
     effectRoute.post(app, "/evict", (ctx) =>
       Effect.gen(function* () {
-        yield* context.bridge
+        yield* context.compute
           .evict()
           .pipe(
             Effect.mapError((error) => serviceUnavailable(`Failed to evict: ${String(error)}`)),
@@ -54,7 +52,7 @@ export const registerLifecycleRoutes = defineRoutes((app, context) =>
       Effect.gen(function* () {
         const timeout = Number(ctx.req.query("timeout") ?? 300);
         const start = Date.now();
-        if (yield* context.bridge.waitForHealthy(timeout * 1000)) {
+        if (yield* context.compute.waitForHealthy(timeout * 1000)) {
           return ctx.json({ ready: true, elapsed: Math.floor((Date.now() - start) / 1000) });
         }
         return ctx.json({ ready: false, elapsed: timeout, error: "Timeout waiting for backend" });

@@ -99,7 +99,7 @@ export const ensureServiceLease = (
   mode: SttMode | TtsMode,
   serviceId: "stt" | "tts",
 ): Effect.Effect<Record<string, unknown> | null, AudioDependencyError> =>
-  context.bridge.findInferenceProcess().pipe(
+  context.compute.findInferenceProcess().pipe(
     Effect.mapError(
       (source) =>
         new AudioDependencyError({
