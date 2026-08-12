@@ -18,3 +18,15 @@ export type AggregatedSession = SessionSummary & {
   projectName: string;
   projectPath: string;
 };
+
+export type SessionUsageTotals = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  reasoning: number;
+  total: number;
+  cost: number;
+  calls: number;
+  compactions: number;
+};

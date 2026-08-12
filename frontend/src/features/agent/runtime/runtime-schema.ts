@@ -1,32 +1,5 @@
 import { Schema } from "effect";
-
-export const RuntimeContextUsageSchema = Schema.Struct({
-  tokens: Schema.Union([Schema.Null, Schema.Number]),
-  contextWindow: Schema.Number,
-  percent: Schema.Union([Schema.Null, Schema.Number]),
-  shouldCompact: Schema.Boolean,
-});
-
-const RuntimeQueueSchema = Schema.Struct({
-  steering: Schema.Array(Schema.String),
-  followUp: Schema.Array(Schema.String),
-});
-
-export const RuntimeStatusSchema = Schema.Struct({
-  active: Schema.optional(Schema.Boolean),
-  running: Schema.optional(Schema.Boolean),
-  piSessionId: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
-  modelId: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
-  eventSeq: Schema.optional(Schema.Number),
-  contextUsage: Schema.optional(Schema.Union([Schema.Null, RuntimeContextUsageSchema])),
-  messages: Schema.optional(Schema.Array(Schema.Record(Schema.String, Schema.Unknown))),
-  queue: Schema.optional(RuntimeQueueSchema),
-  extensionUiRequest: Schema.optional(
-    Schema.Union([Schema.Null, Schema.Record(Schema.String, Schema.Unknown)]),
-  ),
-});
-
-export type RuntimeStatus = Schema.Schema.Type<typeof RuntimeStatusSchema>;
+import { RuntimeStatusSchema, type RuntimeStatus } from "@shared/agent/runtime-status";
 
 const RuntimeStatusEventSchema = Schema.Struct({
   type: Schema.Literal("status"),
@@ -92,6 +65,5 @@ export function decodeRuntimeSessions(raw: unknown): RuntimeSessionSummary[] {
   return option._tag === "Some" ? [...(option.value.sessions ?? [])] : [];
 }
 
-// Canonical type lives in shared/agent/context-usage.ts (shared with the agent
-// runtime package); RuntimeContextUsageSchema above must stay in sync with it.
 export type { RuntimeContextUsage } from "@shared/agent/context-usage";
+export type { RuntimeStatus } from "@shared/agent/runtime-status";

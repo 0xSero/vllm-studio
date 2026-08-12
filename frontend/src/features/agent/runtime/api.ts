@@ -4,6 +4,7 @@ import {
   type SessionGoal,
   type SessionGoalPatch,
 } from "@shared/agent/session-goal";
+import type { SessionUsageTotals } from "@shared/agent/session-summary";
 import { requestDecodedEffect } from "@/lib/api/request-json";
 import {
   parseAgentTurnCommandResult,
@@ -30,6 +31,7 @@ import {
   type RuntimeStatus,
 } from "@/features/agent/runtime/runtime-schema";
 export type { RuntimeContextUsage, RuntimeEventPayload, RuntimeSessionSummary, RuntimeStatus };
+export type { SessionUsageTotals };
 
 export function runtimeContextUsage(
   status: RuntimeStatus | null | undefined,
@@ -120,20 +122,6 @@ export function respondExtensionUi(
     ),
   );
 }
-
-/** What the session has spent over its whole life. Distinct from the context
- *  window, which compaction resets — this does not. */
-export type SessionUsageTotals = {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  reasoning: number;
-  total: number;
-  cost: number;
-  calls: number;
-  compactions: number;
-};
 
 export type CanonicalSessionMeta = {
   title: string | null;

@@ -1,6 +1,7 @@
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { AgentImageInput } from "../../../shared/agent/agent-image-input";
 import type { AgentQueueAction } from "../../../shared/agent/agent-turn";
+import type { RuntimeStatus } from "../../../shared/agent/runtime-status";
 import type { RuntimeStartOptions } from "./pi-runtime-helpers";
 
 // Pi event surface seen by the rest of the app. Upstream consumers
@@ -48,19 +49,12 @@ export type PiDurablePromptBoundary = {
 // so all context-usage shapes resolve to one source of truth.
 export type { RuntimeContextUsage as PiContextUsage } from "../../../shared/agent/context-usage";
 
-export type PiAgentStatus = {
-  running: boolean;
-  active: boolean;
+export type PiAgentStatus = Required<Omit<RuntimeStatus, "messages" | "modelId">> & {
   modelId: string;
   cwd: string;
-  piSessionId: string | null;
   agentDir: string;
-  eventSeq: number;
   lastError: string | null;
-  contextUsage: import("../../../shared/agent/context-usage").RuntimeContextUsage | null;
   messages: readonly unknown[];
-  queue: { steering: readonly string[]; followUp: readonly string[] };
-  extensionUiRequest: Record<string, unknown> | null;
 };
 
 export interface PiAgentSession {
