@@ -465,7 +465,8 @@ var init_check_conventional_commits = __esm(() => {
     "refactor",
     "release",
     "revert",
-    "style"
+    "style",
+    "test"
   ]), ignoredSubjects = [
     /^Merge /,
     /^Revert /,
