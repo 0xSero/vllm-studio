@@ -22,9 +22,7 @@ import {
   type ServiceEntry,
 } from "./realtime-status-types";
 
-const FAST_STATUS_REQUEST = { timeout: 5_000, retries: 0 } as const;
-const FAST_COMPAT_REQUEST = { timeout: 5_000, retries: 0 } as const;
-const FAST_GPU_REQUEST = { timeout: 5_000, retries: 0 } as const;
+const FAST_REQUEST = { timeout: 5_000, retries: 0 } as const;
 
 type ControllerEventDetail = { type?: string; data?: Record<string, unknown> };
 type PolledStatus = Awaited<ReturnType<typeof api.getStatus>>;
@@ -36,6 +34,7 @@ type PollResults = {
   status: PolledStatus | null;
   statusConnected: boolean;
 };
+type SnapshotPatch = Partial<Omit<RealtimeStatusSnapshot, "lastEventAt">>;
 
 const unavailableBackend = (): RuntimeBackendInfo => ({
   installed: false,
@@ -125,6 +124,10 @@ function emitIfChanged(next: RealtimeStatusSnapshot) {
   for (const l of listeners) l();
 }
 
+function emitPatch(patch: SnapshotPatch, lastEventAt = Date.now()) {
+  emitIfChanged({ ...snapshot, ...patch, lastEventAt });
+}
+
 function reconcileLaunchProgress(
   progress: LaunchProgressData | null,
   status: { process: ProcessInfo | null; launching: string | null } | null,
@@ -139,23 +142,13 @@ function scheduleLaunchClear(stage: LaunchProgressData["stage"]) {
   clearLaunchTimer?.cancel();
   clearLaunchTimer = null;
   if (stage === "ready" || stage === "error" || stage === "cancelled") {
-    clearLaunchTimer = effectTimeout(() => {
-      emitIfChanged({
-        ...snapshot,
-        launchProgress: null,
-        lastEventAt: Date.now(),
-      });
-    }, 5000);
+    clearLaunchTimer = effectTimeout(() => emitPatch({ launchProgress: null }), 5000);
   }
 }
 
 function emitStatusLoading() {
   if (snapshot.statusLoading) return;
-  emitIfChanged({
-    ...snapshot,
-    statusLoading: true,
-    lastEventAt: Date.now(),
-  });
+  emitPatch({ statusLoading: true });
 }
 
 const requestEffect = <T>(load: () => Promise<T>): Effect.Effect<T, unknown> =>
@@ -164,9 +157,9 @@ const requestEffect = <T>(load: () => Promise<T>): Effect.Effect<T, unknown> =>
 function fetchPollResultsEffect(): Effect.Effect<PollResults> {
   return Effect.gen(function* () {
     const [statusResult, compatibilityResult, gpuResult, metricsResult] = yield* Effect.all([
-      Effect.result(requestEffect(() => api.getStatus(FAST_STATUS_REQUEST))),
-      Effect.result(requestEffect(() => api.getCompatibility(FAST_COMPAT_REQUEST))),
-      Effect.result(requestEffect(() => api.getGPUs(FAST_GPU_REQUEST))),
+      Effect.result(requestEffect(() => api.getStatus(FAST_REQUEST))),
+      Effect.result(requestEffect(() => api.getCompatibility(FAST_REQUEST))),
+      Effect.result(requestEffect(() => api.getGPUs(FAST_REQUEST))),
       Effect.result(
         requestEffect(() => api.getMetrics()).pipe(Effect.catch(() => Effect.succeed(null))),
       ),
@@ -218,11 +211,9 @@ function emitNoPolledStatus() {
   const hasCachedStatus = Boolean(
     snapshot.status || snapshot.runtimeSummary || snapshot.gpus.length,
   );
-  emitIfChanged({
-    ...snapshot,
+  emitPatch({
     statusLoading: false,
     connected: hasCachedStatus && pollFailureStreak <= 3 ? snapshot.connected : false,
-    lastEventAt: Date.now(),
   });
 }
 
@@ -230,7 +221,7 @@ function emitPolledStatus({ compatibility, gpus, metrics, status }: PollResults)
   if (!status) return emitNoPolledStatus();
   const { running, process, inference_port } = status;
   const launching = status.launching ?? null;
-  emitIfChanged({
+  emitPatch({
     status: { running, process, inference_port, launching },
     statusLoading: false,
     connected: true,
@@ -242,9 +233,6 @@ function emitPolledStatus({ compatibility, gpus, metrics, status }: PollResults)
     }),
     platformKind: compatibility?.platform?.kind ?? snapshot.platformKind,
     runtimeSummary: runtimeSummaryFromCompatibility(snapshot.runtimeSummary, compatibility),
-    services: snapshot.services,
-    lease: snapshot.lease,
-    lastEventAt: Date.now(),
   });
 }
 
@@ -265,11 +253,9 @@ function metricsForEventProcess(process: ProcessInfo | null): Metrics | null {
   return processKey(snapshot.status?.process) === processKey(process) ? snapshot.metrics : null;
 }
 
-function handleStatusEvent(data: Record<string, unknown>, now: number) {
-  notePollOutcome(true);
+function statusEventPatch(data: Record<string, unknown>): SnapshotPatch {
   const status = statusFromEventData(data);
-  emitIfChanged({
-    ...snapshot,
+  return {
     status,
     statusLoading: false,
     connected: true,
@@ -278,35 +264,7 @@ function handleStatusEvent(data: Record<string, unknown>, now: number) {
       process: status.process,
       launching: status.launching,
     }),
-    lastEventAt: now,
-  });
-}
-
-function handleGpuEvent(data: Record<string, unknown>, now: number) {
-  emitIfChanged({
-    ...snapshot,
-    gpus: normalizeGpuAliases(data["gpus"]),
-    lastEventAt: now,
-  });
-}
-
-function handleMetricsEvent(data: Record<string, unknown>, now: number) {
-  emitIfChanged({
-    ...snapshot,
-    metrics: data as Metrics,
-    lastEventAt: now,
-  });
-}
-
-function handleLaunchProgressEvent(data: Record<string, unknown>, now: number) {
-  const progress = data as unknown as LaunchProgressData;
-  scheduleLaunchClear(progress.stage);
-  emitIfChanged({
-    ...snapshot,
-    connected: true,
-    launchProgress: progress,
-    lastEventAt: now,
-  });
+  };
 }
 
 type RuntimeSummaryEventPlatform = { kind?: string; vendor?: string | null };
@@ -322,7 +280,7 @@ const RUNTIME_PLATFORM_VENDORS = new Set<Exclude<RuntimeSummaryData["platform"][
   "apple",
 ]);
 
-function handleRuntimeSummaryEvent(data: Record<string, unknown>, now: number) {
+function runtimeSummaryEventPatch(data: Record<string, unknown>): SnapshotPatch {
   const platform = data["platform"] as RuntimeSummaryEventPlatform | undefined;
   const nextKind =
     platform?.kind &&
@@ -341,13 +299,7 @@ function handleRuntimeSummaryEvent(data: Record<string, unknown>, now: number) {
   const rawServices = data["services"] as ServiceEntry[] | undefined;
   const rawLease = data["lease"] as LeaseInfo | undefined;
 
-  emitIfChanged({
-    status: snapshot.status,
-    statusLoading: snapshot.statusLoading,
-    connected: snapshot.connected,
-    gpus: snapshot.gpus,
-    metrics: snapshot.metrics,
-    launchProgress: snapshot.launchProgress,
+  return {
     platformKind: nextKind,
     runtimeSummary:
       platform && gpuMon && backends
@@ -359,23 +311,28 @@ function handleRuntimeSummaryEvent(data: Record<string, unknown>, now: number) {
         : snapshot.runtimeSummary,
     services: Array.isArray(rawServices) ? rawServices : snapshot.services,
     lease: rawLease ?? snapshot.lease,
-    lastEventAt: now,
-  });
+  };
 }
 
-const controllerEventHandlers: Record<
-  string,
-  (data: Record<string, unknown>, now: number) => void
-> = {
-  status: handleStatusEvent,
-  gpu: handleGpuEvent,
-  metrics: handleMetricsEvent,
-  launch_progress: handleLaunchProgressEvent,
-  runtime_summary: handleRuntimeSummaryEvent,
+const controllerEventHandlers: Record<string, (data: Record<string, unknown>) => SnapshotPatch> = {
+  status: statusEventPatch,
+  gpu: (data) => ({ gpus: normalizeGpuAliases(data["gpus"]) }),
+  metrics: (data) => ({ metrics: data as Metrics }),
+  launch_progress: (data) => ({
+    connected: true,
+    launchProgress: data as unknown as LaunchProgressData,
+  }),
+  runtime_summary: runtimeSummaryEventPatch,
 };
 
 function handleControllerEvent(detail: ControllerEventDetail | undefined) {
-  controllerEventHandlers[detail?.type ?? ""]?.(detail?.data ?? {}, Date.now());
+  const type = detail?.type ?? "";
+  const handler = controllerEventHandlers[type];
+  if (!handler) return;
+  const patch = handler(detail?.data ?? {});
+  if (type === "status") notePollOutcome(true);
+  if (patch.launchProgress) scheduleLaunchClear(patch.launchProgress.stage);
+  emitPatch(patch);
 }
 
 function fetchStatusNow(controllerKey = activeControllerKey): Promise<void> {
