@@ -36,6 +36,7 @@ export const RuntimeStatusSchema = Schema.Struct({
   title: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
   startedAt: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
   usageTotals: Schema.optional(Schema.Union([Schema.Null, SessionUsageTotalsSchema])),
+  error: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
   queue: Schema.optional(RuntimeQueueSchema),
   extensionUiRequest: Schema.optional(Schema.Union([Schema.Null, RuntimeExtensionUiRequestSchema])),
 });

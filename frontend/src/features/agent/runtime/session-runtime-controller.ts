@@ -1,5 +1,3 @@
-import { isAgentSettledEvent } from "@shared/agent/pi-events";
-import { mergeAgentViewMessages } from "@shared/agent/session-view";
 import {
   subscribeRuntimeActivity,
   type RuntimeActivityPayload,
@@ -31,7 +29,7 @@ function matchingSession(
 function projectStatus(session: Session, status: RuntimeStatus): Session {
   if (session.status === "loading") return session;
   const messages = status.messages
-    ? mergeAgentViewMessages(session.messages, status.messages)
+    ? optimisticOverlay(session.messages, status.messages)
     : session.messages;
   const next: Session = {
     ...session,
@@ -41,6 +39,7 @@ function projectStatus(session: Session, status: RuntimeStatus): Session {
     ...(status.title ? { title: status.title } : {}),
     ...(status.startedAt ? { startedAt: status.startedAt } : {}),
     ...(status.usageTotals ? { usageTotals: status.usageTotals } : {}),
+    ...(status.error ? { error: status.error } : {}),
     ...(status.piSessionId ? { piSessionId: status.piSessionId } : {}),
     ...(status.modelId ? { modelId: status.modelId } : {}),
     ...(status.contextUsage !== undefined ? { contextUsage: status.contextUsage } : {}),
@@ -48,13 +47,38 @@ function projectStatus(session: Session, status: RuntimeStatus): Session {
     extensionUiRequest: status.extensionUiRequest ?? undefined,
   };
   if (status.active !== true) {
-    return session.status === "running" || session.status === "stopping" ? settleTurn(next) : next;
+    const settled = {
+      ...next,
+      messages: messages.map((message) =>
+        message.pending || message.awaitingEcho
+          ? { ...message, pending: false, awaitingEcho: false }
+          : message,
+      ),
+    };
+    return session.status === "running" || session.status === "stopping"
+      ? settleTurn(settled)
+      : settled;
   }
   return {
     ...next,
     status: session.status === "stopping" ? "stopping" : "running",
     activeAssistantId: [...messages].reverse().find((message) => message.role === "assistant")?.id,
   };
+}
+
+function optimisticOverlay(
+  current: readonly Session["messages"][number][],
+  snapshot: readonly Session["messages"][number][],
+): Session["messages"] {
+  const pending = current.filter(
+    (message) =>
+      (message.pending || message.awaitingEcho) &&
+      !snapshot.some(
+        (candidate) =>
+          candidate.role === message.role && candidate.text.trim() === message.text.trim(),
+      ),
+  );
+  return [...snapshot, ...pending];
 }
 
 function sameActivity(
@@ -92,31 +116,12 @@ export function createSessionRuntimeController(
     listeners.forEach((listener) => listener());
   };
 
-  const apply = (sessionId: string, status: RuntimeStatus, payload?: RuntimeActivityPayload) => {
+  const apply = (sessionId: string, status: RuntimeStatus) => {
     statuses.set(sessionId, status);
     if (!binding) return;
     const target = matchingSession(binding.getSessions(), sessionId, status);
     if (!target) return;
-    binding.commit(target.id, (session) => {
-      const projected = projectStatus(session, status);
-      if (!payload || payload.type !== "pi") return projected;
-      const error =
-        payload.event.type === "notice" &&
-        payload.event.level === "error" &&
-        typeof payload.event.message === "string"
-          ? { ...projected, error: payload.event.message.slice(0, 4_000) }
-          : projected;
-      return isAgentSettledEvent(payload.event)
-        ? {
-            ...settleTurn(error),
-            messages: error.messages.map((message) =>
-              message.pending || message.awaitingEcho
-                ? { ...message, pending: false, awaitingEcho: false }
-                : message,
-            ),
-          }
-        : { ...error, status: session.status === "stopping" ? "stopping" : "running" };
-    });
+    binding.commit(target.id, (session) => projectStatus(session, status));
   };
 
   const receive = (payload: RuntimeActivityPayload) => {
@@ -124,11 +129,7 @@ export function createSessionRuntimeController(
       statuses.clear();
       payload.sessions.forEach(({ sessionId, status }) => apply(sessionId, status));
     } else {
-      apply(
-        payload.sessionId,
-        payload.type === "status" ? payload.session : payload.snapshot,
-        payload,
-      );
+      apply(payload.sessionId, payload.type === "status" ? payload.session : payload.snapshot);
     }
     publish();
   };

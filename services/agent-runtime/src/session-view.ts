@@ -5,7 +5,6 @@ import type {
   TextBlock,
   TokenStats,
 } from "../../../shared/agent/session-view";
-import { mergeAgentViewMessages } from "../../../shared/agent/session-view";
 import type { SessionEvent } from "./sessions-store";
 
 export type TranscriptProjection = { messages: ChatMessage[]; tokenStats?: TokenStats };
@@ -265,9 +264,29 @@ export function mergeAgentTranscript(
   live: TranscriptProjection,
 ): TranscriptProjection {
   return {
-    messages: mergeAgentViewMessages(current.messages, live.messages),
+    messages: mergeTranscriptMessages(current.messages, live.messages),
     tokenStats: live.tokenStats ?? current.tokenStats,
   };
+}
+
+function mergeTranscriptMessages(
+  current: readonly ChatMessage[],
+  live: readonly ChatMessage[],
+): ChatMessage[] {
+  if (live.length === 0) return [...current];
+  let currentStart = -1;
+  let liveStart = -1;
+  for (let right = live.length - 1; right >= 0 && currentStart < 0; right -= 1) {
+    if (live[right].role !== "user") continue;
+    currentStart = current.findLastIndex(
+      (message) =>
+        message.role === live[right].role && message.text.trim() === live[right].text.trim(),
+    );
+    if (currentStart >= 0) liveStart = right;
+  }
+  return currentStart < 0
+    ? [...current, ...live]
+    : [...current.slice(0, currentStart), ...live.slice(liveStart)];
 }
 
 export function projectAgentQueue(followUp: readonly string[]): QueuedMessage[] {

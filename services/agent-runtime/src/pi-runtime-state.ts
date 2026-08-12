@@ -102,6 +102,7 @@ export function piStatusFromEvents(input: {
     title: input.title ?? null,
     startedAt: input.startedAt ?? null,
     usageTotals: input.usageTotals ?? null,
+    error: input.lastError,
     queue: {
       steering: [...(input.queue?.steering ?? [])],
       followUp: projectAgentQueue(input.queue?.followUp ?? []),

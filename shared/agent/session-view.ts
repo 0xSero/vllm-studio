@@ -70,39 +70,3 @@ export type ChatMessageAttachment = Schema.Schema.Type<typeof AgentViewAttachmen
 export type TokenStats = Schema.Schema.Type<typeof AgentViewTokenStatsSchema>;
 export type QueuedMessage = Schema.Schema.Type<typeof AgentViewQueuedMessageSchema>;
 export type ChatMessage = Schema.Schema.Type<typeof AgentViewMessageSchema>;
-
-const sameMessage = (left: ChatMessage, right: ChatMessage): boolean =>
-  left.role === right.role && left.text.trim() === right.text.trim();
-
-export function mergeAgentViewMessages(
-  current: readonly ChatMessage[],
-  live: readonly ChatMessage[],
-): ChatMessage[] {
-  if (live.length === 0) return [...current];
-  let currentStart = -1;
-  let liveStart = -1;
-  for (let right = live.length - 1; right >= 0 && currentStart < 0; right -= 1) {
-    if (live[right].role !== "user") continue;
-    for (let left = current.length - 1; left >= 0; left -= 1) {
-      if (sameMessage(current[left], live[right])) {
-        currentStart = left;
-        liveStart = right;
-        break;
-      }
-    }
-  }
-  const merged =
-    currentStart < 0
-      ? [...current, ...live]
-      : [...current.slice(0, currentStart), ...live.slice(liveStart)];
-  for (const message of current) {
-    if (
-      message.role === "user" &&
-      (message.pending || message.awaitingEcho) &&
-      !merged.some((candidate) => sameMessage(candidate, message))
-    ) {
-      merged.push(message);
-    }
-  }
-  return merged;
-}

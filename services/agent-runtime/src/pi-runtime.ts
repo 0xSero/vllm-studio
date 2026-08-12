@@ -914,6 +914,9 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     if (event.type === "session_info_changed" && this.runtime?.session.sessionId) {
       this.currentPiSessionId = this.runtime.session.sessionId;
     }
+    if (event.type === "notice" && event.level === "error" && typeof event.message === "string") {
+      this.lastError = event.message.slice(0, 4_000);
+    }
     const logged: LoggedPiEvent = {
       seq: ++this.eventSeq,
       event: event as PiEvent,
