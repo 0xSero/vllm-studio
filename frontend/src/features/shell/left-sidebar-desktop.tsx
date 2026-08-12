@@ -50,7 +50,7 @@ export function DesktopSidebar({
     <aside
       onPointerEnter={onRevealProjectsNav}
       onFocusCapture={onRevealProjectsNav}
-      className={`relative hidden md:flex sticky top-0 h-[100dvh] border-r border-(--border) bg-(--sidebar-bg) flex-col shrink-0 z-40 overflow-hidden ${
+      className={`relative hidden md:flex sticky top-0 h-[var(--app-height)] border-r border-(--border) bg-(--sidebar-bg) flex-col shrink-0 z-40 overflow-hidden ${
         resizing ? "" : "transition-[width] duration-150 ease-out"
       }`}
       style={{

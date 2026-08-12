@@ -161,7 +161,7 @@ export default function AutomationsPage() {
   const missing = !creating && requestedId !== null && automations !== null && selected === null;
 
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full bg-(--ui-bg) text-(--ui-fg)">
+    <div className="flex h-[var(--app-height)] min-h-0 w-full bg-(--ui-bg) text-(--ui-fg)">
       <div
         className={
           editorOpen

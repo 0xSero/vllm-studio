@@ -49,7 +49,7 @@ function quickPanelMode(
 
 function workspaceClassName(mode: QuickPanelMode): string {
   return cx(
-    "agent-workspace flex h-full min-h-0 w-full flex-col text-(--fg) md:h-[100dvh]",
+    "agent-workspace flex h-full min-h-0 w-full flex-col text-(--fg) md:h-[var(--app-height)]",
     mode === "composer" ? "bg-transparent" : "bg-(--agent-bg)",
     mode === "thread" && "overflow-hidden rounded-[var(--rad-xl)] shadow-[var(--shadow-2xl)]",
   );

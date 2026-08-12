@@ -1,33 +1,9 @@
 /* Mobile viewport fix */
 @media (max-width: 768px) {
-  /* Force everything to respect 100vw */
-  * {
-    max-width: 100vw;
-  }
-
-  /* Prevent horizontal overflow on mobile */
-  main,
-  article,
-  section,
-  div {
-    max-width: 100vw !important;
-  }
-
-  /* Fixed and absolute positioned elements */
-  [class*="fixed"],
-  [class*="absolute"] {
-    max-width: 100vw !important;
-  }
-
-  /* Constrain all content containers */
-  .max-w-3xl,
-  .max-w-4xl,
-  .max-w-5xl,
-  .max-w-6xl,
-  .max-w-7xl {
-    max-width: 100vw !important;
-    padding-left: 1rem !important;
-    padding-right: 1rem !important;
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   /* Ensure code blocks don't overflow */
@@ -62,6 +38,14 @@
   }
 }
 
+@media (pointer: coarse) {
+  button,
+  a[role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
 /* Mobile chat optimization */
 @media (max-width: 768px) {
   .chat-input-area {
@@ -78,13 +62,6 @@
   /* Increase base font size on mobile for better readability */
   body {
     font-size: 16px;
-  }
-
-  /* Ensure minimum touch target sizes (44x44px recommended by Apple/Google) */
-  button,
-  a[role="button"] {
-    min-height: 44px;
-    min-width: 44px;
   }
 
   /* Increase spacing for better readability */

@@ -67,12 +67,6 @@ const bootScript = `${getThemeBootstrapScript()}
       }
     });
   }
-  const setAppHeight = () => {
-    document.documentElement.style.setProperty('--app-height', String(window.innerHeight) + 'px');
-  };
-  window.addEventListener('resize', setAppHeight);
-  window.addEventListener('orientationchange', setAppHeight);
-  setAppHeight();
 `;
 
 export default function RootLayout({
