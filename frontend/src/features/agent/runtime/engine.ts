@@ -253,7 +253,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           const cachedMessages = readTranscriptSnapshot(piSessionId);
           const seedCached = (session: Session) =>
             session.messages.length === 0 && cachedMessages
-              ? { ...session, messages: cachedMessages }
+              ? { ...session, messages: cachedMessages, hydratedFromCache: true }
               : session;
           if (!cwd) {
             updateSession(sessionId, (session) =>
@@ -343,6 +343,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
                 contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
                 status: "running",
                 activeAssistantId: undefined,
+                hydratedFromCache: session.hydratedFromCache === true,
                 error: "",
               }));
               sessionRuntimeController().noteReplayHydrated(sessionId, undefined);
