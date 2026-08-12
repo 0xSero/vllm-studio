@@ -227,7 +227,7 @@ export async function handleBrowserFetch(request: Request): Promise<Response> {
 export async function handleBrowserFrame(request: Request): Promise<Response> {
   try {
     return await runBrowserOperation({ kind: "frame", signal: request.signal }, async (context) => {
-      if (!browserHost.isAvailable()) return fallbackFrame(UNAVAILABLE_ERROR);
+      if (!browserHost.isAvailable()) return fallbackFrame(UNAVAILABLE_ERROR, 503);
       try {
         const { frame, state } = await browserHost.pollFrame();
         context.assertActive();
@@ -251,7 +251,7 @@ export async function handleBrowserFrame(request: Request): Promise<Response> {
   }
 }
 
-function fallbackFrame(error: string): Response {
+function fallbackFrame(error: string, status = 502): Response {
   return Response.json(
     {
       ok: false,
@@ -264,7 +264,7 @@ function fallbackFrame(error: string): Response {
         canGoForward: false,
       },
     },
-    { status: 503 },
+    { status },
   );
 }
 

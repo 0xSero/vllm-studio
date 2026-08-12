@@ -169,6 +169,13 @@ type ToolHandlers = {
   requestFileOpen: (path: string) => void;
 };
 
+async function navigateMarkdownBrowser(tools: ToolHandlers, next: string): Promise<void> {
+  const result = await mutateBrowserHost("navigate", { url: next });
+  if (!result.error && result.readingMode && result.url) {
+    tools.setBrowserUrl(result.url, result.url);
+  }
+}
+
 function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
   const stripPath = (raw: string) =>
     raw
@@ -240,11 +247,7 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
             tools.setComputerOpen(true);
             tools.setComputerTab("browser");
             tools.setBrowserInput(next);
-            void mutateBrowserHost("navigate", { url: next }).then((result) => {
-              if (!result.error && result.readingMode && result.url) {
-                tools.setBrowserUrl(result.url, result.url);
-              }
-            });
+            void navigateMarkdownBrowser(tools, next);
           }}
           title={href}
         >

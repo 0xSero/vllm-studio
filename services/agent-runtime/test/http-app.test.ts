@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAgentRuntimeApp } from "../src/http/app";
+import { browserHost } from "../src/browser-host/browser-host";
 import {
   createBrowserOperationQueue,
   handleBrowserFrame,
@@ -146,6 +147,52 @@ describe("agent runtime HTTP application", () => {
       else process.env["LOCAL_STUDIO_CHROME_PATH"] = previousChrome;
       globalThis.__LOCAL_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST = undefined;
       globalThis.__LOCAL_STUDIO_BROWSER_READER_REQUEST_FOR_TEST = undefined;
+    }
+  });
+
+  test("keeps transient frame failures retryable", async () => {
+    const previousChrome = process.env["LOCAL_STUDIO_CHROME_PATH"];
+    const pollFrame = browserHost.pollFrame;
+    process.env["LOCAL_STUDIO_CHROME_PATH"] = process.execPath;
+    let attempts = 0;
+    browserHost.pollFrame = async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("capture interrupted");
+      return {
+        frame: null,
+        state: {
+          url: "https://recovered.test/",
+          title: "Recovered",
+          canGoBack: false,
+          canGoForward: false,
+        },
+      };
+    };
+    try {
+      const failed = await handleBrowserFrame(
+        new Request("http://runtime/api/agent/browser/frame"),
+      );
+      expect(failed.status).toBe(502);
+      expect((await failed.json()).error).toBe("capture interrupted");
+
+      const recovered = await handleBrowserFrame(
+        new Request("http://runtime/api/agent/browser/frame"),
+      );
+      expect(recovered.status).toBe(200);
+      expect(await recovered.json()).toEqual({
+        ok: true,
+        data: {
+          frame: null,
+          url: "https://recovered.test/",
+          title: "Recovered",
+          canGoBack: false,
+          canGoForward: false,
+        },
+      });
+    } finally {
+      browserHost.pollFrame = pollFrame;
+      if (previousChrome === undefined) delete process.env["LOCAL_STUDIO_CHROME_PATH"];
+      else process.env["LOCAL_STUDIO_CHROME_PATH"] = previousChrome;
     }
   });
   test("exposes health without starting a network listener", async () => {
