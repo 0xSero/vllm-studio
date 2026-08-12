@@ -34,10 +34,10 @@ export function AgentBrowserPanel({ workbench }: { workbench: WorkbenchState }) 
     (owner) => owner.mountKey === terminalState.activeOwnerKey,
   );
   useMountSubscription(() => {
-    if (workbench.computer.open && workbench.computer.tab === "terminal") {
+    if (workbench.computer.open && workbench.computer.tab === "terminal" && !activeTerminal) {
       queueMicrotask(() => workbench.openResource("terminal", resourceContext));
     }
-  }, [resourceContext, workbench]);
+  }, [activeTerminal, resourceContext, workbench]);
   const handleComputerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLElement>) => {
       if (!(event.metaKey || event.ctrlKey) || !event.altKey) return;
