@@ -1,10 +1,13 @@
 "use client";
 
 import ReactMarkdown, { type Components } from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { cx } from "./utils";
 
 const MARKDOWN_PLUGINS = [remarkGfm];
+const SAFE_HTML_PLUGINS = [rehypeRaw, rehypeSanitize];
 
 const markdownComponents: Components = {
   a: ({ children, href, ...props }) => (
@@ -18,10 +21,12 @@ export function MarkdownContent({
   markdown,
   className,
   components,
+  safeHtml = false,
 }: {
   markdown: string;
   className?: string;
   components?: Components;
+  safeHtml?: boolean;
 }) {
   return (
     <div
@@ -31,8 +36,9 @@ export function MarkdownContent({
       )}
     >
       <ReactMarkdown
-        skipHtml
+        skipHtml={!safeHtml}
         remarkPlugins={MARKDOWN_PLUGINS}
+        rehypePlugins={safeHtml ? SAFE_HTML_PLUGINS : undefined}
         components={{ ...markdownComponents, ...components }}
       >
         {markdown}

@@ -185,6 +185,49 @@ for (const [route, destination] of [
   });
 }
 
+test("model card renders recorded safe HTML without executing active content", async ({ page }) => {
+  await page.route(/\/api\/huggingface\/models(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          _id: "recorded/safe-html-model",
+          modelId: "recorded/safe-html-model",
+          author: "recorded",
+          downloads: 12_000,
+          likes: 800,
+          tags: ["safetensors"],
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+          private: false,
+        },
+      ]),
+    }),
+  );
+  await page.route(/\/api\/huggingface\/model-card(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        modelId: "recorded/safe-html-model",
+        author: "recorded",
+        downloads: 12_000,
+        likes: 800,
+        tags: ["safetensors"],
+        readme:
+          "<h2>Safe HTML heading</h2><p>Rendered <strong>content</strong>.</p><script>globalThis.modelCardInjected=true</script>",
+      }),
+    }),
+  );
+
+  await page.goto("/models?tab=get");
+  const model = page.getByText("recorded/safe-html-model", { exact: true });
+  await expect(model).toBeVisible();
+  await model.click();
+  await expect(page.getByRole("heading", { name: "Safe HTML heading" })).toBeVisible();
+  await expect(page.getByText("Rendered content.", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => Reflect.get(globalThis, "modelCardInjected"))).toBeUndefined();
+});
+
 test("appearance mode resolves the shared semantic palette", async ({ page }) => {
   const terminalRed = () =>
     page.evaluate(() => {

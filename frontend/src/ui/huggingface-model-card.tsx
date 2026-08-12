@@ -150,7 +150,7 @@ function readmeContent({
   markdown: string;
 }): ReactNode {
   if (error) return <p className="text-[length:var(--fs-sm)] text-(--ui-danger)">{error}</p>;
-  if (markdown) return <MarkdownContent markdown={markdown} />;
+  if (markdown) return <MarkdownContent markdown={markdown} safeHtml />;
   if (loading) return null;
   return (
     <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">
@@ -268,59 +268,10 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
 
 function readmeMarkdown(readme?: string): string {
   if (!readme) return "";
-  return readableMarkdownFromHtml(readme.replace(/^---[\s\S]*?---\s*/m, ""))
+  return readme
+    .replace(/^---[\s\S]*?---\s*/m, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-}
-
-function readableMarkdownFromHtml(markdown: string): string {
-  return markdown
-    .replace(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi, (_, level: string, content: string) => {
-      const text = htmlText(content);
-      return text ? `\n${"#".repeat(Number(level))} ${text}\n` : "\n";
-    })
-    .replace(
-      /<a\b[^>]*href=(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi,
-      (_, _quote: string, href: string, content: string) => {
-        const label = htmlText(content) || href;
-        return href ? `[${label}](${href})` : label;
-      },
-    )
-    .replace(/<img\b[^>]*\balt=(["'])(.*?)\1[^>]*>/gi, (_, _quote: string, alt: string) =>
-      htmlEntityDecode(alt),
-    )
-    .replace(/<img\b[^>]*>/gi, "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(
-      /<\/(p|div|section|article|details|summary|li|ul|ol|table|thead|tbody|tr|td|th)>/gi,
-      "\n",
-    )
-    .replace(/<[^>]+>/g, "")
-    .replace(/[ \t]+\n/g, "\n");
-}
-
-function htmlText(value: string): string {
-  return htmlEntityDecode(
-    value
-      .replace(/<img\b[^>]*\balt=(["'])(.*?)\1[^>]*>/gi, "$2")
-      .replace(/<img\b[^>]*>/gi, "")
-      .replace(/<br\s*\/?>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim(),
-  );
-}
-
-function htmlEntityDecode(value: string): string {
-  return value
-    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
-    .replace(/&#x([\da-f]+);/gi, (_, code: string) => String.fromCharCode(parseInt(code, 16)))
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
 }
 
 function formatDate(value?: string): string {
