@@ -13,8 +13,14 @@ import {
 // Per-content-block memo. `appendDelta` preserves the reference of every
 // non-trailing text block during streaming, so prior content blocks skip
 // re-rendering entirely once the assistant moves on past them.
-const MemoContentBlock = memo(function MemoContentBlock({ block }: { block: TextBlock }) {
-  return <AssistantMarkdown text={block.text} />;
+const MemoContentBlock = memo(function MemoContentBlock({
+  block,
+  cwd,
+}: {
+  block: TextBlock;
+  cwd: string | null;
+}) {
+  return <AssistantMarkdown text={block.text} cwd={cwd} />;
 });
 
 function EventBlockView({ block }: { block: EventBlock }) {
@@ -42,11 +48,13 @@ const AssistantBlocks = memo(function AssistantBlocks({
   blocks,
   live,
   running,
+  cwd,
   onForkSession,
 }: {
   blocks: AssistantBlock[];
   live: boolean;
   running: boolean;
+  cwd: string | null;
   onForkSession?: () => void;
 }) {
   const routedBlocks = useMemo(() => groupAssistantBlocks(blocks), [blocks]);
@@ -80,7 +88,7 @@ const AssistantBlocks = memo(function AssistantBlocks({
     if (item.kind === "content") {
       nodes.push(
         <div key={item.block.id} className="min-w-0">
-          <MemoContentBlock block={item.block} />
+          <MemoContentBlock block={item.block} cwd={cwd} />
           {showActions && index === lastContentIndex ? (
             <AssistantMessageActions copyText={copyText} onForkSession={onForkSession} />
           ) : null}
@@ -101,11 +109,13 @@ function SessionPaneBlockRouterInner({
   message,
   live,
   running,
+  cwd,
   onForkSession,
 }: {
   message: ChatMessage;
   live: boolean;
   running: boolean;
+  cwd: string | null;
   onForkSession?: () => void;
 }) {
   if (message.role === "user") {
@@ -117,6 +127,7 @@ function SessionPaneBlockRouterInner({
       blocks={message.blocks ?? EMPTY_BLOCKS}
       live={live}
       running={running}
+      cwd={cwd}
       onForkSession={onForkSession}
     />
   );
