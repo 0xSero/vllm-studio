@@ -16,10 +16,6 @@ import { safeJson } from "@/features/agent/safe-json";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { clampComputerWidth, gentlySnapComputerWidth } from "@/features/agent/tools/persistence";
 import { ephemeralWorkspaceStore, workspaceStore } from "@/features/agent/workspace/store";
-import {
-  createSessionReplayQueue,
-  type SessionReplayQueue,
-} from "@/features/agent/workspace/replay-queue";
 import { makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
 import {
   runWorkspaceEffect,
@@ -170,18 +166,38 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
   const paneHandlesRef = useRef<Map<PaneId, ChatPaneHandle>>(new Map());
   const computerAsideRef = useRef<HTMLElement | null>(null);
 
-  const replayQueueRef = useRef<SessionReplayQueue | null>(null);
-  const getReplayQueue = useCallback(() => {
-    replayQueueRef.current ??= createSessionReplayQueue({
-      getHandle: (paneId) => paneHandlesRef.current.get(paneId),
-      getState: store.getState,
-      setTimeout: (handler, delay) => window.setTimeout(handler, delay),
-    });
-    return replayQueueRef.current;
-  }, [store]);
+  const pendingReplaysRef = useRef(new Map<PaneId, string>());
+  const drainSessionReplay = useCallback(
+    (paneId: PaneId) => {
+      const piSessionId = pendingReplaysRef.current.get(paneId);
+      const handle = paneHandlesRef.current.get(paneId);
+      if (!piSessionId || !handle) return;
+      const current = store.getState();
+      const pane = current.panesById.get(paneId);
+      const session = pane ? current.sessions.get(pane.sessionId) : undefined;
+      if (
+        !session ||
+        (session.piSessionId == null &&
+          session.messages.length === 0 &&
+          session.status === "idle") ||
+        session.messages.length > 0 ||
+        (session.piSessionId && session.piSessionId !== piSessionId)
+      ) {
+        pendingReplaysRef.current.delete(paneId);
+        return;
+      }
+      if (handle.sessionId !== session.id) return;
+      pendingReplaysRef.current.delete(paneId);
+      void handle.loadAndReplay(piSessionId);
+    },
+    [store],
+  );
   const queueSessionReplay = useCallback(
-    (paneId: PaneId, piSessionId: string) => getReplayQueue().queue(paneId, piSessionId),
-    [getReplayQueue],
+    (paneId: PaneId, piSessionId: string) => {
+      pendingReplaysRef.current.set(paneId, piSessionId);
+      window.setTimeout(() => drainSessionReplay(paneId), 0);
+    },
+    [drainSessionReplay],
   );
 
   const controller = useMemo(() => {
@@ -265,7 +281,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
       registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => {
         if (handle) paneHandlesRef.current.set(paneId, handle);
         else paneHandlesRef.current.delete(paneId);
-        if (handle) getReplayQueue().notifyHandleRegistered(paneId);
+        if (handle) drainSessionReplay(paneId);
       },
       compactFocusedSession: async () => {
         const handle = paneHandlesRef.current.get(store.getState().focusedPaneId);
@@ -354,7 +370,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         }
       },
     }),
-    [controller.notifySessionsChanged, dispatch, ephemeral, getReplayQueue, store],
+    [controller.notifySessionsChanged, dispatch, drainSessionReplay, ephemeral, store],
   );
 
   useWorkspaceHydrationEffects({
