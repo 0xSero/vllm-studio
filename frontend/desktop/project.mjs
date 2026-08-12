@@ -1,25 +1,30 @@
 #!/usr/bin/env node
-var __defProp = Object.defineProperty;
-var __returnValue = (v) => v;
-function __exportSetter(name, newValue) {
-  this[name] = __returnValue.bind(null, newValue);
-}
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, {
-      get: all[name],
-      enumerable: !0,
-      configurable: !0,
-      set: __exportSetter.bind(all, name)
-    });
-};
-var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
-
-var exports_assert_release_main = {};
-__export(exports_assert_release_main, {
-  assertReleaseMain: () => assertReleaseMain
-});
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
+import fs, {
+  chmodSync,
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  readlinkSync,
+  realpathSync,
+  rmdirSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { createRequire } from "node:module";
+import os, { tmpdir } from "node:os";
+import path, { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { performance } from "node:perf_hooks";
+import { fileURLToPath, pathToFileURL } from "node:url";
+var __esm = (fn) => fn;
 function valueAfter(args, name) {
   let index = args.indexOf(name);
   return index === -1 ? void 0 : args[index + 1];
@@ -37,31 +42,14 @@ function assertReleaseMain(args = process.argv.slice(2)) {
     throw Error(`Refusing stale release: origin/main is ${current}, build is ${expected}`);
   return console.log(`Release source is current origin/main: ${expected}`), expected;
 }
-var init_assert_release_main = __esm(() => {
-  assertReleaseMain();
-});
-
-var exports_assert_standalone_build = {};
-import {
-  existsSync as existsSync2,
-  lstatSync,
-  readFileSync as readFileSync2,
-  readdirSync,
-  readlinkSync,
-  realpathSync
-} from "node:fs";
-import { isAbsolute, relative, resolve, sep } from "node:path";
-import { spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
 function filesUnder(directory) {
   return readdirSync(directory, { recursive: !0, withFileTypes: !0 }).filter((entry) => entry.isFile()).map((entry) => resolve(entry.parentPath, entry.name));
 }
 function symlinksUnder(directory) {
   return readdirSync(directory, { recursive: !0, withFileTypes: !0 }).filter((entry) => entry.isSymbolicLink()).map((entry) => resolve(entry.parentPath, entry.name));
 }
-function isRuntimeFile(file) {
-  let path2 = relative(standaloneBase, file).replaceAll("\\", "/");
+function isRuntimeFile(file, base) {
+  let path = relative(base, file).replaceAll("\\", "/");
   return [
     "server.js",
     "package.json",
@@ -73,7 +61,7 @@ function isRuntimeFile(file) {
     "frontend/.next/",
     "frontend/public/",
     "frontend/node_modules/"
-  ].some((prefix) => path2 === prefix || path2.startsWith(prefix));
+  ].some((prefix) => path === prefix || path.startsWith(prefix));
 }
 var projectRoot, standaloneBase, candidates, runtimeRoots, requiredRuntimeFiles, runtimeRoot, unsafeRuntimeLinks, tracedPackageDirectory, danglingTracedPackages, piCodingAgentRoot, piAiRoot, piRuntimeEntries, piAiManifestPath, piAiManifest, requireFromPiAi, unexpected;
 var init_assert_standalone_build = __esm(() => {
@@ -87,37 +75,37 @@ var init_assert_standalone_build = __esm(() => {
     "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/providers/data/amazon-bedrock.json",
     "node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/build/value/shared/union_priority_sort.mjs"
   ];
-  if (!candidates.some((candidate) => existsSync2(candidate)))
+  if (!candidates.some((candidate) => existsSync(candidate)))
     throw Error(`Missing standalone server: ${candidates.join(", ")}`);
   for (let file of requiredRuntimeFiles)
-    if (!runtimeRoots.some((root) => existsSync2(resolve(root, file))))
+    if (!runtimeRoots.some((root) => existsSync(resolve(root, file))))
       throw Error(`Missing standalone runtime dependency: ${file}`);
-  runtimeRoot = runtimeRoots.find((root) => existsSync2(resolve(root, "server.js"))), unsafeRuntimeLinks = runtimeRoot ? symlinksUnder(runtimeRoot).filter((link) => {
-    if (isAbsolute(readlinkSync(link)) || !existsSync2(link))
+  runtimeRoot = runtimeRoots.find((root) => existsSync(resolve(root, "server.js"))), unsafeRuntimeLinks = runtimeRoot ? symlinksUnder(runtimeRoot).filter((link) => {
+    if (isAbsolute(readlinkSync(link)) || !existsSync(link))
       return !0;
     let resolvedLink = relative(runtimeRoot, realpathSync(link));
     return resolvedLink === ".." || resolvedLink.startsWith(`..${sep}`) || isAbsolute(resolvedLink);
   }) : [];
   if (unsafeRuntimeLinks.length > 0)
     throw Error(`Unsafe standalone runtime links: ${unsafeRuntimeLinks.join(", ")}`);
-  tracedPackageDirectory = runtimeRoot ? resolve(runtimeRoot, ".next/node_modules/@earendil-works") : void 0, danglingTracedPackages = tracedPackageDirectory ? existsSync2(tracedPackageDirectory) ? readdirSync(tracedPackageDirectory).map((entry) => resolve(tracedPackageDirectory, entry)).filter((entry) => lstatSync(entry).isSymbolicLink() && !existsSync2(entry)) : [] : [];
+  tracedPackageDirectory = runtimeRoot ? resolve(runtimeRoot, ".next/node_modules/@earendil-works") : void 0, danglingTracedPackages = tracedPackageDirectory ? existsSync(tracedPackageDirectory) ? readdirSync(tracedPackageDirectory).map((entry) => resolve(tracedPackageDirectory, entry)).filter((entry) => lstatSync(entry).isSymbolicLink() && !existsSync(entry)) : [] : [];
   if (danglingTracedPackages.length > 0)
     throw Error(`Dangling traced runtime packages: ${danglingTracedPackages.join(", ")}`);
   piCodingAgentRoot = runtimeRoot ? resolve(runtimeRoot, "node_modules/@earendil-works/pi-coding-agent") : null, piAiRoot = piCodingAgentRoot ? resolve(piCodingAgentRoot, "node_modules/@earendil-works/pi-ai") : null, piRuntimeEntries = piCodingAgentRoot && piAiRoot ? [resolve(piCodingAgentRoot, "dist/index.js"), resolve(piAiRoot, "dist/index.js")] : [];
-  if (piRuntimeEntries.length !== 2 || piRuntimeEntries.some((entry) => !existsSync2(entry)))
+  if (piRuntimeEntries.length !== 2 || piRuntimeEntries.some((entry) => !existsSync(entry)))
     throw Error("Missing packaged Pi runtime entrypoints");
   for (let entry of piRuntimeEntries) {
     let importCheck = spawnSync(process.execPath, ["--input-type=module", "--eval", `import(${JSON.stringify(pathToFileURL(entry).href)})`], { cwd: runtimeRoot, encoding: "utf8" });
     if (importCheck.status !== 0)
       throw Error(`Standalone Pi runtime entrypoint is not importable: ${importCheck.stderr || importCheck.stdout}`);
   }
-  piAiManifestPath = resolve(realpathSync(piAiRoot), "package.json"), piAiManifest = JSON.parse(readFileSync2(piAiManifestPath, "utf8")), requireFromPiAi = createRequire(piAiManifestPath);
+  piAiManifestPath = resolve(realpathSync(piAiRoot), "package.json"), piAiManifest = JSON.parse(readFileSync(piAiManifestPath, "utf8")), requireFromPiAi = createRequire(piAiManifestPath);
   for (let dependency of Object.keys(piAiManifest.dependencies ?? {})) {
     let resolvedDependency = realpathSync(requireFromPiAi.resolve(dependency)), runtimeRelativePath = relative(runtimeRoot, resolvedDependency);
     if (runtimeRelativePath === ".." || runtimeRelativePath.startsWith(`..${sep}`) || isAbsolute(runtimeRelativePath))
       throw Error(`Pi AI dependency escaped standalone runtime: ${dependency}`);
   }
-  unexpected = filesUnder(standaloneBase).filter((file) => !isRuntimeFile(file));
+  unexpected = filesUnder(standaloneBase).filter((file) => !isRuntimeFile(file, standaloneBase));
   if (unexpected.length > 0)
     throw Error(`Standalone build contains non-runtime files:
 ${unexpected.map((file) => relative(standaloneBase, file)).join(`
@@ -125,11 +113,8 @@ ${unexpected.map((file) => relative(standaloneBase, file)).join(`
   console.log("  standalone server build is minimal");
 });
 
-import { readdirSync as readdirSync2, statSync } from "node:fs";
-import { dirname, join, relative as relative2, sep as sep2 } from "node:path";
-import { fileURLToPath } from "node:url";
 function routeFromPageFile(filePath) {
-  let segments = relative2(appDir, filePath).split(sep2).slice(0, -1);
+  let segments = relative(appDir, filePath).split(sep).slice(0, -1);
   if (segments.some((segment) => segment.startsWith("[") || segment.startsWith("@") || segment.startsWith("_")))
     return null;
   let routeSegments = segments.filter((segment) => !segment.startsWith("("));
@@ -137,7 +122,7 @@ function routeFromPageFile(filePath) {
 }
 function pageFiles(directory) {
   let out = [];
-  for (let entry of readdirSync2(directory)) {
+  for (let entry of readdirSync(directory)) {
     let entryPath = join(directory, entry);
     if (statSync(entryPath).isDirectory())
       out.push(...pageFiles(entryPath));
@@ -161,10 +146,10 @@ function discoveredPaths() {
   return [...new Set(pageFiles(appDir).map(routeFromPageFile).filter(Boolean))];
 }
 function httpRoutes() {
-  return discoveredPaths().map((path2) => ({ path: path2, ...defaultHttpBudget, ...httpBudgetOverrides.get(path2) || {} })).sort(sortRoutes);
+  return discoveredPaths().map((path) => ({ path: path, ...defaultHttpBudget, ...httpBudgetOverrides.get(path) || {} })).sort(sortRoutes);
 }
 function browserRoutes() {
-  return discoveredPaths().map((path2) => ({ path: path2, ...defaultBrowserBudget })).sort(sortRoutes);
+  return discoveredPaths().map((path) => ({ path: path, ...defaultBrowserBudget })).sort(sortRoutes);
 }
 var scriptsDir, appDir, preferredOrder, httpBudgetOverrides, defaultHttpBudget, defaultBrowserBudget;
 var init_perf_routes = __esm(() => {
@@ -194,13 +179,8 @@ var init_perf_routes = __esm(() => {
   ]), defaultHttpBudget = { medianMs: 50, p90Ms: 150, assetKiB: 1100 }, defaultBrowserBudget = { dclMs: 500, fcpMs: 700, taskMs: 250, nodes: 1200, heapMiB: 24, textChars: 8 };
 });
 
-var exports_browser_perf_audit = {};
-import { existsSync as existsSync3, mkdtempSync, readFileSync as readFileSync3, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join as join2 } from "node:path";
-import { spawn } from "node:child_process";
 function sleep(ms) {
-  return new Promise((resolve2) => setTimeout(resolve2, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 function timeoutAfter(ms, message) {
   return new Promise((_, reject) => setTimeout(() => reject(Error(message)), ms));
@@ -211,13 +191,13 @@ function connectToTarget(webSocketDebuggerUrl) {
     let data = JSON.parse(message.data);
     if (!data.id || !pending.has(data.id))
       return;
-    let { resolve: resolve2, reject } = pending.get(data.id);
+    let { resolve: resolve, reject } = pending.get(data.id);
     if (pending.delete(data.id), data.error)
       reject(Error(JSON.stringify(data.error)));
     else
-      resolve2(data.result);
-  }), new Promise((resolve2, reject) => {
-    websocket.addEventListener("open", () => resolve2({
+      resolve(data.result);
+  }), new Promise((resolve, reject) => {
+    websocket.addEventListener("open", () => resolve({
       send(method, params = {}) {
         let callId = id += 1;
         return websocket.send(JSON.stringify({ id: callId, method, params })), new Promise((callResolve, callReject) => pending.set(callId, { resolve: callResolve, reject: callReject }));
@@ -229,10 +209,10 @@ function connectToTarget(webSocketDebuggerUrl) {
   });
 }
 async function debugPortFor(userDataDir) {
-  let activePortPath = join2(userDataDir, "DevToolsActivePort");
+  let activePortPath = join(userDataDir, "DevToolsActivePort");
   for (let attempt = 0;attempt < 100; attempt += 1) {
     try {
-      let port = readFileSync3(activePortPath, "utf8").split(`
+      let port = readFileSync(activePortPath, "utf8").split(`
 `)[0]?.trim();
       if (/^\d+$/u.test(port ?? ""))
         return port;
@@ -290,7 +270,7 @@ async function pageMetrics(page) {
   };
 }
 async function routeResult(route) {
-  let userDataDir = mkdtempSync(join2(tmpdir(), "local-studio-browser-perf-")), child = spawn(chromePath, [
+  let userDataDir = mkdtempSync(join(tmpdir(), "local-studio-browser-perf-")), child = spawn(chromePath, [
     "--headless=new",
     "--remote-debugging-port=0",
     "--no-first-run",
@@ -340,7 +320,7 @@ var init_browser_perf_audit = __esm(async () => {
     "/usr/bin/google-chrome",
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser"
-  ], chromePath = process.env.LOCAL_STUDIO_PERF_CHROME || defaultChromePaths.find((candidate) => existsSync3(candidate));
+  ], chromePath = process.env.LOCAL_STUDIO_PERF_CHROME || defaultChromePaths.find((candidate) => existsSync(candidate));
   if (!chromePath)
     console.error("Chrome executable not found. Set LOCAL_STUDIO_PERF_CHROME."), process.exit(1);
   baseUrl = (process.env.LOCAL_STUDIO_PERF_URL || "http://127.0.0.1:3000").replace(/\/+$/, ""), routeTimeoutMs = Math.max(5000, Number.parseInt(process.env.LOCAL_STUDIO_PERF_BROWSER_TIMEOUT_MS || "15000", 10)), routes = browserRoutes();
@@ -365,22 +345,9 @@ var init_browser_perf_audit = __esm(async () => {
   }
 });
 
-var exports_bundle = {};
-import {
-  cpSync,
-  existsSync as existsSync4,
-  readdirSync as readdirSync3,
-  mkdirSync,
-  readFileSync as readFileSync5,
-  realpathSync as realpathSync2,
-  rmSync as rmSync2
-} from "node:fs";
-import path2 from "node:path";
-import { spawnSync as spawnSync2 } from "node:child_process";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
 var packageDir, distDir, bundlePath, runtimePackages, build, lydellDir, bundle, sourceRoot;
 var init_bundle = __esm(() => {
-  packageDir = path2.resolve(path2.dirname(fileURLToPath2(import.meta.url)), "../../services/agent-runtime"), distDir = path2.join(packageDir, "dist"), bundlePath = path2.join(distDir, "standalone.mjs"), runtimePackages = [
+  packageDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../services/agent-runtime"), distDir = path.join(packageDir, "dist"), bundlePath = path.join(distDir, "standalone.mjs"), runtimePackages = [
     "playwright-core",
     "chromium-bidi",
     "mitt",
@@ -389,9 +356,9 @@ var init_bundle = __esm(() => {
     "undici",
     "@lydell/node-pty"
   ];
-  rmSync2(distDir, { recursive: !0, force: !0 });
+  rmSync(distDir, { recursive: !0, force: !0 });
   mkdirSync(distDir, { recursive: !0 });
-  build = spawnSync2("bun", [
+  build = spawnSync("bun", [
     "build",
     "src/server.ts",
     "--target=node",
@@ -407,27 +374,24 @@ var init_bundle = __esm(() => {
   ], { cwd: packageDir, stdio: "inherit" });
   if (build.status !== 0)
     throw Error(`Agent runtime bundle failed with status ${build.status ?? "unknown"}`);
-  lydellDir = path2.join(packageDir, "node_modules", "@lydell");
-  if (existsSync4(lydellDir)) {
-    for (let entry of readdirSync3(lydellDir))
+  lydellDir = path.join(packageDir, "node_modules", "@lydell");
+  if (existsSync(lydellDir)) {
+    for (let entry of readdirSync(lydellDir))
       if (entry.startsWith("node-pty-"))
         runtimePackages.push(`@lydell/${entry}`);
   }
   for (let packageName of runtimePackages) {
-    let segments = packageName.split("/"), source = path2.join(packageDir, "node_modules", ...segments), destination = path2.join(distDir, "node_modules", ...segments);
-    if (!existsSync4(path2.join(source, "package.json")))
+    let segments = packageName.split("/"), source = path.join(packageDir, "node_modules", ...segments), destination = path.join(distDir, "node_modules", ...segments);
+    if (!existsSync(path.join(source, "package.json")))
       throw Error(`Missing browser runtime package: ${packageName}`);
-    mkdirSync(path2.dirname(destination), { recursive: !0 }), cpSync(source, destination, { recursive: !0 });
+    mkdirSync(path.dirname(destination), { recursive: !0 }), cpSync(source, destination, { recursive: !0 });
   }
-  bundle = readFileSync5(bundlePath, "utf8"), sourceRoot = realpathSync2(path2.join(packageDir, "..", ".."));
+  bundle = readFileSync(bundlePath, "utf8"), sourceRoot = realpathSync(path.join(packageDir, "..", ".."));
   if (bundle.includes(sourceRoot))
     throw Error(`Agent runtime bundle contains the build-machine root: ${sourceRoot}`);
   console.log(`Packaged portable browser runtime: ${runtimePackages.join(", ")}`);
 });
 
-var exports_check_conventional_commits = {};
-import { execFileSync as execFileSync2 } from "node:child_process";
-import { readFileSync as readFileSync6 } from "node:fs";
 var allowedTypes, ignoredSubjects, args, messageFileIndex, rangeIndex, fail = (message) => {
   console.error(message), process.exitCode = 1;
 }, validateSubject = (subject, label) => {
@@ -474,14 +438,14 @@ var init_check_conventional_commits = __esm(() => {
     /^dependabot\//
   ], args = process.argv.slice(2), messageFileIndex = args.indexOf("--message-file"), rangeIndex = args.indexOf("--range");
   if (messageFileIndex !== -1) {
-    let messageFile = args[messageFileIndex + 1], subject = readFileSync6(messageFile, "utf8").split(/\r?\n/, 1)[0] ?? "";
+    let messageFile = args[messageFileIndex + 1], subject = readFileSync(messageFile, "utf8").split(/\r?\n/, 1)[0] ?? "";
     validateSubject(subject, "commit message");
   } else {
     let range = rangeIndex === -1 ? args[0] : args[rangeIndex + 1];
     if (!range)
       fail("Usage: check-conventional-commits.mjs --message-file <path> | --range <base..head>");
     else {
-      let output2 = execFileSync2("git", ["log", "--format=%s", range], { encoding: "utf8" }).trim();
+      let output2 = execFileSync("git", ["log", "--format=%s", range], { encoding: "utf8" }).trim();
       (output2 ? output2.split(/\r?\n/) : []).forEach((subject, index) => validateSubject(subject, `commit ${index + 1}`));
     }
   }
@@ -490,59 +454,27 @@ var init_check_conventional_commits = __esm(() => {
 Allowed types: ` + [...allowedTypes].join(", "));
 });
 
-var exports_complete_standalone_build = {};
-import {
-  cpSync as cpSync2,
-  existsSync as existsSync5,
-  lstatSync as lstatSync2,
-  readdirSync as readdirSync4,
-  readFileSync as readFileSync7,
-  rmdirSync,
-  rmSync as rmSync3,
-  statSync as statSync2,
-  symlinkSync,
-  unlinkSync
-} from "node:fs";
-import { dirname as dirname2, relative as relative3, resolve as resolve2 } from "node:path";
-function isRuntimeFile2(file2) {
-  let path3 = relative3(standaloneBase2, file2).replaceAll("\\", "/");
-  return [
-    "server.js",
-    "package.json",
-    ".next/",
-    "public/",
-    "node_modules/",
-    "frontend/server.js",
-    "frontend/package.json",
-    "frontend/.next/",
-    "frontend/public/",
-    "frontend/node_modules/"
-  ].some((prefix) => path3 === prefix || path3.startsWith(prefix));
-}
-function filesUnder2(directory) {
-  return readdirSync4(directory, { recursive: !0, withFileTypes: !0 }).filter((entry) => entry.isFile()).map((entry) => resolve2(entry.parentPath, entry.name));
-}
 function isVerifiedCopy(file2, repoRelativePath) {
-  let source = resolve2(repoRoot, repoRelativePath);
-  if (!existsSync5(source))
+  let source = resolve(repoRoot, repoRelativePath);
+  if (!existsSync(source))
     return !1;
-  let sourceStat = statSync2(source), copyStat = statSync2(file2);
+  let sourceStat = statSync(source), copyStat = statSync(file2);
   if (!sourceStat.isFile() || sourceStat.size !== copyStat.size)
     return !1;
   if (!(repoRelativePath === "data" || /(^|\/)data\//.test(repoRelativePath)))
     return !0;
-  return readFileSync7(source).equals(readFileSync7(file2));
+  return readFileSync(source).equals(readFileSync(file2));
 }
 function removeEmptyDirectories(directory) {
-  for (let entry of readdirSync4(directory, { withFileTypes: !0 }))
+  for (let entry of readdirSync(directory, { withFileTypes: !0 }))
     if (entry.isDirectory())
-      removeEmptyDirectories(resolve2(directory, entry.name));
-  if (directory !== standaloneBase2 && readdirSync4(directory).length === 0)
+      removeEmptyDirectories(resolve(directory, entry.name));
+  if (directory !== standaloneBase2 && readdirSync(directory).length === 0)
     rmdirSync(directory);
 }
 var projectRoot2, repoRoot, standaloneBase2, standaloneRoots, standaloneRoot, runtimeDependencyPaths, tracedPiPackageDirectory, unverified, pruned = 0;
 var init_complete_standalone_build = __esm(() => {
-  projectRoot2 = resolve2(import.meta.dirname, ".."), repoRoot = resolve2(projectRoot2, ".."), standaloneBase2 = resolve2(projectRoot2, ".next", "standalone"), standaloneRoots = [resolve2(standaloneBase2, "frontend"), standaloneBase2], standaloneRoot = standaloneRoots.find((root) => existsSync5(resolve2(root, "server.js")));
+  projectRoot2 = resolve(import.meta.dirname, ".."), repoRoot = resolve(projectRoot2, ".."), standaloneBase2 = resolve(projectRoot2, ".next", "standalone"), standaloneRoots = [resolve(standaloneBase2, "frontend"), standaloneBase2], standaloneRoot = standaloneRoots.find((root) => existsSync(resolve(root, "server.js")));
   if (!standaloneRoot)
     throw Error(`Missing standalone server under: ${standaloneBase2}`);
   runtimeDependencyPaths = [
@@ -550,42 +482,42 @@ var init_complete_standalone_build = __esm(() => {
     "node_modules/@earendil-works/pi-coding-agent"
   ];
   for (let dependencyPath of runtimeDependencyPaths) {
-    let source = resolve2(projectRoot2, dependencyPath);
-    if (!existsSync5(source))
+    let source = resolve(projectRoot2, dependencyPath);
+    if (!existsSync(source))
       throw Error(`Missing runtime dependency source: ${dependencyPath}`);
-    let destination = resolve2(standaloneRoot, dependencyPath);
-    cpSync2(source, destination, { recursive: !0 });
-    let executableShimDirectories = readdirSync4(destination, {
+    let destination = resolve(standaloneRoot, dependencyPath);
+    cpSync(source, destination, { recursive: !0 });
+    let executableShimDirectories = readdirSync(destination, {
       recursive: !0,
       withFileTypes: !0
-    }).filter((entry) => entry.isDirectory() && entry.name === ".bin").map((entry) => resolve2(entry.parentPath, entry.name));
+    }).filter((entry) => entry.isDirectory() && entry.name === ".bin").map((entry) => resolve(entry.parentPath, entry.name));
     for (let directory of executableShimDirectories)
-      rmSync3(directory, { recursive: !0, force: !0 });
+      rmSync(directory, { recursive: !0, force: !0 });
   }
-  tracedPiPackageDirectory = resolve2(standaloneRoot, ".next/node_modules/@earendil-works");
-  if (existsSync5(tracedPiPackageDirectory)) {
+  tracedPiPackageDirectory = resolve(standaloneRoot, ".next/node_modules/@earendil-works");
+  if (existsSync(tracedPiPackageDirectory)) {
     let packageTargets = new Map([
       [
         "pi-ai-",
-        resolve2(standaloneRoot, "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai")
+        resolve(standaloneRoot, "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai")
       ],
-      ["pi-coding-agent-", resolve2(standaloneRoot, "node_modules/@earendil-works/pi-coding-agent")]
+      ["pi-coding-agent-", resolve(standaloneRoot, "node_modules/@earendil-works/pi-coding-agent")]
     ]);
-    for (let entry of readdirSync4(tracedPiPackageDirectory)) {
+    for (let entry of readdirSync(tracedPiPackageDirectory)) {
       let target = [...packageTargets].find(([prefix]) => entry.startsWith(prefix))?.[1];
       if (!target)
         continue;
-      let link = resolve2(tracedPiPackageDirectory, entry);
-      if (!lstatSync2(link).isSymbolicLink())
+      let link = resolve(tracedPiPackageDirectory, entry);
+      if (!lstatSync(link).isSymbolicLink())
         throw Error(`Expected traced Pi package alias to be a symlink: ${link}`);
-      unlinkSync(link), symlinkSync(relative3(dirname2(link), target), link, "dir");
+      unlinkSync(link), symlinkSync(relative(dirname(link), target), link, "dir");
     }
   }
   unverified = [];
-  for (let file2 of filesUnder2(standaloneBase2)) {
-    if (isRuntimeFile2(file2))
+  for (let file2 of filesUnder(standaloneBase2)) {
+    if (isRuntimeFile(file2, standaloneBase2))
       continue;
-    let repoRelativePath = relative3(standaloneBase2, file2).replaceAll("\\", "/");
+    let repoRelativePath = relative(standaloneBase2, file2).replaceAll("\\", "/");
     if (!isVerifiedCopy(file2, repoRelativePath)) {
       unverified.push(repoRelativePath);
       continue;
@@ -600,10 +532,6 @@ ${unverified.join(`
   console.log(`  standalone repaired: +${runtimeDependencyPaths.length} runtime dependency trees, -${pruned} traced non-runtime files`);
 });
 
-var exports_controller_standards_audit = {};
-import fs from "node:fs";
-import { createRequire as createRequire2 } from "node:module";
-import path3 from "node:path";
 function addSourceFinding(rule, filePath, node, detail) {
   let sourceFile = node.getSourceFile(), { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
   findings.push({
@@ -631,7 +559,7 @@ function isInsideEffectTryPromise(node) {
 function scanEffectStandards(filePath) {
   if (!filePath.endsWith(".ts") || filePath.endsWith(".d.ts"))
     return;
-  let source = fs.readFileSync(filePath, "utf8"), sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, !0), relativePath = path3.relative(SRC_DIR, filePath), isRuntimeBoundary = runtimeBoundaryFiles.has(relativePath), visit = (node) => {
+  let source = fs.readFileSync(filePath, "utf8"), sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, !0), relativePath = path.relative(SRC_DIR, filePath), isRuntimeBoundary = runtimeBoundaryFiles.has(relativePath), visit = (node) => {
     if (ts.canHaveModifiers(node)) {
       if (ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) && !isInsideEffectTryPromise(node))
         addSourceFinding("effect-async-boundary", filePath, node, "Use Effect for controller async work");
@@ -675,7 +603,7 @@ function scanDirectory(dir) {
       detail: `${directDirectories.length} subdirectories (limit ${MAX_SUBDIRS_PER_DIR})`
     });
   for (let entry of entries2) {
-    let fullPath = path3.join(dir, entry.name);
+    let fullPath = path.join(dir, entry.name);
     if (entry.name.startsWith("."))
       continue;
     if (entry.isDirectory() && !kebabCase.test(entry.name))
@@ -718,20 +646,16 @@ function run() {
 }
 var require2, ts, SRC_DIR, MAX_FILES_PER_DIR, MAX_SUBDIRS_PER_DIR, STRUCTURE_COUNT_EXCLUDED_DIRS, findings, stats, modulesRoot, runtimeBoundaryFiles, managedRuntimeCount = 0, kebabCase;
 var init_controller_standards_audit = __esm(() => {
-  require2 = createRequire2(path3.resolve(process.cwd(), "package.json")), ts = require2("typescript"), SRC_DIR = path3.resolve(process.cwd(), "src"), MAX_FILES_PER_DIR = Number.parseInt(process.env.MAX_FILES_PER_DIR ?? "20", 10), MAX_SUBDIRS_PER_DIR = Number.parseInt(process.env.MAX_SUBDIRS_PER_DIR ?? "8", 10), STRUCTURE_COUNT_EXCLUDED_DIRS = new Set(), findings = [], stats = {
+  require2 = createRequire(path.resolve(process.cwd(), "package.json")), ts = require2("typescript"), SRC_DIR = path.resolve(process.cwd(), "src"), MAX_FILES_PER_DIR = Number.parseInt(process.env.MAX_FILES_PER_DIR ?? "20", 10), MAX_SUBDIRS_PER_DIR = Number.parseInt(process.env.MAX_SUBDIRS_PER_DIR ?? "8", 10), STRUCTURE_COUNT_EXCLUDED_DIRS = new Set(), findings = [], stats = {
     directories: 0,
     files: 0
-  }, modulesRoot = path3.join(SRC_DIR, "modules"), runtimeBoundaryFiles = new Set(["http/bounded-body.ts", "http/effect-handler.ts", "main.ts"]), kebabCase = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
+  }, modulesRoot = path.join(SRC_DIR, "modules"), runtimeBoundaryFiles = new Set(["http/bounded-body.ts", "http/effect-handler.ts", "main.ts"]), kebabCase = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
   process.exit(run());
 });
 
-var exports_link_services_node_modules = {};
-import { lstatSync as lstatSync3, mkdirSync as mkdirSync3, rmSync as rmSync5, symlinkSync as symlinkSync2 } from "node:fs";
-import path5 from "node:path";
-import { fileURLToPath as fileURLToPath4 } from "node:url";
 var frontendDir, servicesDir, linkPath, existingEntryKind = () => {
   try {
-    let stat = lstatSync3(linkPath);
+    let stat = lstatSync(linkPath);
     if (stat.isSymbolicLink())
       return "link";
     return stat.isDirectory() ? "directory" : "file";
@@ -739,17 +663,17 @@ var frontendDir, servicesDir, linkPath, existingEntryKind = () => {
     return "missing";
   }
 }, removeExistingEntry = () => {
-  rmSync5(linkPath, { recursive: !0, force: !0 });
+  rmSync(linkPath, { recursive: !0, force: !0 });
 }, createLink = () => {
   if (process.platform === "win32") {
-    symlinkSync2(path5.join(frontendDir, "node_modules"), linkPath, "junction");
+    symlinkSync(path.join(frontendDir, "node_modules"), linkPath, "junction");
     return;
   }
-  symlinkSync2(path5.join("..", "frontend", "node_modules"), linkPath, "dir");
+  symlinkSync(path.join("..", "frontend", "node_modules"), linkPath, "dir");
 }, kind;
 var init_link_services_node_modules = __esm(() => {
-  frontendDir = path5.resolve(path5.dirname(fileURLToPath4(import.meta.url)), ".."), servicesDir = path5.join(path5.dirname(frontendDir), "services"), linkPath = path5.join(servicesDir, "node_modules");
-  mkdirSync3(servicesDir, { recursive: !0 });
+  frontendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."), servicesDir = path.join(path.dirname(frontendDir), "services"), linkPath = path.join(servicesDir, "node_modules");
+  mkdirSync(servicesDir, { recursive: !0 });
   kind = existingEntryKind();
   if (kind === "directory")
     console.error(`[link-services-node-modules] ${linkPath} is a real directory; leaving it alone.`), process.exit(0);
@@ -758,8 +682,6 @@ var init_link_services_node_modules = __esm(() => {
   createLink();
 });
 
-var exports_perf_audit = {};
-import { performance } from "node:perf_hooks";
 function percentile(values, ratio) {
   let index = Math.min(values.length - 1, Math.ceil(values.length * ratio) - 1);
   return values[index] ?? 0;
@@ -798,9 +720,6 @@ async function routeResult2(route) {
     budget: route
   };
 }
-function formatNumber2(value) {
-  return value.toFixed(1).padStart(6, " ");
-}
 function violations2(result) {
   let out = [];
   if (result.medianMs > result.budget.medianMs)
@@ -823,7 +742,7 @@ var init_perf_audit = __esm(async () => {
   failures2 = [];
   for (let result of results) {
     let bad = violations2(result);
-    if (console.log(`${result.path.padEnd(16)} ${formatNumber2(result.medianMs)}ms ${formatNumber2(result.p90Ms)}ms ${formatNumber2(result.assetKiB)}KiB ${String(result.scripts).padStart(7, " ")} ${String(result.css).padStart(3, " ")}`), bad.length > 0)
+    if (console.log(`${result.path.padEnd(16)} ${formatNumber(result.medianMs)}ms ${formatNumber(result.p90Ms)}ms ${formatNumber(result.assetKiB)}KiB ${String(result.scripts).padStart(7, " ")} ${String(result.css).padStart(3, " ")}`), bad.length > 0)
       failures2.push(`${result.path}: ${bad.join(", ")}`);
   }
   if (failures2.length > 0) {
@@ -834,13 +753,9 @@ var init_perf_audit = __esm(async () => {
   }
 });
 
-var exports_postbuild = {};
-import { readdirSync as readdirSync5, readFileSync as readFileSync10, statSync as statSync3, writeFileSync as writeFileSync4, existsSync as existsSync8 } from "node:fs";
-import path7 from "node:path";
-import { fileURLToPath as fileURLToPath6 } from "node:url";
 function* jsFiles(dir) {
-  for (let entry of readdirSync5(dir, { withFileTypes: !0 })) {
-    let full = path7.join(dir, entry.name);
+  for (let entry of readdirSync(dir, { withFileTypes: !0 })) {
+    let full = path.join(dir, entry.name);
     if (entry.isDirectory())
       yield* jsFiles(full);
     else if (entry.isFile() && entry.name.endsWith(".js"))
@@ -850,10 +765,10 @@ function* jsFiles(dir) {
 function resolveSpecifier(fromFile, spec) {
   if (/\.(js|mjs|cjs|json|node)$/.test(spec))
     return spec;
-  let base = path7.resolve(path7.dirname(fromFile), spec);
-  if (existsSync8(`${base}.js`))
+  let base = path.resolve(path.dirname(fromFile), spec);
+  if (existsSync(`${base}.js`))
     return `${spec}.js`;
-  if (existsSync8(base) && statSync3(base).isDirectory() && existsSync8(path7.join(base, "index.js")))
+  if (existsSync(base) && statSync(base).isDirectory() && existsSync(path.join(base, "index.js")))
     return `${spec}/index.js`;
   return spec;
 }
@@ -861,13 +776,13 @@ var packageDir2, distDir2, realEntry, SPECIFIER_RE, rewrites = 0, shim = `// Gen
 import "./services/agent-runtime/src/server.js";
 `;
 var init_postbuild = __esm(() => {
-  packageDir2 = path7.resolve(path7.dirname(fileURLToPath6(import.meta.url)), "../../services/agent-runtime"), distDir2 = path7.join(packageDir2, "dist"), realEntry = path7.join(distDir2, "services", "agent-runtime", "src", "server.js");
-  if (!existsSync8(realEntry))
+  packageDir2 = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../services/agent-runtime"), distDir2 = path.join(packageDir2, "dist"), realEntry = path.join(distDir2, "services", "agent-runtime", "src", "server.js");
+  if (!existsSync(realEntry))
     console.error(`[postbuild] expected tsc output missing: ${realEntry}`), process.exit(1);
-  SPECIFIER_RE = /(from\s+|import\s*\(\s*|export\s+\*\s+from\s+|import\s+)("(\.{1,2}\/[^"]+)"|'(\.{1,2}\/[^']+)')/g;
-  for (let file2 of jsFiles(distDir2)) {
-    let source = readFileSync10(file2, "utf8"), next = source.replace(SPECIFIER_RE, (match, lead, quoted, dq, sq) => {
-      let spec = dq ?? sq, fixed = resolveSpecifier(file2, spec);
+  SPECIFIER_RE = /(from\s+|import\s*\(\s*|export\s+\*\s+from\s+|import\s+)("(\.{1,2}\/[^\"]+)"|'(\.{1,2}\/[^']+)')/g;
+  for (let file of jsFiles(distDir2)) {
+    let source = readFileSync(file, "utf8"), next = source.replace(SPECIFIER_RE, (match, lead, quoted, dq, sq) => {
+      let spec = dq ?? sq, fixed = resolveSpecifier(file, spec);
       if (fixed === spec)
         return match;
       rewrites += 1;
@@ -875,24 +790,19 @@ var init_postbuild = __esm(() => {
       return `${lead}${quote}${fixed}${quote}`;
     });
     if (next !== source)
-      writeFileSync4(file2, next);
+      writeFileSync(file, next);
   }
-  writeFileSync4(path7.join(distDir2, "server.js"), shim);
+  writeFileSync(path.join(distDir2, "server.js"), shim);
   console.log(`[postbuild] rewrote ${rewrites} relative specifiers; wrote dist/server.js shim`);
 });
 
-var exports_prepare_next_build = {};
-import { rmSync as rmSync6 } from "node:fs";
-import { resolve as resolve3 } from "node:path";
 var init_prepare_next_build = __esm(() => {
-  rmSync6(resolve3(import.meta.dirname, "../.next"), { recursive: !0, force: !0 });
+  rmSync(resolve(import.meta.dirname, "../.next"), { recursive: !0, force: !0 });
 });
 
-var exports_release_statement = {};
-import { execFileSync as execFileSync3 } from "node:child_process";
 var args2, sinceIndex, rangeIndex2, maxIndex, maxItems, range, logArgs, output2, subjects, groups, grouped, emitted = 0;
 var init_release_statement = __esm(() => {
-  args2 = process.argv.slice(2), sinceIndex = args2.indexOf("--since"), rangeIndex2 = args2.indexOf("--range"), maxIndex = args2.indexOf("--max"), maxItems = Number(maxIndex === -1 ? 20 : args2[maxIndex + 1]), range = rangeIndex2 === -1 ? `--since=${sinceIndex === -1 ? "1 week ago" : args2[sinceIndex + 1]}` : args2[rangeIndex2 + 1], logArgs = rangeIndex2 === -1 ? ["log", "origin/main", range, "--pretty=format:%s"] : ["log", range, "--pretty=format:%s"], output2 = execFileSync3("git", logArgs, { encoding: "utf8" }).trim(), subjects = output2 ? output2.split(/\r?\n/) : [], groups = [
+  args2 = process.argv.slice(2), sinceIndex = args2.indexOf("--since"), rangeIndex2 = args2.indexOf("--range"), maxIndex = args2.indexOf("--max"), maxItems = Number(maxIndex === -1 ? 20 : args2[maxIndex + 1]), range = rangeIndex2 === -1 ? `--since=${sinceIndex === -1 ? "1 week ago" : args2[sinceIndex + 1]}` : args2[rangeIndex2 + 1], logArgs = rangeIndex2 === -1 ? ["log", "origin/main", range, "--pretty=format:%s"] : ["log", range, "--pretty=format:%s"], output2 = execFileSync("git", logArgs, { encoding: "utf8" }).trim(), subjects = output2 ? output2.split(/\r?\n/) : [], groups = [
     ["Features", /^(feat)(?:\(.+\))?!?: (.+)$/],
     ["Fixes", /^(fix)(?:\(.+\))?!?: (.+)$/],
     ["Performance", /^(perf)(?:\(.+\))?!?: (.+)$/],
@@ -959,21 +869,6 @@ var releasePackageArguments = ({ app, version, commit }) => [
   "never"
 ];
 
-var exports_sign_desktop_release = {};
-__export(exports_sign_desktop_release, {
-  signDesktopRelease: () => signDesktopRelease
-});
-import { execFileSync as execFileSync5 } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { existsSync as existsSync10, mkdirSync as mkdirSync5, readFileSync as readFileSync12, rmSync as rmSync8, symlinkSync as symlinkSync3, writeFileSync as writeFileSync6 } from "node:fs";
-import { createRequire as createRequire4 } from "node:module";
-import os3 from "node:os";
-import path9 from "node:path";
-import { fileURLToPath as fileURLToPath8 } from "node:url";
-function valueAfter3(args3, name) {
-  let index = args3.indexOf(name);
-  return index === -1 ? void 0 : args3[index + 1];
-}
 function requireValue(name) {
   let value2 = process.env[name];
   if (!value2)
@@ -981,7 +876,7 @@ function requireValue(name) {
   return value2;
 }
 function run2(command, args3, options = {}) {
-  execFileSync5(command, args3, {
+  execFileSync(command, args3, {
     cwd: root,
     env: process.env,
     stdio: "inherit",
@@ -989,7 +884,7 @@ function run2(command, args3, options = {}) {
   });
 }
 function commandOutput(command, args3) {
-  return execFileSync5(command, args3, {
+  return execFileSync(command, args3, {
     cwd: root,
     env: process.env,
     encoding: "utf8"
@@ -1003,15 +898,15 @@ function keychainList() {
 function writeCertificate(link, destination) {
   let value2 = link.trim();
   if (value2.startsWith("file://")) {
-    writeFileSync6(destination, readFileSync12(fileURLToPath8(value2)), { mode: 384, flag: "wx" });
+    writeFileSync(destination, readFileSync(fileURLToPath(value2)), { mode: 384, flag: "wx" });
     return;
   }
-  if (existsSync10(value2)) {
-    writeFileSync6(destination, readFileSync12(value2), { mode: 384, flag: "wx" });
+  if (existsSync(value2)) {
+    writeFileSync(destination, readFileSync(value2), { mode: 384, flag: "wx" });
     return;
   }
   let encoded = value2.replace(/^data:[^;]+;base64,/, "");
-  writeFileSync6(destination, Buffer.from(encoded, "base64"), { mode: 384, flag: "wx" });
+  writeFileSync(destination, Buffer.from(encoded, "base64"), { mode: 384, flag: "wx" });
 }
 function notarizeApplication(app, archive, credentials, execute = run2) {
   execute("ditto", ["-c", "-k", "--keepParent", app, archive]), execute("xcrun", [
@@ -1031,8 +926,8 @@ function notarizeApplication(app, archive, credentials, execute = run2) {
   ]);
 }
 async function refreshUpdateMetadata(output3, version) {
-  let { buildBlockMap } = require4(path9.join(frontend, "node_modules", "app-builder-lib", "out", "targets", "blockmap", "blockmap.js")), YAML = require4(path9.join(frontend, "node_modules", "yaml")), zipName = `Local Studio-${version}-arm64-mac.zip`, dmgName = `Local Studio-${version}-arm64.dmg`, zipInfo = await buildBlockMap(path9.join(output3, zipName), "gzip", path9.join(output3, `${zipName}.blockmap`)), dmgInfo = await buildBlockMap(path9.join(output3, dmgName), "gzip", path9.join(output3, `${dmgName}.blockmap`)), updatePath = path9.join(output3, "latest-mac.yml"), current = YAML.parse(readFileSync12(updatePath, "utf8"));
-  writeFileSync6(updatePath, YAML.stringify({
+  let { buildBlockMap } = require4(path.join(frontend, "node_modules", "app-builder-lib", "out", "targets", "blockmap", "blockmap.js")), YAML = require4(path.join(frontend, "node_modules", "yaml")), zipName = `Local Studio-${version}-arm64-mac.zip`, dmgName = `Local Studio-${version}-arm64.dmg`, zipInfo = await buildBlockMap(path.join(output3, zipName), "gzip", path.join(output3, `${zipName}.blockmap`)), dmgInfo = await buildBlockMap(path.join(output3, dmgName), "gzip", path.join(output3, `${dmgName}.blockmap`)), updatePath = path.join(output3, "latest-mac.yml"), current = YAML.parse(readFileSync(updatePath, "utf8"));
+  writeFileSync(updatePath, YAML.stringify({
     version,
     files: [
       {
@@ -1052,17 +947,17 @@ async function refreshUpdateMetadata(output3, version) {
   }));
 }
 async function signDesktopRelease(args3 = process.argv.slice(2)) {
-  let version = valueAfter3(args3, "--version")?.trim(), commit = valueAfter3(args3, "--commit")?.trim().toLowerCase(), prepackaged = valueAfter3(args3, "--prepackaged")?.trim();
+  let version = valueAfter(args3, "--version")?.trim(), commit = valueAfter(args3, "--commit")?.trim().toLowerCase(), prepackaged = valueAfter(args3, "--prepackaged")?.trim();
   if (!version || !/^\d+\.\d+\.\d+$/.test(version))
     throw Error("--version must be a semantic version");
   if (!commit || !/^[0-9a-f]{40}$/.test(commit))
     throw Error("--commit must be a full Git commit SHA");
-  if (!prepackaged || !existsSync10(prepackaged))
+  if (!prepackaged || !existsSync(prepackaged))
     throw Error("--prepackaged must point to an unsigned app bundle");
-  let certificate = requireValue("CSC_LINK"), certificatePassword = requireValue("CSC_KEY_PASSWORD"), temporary = path9.join(os3.tmpdir(), `local-studio-release-${process.pid}`), apiKeyPath = path9.join(temporary, "AuthKey_notary.p8"), notaryCredentials = resolveNotarytoolCredentials(process.env, apiKeyPath), certificatePath = path9.join(temporary, "developer-id.p12"), keychainPath = path9.join(temporary, "release-signing.keychain-db"), keychainPassword = randomBytes(32).toString("hex"), originalKeychains = keychainList(), output3 = path9.join(frontend, "dist-desktop"), dmg = path9.join(output3, `Local Studio-${version}-arm64.dmg`), resolvedApp = path9.resolve(prepackaged), appNotaryArchive = path9.join(temporary, "Local Studio.app.zip"), entitlements = path9.join(frontend, "desktop", "resources", "entitlements.mac.plist");
+  let certificate = requireValue("CSC_LINK"), certificatePassword = requireValue("CSC_KEY_PASSWORD"), temporary = path.join(os.tmpdir(), `local-studio-release-${process.pid}`), apiKeyPath = path.join(temporary, "AuthKey_notary.p8"), notaryCredentials = resolveNotarytoolCredentials(process.env, apiKeyPath), certificatePath = path.join(temporary, "developer-id.p12"), keychainPath = path.join(temporary, "release-signing.keychain-db"), keychainPassword = randomBytes(32).toString("hex"), originalKeychains = keychainList(), output3 = path.join(frontend, "dist-desktop"), dmg = path.join(output3, `Local Studio-${version}-arm64.dmg`), resolvedApp = path.resolve(prepackaged), appNotaryArchive = path.join(temporary, "Local Studio.app.zip"), entitlements = path.join(frontend, "desktop", "resources", "entitlements.mac.plist");
   try {
-    if (rmSync8(temporary, { recursive: !0, force: !0 }), mkdirSync5(temporary, { recursive: !0, mode: 448 }), notaryCredentials.kind === "api-key")
-      writeFileSync6(apiKeyPath, Buffer.from(notaryCredentials.apiKey, "base64"), {
+    if (rmSync(temporary, { recursive: !0, force: !0 }), mkdirSync(temporary, { recursive: !0, mode: 448 }), notaryCredentials.kind === "api-key")
+      writeFileSync(apiKeyPath, Buffer.from(notaryCredentials.apiKey, "base64"), {
         mode: 384,
         flag: "wx"
       });
@@ -1095,7 +990,7 @@ async function signDesktopRelease(args3 = process.argv.slice(2)) {
     ]).match(/"([^"]*Developer ID Application:[^"]*)"/)?.[1];
     if (!identity)
       throw Error("Imported certificate does not contain a Developer ID Application identity");
-    let { signAsync } = require4(path9.join(frontend, "node_modules", "@electron", "osx-sign"));
+    let { signAsync } = require4(path.join(frontend, "node_modules", "@electron", "osx-sign"));
     await signAsync({
       app: resolvedApp,
       platform: "darwin",
@@ -1116,7 +1011,7 @@ async function signDesktopRelease(args3 = process.argv.slice(2)) {
       "--keychain",
       keychainPath,
       resolvedApp
-    ]), run2("codesign", ["--verify", "--deep", "--strict", "--verbose=4", resolvedApp]), notarizeApplication(resolvedApp, appNotaryArchive, notaryCredentials.args), process.env.LOCAL_STUDIO_RELEASE_VERSION = version, process.env.LOCAL_STUDIO_RELEASE_COMMIT = commit, process.env.CSC_IDENTITY_AUTO_DISCOVERY = "false", run2(path9.join(frontend, "node_modules", ".bin", "electron-builder"), releasePackageArguments({ app: resolvedApp, version, commit }), { cwd: frontend }), run2("codesign", [
+    ]), run2("codesign", ["--verify", "--deep", "--strict", "--verbose=4", resolvedApp]), notarizeApplication(resolvedApp, appNotaryArchive, notaryCredentials.args), process.env.LOCAL_STUDIO_RELEASE_VERSION = version, process.env.LOCAL_STUDIO_RELEASE_COMMIT = commit, process.env.CSC_IDENTITY_AUTO_DISCOVERY = "false", run2(path.join(frontend, "node_modules", ".bin", "electron-builder"), releasePackageArguments({ app: resolvedApp, version, commit }), { cwd: frontend }), run2("codesign", [
       "--force",
       "--timestamp",
       "--sign",
@@ -1141,47 +1036,27 @@ async function signDesktopRelease(args3 = process.argv.slice(2)) {
       "--verbose=4",
       dmg
     ]);
-    let packagedApp = path9.join(output3, "mac-arm64", "Local Studio.app");
-    mkdirSync5(path9.dirname(packagedApp), { recursive: !0 }), rmSync8(packagedApp, { recursive: !0, force: !0 }), symlinkSync3(resolvedApp, packagedApp, "dir"), console.log(`Signed and notarized Local Studio ${version} from ${commit}`);
+    let packagedApp = path.join(output3, "mac-arm64", "Local Studio.app");
+    mkdirSync(path.dirname(packagedApp), { recursive: !0 }), rmSync(packagedApp, { recursive: !0, force: !0 }), symlinkSync(resolvedApp, packagedApp, "dir"), console.log(`Signed and notarized Local Studio ${version} from ${commit}`);
   } finally {
     if (originalKeychains.length > 0)
       run2("security", ["list-keychains", "-d", "user", "-s", ...originalKeychains]);
-    if (existsSync10(keychainPath))
+    if (existsSync(keychainPath))
       run2("security", ["delete-keychain", keychainPath]);
-    rmSync8(temporary, { recursive: !0, force: !0 });
+    rmSync(temporary, { recursive: !0, force: !0 });
   }
 }
 var root, frontend, require4;
 var init_sign_desktop_release = __esm(async () => {
-  root = path9.resolve(path9.dirname(fileURLToPath8(import.meta.url)), "../.."), frontend = path9.join(root, "frontend"), require4 = createRequire4(import.meta.url);
+  root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."), frontend = path.join(root, "frontend"), require4 = createRequire(import.meta.url);
   await signDesktopRelease();
 });
 
-var exports_stage_desktop_release = {};
-__export(exports_stage_desktop_release, {
-  stageDesktopRelease: () => stageDesktopRelease
-});
-import { createHash } from "node:crypto";
-import {
-  copyFileSync,
-  existsSync as existsSync11,
-  mkdirSync as mkdirSync6,
-  readFileSync as readFileSync13,
-  rmSync as rmSync9,
-  writeFileSync as writeFileSync7
-} from "node:fs";
-import { createRequire as createRequire5 } from "node:module";
-import path10 from "node:path";
-import { fileURLToPath as fileURLToPath9 } from "node:url";
 function frontendVersion() {
-  let manifest = JSON.parse(readFileSync13(path10.join(frontend2, "package.json"), "utf8"));
+  let manifest = JSON.parse(readFileSync(path.join(frontend2, "package.json"), "utf8"));
   if (typeof manifest.version !== "string" || !/^\d+\.\d+\.\d+$/.test(manifest.version))
     throw Error("frontend/package.json must contain a semantic version");
   return manifest.version;
-}
-function valueAfter4(args3, name) {
-  let index = args3.indexOf(name);
-  return index === -1 ? void 0 : args3[index + 1];
 }
 function releaseAssetNames(version) {
   let base = `Local Studio-${version}-arm64`;
@@ -1194,8 +1069,8 @@ function releaseAssetNames(version) {
   ];
 }
 function requireAsset(name) {
-  let file2 = path10.join(output3, name);
-  if (!existsSync11(file2))
+  let file2 = path.join(output3, name);
+  if (!existsSync(file2))
     throw Error(`Missing desktop release asset: ${file2}`);
   return file2;
 }
@@ -1203,17 +1078,17 @@ function releaseAssetName(name) {
   return name.replaceAll(" ", "-");
 }
 function sha256(file2) {
-  return createHash("sha256").update(readFileSync13(file2)).digest("hex");
+  return createHash("sha256").update(readFileSync(file2)).digest("hex");
 }
 function packagedMetadata() {
-  let archive = path10.join(output3, "mac-arm64", "Local Studio.app", "Contents", "Resources", "app.asar");
-  if (!existsSync11(archive))
+  let archive = path.join(output3, "mac-arm64", "Local Studio.app", "Contents", "Resources", "app.asar");
+  if (!existsSync(archive))
     throw Error(`Missing packaged app archive: ${archive}`);
-  let asar = require5(path10.join(frontend2, "node_modules", "@electron", "asar"));
+  let asar = require5(path.join(frontend2, "node_modules", "@electron", "asar"));
   return JSON.parse(asar.extractFile(archive, "package.json").toString("utf8"));
 }
 function stageDesktopRelease(args3 = process.argv.slice(2)) {
-  let version = valueAfter4(args3, "--version")?.trim() || frontendVersion(), commit = valueAfter4(args3, "--commit")?.trim().toLowerCase();
+  let version = valueAfter(args3, "--version")?.trim() || frontendVersion(), commit = valueAfter(args3, "--commit")?.trim().toLowerCase();
   if (!/^\d+\.\d+\.\d+$/.test(version))
     throw Error("--version must be a semantic version");
   if (!commit || !/^[0-9a-f]{40}$/.test(commit))
@@ -1225,12 +1100,12 @@ function stageDesktopRelease(args3 = process.argv.slice(2)) {
     throw Error(`Packaged commit ${String(metadata.localStudioCommit)} does not match release ${commit}`);
   let names = releaseAssetNames(version), assets = names.map((name) => [
     requireAsset(name),
-    path10.join(staging, releaseAssetName(name))
+    path.join(staging, releaseAssetName(name))
   ]);
-  rmSync9(staging, { recursive: !0, force: !0 }), mkdirSync6(staging, { recursive: !0 });
+  rmSync(staging, { recursive: !0, force: !0 }), mkdirSync(staging, { recursive: !0 });
   for (let [source, destination] of assets)
     copyFileSync(source, destination);
-  copyFileSync(requireAsset(`Local Studio-${version}-arm64.dmg`), path10.join(staging, "Local-Studio-arm64.dmg"));
+  copyFileSync(requireAsset(`Local Studio-${version}-arm64.dmg`), path.join(staging, "Local-Studio-arm64.dmg"));
   let stagedNames = [
     ...names.map(releaseAssetName),
     "Local-Studio-arm64.dmg"
@@ -1240,25 +1115,20 @@ function stageDesktopRelease(args3 = process.argv.slice(2)) {
     commit,
     assets: Object.fromEntries(stagedNames.map((name) => [
       name,
-      { sha256: sha256(path10.join(staging, name)) }
+      { sha256: sha256(path.join(staging, name)) }
     ]))
   };
-  return writeFileSync7(path10.join(staging, "Local-Studio-release.json"), `${JSON.stringify(manifest, null, 2)}
+  return writeFileSync(path.join(staging, "Local-Studio-release.json"), `${JSON.stringify(manifest, null, 2)}
 `), console.log(`Staged ${stagedNames.length + 1} Local Studio ${version} assets in ${staging}`), manifest;
 }
 var root2, frontend2, output3, staging, require5;
 var init_stage_desktop_release = __esm(() => {
-  root2 = path10.resolve(path10.dirname(fileURLToPath9(import.meta.url)), "../.."), frontend2 = path10.join(root2, "frontend"), output3 = path10.join(frontend2, "dist-desktop"), staging = path10.join(root2, "release-staging"), require5 = createRequire5(import.meta.url);
+  root2 = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."), frontend2 = path.join(root2, "frontend"), output3 = path.join(frontend2, "dist-desktop"), staging = path.join(root2, "release-staging"), require5 = createRequire(import.meta.url);
   stageDesktopRelease();
 });
 
-var exports_start_standalone = {};
-import { cpSync as cpSync3, existsSync as existsSync12, mkdirSync as mkdirSync7 } from "node:fs";
-import { spawn as spawn3 } from "node:child_process";
-import { dirname as dirname3, resolve as resolve4 } from "node:path";
-import { fileURLToPath as fileURLToPath10 } from "node:url";
 function copyDirectory(from, to) {
-  mkdirSync7(to, { recursive: !0 }), cpSync3(from, to, { recursive: !0 });
+  mkdirSync(to, { recursive: !0 }), cpSync(from, to, { recursive: !0 });
 }
 async function runtimeHealthy() {
   try {
@@ -1286,10 +1156,10 @@ async function startRuntime() {
   let url = new URL(runtimeUrl);
   if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost")
     throw Error(`Agent runtime is unavailable: ${runtimeUrl}`);
-  let entry = resolve4(projectRoot3, "..", "services", "agent-runtime", "dist", "standalone.mjs");
-  if (!existsSync12(entry))
+  let entry = resolve(projectRoot3, "..", "services", "agent-runtime", "dist", "standalone.mjs");
+  if (!existsSync(entry))
     throw Error(`Missing agent runtime bundle: ${entry}`);
-  let child = spawn3(process.execPath, [entry], {
+  let child = spawn(process.execPath, [entry], {
     stdio: "inherit",
     env: {
       ...process.env,
@@ -1311,22 +1181,22 @@ function stopOwnedRuntime() {
 }
 var projectRoot3, standaloneRoot2, nestedRoot, serverRoot, rawPort, port, runtimeUrl, agentRuntime, server, runtimeExitCode = 0;
 var init_start_standalone = __esm(async () => {
-  projectRoot3 = resolve4(dirname3(fileURLToPath10(import.meta.url)), ".."), standaloneRoot2 = resolve4(projectRoot3, ".next", "standalone"), nestedRoot = resolve4(standaloneRoot2, "frontend"), serverRoot = existsSync12(nestedRoot) ? nestedRoot : standaloneRoot2, rawPort = process.env.PORT || "4783", port = Number(rawPort);
+  projectRoot3 = resolve(dirname(fileURLToPath(import.meta.url)), ".."), standaloneRoot2 = resolve(projectRoot3, ".next", "standalone"), nestedRoot = resolve(standaloneRoot2, "frontend"), serverRoot = existsSync(nestedRoot) ? nestedRoot : standaloneRoot2, rawPort = process.env.PORT || "4783", port = Number(rawPort);
   if (!Number.isInteger(port) || port < 1024 || port > 65535)
     throw Error("PORT must be an integer from 1024 through 65535");
   runtimeUrl = (process.env.LOCAL_STUDIO_AGENT_RUNTIME_URL || "http://127.0.0.1:8081").replace(/\/+$/, "");
-  if (!existsSync12(standaloneRoot2))
+  if (!existsSync(standaloneRoot2))
     throw Error('Missing ".next/standalone". Run "npm run build" first.');
-  copyDirectory(resolve4(projectRoot3, "public"), resolve4(serverRoot, "public"));
-  copyDirectory(resolve4(projectRoot3, ".next", "static"), resolve4(serverRoot, ".next", "static"));
-  agentRuntime = await startRuntime(), server = spawn3(process.execPath, ["server.js"], {
+  copyDirectory(resolve(projectRoot3, "public"), resolve(serverRoot, "public"));
+  copyDirectory(resolve(projectRoot3, ".next", "static"), resolve(serverRoot, ".next", "static"));
+  agentRuntime = await startRuntime(), server = spawn(process.execPath, ["server.js"], {
     cwd: serverRoot,
     stdio: "inherit",
     env: {
       ...process.env,
       HOSTNAME: process.env.HOSTNAME || "127.0.0.1",
       PORT: String(port),
-      LOCAL_STUDIO_AGENT_CWD: process.env.LOCAL_STUDIO_AGENT_CWD || resolve4(projectRoot3, ".."),
+      LOCAL_STUDIO_AGENT_CWD: process.env.LOCAL_STUDIO_AGENT_CWD || resolve(projectRoot3, ".."),
       LOCAL_STUDIO_AGENT_RUNTIME_URL: runtimeUrl
     }
   });
@@ -1342,14 +1212,11 @@ var init_start_standalone = __esm(async () => {
   process.on("SIGTERM", () => server.kill("SIGTERM"));
 });
 
-var exports_validate_shared_contracts = {};
-import { readFileSync as readFileSync14, readdirSync as readdirSync7 } from "node:fs";
-import { join as join4, relative as relative4, resolve as resolve5 } from "node:path";
 function walk(dir) {
-  for (let entry of readdirSync7(dir, { withFileTypes: !0 })) {
+  for (let entry of readdirSync(dir, { withFileTypes: !0 })) {
     if (entry.name.startsWith(".") || entry.name === "node_modules")
       continue;
-    let full = join4(dir, entry.name);
+    let full = join(dir, entry.name);
     if (entry.isDirectory()) {
       walk(full);
       continue;
@@ -1359,7 +1226,7 @@ function walk(dir) {
   }
 }
 function inspect(filePath) {
-  let rel = relative4(root3, filePath).replaceAll("\\", "/"), source = readFileSync14(filePath, "utf8");
+  let rel = relative(root3, filePath).replaceAll("\\", "/"), source = readFileSync(filePath, "utf8");
   collectExportedDeclarations(rel, source);
   for (let name of contractNames)
     if (new RegExp(`export\\s+(interface|type)\\s+${name}\\b`).test(source) && !allowedFiles.has(rel))
@@ -1376,7 +1243,7 @@ function collectExportedDeclarations(rel, source) {
 }
 var root3, contractNames, allowedFiles, scanRoots, findings2, exportedDeclarations, duplicateDeclarations;
 var init_validate_shared_contracts = __esm(() => {
-  root3 = resolve5(import.meta.dirname, "../.."), contractNames = [
+  root3 = resolve(import.meta.dirname, "../.."), contractNames = [
     "Backend",
     "ServeRuntimeKind",
     "ServeRuntime",
@@ -1449,7 +1316,7 @@ var init_validate_shared_contracts = __esm(() => {
     "frontend/src/lib/controller-events-contract.ts"
   ]), scanRoots = ["shared", "controller/contracts", "controller/src", "frontend/src"], findings2 = [], exportedDeclarations = new Map;
   for (let scanRoot of scanRoots)
-    walk(join4(root3, scanRoot));
+    walk(join(root3, scanRoot));
   if (findings2.length > 0) {
     console.error("Shared contract check failed. Move these declarations to controller/contracts:");
     for (let finding of findings2)
@@ -1469,15 +1336,12 @@ var init_validate_shared_contracts = __esm(() => {
   console.log("Shared contract check passed");
 });
 
-var exports_validate_package_json = {};
-import { readFileSync as readFileSync15 } from "node:fs";
-import { resolve as resolve6 } from "node:path";
 var packageRepository, packageRequirements, packageLocks, packageMissing, releaseVersion;
 function packageAuditRead(relativePath) {
-  return JSON.parse(readFileSync15(resolve6(packageRepository, relativePath), "utf8"));
+  return JSON.parse(readFileSync(resolve(packageRepository, relativePath), "utf8"));
 }
 var init_validate_package_json = __esm(() => {
-  packageRepository = resolve6(import.meta.dirname, "../.."), packageRequirements = [
+  packageRepository = resolve(import.meta.dirname, "../.."), packageRequirements = [
     ["package.json", ["doctor", "setup", "dev", "dev:controller", "build", "start", "start:controller", "check"]],
     ["frontend/package.json", ["dev", "build", "start", "desktop:dist", "check:quality"]],
     ["controller/package.json", ["dev", "start", "typecheck", "lint", "check"]],
@@ -1494,7 +1358,7 @@ var init_validate_package_json = __esm(() => {
         packageMissing.push(`${manifest}:script:${script}`);
   }
   for (let lockfile of packageLocks)
-    if (!existsSync(resolve6(packageRepository, lockfile)))
+    if (!existsSync(resolve(packageRepository, lockfile)))
       packageMissing.push(lockfile);
   releaseVersion = packageAuditRead("package.json").version;
   for (let manifest of ["frontend/package.json", "controller/package.json", "controller/contracts/package.json", "services/agent-runtime/package.json"])
@@ -1507,15 +1371,12 @@ var init_validate_package_json = __esm(() => {
   console.log("  package.json integrity check passed");
 });
 
-var exports_validate_barrel_dir_siblings = {};
-import { readdirSync as readdirSync8 } from "node:fs";
-import { join as join5, relative as relative5, resolve as resolve7 } from "node:path";
 function walk2(dir) {
-  let entries2 = readdirSync8(dir, { withFileTypes: !0 }), directoryNames = new Set(entries2.filter((entry) => entry.isDirectory()).map((entry) => entry.name));
+  let entries2 = readdirSync(dir, { withFileTypes: !0 }), directoryNames = new Set(entries2.filter((entry) => entry.isDirectory()).map((entry) => entry.name));
   for (let entry of entries2) {
     if (entry.name.startsWith(".") || entry.name === "node_modules")
       continue;
-    let full = join5(dir, entry.name);
+    let full = join(dir, entry.name);
     if (entry.isDirectory()) {
       walk2(full);
       continue;
@@ -1525,17 +1386,17 @@ function walk2(dir) {
     let match = entry.name.match(/^(.+)\.tsx?$/);
     if (!match || !directoryNames.has(match[1]))
       continue;
-    let rel = relative5(root4, full);
+    let rel = relative(root4, full);
     if (siblingAllowlist.has(rel))
       continue;
-    findings3.push(`${rel} sits next to directory ${relative5(root4, join5(dir, match[1]))}/`);
+    findings3.push(`${rel} sits next to directory ${relative(root4, join(dir, match[1]))}/`);
   }
 }
 var root4, siblingAllowlist, scanRoots2, findings3;
 var init_validate_barrel_dir_siblings = __esm(() => {
-  root4 = resolve7(import.meta.dirname, "../.."), siblingAllowlist = new Set([]), scanRoots2 = ["frontend/src", "controller/src"], findings3 = [];
+  root4 = resolve(import.meta.dirname, "../.."), siblingAllowlist = new Set([]), scanRoots2 = ["frontend/src", "controller/src"], findings3 = [];
   for (let scanRoot of scanRoots2)
-    walk2(join5(root4, scanRoot));
+    walk2(join(root4, scanRoot));
   if (findings3.length > 0) {
     console.error("Barrel/dir sibling check failed. Merge each file into its same-named directory (or flatten the directory):");
     for (let finding of findings3)
@@ -1545,29 +1406,26 @@ var init_validate_barrel_dir_siblings = __esm(() => {
   console.log("Barrel/dir sibling check passed");
 });
 
-var exports_validate_ui_structure = {};
-import { readFileSync as readFileSync16, readdirSync as readdirSync9, statSync as statSync5 } from "node:fs";
-import { dirname as dirname4, join as join6, relative as relative6, resolve as resolve8, sep as sep3 } from "node:path";
 function isSharedLayerPath(rel) {
-  let top = rel.split(sep3)[0];
+  let top = rel.split(sep)[0];
   return top === "lib" || top === "hooks";
 }
 function resolveImportTarget(importerPath, specifier) {
   let base;
   if (specifier.startsWith("@/"))
-    base = join6(srcRoot, specifier.slice(2));
+    base = join(srcRoot, specifier.slice(2));
   else if (specifier.startsWith("."))
-    base = resolve8(dirname4(importerPath), specifier);
+    base = resolve(dirname(importerPath), specifier);
   else
     return null;
   for (let candidate of [
     base,
     `${base}.ts`,
     `${base}.tsx`,
-    join6(base, "index.ts"),
-    join6(base, "index.tsx")
+    join(base, "index.ts"),
+    join(base, "index.tsx")
   ])
-    if (statSync5(candidate, { throwIfNoEntry: !1 })?.isFile())
+    if (statSync(candidate, { throwIfNoEntry: !1 })?.isFile())
       return candidate;
   return null;
 }
@@ -1576,7 +1434,7 @@ function recordImportEdges(filePath, rel, source) {
     let target = resolveImportTarget(filePath, match[1]);
     if (!target || target === filePath)
       continue;
-    let targetRel = relative6(srcRoot, target);
+    let targetRel = relative(srcRoot, target);
     if (targetRel.startsWith("..") || !isSharedLayerPath(targetRel))
       continue;
     let importers = sharedModuleImporters.get(targetRel);
@@ -1586,10 +1444,10 @@ function recordImportEdges(filePath, rel, source) {
   }
 }
 function walk3(dir) {
-  for (let entry of readdirSync9(dir, { withFileTypes: !0 })) {
+  for (let entry of readdirSync(dir, { withFileTypes: !0 })) {
     if (entry.name.startsWith(".") || entry.name === "node_modules")
       continue;
-    let fullPath = join6(dir, entry.name);
+    let fullPath = join(dir, entry.name);
     if (entry.isDirectory()) {
       walk3(fullPath);
       continue;
@@ -1599,7 +1457,7 @@ function walk3(dir) {
   }
 }
 function inspectFile(filePath) {
-  let rel = relative6(srcRoot, filePath), segments = rel.split(sep3);
+  let rel = relative(srcRoot, filePath), segments = rel.split(sep);
   if (segments[0] === "components")
     findings4.push({
       rule: "retired-components-dir",
@@ -1612,7 +1470,7 @@ function inspectFile(filePath) {
       path: rel,
       detail: `Page-feature UI belongs in src/features/${segments[1]}; src/ui is for shared primitives.`
     });
-  if (segments[0] === "app" && rel.includes(`${sep3}_components${sep3}`))
+  if (segments[0] === "app" && rel.includes(`${sep}_components${sep}`))
     findings4.push({
       rule: "route-ui-location",
       path: rel,
@@ -1621,7 +1479,7 @@ function inspectFile(filePath) {
   let extension = filePath.slice(filePath.lastIndexOf("."));
   if (!sourceExtensions.has(extension))
     return;
-  let source = readFileSync16(filePath, "utf8");
+  let source = readFileSync(filePath, "utf8");
   if (isSharedLayerPath(rel) && !rel.endsWith(".d.ts") && !sharedModuleImporters.has(rel))
     sharedModuleImporters.set(rel, new Set);
   recordImportEdges(filePath, rel, source);
@@ -1660,7 +1518,7 @@ function evaluateSharedLayerConsumers() {
     }
     let featureOwners = new Set, hasNonFeatureImporter = !1;
     for (let importer of importers) {
-      let segments = importer.split(sep3);
+      let segments = importer.split(sep);
       if (segments[0] === "features" && segments.length > 1)
         featureOwners.add(segments[1]);
       else
@@ -1678,7 +1536,7 @@ function evaluateSharedLayerConsumers() {
 }
 var projectRoot4, srcRoot, legacyPrimitivePurityFiles, sharedLayerAllowlist, retiredUiFeatureDirs, sourceExtensions, findings4, sharedModuleImporters;
 var init_validate_ui_structure = __esm(() => {
-  projectRoot4 = resolve8(import.meta.dirname, ".."), srcRoot = join6(projectRoot4, "src"), legacyPrimitivePurityFiles = new Set([]), sharedLayerAllowlist = new Set([]), retiredUiFeatureDirs = new Set([
+  projectRoot4 = resolve(import.meta.dirname, ".."), srcRoot = join(projectRoot4, "src"), legacyPrimitivePurityFiles = new Set([]), sharedLayerAllowlist = new Set([]), retiredUiFeatureDirs = new Set([
     "recipes",
     "discover",
     "configs",
@@ -1687,7 +1545,7 @@ var init_validate_ui_structure = __esm(() => {
     "logs",
     "dashboard"
   ]), sourceExtensions = new Set([".ts", ".tsx"]), findings4 = [], sharedModuleImporters = new Map;
-  if (statSync5(srcRoot, { throwIfNoEntry: !1 }))
+  if (statSync(srcRoot, { throwIfNoEntry: !1 }))
     walk3(srcRoot), evaluateSharedLayerConsumers();
   if (findings4.length > 0) {
     console.error("UI structure check failed:");
@@ -1698,13 +1556,7 @@ var init_validate_ui_structure = __esm(() => {
   console.log("UI structure check passed");
 });
 
-import { execFileSync as execFileSync6, spawnSync as spawnSync4 } from "node:child_process";
-import { chmodSync as chmodSync2, readFileSync as readFileSync17, readdirSync as readdirSync10 } from "node:fs";
-import path11 from "node:path";
-import { fileURLToPath as fileURLToPath11 } from "node:url";
 
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
 function resolveResourcesDir(appOutDir, productFilename, electronPlatformName) {
   if (electronPlatformName === "darwin" || electronPlatformName === "mas")
     return path.join(appOutDir, `${productFilename}.app`, "Contents", "Resources");
@@ -1765,30 +1617,30 @@ async function afterPack(context) {
   console.log(`  afterPack: embedded frontend and agent runtime present (${electronPlatformName})`);
 }
 
-var project_entry_default = afterPack, root5 = path11.resolve(path11.dirname(fileURLToPath11(import.meta.url)), "../.."), commands = new Map([
-  ["assert-release-main", () => Promise.resolve().then(() => (init_assert_release_main(), exports_assert_release_main))],
-  ["assert-standalone", () => Promise.resolve().then(() => (init_assert_standalone_build(), exports_assert_standalone_build))],
-  ["browser-perf", () => init_browser_perf_audit().then(() => exports_browser_perf_audit)],
-  ["bundle-agent-runtime", () => Promise.resolve().then(() => (init_bundle(), exports_bundle))],
-  ["check-commits", () => Promise.resolve().then(() => (init_check_conventional_commits(), exports_check_conventional_commits))],
-  ["complete-standalone", () => Promise.resolve().then(() => (init_complete_standalone_build(), exports_complete_standalone_build))],
-  ["controller-standards", () => Promise.resolve().then(() => (init_controller_standards_audit(), exports_controller_standards_audit))],
-  ["doctor", async () => doctor()],
-  ["link-services", () => Promise.resolve().then(() => (init_link_services_node_modules(), exports_link_services_node_modules))],
-  ["perf", () => init_perf_audit().then(() => exports_perf_audit)],
-  ["postbuild-agent-runtime", () => Promise.resolve().then(() => (init_postbuild(), exports_postbuild))],
-  ["prepare-agent-runtime", async () => rmSync6(path11.join(root5, "services", "agent-runtime", "dist"), { recursive: !0, force: !0 })],
-  ["prepare-next", () => Promise.resolve().then(() => (init_prepare_next_build(), exports_prepare_next_build))],
-  ["release-notes", () => Promise.resolve().then(() => (init_release_statement(), exports_release_statement))],
-  ["setup", async () => setupRepository()],
-  ["sign-release", () => init_sign_desktop_release().then(() => exports_sign_desktop_release)],
-  ["stage-release", () => Promise.resolve().then(() => (init_stage_desktop_release(), exports_stage_desktop_release))],
-  ["start", () => init_start_standalone().then(() => exports_start_standalone)],
-  ["validate-contracts", () => Promise.resolve().then(() => (init_validate_shared_contracts(), exports_validate_shared_contracts))],
-  ["validate-package", () => Promise.resolve().then(() => (init_validate_package_json(), exports_validate_package_json))],
-  ["validate-structure", () => Promise.resolve().then(() => (init_validate_barrel_dir_siblings(), exports_validate_barrel_dir_siblings))],
-  ["validate-ui", () => Promise.resolve().then(() => (init_validate_ui_structure(), exports_validate_ui_structure))],
-  ["audit-layout", async () => auditLayout()]
+var root5 = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."), commands = new Map([
+  ["assert-release-main", assertReleaseMain],
+  ["assert-standalone", init_assert_standalone_build],
+  ["browser-perf", init_browser_perf_audit],
+  ["bundle-agent-runtime", init_bundle],
+  ["check-commits", init_check_conventional_commits],
+  ["complete-standalone", init_complete_standalone_build],
+  ["controller-standards", init_controller_standards_audit],
+  ["doctor", doctor],
+  ["link-services", init_link_services_node_modules],
+  ["perf", init_perf_audit],
+  ["postbuild-agent-runtime", init_postbuild],
+  ["prepare-agent-runtime", async () => rmSync(path.join(root5, "services", "agent-runtime", "dist"), { recursive: !0, force: !0 })],
+  ["prepare-next", init_prepare_next_build],
+  ["release-notes", init_release_statement],
+  ["setup", setupRepository],
+  ["sign-release", init_sign_desktop_release],
+  ["stage-release", init_stage_desktop_release],
+  ["start", init_start_standalone],
+  ["validate-contracts", init_validate_shared_contracts],
+  ["validate-package", init_validate_package_json],
+  ["validate-structure", init_validate_barrel_dir_siblings],
+  ["validate-ui", init_validate_ui_structure],
+  ["audit-layout", auditLayout]
 ]);
 function parsedVersion(value) {
   let match = value.match(/(\d+)\.(\d+)(?:\.(\d+))?/);
@@ -1804,7 +1656,7 @@ function versionMeetsMinimum(actual, minimum) {
   return true;
 }
 function requireTool(label, command, args3, minimum) {
-  let result = spawnSync4(command, args3, { cwd: root5, encoding: "utf8" });
+  let result = spawnSync(command, args3, { cwd: root5, encoding: "utf8" });
   if (result.error || result.status !== 0)
     throw Error(`${label} is required but unavailable`);
   let output4 = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim(), actual = parsedVersion(output4);
@@ -1823,21 +1675,21 @@ function doctor() {
 function setupRepository() {
   doctor();
   for (let directory of ["controller", "shared", "services/agent-runtime"])
-    run3("bun", ["install", "--frozen-lockfile"], path11.join(root5, directory));
-  run3("npm", ["ci", "--legacy-peer-deps"], path11.join(root5, "frontend"));
+    run3("bun", ["install", "--frozen-lockfile"], path.join(root5, directory));
+  run3("npm", ["ci", "--legacy-peer-deps"], path.join(root5, "frontend"));
   console.log("Repository setup complete");
 }
 function auditLayout() {
-  let expected = ["frontend/desktop/project.mjs", "scripts/install-controller.sh", "scripts/install-desktop-app.sh"], actual = readdirSync10(path11.join(root5, "scripts"), { withFileTypes: !0 }).filter((entry) => entry.isFile()).map((entry) => `scripts/${entry.name}`).sort(), executable = git(["ls-files", "-s"]).split("\n").filter((line) => line.startsWith("100755 ")).map((line) => line.split("\t")[1]).sort(), stale = ["frontend/scripts", "controller/scripts", "services/agent-runtime/scripts"].filter((directory) => existsSync(path11.join(root5, directory)));
+  let expected = ["frontend/desktop/project.mjs", "scripts/install-controller.sh", "scripts/install-desktop-app.sh"], actual = readdirSync(path.join(root5, "scripts"), { withFileTypes: !0 }).filter((entry) => entry.isFile()).map((entry) => `scripts/${entry.name}`).sort(), executable = git(["ls-files", "-s"]).split("\n").filter((line) => line.startsWith("100755 ")).map((line) => line.split("\t")[1]).sort(), stale = ["frontend/scripts", "controller/scripts", "services/agent-runtime/scripts"].filter((directory) => existsSync(path.join(root5, directory)));
   if (JSON.stringify(actual) !== JSON.stringify(expected.slice(1)) || JSON.stringify(executable) !== JSON.stringify(expected) || stale.length > 0)
     throw Error(`Automation layout drifted: scripts=${actual.join(",")}; executable=${executable.join(",")}; stale=${stale.join(",")}`);
   console.log("Automation layout passed: exactly three scripts");
 }
 function git(args3, options = {}) {
-  return execFileSync6("git", args3, { cwd: root5, encoding: "utf8", ...options }).trim();
+  return execFileSync("git", args3, { cwd: root5, encoding: "utf8", ...options }).trim();
 }
 function run3(command, args3, cwd = root5) {
-  let result = spawnSync4(command, args3, { cwd, stdio: "inherit" });
+  let result = spawnSync(command, args3, { cwd, stdio: "inherit" });
   if (result.error)
     throw result.error;
   if (result.status !== 0)
@@ -1860,24 +1712,24 @@ function preCommit() {
   let branch = git(["branch", "--show-current"]);
   if (["main", "dev"].includes(branch))
     throw Error(`pre-commit: commits on ${branch} are blocked; use a work branch and PR`);
-  let files = stagedFiles(), activeFiles = files.filter((file2) => existsSync(path11.join(root5, file2))), lines = git(["diff", "--cached", "--numstat"]).split(`
+  let files = stagedFiles(), activeFiles = files.filter((file2) => existsSync(path.join(root5, file2))), lines = git(["diff", "--cached", "--numstat"]).split(`
 `).reduce((total, row) => {
     let [added, removed, file2] = row.split("\t");
     if (!/^\d+$/.test(added ?? "") || !/^\d+$/.test(removed ?? ""))
       return total;
-    if (["frontend/desktop/project.mjs", "scripts/project.mjs"].includes(file2 ?? "") || !existsSync(path11.join(root5, file2 ?? "")) || /(^|\/)(package-lock\.json|bun\.lockb?|.*\.snap)$/.test(file2 ?? ""))
+    if (["frontend/desktop/project.mjs", "scripts/project.mjs"].includes(file2 ?? "") || !existsSync(path.join(root5, file2 ?? "")) || /(^|\/)(package-lock\.json|bun\.lockb?|.*\.snap)$/.test(file2 ?? ""))
       return total;
     return total + Number(added) + Number(removed);
   }, 0);
   if (!isOriginMainMerge() && (activeFiles.length > 15 || lines > 600))
     throw Error(`pre-commit: staged change is too large (${activeFiles.length} files, ${lines} source lines); limit is 15 files and 600 source lines`);
   if (activeFiles.some((file2) => /^(frontend|shared)\//.test(file2)))
-    run3("npm", ["run", "precommit"], path11.join(root5, "frontend"));
+    run3("npm", ["run", "precommit"], path.join(root5, "frontend"));
   if (activeFiles.some((file2) => file2.startsWith("controller/")))
-    run3("bun", ["run", "typecheck"], path11.join(root5, "controller"));
+    run3("bun", ["run", "typecheck"], path.join(root5, "controller"));
 }
 function prePush() {
-  let remote = process.argv[2], url = process.argv[3], updates = readFileSync17(0, "utf8").trim();
+  let remote = process.argv[2], url = process.argv[3], updates = readFileSync(0, "utf8").trim();
   for (let update of updates ? updates.split(`
 `) : []) {
     let [localRef, localSha, remoteRef, remoteSha] = update.trim().split(/\s+/);
@@ -1900,26 +1752,26 @@ function prePush() {
       }
     } else
       range2 = `${remoteSha}..${localSha}`;
-    console.log(`Checking conventional commits for ${localRef} -> ${remote}/${remoteRef} (${url})`), run3(process.execPath, [path11.join(root5, "scripts/project.mjs"), "check-commits", "--range", range2]);
+    console.log(`Checking conventional commits for ${localRef} -> ${remote}/${remoteRef} (${url})`), run3(process.execPath, [path.join(root5, "scripts/project.mjs"), "check-commits", "--range", range2]);
   }
-  run3("npm", ["run", "check:static"], path11.join(root5, "frontend")), run3("npm", ["run", "check:cleanup"], path11.join(root5, "frontend")), run3(process.execPath, [path11.join(root5, "scripts/project.mjs"), "assert-standalone"]);
+  run3("npm", ["run", "check:static"], path.join(root5, "frontend")), run3("npm", ["run", "check:cleanup"], path.join(root5, "frontend")), run3(process.execPath, [path.join(root5, "scripts/project.mjs"), "assert-standalone"]);
 }
 function setupHooks() {
-  let worktree = spawnSync4("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root5, encoding: "utf8" });
+  let worktree = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root5, encoding: "utf8" });
   if (worktree.status !== 0 || worktree.stdout.trim() !== "true")
     return console.log("Skipping Git hook setup outside a worktree");
   git(["rev-parse", "--git-dir"]), git(["config", "core.hooksPath", ".githooks"]);
-  for (let name of readdirSync10(path11.join(root5, ".githooks")))
-    chmodSync2(path11.join(root5, ".githooks", name), 493);
+  for (let name of readdirSync(path.join(root5, ".githooks")))
+    chmodSync(path.join(root5, ".githooks", name), 493);
 }
-var invoked = path11.basename(process.argv[1] ?? "");
+var invoked = path.basename(process.argv[1] ?? "");
 if (invoked === "commit-msg")
-  process.argv.splice(2, 0, "--message-file"), await Promise.resolve().then(() => (init_check_conventional_commits(), exports_check_conventional_commits));
+  process.argv.splice(2, 0, "--message-file"), await init_check_conventional_commits();
 else if (invoked === "pre-commit")
   preCommit();
 else if (invoked === "pre-push")
   prePush();
-else if (invoked === "project.mjs" || path11.resolve(process.argv[1] ?? "") === fileURLToPath11(import.meta.url)) {
+else if (invoked === "project.mjs" || path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   let command = process.argv[2];
   if (process.argv.splice(2, 1), command === "setup-hooks")
     setupHooks();
@@ -1928,6 +1780,4 @@ else if (invoked === "project.mjs" || path11.resolve(process.argv[1] ?? "") === 
   else
     await commands.get(command)();
 }
-export {
-  project_entry_default as default
-};
+export default afterPack;
