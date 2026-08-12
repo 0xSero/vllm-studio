@@ -82,7 +82,7 @@ export function RecipesTab({
   const activeDetails = activeDetailsFor(activeRecipe, loading, sortedRecipes.length);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       <ModelSection
         title="Serves"
         description="Each Serve binds model weights, a real runtime, and launch configuration."
