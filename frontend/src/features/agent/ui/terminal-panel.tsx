@@ -3,7 +3,7 @@
 import { useRef, type RefObject } from "react";
 import type { Terminal as XTerm } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
-import type { TerminalRunResult } from "@/features/agent/contracts";
+import type { TerminalRunResult } from "@shared/agent/workspace";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { effectTimeout } from "@/lib/effect-timers";
 import { webPtyBridge } from "@/features/agent/ui/web-pty-bridge";

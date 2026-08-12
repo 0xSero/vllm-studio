@@ -134,7 +134,7 @@ import type { UpdateSession } from "@/features/agent/runtime/types";
 import { useTools } from "@/features/agent/tools/context";
 import { useProjects, type ProjectsContextValue } from "@/features/agent/projects/context";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
-import type { AgentThinkingLevel } from "@/features/agent/contracts";
+import type { AgentThinkingLevel } from "@shared/agent/agent-turn";
 import {
   loadThinkingLevelDefault,
   pickThinkingLevel,

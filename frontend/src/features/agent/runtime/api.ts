@@ -163,7 +163,7 @@ export function loadCanonicalSession(
 export type CompactSessionArgs = {
   sessionId: string;
   modelId: string;
-  thinkingLevel?: import("@/features/agent/contracts").AgentThinkingLevel;
+  thinkingLevel?: import("@shared/agent/agent-turn").AgentThinkingLevel;
   toolAccess?: AgentToolAccess;
   cwd?: string;
   piSessionId?: string | null;
@@ -196,7 +196,7 @@ export function compactSession(args: CompactSessionArgs): Promise<CompactSession
 export type SubmitTurnArgs = {
   sessionId: string;
   modelId: string;
-  thinkingLevel?: import("@/features/agent/contracts").AgentThinkingLevel;
+  thinkingLevel?: import("@shared/agent/agent-turn").AgentThinkingLevel;
   toolAccess: AgentToolAccess;
   message: string;
   images?: AgentImageInput[];
