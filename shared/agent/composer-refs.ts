@@ -6,22 +6,27 @@
 // exact sanitization logic with the frontend; the frontend module re-exports
 // everything from this file for its client-side callers.
 
-export type ComposerSkillRef = {
-  id: string;
-  name: string;
-  source?: string;
-  path?: string;
-  instructions?: string;
-};
+import { Schema } from "effect";
 
-export type ComposerPromptTemplateRef = {
-  id: string;
-  name: string;
-  source?: string;
-  path?: string;
-  description?: string;
-  argumentHint?: string;
-};
+export const ComposerSkillRefSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  source: Schema.optional(Schema.String),
+  path: Schema.optional(Schema.String),
+  instructions: Schema.optional(Schema.String),
+});
+
+export const ComposerPromptTemplateRefSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  source: Schema.optional(Schema.String),
+  path: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+  argumentHint: Schema.optional(Schema.String),
+});
+
+export type ComposerSkillRef = Schema.Schema.Type<typeof ComposerSkillRefSchema>;
+export type ComposerPromptTemplateRef = Schema.Schema.Type<typeof ComposerPromptTemplateRefSchema>;
 
 function stringField(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key];

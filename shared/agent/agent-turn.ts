@@ -5,6 +5,7 @@ import {
 } from "./agent-image-input";
 import { sanitizeComposerPromptTemplates, sanitizeComposerSkills } from "./composer-refs";
 import { Schema } from "effect";
+import type { RuntimeStatus } from "./runtime-status";
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -78,19 +79,10 @@ export type AgentTurnRequest = {
   streamingBehavior?: AgentStreamingBehavior;
 };
 
-export type AgentTurnRuntimeStatus = {
-  active?: boolean;
-  running?: boolean;
-  piSessionId?: string | null;
-  modelId?: string | null;
-  eventSeq?: number;
-  contextUsage?: {
-    tokens: number | null;
-    contextWindow: number;
-    percent: number | null;
-    shouldCompact: boolean;
-  } | null;
-};
+export type AgentTurnRuntimeStatus = Pick<
+  RuntimeStatus,
+  "active" | "running" | "piSessionId" | "modelId" | "eventSeq" | "contextUsage"
+>;
 
 export type AgentTurnCommandResult = {
   type: "command";

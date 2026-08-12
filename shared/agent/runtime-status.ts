@@ -33,3 +33,42 @@ export const RuntimeStatusSchema = Schema.Struct({
 
 export type RuntimeExtensionUiRequest = Schema.Schema.Type<typeof RuntimeExtensionUiRequestSchema>;
 export type RuntimeStatus = Schema.Schema.Type<typeof RuntimeStatusSchema>;
+export type { RuntimeContextUsage } from "./context-usage";
+
+export const RuntimeStatusEventSchema = Schema.Struct({
+  type: Schema.Literal("status"),
+  sessionId: Schema.String,
+  phase: Schema.Literals(["running", "idle"]),
+  session: RuntimeStatusSchema,
+});
+
+export const RuntimePiEventSchema = Schema.Struct({
+  type: Schema.Literal("pi"),
+  sessionId: Schema.String,
+  seq: Schema.Number,
+  event: Schema.Record(Schema.String, Schema.Unknown),
+  snapshot: RuntimeStatusSchema,
+});
+
+export const RuntimeSessionSummarySchema = Schema.Struct({
+  sessionId: Schema.String,
+  status: RuntimeStatusSchema,
+});
+
+export const RuntimeSessionsEventSchema = Schema.Struct({
+  type: Schema.Literal("sessions"),
+  sessions: Schema.Array(RuntimeSessionSummarySchema),
+});
+
+export const RuntimeActivityPayloadSchema = Schema.Union([
+  RuntimeSessionsEventSchema,
+  RuntimeStatusEventSchema,
+  RuntimePiEventSchema,
+]);
+
+export const RuntimeStatusResponseSchema = Schema.Struct({
+  status: Schema.optional(Schema.Union([Schema.Null, RuntimeStatusSchema])),
+});
+
+export type RuntimeActivityPayload = Schema.Schema.Type<typeof RuntimeActivityPayloadSchema>;
+export type RuntimeSessionSummary = Schema.Schema.Type<typeof RuntimeSessionSummarySchema>;

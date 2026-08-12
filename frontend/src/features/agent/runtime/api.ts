@@ -19,15 +19,32 @@ import type {
 } from "@/features/agent/composer-context";
 
 import {
-  decodeRuntimeActivityPayload,
-  decodeRuntimeStatusResponse,
+  RuntimeActivityPayloadSchema,
+  RuntimeStatusResponseSchema,
   type RuntimeActivityPayload,
   type RuntimeContextUsage,
   type RuntimeSessionSummary,
   type RuntimeStatus,
-} from "@/features/agent/runtime/runtime-schema";
+} from "@shared/agent/runtime-status";
 export type { RuntimeActivityPayload, RuntimeContextUsage, RuntimeSessionSummary, RuntimeStatus };
 export type { SessionUsageTotals };
+
+const decodeActivityOption = Schema.decodeUnknownOption(RuntimeActivityPayloadSchema, {
+  onExcessProperty: "preserve",
+});
+const decodeStatusResponseOption = Schema.decodeUnknownOption(RuntimeStatusResponseSchema, {
+  onExcessProperty: "preserve",
+});
+
+function decodeRuntimeActivityPayload(raw: unknown): RuntimeActivityPayload | null {
+  const option = decodeActivityOption(raw);
+  return option._tag === "Some" ? option.value : null;
+}
+
+function decodeRuntimeStatusResponse(raw: unknown): RuntimeStatus | null {
+  const option = decodeStatusResponseOption(raw);
+  return option._tag === "Some" ? (option.value.status ?? null) : null;
+}
 
 export function runtimeContextUsage(
   status: RuntimeStatus | null | undefined,

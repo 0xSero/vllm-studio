@@ -1,14 +1,7 @@
 import { Schema } from "effect";
-import type { ComposerSkillRef } from "./composer-refs";
+import { ComposerSkillRefSchema } from "./composer-refs";
 
 const RecordSchema = Schema.Record(Schema.String, Schema.Unknown);
-const ComposerSkillRefSchema = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  source: Schema.optional(Schema.String),
-  path: Schema.optional(Schema.String),
-  instructions: Schema.optional(Schema.String),
-});
 
 export const AgentViewToolBlockSchema = Schema.Struct({
   kind: Schema.Literal("tool"),
@@ -68,47 +61,12 @@ export const AgentViewQueuedMessageSchema = Schema.Struct({
   sent: Schema.optional(Schema.Boolean),
 });
 
-export type ToolBlock = {
-  kind: "tool";
-  id: string;
-  name: string;
-  status: "running" | "done" | "error";
-  argsText?: string;
-  args?: Record<string, unknown>;
-  resultText?: string;
-  text: string;
-};
-export type TextBlock = { kind: "text"; id: string; text: string };
-export type ThinkingBlock = { kind: "thinking"; id: string; text: string };
-export type EventBlock = { kind: "event"; id: string; text: string };
-export type AssistantBlock = TextBlock | ThinkingBlock | ToolBlock | EventBlock;
-export type ChatMessageAttachment = {
-  id: string;
-  name: string;
-  type: string;
-  size: number;
-  path?: string;
-  mode: "text" | "data-url" | "metadata";
-  content: string;
-  previewKind?: "image" | "video" | "audio" | "pdf" | "file";
-  previewUrl?: string;
-};
-export type TokenStats = { read: number; write: number; current: number };
-export type QueuedMessage = {
-  id: string;
-  mode: "steer" | "follow_up";
-  text: string;
-  sent?: boolean;
-};
-export type ChatMessage = {
-  id: string;
-  role: "user" | "assistant" | "system";
-  text: string;
-  attachments?: ChatMessageAttachment[];
-  skills?: ComposerSkillRef[];
-  blocks?: AssistantBlock[];
-  streamCalls?: Array<Array<Record<string, unknown>>>;
-  pending?: boolean;
-  awaitingEcho?: boolean;
-  timestamp?: string;
-};
+export type AssistantBlock = Schema.Schema.Type<typeof AgentViewBlockSchema>;
+export type ToolBlock = Schema.Schema.Type<typeof AgentViewToolBlockSchema>;
+export type TextBlock = Extract<AssistantBlock, { kind: "text" }>;
+export type ThinkingBlock = Extract<AssistantBlock, { kind: "thinking" }>;
+export type EventBlock = Extract<AssistantBlock, { kind: "event" }>;
+export type ChatMessageAttachment = Schema.Schema.Type<typeof AgentViewAttachmentSchema>;
+export type TokenStats = Schema.Schema.Type<typeof AgentViewTokenStatsSchema>;
+export type QueuedMessage = Schema.Schema.Type<typeof AgentViewQueuedMessageSchema>;
+export type ChatMessage = Schema.Schema.Type<typeof AgentViewMessageSchema>;
