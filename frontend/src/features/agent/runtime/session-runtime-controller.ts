@@ -9,39 +9,30 @@ import {
   type RuntimeActivityPayload,
   type RuntimeStatus,
 } from "@/features/agent/runtime/api";
-import type { Session, SessionId } from "@/features/agent/runtime/types";
 import { settleTurn } from "@/features/agent/runtime/session-status";
+import type { Session, SessionId } from "@/features/agent/runtime/types";
 
 export type RuntimeSessionActivity = "running" | "unseen" | "finished";
 export type RuntimeSessionActivitySnapshot = ReadonlyMap<string, RuntimeSessionActivity>;
-
-export type SessionRuntimeBinding = {
+type Binding = {
   commit: (sessionId: SessionId, patch: (session: Session) => Session) => void;
   getSessions: () => readonly Session[];
 };
 
-export type SessionRuntimeControllerDeps = {
-  subscribe?: typeof subscribeRuntimeActivity;
-};
-
-export type SessionRuntimeController = {
-  bind(binding: SessionRuntimeBinding): void;
-  unbind(): void;
-  reconcile(sessions: readonly Session[]): void;
-  closeAll(): void;
-  activitySnapshot(): RuntimeSessionActivitySnapshot;
-  subscribeActivity(listener: () => void): () => void;
-  markActivitySeen(ids: readonly (string | null | undefined)[]): void;
-};
-
-function sameActivity(
-  left: RuntimeSessionActivitySnapshot,
-  right: RuntimeSessionActivitySnapshot,
-): boolean {
-  return left.size === right.size && [...left].every(([id, state]) => right.get(id) === state);
+function matchingSession(
+  sessions: readonly Session[],
+  runtimeSessionId: string,
+  status: RuntimeStatus,
+): Session | null {
+  const direct = sessions.find((session) => session.id === runtimeSessionId);
+  if (direct) return direct;
+  const matches = status.piSessionId
+    ? sessions.filter((session) => session.piSessionId === status.piSessionId)
+    : [];
+  return matches.length === 1 ? matches[0]! : null;
 }
 
-function projectRuntimeStatus(session: Session, status: RuntimeStatus): Session {
+function projectStatus(session: Session, status: RuntimeStatus): Session {
   if (session.status === "loading") return session;
   const messages = status.messages
     ? mergeLiveTranscript(session.messages, status.messages)
@@ -56,139 +47,119 @@ function projectRuntimeStatus(session: Session, status: RuntimeStatus): Session 
     ...(status.queue ? { queue: projectQueue(status.queue.followUp, session.queue ?? []) } : {}),
     extensionUiRequest: status.extensionUiRequest ?? undefined,
   };
-  if (status.active === true) {
-    return {
-      ...next,
-      status: session.status === "stopping" ? "stopping" : "running",
-      activeAssistantId: [...messages].reverse().find((message) => message.role === "assistant")
-        ?.id,
-    };
+  if (status.active !== true) {
+    return session.status === "running" || session.status === "stopping" ? settleTurn(next) : next;
   }
-  return session.status === "running" || session.status === "stopping" ? settleTurn(next) : next;
+  return {
+    ...next,
+    status: session.status === "stopping" ? "stopping" : "running",
+    activeAssistantId: [...messages].reverse().find((message) => message.role === "assistant")?.id,
+  };
 }
 
-function matchingSession(
-  sessions: readonly Session[],
-  runtimeSessionId: string,
-  status: RuntimeStatus,
-): Session | null {
-  const direct = sessions.find((session) => session.id === runtimeSessionId);
-  if (direct) return direct;
-  if (!status.piSessionId) return null;
-  const matches = sessions.filter((session) => session.piSessionId === status.piSessionId);
-  return matches.length === 1 ? matches[0]! : null;
+function sameActivity(
+  left: RuntimeSessionActivitySnapshot,
+  right: RuntimeSessionActivitySnapshot,
+): boolean {
+  return left.size === right.size && [...left].every(([id, value]) => right.get(id) === value);
 }
 
 export function createSessionRuntimeController(
-  deps: SessionRuntimeControllerDeps = {},
-): SessionRuntimeController {
-  const subscribe = deps.subscribe ?? subscribeRuntimeActivity;
-  const runtimeStatuses = new Map<string, RuntimeStatus>();
-  const activityListeners = new Set<() => void>();
+  deps: {
+    subscribe?: typeof subscribeRuntimeActivity;
+  } = {},
+) {
+  const statuses = new Map<string, RuntimeStatus>();
+  const listeners = new Set<() => void>();
   let activity: RuntimeSessionActivitySnapshot = new Map();
-  let binding: SessionRuntimeBinding | null = null;
-  let closeSubscription: (() => void) | null = null;
+  let binding: Binding | null = null;
+  let close: (() => void) | null = null;
 
-  const applyStatus = (runtimeSessionId: string, status: RuntimeStatus) => {
-    if (!binding) return;
-    const target = matchingSession(binding.getSessions(), runtimeSessionId, status);
-    if (!target) return;
-    binding.commit(target.id, (session) => projectRuntimeStatus(session, status));
-  };
-
-  const publishActivity = () => {
+  const publish = () => {
     const active = new Set<string>();
-    for (const [sessionId, status] of runtimeStatuses) {
-      if (status.active !== true) continue;
-      active.add(sessionId);
+    statuses.forEach((status, id) => {
+      if (status.active !== true) return;
+      active.add(id);
       if (status.piSessionId) active.add(status.piSessionId);
-    }
+    });
     const next = new Map(activity);
-    for (const [id, state] of next) {
-      if (state === "running" && !active.has(id)) next.set(id, "finished");
-    }
-    for (const id of active) next.set(id, "running");
+    next.forEach((value, id) => {
+      if (value === "running" && !active.has(id)) next.set(id, "finished");
+    });
+    active.forEach((id) => next.set(id, "running"));
     if (sameActivity(activity, next)) return;
     activity = next;
-    activityListeners.forEach((listener) => listener());
+    listeners.forEach((listener) => listener());
   };
 
-  const applyPayload = (payload: RuntimeActivityPayload) => {
-    if (payload.type === "sessions") {
-      runtimeStatuses.clear();
-      payload.sessions.forEach(({ sessionId, status }) => runtimeStatuses.set(sessionId, status));
-      publishActivity();
-      runtimeStatuses.forEach((status, sessionId) => applyStatus(sessionId, status));
-      return;
-    }
-    const status = payload.type === "status" ? payload.session : payload.snapshot;
-    runtimeStatuses.set(payload.sessionId, status);
-    publishActivity();
-    if (payload.type === "status") {
-      applyStatus(payload.sessionId, status);
-      return;
-    }
+  const apply = (sessionId: string, status: RuntimeStatus, payload?: RuntimeActivityPayload) => {
+    statuses.set(sessionId, status);
     if (!binding) return;
-    const target = matchingSession(binding.getSessions(), payload.sessionId, status);
+    const target = matchingSession(binding.getSessions(), sessionId, status);
     if (!target) return;
     binding.commit(target.id, (session) => {
-      const projected = projectRuntimeStatus(session, status);
-      const withError =
+      const projected = projectStatus(session, status);
+      if (!payload || payload.type !== "pi") return projected;
+      const error =
         payload.event.type === "notice" &&
         payload.event.level === "error" &&
         typeof payload.event.message === "string"
           ? { ...projected, error: payload.event.message.slice(0, 4_000) }
           : projected;
-      if (isAgentSettledEvent(payload.event)) {
-        return {
-          ...settleTurn(withError),
-          messages: settleOptimisticMessages(withError.messages),
-        };
-      }
-      return {
-        ...withError,
-        status: session.status === "stopping" ? "stopping" : "running",
-      };
+      return isAgentSettledEvent(payload.event)
+        ? { ...settleTurn(error), messages: settleOptimisticMessages(error.messages) }
+        : { ...error, status: session.status === "stopping" ? "stopping" : "running" };
     });
   };
 
+  const receive = (payload: RuntimeActivityPayload) => {
+    if (payload.type === "sessions") {
+      statuses.clear();
+      payload.sessions.forEach(({ sessionId, status }) => apply(sessionId, status));
+    } else {
+      apply(
+        payload.sessionId,
+        payload.type === "status" ? payload.session : payload.snapshot,
+        payload,
+      );
+    }
+    publish();
+  };
+
   return {
-    bind: (next) => {
+    bind: (next: Binding) => {
       binding = next;
-      closeSubscription ??= subscribe(applyPayload).close;
+      close ??= (deps.subscribe ?? subscribeRuntimeActivity)(receive).close;
     },
     unbind: () => {
       binding = null;
     },
-    reconcile: () => {
-      runtimeStatuses.forEach((status, sessionId) => applyStatus(sessionId, status));
-    },
+    reconcile: (_sessions?: readonly Session[]) =>
+      statuses.forEach((status, id) => apply(id, status)),
     closeAll: () => {
-      closeSubscription?.();
-      closeSubscription = null;
-      runtimeStatuses.clear();
-      publishActivity();
+      close?.();
+      close = null;
+      statuses.clear();
+      publish();
     },
     activitySnapshot: () => activity,
-    subscribeActivity: (listener) => {
-      activityListeners.add(listener);
-      return () => activityListeners.delete(listener);
+    subscribeActivity: (listener: () => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
     },
-    markActivitySeen: (ids) => {
+    markActivitySeen: (ids: readonly (string | null | undefined)[]) => {
       const next = new Map(activity);
-      for (const id of ids) {
-        if (id) next.delete(id);
-      }
+      ids.forEach((id) => id && next.delete(id));
       if (sameActivity(activity, next)) return;
       activity = next;
-      activityListeners.forEach((listener) => listener());
+      listeners.forEach((listener) => listener());
     },
   };
 }
 
-let singleton: SessionRuntimeController | null = null;
+let singleton: ReturnType<typeof createSessionRuntimeController> | null = null;
 
-export function sessionRuntimeController(): SessionRuntimeController {
+export function sessionRuntimeController() {
   singleton ??= createSessionRuntimeController();
   return singleton;
 }
