@@ -75,7 +75,8 @@ test("Pi defaults to the active controller and reveals other models on request",
 
 test("new task replaces the current chat with a fresh session", async ({ page }) => {
   const composer = await openControllerChat(page, "Replace current chat");
-  await composer.fill("Keep this chat out of the new session.");
+  const opening = "Keep this chat out of the new session.";
+  await composer.fill(opening);
   await composer.press("Enter");
   await expect(page.getByText("Controller scoped Pi reply.")).toBeVisible({ timeout: 60_000 });
 
@@ -84,6 +85,14 @@ test("new task replaces the current chat with a fresh session", async ({ page })
   await expect(page.getByPlaceholder(/Do anything|Ask for follow-up changes/)).toHaveCount(1);
   await expect(page.locator("[data-multi-pane=true]")).toHaveCount(0);
   await expect(page.getByText("Controller scoped Pi reply.")).toHaveCount(0);
+
+  await page.getByRole("link", { name: opening }).click();
+  const transcript = page.getByRole("article");
+  await expect(transcript.getByText(opening, { exact: true })).toBeVisible();
+  await expect(transcript.getByText("Controller scoped Pi reply.")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.locator("[data-multi-pane=true]")).toHaveCount(0);
 });
 
 test("model picker includes models from every saved controller", async ({ page }) => {

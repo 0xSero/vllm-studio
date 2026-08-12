@@ -21,6 +21,7 @@ export const RuntimeStatusSchema = Schema.Struct({
   running: Schema.optional(Schema.Boolean),
   piSessionId: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
   modelId: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
+  cwd: Schema.optional(Schema.String),
   eventSeq: Schema.optional(Schema.Number),
   contextUsage: Schema.optional(Schema.Union([Schema.Null, RuntimeContextUsageSchema])),
   messages: Schema.optional(Schema.Array(Schema.Record(Schema.String, Schema.Unknown))),
@@ -28,7 +29,5 @@ export const RuntimeStatusSchema = Schema.Struct({
   extensionUiRequest: Schema.optional(Schema.Union([Schema.Null, RuntimeExtensionUiRequestSchema])),
 });
 
-export type RuntimeExtensionUiRequest = Schema.Schema.Type<
-  typeof RuntimeExtensionUiRequestSchema
->;
+export type RuntimeExtensionUiRequest = Schema.Schema.Type<typeof RuntimeExtensionUiRequestSchema>;
 export type RuntimeStatus = Schema.Schema.Type<typeof RuntimeStatusSchema>;

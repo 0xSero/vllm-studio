@@ -3,13 +3,12 @@
 import Link from "next/link";
 import { MenuItem, Spinner } from "@/ui";
 import { POPOVER_MENU_CLASS } from "@/ui/popover";
-import { useRouter } from "next/navigation";
 import { useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { Archive, SquarePen, X } from "lucide-react";
 import { MoreIcon, PinIcon, PinOffIcon } from "@/ui/icons";
 import type { SessionPref } from "@/features/agent/messages/prefs";
-import { hrefWithOpenNonce, navigateToSessionHref, visibleSessionAge } from "./helpers";
+import { hrefWithOpenNonce, visibleSessionAge } from "./helpers";
 import { PinButton } from "./nav-chrome";
 
 const SESSION_MENU_CLASS = `absolute right-0 top-6 isolate z-[999] min-w-[180px] ${POPOVER_MENU_CLASS}`;
@@ -239,7 +238,6 @@ function SessionOpenTarget({
   onRememberTitle?: () => void;
   onStartRename: () => void;
 }) {
-  const router = useRouter();
   const openProps = canDoubleClickRename
     ? {
         onDoubleClick: (event: MouseEvent) => {
@@ -276,7 +274,7 @@ function SessionOpenTarget({
           event.preventDefault();
           const targetHref = hrefWithOpenNonce(href);
           onOpen?.(targetHref);
-          navigateToSessionHref(router, targetHref);
+          window.location.assign(targetHref);
         }}
         onDragStart={onDragStart}
         className={targetClass}

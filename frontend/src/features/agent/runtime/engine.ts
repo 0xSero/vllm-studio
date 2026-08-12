@@ -243,17 +243,21 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       inFlightReplays.add(sessionId);
       return Effect.runPromise(
         Effect.gen(function* () {
-          if (!cwd) {
-            updateSession(sessionId, (session) =>
-              session.status === "loading" ? { ...session, status: "idle" } : session,
-            );
-            return;
-          }
           updateSession(sessionId, (session) => ({
             ...session,
             status: "loading",
             error: "",
           }));
+          const statusEffect = Effect.tryPromise({
+            try: () => api.loadRuntimeStatus(sessionId, piSessionId),
+            catch: () => null,
+          });
+          const discoveredStatus = cwd ? null : yield* statusEffect;
+          const sessionCwd = cwd || discoveredStatus?.cwd || "";
+          if (!sessionCwd) {
+            updateSession(sessionId, (session) => ({ ...session, status: "idle" }));
+            return;
+          }
           // Canonical replay and the runtime-status probe are independent — the
           // status key is derived synchronously — so run them concurrently
           // instead of blocking the (now tail-limited) canonical read on the
@@ -261,13 +265,10 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           const [replayResult, runtimeStatus] = yield* Effect.all(
             [
               Effect.tryPromise({
-                try: () => api.loadCanonicalSession(piSessionId, cwd),
+                try: () => api.loadCanonicalSession(piSessionId, sessionCwd),
                 catch: (error) => error,
               }).pipe(Effect.result),
-              Effect.tryPromise({
-                try: () => api.loadRuntimeStatus(sessionId, piSessionId),
-                catch: () => null,
-              }),
+              discoveredStatus ? Effect.succeed(discoveredStatus) : statusEffect,
             ],
             { concurrency: "unbounded" },
           );
@@ -287,7 +288,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               ...session,
               messages: messages.length >= session.messages.length ? messages : session.messages,
               piSessionId,
-              cwd: session.cwd || cwd,
+              cwd: session.cwd || sessionCwd,
               // Head-scan meta carries the real session model/title; the fold's
               // own title would be the tail slice's first user message, not the
               // session's first prompt.
