@@ -1,4 +1,5 @@
 import { readRequestBytesWithinLimit } from "@shared/agent/agent-turn-body";
+import { relayResponse } from "@/app/api/_lib/relay-response";
 
 const HOP_BY_HOP_REQUEST_HEADERS = ["host", "connection", "content-length", "accept-encoding"];
 const DEFAULT_AGENT_RUNTIME_URL = "http://127.0.0.1:8081";
@@ -58,9 +59,5 @@ export async function proxyToAgentRuntime(
     );
   }
 
-  const responseHeaders = new Headers(upstream.headers);
-  responseHeaders.delete("content-length");
-  responseHeaders.delete("content-encoding");
-  responseHeaders.delete("transfer-encoding");
-  return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
+  return relayResponse(upstream, { preserveHeaders: true });
 }

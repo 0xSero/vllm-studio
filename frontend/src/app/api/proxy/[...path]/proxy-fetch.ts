@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import type { ClientInfo } from "./proxy-logging";
 import { getUpstreamTimeoutMs } from "./proxy-timeouts";
+import { readRequestBytesWithinLimit } from "@shared/agent/agent-turn-body";
 
 export function isAbortError(error: unknown): boolean {
   return (
@@ -9,11 +10,6 @@ export function isAbortError(error: unknown): boolean {
   );
 }
 
-/**
- * Distinguishes a transiently dropped/stale connection (worth one retry with a
- * fresh socket) from a definitive failure like a clean connection refusal or
- * DNS error (where retrying just doubles the load on a down backend).
- */
 function isRetriableConnectionError(error: unknown): boolean {
   if (isAbortError(error)) return false;
   const code = (error as { cause?: { code?: string } } | undefined)?.cause?.code;
@@ -26,8 +22,6 @@ function isRetriableConnectionError(error: unknown): boolean {
       code === "UND_ERR_CONNECT_TIMEOUT"
     );
   }
-  // undici sometimes surfaces a stale keep-alive socket as a bare "fetch failed"
-  // TypeError with no cause code; a single retry typically gets a fresh socket.
   const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
   return message.includes("fetch failed") || message.includes("terminated");
 }
@@ -84,39 +78,22 @@ export const proxyRequestBodyLimit = (path: readonly string[]): number => {
 };
 
 export const readProxyRequestBody = async (
-  request: Pick<Request, "body" | "headers">,
+  request: Request,
   method: string,
   limit = DEFAULT_REQUEST_BODY_LIMIT,
 ): Promise<ArrayBuffer | undefined> => {
   if (method === "GET" || method === "DELETE" || !request.body) return undefined;
-  const declared = Number(request.headers.get("content-length") ?? 0);
-  if (Number.isFinite(declared) && declared > limit) {
-    throw new ProxyBodyTooLargeError("Request body exceeds the proxy limit");
+  const result = await readRequestBytesWithinLimit(
+    request,
+    limit,
+    "Request body exceeds the proxy limit",
+  );
+  if (!result.ok) {
+    if (result.status === 413) throw new ProxyBodyTooLargeError(result.error);
+    throw new Error(result.error);
   }
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const current = await reader.read();
-      if (current.done) break;
-      total += current.value.byteLength;
-      if (total > limit) {
-        await reader.cancel().catch(() => undefined);
-        throw new ProxyBodyTooLargeError("Request body exceeds the proxy limit");
-      }
-      chunks.push(current.value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const body = new ArrayBuffer(total);
-  const bytes = new Uint8Array(body);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
+  const body = new ArrayBuffer(result.value.byteLength);
+  new Uint8Array(body).set(result.value);
   return body;
 };
 
@@ -157,8 +134,6 @@ export async function fetchWithOptionalFallback(
     context.overrideUsed && !context.strictOverride && fallbackUrl && fallbackUrl !== primaryUrl,
   );
 
-  // Idempotent reads may retry once on a dropped/stale connection so a single
-  // bad keep-alive socket doesn't surface to the user as a disconnect.
   const maxConnectionAttempts = context.method === "GET" || context.method === "HEAD" ? 2 : 1;
 
   const fetchOnce = async (url: string): Promise<Response> => {
@@ -166,9 +141,6 @@ export async function fetchWithOptionalFallback(
     const timeoutMs = getUpstreamTimeoutMs(context.path, context.method);
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      // Do not auto-follow redirects: a compromised/misbehaving upstream must
-      // not be able to bounce the proxy (with its bearer key) to an arbitrary
-      // location. Redirects are surfaced to the caller as-is.
       return await fetch(url, { ...init, signal: controller.signal, redirect: "manual" });
     } finally {
       clearTimeout(timeoutId);

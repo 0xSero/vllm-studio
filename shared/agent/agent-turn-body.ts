@@ -7,18 +7,22 @@ export type RequestBodyResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: string; status: 400 | 413 };
 
-const bodyLimitError = (limit: number): RequestBodyResult<never> => ({
+const bodyLimitError = (limit: number, message?: string): RequestBodyResult<never> => ({
   ok: false,
-  error: `Request body exceeds the ${Math.floor(limit / 1_000_000)} MB agent turn limit.`,
+  error:
+    message ?? `Request body exceeds the ${Math.floor(limit / 1_000_000)} MB agent turn limit.`,
   status: 413,
 });
 
 export async function readRequestBytesWithinLimit(
   request: Request,
   limit: number,
+  limitError?: string,
 ): Promise<RequestBodyResult<Uint8Array>> {
   const declaredLength = Number(request.headers.get("content-length"));
-  if (Number.isFinite(declaredLength) && declaredLength > limit) return bodyLimitError(limit);
+  if (Number.isFinite(declaredLength) && declaredLength > limit) {
+    return bodyLimitError(limit, limitError);
+  }
   if (!request.body) return { ok: true, value: new Uint8Array() };
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -30,7 +34,7 @@ export async function readRequestBytesWithinLimit(
       total += chunk.value.byteLength;
       if (total > limit) {
         await reader.cancel().catch(() => undefined);
-        return bodyLimitError(limit);
+        return bodyLimitError(limit, limitError);
       }
       chunks.push(chunk.value);
     }

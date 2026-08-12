@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { relayResponse } from "@/app/api/_lib/relay-response";
 import { getClientInfo, logProxyAccess, shouldLogProxyError } from "./proxy-logging";
 import {
   buildFallbackTargetUrl,
@@ -11,40 +12,15 @@ import {
   proxyRequestBodyLimit,
   readProxyRequestBody,
 } from "./proxy-fetch";
-import { toProxyNextResponse } from "./proxy-response";
-import { resolveProxyTarget } from "./proxy-target";
+import { clearBackendOverrideHeaders, resolveProxyTarget } from "./proxy-target";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
-) {
-  const { path } = await params;
-  return handleRequest(request, "GET", path);
-}
+const route = (request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) =>
+  params.then(({ path }) => handleRequest(request, request.method, path));
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
-) {
-  const { path } = await params;
-  return handleRequest(request, "POST", path);
-}
-
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
-) {
-  const { path } = await params;
-  return handleRequest(request, "PUT", path);
-}
-
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
-) {
-  const { path } = await params;
-  return handleRequest(request, "DELETE", path);
-}
+export const GET = route;
+export const POST = route;
+export const PUT = route;
+export const DELETE = route;
 
 async function handleRequest(request: NextRequest, method: string, path: string[]) {
   const startTime = Date.now();
@@ -54,7 +30,6 @@ async function handleRequest(request: NextRequest, method: string, path: string[
     const target = await resolveProxyTarget(request, client);
     if ("blockedResponse" in target) return target.blockedResponse;
 
-    // Never forward credentials to the controller as query params.
     const { apiKeyQuery, searchParams } = getForwardedSearchParams(request);
     const targetUrl = buildTargetUrl(target.backendUrl, path, searchParams);
     const fallbackTargetUrl = buildFallbackTargetUrl({
@@ -87,11 +62,16 @@ async function handleRequest(request: NextRequest, method: string, path: string[
       },
     );
 
-    return toProxyNextResponse(response, {
-      client,
-      invalidateOverride: usedFallback || target.blockedOverrideCleared,
-      method,
-      path,
+    return relayResponse(response, {
+      headers:
+        usedFallback || target.blockedOverrideCleared ? clearBackendOverrideHeaders() : undefined,
+      onStreamError: (error) => {
+        if (shouldLogProxyError(method, path, error)) {
+          console.warn(
+            `[PROXY STREAM CLOSED] ip=${client.ip} | country=${client.country} | method=${method} | path=/${path.join("/")} | error=${String(error)}`,
+          );
+        }
+      },
     });
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -101,11 +81,11 @@ async function handleRequest(request: NextRequest, method: string, path: string[
       );
     }
     if (isAbortError(error)) {
-      return NextResponse.json({ error: "Backend request timed out" }, { status: 504 });
+      return Response.json({ error: "Backend request timed out" }, { status: 504 });
     }
     if (error instanceof ProxyBodyTooLargeError) {
-      return NextResponse.json({ error: error.message }, { status: 413 });
+      return Response.json({ error: error.message }, { status: 413 });
     }
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return Response.json({ error: "Internal server error" }, { status: 500 });
   }
 }
