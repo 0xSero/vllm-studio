@@ -137,24 +137,18 @@ export async function runSubagent(input: {
     const { session } = piRuntimeManager.getSessionForLookup(runtimeSessionId, null);
     await session.ensureStarted(modelId, cwd || undefined, null, {});
     const startedPiSessionId = session.status.piSessionId;
-    if (startedPiSessionId) {
-      run.piSessionId = startedPiSessionId;
-      registry.childPiSessionIds.add(startedPiSessionId);
-      await linkThreadParent(startedPiSessionId, parentPiSessionId, run.name).catch(
-        () => undefined,
-      );
-    }
-    await session.prompt(taskPrompt(run.name, input.task), () => {});
+    if (!startedPiSessionId) throw new Error("Subagent session did not receive an identity.");
+    run.piSessionId = startedPiSessionId;
+    await linkThreadParent(startedPiSessionId, parentPiSessionId, run.name);
+    registry.childPiSessionIds.add(startedPiSessionId);
+    await session.prompt(taskPrompt(run.name, input.task), () => {}, {
+      restartOnContinuationError: false,
+    });
     const status = session.status;
-    if (status.piSessionId && status.piSessionId !== startedPiSessionId) {
-      run.piSessionId = status.piSessionId;
-      registry.childPiSessionIds.add(status.piSessionId);
-      await linkThreadParent(status.piSessionId, parentPiSessionId, run.name).catch(
-        () => undefined,
-      );
+    if (status.piSessionId !== startedPiSessionId) {
+      throw new Error("Subagent session identity changed during execution.");
     }
     const text = run.piSessionId ? lastAssistantText(status.cwd, run.piSessionId) : "";
-    void session.stop().catch(() => undefined);
     if (status.lastError) {
       run.status = "error";
       run.error = status.lastError;
@@ -174,5 +168,7 @@ export async function runSubagent(input: {
       run.finishedAt = new Date().toISOString();
     }
     throw error;
+  } finally {
+    await piRuntimeManager.stopAndDeleteSession(runtimeSessionId).catch(() => undefined);
   }
 }
