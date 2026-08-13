@@ -5,9 +5,10 @@ import {
   findThread,
   listThreads,
   listThreadsAcrossProjects,
-  readThreadWindow,
+  readThreadWindowPage,
   setThreadArchived,
 } from "../thread-repository";
+import { decodeThreadCursor } from "../thread-window-projector";
 import { errorMessage, jsonError } from "./helpers";
 
 function parseRelativeSince(value: string | null): Date | null {
@@ -104,10 +105,16 @@ export async function handleSessionGet(request: Request, id: string): Promise<Re
   const cwd = existingWorkspace(cwdValue);
   if (cwd instanceof Response) return cwd;
   const tail = nonNegativeInteger(searchParams.get("tail"));
-  const before = nonNegativeInteger(searchParams.get("before"));
-  const { events, cursor, meta, found } = await readThreadWindow(cwd, id, { tail, before });
-  if (!found) return jsonError("session not found", 404);
-  return Response.json({ events, cursor, meta });
+  const before = decodeThreadCursor(searchParams.get("before"));
+  const maxTokens = positiveInteger(searchParams.get("maxTokens"));
+  const page = await readThreadWindowPage(cwd, id, { tail, before, maxTokens });
+  if (!page.found) return jsonError("session not found", 404);
+  return Response.json({
+    events: page.events,
+    cursor: page.cursor,
+    meta: page.meta,
+    window: page.window,
+  });
 }
 
 function optionalString(body: Record<string, unknown>, key: string): string | null {

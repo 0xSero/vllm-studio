@@ -4,8 +4,10 @@ import type {
   ThreadArchiveState,
   ThreadListRequest,
   ThreadSummary,
+  ThreadWindow,
   ThreadWindowRequest,
 } from "../../../shared/agent/thread";
+import { projectThreadWindow } from "./thread-window-projector";
 import { listProjectsFromStore, resolveAllowedWorkspace } from "./projects-store";
 import {
   listArchivedSessionMetadata,
@@ -13,7 +15,12 @@ import {
   setSessionArchived,
   setSubagentLink,
 } from "./session-metadata-store";
-import { listSessions, loadSession, type LoadSessionResult } from "./sessions-store";
+import {
+  listSessions,
+  loadSession,
+  loadSessionWindow,
+  type LoadSessionResult,
+} from "./sessions-store";
 
 export type ThreadArchiveMetadata = {
   cwd?: string | null;
@@ -97,6 +104,32 @@ export function readThreadWindow(
   request: ThreadWindowRequest = {},
 ): Promise<LoadSessionResult> {
   return loadSession(cwd, threadId, request);
+}
+
+export type ThreadWindowPage = LoadSessionResult & { window: ThreadWindow };
+
+export async function readThreadWindowPage(
+  cwd: string,
+  threadId: string,
+  request: ThreadWindowRequest = {},
+): Promise<ThreadWindowPage> {
+  const page =
+    request.tail === undefined
+      ? await loadSessionWindow(cwd, threadId, {
+          before: request.before,
+          maxTokens: request.maxTokens,
+        })
+      : await loadSession(cwd, threadId, { tail: request.tail, before: request.before });
+  return {
+    ...page,
+    window: projectThreadWindow({
+      threadId,
+      found: page.found,
+      events: page.events,
+      cursor: page.cursor,
+      meta: page.meta ? { ...page.meta, parent: threadParent(threadId) } : null,
+    }),
+  };
 }
 
 export function threadParent(threadId: string): ParentRelation | null {
