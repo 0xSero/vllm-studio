@@ -7,11 +7,10 @@ import { Schema } from "effect";
 import {
   createAutomation,
   deleteAutomation,
-  getAutomation,
   listAutomations,
   patchAutomation,
 } from "../automations-store";
-import { runAutomationNow } from "../automation-scheduler";
+import { startAutomationRun } from "../automation-scheduler";
 import { clearGoal, readGoal, writeGoal, type GoalStatus } from "../goals-store";
 import { AutomationTargetSchema, type AutomationTarget } from "../../../../shared/agent/automation";
 import { GOAL_STATUSES } from "../../../../shared/agent/session-goal";
@@ -98,10 +97,13 @@ export async function handleAutomationDelete(id: string): Promise<Response> {
 }
 
 export async function handleAutomationRun(id: string): Promise<Response> {
-  const automation = await getAutomation(id);
-  if (!automation) return jsonError(`Unknown automation '${id}'.`, 404);
-  const completed = await runAutomationNow(id);
-  return Response.json({ ok: true, started: completed !== null });
+  try {
+    const result = await startAutomationRun(id);
+    if (result === "missing") return jsonError(`Unknown automation '${id}'.`, 404);
+    return Response.json({ ok: true, started: result === "started" });
+  } catch (error) {
+    return jsonError(errorMessage(error, "Failed to start automation."), 500);
+  }
 }
 
 // ─── Goals ────────────────────────────────────────────────────────────────

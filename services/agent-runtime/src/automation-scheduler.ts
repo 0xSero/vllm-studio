@@ -25,21 +25,27 @@ function state(): SchedulerState {
   }));
 }
 
-export async function runAutomationNow(id: string): Promise<Automation | null> {
-  const scheduler = state();
-  const automation = await getAutomation(id);
-  if (!automation || scheduler.running.has(id)) return null;
-  scheduler.running.add(id);
+async function executeAutomationRun(
+  id: string,
+  automation: Automation,
+  scheduler: SchedulerState,
+): Promise<void> {
   try {
     const run = await runAutomation(automation);
-    return await recordAutomationRun(
-      id,
-      run,
-      nextRunAt(automation.schedule, new Date()).toISOString(),
-    );
+    await recordAutomationRun(id, run, nextRunAt(automation.schedule, new Date()).toISOString());
   } finally {
     scheduler.running.delete(id);
   }
+}
+
+export async function startAutomationRun(id: string): Promise<"started" | "running" | "missing"> {
+  const scheduler = state();
+  const automation = await getAutomation(id);
+  if (!automation) return "missing";
+  if (scheduler.running.has(id)) return "running";
+  scheduler.running.add(id);
+  void executeAutomationRun(id, automation, scheduler).catch(() => undefined);
+  return "started";
 }
 
 async function tick(): Promise<void> {
@@ -59,7 +65,7 @@ async function tick(): Promise<void> {
       continue;
     }
     if (new Date(automation.nextRunAt) <= now) {
-      void runAutomationNow(automation.id).catch(() => undefined);
+      void startAutomationRun(automation.id).catch(() => undefined);
     }
   }
 }
