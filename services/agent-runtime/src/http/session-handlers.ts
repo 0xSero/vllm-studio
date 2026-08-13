@@ -105,7 +105,8 @@ export async function handleSessionGet(request: Request, id: string): Promise<Re
   if (cwd instanceof Response) return cwd;
   const tail = nonNegativeInteger(searchParams.get("tail"));
   const before = nonNegativeInteger(searchParams.get("before"));
-  const { events, cursor, meta } = await readThreadWindow(cwd, id, { tail, before });
+  const { events, cursor, meta, found } = await readThreadWindow(cwd, id, { tail, before });
+  if (!found) return jsonError("session not found", 404);
   return Response.json({ events, cursor, meta });
 }
 

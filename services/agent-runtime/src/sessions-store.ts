@@ -442,6 +442,7 @@ export type LoadSessionResult = {
   // Session-level metadata derived from a cheap head-scan (title/model/etc.),
   // present only on an initial tail load — a paged `before` request omits it.
   meta: LoadSessionMeta | null;
+  found: boolean;
 };
 
 // Files above this never get read whole; a tail request caps its backward scan
@@ -697,7 +698,7 @@ export async function loadSession(
   options: LoadSessionOptions = {},
 ): Promise<LoadSessionResult> {
   const filepath = findSessionFile(cwd, sessionId);
-  if (!filepath) return { events: [], cursor: null, meta: null };
+  if (!filepath) return { events: [], cursor: null, meta: null, found: false };
   const { size } = statSync(filepath);
   const tail = options.tail && options.tail > 0 ? Math.floor(options.tail) : undefined;
   const paging = options.before !== undefined;
@@ -713,7 +714,7 @@ export async function loadSession(
         const event = parseEvent(line);
         if (event) events.push(event);
       }
-      return { events: activeBranchEvents(filepath, events), cursor: null, meta: null };
+      return { events: activeBranchEvents(filepath, events), cursor: null, meta: null, found: true };
     }
     return loadSession(cwd, sessionId, { tail: 2000 });
   }
@@ -737,7 +738,8 @@ export async function loadSession(
       events: activeBranchEvents(filepath, hasHeader ? events : [...headerEvents, ...events]),
       cursor,
       meta,
+      found: true,
     };
   }
-  return { events: activeBranchEvents(filepath, events), cursor, meta: null };
+  return { events: activeBranchEvents(filepath, events), cursor, meta: null, found: true };
 }
