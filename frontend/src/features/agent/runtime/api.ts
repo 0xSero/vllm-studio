@@ -172,10 +172,6 @@ export type CanonicalSessionResult = {
   meta: CanonicalSessionMeta | null;
 };
 
-// Default page size for the initial tail load — enough to fill a long scrollback
-// while keeping a giant log from being read/parsed whole.
-export const DEFAULT_SESSION_TAIL = 500;
-
 export type LoadCanonicalSessionOptions = { tail?: number; before?: number };
 
 export function loadCanonicalSession(
@@ -186,10 +182,8 @@ export function loadCanonicalSession(
   return Effect.runPromise(
     Effect.gen(function* () {
       const params = new URLSearchParams({ cwd });
-      const tail =
-        options.before === undefined ? (options.tail ?? DEFAULT_SESSION_TAIL) : undefined;
-      if (tail !== undefined) params.set("tail", String(tail));
       if (options.before !== undefined) params.set("before", String(options.before));
+      else if (options.tail !== undefined) params.set("tail", String(options.tail));
       const response = yield* fetchEffect(
         `/api/agent/sessions/${encodeURIComponent(piSessionId)}?${params.toString()}`,
         { cache: "no-store" },
