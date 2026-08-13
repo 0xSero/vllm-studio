@@ -1,4 +1,5 @@
 import path from "node:path";
+import { pauseAutomationsForThread } from "../automations-store";
 import { resolveAllowedWorkspace } from "../projects-store";
 import {
   findThread,
@@ -136,6 +137,7 @@ export async function handleSessionPatch(request: Request, id: string): Promise<
       projectName: optionalString(body, "projectName"),
       sessionUpdatedAt: summary?.updatedAt ?? null,
     });
+    if (body.archived) await pauseAutomationsForThread(id);
     return Response.json({ session: { id, ...archiveState } });
   } catch (error) {
     return jsonError(errorMessage(error, "Failed to update session archive"), 500);

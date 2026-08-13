@@ -259,6 +259,19 @@ export async function recordAutomationRun(
   });
 }
 
+export async function pauseAutomationsForThread(threadId: string): Promise<Automation[]> {
+  const target = threadId.trim();
+  if (!target) return [];
+  const paused: Automation[] = [];
+  for (const automation of await listAutomations()) {
+    if (automation.status !== "active") continue;
+    if (automation.target?.kind !== "thread" || automation.target.threadId !== target) continue;
+    const next = await patchAutomation(automation.id, { status: "paused" });
+    if (next) paused.push(next);
+  }
+  return paused;
+}
+
 export async function deleteAutomation(id: string): Promise<boolean> {
   const existing = await getAutomation(id);
   if (!existing) return false;
