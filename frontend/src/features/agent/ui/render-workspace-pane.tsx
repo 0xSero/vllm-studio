@@ -208,7 +208,10 @@ const WorkspacePane = memo(function WorkspacePane({
       }}
       onPiSessionIdChange={handles.notifySessionsChanged}
       isFocused={view.isFocused}
-      onFocus={() => dispatch({ type: "focusPane", paneId: view.paneId })}
+      onFocus={() => {
+        tools.setActiveBrowserSession(view.pane.sessionId);
+        dispatch({ type: "focusPane", paneId: view.paneId });
+      }}
       tabs={sessions}
       activeTabId={view.pane.sessionId}
       onUpdateSession={handles.updateSession}

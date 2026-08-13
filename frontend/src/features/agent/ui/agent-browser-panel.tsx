@@ -172,9 +172,10 @@ export function AgentBrowserPanel({
     if (!next) return;
     const accepted = acceptedBrowserUrl(next);
     if (!accepted) return;
-    tools.setBrowserUrl(accepted, accepted);
+    const browserSessionId = tools.browser.sessionId;
+    tools.setBrowserUrl(accepted, accepted, browserSessionId);
     if (/^file:\/\//i.test(accepted)) return;
-    const request = browserSessionRequest(focusedSession?.id ?? null, "navigate", {
+    const request = browserSessionRequest(browserSessionId, "navigate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: accepted }),
@@ -219,6 +220,7 @@ export function AgentBrowserPanel({
   const closeSideChat = useCallback(() => {
     handles.removeDetachedSession(sideChatSeed.id);
     setSideChatSeed(createSideChatSession(activeProject ?? null, focusedSession, activeModelId));
+    tools.setActiveBrowserSession(focusedSession?.id ?? null);
     tools.closeComputerTab("side-chat");
   }, [activeModelId, activeProject, focusedSession, handles, sideChatSeed.id, tools]);
   const closeComputerTab = useCallback(
@@ -281,6 +283,7 @@ export function AgentBrowserPanel({
         onOpenSideChat={openSideChat}
         onOpenTerminal={openTerminalForFocusedSession}
         onRenameSideChat={renameSideChat}
+        onSelectBrowserSession={tools.setActiveBrowserSession}
         onUpdateSideChatTabs={updateSideChatTabs}
         sessions={sessions}
         sideChatSession={sideChatSession}

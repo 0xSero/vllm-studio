@@ -336,6 +336,9 @@ export function ChatPane({
     window.addEventListener(OPEN_TERMINAL_EVENT, onOpenTerminalEvent);
     return () => window.removeEventListener(OPEN_TERMINAL_EVENT, onOpenTerminalEvent);
   }, [isFocused]);
+  useMountSubscription(() => {
+    if (isFocused && activeTab?.id) tools.setActiveBrowserSession(activeTab.id);
+  }, [activeTab?.id, isFocused, tools.setActiveBrowserSession]);
   const updateTab = onUpdateSession;
   const {
     attachments,

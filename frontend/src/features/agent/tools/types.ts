@@ -32,6 +32,7 @@ export type BrowserBackend = "embedded" | "sitegeist";
 export type BrowserState = {
   enabled: boolean;
   backend: BrowserBackend;
+  sessionId: SessionId | null;
   url: string;
   input: string;
 };

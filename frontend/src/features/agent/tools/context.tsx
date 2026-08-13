@@ -33,6 +33,7 @@ import {
 import {
   clampComputerWidth,
   computerPanelVisibility,
+  DEFAULT_BROWSER_URL,
   loadBrowserState,
   loadComputerState,
   migrateToolStorage,
@@ -45,6 +46,7 @@ import {
 } from "@/features/agent/tools/persistence";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
+  browserSessionView,
   computerSessionView,
   patchSessionView,
   readSessionView,
@@ -61,14 +63,15 @@ type ToolsActions = {
   setBrowserBackend: (backend: BrowserBackend) => void;
   toggleBrowserBackend: () => void;
   toggleBrowser: () => void;
-  setBrowserUrl: (url: string, input?: string) => void;
-  setBrowserInput: (input: string) => void;
+  setBrowserUrl: (url: string, input?: string, sessionId?: SessionId | null) => void;
+  setBrowserInput: (input: string, sessionId?: SessionId | null) => void;
   setComputerOpen: (open: boolean) => void;
   toggleComputerOpen: () => void;
   setComputerTab: (tab: ComputerTab) => void;
   selectComputerTabWithoutOpening: (tab: ComputerTab) => void;
   closeComputerTab: (tab: ComputerTab) => void;
   setComputerWidth: (width: number) => void;
+  setActiveBrowserSession: (sessionId: SessionId | null) => void;
   setActiveComputerSession: (identity: SessionViewIdentity | null) => void;
   requestFileOpen: (path: string) => void;
   requestContextAttach: (request: { label: string; path?: string; content: string }) => void;
@@ -143,7 +146,7 @@ function LazyToolsEffectsBridge(props: ToolsEffectsBridgeProps) {
 
 function buildInitialBrowser(): BrowserState {
   if (typeof window === "undefined") {
-    return { enabled: false, backend: "embedded", url: "", input: "" };
+    return { enabled: false, backend: "embedded", sessionId: null, url: "", input: "" };
   }
   migrateToolStorage();
   return loadBrowserState();
@@ -166,6 +169,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const catalogueEnabled = pathname === "/agent" || pathname === "/quick";
   const [browser, setBrowser] = useState<BrowserState>(() => buildInitialBrowser());
   const [computer, setComputer] = useState<ComputerState>(() => buildInitialComputer());
+  const activeBrowserSessionRef = useRef<SessionId | null>(null);
   const activeComputerSessionRef = useRef<SessionViewIdentity | null>(null);
   const [fileOpenRequest, setFileOpenRequest] = useState<FileOpenRequest | null>(null);
   const [contextAttachRequest, setContextAttachRequest] = useState<ContextAttachRequest | null>(
@@ -228,18 +232,55 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const setBrowserUrl = useCallback((url: string, input?: string) => {
-    if (typeof url !== "string" || !url.trim()) return;
-    setBrowser((current) => ({
-      ...current,
-      url,
-      input: input ?? current.input,
-    }));
+  const setBrowserUrl = useCallback(
+    (url: string, input?: string, sessionId?: SessionId | null) => {
+      if (typeof url !== "string" || !url.trim()) return;
+      const owner = sessionId === undefined ? activeBrowserSessionRef.current : sessionId;
+      if (!owner) return;
+      setBrowser((current) => {
+        if (current.sessionId !== owner) return current;
+        const next = { url, input: input ?? current.input };
+        patchSessionView(window.localStorage, { key: owner, aliases: [] }, { browser: next });
+        return { ...current, ...next };
+      });
+    },
+    [],
+  );
+
+  const setBrowserInput = useCallback((input: string, sessionId?: SessionId | null) => {
+    if (typeof input !== "string") return;
+    const owner = sessionId === undefined ? activeBrowserSessionRef.current : sessionId;
+    if (!owner) return;
+    setBrowser((current) => {
+      if (current.sessionId !== owner) return current;
+      const previous = current;
+      const next = { input, url: previous.url };
+      patchSessionView(window.localStorage, { key: owner, aliases: [] }, { browser: next });
+      return { ...current, ...next };
+    });
   }, []);
 
-  const setBrowserInput = useCallback((input: string) => {
-    if (typeof input !== "string") return;
-    setBrowser((current) => ({ ...current, input }));
+  const setActiveBrowserSession = useCallback((sessionId: SessionId | null) => {
+    if (activeBrowserSessionRef.current === sessionId) return;
+    activeBrowserSessionRef.current = sessionId;
+    setBrowser((current) => {
+      if (current.sessionId) {
+        patchSessionView(
+          window.localStorage,
+          { key: current.sessionId, aliases: [] },
+          { browser: browserSessionView(current) },
+        );
+      }
+      const view = sessionId
+        ? readSessionView(window.localStorage, { key: sessionId, aliases: [] })?.browser
+        : null;
+      return {
+        ...current,
+        sessionId,
+        input: view?.input ?? DEFAULT_BROWSER_URL,
+        url: view?.url ?? DEFAULT_BROWSER_URL,
+      };
+    });
   }, []);
 
   const setComputerOpen = useCallback(
@@ -435,6 +476,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       selectComputerTabWithoutOpening,
       closeComputerTab,
       setComputerWidth,
+      setActiveBrowserSession,
       setActiveComputerSession,
       requestFileOpen,
       requestContextAttach,
@@ -454,6 +496,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       selectComputerTabWithoutOpening,
       closeComputerTab,
       setComputerWidth,
+      setActiveBrowserSession,
       setActiveComputerSession,
       requestFileOpen,
       requestContextAttach,

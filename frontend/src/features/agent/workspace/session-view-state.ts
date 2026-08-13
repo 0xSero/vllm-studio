@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import {
+  type BrowserState,
   COMPUTER_TAB_IDS,
   type ComputerState,
   type ComputerTab,
@@ -17,12 +18,19 @@ export type SessionViewIdentity = {
 };
 
 export type SessionComputerState = Pick<ComputerState, "open" | "tab" | "tabs" | "width">;
+export type SessionBrowserState = Pick<BrowserState, "input" | "url">;
 
 export type SessionViewState = {
   scrollTop: number;
   stickToBottom: boolean;
+  browser?: SessionBrowserState;
   computer?: SessionComputerState;
 };
+
+const SessionBrowserStateSchema = Schema.Struct({
+  input: Schema.String,
+  url: Schema.String,
+});
 
 const SessionComputerStateSchema = Schema.Struct({
   open: Schema.Boolean,
@@ -34,6 +42,7 @@ const SessionComputerStateSchema = Schema.Struct({
 const SessionViewStateSchema = Schema.Struct({
   scrollTop: Schema.Number,
   stickToBottom: Schema.Boolean,
+  browser: Schema.optional(SessionBrowserStateSchema),
   computer: Schema.optional(SessionComputerStateSchema),
 });
 
@@ -72,6 +81,7 @@ function normalizeView(value: typeof SessionViewStateSchema.Type): SessionViewSt
   return {
     scrollTop: Math.max(0, value.scrollTop),
     stickToBottom: value.stickToBottom,
+    ...(value.browser ? { browser: value.browser } : {}),
     ...(computer ? { computer } : {}),
   };
 }
@@ -139,4 +149,8 @@ export function computerSessionView(computer: ComputerState): SessionComputerSta
     tabs: computer.tabs,
     width: computer.width,
   };
+}
+
+export function browserSessionView(browser: BrowserState): SessionBrowserState {
+  return { input: browser.input, url: browser.url };
 }

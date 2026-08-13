@@ -115,6 +115,7 @@ export function loadBrowserState(): BrowserState {
   return {
     enabled: read(BROWSER_TOOL_KEY) === "1",
     backend: parseBrowserBackend(read(BROWSER_BACKEND_KEY)),
+    sessionId: null,
     url: DEFAULT_BROWSER_URL,
     input: DEFAULT_BROWSER_URL,
   };

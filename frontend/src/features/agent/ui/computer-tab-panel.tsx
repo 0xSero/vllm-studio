@@ -53,6 +53,7 @@ type ComputerTabPanelProps = {
   onOpenSideChat: () => void;
   onOpenTerminal: () => void;
   onRenameSideChat: (tabId: string, title: string) => void;
+  onSelectBrowserSession: (sessionId: string | null) => void;
   onUpdateSideChatTabs: (nextTabsOrUpdater: SideChatTabsUpdater) => void;
   sessions: Session[];
   sideChatSession: Session;
@@ -102,6 +103,7 @@ function SideChatTab({
   modelsLoading,
   onCloseSideChat,
   onRenameSideChat,
+  onSelectBrowserSession,
   onUpdateSideChatTabs,
   sideChatSession,
   tools,
@@ -142,7 +144,7 @@ function SideChatTab({
         onToggleBrowserBackend={tools.toggleBrowserBackend}
         onToggleBrowserTool={tools.toggleBrowser}
         isFocused
-        onFocus={() => undefined}
+        onFocus={() => onSelectBrowserSession(sideChatSession.id)}
         tabs={[sideChatSession]}
         activeTabId={sideChatSession.id}
         onUpdateSession={updateSession}
@@ -157,18 +159,19 @@ function SideChatTab({
 }
 
 function BrowserTab({
-  focusedSession,
   onNavigateBrowser,
   tools,
 }: ComputerTabPanelProps) {
+  const sessionId = tools.browser.sessionId;
   return (
     <LazyAgentBrowser
-      sessionId={focusedSession?.id ?? null}
+      key={sessionId ?? "no-browser-session"}
+      sessionId={sessionId}
       url={tools.browser.url}
       inputValue={tools.browser.input}
-      onInputChange={tools.setBrowserInput}
+      onInputChange={(input) => tools.setBrowserInput(input, sessionId)}
       onNavigate={onNavigateBrowser}
-      onLocationChange={(next) => tools.setBrowserUrl(next, next)}
+      onLocationChange={(next) => tools.setBrowserUrl(next, next, sessionId)}
       onClose={() => tools.setComputerOpen(false)}
       visible={tools.computer.open}
     />

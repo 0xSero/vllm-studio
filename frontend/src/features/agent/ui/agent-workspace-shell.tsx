@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, lazy, type ReactNode } from "react";
+import { Suspense, lazy, useLayoutEffect, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { triggerAddProjectFlow } from "@/features/agent/ui/projects-nav/helpers";
 import {
@@ -98,6 +98,8 @@ export function AgentWorkspaceShell({
   const activeProject = projects.resolveProject(focusedTab) ?? projects.selectedProject;
   useActiveSessionEffects({
     ...activeSessionIdentity,
+    browserSessionId: focusedTab?.id ?? null,
+    setActiveBrowserSession: tools.setActiveBrowserSession,
     setActiveComputerSession: tools.setActiveComputerSession,
   });
   const focusedModel =
@@ -356,19 +358,24 @@ function ProjectEmptyState() {
 }
 
 function useActiveSessionEffects({
+  browserSessionId,
   viewKey,
   viewAlias,
+  setActiveBrowserSession,
   setActiveComputerSession,
 }: {
+  browserSessionId: string | null;
   viewKey: string | null;
   viewAlias: string | null;
+  setActiveBrowserSession: ReturnType<typeof useTools>["setActiveBrowserSession"];
   setActiveComputerSession: ReturnType<typeof useTools>["setActiveComputerSession"];
 }): void {
-  useMountSubscription(() => {
+  useLayoutEffect(() => {
+    setActiveBrowserSession(browserSessionId);
     setActiveComputerSession(
       viewKey ? { key: viewKey, aliases: viewAlias ? [viewAlias] : [] } : null,
     );
-  }, [viewKey, viewAlias, setActiveComputerSession]);
+  }, [browserSessionId, viewKey, viewAlias, setActiveBrowserSession, setActiveComputerSession]);
 }
 
 export function AgentWorkspace({ compact }: { compact?: boolean } = {}) {
