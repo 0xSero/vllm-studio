@@ -32,7 +32,7 @@ function trimmedEnv(name: string): string {
 export function resolveAccessPosture(): AccessDecision {
   // The desktop app embeds a loopback-only Next server — always open, even if a
   // token is set elsewhere in the environment.
-  if (trimmedEnv("LOCAL_STUDIO_DATA_DIR")) return { kind: "allow", reason: "desktop" };
+  if (trimmedEnv("LOCAL_STUDIO_DESKTOP") === "1") return { kind: "allow", reason: "desktop" };
   // Local development (`next dev`) is loopback and single-user.
   if (process.env.NODE_ENV !== "production") return { kind: "allow", reason: "development" };
   const token = trimmedEnv("LOCAL_STUDIO_FRONTEND_TOKEN");
