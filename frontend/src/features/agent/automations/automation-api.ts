@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import { useSyncExternalStore } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import {
   AutomationResponseSchema,
   AutomationsResponseSchema,
@@ -212,4 +212,103 @@ function readPendingSnapshot(): AutomationsSnapshot {
 
 export function useAutomations(): AutomationsSnapshot {
   return useSyncExternalStore(subscribe, readSnapshot, readPendingSnapshot);
+}
+
+export type AutomationAction = "save" | "run" | "status" | "delete" | null;
+
+export type AutomationActions = {
+  action: AutomationAction;
+  pendingId: string | null;
+  error: string;
+  save: (draft: AutomationDraft, automation: Automation | null) => Promise<Automation | null>;
+  run: (automation: Automation) => Promise<void>;
+  toggleStatus: (automation: Automation) => Promise<void>;
+  remove: (automation: Automation) => Promise<boolean>;
+  markAllRead: (automations: readonly Automation[]) => Promise<void>;
+};
+
+export function useAutomationActions(): AutomationActions {
+  const [action, setAction] = useState<AutomationAction>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  const perform = useCallback(
+    async <A>(
+      nextAction: Exclude<AutomationAction, null>,
+      effect: Effect.Effect<A, Error>,
+      id?: string,
+    ) => {
+      setAction(nextAction);
+      setPendingId(id ?? null);
+      setError("");
+      try {
+        return await Effect.runPromise(effect);
+      } catch (actionError) {
+        setError(
+          actionError instanceof Error ? actionError.message : "Scheduled task action failed",
+        );
+        return null;
+      } finally {
+        setAction(null);
+        setPendingId(null);
+      }
+    },
+    [],
+  );
+
+  const save = useCallback(
+    async (draft: AutomationDraft, automation: Automation | null) => {
+      const result = automation
+        ? await perform("save", updateAutomation(automation.id, draft), automation.id)
+        : await perform("save", createAutomation(draft));
+      if (result) cacheAutomation(result);
+      return result;
+    },
+    [perform],
+  );
+
+  const run = useCallback(
+    async (automation: Automation) => {
+      const started = await perform("run", runAutomation(automation.id), automation.id);
+      if (started) window.setTimeout(() => void refreshAutomations(), 1_000);
+    },
+    [perform],
+  );
+
+  const toggleStatus = useCallback(
+    async (automation: Automation) => {
+      const updated = await perform(
+        "status",
+        updateAutomation(automation.id, {
+          status: automation.status === "paused" ? "active" : "paused",
+        }),
+        automation.id,
+      );
+      if (updated) cacheAutomation(updated);
+    },
+    [perform],
+  );
+
+  const remove = useCallback(
+    async (automation: Automation) => {
+      const removed = await perform("delete", deleteAutomation(automation.id), automation.id);
+      if (removed) forgetAutomation(automation.id);
+      return Boolean(removed);
+    },
+    [perform],
+  );
+
+  const markAllRead = useCallback(async (automations: readonly Automation[]) => {
+    const unread = automations.filter((automation) => automation.unread);
+    if (unread.length === 0) return;
+    await Promise.all(
+      unread.map((automation) =>
+        Effect.runPromise(updateAutomation(automation.id, { unread: false }))
+          .then(cacheAutomation)
+          .catch(() => undefined),
+      ),
+    );
+  }, []);
+
+  return { action, pendingId, error, save, run, toggleStatus, remove, markAllRead };
 }

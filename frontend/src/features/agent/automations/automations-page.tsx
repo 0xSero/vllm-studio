@@ -10,13 +10,9 @@ import { loadProjects } from "@/features/agent/projects/api";
 import type { Automation } from "@shared/agent/automation";
 import {
   cacheAutomation,
-  createAutomation,
-  deleteAutomation,
-  forgetAutomation,
   listAutomationModels,
-  refreshAutomations,
-  runAutomation,
   updateAutomation,
+  useAutomationActions,
   useAutomations,
   type AutomationModel,
 } from "./automation-api";
@@ -25,13 +21,10 @@ import { AutomationList } from "./automation-list";
 import {
   NEW_AUTOMATION_DRAFT,
   draftFromSuggestion,
-  unreadAutomations,
   type AutomationDraft,
   type AutomationFilter,
   type AutomationSuggestion,
 } from "./automation-model";
-
-type EditorAction = "save" | "run" | "status" | "delete" | null;
 
 export default function AutomationsPage() {
   const router = useRouter();
@@ -41,14 +34,14 @@ export default function AutomationsPage() {
   const threadId = searchParams.get("thread");
   const projectId = searchParams.get("project");
   const { automations, loading, error: loadError } = useAutomations();
+  const { action, pendingId, error, save, run, toggleStatus, remove, markAllRead } =
+    useAutomationActions();
   const [models, setModels] = useState<AutomationModel[]>([]);
+  const [modelError, setModelError] = useState("");
   const [threadCwd, setThreadCwd] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<AutomationFilter>("all");
-  const [action, setAction] = useState<EditorAction>(null);
-  const [pendingId, setPendingId] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<AutomationSuggestion | null>(null);
-  const [error, setError] = useState("");
 
   const selected = useMemo(
     () => automations.find((automation) => automation.id === requestedId) ?? null,
@@ -58,8 +51,8 @@ export default function AutomationsPage() {
   useMountSubscription(() => {
     void Effect.runPromise(listAutomationModels())
       .then(setModels)
-      .catch((modelError) => {
-        setError(modelError instanceof Error ? modelError.message : "Could not load models");
+      .catch((failure) => {
+        setModelError(failure instanceof Error ? failure.message : "Could not load models");
       });
   }, []);
 
@@ -107,87 +100,21 @@ export default function AutomationsPage() {
     [router],
   );
 
-  const perform = useCallback(
-    async <A,>(
-      nextAction: Exclude<EditorAction, null>,
-      effect: Effect.Effect<A, Error>,
-      id?: string,
-    ) => {
-      setAction(nextAction);
-      setPendingId(id ?? null);
-      setError("");
-      try {
-        return await Effect.runPromise(effect);
-      } catch (actionError) {
-        setError(
-          actionError instanceof Error ? actionError.message : "Scheduled task action failed",
-        );
-        return null;
-      } finally {
-        setAction(null);
-        setPendingId(null);
-      }
-    },
-    [],
-  );
-
-  const save = useCallback(
+  const saveDraft = useCallback(
     async (draft: AutomationDraft) => {
-      const result = creating
-        ? await perform("save", createAutomation(draft))
-        : selected
-          ? await perform("save", updateAutomation(selected.id, draft), selected.id)
-          : null;
-      if (!result) return;
-      cacheAutomation(result);
-      navigate(result);
+      const result = await save(draft, creating ? null : selected);
+      if (result) navigate(result);
     },
-    [creating, navigate, perform, selected],
+    [creating, navigate, save, selected],
   );
 
-  const run = useCallback(
+  const removeAutomation = useCallback(
     async (automation: Automation) => {
-      const started = await perform("run", runAutomation(automation.id), automation.id);
-      if (started) window.setTimeout(() => void refreshAutomations(), 1_000);
+      const removed = await remove(automation);
+      if (removed && automation.id === requestedId) navigate("index");
     },
-    [perform],
+    [navigate, remove, requestedId],
   );
-
-  const toggleStatus = useCallback(
-    async (automation: Automation) => {
-      const updated = await perform(
-        "status",
-        updateAutomation(automation.id, {
-          status: automation.status === "paused" ? "active" : "paused",
-        }),
-        automation.id,
-      );
-      if (updated) cacheAutomation(updated);
-    },
-    [perform],
-  );
-
-  const remove = useCallback(
-    async (automation: Automation) => {
-      const removed = await perform("delete", deleteAutomation(automation.id), automation.id);
-      if (!removed) return;
-      forgetAutomation(automation.id);
-      if (automation.id === requestedId) navigate("index");
-    },
-    [navigate, perform, requestedId],
-  );
-
-  const markAllRead = useCallback(async () => {
-    const unread = unreadAutomations(automations);
-    if (unread.length === 0) return;
-    await Promise.all(
-      unread.map((automation) =>
-        Effect.runPromise(updateAutomation(automation.id, { unread: false }))
-          .then(cacheAutomation)
-          .catch(() => undefined),
-      ),
-    );
-  }, [automations]);
 
   const useSuggestion = useCallback(
     (picked: AutomationSuggestion) => {
@@ -223,8 +150,8 @@ export default function AutomationsPage() {
           onSelect={navigate}
           onRun={(automation) => void run(automation)}
           onToggleStatus={(automation) => void toggleStatus(automation)}
-          onDelete={(automation) => void remove(automation)}
-          onMarkAllRead={() => void markAllRead()}
+          onDelete={(automation) => void removeAutomation(automation)}
+          onMarkAllRead={() => void markAllRead(automations)}
           onUseSuggestion={useSuggestion}
         />
       </div>
@@ -239,12 +166,12 @@ export default function AutomationsPage() {
             seed={seed}
             models={models}
             action={action}
-            error={error || loadError}
+            error={error || modelError || loadError}
             onClose={() => navigate("index")}
-            onSave={(draft) => void save(draft)}
+            onSave={(draft) => void saveDraft(draft)}
             onRun={() => selected && void run(selected)}
             onToggleStatus={() => selected && void toggleStatus(selected)}
-            onDelete={() => selected && void remove(selected)}
+            onDelete={() => selected && void removeAutomation(selected)}
           />
         )
       ) : (
