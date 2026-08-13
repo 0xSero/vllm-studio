@@ -80,7 +80,7 @@ export async function runAutomationNow(id: string): Promise<Automation | null> {
   const automation = await getAutomation(id);
   if (!automation || scheduler.running.has(id)) return null;
   scheduler.running.add(id);
-  const runtimeSessionId = `automation:${id}:${Date.now()}`;
+  const runtimeSessionId = `automation:${id}`;
   const scheduleNext = () => nextRunAt(automation.schedule, new Date()).toISOString();
   try {
     let models: readonly AgentModel[];
