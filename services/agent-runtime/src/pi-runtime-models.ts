@@ -134,7 +134,17 @@ function supportedPiThinkingLevels(
   });
 }
 
-export function controllerModelThinkingLevels(reasoning: boolean): AgentThinkingLevel[] {
+function isInklingModelId(modelId: string): boolean {
+  return modelId.toLowerCase().includes("inkling");
+}
+
+export function controllerModelThinkingLevels(
+  reasoning: boolean,
+  modelId = "",
+): AgentThinkingLevel[] {
+  if (reasoning && isInklingModelId(modelId)) {
+    return ["off", "minimal", "low", "medium", "high", "max"];
+  }
   return AGENT_THINKING_LEVELS.filter((level) =>
     reasoning ? level === "high" || level === "max" : level === "off",
   );
@@ -205,10 +215,14 @@ function mergeControllers(
   settings: ApiSettings,
   requested: PiControllerModelsRequest[] = [],
 ): PiControllerConfig[] {
-  const requestedController = requested
+  const requestedControllers = requested
     .map(normalizeControllerInput)
-    .find((controller): controller is PiControllerConfig => controller !== null);
-  if (requestedController) return [requestedController];
+    .filter((controller): controller is PiControllerConfig => controller !== null);
+  if (requestedControllers.length > 0) {
+    return [
+      ...new Map(requestedControllers.map((controller) => [controller.url, controller])).values(),
+    ];
+  }
   const primary = normalizeControllerInput({
     url: settings.backendUrl,
     apiKey: settings.apiKey,
@@ -276,7 +290,7 @@ async function fetchModelsFromController(
       providerId,
       controllerUrl: backendUrl,
       controllerName: label,
-      thinkingLevels: controllerModelThinkingLevels(model.reasoning),
+      thinkingLevels: controllerModelThinkingLevels(model.reasoning, model.rawId ?? model.id),
       name: multipleControllers ? `${model.name} · ${label}` : model.name,
     }),
   );
@@ -428,6 +442,15 @@ function isDeepSeekReasoningModel(model: AgentModel): boolean {
   return model.reasoning && id.includes("deepseek");
 }
 
+function isControllerBackedModel(model: AgentModel): boolean {
+  return typeof model.controllerUrl === "string" && model.controllerUrl.length > 0;
+}
+
+function isInklingReasoningModel(model: AgentModel): boolean {
+  const id = `${model.id} ${model.rawId ?? ""} ${model.name}`.toLowerCase();
+  return model.reasoning && id.includes("inkling");
+}
+
 const VLLM_OPENAI_COMPAT: OpenAICompletionsCompat = {
   supportsStore: false,
   supportsDeveloperRole: false,
@@ -439,7 +462,14 @@ const VLLM_OPENAI_COMPAT: OpenAICompletionsCompat = {
 
 export function modelsToPiModels(models: AgentModel[]) {
   return models.map((model) => {
-    const deepSeekReasoning = isDeepSeekReasoningModel(model);
+    // The hosted DeepSeek API uses a `thinking` object and requires an empty
+    // `reasoning_content` field on replayed assistant messages. Our vLLM
+    // controller exposes DeepSeek V4 through the standard OpenAI-compatible
+    // surface instead, where that hosted-only dialect corrupts tool-history
+    // turns. Keep the ordinary `reasoning_effort` mapping for controller models.
+    const deepSeekReasoning =
+      isDeepSeekReasoningModel(model) && !isControllerBackedModel(model);
+    const inklingReasoning = isInklingReasoningModel(model);
     return {
       id: model.rawId ?? model.id,
       name: model.name,
@@ -461,7 +491,19 @@ export function modelsToPiModels(models: AgentModel[]) {
               max: "max",
             },
           }
-        : {}),
+        : inklingReasoning
+          ? {
+              thinkingLevelMap: {
+                off: "none",
+                minimal: "minimal",
+                low: "low",
+                medium: "medium",
+                high: "high",
+                xhigh: null,
+                max: "max",
+              },
+            }
+          : {}),
       compat: {
         ...VLLM_OPENAI_COMPAT,
         ...(deepSeekReasoning

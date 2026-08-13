@@ -16,7 +16,7 @@ const CONTINUATION_GRACE_MS = 2000;
 export function goalContinuationPrompt(objective: string): string {
   return [
     `Continue working toward the goal: ${objective}.`,
-    "Check progress against concrete evidence (files, command output, tests) before deciding.",
+    "Check progress against concrete evidence (files, command output, runtime behavior) before deciding.",
     "If the goal is fully achieved, end your reply with GOAL_COMPLETE.",
     "If you cannot make further progress, end your reply with GOAL_BLOCKED and the reason.",
   ].join(" ");

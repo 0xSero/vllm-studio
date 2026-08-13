@@ -100,20 +100,26 @@ function createWorkspaceWindow(source: Window): WorkspaceWindow {
 
 function agentModelControllersPayload() {
   const activeUrl = normalizeControllerUrl(getStoredBackendUrl());
+  const saved = loadSavedControllers().flatMap((controller) => {
+    const url = normalizeControllerUrl(controller.url);
+    return url ? [{ ...controller, url }] : [];
+  });
+  const byUrl = new Map(saved.map((controller) => [controller.url, controller]));
   if (activeUrl) {
     const activeApiKey = getApiKey();
+    const savedActive = byUrl.get(activeUrl);
+    byUrl.delete(activeUrl);
     return [
       {
+        ...savedActive,
         url: activeUrl,
         ...(activeApiKey ? { apiKey: activeApiKey } : {}),
-        name: "primary",
+        name: savedActive?.name ?? "primary",
       },
+      ...byUrl.values(),
     ];
   }
-  const fallback = loadSavedControllers()[0];
-  if (!fallback) return [];
-  const url = normalizeControllerUrl(fallback.url);
-  return url ? [{ ...fallback, url }] : [];
+  return [...byUrl.values()];
 }
 
 async function loadAgentModelsPayload(): Promise<{ models?: AgentModel[]; error?: string }> {

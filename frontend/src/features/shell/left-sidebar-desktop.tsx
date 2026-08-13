@@ -34,6 +34,7 @@ export function DesktopSidebar({
   onRevealProjectsNav,
   onSetPinnedOpen,
   onOpenSearch,
+  onNewTask,
 }: {
   pathname: string;
   isExpanded: boolean;
@@ -45,6 +46,7 @@ export function DesktopSidebar({
   onRevealProjectsNav: () => void;
   onSetPinnedOpen: (open: boolean) => void;
   onOpenSearch: () => void;
+  onNewTask: () => void;
 }) {
   return (
     <aside
@@ -73,11 +75,11 @@ export function DesktopSidebar({
         <div className="flex h-[var(--h-toolbar)] shrink-0 items-center justify-center">
           <button
             onClick={() => onSetPinnedOpen(true)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
             title="Expand sidebar"
             aria-label="Expand sidebar"
           >
-            <PanelLeftHollow className="h-4 w-4" strokeWidth={1.75} />
+            <PanelLeftHollow className="h-3.5 w-3.5" strokeWidth={1.75} />
           </button>
         </div>
       ) : null}
@@ -95,7 +97,7 @@ export function DesktopSidebar({
                 title="Collapse sidebar"
                 aria-label="Collapse sidebar"
               >
-                <PanelLeftFilled className="h-3.5 w-3.5" strokeWidth={1.75} />
+                <PanelLeftFilled className="h-3 w-3" strokeWidth={1.75} />
               </button>
               <button
                 onClick={() => window.history.back()}
@@ -117,7 +119,7 @@ export function DesktopSidebar({
                   a full row for the content the sidebar actually exists to list. */}
               <button
                 onClick={onOpenSearch}
-                className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
                 title="Search sessions (⌘K)"
                 aria-label="Search sessions"
               >
@@ -127,9 +129,14 @@ export function DesktopSidebar({
 
             <nav className="sidebar-scroller flex min-h-0 flex-1 flex-col gap-[var(--sidebar-row-gap)] overflow-x-hidden overflow-y-auto px-[var(--sidebar-padding-x)] py-0.5 [contain:layout_paint]">
               <Link
-                href="/agent?new=1"
+                href="/agent?new=1&replace=1"
                 prefetch={false}
-                className="flex h-[var(--sidebar-row-height)] shrink-0 items-center gap-2.5 rounded-[var(--sidebar-row-radius)] px-2 text-(--fg) transition-colors hover:bg-(--hover)"
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                  event.preventDefault();
+                  onNewTask();
+                }}
+                className="flex h-[var(--sidebar-row-height)] shrink-0 items-center gap-2 rounded-[var(--sidebar-row-radius)] px-2 text-(--fg)/85 transition-colors hover:bg-(--hover) hover:text-(--fg)"
                 title="New task"
               >
                 <SquarePen className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.6} />

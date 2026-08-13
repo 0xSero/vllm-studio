@@ -50,16 +50,12 @@ const nextConfig: NextConfig = {
       // .next/standalone and the repair step crashed stat'ing framework
       // symlinks — a dev-channel build breaking every subsequent stable build.
       "./dist-desktop*/**/*",
-      "./e2e/**/*",
-      "./playwright-report/**/*",
-      "./test-results/**/*",
       "./public/**/*",
       "./src/**/*",
       "./README.md",
       "./eslint.config.mjs",
       "./knip.ts",
       "./next.config.ts",
-      "./playwright.config.ts",
       "./package-lock.json",
       "./postcss.config.mjs",
       "./tsconfig*.json",
@@ -70,7 +66,6 @@ const nextConfig: NextConfig = {
       "../services/**/*",
       "../shared/**/*",
       "../site/**/*",
-      "../tests/**/*",
       "../*.md",
       "../package-lock.json",
       "../release.config.cjs",
@@ -115,15 +110,6 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname, ".."),
   },
-  async redirects() {
-    return [
-      {
-        source: "/models",
-        destination: "/configure#models",
-        permanent: true,
-      },
-    ];
-  },
   async rewrites() {
     return [
       {
@@ -143,7 +129,7 @@ const nextConfig: NextConfig = {
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
-      "font-src 'self' data:",
+      "font-src 'self' data: https://cdn.openai.com",
       "connect-src 'self' https: http: ws: wss:",
       "frame-src 'self' https: http:",
       "media-src 'self' blob: data:",

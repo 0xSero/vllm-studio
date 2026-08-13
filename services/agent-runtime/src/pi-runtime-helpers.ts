@@ -53,7 +53,7 @@ function resolveDefaultAgentCwd(): string {
     const usable = listProjectsFromStore().find((entry) => entry.exists);
     if (usable) return usable.path;
   } catch {
-    // The project registry is optional during first run and test setup.
+    // The project registry is optional during first run.
   }
 
   const cwd = process.cwd();

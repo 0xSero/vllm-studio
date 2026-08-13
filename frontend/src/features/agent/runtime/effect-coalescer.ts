@@ -36,7 +36,7 @@ type PendingSnapshot = {
   seq: number | undefined;
 };
 
-/** A cancellable frame handle — the injected `scheduleFrame` or the Effect rAF. */
+/** A cancellable animation-frame handle. */
 type FlushHandle = { cancel: () => void };
 
 type ScheduleFrame = (callback: () => void) => FlushHandle;
@@ -49,17 +49,12 @@ type SessionSlot = {
 
 /**
  * Build a coalescer. `applyPiEvent` is the commit callback the controller wires
- * to the React dispatch — every flush ultimately calls it. `scheduleFrame` is an
- * optional frame-clock seam: production leaves it undefined and the flush runs
- * on the rAF Effect below; tests inject a controllable clock so the merge can be
- * driven deterministically.
+ * to the React dispatch, so every flush ultimately calls it.
  */
 export function createEffectTextDeltaCoalescer({
   applyPiEvent,
-  scheduleFrame,
 }: {
   applyPiEvent: ApplyPiEvent;
-  scheduleFrame?: ScheduleFrame;
 }): TextDeltaCoalescer {
   const slots = new Map<SessionId, SessionSlot>();
 
@@ -82,9 +77,7 @@ export function createEffectTextDeltaCoalescer({
     }
   };
 
-  // The rAF-Effect frame clock, wrapped as a cancellable handle. Used only when
-  // no `scheduleFrame` seam is injected (i.e. in the browser).
-  const effectFrame: ScheduleFrame = (callback) => {
+  const frameClock: ScheduleFrame = (callback) => {
     const fiber = Effect.runFork(
       Effect.gen(function* () {
         yield* waitForAnimationFrame;
@@ -93,8 +86,6 @@ export function createEffectTextDeltaCoalescer({
     );
     return { cancel: () => void Effect.runPromise(Fiber.interrupt(fiber)) };
   };
-  const frameClock = scheduleFrame ?? effectFrame;
-
   const flushNow = (sessionId: SessionId): void => {
     const slot = slots.get(sessionId);
     if (!slot || !slot.pending) return;
@@ -120,11 +111,7 @@ export function createEffectTextDeltaCoalescer({
     });
   };
 
-  const enqueuePiEvent: TextDeltaCoalescer["enqueuePiEvent"] = (
-    sessionId,
-    event,
-    options = {},
-  ) => {
+  const enqueuePiEvent: TextDeltaCoalescer["enqueuePiEvent"] = (sessionId, event, options = {}) => {
     if (event.type !== "message_update") return false;
     const slot = getSlot(sessionId);
     const normalizedEvent = normalizeDeltaEvent(event);
