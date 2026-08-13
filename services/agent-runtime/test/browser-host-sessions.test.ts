@@ -342,6 +342,20 @@ test("first frame and navigation share one page when navigation starts first", a
   await concurrentStartup("navigate");
 });
 
+test("passive state reads do not create sessions or consume capacity", async () => {
+  const manager = new FakeManager();
+  const host = hostFor(manager, {
+    config: { idleMs: 60_000, maxSessions: 1 },
+  });
+  assert.equal(await host.peekState("session-a"), null);
+  assert.deepEqual(manager.launches, []);
+  await host.navigate("session-b", "https://public.test/b");
+  assert.equal((await host.peekState("session-b"))?.url, "https://public.test/b");
+  assert.equal(await host.peekState("session-a"), null);
+  assert.deepEqual(manager.launches, ["session-b"]);
+  await host.stop();
+});
+
 test("navigation preserves order inside one session context", async () => {
   const manager = new FakeManager();
   const host = hostFor(manager);

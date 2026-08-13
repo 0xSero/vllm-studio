@@ -319,11 +319,7 @@ const MouseTypeSchema = Schema.Union([
   Schema.Literal("up"),
   Schema.Literal("move"),
 ]);
-const KeyTypeSchema = Schema.Union([
-  Schema.Literal("down"),
-  Schema.Literal("up"),
-  Schema.Literal("char"),
-]);
+const KeyTypeSchema = Schema.Union([Schema.Literal("down"), Schema.Literal("up")]);
 const InputBodySchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("mouse"),
@@ -345,7 +341,6 @@ const InputBodySchema = Schema.Union([
     type: KeyTypeSchema,
     key: Schema.String,
     code: Schema.String,
-    text: Schema.optional(Schema.String),
   }),
 ]);
 type InputBody = typeof InputBodySchema.Type;

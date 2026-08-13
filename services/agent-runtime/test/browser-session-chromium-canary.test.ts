@@ -39,7 +39,7 @@ const close = (server: ReturnType<typeof createServer>): Promise<void> => {
 };
 
 test.skipIf(findBrowserBinary() === null)(
-  "keeps cookie, storage, frame, and input state isolated in real Chromium sessions",
+  "keeps storage, frame, input, viewport, and history isolated in real Chromium sessions",
   async () => {
     const executablePath = findBrowserBinary();
     if (!executablePath) throw new Error("Chromium disappeared after test selection");
@@ -82,31 +82,31 @@ test.skipIf(findBrowserBinary() === null)(
         host.navigate("session-b", `${origin}/?marker=session-b`),
       ]);
       await host.click("session-a", { selector: "#entry" });
-      await host.dispatchKey("session-a", {
-        code: "KeyA",
-        key: "a",
-        text: "typed-a",
-        type: "char",
-      });
+      for (const key of "typed-a") {
+        await host.dispatchKey("session-a", { code: `Key${key.toUpperCase()}`, key, type: "down" });
+        await host.dispatchKey("session-a", { code: `Key${key.toUpperCase()}`, key, type: "up" });
+      }
       const sessionBBeforeInput = await host.evaluate(
         "session-b",
         "document.querySelector('#entry')?.value",
       );
       await host.click("session-b", { selector: "#entry" });
-      await host.dispatchKey("session-b", {
-        code: "KeyB",
-        key: "b",
-        text: "typed-b",
-        type: "char",
-      });
+      for (const key of "typed-b") {
+        await host.dispatchKey("session-b", { code: `Key${key.toUpperCase()}`, key, type: "down" });
+        await host.dispatchKey("session-b", { code: `Key${key.toUpperCase()}`, key, type: "up" });
+      }
+      await Promise.all([
+        host.setViewport("session-a", 700, 500),
+        host.setViewport("session-b", 900, 650),
+      ]);
       const [sessionA, sessionB, frameA, frameB] = await Promise.all([
         host.evaluate(
           "session-a",
-          "({ cookie: document.cookie, input: document.querySelector('#entry')?.value, storage: localStorage.getItem('scope') })",
+          "({ cookie: document.cookie, input: document.querySelector('#entry')?.value, storage: localStorage.getItem('scope'), viewport: [window.innerWidth, window.innerHeight] })",
         ),
         host.evaluate(
           "session-b",
-          "({ cookie: document.cookie, input: document.querySelector('#entry')?.value, storage: localStorage.getItem('scope') })",
+          "({ cookie: document.cookie, input: document.querySelector('#entry')?.value, storage: localStorage.getItem('scope'), viewport: [window.innerWidth, window.innerHeight] })",
         ),
         host.pollFrame("session-a"),
         host.pollFrame("session-b"),
@@ -116,15 +116,26 @@ test.skipIf(findBrowserBinary() === null)(
         cookie: "scope=session-a",
         input: "typed-a",
         storage: "session-a",
+        viewport: [700, 500],
       });
       assert.deepEqual(sessionB, {
         cookie: "scope=session-b",
         input: "typed-b",
         storage: "session-b",
+        viewport: [900, 650],
       });
       assert.ok((frameA.frame?.data.length ?? 0) > 100);
       assert.ok((frameB.frame?.data.length ?? 0) > 100);
       assert.notEqual(frameA.frame?.data, frameB.frame?.data);
+      const sessionBHistoryBefore = await host.getState("session-b");
+      await host.navigate("session-a", `${origin}/second?marker=session-a`);
+      await host.goBack("session-a");
+      const [sessionAAfterBack, sessionBHistoryAfter] = await Promise.all([
+        host.getState("session-a"),
+        host.getState("session-b"),
+      ]);
+      assert.equal(sessionAAfterBack.url, `${origin}/?marker=session-a`);
+      assert.deepEqual(sessionBHistoryAfter, sessionBHistoryBefore);
       const navigation = host.navigate("session-a", `${origin}/hang`);
       await hangingNavigation.promise;
       const release = host.releaseSession("session-a");

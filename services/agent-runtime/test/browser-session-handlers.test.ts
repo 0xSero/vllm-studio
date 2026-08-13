@@ -199,6 +199,23 @@ test("body session affinity is rejected before host access", async () => {
   await host.stop();
 });
 
+test("key input rejects character payloads before host access", async () => {
+  const manager = new CountingManager();
+  const host = new BrowserHost(manager);
+  const response = await handleBrowserInput(
+    request(
+      "/api/agent/browser/input",
+      "POST",
+      "session-a",
+      JSON.stringify({ kind: "key", type: "char", key: "a", code: "KeyA", text: "a" }),
+    ),
+    host,
+  );
+  assert.equal(response.status, 400);
+  assert.equal(manager.touches, 0);
+  await host.stop();
+});
+
 test("stateless fetch ignores browser session headers", async () => {
   const response = await handleBrowserFetch(
     request("/api/agent/browser/fetch", "GET", "malformed session"),
