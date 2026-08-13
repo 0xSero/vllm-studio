@@ -32,9 +32,12 @@ export type ParentRelation = Schema.Schema.Type<typeof ParentRelationSchema>;
 
 export type ThreadCursor = number;
 
+export const DEFAULT_THREAD_WINDOW_TOKENS = 200_000;
+
 export type ThreadWindowRequest = {
   tail?: number;
   before?: ThreadCursor;
+  maxTokens?: number;
 };
 
 export const ThreadEntrySchema = Schema.Struct({

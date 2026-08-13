@@ -12,11 +12,15 @@ import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import {
+  findCutPoint,
   getAgentDir,
   SessionManager,
   SettingsManager,
+  type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { resolveDataDir } from "./data-dir";
+import { DEFAULT_THREAD_WINDOW_TOKENS } from "../../../shared/agent/thread";
+import { entryTokenEstimate, isVisibleUserEntry } from "./thread-window-projector";
 import {
   cleanSessionTitle,
   sessionTitleFromUserPrompt,
@@ -572,6 +576,47 @@ function tailBoundaryIndex(
   return 0;
 }
 
+type RegionBudget = { tail: number } | { maxTokens: number };
+
+function windowBoundaryIndex(
+  lines: Array<{ offset: number; event: SessionEvent }>,
+  maxTokens: number,
+): number {
+  if (lines.length === 0) return 0;
+  const entries = lines.map((line) => line.event) as unknown as SessionEntry[];
+  const cut = findCutPoint(entries, 0, entries.length, maxTokens);
+  const target =
+    cut.isSplitTurn && cut.turnStartIndex >= 0 ? cut.turnStartIndex : cut.firstKeptEntryIndex;
+  for (let index = Math.min(target, lines.length - 1); index >= 0; index -= 1) {
+    if (isVisibleUserEntry(lines[index].event)) return index;
+  }
+  return 0;
+}
+
+function regionBoundaryIndex(
+  lines: Array<{ offset: number; event: SessionEvent }>,
+  budget: RegionBudget,
+  windowTokens: number,
+): number {
+  if ("tail" in budget) return tailBoundaryIndex(lines, budget.tail);
+  return windowTokens >= budget.maxTokens ? windowBoundaryIndex(lines, budget.maxTokens) : 0;
+}
+
+function budgetBoundaryReached(
+  lines: Array<{ offset: number; event: SessionEvent }>,
+  budget: RegionBudget,
+  windowTokens: number,
+): boolean {
+  if ("tail" in budget) {
+    const messageCount = lines.reduce(
+      (count, line) => (isMessageEvent(line.event) ? count + 1 : count),
+      0,
+    );
+    return messageCount >= budget.tail && tailBoundaryIndex(lines, budget.tail) > 0;
+  }
+  return windowTokens >= budget.maxTokens && windowBoundaryIndex(lines, budget.maxTokens) > 0;
+}
+
 // Cheap head-scan: read the first lines of the file to recover the header block
 // (to prefix onto a deep tail slice) and the real session title (the first user
 // prompt — a tail slice's own first user message is NOT the session title).
@@ -640,7 +685,7 @@ async function readSessionHead(
 function readTailRegion(
   filepath: string,
   size: number,
-  tail: number,
+  budget: RegionBudget,
   before: number | undefined,
 ): { events: SessionEvent[]; cursor: number | null } {
   const end = before === undefined ? size : Math.max(0, Math.min(before, size));
@@ -652,6 +697,7 @@ function readTailRegion(
     // next-earlier chunk completes the line that straddles the chunk boundary.
     let carry: Buffer = Buffer.alloc(0);
     let kept: Array<{ offset: number; event: SessionEvent }> = [];
+    let windowTokens = 0;
     while (regionStart > 0 && end - regionStart < TAIL_SCAN_BYTE_CAP) {
       const readLen = Math.min(TAIL_CHUNK_BYTES, regionStart);
       regionStart -= readLen;
@@ -660,17 +706,19 @@ function readTailRegion(
       const combined = carry.length > 0 ? Buffer.concat([chunk, carry]) : chunk;
       const parsed = parseRegion(combined, regionStart);
       kept = parsed.events.length > 0 ? [...parsed.events, ...kept] : kept;
+      if (!("tail" in budget)) {
+        windowTokens = parsed.events.reduce(
+          (total, line) => total + entryTokenEstimate(line.event),
+          windowTokens,
+        );
+      }
       carry = parsed.head;
       if (regionStart === 0) break;
       // Stop once a user-turn boundary sits strictly inside the window (the
       // whole first turn is then known to be captured).
-      const messageCount = kept.reduce(
-        (count, line) => (isMessageEvent(line.event) ? count + 1 : count),
-        0,
-      );
-      if (messageCount >= tail && tailBoundaryIndex(kept, tail) > 0) break;
+      if (budgetBoundaryReached(kept, budget, windowTokens)) break;
     }
-    const boundaryIndex = tailBoundaryIndex(kept, tail);
+    const boundaryIndex = regionBoundaryIndex(kept, budget, windowTokens);
     const slice = kept.slice(boundaryIndex);
     // Cursor for the next page back: the boundary line's offset when one was
     // found; otherwise (scan cap hit inside a stretch with no boundary — e.g. a
@@ -716,30 +764,59 @@ export async function loadSession(
       }
       return { events: activeBranchEvents(filepath, events), cursor: null, meta: null, found: true };
     }
-    return loadSession(cwd, sessionId, { tail: 2000 });
+    return loadSessionWindow(cwd, sessionId);
   }
 
   const effectiveTail = tail ?? 500;
-  const { events, cursor } = readTailRegion(filepath, size, effectiveTail, options.before);
+  const { events, cursor } = readTailRegion(filepath, size, { tail: effectiveTail }, options.before);
+  return finishSessionPage(filepath, events, cursor, paging);
+}
 
-  // Initial tail load: prefix the header block (model/started metadata the fold
-  // needs) and return real session metadata from the head-scan. Paged `before`
-  // loads are continuations — no header, no meta.
-  if (!paging) {
-    // The head-scan and the usage scan read opposite ends of the same file for
-    // different reasons; run them together so an initial open pays one wait.
-    const [{ headerEvents, meta }, usage] = await Promise.all([
-      readSessionHead(filepath),
-      readSessionUsageTotals(filepath),
-    ]);
-    meta.usage = usage;
-    const hasHeader = events.some((event) => event.type === "session");
-    return {
-      events: activeBranchEvents(filepath, hasHeader ? events : [...headerEvents, ...events]),
-      cursor,
-      meta,
-      found: true,
-    };
+// Initial load: prefix the header block (model/started metadata the fold needs)
+// and return real session metadata from the head-scan. Paged `before` loads are
+// continuations — no header, no meta.
+async function finishSessionPage(
+  filepath: string,
+  events: SessionEvent[],
+  cursor: number | null,
+  paging: boolean,
+): Promise<LoadSessionResult> {
+  if (paging) {
+    return { events: activeBranchEvents(filepath, events), cursor, meta: null, found: true };
   }
-  return { events: activeBranchEvents(filepath, events), cursor, meta: null, found: true };
+  // The head-scan and the usage scan read opposite ends of the same file for
+  // different reasons; run them together so an initial open pays one wait.
+  const [{ headerEvents, meta }, usage] = await Promise.all([
+    readSessionHead(filepath),
+    readSessionUsageTotals(filepath),
+  ]);
+  meta.usage = usage;
+  const hasHeader = events.some((event) => event.type === "session");
+  return {
+    events: activeBranchEvents(filepath, hasHeader ? events : [...headerEvents, ...events]),
+    cursor,
+    meta,
+    found: true,
+  };
+}
+
+export type LoadSessionWindowOptions = {
+  maxTokens?: number;
+  before?: number;
+};
+
+export async function loadSessionWindow(
+  cwd: string,
+  sessionId: string,
+  options: LoadSessionWindowOptions = {},
+): Promise<LoadSessionResult> {
+  const filepath = findSessionFile(cwd, sessionId);
+  if (!filepath) return { events: [], cursor: null, meta: null, found: false };
+  const { size } = statSync(filepath);
+  const maxTokens =
+    options.maxTokens && options.maxTokens > 0
+      ? Math.floor(options.maxTokens)
+      : DEFAULT_THREAD_WINDOW_TOKENS;
+  const { events, cursor } = readTailRegion(filepath, size, { maxTokens }, options.before);
+  return finishSessionPage(filepath, events, cursor, options.before !== undefined);
 }

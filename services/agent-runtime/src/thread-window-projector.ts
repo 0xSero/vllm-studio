@@ -36,6 +36,24 @@ function isHiddenEntry(event: Record<string, unknown>): boolean {
   return event.type === "custom_message" && event.display === false;
 }
 
+type ContextMessages = ReturnType<typeof contextMessages>;
+
+function startsVisibleTurn(event: Record<string, unknown>, messages: ContextMessages): boolean {
+  return !isHiddenEntry(event) && messages.some((message) => message.role === "user");
+}
+
+function messageTokens(messages: ContextMessages): number {
+  return messages.reduce((total, message) => total + estimateTokens(message), 0);
+}
+
+export function isVisibleUserEntry(event: Record<string, unknown>): boolean {
+  return startsVisibleTurn(event, contextMessages(event));
+}
+
+export function entryTokenEstimate(event: Record<string, unknown>): number {
+  return messageTokens(contextMessages(event));
+}
+
 function toThreadItem(event: Record<string, unknown>): ThreadItem | null {
   const decoded = decodeThreadEntry(event);
   if (decoded._tag === "None") return null;
@@ -47,8 +65,8 @@ function toThreadItem(event: Record<string, unknown>): ThreadItem | null {
     timestamp: entry.timestamp ?? null,
     parentId: entry.parentId ?? null,
     role: messages[0]?.role ?? null,
-    startsTurn: !isHiddenEntry(event) && messages.some((message) => message.role === "user"),
-    tokenEstimate: messages.reduce((total, message) => total + estimateTokens(message), 0),
+    startsTurn: startsVisibleTurn(event, messages),
+    tokenEstimate: messageTokens(messages),
     payload: event,
   };
 }
