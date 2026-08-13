@@ -107,6 +107,22 @@ function resolveWorkspaceRoot(cwd: string): string {
   return assertWorkspaceRoot(requestedReal);
 }
 
+function resolveRegisteredProjectRoot(cwd: string): string {
+  const requestedReal = resolveRealPath(cwd);
+  for (const project of listProjectsFromStore()) {
+    if (!project.exists) continue;
+    const projectReal = resolveRealPath(project.path);
+    const relative = path.relative(projectReal, requestedReal);
+    if (
+      relative === "" ||
+      (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
+    ) {
+      return projectReal;
+    }
+  }
+  throw new Error("Path is outside registered projects");
+}
+
 // Reject any path that escapes the project root, resolving symlinks on both the
 // root and the target so a symlink inside the root cannot point outside it.
 function ensureInside(rootCwd: string, target: string): string {
@@ -186,8 +202,12 @@ export async function openReadableFile(
   rootCwd: string,
   relPath: string,
 ): Promise<{ file: FileHandle; size: number; modifiedAt: Date }> {
+  const registeredRoot = resolveRegisteredProjectRoot(rootCwd);
   const root = resolveWorkspaceRoot(rootCwd);
   const target = ensureInside(root, path.resolve(root, relPath));
+  if (target !== registeredRoot && !target.startsWith(registeredRoot + path.sep)) {
+    throw new Error("Path escapes registered project");
+  }
   if (target !== root && !target.startsWith(root + path.sep)) {
     throw new Error("Path escapes project root");
   }
