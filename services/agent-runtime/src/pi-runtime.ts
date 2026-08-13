@@ -226,12 +226,44 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         const fingerprint = runtimeFingerprint(modelId, resolvedCwd, desiredSessionId, options);
         if (this.runtime && this.currentFingerprint === fingerprint) return;
 
+        const started = yield* this.startRuntimeEffect(
+          modelId,
+          resolvedCwd,
+          desiredSessionId,
+          options,
+        ).pipe(
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              this.lastError = error instanceof Error ? error.message : String(error);
+            }).pipe(Effect.andThen(Effect.fail(error))),
+          ),
+        );
+
         yield* this.stopEffect();
-        this.eventSeq = 0;
         this.eventLog = [];
         this.activePromptCount = 0;
         this.lastError = null;
+        this.runtime = started.runtime;
+        this.agentDir = started.agentDir;
+        this.currentModelId = modelId;
+        this.currentCwd = resolvedCwd;
+        this.currentPiSessionId = started.runtime.session.sessionId || desiredSessionId;
+        this.currentFingerprint = fingerprint;
+        this.currentStartOptions = options;
+        this.sessionFileStamp = this.readSessionFileStamp();
+        this.unsubscribe = started.runtime.session.subscribe((event) => this.recordEvent(event));
+      }.bind(this),
+    );
+  }
 
+  private startRuntimeEffect(
+    modelId: string,
+    resolvedCwd: string,
+    desiredSessionId: string | null,
+    options: RuntimeStartOptions,
+  ): Effect.Effect<{ runtime: AgentSessionRuntime; agentDir: string }, unknown> {
+    return Effect.gen(
+      function* (this: PiSdkSession) {
         const { models } = yield* Effect.tryPromise({
           try: () => refreshPiModels(),
           catch: (error) => error,
@@ -392,15 +424,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
           catch: (error) => error,
         });
 
-        this.runtime = runtime;
-        this.agentDir = agentDir;
-        this.currentModelId = modelId;
-        this.currentCwd = resolvedCwd;
-        this.currentPiSessionId = runtime.session.sessionId || desiredSessionId;
-        this.currentFingerprint = fingerprint;
-        this.currentStartOptions = options;
-        this.sessionFileStamp = this.readSessionFileStamp();
-        this.unsubscribe = runtime.session.subscribe((event) => this.recordEvent(event));
+        return { runtime, agentDir };
       }.bind(this),
     );
   }
@@ -561,20 +585,28 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         session.sessionManager.getSessionDir(),
         this.currentCwd,
       );
-    } catch {
+    } catch (error) {
+      this.sessionFileStamp = stamp;
+      this.lastError = error instanceof Error ? error.message : String(error);
       return;
     }
     if (persisted.getLeafId() === session.sessionManager.getLeafId()) {
       this.sessionFileStamp = stamp;
       return;
     }
+    const fingerprint = this.currentFingerprint;
     this.currentFingerprint = "";
-    await this.ensureStarted(
-      this.currentModelId,
-      this.currentCwd,
-      this.currentPiSessionId,
-      this.currentStartOptions,
-    );
+    try {
+      await this.ensureStarted(
+        this.currentModelId,
+        this.currentCwd,
+        this.currentPiSessionId,
+        this.currentStartOptions,
+      );
+    } catch {
+      this.currentFingerprint = fingerprint;
+    }
+    this.sessionFileStamp = stamp;
   }
 
   compact(customInstructions?: string): Promise<unknown> {
