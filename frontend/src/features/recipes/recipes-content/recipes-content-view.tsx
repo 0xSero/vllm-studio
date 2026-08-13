@@ -106,12 +106,12 @@ export function RecipesContentView(props: Props) {
   } = props;
   const heading = TAB_HEADINGS[tab];
   const content = (
-    <section>
-      <h2 className="text-[length:var(--fs-2xl)] font-medium tracking-[-0.015em] text-(--ui-fg)">
-        {heading.title}
-      </h2>
-      <p className="mt-1 text-[length:var(--fs-sm)] text-(--ui-muted)">{heading.description}</p>
-      <div className="mt-6">
+    <section className="@container min-w-0">
+      <h3 className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">{heading.title}</h3>
+      <p className="mt-0.5 max-w-[38rem] text-[length:var(--fs-sm)] text-(--ui-muted)">
+        {heading.description}
+      </p>
+      <div className="mt-4">
         {tab === "serves" ? (
           <RecipesTab
             loading={loading}
@@ -154,10 +154,9 @@ export function RecipesContentView(props: Props) {
         </div>
       ) : (
         <TabbedPage
-          eyebrow="Model library"
           title="Models"
           description="Manage model profiles, downloads, and the model marketplace available to Local Studio."
-          width="md"
+          width="sm"
           tabs={MODEL_TABS}
           activeTab={tab}
           onSelectTab={setTab}
