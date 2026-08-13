@@ -379,16 +379,36 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       const piSessionId = session.piSessionId;
       return Effect.runPromise(
         Effect.gen(function* () {
-          const result = yield* Effect.tryPromise({
+          let before = cursor;
+          let result = yield* Effect.tryPromise({
             try: () => api.loadCanonicalSession(piSessionId, cwd, { before: cursor }),
             catch: (error) => error,
           }).pipe(Effect.result);
           if (result._tag !== "Success") return;
-          const { messages: earlier } = foldSessionEvents(result.success.events);
+          let page = result.success;
+          let events = page.events;
+          let earlier = foldSessionEvents(events).messages;
+          let retryCursor = false;
+          while (earlier.length === 0 && page.cursor !== null && page.cursor < before) {
+            before = page.cursor;
+            result = yield* Effect.tryPromise({
+              try: () => api.loadCanonicalSession(piSessionId, cwd, { before }),
+              catch: (error) => error,
+            }).pipe(Effect.result);
+            if (result._tag !== "Success") {
+              retryCursor = true;
+              break;
+            }
+            page = result.success;
+            events = [...page.events, ...events];
+            earlier = foldSessionEvents(events).messages;
+          }
+          const nextCursor =
+            !retryCursor && page.cursor !== null && page.cursor >= before ? null : page.cursor;
           updateSession(sessionId, (current) => ({
             ...current,
             messages: earlier.length > 0 ? [...earlier, ...current.messages] : current.messages,
-            historyCursor: result.success.cursor,
+            historyCursor: nextCursor,
           }));
         }).pipe(
           Effect.ensuring(
