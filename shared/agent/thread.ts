@@ -102,6 +102,7 @@ export const ThreadWindowSchema = Schema.Struct({
   found: Schema.Boolean,
   turns: Schema.Array(ThreadTurnSchema),
   cursor: Schema.NullOr(Schema.Number),
+  activityEventCount: Schema.Number,
   tokenEstimate: Schema.Number,
   meta: Schema.NullOr(ThreadWindowMetaSchema),
 });

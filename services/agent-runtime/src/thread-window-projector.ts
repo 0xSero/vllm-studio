@@ -139,6 +139,12 @@ export function projectThreadWindow(source: ThreadWindowSource): ThreadWindow {
     found: source.found,
     turns: groupThreadTurns(items),
     cursor: source.cursor,
+    activityEventCount: source.events.filter(
+      (event) =>
+        event.type !== "session" &&
+        event.type !== "model_change" &&
+        event.type !== "thinking_level_change",
+    ).length,
     tokenEstimate: items.reduce((total, item) => total + item.tokenEstimate, 0),
     meta: source.meta,
   };

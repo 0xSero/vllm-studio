@@ -284,7 +284,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             { concurrency: "unbounded" },
           );
           if (replayResult._tag === "Success") {
-            const { events, cursor, meta } = replayResult.success;
+            const { events, activityEventCount, cursor, meta } = replayResult.success;
             const runtimeActive = runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId);
             const replayEvents = mergeCanonicalAndRuntimeEvents(
               events,
@@ -298,9 +298,13 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               tokenStats,
             } = foldSessionEvents(replayEvents);
             const replaySeq = replayCursorAfterRuntimeHydration(runtimeStatus, piSessionId);
+            const applyReplayTranscript = messages.length > 0 || activityEventCount === 0;
+            const replayTranscript = applyReplayTranscript
+              ? { messages, historyCursor: cursor, hydratedFromCache: false }
+              : {};
             updateSession(sessionId, (session) => ({
               ...session,
-              messages,
+              ...replayTranscript,
               piSessionId,
               cwd: session.cwd || cwd,
               // Head-scan meta carries the real session model/title; the fold's
@@ -323,8 +327,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               activeAssistantId: undefined,
               // A non-null cursor means the tail load left older history unread;
               // the timeline shows a "Load earlier" affordance while it is set.
-              historyCursor: cursor,
-              hydratedFromCache: false,
               error: "",
             }));
             // Reattach the live stream from the hydrated cursor so EventSource

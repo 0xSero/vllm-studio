@@ -179,6 +179,7 @@ export type CanonicalSessionMeta = {
 
 export type CanonicalSessionResult = {
   events: Record<string, unknown>[];
+  activityEventCount: number;
   // Byte-offset cursor to pass as `before` to load the previous (older) page,
   // or null when this page already reaches the start of the session log.
   cursor: number | null;
@@ -205,6 +206,7 @@ const decodeLegacySessionPageOption = Schema.decodeUnknownOption(LegacySessionPa
 function windowToCanonicalSession(window: ThreadWindow): CanonicalSessionResult {
   return {
     events: window.turns.flatMap((turn) => turn.items.map((item) => ({ ...item.payload }))),
+    activityEventCount: window.activityEventCount,
     cursor: window.cursor,
     meta: window.meta,
   };
@@ -237,6 +239,7 @@ export function loadCanonicalSession(
         }
         return {
           events: decoded.value.events.map((event) => ({ ...event })),
+          activityEventCount: decoded.value.events.length,
           cursor: decoded.value.cursor ?? null,
           meta: decoded.value.meta ?? null,
         };
