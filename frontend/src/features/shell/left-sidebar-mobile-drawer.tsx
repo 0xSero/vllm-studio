@@ -6,7 +6,7 @@ import {
   NavItemMobile,
   ProjectsNavPlaceholder,
   isRouteActive,
-  tabs,
+  navigationItems,
 } from "@/features/shell/left-sidebar-nav";
 
 export function MobileNavigationDrawer({
@@ -54,7 +54,7 @@ export function MobileNavigationDrawer({
             active={false}
             onClick={onClose}
           />
-          {tabs.map((tab) => (
+          {navigationItems.map((tab) => (
             <NavItemMobile
               key={tab.href}
               href={tab.href}

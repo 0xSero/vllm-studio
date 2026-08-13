@@ -13,7 +13,7 @@ import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resour
 import { ResourceLogo } from "@/ui/resource-logo";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import type { StatusTone } from "@/features/settings/settings-ui";
-import { ModelStatus } from "@/features/recipes/recipes-content/model-page";
+import { ModelRow, ModelStatus, ModelValue } from "@/features/recipes/recipes-content/model-page";
 import { GoogleAccountModal } from "./google-account-modal";
 
 type PluginStatus = { label: string; tone: StatusTone };
@@ -151,21 +151,10 @@ function PluginCard({
   const status = pluginStatus(plugin);
   const action = activationAction(plugin);
   return (
-    <article
-      role="button"
-      tabIndex={0}
-      aria-label={`Open ${plugin.displayName} details`}
-      onClick={onOpen}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) {
-          return;
-        }
-        event.preventDefault();
-        onOpen();
-      }}
-      className="group flex min-h-36 min-w-0 cursor-pointer flex-col rounded-[10px] border border-(--ui-border) bg-(--ui-surface) p-3 transition-[transform,background-color,border-color] hover:bg-(--ui-hover)/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ui-info)/45 active:scale-[0.995]"
-    >
-      <div className="flex min-w-0 items-start gap-3">
+    <ModelRow
+      label={plugin.displayName}
+      description={plugin.description || plugin.category}
+      leading={
         <ResourceLogo
           identity={plugin.id}
           label={plugin.displayName}
@@ -173,42 +162,29 @@ function PluginCard({
           brandColor={plugin.brandColor}
           size="md"
         />
-        <div className="min-w-0 flex-1">
-          <h4 className="truncate text-[length:var(--fs-md)] font-medium text-(--ui-fg)">
-            {plugin.displayName}
-          </h4>
-          <p className="mt-1 line-clamp-2 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
-            {plugin.description || plugin.category}
-          </p>
-        </div>
+      }
+      value={<ModelValue dim>{plugin.source}</ModelValue>}
+      status={<ModelStatus tone={status.tone}>{status.label}</ModelStatus>}
+      actions={
+        action || plugin.account?.connected ? (
+          <PluginRowActions
+            plugin={plugin}
+            action={action}
+            busy={busy}
+            onConnect={onConnect}
+            onDisconnect={onDisconnect}
+            onAccount={onAccount}
+          />
+        ) : null
+      }
+      variant="catalog"
+      className="min-h-36 rounded-[10px] border border-(--ui-border) bg-(--ui-surface) active:scale-[0.995]"
+      onClick={onOpen}
+    >
+      <div className="truncate text-[length:var(--fs-xs)] text-(--ui-muted)">
+        {capabilitySummary(plugin)}
       </div>
-      <div className="mt-auto flex min-w-0 items-end justify-between gap-2 border-t border-(--ui-separator)/70 pt-2.5">
-        <div className="min-w-0">
-          <ModelStatus tone={status.tone}>{status.label}</ModelStatus>
-          <div
-            className="mt-1 truncate text-[length:var(--fs-xs)] text-(--ui-muted)"
-            title={`${plugin.source} · ${capabilitySummary(plugin)}`}
-          >
-            {plugin.source} · {capabilitySummary(plugin)}
-          </div>
-        </div>
-        {action || plugin.account?.connected ? (
-          <div
-            className="flex shrink-0 items-center gap-1"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <PluginRowActions
-              plugin={plugin}
-              action={action}
-              busy={busy}
-              onConnect={onConnect}
-              onDisconnect={onDisconnect}
-              onAccount={onAccount}
-            />
-          </div>
-        ) : null}
-      </div>
-    </article>
+    </ModelRow>
   );
 }
 

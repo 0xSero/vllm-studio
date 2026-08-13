@@ -17,7 +17,7 @@ import {
   NavItemDesktop,
   ProjectsNavPlaceholder,
   isRouteActive,
-  tabs,
+  navigationItems,
 } from "@/features/shell/left-sidebar-nav";
 
 const HISTORY_STEPPER_CLASS =
@@ -138,7 +138,7 @@ export function DesktopSidebar({
                   New task
                 </span>
               </Link>
-              {tabs.map((tab) => (
+              {navigationItems.map((tab) => (
                 <NavItemDesktop
                   key={tab.href}
                   href={tab.href}

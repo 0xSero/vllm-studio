@@ -9,17 +9,19 @@ export type IconComponent = ComponentType<{ className?: string; strokeWidth?: nu
 // Sessions has no nav row: the Search command palette is the session list.
 export const tabs = [
   { href: "/", label: "Status", icon: Activity },
-  { href: "/models", label: "Models", icon: Boxes },
   { href: "/agent/automations", label: "Automations", icon: Clock },
   { href: "/configure", label: "Configure", icon: ServerCog },
   { href: "/usage", label: "Usage", icon: TrendingUp },
 ];
 
+const modelsTab = { href: "/models", label: "Models", icon: Boxes };
+export const navigationItems = [tabs[0], modelsTab, ...tabs.slice(1)];
+
 export function mobilePageTitle(pathname: string): string {
   if (pathname.startsWith("/agent/automations")) return "Automations";
   if (pathname.startsWith("/agent")) return "Tasks";
   if (pathname.startsWith("/logs")) return "Logs";
-  const tab = tabs.find((entry) => isRouteActive(pathname, entry.href));
+  const tab = navigationItems.find((entry) => isRouteActive(pathname, entry.href));
   return tab?.label ?? "Local Studio";
 }
 
