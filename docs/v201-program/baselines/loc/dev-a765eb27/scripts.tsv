@@ -1,0 +1,8 @@
+ref: a765eb27bca4baffabc6dc84c553fc6d8be5590d
+date: 2026-08-13T20:14:41Z
+tool: cloc-2.06.pl (sha256 ed9fbdd081a2ceb933ea490b3c1cfacc87d3898ae2650d0d6756439695a836c8, AlDanial/cloc v2.06, perl 5.034) --by-file --csv --list-file=production-files.txt
+sort: LC_ALL=C by path
+scripts/install-controller.sh	207
+scripts/install-desktop-app.sh	249
+total-code: 456
+rows: 2
