@@ -4,7 +4,7 @@ import { piRuntimeManager } from "./pi-runtime";
 import { refreshPiModels } from "./pi-runtime-models";
 import { listProjectsFromStore } from "./projects-store";
 import { lastAssistantResult } from "./session-text";
-import { findSessionFile } from "./sessions-store";
+import { findThread } from "./thread-repository";
 
 export const NO_ACTIVE_MODEL_ERROR =
   "No model is loaded right now, so this automation could not run. Load a model in Local Studio and try again.";
@@ -12,7 +12,11 @@ export const MODEL_LOOKUP_ERROR =
   "Could not read the list of runtime models, so this automation could not pick a model to run on.";
 
 export function missingThreadError(threadId: string): string {
-  return `This automation runs inside conversation '${threadId}', which is not on disk for its working directory, so the run was skipped rather than started as a detached conversation.`;
+  return `This automation runs inside conversation '${threadId}', which is no longer a thread in its working directory, so the run was skipped rather than started as a detached conversation.`;
+}
+
+export function archivedThreadError(threadId: string): string {
+  return `This automation runs inside conversation '${threadId}', which is archived, so the run was skipped rather than reopening an archived thread.`;
 }
 
 export type AutomationModelResolution =
@@ -48,10 +52,14 @@ function runPrompt(automation: Automation): string {
   return `${preamble}${automation.prompt}`;
 }
 
-function resumeThread(cwd: string, threadId: string): string | null {
+type ThreadResolution = { ok: true; piSessionId: string } | { ok: false; error: string };
+
+async function resolveThreadTarget(cwd: string, threadId: string): Promise<ThreadResolution> {
   const workspace = cwd.trim();
-  if (!workspace) return null;
-  return findSessionFile(workspace, threadId) ? threadId : null;
+  const thread = workspace ? await findThread(workspace, threadId) : null;
+  if (!thread) return { ok: false, error: missingThreadError(threadId) };
+  if (thread.archived) return { ok: false, error: archivedThreadError(threadId) };
+  return { ok: true, piSessionId: thread.id };
 }
 
 function modelFields(requestedModelId: string, resolution: { modelId: string; fallback: boolean }) {
@@ -89,9 +97,11 @@ export async function runAutomation(automation: Automation): Promise<AutomationR
   }
   const resolution = resolveAutomationModel(automation.modelId, models);
   if (!resolution.ok) return failedRun(automation, target, resolution.error);
-  const resume = target.kind === "thread" ? resumeThread(automation.cwd, target.threadId) : null;
-  if (target.kind === "thread" && !resume) {
-    return failedRun(automation, target, missingThreadError(target.threadId));
+  let resume: string | null = null;
+  if (target.kind === "thread") {
+    const thread = await resolveThreadTarget(automation.cwd, target.threadId);
+    if (!thread.ok) return failedRun(automation, target, thread.error);
+    resume = thread.piSessionId;
   }
   try {
     const { session } = piRuntimeManager.getSessionForLookup(`automation:${automation.id}`, null);
