@@ -3,6 +3,7 @@
 // the Next server like the other runtime handlers.
 //
 
+import { Schema } from "effect";
 import {
   createAutomation,
   deleteAutomation,
@@ -12,8 +13,25 @@ import {
 } from "../automations-store";
 import { runAutomationNow } from "../automation-scheduler";
 import { clearGoal, readGoal, writeGoal, type GoalStatus } from "../goals-store";
+import {
+  AutomationTargetSchema,
+  type AutomationTarget,
+} from "../../../../shared/agent/automation";
 import { GOAL_STATUSES } from "../../../../shared/agent/session-goal";
 import { errorMessage, jsonError, readJsonBody } from "./helpers";
+
+const decodeTarget = Schema.decodeUnknownSync(AutomationTargetSchema);
+
+function readTarget(value: unknown): AutomationTarget | Response | undefined {
+  if (value === undefined) return undefined;
+  try {
+    return decodeTarget(value);
+  } catch {
+    return jsonError(
+      "target must be {\"kind\":\"global\"} or {\"kind\":\"thread\",\"threadId\":string,\"piSessionId\":string|null}.",
+    );
+  }
+}
 
 export async function handleAutomationsList(): Promise<Response> {
   try {
@@ -32,8 +50,17 @@ export async function handleAutomationCreate(request: Request): Promise<Response
   if (!prompt.trim() || !modelId.trim()) {
     return jsonError("Body must include prompt and modelId.");
   }
+  const target = readTarget(body?.target);
+  if (target instanceof Response) return target;
   try {
-    const automation = await createAutomation({ name, prompt, modelId, cwd, schedule: body?.schedule });
+    const automation = await createAutomation({
+      name,
+      prompt,
+      modelId,
+      cwd,
+      schedule: body?.schedule,
+      ...(target ? { target } : {}),
+    });
     return Response.json({ automation });
   } catch (error) {
     return jsonError(errorMessage(error, "Failed to create automation."), 500);
@@ -43,12 +70,15 @@ export async function handleAutomationCreate(request: Request): Promise<Response
 export async function handleAutomationPatch(request: Request, id: string): Promise<Response> {
   const body = await readJsonBody(request);
   if (!body) return jsonError("Body must be a JSON object.");
+  const target = readTarget(body.target);
+  if (target instanceof Response) return target;
   try {
     const automation = await patchAutomation(id, {
       ...(typeof body.name === "string" ? { name: body.name } : {}),
       ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
       ...(typeof body.modelId === "string" ? { modelId: body.modelId } : {}),
       ...(typeof body.cwd === "string" ? { cwd: body.cwd } : {}),
+      ...(target ? { target } : {}),
       ...(body.status === "active" || body.status === "paused" ? { status: body.status } : {}),
       ...(typeof body.unread === "boolean" ? { unread: body.unread } : {}),
       ...(body.schedule !== undefined ? { schedule: body.schedule } : {}),
