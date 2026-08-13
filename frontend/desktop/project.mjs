@@ -1976,6 +1976,13 @@ function isMergeInProgress() {
     return !1;
   }
 }
+function isRevertInProgress() {
+  try {
+    return Boolean(git(["rev-parse", "-q", "--verify", "REVERT_HEAD"]));
+  } catch {
+    return !1;
+  }
+}
 function preCommit() {
   let branch = git(["branch", "--show-current"]);
   if (["main", "dev"].includes(branch))
@@ -1989,7 +1996,7 @@ function preCommit() {
       return total;
     return total + Number(added) + Number(removed);
   }, 0);
-  if (!isMergeInProgress() && (activeFiles.length > 15 || lines > 600))
+  if (!isMergeInProgress() && !isRevertInProgress() && (activeFiles.length > 15 || lines > 600))
     throw Error(`pre-commit: staged change is too large (${activeFiles.length} files, ${lines} source lines); limit is 15 files and 600 source lines`);
   if (activeFiles.some((file2) => /^(frontend|shared)\//.test(file2)))
     run3("npm", ["run", "precommit"], path11.join(root5, "frontend"));
