@@ -5,8 +5,6 @@ import type { AppContext } from "../../app-context";
 import { resolveBinary, runCommandAsyncEffect } from "../../core/command";
 import { SttIntegrationError } from "../../services/stt";
 import type { SttMode } from "../../services/stt";
-import { TtsIntegrationError } from "../../services/tts";
-import type { TtsMode } from "../../services/tts";
 const AUDIO_DEFAULT_MODE = "strict";
 const AUDIO_TRANSCODE_TIMEOUT_MS = 60_000;
 
@@ -31,73 +29,38 @@ export const looksLikeWav = (bytes: Uint8Array): boolean => {
   return riff === "RIFF" && wave === "WAVE";
 };
 
-type AudioModelError = new (
-  status: number,
-  code: string,
-  message: string,
-  details?: Record<string, unknown>,
-) => Error;
+const STT_MODEL_ENV_VARIABLE = "LOCAL_STUDIO_STT_MODEL";
 
-const resolveAudioModelPath = (
+export const resolveSttModelPath = (
   context: AppContext,
-  requested: string | undefined,
-  subdir: "stt" | "tts",
-  envVariable: string,
-  IntegrationError: AudioModelError,
+  modelField: FormDataEntryValue | null,
 ): { requestedModel: string; modelPath: string } => {
-  const requestedModel = requested || process.env[envVariable]?.trim();
+  const requestedModel = parseField(modelField) || process.env[STT_MODEL_ENV_VARIABLE]?.trim();
   if (!requestedModel) {
-    throw new IntegrationError(
+    throw new SttIntegrationError(
       400,
       "model_missing",
-      `No ${subdir.toUpperCase()} model provided. Set model field or ${envVariable}.`,
+      `No STT model provided. Set model field or ${STT_MODEL_ENV_VARIABLE}.`,
     );
   }
 
   const modelPath = requestedModel.includes("/")
     ? resolve(requestedModel)
-    : resolve(context.config.models_dir, subdir, requestedModel);
+    : resolve(context.config.models_dir, "stt", requestedModel);
 
   if (!existsSync(modelPath)) {
-    throw new IntegrationError(
-      400,
-      "model_not_found",
-      `${subdir.toUpperCase()} model path does not exist`,
-      { requested_model: requestedModel, resolved_model_path: modelPath },
-    );
+    throw new SttIntegrationError(400, "model_not_found", "STT model path does not exist", {
+      requested_model: requestedModel,
+      resolved_model_path: modelPath,
+    });
   }
 
   return { requestedModel, modelPath };
 };
 
-export const resolveSttModelPath = (
-  context: AppContext,
-  modelField: FormDataEntryValue | null,
-): { requestedModel: string; modelPath: string } =>
-  resolveAudioModelPath(
-    context,
-    parseField(modelField),
-    "stt",
-    "LOCAL_STUDIO_STT_MODEL",
-    SttIntegrationError,
-  );
-
-export const resolveTtsModelPath = (
-  context: AppContext,
-  modelValue: unknown,
-): { requestedModel: string; modelPath: string } =>
-  resolveAudioModelPath(
-    context,
-    typeof modelValue === "string" ? modelValue.trim() : undefined,
-    "tts",
-    "LOCAL_STUDIO_TTS_MODEL",
-    TtsIntegrationError,
-  );
-
 export const ensureServiceLease = (
   context: AppContext,
-  mode: SttMode | TtsMode,
-  serviceId: "stt" | "tts",
+  mode: SttMode,
 ): Effect.Effect<Record<string, unknown> | null, AudioDependencyError> =>
   context.bridge.findInferenceProcess().pipe(
     Effect.mapError(
@@ -112,7 +75,7 @@ export const ensureServiceLease = (
       if (!holder || mode === "best_effort") return null;
       return {
         code: "gpu_lease_conflict",
-        requested_service: { id: serviceId },
+        requested_service: { id: "stt" },
         holder_service: { id: "llm" },
         actions: ["best_effort"],
       };
