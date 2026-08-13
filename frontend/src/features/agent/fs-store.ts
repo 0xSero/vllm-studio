@@ -1,4 +1,13 @@
-import { existsSync, promises as fs, lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
+import {
+  constants,
+  existsSync,
+  promises as fs,
+  lstatSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
+import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
 import type { FsEntry } from "@/features/agent/filesystem-types";
 import { listProjectsFromStore } from "@local-studio/agent-runtime/projects-store";
@@ -238,18 +247,24 @@ export async function readFileSnippet(
   return { content: buf.toString("utf-8"), truncated: false, size: stats.size };
 }
 
-export async function resolveReadableFile(
+export async function openReadableFile(
   rootCwd: string,
   relPath: string,
-): Promise<{ filePath: string; size: number; modifiedAt: Date }> {
+): Promise<{ file: FileHandle; size: number; modifiedAt: Date }> {
   const root = resolveWorkspaceRoot(rootCwd);
   const target = ensureInside(root, path.resolve(root, relPath));
   if (target !== root && !target.startsWith(root + path.sep)) {
     throw new Error("Path escapes project root");
   }
-  const stats = await fs.stat(target);
-  if (!stats.isFile()) throw new Error("Not a file");
-  return { filePath: target, size: stats.size, modifiedAt: stats.mtime };
+  const file = await fs.open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const stats = await file.stat();
+    if (!stats.isFile()) throw new Error("Not a file");
+    return { file, size: stats.size, modifiedAt: stats.mtime };
+  } catch (error) {
+    await file.close();
+    throw error;
+  }
 }
 
 export async function writeFileContent(

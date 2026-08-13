@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import path from "node:path";
-import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
-import { resolveReadableFile } from "@/features/agent/fs-store";
+import type { FileHandle } from "node:fs/promises";
+import { openReadableFile } from "@/features/agent/fs-store";
 import { requireApiAccess } from "@/lib/auth/guard";
 import { errorMessage, jsonError, requireAbsoluteCwd } from "@/app/api/_lib/route-helpers";
 import { parseByteRange } from "./byte-range";
@@ -47,12 +47,17 @@ export async function GET(request: NextRequest) {
   if (result.response) return result.response;
   const relPath = request.nextUrl.searchParams.get("path")?.trim() ?? "";
   if (!relPath) return jsonError("path is required");
+  let file: FileHandle | undefined;
   try {
-    const { filePath, size, modifiedAt } = await resolveReadableFile(result.cwd, relPath);
+    const opened = await openReadableFile(result.cwd, relPath);
+    file = opened.file;
+    const { size, modifiedAt } = opened;
     const name = path.basename(relPath);
     const inlineType = INLINE_TYPES[path.extname(relPath).toLowerCase()];
     const range = parseByteRange(request.headers.get("range"), size);
     if (range === null) {
+      await file.close();
+      file = undefined;
       return new Response(null, {
         status: 416,
         headers: { "content-range": `bytes */${size}`, "accept-ranges": "bytes" },
@@ -60,7 +65,12 @@ export async function GET(request: NextRequest) {
     }
     const start = range?.start ?? 0;
     const end = range?.end ?? Math.max(0, size - 1);
-    const stream = size > 0 ? Readable.toWeb(createReadStream(filePath, { start, end })) : null;
+    const stream = size > 0 ? Readable.toWeb(file.createReadStream({ start, end })) : null;
+    if (stream) file = undefined;
+    else {
+      await file.close();
+      file = undefined;
+    }
     const headers: Record<string, string> = {
       "content-type": inlineType ?? "application/octet-stream",
       "content-length": String(size === 0 ? 0 : end - start + 1),
@@ -85,6 +95,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    await file?.close().catch(() => undefined);
     return jsonError(errorMessage(error, "Read failed"), 404);
   }
 }
