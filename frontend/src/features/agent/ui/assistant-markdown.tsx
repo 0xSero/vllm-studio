@@ -1,13 +1,29 @@
 "use client";
 
-import React, { Children, isValidElement, memo, useCallback, useMemo, type ReactNode } from "react";
+import React, {
+  Children,
+  isValidElement,
+  memo,
+  useCallback,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
-import ReactMarkdown, { type Components } from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
 import { useToolsActions } from "@/features/agent/tools/context";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import { writeClipboardText } from "@/lib/clipboard";
+import {
+  assistantMediaKind,
+  assistantMediaName,
+  assistantMediaSource,
+  cleanFileReference,
+  remarkLocalMediaReferences,
+  type AssistantMediaKind,
+} from "@/features/agent/ui/assistant-media";
 
 const FILE_REF_PATTERN =
   /^(?:file:\/\/|~\/|\.{1,2}\/|\/|[\w.-]+\/)[^\s`'")]+(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)(?::\d+(?::\d+)?)?$/;
@@ -141,7 +157,11 @@ function safeExternalHref(value: string | undefined): boolean {
 
 // The remark/rehype plugin lists are constant. Hoisted out of render so the
 // `ReactMarkdown` reconciler sees the same array identity each commit.
-const REMARK_PLUGINS = [remarkGfm];
+const REMARK_PLUGINS = [remarkGfm, remarkLocalMediaReferences];
+
+function appUrlTransform(value: string): string {
+  return isFileReference(value) || assistantMediaKind(value) ? value : defaultUrlTransform(value);
+}
 
 // Repair a single emphasis run whose closing delimiter has a stray leading
 // space (`**text **`), which CommonMark won't parse as bold. Two guards keep us
@@ -167,14 +187,7 @@ type ToolHandlers = {
   requestFileOpen: (path: string) => void;
 };
 
-function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
-  const stripPath = (raw: string) =>
-    raw
-      .trim()
-      .replace(/^`+|`+$/g, "")
-      .replace(/^file:\/\//, "")
-      .replace(/:\d+(?::\d+)?$/, "");
-
+function buildComponentsWithAppLinks(tools: ToolHandlers, cwd: string | null): Components {
   // Clicking a file reference opens it in the right panel's Files view with the
   // file selected — on both web and desktop. `requestFileOpen` opens the panel,
   // switches to the files tab, and the filesystem effect resolves the path
@@ -186,7 +199,7 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
   // in-app Files view when reveal is unavailable or fails; on web there is no OS
   // file manager, so it just opens the Files view like a plain click.
   const openFileReference = (raw: string, revealInOs: boolean) => {
-    const cleaned = stripPath(raw);
+    const cleaned = cleanFileReference(raw);
     if (!cleaned) return;
     const reveal = revealInOs ? window.localStudioDesktop?.revealPath : undefined;
     if (reveal) {
@@ -212,10 +225,28 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
         );
       }
       const value = nodeToPlainText(children).trim();
+      const mediaKind = assistantMediaKind(value);
+      if (mediaKind) {
+        return (
+          <AssistantMedia cwd={cwd} kind={mediaKind} onOpen={openFileReference} reference={value} />
+        );
+      }
       if (isFileReference(value)) return <FileLink onOpen={openFileReference} value={value} />;
       return <code {...props}>{children}</code>;
     },
     a: ({ node: _n, href, children, ...props }) => {
+      const mediaKind = assistantMediaKind(href);
+      if (typeof href === "string" && mediaKind) {
+        return (
+          <AssistantMedia
+            cwd={cwd}
+            kind={mediaKind}
+            label={nodeToPlainText(children)}
+            onOpen={openFileReference}
+            reference={href}
+          />
+        );
+      }
       if (typeof href === "string" && isFileReference(href)) {
         return (
           <FileLink onOpen={openFileReference} value={href}>
@@ -245,7 +276,88 @@ function buildComponentsWithAppLinks(tools: ToolHandlers): Components {
         </a>
       );
     },
+    img: ({ src, alt }) => {
+      const reference = typeof src === "string" ? src : "";
+      const mediaKind = assistantMediaKind(reference);
+      return mediaKind ? (
+        <AssistantMedia
+          cwd={cwd}
+          kind={mediaKind}
+          label={alt ?? undefined}
+          onOpen={openFileReference}
+          reference={reference}
+        />
+      ) : (
+        <span>{alt ? `[Image: ${alt}]` : "[Remote image hidden]"}</span>
+      );
+    },
   };
+}
+
+function AssistantMedia({
+  cwd,
+  kind,
+  label,
+  onOpen,
+  reference,
+}: {
+  cwd: string | null;
+  kind: AssistantMediaKind;
+  label?: string;
+  onOpen: (value: string, revealInOs: boolean) => void;
+  reference: string;
+}) {
+  const source = assistantMediaSource(reference, cwd);
+  if (!source) return <FileLink onOpen={onOpen} value={reference} />;
+  return (
+    <AssistantMediaPlayback
+      key={source}
+      kind={kind}
+      label={label?.trim() || assistantMediaName(reference)}
+      onOpen={onOpen}
+      reference={reference}
+      source={source}
+    />
+  );
+}
+
+function AssistantMediaPlayback({
+  kind,
+  label,
+  onOpen,
+  reference,
+  source,
+}: {
+  kind: AssistantMediaKind;
+  label: string;
+  onOpen: (value: string, revealInOs: boolean) => void;
+  reference: string;
+  source: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <FileLink onOpen={onOpen} value={reference} />;
+  return (
+    <span className="chat-response-media" data-kind={kind}>
+      {kind === "image" ? (
+        <img src={source} alt={label} loading="lazy" onError={() => setFailed(true)} />
+      ) : kind === "video" ? (
+        <video
+          src={source}
+          controls
+          preload="metadata"
+          playsInline
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <audio src={source} controls preload="metadata" onError={() => setFailed(true)} />
+      )}
+      <span className="chat-response-media-caption">
+        <FileLink onOpen={onOpen} value={reference}>
+          {label}
+        </FileLink>
+      </span>
+    </span>
+  );
 }
 
 // A file path renders as a plain blue link (monospace, so paths stay legible)
@@ -274,7 +386,7 @@ function FileLink({
   );
 }
 
-function AssistantMarkdownInner({ text }: { text: string }) {
+function AssistantMarkdownInner({ text, cwd = null }: { text: string; cwd?: string | null }) {
   // Actions-only subscription: tools state churn (browser typing, selections)
   // never re-renders frozen markdown blocks.
   const tools = useToolsActions();
@@ -283,13 +395,16 @@ function AssistantMarkdownInner({ text }: { text: string }) {
   // captures changes identity (they're useCallback-stable in ToolsProvider).
   const componentsWithAppLinks = useMemo<Components>(
     () =>
-      buildComponentsWithAppLinks({
-        setComputerOpen: tools.setComputerOpen,
-        setComputerTab: tools.setComputerTab,
-        setBrowserUrl: tools.setBrowserUrl,
-        requestFileOpen: tools.requestFileOpen,
-      }),
-    [tools.setComputerOpen, tools.setComputerTab, tools.setBrowserUrl, tools.requestFileOpen],
+      buildComponentsWithAppLinks(
+        {
+          setComputerOpen: tools.setComputerOpen,
+          setComputerTab: tools.setComputerTab,
+          setBrowserUrl: tools.setBrowserUrl,
+          requestFileOpen: tools.requestFileOpen,
+        },
+        cwd,
+      ),
+    [cwd, tools.setComputerOpen, tools.setComputerTab, tools.setBrowserUrl, tools.requestFileOpen],
   );
   return (
     <div className="chat-markdown min-w-0 max-w-full overflow-x-hidden [overflow-wrap:anywhere]">
@@ -300,7 +415,11 @@ function AssistantMarkdownInner({ text }: { text: string }) {
           </pre>
         }
       >
-        <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={componentsWithAppLinks}>
+        <ReactMarkdown
+          remarkPlugins={REMARK_PLUGINS}
+          components={componentsWithAppLinks}
+          urlTransform={appUrlTransform}
+        >
           {normalizedText}
         </ReactMarkdown>
       </MarkdownErrorBoundary>

@@ -172,6 +172,7 @@ function ChatTranscript({
   stickToBottom,
   setStickToBottom,
   running,
+  cwd,
   onForkSession,
   loadEarlierHistory,
 }: {
@@ -182,6 +183,7 @@ function ChatTranscript({
   stickToBottom: boolean;
   setStickToBottom: (value: boolean) => void;
   running: boolean;
+  cwd: string;
   onForkSession?: () => void;
   loadEarlierHistory: () => Promise<void>;
 }) {
@@ -199,6 +201,7 @@ function ChatTranscript({
           onStickToBottomChange={setStickToBottom}
           messages={activeTab?.messages ?? []}
           running={running}
+          cwd={cwd || null}
           viewKey={viewKey}
           viewAlias={viewAlias}
           onForkSession={onForkSession}
@@ -667,6 +670,7 @@ export function ChatPane({
         stickToBottom={stickToBottom}
         setStickToBottom={setStickToBottom}
         running={Boolean(running)}
+        cwd={cwd}
         onForkSession={onForkSession}
         loadEarlierHistory={loadEarlierHistory}
       />
