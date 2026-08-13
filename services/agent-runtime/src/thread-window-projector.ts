@@ -20,14 +20,6 @@ export type ThreadWindowSource = {
   meta: ThreadWindowMeta | null;
 };
 
-const TURN_START_ROLES = new Set([
-  "user",
-  "bashExecution",
-  "custom",
-  "branchSummary",
-  "compactionSummary",
-]);
-
 const CURSOR_PREFIX = "w1:";
 
 const decodeThreadEntry = Schema.decodeUnknownOption(ThreadEntrySchema);
@@ -55,8 +47,7 @@ function toThreadItem(event: Record<string, unknown>): ThreadItem | null {
     timestamp: entry.timestamp ?? null,
     parentId: entry.parentId ?? null,
     role: messages[0]?.role ?? null,
-    startsTurn:
-      !isHiddenEntry(event) && messages.some((message) => TURN_START_ROLES.has(message.role)),
+    startsTurn: !isHiddenEntry(event) && messages.some((message) => message.role === "user"),
     tokenEstimate: messages.reduce((total, message) => total + estimateTokens(message), 0),
     payload: event,
   };
