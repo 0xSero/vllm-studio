@@ -17,6 +17,15 @@ export const AutomationScheduleSchema = Schema.Union([
   }),
 ]);
 
+export const AutomationTargetSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("global") }),
+  Schema.Struct({
+    kind: Schema.Literal("thread"),
+    threadId: Schema.String,
+    piSessionId: Schema.NullOr(Schema.String),
+  }),
+]);
+
 export const AutomationFallbackReasonSchema = Schema.Literals(["requested_model_inactive"]);
 
 export const AutomationRunSchema = Schema.Struct({
@@ -24,6 +33,7 @@ export const AutomationRunSchema = Schema.Struct({
   piSessionId: Schema.NullOr(Schema.String),
   cwd: Schema.String,
   projectId: Schema.NullOr(Schema.String),
+  target: Schema.optional(AutomationTargetSchema),
   outcome: Schema.Literals(["ok", "error"]),
   summary: Schema.String,
   error: Schema.optional(Schema.String),
@@ -39,6 +49,7 @@ export const AutomationSchema = Schema.Struct({
   prompt: Schema.String,
   modelId: Schema.String,
   cwd: Schema.String,
+  target: Schema.optional(AutomationTargetSchema),
   schedule: AutomationScheduleSchema,
   status: Schema.Literals(["active", "paused"]),
   nextRunAt: Schema.NullOr(Schema.String),
@@ -58,6 +69,7 @@ export const AutomationResponseSchema = Schema.Struct({
 });
 
 export type AutomationSchedule = typeof AutomationScheduleSchema.Type;
+export type AutomationTarget = typeof AutomationTargetSchema.Type;
 export type AutomationFallbackReason = typeof AutomationFallbackReasonSchema.Type;
 export type AutomationRun = typeof AutomationRunSchema.Type;
 export type Automation = typeof AutomationSchema.Type;

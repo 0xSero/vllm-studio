@@ -8,6 +8,7 @@ import type {
   Automation,
   AutomationRun,
   AutomationSchedule,
+  AutomationTarget,
 } from "../../../shared/agent/automation";
 
 export type {
@@ -15,6 +16,7 @@ export type {
   AutomationFallbackReason,
   AutomationRun,
   AutomationSchedule,
+  AutomationTarget,
 } from "../../../shared/agent/automation";
 
 const AUTOMATIONS_SUBDIR = "automations";
@@ -55,6 +57,22 @@ function normalizeSchedule(value: unknown): AutomationSchedule {
   return { kind: "daily", time: "08:00" };
 }
 
+function normalizeTarget(value: unknown): AutomationTarget {
+  if (
+    isRecord(value) &&
+    value.kind === "thread" &&
+    typeof value.threadId === "string" &&
+    value.threadId.trim()
+  ) {
+    return {
+      kind: "thread",
+      threadId: value.threadId.trim(),
+      piSessionId: typeof value.piSessionId === "string" ? value.piSessionId : null,
+    };
+  }
+  return { kind: "global" };
+}
+
 function normalizeRun(value: unknown): AutomationRun | null {
   if (!isRecord(value) || typeof value.at !== "string") return null;
   return {
@@ -62,6 +80,7 @@ function normalizeRun(value: unknown): AutomationRun | null {
     piSessionId: typeof value.piSessionId === "string" ? value.piSessionId : null,
     cwd: typeof value.cwd === "string" ? value.cwd : "",
     projectId: typeof value.projectId === "string" ? value.projectId : null,
+    ...(value.target === undefined ? {} : { target: normalizeTarget(value.target) }),
     outcome: value.outcome === "error" ? "error" : "ok",
     summary: typeof value.summary === "string" ? value.summary.slice(0, MAX_SUMMARY_CHARS) : "",
     ...(typeof value.error === "string" ? { error: value.error } : {}),
@@ -94,6 +113,7 @@ function normalizeAutomation(value: unknown): Automation {
     prompt: typeof record.prompt === "string" ? record.prompt : "",
     modelId: typeof record.modelId === "string" ? record.modelId : "",
     cwd: typeof record.cwd === "string" ? record.cwd : "",
+    target: normalizeTarget(record.target),
     schedule: normalizeSchedule(record.schedule),
     status: record.status === "paused" ? "paused" : "active",
     nextRunAt: typeof record.nextRunAt === "string" ? record.nextRunAt : null,
@@ -171,6 +191,7 @@ export async function createAutomation(input: {
   modelId: string;
   cwd: string;
   schedule: unknown;
+  target?: AutomationTarget;
 }): Promise<Automation> {
   const id = `auto-${randomUUID().slice(0, 8)}`;
   const schedule = normalizeSchedule(input.schedule);
@@ -182,6 +203,7 @@ export async function createAutomation(input: {
       prompt: input.prompt,
       modelId: input.modelId,
       cwd: input.cwd,
+      target: normalizeTarget(input.target),
       schedule,
       status: "active",
       nextRunAt: nextRunAt(schedule, new Date()).toISOString(),
@@ -196,7 +218,9 @@ export async function createAutomation(input: {
 
 export async function patchAutomation(
   id: string,
-  patch: Partial<Pick<Automation, "name" | "prompt" | "modelId" | "cwd" | "status" | "unread">> & {
+  patch: Partial<
+    Pick<Automation, "name" | "prompt" | "modelId" | "cwd" | "status" | "unread" | "target">
+  > & {
     schedule?: unknown;
     nextRunAt?: string | null;
     lastRun?: AutomationRun | null;
