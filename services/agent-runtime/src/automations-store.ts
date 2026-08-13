@@ -1,4 +1,4 @@
-import { readdir, rm } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { resolveDataDir } from "./data-dir";
@@ -236,35 +236,32 @@ export async function patchAutomation(
     runs?: readonly AutomationRun[];
   },
 ): Promise<Automation | null> {
-  const existing = await getAutomation(id);
-  if (!existing) return null;
   const { schedule: rawSchedule, ...rest } = patch;
   const schedule = rawSchedule === undefined ? undefined : normalizeSchedule(rawSchedule);
-  const next = await store.write(
-    {
+  return store.update(id, (existing) => {
+    if (!existing.id) return null;
+    return {
       ...rest,
       ...(schedule ? { schedule } : {}),
       ...(schedule || patch.status === "active"
         ? { nextRunAt: nextRunAt(schedule ?? existing.schedule, new Date()).toISOString() }
         : {}),
-    },
-    id,
-  );
-  return next;
+    };
+  });
 }
 
 export async function recordAutomationRun(
   id: string,
   run: AutomationRun,
-  nextRunAtValue: string,
 ): Promise<Automation | null> {
-  const automation = await getAutomation(id);
-  if (!automation) return null;
-  return patchAutomation(id, {
-    unread: true,
-    lastRun: run,
-    runs: prependAutomationRun(automation.runs, run),
-    nextRunAt: nextRunAtValue,
+  return store.update(id, (automation) => {
+    if (!automation.id) return null;
+    return {
+      unread: true,
+      lastRun: run,
+      runs: prependAutomationRun(automation.runs, run),
+      nextRunAt: nextRunAt(automation.schedule, new Date()).toISOString(),
+    };
   });
 }
 
@@ -284,7 +281,7 @@ export async function pauseAutomationsForThread(threadId: string): Promise<Autom
 export async function deleteAutomation(id: string): Promise<boolean> {
   const existing = await getAutomation(id);
   if (!existing) return false;
-  await rm(path.join(resolveDataDir(), AUTOMATIONS_SUBDIR, `${id}.json`), { force: true });
+  await store.remove(id);
   return true;
 }
 

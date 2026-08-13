@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { resolveDataDir } from "./data-dir";
 
@@ -45,10 +45,15 @@ export function createSessionScopedJsonStore<T extends { updatedAt: string }>(co
     }
   };
 
-  const write = (patch: Partial<Omit<T, "updatedAt">>, sessionId?: string | null): Promise<T> => {
+  const update = (
+    sessionId: string | null | undefined,
+    change: (current: T) => Partial<Omit<T, "updatedAt">> | null,
+  ): Promise<T | null> => {
     const file = filePath(sessionId);
     return withFileLock(file, async () => {
       const current = await read(sessionId);
+      const patch = change(current);
+      if (!patch) return null;
       const defined = Object.fromEntries(
         Object.entries(patch).filter(([, value]) => value !== undefined),
       );
@@ -67,5 +72,17 @@ export function createSessionScopedJsonStore<T extends { updatedAt: string }>(co
     });
   };
 
-  return { read, write };
+  const write = async (
+    patch: Partial<Omit<T, "updatedAt">>,
+    sessionId?: string | null,
+  ): Promise<T> => (await update(sessionId, () => patch)) as T;
+
+  const remove = (sessionId?: string | null): Promise<void> => {
+    const file = filePath(sessionId);
+    return withFileLock(file, async () => {
+      await rm(file, { force: true });
+    });
+  };
+
+  return { read, write, update, remove };
 }

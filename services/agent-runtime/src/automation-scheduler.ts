@@ -12,6 +12,7 @@ import { getGlobalSingleton } from "./instances";
 export { automationRunError } from "./automation-runner";
 
 const TICK_MS = 30_000;
+const MAX_OVERDUE_RUNS = 3;
 
 type SchedulerState = {
   timer: ReturnType<typeof setInterval> | null;
@@ -32,7 +33,7 @@ async function executeAutomationRun(
 ): Promise<void> {
   try {
     const run = await runAutomation(automation);
-    await recordAutomationRun(id, run, nextRunAt(automation.schedule, new Date()).toISOString());
+    await recordAutomationRun(id, run);
   } finally {
     scheduler.running.delete(id);
   }
@@ -50,6 +51,7 @@ export async function startAutomationRun(id: string): Promise<"started" | "runni
 
 async function tick(): Promise<void> {
   const now = new Date();
+  const scheduler = state();
   let automations: Automation[];
   try {
     automations = await listAutomations();
@@ -65,7 +67,8 @@ async function tick(): Promise<void> {
       continue;
     }
     if (new Date(automation.nextRunAt) <= now) {
-      void startAutomationRun(automation.id).catch(() => undefined);
+      if (scheduler.running.size >= MAX_OVERDUE_RUNS) break;
+      await startAutomationRun(automation.id).catch(() => "missing" as const);
     }
   }
 }
