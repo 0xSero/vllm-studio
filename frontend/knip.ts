@@ -24,7 +24,6 @@ const config = {
     "chromium-bidi",
     "proper-lockfile",
     "semver",
-    "fast-check",
     "@types/proper-lockfile",
     "@types/semver",
   ],
