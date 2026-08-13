@@ -190,7 +190,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   private currentModelId = "";
   private currentStartOptions: RuntimeStartOptions = {};
   private agentDir = "";
-  private sessionFileSize: number | null = null;
+  private sessionFileStamp: string | null = null;
   private refreshInFlight: Promise<void> | null = null;
   private queueEventBufferDepth = 0;
   private bufferedQueueEvent: PiEvent | null = null;
@@ -399,7 +399,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         this.currentPiSessionId = runtime.session.sessionId || desiredSessionId;
         this.currentFingerprint = fingerprint;
         this.currentStartOptions = options;
-        this.sessionFileSize = this.readSessionFileSize();
+        this.sessionFileStamp = this.readSessionFileStamp();
         this.unsubscribe = runtime.session.subscribe((event) => this.recordEvent(event));
       }.bind(this),
     );
@@ -552,8 +552,8 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     }
     const filepath = session.sessionManager.getSessionFile();
     if (!filepath) return;
-    const size = this.readSessionFileSize();
-    if (size === null || size === this.sessionFileSize) return;
+    const stamp = this.readSessionFileStamp();
+    if (stamp === null || stamp === this.sessionFileStamp) return;
     let persisted: SessionManager;
     try {
       persisted = SessionManager.open(
@@ -565,7 +565,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
       return;
     }
     if (persisted.getLeafId() === session.sessionManager.getLeafId()) {
-      this.sessionFileSize = size;
+      this.sessionFileStamp = stamp;
       return;
     }
     this.currentFingerprint = "";
@@ -703,11 +703,12 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     return session;
   }
 
-  private readSessionFileSize(): number | null {
+  private readSessionFileStamp(): string | null {
     const filepath = this.runtime?.session.sessionManager.getSessionFile();
     if (!filepath) return null;
     try {
-      return statSync(filepath).size;
+      const stats = statSync(filepath);
+      return `${stats.size}:${stats.mtimeMs}`;
     } catch {
       return null;
     }
