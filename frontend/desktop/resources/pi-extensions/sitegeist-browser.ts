@@ -16,6 +16,7 @@ type ToolResult = {
 
 const DEFAULT_RELAY_URL = "http://127.0.0.1:7717";
 const DEFAULT_TIMEOUT_MS = 120_000;
+const CAPABILITIES_TIMEOUT_MS = 2_000;
 const RelayResponseSchema = Schema.Struct({
   result: Schema.optional(Schema.Unknown),
   error: Schema.optional(
@@ -29,7 +30,7 @@ const RelayCapabilitiesSchema = Schema.Struct({
   methods: Schema.optional(Schema.Array(Schema.String)),
 });
 
-type RelayConfig = {
+export type RelayConfig = {
   relayUrl: string;
   sessionId: string;
   timeoutMs: number;
@@ -54,9 +55,11 @@ async function callRelay(
   method: string,
   params: Record<string, unknown>,
   signal?: AbortSignal,
+  request: typeof fetch = fetch,
+  timeoutMs = config.timeoutMs,
 ): Promise<unknown> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const abort = () => controller.abort();
   signal?.addEventListener("abort", abort, { once: true });
   if (signal?.aborted) controller.abort();
@@ -67,23 +70,25 @@ async function callRelay(
   };
   if (config.token) headers.Authorization = `Bearer ${config.token}`;
 
-  const response = await fetch(`${config.relayUrl}/rpc`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }),
-    signal: controller.signal,
-  }).finally(() => {
+  try {
+    const response = await request(`${config.relayUrl}/rpc`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }),
+      signal: controller.signal,
+    });
+
+    const body = Schema.decodeUnknownSync(RelayResponseSchema)(
+      await response.json().catch(() => ({})),
+    );
+    if (!response.ok || body.error) {
+      throw new Error(body.error?.message || `sitegeist relay HTTP ${response.status}`);
+    }
+    return body.result;
+  } finally {
     clearTimeout(timeout);
     signal?.removeEventListener("abort", abort);
-  });
-
-  const body = Schema.decodeUnknownSync(RelayResponseSchema)(
-    await response.json().catch(() => ({})),
-  );
-  if (!response.ok || body.error) {
-    throw new Error(body.error?.message || `sitegeist relay HTTP ${response.status}`);
   }
-  return body.result;
 }
 
 // Tool definitions: each maps a `sitegeist_*` tool to one relay method. `pick`
@@ -263,11 +268,22 @@ async function runTool(
   }
 }
 
-async function relayCapabilities(config: RelayConfig): Promise<Set<string> | null> {
+export async function relayCapabilities(
+  config: RelayConfig,
+  request: typeof fetch = fetch,
+  timeoutMs = CAPABILITIES_TIMEOUT_MS,
+): Promise<Set<string> | null> {
   try {
     const controller = new AbortController();
     const result = Schema.decodeUnknownSync(RelayCapabilitiesSchema)(
-      await callRelay(config, "relay.capabilities", {}, controller.signal),
+      await callRelay(
+        config,
+        "relay.capabilities",
+        {},
+        controller.signal,
+        request,
+        Math.min(config.timeoutMs, timeoutMs),
+      ),
     );
     return result.methods ? new Set(result.methods) : null;
   } catch {

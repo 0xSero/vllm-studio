@@ -72,26 +72,29 @@ export async function callBrowserAction(
   const abort = () => controller.abort();
   signal?.addEventListener("abort", abort, { once: true });
   if (signal?.aborted) controller.abort();
-  const response = await request(`${config.frontendBase}/api/agent/browser/${verb}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", [config.sessionHeader]: config.sessionId },
-    body: JSON.stringify(payload),
-    signal: controller.signal,
-  }).finally(() => {
+  try {
+    const response = await request(`${config.frontendBase}/api/agent/browser/${verb}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", [config.sessionHeader]: config.sessionId },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => "");
+      throw new Error(`HTTP ${response.status} ${errBody}`);
+    }
+    const result = Schema.decodeUnknownSync(BrowserActionResponseSchema)(await response.json());
+    if (!result.ok) throw new Error(result.error || "browser bridge returned ok=false");
+    const text =
+      typeof result.data === "string" ? result.data : JSON.stringify(result.data, null, 2);
+    return {
+      content: [{ type: "text", text }],
+      details: { verb, payload, data: result.data },
+    };
+  } finally {
     clearTimeout(timeout);
     signal?.removeEventListener("abort", abort);
-  });
-  if (!response.ok) {
-    const errBody = await response.text().catch(() => "");
-    throw new Error(`HTTP ${response.status} ${errBody}`);
   }
-  const result = Schema.decodeUnknownSync(BrowserActionResponseSchema)(await response.json());
-  if (!result.ok) throw new Error(result.error || "browser bridge returned ok=false");
-  const text = typeof result.data === "string" ? result.data : JSON.stringify(result.data, null, 2);
-  return {
-    content: [{ type: "text", text }],
-    details: { verb, payload, data: result.data },
-  };
 }
 
 async function safeBrowserAction(
