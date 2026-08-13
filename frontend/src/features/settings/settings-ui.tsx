@@ -128,6 +128,13 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
   );
 }
 
+const settingsGroupBodyClasses = cx(
+  "overflow-hidden rounded-[10px] border border-(--ui-border) bg-(--ui-surface)",
+  "[&>*+*]:relative [&>*+*]:before:pointer-events-none [&>*+*]:before:absolute",
+  "[&>*+*]:before:inset-x-3 [&>*+*]:before:top-0 [&>*+*]:before:h-px",
+  "[&>*+*]:before:bg-(--ui-separator)",
+);
+
 export function SettingsGroup({
   title,
   description,
@@ -181,11 +188,7 @@ export function SettingsGroup({
         </div>
         {actions ? <div className="shrink-0">{actions}</div> : null}
       </div>
-      {showBody ? (
-        <div className="border-y border-(--ui-separator) [&>*+*]:border-t [&>*+*]:border-(--ui-separator)/80">
-          {children}
-        </div>
-      ) : null}
+      {showBody ? <div className={settingsGroupBodyClasses}>{children}</div> : null}
     </section>
   );
 }
