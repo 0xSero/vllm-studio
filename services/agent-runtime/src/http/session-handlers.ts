@@ -1,8 +1,12 @@
 import path from "node:path";
-import type { AggregatedSession } from "../../../../shared/agent/session-summary";
-import { listProjectsFromStore, resolveAllowedWorkspace } from "../projects-store";
-import { listArchivedSessionMetadata, setSessionArchived } from "../session-metadata-store";
-import { listSessions, loadSession } from "../sessions-store";
+import { resolveAllowedWorkspace } from "../projects-store";
+import {
+  findThread,
+  listThreads,
+  listThreadsAcrossProjects,
+  readThreadWindow,
+  setThreadArchived,
+} from "../thread-repository";
 import { errorMessage, jsonError } from "./helpers";
 
 function parseRelativeSince(value: string | null): Date | null {
@@ -67,7 +71,7 @@ export async function handleSessionsList(request: Request): Promise<Response> {
   const sinceValue = searchParams.get("since");
   const since = parseRelativeSince(sinceValue);
   if (sinceValue && !since) return jsonError("since must use a relative value like 7d");
-  const sessions = await listSessions(cwd, {
+  const sessions = await listThreads(cwd, {
     ...(since ? { since } : {}),
     ...(limit ? { limit } : {}),
     ids: idsFrom(searchParams),
@@ -79,55 +83,12 @@ export async function handleSessionsList(request: Request): Promise<Response> {
 export async function handleAllSessions(request: Request): Promise<Response> {
   const searchParams = new URL(request.url).searchParams;
   const since = parseRelativeSince(searchParams.get("since")) ?? undefined;
-  const archive = archiveOptions(searchParams);
-  const aggregated: AggregatedSession[] = [];
-  const seenIds = new Set<string>();
-  await Promise.all(listProjectsFromStore().map(async (project) => {
-    try {
-      const cwd = resolveAllowedWorkspace(project.path);
-      const sessions = await listSessions(cwd, {
-        ...(since && !archive.archivedOnly ? { since } : {}),
-        ids: idsFrom(searchParams),
-        ...archive,
-      });
-      for (const summary of sessions) {
-        seenIds.add(summary.id);
-        aggregated.push({
-          ...summary,
-          projectId: project.id,
-          projectName: project.name,
-          projectPath: project.path,
-        });
-      }
-    } catch {
-      return;
-    }
-  }));
-  if (archive.archivedOnly) {
-    for (const metadata of listArchivedSessionMetadata()) {
-      if (seenIds.has(metadata.id)) continue;
-      aggregated.push({
-        id: metadata.id,
-        filename: "",
-        cwd: metadata.cwd ?? "",
-        startedAt: metadata.sessionUpdatedAt ?? metadata.archivedAt ?? metadata.updatedAt ?? "",
-        updatedAt: metadata.sessionUpdatedAt ?? metadata.updatedAt ?? metadata.archivedAt ?? "",
-        modelId: null,
-        provider: null,
-        firstUserMessage: metadata.title,
-        archived: true,
-        archivedAt: metadata.archivedAt,
-        parentSessionId: null,
-        subagentName: null,
-        projectId: metadata.projectId ?? "",
-        projectName: metadata.projectName ?? "Unknown project",
-        projectPath: metadata.cwd ?? "",
-      });
-    }
-  }
-  aggregated.sort((a, b) =>
-    new Date(b.startedAt || b.updatedAt).getTime() - new Date(a.startedAt || a.updatedAt).getTime());
-  return Response.json({ sessions: aggregated });
+  const sessions = await listThreadsAcrossProjects({
+    ...(since ? { since } : {}),
+    ids: idsFrom(searchParams),
+    ...archiveOptions(searchParams),
+  });
+  return Response.json({ sessions });
 }
 
 function validSessionId(value: string): boolean {
@@ -143,7 +104,7 @@ export async function handleSessionGet(request: Request, id: string): Promise<Re
   if (cwd instanceof Response) return cwd;
   const tail = nonNegativeInteger(searchParams.get("tail"));
   const before = nonNegativeInteger(searchParams.get("before"));
-  const { events, cursor, meta } = await loadSession(cwd, id, { tail, before });
+  const { events, cursor, meta } = await readThreadWindow(cwd, id, { tail, before });
   return Response.json({ events, cursor, meta });
 }
 
@@ -159,17 +120,16 @@ export async function handleSessionPatch(request: Request, id: string): Promise<
   const cwdValue = typeof body.cwd === "string" ? body.cwd.trim() : "";
   if (body.archived && !cwdValue) return jsonError("cwd is required to archive a session");
   let cwd = "";
-  let summary: Awaited<ReturnType<typeof listSessions>>[number] | null = null;
+  let summary: Awaited<ReturnType<typeof findThread>> = null;
   if (cwdValue) {
     const resolved = existingWorkspace(cwdValue);
     if (resolved instanceof Response) return resolved;
     cwd = resolved;
-    summary = (await listSessions(cwd, { ids: [id], includeArchived: true }))
-      .find((session) => session.id === id) ?? null;
+    summary = await findThread(cwd, id);
     if (body.archived && !summary) return jsonError("session not found", 404);
   }
   try {
-    const archiveState = await setSessionArchived(id, body.archived, new Date(), {
+    const archiveState = await setThreadArchived(id, body.archived, new Date(), {
       cwd: summary?.cwd ?? cwd,
       title: summary?.firstUserMessage ?? optionalString(body, "title"),
       projectId: optionalString(body, "projectId"),

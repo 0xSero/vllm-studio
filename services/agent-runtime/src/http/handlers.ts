@@ -26,7 +26,7 @@ import {
 import { piResourceDiagnostics, piRuntimeManager } from "../pi-runtime";
 import { isAgentSettledEvent } from "../pi-runtime-state";
 import type { LoggedPiEvent, PiAgentSession, PiAgentStatus } from "../pi-runtime-types";
-import { listSessions } from "../sessions-store";
+import { listThreads } from "../thread-repository";
 import { errorMessage, jsonError } from "./helpers";
 import {
   initialRuntimeStatusPhase,
@@ -165,7 +165,7 @@ function resolvePiSessionIdEffect(
   const status = session.status;
   if (status.piSessionId || !status.cwd) return Effect.succeed(status.piSessionId);
   return Effect.tryPromise({
-    try: () => listSessions(status.cwd, { since }),
+    try: () => listThreads(status.cwd, { since }),
     catch: (error) => error,
   }).pipe(Effect.map((recent) => recent[0]?.id ?? null));
 }

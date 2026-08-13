@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { getGlobalSingleton } from "./instances";
 import { piRuntimeManager } from "./pi-runtime";
 import { lastAssistantText } from "./session-text";
-import { sessionSubagentLink, setSubagentLink } from "./session-metadata-store";
+import { linkThreadParent, threadParent } from "./thread-repository";
 
 const NICKNAMES = [
   "Euclid",
@@ -96,7 +96,7 @@ export async function runSubagent(input: {
 
   if (
     registry.childPiSessionIds.has(parentPiSessionId) ||
-    sessionSubagentLink(parentPiSessionId) !== null
+    threadParent(parentPiSessionId) !== null
   ) {
     throw new Error("Subagents cannot spawn their own subagents.");
   }
@@ -141,7 +141,9 @@ export async function runSubagent(input: {
     run.piSessionId = status.piSessionId;
     if (status.piSessionId) {
       registry.childPiSessionIds.add(status.piSessionId);
-      await setSubagentLink(status.piSessionId, parentPiSessionId, run.name).catch(() => undefined);
+      await linkThreadParent(status.piSessionId, parentPiSessionId, run.name).catch(
+        () => undefined,
+      );
     }
     const text = status.piSessionId ? lastAssistantText(status.cwd, status.piSessionId) : "";
     void session.stop().catch(() => undefined);
