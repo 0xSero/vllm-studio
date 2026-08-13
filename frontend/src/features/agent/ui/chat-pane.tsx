@@ -17,6 +17,7 @@ import { type FileMentionRow, type MentionRow } from "@/features/agent/ui/agent-
 import { builtinCommandProvider } from "@/features/agent/composer/builtin-commands";
 import { ComposerProjectDrawer } from "@/features/agent/ui/composer-project-drawer";
 import { SubagentChips } from "@/features/agent/ui/subagent-chips";
+import { ThreadAutomationPanel } from "@/features/agent/automations/thread-automation-panel";
 import { GitDiffDrawer } from "@/features/agent/ui/git-diff-drawer";
 import {
   promptTemplateCommandProvider,
@@ -49,6 +50,11 @@ function piSessionIdOf(tab: { piSessionId?: string | null } | null | undefined):
 function subagentChipsFor(piSessionId: string | null | undefined) {
   if (!piSessionId) return null;
   return <SubagentChips piSessionId={piSessionId} />;
+}
+
+function threadAutomationsFor(piSessionId: string | null | undefined, cwd: string) {
+  if (!piSessionId) return null;
+  return <ThreadAutomationPanel piSessionId={piSessionId} cwd={cwd} />;
 }
 
 import {
@@ -682,6 +688,7 @@ export function ChatPane({
           onClose: closeDiffDrawer,
         })}
         {subagentChipsFor(activePiSessionId)}
+        {threadAutomationsFor(activePiSessionId, cwd)}
         <AgentComposerFrame
           attachments={attachments}
           banner={composerVisual.banner}
