@@ -12,6 +12,9 @@ import type { ContextAttachRequest } from "@/features/agent/tools/types";
 import { attachmentDedupKey, type ChatAttachment } from "@/features/agent/ui/chat-attachments";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
+const REPLAY_MAX_ATTEMPTS = 3;
+const REPLAY_RETRY_DELAY_MS = 3_000;
+
 export function useChatPaneDerivedState({
   activeTabId,
   contextWindow,
@@ -66,16 +69,27 @@ export function useChatPaneRuntimeHandle({
   running: boolean;
 }) {
   const [compacting, setCompacting] = useState(false);
-  const replayedRef = useRef<Set<string>>(new Set());
+  const [replayTick, setReplayTick] = useState(0);
+  const replayedRef = useRef<Map<string, { attempts: number; nextAt: number }>>(new Map());
   useMountSubscription(() => {
     if (!isFocused || !activeTab) return;
     const { piSessionId, messages, status, hydratedFromCache } = activeTab;
+    const replayed = hydratedFromCache === false;
     const hasRealTranscript = messages.length > 0 && !hydratedFromCache;
-    if (!piSessionId || hasRealTranscript || status !== "idle") return;
-    if (replayedRef.current.has(activeTabId)) return;
-    replayedRef.current.add(activeTabId);
+    if (!piSessionId || replayed || hasRealTranscript || status !== "idle") return;
+    const attempt = replayedRef.current.get(activeTabId);
+    if (attempt && attempt.attempts >= REPLAY_MAX_ATTEMPTS) return;
+    const wait = attempt ? attempt.nextAt - Date.now() : 0;
+    if (wait > 0) {
+      const timer = setTimeout(() => setReplayTick((tick) => tick + 1), wait);
+      return () => clearTimeout(timer);
+    }
+    replayedRef.current.set(activeTabId, {
+      attempts: (attempt?.attempts ?? 0) + 1,
+      nextAt: Date.now() + REPLAY_RETRY_DELAY_MS,
+    });
     void engine.loadAndReplay(piSessionId, activeTabId);
-  }, [activeTab, activeTabId, isFocused, engine]);
+  }, [activeTab, activeTabId, isFocused, engine, replayTick]);
   const loadAndReplay = useCallback(
     (piSessionId: string) =>
       activeTabId ? engine.loadAndReplay(piSessionId, activeTabId) : Promise.resolve(),
