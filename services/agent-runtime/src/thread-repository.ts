@@ -119,11 +119,15 @@ export async function findThread(cwd: string, threadId: string): Promise<ThreadS
 
 export async function listThreadsAcrossProjects(
   request: ThreadListRequest = {},
+  includeDescendants = false,
 ): Promise<ProjectScopedThread[]> {
   const snapshot = readThreadMetadataSnapshot();
+  const ids =
+    includeDescendants && request.ids?.length ? snapshot.descendantsOf(request.ids) : request.ids;
+  const descendantIds = includeDescendants && ids ? new Set(ids) : null;
   const scoped: ThreadListRequest = request.archivedOnly
-    ? { ...request, since: undefined }
-    : request;
+    ? { ...request, ids, since: undefined }
+    : { ...request, ids };
   const aggregated: ProjectScopedThread[] = [];
   const seenIds = new Set<string>();
   await Promise.all(
@@ -146,6 +150,7 @@ export async function listThreadsAcrossProjects(
   );
   if (request.archivedOnly) {
     for (const metadata of snapshot.archived) {
+      if (descendantIds && !descendantIds.has(metadata.id)) continue;
       if (seenIds.has(metadata.id)) continue;
       aggregated.push({
         id: metadata.id,

@@ -54,6 +54,13 @@ function idsFrom(searchParams: URLSearchParams): string[] | undefined {
     .filter(Boolean);
 }
 
+function booleanFlag(value: string | null): boolean | null {
+  if (value === null) return false;
+  if (value === "1" || value === "true") return true;
+  if (value === "0" || value === "false") return false;
+  return null;
+}
+
 function existingWorkspace(value: string): string | Response {
   if (!path.isAbsolute(value)) return jsonError("cwd must be absolute");
   try {
@@ -88,11 +95,18 @@ export async function handleSessionsList(request: Request): Promise<Response> {
 export async function handleAllSessions(request: Request): Promise<Response> {
   const searchParams = new URL(request.url).searchParams;
   const since = parseRelativeSince(searchParams.get("since")) ?? undefined;
-  const sessions = await listThreadsAcrossProjects({
-    ...(since ? { since } : {}),
-    ids: idsFrom(searchParams),
-    ...archiveOptions(searchParams),
-  });
+  const includeDescendants = booleanFlag(searchParams.get("includeDescendants"));
+  if (includeDescendants === null) {
+    return jsonError("includeDescendants must be a boolean flag");
+  }
+  const sessions = await listThreadsAcrossProjects(
+    {
+      ...(since ? { since } : {}),
+      ids: idsFrom(searchParams),
+      ...archiveOptions(searchParams),
+    },
+    includeDescendants,
+  );
   return Response.json({ sessions });
 }
 

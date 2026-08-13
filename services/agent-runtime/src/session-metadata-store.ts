@@ -66,6 +66,7 @@ export type ThreadInventoryMetadata = {
 
 export type ThreadMetadataSnapshot = {
   archived: ArchivedSessionMetadata[];
+  descendantsOf: (roots: readonly string[]) => string[];
   threadsForCwd: (cwd: string) => ThreadInventoryMetadata[];
 };
 
@@ -302,8 +303,27 @@ function archivedSessionMetadata(
 export function readThreadMetadataSnapshot(): ThreadMetadataSnapshot {
   const sessions = readStore().sessions;
   const inventory = threadInventoryMetadata(sessions);
+  const children = new Map<string, string[]>();
+  for (const [id, metadata] of Object.entries(sessions)) {
+    if (!metadata.parentSessionId) continue;
+    const siblings = children.get(metadata.parentSessionId) ?? [];
+    siblings.push(id);
+    children.set(metadata.parentSessionId, siblings);
+  }
   return {
     archived: archivedSessionMetadata(sessions),
+    descendantsOf: (roots) => {
+      const ids = new Set(roots.map((id) => id.trim()).filter(Boolean));
+      const pending = [...ids];
+      for (let index = 0; index < pending.length; index += 1) {
+        for (const child of children.get(pending[index]!) ?? []) {
+          if (ids.has(child)) continue;
+          ids.add(child);
+          pending.push(child);
+        }
+      }
+      return [...ids];
+    },
     threadsForCwd: (cwd) => {
       const expected = workspacePaths(cwd);
       return inventory.flatMap(({ cwdPaths, ...thread }) =>
