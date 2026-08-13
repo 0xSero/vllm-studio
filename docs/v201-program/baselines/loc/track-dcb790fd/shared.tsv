@@ -1,0 +1,27 @@
+ref: dcb790fdb7281361af36a9cbb0812df212e3e5cd
+date: 2026-08-13T20:14:41Z
+tool: cloc-2.06.pl (sha256 ed9fbdd081a2ceb933ea490b3c1cfacc87d3898ae2650d0d6756439695a836c8, AlDanial/cloc v2.06, perl 5.034) --by-file --csv --list-file=production-files.txt
+sort: LC_ALL=C by path
+shared/agent/agent-image-input.ts	54
+shared/agent/agent-turn-body.ts	55
+shared/agent/agent-turn.ts	183
+shared/agent/automation.ts	51
+shared/agent/backend-url.ts	15
+shared/agent/composer-refs.ts	71
+shared/agent/context-usage.ts	6
+shared/agent/guards.ts	3
+shared/agent/litter-bridge-realtime-v1.fixture.json	211
+shared/agent/litter-bridge.ts	870
+shared/agent/models.ts	143
+shared/agent/pi-events.ts	30
+shared/agent/project-ids.ts	1
+shared/agent/sanitize-embedded-browser-url.ts	99
+shared/agent/session-goal.ts	23
+shared/agent/session-summary.ts	19
+shared/agent/session-title.ts	19
+shared/model-recommendations.json	118
+shared/model-recommendations.ts	91
+shared/package.json	8
+shared/tsconfig.json	21
+total-code: 2091
+rows: 21
