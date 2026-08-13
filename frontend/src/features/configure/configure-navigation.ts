@@ -1,4 +1,4 @@
-export const CONFIGURE_SECTION_IDS = ["overview", "rig", "integrations", "server"] as const;
+export const CONFIGURE_SECTION_IDS = ["overview", "rig", "server"] as const;
 
 export type ConfigureSectionId = (typeof CONFIGURE_SECTION_IDS)[number];
 

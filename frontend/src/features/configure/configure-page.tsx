@@ -14,7 +14,6 @@ import {
 } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { SettingsLayout, type SettingsSectionDef } from "@/features/settings/settings-ui";
-import { IntegrationsContent } from "@/features/integrations/integrations-page";
 import { ServerContent } from "@/features/logs/server-view";
 import { useConfigure } from "./use-configure";
 import { RigsSection } from "./rigs-section";
@@ -38,12 +37,6 @@ const CONFIGURE_SECTIONS: SettingsSectionDef<ConfigureSectionId>[] = [
     label: "Machines",
     description: "Hardware available for running local and remote models.",
     icon: sectionIcon(Monitor),
-  },
-  {
-    id: "integrations",
-    label: "Integrations",
-    description: "Plugins, connectors, accounts, and reusable skills.",
-    icon: sectionIcon(Plug),
   },
   {
     id: "server",
@@ -106,28 +99,36 @@ export default function ConfigurePage() {
   const requestedSectionValue = searchParams.get("section") ?? "";
   const requestedSection = configureSectionFromHash(requestedSectionValue);
   const requestedModels = isLegacyConfigureModelsSection(requestedSectionValue);
+  const requestedIntegrations = requestedSectionValue.replace(/^#/, "") === "integrations";
   const [section, setSection] = useState<ConfigureSectionId>(requestedSection);
-  const [redirectingToModels, setRedirectingToModels] = useState(requestedModels);
+  const [redirecting, setRedirecting] = useState(requestedModels || requestedIntegrations);
 
   useMountSubscription(() => {
     const syncSection = () => {
       const hash = window.location.hash;
       const hashSection = configureSectionFromHash(hash);
       if (isLegacyConfigureModelsSection(hash) || (hashSection === "overview" && requestedModels)) {
-        setRedirectingToModels(true);
+        setRedirecting(true);
         const params = new URLSearchParams(window.location.search);
         params.delete("section");
         router.replace(`/models${params.size ? `?${params.toString()}` : ""}`);
         return;
       }
-      setRedirectingToModels(false);
+      if (hash.replace(/^#/, "") === "integrations" || requestedIntegrations) {
+        setRedirecting(true);
+        const params = new URLSearchParams(window.location.search);
+        params.delete("section");
+        router.replace(`/integrations${params.size ? `?${params.toString()}` : ""}`);
+        return;
+      }
+      setRedirecting(false);
       setSection(hashSection === "overview" ? requestedSection : hashSection);
     };
     syncSection();
     const onHashChange = () => syncSection();
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
-  }, [requestedModels, requestedSection, router]);
+  }, [requestedIntegrations, requestedModels, requestedSection, router]);
 
   const selectSection = (next: ConfigureSectionId) => {
     setSection(next);
@@ -150,7 +151,7 @@ export default function ConfigurePage() {
   );
   const machineSection = section === "overview" || section === "rig";
 
-  if (redirectingToModels) return null;
+  if (redirecting) return null;
 
   return (
     <SettingsLayout
@@ -194,7 +195,7 @@ export default function ConfigurePage() {
                 title="Integrations"
                 description="Connect capability bundles, tools, services, accounts, and skills."
                 detail="Plugins · connectors · skills"
-                onOpen={() => selectSection("integrations")}
+                onOpen={() => router.push("/integrations")}
               />
               <OverviewRow
                 icon={<Server className="h-5 w-5" />}
@@ -221,7 +222,6 @@ export default function ConfigurePage() {
 
       {section === "rig" ? <RigsSection state={state} /> : null}
 
-      {section === "integrations" ? <IntegrationsContent /> : null}
       {section === "server" ? <ServerContent embedded /> : null}
     </SettingsLayout>
   );
