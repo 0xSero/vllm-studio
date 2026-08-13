@@ -883,6 +883,14 @@ class PiRuntimeManager {
     return findRuntimeSessionForLookup(this.listSessions(), sessionId, piSessionId);
   }
 
+  async stopAndDeleteSession(sessionId: string): Promise<boolean> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    this.sessions.delete(sessionId);
+    await session.stop();
+    return true;
+  }
+
   listSessions(): Array<{ sessionId: string; session: PiAgentSession }> {
     return [...this.sessions.entries()].map(([sessionId, session]) => ({ sessionId, session }));
   }
