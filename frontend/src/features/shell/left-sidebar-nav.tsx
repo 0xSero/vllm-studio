@@ -20,6 +20,8 @@ export const navigationItems = [tabs[0], modelsTab, ...tabs.slice(1)];
 export function mobilePageTitle(pathname: string): string {
   if (pathname.startsWith("/agent/automations")) return "Automations";
   if (pathname.startsWith("/agent")) return "Tasks";
+  if (pathname.startsWith("/integrations")) return "Integrations";
+  if (pathname.startsWith("/settings")) return "Settings";
   if (pathname.startsWith("/logs")) return "Logs";
   const tab = navigationItems.find((entry) => isRouteActive(pathname, entry.href));
   return tab?.label ?? "Local Studio";

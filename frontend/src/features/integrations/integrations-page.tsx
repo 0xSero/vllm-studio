@@ -25,6 +25,7 @@ const initialSection = (): IntegrationSectionId => {
 export function IntegrationsContent({ embedded = false }: { embedded?: boolean }) {
   const [activeSection, setActiveSection] = useState<IntegrationSectionId>(initialSection);
   const [revision, setRevision] = useState(0);
+  const title = INTEGRATION_TABS.find((tab) => tab.id === activeSection)?.label ?? "Plugins";
 
   const selectSection = (section: IntegrationSectionId) => {
     setActiveSection(section);
@@ -66,7 +67,7 @@ export function IntegrationsContent({ embedded = false }: { embedded?: boolean }
     </div>
   ) : (
     <TabbedPage
-      title="Plugins"
+      title={title}
       description="Work with Local Studio across your models, tools, accounts, and reusable skills."
       width="sm"
       tabs={INTEGRATION_TABS}

@@ -38,6 +38,12 @@ const APP_DESTINATIONS: AppDestination[] = [
     description: "Find models, manage serves, launches, and downloads.",
   },
   {
+    href: "/agent/automations",
+    label: "Automations",
+    keywords: "automations scheduled tasks schedules recurring monitors",
+    description: "Schedule recurring tasks and monitor their runs.",
+  },
+  {
     href: "/usage",
     label: "Usage",
     keywords: "tokens requests analytics costs provider pi sessions peaks",
@@ -46,9 +52,14 @@ const APP_DESTINATIONS: AppDestination[] = [
   {
     href: "/configure",
     label: "Configure",
-    keywords:
-      "machines hardware integrations mcp connectors plugins skills server logs api docs swagger controller engines runtime",
-    description: "Manage machines, integrations, and the controller.",
+    keywords: "machines hardware server logs api docs swagger controller engines runtime",
+    description: "Manage machines and the controller.",
+  },
+  {
+    href: "/integrations",
+    label: "Integrations",
+    keywords: "integrations plugins connectors mcp providers accounts tools skills",
+    description: "Manage plugins, connectors, providers, and skills.",
   },
   {
     href: "/agent",
@@ -59,8 +70,8 @@ const APP_DESTINATIONS: AppDestination[] = [
   {
     href: "/settings",
     label: "Settings",
-    keywords: "connection system appearance archived chats skills setup configuration",
-    description: "Connection, system, appearance, skills, and setup.",
+    keywords: "connection system appearance archived chats setup configuration",
+    description: "Connection, system, appearance, archived chats, and setup.",
   },
 ];
 
