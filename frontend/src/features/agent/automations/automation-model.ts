@@ -95,19 +95,6 @@ export function scheduleLabel(schedule: AutomationSchedule): string {
   return `${WEEKDAYS[schedule.day] ?? "Monday"} at ${schedule.time}`;
 }
 
-export function relativeTime(iso: string | null): string {
-  if (!iso) return "Not scheduled";
-  const timestamp = new Date(iso).getTime();
-  if (!Number.isFinite(timestamp)) return "Unknown";
-  const delta = timestamp - Date.now();
-  const absolute = Math.abs(delta);
-  const suffix = delta >= 0 ? "from now" : "ago";
-  if (absolute < 60_000) return delta >= 0 ? "in less than a minute" : "less than a minute ago";
-  if (absolute < 3_600_000) return `${Math.round(absolute / 60_000)}m ${suffix}`;
-  if (absolute < 86_400_000) return `${Math.round(absolute / 3_600_000)}h ${suffix}`;
-  return `${Math.round(absolute / 86_400_000)}d ${suffix}`;
-}
-
 export function shortRelativeTime(iso: string | null): string {
   if (!iso) return "";
   const timestamp = new Date(iso).getTime();
@@ -152,8 +139,8 @@ export function folderLabel(cwd: string): string {
   return trimmed.slice(trimmed.lastIndexOf("/") + 1) || trimmed;
 }
 
-export function targetTypeLabel(automation: Automation): string {
-  return threadIdOf(automation) ? "Scheduled chat" : "Scheduled task";
+export function targetTypeLabel(target: AutomationTarget | undefined): string {
+  return target?.kind === "thread" ? "Scheduled chat" : "Scheduled task";
 }
 
 export function sourceLabel(automation: Automation): string {

@@ -19,6 +19,7 @@ import {
   scheduleLabel,
   shortRelativeTime,
   statusLabel,
+  targetTypeLabel,
   type AutomationDraft,
 } from "./automation-model";
 
@@ -126,10 +127,7 @@ export function AutomationEditor({
           </EditorSection>
 
           <EditorSection title="Details">
-            <DetailRow
-              label="Type"
-              value={draft.target?.kind === "thread" ? "Scheduled chat" : "Scheduled task"}
-            />
+            <DetailRow label="Type" value={targetTypeLabel(draft.target)} />
             <DetailRow label="Runs in" value="This device" />
             <FormField label="Model" required>
               <Select
