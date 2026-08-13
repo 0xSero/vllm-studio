@@ -20,3 +20,4 @@ Full 865-tracked + 1-untracked checksum manifests: `01-status/before-tracked.sha
 | 2026-08-13 (backup capture) | `262f84c7` | `feat/drawer-git-and-steer-pending` | 6 (5 M + 1 ??) | baseline recorded | OK |
 | 2026-08-13 (post-`dcb790fd`, DS re-gate) | `262f84c7` | same | 6 | 6/6 MATCH | OK |
 | 2026-08-13 (G0F P4 authoring, pre-push) | `262f84c7` | same | 6 | 6/6 MATCH | OK |
+| 2026-08-13 (S6, post-#403 repair `02373e5f`) | `262f84c7` | same | 6 (5 M + 1 ??) | 6/6 MATCH (vs authoritative backup manifests) | OK |

@@ -44,3 +44,10 @@ Per run: `{date, head SHA, command, verdict, duration, stage list, failure tails
 ## First CI on PR #408 (run `31743874412`, head `d27f6c4d`) — SUCCESS
 
 `CI` workflow (pull_request, base `dev`), all 8 jobs green (R31 batched row): gates 16s · Dependency Review 8s · controller 36s · agent-runtime 14s · CodeQL 1m18s · frontend 3m56s · desktop-package 4m19s · TruffleHog 21s. Job ids 94593586138/94593586125/94593586036/94593586027/94593586127/94593586090/94593586035/94593586029. desktop-package artifact `local-studio-26e685ae3944098dcdfc9dfd12dfb0dcc3c23a03-arm64` (258,118,373 B; name carries the ephemeral PR merge-ref SHA, standard `pull_request` `github.sha` semantics). PR #408 `MERGEABLE`, mergeStateStatus `CLEAN`. TruffleHog green corroborates the R31.1 docs self-audit (0 credible secret material).
+
+## Run 5 — PASS (post-#403 head `02373e5f`; DeepSeek S5 full re-gate)
+
+- **date:** 2026-08-13T21:35:20Z..21:38:23Z · **duration:** 183s · **exit:** 0 · **verdict:** PASS (full `npm run check` from stage 1 on the post-merge+repair head; all six stages green).
+- **precondition:** `--ff-only` of DeepSeek lane `ds/drop-403-added-tests` (`02373e5f`, parent `2bcd73cc`); the 28 #403 commits are origin-reachable, so the validated range is the 5 newly-introduced program commits — all conventional or `Merge`-exempt.
+- **stages (all green):** `check:automation` · `check:contracts` · `check:structure` · `check:frontend` (full `check:quality` static + `check:cleanup` deadcode/dupes/depcheck + production `build`) · `check:controller` (`tsc --noEmit`, eslint, knip, jscpd, depcheck, standards) · `check:agent-runtime` (`bun run build`).
+- **external transcript:** `raw-reports/2026-08-13/post403-gate-02373e5f.log` · sha256 `1a668167a012f7dbfca138803bfd63df73b32d876d7fec00b3eb9214a72ed93a` (13,357 B); manifest `sha256-manifest.tsv` now 27 data rows.

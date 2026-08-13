@@ -71,3 +71,11 @@ Exactly **2** conflicts:
 - Confirm zero unmerged paths, then commit the merge through normal hooks (pre-commit runs `check:static`/`check:cleanup`/`assert-standalone`; cap exempted by G0B `isMergeInProgress()`).
 - **Deferred to DeepSeek services lane:** delete `session-paging.test.ts` + `session-usage.test.ts`; bench-gate audit of the 7 `.bench.ts`. GLM does not edit benchmark files or delete the deferred service tests at merge time.
 - **No push.** `dev`/`main` untouched.
+
+## Harvest outcome (S6 record)
+
+- **Merge:** `2bcd73cc` (parents `05cde8ed` + `682b3b26`), normal-hook green (`lint-staged` + `tsc --noEmit` clean); `frontend/desktop/project.mjs` resolved to the pre-merge track blob unchanged (sha256 `b0b7be3c9fb00db66682d51bae86b3c4860cc1435c90e73f64877d34edf1a91a`, git-blob `5a47b37a79005135cbee243b9d59655a6c70cbe6` pre==post); Inkling test deleted by `git rm`.
+- **Repair:** `02373e5f` `chore(agent-runtime): remove harvested test suites`, landed by `--ff-only`; exactly the two added service tests deleted (`session-paging.test.ts` −275, `session-usage.test.ts` −211), −486 lines; temporary DS worktree removed, lane branch `-d` deleted, zero residue.
+- **Committed merge+repair diff (`05cde8ed..02373e5f`):** 135 files, +3,531 / −12,257 (net −8,726 all files); source-code exts +2,872 / −12,236 (net −9,364); gross removed 12,257. The “16,737 net source-line deletion” figure does **not** verify from the committed diff and is **not claimed**.
+- **Bench audit (R38):** 7 pure manual `.bench.ts` kept (zero test-framework/assertion imports, zero package/CI/check wiring); accepted benchmark LOC = 78+99+106+90+75+64+63 = **575**.
+- **Full gate (DeepSeek S5):** PASS, exit 0, 183s (2026-08-13T21:35:20Z..21:38:23Z); transcript `raw-reports/2026-08-13/post403-gate-02373e5f.log` sha256 `1a668167a012f7dbfca138803bfd63df73b32d876d7fec00b3eb9214a72ed93a` (13,357 B).
