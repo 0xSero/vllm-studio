@@ -96,8 +96,10 @@ export function ScreencastSurface({
   const frameSrc = browserFrameSource(frame, sessionId);
   const bindContainer = useCallback(
     (node: HTMLDivElement | null) => {
-      if (node) setContainer(node);
-      else surface.dispose();
+      if (node) {
+        surface.attach();
+        setContainer(node);
+      } else surface.dispose();
     },
     [surface],
   );

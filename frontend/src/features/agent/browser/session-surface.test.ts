@@ -43,10 +43,7 @@ test("switching sessions aborts old traffic without replaying the inherited URL"
 
   surface.observeServerUrl("session-b", "https://b.example");
   assert.equal(surface.navigationTarget("session-b", "https://b.example"), null);
-  assert.equal(
-    surface.navigationTarget("session-b", "https://a.example"),
-    "https://a.example",
-  );
+  assert.equal(surface.navigationTarget("session-b", "https://a.example"), "https://a.example");
   assert.equal(
     surface.navigationTarget("session-b", "https://next.example"),
     "https://next.example",
@@ -62,4 +59,16 @@ test("disposing a keyed surface aborts pending session traffic", () => {
   assert.equal(input.controller.signal.aborted, true);
   assert.equal(surface.ownsSession("session-a"), false);
   surface.dispose();
+});
+
+test("reattaching a keyed surface restores traffic after a Strict Mode ref cleanup", () => {
+  const surface = new BrowserSessionSurface("session-a", "https://a.example");
+  const first = surface.requestController("session-a");
+  assert.ok(first);
+  surface.dispose();
+  assert.equal(first.signal.aborted, true);
+  assert.equal(surface.requestController("session-a"), null);
+  surface.attach();
+  assert.ok(surface.requestController("session-a"));
+  assert.equal(surface.navigationTarget("session-a", "https://a.example"), null);
 });

@@ -18,6 +18,8 @@ export function browserFrameSource(
 const DEFAULT_VIEWPORT: BrowserViewport = { height: 800, width: 1280 };
 
 export class BrowserSessionSurface {
+  private readonly configuredSessionId: string | null;
+  private readonly configuredUrl: string;
   private readonly controllers = new Set<AbortController>();
   private inheritedUrl = "";
   private serverUrl = "";
@@ -26,8 +28,14 @@ export class BrowserSessionSurface {
   private viewportSessionId: string | null = null;
 
   constructor(sessionId: string | null = null, desiredUrl = "") {
+    this.configuredSessionId = sessionId;
+    this.configuredUrl = desiredUrl;
     this.sessionId = sessionId;
     this.inheritedUrl = desiredUrl.trim();
+  }
+
+  attach(): void {
+    this.enterSession(this.configuredSessionId, this.configuredUrl);
   }
 
   enterSession(sessionId: string | null, desiredUrl: string): void {
