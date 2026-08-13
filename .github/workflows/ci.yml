@@ -26,11 +26,28 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22.19.0
-      - name: Conventional commit gate
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.sha }}
-        run: node scripts/project.mjs check-commits --range "$BASE_SHA..$HEAD_SHA"
+      - name: Fetch origin heads
+        run: git fetch origin '+refs/heads/*:refs/remotes/origin/*'
+      - name: Fetch pull head
+        if: github.event_name == 'pull_request'
+        run: >-
+          git fetch origin '+refs/pull/${{ github.event.pull_request.number }}/head:refs/remotes/pull/${{ github.event.pull_request.number }}/head'
+      - name: Commit lint (pull request)
+        if: github.event_name == 'pull_request'
+        run: >-
+          node scripts/project.mjs commit-lint --mode=ci
+          --head ${{ github.event.pull_request.head.sha }}
+          --base ${{ github.event.pull_request.base.sha }}
+          --head-ref ${{ github.event.pull_request.head.ref }}
+          --same-repo ${{ github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name }}
+      - name: Commit lint (push)
+        if: github.event_name == 'push'
+        run: >-
+          node scripts/project.mjs commit-lint --mode=ci
+          --head ${{ github.sha }}
+          --base ${{ github.event.before }}
+          --head-ref ${{ github.ref_name }}
+          --same-repo true
       - name: Shared-contract duplication gate
         run: node scripts/project.mjs validate-contracts
       - name: Barrel/dir sibling structure gate

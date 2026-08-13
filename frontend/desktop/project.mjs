@@ -428,7 +428,25 @@ var init_bundle = __esm(() => {
 var exports_check_conventional_commits = {};
 import { execFileSync as execFileSync2 } from "node:child_process";
 import { readFileSync as readFileSync6 } from "node:fs";
-var allowedTypes, ignoredSubjects, args, messageFileIndex, rangeIndex, fail = (message) => {
+var allowedTypes = new Set([
+  "build",
+  "chore",
+  "ci",
+  "docs",
+  "feat",
+  "fix",
+  "micro",
+  "perf",
+  "refactor",
+  "release",
+  "revert",
+  "style"
+]), ignoredSubjects = [
+  /^Merge /,
+  /^Revert /,
+  /^Initial commit$/,
+  /^dependabot\//
+], fail = (message) => {
   console.error(message), process.exitCode = 1;
 }, validateSubject = (subject, label) => {
   if (!subject.trim()) {
@@ -453,25 +471,7 @@ var allowedTypes, ignoredSubjects, args, messageFileIndex, rangeIndex, fail = (m
     fail(`${label}: summary should not end with a period`);
 };
 var init_check_conventional_commits = __esm(() => {
-  allowedTypes = new Set([
-    "build",
-    "chore",
-    "ci",
-    "docs",
-    "feat",
-    "fix",
-    "micro",
-    "perf",
-    "refactor",
-    "release",
-    "revert",
-    "style"
-  ]), ignoredSubjects = [
-    /^Merge /,
-    /^Revert /,
-    /^Initial commit$/,
-    /^dependabot\//
-  ], args = process.argv.slice(2), messageFileIndex = args.indexOf("--message-file"), rangeIndex = args.indexOf("--range");
+  let args = process.argv.slice(2), messageFileIndex = args.indexOf("--message-file"), rangeIndex = args.indexOf("--range");
   if (messageFileIndex !== -1) {
     let messageFile = args[messageFileIndex + 1], subject = readFileSync6(messageFile, "utf8").split(/\r?\n/, 1)[0] ?? "";
     validateSubject(subject, "commit message");
@@ -487,6 +487,127 @@ var init_check_conventional_commits = __esm(() => {
   if (process.exitCode)
     console.error(`
 Allowed types: ` + [...allowedTypes].join(", "));
+});
+
+var exports_commit_lint = {};
+import { spawnSync as spawnSync5 } from "node:child_process";
+import { readFileSync as readFileSync18 } from "node:fs";
+import path12 from "node:path";
+import { fileURLToPath as fileURLToPath12 } from "node:url";
+var ALL_ZERO_SHA = /^0{40}$/, commitLintRoot = path12.resolve(path12.dirname(fileURLToPath12(import.meta.url)), "../..");
+function commitLintArg(args, name) {
+  let prefix = `${name}=`;
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === name)
+      return args[index + 1];
+    if (typeof args[index] === "string" && args[index].startsWith(prefix))
+      return args[index].slice(prefix.length);
+  }
+  return void 0;
+}
+function commitLintGit(args, options = {}) {
+  let result = spawnSync5("git", args, { cwd: commitLintRoot, encoding: "utf8", maxBuffer: 67108864, ...options });
+  if (result.error)
+    throw Error(`commit-lint: git ${args.join(" ")} failed: ${result.error.message}`);
+  if (result.status !== 0) {
+    let stderr = (result.stderr ?? "").trim();
+    throw Error(`commit-lint: git ${args.join(" ")} failed${stderr ? ": " + stderr : ""}`);
+  }
+  return result.stdout ?? "";
+}
+function commitLintOriginRefs() {
+  let output = commitLintGit(["for-each-ref", "--format=%(refname)", "refs/remotes/origin"]).trim();
+  return output ? output.split(/\r?\n/) : [];
+}
+function commitLintRequireCommit(sha, label) {
+  let result = spawnSync5("git", ["rev-parse", "--verify", `${sha}^{commit}`], { cwd: commitLintRoot, encoding: "utf8" });
+  if (result.error || result.status !== 0) {
+    let stderr = (result.stderr ?? "").trim();
+    throw Error(`commit-lint: ${label} ${sha} is not a resolvable commit${stderr ? ": " + stderr : ""}`);
+  }
+  return result.stdout.trim();
+}
+function enumerateIntroducedCommits(positives, negatives) {
+  let lines = [];
+  for (let positive of positives)
+    if (positive)
+      lines.push(positive);
+  for (let negative of negatives)
+    if (negative)
+      lines.push(`^${negative}`);
+  if (lines.length === 0)
+    return [];
+  let output = commitLintGit(["rev-list", "--no-merges", "--stdin"], { input: `${lines.join("\n")}\n` });
+  return output.trim() ? output.trim().split(/\r?\n/) : [];
+}
+function validateIntroducedCommits(shas) {
+  let subjects = [];
+  if (shas.length > 0) {
+    let output = commitLintGit(["log", "--no-walk", "--format=%H%x00%s", "--stdin"], { input: `${shas.join("\n")}\n` });
+    subjects = output.trim() ? output.trim().split(/\r?\n/) : [];
+  }
+  for (let line of subjects) {
+    let separator = line.indexOf("\0");
+    let sha = separator === -1 ? line : line.slice(0, separator), subject = separator === -1 ? "" : line.slice(separator + 1);
+    validateSubject(subject, `commit ${sha}`);
+    console.log(`  ${sha} ${subject}`);
+  }
+  console.log(`commit-lint: validated ${subjects.length} introduced commit(s)`);
+  if (process.exitCode)
+    console.error(`\nAllowed types: ` + [...allowedTypes].join(", "));
+}
+function lintCiCommits({ head, base, headRef, sameRepo }) {
+  if (!head)
+    throw Error("commit-lint: --head is required");
+  commitLintRequireCommit(head, "--head");
+  let positives = [head], negatives = [];
+  if (!ALL_ZERO_SHA.test(base ?? "")) {
+    if (!base)
+      throw Error("commit-lint: --base is required");
+    commitLintRequireCommit(base, "--base");
+    negatives.push(base);
+  }
+  for (let ref of commitLintOriginRefs()) {
+    if (ref === "refs/remotes/origin/HEAD")
+      continue;
+    if (sameRepo && headRef && ref === `refs/remotes/origin/${headRef}`)
+      continue;
+    negatives.push(ref);
+  }
+  console.log(`commit-lint: ci mode head=${head} base=${base || "(omitted)"} head-ref=${headRef || "(none)"} same-repo=${sameRepo}`);
+  validateIntroducedCommits(enumerateIntroducedCommits(positives, negatives));
+}
+function lintPrePushedCommits(updates) {
+  let positives = [];
+  for (let update of updates)
+    if (update.localSha && !ALL_ZERO_SHA.test(update.localSha))
+      positives.push(update.localSha);
+  if (positives.length === 0)
+    return;
+  let negatives = commitLintOriginRefs();
+  console.log(`commit-lint: pre-push mode pushed=${positives.length} origin-refs=${negatives.length}`);
+  validateIntroducedCommits(enumerateIntroducedCommits(positives, negatives));
+}
+var init_commit_lint = __esm(() => {
+  let args = process.argv.slice(2), mode = commitLintArg(args, "--mode");
+  if (mode === "ci") {
+    lintCiCommits({
+      head: commitLintArg(args, "--head"),
+      base: commitLintArg(args, "--base"),
+      headRef: commitLintArg(args, "--head-ref"),
+      sameRepo: commitLintArg(args, "--same-repo") === "true"
+    });
+  } else if (mode === "pre-push") {
+    let input = readFileSync18(0, "utf8").trim(), updates = [];
+    for (let line of input ? input.split(/\r?\n/) : []) {
+      let [localRef, localSha, remoteRef, remoteSha] = line.trim().split(/\s+/);
+      if (localRef)
+        updates.push({ localRef, localSha, remoteRef, remoteSha });
+    }
+    lintPrePushedCommits(updates);
+  } else {
+    throw Error("commit-lint: --mode must be exactly ci or pre-push");
+  }
 });
 
 var exports_complete_standalone_build = {};
@@ -1770,6 +1891,7 @@ var project_entry_default = afterPack, root5 = path11.resolve(path11.dirname(fil
   ["browser-perf", () => init_browser_perf_audit().then(() => exports_browser_perf_audit)],
   ["bundle-agent-runtime", () => Promise.resolve().then(() => (init_bundle(), exports_bundle))],
   ["check-commits", () => Promise.resolve().then(() => (init_check_conventional_commits(), exports_check_conventional_commits))],
+  ["commit-lint", () => Promise.resolve().then(() => (init_commit_lint(), exports_commit_lint))],
   ["complete-standalone", () => Promise.resolve().then(() => (init_complete_standalone_build(), exports_complete_standalone_build))],
   ["controller-standards", () => Promise.resolve().then(() => (init_controller_standards_audit(), exports_controller_standards_audit))],
   ["doctor", async () => doctor()],
@@ -1876,6 +1998,7 @@ function preCommit() {
 }
 function prePush() {
   let remote = process.argv[2], url = process.argv[3], updates = readFileSync17(0, "utf8").trim();
+  let parsed = [];
   for (let update of updates ? updates.split(`
 `) : []) {
     let [localRef, localSha, remoteRef, remoteSha] = update.trim().split(/\s+/);
@@ -1883,8 +2006,10 @@ function prePush() {
       throw Error(`pre-push: direct pushes to ${remoteRef} are blocked; merge through GitHub`);
     if (/^0{40}$/.test(localSha))
       continue;
-    console.log(`Checking conventional commits for ${localRef} -> ${remote}/${remoteRef} (${url})`), run3(process.execPath, [path11.join(root5, "scripts/project.mjs"), "check-commits", "--range", localSha, "--not", `--remotes=${remote}`]);
+    parsed.push({ localRef, localSha, remoteRef, remoteSha });
   }
+  if (parsed.length > 0)
+    console.log(`Checking conventional commits for ${parsed.map((entry) => entry.localRef).join(", ")} -> ${remote} (${url})`), lintPrePushedCommits(parsed);
   run3("npm", ["run", "check:static"], path11.join(root5, "frontend")), run3("npm", ["run", "check:cleanup"], path11.join(root5, "frontend")), run3(process.execPath, [path11.join(root5, "scripts/project.mjs"), "assert-standalone"]);
 }
 function setupHooks() {
