@@ -269,7 +269,7 @@ function SettingsShellLayout<Id extends SettingsSectionId>({
           </div>
         </aside>
         <section className="min-w-0 lg:min-h-0 lg:overflow-y-auto">
-          <div className="w-full max-w-[46rem] px-4 py-5 pb-12 sm:px-6 lg:px-8 lg:py-6">
+          <div className="mx-auto w-full max-w-[46rem] px-4 py-5 pb-12 sm:px-6 lg:px-8 lg:py-6">
             <header className="mb-6 flex min-h-8 items-start justify-between gap-4">
               <div className="min-w-0">
                 {eyebrow ? (
