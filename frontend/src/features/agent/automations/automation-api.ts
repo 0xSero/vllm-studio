@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { useSyncExternalStore } from "react";
 import {
   AutomationResponseSchema,
   AutomationsResponseSchema,
@@ -127,4 +128,88 @@ export function runAutomation(id: string): Effect.Effect<boolean, Error> {
     ),
     ({ started }) => started,
   );
+}
+
+export type AutomationsSnapshot = {
+  automations: readonly Automation[];
+  loading: boolean;
+  error: string;
+};
+
+const POLL_INTERVAL_MS = 30_000;
+const PENDING: AutomationsSnapshot = { automations: [], loading: true, error: "" };
+
+let snapshot: AutomationsSnapshot = PENDING;
+let poll: number | null = null;
+const listeners = new Set<() => void>();
+
+function runAt(automation: Automation): number {
+  const timestamp = automation.nextRunAt ? new Date(automation.nextRunAt).getTime() : Number.NaN;
+  return Number.isFinite(timestamp) ? timestamp : Number.POSITIVE_INFINITY;
+}
+
+function ordered(automations: readonly Automation[]): Automation[] {
+  return [...automations].sort(
+    (a, b) => runAt(a) - runAt(b) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+  );
+}
+
+function publish(next: AutomationsSnapshot): void {
+  snapshot = next;
+  for (const listener of listeners) listener();
+}
+
+export async function refreshAutomations(): Promise<void> {
+  try {
+    const automations = await Effect.runPromise(listAutomations());
+    publish({ automations: ordered(automations), loading: false, error: "" });
+  } catch (error) {
+    publish({
+      automations: snapshot.automations,
+      loading: false,
+      error: error instanceof Error ? error.message : "Could not load scheduled tasks",
+    });
+  }
+}
+
+export function cacheAutomation(automation: Automation): void {
+  const known = snapshot.automations.some((entry) => entry.id === automation.id);
+  const automations = known
+    ? snapshot.automations.map((entry) => (entry.id === automation.id ? automation : entry))
+    : [...snapshot.automations, automation];
+  publish({ ...snapshot, automations: ordered(automations), loading: false });
+}
+
+export function forgetAutomation(id: string): void {
+  publish({
+    ...snapshot,
+    automations: snapshot.automations.filter((automation) => automation.id !== id),
+  });
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  if (listeners.size === 1) {
+    void refreshAutomations();
+    poll = window.setInterval(() => void refreshAutomations(), POLL_INTERVAL_MS);
+  }
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0 && poll !== null) {
+      window.clearInterval(poll);
+      poll = null;
+    }
+  };
+}
+
+function readSnapshot(): AutomationsSnapshot {
+  return snapshot;
+}
+
+function readPendingSnapshot(): AutomationsSnapshot {
+  return PENDING;
+}
+
+export function useAutomations(): AutomationsSnapshot {
+  return useSyncExternalStore(subscribe, readSnapshot, readPendingSnapshot);
 }
