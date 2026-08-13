@@ -81,33 +81,78 @@ export function useProjectsNavAddProjectEffect(handleAddProject: () => void): vo
 }
 
 const SESSIONS_RELOAD_DEBOUNCE_MS = 300;
+const SESSIONS_RECONCILE_MS = 5_000;
+const sessionReloads = new Set<() => Promise<void>>();
+let sessionsReloadTimer: number | undefined;
+let sessionsReconcileTimer: number | undefined;
+let sessionsReloadRunning = false;
+let sessionsReloadPending = false;
+
+function armSessionsReconciliation(): void {
+  window.clearTimeout(sessionsReconcileTimer);
+  sessionsReconcileTimer = undefined;
+  if (sessionReloads.size === 0 || document.visibilityState !== "visible") return;
+  sessionsReconcileTimer = window.setTimeout(scheduleSessionsReload, SESSIONS_RECONCILE_MS);
+}
+
+function scheduleSessionsReload(): void {
+  if (document.visibilityState !== "visible") return;
+  window.clearTimeout(sessionsReloadTimer);
+  window.clearTimeout(sessionsReconcileTimer);
+  sessionsReloadTimer = undefined;
+  sessionsReconcileTimer = undefined;
+  if (sessionsReloadRunning) {
+    sessionsReloadPending = true;
+    return;
+  }
+  sessionsReloadTimer = window.setTimeout(() => {
+    sessionsReloadTimer = undefined;
+    sessionsReloadRunning = true;
+    void Promise.allSettled([...sessionReloads].map((reload) => reload())).then(() => {
+      sessionsReloadRunning = false;
+      if (sessionsReloadPending) {
+        sessionsReloadPending = false;
+        scheduleSessionsReload();
+      } else {
+        armSessionsReconciliation();
+      }
+    });
+  }, SESSIONS_RELOAD_DEBOUNCE_MS);
+}
+
+function syncSessionsReconciliation(): void {
+  if (document.visibilityState !== "visible") {
+    window.clearTimeout(sessionsReloadTimer);
+    window.clearTimeout(sessionsReconcileTimer);
+    sessionsReloadTimer = undefined;
+    sessionsReconcileTimer = undefined;
+    return;
+  }
+  scheduleSessionsReload();
+}
 
 export function useProjectSessionsReloadEffect(reload: () => Promise<void>): void {
   useMountSubscription(() => {
+    const ownsReloadEvents = sessionReloads.size === 0;
+    sessionReloads.add(reload);
+    if (ownsReloadEvents) {
+      window.addEventListener(SESSIONS_CHANGED_EVENT, scheduleSessionsReload);
+      window.addEventListener("focus", scheduleSessionsReload);
+      document.addEventListener("visibilitychange", syncSessionsReconciliation);
+    }
     void reload();
-    // Session lifecycle changes fire SESSIONS_CHANGED_EVENT in bursts (every
-    // mounted project row listens, and workspace effects re-dispatch 1.5s
-    // later). A trailing debounce collapses each burst into one disk scan per
-    // project instead of one per event per row.
-    let timer: number | null = null;
-    const scheduleReload = () => {
-      if (timer !== null) window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        timer = null;
-        void reload();
-      }, SESSIONS_RELOAD_DEBOUNCE_MS);
-    };
-    const reloadWhenVisible = () => {
-      if (document.visibilityState === "visible") scheduleReload();
-    };
-    window.addEventListener(SESSIONS_CHANGED_EVENT, scheduleReload);
-    window.addEventListener("focus", scheduleReload);
-    document.addEventListener("visibilitychange", reloadWhenVisible);
+    armSessionsReconciliation();
     return () => {
-      if (timer !== null) window.clearTimeout(timer);
-      window.removeEventListener(SESSIONS_CHANGED_EVENT, scheduleReload);
-      window.removeEventListener("focus", scheduleReload);
-      document.removeEventListener("visibilitychange", reloadWhenVisible);
+      sessionReloads.delete(reload);
+      if (sessionReloads.size > 0) return;
+      sessionsReloadPending = false;
+      window.clearTimeout(sessionsReloadTimer);
+      window.clearTimeout(sessionsReconcileTimer);
+      sessionsReloadTimer = undefined;
+      sessionsReconcileTimer = undefined;
+      window.removeEventListener(SESSIONS_CHANGED_EVENT, scheduleSessionsReload);
+      window.removeEventListener("focus", scheduleSessionsReload);
+      document.removeEventListener("visibilitychange", syncSessionsReconciliation);
     };
   }, [reload]);
 }
