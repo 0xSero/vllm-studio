@@ -11,7 +11,6 @@ import {
   NEW_AUTOMATION_DRAFT,
   absoluteTime,
   draftFromAutomation,
-  draftFromSuggestion,
   draftIsValid,
   folderLabel,
   runOutcomeLabel,
@@ -21,7 +20,6 @@ import {
   shortRelativeTime,
   statusLabel,
   type AutomationDraft,
-  type AutomationSuggestion,
 } from "./automation-model";
 
 type EditorAction = "save" | "run" | "status" | "delete" | null;
@@ -29,10 +27,11 @@ type EditorAction = "save" | "run" | "status" | "delete" | null;
 export function AutomationEditor({
   automation,
   creating,
-  suggestion,
+  seed,
   models,
   action,
   error,
+  compact = false,
   onClose,
   onSave,
   onRun,
@@ -41,10 +40,11 @@ export function AutomationEditor({
 }: {
   automation: Automation | null;
   creating: boolean;
-  suggestion?: AutomationSuggestion | null;
+  seed?: AutomationDraft | null;
   models: readonly AutomationModel[];
   action: EditorAction;
   error: string;
+  compact?: boolean;
   onClose: () => void;
   onSave: (draft: AutomationDraft) => void;
   onRun: () => void;
@@ -52,11 +52,7 @@ export function AutomationEditor({
   onDelete: () => void;
 }) {
   const [draft, setDraft] = useState<AutomationDraft>(() =>
-    automation
-      ? draftFromAutomation(automation)
-      : suggestion
-        ? draftFromSuggestion(NEW_AUTOMATION_DRAFT, suggestion)
-        : NEW_AUTOMATION_DRAFT,
+    automation ? draftFromAutomation(automation) : (seed ?? NEW_AUTOMATION_DRAFT),
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -65,6 +61,11 @@ export function AutomationEditor({
     const active = models.find((model) => model.active);
     setDraft((current) => ({ ...current, modelId: active?.id ?? models[0]?.id ?? "" }));
   }, [draft.modelId, models]);
+
+  useMountSubscription(() => {
+    if (draft.cwd || !seed?.cwd) return;
+    setDraft((current) => ({ ...current, cwd: seed.cwd }));
+  }, [draft.cwd, seed?.cwd]);
 
   const updateSchedule = (schedule: AutomationSchedule) => {
     setDraft((current) => ({ ...current, schedule }));
@@ -90,7 +91,13 @@ export function AutomationEditor({
           if (draftIsValid(draft) && !busy) onSave(draft);
         }}
       >
-        <div className="mx-auto w-full max-w-2xl space-y-6 px-5 py-4 sm:px-7">
+        <div
+          className={
+            compact
+              ? "w-full space-y-4 px-3 py-3"
+              : "mx-auto w-full max-w-2xl space-y-6 px-5 py-4 sm:px-7"
+          }
+        >
           <div>
             <input
               value={draft.name}
