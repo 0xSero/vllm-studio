@@ -445,8 +445,9 @@ export function runWorkspaceEffect(
     persistExitedTranscripts(prevState, nextState, deps);
   }
   if (
-    SESSIONS_CHANGED_ACTIONS.has(action.type) &&
-    storedSessionsKey(prevState) !== storedSessionsKey(nextState)
+    action.type === "notifySessionsChanged" ||
+    (SESSIONS_CHANGED_ACTIONS.has(action.type) &&
+      storedSessionsKey(prevState) !== storedSessionsKey(nextState))
   ) {
     scheduleSessionsRefresh(deps);
   }

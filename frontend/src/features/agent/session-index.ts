@@ -106,7 +106,9 @@ export function sessionRows(
       kind: "open",
       key: session.threadId ?? session.id,
       threadId: session.threadId,
-      sortAt: timestamp(history?.startedAt ?? session.startedAt ?? session.updatedAt),
+      sortAt:
+        timestamp(history?.startedAt ?? session.startedAt ?? session.updatedAt) ||
+        Number.MAX_SAFE_INTEGER,
       session,
       activity: sessionActivity(
         [session.id, session.threadId],

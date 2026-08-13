@@ -1,8 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
-import { safeJson } from "@/features/agent/safe-json";
+import { useMemo, useState, type DragEvent } from "react";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import {
   markSessionActivitySeen,
@@ -17,7 +16,6 @@ import {
   type SessionPrefs,
 } from "@/features/agent/messages/prefs";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { useProjectSessionsReloadEffect } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import { workspaceCommands } from "@/features/agent/workspace/commands";
 import type { Project as ProjectEntry } from "@/features/agent/projects/types";
 import { ChatIcon, Folder, FolderOpen, PlusIcon, TrashIcon } from "@/ui/icons";
@@ -32,6 +30,7 @@ import {
 import { PinButton, SidebarRail } from "./nav-chrome";
 import { SessionNavRow } from "./session-nav-row";
 import type { ActiveAgentSession, SessionSummary } from "./types";
+import { useProjectSessions } from "./use-project-sessions";
 
 const SESSIONS_PAGE_SIZE = 10;
 
@@ -201,32 +200,16 @@ export function ProjectSessions({
   prefs: SessionPrefs;
   excludedIds: ReadonlySet<string>;
 }) {
-  const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
-  const [loading, setLoading] = useState(false);
   const [visibleLimit, setVisibleLimit] = useState(SESSIONS_PAGE_SIZE);
+  const { sessions, loading, unavailable } = useProjectSessions(
+    project.path,
+    visibleLimit + SESSIONS_PAGE_SIZE,
+  );
   const activity = useSessionActivity();
   const projectActiveSessions = useMemo(
     () => activeSessions.filter((session) => session.projectId === project.id),
     [activeSessions, project.id],
   );
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(
-        `/api/agent/sessions?cwd=${encodeURIComponent(project.path)}&since=7d&limit=${visibleLimit + SESSIONS_PAGE_SIZE}`,
-        { cache: "no-store" },
-      );
-      const payload = await safeJson<{ sessions?: SessionSummary[] }>(response);
-      setSessions(payload.sessions ?? []);
-    } catch {
-      setSessions([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [project.path, visibleLimit]);
-
-  useProjectSessionsReloadEffect(reload);
-
   const visibleActiveSessions = useMemo(
     () =>
       projectActiveSessions.filter((session) => {
@@ -237,15 +220,32 @@ export function ProjectSessions({
       }),
     [projectActiveSessions, prefs, excludedIds],
   );
+  const visibleParentIds = useMemo(() => {
+    const ids = new Set(
+      (sessions ?? [])
+        .filter(
+          (session) =>
+            !session.parentSessionId &&
+            !excludedIds.has(session.id) &&
+            !prefs[session.id]?.pinned &&
+            !prefs[session.id]?.hidden,
+        )
+        .map((session) => session.id),
+    );
+    for (const session of visibleActiveSessions) {
+      if (session.threadId) ids.add(session.threadId);
+    }
+    return ids;
+  }, [sessions, visibleActiveSessions, excludedIds, prefs]);
   const recent = useMemo(() => {
     return (sessions ?? []).filter(
       (session) =>
-        !session.parentSessionId &&
+        (!session.parentSessionId || !visibleParentIds.has(session.parentSessionId)) &&
         !excludedIds.has(session.id) &&
         !prefs[session.id]?.pinned &&
         !prefs[session.id]?.hidden,
     );
-  }, [sessions, excludedIds, prefs]);
+  }, [sessions, visibleParentIds, excludedIds, prefs]);
   const childrenByParent = useMemo(() => {
     const map = new Map<string, SessionSummary[]>();
     for (const session of sessions ?? []) {
@@ -268,6 +268,10 @@ export function ProjectSessions({
       {loading && !sessions ? (
         <div className="px-2 py-1 text-[length:var(--fs-sm)] leading-4 text-(--dim)">
           Loading sessions...
+        </div>
+      ) : unavailable && (sessions?.length ?? 0) === 0 ? (
+        <div className="px-2 py-1 text-[length:var(--fs-sm)] leading-4 text-(--dim)">
+          Sessions unavailable
         </div>
       ) : orderedRows.length === 0 ? (
         <div className="px-2 py-1 text-[length:var(--fs-sm)] leading-4 text-(--dim)">
