@@ -2,7 +2,12 @@
 
 import { effectTimeout, type EffectTimer } from "@/lib/effect-timers";
 import { browserSessionRequest } from "@/features/agent/browser/session-request";
-import { BrowserSessionSurface } from "@/features/agent/browser/session-surface";
+import {
+  browserFrameSource,
+  browserSurfaceRequest,
+  BrowserSessionSurface,
+  type BrowserSessionFrame,
+} from "@/features/agent/browser/session-surface";
 
 /**
  * Live surface for the agent browser pane: renders the server-side headless
@@ -19,6 +24,7 @@ import { BrowserSessionSurface } from "@/features/agent/browser/session-surface"
 import {
   useRef,
   useState,
+  useLayoutEffect,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
@@ -54,14 +60,21 @@ const VIEWPORT_MAX = { width: 1920, height: 1200 };
 const POLL_INTERVAL_MS = 110; // ~9fps
 const MOVE_THROTTLE_MS = 33;
 
-function postBrowser(sessionId: string | null, path: string, body: unknown): void {
-  const request = browserSessionRequest(sessionId, path, {
+function postBrowser(
+  surface: BrowserSessionSurface,
+  sessionId: string | null,
+  path: string,
+  body: unknown,
+): void {
+  const request = browserSurfaceRequest(surface, sessionId, path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!request) return;
-  void fetch(request.input, request.init).catch(() => undefined);
+  void fetch(request.input, request.init)
+    .catch(() => undefined)
+    .finally(() => surface.releaseRequest(request.controller));
 }
 
 export function ScreencastSurface({
@@ -72,12 +85,18 @@ export function ScreencastSurface({
   visible = true,
 }: Props) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
-  const [frameSrc, setFrameSrc] = useState<string | null>(null);
+  const [frame, setFrame] = useState<BrowserSessionFrame | null>(null);
   const [navError, setNavError] = useState<string | null>(null);
   const [surface] = useState(() => new BrowserSessionSurface());
   const lastMoveAtRef = useRef(0);
   const onStateRef = useRef(onState);
   const onUnavailableRef = useRef(onUnavailable);
+  const frameSrc = browserFrameSource(frame, sessionId);
+
+  useLayoutEffect(() => {
+    surface.enterSession(sessionId, url);
+  }, [sessionId, surface, url]);
+  useLayoutEffect(() => () => surface.dispose(), [surface]);
 
   // Mirror the latest callbacks into refs in the commit phase (never during
   // render), so the long-lived poll loop always calls the current handlers
@@ -92,8 +111,7 @@ export function ScreencastSurface({
   // collapsed) and idles at 1s while the document itself is hidden, so a
   // background browser tab doesn't burn ~9 fetches+JPEG decodes per second. ──
   useMountSubscription(() => {
-    surface.enterSession(sessionId, url);
-    setFrameSrc(null);
+    setFrame(null);
     setNavError(null);
     if (!visible || !sessionId) return;
     let disposed = false;
@@ -115,14 +133,27 @@ export function ScreencastSurface({
         });
         if (!request) return;
         const response = await fetch(request.input, request.init);
-        if (response.status === 503) {
+        if (!disposed && surface.ownsSession(sessionId) && response.status === 503) {
           const payload = (await response.json().catch(() => null)) as FramePayload | null;
-          onUnavailableRef.current(payload?.error || "Browser unavailable");
+          if (!disposed && surface.ownsSession(sessionId)) {
+            onUnavailableRef.current(payload?.error || "Browser unavailable");
+          }
           return; // stop polling; pane switches to reading mode
         }
+        if (!response.ok) return;
         const payload = (await response.json()) as FramePayload;
-        if (!disposed && payload.ok && payload.data) {
-          if (payload.data.frame) setFrameSrc(`data:image/jpeg;base64,${payload.data.frame}`);
+        if (
+          !disposed &&
+          surface.ownsSession(sessionId) &&
+          payload.ok &&
+          payload.data
+        ) {
+          if (payload.data.frame) {
+            setFrame({
+              sessionId,
+              src: `data:image/jpeg;base64,${payload.data.frame}`,
+            });
+          }
           surface.observeServerUrl(sessionId, payload.data.url);
           onStateRef.current({
             url: payload.data.url,
@@ -152,7 +183,6 @@ export function ScreencastSurface({
   // ── Address-bar navigation: navigate server-side when the desired URL
   // diverges from what the host last reported ────────────────────────────
   useMountSubscription(() => {
-    surface.enterSession(sessionId, url);
     const target = surface.navigationTarget(sessionId, url);
     if (!target) return;
     let cancelled = false;
@@ -197,7 +227,7 @@ export function ScreencastSurface({
         Math.min(VIEWPORT_MAX.height, Math.max(VIEWPORT_MIN.height, rect.height)),
       );
       if (!surface.syncViewport(sessionId, { width, height })) return;
-      postBrowser(sessionId, "viewport", { width, height });
+      postBrowser(surface, sessionId, "viewport", { width, height });
     };
     const observer = new ResizeObserver(() => {
       if (timer) timer.cancel();
@@ -229,7 +259,7 @@ export function ScreencastSurface({
     container?.focus();
     event.currentTarget.setPointerCapture(event.pointerId);
     const { x, y } = toViewport(event);
-    postBrowser(sessionId, "input", {
+    postBrowser(surface, sessionId, "input", {
       kind: "mouse",
       type: "down",
       x,
@@ -241,7 +271,7 @@ export function ScreencastSurface({
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     const { x, y } = toViewport(event);
-    postBrowser(sessionId, "input", {
+    postBrowser(surface, sessionId, "input", {
       kind: "mouse",
       type: "up",
       x,
@@ -256,12 +286,12 @@ export function ScreencastSurface({
     if (now - lastMoveAtRef.current < MOVE_THROTTLE_MS) return;
     lastMoveAtRef.current = now;
     const { x, y } = toViewport(event);
-    postBrowser(sessionId, "input", { kind: "mouse", type: "move", x, y });
+    postBrowser(surface, sessionId, "input", { kind: "mouse", type: "move", x, y });
   };
 
   const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     const { x, y } = toViewport(event);
-    postBrowser(sessionId, "input", {
+    postBrowser(surface, sessionId, "input", {
       kind: "wheel",
       x,
       y,
@@ -273,7 +303,7 @@ export function ScreencastSurface({
   const handleKey = (type: "down" | "up") => (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.metaKey) return;
     event.preventDefault();
-    postBrowser(sessionId, "input", {
+    postBrowser(surface, sessionId, "input", {
       kind: "key",
       type,
       key: event.key,

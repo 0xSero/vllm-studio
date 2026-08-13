@@ -1,4 +1,19 @@
+import { browserSessionRequest } from "@/features/agent/browser/session-request";
+
 export type BrowserViewport = { height: number; width: number };
+export type BrowserSessionFrame = { sessionId: string; src: string };
+export type BrowserSurfaceRequest = {
+  controller: AbortController;
+  init: RequestInit;
+  input: string;
+};
+
+export function browserFrameSource(
+  frame: BrowserSessionFrame | null,
+  sessionId: string | null,
+): string | null {
+  return frame?.sessionId === sessionId ? frame.src : null;
+}
 
 const DEFAULT_VIEWPORT: BrowserViewport = { height: 800, width: 1280 };
 
@@ -27,6 +42,10 @@ export class BrowserSessionSurface {
     return controller;
   }
 
+  ownsSession(sessionId: string | null): boolean {
+    return Boolean(sessionId && sessionId === this.sessionId);
+  }
+
   releaseRequest(controller: AbortController): void {
     this.controllers.delete(controller);
   }
@@ -40,7 +59,11 @@ export class BrowserSessionSurface {
     if (!sessionId || sessionId !== this.sessionId || !target || target === this.serverUrl) {
       return null;
     }
-    return target === this.inheritedUrl ? null : target;
+    if (target === this.inheritedUrl) {
+      this.inheritedUrl = "";
+      return null;
+    }
+    return target;
   }
 
   syncViewport(sessionId: string, viewport: BrowserViewport): boolean {
@@ -58,8 +81,32 @@ export class BrowserSessionSurface {
     return this.viewportState;
   }
 
+  dispose(): void {
+    this.abortRequests();
+    this.sessionId = null;
+  }
+
   private abortRequests(): void {
     for (const controller of this.controllers) controller.abort();
     this.controllers.clear();
   }
+}
+
+export function browserSurfaceRequest(
+  surface: BrowserSessionSurface,
+  sessionId: string | null,
+  path: string,
+  init: RequestInit = {},
+): BrowserSurfaceRequest | null {
+  const controller = surface.requestController(sessionId);
+  if (!controller) return null;
+  const request = browserSessionRequest(sessionId, path, {
+    ...init,
+    signal: controller.signal,
+  });
+  if (!request) {
+    surface.releaseRequest(controller);
+    return null;
+  }
+  return { ...request, controller };
 }
