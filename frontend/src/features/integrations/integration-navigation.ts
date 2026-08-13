@@ -10,5 +10,5 @@ export function integrationSectionFromHash(hash: string): IntegrationSectionId {
 export function legacyIntegrationHref(hash: string): string | null {
   const section = hash.replace(/^#/, "");
   if (section !== "connectors" && section !== "skills") return null;
-  return `/configure?integration=${section}#integrations`;
+  return `/integrations?integration=${section}`;
 }
