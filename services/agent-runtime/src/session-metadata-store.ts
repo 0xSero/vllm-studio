@@ -10,16 +10,12 @@ import path from "node:path";
 import lockfile from "proper-lockfile";
 import { resolveDataDir } from "./data-dir";
 import { isRecord } from "../../../shared/agent/guards";
+import type { ParentRelation, ThreadArchiveState } from "../../../shared/agent/thread";
 
 const SESSION_METADATA_FILENAME = "agent-session-metadata.json";
 const LOCK_STALE_MS = 10_000;
 const LOCK_RETRY_MS = 25;
 const LOCK_ATTEMPTS = 80;
-
-export type SessionArchiveState = {
-  archived: boolean;
-  archivedAt: string | null;
-};
 
 type StoredSessionMetadata = {
   archived?: boolean;
@@ -39,7 +35,7 @@ type SessionMetadataStore = {
   sessions: Record<string, StoredSessionMetadata>;
 };
 
-export type ArchivedSessionMetadata = SessionArchiveState & {
+export type ArchivedSessionMetadata = ThreadArchiveState & {
   id: string;
   updatedAt: string | null;
   cwd: string | null;
@@ -167,12 +163,7 @@ function applyMetadataInput(
   return next;
 }
 
-export type SessionSubagentLink = {
-  parentSessionId: string;
-  subagentName: string | null;
-};
-
-export type SessionListMetadata = SessionArchiveState & {
+export type SessionListMetadata = ThreadArchiveState & {
   parentSessionId: string | null;
   subagentName: string | null;
 };
@@ -190,7 +181,7 @@ export function readSessionListMetadata(): (sessionId: string) => SessionListMet
   };
 }
 
-export function sessionSubagentLink(sessionId: string): SessionSubagentLink | null {
+export function sessionSubagentLink(sessionId: string): ParentRelation | null {
   const metadata = readStore().sessions[sessionId];
   if (!metadata?.parentSessionId) return null;
   return {
@@ -246,7 +237,7 @@ export async function setSessionArchived(
   archived: boolean,
   now = new Date(),
   metadata?: SessionArchiveMetadataInput,
-): Promise<SessionArchiveState> {
+): Promise<ThreadArchiveState> {
   const id = sessionId.trim();
   if (!id) return { archived: false, archivedAt: null };
   return withStoreLock(() => {

@@ -28,7 +28,6 @@ import {
   readSessionUsageTotals,
   type SessionUsageTotals,
 } from "./session-usage";
-export type { SessionSummary } from "../../../shared/agent/session-summary";
 
 export type SessionEvent = Record<string, unknown> & { type?: string };
 
