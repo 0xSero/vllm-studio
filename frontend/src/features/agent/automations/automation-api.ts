@@ -309,7 +309,11 @@ export function useAutomationActions(): AutomationActions {
   const run = useCallback(
     async (automation: Automation) => {
       const started = await perform("run", runAutomation(automation.id), automation.id);
-      if (started) window.setTimeout(() => void refreshAutomations(), 1_000);
+      if (started) {
+        window.setTimeout(() => void refreshAutomations(), 1_000);
+      } else if (started === false) {
+        setError("This scheduled task is already running.");
+      }
     },
     [perform],
   );
