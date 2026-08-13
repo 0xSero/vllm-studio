@@ -6,12 +6,34 @@ import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
-import { Archive, MoreIcon, PinIcon, PinOffIcon, SquarePen, X } from "@/ui/icon-registry";
+import { Archive, Clock, MoreIcon, PinIcon, PinOffIcon, SquarePen, X } from "@/ui/icon-registry";
 import type { SessionPref } from "@/features/agent/messages/prefs";
+import { useAutomations } from "@/features/agent/automations/automation-api";
+import { threadAutomations } from "@/features/agent/automations/automation-model";
 import { hrefWithOpenNonce, navigateToSessionHref, visibleSessionAge } from "./helpers";
 import { PinButton } from "./nav-chrome";
 
 const SESSION_MENU_CLASS = `absolute right-0 top-6 isolate z-[999] min-w-[180px] ${POPOVER_MENU_CLASS}`;
+
+function scheduledTaskHref(href: string | undefined): string | null {
+  if (!href) return null;
+  const separator = href.indexOf("?");
+  if (separator < 0) return null;
+  const params = new URLSearchParams(href.slice(separator + 1));
+  const piSessionId = params.get("session");
+  if (!piSessionId) return null;
+  const query = new URLSearchParams({ new: "1", thread: piSessionId });
+  const projectId = params.get("project");
+  if (projectId) query.set("project", projectId);
+  return `/agent/automations?${query.toString()}`;
+}
+
+function sessionIdFromHref(href: string | undefined): string | null {
+  if (!href) return null;
+  const separator = href.indexOf("?");
+  if (separator < 0) return null;
+  return new URLSearchParams(href.slice(separator + 1)).get("session");
+}
 
 type SessionNavRowProps = {
   pref: SessionPref;
@@ -66,12 +88,16 @@ export function SessionNavRow({
   showClearAction = false,
   renameInputClass = "text-[length:var(--fs-base)] leading-5",
 }: SessionNavRowProps) {
+  const router = useRouter();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(initialDraft);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useClickOutside(menuRef, menuOpen, () => setMenuOpen(false));
+  const { automations } = useAutomations();
+  const scheduledCount = threadAutomations(automations, sessionIdFromHref(href)).length;
+  const newScheduledTaskHref = scheduledTaskHref(href);
   const startRename = () => {
     setDraft(initialDraft);
     setRenaming(true);
@@ -139,6 +165,7 @@ export function SessionNavRow({
         finished={finished}
         failed={failed}
         pinned={Boolean(pref.pinned)}
+        scheduledCount={scheduledCount}
         timestamp={timestamp}
         label={label}
         onDragStart={onDragStart}
@@ -193,6 +220,9 @@ export function SessionNavRow({
             onClose={() => setMenuOpen(false)}
             onPin={() => onPatchPref({ pinned: !pref.pinned })}
             onRename={startRename}
+            onScheduleTask={
+              newScheduledTaskHref ? () => router.push(newScheduledTaskHref) : undefined
+            }
             pref={pref}
             showClearAction={showClearAction}
           />
@@ -286,6 +316,7 @@ function SessionOpenTarget({
   finished,
   failed,
   pinned,
+  scheduledCount,
   timestamp,
   label,
   onDragStart,
@@ -300,6 +331,7 @@ function SessionOpenTarget({
   finished: boolean;
   failed: boolean;
   pinned: boolean;
+  scheduledCount: number;
   timestamp?: string | null;
   label: string;
   onDragStart: (event: DragEvent) => void;
@@ -328,6 +360,7 @@ function SessionOpenTarget({
       unseen={unseen}
       finished={finished}
       failed={failed}
+      scheduledCount={scheduledCount}
       timestamp={timestamp}
       label={label}
     />
@@ -379,6 +412,7 @@ function SessionRowContent({
   unseen,
   finished,
   failed,
+  scheduledCount,
   timestamp,
   label,
 }: {
@@ -386,15 +420,25 @@ function SessionRowContent({
   unseen: boolean;
   finished: boolean;
   failed: boolean;
+  scheduledCount: number;
   timestamp?: string | null;
   label: string;
 }) {
   const age = visibleSessionAge(isRunning, timestamp, finished);
+  const scheduledLabel =
+    scheduledCount === 1 ? "1 scheduled task" : `${scheduledCount} scheduled tasks`;
   return (
     <>
       <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[length:var(--fs-base)] font-normal leading-5 [mask-image:linear-gradient(to_right,black_calc(100%-20px),transparent)]">
         {label}
       </span>
+      {scheduledCount > 0 ? (
+        <Clock
+          className="h-3 w-3 shrink-0 text-(--dim)/70"
+          aria-label={scheduledLabel}
+          role="img"
+        />
+      ) : null}
       {isRunning ? (
         <span className="ml-auto flex w-8 shrink-0 justify-end" aria-label="Session running">
           <Spinner size="xs" className="text-(--link)" />
@@ -433,6 +477,7 @@ function SessionOptionsMenu({
   onClose,
   onPin,
   onRename,
+  onScheduleTask,
   pref,
   showClearAction,
 }: {
@@ -441,6 +486,7 @@ function SessionOptionsMenu({
   onClose: () => void;
   onPin: () => void;
   onRename: () => void;
+  onScheduleTask?: () => void;
   pref: SessionPref;
   showClearAction: boolean;
 }) {
@@ -458,6 +504,11 @@ function SessionOptionsMenu({
       <MenuItem Icon={SquarePen} onClick={run(onRename)}>
         Rename
       </MenuItem>
+      {onScheduleTask ? (
+        <MenuItem Icon={Clock} onClick={run(onScheduleTask)}>
+          New scheduled task
+        </MenuItem>
+      ) : null}
       {onArchive ? (
         <MenuItem Icon={Archive} onClick={run(onArchive)}>
           Archive
