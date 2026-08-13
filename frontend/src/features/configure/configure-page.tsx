@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ErrorBox, StatusPill } from "@/ui";
 import {
   Boxes,
@@ -14,12 +14,15 @@ import {
 } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { SettingsLayout, type SettingsSectionDef } from "@/features/settings/settings-ui";
-import { RecipesContent } from "@/features/recipes/recipes-content/recipes-content";
 import { IntegrationsContent } from "@/features/integrations/integrations-page";
 import { ServerContent } from "@/features/logs/server-view";
 import { useConfigure } from "./use-configure";
 import { RigsSection } from "./rigs-section";
-import { configureSectionFromHash, type ConfigureSectionId } from "./configure-navigation";
+import {
+  configureSectionFromHash,
+  isLegacyConfigureModelsSection,
+  type ConfigureSectionId,
+} from "./configure-navigation";
 
 const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
 
@@ -35,12 +38,6 @@ const CONFIGURE_SECTIONS: SettingsSectionDef<ConfigureSectionId>[] = [
     label: "Machines",
     description: "Hardware available for running local and remote models.",
     icon: sectionIcon(Monitor),
-  },
-  {
-    id: "models",
-    label: "Models",
-    description: "Find weights, manage serves, and monitor downloads.",
-    icon: sectionIcon(Boxes),
   },
   {
     id: "integrations",
@@ -104,20 +101,33 @@ function OverviewRow({
 
 export default function ConfigurePage() {
   const state = useConfigure();
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const requestedSection = configureSectionFromHash(searchParams.get("section") ?? "");
+  const requestedSectionValue = searchParams.get("section") ?? "";
+  const requestedSection = configureSectionFromHash(requestedSectionValue);
+  const requestedModels = isLegacyConfigureModelsSection(requestedSectionValue);
   const [section, setSection] = useState<ConfigureSectionId>(requestedSection);
+  const [redirectingToModels, setRedirectingToModels] = useState(requestedModels);
 
   useMountSubscription(() => {
     const syncSection = () => {
-      const hashSection = configureSectionFromHash(window.location.hash);
+      const hash = window.location.hash;
+      const hashSection = configureSectionFromHash(hash);
+      if (isLegacyConfigureModelsSection(hash) || (hashSection === "overview" && requestedModels)) {
+        setRedirectingToModels(true);
+        const params = new URLSearchParams(window.location.search);
+        params.delete("section");
+        router.replace(`/models${params.size ? `?${params.toString()}` : ""}`);
+        return;
+      }
+      setRedirectingToModels(false);
       setSection(hashSection === "overview" ? requestedSection : hashSection);
     };
     syncSection();
     const onHashChange = () => syncSection();
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
-  }, [requestedSection]);
+  }, [requestedModels, requestedSection, router]);
 
   const selectSection = (next: ConfigureSectionId) => {
     setSection(next);
@@ -139,6 +149,8 @@ export default function ConfigurePage() {
     0,
   );
   const machineSection = section === "overview" || section === "rig";
+
+  if (redirectingToModels) return null;
 
   return (
     <SettingsLayout
@@ -175,7 +187,7 @@ export default function ConfigurePage() {
                 title="Models"
                 description="Find weights, create serving profiles, and manage downloads."
                 detail="Get · serve · download"
-                onOpen={() => selectSection("models")}
+                onOpen={() => router.push("/models")}
               />
               <OverviewRow
                 icon={<Plug className="h-5 w-5" />}
@@ -209,7 +221,6 @@ export default function ConfigurePage() {
 
       {section === "rig" ? <RigsSection state={state} /> : null}
 
-      {section === "models" ? <RecipesContent embedded /> : null}
       {section === "integrations" ? <IntegrationsContent /> : null}
       {section === "server" ? <ServerContent embedded /> : null}
     </SettingsLayout>

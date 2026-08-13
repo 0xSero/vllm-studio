@@ -1,5 +1,1 @@
-import { permanentRedirect } from "next/navigation";
-
-export default function DiscoverRedirect() {
-  permanentRedirect("/configure?section=models#models");
-}
+export { LegacyModelsRedirect as default } from "@/app/models/legacy-models-redirect";

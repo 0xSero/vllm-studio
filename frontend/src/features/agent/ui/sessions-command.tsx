@@ -32,6 +32,12 @@ const APP_DESTINATIONS: AppDestination[] = [
     description: "Controller, GPU, model status, and live metrics.",
   },
   {
+    href: "/models",
+    label: "Models",
+    keywords: "models recipes launch downloads search hugging face explore",
+    description: "Find models, manage serves, launches, and downloads.",
+  },
+  {
     href: "/usage",
     label: "Usage",
     keywords: "tokens requests analytics costs provider pi sessions peaks",
@@ -41,8 +47,8 @@ const APP_DESTINATIONS: AppDestination[] = [
     href: "/configure",
     label: "Configure",
     keywords:
-      "machines hardware models recipes launch downloads integrations mcp connectors plugins skills server logs api docs swagger controller engines runtime",
-    description: "Manage machines, models, integrations, and the controller.",
+      "machines hardware integrations mcp connectors plugins skills server logs api docs swagger controller engines runtime",
+    description: "Manage machines, integrations, and the controller.",
   },
   {
     href: "/agent",
