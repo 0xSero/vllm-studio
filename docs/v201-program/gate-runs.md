@@ -33,3 +33,14 @@ Per run: `{date, head SHA, command, verdict, duration, stage list, failure tails
 - **primary checkout (T7):** HEAD `262f84c7`, branch `feat/drawer-git-and-steer-pending`, 6 status lines, **6/6 protected hashes unchanged** (see `integrity.md`).
 - **external transcript:** `raw-reports/2026-08-13/p5-gate-0bb40ae0.log` · sha256 `b253d7fc98e055c30c922441ba156a2ce4905f4cc44590965a16fbf0af935332` (13,916 B); manifest `sha256-manifest.tsv` now 26 data rows (prior rows unchanged).
 - **R22 note:** this verdict is recorded by one final docs-only commit after the green gate; docs-only commits after a green gate do not invalidate it, and the R16 proof line extends to the pushed head — the gate is not re-run for the verdict commit.
+
+## Run 4 — PASS (G0I head `d27f6c4d`; code-amendment re-gate per R29)
+
+- **date:** 2026-08-13T~20:5xZ · **duration:** 159s · **exit:** 0 · **verdict:** PASS (full `npm run check` from stage 1 on the amendment candidate head; all six stages green).
+- **precondition:** DeepSeek G0I independent review PASS on the amendment diff (`52c28a56`).
+- **external transcript:** `raw-reports/2026-08-13/g0i-gate-d27f6c4d.log` · sha256 `070023f9e890321252305aa3280dec2bdf338fc4d2dc511491dc20de6554c816` (13,914 B).
+- **N at push:** 20 newly-introduced commits validated by the amended pre-push range (`<head> --not --remotes=origin`), zero origin-reachable; push exit 0 through normal hooks.
+
+## First CI on PR #408 (run `31743874412`, head `d27f6c4d`) — SUCCESS
+
+`CI` workflow (pull_request, base `dev`), all 8 jobs green (R31 batched row): gates 16s · Dependency Review 8s · controller 36s · agent-runtime 14s · CodeQL 1m18s · frontend 3m56s · desktop-package 4m19s · TruffleHog 21s. Job ids 94593586138/94593586125/94593586036/94593586027/94593586127/94593586090/94593586035/94593586029. desktop-package artifact `local-studio-26e685ae3944098dcdfc9dfd12dfb0dcc3c23a03-arm64` (258,118,373 B; name carries the ephemeral PR merge-ref SHA, standard `pull_request` `github.sha` semantics). PR #408 `MERGEABLE`, mergeStateStatus `CLEAN`. TruffleHog green corroborates the R31.1 docs self-audit (0 credible secret material).
