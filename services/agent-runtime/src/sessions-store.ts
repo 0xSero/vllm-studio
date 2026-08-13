@@ -467,17 +467,21 @@ function parseEvent(line: string): SessionEvent | null {
   }
 }
 
-function activeBranchEvents(filepath: string, events: SessionEvent[]): SessionEvent[] {
-  try {
-    const activeIds = new Set(
-      SessionManager.open(filepath).buildContextEntries().map((entry) => entry.id),
-    );
-    return events.filter(
-      (event) => event.type === "session" || (typeof event.id === "string" && activeIds.has(event.id)),
-    );
-  } catch {
-    return events;
+function activeBranchEvents(events: SessionEvent[]): SessionEvent[] {
+  const keptChildByParent = new Map<string, string>();
+  for (const event of events) {
+    if (typeof event.id !== "string" || typeof event.parentId !== "string") continue;
+    keptChildByParent.set(event.parentId, event.id);
   }
+  const abandoned = new Set<string>();
+  for (const event of events) {
+    if (typeof event.id !== "string" || typeof event.parentId !== "string") continue;
+    if (abandoned.has(event.parentId) || keptChildByParent.get(event.parentId) !== event.id) {
+      abandoned.add(event.id);
+    }
+  }
+  if (abandoned.size === 0) return events;
+  return events.filter((event) => typeof event.id !== "string" || !abandoned.has(event.id));
 }
 
 // `custom` / `custom_message` events are background-task state snapshots — inert
@@ -767,7 +771,7 @@ export async function loadSession(
         const event = parseEvent(line);
         if (event) events.push(event);
       }
-      const active = activeBranchEvents(filepath, events);
+      const active = activeBranchEvents(events);
       return { events: active, windowEvents: active, cursor: null, meta: null, found: true };
     }
     return loadSessionWindow(cwd, sessionId);
@@ -790,7 +794,7 @@ async function finishSessionPage(
   paging: boolean,
 ): Promise<LoadSessionResult> {
   if (paging) {
-    const active = activeBranchEvents(filepath, events);
+    const active = activeBranchEvents(events);
     return { events: active, windowEvents: active, cursor, meta: null, found: true };
   }
   // The head-scan and the usage scan read opposite ends of the same file for
@@ -801,7 +805,7 @@ async function finishSessionPage(
   ]);
   meta.usage = usage;
   const prefix = events.some((event) => event.type === "session") ? [] : headerEvents;
-  const active = activeBranchEvents(filepath, prefix.length > 0 ? [...prefix, ...events] : events);
+  const active = activeBranchEvents(prefix.length > 0 ? [...prefix, ...events] : events);
   const synthetic = new Set(prefix);
   return {
     events: active,
