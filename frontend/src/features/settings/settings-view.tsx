@@ -10,7 +10,12 @@ import {
   ServerCog,
   Smartphone,
 } from "@/ui/icon-registry";
-import { SettingsLayout, type SettingsSectionDef, type SettingsSectionId } from "./settings-ui";
+import {
+  SettingsLayout,
+  type SettingsSectionDef,
+  type SettingsSectionGroup,
+  type SettingsSectionId,
+} from "./settings-ui";
 import type { CompatibilityReport, ConfigData } from "@/lib/types";
 import type { ApiConnectionSettings, ConnectionStatus } from "./types";
 import { ApiConnectionSection } from "./api-connection-section";
@@ -55,6 +60,20 @@ const SECTIONS: SettingsSectionDef[] = [
   description: description as string,
   icon: sectionIcon(Icon as LucideIcon),
 }));
+const SECTION_GROUPS: SettingsSectionGroup[] = [
+  {
+    label: "Personal",
+    sectionIds: ["connection", "profile", "appearance", "terminal"],
+  },
+  {
+    label: "Local Studio",
+    sectionIds: ["system", "setup"],
+  },
+  {
+    label: "Archived",
+    sectionIds: ["archive"],
+  },
+];
 const isSectionId = (value: string): value is SettingsSectionId =>
   SECTIONS.some((section) => section.id === value);
 const normalizeSectionId = (value: string): SettingsSectionId | null => {
@@ -118,6 +137,8 @@ export function SettingsView({
       loading={loading}
       onReload={onReload}
       onSelectSection={selectSection}
+      layout="shell"
+      sectionGroups={SECTION_GROUPS}
     >
       {activeSection === "connection" ? (
         <ApiConnectionSection

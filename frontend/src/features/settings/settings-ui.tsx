@@ -15,13 +15,18 @@ import {
   type SectionNavItem,
   type UiTone,
 } from "@/ui";
-import { ChevronDown } from "@/ui/icon-registry";
+import { ChevronDown, Search, X } from "@/ui/icon-registry";
 import { cx } from "@/ui/utils";
 
 export type SettingsSectionId = string;
 export type StatusTone = UiTone;
 export type SettingsSectionDef<Id extends SettingsSectionId = SettingsSectionId> =
   SectionNavItem<Id>;
+
+export type SettingsSectionGroup<Id extends SettingsSectionId = SettingsSectionId> = {
+  label: string;
+  sectionIds: readonly Id[];
+};
 
 type LayoutProps<Id extends SettingsSectionId = SettingsSectionId> = {
   sections: SettingsSectionDef<Id>[];
@@ -35,6 +40,8 @@ type LayoutProps<Id extends SettingsSectionId = SettingsSectionId> = {
   refreshLabel?: string;
   showRefresh?: boolean;
   width?: "default" | "wide";
+  layout?: "document" | "shell";
+  sectionGroups?: readonly SettingsSectionGroup<Id>[];
   children: ReactNode;
 };
 
@@ -61,8 +68,30 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
   refreshLabel = `Refresh ${title.toLowerCase()}`,
   showRefresh = true,
   width = "default",
+  layout = "document",
+  sectionGroups = [],
   children,
 }: LayoutProps<Id>) {
+  if (layout === "shell") {
+    return (
+      <SettingsShellLayout
+        sections={sections}
+        activeSection={activeSection}
+        title={title}
+        status={status}
+        loading={loading}
+        onReload={onReload}
+        onSelectSection={onSelectSection}
+        eyebrow={eyebrow}
+        refreshLabel={refreshLabel}
+        showRefresh={showRefresh}
+        sectionGroups={sectionGroups}
+      >
+        {children}
+      </SettingsShellLayout>
+    );
+  }
+
   const active = sections.find((section) => section.id === activeSection);
   const layoutWidth =
     width === "wide"
@@ -122,6 +151,149 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
             ) : null}
           </header>
           <div>{children}</div>
+        </section>
+      </div>
+    </AppPage>
+  );
+}
+
+type SettingsShellLayoutProps<Id extends SettingsSectionId> = Omit<
+  LayoutProps<Id>,
+  "layout" | "width" | "refreshLabel" | "showRefresh"
+> & {
+  refreshLabel: string;
+  showRefresh: boolean;
+};
+
+function SettingsShellLayout<Id extends SettingsSectionId>({
+  sections,
+  activeSection,
+  title,
+  status,
+  loading,
+  onReload,
+  onSelectSection,
+  eyebrow,
+  refreshLabel,
+  showRefresh,
+  sectionGroups = [],
+  children,
+}: SettingsShellLayoutProps<Id>) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const active = sections.find((section) => section.id === activeSection);
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+  const visibleSections = normalizedQuery
+    ? sections.filter((section) =>
+        `${section.label} ${section.description}`.toLocaleLowerCase().includes(normalizedQuery),
+      )
+    : sections;
+  const visibleSectionIds = new Set(visibleSections.map((section) => section.id));
+  const assignedSectionIds = new Set(sectionGroups.flatMap((group) => group.sectionIds));
+  const visibleGroups = sectionGroups
+    .map((group) => ({
+      label: group.label,
+      items: group.sectionIds
+        .map((sectionId) => sections.find((section) => section.id === sectionId))
+        .filter(
+          (section): section is SettingsSectionDef<Id> =>
+            section !== undefined && visibleSectionIds.has(section.id),
+        ),
+    }))
+    .filter((group) => group.items.length > 0);
+  const ungroupedSections = visibleSections.filter(
+    (section) => !assignedSectionIds.has(section.id),
+  );
+
+  return (
+    <AppPage className="h-full !min-h-0 !overflow-hidden">
+      <div className="grid h-full min-h-0 w-full grid-cols-1 overflow-y-auto lg:grid-cols-[168px_minmax(0,1fr)] lg:overflow-hidden">
+        <aside className="min-w-0 border-b border-(--ui-border) px-4 py-4 sm:px-6 lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-b-0 lg:px-3">
+          <div className="flex items-center justify-between gap-3 px-1">
+            <h1 className="text-[length:var(--fs-lg)] font-medium tracking-[-0.01em] text-(--ui-fg)">
+              {title}
+            </h1>
+            {showRefresh ? (
+              <RefreshIconButton onClick={onReload} loading={loading} label={refreshLabel} />
+            ) : null}
+          </div>
+          <div className="relative mt-4">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-(--ui-muted)" />
+            <input
+              type="text"
+              role="searchbox"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search settings…"
+              aria-label="Search settings"
+              autoComplete="off"
+              className="h-8 w-full rounded-lg border border-(--ui-separator) bg-(--ui-surface) pr-8 pl-8 text-[length:var(--fs-sm)] text-(--ui-fg) outline-none transition-colors placeholder:text-(--ui-muted)/70 focus:border-(--ui-accent)/60 focus:ring-1 focus:ring-(--ui-accent)/20"
+            />
+            {searchQuery ? (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear settings search"
+                className="absolute top-1/2 right-1.5 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-(--ui-muted) transition-[transform,color,background-color] hover:bg-(--ui-hover) hover:text-(--ui-fg) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:scale-[0.96]"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
+          <div className="mt-4 space-y-4">
+            {visibleGroups.map((group) => (
+              <div key={group.label}>
+                <div className="px-2 pb-1 text-[length:var(--fs-xs)] font-medium text-(--ui-muted)">
+                  {group.label}
+                </div>
+                <SectionNav
+                  label={`${group.label} settings`}
+                  items={group.items}
+                  activeItem={activeSection}
+                  onSelectItem={onSelectSection}
+                />
+              </div>
+            ))}
+            {ungroupedSections.length > 0 ? (
+              <SectionNav
+                label={`${title} sections`}
+                items={ungroupedSections}
+                activeItem={activeSection}
+                onSelectItem={onSelectSection}
+              />
+            ) : null}
+            {visibleSections.length === 0 ? (
+              <div className="px-2 py-1 text-[length:var(--fs-sm)] text-(--ui-muted)">
+                No results found
+              </div>
+            ) : null}
+          </div>
+        </aside>
+        <section className="min-w-0 lg:min-h-0 lg:overflow-y-auto">
+          <div className="w-full max-w-[46rem] px-4 py-5 pb-12 sm:px-6 lg:px-8 lg:py-6">
+            <header className="mb-6 flex min-h-8 items-start justify-between gap-4">
+              <div className="min-w-0">
+                {eyebrow ? (
+                  <div className="mb-1 text-[length:var(--fs-xs)] uppercase tracking-[0.12em] text-(--ui-muted)">
+                    {eyebrow}
+                  </div>
+                ) : null}
+                <h2 className="text-[length:var(--fs-xl)] font-medium tracking-[-0.015em] text-(--ui-fg)">
+                  {active?.label ?? title}
+                </h2>
+                {active?.description ? (
+                  <p className="mt-1 max-w-[38rem] text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
+                    {active.description}
+                  </p>
+                ) : null}
+              </div>
+              {status ? (
+                <div className="shrink-0 text-[length:var(--fs-xs)] text-(--ui-muted)">
+                  {status}
+                </div>
+              ) : null}
+            </header>
+            <div>{children}</div>
+          </div>
         </section>
       </div>
     </AppPage>
