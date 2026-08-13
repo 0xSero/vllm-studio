@@ -196,12 +196,13 @@ export function ScreencastSurface({
     if (!request) return;
     void fetch(request.input, request.init)
       .then(async (response) => {
+        if (!response.ok) throw new Error(`Navigation failed (${response.status})`);
         const payload = (await response.json().catch(() => null)) as {
           ok: boolean;
           error?: string;
         } | null;
         if (cancelled) return;
-        setNavError(response.ok && payload?.ok ? null : (payload?.error ?? "Navigation failed"));
+        setNavError(payload?.ok ? null : (payload?.error ?? "Navigation failed"));
       })
       .catch((error) => {
         if (!cancelled) {
