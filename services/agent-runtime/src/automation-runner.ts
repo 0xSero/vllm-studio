@@ -5,12 +5,13 @@ import type {
   AutomationTarget,
 } from "../../../shared/agent/automation";
 import type { AgentModel } from "../../../shared/agent/models";
+import { sessionTitleFromUserPrompt } from "../../../shared/agent/session-title";
 import { piRuntimeManager, selectPiRuntimeModel } from "./pi-runtime";
 import { refreshPiModels } from "./pi-runtime-models";
 import { AUTOMATION_RUNTIME_PREFIX, isAutomationRuntimeSessionId } from "./pi-runtime-state";
 import { listProjectsFromStore } from "./projects-store";
 import { lastAssistantResult } from "./session-text";
-import { findThread } from "./thread-repository";
+import { findThread, registerProvisionalThread } from "./thread-repository";
 
 export const NO_ACTIVE_MODEL_ERROR =
   "No model is loaded right now, so this automation could not run. Load a model in Local Studio and try again.";
@@ -204,6 +205,17 @@ export async function runAutomation(
   const session = piRuntimeManager.getSession(runtimeSessionId);
   try {
     await session.ensureStarted(resolution.modelId, automation.cwd || undefined, resume, {});
+    if (target.kind === "global") {
+      const status = session.status;
+      if (!status.piSessionId) throw new Error("Automation session did not receive an identity.");
+      await registerProvisionalThread({
+        id: status.piSessionId,
+        cwd: status.cwd,
+        modelId: status.modelId || resolution.modelId,
+        title: sessionTitleFromUserPrompt(automation.prompt),
+        startedAt: new Date().toISOString(),
+      });
+    }
     if (signal?.aborted) {
       return failedRun(
         automation,
