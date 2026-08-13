@@ -5,7 +5,7 @@ import {
   AutomationsResponseSchema,
   type Automation,
 } from "@shared/agent/automation";
-import type { AutomationDraft } from "./automation-model";
+import { threadIdOf, type AutomationDraft } from "./automation-model";
 
 const AgentModelSchema = Schema.Struct({
   id: Schema.String,
@@ -140,6 +140,7 @@ const POLL_INTERVAL_MS = 30_000;
 const PENDING: AutomationsSnapshot = { automations: [], loading: true, error: "" };
 
 let snapshot: AutomationsSnapshot = PENDING;
+let threadCounts: ReadonlyMap<string, number> = new Map();
 let poll: number | null = null;
 const listeners = new Set<() => void>();
 
@@ -163,6 +164,15 @@ function signature(automations: readonly Automation[]): string {
     .join("|");
 }
 
+function indexThreadCounts(automations: readonly Automation[]): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>();
+  for (const automation of automations) {
+    const threadId = threadIdOf(automation);
+    if (threadId) counts.set(threadId, (counts.get(threadId) ?? 0) + 1);
+  }
+  return counts;
+}
+
 function publish(next: AutomationsSnapshot): void {
   if (
     next.loading === snapshot.loading &&
@@ -172,6 +182,7 @@ function publish(next: AutomationsSnapshot): void {
     return;
   }
   snapshot = next;
+  threadCounts = indexThreadCounts(next.automations);
   for (const listener of listeners) listener();
 }
 
@@ -228,6 +239,18 @@ function readPendingSnapshot(): AutomationsSnapshot {
 
 export function useAutomations(): AutomationsSnapshot {
   return useSyncExternalStore(subscribe, readSnapshot, readPendingSnapshot);
+}
+
+function readNoThreadCount(): number {
+  return 0;
+}
+
+export function useThreadAutomationCount(piSessionId: string | null | undefined): number {
+  const readThreadCount = useCallback(
+    () => (piSessionId ? (threadCounts.get(piSessionId) ?? 0) : 0),
+    [piSessionId],
+  );
+  return useSyncExternalStore(subscribe, readThreadCount, readNoThreadCount);
 }
 
 export type AutomationAction = "save" | "run" | "status" | "delete" | null;

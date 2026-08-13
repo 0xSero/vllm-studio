@@ -4,35 +4,30 @@ import Link from "next/link";
 import { MenuItem, Spinner } from "@/ui";
 import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import { useRouter } from "next/navigation";
-import { useRef, useState, type DragEvent, type MouseEvent } from "react";
+import { useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { Archive, Clock, MoreIcon, PinIcon, PinOffIcon, SquarePen, X } from "@/ui/icon-registry";
 import type { SessionPref } from "@/features/agent/messages/prefs";
-import { useAutomations } from "@/features/agent/automations/automation-api";
-import { threadAutomations } from "@/features/agent/automations/automation-model";
+import { useThreadAutomationCount } from "@/features/agent/automations/automation-api";
 import { hrefWithOpenNonce, navigateToSessionHref, visibleSessionAge } from "./helpers";
 import { PinButton } from "./nav-chrome";
 
 const SESSION_MENU_CLASS = `absolute right-0 top-6 isolate z-[999] min-w-[180px] ${POPOVER_MENU_CLASS}`;
 
-function scheduledTaskHref(href: string | undefined): string | null {
-  if (!href) return null;
-  const separator = href.indexOf("?");
-  if (separator < 0) return null;
+type ScheduleTarget = { piSessionId: string; scheduleHref: string };
+
+const NO_SCHEDULE_TARGET: ScheduleTarget = { piSessionId: "", scheduleHref: "" };
+
+function scheduleTargetFromHref(href: string | undefined): ScheduleTarget {
+  const separator = href ? href.indexOf("?") : -1;
+  if (!href || separator < 0) return NO_SCHEDULE_TARGET;
   const params = new URLSearchParams(href.slice(separator + 1));
   const piSessionId = params.get("session");
-  if (!piSessionId) return null;
+  if (!piSessionId) return NO_SCHEDULE_TARGET;
   const query = new URLSearchParams({ new: "1", thread: piSessionId });
   const projectId = params.get("project");
   if (projectId) query.set("project", projectId);
-  return `/agent/automations?${query.toString()}`;
-}
-
-function sessionIdFromHref(href: string | undefined): string | null {
-  if (!href) return null;
-  const separator = href.indexOf("?");
-  if (separator < 0) return null;
-  return new URLSearchParams(href.slice(separator + 1)).get("session");
+  return { piSessionId, scheduleHref: `/agent/automations?${query.toString()}` };
 }
 
 type SessionNavRowProps = {
@@ -88,16 +83,14 @@ export function SessionNavRow({
   showClearAction = false,
   renameInputClass = "text-[length:var(--fs-base)] leading-5",
 }: SessionNavRowProps) {
-  const router = useRouter();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(initialDraft);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useClickOutside(menuRef, menuOpen, () => setMenuOpen(false));
-  const { automations } = useAutomations();
-  const scheduledCount = threadAutomations(automations, sessionIdFromHref(href)).length;
-  const newScheduledTaskHref = scheduledTaskHref(href);
+  const scheduleTarget = useMemo(() => scheduleTargetFromHref(href), [href]);
+  const scheduledCount = useThreadAutomationCount(scheduleTarget.piSessionId);
   const startRename = () => {
     setDraft(initialDraft);
     setRenaming(true);
@@ -220,9 +213,7 @@ export function SessionNavRow({
             onClose={() => setMenuOpen(false)}
             onPin={() => onPatchPref({ pinned: !pref.pinned })}
             onRename={startRename}
-            onScheduleTask={
-              newScheduledTaskHref ? () => router.push(newScheduledTaskHref) : undefined
-            }
+            scheduleHref={scheduleTarget.scheduleHref}
             pref={pref}
             showClearAction={showClearAction}
           />
@@ -477,7 +468,7 @@ function SessionOptionsMenu({
   onClose,
   onPin,
   onRename,
-  onScheduleTask,
+  scheduleHref,
   pref,
   showClearAction,
 }: {
@@ -486,10 +477,11 @@ function SessionOptionsMenu({
   onClose: () => void;
   onPin: () => void;
   onRename: () => void;
-  onScheduleTask?: () => void;
+  scheduleHref?: string;
   pref: SessionPref;
   showClearAction: boolean;
 }) {
+  const router = useRouter();
   const showClear = showClearAction && (pref.title || pref.pinned);
   const run = (action: () => void) => () => {
     onClose();
@@ -504,8 +496,8 @@ function SessionOptionsMenu({
       <MenuItem Icon={SquarePen} onClick={run(onRename)}>
         Rename
       </MenuItem>
-      {onScheduleTask ? (
-        <MenuItem Icon={Clock} onClick={run(onScheduleTask)}>
+      {scheduleHref ? (
+        <MenuItem Icon={Clock} onClick={run(() => router.push(scheduleHref))}>
           New scheduled task
         </MenuItem>
       ) : null}
