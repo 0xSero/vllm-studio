@@ -8,6 +8,11 @@ export type BrowserSurfaceRequest = {
   input: string;
 };
 
+export function browserFrameResponseAction(status: number): "read" | "retry" | "unavailable" {
+  if (status === 503) return "unavailable";
+  return status >= 200 && status < 300 ? "read" : "retry";
+}
+
 export function browserFrameSource(
   frame: BrowserSessionFrame | null,
   sessionId: string | null,

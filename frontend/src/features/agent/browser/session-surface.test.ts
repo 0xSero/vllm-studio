@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  browserFrameResponseAction,
   browserFrameSource,
   browserSurfaceRequest,
   BrowserSessionSurface,
 } from "@/features/agent/browser/session-surface";
+
+test("transient frame responses retry while true unavailability stops polling", () => {
+  assert.equal(browserFrameResponseAction(200), "read");
+  assert.equal(browserFrameResponseAction(502), "retry");
+  assert.equal(browserFrameResponseAction(503), "unavailable");
+});
 
 test("a previous session frame is hidden before the new poll settles", () => {
   const frame = { sessionId: "session-a", src: "data:image/jpeg;base64,a" };

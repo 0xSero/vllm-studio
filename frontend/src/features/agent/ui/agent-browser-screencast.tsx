@@ -3,6 +3,7 @@
 import { effectTimeout, type EffectTimer } from "@/lib/effect-timers";
 import { browserSessionRequest } from "@/features/agent/browser/session-request";
 import {
+  browserFrameResponseAction,
   browserFrameSource,
   browserSurfaceRequest,
   BrowserSessionSurface,
@@ -139,16 +140,17 @@ export function ScreencastSurface({
         });
         if (!request) return;
         const response = await fetch(request.input, request.init);
-        if (!disposed && surface.ownsSession(sessionId) && response.status === 503) {
+        const responseAction = browserFrameResponseAction(response.status);
+        if (!disposed && surface.ownsSession(sessionId) && responseAction === "unavailable") {
           const payload = (await response.json().catch(() => null)) as FramePayload | null;
           if (!disposed && surface.ownsSession(sessionId)) {
             onUnavailableRef.current(payload?.error || "Browser unavailable");
           }
           return; // stop polling; pane switches to reading mode
         }
-        if (!response.ok) return;
-        const payload = (await response.json()) as FramePayload;
-        if (!disposed && surface.ownsSession(sessionId) && payload.ok && payload.data) {
+        const payload =
+          responseAction === "read" ? ((await response.json()) as FramePayload) : null;
+        if (!disposed && surface.ownsSession(sessionId) && payload?.ok && payload.data) {
           if (payload.data.frame) {
             setFrame({
               sessionId,
