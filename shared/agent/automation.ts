@@ -26,7 +26,10 @@ export const AutomationTargetSchema = Schema.Union([
   }),
 ]);
 
-export const AutomationFallbackReasonSchema = Schema.Literals(["requested_model_inactive"]);
+export const AutomationFallbackReasonSchema = Schema.Literals([
+  "requested_model_inactive",
+  "requested_model_unavailable",
+]);
 
 export const AutomationRunSchema = Schema.Struct({
   at: Schema.String,

@@ -167,9 +167,13 @@ export function runProvenance(run: AutomationRun): string | null {
   if (!requested) return null;
   if (!actual) return `Requested ${requested}`;
   if (actual === requested) return `Ran on ${actual}`;
-  return run.fallbackReason === "requested_model_inactive"
-    ? `Ran on ${actual} because ${requested} was not loaded`
-    : `Ran on ${actual} instead of ${requested}`;
+  if (run.fallbackReason === "requested_model_inactive") {
+    return `Ran on ${actual} because ${requested} was not loaded`;
+  }
+  if (run.fallbackReason === "requested_model_unavailable") {
+    return `Ran on ${actual} because ${requested} is not available`;
+  }
+  return `Ran on ${actual} instead of ${requested}`;
 }
 
 export function runTranscriptHref(run: AutomationRun): string | null {

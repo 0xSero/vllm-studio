@@ -1,4 +1,9 @@
-import type { Automation, AutomationRun, AutomationTarget } from "../../../shared/agent/automation";
+import type {
+  Automation,
+  AutomationFallbackReason,
+  AutomationRun,
+  AutomationTarget,
+} from "../../../shared/agent/automation";
 import type { AgentModel } from "../../../shared/agent/models";
 import { piRuntimeManager, selectPiRuntimeModel } from "./pi-runtime";
 import { refreshPiModels } from "./pi-runtime-models";
@@ -32,8 +37,11 @@ export function detachedThreadError(threadId: string): string {
   return `This automation runs inside conversation '${threadId}', but the run landed in a different conversation, so it was stopped instead of continuing detached.`;
 }
 
-export type AutomationModelResolution =
-  { ok: true; modelId: string; fallback: boolean } | { ok: false; error: string };
+export type ResolvedAutomationModel =
+  | { ok: true; modelId: string; fallback: false }
+  | { ok: true; modelId: string; fallback: true; fallbackReason: AutomationFallbackReason };
+
+export type AutomationModelResolution = ResolvedAutomationModel | { ok: false; error: string };
 
 function isControllerHostedModel(model: AgentModel): boolean {
   return typeof model.controllerUrl === "string" && model.controllerUrl.trim().length > 0;
@@ -61,7 +69,12 @@ export function resolveAutomationModel(
   }
   const fallback = automationFallbackModel(models);
   if (!fallback) return { ok: false, error: NO_ACTIVE_MODEL_ERROR };
-  return { ok: true, modelId: fallback.id, fallback: true };
+  return {
+    ok: true,
+    modelId: fallback.id,
+    fallback: true,
+    fallbackReason: requested ? "requested_model_inactive" : "requested_model_unavailable",
+  };
 }
 
 export function automationRunError(lastError: string | null, summary: string): string | null {
@@ -83,13 +96,13 @@ async function resolveThreadTarget(cwd: string, threadId: string): Promise<Threa
   return { ok: true, piSessionId: thread.id };
 }
 
-function modelFields(requestedModelId: string, resolution: { modelId: string; fallback: boolean }) {
+function modelFields(requestedModelId: string, resolution: ResolvedAutomationModel) {
   return resolution.fallback
     ? {
         requestedModelId,
         actualModelId: resolution.modelId,
         fallbackUsed: true,
-        fallbackReason: "requested_model_inactive" as const,
+        fallbackReason: resolution.fallbackReason,
       }
     : { requestedModelId, actualModelId: resolution.modelId, fallbackUsed: false };
 }
@@ -112,7 +125,7 @@ function failedRun(
   automation: Automation,
   target: AutomationTarget,
   error: string,
-  resolution?: { modelId: string; fallback: boolean },
+  resolution?: ResolvedAutomationModel,
   context?: RunContext,
 ): AutomationRun {
   return {

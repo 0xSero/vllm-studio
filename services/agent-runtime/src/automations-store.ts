@@ -73,8 +73,18 @@ function normalizeTarget(value: unknown): AutomationTarget {
   return { kind: "global" };
 }
 
+const AUTOMATION_FALLBACK_REASONS = [
+  "requested_model_inactive",
+  "requested_model_unavailable",
+] as const;
+
+function normalizeFallbackReason(value: unknown) {
+  return AUTOMATION_FALLBACK_REASONS.find((reason) => reason === value) ?? null;
+}
+
 function normalizeRun(value: unknown): AutomationRun | null {
   if (!isRecord(value) || typeof value.at !== "string") return null;
+  const fallbackReason = normalizeFallbackReason(value.fallbackReason);
   return {
     at: value.at,
     piSessionId: typeof value.piSessionId === "string" ? value.piSessionId : null,
@@ -89,9 +99,7 @@ function normalizeRun(value: unknown): AutomationRun | null {
       : {}),
     ...(typeof value.actualModelId === "string" ? { actualModelId: value.actualModelId } : {}),
     ...(typeof value.fallbackUsed === "boolean" ? { fallbackUsed: value.fallbackUsed } : {}),
-    ...(value.fallbackReason === "requested_model_inactive"
-      ? { fallbackReason: "requested_model_inactive" as const }
-      : {}),
+    ...(fallbackReason ? { fallbackReason } : {}),
   };
 }
 
