@@ -11,6 +11,10 @@ export const NO_ACTIVE_MODEL_ERROR =
 export const MODEL_LOOKUP_ERROR =
   "Could not read the list of runtime models, so this automation could not pick a model to run on.";
 
+export function ambiguousModelError(modelId: string): string {
+  return `Model '${modelId}' is available from more than one active provider. Select a provider-specific model before running this automation.`;
+}
+
 export function missingThreadError(threadId: string): string {
   return `This automation runs inside conversation '${threadId}', which is no longer a thread in its working directory, so the run was skipped rather than started as a detached conversation.`;
 }
@@ -20,17 +24,28 @@ export function archivedThreadError(threadId: string): string {
 }
 
 export type AutomationModelResolution =
-  | { ok: true; modelId: string; fallback: boolean }
-  | { ok: false; error: string };
+  { ok: true; modelId: string; fallback: boolean } | { ok: false; error: string };
 
 export function resolveAutomationModel(
   requestedModelId: string,
   models: readonly AgentModel[],
 ): AutomationModelResolution {
-  const requested = models.find(
-    (model) => model.id === requestedModelId || model.rawId === requestedModelId,
-  );
-  if (requested?.active) return { ok: true, modelId: requestedModelId, fallback: false };
+  const exact = models.filter((model) => model.id === requestedModelId);
+  if (exact.length > 0) {
+    const activeExact = exact.find((model) => model.active);
+    if (activeExact) return { ok: true, modelId: activeExact.id, fallback: false };
+  } else {
+    const activeLegacyMatches = models.filter(
+      (model) => model.active && model.rawId === requestedModelId,
+    );
+    const canonicalIds = new Set(activeLegacyMatches.map((model) => model.id));
+    if (canonicalIds.size === 1) {
+      return { ok: true, modelId: activeLegacyMatches[0].id, fallback: false };
+    }
+    if (canonicalIds.size > 1) {
+      return { ok: false, error: ambiguousModelError(requestedModelId) };
+    }
+  }
   const active = models.find((model) => model.active);
   if (!active) return { ok: false, error: NO_ACTIVE_MODEL_ERROR };
   return { ok: true, modelId: active.id, fallback: true };
