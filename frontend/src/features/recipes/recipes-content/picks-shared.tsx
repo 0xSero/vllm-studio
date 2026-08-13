@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { DownloadCloud } from "@/ui/icon-registry";
+import { Brain, ChevronRight, DownloadCloud, Eye, Zap } from "@/ui/icon-registry";
 import { ModelButton } from "@/ui";
 import { ModelLogo } from "@/ui/model-logo";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
-import { ModelRow, ModelStatus, ModelValue } from "./model-page";
+import { ModelStatus } from "./model-page";
 import { cx } from "@/ui/utils";
 import api from "@/lib/api/client";
 import type {
@@ -179,33 +179,64 @@ export function PickCard({ model, onOpen }: { model: ModelIndexModel; onOpen: ()
   const brand = modelBrand(model);
   const formatCount = modelFormatCount(model);
   return (
-    <ModelRow
-      label={model.name}
-      description={model.description}
-      leading={
-        <ModelLogo
-          modelId={brand.repo}
-          author={brand.owner}
-          label={model.name}
-          size="md"
-          className="rounded-lg"
-        />
-      }
-      value={<ModelValue dim>{brand.label}</ModelValue>}
-      status={
-        <ModelStatus tone="info">
-          {model.role ?? (model.multimodal ? "multimodal" : "model")}
-        </ModelStatus>
-      }
-      variant="catalog"
-      className="min-h-36 rounded-[10px] border border-(--ui-border) bg-(--ui-surface) active:scale-[0.995]"
+    <button
+      type="button"
       onClick={onOpen}
+      aria-label={`Open ${model.name} details`}
+      className="group relative min-h-40 w-full overflow-hidden rounded-xl border p-4 text-left transition-[background-color,border-color,transform] hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) active:translate-y-px"
+      style={{
+        backgroundColor: `${brand.color}0D`,
+        borderColor: `${brand.color}38`,
+      }}
     >
-      <div className="truncate font-mono text-[length:var(--fs-xs)] text-(--ui-muted)">
-        {model.params} · {formatContextTokens(model.context_tokens)} ctx · {formatCount}{" "}
-        {formatCount === 1 ? "format" : "formats"}
+      <span
+        className="absolute inset-y-0 left-0 w-0.5 opacity-80"
+        style={{ backgroundColor: brand.color }}
+      />
+      <div className="flex h-full min-h-32 flex-col">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <ModelLogo
+              modelId={brand.repo}
+              author={brand.owner}
+              label={model.name}
+              size="lg"
+              className="rounded-lg"
+            />
+            <div className="min-w-0">
+              <div className="text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.12em] text-(--ui-muted)">
+                {brand.label}
+              </div>
+              <h4 className="mt-0.5 truncate text-[length:var(--fs-lg)] font-medium tracking-tight text-(--ui-fg)">
+                {model.name}
+              </h4>
+            </div>
+          </div>
+          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-(--ui-muted) transition-transform group-hover:translate-x-0.5" />
+        </div>
+        <p className="mt-3 line-clamp-2 text-[length:var(--fs-sm)] leading-5 text-(--ui-muted)">
+          {model.description}
+        </p>
+        <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-3 font-mono text-[length:var(--fs-xs)] text-(--ui-muted)">
+          <span>{model.params}</span>
+          <span>{formatContextTokens(model.context_tokens)} ctx</span>
+          <span>
+            {formatCount} {formatCount === 1 ? "format" : "formats"}
+          </span>
+          {model.role ? (
+            <span className="ml-auto inline-flex items-center gap-1 font-sans font-medium">
+              {model.role === "fast" ? <Zap className="h-3 w-3" /> : <Brain className="h-3 w-3" />}
+              {model.role}
+            </span>
+          ) : model.multimodal ? (
+            <span className="ml-auto inline-flex items-center gap-1 font-sans font-medium">
+              <Eye className="h-3 w-3" />
+              multimodal
+            </span>
+          ) : null}
+        </div>
       </div>
-    </ModelRow>
+    </button>
   );
 }
 
