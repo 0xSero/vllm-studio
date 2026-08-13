@@ -39,6 +39,7 @@ export const AutomationRunSchema = Schema.Struct({
   error: Schema.optional(Schema.String),
   requestedModelId: Schema.optional(Schema.String),
   actualModelId: Schema.optional(Schema.String),
+  fallbackUsed: Schema.optional(Schema.Boolean),
   fallbackReason: Schema.optional(AutomationFallbackReasonSchema),
 });
 

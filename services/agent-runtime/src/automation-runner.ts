@@ -67,9 +67,10 @@ function modelFields(requestedModelId: string, resolution: { modelId: string; fa
     ? {
         requestedModelId,
         actualModelId: resolution.modelId,
+        fallbackUsed: true,
         fallbackReason: "requested_model_inactive" as const,
       }
-    : { requestedModelId, actualModelId: resolution.modelId };
+    : { requestedModelId, actualModelId: resolution.modelId, fallbackUsed: false };
 }
 
 function failedRun(automation: Automation, target: AutomationTarget, error: string): AutomationRun {

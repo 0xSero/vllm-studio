@@ -88,6 +88,7 @@ function normalizeRun(value: unknown): AutomationRun | null {
       ? { requestedModelId: value.requestedModelId }
       : {}),
     ...(typeof value.actualModelId === "string" ? { actualModelId: value.actualModelId } : {}),
+    ...(typeof value.fallbackUsed === "boolean" ? { fallbackUsed: value.fallbackUsed } : {}),
     ...(value.fallbackReason === "requested_model_inactive"
       ? { fallbackReason: "requested_model_inactive" as const }
       : {}),
