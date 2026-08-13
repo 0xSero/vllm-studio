@@ -3,7 +3,6 @@
 import { memo, useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { AssistantBlock, ChatMessage } from "@/features/agent/messages";
 import { SessionPaneBlockRouter } from "@/features/agent/ui/timeline/session-pane-block-router";
-import { useTimelineWindow } from "@/features/agent/ui/timeline/timeline-window";
 import { ChevronDownIcon } from "@/ui/icons";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { effectTimeout, type EffectTimer } from "@/lib/effect-timers";
@@ -92,8 +91,6 @@ export function Timeline({
     [messages, mergeCache],
   );
 
-  const timelineWindow = useTimelineWindow(scroller, visibleMessages);
-
   useTimelineScrollEffects({
     scroller,
     bottom,
@@ -135,26 +132,20 @@ export function Timeline({
               const isLast = index === visibleMessages.length - 1;
               const prevRole = index > 0 ? visibleMessages[index - 1].role : null;
               const isGrouped = message.role === prevRole;
-              const renders = timelineWindow.renders(index);
               return (
                 <div
                   key={message.id}
                   data-timeline-message-id={message.id}
-                  data-timeline-reserved={renders ? undefined : ""}
-                  style={
-                    renders ? undefined : { height: timelineWindow.reservedHeight(message.id) }
-                  }
+                  style={{ contentVisibility: "auto", containIntrinsicSize: "auto 320px" }}
                   className={`${isGrouped ? "pt-2" : "pt-4 sm:pt-6"} ${isLast ? "pb-4" : ""}`}
                 >
-                  {renders ? (
-                    <MemoMessage
-                      message={message}
-                      live={isLast && running}
-                      running={running}
-                      cwd={cwd}
-                      onForkSession={onForkSession}
-                    />
-                  ) : null}
+                  <MemoMessage
+                    message={message}
+                    live={isLast && running}
+                    running={running}
+                    cwd={cwd}
+                    onForkSession={onForkSession}
+                  />
                 </div>
               );
             })}
