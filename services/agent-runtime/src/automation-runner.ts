@@ -16,6 +16,8 @@ export const NO_ACTIVE_MODEL_ERROR =
   "No model is loaded right now, so this automation could not run. Load a model in Local Studio and try again.";
 export const MODEL_LOOKUP_ERROR =
   "Could not read the list of runtime models, so this automation could not pick a model to run on.";
+export const AUTOMATION_CANCELLED_ERROR =
+  "This automation run was stopped because its conversation was archived while the run was in flight.";
 
 export function ambiguousModelError(modelId: string): string {
   return `Model '${modelId}' is available from more than one active provider. Select a provider-specific model before running this automation.`;
@@ -86,6 +88,25 @@ export function automationTarget(automation: Automation): AutomationTarget {
   return automation.target ?? { kind: "global" };
 }
 
+export function automationTargetThreadId(automation: Automation): string | null {
+  const target = automationTarget(automation);
+  return target.kind === "thread" ? target.threadId : null;
+}
+
+export function automationRuntimeSessionId(automationId: string): string {
+  return `${AUTOMATION_RUNTIME_PREFIX}${automationId}`;
+}
+
+export async function abortAutomationRun(automationId: string): Promise<void> {
+  const runtimeSessionId = automationRuntimeSessionId(automationId);
+  const entry = piRuntimeManager
+    .listSessions()
+    .find((candidate) => candidate.sessionId === runtimeSessionId);
+  if (!entry) return;
+  await entry.session.abort().catch(() => undefined);
+  await piRuntimeManager.stopAndDeleteSession(runtimeSessionId).catch(() => undefined);
+}
+
 type ThreadResolution = { ok: true; piSessionId: string } | { ok: false; error: string };
 
 async function resolveThreadTarget(cwd: string, threadId: string): Promise<ThreadResolution> {
@@ -154,7 +175,10 @@ function interactiveRuntimeOwns(piSessionId: string): boolean {
     );
 }
 
-export async function runAutomation(automation: Automation): Promise<AutomationRun> {
+export async function runAutomation(
+  automation: Automation,
+  signal?: AbortSignal,
+): Promise<AutomationRun> {
   const target = automationTarget(automation);
   let models: readonly AgentModel[];
   try {
@@ -176,10 +200,19 @@ export async function runAutomation(automation: Automation): Promise<AutomationR
       return failedRun(automation, target, busyThreadError(threadId), resolution);
     }
   }
-  const runtimeSessionId = `${AUTOMATION_RUNTIME_PREFIX}${automation.id}`;
+  const runtimeSessionId = automationRuntimeSessionId(automation.id);
   const session = piRuntimeManager.getSession(runtimeSessionId);
   try {
     await session.ensureStarted(resolution.modelId, automation.cwd || undefined, resume, {});
+    if (signal?.aborted) {
+      return failedRun(
+        automation,
+        target,
+        AUTOMATION_CANCELLED_ERROR,
+        resolution,
+        runContext(session.status),
+      );
+    }
     await session.prompt(automation.prompt, () => {}, { restartOnContinuationError: false });
     const status = session.status;
     const context = runContext(status);
@@ -191,6 +224,10 @@ export async function runAutomation(automation: Automation): Promise<AutomationR
         resolution,
         context,
       );
+    }
+    if (threadId) {
+      const settled = await resolveThreadTarget(automation.cwd, threadId);
+      if (!settled.ok) return failedRun(automation, target, settled.error, resolution, context);
     }
     const result = status.piSessionId
       ? lastAssistantResult(status.cwd, status.piSessionId)

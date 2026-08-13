@@ -56,6 +56,7 @@ export const AutomationSchema = Schema.Struct({
   target: Schema.optional(AutomationTargetSchema),
   schedule: AutomationScheduleSchema,
   status: Schema.Literals(["active", "paused"]),
+  pausedByArchive: Schema.optional(Schema.Boolean),
   nextRunAt: Schema.NullOr(Schema.String),
   lastRun: Schema.NullOr(AutomationRunSchema),
   runs: Schema.Array(AutomationRunSchema),

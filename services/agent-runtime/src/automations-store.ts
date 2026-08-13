@@ -125,6 +125,9 @@ function normalizeAutomation(value: unknown): Automation {
     target: normalizeTarget(record.target),
     schedule: normalizeSchedule(record.schedule),
     status: record.status === "paused" ? "paused" : "active",
+    ...(record.status === "paused" && record.pausedByArchive === true
+      ? { pausedByArchive: true }
+      : {}),
     nextRunAt: typeof record.nextRunAt === "string" ? record.nextRunAt : null,
     lastRun: runs[0] ?? lastRun,
     runs,
@@ -228,7 +231,10 @@ export async function createAutomation(input: {
 export async function patchAutomation(
   id: string,
   patch: Partial<
-    Pick<Automation, "name" | "prompt" | "modelId" | "cwd" | "status" | "unread" | "target">
+    Pick<
+      Automation,
+      "name" | "prompt" | "modelId" | "cwd" | "status" | "pausedByArchive" | "unread" | "target"
+    >
   > & {
     schedule?: unknown;
     nextRunAt?: string | null;
@@ -243,6 +249,9 @@ export async function patchAutomation(
     return {
       ...rest,
       ...(schedule ? { schedule } : {}),
+      ...(patch.status !== undefined && patch.pausedByArchive === undefined
+        ? { pausedByArchive: false }
+        : {}),
       ...(schedule || patch.status === "active"
         ? { nextRunAt: nextRunAt(schedule ?? existing.schedule, new Date()).toISOString() }
         : {}),
@@ -265,17 +274,38 @@ export async function recordAutomationRun(
   });
 }
 
+function targetsThread(automation: Automation, threadId: string): boolean {
+  return automation.target?.kind === "thread" && automation.target.threadId === threadId;
+}
+
 export async function pauseAutomationsForThread(threadId: string): Promise<Automation[]> {
   const target = threadId.trim();
   if (!target) return [];
   const paused: Automation[] = [];
   for (const automation of await listAutomations()) {
-    if (automation.status !== "active") continue;
-    if (automation.target?.kind !== "thread" || automation.target.threadId !== target) continue;
-    const next = await patchAutomation(automation.id, { status: "paused" });
+    if (automation.status !== "active" || !targetsThread(automation, target)) continue;
+    const next = await patchAutomation(automation.id, {
+      status: "paused",
+      pausedByArchive: true,
+    });
     if (next) paused.push(next);
   }
   return paused;
+}
+
+export async function resumeAutomationsForThread(threadId: string): Promise<Automation[]> {
+  const target = threadId.trim();
+  if (!target) return [];
+  const resumed: Automation[] = [];
+  for (const automation of await listAutomations()) {
+    if (automation.pausedByArchive !== true || !targetsThread(automation, target)) continue;
+    const next = await patchAutomation(automation.id, {
+      status: "active",
+      pausedByArchive: false,
+    });
+    if (next) resumed.push(next);
+  }
+  return resumed;
 }
 
 export async function deleteAutomation(id: string): Promise<boolean> {

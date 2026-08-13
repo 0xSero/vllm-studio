@@ -1,4 +1,4 @@
-import { runAutomation } from "./automation-runner";
+import { abortAutomationRun, automationTargetThreadId, runAutomation } from "./automation-runner";
 import {
   getAutomation,
   listAutomations,
@@ -14,15 +14,21 @@ export { automationRunError } from "./automation-runner";
 const TICK_MS = 30_000;
 const MAX_OVERDUE_RUNS = 3;
 
+type RunHandle = {
+  threadId: string | null;
+  controller: AbortController;
+  settled: Promise<void>;
+};
+
 type SchedulerState = {
   timer: ReturnType<typeof setInterval> | null;
-  running: Set<string>;
+  running: Map<string, RunHandle>;
 };
 
 function state(): SchedulerState {
   return getGlobalSingleton("automationScheduler", () => ({
     timer: null,
-    running: new Set<string>(),
+    running: new Map<string, RunHandle>(),
   }));
 }
 
@@ -30,9 +36,10 @@ async function executeAutomationRun(
   id: string,
   automation: Automation,
   scheduler: SchedulerState,
+  signal: AbortSignal,
 ): Promise<void> {
   try {
-    const run = await runAutomation(automation);
+    const run = await runAutomation(automation, signal);
     await recordAutomationRun(id, run);
   } finally {
     scheduler.running.delete(id);
@@ -44,9 +51,30 @@ export async function startAutomationRun(id: string): Promise<"started" | "runni
   const automation = await getAutomation(id);
   if (!automation) return "missing";
   if (scheduler.running.has(id)) return "running";
-  scheduler.running.add(id);
-  void executeAutomationRun(id, automation, scheduler).catch(() => undefined);
+  const controller = new AbortController();
+  scheduler.running.set(id, {
+    threadId: automationTargetThreadId(automation),
+    controller,
+    settled: Promise.resolve()
+      .then(() => executeAutomationRun(id, automation, scheduler, controller.signal))
+      .catch(() => undefined),
+  });
   return "started";
+}
+
+export async function cancelAutomationRunsForThread(threadId: string): Promise<void> {
+  const target = threadId.trim();
+  if (!target) return;
+  const scheduler = state();
+  await Promise.all(
+    [...scheduler.running.entries()]
+      .filter(([, handle]) => handle.threadId === target)
+      .map(async ([id, handle]) => {
+        handle.controller.abort();
+        await abortAutomationRun(id);
+        await handle.settled;
+      }),
+  );
 }
 
 async function tick(): Promise<void> {

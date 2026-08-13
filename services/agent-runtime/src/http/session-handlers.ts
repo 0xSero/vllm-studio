@@ -1,5 +1,6 @@
 import path from "node:path";
-import { pauseAutomationsForThread } from "../automations-store";
+import { cancelAutomationRunsForThread } from "../automation-scheduler";
+import { pauseAutomationsForThread, resumeAutomationsForThread } from "../automations-store";
 import { resolveAllowedWorkspace } from "../projects-store";
 import {
   findThread,
@@ -70,7 +71,8 @@ export async function handleSessionsList(request: Request): Promise<Response> {
   if (cwd instanceof Response) return cwd;
   const limitValue = searchParams.get("limit");
   const limit = positiveInteger(limitValue);
-  if (limitValue !== null && limit === undefined) return jsonError("limit must be a positive integer");
+  if (limitValue !== null && limit === undefined)
+    return jsonError("limit must be a positive integer");
   const sinceValue = searchParams.get("since");
   const since = parseRelativeSince(sinceValue);
   if (sinceValue && !since) return jsonError("since must use a relative value like 7d");
@@ -144,7 +146,12 @@ export async function handleSessionPatch(request: Request, id: string): Promise<
       projectName: optionalString(body, "projectName"),
       sessionUpdatedAt: summary?.updatedAt ?? null,
     });
-    if (body.archived) await pauseAutomationsForThread(id);
+    if (body.archived) {
+      await pauseAutomationsForThread(id);
+      await cancelAutomationRunsForThread(id);
+    } else {
+      await resumeAutomationsForThread(id);
+    }
     return Response.json({ session: { id, ...archiveState } });
   } catch (error) {
     return jsonError(errorMessage(error, "Failed to update session archive"), 500);
