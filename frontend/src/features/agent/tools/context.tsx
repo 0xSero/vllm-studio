@@ -46,7 +46,6 @@ import {
 } from "@/features/agent/tools/persistence";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
-  browserSessionView,
   computerSessionView,
   patchSessionView,
   readSessionView,
@@ -232,30 +231,28 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const setBrowserUrl = useCallback(
-    (url: string, input?: string, sessionId?: SessionId | null) => {
-      if (typeof url !== "string" || !url.trim()) return;
-      const owner = sessionId === undefined ? activeBrowserSessionRef.current : sessionId;
-      if (!owner) return;
-      setBrowser((current) => {
-        if (current.sessionId !== owner) return current;
-        const next = { url, input: input ?? current.input };
-        patchSessionView(window.localStorage, { key: owner, aliases: [] }, { browser: next });
-        return { ...current, ...next };
-      });
-    },
-    [],
-  );
+  const setBrowserUrl = useCallback((url: string, input?: string, sessionId?: SessionId | null) => {
+    if (typeof url !== "string" || !url.trim()) return;
+    const owner = sessionId === undefined ? activeBrowserSessionRef.current : sessionId;
+    if (!owner) return;
+    const previous = readSessionView(window.localStorage, { key: owner, aliases: [] })?.browser;
+    const next = { url, input: input ?? previous?.input ?? DEFAULT_BROWSER_URL };
+    patchSessionView(window.localStorage, { key: owner, aliases: [] }, { browser: next });
+    setBrowser((current) => {
+      if (current.sessionId !== owner) return current;
+      return { ...current, ...next };
+    });
+  }, []);
 
   const setBrowserInput = useCallback((input: string, sessionId?: SessionId | null) => {
     if (typeof input !== "string") return;
     const owner = sessionId === undefined ? activeBrowserSessionRef.current : sessionId;
     if (!owner) return;
+    const previous = readSessionView(window.localStorage, { key: owner, aliases: [] })?.browser;
+    const next = { input, url: previous?.url ?? DEFAULT_BROWSER_URL };
+    patchSessionView(window.localStorage, { key: owner, aliases: [] }, { browser: next });
     setBrowser((current) => {
       if (current.sessionId !== owner) return current;
-      const previous = current;
-      const next = { input, url: previous.url };
-      patchSessionView(window.localStorage, { key: owner, aliases: [] }, { browser: next });
       return { ...current, ...next };
     });
   }, []);
@@ -263,17 +260,10 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const setActiveBrowserSession = useCallback((sessionId: SessionId | null) => {
     if (activeBrowserSessionRef.current === sessionId) return;
     activeBrowserSessionRef.current = sessionId;
+    const view = sessionId
+      ? readSessionView(window.localStorage, { key: sessionId, aliases: [] })?.browser
+      : null;
     setBrowser((current) => {
-      if (current.sessionId) {
-        patchSessionView(
-          window.localStorage,
-          { key: current.sessionId, aliases: [] },
-          { browser: browserSessionView(current) },
-        );
-      }
-      const view = sessionId
-        ? readSessionView(window.localStorage, { key: sessionId, aliases: [] })?.browser
-        : null;
       return {
         ...current,
         sessionId,

@@ -150,7 +150,3 @@ export function computerSessionView(computer: ComputerState): SessionComputerSta
     width: computer.width,
   };
 }
-
-export function browserSessionView(browser: BrowserState): SessionBrowserState {
-  return { input: browser.input, url: browser.url };
-}

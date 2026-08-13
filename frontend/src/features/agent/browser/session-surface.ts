@@ -25,6 +25,11 @@ export class BrowserSessionSurface {
   private viewportState = DEFAULT_VIEWPORT;
   private viewportSessionId: string | null = null;
 
+  constructor(sessionId: string | null = null, desiredUrl = "") {
+    this.sessionId = sessionId;
+    this.inheritedUrl = desiredUrl.trim();
+  }
+
   enterSession(sessionId: string | null, desiredUrl: string): void {
     if (this.sessionId === sessionId) return;
     this.abortRequests();

@@ -22,9 +22,9 @@ import {
  */
 
 import {
+  useCallback,
   useRef,
   useState,
-  useLayoutEffect,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
@@ -59,6 +59,8 @@ const VIEWPORT_MIN = { width: 320, height: 240 };
 const VIEWPORT_MAX = { width: 1920, height: 1200 };
 const POLL_INTERVAL_MS = 110; // ~9fps
 const MOVE_THROTTLE_MS = 33;
+const browserButtonName = (button: number) =>
+  button === 1 ? "middle" : button === 2 ? "right" : "left";
 
 function postBrowser(
   surface: BrowserSessionSurface,
@@ -87,16 +89,18 @@ export function ScreencastSurface({
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [frame, setFrame] = useState<BrowserSessionFrame | null>(null);
   const [navError, setNavError] = useState<string | null>(null);
-  const [surface] = useState(() => new BrowserSessionSurface());
+  const [surface] = useState(() => new BrowserSessionSurface(sessionId, url));
   const lastMoveAtRef = useRef(0);
   const onStateRef = useRef(onState);
   const onUnavailableRef = useRef(onUnavailable);
   const frameSrc = browserFrameSource(frame, sessionId);
-
-  useLayoutEffect(() => {
-    surface.enterSession(sessionId, url);
-  }, [sessionId, surface, url]);
-  useLayoutEffect(() => () => surface.dispose(), [surface]);
+  const bindContainer = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node) setContainer(node);
+      else surface.dispose();
+    },
+    [surface],
+  );
 
   // Mirror the latest callbacks into refs in the commit phase (never during
   // render), so the long-lived poll loop always calls the current handlers
@@ -142,12 +146,7 @@ export function ScreencastSurface({
         }
         if (!response.ok) return;
         const payload = (await response.json()) as FramePayload;
-        if (
-          !disposed &&
-          surface.ownsSession(sessionId) &&
-          payload.ok &&
-          payload.data
-        ) {
+        if (!disposed && surface.ownsSession(sessionId) && payload.ok && payload.data) {
           if (payload.data.frame) {
             setFrame({
               sessionId,
@@ -197,9 +196,12 @@ export function ScreencastSurface({
     if (!request) return;
     void fetch(request.input, request.init)
       .then(async (response) => {
-        const payload = (await response.json()) as { ok: boolean; error?: string };
+        const payload = (await response.json().catch(() => null)) as {
+          ok: boolean;
+          error?: string;
+        } | null;
         if (cancelled) return;
-        setNavError(payload.ok ? null : (payload.error ?? "Navigation failed"));
+        setNavError(response.ok && payload?.ok ? null : (payload?.error ?? "Navigation failed"));
       })
       .catch((error) => {
         if (!cancelled) {
@@ -252,9 +254,6 @@ export function ScreencastSurface({
     };
   };
 
-  const buttonName = (button: number) =>
-    button === 1 ? "middle" : button === 2 ? "right" : "left";
-
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     container?.focus();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -264,7 +263,7 @@ export function ScreencastSurface({
       type: "down",
       x,
       y,
-      button: buttonName(event.button),
+      button: browserButtonName(event.button),
       clickCount: Math.max(1, event.detail),
     });
   };
@@ -276,9 +275,16 @@ export function ScreencastSurface({
       type: "up",
       x,
       y,
-      button: buttonName(event.button),
+      button: browserButtonName(event.button),
       clickCount: Math.max(1, event.detail),
     });
+  };
+
+  const handlePointerCancel = (event: ReactPointerEvent<HTMLDivElement>) => {
+    handlePointerUp(event);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -321,13 +327,14 @@ export function ScreencastSurface({
 
   return (
     <div
-      ref={setContainer}
+      ref={bindContainer}
       tabIndex={0}
       role="application"
       aria-label="Live browser"
       className="relative size-full min-h-0 overflow-hidden bg-white outline-none"
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
       onPointerMove={handlePointerMove}
       onWheel={handleWheel}
       onKeyDown={handleKey("down")}

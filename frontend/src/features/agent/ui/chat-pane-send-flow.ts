@@ -22,6 +22,7 @@ import {
   type ChatAttachment,
 } from "@/features/agent/ui/chat-attachments";
 import {
+  browserContextUrlForSession,
   messagesToResumeAfterAbort,
   removePendingSteersClearedByAbort,
 } from "@/features/agent/ui/chat-pane-send-flow-model";
@@ -80,7 +81,7 @@ export function useChatPaneSendFlow({
       const browserContextText = browserContextPrompt({
         enabled: effectiveBrowserEnabled,
         backend: tools.browser.backend,
-        url: tools.browser.url,
+        url: browserContextUrlForSession(tools.browser, sessionId, window.localStorage),
         vision: modelSupportsVision,
       });
       const prompt = [browserContextText, contextText, attachedText].filter(Boolean).join("\n\n");

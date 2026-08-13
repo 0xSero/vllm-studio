@@ -4,6 +4,22 @@ import {
   type ChatMessage,
   type QueuedMessage,
 } from "@/features/agent/messages";
+import type { BrowserState } from "@/features/agent/tools/types";
+import { DEFAULT_BROWSER_URL } from "@/features/agent/tools/persistence";
+import { readSessionView } from "@/features/agent/workspace/session-view-state";
+
+type BrowserViewStorage = Pick<Storage, "getItem" | "setItem">;
+
+export function browserContextUrlForSession(
+  browser: BrowserState,
+  sessionId: string,
+  storage: BrowserViewStorage,
+): string {
+  if (browser.sessionId === sessionId) return browser.url;
+  return (
+    readSessionView(storage, { key: sessionId, aliases: [] })?.browser?.url ?? DEFAULT_BROWSER_URL
+  );
+}
 
 function visibleText(text: string): string {
   return visibleUserTextFromPi(text).trim() || text.trim();
