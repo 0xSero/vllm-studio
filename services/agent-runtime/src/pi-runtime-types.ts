@@ -69,6 +69,7 @@ export interface PiAgentSession {
   compact(customInstructions?: string): Promise<unknown>;
   stop(): Promise<void>;
   readonly status: PiAgentStatus;
+  refreshExternalChanges(): Promise<void>;
   getEventsAfter(seq: number): LoggedPiEvent[];
   onLoggedEvent(listener: (event: LoggedPiEvent) => void): () => void;
   adoptPiSessionId(piSessionId: string | null | undefined): void;

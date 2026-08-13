@@ -379,7 +379,12 @@ function compactRouteEffect(request: Request): Effect.Effect<Response, unknown> 
 
 // ─── GET /api/agent/runtime/sessions ──────────────────────────────────────
 
-export function handleRuntimeSessions(): Response {
+export async function handleRuntimeSessions(): Promise<Response> {
+  await Promise.all(
+    piRuntimeManager
+      .listSessions()
+      .map(({ session }) => session.refreshExternalChanges().catch(() => undefined)),
+  );
   return Response.json({
     sessions: piRuntimeManager
       .listSessions()
@@ -389,7 +394,7 @@ export function handleRuntimeSessions(): Response {
 
 // ─── GET /api/agent/runtime/status ────────────────────────────────────────
 
-export function handleRuntimeStatus(request: Request): Response {
+export async function handleRuntimeStatus(request: Request): Promise<Response> {
   const searchParams = new URL(request.url).searchParams;
   const sessionId = searchParams.get("sessionId")?.trim() || "default";
   const piSessionId = searchParams.get("piSessionId")?.trim() || null;
@@ -398,6 +403,7 @@ export function handleRuntimeStatus(request: Request): Response {
   if (!resolved) {
     return Response.json({ sessionId, status: null, events: [] });
   }
+  await resolved.session.refreshExternalChanges().catch(() => undefined);
   const afterSeq = replayAfterCursor(
     Number.isFinite(after) ? after : 0,
     resolved.session.status.eventSeq,

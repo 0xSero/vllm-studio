@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
 import {
   createAgentSessionFromServices,
   createAgentSessionRuntime,
@@ -189,6 +190,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   private currentModelId = "";
   private currentStartOptions: RuntimeStartOptions = {};
   private agentDir = "";
+  private sessionFileSize: number | null = null;
   private queueEventBufferDepth = 0;
   private bufferedQueueEvent: PiEvent | null = null;
   private extensionUiPending = new Map<
@@ -396,6 +398,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         this.currentPiSessionId = runtime.session.sessionId || desiredSessionId;
         this.currentFingerprint = fingerprint;
         this.currentStartOptions = options;
+        this.sessionFileSize = this.readSessionFileSize();
         this.unsubscribe = runtime.session.subscribe((event) => this.recordEvent(event));
       }.bind(this),
     );
@@ -526,6 +529,44 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     if (next && !this.currentPiSessionId) this.currentPiSessionId = next;
   }
 
+  async refreshExternalChanges(): Promise<void> {
+    const session = this.runtime?.session;
+    if (
+      !session ||
+      this.activePromptCount > 0 ||
+      session.isStreaming ||
+      session.isCompacting ||
+      session.pendingMessageCount > 0
+    ) {
+      return;
+    }
+    const filepath = session.sessionManager.getSessionFile();
+    if (!filepath) return;
+    const size = this.readSessionFileSize();
+    if (size === null || size === this.sessionFileSize) return;
+    let persisted: SessionManager;
+    try {
+      persisted = SessionManager.open(
+        filepath,
+        session.sessionManager.getSessionDir(),
+        this.currentCwd,
+      );
+    } catch {
+      return;
+    }
+    if (persisted.getLeafId() === session.sessionManager.getLeafId()) {
+      this.sessionFileSize = size;
+      return;
+    }
+    this.currentFingerprint = "";
+    await this.ensureStarted(
+      this.currentModelId,
+      this.currentCwd,
+      this.currentPiSessionId,
+      this.currentStartOptions,
+    );
+  }
+
   compact(customInstructions?: string): Promise<unknown> {
     return Effect.runPromise(this.compactEffect(customInstructions));
   }
@@ -650,6 +691,16 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     const session = this.runtime?.session;
     if (!session) throw new Error("pi sdk session is not running");
     return session;
+  }
+
+  private readSessionFileSize(): number | null {
+    const filepath = this.runtime?.session.sessionManager.getSessionFile();
+    if (!filepath) return null;
+    try {
+      return statSync(filepath).size;
+    } catch {
+      return null;
+    }
   }
 
   private extensionUiContext(): ExtensionUIContext {
