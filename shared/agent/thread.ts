@@ -37,6 +37,78 @@ export type ThreadWindowRequest = {
   before?: ThreadCursor;
 };
 
+export const ThreadEntrySchema = Schema.Struct({
+  id: Schema.String,
+  type: Schema.String,
+  timestamp: Schema.optional(Schema.String),
+  parentId: Schema.optional(Schema.NullOr(Schema.String)),
+});
+
+export type ThreadEntry = Schema.Schema.Type<typeof ThreadEntrySchema>;
+
+export const ThreadItemSchema = Schema.Struct({
+  id: Schema.String,
+  type: Schema.String,
+  timestamp: Schema.NullOr(Schema.String),
+  parentId: Schema.NullOr(Schema.String),
+  role: Schema.NullOr(Schema.String),
+  startsTurn: Schema.Boolean,
+  tokenEstimate: Schema.Number,
+  payload: Schema.Record(Schema.String, Schema.Unknown),
+});
+
+export type ThreadItem = Schema.Schema.Type<typeof ThreadItemSchema>;
+
+export const ThreadTurnSchema = Schema.Struct({
+  id: Schema.String,
+  startedAt: Schema.NullOr(Schema.String),
+  startsWithUser: Schema.Boolean,
+  tokenEstimate: Schema.Number,
+  items: Schema.Array(ThreadItemSchema),
+});
+
+export type ThreadTurn = Schema.Schema.Type<typeof ThreadTurnSchema>;
+
+export const ThreadUsageTotalsSchema = Schema.Struct({
+  input: Schema.Number,
+  output: Schema.Number,
+  cacheRead: Schema.Number,
+  cacheWrite: Schema.Number,
+  reasoning: Schema.Number,
+  total: Schema.Number,
+  cost: Schema.Number,
+  calls: Schema.Number,
+  compactions: Schema.Number,
+});
+
+export type ThreadUsageTotals = Schema.Schema.Type<typeof ThreadUsageTotalsSchema>;
+
+export const ThreadWindowMetaSchema = Schema.Struct({
+  title: Schema.NullOr(Schema.String),
+  modelId: Schema.NullOr(Schema.String),
+  startedAt: Schema.NullOr(Schema.String),
+  piSessionId: Schema.NullOr(Schema.String),
+  usage: ThreadUsageTotalsSchema,
+  parent: Schema.NullOr(ParentRelationSchema),
+});
+
+export type ThreadWindowMeta = Schema.Schema.Type<typeof ThreadWindowMetaSchema>;
+
+export const ThreadWindowSchema = Schema.Struct({
+  threadId: Schema.String,
+  found: Schema.Boolean,
+  turns: Schema.Array(ThreadTurnSchema),
+  cursor: Schema.NullOr(Schema.String),
+  tokenEstimate: Schema.Number,
+  meta: Schema.NullOr(ThreadWindowMetaSchema),
+});
+
+export type ThreadWindow = Schema.Schema.Type<typeof ThreadWindowSchema>;
+
+export const ThreadWindowResponseSchema = Schema.Struct({
+  window: ThreadWindowSchema,
+});
+
 export type ThreadListRequest = {
   since?: Date;
   ids?: string[];
