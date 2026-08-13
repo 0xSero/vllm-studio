@@ -125,7 +125,7 @@ export async function readThreadWindowPage(
     window: projectThreadWindow({
       threadId,
       found: page.found,
-      events: page.events,
+      events: page.windowEvents,
       cursor: page.cursor,
       meta: page.meta ? { ...page.meta, parent: threadParent(threadId) } : null,
     }),

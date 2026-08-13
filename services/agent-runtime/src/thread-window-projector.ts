@@ -54,6 +54,29 @@ export function entryTokenEstimate(event: Record<string, unknown>): number {
   return messageTokens(contextMessages(event));
 }
 
+const UNPROJECTABLE_ENTRY = {
+  type: "custom",
+  id: "",
+  parentId: null,
+  timestamp: "",
+  customType: "unprojectable",
+} as unknown as SessionEntry;
+
+function projectsCleanly(event: Record<string, unknown>): boolean {
+  try {
+    sessionEntryToContextMessages(event as unknown as SessionEntry);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function cutPointEntries(events: ReadonlyArray<Record<string, unknown>>): SessionEntry[] {
+  return events.map((event) =>
+    projectsCleanly(event) ? (event as unknown as SessionEntry) : UNPROJECTABLE_ENTRY,
+  );
+}
+
 function toThreadItem(event: Record<string, unknown>): ThreadItem | null {
   const decoded = decodeThreadEntry(event);
   if (decoded._tag === "None") return null;
@@ -115,9 +138,7 @@ export function decodeThreadCursor(cursor: string | null | undefined): number | 
 }
 
 export function projectThreadWindow(source: ThreadWindowSource): ThreadWindow {
-  const items = source.events
-    .map(toThreadItem)
-    .filter((item): item is ThreadItem => item !== null);
+  const items = source.events.map(toThreadItem).filter((item): item is ThreadItem => item !== null);
   return {
     threadId: source.threadId,
     found: source.found,

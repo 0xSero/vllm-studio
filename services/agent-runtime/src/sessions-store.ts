@@ -16,11 +16,10 @@ import {
   getAgentDir,
   SessionManager,
   SettingsManager,
-  type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { resolveDataDir } from "./data-dir";
 import { DEFAULT_THREAD_WINDOW_TOKENS } from "../../../shared/agent/thread";
-import { entryTokenEstimate, isVisibleUserEntry } from "./thread-window-projector";
+import { cutPointEntries, entryTokenEstimate, isVisibleUserEntry } from "./thread-window-projector";
 import {
   cleanSessionTitle,
   sessionTitleFromUserPrompt,
@@ -447,6 +446,7 @@ export type LoadSessionResult = {
   // present only on an initial tail load — a paged `before` request omits it.
   meta: LoadSessionMeta | null;
   found: boolean;
+  windowEvents: SessionEvent[];
 };
 
 // Files above this never get read whole; a tail request caps its backward scan
@@ -583,7 +583,7 @@ function windowBoundaryIndex(
   maxTokens: number,
 ): number {
   if (lines.length === 0) return 0;
-  const entries = lines.map((line) => line.event) as unknown as SessionEntry[];
+  const entries = cutPointEntries(lines.map((line) => line.event));
   const cut = findCutPoint(entries, 0, entries.length, maxTokens);
   const target =
     cut.isSplitTurn && cut.turnStartIndex >= 0 ? cut.turnStartIndex : cut.firstKeptEntryIndex;
@@ -725,11 +725,14 @@ function readTailRegion(
     // wall of inert events) the first COMPLETE line boundary we reached, so the
     // next page resumes exactly at a line start and no line is ever straddled.
     const reachedStart = regionStart === 0 && boundaryIndex === 0;
+    const lineCursor = regionStart + carry.length;
     const cursor = reachedStart
       ? null
       : boundaryIndex > 0
         ? kept[boundaryIndex].offset
-        : regionStart + carry.length;
+        : lineCursor < end
+          ? lineCursor
+          : regionStart;
     return { events: slice.map((line) => line.event), cursor };
   } finally {
     closeSync(fd);
@@ -746,7 +749,9 @@ export async function loadSession(
   options: LoadSessionOptions = {},
 ): Promise<LoadSessionResult> {
   const filepath = findSessionFile(cwd, sessionId);
-  if (!filepath) return { events: [], cursor: null, meta: null, found: false };
+  if (!filepath) {
+    return { events: [], windowEvents: [], cursor: null, meta: null, found: false };
+  }
   const { size } = statSync(filepath);
   const tail = options.tail && options.tail > 0 ? Math.floor(options.tail) : undefined;
   const paging = options.before !== undefined;
@@ -762,19 +767,22 @@ export async function loadSession(
         const event = parseEvent(line);
         if (event) events.push(event);
       }
-      return { events: activeBranchEvents(filepath, events), cursor: null, meta: null, found: true };
+      const active = activeBranchEvents(filepath, events);
+      return { events: active, windowEvents: active, cursor: null, meta: null, found: true };
     }
     return loadSessionWindow(cwd, sessionId);
   }
 
   const effectiveTail = tail ?? 500;
-  const { events, cursor } = readTailRegion(filepath, size, { tail: effectiveTail }, options.before);
+  const { events, cursor } = readTailRegion(
+    filepath,
+    size,
+    { tail: effectiveTail },
+    options.before,
+  );
   return finishSessionPage(filepath, events, cursor, paging);
 }
 
-// Initial load: prefix the header block (model/started metadata the fold needs)
-// and return real session metadata from the head-scan. Paged `before` loads are
-// continuations — no header, no meta.
 async function finishSessionPage(
   filepath: string,
   events: SessionEvent[],
@@ -782,7 +790,8 @@ async function finishSessionPage(
   paging: boolean,
 ): Promise<LoadSessionResult> {
   if (paging) {
-    return { events: activeBranchEvents(filepath, events), cursor, meta: null, found: true };
+    const active = activeBranchEvents(filepath, events);
+    return { events: active, windowEvents: active, cursor, meta: null, found: true };
   }
   // The head-scan and the usage scan read opposite ends of the same file for
   // different reasons; run them together so an initial open pays one wait.
@@ -791,9 +800,12 @@ async function finishSessionPage(
     readSessionUsageTotals(filepath),
   ]);
   meta.usage = usage;
-  const hasHeader = events.some((event) => event.type === "session");
+  const prefix = events.some((event) => event.type === "session") ? [] : headerEvents;
+  const active = activeBranchEvents(filepath, prefix.length > 0 ? [...prefix, ...events] : events);
+  const synthetic = new Set(prefix);
   return {
-    events: activeBranchEvents(filepath, hasHeader ? events : [...headerEvents, ...events]),
+    events: active,
+    windowEvents: synthetic.size > 0 ? active.filter((event) => !synthetic.has(event)) : active,
     cursor,
     meta,
     found: true,
@@ -811,7 +823,9 @@ export async function loadSessionWindow(
   options: LoadSessionWindowOptions = {},
 ): Promise<LoadSessionResult> {
   const filepath = findSessionFile(cwd, sessionId);
-  if (!filepath) return { events: [], cursor: null, meta: null, found: false };
+  if (!filepath) {
+    return { events: [], windowEvents: [], cursor: null, meta: null, found: false };
+  }
   const { size } = statSync(filepath);
   const maxTokens =
     options.maxTokens && options.maxTokens > 0
