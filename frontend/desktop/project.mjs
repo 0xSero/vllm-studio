@@ -2312,6 +2312,13 @@ function stagedFiles() {
   return output4 ? output4.split(`
 `) : [];
 }
+function isMergeInProgress() {
+  try {
+    return Boolean(git(["rev-parse", "-q", "--verify", "MERGE_HEAD"]));
+  } catch {
+    return !1;
+  }
+}
 function preCommit() {
   let branch = git(["branch", "--show-current"]);
   if (["main", "dev"].includes(branch))
@@ -2325,7 +2332,7 @@ function preCommit() {
       return total;
     return total + Number(added) + Number(removed);
   }, 0);
-  if (files.length > 15 || lines > 600)
+  if (!isMergeInProgress() && (files.length > 15 || lines > 600))
     throw Error(`pre-commit: staged change is too large (${files.length} files, ${lines} source lines); limit is 15 files and 600 source lines`);
   if (files.some((file2) => /^(frontend|shared|tests\/frontend)\//.test(file2)))
     run3("npm", ["run", "precommit"], path11.join(root5, "frontend"));
