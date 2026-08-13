@@ -136,16 +136,24 @@ export async function runSubagent(input: {
   try {
     const { session } = piRuntimeManager.getSessionForLookup(runtimeSessionId, null);
     await session.ensureStarted(modelId, cwd || undefined, null, {});
+    const startedPiSessionId = session.status.piSessionId;
+    if (startedPiSessionId) {
+      run.piSessionId = startedPiSessionId;
+      registry.childPiSessionIds.add(startedPiSessionId);
+      await linkThreadParent(startedPiSessionId, parentPiSessionId, run.name).catch(
+        () => undefined,
+      );
+    }
     await session.prompt(taskPrompt(run.name, input.task), () => {});
     const status = session.status;
-    run.piSessionId = status.piSessionId;
-    if (status.piSessionId) {
+    if (status.piSessionId && status.piSessionId !== startedPiSessionId) {
+      run.piSessionId = status.piSessionId;
       registry.childPiSessionIds.add(status.piSessionId);
       await linkThreadParent(status.piSessionId, parentPiSessionId, run.name).catch(
         () => undefined,
       );
     }
-    const text = status.piSessionId ? lastAssistantText(status.cwd, status.piSessionId) : "";
+    const text = run.piSessionId ? lastAssistantText(status.cwd, run.piSessionId) : "";
     void session.stop().catch(() => undefined);
     if (status.lastError) {
       run.status = "error";
@@ -156,7 +164,7 @@ export async function runSubagent(input: {
     run.status = "done";
     run.finishedAt = new Date().toISOString();
     return {
-      piSessionId: status.piSessionId,
+      piSessionId: run.piSessionId,
       result: text.slice(0, MAX_RESULT_CHARS) || "(the subagent produced no final text)",
     };
   } catch (error) {
