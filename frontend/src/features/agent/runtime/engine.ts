@@ -3,7 +3,6 @@ import { Effect } from "effect";
 import {
   finalizeRunningToolBlocks,
   mergeCanonicalAndRuntimeEvents,
-  reconcileReplayMessages,
   replayCursorAfterRuntimeHydration,
   runtimeStatusAcceptsControl,
 } from "@/features/agent/messages";
@@ -301,7 +300,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             const replaySeq = replayCursorAfterRuntimeHydration(runtimeStatus, piSessionId);
             updateSession(sessionId, (session) => ({
               ...session,
-              messages: reconcileReplayMessages(session.messages, messages),
+              messages,
               piSessionId,
               cwd: session.cwd || cwd,
               // Head-scan meta carries the real session model/title; the fold's
@@ -324,7 +323,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               activeAssistantId: undefined,
               // A non-null cursor means the tail load left older history unread;
               // the timeline shows a "Load earlier" affordance while it is set.
-              historyCursor: messages.length > 0 ? cursor : (session.historyCursor ?? null),
+              historyCursor: cursor,
               hydratedFromCache: false,
               error: "",
             }));

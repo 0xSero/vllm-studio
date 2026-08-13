@@ -353,15 +353,6 @@ export function mergeCanonicalAndRuntimeEvents(
   ]);
 }
 
-export function reconcileReplayMessages(
-  current: ChatMessage[],
-  canonical: ChatMessage[],
-): ChatMessage[] {
-  if (canonical.length === 0) return current;
-  if (canonical.length >= current.length) return canonical;
-  return current;
-}
-
 export function makeFreshTab(): SessionTab {
   return {
     // The session id doubles as the opaque runtime key the client sends to the
