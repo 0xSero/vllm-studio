@@ -97,10 +97,17 @@ export function useProjectSessionsReloadEffect(reload: () => Promise<void>): voi
         void reload();
       }, SESSIONS_RELOAD_DEBOUNCE_MS);
     };
+    const reloadWhenVisible = () => {
+      if (document.visibilityState === "visible") scheduleReload();
+    };
     window.addEventListener(SESSIONS_CHANGED_EVENT, scheduleReload);
+    window.addEventListener("focus", scheduleReload);
+    document.addEventListener("visibilitychange", reloadWhenVisible);
     return () => {
       if (timer !== null) window.clearTimeout(timer);
       window.removeEventListener(SESSIONS_CHANGED_EVENT, scheduleReload);
+      window.removeEventListener("focus", scheduleReload);
+      document.removeEventListener("visibilitychange", reloadWhenVisible);
     };
   }, [reload]);
 }

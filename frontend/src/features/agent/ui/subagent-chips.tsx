@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Spinner } from "@/ui";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
 
 type SubagentRun = {
   id: string;
@@ -34,10 +35,19 @@ export function SubagentChips({ piSessionId }: { piSessionId: string }) {
 
   useMountSubscription(() => {
     let cancelled = false;
+    const observedPiSessionIds = new Set<string>();
     const load = async () => {
       try {
         const next = await fetchSubagents(piSessionId);
-        if (!cancelled) setRuns(next);
+        if (cancelled) return;
+        setRuns(next);
+        let changed = false;
+        for (const run of next) {
+          if (!run.piSessionId || observedPiSessionIds.has(run.piSessionId)) continue;
+          observedPiSessionIds.add(run.piSessionId);
+          changed = true;
+        }
+        if (changed) window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT));
       } catch {
         // Transient; next poll retries.
       }
