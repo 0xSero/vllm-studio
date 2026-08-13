@@ -476,11 +476,11 @@ var init_check_conventional_commits = __esm(() => {
     let messageFile = args[messageFileIndex + 1], subject = readFileSync6(messageFile, "utf8").split(/\r?\n/, 1)[0] ?? "";
     validateSubject(subject, "commit message");
   } else {
-    let range = rangeIndex === -1 ? args[0] : args[rangeIndex + 1];
-    if (!range)
-      fail("Usage: check-conventional-commits.mjs --message-file <path> | --range <base..head>");
+    let rangeArgs = rangeIndex === -1 ? args[0] ? [args[0]] : [] : args.slice(rangeIndex + 1);
+    if (!rangeArgs.length || !rangeArgs[0])
+      fail("Usage: check-conventional-commits.mjs --message-file <path> | --range <rev>...");
     else {
-      let output2 = execFileSync2("git", ["log", "--format=%s", range], { encoding: "utf8" }).trim();
+      let output2 = execFileSync2("git", ["log", "--format=%s", ...rangeArgs], { encoding: "utf8" }).trim();
       (output2 ? output2.split(/\r?\n/) : []).forEach((subject, index) => validateSubject(subject, `commit ${index + 1}`));
     }
   }
@@ -1883,22 +1883,7 @@ function prePush() {
       throw Error(`pre-push: direct pushes to ${remoteRef} are blocked; merge through GitHub`);
     if (/^0{40}$/.test(localSha))
       continue;
-    let range2;
-    if (/^0{40}$/.test(remoteSha)) {
-      let defaultRef;
-      try {
-        defaultRef = git(["symbolic-ref", "--quiet", "--short", `refs/remotes/${remote}/HEAD`]);
-      } catch {
-        defaultRef = `${remote}/main`;
-      }
-      try {
-        range2 = `${git(["merge-base", defaultRef, localSha])}..${localSha}`;
-      } catch {
-        range2 = localSha;
-      }
-    } else
-      range2 = `${remoteSha}..${localSha}`;
-    console.log(`Checking conventional commits for ${localRef} -> ${remote}/${remoteRef} (${url})`), run3(process.execPath, [path11.join(root5, "scripts/project.mjs"), "check-commits", "--range", range2]);
+    console.log(`Checking conventional commits for ${localRef} -> ${remote}/${remoteRef} (${url})`), run3(process.execPath, [path11.join(root5, "scripts/project.mjs"), "check-commits", "--range", localSha, "--not", `--remotes=${remote}`]);
   }
   run3("npm", ["run", "check:static"], path11.join(root5, "frontend")), run3("npm", ["run", "check:cleanup"], path11.join(root5, "frontend")), run3(process.execPath, [path11.join(root5, "scripts/project.mjs"), "assert-standalone"]);
 }
