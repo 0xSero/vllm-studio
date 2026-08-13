@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { Schema } from "effect";
 import {
   PluginRuntimeResponseSchema,
@@ -12,13 +12,8 @@ import { Eye, X } from "@/ui/icon-registry";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceLogo } from "@/ui/resource-logo";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { SettingsButton, SettingsGroup, type StatusTone } from "@/features/settings/settings-ui";
-import {
-  ModelRow,
-  ModelSection,
-  ModelStatus,
-  ModelValue,
-} from "@/features/recipes/recipes-content/model-page";
+import type { StatusTone } from "@/features/settings/settings-ui";
+import { ModelStatus } from "@/features/recipes/recipes-content/model-page";
 import { GoogleAccountModal } from "./google-account-modal";
 
 type PluginStatus = { label: string; tone: StatusTone };
@@ -80,22 +75,11 @@ function activationAction(plugin: PluginRuntimeView): "account" | "connect" | "d
   return null;
 }
 
-function PluginRowsSkeleton() {
+function PluginCatalogState({ children }: { children: ReactNode }) {
   return (
-    <>
-      {[0, 1, 2].map((index) => (
-        <div key={index} className="grid animate-pulse gap-3 px-4 py-3 md:grid-cols-2">
-          <div className="space-y-2">
-            <div className="h-3 w-32 rounded bg-(--ui-hover)" />
-            <div className="h-2.5 w-56 max-w-full rounded bg-(--ui-hover)/70" />
-          </div>
-          <div className="flex items-center justify-end gap-3">
-            <div className="h-2.5 w-36 rounded bg-(--ui-hover)/70" />
-            <div className="h-5 w-20 rounded-full bg-(--ui-hover)" />
-          </div>
-        </div>
-      ))}
-    </>
+    <div className="flex min-h-44 items-center justify-center px-6 py-12 text-center text-[length:var(--fs-md)] text-(--ui-muted)">
+      {children}
+    </div>
   );
 }
 
@@ -149,7 +133,7 @@ function PluginRowActions({
   );
 }
 
-function PluginRow({
+function PluginCard({
   plugin,
   busy,
   onOpen,
@@ -167,40 +151,64 @@ function PluginRow({
   const status = pluginStatus(plugin);
   const action = activationAction(plugin);
   return (
-    <ModelRow
-      label={plugin.displayName}
-      description={plugin.description || plugin.category}
-      leading={
+    <article
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${plugin.displayName} details`}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) {
+          return;
+        }
+        event.preventDefault();
+        onOpen();
+      }}
+      className="group flex min-h-36 min-w-0 cursor-pointer flex-col rounded-[10px] border border-(--ui-border) bg-(--ui-surface) p-3 transition-[transform,background-color,border-color] hover:bg-(--ui-hover)/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--ui-info)/45 active:scale-[0.995]"
+    >
+      <div className="flex min-w-0 items-start gap-3">
         <ResourceLogo
           identity={plugin.id}
           label={plugin.displayName}
           company={plugin.source}
           brandColor={plugin.brandColor}
+          size="md"
         />
-      }
-      value={<ModelValue mono>{`${plugin.source} · ${capabilitySummary(plugin)}`}</ModelValue>}
-      status={<ModelStatus tone={status.tone}>{status.label}</ModelStatus>}
-      actions={
-        action || plugin.account?.connected ? (
-          <PluginRowActions
-            plugin={plugin}
-            action={action}
-            busy={busy}
-            onConnect={onConnect}
-            onDisconnect={onDisconnect}
-            onAccount={onAccount}
-          />
-        ) : undefined
-      }
-      onClick={onOpen}
-    >
-      {plugin.tools.reason ? (
-        <div className="text-[length:var(--fs-sm)] text-(--ui-muted)">{plugin.tools.reason}</div>
-      ) : null}
-      {plugin.account?.email ? (
-        <div className="text-[length:var(--fs-sm)] text-(--ui-muted)">{plugin.account.email}</div>
-      ) : null}
-    </ModelRow>
+        <div className="min-w-0 flex-1">
+          <h4 className="truncate text-[length:var(--fs-md)] font-medium text-(--ui-fg)">
+            {plugin.displayName}
+          </h4>
+          <p className="mt-1 line-clamp-2 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
+            {plugin.description || plugin.category}
+          </p>
+        </div>
+      </div>
+      <div className="mt-auto flex min-w-0 items-end justify-between gap-2 border-t border-(--ui-separator)/70 pt-2.5">
+        <div className="min-w-0">
+          <ModelStatus tone={status.tone}>{status.label}</ModelStatus>
+          <div
+            className="mt-1 truncate text-[length:var(--fs-xs)] text-(--ui-muted)"
+            title={`${plugin.source} · ${capabilitySummary(plugin)}`}
+          >
+            {plugin.source} · {capabilitySummary(plugin)}
+          </div>
+        </div>
+        {action || plugin.account?.connected ? (
+          <div
+            className="flex shrink-0 items-center gap-1"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <PluginRowActions
+              plugin={plugin}
+              action={action}
+              busy={busy}
+              onConnect={onConnect}
+              onDisconnect={onDisconnect}
+              onAccount={onAccount}
+            />
+          </div>
+        ) : null}
+      </div>
+    </article>
   );
 }
 
@@ -358,62 +366,69 @@ export function PluginsSection() {
 
   return (
     <>
-      {error ? (
-        <div className="mb-4">
-          <Alert variant="error">{error}</Alert>
-        </div>
-      ) : null}
-      <ModelSection
-        title="Plugins"
-        description="Capability bundles from Local Studio and Codex, with their company, tools, accounts, and skills."
-        actions={
-          <ModelStatus tone={error ? "warning" : loaded ? "good" : "default"}>
-            {loaded ? `${visiblePlugins.length} of ${plugins.length}` : "discovering"}
-          </ModelStatus>
-        }
-      >
-        <ModelRow
-          label="Search plugins"
-          description="Name, company, category, capability, or version."
-          control={
-            <SearchInput
-              value={query}
-              onChange={setQuery}
-              placeholder="Search plugins"
-              className="w-full"
-            />
-          }
-          status={<ModelStatus>{visiblePlugins.length}</ModelStatus>}
-        />
-        {!loaded ? (
-          <PluginRowsSkeleton />
-        ) : visiblePlugins.length ? (
-          visiblePlugins.map((plugin) => (
-            <PluginRow
-              key={plugin.id}
-              plugin={plugin}
-              busy={busyId === plugin.id}
-              onOpen={() => setSelectedPlugin(plugin)}
-              onConnect={() => {
-                setSelectedPlugin(null);
-                setPending(plugin);
-              }}
-              onDisconnect={() => {
-                setSelectedPlugin(null);
-                void setEnabled(plugin, false);
-              }}
-              onAccount={() => {
-                setSelectedPlugin(null);
-                setAccountPlugin(plugin);
-              }}
-            />
-          ))
-        ) : (
-          <div className="px-4 py-8 text-center text-[length:var(--fs-md)] text-(--ui-muted)">
-            {plugins.length ? `No plugins match “${query}”.` : "No plugin manifests found."}
+      <section className="@container min-w-0">
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">Plugins</h3>
+            <p className="mt-0.5 max-w-[38rem] text-[length:var(--fs-sm)] text-(--ui-muted)">
+              Capability bundles from Local Studio and Codex, with their company, tools, accounts,
+              and skills.
+            </p>
           </div>
+          <ModelStatus tone={error ? "warning" : loaded ? "good" : "default"}>
+            {loaded ? `${visiblePlugins.length} of ${plugins.length}` : "Discovering"}
+          </ModelStatus>
+        </div>
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search plugins"
+          className="mb-4 w-full max-w-[30rem]"
+        />
+        {error && plugins.length ? (
+          <div className="mb-4 flex justify-center">
+            <Alert variant="error" className="w-full max-w-lg">
+              {error}
+            </Alert>
+          </div>
+        ) : null}
+        {!loaded ? (
+          <PluginCatalogState>Discovering plugins…</PluginCatalogState>
+        ) : error && !plugins.length ? (
+          <PluginCatalogState>
+            <Alert variant="error" className="w-full max-w-lg text-left">
+              {error}
+            </Alert>
+          </PluginCatalogState>
+        ) : visiblePlugins.length ? (
+          <div className="grid grid-cols-1 gap-3 @min-[581px]:grid-cols-2">
+            {visiblePlugins.map((plugin) => (
+              <PluginCard
+                key={plugin.id}
+                plugin={plugin}
+                busy={busyId === plugin.id}
+                onOpen={() => setSelectedPlugin(plugin)}
+                onConnect={() => {
+                  setSelectedPlugin(null);
+                  setPending(plugin);
+                }}
+                onDisconnect={() => {
+                  setSelectedPlugin(null);
+                  void setEnabled(plugin, false);
+                }}
+                onAccount={() => {
+                  setSelectedPlugin(null);
+                  setAccountPlugin(plugin);
+                }}
+              />
+            ))}
+          </div>
+        ) : (
+          <PluginCatalogState>
+            {plugins.length ? `No plugins match “${query}”.` : "No plugin manifests found."}
+          </PluginCatalogState>
         )}
-      </ModelSection>
+      </section>
       {selectedPlugin ? (
         <PluginDrawer
           plugin={selectedPlugin}
