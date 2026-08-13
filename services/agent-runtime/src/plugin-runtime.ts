@@ -14,7 +14,6 @@ import { discoverPluginBundles, type PluginBundle, type PluginSource } from "./p
 import {
   type PluginActivationResult,
   type PluginRuntimeView,
-  type PluginHostCapability,
   type PluginToolsView,
   type PluginToolState,
 } from "./plugin-runtime-contract";
@@ -22,7 +21,6 @@ import {
 export {
   type PluginActivationResult,
   type PluginRuntimeView,
-  type PluginHostCapability,
   type PluginToolsView,
   type PluginToolState,
 } from "./plugin-runtime-contract";
@@ -48,16 +46,6 @@ const HttpServerSchema = Schema.Struct({
 const McpServerSchema = Schema.Union([StdioServerSchema, HttpServerSchema]);
 const McpManifestSchema = Schema.Struct({
   mcpServers: Schema.Record(Schema.String, Schema.Unknown),
-});
-
-const SpeechHostBindingSchema = Schema.Struct({
-  adapter: Schema.Literal("local-studio-controller"),
-  capability: Schema.Literal("speech"),
-  actions: Schema.Array(Schema.Literal("synthesize")),
-});
-
-const AppManifestSchema = Schema.Struct({
-  apps: Schema.Record(Schema.String, Schema.Unknown),
 });
 
 type ResolvedServer = {
@@ -195,33 +183,6 @@ function loadPluginServers(
   });
 }
 
-function loadHostCapability(
-  bundle: PluginBundle,
-): Effect.Effect<PluginHostCapability | null, PluginRuntimeError> {
-  if (!bundle.trusted || bundle.plugin.id !== "chatterbox-voice" || !bundle.manifest.apps) {
-    return Effect.succeed(null);
-  }
-  return Effect.tryPromise({
-    try: async () => {
-      const manifestPath = await containedRealPath(bundle.rootDir, bundle.manifest.apps ?? "");
-      const manifest = Schema.decodeUnknownSync(AppManifestSchema)(
-        JSON.parse(await readFile(manifestPath, "utf8")),
-      );
-      const binding = Schema.decodeUnknownSync(SpeechHostBindingSchema)(
-        manifest.apps["chatterbox-voice"],
-      );
-      if (binding.actions.length !== 1) {
-        throw new PluginRuntimeError(422, "Chatterbox Voice action contract changed");
-      }
-      return binding;
-    },
-    catch: (error) =>
-      error instanceof PluginRuntimeError
-        ? error
-        : new PluginRuntimeError(422, `Invalid Chatterbox Voice manifest: ${error}`),
-  });
-}
-
 function pluginToolsView(
   bundle: PluginBundle,
   connectors: ConnectorConfig[],
@@ -356,14 +317,6 @@ function runtimeView(
           connector.origin.binding === "google-workspace",
       );
       return yield* runtimeHealthView(view, current);
-    }
-    const hostCapability = yield* loadHostCapability(bundle);
-    if (hostCapability) {
-      return {
-        ...bundle.plugin,
-        hostCapability,
-        tools: { state: "none", serverCount: 0, allowedToolCount: 0, mode: null },
-      };
     }
     return yield* Effect.matchEffect(loadPluginServers(bundle), {
       onFailure: (error) =>
@@ -600,12 +553,6 @@ export function setPluginEnabled(
       return {
         plugins: yield* listPluginRuntimeViews(sources),
         connectorIds: changed.map((connector) => connector.id),
-      };
-    }
-    if (yield* loadHostCapability(bundle)) {
-      return {
-        plugins: yield* listPluginRuntimeViews(sources),
-        connectorIds: [],
       };
     }
     const owned = current.filter(

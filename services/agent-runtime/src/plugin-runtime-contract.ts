@@ -17,12 +17,6 @@ const PluginToolsViewSchema = Schema.Struct({
   reason: Schema.optional(Schema.String),
 });
 
-const PluginHostCapabilitySchema = Schema.Struct({
-  adapter: Schema.Literal("local-studio-controller"),
-  capability: Schema.Literal("speech"),
-  actions: Schema.Array(Schema.Literal("synthesize")),
-});
-
 const PluginRuntimeViewSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -39,7 +33,6 @@ const PluginRuntimeViewSchema = Schema.Struct({
     apps: Schema.Boolean,
   }),
   tools: PluginToolsViewSchema,
-  hostCapability: Schema.optional(PluginHostCapabilitySchema),
   account: Schema.optional(
     Schema.Struct({
       provider: Schema.Literal("google"),
@@ -57,7 +50,6 @@ export const PluginRuntimeResponseSchema = Schema.Struct({
 
 export type PluginToolState = typeof PluginToolStateSchema.Type;
 export type PluginToolsView = typeof PluginToolsViewSchema.Type;
-export type PluginHostCapability = typeof PluginHostCapabilitySchema.Type;
 export type PluginRuntimeView = typeof PluginRuntimeViewSchema.Type;
 export type PluginActivationResult = {
   plugins: PluginRuntimeView[];

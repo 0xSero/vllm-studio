@@ -71,14 +71,12 @@ export function getForwardedSearchParams(request: NextRequest): {
 }
 
 const DEFAULT_REQUEST_BODY_LIMIT = 32 * 1024 * 1024;
-const VOICE_REQUEST_BODY_LIMIT = 21 * 1024 * 1024;
 const TRANSCRIPTION_REQUEST_BODY_LIMIT = 101 * 1024 * 1024;
 
 export class ProxyBodyTooLargeError extends Error {}
 
 export const proxyRequestBodyLimit = (path: readonly string[]): number => {
   const route = path.join("/");
-  if (route === "v1/audio/voices") return VOICE_REQUEST_BODY_LIMIT;
   if (route === "v1/audio/transcriptions") return TRANSCRIPTION_REQUEST_BODY_LIMIT;
   return DEFAULT_REQUEST_BODY_LIMIT;
 };
