@@ -302,7 +302,12 @@ export function ProjectSessions({
                 />
               )}
               {subagents?.length ? (
-                <SubagentSessionRows project={project} sessions={subagents} prefs={prefs} />
+                <SubagentSessionRows
+                  project={project}
+                  sessions={subagents}
+                  prefs={prefs}
+                  descendantsByParent={childrenByParent}
+                />
               ) : null}
             </div>
           );
@@ -321,14 +326,16 @@ export function ProjectSessions({
   );
 }
 
-function SubagentSessionRows({
+export function SubagentSessionRows({
   project,
   sessions,
   prefs,
+  descendantsByParent,
 }: {
   project: ProjectEntry;
-  sessions: SessionSummary[];
+  sessions: readonly SessionSummary[];
   prefs: SessionPrefs;
+  descendantsByParent?: ReadonlyMap<string, readonly SessionSummary[]>;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -348,17 +355,29 @@ function SubagentSessionRows({
         {sessions.length} subagent{sessions.length === 1 ? "" : "s"}
       </button>
       {open
-        ? sessions.map((session) => (
-            <SessionRow
-              key={session.id}
-              project={project}
-              session={session}
-              pref={{
-                ...(prefs[session.id] ?? {}),
-                title: prefs[session.id]?.title ?? session.subagentName ?? undefined,
-              }}
-            />
-          ))
+        ? sessions.map((session) => {
+            const descendants = descendantsByParent?.get(session.id);
+            return (
+              <div key={session.id} className="flex flex-col">
+                <SessionRow
+                  project={project}
+                  session={session}
+                  pref={{
+                    ...(prefs[session.id] ?? {}),
+                    title: prefs[session.id]?.title ?? session.subagentName ?? undefined,
+                  }}
+                />
+                {descendants?.length ? (
+                  <SubagentSessionRows
+                    project={project}
+                    sessions={descendants}
+                    prefs={prefs}
+                    descendantsByParent={descendantsByParent}
+                  />
+                ) : null}
+              </div>
+            );
+          })
         : null}
     </div>
   );

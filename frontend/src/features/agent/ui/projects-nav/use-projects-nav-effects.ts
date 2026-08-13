@@ -131,8 +131,9 @@ function syncSessionsReconciliation(): void {
   scheduleSessionsReload();
 }
 
-export function useProjectSessionsReloadEffect(reload: () => Promise<void>): void {
+export function useProjectSessionsReloadEffect(reload: () => Promise<void>, enabled = true): void {
   useMountSubscription(() => {
+    if (!enabled) return;
     const ownsReloadEvents = sessionReloads.size === 0;
     sessionReloads.add(reload);
     if (ownsReloadEvents) {
@@ -140,8 +141,7 @@ export function useProjectSessionsReloadEffect(reload: () => Promise<void>): voi
       window.addEventListener("focus", scheduleSessionsReload);
       document.addEventListener("visibilitychange", syncSessionsReconciliation);
     }
-    void reload();
-    armSessionsReconciliation();
+    scheduleSessionsReload();
     return () => {
       sessionReloads.delete(reload);
       if (sessionReloads.size > 0) return;
@@ -154,5 +154,5 @@ export function useProjectSessionsReloadEffect(reload: () => Promise<void>): voi
       window.removeEventListener("focus", scheduleSessionsReload);
       document.removeEventListener("visibilitychange", syncSessionsReconciliation);
     };
-  }, [reload]);
+  }, [enabled, reload]);
 }

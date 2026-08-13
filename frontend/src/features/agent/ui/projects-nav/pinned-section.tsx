@@ -8,7 +8,7 @@ import type { Project as ProjectEntry } from "@/features/agent/projects/types";
 import { mergeActiveSessionPref } from "./helpers";
 import { SidebarRail, SidebarSectionHeader } from "./nav-chrome";
 import { toggleProjectPin, type PinnedNav, type PinnedNavEntry } from "./pinned";
-import { ActiveSessionRow, ProjectRow, SessionRow } from "./session-rows";
+import { ActiveSessionRow, ProjectRow, SessionRow, SubagentSessionRows } from "./session-rows";
 import type { ActiveAgentSession } from "./types";
 
 /** Pinned projects and sessions, in one drag-orderable rail that matches the
@@ -59,31 +59,50 @@ export function PinnedSection({
         />
       );
     }
+    const subagents = pinned.descendantsByParent.get(entry.id);
     if (entry.kind === "active") {
       return (
-        <ActiveSessionRow
-          key={entry.id}
-          project={entry.project}
-          session={entry.session}
-          pref={mergeActiveSessionPref(entry.session, prefs)}
-          activity={sessionActivity(
-            [entry.session.id, entry.session.threadId],
-            activity,
-            entry.session.status,
-            entry.session.focused,
-          )}
-          {...dragProps}
-        />
+        <div key={entry.id} className="flex flex-col">
+          <ActiveSessionRow
+            project={entry.project}
+            session={entry.session}
+            pref={mergeActiveSessionPref(entry.session, prefs)}
+            activity={sessionActivity(
+              [entry.session.id, entry.session.threadId],
+              activity,
+              entry.session.status,
+              entry.session.focused,
+            )}
+            {...dragProps}
+          />
+          {subagents?.length ? (
+            <SubagentSessionRows
+              project={entry.project}
+              sessions={subagents}
+              prefs={prefs}
+              descendantsByParent={pinned.descendantsByParent}
+            />
+          ) : null}
+        </div>
       );
     }
     return (
-      <SessionRow
-        key={entry.id}
-        project={entry.project}
-        session={entry.session}
-        pref={prefs[entry.session.id] ?? {}}
-        {...dragProps}
-      />
+      <div key={entry.id} className="flex flex-col">
+        <SessionRow
+          project={entry.project}
+          session={entry.session}
+          pref={prefs[entry.session.id] ?? {}}
+          {...dragProps}
+        />
+        {subagents?.length ? (
+          <SubagentSessionRows
+            project={entry.project}
+            sessions={subagents}
+            prefs={prefs}
+            descendantsByParent={pinned.descendantsByParent}
+          />
+        ) : null}
+      </div>
     );
   };
 
