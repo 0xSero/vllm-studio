@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, lazy, useLayoutEffect, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, type ReactNode, type RefCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { triggerAddProjectFlow } from "@/features/agent/ui/projects-nav/helpers";
 import {
@@ -96,7 +96,7 @@ export function AgentWorkspaceShell({
   const focusedTab = focusedSession(state);
   const activeSessionIdentity = workspaceSessionIdentity(focusedTab);
   const activeProject = projects.resolveProject(focusedTab) ?? projects.selectedProject;
-  useActiveSessionEffects({
+  const bindActiveSession = useActiveSessionBinder({
     ...activeSessionIdentity,
     browserSessionId: focusedTab?.id ?? null,
     setActiveBrowserSession: tools.setActiveBrowserSession,
@@ -111,7 +111,11 @@ export function AgentWorkspaceShell({
   const composerOnly = panelMode === "composer";
   useQuickPanelExpandEffect(compact, panelMode === "thread");
   return (
-    <div data-quick-panel-state={panelMode} className={workspaceClassName(panelMode)}>
+    <div
+      ref={bindActiveSession}
+      data-quick-panel-state={panelMode}
+      className={workspaceClassName(panelMode)}
+    >
       <div
         className="agent-workspace-panel-row relative flex min-h-0 flex-1"
         data-multi-pane={collectLeaves(state.layout).length > 1 ? "true" : undefined}
@@ -357,7 +361,7 @@ function ProjectEmptyState() {
   );
 }
 
-function useActiveSessionEffects({
+function useActiveSessionBinder({
   browserSessionId,
   viewKey,
   viewAlias,
@@ -369,13 +373,17 @@ function useActiveSessionEffects({
   viewAlias: string | null;
   setActiveBrowserSession: ReturnType<typeof useTools>["setActiveBrowserSession"];
   setActiveComputerSession: ReturnType<typeof useTools>["setActiveComputerSession"];
-}): void {
-  useLayoutEffect(() => {
-    setActiveBrowserSession(browserSessionId);
-    setActiveComputerSession(
-      viewKey ? { key: viewKey, aliases: viewAlias ? [viewAlias] : [] } : null,
-    );
-  }, [browserSessionId, viewKey, viewAlias, setActiveBrowserSession, setActiveComputerSession]);
+}): RefCallback<HTMLDivElement> {
+  return useCallback(
+    (node: HTMLDivElement | null) => {
+      if (!node) return;
+      setActiveBrowserSession(browserSessionId);
+      setActiveComputerSession(
+        viewKey ? { key: viewKey, aliases: viewAlias ? [viewAlias] : [] } : null,
+      );
+    },
+    [browserSessionId, viewKey, viewAlias, setActiveBrowserSession, setActiveComputerSession],
+  );
 }
 
 export function AgentWorkspace({ compact }: { compact?: boolean } = {}) {

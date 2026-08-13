@@ -19,3 +19,12 @@ test("clicking an already-focused workspace pane reasserts its browser owner", (
     /onFocus=\{\(\) => \{[\s\S]*setActiveBrowserSession\(view\.pane\.sessionId\)[\s\S]*dispatch\(\{ type: "focusPane"/,
   );
 });
+
+test("workspace session changes bind browser ownership during commit", () => {
+  const shell = source("./agent-workspace-shell.tsx");
+  assert.match(shell, /ref=\{bindActiveSession\}/);
+  assert.match(
+    shell,
+    /useActiveSessionBinder[\s\S]*if \(!node\) return;[\s\S]*setActiveBrowserSession\(browserSessionId\)/,
+  );
+});
