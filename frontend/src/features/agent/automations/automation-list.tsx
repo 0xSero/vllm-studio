@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Button, MenuItem, SearchInput, SegmentedControl, Spinner } from "@/ui";
+import { useRef, useState, type ReactNode } from "react";
+import { Alert, Button, MenuItem, SearchInput, SegmentedControl, Spinner } from "@/ui";
 import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import { AlertCircle, Check, Clock, MoreIcon, Pause, Play, Plus, Trash2 } from "@/ui/icon-registry";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
@@ -22,6 +22,7 @@ const ROW_MENU_CLASS = `absolute right-1 top-7 isolate z-[60] min-w-[168px] ${PO
 export function AutomationList({
   automations,
   loading,
+  error,
   query,
   filter,
   selectedId,
@@ -36,9 +37,11 @@ export function AutomationList({
   onDelete,
   onMarkAllRead,
   onUseSuggestion,
+  onRetry,
 }: {
   automations: readonly Automation[];
   loading: boolean;
+  error: string;
   query: string;
   filter: AutomationFilter;
   selectedId: string | null;
@@ -53,6 +56,7 @@ export function AutomationList({
   onDelete: (automation: Automation) => void;
   onMarkAllRead: () => void;
   onUseSuggestion: (suggestion: AutomationSuggestion) => void;
+  onRetry: () => void;
 }) {
   const visible = filterAutomations(automations, query, filter);
   const filtering = query.trim().length > 0 || filter !== "all";
@@ -98,11 +102,37 @@ export function AutomationList({
             </Button>
           ) : null}
         </div>
+        {error && automations.length > 0 ? (
+          <Alert variant="error">
+            <div className="flex items-center justify-between gap-3">
+              <span className="min-w-0 flex-1">{error}</span>
+              <Button variant="ghost" size="sm" onClick={onRetry}>
+                Try again
+              </Button>
+            </div>
+          </Alert>
+        ) : null}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
         {loading ? (
-          <ListMessage>Loading scheduled tasks…</ListMessage>
+          <ListMessage>
+            <Spinner size="sm" />
+            <span>Loading scheduled tasks…</span>
+          </ListMessage>
+        ) : error && automations.length === 0 ? (
+          <div className="flex min-h-48 items-center justify-center px-6 text-center">
+            <div className="max-w-xs">
+              <AlertCircle className="mx-auto h-5 w-5 text-(--ui-danger)" />
+              <p className="mt-3 text-[length:var(--fs-sm)] leading-5 text-(--ui-fg)">
+                Failed to load scheduled tasks
+              </p>
+              <p className="mt-1 text-[length:var(--fs-xs)] leading-4 text-(--ui-muted)">{error}</p>
+              <Button variant="secondary" size="sm" onClick={onRetry} className="mt-4">
+                Try again
+              </Button>
+            </div>
+          </div>
         ) : visible.length > 0 ? (
           <div role="list" className="flex flex-col gap-0.5">
             {visible.map((automation) => (
@@ -322,9 +352,12 @@ function SuggestionGroup({
   );
 }
 
-function ListMessage({ children }: { children: string }) {
+function ListMessage({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-48 items-center justify-center px-8 text-center text-[length:var(--fs-sm)] leading-5 text-(--ui-muted)">
+    <div
+      role="status"
+      className="flex min-h-48 items-center justify-center gap-2 px-8 text-center text-[length:var(--fs-sm)] leading-5 text-(--ui-muted)"
+    >
       {children}
     </div>
   );

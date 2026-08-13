@@ -11,6 +11,7 @@ import type { Automation } from "@shared/agent/automation";
 import {
   cacheAutomation,
   listAutomationModels,
+  refreshAutomations,
   updateAutomation,
   useAutomationActions,
   useAutomations,
@@ -139,6 +140,7 @@ export default function AutomationsPage() {
         <AutomationList
           automations={automations}
           loading={loading}
+          error={automationListError(loadError, error, editorOpen)}
           query={query}
           filter={filter}
           selectedId={selected?.id ?? null}
@@ -153,6 +155,7 @@ export default function AutomationsPage() {
           onDelete={(automation) => void removeAutomation(automation)}
           onMarkAllRead={() => void markAllRead(automations)}
           onUseSuggestion={useSuggestion}
+          onRetry={() => void refreshAutomations()}
         />
       </div>
       {editorOpen ? (
@@ -179,6 +182,11 @@ export default function AutomationsPage() {
       )}
     </div>
   );
+}
+
+function automationListError(loadError: string, actionError: string, editorOpen: boolean): string {
+  if (loadError) return loadError;
+  return editorOpen ? "" : actionError;
 }
 
 function AutomationWelcome({ onCreate }: { onCreate: () => void }) {
