@@ -1,56 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { Button, FormField, Input, Select, Textarea } from "@/ui";
-import { Clock, Pause, Play, Plus, Trash2, X } from "@/ui/icon-registry";
+import { useState, type ReactNode } from "react";
+import { Button, FormField, Input, Select } from "@/ui";
+import { Pause, Play, Trash2, X } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import type { Automation, AutomationSchedule } from "@shared/agent/automation";
+import type { Automation, AutomationRun, AutomationSchedule } from "@shared/agent/automation";
 import type { AutomationModel } from "./automation-api";
 import {
   NEW_AUTOMATION_DRAFT,
+  absoluteTime,
   draftFromAutomation,
+  draftFromSuggestion,
   draftIsValid,
-  relativeTime,
+  folderLabel,
+  runOutcomeLabel,
+  runProvenance,
+  runTranscriptHref,
   scheduleLabel,
+  shortRelativeTime,
+  statusLabel,
   type AutomationDraft,
+  type AutomationSuggestion,
 } from "./automation-model";
 
 type EditorAction = "save" | "run" | "status" | "delete" | null;
 
-const EXAMPLES: Array<{
-  label: string;
-  draft: Pick<AutomationDraft, "name" | "prompt" | "schedule">;
-}> = [
-  {
-    label: "Daily brief",
-    draft: {
-      name: "Daily brief",
-      prompt: "Review my recent work and summarize priorities, blockers, and next actions.",
-      schedule: { kind: "daily", time: "08:00", weekdaysOnly: true },
-    },
-  },
-  {
-    label: "Weekly review",
-    draft: {
-      name: "Weekly review",
-      prompt: "Review what I worked on this week and draft a concise status update.",
-      schedule: { kind: "weekly", day: 5, time: "16:00" },
-    },
-  },
-  {
-    label: "Follow-up monitor",
-    draft: {
-      name: "Follow-up monitor",
-      prompt: "Review recent activity and flag anything that needs my attention.",
-      schedule: { kind: "interval", minutes: 60 },
-    },
-  },
-];
-
 export function AutomationEditor({
   automation,
   creating,
+  suggestion,
   models,
   action,
   error,
@@ -62,6 +41,7 @@ export function AutomationEditor({
 }: {
   automation: Automation | null;
   creating: boolean;
+  suggestion?: AutomationSuggestion | null;
   models: readonly AutomationModel[];
   action: EditorAction;
   error: string;
@@ -72,7 +52,11 @@ export function AutomationEditor({
   onDelete: () => void;
 }) {
   const [draft, setDraft] = useState<AutomationDraft>(() =>
-    automation ? draftFromAutomation(automation) : NEW_AUTOMATION_DRAFT,
+    automation
+      ? draftFromAutomation(automation)
+      : suggestion
+        ? draftFromSuggestion(NEW_AUTOMATION_DRAFT, suggestion)
+        : NEW_AUTOMATION_DRAFT,
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -106,55 +90,40 @@ export function AutomationEditor({
           if (draftIsValid(draft) && !busy) onSave(draft);
         }}
       >
-        <div className="mx-auto w-full max-w-2xl space-y-5 px-5 py-5 sm:px-7">
-          {creating ? (
-            <ExamplePicker onSelect={(example) => setDraft(example)} draft={draft} />
-          ) : null}
-
-          <div className="space-y-4">
-            <FormField label="Name" required>
-              <Input
-                value={draft.name}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, name: event.target.value }))
-                }
-                placeholder="Daily brief"
-                autoFocus={creating}
-              />
-            </FormField>
-            <FormField
-              label="Task"
-              required
-              description="Local Studio sends this instruction to the selected model on every run."
-            >
-              <Textarea
-                value={draft.prompt}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, prompt: event.target.value }))
-                }
-                placeholder="What should the agent do?"
-                rows={8}
-                className="resize-y"
-              />
-            </FormField>
+        <div className="mx-auto w-full max-w-2xl space-y-6 px-5 py-4 sm:px-7">
+          <div>
+            <input
+              value={draft.name}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, name: event.target.value }))
+              }
+              placeholder="New scheduled task"
+              aria-label="Scheduled task name"
+              autoFocus={creating}
+              className="w-full bg-transparent text-[length:var(--fs-2xl)] font-medium leading-8 text-(--ui-fg) outline-none placeholder:text-(--ui-muted)/60"
+            />
+            <textarea
+              value={draft.prompt}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, prompt: event.target.value }))
+              }
+              placeholder="What should the agent do on every run?"
+              aria-label="Scheduled task instructions"
+              rows={6}
+              className="mt-2 w-full resize-y bg-transparent text-[length:var(--fs-base)] leading-6 text-(--ui-fg) outline-none placeholder:text-(--ui-muted)/60"
+            />
           </div>
 
-          <div className="border-t border-(--ui-separator) pt-5">
-            <div className="mb-3 flex items-center gap-2">
-              <Clock className="h-4 w-4 text-(--ui-muted)" />
-              <div>
-                <h3 className="text-[length:var(--fs-base)] font-medium text-(--ui-fg)">
-                  Schedule
-                </h3>
-                <p className="text-[length:var(--fs-xs)] text-(--ui-muted)">
-                  {scheduleLabel(draft.schedule)}
-                </p>
-              </div>
-            </div>
+          <EditorSection title="Frequency" summary={scheduleLabel(draft.schedule)}>
             <ScheduleEditor schedule={draft.schedule} onChange={updateSchedule} />
-          </div>
+          </EditorSection>
 
-          <div className="grid gap-4 border-t border-(--ui-separator) pt-5 sm:grid-cols-2">
+          <EditorSection title="Details">
+            <DetailRow
+              label="Type"
+              value={draft.target?.kind === "thread" ? "Scheduled chat" : "Scheduled task"}
+            />
+            <DetailRow label="Runs in" value="This device" />
             <FormField label="Model" required>
               <Select
                 value={draft.modelId}
@@ -172,7 +141,11 @@ export function AutomationEditor({
             </FormField>
             <FormField
               label="Working directory"
-              description="Optional. Leave empty to use the Local Studio default."
+              description={
+                draft.target?.kind === "thread"
+                  ? "The folder that holds the conversation this task runs inside."
+                  : "Optional. Leave empty to use the Local Studio default."
+              }
             >
               <Input
                 value={draft.cwd}
@@ -182,7 +155,7 @@ export function AutomationEditor({
                 placeholder="/path/to/project"
               />
             </FormField>
-          </div>
+          </EditorSection>
 
           {!creating && automation?.runs.length ? <RunHistory automation={automation} /> : null}
 
@@ -222,18 +195,24 @@ function EditorHeader({
   onRun: () => void;
   onToggleStatus: () => void;
 }) {
-  const statusText = creating
-    ? "Set up the work once, then let Local Studio run it."
-    : automation?.status === "paused"
-      ? "Paused"
-      : `Next run ${relativeTime(automation?.nextRunAt ?? null)}`;
+  const active = automation?.status === "active";
+  const nextRun = automation && active ? shortRelativeTime(automation.nextRunAt) : "";
   return (
-    <header className="flex min-h-14 shrink-0 items-center gap-2 border-b border-(--ui-border) px-4">
-      <div className="min-w-0 flex-1">
-        <h2 className="truncate text-[length:var(--fs-lg)] font-medium text-(--ui-fg)">
-          {creating ? "New scheduled task" : automation?.name}
-        </h2>
-        <p className="truncate text-[length:var(--fs-xs)] text-(--ui-muted)">{statusText}</p>
+    <header className="flex min-h-12 shrink-0 items-center gap-2 border-b border-(--ui-border) px-4">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 text-[length:var(--fs-sm)] leading-4">
+        <span
+          className={`shrink-0 font-medium ${active ? "text-(--ui-info)" : "text-(--ui-muted)"}`}
+        >
+          {creating ? "New" : automation ? statusLabel(automation) : ""}
+        </span>
+        {nextRun ? (
+          <>
+            <span aria-hidden className="shrink-0 text-(--ui-muted)/60">
+              ·
+            </span>
+            <span className="min-w-0 truncate text-(--ui-muted)">Next run {nextRun}</span>
+          </>
+        ) : null}
       </div>
       {!creating && automation ? (
         <>
@@ -265,111 +244,126 @@ function EditorHeader({
           </Button>
         </>
       ) : null}
-      <Button variant="icon" size="sm" onClick={onClose} aria-label="Close automation details">
+      <Button variant="icon" size="sm" onClick={onClose} aria-label="Close scheduled task details">
         <X className="h-4 w-4" />
       </Button>
     </header>
   );
 }
 
-function ExamplePicker({
-  draft,
-  onSelect,
+function EditorSection({
+  title,
+  summary,
+  action,
+  children,
 }: {
-  draft: AutomationDraft;
-  onSelect: (draft: AutomationDraft) => void;
+  title: string;
+  summary?: string;
+  action?: ReactNode;
+  children: ReactNode;
 }) {
   return (
-    <div>
-      <div className="mb-2 text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.12em] text-(--ui-muted)">
-        Start from
+    <section className="border-t border-(--ui-separator) pt-4">
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h3 className="text-[length:var(--fs-base)] font-medium text-(--ui-fg)">{title}</h3>
+        {action ?? (
+          <span className="truncate text-[length:var(--fs-xs)] text-(--ui-muted)">{summary}</span>
+        )}
       </div>
-      <div className="flex flex-wrap gap-2">
-        {EXAMPLES.map((example) => (
-          <button
-            key={example.label}
-            type="button"
-            onClick={() => onSelect({ ...draft, ...example.draft })}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-(--ui-fg)/5 px-3 text-[length:var(--fs-sm)] text-(--ui-muted) transition-colors hover:bg-(--ui-fg)/10 hover:text-(--ui-fg)"
-          >
-            <Plus className="h-3 w-3" />
-            {example.label}
-          </button>
-        ))}
-      </div>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="shrink-0 text-[length:var(--fs-sm)] text-(--ui-muted)">{label}</span>
+      <span className="min-w-0 truncate text-right text-[length:var(--fs-base)] text-(--ui-fg)">
+        {value}
+      </span>
     </div>
   );
 }
 
 function RunHistory({ automation }: { automation: Automation }) {
   return (
-    <div className="border-t border-(--ui-separator) pt-5">
-      <div className="mb-2 flex items-baseline justify-between gap-3">
-        <h3 className="text-[length:var(--fs-base)] font-medium text-(--ui-fg)">Run history</h3>
-        <span className="text-[length:var(--fs-xs)] text-(--ui-muted)">
-          {automation.runs.length} {automation.runs.length === 1 ? "run" : "runs"}
+    <EditorSection
+      title="Previous runs"
+      summary={`${automation.runs.length} ${automation.runs.length === 1 ? "run" : "runs"}`}
+    >
+      <div role="list" className="-mx-1 flex flex-col">
+        {automation.runs.map((run, index) => (
+          <RunRow key={`${run.at}-${run.piSessionId ?? index}`} run={run} />
+        ))}
+      </div>
+    </EditorSection>
+  );
+}
+
+function RunRow({ run }: { run: AutomationRun }) {
+  const href = runTranscriptHref(run);
+  const provenance = runProvenance(run);
+  const failed = run.outcome === "error";
+  const body = (
+    <>
+      <span className="flex w-5 shrink-0 items-center justify-center self-start pt-1.5">
+        <span
+          className={`h-1.5 w-1.5 rounded-full ${failed ? "bg-(--ui-danger)" : "bg-(--ui-muted)/60"}`}
+        />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span
+            className={`shrink-0 text-[length:var(--fs-base)] leading-5 ${failed ? "text-(--ui-danger)" : "text-(--ui-fg)"}`}
+          >
+            {runOutcomeLabel(run)}
+          </span>
+          <span className="min-w-0 truncate text-[length:var(--fs-sm)] text-(--ui-muted)">
+            {folderLabel(run.cwd)}
+          </span>
         </span>
+        {provenance ? (
+          <span className="mt-0.5 block truncate text-[length:var(--fs-xs)] leading-4 text-(--ui-muted)">
+            {provenance}
+          </span>
+        ) : null}
+        {run.error ? (
+          <span className="mt-1 block whitespace-pre-wrap text-[length:var(--fs-sm)] leading-5 text-(--ui-danger)">
+            {run.error}
+          </span>
+        ) : run.summary ? (
+          <span className="mt-1 line-clamp-2 block whitespace-pre-wrap text-[length:var(--fs-sm)] leading-5 text-(--ui-muted)">
+            {run.summary}
+          </span>
+        ) : null}
+      </span>
+      <span className="shrink-0 self-start pt-0.5 text-[length:var(--fs-sm)] leading-5 tabular-nums text-(--ui-muted)">
+        {shortRelativeTime(run.at)}
+      </span>
+    </>
+  );
+  const rowClass = "flex gap-2 rounded-[var(--ui-radius)] px-1 py-2 transition-colors";
+  if (!href) {
+    return (
+      <div
+        role="listitem"
+        title={`${absoluteTime(run.at)} — transcript unavailable`}
+        className={`${rowClass} opacity-60`}
+      >
+        {body}
       </div>
-      <div className="divide-y divide-(--ui-separator) border-y border-(--ui-separator)">
-        {automation.runs.map((run, index) => {
-          const transcriptHref =
-            run.piSessionId && run.projectId
-              ? `/agent?project=${encodeURIComponent(run.projectId)}&session=${encodeURIComponent(run.piSessionId)}&replace=1`
-              : null;
-          return (
-            <div
-              key={`${run.at}-${run.piSessionId ?? index}`}
-              className="px-1 py-3 transition-colors hover:bg-(--ui-hover)/25"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p
-                    className={
-                      run.outcome === "error"
-                        ? "text-[length:var(--fs-sm)] font-medium text-(--ui-danger)"
-                        : "text-[length:var(--fs-sm)] font-medium text-(--ui-fg)"
-                    }
-                  >
-                    {run.outcome === "error" ? "Failed" : "Completed"} {relativeTime(run.at)}
-                  </p>
-                  <p className="mt-0.5 text-[length:var(--fs-xs)] text-(--ui-muted)">
-                    {new Date(run.at).toLocaleString()}
-                  </p>
-                </div>
-                {transcriptHref ? (
-                  <Link
-                    href={transcriptHref}
-                    className="shrink-0 text-[length:var(--fs-sm)] text-(--link) hover:underline"
-                  >
-                    Open run
-                  </Link>
-                ) : (
-                  <span className="shrink-0 text-[length:var(--fs-xs)] text-(--ui-muted)">
-                    Transcript unavailable
-                  </span>
-                )}
-              </div>
-              {run.actualModelId &&
-              run.requestedModelId &&
-              run.actualModelId !== run.requestedModelId ? (
-                <p className="mt-1 text-[length:var(--fs-xs)] text-(--ui-muted)">
-                  Ran on {run.actualModelId} because {run.requestedModelId} was not loaded.
-                </p>
-              ) : null}
-              {run.error ? (
-                <p className="mt-2 whitespace-pre-wrap text-[length:var(--fs-sm)] leading-5 text-(--ui-danger)">
-                  {run.error}
-                </p>
-              ) : run.summary ? (
-                <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-[length:var(--fs-sm)] leading-5 text-(--ui-muted)">
-                  {run.summary}
-                </p>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-    </div>
+    );
+  }
+  return (
+    <Link
+      role="listitem"
+      href={href}
+      title={absoluteTime(run.at)}
+      className={`${rowClass} hover:bg-(--ui-hover)/40`}
+    >
+      {body}
+    </Link>
   );
 }
 
@@ -417,7 +411,7 @@ function EditorFooter({
               disabled={busy}
               onClick={onDelete}
             >
-              Confirm delete
+              Delete scheduled task
             </Button>
             <Button variant="ghost" size="sm" disabled={busy} onClick={onCancelDelete}>
               Cancel
@@ -439,7 +433,7 @@ function EditorFooter({
         <span />
       )}
       <Button type="submit" loading={action === "save"} disabled={!canSave || busy}>
-        {creating ? "Create automation" : "Save changes"}
+        {creating ? "Create scheduled task" : "Save"}
       </Button>
     </div>
   );

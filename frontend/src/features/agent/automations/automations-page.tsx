@@ -232,6 +232,7 @@ export default function AutomationsPage() {
             key={creating ? (suggestion?.id ?? "new") : selected?.id}
             automation={selected}
             creating={creating}
+            suggestion={creating ? suggestion : null}
             models={models}
             action={action}
             error={error}
