@@ -205,10 +205,10 @@ export async function openReadableFile(
   const registeredRoot = resolveRegisteredProjectRoot(rootCwd);
   const root = resolveWorkspaceRoot(rootCwd);
   const target = ensureInside(root, path.resolve(root, relPath));
-  if (target !== registeredRoot && !target.startsWith(registeredRoot + path.sep)) {
+  if (!target.startsWith(registeredRoot + path.sep)) {
     throw new Error("Path escapes registered project");
   }
-  if (target !== root && !target.startsWith(root + path.sep)) {
+  if (!target.startsWith(root + path.sep)) {
     throw new Error("Path escapes project root");
   }
   const file = await fs.open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
