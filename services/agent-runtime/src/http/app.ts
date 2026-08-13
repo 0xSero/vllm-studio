@@ -32,10 +32,8 @@ import {
   handleAutomationPatch,
   handleAutomationRun,
   handleAutomationsList,
-  handleGoalDelete,
-  handleGoalGet,
-  handleGoalPut,
 } from "./automation-handlers";
+import { handleGoalDelete, handleGoalGet, handleGoalPut } from "./goal-handlers";
 import { handleSubagentRun, handleSubagentsList } from "./subagent-handlers";
 import { handlePrGet, handlePrMerge } from "./pr-handlers";
 import {
@@ -80,9 +78,7 @@ export function createAgentRuntimeApp() {
   app.patch("/api/agent/automations/:id", (c) =>
     handleAutomationPatch(c.req.raw, c.req.param("id")),
   );
-  app.delete("/api/agent/automations/:id", (c) =>
-    handleAutomationDelete(c.req.param("id")),
-  );
+  app.delete("/api/agent/automations/:id", (c) => handleAutomationDelete(c.req.param("id")));
   app.post("/api/agent/automations/:id/run", (c) => handleAutomationRun(c.req.param("id")));
   app.get("/api/agent/pr", (c) => handlePrGet(c.req.raw));
   app.post("/api/agent/pr/merge", (c) => handlePrMerge(c.req.raw));
