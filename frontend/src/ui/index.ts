@@ -21,8 +21,8 @@ export { FormSection, CheckboxRow } from "./form-layout";
 export { SearchInput } from "./search-input";
 export type { SearchInputProps } from "./search-input";
 
-export { UiModal, UiModalHeader } from "./modal";
-export type { UiModalProps, UiModalHeaderProps } from "./modal";
+export { UiModal, UiModalHeader, UiModalBody, UiModalFooter } from "./modal";
+export type { UiModalProps, UiModalHeaderProps, UiModalFooterProps } from "./modal";
 
 export { Tabs } from "./tabs";
 export type { TabsProps, TabItem, TabVariant } from "./tabs";
@@ -58,6 +58,7 @@ export type { SegmentedItem } from "./segmented-control";
 export { ColorField } from "./color-field";
 
 export { ProgressBar } from "./progress-bar";
+export { PreviewScroll } from "./preview-scroll";
 export { Stat } from "./stat";
 export { ErrorBox } from "./error-box";
 export { Spinner } from "./spinner";

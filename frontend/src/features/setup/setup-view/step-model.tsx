@@ -34,7 +34,7 @@ function RecommendationRow({
           <span className="truncate text-[length:var(--fs-md)] text-(--fg)">
             {recommendation.name}
           </span>
-          <span className="shrink-0 rounded border border-(--ui-border) px-1.5 py-px font-mono text-[10px] uppercase tracking-wide text-(--ui-muted)">
+          <span className="shrink-0 rounded border border-(--ui-border) px-1.5 py-px font-mono text-[length:var(--fs-sm)] text-(--ui-muted)">
             {quantBadge}
           </span>
         </div>
@@ -57,7 +57,7 @@ function RecommendationRow({
             <span className="ml-1 text-[11px] text-(--ui-muted)">tok/s</span>
           </div>
           {recommendation.engine ? (
-            <div className="font-mono text-[10px] uppercase text-(--ui-muted)">
+            <div className="font-mono text-[length:var(--fs-sm)] text-(--ui-muted)">
               {recommendation.engine}
             </div>
           ) : null}
@@ -98,7 +98,7 @@ function RemotePresetRow({
             {preset.remote?.model}
           </div>
         </div>
-        <span className="shrink-0 rounded border border-(--ui-border) px-1.5 py-px font-mono text-[10px] uppercase text-(--ui-muted)">
+        <span className="shrink-0 rounded border border-(--ui-border) px-1.5 py-px font-mono text-[length:var(--fs-sm)] text-(--ui-muted)">
           remote
         </span>
       </div>
@@ -192,7 +192,7 @@ export function StepModel({
       {recommendations.length > 0 ? (
         <div>
           <div className="mb-2 flex items-baseline justify-between px-1">
-            <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.18em] text-(--ui-muted)">
+            <span className="font-mono text-[length:var(--fs-sm)] text-(--ui-muted)">
               Measured on hardware like yours
             </span>
             <span className="font-mono text-[11px] text-(--ui-muted)">
@@ -231,7 +231,7 @@ export function StepModel({
         <button
           type="button"
           onClick={() => setShowCatalog((value) => !value)}
-          className="px-1 font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.18em] text-(--ui-muted) transition-colors hover:text-(--fg)"
+          className="px-1 font-mono text-[length:var(--fs-sm)] text-(--ui-muted) transition-colors hover:text-(--fg)"
         >
           {showCatalog ? "Hide full catalog" : "Browse the full catalog"}
         </button>
@@ -252,7 +252,7 @@ export function StepModel({
       </div>
 
       <div>
-        <div className="mb-2 px-1 font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.18em] text-(--ui-muted)">
+        <div className="mb-2 px-1 font-mono text-[length:var(--fs-sm)] text-(--ui-muted)">
           Or any Hugging Face repo
         </div>
         <div className="flex gap-2">
@@ -267,7 +267,9 @@ export function StepModel({
             variant="secondary"
             onClick={submitManualModel}
             disabled={resolvingManualModel}
-            icon={resolvingManualModel ? <Spinner size="xs" /> : <DownloadCloud className="h-4 w-4" />}
+            icon={
+              resolvingManualModel ? <Spinner size="xs" /> : <DownloadCloud className="h-4 w-4" />
+            }
           >
             {resolvingManualModel ? "Inspecting" : "Download"}
           </Button>

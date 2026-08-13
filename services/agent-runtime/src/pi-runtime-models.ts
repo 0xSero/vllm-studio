@@ -127,6 +127,7 @@ function supportedPiThinkingLevels(
     model.compat?.supportsReasoningEffort ?? providerCompat?.supportsReasoningEffort;
   if (supportsReasoningEffort !== true) return ["high"];
   return AGENT_THINKING_LEVELS.filter((level) => {
+    if (level === "auto") return model.thinkingLevelMap?.minimal === "auto";
     const mapped = model.thinkingLevelMap?.[level];
     if (mapped === null) return false;
     if (level === "xhigh" || level === "max") return mapped !== undefined;
@@ -145,9 +146,11 @@ export function controllerModelThinkingLevels(
   if (reasoning && isInklingModelId(modelId)) {
     return ["off", "minimal", "low", "medium", "high", "max"];
   }
-  return AGENT_THINKING_LEVELS.filter((level) =>
-    reasoning ? level === "high" || level === "max" : level === "off",
-  );
+  return reasoning ? ["auto", "low", "medium", "high", "max", "off"] : ["off"];
+}
+
+export function toPiThinkingLevel(level: AgentThinkingLevel): Exclude<AgentThinkingLevel, "auto"> {
+  return level === "auto" ? "minimal" : level;
 }
 
 export type PiControllerModelsRequest = {
@@ -460,6 +463,16 @@ const VLLM_OPENAI_COMPAT: OpenAICompletionsCompat = {
   maxTokensField: "max_completion_tokens",
 };
 
+const CONTROLLER_THINKING_LEVEL_MAP = {
+  off: "off",
+  minimal: "auto",
+  low: "low",
+  medium: "medium",
+  high: "high",
+  xhigh: "max",
+  max: "max",
+} as const;
+
 export function modelsToPiModels(models: AgentModel[]) {
   return models.map((model) => {
     // The hosted DeepSeek API uses a `thinking` object and requires an empty
@@ -479,7 +492,9 @@ export function modelsToPiModels(models: AgentModel[]) {
       contextWindow: model.contextWindow,
       maxTokens: model.maxTokens,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      ...(deepSeekReasoning
+      ...(model.controllerUrl && model.reasoning
+        ? { thinkingLevelMap: CONTROLLER_THINKING_LEVEL_MAP }
+        : deepSeekReasoning
         ? {
             thinkingLevelMap: {
               off: null,

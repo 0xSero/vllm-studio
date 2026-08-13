@@ -325,6 +325,9 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               // A non-null cursor means the tail load left older history unread;
               // the timeline shows a "Load earlier" affordance while it is set.
               historyCursor: messages.length > 0 ? cursor : (session.historyCursor ?? null),
+              // The replay has landed, so whatever came from the snapshot has
+              // been superseded and must not keep asking to be replayed.
+              hydratedFromCache: false,
               error: "",
             }));
             // Reattach the live stream from the hydrated cursor so EventSource

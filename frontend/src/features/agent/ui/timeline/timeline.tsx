@@ -7,20 +7,11 @@ import { ChevronDownIcon } from "@/ui/icons";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { effectTimeout, type EffectTimer } from "@/lib/effect-timers";
 import { patchSessionView, readSessionView } from "@/features/agent/workspace/session-view-state";
-
-// Mirrors `groupAssistantBlocks`: a message renders something only if it has a
-// non-empty text block or any tool/thinking/event block. Assistant messages
-// that produce nothing (e.g. only whitespace text from a stream) would still
-// emit an empty article plus the wrapper's top padding, leaving a blank gap.
-function messageRenders(message: ChatMessage): boolean {
-  if (message.role === "system") return false;
-  if (message.role === "user") {
-    return message.text.trim().length > 0 || Boolean(message.attachments?.length);
-  }
-  return (message.blocks ?? []).some((block: AssistantBlock) =>
-    block.kind === "text" ? block.text.trim() !== "" : true,
-  );
-}
+import {
+  mergeConsecutiveAssistantMessages,
+  messageRenders,
+  type MergedRun,
+} from "@/features/agent/ui/timeline/visible-messages";
 
 type TimelineProps = {
   messages: ChatMessage[];
@@ -374,74 +365,6 @@ function formatPromptTime(timestamp?: string): string {
   return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(
     new Date(parsed),
   );
-}
-
-type MergedRun = { segments: ChatMessage[]; merged: ChatMessage };
-const MERGE_CACHE_MAX_ENTRIES = 512;
-
-// Streaming commits a fresh `messages` array every animation frame, so this
-// merge runs per frame. The per-run cache keeps a merged turn's object
-// identity stable while its segments are unchanged — otherwise every settled
-// multi-segment turn would get a new identity each frame and its MemoMessage
-// would re-render for the whole stream.
-function mergeConsecutiveAssistantMessages(
-  messages: ChatMessage[],
-  cache: Map<string, MergedRun>,
-): ChatMessage[] {
-  const merged: ChatMessage[] = [];
-  let run: ChatMessage[] = [];
-  const flushRun = () => {
-    if (run.length === 0) return;
-    if (run.length === 1) {
-      merged.push(run[0]);
-    } else {
-      merged.push(mergeRun(run, cache));
-    }
-    run = [];
-  };
-  for (const message of messages) {
-    if (message.role === "assistant") {
-      run.push(message);
-      continue;
-    }
-    flushRun();
-    merged.push(message);
-  }
-  flushRun();
-  return merged;
-}
-
-function mergeRun(run: ChatMessage[], cache: Map<string, MergedRun>): ChatMessage {
-  const first = run[0];
-  const cached = cache.get(first.id);
-  if (
-    cached &&
-    cached.segments.length === run.length &&
-    cached.segments.every((segment, index) => segment === run[index])
-  ) {
-    return cached.merged;
-  }
-  const combined: ChatMessage = {
-    ...first,
-    // Anchor the merged id on the first segment (already unique). Concatenating
-    // each new segment's id grew the id — and thus the React key — on every
-    // tool boundary within a turn, remounting the whole assistant <article>
-    // mid-stream and collapsing expanded reasoning/tool disclosures.
-    id: first.id,
-    text: run
-      .map((segment) => segment.text)
-      .filter(Boolean)
-      .join("\n"),
-    blocks: run.flatMap((segment) => segment.blocks ?? []),
-    streamCalls: run.flatMap((segment) => segment.streamCalls ?? []),
-    timestamp: run.reduce<string | undefined>(
-      (timestamp, segment) => segment.timestamp ?? timestamp,
-      undefined,
-    ),
-  };
-  if (cache.size >= MERGE_CACHE_MAX_ENTRIES) cache.clear();
-  cache.set(first.id, { segments: run, merged: combined });
-  return combined;
 }
 
 const AT_BOTTOM_THRESHOLD_PX = 80;

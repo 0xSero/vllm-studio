@@ -3,7 +3,7 @@
 import { createContext, useContext, useId, useRef, useState, type ReactNode } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { X } from "@/ui/icon-registry";
-import { POPOVER_PANEL_CLASS } from "./popover";
+import { MODAL_SURFACE_CLASS } from "./popover";
 import { cx } from "./utils";
 
 interface UiModalProps {
@@ -86,7 +86,7 @@ function UiModal({ isOpen, onClose, children, className, maxWidth = "max-w-lg" }
         type="button"
         tabIndex={-1}
         aria-hidden="true"
-        className="absolute inset-0 z-0 bg-(--color-background)"
+        className="absolute inset-0 z-0 bg-(--color-scrim) backdrop-blur-[2px]"
         onClick={onClose}
       />
       <div
@@ -96,7 +96,7 @@ function UiModal({ isOpen, onClose, children, className, maxWidth = "max-w-lg" }
         aria-modal="true"
         aria-labelledby={titleId}
         className={cx(
-          `relative z-10 max-h-full w-full outline-none ${POPOVER_PANEL_CLASS}`,
+          `relative z-10 flex max-h-full w-full flex-col outline-none ${MODAL_SURFACE_CLASS}`,
           maxWidth,
           className,
         )}
@@ -132,16 +132,13 @@ function UiModalHeader({
 
   return (
     <div
-      className={cx(
-        "flex min-h-13 items-center justify-between gap-3 border-b border-(--border) bg-(--color-popover-header) px-5 py-3.5",
-        className,
-      )}
+      className={cx("flex shrink-0 items-start justify-between gap-3 px-6 pb-3 pt-5", className)}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         {icon}
         <h2
           id={titleId ?? undefined}
-          className="text-[length:var(--fs-md)] font-medium tracking-[-0.01em] text-(--ui-fg)"
+          className="text-[length:var(--fs-lg)] font-semibold tracking-[-0.01em] text-(--ui-fg)"
         >
           {title}
         </h2>
@@ -163,5 +160,37 @@ function UiModalHeader({
   );
 }
 
-export { UiModal, UiModalHeader };
-export type { UiModalProps, UiModalHeaderProps };
+/**
+ * Scrolling content region. Owns the dialog's horizontal rhythm so call sites
+ * stop inventing their own `p-4` / `p-6` / `px-5 pb-4 pt-2`.
+ */
+function UiModalBody({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={cx("min-h-0 flex-1 overflow-y-auto px-6 pb-1", className)}>{children}</div>
+  );
+}
+
+interface UiModalFooterProps {
+  children: ReactNode;
+  /** Rendered hard left, opposite the confirm/cancel pair — destructive actions live here. */
+  leading?: ReactNode;
+  className?: string;
+}
+
+/**
+ * Action row. No divider and no tinted bar: the buttons sit on the dialog
+ * surface itself, so the footer reads as part of the sheet.
+ */
+function UiModalFooter({ children, leading, className }: UiModalFooterProps) {
+  return (
+    <div
+      className={cx("flex shrink-0 items-center justify-between gap-3 px-6 pb-5 pt-4", className)}
+    >
+      <div className="flex items-center gap-2">{leading}</div>
+      <div className="flex items-center gap-2">{children}</div>
+    </div>
+  );
+}
+
+export { UiModal, UiModalHeader, UiModalBody, UiModalFooter };
+export type { UiModalProps, UiModalHeaderProps, UiModalFooterProps };

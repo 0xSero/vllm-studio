@@ -98,7 +98,7 @@ export function OpenApiPanel() {
       <div className="mx-auto max-w-5xl p-5">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-(--border) pb-5">
           <div>
-            <div className="text-[length:var(--fs-xs)] uppercase tracking-[0.16em] text-(--color-foreground-subtlest)">
+            <div className="text-[length:var(--fs-sm)] text-(--color-foreground-subtlest)">
               OpenAPI {spec?.openapi ?? "reference"}
             </div>
             <h2 className="mt-1 text-[length:var(--fs-2xl)] font-semibold tracking-tight text-(--fg)">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import api from "@/lib/api/client";
+import { transcribeRecording } from "@/features/agent/ui/transcribe-client";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 type DictationState = "idle" | "requesting" | "recording" | "transcribing";
@@ -94,8 +94,7 @@ export function useComposerDictation(onTranscript: (text: string) => void) {
           },
         );
         setState("transcribing");
-        void api
-          .transcribeAudio({ recording: file })
+        void transcribeRecording(file)
           .then((text) => {
             if (mounted.current) onTranscript(text);
           })

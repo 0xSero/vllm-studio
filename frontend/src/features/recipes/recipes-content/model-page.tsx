@@ -1,6 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import { ChevronRight } from "@/ui/icon-registry";
 import { StatusPill, type UiTone } from "@/ui";
 import { cx } from "@/ui/utils";
 
@@ -24,7 +25,21 @@ type ModelRowProps = {
   variant?: ModelRowVariant;
   className?: string;
   onClick?: () => void;
+  /** Parent-owned disclosure state; drives the chevron only. */
+  expanded?: boolean;
 };
+
+/**
+ * Rows sit in a bounded card and are separated by a hairline that stops short
+ * of the border on both sides, the way the Codex plugins list does it. A
+ * full-bleed `divide-y` runs into the card edge and reads as a table; the inset
+ * keeps each row legible as its own object.
+ *
+ * Done with a pseudo-element on every child after the first so callers keep
+ * rendering a plain list and nothing has to know its own index.
+ */
+const GROUP_DIVIDERS =
+  "[&>*+*]:relative [&>*+*]:before:pointer-events-none [&>*+*]:before:absolute [&>*+*]:before:inset-x-2.5 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-(--ui-border)/70";
 
 export function ModelSection({
   title,
@@ -39,7 +54,7 @@ export function ModelSection({
 }) {
   return (
     <section className="min-w-0">
-      <div className="flex min-h-9 items-end justify-between gap-4 border-b border-(--ui-border)/75 pb-2">
+      <div className="flex min-h-8 items-end justify-between gap-4 px-0.5 pb-2">
         <div className="min-w-0">
           <h3 className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">{title}</h3>
           {description ? (
@@ -48,7 +63,16 @@ export function ModelSection({
         </div>
         {actions ? <div className="shrink-0">{actions}</div> : null}
       </div>
-      <div className="divide-y divide-(--ui-border)/55">{children}</div>
+      <div
+        className={cx(
+          // `empty:hidden` so a section whose rows all render null collapses
+          // instead of leaving a hairline-thin empty box.
+          "flex min-w-0 flex-col overflow-hidden rounded-[10px] border border-(--ui-border) bg-(--ui-surface) empty:hidden",
+          GROUP_DIVIDERS,
+        )}
+      >
+        {children}
+      </div>
     </section>
   );
 }
@@ -121,6 +145,49 @@ export function ModelActiveSummary({
   );
 }
 
+/**
+ * The row's trailing cell.
+ *
+ * A read-only value belongs beside the status it qualifies, not stranded
+ * mid-row — left-aligning it opened a dead gap between the text and the badge
+ * at the right edge. Controls keep their natural width so an input never
+ * stretches across empty space.
+ */
+function RowValueCell({
+  control,
+  value,
+  interactive,
+}: {
+  control?: ReactNode;
+  value?: ReactNode;
+  interactive: boolean;
+}) {
+  if (!control && !value) return null;
+  return (
+    <div
+      className={cx("min-w-0", control ? "shrink-0" : "text-right")}
+      onClick={control && interactive ? (event) => event.stopPropagation() : undefined}
+    >
+      {control ?? value}
+    </div>
+  );
+}
+
+/** Chevron shown only when a row actually has something to reveal. */
+function DisclosureChevron({ expanded }: { expanded: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={cx(
+        "flex h-5 w-5 shrink-0 items-center justify-center text-(--ui-muted) transition-transform duration-150",
+        expanded ? "rotate-90" : "",
+      )}
+    >
+      <ChevronRight className="h-3.5 w-3.5" />
+    </span>
+  );
+}
+
 export function ModelRow({
   label,
   description,
@@ -133,16 +200,19 @@ export function ModelRow({
   variant = "default",
   className,
   onClick,
+  expanded,
 }: ModelRowProps) {
   const interactive = Boolean(onClick);
+  const stopRowClick = interactive
+    ? (event: ReactMouseEvent) => event.stopPropagation()
+    : undefined;
   return (
     <div
       className={cx(
-        "group px-1 py-2",
+        "group min-w-0",
         interactive
-          ? "cursor-pointer rounded-md transition-[background-color,transform] hover:bg-(--ui-hover)/35 focus:outline-none focus:ring-1 focus:ring-(--ui-info)/45 active:translate-y-px"
+          ? "cursor-pointer transition-colors hover:bg-(--ui-hover)/35 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-(--ui-info)/45"
           : "",
-        variant === "catalog" ? "py-2.5" : "",
         className,
       )}
       onClick={onClick}
@@ -158,67 +228,47 @@ export function ModelRow({
       }
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}
+      aria-expanded={interactive && children ? Boolean(expanded) : undefined}
     >
       <div
         className={cx(
-          "grid min-h-7 grid-cols-1 gap-2 md:items-center",
-          variant === "catalog"
-            ? "md:grid-cols-[minmax(260px,0.52fr)_minmax(0,0.48fr)] md:gap-4"
-            : "md:grid-cols-[minmax(180px,0.32fr)_minmax(0,1fr)] md:gap-5",
+          "flex min-h-9 min-w-0 items-center gap-2.5 px-2.5",
+          variant === "catalog" ? "py-2.5" : "py-2",
         )}
       >
-        <div className="flex min-w-0 items-center gap-2.5">
-          {leading ? <span className="shrink-0">{leading}</span> : null}
-          <div className="min-w-0">
-            <div
-              className="truncate text-[length:var(--fs-md)] font-medium text-(--ui-fg)"
-              title={label}
-            >
-              {label}
-            </div>
-            {description ? (
-              <div
-                className="mt-0.5 truncate text-[length:var(--fs-sm)] text-(--ui-muted)"
-                title={description}
-              >
-                {description}
-              </div>
-            ) : null}
-          </div>
-        </div>
-        <div className="flex min-w-0 items-center justify-between gap-3">
+        {leading ? <span className="flex shrink-0 items-center">{leading}</span> : null}
+        <div className="min-w-0 flex-1">
           <div
-            className="min-w-0 flex-1"
-            onClick={control && interactive ? (event) => event.stopPropagation() : undefined}
+            className="truncate text-[length:var(--fs-md)] font-medium text-(--ui-fg)"
+            title={label}
           >
-            {control ?? value ?? <ModelValue dim>Not reported yet</ModelValue>}
+            {label}
           </div>
-          {status ? (
+          {description ? (
             <div
-              className="shrink-0"
-              onClick={interactive ? (event) => event.stopPropagation() : undefined}
+              className="mt-0.5 truncate text-[length:var(--fs-sm)] text-(--ui-muted)"
+              title={description}
             >
-              {status}
-            </div>
-          ) : null}
-          {actions ? (
-            <div
-              className="flex shrink-0 items-center gap-1"
-              onClick={interactive ? (event) => event.stopPropagation() : undefined}
-            >
-              {actions}
+              {description}
             </div>
           ) : null}
         </div>
+        <RowValueCell control={control} value={value} interactive={interactive} />
+        {status ? (
+          <div className="shrink-0" onClick={stopRowClick}>
+            {status}
+          </div>
+        ) : null}
+        {actions ? (
+          <div className="flex shrink-0 items-center gap-1" onClick={stopRowClick}>
+            {actions}
+          </div>
+        ) : null}
+        {interactive && children ? <DisclosureChevron expanded={Boolean(expanded)} /> : null}
       </div>
       {children ? (
-        <div
-          className={cx(
-            "mt-2",
-            variant === "catalog" ? "md:ml-[calc(260px+1rem)]" : "md:ml-[calc(180px+1.25rem)]",
-          )}
-        >
-          {children}
+        <div className="px-2.5 pb-2.5">
+          <div className="rounded-[10px] bg-(--ui-surface-2) px-3 py-2">{children}</div>
         </div>
       ) : null}
     </div>

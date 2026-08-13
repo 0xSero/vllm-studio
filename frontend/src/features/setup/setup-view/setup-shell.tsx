@@ -49,9 +49,7 @@ export function SetupShell({
 
       <div className="relative mx-auto flex min-h-full w-full max-w-[640px] flex-col px-6 pb-16 pt-[14vh]">
         <div className="mb-2 flex items-center gap-3">
-          <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.22em] text-(--ui-muted)">
-            {surface.eyebrow}
-          </span>
+          <span className="text-[length:var(--fs-sm)] text-(--ui-muted)">{surface.eyebrow}</span>
           <span className="flex items-center gap-1.5" aria-hidden>
             {Array.from({ length: surfaceCount }, (_, index) => (
               <span
@@ -131,7 +129,12 @@ function ChecklistMark({ state }: { state: ChecklistState }) {
     return (
       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-(--ui-success) text-(--bg)">
         <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" aria-hidden>
-          <path d="M2.5 6.5L5 9l4.5-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path
+            d="M2.5 6.5L5 9l4.5-6"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
         </svg>
       </span>
     );

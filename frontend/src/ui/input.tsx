@@ -2,7 +2,7 @@
 
 import { forwardRef, useId, type InputHTMLAttributes, type ReactNode } from "react";
 import { useFormControlAttributes } from "./form-field-context";
-import { cx } from "./utils";
+import { cx, FIELD_LABEL_CLASS } from "./utils";
 
 const modelInputBaseClasses =
   "h-7 w-full rounded-md border border-transparent bg-(--ui-surface) px-2.5 text-[length:var(--fs-md)] text-(--ui-fg) outline-none transition placeholder:text-(--ui-muted)/65 focus:bg-(--ui-bg) focus:ring-1 focus:ring-(--ui-info)/60";
@@ -41,10 +41,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   return (
     <div>
       {label && (
-        <label
-          htmlFor={inputId}
-          className="mb-2 block text-xs font-medium uppercase tracking-wider text-(--ui-muted)"
-        >
+        <label htmlFor={inputId} className={FIELD_LABEL_CLASS}>
           {label}
         </label>
       )}

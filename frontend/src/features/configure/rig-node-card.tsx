@@ -50,7 +50,7 @@ export function RigNodeCard({
           <HardwareArt type={node.hardware_type} className="h-6 w-full opacity-90" />
         </span>
       }
-      value={<ModelValue mono>{accelerator || system || "Hardware discovery pending"}</ModelValue>}
+      value={<ModelValue>{accelerator || system || "Hardware discovery pending"}</ModelValue>}
       status={
         <ModelStatus tone={isLocal ? "good" : node.role === "head" ? "info" : "default"}>
           {isLocal ? "this machine" : RIG_NODE_ROLE_LABELS[node.role]}
@@ -71,7 +71,7 @@ export function RigNodeCard({
       onClick={onEdit}
     >
       {system || node.notes ? (
-        <div className="truncate font-mono text-[length:var(--fs-xs)] text-(--ui-muted)">
+        <div className="truncate text-[length:var(--fs-sm)] text-(--ui-muted)">
           {[system, node.notes].filter(Boolean).join(" · ")}
         </div>
       ) : null}

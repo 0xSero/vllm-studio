@@ -17,6 +17,8 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { resolveDataDir } from "./data-dir";
+import { rolloutCache, statRollout } from "./rollout-cache";
+import { transcriptSource } from "./transcript-sidecar";
 import {
   cleanSessionTitle,
   sessionTitleFromUserPrompt,
@@ -463,13 +465,62 @@ function parseEvent(line: string): SessionEvent | null {
   }
 }
 
+type ActiveBranchCacheEntry = { size: number; mtimeMs: number; ids: Set<string> };
+
+/**
+ * `buildContextEntries()` walks the rollout from the current leaf to the root,
+ * so it costs the whole file — 121ms on a 40MB session, 366ms on a 145MB one —
+ * and `loadSession` calls it on every open AND every "load earlier" page, each
+ * of which returns at most a few hundred events.
+ *
+ * Memoised on (size, mtime) exactly like `readSessionUsageTotals` next door,
+ * and for the same reason: a rollout is append-only, so a file that has not
+ * grown cannot have a different active branch. A session that IS being appended
+ * to invalidates on its next open, which is the correct answer — branching and
+ * compaction both write to the file.
+ */
+const activeBranchCache = new Map<string, ActiveBranchCacheEntry>();
+
+/**
+ * The in-process map is dropped on every controller restart, and the sessions
+ * this walk is expensive for are precisely the ones a user keeps coming back
+ * to. Backing it with disk makes the cost once-ever instead of once-per-boot.
+ */
+const activeBranchDisk = rolloutCache<Set<string>, string[]>("active-branch", {
+  serialize: (ids) => [...ids],
+  deserialize: (raw) => new Set(raw),
+});
+
+function activeBranchIds(filepath: string): Set<string> | null {
+  const stat = statRollout(filepath);
+  if (!stat) return null;
+
+  const cached = activeBranchCache.get(filepath);
+  if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.ids;
+
+  const fromDisk = activeBranchDisk.read(filepath, stat);
+  if (fromDisk) {
+    activeBranchCache.set(filepath, { size: stat.size, mtimeMs: stat.mtimeMs, ids: fromDisk });
+    return fromDisk;
+  }
+
+  const ids = new Set(
+    SessionManager.open(filepath)
+      .buildContextEntries()
+      .map((entry) => entry.id),
+  );
+  activeBranchCache.set(filepath, { size: stat.size, mtimeMs: stat.mtimeMs, ids });
+  activeBranchDisk.write(filepath, stat, ids);
+  return ids;
+}
+
 function activeBranchEvents(filepath: string, events: SessionEvent[]): SessionEvent[] {
   try {
-    const activeIds = new Set(
-      SessionManager.open(filepath).buildContextEntries().map((entry) => entry.id),
-    );
+    const activeIds = activeBranchIds(filepath);
+    if (!activeIds) return events;
     return events.filter(
-      (event) => event.type === "session" || (typeof event.id === "string" && activeIds.has(event.id)),
+      (event) =>
+        event.type === "session" || (typeof event.id === "string" && activeIds.has(event.id)),
     );
   } catch {
     return events;
@@ -720,7 +771,17 @@ export async function loadSession(
   }
 
   const effectiveTail = tail ?? 500;
-  const { events, cursor } = readTailRegion(filepath, size, effectiveTail, options.before);
+  // Page the transcript out of the de-noised sidecar when there is one. It is
+  // the same JSONL in the same order with the inert entries dropped, so the
+  // scan below is unchanged and cursors remain opaque byte offsets — into a
+  // file that is 10-20x smaller. Falls back to the rollout on any problem.
+  const transcript = await transcriptSource(filepath);
+  const { events, cursor } = readTailRegion(
+    transcript.filepath,
+    transcript.size,
+    effectiveTail,
+    options.before,
+  );
 
   // Initial tail load: prefix the header block (model/started metadata the fold
   // needs) and return real session metadata from the head-scan. Paged `before`

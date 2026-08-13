@@ -203,6 +203,9 @@
   --color-popover-header: var(--gray-50);
   --color-popover-border: var(--color-border);
 
+  /* Dialog scrim — dims the page, never replaces it. */
+  --color-scrim: rgba(0, 0, 0, 0.32);
+
   --color-input: var(--gray-0);
   --color-input-focused: var(--color-input);
   --color-input-border: var(--color-border);
@@ -380,6 +383,9 @@
   --color-popover-header: var(--gray-700);
   /* Codex dropdowns float on shadow alone — no hairline. */
   --color-popover-border: transparent;
+
+  /* Dialog scrim — dims the page, never replaces it. */
+  --color-scrim: rgba(0, 0, 0, 0.55);
 
   --color-input: #ffffff0d;
   --color-input-focused: var(--color-input);

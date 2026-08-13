@@ -280,7 +280,7 @@ function ExamplePicker({
 }) {
   return (
     <div>
-      <div className="mb-2 text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.12em] text-(--ui-muted)">
+      <div className="mb-2 text-[length:var(--fs-sm)] font-medium text-(--ui-muted)">
         Start from
       </div>
       <div className="flex flex-wrap gap-2">

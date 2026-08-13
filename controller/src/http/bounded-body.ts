@@ -86,24 +86,3 @@ export const readBoundedRequestBody = (
     );
   });
 
-export const boundedFormData = (
-  request: Request,
-  limit: number,
-): Effect.Effect<FormData, RequestBodyError> =>
-  readBoundedRequestBody(request, limit).pipe(
-    Effect.flatMap((body) =>
-      Effect.tryPromise({
-        try: () =>
-          new Request(request.url, {
-            method: request.method,
-            headers: request.headers,
-            body,
-          }).formData(),
-        catch: (source) =>
-          new RequestBodyReadError({
-            message: `Could not parse multipart request: ${String(source)}`,
-            source,
-          }),
-      }),
-    ),
-  );

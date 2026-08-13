@@ -164,7 +164,7 @@ function IconPopover({
             tabIndex={-1}
           />
           <div className={`absolute right-0 top-full z-50 mt-1 w-48 ${POPOVER_MENU_CLASS}`}>
-            <div className="px-2.5 py-1.5 text-[length:var(--fs-xs)] font-medium uppercase tracking-wide text-(--ui-muted)">
+            <div className="px-2.5 py-1.5 text-[length:var(--fs-sm)] font-medium text-(--ui-muted)">
               {label}
             </div>
             {children(() => setOpen(false))}
