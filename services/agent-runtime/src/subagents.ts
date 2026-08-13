@@ -138,7 +138,6 @@ export async function runSubagent(input: {
     await session.ensureStarted(modelId, cwd || undefined, null, {});
     const startedPiSessionId = session.status.piSessionId;
     if (!startedPiSessionId) throw new Error("Subagent session did not receive an identity.");
-    run.piSessionId = startedPiSessionId;
     await registerProvisionalThread({
       id: startedPiSessionId,
       cwd: session.status.cwd,
@@ -148,6 +147,7 @@ export async function runSubagent(input: {
       parentSessionId: parentPiSessionId,
       subagentName: run.name,
     });
+    run.piSessionId = startedPiSessionId;
     registry.childPiSessionIds.add(startedPiSessionId);
     await session.prompt(taskPrompt(run.name, input.task), () => {}, {
       restartOnContinuationError: false,
