@@ -23,10 +23,11 @@ import {
   type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "../../../../shared/agent/composer-refs";
+import { sessionTitleFromUserPrompt } from "../../../../shared/agent/session-title";
 import { piResourceDiagnostics, piRuntimeManager } from "../pi-runtime";
 import { isAgentSettledEvent } from "../pi-runtime-state";
 import type { LoggedPiEvent, PiAgentSession, PiAgentStatus } from "../pi-runtime-types";
-import { listThreads } from "../thread-repository";
+import { canOpenThread, listThreads, registerProvisionalThread } from "../thread-repository";
 import { errorMessage, jsonError } from "./helpers";
 import {
   initialRuntimeStatusPhase,
@@ -217,14 +218,36 @@ function turnRouteEffect(request: Request): Effect.Effect<Response, unknown> {
         return Response.json(result, { status: 409 });
       }
 
+      const targetThreadId = resolved.effectivePiSessionId ?? resolved.session.status.piSessionId;
+      if (targetThreadId && !canOpenThread(targetThreadId)) {
+        return Response.json(
+          commandResult("rejected", resolved, { error: "Session is archived." }),
+          { status: 409 },
+        );
+      }
+
       if (turn.mode === "prompt") {
         yield* ensurePromptRuntimeEffect(turn, resolved);
-        launchPrompt(turn, resolved, commandImages);
         const resolvedPiSessionId = yield* resolvePiSessionIdEffect(
           resolved.session,
           turnStartedAt,
         );
         adoptRuntimePiSessionId(resolved.session, resolvedPiSessionId);
+        const status = resolved.session.status;
+        if (resolvedPiSessionId && status.cwd) {
+          yield* Effect.tryPromise({
+            try: () =>
+              registerProvisionalThread({
+                id: resolvedPiSessionId,
+                cwd: status.cwd,
+                modelId: status.modelId || turn.modelId,
+                title: sessionTitleFromUserPrompt(turn.message),
+                startedAt: turnStartedAt.toISOString(),
+              }),
+            catch: (error) => error,
+          });
+        }
+        launchPrompt(turn, resolved, commandImages);
         return Response.json(
           commandResult(resolved.effectiveStreamingBehavior ? "queued" : "accepted", resolved, {
             piSessionId: resolvedPiSessionId,
@@ -275,15 +298,13 @@ export async function handleAgentAbort(request: Request): Promise<Response> {
 }
 
 export async function handleExtensionUiResponse(request: Request): Promise<Response> {
-  const body = (await request.json().catch(() => null)) as
-    | {
-        sessionId?: unknown;
-        requestId?: unknown;
-        value?: unknown;
-        confirmed?: unknown;
-        cancelled?: unknown;
-      }
-    | null;
+  const body = (await request.json().catch(() => null)) as {
+    sessionId?: unknown;
+    requestId?: unknown;
+    value?: unknown;
+    confirmed?: unknown;
+    cancelled?: unknown;
+  } | null;
   const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
   const requestId = typeof body?.requestId === "string" ? body.requestId.trim() : "";
   if (!sessionId || !requestId) return jsonError("sessionId and requestId are required");
@@ -294,7 +315,9 @@ export async function handleExtensionUiResponse(request: Request): Promise<Respo
     ...(typeof body?.confirmed === "boolean" ? { confirmed: body.confirmed } : {}),
     cancelled: body?.cancelled === true,
   });
-  return accepted ? Response.json({ ok: true }) : jsonError("Extension request is no longer active", 409);
+  return accepted
+    ? Response.json({ ok: true })
+    : jsonError("Extension request is no longer active", 409);
 }
 
 // ─── POST /api/agent/compact ──────────────────────────────────────────────

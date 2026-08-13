@@ -10,7 +10,13 @@ import type {
 import { projectThreadWindow } from "./thread-window-projector";
 import { listProjectsFromStore, resolveAllowedWorkspace } from "./projects-store";
 import {
+  isProvisionalSession,
+  isSessionArchived,
   listArchivedSessionMetadata,
+  listThreadInventoryMetadata,
+  markProvisionalSessionsMaterialized,
+  registerProvisionalSession,
+  sessionMetadataCwdMatches,
   sessionSubagentLink,
   setSessionArchived,
   setSubagentLink,
@@ -19,8 +25,10 @@ import {
   listSessions,
   loadSession,
   loadSessionWindow,
+  resolveSessionFile,
   type LoadSessionResult,
 } from "./sessions-store";
+import { emptyUsageTotals } from "./session-usage";
 
 export type ThreadArchiveMetadata = {
   cwd?: string | null;
@@ -30,15 +38,73 @@ export type ThreadArchiveMetadata = {
   sessionUpdatedAt?: string | null;
 };
 
-export function listThreads(
+export type ProvisionalThread = {
+  id: string;
+  cwd: string;
+  modelId: string | null;
+  title: string | null;
+  startedAt?: string;
+  parentSessionId?: string | null;
+  subagentName?: string | null;
+};
+
+function threadTime(thread: Pick<ThreadSummary, "startedAt" | "updatedAt">): number {
+  const value = Date.parse(thread.startedAt || thread.updatedAt);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function inventoryThreads(cwd: string, request: ThreadListRequest): ThreadSummary[] {
+  const wantedIds = new Set((request.ids ?? []).map((id) => id.trim()).filter(Boolean));
+  const since = request.since?.getTime();
+  return listThreadInventoryMetadata().flatMap((thread) => {
+    if (!sessionMetadataCwdMatches(thread.cwd, cwd)) return [];
+    if (wantedIds.size > 0 && !wantedIds.has(thread.id)) return [];
+    if (request.archivedOnly ? !thread.archived : thread.archived && !request.includeArchived) {
+      return [];
+    }
+    const relevantTime = request.archivedOnly
+      ? Date.parse(thread.archivedAt ?? thread.updatedAt)
+      : Date.parse(thread.updatedAt);
+    if (since !== undefined && relevantTime < since) return [];
+    return [
+      {
+        id: thread.id,
+        filename: "",
+        cwd: thread.cwd,
+        startedAt: thread.startedAt,
+        updatedAt: thread.updatedAt,
+        modelId: thread.modelId,
+        provider: null,
+        firstUserMessage: thread.title,
+        archived: thread.archived,
+        archivedAt: thread.archivedAt,
+        parentSessionId: thread.parentSessionId,
+        subagentName: thread.subagentName,
+      },
+    ];
+  });
+}
+
+export async function listThreads(
   cwd: string,
   request: ThreadListRequest = {},
 ): Promise<ThreadSummary[]> {
-  return listSessions(cwd, request);
+  const inventory = inventoryThreads(cwd, request);
+  const durable = await listSessions(cwd, request);
+  const inventoryIds = new Set(
+    inventoryThreads(cwd, { includeArchived: true }).map((thread) => thread.id),
+  );
+  await markProvisionalSessionsMaterialized(
+    durable.flatMap((thread) => (inventoryIds.has(thread.id) ? [thread.id] : [])),
+  );
+  const merged = new Map(inventory.map((thread) => [thread.id, thread]));
+  for (const thread of durable) merged.set(thread.id, thread);
+  const threads = [...merged.values()].sort((a, b) => threadTime(b) - threadTime(a));
+  return request.limit && request.limit > 0 ? threads.slice(0, request.limit) : threads;
 }
 
 export async function findThread(cwd: string, threadId: string): Promise<ThreadSummary | null> {
-  const matches = await listSessions(cwd, { ids: [threadId], includeArchived: true });
+  const matches = await listThreads(cwd, { ids: [threadId], includeArchived: true });
   return matches.find((thread) => thread.id === threadId) ?? null;
 }
 
@@ -54,7 +120,7 @@ export async function listThreadsAcrossProjects(
     listProjectsFromStore().map(async (project) => {
       try {
         const cwd = resolveAllowedWorkspace(project.path);
-        for (const summary of await listSessions(cwd, scoped)) {
+        for (const summary of await listThreads(cwd, scoped)) {
           seenIds.add(summary.id);
           aggregated.push({
             ...summary,
@@ -90,33 +156,58 @@ export async function listThreadsAcrossProjects(
       });
     }
   }
-  aggregated.sort(
-    (a, b) =>
-      new Date(b.startedAt || b.updatedAt).getTime() -
-      new Date(a.startedAt || a.updatedAt).getTime(),
-  );
+  aggregated.sort((a, b) => threadTime(b) - threadTime(a));
   return aggregated;
 }
 
-export function readThreadWindow(
-  cwd: string,
-  threadId: string,
-  request: ThreadWindowRequest = {},
-): Promise<LoadSessionResult> {
-  return loadSession(cwd, threadId, request);
+function provisionalThreadResult(cwd: string, threadId: string): LoadSessionResult | null {
+  if (!isProvisionalSession(cwd, threadId)) return null;
+  const summary = inventoryThreads(cwd, { ids: [threadId] })[0];
+  if (!summary) return null;
+  return {
+    events: [],
+    cursor: null,
+    found: true,
+    windowEvents: [
+      {
+        type: "custom",
+        id: `provisional:${summary.id}`,
+        parentId: null,
+        timestamp: summary.startedAt,
+        customType: "provisional",
+      },
+    ],
+    meta: {
+      title: summary.firstUserMessage,
+      modelId: summary.modelId,
+      startedAt: summary.startedAt,
+      piSessionId: summary.id,
+      usage: emptyUsageTotals(),
+    },
+  };
 }
 
-export function readThreadPage(
+export async function readThreadWindow(
   cwd: string,
   threadId: string,
   request: ThreadWindowRequest = {},
 ): Promise<LoadSessionResult> {
-  return request.tail === undefined
+  const result = await loadSession(cwd, threadId, request);
+  return result.found ? result : (provisionalThreadResult(cwd, threadId) ?? result);
+}
+
+export async function readThreadPage(
+  cwd: string,
+  threadId: string,
+  request: ThreadWindowRequest = {},
+): Promise<LoadSessionResult> {
+  const result = await (request.tail === undefined
     ? loadSessionWindow(cwd, threadId, {
         before: request.before,
         maxTokens: request.maxTokens,
       })
-    : loadSession(cwd, threadId, { tail: request.tail, before: request.before });
+    : loadSession(cwd, threadId, { tail: request.tail, before: request.before }));
+  return result.found ? result : (provisionalThreadResult(cwd, threadId) ?? result);
 }
 
 export function projectThreadPage(threadId: string, page: LoadSessionResult): ThreadWindow {
@@ -139,6 +230,21 @@ export function linkThreadParent(
   subagentName: string | null,
 ): Promise<void> {
   return setSubagentLink(childThreadId, parentThreadId, subagentName);
+}
+
+export function registerProvisionalThread(thread: ProvisionalThread): Promise<void> {
+  const resolution = resolveSessionFile(thread.cwd, thread.id);
+  if (resolution.kind === "found") return Promise.resolve();
+  if (resolution.kind === "missing") return registerProvisionalSession(thread);
+  return Promise.reject(new Error(`Session '${thread.id}' is ${resolution.kind}.`));
+}
+
+export function canResumeProvisionalThread(cwd: string, threadId: string): boolean {
+  return isProvisionalSession(cwd, threadId);
+}
+
+export function canOpenThread(threadId: string): boolean {
+  return !isSessionArchived(threadId);
 }
 
 export function setThreadArchived(

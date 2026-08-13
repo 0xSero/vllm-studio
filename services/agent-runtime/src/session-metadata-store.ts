@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   writeFileSync,
 } from "node:fs";
@@ -11,6 +12,7 @@ import lockfile from "proper-lockfile";
 import { resolveDataDir } from "./data-dir";
 import { isRecord } from "../../../shared/agent/guards";
 import type { ParentRelation, ThreadArchiveState } from "../../../shared/agent/thread";
+import { cleanSessionTitle } from "../../../shared/agent/session-title";
 
 const SESSION_METADATA_FILENAME = "agent-session-metadata.json";
 const LOCK_STALE_MS = 10_000;
@@ -21,8 +23,11 @@ type StoredSessionMetadata = {
   archived?: boolean;
   archivedAt?: string | null;
   updatedAt?: string;
+  inventoryState?: "provisional" | "materialized";
   cwd?: string;
   title?: string | null;
+  modelId?: string;
+  startedAt?: string;
   projectId?: string;
   projectName?: string;
   sessionUpdatedAt?: string;
@@ -43,6 +48,30 @@ export type ArchivedSessionMetadata = ThreadArchiveState & {
   projectId: string | null;
   projectName: string | null;
   sessionUpdatedAt: string | null;
+};
+
+export type ThreadInventoryMetadata = {
+  id: string;
+  cwd: string;
+  title: string | null;
+  modelId: string | null;
+  startedAt: string;
+  updatedAt: string;
+  archived: boolean;
+  archivedAt: string | null;
+  inventoryState: "provisional" | "materialized";
+  parentSessionId: string | null;
+  subagentName: string | null;
+};
+
+export type ProvisionalSessionInput = {
+  id: string;
+  cwd: string;
+  modelId: string | null;
+  title: string | null;
+  startedAt?: string;
+  parentSessionId?: string | null;
+  subagentName?: string | null;
 };
 
 type SessionArchiveMetadataInput = {
@@ -70,8 +99,14 @@ function normalizeStore(value: unknown): SessionMetadataStore {
       archived: metadata.archived === true,
       archivedAt: typeof metadata.archivedAt === "string" ? metadata.archivedAt : null,
       updatedAt: typeof metadata.updatedAt === "string" ? metadata.updatedAt : undefined,
+      inventoryState:
+        metadata.inventoryState === "provisional" || metadata.inventoryState === "materialized"
+          ? metadata.inventoryState
+          : undefined,
       cwd: typeof metadata.cwd === "string" ? metadata.cwd : undefined,
       title: typeof metadata.title === "string" ? metadata.title : null,
+      modelId: typeof metadata.modelId === "string" ? metadata.modelId : undefined,
+      startedAt: typeof metadata.startedAt === "string" ? metadata.startedAt : undefined,
       projectId: typeof metadata.projectId === "string" ? metadata.projectId : undefined,
       projectName: typeof metadata.projectName === "string" ? metadata.projectName : undefined,
       sessionUpdatedAt:
@@ -144,6 +179,23 @@ function cleanOptionalString(value: string | null | undefined): string | undefin
   return trimmed || undefined;
 }
 
+function workspacePaths(cwd: string): Set<string> {
+  const paths = new Set([path.resolve(cwd)]);
+  try {
+    paths.add(realpathSync.native(cwd));
+  } catch {
+    try {
+      paths.add(realpathSync(cwd));
+    } catch {}
+  }
+  return paths;
+}
+
+export function sessionMetadataCwdMatches(left: string, right: string): boolean {
+  const expected = workspacePaths(right);
+  return [...workspacePaths(left)].some((candidate) => expected.has(candidate));
+}
+
 function applyMetadataInput(
   current: StoredSessionMetadata,
   metadata?: SessionArchiveMetadataInput,
@@ -188,6 +240,87 @@ export function sessionSubagentLink(sessionId: string): ParentRelation | null {
     parentSessionId: metadata.parentSessionId,
     subagentName: metadata.subagentName ?? null,
   };
+}
+
+export function isSessionArchived(sessionId: string): boolean {
+  return readStore().sessions[sessionId.trim()]?.archived === true;
+}
+
+export function listThreadInventoryMetadata(): ThreadInventoryMetadata[] {
+  return Object.entries(readStore().sessions).flatMap(([id, metadata]) =>
+    metadata.inventoryState && metadata.cwd && metadata.startedAt
+      ? [
+          {
+            id,
+            cwd: metadata.cwd,
+            title: metadata.title ?? null,
+            modelId: metadata.modelId ?? null,
+            startedAt: metadata.startedAt,
+            updatedAt: metadata.updatedAt ?? metadata.startedAt,
+            archived: metadata.archived === true,
+            archivedAt: metadata.archived === true ? (metadata.archivedAt ?? null) : null,
+            inventoryState: metadata.inventoryState,
+            parentSessionId: metadata.parentSessionId ?? null,
+            subagentName: metadata.subagentName ?? null,
+          },
+        ]
+      : [],
+  );
+}
+
+export async function registerProvisionalSession(input: ProvisionalSessionInput): Promise<void> {
+  const id = input.id.trim();
+  const cwd = input.cwd.trim();
+  if (!id || !cwd) return;
+  await withStoreLock(() => {
+    const store = readStore();
+    const current = store.sessions[id] ?? {};
+    if (current.archived === true) return;
+    const now = new Date().toISOString();
+    const title = cleanSessionTitle(input.title).slice(0, 120) || null;
+    const parentSessionId = cleanOptionalString(input.parentSessionId);
+    const subagentName = cleanOptionalString(input.subagentName);
+    store.sessions[id] = {
+      ...current,
+      inventoryState: current.inventoryState ?? "provisional",
+      cwd,
+      title: current.title ?? title,
+      ...(cleanOptionalString(input.modelId) ? { modelId: input.modelId!.trim() } : {}),
+      startedAt: current.startedAt ?? cleanOptionalString(input.startedAt) ?? now,
+      ...(parentSessionId ? { parentSessionId } : {}),
+      ...(subagentName ? { subagentName } : {}),
+      updatedAt: now,
+    };
+    writeStore(store);
+  });
+}
+
+export function isProvisionalSession(cwd: string, sessionId: string): boolean {
+  const metadata = readStore().sessions[sessionId.trim()];
+  return Boolean(
+    metadata?.inventoryState === "provisional" &&
+    metadata.archived !== true &&
+    metadata.cwd &&
+    sessionMetadataCwdMatches(metadata.cwd, cwd),
+  );
+}
+
+export async function markProvisionalSessionsMaterialized(
+  sessionIds: Iterable<string>,
+): Promise<void> {
+  const ids = new Set([...sessionIds].map((id) => id.trim()).filter(Boolean));
+  if (ids.size === 0) return;
+  await withStoreLock(() => {
+    const store = readStore();
+    let changed = false;
+    for (const id of ids) {
+      const current = store.sessions[id];
+      if (!current?.inventoryState || current.inventoryState === "materialized") continue;
+      changed = true;
+      store.sessions[id] = { ...current, inventoryState: "materialized" };
+    }
+    if (changed) writeStore(store);
+  });
 }
 
 export async function setSubagentLink(
@@ -254,7 +387,7 @@ export async function setSessionArchived(
         },
         metadata,
       );
-    } else if (current.parentSessionId) {
+    } else if (current.parentSessionId || current.inventoryState) {
       store.sessions[id] = {
         ...current,
         archived: false,

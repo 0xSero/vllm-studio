@@ -27,7 +27,8 @@ import { getProviderHub } from "./provider-hub";
 import { attachGoalDriver } from "./goal-driver";
 import { createGoalPromptExtension } from "./goal-prompt";
 import { findRuntimeSessionForLookup, piStatusFromEvents } from "./pi-runtime-state";
-import { configuredPiSessionDir, findSessionFile } from "./sessions-store";
+import { configuredPiSessionDir, resolveSessionFile } from "./sessions-store";
+import { canOpenThread, canResumeProvisionalThread } from "./thread-repository";
 import { getGlobalSingleton } from "./instances";
 import { connectorsRevisionSync } from "./connectors-service";
 import type {
@@ -223,6 +224,9 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
       function* (this: PiSdkSession) {
         const resolvedCwd = yield* resolveAgentCwdEffect(cwd);
         const desiredSessionId = piSessionId ?? null;
+        if (desiredSessionId && !canOpenThread(desiredSessionId)) {
+          return yield* Effect.fail(new Error(`Session '${desiredSessionId}' is archived.`));
+        }
         const fingerprint = runtimeFingerprint(modelId, resolvedCwd, desiredSessionId, options);
         if (this.runtime && this.currentFingerprint === fingerprint) return;
 
@@ -292,10 +296,25 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         // default a scheduled run to the same model the user is talking to.
         applyRuntimeEnvInjections({ LOCAL_STUDIO_MODEL_ID: modelId });
         const sessionDir = configuredPiSessionDir(resolvedCwd);
-        const resumeFile = desiredSessionId ? findSessionFile(resolvedCwd, desiredSessionId) : null;
+        const resumeResolution = desiredSessionId
+          ? resolveSessionFile(resolvedCwd, desiredSessionId)
+          : { kind: "missing" as const };
+        const resumeFile = resumeResolution.kind === "found" ? resumeResolution.path : null;
+        if (
+          desiredSessionId &&
+          !resumeFile &&
+          (resumeResolution.kind !== "missing" ||
+            !canResumeProvisionalThread(resolvedCwd, desiredSessionId))
+        ) {
+          return yield* Effect.fail(new Error(`Session '${desiredSessionId}' is not available.`));
+        }
         const sessionManager = resumeFile
           ? SessionManager.open(resumeFile, sessionDir, resolvedCwd)
-          : SessionManager.create(resolvedCwd, sessionDir);
+          : SessionManager.create(
+              resolvedCwd,
+              sessionDir,
+              desiredSessionId ? { id: desiredSessionId } : undefined,
+            );
         const resuming = Boolean(resumeFile);
         const agentDir = getAgentDir();
         const extensionUiContext = this.extensionUiContext();

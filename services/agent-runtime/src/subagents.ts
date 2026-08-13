@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { getGlobalSingleton } from "./instances";
 import { piRuntimeManager } from "./pi-runtime";
 import { lastAssistantText } from "./session-text";
-import { linkThreadParent, threadParent } from "./thread-repository";
+import { registerProvisionalThread, threadParent } from "./thread-repository";
 
 const NICKNAMES = [
   "Euclid",
@@ -139,7 +139,15 @@ export async function runSubagent(input: {
     const startedPiSessionId = session.status.piSessionId;
     if (!startedPiSessionId) throw new Error("Subagent session did not receive an identity.");
     run.piSessionId = startedPiSessionId;
-    await linkThreadParent(startedPiSessionId, parentPiSessionId, run.name);
+    await registerProvisionalThread({
+      id: startedPiSessionId,
+      cwd: session.status.cwd,
+      modelId: session.status.modelId || modelId,
+      title: input.task,
+      startedAt: run.startedAt,
+      parentSessionId: parentPiSessionId,
+      subagentName: run.name,
+    });
     registry.childPiSessionIds.add(startedPiSessionId);
     await session.prompt(taskPrompt(run.name, input.task), () => {}, {
       restartOnContinuationError: false,

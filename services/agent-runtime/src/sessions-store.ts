@@ -20,17 +20,10 @@ import {
 import { resolveDataDir } from "./data-dir";
 import { DEFAULT_THREAD_WINDOW_TOKENS } from "../../../shared/agent/thread";
 import { cutPointEntries, entryTokenEstimate, isVisibleUserEntry } from "./thread-window-projector";
-import {
-  cleanSessionTitle,
-  sessionTitleFromUserPrompt,
-} from "../../../shared/agent/session-title";
+import { cleanSessionTitle, sessionTitleFromUserPrompt } from "../../../shared/agent/session-title";
 import { readSessionListMetadata } from "./session-metadata-store";
 import type { SessionSummary } from "../../../shared/agent/session-summary";
-import {
-  emptyUsageTotals,
-  readSessionUsageTotals,
-  type SessionUsageTotals,
-} from "./session-usage";
+import { emptyUsageTotals, readSessionUsageTotals, type SessionUsageTotals } from "./session-usage";
 
 export type SessionEvent = Record<string, unknown> & { type?: string };
 
@@ -71,11 +64,12 @@ export function encodeCwdForPi(cwd: string): string {
 export function configuredPiSessionDir(cwd: string): string | undefined {
   const envSessionDir = process.env.PI_CODING_AGENT_SESSION_DIR?.trim();
   if (envSessionDir) {
-    const expanded = envSessionDir === "~"
-      ? homedir()
-      : envSessionDir.startsWith(`~${path.sep}`)
-        ? path.join(homedir(), envSessionDir.slice(2))
-        : envSessionDir;
+    const expanded =
+      envSessionDir === "~"
+        ? homedir()
+        : envSessionDir.startsWith(`~${path.sep}`)
+          ? path.join(homedir(), envSessionDir.slice(2))
+          : envSessionDir;
     return path.resolve(expanded);
   }
   return SettingsManager.create(cwd, getAgentDir()).getSessionDir();
@@ -394,8 +388,12 @@ function readPiSessionHeader(filepath: string): { id: string; cwd: string } | nu
   }
 }
 
-export function findSessionFile(cwd: string, sessionId: string): string | null {
-  if (!PI_SESSION_ID_PATTERN.test(sessionId)) return null;
+export type SessionFileResolution =
+  | { kind: "found"; path: string }
+  | { kind: "missing" | "invalid" | "ambiguous" };
+
+export function resolveSessionFile(cwd: string, sessionId: string): SessionFileResolution {
+  if (!PI_SESSION_ID_PATTERN.test(sessionId)) return { kind: "invalid" };
 
   const filenameSuffix = `_${sessionId}.jsonl`;
   const matches = new Set<string>();
@@ -408,13 +406,19 @@ export function findSessionFile(cwd: string, sessionId: string): string | null {
         const header = readPiSessionHeader(filepath);
         if (header?.id !== sessionId || !sessionCwdMatches(header.cwd, cwd)) continue;
         matches.add(filepath);
-        if (matches.size > 1) return null;
+        if (matches.size > 1) return { kind: "ambiguous" };
       }
     } catch {
       continue;
     }
   }
-  return matches.values().next().value ?? null;
+  const filepath = matches.values().next().value;
+  return filepath ? { kind: "found", path: filepath } : { kind: "missing" };
+}
+
+export function findSessionFile(cwd: string, sessionId: string): string | null {
+  const resolution = resolveSessionFile(cwd, sessionId);
+  return resolution.kind === "found" ? resolution.path : null;
 }
 
 export type LoadSessionOptions = {
