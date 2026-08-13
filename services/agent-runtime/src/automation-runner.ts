@@ -1,8 +1,4 @@
-import type {
-  Automation,
-  AutomationRun,
-  AutomationTarget,
-} from "../../../shared/agent/automation";
+import type { Automation, AutomationRun, AutomationTarget } from "../../../shared/agent/automation";
 import type { AgentModel } from "../../../shared/agent/models";
 import { piRuntimeManager } from "./pi-runtime";
 import { refreshPiModels } from "./pi-runtime-models";
@@ -68,11 +64,7 @@ function modelFields(requestedModelId: string, resolution: { modelId: string; fa
     : { requestedModelId, actualModelId: resolution.modelId };
 }
 
-function failedRun(
-  automation: Automation,
-  target: AutomationTarget,
-  error: string,
-): AutomationRun {
+function failedRun(automation: Automation, target: AutomationTarget, error: string): AutomationRun {
   return {
     at: new Date().toISOString(),
     piSessionId: null,

@@ -13,10 +13,7 @@ import {
 } from "../automations-store";
 import { runAutomationNow } from "../automation-scheduler";
 import { clearGoal, readGoal, writeGoal, type GoalStatus } from "../goals-store";
-import {
-  AutomationTargetSchema,
-  type AutomationTarget,
-} from "../../../../shared/agent/automation";
+import { AutomationTargetSchema, type AutomationTarget } from "../../../../shared/agent/automation";
 import { GOAL_STATUSES } from "../../../../shared/agent/session-goal";
 import { errorMessage, jsonError, readJsonBody } from "./helpers";
 
@@ -28,7 +25,7 @@ function readTarget(value: unknown): AutomationTarget | Response | undefined {
     return decodeTarget(value);
   } catch {
     return jsonError(
-      "target must be {\"kind\":\"global\"} or {\"kind\":\"thread\",\"threadId\":string,\"piSessionId\":string|null}.",
+      'target must be {"kind":"global"} or {"kind":"thread","threadId":string,"piSessionId":string|null}.',
     );
   }
 }
