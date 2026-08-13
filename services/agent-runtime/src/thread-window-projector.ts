@@ -122,11 +122,6 @@ export function groupThreadTurns(items: readonly ThreadItem[]): ThreadTurn[] {
   }));
 }
 
-export function encodeThreadCursor(offset: number | null): string | null {
-  if (offset === null || !Number.isFinite(offset) || offset < 0) return null;
-  return Buffer.from(`${CURSOR_PREFIX}${Math.floor(offset)}`, "utf8").toString("base64url");
-}
-
 export function decodeThreadCursor(cursor: string | null | undefined): number | undefined {
   const value = cursor?.trim();
   if (!value) return undefined;
@@ -143,7 +138,7 @@ export function projectThreadWindow(source: ThreadWindowSource): ThreadWindow {
     threadId: source.threadId,
     found: source.found,
     turns: groupThreadTurns(items),
-    cursor: encodeThreadCursor(source.cursor),
+    cursor: source.cursor,
     tokenEstimate: items.reduce((total, item) => total + item.tokenEstimate, 0),
     meta: source.meta,
   };

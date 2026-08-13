@@ -5,7 +5,8 @@ import {
   findThread,
   listThreads,
   listThreadsAcrossProjects,
-  readThreadWindowPage,
+  projectThreadPage,
+  readThreadPage,
   setThreadArchived,
 } from "../thread-repository";
 import { decodeThreadCursor } from "../thread-window-projector";
@@ -107,14 +108,12 @@ export async function handleSessionGet(request: Request, id: string): Promise<Re
   const tail = nonNegativeInteger(searchParams.get("tail"));
   const before = decodeThreadCursor(searchParams.get("before"));
   const maxTokens = positiveInteger(searchParams.get("maxTokens"));
-  const page = await readThreadWindowPage(cwd, id, { tail, before, maxTokens });
+  const page = await readThreadPage(cwd, id, { tail, before, maxTokens });
   if (!page.found) return jsonError("session not found", 404);
-  return Response.json({
-    events: page.events,
-    cursor: page.cursor,
-    meta: page.meta,
-    window: page.window,
-  });
+  if (tail !== undefined || before !== undefined) {
+    return Response.json({ events: page.events, cursor: page.cursor, meta: page.meta });
+  }
+  return Response.json({ window: projectThreadPage(id, page) });
 }
 
 function optionalString(body: Record<string, unknown>, key: string): string | null {

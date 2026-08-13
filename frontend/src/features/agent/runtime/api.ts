@@ -4,6 +4,12 @@ import {
   type SessionGoal,
   type SessionGoalPatch,
 } from "@shared/agent/session-goal";
+import {
+  ThreadUsageTotalsSchema,
+  ThreadWindowResponseSchema,
+  type ThreadWindow,
+} from "@shared/agent/thread";
+import { isRecord } from "@/lib/guards";
 import { safeJson } from "@/features/agent/safe-json";
 import {
   parseAgentTurnCommandResult,
@@ -155,6 +161,14 @@ export type SessionUsageTotals = {
   compactions: number;
 };
 
+const CanonicalSessionMetaSchema = Schema.Struct({
+  title: Schema.NullOr(Schema.String),
+  modelId: Schema.NullOr(Schema.String),
+  startedAt: Schema.NullOr(Schema.String),
+  piSessionId: Schema.NullOr(Schema.String),
+  usage: Schema.optional(Schema.NullOr(ThreadUsageTotalsSchema)),
+});
+
 export type CanonicalSessionMeta = {
   title: string | null;
   modelId: string | null;
@@ -174,6 +188,28 @@ export type CanonicalSessionResult = {
 
 export type LoadCanonicalSessionOptions = { tail?: number; before?: number };
 
+const decodeThreadWindowOption = Schema.decodeUnknownOption(ThreadWindowResponseSchema, {
+  onExcessProperty: "preserve",
+});
+
+const LegacySessionPageSchema = Schema.Struct({
+  events: Schema.Array(Schema.Record(Schema.String, Schema.Unknown)),
+  cursor: Schema.optional(Schema.Union([Schema.Null, Schema.Number])),
+  meta: Schema.optional(Schema.Union([Schema.Null, CanonicalSessionMetaSchema])),
+});
+
+const decodeLegacySessionPageOption = Schema.decodeUnknownOption(LegacySessionPageSchema, {
+  onExcessProperty: "preserve",
+});
+
+function windowToCanonicalSession(window: ThreadWindow): CanonicalSessionResult {
+  return {
+    events: window.turns.flatMap((turn) => turn.items.map((item) => ({ ...item.payload }))),
+    cursor: window.cursor,
+    meta: window.meta,
+  };
+}
+
 export function loadCanonicalSession(
   piSessionId: string,
   cwd: string,
@@ -182,25 +218,34 @@ export function loadCanonicalSession(
   return Effect.runPromise(
     Effect.gen(function* () {
       const params = new URLSearchParams({ cwd });
+      const legacy = options.before !== undefined || options.tail !== undefined;
       if (options.before !== undefined) params.set("before", String(options.before));
       else if (options.tail !== undefined) params.set("tail", String(options.tail));
       const response = yield* fetchEffect(
         `/api/agent/sessions/${encodeURIComponent(piSessionId)}?${params.toString()}`,
         { cache: "no-store" },
       );
-      const payload = yield* safeJsonEffect<{
-        events?: Record<string, unknown>[];
-        cursor?: number | null;
-        meta?: CanonicalSessionMeta | null;
-        error?: string;
-      }>(response);
-      if (!response.ok)
-        return yield* Effect.fail(new Error(payload.error || "Failed to load session"));
-      return {
-        events: payload.events ?? [],
-        cursor: payload.cursor ?? null,
-        meta: payload.meta ?? null,
-      };
+      const payload = yield* safeJsonEffect<unknown>(response);
+      if (!response.ok) {
+        const error = isRecord(payload) && typeof payload.error === "string" ? payload.error : null;
+        return yield* Effect.fail(new Error(error || "Failed to load session"));
+      }
+      if (legacy) {
+        const decoded = decodeLegacySessionPageOption(payload);
+        if (decoded._tag === "None") {
+          return yield* Effect.fail(new Error("Session page was unreadable"));
+        }
+        return {
+          events: decoded.value.events.map((event) => ({ ...event })),
+          cursor: decoded.value.cursor ?? null,
+          meta: decoded.value.meta ?? null,
+        };
+      }
+      const decoded = decodeThreadWindowOption(payload);
+      if (decoded._tag === "None") {
+        return yield* Effect.fail(new Error("Session window was unreadable"));
+      }
+      return windowToCanonicalSession(decoded.value.window);
     }),
   );
 }

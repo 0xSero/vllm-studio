@@ -106,30 +106,27 @@ export function readThreadWindow(
   return loadSession(cwd, threadId, request);
 }
 
-export type ThreadWindowPage = LoadSessionResult & { window: ThreadWindow };
-
-export async function readThreadWindowPage(
+export function readThreadPage(
   cwd: string,
   threadId: string,
   request: ThreadWindowRequest = {},
-): Promise<ThreadWindowPage> {
-  const page =
-    request.tail === undefined
-      ? await loadSessionWindow(cwd, threadId, {
-          before: request.before,
-          maxTokens: request.maxTokens,
-        })
-      : await loadSession(cwd, threadId, { tail: request.tail, before: request.before });
-  return {
-    ...page,
-    window: projectThreadWindow({
-      threadId,
-      found: page.found,
-      events: page.windowEvents,
-      cursor: page.cursor,
-      meta: page.meta ? { ...page.meta, parent: threadParent(threadId) } : null,
-    }),
-  };
+): Promise<LoadSessionResult> {
+  return request.tail === undefined
+    ? loadSessionWindow(cwd, threadId, {
+        before: request.before,
+        maxTokens: request.maxTokens,
+      })
+    : loadSession(cwd, threadId, { tail: request.tail, before: request.before });
+}
+
+export function projectThreadPage(threadId: string, page: LoadSessionResult): ThreadWindow {
+  return projectThreadWindow({
+    threadId,
+    found: page.found,
+    events: page.windowEvents,
+    cursor: page.cursor,
+    meta: page.meta ? { ...page.meta, parent: threadParent(threadId) } : null,
+  });
 }
 
 export function threadParent(threadId: string): ParentRelation | null {
