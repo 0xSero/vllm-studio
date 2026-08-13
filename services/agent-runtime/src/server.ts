@@ -4,14 +4,16 @@ import { createAgentRuntimeApp } from "./http/app";
 
 startAutomationScheduler();
 
-const { app } = createAgentRuntimeApp();
+const { app, litterBridgeGateway } = createAgentRuntimeApp();
 const port = Number(process.env.PORT) > 0 ? Number(process.env.PORT) : 8081;
 
 serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, (info) => {
+  litterBridgeGateway.publishMetadata(info.port);
   console.log(
     `[agent-runtime] listening on http://127.0.0.1:${info.port} (pid ${process.pid}, node ${process.version})`,
   );
 });
 
+process.once("exit", () => litterBridgeGateway.dispose());
 process.once("SIGINT", () => process.exit(0));
 process.once("SIGTERM", () => process.exit(0));

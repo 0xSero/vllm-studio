@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { createLitterBridgeGateway } from "../litter-bridge-gateway";
 import { handleTranscribe, handleTranscriptionEngine } from "./transcribe-handlers";
 import {
   handleAgentAbort,
@@ -57,10 +58,12 @@ import {
 
 export function createAgentRuntimeApp() {
   const app = new Hono();
+  const litterBridgeGateway = createLitterBridgeGateway();
 
   app.get("/health", (c) =>
     c.json({ ok: true, service: "local-studio-agent-runtime", pid: process.pid }),
   );
+  app.post("/api/litter-bridge/v1", (c) => litterBridgeGateway.handle(c.req.raw));
   app.post("/api/agent/turn", (c) => handleAgentTurn(c.req.raw));
   app.post("/api/agent/abort", (c) => handleAgentAbort(c.req.raw));
   app.post("/api/agent/compact", (c) => handleAgentCompact(c.req.raw));
@@ -123,5 +126,5 @@ export function createAgentRuntimeApp() {
   app.post("/api/agent/browser/viewport", (c) => handleBrowserViewport(c.req.raw));
   app.post("/api/agent/browser/:verb", (c) => handleBrowserVerb(c.req.raw, c.req.param("verb")));
 
-  return { app };
+  return { app, litterBridgeGateway };
 }
