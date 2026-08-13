@@ -17,12 +17,21 @@ type RuntimeLookupStatus = {
 
 type RuntimeLookupSession = { status: RuntimeLookupStatus };
 
+export const AUTOMATION_RUNTIME_PREFIX = "automation:";
+
+export function isAutomationRuntimeSessionId(sessionId: string): boolean {
+  return sessionId.startsWith(AUTOMATION_RUNTIME_PREFIX);
+}
+
 export function findRuntimeSessionForLookup<TSession extends RuntimeLookupSession>(
   entries: Iterable<RuntimeLookupEntry<TSession>>,
   sessionId: string,
   piSessionId?: string | null,
 ): RuntimeLookupEntry<TSession> | null {
-  const snapshot = [...entries];
+  const all = [...entries];
+  const snapshot = isAutomationRuntimeSessionId(sessionId)
+    ? all
+    : all.filter((entry) => !isAutomationRuntimeSessionId(entry.sessionId));
   const exact = snapshot.find((entry) => entry.sessionId === sessionId);
   const target = piSessionId?.trim();
   if (!target) return exact ?? null;
