@@ -191,6 +191,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   private currentStartOptions: RuntimeStartOptions = {};
   private agentDir = "";
   private sessionFileSize: number | null = null;
+  private refreshInFlight: Promise<void> | null = null;
   private queueEventBufferDepth = 0;
   private bufferedQueueEvent: PiEvent | null = null;
   private extensionUiPending = new Map<
@@ -529,7 +530,16 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     if (next && !this.currentPiSessionId) this.currentPiSessionId = next;
   }
 
-  async refreshExternalChanges(): Promise<void> {
+  refreshExternalChanges(): Promise<void> {
+    if (this.refreshInFlight) return this.refreshInFlight;
+    const run = this.runExternalRefresh().finally(() => {
+      this.refreshInFlight = null;
+    });
+    this.refreshInFlight = run;
+    return run;
+  }
+
+  private async runExternalRefresh(): Promise<void> {
     const session = this.runtime?.session;
     if (
       !session ||
