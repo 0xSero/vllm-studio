@@ -12,14 +12,14 @@ import { listProjectsFromStore, resolveAllowedWorkspace } from "./projects-store
 import {
   isProvisionalSession,
   isSessionArchived,
-  listArchivedSessionMetadata,
-  listThreadInventoryMetadata,
   markProvisionalSessionsMaterialized,
+  readThreadMetadataSnapshot,
   registerProvisionalSession,
-  sessionMetadataCwdMatches,
   sessionSubagentLink,
   setSessionArchived,
   setSubagentLink,
+  type ThreadInventoryMetadata,
+  type ThreadMetadataSnapshot,
 } from "./session-metadata-store";
 import {
   listSessions,
@@ -53,11 +53,13 @@ function threadTime(thread: Pick<ThreadSummary, "startedAt" | "updatedAt">): num
   return Number.isFinite(value) ? value : 0;
 }
 
-function inventoryThreads(cwd: string, request: ThreadListRequest): ThreadSummary[] {
+function inventoryThreads(
+  inventory: ThreadInventoryMetadata[],
+  request: ThreadListRequest,
+): ThreadSummary[] {
   const wantedIds = new Set((request.ids ?? []).map((id) => id.trim()).filter(Boolean));
   const since = request.since?.getTime();
-  return listThreadInventoryMetadata().flatMap((thread) => {
-    if (!sessionMetadataCwdMatches(thread.cwd, cwd)) return [];
+  return inventory.flatMap((thread) => {
     if (wantedIds.size > 0 && !wantedIds.has(thread.id)) return [];
     if (request.archivedOnly ? !thread.archived : thread.archived && !request.includeArchived) {
       return [];
@@ -89,11 +91,18 @@ export async function listThreads(
   cwd: string,
   request: ThreadListRequest = {},
 ): Promise<ThreadSummary[]> {
-  const inventory = inventoryThreads(cwd, request);
+  return listThreadsFromSnapshot(cwd, request, readThreadMetadataSnapshot());
+}
+
+async function listThreadsFromSnapshot(
+  cwd: string,
+  request: ThreadListRequest,
+  snapshot: ThreadMetadataSnapshot,
+): Promise<ThreadSummary[]> {
+  const cwdInventory = snapshot.threadsForCwd(cwd);
+  const inventory = inventoryThreads(cwdInventory, request);
   const durable = await listSessions(cwd, request);
-  const inventoryIds = new Set(
-    inventoryThreads(cwd, { includeArchived: true }).map((thread) => thread.id),
-  );
+  const inventoryIds = new Set(cwdInventory.map((thread) => thread.id));
   await markProvisionalSessionsMaterialized(
     durable.flatMap((thread) => (inventoryIds.has(thread.id) ? [thread.id] : [])),
   );
@@ -111,6 +120,7 @@ export async function findThread(cwd: string, threadId: string): Promise<ThreadS
 export async function listThreadsAcrossProjects(
   request: ThreadListRequest = {},
 ): Promise<ProjectScopedThread[]> {
+  const snapshot = readThreadMetadataSnapshot();
   const scoped: ThreadListRequest = request.archivedOnly
     ? { ...request, since: undefined }
     : request;
@@ -120,7 +130,7 @@ export async function listThreadsAcrossProjects(
     listProjectsFromStore().map(async (project) => {
       try {
         const cwd = resolveAllowedWorkspace(project.path);
-        for (const summary of await listThreads(cwd, scoped)) {
+        for (const summary of await listThreadsFromSnapshot(cwd, scoped, snapshot)) {
           seenIds.add(summary.id);
           aggregated.push({
             ...summary,
@@ -135,7 +145,7 @@ export async function listThreadsAcrossProjects(
     }),
   );
   if (request.archivedOnly) {
-    for (const metadata of listArchivedSessionMetadata()) {
+    for (const metadata of snapshot.archived) {
       if (seenIds.has(metadata.id)) continue;
       aggregated.push({
         id: metadata.id,
@@ -161,8 +171,10 @@ export async function listThreadsAcrossProjects(
 }
 
 function provisionalThreadResult(cwd: string, threadId: string): LoadSessionResult | null {
-  if (!isProvisionalSession(cwd, threadId)) return null;
-  const summary = inventoryThreads(cwd, { ids: [threadId] })[0];
+  const inventory = readThreadMetadataSnapshot()
+    .threadsForCwd(cwd)
+    .filter((thread) => thread.inventoryState === "provisional" && !thread.archived);
+  const summary = inventoryThreads(inventory, { ids: [threadId] })[0];
   if (!summary) return null;
   return {
     events: [],

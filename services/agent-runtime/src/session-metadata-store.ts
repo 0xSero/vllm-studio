@@ -64,6 +64,11 @@ export type ThreadInventoryMetadata = {
   subagentName: string | null;
 };
 
+export type ThreadMetadataSnapshot = {
+  archived: ArchivedSessionMetadata[];
+  threadsForCwd: (cwd: string) => ThreadInventoryMetadata[];
+};
+
 export type ProvisionalSessionInput = {
   id: string;
   cwd: string;
@@ -246,8 +251,10 @@ export function isSessionArchived(sessionId: string): boolean {
   return readStore().sessions[sessionId.trim()]?.archived === true;
 }
 
-export function listThreadInventoryMetadata(): ThreadInventoryMetadata[] {
-  return Object.entries(readStore().sessions).flatMap(([id, metadata]) =>
+function threadInventoryMetadata(
+  sessions: SessionMetadataStore["sessions"],
+): Array<ThreadInventoryMetadata & { cwdPaths: Set<string> }> {
+  return Object.entries(sessions).flatMap(([id, metadata]) =>
     metadata.inventoryState && metadata.cwd && metadata.startedAt
       ? [
           {
@@ -262,10 +269,48 @@ export function listThreadInventoryMetadata(): ThreadInventoryMetadata[] {
             inventoryState: metadata.inventoryState,
             parentSessionId: metadata.parentSessionId ?? null,
             subagentName: metadata.subagentName ?? null,
+            cwdPaths: workspacePaths(metadata.cwd),
           },
         ]
       : [],
   );
+}
+
+function archivedSessionMetadata(
+  sessions: SessionMetadataStore["sessions"],
+): ArchivedSessionMetadata[] {
+  return Object.entries(sessions)
+    .filter(([, metadata]) => metadata.archived === true)
+    .map(([id, metadata]) => ({
+      id,
+      archived: true,
+      archivedAt: metadata.archivedAt ?? null,
+      updatedAt: metadata.updatedAt ?? null,
+      cwd: metadata.cwd ?? null,
+      title: metadata.title ?? null,
+      projectId: metadata.projectId ?? null,
+      projectName: metadata.projectName ?? null,
+      sessionUpdatedAt: metadata.sessionUpdatedAt ?? null,
+    }))
+    .sort((a, b) => {
+      const aTime = Date.parse(a.archivedAt ?? a.updatedAt ?? a.sessionUpdatedAt ?? "");
+      const bTime = Date.parse(b.archivedAt ?? b.updatedAt ?? b.sessionUpdatedAt ?? "");
+      return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+    });
+}
+
+export function readThreadMetadataSnapshot(): ThreadMetadataSnapshot {
+  const sessions = readStore().sessions;
+  const inventory = threadInventoryMetadata(sessions);
+  return {
+    archived: archivedSessionMetadata(sessions),
+    threadsForCwd: (cwd) => {
+      const expected = workspacePaths(cwd);
+      return inventory.flatMap(({ cwdPaths, ...thread }) =>
+        [...cwdPaths].some((candidate) => expected.has(candidate)) ? [thread] : [],
+      );
+    },
+  };
 }
 
 export async function registerProvisionalSession(input: ProvisionalSessionInput): Promise<void> {
@@ -342,27 +387,6 @@ export async function setSubagentLink(
     };
     writeStore(store);
   });
-}
-
-export function listArchivedSessionMetadata(): ArchivedSessionMetadata[] {
-  return Object.entries(readStore().sessions)
-    .filter(([, metadata]) => metadata.archived === true)
-    .map(([id, metadata]) => ({
-      id,
-      archived: true,
-      archivedAt: metadata.archivedAt ?? null,
-      updatedAt: metadata.updatedAt ?? null,
-      cwd: metadata.cwd ?? null,
-      title: metadata.title ?? null,
-      projectId: metadata.projectId ?? null,
-      projectName: metadata.projectName ?? null,
-      sessionUpdatedAt: metadata.sessionUpdatedAt ?? null,
-    }))
-    .sort((a, b) => {
-      const aTime = Date.parse(a.archivedAt ?? a.updatedAt ?? a.sessionUpdatedAt ?? "");
-      const bTime = Date.parse(b.archivedAt ?? b.updatedAt ?? b.sessionUpdatedAt ?? "");
-      return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
-    });
 }
 
 export async function setSessionArchived(
