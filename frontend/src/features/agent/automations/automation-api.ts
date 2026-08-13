@@ -154,7 +154,23 @@ function ordered(automations: readonly Automation[]): Automation[] {
   );
 }
 
+function signature(automations: readonly Automation[]): string {
+  return automations
+    .map(
+      (automation) =>
+        `${automation.id}:${automation.updatedAt}:${automation.status}:${automation.nextRunAt}:${automation.unread}`,
+    )
+    .join("|");
+}
+
 function publish(next: AutomationsSnapshot): void {
+  if (
+    next.loading === snapshot.loading &&
+    next.error === snapshot.error &&
+    signature(next.automations) === signature(snapshot.automations)
+  ) {
+    return;
+  }
   snapshot = next;
   for (const listener of listeners) listener();
 }

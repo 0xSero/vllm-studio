@@ -188,8 +188,9 @@ export function ThreadAutomationPanel({ piSessionId, cwd }: { piSessionId: strin
             onToggleStatus={() => selected && void actions.toggleStatus(selected)}
             onDelete={() => {
               if (!selected) return;
+              const next = tasks.find((task) => task.id !== selected.id) ?? null;
               void actions.remove(selected).then((removed) => {
-                if (removed) update({ open: tasks.length > 1, automationId: null });
+                if (removed) update({ open: next !== null, automationId: next?.id ?? null });
               });
             }}
           />

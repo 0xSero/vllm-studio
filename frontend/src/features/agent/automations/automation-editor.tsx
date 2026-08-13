@@ -107,7 +107,7 @@ export function AutomationEditor({
               }
               placeholder="New scheduled task"
               aria-label="Scheduled task name"
-              autoFocus={creating}
+              autoFocus={creating && !compact}
               className="w-full bg-transparent text-[length:var(--fs-2xl)] font-medium leading-8 text-(--ui-fg) outline-none placeholder:text-(--ui-muted)/60"
             />
             <textarea
@@ -349,26 +349,25 @@ function RunRow({ run }: { run: AutomationRun }) {
     </>
   );
   const rowClass = "flex gap-2 rounded-[var(--ui-radius)] px-1 py-2 transition-colors";
-  if (!href) {
-    return (
-      <div
-        role="listitem"
-        title={`${absoluteTime(run.at)} — transcript unavailable`}
-        className={`${rowClass} opacity-60`}
-      >
-        {body}
-      </div>
-    );
-  }
   return (
-    <Link
-      role="listitem"
-      href={href}
-      title={absoluteTime(run.at)}
-      className={`${rowClass} hover:bg-(--ui-hover)/40`}
-    >
-      {body}
-    </Link>
+    <div role="listitem">
+      {href ? (
+        <Link
+          href={href}
+          title={absoluteTime(run.at)}
+          className={`${rowClass} hover:bg-(--ui-hover)/40`}
+        >
+          {body}
+        </Link>
+      ) : (
+        <div
+          title={`${absoluteTime(run.at)} — transcript unavailable`}
+          className={`${rowClass} opacity-60`}
+        >
+          {body}
+        </div>
+      )}
+    </div>
   );
 }
 

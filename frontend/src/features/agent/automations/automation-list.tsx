@@ -294,28 +294,28 @@ function SuggestionGroup({
       </div>
       <div role="list" className="flex flex-col gap-0.5">
         {AUTOMATION_SUGGESTIONS.map((suggestion) => (
-          <button
-            key={suggestion.id}
-            type="button"
-            role="listitem"
-            onClick={() => onUseSuggestion(suggestion)}
-            className="group flex w-full items-center gap-2 rounded-[var(--ui-radius)] py-2 pl-2 pr-2 text-left text-(--ui-fg) transition-colors hover:bg-(--ui-hover)/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35"
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center text-(--ui-muted)">
-              <Clock className="h-3.5 w-3.5 group-hover:hidden" />
-              <Plus className="hidden h-3.5 w-3.5 group-hover:block" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[length:var(--fs-base)] leading-5">
-                {suggestion.name}
+          <div key={suggestion.id} role="listitem">
+            <button
+              type="button"
+              onClick={() => onUseSuggestion(suggestion)}
+              className="group flex w-full items-center gap-2 rounded-[var(--ui-radius)] px-2 py-2 text-left text-(--ui-fg) transition-colors hover:bg-(--ui-hover)/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35"
+            >
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center text-(--ui-muted)">
+                <Clock className="h-3.5 w-3.5 group-hover:hidden" />
+                <Plus className="hidden h-3.5 w-3.5 group-hover:block" />
               </span>
-              <span className="mt-0.5 flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-[length:var(--fs-xs)] leading-4 text-(--ui-muted)">
-                <span className="min-w-0 truncate">{suggestion.description}</span>
-                <RowDot />
-                <span className="shrink-0">{scheduleLabel(suggestion.schedule)}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[length:var(--fs-base)] leading-5">
+                  {suggestion.name}
+                </span>
+                <span className="mt-0.5 flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-[length:var(--fs-xs)] leading-4 text-(--ui-muted)">
+                  <span className="min-w-0 truncate">{suggestion.description}</span>
+                  <RowDot />
+                  <span className="shrink-0">{scheduleLabel(suggestion.schedule)}</span>
+                </span>
               </span>
-            </span>
-          </button>
+            </button>
+          </div>
         ))}
       </div>
     </div>

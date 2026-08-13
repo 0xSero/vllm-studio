@@ -144,7 +144,7 @@ export function targetTypeLabel(target: AutomationTarget | undefined): string {
 }
 
 export function sourceLabel(automation: Automation): string {
-  return threadIdOf(automation) ? "In this chat" : folderLabel(automation.cwd);
+  return threadIdOf(automation) ? "In conversation" : folderLabel(automation.cwd);
 }
 
 export function statusLabel(automation: Automation): string {
