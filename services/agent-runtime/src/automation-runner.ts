@@ -1,7 +1,8 @@
 import type { Automation, AutomationRun, AutomationTarget } from "../../../shared/agent/automation";
 import type { AgentModel } from "../../../shared/agent/models";
-import { piRuntimeManager } from "./pi-runtime";
+import { piRuntimeManager, selectPiRuntimeModel } from "./pi-runtime";
 import { refreshPiModels } from "./pi-runtime-models";
+import { AUTOMATION_RUNTIME_PREFIX, isAutomationRuntimeSessionId } from "./pi-runtime-state";
 import { listProjectsFromStore } from "./projects-store";
 import { lastAssistantResult } from "./session-text";
 import { findThread } from "./thread-repository";
@@ -23,32 +24,44 @@ export function archivedThreadError(threadId: string): string {
   return `This automation runs inside conversation '${threadId}', which is archived, so the run was skipped rather than reopening an archived thread.`;
 }
 
+export function busyThreadError(threadId: string): string {
+  return `Conversation '${threadId}' is open in a live session right now, so this automation was skipped rather than taking over that conversation. It will run at its next scheduled time.`;
+}
+
+export function detachedThreadError(threadId: string): string {
+  return `This automation runs inside conversation '${threadId}', but the run landed in a different conversation, so it was stopped instead of continuing detached.`;
+}
+
 export type AutomationModelResolution =
   { ok: true; modelId: string; fallback: boolean } | { ok: false; error: string };
+
+function isControllerHostedModel(model: AgentModel): boolean {
+  return typeof model.controllerUrl === "string" && model.controllerUrl.trim().length > 0;
+}
+
+function automationFallbackModel(models: readonly AgentModel[]): AgentModel | undefined {
+  return (
+    models.find((model) => isControllerHostedModel(model) && model.active) ??
+    models.find((model) => !isControllerHostedModel(model))
+  );
+}
 
 export function resolveAutomationModel(
   requestedModelId: string,
   models: readonly AgentModel[],
 ): AutomationModelResolution {
-  const exact = models.filter((model) => model.id === requestedModelId);
-  if (exact.length > 0) {
-    const activeExact = exact.find((model) => model.active);
-    if (activeExact) return { ok: true, modelId: activeExact.id, fallback: false };
-  } else {
-    const activeLegacyMatches = models.filter(
-      (model) => model.active && model.rawId === requestedModelId,
-    );
-    const canonicalIds = new Set(activeLegacyMatches.map((model) => model.id));
-    if (canonicalIds.size === 1) {
-      return { ok: true, modelId: activeLegacyMatches[0].id, fallback: false };
-    }
-    if (canonicalIds.size > 1) {
-      return { ok: false, error: ambiguousModelError(requestedModelId) };
-    }
+  let requested: AgentModel | null | undefined;
+  try {
+    requested = selectPiRuntimeModel([...models], requestedModelId);
+  } catch {
+    return { ok: false, error: ambiguousModelError(requestedModelId) };
   }
-  const active = models.find((model) => model.active);
-  if (!active) return { ok: false, error: NO_ACTIVE_MODEL_ERROR };
-  return { ok: true, modelId: active.id, fallback: true };
+  if (requested && (!isControllerHostedModel(requested) || requested.active)) {
+    return { ok: true, modelId: requested.id, fallback: false };
+  }
+  const fallback = automationFallbackModel(models);
+  if (!fallback) return { ok: false, error: NO_ACTIVE_MODEL_ERROR };
+  return { ok: true, modelId: fallback.id, fallback: true };
 }
 
 export function automationRunError(lastError: string | null, summary: string): string | null {
@@ -58,13 +71,6 @@ export function automationRunError(lastError: string | null, summary: string): s
 
 export function automationTarget(automation: Automation): AutomationTarget {
   return automation.target ?? { kind: "global" };
-}
-
-function runPrompt(automation: Automation): string {
-  const preamble = automation.lastRun?.summary
-    ? `Previous run summary (context, may be stale):\n${automation.lastRun.summary}\n\n---\n\n`
-    : "";
-  return `${preamble}${automation.prompt}`;
 }
 
 type ThreadResolution = { ok: true; piSessionId: string } | { ok: false; error: string };
@@ -88,18 +94,51 @@ function modelFields(requestedModelId: string, resolution: { modelId: string; fa
     : { requestedModelId, actualModelId: resolution.modelId, fallbackUsed: false };
 }
 
-function failedRun(automation: Automation, target: AutomationTarget, error: string): AutomationRun {
+type RunContext = { piSessionId: string | null; cwd: string; projectId: string | null };
+
+function projectIdForCwd(cwd: string): string | null {
+  return listProjectsFromStore().find((project) => project.path === cwd)?.id ?? null;
+}
+
+function runContext(status: { piSessionId: string | null; cwd: string }): RunContext {
+  return {
+    piSessionId: status.piSessionId,
+    cwd: status.cwd,
+    projectId: projectIdForCwd(status.cwd),
+  };
+}
+
+function failedRun(
+  automation: Automation,
+  target: AutomationTarget,
+  error: string,
+  resolution?: { modelId: string; fallback: boolean },
+  context?: RunContext,
+): AutomationRun {
   return {
     at: new Date().toISOString(),
-    piSessionId: null,
-    cwd: automation.cwd,
-    projectId: null,
+    piSessionId: context?.piSessionId ?? null,
+    cwd: context?.cwd || automation.cwd,
+    projectId: context?.projectId ?? null,
     target,
     outcome: "error",
     summary: "",
     error,
-    requestedModelId: automation.modelId,
+    ...(resolution
+      ? modelFields(automation.modelId, resolution)
+      : { requestedModelId: automation.modelId }),
   };
+}
+
+function interactiveRuntimeOwns(piSessionId: string): boolean {
+  return piRuntimeManager
+    .listSessions()
+    .some(
+      ({ sessionId, session }) =>
+        !isAutomationRuntimeSessionId(sessionId) &&
+        session.status.piSessionId === piSessionId &&
+        (session.status.running || session.status.active),
+    );
 }
 
 export async function runAutomation(automation: Automation): Promise<AutomationRun> {
@@ -114,29 +153,39 @@ export async function runAutomation(automation: Automation): Promise<AutomationR
   const resolution = resolveAutomationModel(automation.modelId, models);
   if (!resolution.ok) return failedRun(automation, target, resolution.error);
   let resume: string | null = null;
+  let threadId: string | null = null;
   if (target.kind === "thread") {
     const thread = await resolveThreadTarget(automation.cwd, target.threadId);
-    if (!thread.ok) return failedRun(automation, target, thread.error);
+    if (!thread.ok) return failedRun(automation, target, thread.error, resolution);
+    threadId = target.threadId;
     resume = thread.piSessionId;
+    if (interactiveRuntimeOwns(resume)) {
+      return failedRun(automation, target, busyThreadError(threadId), resolution);
+    }
   }
+  const runtimeSessionId = `${AUTOMATION_RUNTIME_PREFIX}${automation.id}`;
+  const session = piRuntimeManager.getSession(runtimeSessionId);
   try {
-    const { session } = piRuntimeManager.getSessionForLookup(`automation:${automation.id}`, null);
     await session.ensureStarted(resolution.modelId, automation.cwd || undefined, resume, {});
-    await session.prompt(runPrompt(automation), () => {});
+    await session.prompt(automation.prompt, () => {}, { restartOnContinuationError: false });
     const status = session.status;
-    const piSessionId = status.piSessionId;
-    const result = piSessionId
-      ? lastAssistantResult(status.cwd, piSessionId)
+    const context = runContext(status);
+    if (resume && status.piSessionId !== resume) {
+      return failedRun(
+        automation,
+        target,
+        detachedThreadError(threadId ?? resume),
+        resolution,
+        context,
+      );
+    }
+    const result = status.piSessionId
+      ? lastAssistantResult(status.cwd, status.piSessionId)
       : { text: "", error: null };
     const error = automationRunError(status.lastError ?? result.error, result.text);
-    const projectId =
-      listProjectsFromStore().find((project) => project.path === status.cwd)?.id ?? null;
-    void session.stop().catch(() => undefined);
     return {
       at: new Date().toISOString(),
-      piSessionId,
-      cwd: status.cwd,
-      projectId,
+      ...context,
       target,
       outcome: error ? "error" : "ok",
       summary: result.text,
@@ -148,6 +197,10 @@ export async function runAutomation(automation: Automation): Promise<AutomationR
       automation,
       target,
       error instanceof Error ? error.message : "Automation run failed",
+      resolution,
+      runContext(session.status),
     );
+  } finally {
+    await piRuntimeManager.stopAndDeleteSession(runtimeSessionId).catch(() => undefined);
   }
 }
