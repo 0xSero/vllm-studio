@@ -62,11 +62,6 @@ function resolveGitCwdDetailed(input: string, roots = configuredGitRoots()): Git
     : { ok: false, reason: "confinement" };
 }
 
-export function resolveGitCwd(input: string, roots = configuredGitRoots()): string | null {
-  const result = resolveGitCwdDetailed(input, roots);
-  return result.ok ? result.cwd : null;
-}
-
 export function assertGitCwd(
   input: string | null | undefined,
 ): { cwd: string; error?: never } | { cwd?: never; error: Response } {
