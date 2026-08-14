@@ -55,6 +55,7 @@ type PiMessageContent = string | Array<{ type?: string; text?: string }>;
 type UserTurn = {
   isUser: boolean;
   text: string | null;
+  at: string | null;
 };
 
 function summaryStartTime(session: Pick<SessionSummary, "startedAt" | "updatedAt">): number {
@@ -126,16 +127,32 @@ function piTextContent(content: PiMessageContent | undefined): string | null {
   return text || null;
 }
 
+function userEventTimestamp(event: Record<string, unknown>): string | null {
+  if (typeof event.timestamp === "string" && event.timestamp) return event.timestamp;
+  const message = event.message as { timestamp?: unknown } | undefined;
+  return message && typeof message.timestamp === "string" && message.timestamp
+    ? message.timestamp
+    : null;
+}
+
 function userTurnFromEvent(event: Record<string, unknown>): UserTurn {
   if (event.type === "user_message") {
-    return { isUser: true, text: piTextContent(event.content as PiMessageContent | undefined) };
+    return {
+      isUser: true,
+      text: piTextContent(event.content as PiMessageContent | undefined),
+      at: userEventTimestamp(event),
+    };
   }
   if (event.type !== "message" && event.type !== "message_end") {
-    return { isUser: false, text: null };
+    return { isUser: false, text: null, at: null };
   }
   const message = event.message as { role?: string; content?: PiMessageContent } | undefined;
-  if (message?.role !== "user") return { isUser: false, text: null };
-  return { isUser: true, text: piTextContent(message.content) };
+  if (message?.role !== "user") return { isUser: false, text: null, at: null };
+  return {
+    isUser: true,
+    text: piTextContent(message.content),
+    at: userEventTimestamp(event),
+  };
 }
 
 const SUMMARY_SCAN_LINE_CAP = 2000;
@@ -178,6 +195,19 @@ function rememberSummary(filepath: string, entry: SummaryCacheEntry): void {
   }
 }
 
+async function readLastUserTurn(
+  filepath: string,
+): Promise<{ text: string; at: string } | null> {
+  const transcript = await transcriptSource(filepath);
+  if (!transcript.size) return null;
+  const { events } = readTailRegion(transcript.filepath, transcript.size, 1, undefined);
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const turn = userTurnFromEvent(events[index]);
+    if (turn.isUser && turn.text && turn.at) return { text: turn.text, at: turn.at };
+  }
+  return null;
+}
+
 async function readSessionSummary(
   filepath: string,
   filename: string,
@@ -218,6 +248,16 @@ async function readSessionSummary(
     stream.destroy();
   }
 
+  let lastUserPromptText: string | undefined;
+  let lastUserPromptAt: string | undefined;
+  if (header && firstUserMessage) {
+    const lastTurn = await readLastUserTurn(filepath);
+    if (lastTurn) {
+      lastUserPromptText = lastTurn.text;
+      lastUserPromptAt = lastTurn.at;
+    }
+  }
+
   const core = header
     ? {
         id: typeof header.id === "string" ? header.id : "",
@@ -228,6 +268,8 @@ async function readSessionSummary(
         modelId: typeof header.modelId === "string" ? header.modelId : null,
         provider: typeof header.provider === "string" ? header.provider : null,
         firstUserMessage,
+        ...(lastUserPromptText !== undefined ? { lastUserPromptText } : {}),
+        ...(lastUserPromptAt !== undefined ? { lastUserPromptAt } : {}),
       }
     : null;
   rememberSummary(filepath, {
