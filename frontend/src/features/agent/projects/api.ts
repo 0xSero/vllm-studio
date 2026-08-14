@@ -1,5 +1,10 @@
 import { safeJson } from "@/features/agent/safe-json";
-import type { GitBranch, GitState, GitWorktree } from "@/features/agent/contracts";
+import type {
+  GitBranch,
+  GitBranchOpsAction as GitAction,
+  GitState,
+  GitWorktree,
+} from "@/features/agent/contracts";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 
 type DesktopBridge = {
@@ -139,8 +144,4 @@ export async function removeWorktree(cwd: string, path: string): Promise<void> {
   await runGitAction(cwd, { action: "remove_worktree", path });
 }
 
-export type GitAction =
-  | { action: "switch_branch"; branch: string }
-  | { action: "create_branch"; branch: string }
-  | { action: "add_worktree"; branch: string; path: string }
-  | { action: "remove_worktree"; path: string };
+export type { GitBranchOpsAction as GitAction } from "../contracts";

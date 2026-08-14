@@ -54,15 +54,23 @@ export type GitState = {
   error?: string;
 };
 
+export type SwitchBranchAction = { action: "switch_branch"; branch: string };
+export type CreateBranchAction = { action: "create_branch"; branch: string };
+export type AddWorktreeAction = { action: "add_worktree"; branch: string; path: string };
+export type RemoveWorktreeAction = { action: "remove_worktree"; path: string };
+
+export type GitBranchOpsAction =
+  | SwitchBranchAction
+  | CreateBranchAction
+  | AddWorktreeAction
+  | RemoveWorktreeAction;
+
 export type GitAction =
   | { action: "init" }
   | { action: "checkout"; ref: string }
   | { action: "commit"; message: string; paths: string[] }
   | { action: "push" }
-  | { action: "switch_branch"; branch: string }
-  | { action: "create_branch"; branch: string }
-  | { action: "add_worktree"; branch: string; path: string }
-  | { action: "remove_worktree"; path: string };
+  | GitBranchOpsAction;
 
 export function parseGitAction(input: unknown): ParseResult<GitAction> {
   const body = objectRecord(input);
