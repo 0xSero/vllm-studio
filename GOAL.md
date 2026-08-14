@@ -1,0 +1,178 @@
+# Local Studio v2.0.1 convergence goal
+
+Updated: 2026-08-14 19:25 EDT
+
+This is the single controlling document for the Local Studio v2.0.1 convergence. No source, PR, release, cleanup, or acceptance work is complete unless its row here is `DONE` with exact evidence. Update this file whenever status changes.
+
+Status vocabulary: `DONE`, `PARTIAL`, `NOT STARTED`, `BLOCKED`.
+
+## Outcome
+
+Ship one coherent Local Studio v2.0.1 track that contains every useful recent fix, is materially simpler, uses one Effect v4 controller architecture, works across Local Studio and Litter, and is proven on the installed desktop app, the Brave Chrome-extension browser surface, and the mobile/Litter app. Merge the accepted PR, close superseded PRs, promote through the documented `dev` to `main` release path, then remove only worktrees and branches proven obsolete.
+
+The work is not complete today. The current branch is a green source checkpoint, not an accepted product or release.
+
+## Current truth
+
+- `origin/main`: `eeeb3406d4bcef255b6405c5508fb324d5e38e77`.
+- `origin/dev`: `a765eb27bca4baffabc6dc84c553fc6d8be5590d`.
+- Implementation base before this goal commit: `feat/v201-consolidation` at `683949dff73897c136fd8c30a35c38f8ca6db2d2`, synchronized with its remote. The current branch head is the commit containing this file and is verified after every push.
+- PR [#408](https://github.com/sybil-solutions/local-studio/pull/408): draft, open, mergeable into `dev`, 348 files, +10,328/−16,562, all current CI checks green. This aggregate diff is not the product-LOC metric.
+- Installed Local Studio stable: version `2.11.2`, build ID `mspwrtd1nz7gi7`, 970,144 KiB, valid strict code signature. Its exact source/deployment authority is not yet reconciled.
+- Installed Local Studio Dev: version `2.1.0`, build ID `mstikvyxdqk3dm`, 985,900 KiB, valid strict code signature. This is not yet the requested v2.0.1 release proof.
+- Installed Litter desktop/mobile companion: version `1.5.0`, build `20260226153395`, 82,136 KiB, valid strict code signature. Physical-phone build provenance is not yet captured.
+- Brave, Local Studio Dev, and Litter are running. The ChatGPT extension is connected to Brave. No final browser, desktop, or Litter acceptance recording has passed.
+- Live cleanup inventory: 30 open PRs (the frozen 29-PR census plus #408), 45 worktrees, 80 local branches, 24 stashes, 131 remote heads plus `origin/HEAD`, and 132 total local `origin/*` refs. Cleanup is not done.
+- The original checkout `/Users/sero/projects/vllm-studio` has user-owned edits and remains untouched.
+- `AGENTS.md` cites `docs/workflow.md`, but GLM-5.3 verified that file is absent from `main`, `dev`, and the consolidation track. Until restored or corrected, `AGENTS.md` plus the v2.0.1 ledgers govern the branch/release rules.
+
+## Operating contract
+
+- Planning and acceptance adjudication: Claude Code Fable-5. Final review: Claude Code Opus-5.
+- Repository search and implementation: GLM-5.3 through Pi with the ZAI provider and DeepSeek-v4-pro through OMP/OpenRouter. Kimi-K3 provides adversarial review when its provider quota is available.
+- Run every agent in a named tmux session. Record the command, model proof, checkout, output, commit, validation, and gaps.
+- Root work is coordination, integration, validation, Computer Use, recording, and release control. Do not silently substitute another model for a failed required lane.
+- Follow `AGENTS.md` and the v2.0.1 workflow ledgers: branch from `dev`, PR into `dev`, never push directly to `dev` or `main`, preserve dirty work, use small conventional commits, push promptly, and run `npm run check` without bypassing hooks. Restore `docs/workflow.md` or remove the stale authority reference before release.
+- Do not add or restore automated test code. “Test thoroughly” means static gates, production builds, live endpoint probes, measured manual scenarios, Computer Use, recordings, restarts, and installed-app acceptance.
+- Do not add source comments. Use Effect for async, resources, errors, and streams; Effect Schema at boundaries; one canonical contract; shared UI primitives and tokens.
+- Never use `max_tokens`, `disable cuda graphs`, or `enforce eager` with vLLM or SGLang.
+- Source or CI alone never closes a visible product row. Desktop-visible rows require the installed Electron app. Browser rows require the Brave ChatGPT extension. Cross-app rows require Litter/mobile. Performance rows require measurements. Final completion requires an Opus-5 review.
+
+## Adjudicated decisions
+
+- PR #408 does **not** merge as a smaller “Phase 0” while headline requirements are deferred. Every requirement in this document is merge-blocking unless the user explicitly changes scope.
+- The 25% product-LOC reduction, Responses and Anthropic passthroughs, multi-model/multi-port serving, controller/DB cleanup, required UI work, Brave browser repair/recording, installed Electron recording, and Litter/mobile recording all gate merge.
+- `kimi-coding/k3` is the canonical Kimi-K3 lane. A real provider error may be recorded as `BLOCKED`; a stale model pattern is not a substitute for a probe.
+- Each open PR and branch is adjudicated individually. Harvest unique useful work before closing; never bulk-close or bulk-delete.
+- Physical-phone provenance and the phone half of cross-app acceptance are owned by the Litter lane; Local Studio owns the shared contract/controller/desktop half.
+- The user has authorized cleanup of dead worktrees and branches, but deletion happens only after exact patch-id/merge/dirty-state proof and retained evidence. Unique, dirty, or uncertain state is preserved.
+- The missing `docs/workflow.md` authority conflict must be resolved before release by restoring a current workflow document or changing the stale reference in a reviewed commit.
+
+## Repository ownership
+
+- **Local Studio:** `https://github.com/sybil-solutions/local-studio.git`; branch `feat/v201-consolidation`; PR #408 into `dev`. Owns controller, shared server contracts, desktop UI, browser integration, packaging, and desktop acceptance.
+- **Litter:** `https://github.com/0xSero/litter.git`; current program branch `codex/v201-mega` at `45839e29f123274d172ec1a463ee59bda92a2c20`; draft PR #295 into `main`; Mobile CI and Release workflows. Its program worktree has intentionally dirty third-party submodules that must not be reset. Owns physical-phone build provenance, mobile connection/session consumption, and phone-side recordings.
+- **Shared contract:** Local Studio `shared/agent/` plus the litter-bridge gateway define the server seam; both repositories jointly own session identity, cwd/project/model/status semantics, exactly-once visibility, and restart persistence. Any seam change requires paired PRs and one joint acceptance recording.
+
+## Data-safety precondition
+
+`controller/src/stores/sqlite.ts` currently drops nine obsolete tables on database open. Until the migration/rollback work in 1.9 is accepted, every controller, Electron, Litter, API, or restart acceptance run must use a disposable copied data directory. If real user data must be used, create and verify a restorable backup first and obtain explicit confirmation immediately before opening that database. Never point the current build at the only copy of a real data directory.
+
+## Complete requirement and status matrix
+
+| ID | Requirement | Status | Current evidence | Missing before `DONE` |
+|---|---|---|---|---|
+| 0.1 | Inventory and synchronize `origin/main`, `origin/dev`, relevant PRs/branches, the latest deployed desktop app, installed desktop app, Litter app, and physical-phone app. | PARTIAL | Remote refs plus installed stable, Dev, and Litter macOS identities are captured above. | Identify the deployed production artifact and physical-phone version/source, map both installed desktop builds to commits, and reconcile them through the documented promotion path. |
+| 0.2 | Harvest every useful fix from recent branches and PRs into one v2.0.1 track without overwriting user work. | PARTIAL | PR #403 and several focused fixes were harvested into #408; dirty checkout preserved. | Audit all open PRs and unique branch tips, including #373, #396, #401, #403, #404, #407 and security/reliability PRs; record disposition and evidence. |
+| 0.3 | Keep one canonical v2.0.1 implementation track. | PARTIAL | Clean pushed consolidation branch and draft PR exist. | Finish every row, remove version mismatch, accept, merge, and promote. |
+| 0.4 | Maintain this `GOAL.md` as the sole task/status/acceptance contract. | PARTIAL | Canonical document created and audited by Fable, GLM, DeepSeek, Kimi, and Opus; the current file is committed on the program branch and its SHA-256 is recorded externally on PR #408. | Update it after every landed slice/gate and keep the external hash current; final completion requires every applicable row and gate to resolve. |
+| 0.5 | Add and use GLM-5.3 in Pi through ZAI. | DONE | `zai/glm-5.3` delivered audit session `01a0027d-7dea-7d3d-abaa-5c22d0e33d4c`, including the frozen LOC rerun and implementation matrix. | None. |
+| 0.6 | Use tmux with Pi, OMP, and Claude Code for GLM-5.3, DeepSeek-v4-pro, Kimi-K3, Fable-5, and Opus-5. | PARTIAL | Named sessions delivered Fable `claude-fable-5`, GLM `zai/glm-5.3`, DeepSeek `deepseek/deepseek-v4-pro` via Pi/OpenRouter, Kimi `kimi-coding/k3`, and Opus `claude-opus-5` reviews. | Resolve every review finding and the separate OMP/OpenRouter blocker; do not relabel the successful Pi DeepSeek lane as OMP. |
+| 0.7 | Have Pi/ZAI GLM-5.2 and DeepSeek-v4-pro independently review the arbitrary-port, multi-model controller concept, then refresh the decision with GLM-5.3. | PARTIAL | Earlier GLM-5.2 controller/provenance lanes and the current GLM-5.3/DeepSeek audits exist. | Produce one explicit topology decision packet covering ownership, routing, collisions, persistence, failure recovery, and migration before implementation. |
+| 0.8 | Run the required DeepSeek-v4-pro lane through OMP/OpenRouter. | BLOCKED | OMP selected `openrouter/deepseek/deepseek-v4-pro` but failed with `401 Missing Authentication header`; no source work was attempted. | Obtain explicit authorization before configuring persistent OpenRouter access in OMP, rerun with model proof, and retain the Pi review as separate evidence. |
+| 1.1 | Reduce implementation LOC by at least 25% from a reproducible baseline without counting generated, vendored, evidence, or deleted-test files as product simplification. | PARTIAL | Frozen baseline reports main at 107,556 product lines and a target at or below 80,667; GLM-5.3 reran the frozen pipeline at the current head and measured 104,378 lines, only about 3% below main. | Remove at least another 23,711 real product lines under the identical methodology and prove required behavior remains. |
+| 1.2 | Remove text-to-speech and unused speech/audio code. | PARTIAL | Source modules, dependencies, and bundled voice plugin are gone; intentional STT dictation remains; CI is green. | Fix stale TTS documentation, decide and migrate/drop the orphaned installed-DB `speech_voice_profiles` table, and pass exact-build installed regression. |
+| 1.3 | Remove unused API routes, features, pages, dependencies, configuration surfaces, dead code, and duplicate implementations. | PARTIAL | Product scope is 2,943 lines smaller than `dev`, but frontend routes grew from 66 API routes + 14 pages at baseline to 71 + 14 at the implementation base. | Justify or remove the five added routes, complete route/page/config/dependency/dead-export audit, validate every retained feature, and delete proven dead paths. |
+| 1.4 | Bring the entire controller to the latest repository-approved Effect v4 standards and skill; remove the parallel legacy async/streaming/resource/error style. | PARTIAL | Authority is pinned to `effect@4.0.0-beta.90` and the exact migration annotations in `.agent-sources/effect` at the implementation base; most controller files use Effect, but legacy DI/style islands remain. | Approve the target primitives, migrate module by module, remove the parallel legacy path, and provide structural/runtime proof. If Effect advances, freeze a new authority commit and re-review the delta before grading. |
+| 1.5 | Use one set of typed controller primitives and a single RPC/contract model inspired by threads, sessions, and t3code. | PARTIAL | Contracts are centralized, but the frozen main baseline has 89 controller routes and 66 frontend API routes plus 14 pages; the implementation base has 71 frontend API routes plus 14 pages and no single Effect RPC architecture. | Define canonical RPC, services, lifetimes, error schemas, and streaming, then migrate consumers and remove duplicate routes/stores. |
+| 1.6 | Implement OpenAI Responses API passthrough for vLLM and SGLang. | NOT STARTED | DeepSeek found no controller Responses route; the frontend timeout entry for `v1/responses` is only forward-looking. | Implement the typed route, then prove request/stream/tool/error/cancel fidelity against real vLLM and SGLang endpoints. |
+| 1.7 | Implement Anthropic API passthrough with equivalent fidelity. | NOT STARTED | No accepted implementation evidence. | Typed contract plus Messages streaming, tools, errors, cancellation, usage, and live endpoint acceptance. |
+| 1.8 | Support one controller managing multiple models on arbitrary, distinct ports without singleton-port assumptions or collisions. | PARTIAL | Compute instances already allocate per-instance ports, but GLM/DeepSeek found the serving proxy/metrics path still binds to one `config.inference_port`/`LLM_INSTANCE`. | Design and implement port ownership, multi-deployment lifecycle, persistence, routing, collision handling, and simultaneous live proof. |
+| 1.9 | Remove dead database tables/migrations and establish one clean ownership model. | PARTIAL | Nine obsolete tables are dropped destructively on open without rollback; `speech_voice_profiles` no longer exists in source but is missing from `OBSOLETE_TABLES`, so existing databases retain it indefinitely. | Decide drop versus migration for every table, create a safe versioned migration/rollback, preserve required data, and prove restart persistence on a copied database. |
+| 1.10 | Adjudicate the deletion of 74 automated-test files (7,741 lines) without counting them toward product-LOC reduction. | PARTIAL | #408 removes the files and the project now forbids adding/restoring test code, but the deletion itself lacks a disposition row. | Inventory what coverage was removed, record the policy/rationale and explicit acceptance, and map each load-bearing behavior to static/live/manual evidence before merge. |
+| 1.11 | Repair the dangling `AGENTS.md` reference to missing `docs/workflow.md`. | NOT STARTED | The reference exists, while the file is absent from `main`, `dev`, and this track. | Restore a current reviewed workflow document or amend `AGENTS.md` so branch/gate/release authority is unambiguous. |
+| 2.1 | Improve Agent using shared primitives and Codex-like threads/sessions behavior. | PARTIAL | Navigation, session, drawer, model picker, and transcript source changes are on #408. | Visual/behavior parity review and complete installed-app acceptance. |
+| 2.2 | Make chat-scoped cron prompts a first-class automation primitive using the same logic as the Automations page. | NOT STARTED | Existing Automations page and candidate PR #407 exist. | Harvest/adapt one contract, implement per-chat schedule CRUD/execution/status, persistence, and UI acceptance. |
+| 2.3 | Improve Automations, Usage, Models, Settings, and Config as one consistent product. | NOT STARTED | No complete cross-page implementation or acceptance. | Page-by-page contract, design, live data, empty/error/loading states, consistency sweep, and recordings. |
+| 2.4 | Remove the Configure page except useful Models behavior and relocate only necessary controls. | NOT STARTED | No accepted page/route removal. | Usage audit, deletion/relocation, navigation cleanup, deep-link handling, installed acceptance. |
+| 2.5 | Make Models look and behave like the current ChatGPT Codex Plugins page while preserving model-specific semantics. | PARTIAL | Models source changes and prior redesign work exist. | Compare against the live reference, finish semantics/states/density, and record installed parity review. |
+| 2.6 | Use one implementation and visual style; no duplicate list/table/control/spacing systems. | NOT STARTED | Shared tokens exist, but duplicate-style audit is absent. | Inventory variants, choose canonical primitives, migrate every implementation file, remove duplicates, visual regression walkthrough. |
+| 2.7 | Replace the app icon system with a cohesive distinct set and make icons, including drawer icons, smaller. | NOT STARTED | No accepted icon redesign. | Produce/review assets, update every platform/state, check small-size legibility, package and record. |
+| 2.8 | Match the user's current Codex configuration globally in density, hierarchy, behavior, threads/sessions primitives, and shared controls. | NOT STARTED | Individual Models/chat/session changes exist, but no whole-app reference matrix or acceptance exists. | Capture the current reference, map every shell/page/state, implement shared primitives, and record side-by-side installed acceptance. |
+| 3.1 | Notifications opens Recents ordered by latest user prompt, with prompt preview and project/path/model/session location context. | PARTIAL | Last-user-prompt summary and Recents source work landed. | Installed Electron proof for ordering, context, navigation, empty/loading/live-update states, and restart persistence. |
+| 3.2 | New chat from inside a chat creates exactly one new task and focuses its composer. | PARTIAL | Atomic/idempotent new-chat and URL-settlement fixes landed. | Fresh installed-app recording across current chat, fresh mount, back/forward, rapid repeat, and restart. |
+| 3.3 | Show off-white active spinners on sessions and their projects; start and clear accurately. | PARTIAL | Session/project spinner source work landed. | Installed recording for start, stream, completion, failure, cancel, multiple sessions, and no stuck spinner. |
+| 3.4 | Make Local Studio and Litter session visibility bidirectional, prompt, exactly-once, correctly attributed, and restart-persistent. | PARTIAL | Local Studio owns the watcher/SSE/shared seam; Litter PR #295 owns phone consumption; source reviews landed. | Jointly run a brand-new Litter-created Studio session and reverse-direction session; prove ≤5 s appearance, single identity, cwd/model/status, spinners, openability, and restart persistence. Current Litter 1.5.0 is not release proof. |
+| 3.5 | Enrich session previews with last prompt and useful location/context information. | PARTIAL | `lastUserPrompt` and runtime cwd fields were added. | Installed visual/data acceptance, truncation/privacy rules, stale/zero-prompt cases, live refresh. |
+| 3.6 | Load old sessions near-instantly: last turn first, older turns on upward scroll, without whole-transcript re-render. | PARTIAL | #403 landed tail-limited reads, `loadEarlier` paging, and size/mtime caches; manual benchmarks report 800-turn fold 113→78 ms and paging 100→10 ms. | Prove default last-turn-first behavior, upward paging, cancellation/races, first paint, and no full transcript rerender in the exact final installed app. |
+| 4.1 | Add Git branch/worktree management to the composer/right drawer. | PARTIAL | Git routes, branch/worktree search/create/switch/remove UI landed. | Installed acceptance for dirty state, confinement, remote/local branches, create/switch/remove, failures, and no data loss. |
+| 4.2 | Remove the two redundant browser buttons from the composer; browser access lives in the right drawer. | NOT STARTED | No accepted installed evidence. | Implement, remove dead handlers/styles, verify keyboard/accessibility and drawer access. |
+| 4.3 | Repair browser tools and point/select behavior so the model can use the visible Brave-extension browser surface. | NOT STARTED | Brave ChatGPT extension connectivity itself is proven; product integration remains unproven. Candidate PR #373 exists. | Harvest/implement one visible browser session, selection/pointing, tool execution/results, permissions/errors, and recorded real-site/local-app proof. |
+| 4.4 | Make chat typography, hues, hierarchy, and assistant text match the ChatGPT app. | PARTIAL | Markdown and chat CSS changes exist. | Reference comparison, full message-state sweep, installed visual review. |
+| 4.5 | Render tool calls, reasoning, and traces like ChatGPT and cap them to stable scrollable heights to avoid re-render churn. | NOT STARTED | GLM-5.3 found no tool/reasoning/trace height cap in the track; the existing 40vh cap applies only to the prompt minimap. | Implement one canonical component and height/scroll policy, then prove streaming stability, long-output performance, and installed behavior. |
+| 4.6 | Improve the pinned summary to match the ChatGPT-style session experience. | NOT STARTED | No accepted implementation evidence. | Define content/lifecycle, implement shared component, persistence and installed proof. |
+| 4.7 | Make file editing, diffs, and syntax highlighting production quality. | PARTIAL | Existing editor/diff surfaces and small source changes exist. | Language/theme/large-file/error/edit/save/diff acceptance and visual review. |
+| 4.8 | Reduce collapsed drawer height and drawer-icon size; make the model selector tighter, correctly anchored, overlaid, and highest appropriate z-index. | PARTIAL | Drawer/model-picker source changes exist. | Installed viewport/scroll/resize/multi-monitor visual acceptance with no clipping or layering faults. |
+| 5.1 | Test every production-equivalent feature and retained route. | NOT STARTED | Static and limited slice checks exist. | Signed feature/route matrix with success, loading, empty, error, cancel, offline, restart, and migration scenarios. |
+| 5.2 | Measure launch, navigation, new-chat, Recents, session appearance, old-session first paint, scroll paging, streaming, tools, browser actions, and persistence latency. | PARTIAL | Session-performance docs/bench artifacts exist; one live-sync attempt failed. | Reproducible final-head baseline and accepted measurements against explicit budgets. |
+| 5.3 | Measure implementation LOC, package/install size, memory/CPU, and request/network characteristics before and after. | PARTIAL | PR diff and current installed sizes captured. | Product-only baseline/final report with identical methodology and ≥25% LOC proof. |
+| 5.4 | Validate Responses, Anthropic, controller routes, and multi-port behavior against actual supported runtimes. | NOT STARTED | No complete live compatibility matrix; no final local vLLM/SGLang endpoints are running. | For each probe record loopback host, port, engine/model/version, request/result, streaming/tools/errors/cancel, simultaneous deployments, and an explicit unavailable-engine disposition. Keep raw remote endpoints only in private evidence. |
+| 5.5 | Use Computer Use and the Brave extension to test, record, review, and verify Electron desktop and Litter/mobile behavior. | NOT STARTED | Local Studio owns Electron/Brave; Litter owns the phone; both apps and Brave extension are connected; prior sync recording failed. | Joint final recordings at one frozen source/install head for every visible row, with Local Studio and Litter evidence linked together. |
+| 5.6 | Obtain GLM-5.3 implementation evidence, DeepSeek-v4-pro review, Fable-5 adjudication, Kimi-K3 adversarial review, and Opus-5 final review. | PARTIAL | All five goal-review lanes delivered; Kimi session `01a0028d-1cb7-7cbd-814c-11a20fd4e8ab` is no longer quota-blocked; Opus and Kimi returned `REVISE`. | Apply every required goal patch, resolve OMP separately, then obtain final-frozen-head code/product approvals with no unresolved high/medium findings. |
+| 6.1 | Pass `npm run check`, all required CI, package/build/signature, and exact-source install gates at the final head. | PARTIAL | `npm run check` passed after this goal draft and CI is green at implementation base `683949dff`; the current Dev install lacks a durable byte-tie to that head. | After all code findings resolve, freeze one SHA, rerun local check and CI, then package/sign/install and bind build ID plus byte hashes to that SHA. |
+| 6.2 | Thoroughly review, mark ready, and merge PR #408 into `dev`. | NOT STARTED | Draft PR is mergeable and green. | All product/architecture/acceptance/review rows complete; no unresolved review findings; merge verified. |
+| 6.3 | Close every other superseded PR after harvesting useful work. | NOT STARTED | 30 PRs remain open. | Per-PR disposition ledger, unique-commit harvest proof, close comments, and post-close inventory. |
+| 6.4 | Promote the accepted track to `main` and release the v2.0.1 program through the documented semantic-release workflow; synchronize local and origin refs. | NOT STARTED | `main` remains at `eeeb3406`; stable is 2.11.2; the program label is not a literal tag; Release #464 is waiting on the `release-signing` environment. | Resolve workflow authority, preserve main's required linear history, obtain the human signing approval, accept semantic-release's post-2.11.2 version, and prove artifact/install/update provenance plus exact ref equality. |
+| 6.5 | Delete obsolete worktrees and dead local/remote branches safely. | NOT STARTED | This linked worktree shares `/Users/sero/projects/vllm-studio/.git` with the dirty original; 45 worktrees, 80 branches, 24 stashes, and 131 remote heads remain. | Publish an exact dry-run manifest with proof-of-death, preserve all stashes/unique/dirty state, obtain explicit confirmation on the manifest, remove only named targets, and verify inventory. Never run broad `gc`, worktree `prune`, stash-drop, or remote-ref deletion from this program. |
+| 6.6 | Leave no avoidable temp/build/process waste. | PARTIAL | Review-time ignored output was about 1.2 GiB `.next`, 962 MiB stable dist, 1.4 GiB dev dist, 47 MiB runtime dist, and 53 MiB `.agent-sources`; sensitive captures were moved recoverably to Trash under the user's no-waste request. | Archive required evidence, publish a cleanup manifest, preserve `release-staging/` unless separately confirmed, obtain confirmation, then remove only disposable builds/processes and record retained items. |
+
+## Frozen acceptance budgets
+
+Freeze these before collecting final measurements. Use the same Mac, OS build, AC-power state, controller/model versions, network path, and synthetic corpus for before/after runs. The corpus contains 50 projects, 1,000 sessions, one 800-turn session, and one 100,000-character tool/reasoning payload. Run latency scenarios 10 times and report p50/p95 plus raw samples.
+
+- Cold launch to interactive shell: p95 ≤5,000 ms; warm launch: p95 ≤2,000 ms.
+- Page navigation, Recents opening, and New-task composer focus: p95 ≤250 ms.
+- Local session-row and spinner onset: p95 ≤250 ms; cross-app Litter ⇄ Local Studio appearance: p95 ≤5,000 ms; spinner clear after terminal event: p95 ≤1,000 ms.
+- Old-session last-turn first paint: p95 ≤500 ms; each older-turn page: p95 ≤250 ms; zero main-thread tasks longer than 100 ms during initial load or scroll-back.
+- Streaming tool/reasoning render commit: p95 ≤50 ms with no whole-transcript remount; browser-tool event to visible actuation: p95 ≤1,000 ms excluding remote page/network time.
+- Restart to persisted project/session inventory: p95 ≤5,000 ms with exactly one row per session.
+- Product LOC: ≤80,667 under the frozen cloc 2.06 pipeline. Packaged app: ≤1,017,820 KiB; installed app: ≤985,900 KiB.
+- Idle CPU p95 ≤5%; final idle RSS ≤110% of the frozen pre-change baseline; active-stream RSS ≤115% of baseline. Record every Electron/controller/helper process included.
+- Opening a session performs at most one summary request, one last-turn request, and one long-lived list-change stream; no duplicate request and no polling interval below 15 seconds.
+- Controller passthrough overhead on loopback, excluding model generation/network time: p95 ≤25 ms for vLLM, SGLang, and Anthropic-compatible request/stream forwarding.
+
+## Today cut
+
+At this review point the full program cannot honestly finish today without skipping major implementation and acceptance gates. Today's non-negotiable cutoff is: commit/push this goal, bind its hash to PR #408, align the PR title/body, retain completed Fable/GLM/DeepSeek/Kimi/Opus audits, preserve the green `npm run check`, and begin the first architecture/harvest workpack. No Phase-0 merge is allowed. All remaining rows stay in this same program; they are not silently deferred or descoped.
+
+## Acceptance gates
+
+1. **Authority:** exact remote refs, PR/branch disposition, deployed desktop identity, installed desktop identity, installed Litter identity, and physical-phone identity are recorded.
+2. **Architecture:** Fable approves the controller/RPC/topology plan; GLM and DeepSeek independently find no unresolved high-risk design gap.
+3. **Source:** product-only LOC target passes; dead-code, route, dependency, DB, style, and ownership sweeps are complete; `npm run check` is green.
+4. **Runtime/API:** on disposable data, vLLM and SGLang Responses passthrough, Anthropic passthrough, multiple simultaneous arbitrary-port deployments, streaming, tools, cancellation, errors, and persistence pass. Each private evidence record names loopback host/port, engine, model, and version; unavailable engines receive an explicit disposition.
+5. **Desktop:** after source review resolution and code freeze, the exact final build is packaged with the official script, signed, installed against disposable/copied data, restarted, and all visible feature rows pass in Electron with a recording.
+6. **Browser:** the Brave ChatGPT extension controls the one visible browser surface; point/select/tool flows pass with a recording; redundant composer browser controls are absent.
+7. **Litter/mobile:** Litter PR #295 supplies a current physical-phone build and provenance; together with the frozen Local Studio build it proves bidirectional visibility, exactly-once identity, cwd/model/status, spinners, openability, and restart persistence on disposable/copied data with one joint recording.
+8. **Performance:** reproducible before/after LOC, package size, memory/CPU, network, and latency measurements meet the frozen numeric budgets above and contain no unsupported “faster” or “smaller” claim.
+9. **Review:** the GLM-5.3 implementation report, DeepSeek-v4-pro independent review, Fable-5 adjudication, Kimi-K3 adversarial review or current provider blocker, and canonical Opus-5 final review all exist at the frozen SHA with no unresolved high/medium findings.
+10. **Release/cleanup:** required CI is green at the accepted SHA; #408 merges; superseded PRs close individually; semantic release promotes; a user-approved dry-run manifest governs exact cleanup targets; obsolete worktrees/branches/builds are safely removed without touching stashes or the dirty original checkout.
+
+## Execution order
+
+1. Commit/push this goal, record its file SHA-256 in PR #408, align the PR title/body, and resolve its plan-review findings.
+2. Finish authority: deployed/installed/phone provenance and per-PR/per-branch harvest dispositions. Publish cleanup candidates but delete nothing.
+3. Lock the controller architecture: Effect v4 primitives, single RPC/contracts, session identity, multi-model/multi-port ownership, safe DB migration, Responses and Anthropic boundaries.
+4. Implement all controller/data work first, then session/history/browser primitives, then pages/styles/icons. GLM and DeepSeek own non-overlapping branches/files. Integrate small reviewed commits and update this matrix.
+5. Run safe live API/topology/persistence probes only against disposable/copied data. Obtain source/design reviews, resolve every finding, and repeat implementation as needed.
+6. Freeze one source SHA only after source/design review resolution. Run `npm run check` and all required CI at that SHA; any code change restarts at step 4.
+7. Package, sign, and install exactly that frozen SHA with the official installer and a source-to-build byte tie.
+8. Record final Electron, Brave-extension, and joint Litter/mobile acceptance at the frozen SHA/build ID; collect all frozen-budget measurements.
+9. Obtain evidence-only final GLM/DeepSeek/Fable/Kimi/Opus reviews. If a finding requires code, invalidate the recordings and return to step 4.
+10. Mark #408 ready and merge to `dev`; promote through protected linear-history `main` and semantic release; close superseded PRs individually; then present the cleanup manifest for confirmation and remove only approved dead targets.
+
+## Required evidence index
+
+Every accepted row must link or record:
+
+- source branch, full commit SHA, changed paths, and PR;
+- `GOAL.md` file SHA-256, recorded externally in PR #408 and the commit handoff after every edit to avoid a self-referential hash;
+- command/model/session proof for delegated work;
+- validation commands and full pass/fail result;
+- controller/runtime endpoint and request matrix where applicable;
+- installed app version, build ID, signature, and source provenance;
+- recording path, SHA-256, duration, scenario timestamps, and observed result;
+- performance/LOC/size methodology and before/after values;
+- independent review verdict and resolved findings;
+- data-backup/disposable-directory proof and cleanup dry-run manifest when applicable;
+- remaining gaps, if any, without upgrading `PARTIAL` to `DONE`.
