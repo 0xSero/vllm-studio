@@ -49,6 +49,7 @@ export {
   ArrowUp,
   ArrowUpCircle,
   AtSign,
+  Bell,
   Boxes,
   Braces,
   Brain,

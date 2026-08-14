@@ -9,12 +9,14 @@ import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 import { type ActiveSession, indexOpenByThreadId } from "@/features/agent/session-contracts";
+import { getSessionActivity, subscribeSessionActivity } from "@/features/agent/session-index";
 import type { AggregatedSession } from "@shared/agent/session-summary";
 
 type Props = {
   open: boolean;
   onClose: () => void;
   activeSessions: readonly ActiveSession[];
+  mode?: "search" | "recents";
 };
 
 type AppDestination = {
@@ -75,10 +77,21 @@ function isRunning(status: string): boolean {
   return Boolean(status) && status !== "idle" && status !== "done";
 }
 
-export function SessionsCommand({ open, onClose, activeSessions }: Props) {
+function parseEpoch(value?: string): number {
+  const parsed = value ? Date.parse(value) : NaN;
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+function sameActiveSet(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  return left.size === right.size && [...left].every((id) => right.has(id));
+}
+
+export function SessionsCommand({ open, onClose, activeSessions, mode = "search" }: Props) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [sessions, setSessions] = useState<AggregatedSession[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -89,25 +102,46 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
     void import("@/features/agent/ui/sessions-command-effects")
       .then((mod) => mod.loadAggregatedSessions())
       .then((nextSessions) => {
-        if (!cancelled) setSessions(nextSessions);
+        if (cancelled) return;
+        setSessions(nextSessions);
+        setLoadFailed(false);
       })
       .catch(() => {
-        if (!cancelled) setSessions([]);
+        if (!cancelled) {
+          setSessions([]);
+          setLoadFailed(true);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, reloadNonce]);
 
   useMountSubscription(() => {
     if (!open) return;
     const frame = requestAnimationFrame(() => {
       setQuery("");
       setHighlight(0);
-      inputRef.current?.focus();
+      if (mode === "recents") {
+        listRef.current?.focus();
+      } else {
+        inputRef.current?.focus();
+      }
     });
     return () => cancelAnimationFrame(frame);
   }, [open]);
+
+  useMountSubscription(() => {
+    if (!open || mode !== "recents") return;
+    let previous = getSessionActivity().active;
+    return subscribeSessionActivity(() => {
+      const next = getSessionActivity().active;
+      const unchanged = sameActiveSet(previous, next);
+      previous = next;
+      if (unchanged) return;
+      setReloadNonce((nonce) => nonce + 1);
+    });
+  }, [open, mode]);
 
   const openByThreadId = useMemo(() => indexOpenByThreadId(activeSessions), [activeSessions]);
 
@@ -129,6 +163,38 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
       .slice(0, 80);
   }, [sessions, query]);
 
+  const recentsOrdered = useMemo(() => {
+    const ranked: AggregatedSession[] = [];
+    for (const session of sessions ?? []) {
+      if (!Number.isFinite(parseEpoch(session.lastUserPromptAt))) continue;
+      ranked.push(session);
+    }
+    ranked.sort((a, b) => {
+      const atA = parseEpoch(a.lastUserPromptAt);
+      const atB = parseEpoch(b.lastUserPromptAt);
+      if (atB !== atA) return atB - atA;
+      const sA = parseEpoch(a.startedAt) || 0;
+      const sB = parseEpoch(b.startedAt) || 0;
+      if (sB !== sA) return sB - sA;
+      if (a.id < b.id) return -1;
+      if (a.id > b.id) return 1;
+      return 0;
+    });
+    return ranked;
+  }, [sessions]);
+
+  const recentsFiltered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return recentsOrdered.slice(0, 60);
+    return recentsOrdered
+      .filter((session) => {
+        const haystack =
+          `${session.lastUserPromptText ?? ""} ${session.projectName} ${session.modelId ?? ""}`.toLowerCase();
+        return haystack.includes(q);
+      })
+      .slice(0, 80);
+  }, [recentsOrdered, query]);
+
   const destinationFiltered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return APP_DESTINATIONS.slice(0, 8);
@@ -149,8 +215,17 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
 
   const totalRows = destinationFiltered.length + liveFiltered.length + filtered.length;
   const selectedIndex = totalRows > 0 ? Math.min(highlight, totalRows - 1) : 0;
+  const recentsSelected =
+    recentsFiltered.length > 0 ? Math.min(highlight, recentsFiltered.length - 1) : 0;
+  const recentsTotalRows = recentsFiltered.length;
 
   if (!open) return null;
+
+  function retry() {
+    setSessions(null);
+    setLoadFailed(false);
+    setReloadNonce((nonce) => nonce + 1);
+  }
 
   function commit(index: number) {
     if (index < 0) return;
@@ -180,6 +255,15 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
     onClose();
   }
 
+  function commitRecents(index: number) {
+    const session = recentsFiltered[index];
+    if (!session) return;
+    router.push(
+      `/agent?project=${encodeURIComponent(session.projectId)}&session=${encodeURIComponent(session.id)}&replace=1`,
+    );
+    onClose();
+  }
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <button
@@ -192,15 +276,30 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
         aria-modal="true"
         className={`relative z-10 flex max-h-[68vh] w-[min(720px,92vw)] flex-col ${POPOVER_PANEL_CLASS}`}
         onKeyDown={(event) => {
+          if (
+            mode === "recents" &&
+            event.key.length === 1 &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.altKey
+          ) {
+            inputRef.current?.focus();
+          }
           if (event.key === "ArrowDown") {
             event.preventDefault();
-            setHighlight((h) => Math.min(totalRows - 1, h + 1));
+            setHighlight((h) =>
+              Math.min((mode === "recents" ? recentsTotalRows : totalRows) - 1, h + 1),
+            );
           } else if (event.key === "ArrowUp") {
             event.preventDefault();
             setHighlight((h) => Math.max(0, h - 1));
           } else if (event.key === "Enter") {
             event.preventDefault();
-            commit(selectedIndex);
+            if (mode === "recents") {
+              commitRecents(recentsSelected);
+            } else {
+              commit(selectedIndex);
+            }
           } else if (event.key === "Escape") {
             event.preventDefault();
             onClose();
@@ -216,18 +315,96 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
               setQuery(event.target.value);
               setHighlight(0);
             }}
-            placeholder="Search destinations, sessions, projects, or models…"
+            placeholder={
+              mode === "recents"
+                ? "Filter recent sessions…"
+                : "Search destinations, sessions, projects, or models…"
+            }
             className="flex-1 bg-transparent text-[length:var(--fs-lg)] text-(--fg) outline-none placeholder:text-(--dim)"
           />
           <kbd className="rounded bg-(--surface-2) px-1.5 py-0.5 text-[length:var(--fs-xs)] text-(--dim)">
             esc
           </kbd>
         </div>
-        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto py-1">
-          {sessions === null ? (
-            <div className="px-4 py-6 text-[length:var(--fs-md)] text-(--dim)">
+        <div
+          ref={listRef}
+          tabIndex={-1}
+          aria-busy={sessions === null && !loadFailed}
+          className="min-h-0 flex-1 overflow-y-auto py-1"
+        >
+          {loadFailed ? (
+            <div
+              role="alert"
+              className="min-h-64 px-4 py-8 text-center text-[length:var(--fs-md)] text-(--dim)"
+            >
+              <div>Couldn’t load sessions.</div>
+              <button
+                type="button"
+                onClick={retry}
+                className="mt-3 inline-flex h-7 items-center rounded-md border border-(--border) px-3 text-[length:var(--fs-sm)] text-(--fg) transition-colors hover:bg-(--hover)"
+              >
+                Retry
+              </button>
+            </div>
+          ) : sessions === null ? (
+            <div className="min-h-64 px-4 py-6 text-[length:var(--fs-md)] text-(--dim)">
               Loading sessions…
             </div>
+          ) : mode === "recents" ? (
+            recentsTotalRows === 0 ? (
+              <div className="min-h-64 px-4 py-8 text-center text-[length:var(--fs-md)] text-(--dim)">
+                No recent sessions
+              </div>
+            ) : (
+              <>
+                <SectionLabel>Recent</SectionLabel>
+                {recentsFiltered.map((session, index) => {
+                  const active = recentsSelected === index;
+                  const running = openByThreadId.has(session.id);
+                  const label =
+                    cleanSessionTitle(session.lastUserPromptText ?? "") ||
+                    `Session ${session.id.slice(0, 8)}`;
+                  const locationTitle = [session.projectName, session.projectPath, session.cwd]
+                    .filter(Boolean)
+                    .join(" · ");
+                  const modelMeta = session.modelId ?? session.provider ?? "";
+                  return (
+                    <button
+                      key={session.id}
+                      type="button"
+                      title={locationTitle}
+                      onMouseEnter={() => setHighlight(index)}
+                      onClick={() => commitRecents(index)}
+                      className={`flex w-full items-center gap-3 px-4 py-2 text-left text-[length:var(--fs-base)] transition-colors ${
+                        active ? "bg-(--bg)" : "hover:bg-(--bg)/70"
+                      }`}
+                    >
+                      {running ? (
+                        <span
+                          className="inline-block h-2 w-2 shrink-0 rounded-full bg-(--hl2) animate-pulse"
+                          aria-hidden
+                        />
+                      ) : (
+                        <ChatIcon className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate text-(--fg)">{label}</span>
+                      <span className="inline-flex items-center gap-1 shrink-0 truncate text-[length:var(--fs-sm)] text-(--dim)">
+                        <Folder className="h-3 w-3" />
+                        {session.projectName}
+                      </span>
+                      {modelMeta ? (
+                        <span className="shrink-0 truncate font-mono text-[length:var(--fs-sm)] text-(--dim)">
+                          {modelMeta}
+                        </span>
+                      ) : null}
+                      <span className="w-12 shrink-0 text-right text-[length:var(--fs-sm)] text-(--dim)">
+                        {formatRelative(session.lastUserPromptAt ?? "")}
+                      </span>
+                    </button>
+                  );
+                })}
+              </>
+            )
           ) : totalRows === 0 ? (
             <div className="px-4 py-8 text-center text-[length:var(--fs-md)] text-(--dim)">
               No destinations or sessions match “{query}”.
@@ -331,7 +508,8 @@ export function SessionsCommand({ open, onClose, activeSessions }: Props) {
         </div>
         <div className="flex items-center justify-between border-t border-(--separator) px-4 py-2 text-[length:var(--fs-sm)] text-(--dim)">
           <span>
-            {totalRows} result{totalRows === 1 ? "" : "s"}
+            {mode === "recents" ? recentsTotalRows : totalRows} result
+            {(mode === "recents" ? recentsTotalRows : totalRows) === 1 ? "" : "s"}
           </span>
           <span className="flex items-center gap-2">
             <kbd className="rounded bg-(--surface-2) px-1.5 py-0.5">↑</kbd>

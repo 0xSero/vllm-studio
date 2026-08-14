@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ProfileFooter } from "@/features/shell/profile-footer";
 import { type MouseEvent as ReactMouseEvent } from "react";
 import {
+  Bell,
   ChevronLeft,
   ChevronRight,
   Search as SearchIcon,
@@ -34,6 +35,8 @@ export function DesktopSidebar({
   onRevealProjectsNav,
   onSetPinnedOpen,
   onOpenSearch,
+  onOpenRecents,
+  recentsIndicator,
   onNewTask,
 }: {
   pathname: string;
@@ -46,6 +49,8 @@ export function DesktopSidebar({
   onRevealProjectsNav: () => void;
   onSetPinnedOpen: (open: boolean) => void;
   onOpenSearch: () => void;
+  onOpenRecents: () => void;
+  recentsIndicator: boolean;
   onNewTask: () => void;
 }) {
   return (
@@ -124,6 +129,21 @@ export function DesktopSidebar({
                 aria-label="Search sessions"
               >
                 <SearchIcon className="h-4 w-4" strokeWidth={1.75} />
+              </button>
+              <button
+                onClick={onOpenRecents}
+                className="relative flex h-7 w-7 items-center justify-center rounded-md text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+                title="Recents"
+                aria-label="Recents"
+              >
+                <Bell className="h-4 w-4" strokeWidth={1.75} />
+                {recentsIndicator ? (
+                  <span
+                    className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-(--link)"
+                    aria-label="Unseen activity"
+                    title="Unseen activity"
+                  />
+                ) : null}
               </button>
             </div>
 

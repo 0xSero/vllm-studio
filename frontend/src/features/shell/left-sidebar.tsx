@@ -6,6 +6,7 @@ import {
   useCallback,
   useRef,
   useState,
+  type ComponentType,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
@@ -13,14 +14,14 @@ import { Menu } from "@/ui/icon-registry";
 import { useShallow } from "zustand/react/shallow";
 import { DEFAULT_SIDEBAR_WIDTH, useAppStore } from "@/store";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { useOpenSessions } from "@/features/agent/ui/use-open-sessions";
+import { useOpenSessions, useSessionActivity } from "@/features/agent/ui/use-open-sessions";
+import type { ActiveSession } from "@/features/agent/session-contracts";
 import { hrefWithOpenNonce } from "@/features/agent/ui/projects-nav/helpers";
 import { DesktopSidebar } from "@/features/shell/left-sidebar-desktop";
 import {
   loadProjectsNavSection,
   loadSessionsCommand,
   type ProjectsNavSectionComponent,
-  type SessionsCommandComponent,
 } from "@/features/shell/left-sidebar-lazy";
 import { MobileNavigationDrawer } from "@/features/shell/left-sidebar-mobile-drawer";
 import {
@@ -31,6 +32,13 @@ import {
 
 const SIDEBAR_MIN_WIDTH = 180;
 const SIDEBAR_MAX_WIDTH = 520;
+type PaletteMode = "search" | "recents" | null;
+type SessionsCommandProps = {
+  open: boolean;
+  onClose: () => void;
+  activeSessions: readonly ActiveSession[];
+  mode?: "search" | "recents";
+};
 function clampSidebarWidth(width: number): number {
   if (!Number.isFinite(width)) return DEFAULT_SIDEBAR_WIDTH;
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
@@ -63,14 +71,17 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   // The chat session carries its own header (hamburger + right-panel toggle),
   // so the app topbar would be a second stacked row there.
   const chatSessionRoute = isRouteActive(pathname, "/agent");
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [paletteMode, setPaletteMode] = useState<PaletteMode>(null);
   const activeSessions = useOpenSessions();
+  const sessionActivity = useSessionActivity();
+  const recentsIndicator = sessionActivity.active.size > 0 || sessionActivity.unseen.size > 0;
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [projectsNavReady, setProjectsNavReady] = useState(projectsNavImmediate);
   const [ProjectsNavSection, setProjectsNavSection] = useState<ProjectsNavSectionComponent | null>(
     null,
   );
-  const [SessionsCommand, setSessionsCommand] = useState<SessionsCommandComponent | null>(null);
+  const [SessionsCommand, setSessionsCommand] =
+    useState<ComponentType<SessionsCommandProps> | null>(null);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
 
   useMountSubscription(() => {
@@ -92,7 +103,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setSearchOpen((open) => !open);
+        setPaletteMode((mode) => (mode === "search" ? null : "search"));
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -124,7 +135,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   }, [ProjectsNavSection, projectsNavReady]);
 
   useMountSubscription(() => {
-    if (!searchOpen || SessionsCommand) return;
+    if (!paletteMode || SessionsCommand) return;
     let cancelled = false;
     void loadSessionsCommand().then((Component) => {
       if (!cancelled) setSessionsCommand(() => Component);
@@ -132,7 +143,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [SessionsCommand, searchOpen]);
+  }, [SessionsCommand, paletteMode]);
 
   const startSidebarResize = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -188,7 +199,9 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
           if (!hidesAppSidebar && !projectsNavReady) setProjectsNavReady(true);
         }}
         onSetPinnedOpen={setDesktopSidebarPinnedOpen}
-        onOpenSearch={() => setSearchOpen(true)}
+        onOpenSearch={() => setPaletteMode("search")}
+        onOpenRecents={() => setPaletteMode("recents")}
+        recentsIndicator={recentsIndicator}
         onNewTask={openNewTask}
       />
 
@@ -226,8 +239,9 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
 
       {SessionsCommand ? (
         <SessionsCommand
-          open={searchOpen}
-          onClose={() => setSearchOpen(false)}
+          open={paletteMode !== null}
+          mode={paletteMode ?? "search"}
+          onClose={() => setPaletteMode(null)}
           activeSessions={activeSessions}
         />
       ) : null}
