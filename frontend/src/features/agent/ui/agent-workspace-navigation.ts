@@ -141,9 +141,14 @@ function consumeOneShotNavParams(
   sessionId: string | null,
 ): void {
   if (typeof window === "undefined") return;
-  const href = settledAgentNavigationHref(window.location.href, projectId, sessionId);
-  if (href !== window.location.href) router.replace(href);
   settleNewChatNavigation();
+  const href = settledAgentNavigationHref(window.location.href, projectId, sessionId);
+  if (href === window.location.href) return;
+  try {
+    router.replace(href);
+  } catch {
+    return;
+  }
 }
 
 export function useAgentWorkspaceNavigationEffects({
