@@ -9,7 +9,13 @@ import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 import { type ActiveSession, indexOpenByThreadId } from "@/features/agent/session-contracts";
-import { getSessionActivity, subscribeSessionActivity } from "@/features/agent/session-index";
+import {
+  getSessionActivity,
+  sessionActivity,
+  subscribeSessionActivity,
+  type SessionActivity,
+} from "@/features/agent/session-index";
+import { useSessionActivity } from "@/features/agent/ui/use-open-sessions";
 import type { AggregatedSession } from "@shared/agent/session-summary";
 
 type Props = {
@@ -25,6 +31,11 @@ type AppDestination = {
   keywords: string;
   description: string;
 };
+
+const PALETTE_LABELS = {
+  search: { dialog: "Session search", backdrop: "Close session search" },
+  recents: { dialog: "Recent sessions", backdrop: "Close recents" },
+} as const;
 
 const APP_DESTINATIONS: AppDestination[] = [
   {
@@ -95,6 +106,7 @@ export function SessionsCommand({ open, onClose, activeSessions, mode = "search"
   const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const activitySnapshot = useSessionActivity();
 
   useMountSubscription(() => {
     if (!open) return;
@@ -129,7 +141,7 @@ export function SessionsCommand({ open, onClose, activeSessions, mode = "search"
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [open]);
+  }, [open, mode]);
 
   useMountSubscription(() => {
     if (!open || mode !== "recents") return;
@@ -218,6 +230,7 @@ export function SessionsCommand({ open, onClose, activeSessions, mode = "search"
   const recentsSelected =
     recentsFiltered.length > 0 ? Math.min(highlight, recentsFiltered.length - 1) : 0;
   const recentsTotalRows = recentsFiltered.length;
+  const paletteLabels = PALETTE_LABELS[mode];
 
   if (!open) return null;
 
@@ -269,11 +282,12 @@ export function SessionsCommand({ open, onClose, activeSessions, mode = "search"
       <button
         className="absolute inset-0 bg-(--color-background)"
         onClick={onClose}
-        aria-label="Close session search"
+        aria-label={paletteLabels.backdrop}
       />
       <div
         role="dialog"
         aria-modal="true"
+        aria-label={paletteLabels.dialog}
         className={`relative z-10 flex max-h-[68vh] w-[min(720px,92vw)] flex-col ${POPOVER_PANEL_CLASS}`}
         onKeyDown={(event) => {
           if (
@@ -353,21 +367,23 @@ export function SessionsCommand({ open, onClose, activeSessions, mode = "search"
           ) : mode === "recents" ? (
             recentsTotalRows === 0 ? (
               <div className="min-h-64 px-4 py-8 text-center text-[length:var(--fs-md)] text-(--dim)">
-                No recent sessions
+                {query.trim()
+                  ? `No recent sessions match “${query.trim()}”.`
+                  : "No recent sessions"}
               </div>
             ) : (
               <>
                 <SectionLabel>Recent</SectionLabel>
                 {recentsFiltered.map((session, index) => {
                   const active = recentsSelected === index;
-                  const running = openByThreadId.has(session.id);
+                  const activity = sessionActivity([session.id], activitySnapshot);
                   const label =
                     cleanSessionTitle(session.lastUserPromptText ?? "") ||
                     `Session ${session.id.slice(0, 8)}`;
                   const locationTitle = [session.projectName, session.projectPath, session.cwd]
                     .filter(Boolean)
                     .join(" · ");
-                  const modelMeta = session.modelId ?? session.provider ?? "";
+                  const modelMeta = session.modelId || session.provider || "";
                   return (
                     <button
                       key={session.id}
@@ -379,14 +395,7 @@ export function SessionsCommand({ open, onClose, activeSessions, mode = "search"
                         active ? "bg-(--bg)" : "hover:bg-(--bg)/70"
                       }`}
                     >
-                      {running ? (
-                        <span
-                          className="inline-block h-2 w-2 shrink-0 rounded-full bg-(--hl2) animate-pulse"
-                          aria-hidden
-                        />
-                      ) : (
-                        <ChatIcon className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
-                      )}
+                      <RecentsActivityMark activity={activity} />
                       <span className="min-w-0 flex-1 truncate text-(--fg)">{label}</span>
                       <span className="inline-flex items-center gap-1 shrink-0 truncate text-[length:var(--fs-sm)] text-(--dim)">
                         <Folder className="h-3 w-3" />
@@ -522,6 +531,36 @@ export function SessionsCommand({ open, onClose, activeSessions, mode = "search"
       </div>
     </div>
   );
+}
+
+function RecentsActivityMark({ activity }: { activity: SessionActivity }) {
+  if (activity === "running") {
+    return (
+      <span
+        className="inline-block h-2 w-2 shrink-0 rounded-full bg-(--hl2) animate-pulse"
+        aria-hidden
+      />
+    );
+  }
+  if (activity === "finished") {
+    return (
+      <span
+        className="inline-block h-2 w-2 shrink-0 rounded-full bg-(--ok)"
+        aria-label="Run finished"
+        title="Run finished"
+      />
+    );
+  }
+  if (activity === "unseen") {
+    return (
+      <span
+        className="inline-block h-2 w-2 shrink-0 rounded-full bg-(--link)"
+        aria-label="Unseen activity"
+        title="Unseen activity"
+      />
+    );
+  }
+  return <ChatIcon className="h-3.5 w-3.5 shrink-0 text-(--dim)" />;
 }
 
 function SectionLabel({ children }: { children: string }) {
