@@ -6,6 +6,7 @@ import type { ToolsContextValue } from "@/features/agent/tools/context";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import { shouldSubscribeRuntimeEvents } from "@/features/agent/runtime/runtime-cursor";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
+import { openSessionListChangedSubscription } from "@/features/agent/runtime/session-list-changed";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 function currentSearchParams(): URLSearchParams {
@@ -78,6 +79,9 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
       },
       getSession: (sessionId) => sessionsRef.current.find((session) => session.id === sessionId),
       getSessions: () => sessionsRef.current,
+    });
+    return openSessionListChangedSubscription(() => {
+      sessionRuntimeController().pollNow();
     });
   }, [dispatch]);
 

@@ -82,7 +82,8 @@ import {
 } from "./litter-bridge-mutation-ledger";
 import { piRuntimeManager } from "./pi-runtime";
 import type { PiAgentSession, PiDurablePromptBoundary } from "./pi-runtime-types";
-import { listArchivedSessionMetadata } from "./session-metadata-store";
+import { listArchivedSessionMetadata, setSessionMetadata } from "./session-metadata-store";
+import { notifySessionListChanged } from "./session-list-changed";
 
 const BODY_LIMIT_BYTES = 1_000_000;
 const RESPONSE_LIMIT_BYTES = 1_000_000;
@@ -2894,6 +2895,7 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         status: 200,
         result: acknowledgement,
       });
+      notifySessionListChanged();
       return Response.json(acknowledgement);
     } catch (error) {
       if (error instanceof AgentTurnDispatchIndeterminate) {
@@ -3231,6 +3233,10 @@ export function createLitterBridgeGateway(options: GatewayOptions = {}) {
         status: 200,
         result: acknowledgement,
       });
+      await setSessionMetadata(newSessionId, { cwd: project.cwd, title: request.title }).catch(
+        () => {},
+      );
+      notifySessionListChanged();
       return Response.json(acknowledgement);
     } catch (error) {
       console.error(

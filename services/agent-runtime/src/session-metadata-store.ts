@@ -286,3 +286,16 @@ export async function setSessionArchived(
     return { archived, archivedAt };
   });
 }
+
+export async function setSessionMetadata(
+  sessionId: string,
+  metadata: SessionArchiveMetadataInput,
+): Promise<void> {
+  const id = sessionId.trim();
+  if (!id) return;
+  await withStoreLock(() => {
+    const store = readStore();
+    store.sessions[id] = applyMetadataInput(store.sessions[id] ?? {}, metadata);
+    writeStore(store);
+  });
+}
