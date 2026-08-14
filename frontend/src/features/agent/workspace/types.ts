@@ -33,6 +33,7 @@ export type WorkspaceState = {
   hydrated: boolean;
   lastHandledNavKey: string;
   lastHandledNavIntent: string;
+  composerFocusIntent?: { targetTabId: string; nonce: number } | null;
 };
 
 export type WorkspaceSessionPayload = {
