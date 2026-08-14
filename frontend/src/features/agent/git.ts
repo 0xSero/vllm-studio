@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -23,8 +23,13 @@ export function configuredGitRoots(): string[] {
     .map((entry) => path.resolve(entry));
 }
 
-export function resolveGitCwd(input: string, roots = configuredGitRoots()): string | null {
-  if (!path.isAbsolute(input)) return null;
+type GitCwdResolution =
+  | { ok: true; cwd: string }
+  | { ok: false; reason: "confinement" }
+  | { ok: false; reason: "notFound" };
+
+function resolveGitCwdDetailed(input: string, roots = configuredGitRoots()): GitCwdResolution {
+  if (!path.isAbsolute(input)) return { ok: false, reason: "confinement" };
   const candidate = path.resolve(input);
   const withinRoots = (target: string, bases: readonly string[]) =>
     bases.some((base) => {
@@ -33,7 +38,16 @@ export function resolveGitCwd(input: string, roots = configuredGitRoots()): stri
         relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative))
       );
     });
-  if (!withinRoots(candidate, roots)) return null;
+  if (!withinRoots(candidate, roots)) return { ok: false, reason: "confinement" };
+  let realCandidate: string;
+  try {
+    realCandidate = realpathSync(candidate);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: (error as NodeJS.ErrnoException)?.code === "ENOENT" ? "notFound" : "confinement",
+    };
+  }
   const realRoots = roots
     .map((root) => {
       try {
@@ -43,13 +57,14 @@ export function resolveGitCwd(input: string, roots = configuredGitRoots()): stri
       }
     })
     .filter((root): root is string => root !== null);
-  let realCandidate: string;
-  try {
-    realCandidate = realpathSync(candidate);
-  } catch {
-    return null;
-  }
-  return withinRoots(realCandidate, realRoots) ? realCandidate : null;
+  return withinRoots(realCandidate, realRoots)
+    ? { ok: true, cwd: realCandidate }
+    : { ok: false, reason: "confinement" };
+}
+
+export function resolveGitCwd(input: string, roots = configuredGitRoots()): string | null {
+  const result = resolveGitCwdDetailed(input, roots);
+  return result.ok ? result.cwd : null;
 }
 
 export function assertGitCwd(
@@ -57,11 +72,12 @@ export function assertGitCwd(
 ): { cwd: string; error?: never } | { cwd?: never; error: Response } {
   const requested = input?.trim();
   if (!requested) return { error: Response.json({ error: "cwd is required" }, { status: 400 }) };
-  const cwd = resolveGitCwd(requested);
-  if (!cwd) return { error: Response.json({ error: "cwd must be absolute" }, { status: 400 }) };
-  if (!existsSync(cwd))
-    return { error: Response.json({ error: "cwd not found" }, { status: 404 }) };
-  return { cwd };
+  const result = resolveGitCwdDetailed(requested);
+  if (!result.ok)
+    return result.reason === "notFound"
+      ? { error: Response.json({ error: "cwd not found" }, { status: 404 }) }
+      : { error: Response.json({ error: "cwd must be absolute" }, { status: 400 }) };
+  return { cwd: result.cwd };
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
