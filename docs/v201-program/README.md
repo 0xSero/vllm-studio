@@ -18,6 +18,12 @@
 | `3a88ef4c` | B2 transplant 2 — cherry-pick of `5f8a3d5e` (branch search/switch/create) | `22103cbd` |
 | `c6be6e4d` | B2 transplant 3 — cherry-pick of `262f84c7` (worktree management) | `3a88ef4c` |
 | `de940589` | G0T GitAction single-source reconciliation (post-transplant; not a transplant) | `c6be6e4d` |
+| `76bb1922` | C1 — canonicalize git cwd confinement against symlink escape (`resolveGitCwdDetailed` lexical+realpath confinement) | `7d9b0b60` |
+| `3d857a20` | C2 — restore not-found error shape (ENOENT-only 404) and drop dead exists check | `76bb1922` |
+| `68d7d064` | C3 — detect existing branches by `show-ref` exit status | `3d857a20` |
+| `2c3d35bf` | merge-1 — merge CodeQL 144 path confinement lane (`--no-ff`; C1–C3 via p2) | `7d9b0b60` + `68d7d064` |
+| `5ee87c45` | C4 — drop unused `resolveGitCwd` wrapper | `68d7d064` |
+| `6f83829e` | merge-2 — merge dead wrapper cleanup (`--no-ff`; C4 via p2) | `2c3d35bf` + `5ee87c45` |
 
 ## Ledger map
 

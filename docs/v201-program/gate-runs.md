@@ -89,3 +89,26 @@ Run URL: `https://github.com/sybil-solutions/local-studio/actions/runs/317563581
 - **landing identity:** `b2-landing.md` (source branch, original→copy map, patch-id evidence, G0T reconciliation recorded separately, rollback boundary). Primary checkout 6/6 protected hashes unchanged (`integrity.md`).
 - **no re-gate:** this PASS is authoritative; the gate is not re-run for the docs commit that records this row.
 - **R16 subset proof (extends to pushed head):** `git diff --name-only de940589..<push-head>` = exactly `docs/v201-program/{b2-landing.md, README.md, gate-runs.md}` ⊆ `docs/v201-program/`. The push-head is **the docs commit recording this row**; its resolved SHA and push transcript are recorded in the post-push report `raw-reports/2026-08-13/g0u-b2-push.md` (produced after the one push, not committed in this row). Per R22, a docs-only overlay after a green gate does not invalidate it.
+
+## Run 8 — GREEN (alert-144 repair CI cycle; head `6f83829e`; G0AA)
+
+- **subject head:** `6f83829e7f1728bd656dd489d28f5700f26ed0c6` — merge-2 (`2c3d35bf` + `5ee87c45`), carrying the repair lane C1 `76bb1922`→C2 `3d857a20`→C3 `68d7d064`→merge-1 `2c3d35bf`→C4 `5ee87c45`. One normal push `7d9b0b60..6f83829e` through hooks (pre-push commit-lint, `check:static`, `check:cleanup`, `assert-standalone` green); `origin/dev`=`a765eb27`, `origin/main`=`eeeb3406` byte-identical before/after.
+- **CI workflow run `31763148107`** (pull_request synchronize, base `dev`), 2026-08-14T02:15:00Z..02:21:07Z, conclusion **success**. URL `https://github.com/sybil-solutions/local-studio/actions/runs/31763148107`.
+
+| job | conclusion | duration | job id |
+|---|---|---|---|
+| frontend | success | 3m59s | `94653519638` |
+| CodeQL Analysis | success | 1m47s | `94653519648` |
+| Secret Scanning (TruffleHog) | success | 21s | `94653519652` |
+| gates | success | 19s | `94653519682` |
+| desktop-package | success | 6m2s | `94653519683` |
+| Dependency Review | success | 9s | `94653519705` |
+| controller | success | 29s | `94653519708` |
+| agent-runtime | success | 9s | `94653519712` |
+
+- **GHAS CodeQL check-run `94653771644`** (github-advanced-security) on `6f83829e`: **success** (02:16:41Z..02:16:45Z); prior failing check `94640885325` on `7d9b0b60` ("1 new alert, 1 high") now green.
+- **Alert #144 (`js/path-injection`, `git.ts:39`):** query `code-scanning/alerts?state=open&tool_name=CodeQL&ref=refs/pull/408/merge` returns 26 open baseline alerts (`fs-store`/`comments-store`/`prompt-templates-store`, terminal/directories routes, `reader.ts` escaping rules — no `git.ts` entry, none newly introduced); **alert #144 absent, zero matches**. Global alert #144 remains `open` on `refs/heads/main` only (`eeeb3406`); **no dismissal performed** — main heals at promotion. Resolution is evidenced at the alert level (absent from the ref's open set), not by check-green alone.
+- **desktop-package artifact** `local-studio-cb49987e731f80828709f81b8a75aa648e1c78db-arm64` = **258,181,351 B**, sha256 `6572a9e957d262e4fba8aa19709a7023929ff132fb60e23f0e920c62fe89a889` (+6,618 B vs the `7d9b0b60` artifact 258,174,733 B).
+- **PR #408:** `mergeable` true, `mergeable_state` clean; `gh pr checks 408` all 9 contexts pass (8 workflow jobs + GHAS `CodeQL`).
+- **external report:** `raw-reports/2026-08-13/g0aa-r80-ci-cycle-green.md` · sha256 `37041fd36dbde5fbd713fe83ca3eb57bfaa4695855d4d41f30b20793a909ab88` (5,893 B).
+- **R16 subset proof:** `git diff --name-only 6f83829e..<recording-head>` ⊆ `docs/v201-program/` (this row + the C1–C4/merge register lines in `README.md`). The recording-head is **the docs commit recording this row**; its resolved SHA and push transcript are captured in the post-push report `raw-reports/2026-08-14/g0ab-green-resume.md` (produced after the one push, not committed here). Per R22, a docs-only overlay after a green CI cycle does not invalidate it.
