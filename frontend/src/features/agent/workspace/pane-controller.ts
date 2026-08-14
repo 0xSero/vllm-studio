@@ -219,14 +219,27 @@ export function setWorkspaceSplitRatio(
   return { ...state, layout: setLayoutSplitRatio(state.layout, payload.path, payload.ratio) };
 }
 
+function withComposerFocusIntent(
+  state: WorkspaceState,
+  targetTabId: string | undefined,
+): WorkspaceState {
+  if (!targetTabId) return state;
+  return {
+    ...state,
+    composerFocusIntent: { targetTabId, nonce: (state.composerFocusIntent?.nonce ?? 0) + 1 },
+  };
+}
+
 function openNewSessionInFocusedPane(
   state: WorkspaceState,
   payload: OpenNewSessionPayload,
 ): WorkspaceState {
   const targetPaneId = state.focusedPaneId;
   const pane = state.panesById.get(targetPaneId);
-  if (!pane) return state;
-  if (!isSession(payload.tab)) return state;
+  if (!pane) return { ...state, error: "Unable to open a new chat: no pane is focused." };
+  if (!isSession(payload.tab)) {
+    return { ...state, error: "Unable to open a new chat: invalid session payload." };
+  }
   const session: Session = {
     ...payload.tab,
     projectId: payload.project?.id,
@@ -234,7 +247,16 @@ function openNewSessionInFocusedPane(
     modelId: payload.tab.modelId || state.selectedModel || undefined,
   };
   if (payload.replaceWorkspace) {
-    return replaceWorkspaceSession(state, targetPaneId, session);
+    const activeId = paneSessionId(pane);
+    const active = activeId ? state.sessions.get(activeId) : undefined;
+    if (active && isEmptyStarterSession(active)) {
+      return withComposerFocusIntent(
+        focusSessionAsOnlyPane(state, targetPaneId, active.id),
+        active.id,
+      );
+    }
+    const minted = replaceWorkspaceSession(state, targetPaneId, session);
+    return withComposerFocusIntent(minted, minted.panesById.get(targetPaneId)?.sessionId);
   }
   const activeId = paneSessionId(pane);
   const active = activeId ? state.sessions.get(activeId) : undefined;
