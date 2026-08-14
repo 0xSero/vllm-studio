@@ -14,6 +14,7 @@ export type SearchParamsReader = {
 };
 
 type WorkspaceNavigationDeps = {
+  hydrated: boolean;
   lastHandledNavKey: string;
   projects: ProjectsContextValue;
   searchParams: SearchParamsReader;
@@ -92,11 +93,13 @@ function projectForNavigation(projects: ProjectsContextValue, projectId: string 
 }
 
 function requestWorkspaceUrlNavigation({
+  hydrated,
   lastHandledNavKey,
   projects,
   searchParams,
   dispatch,
 }: WorkspaceNavigationDeps): void {
+  if (!hydrated) return;
   const params = navigationParams(searchParams);
   const key = navigationKey(params);
   if (!key) return;
@@ -138,12 +141,19 @@ function consumeOneShotNavParams(projectId: string | null, sessionId: string | n
 }
 
 export function useAgentWorkspaceNavigationEffects({
+  hydrated,
   lastHandledNavKey,
   projects,
   searchParams,
   dispatch,
 }: WorkspaceNavigationDeps): void {
   useMountSubscription(() => {
-    requestWorkspaceUrlNavigation({ lastHandledNavKey, projects, searchParams, dispatch });
-  }, [lastHandledNavKey, projects, searchParams, dispatch]);
+    requestWorkspaceUrlNavigation({
+      hydrated,
+      lastHandledNavKey,
+      projects,
+      searchParams,
+      dispatch,
+    });
+  }, [hydrated, lastHandledNavKey, projects, searchParams, dispatch]);
 }

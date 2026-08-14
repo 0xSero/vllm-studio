@@ -87,6 +87,7 @@ export function AgentWorkspaceShell({
   const projectParam = searchParams.get("project");
 
   useAgentWorkspaceNavigationEffects({
+    hydrated: state.hydrated,
     lastHandledNavKey: state.lastHandledNavKey,
     projects,
     searchParams,
