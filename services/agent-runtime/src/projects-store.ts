@@ -44,6 +44,10 @@ const store = createProjectsStore({
   emptyPathMessage: "path is required",
 });
 
+export function projectsStoreFilePath(): string {
+  return projectsFilePath();
+}
+
 export function listProjectsFromStore(): ProjectEntry[] {
   return store.listProjects();
 }
