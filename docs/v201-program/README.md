@@ -24,6 +24,9 @@
 | `2c3d35bf` | merge-1 — merge CodeQL 144 path confinement lane (`--no-ff`; C1–C3 via p2) | `7d9b0b60` + `68d7d064` |
 | `5ee87c45` | C4 — drop unused `resolveGitCwd` wrapper | `68d7d064` |
 | `6f83829e` | merge-2 — merge dead wrapper cleanup (`--no-ff`; C4 via p2) | `2c3d35bf` + `5ee87c45` |
+| `02883237` | R83 docs record — alert-144 repair CI cycle 31763148107 (`docs(v201): record alert-144 repair CI cycle 31763148107`) | `6f83829e` |
+| `0d61ca4e` | G0S S-0 lane `ds/s0-last-user-prompt` — `feat(agent): expose lastUserPrompt on session summaries` | `02883237` |
+| `9ea43994` | G0S S-0 integration merge — `Merge commit '0d61ca4e' into feat/v201-consolidation` | `02883237` + `0d61ca4e` |
 
 ## Ledger map
 
@@ -41,6 +44,7 @@
 | `pr-inventory.md` | frozen 29-row census (R24/R26) + R25′/G0H2 discrepancy record |
 | `branch-inventory.md` | 58 locals: ahead/behind vs `eeeb3406`, gone, backup tags |
 | `worktree-inventory.md` | 35 backup worktrees + program/DS-lane rows, class |
+| `slices.md` | G0S per-slice integration ledger (subset-proof law, S-0 onward) |
 | `b2-landing.md` | G0U B2 transplant landing: source branch, original→copy map, patch-id identity, G0T reconciliation, rollback boundary |
 | `baselines/method.md` | frozen measurement methods: cloc 2.06, LOC pipeline, pattern set P, shard rule |
 | `baselines/totals.md` | cross-ref totals: code lines, files, bytes; installed-artifact baselines (attributed) |
