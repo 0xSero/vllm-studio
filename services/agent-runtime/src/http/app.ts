@@ -7,6 +7,7 @@ import {
   handleRuntimeEvents,
   handleRuntimeSessions,
   handleRuntimeStatus,
+  handleSessionListChanged,
   handleSetupChecks,
 } from "./handlers";
 import {
@@ -75,6 +76,7 @@ export function createAgentRuntimeApp() {
   app.get("/api/agent/runtime/sessions", () => handleRuntimeSessions());
   app.get("/api/agent/runtime/status", (c) => handleRuntimeStatus(c.req.raw));
   app.get("/api/agent/runtime/events", (c) => handleRuntimeEvents(c.req.raw));
+  app.get("/api/agent/session-list-changed", (c) => handleSessionListChanged(c.req.raw));
   app.get("/api/agent/setup-checks", () => handleSetupChecks());
   app.get("/api/agent/models", () => handleAgentModels());
   app.post("/api/agent/models", (c) => handleAgentModels(c.req.raw));
