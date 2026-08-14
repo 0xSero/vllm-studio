@@ -157,14 +157,8 @@ function userTurnFromEvent(event: Record<string, unknown>): UserTurn {
 
 const SUMMARY_SCAN_LINE_CAP = 2000;
 
-// Summary scans are the sidebar's hot path: every refresh re-lists every
-// session file for every project. The scanned fields (header + first user
-// message) are immutable once both are found — only `updatedAt` tracks the
-// file — so cache the scan result per filepath and re-read a file only when
-// the scan was incomplete and the file has since changed.
 type SummaryCacheEntry = {
   mtimeMs: number;
-  complete: boolean;
   core: Omit<
     SessionSummary,
     "updatedAt" | "archived" | "archivedAt" | "parentSessionId" | "subagentName"
@@ -214,7 +208,7 @@ async function readSessionSummary(
 ): Promise<SessionSummary | null> {
   const stats = statSync(filepath);
   const cached = summaryCache.get(filepath);
-  if (cached && (cached.complete || cached.mtimeMs === stats.mtimeMs)) {
+  if (cached && cached.mtimeMs === stats.mtimeMs) {
     return summaryFromCore(cached.core, stats.mtime);
   }
   let header: Record<string, unknown> | null = null;
@@ -274,7 +268,6 @@ async function readSessionSummary(
     : null;
   rememberSummary(filepath, {
     mtimeMs: stats.mtimeMs,
-    complete: Boolean(header && firstUserMessage),
     core,
   });
   return summaryFromCore(core, stats.mtime);
