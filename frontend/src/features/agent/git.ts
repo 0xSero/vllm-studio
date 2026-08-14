@@ -168,11 +168,9 @@ export async function runGitAction(cwd: string, action: GitAction): Promise<GitS
   if (action.action === "add_worktree") {
     const branch = assertNotOption(action.branch, "branch");
     const worktreePath = assertWorktreePath(action.path);
-    const hasBranch = Boolean(
-      (
-        await git(cwd, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]).catch(() => "")
-      ).trim(),
-    );
+    const hasBranch = await git(cwd, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`])
+      .then(() => true)
+      .catch(() => false);
     await git(
       cwd,
       hasBranch
