@@ -1,5 +1,7 @@
 import type { SessionListChangedEvent } from "../../../shared/agent/session-list-changed";
 
+const HEARTBEAT_INTERVAL_MS = 45_000;
+
 type Listener = (event: SessionListChangedEvent) => void;
 
 const listeners = new Set<Listener>();
@@ -23,10 +25,15 @@ export function sessionListChangedStream(signal?: AbortSignal): ReadableStream<U
   let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
   let unsubscribe: (() => void) | null = null;
   let onAbort: (() => void) | null = null;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
   let closed = false;
   const teardown = (): void => {
     if (closed) return;
     closed = true;
+    if (heartbeat) {
+      clearInterval(heartbeat);
+      heartbeat = null;
+    }
     if (unsubscribe) {
       unsubscribe();
       unsubscribe = null;
@@ -59,9 +66,17 @@ export function sessionListChangedStream(signal?: AbortSignal): ReadableStream<U
           teardown();
           return;
         }
-        onAbort = teardown;
+        onAbort = () => teardown();
         signal.addEventListener("abort", onAbort, { once: true });
       }
+      heartbeat = setInterval(() => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(": keep-alive\n\n"));
+        } catch {
+          teardown();
+        }
+      }, HEARTBEAT_INTERVAL_MS);
     },
     cancel() {
       teardown();

@@ -101,10 +101,15 @@ function sessionsDirsForCwd(cwd: string): string[] {
   const encodedCwds = [...new Set(cwdVariants(cwd).map(encodeCwdForPi))];
   const nativeDir = configuredPiSessionDir(cwd) ?? SessionManager.create(cwd).getSessionDir();
   const legacyRoot = path.join(resolveDataDir(), "pi-agent", "sessions");
-  return [
+  const dirs = [
     path.resolve(nativeDir),
     ...encodedCwds.map((encoded) => path.join(legacyRoot, encoded)),
-  ].filter((value, index, values) => values.indexOf(value) === index);
+  ];
+  return dirs.filter((value, index, values) => values.indexOf(value) === index);
+}
+
+export function sessionDirRootsForCwd(cwd: string): string[] {
+  return [...new Set(sessionsDirsForCwd(cwd).map((dir) => path.dirname(dir)))];
 }
 
 function sessionCwdMatches(summaryCwd: string, cwd: string): boolean {
