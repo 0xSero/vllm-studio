@@ -119,13 +119,6 @@ export function settleNewChatNavigation(): void {
   pendingNewChatNonce = null;
 }
 
-export function navigateToSessionHref(
-  router: { push: (href: string) => void },
-  href: string,
-): void {
-  router.push(href);
-}
-
 export function rememberAgentSessionNavTitle(sessionId: string | null | undefined, title: string) {
   if (typeof window === "undefined" || !sessionId) return;
   const trimmed = cleanSessionTitle(title);

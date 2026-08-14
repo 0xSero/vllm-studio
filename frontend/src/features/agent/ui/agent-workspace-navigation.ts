@@ -18,6 +18,7 @@ type WorkspaceNavigationDeps = {
   lastHandledNavKey: string;
   projects: ProjectsContextValue;
   searchParams: SearchParamsReader;
+  router: { replace: (href: string) => void };
   dispatch: WorkspaceDispatch;
 };
 
@@ -97,6 +98,7 @@ function requestWorkspaceUrlNavigation({
   lastHandledNavKey,
   projects,
   searchParams,
+  router,
   dispatch,
 }: WorkspaceNavigationDeps): void {
   if (!hydrated) return;
@@ -104,7 +106,7 @@ function requestWorkspaceUrlNavigation({
   const key = navigationKey(params);
   if (!key) return;
   if (lastHandledNavKey === key) {
-    consumeOneShotNavParams(params.projectId, params.sessionId);
+    consumeOneShotNavParams(router, params.projectId, params.sessionId);
     return;
   }
 
@@ -115,7 +117,7 @@ function requestWorkspaceUrlNavigation({
   const sessionTitle = params.sessionId ? consumeAgentSessionNavTitle(params.sessionId) : undefined;
   const action = workspaceNavigationAction(searchParams, project, sessionTitle);
   if (action) dispatch(action);
-  consumeOneShotNavParams(params.projectId, params.sessionId);
+  consumeOneShotNavParams(router, params.projectId, params.sessionId);
 }
 
 export function settledAgentNavigationHref(
@@ -133,10 +135,14 @@ export function settledAgentNavigationHref(
   return url.toString();
 }
 
-function consumeOneShotNavParams(projectId: string | null, sessionId: string | null): void {
+function consumeOneShotNavParams(
+  router: WorkspaceNavigationDeps["router"],
+  projectId: string | null,
+  sessionId: string | null,
+): void {
   if (typeof window === "undefined") return;
   const href = settledAgentNavigationHref(window.location.href, projectId, sessionId);
-  if (href !== window.location.href) window.history.replaceState(window.history.state, "", href);
+  if (href !== window.location.href) router.replace(href);
   settleNewChatNavigation();
 }
 
@@ -145,6 +151,7 @@ export function useAgentWorkspaceNavigationEffects({
   lastHandledNavKey,
   projects,
   searchParams,
+  router,
   dispatch,
 }: WorkspaceNavigationDeps): void {
   useMountSubscription(() => {
@@ -153,7 +160,8 @@ export function useAgentWorkspaceNavigationEffects({
       lastHandledNavKey,
       projects,
       searchParams,
+      router,
       dispatch,
     });
-  }, [hydrated, lastHandledNavKey, projects, searchParams, dispatch]);
+  }, [hydrated, lastHandledNavKey, projects, searchParams, router, dispatch]);
 }
