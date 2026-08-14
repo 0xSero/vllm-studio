@@ -249,7 +249,7 @@ function openNewSessionInFocusedPane(
   if (payload.replaceWorkspace) {
     const activeId = paneSessionId(pane);
     const active = activeId ? state.sessions.get(activeId) : undefined;
-    if (active && isEmptyStarterSession(active)) {
+    if (active && isEmptyStarterSession(active) && active.projectId === session.projectId) {
       return withComposerFocusIntent(
         focusSessionAsOnlyPane(state, targetPaneId, active.id),
         active.id,
