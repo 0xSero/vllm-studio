@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createAgentSessionRuntime } from "@earendil-works/pi-coding-agent";
 import {
   controlTargetHasActiveTurn,
@@ -11,6 +11,7 @@ import {
   type AgentTurnCommandResult,
   type AgentTurnRequest,
 } from "../../../../shared/agent/agent-turn";
+import { RuntimeSessionsResponseSchema } from "../api-contract";
 import type { AgentImageInput } from "../../../../shared/agent/agent-image-input";
 import {
   AGENT_TURN_BODY_LIMIT_BYTES,
@@ -380,11 +381,13 @@ function compactRouteEffect(request: Request): Effect.Effect<Response, unknown> 
 // ─── GET /api/agent/runtime/sessions ──────────────────────────────────────
 
 export function handleRuntimeSessions(): Response {
-  return Response.json({
-    sessions: piRuntimeManager
-      .listSessions()
-      .map(({ sessionId, session }) => ({ sessionId, status: session.status })),
-  });
+  const payload = {
+    sessions: piRuntimeManager.listSessions().map(({ sessionId, session }) => {
+      const status = session.status;
+      return { sessionId, status, cwd: status.cwd };
+    }),
+  };
+  return Response.json(Schema.decodeUnknownSync(RuntimeSessionsResponseSchema)(payload));
 }
 
 // ─── GET /api/agent/runtime/status ────────────────────────────────────────
