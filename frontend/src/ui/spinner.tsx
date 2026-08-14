@@ -26,7 +26,5 @@ export function Spinner({
   className?: string;
 }) {
   const Icon = variant === "refresh" ? RefreshCw : Loader2;
-  return (
-    <Icon className={cx(SPINNER_SIZES[size], "animate-spin", "spinner", className)} aria-hidden />
-  );
+  return <Icon className={cx(SPINNER_SIZES[size], "spinner", className)} aria-hidden />;
 }

@@ -684,6 +684,7 @@
   --ease-basic: ease;
   --duration-basic: 0.15s;
   --duration-relaxed: 0.3s;
+  --spinner-duration: 1s;
 
   /* UI adapter tokens — shared components under src/ui read through this
      layer. Repointed onto the design tokens so a future library swap needs no per-page
@@ -811,4 +812,20 @@ hr {
   background-clip: text;
   color: transparent;
   animation: zai-gradient-pan 6s ease infinite;
+}
+
+@keyframes zai-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  animation: zai-spinner-rotate var(--spinner-duration, 1s) linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
 }
