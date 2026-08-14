@@ -60,3 +60,22 @@ Per run: `{date, head SHA, command, verdict, duration, stage list, failure tails
 2. **`desktop-package` (job `94604022562`, ~4m50s)** — `afterPack` assertion failed: `Packaged agent runtime is missing Pi helper launcher: resolveElectronNodeExecutable` (project.mjs ~1755). The marker string existed 2× in `services/agent-runtime/src/litter-bridge-gateway.ts` at `d27f6c4d` and is 0× at `02373e5f` — #403's cleanup deleted the Pi-helper-launcher wiring. **No desktop-package artifact produced** (prior green artifact 258,118,373 B at `d27f6c4d`).
 
 **Fable G0L disposition:** (A) commit-policy failure fixed by the jurisdictional range (G0M R41–R43) — CI validates only commits newly introduced to the protected lineage; one shared enumerator in `project.mjs`; type allowlist untouched; no SHA exceptions; no history rewrite. (B) desktop launcher: DeepSeek read-only audit then restoration under `services/**` (GLM does not touch); assertion stands pending that evidence. (C) this evidence commit lands before repairs; all repair commits batch into one push at the end. Freeze: no PR closure/merge/release, no B2.
+
+## Run 6 — PASS (post-repair head `55d04dda`; R31)
+
+`CI` workflow (pull_request, base `dev`), 2026-08-14T00:08:46Z..00:14:27Z, run `31756358121`, conclusion **success**. Triggered by the one normal push `a9ab844e..55d04dda` through hooks (pre-push commit-lint N=4: `45052f7b` fix(ci), `82ac2745` fix(git), `bdbd9a74` docs(v201), `da4895c4` revert(agent-runtime); `check:static`/`check:cleanup`/`assert-standalone` green). All 8 required contexts green:
+
+| job | conclusion | duration | job id |
+|---|---|---|---|
+| agent-runtime | success | 14s | `94632807537` |
+| Dependency Review | success | 10s | `94632807580` |
+| desktop-package | success | 5m39s | `94632807603` |
+| frontend | success | 4m12s | `94632807616` |
+| controller | success | 32s | `94632807625` |
+| CodeQL Analysis | success | 1m46s | `94632807672` |
+| gates | success | 20s | `94632807673` (PR commit-lint ✓; push-lint step skipped — push-event only) |
+| Secret Scanning (TruffleHog) | success | 25s | `94632807698` |
+
+Run URL: `https://github.com/sybil-solutions/local-studio/actions/runs/31756358121`. desktop-package artifact `local-studio-716f6774f0d06b6fbd3a0fc89f80ed554479a56e-arm64` = **258,142,282 B** (+23,909 B vs prior green `258,118,373` at `d27f6c4d`; name carries the ephemeral PR merge-ref SHA, standard `pull_request` `github.sha` semantics). PR #408 `MERGEABLE`, mergeStateStatus `CLEAN`.
+
+**Repairs landed before this run:** `45052f7b fix(ci): scope commit lint to introduced changes` (shared `commit-lint` ci/pre-push, introduced-only enumerator, fail-closed head/base; 8/8 proofs) + `82ac2745 fix(git): permit deterministic revert restoration` (`REVERT_HEAD` cap exemption mirroring `MERGE_HEAD`, `CHERRY_PICK_HEAD` not exempt; 4/4 proofs) + `55d04dda fix(agent-runtime): restore litter bridge gateway` (no-ff merge of `ds/restore-litter-bridge` `da4895c4`, parents `82ac2745`+`da4895c4`, effective diff = 7 approved source paths +5042/−2). The G0L(A) gates failure is resolved by the introduced-only range (offenders `b1cc8fee`/`2b07d9fb` are origin-reachable via #403 and excluded); the G0L(B) desktop-package failure is resolved by the restored litter-bridge gateway (all five Pi-helper markers back in the packaged `standalone.mjs`; local `desktop:pack` afterPack green). `origin/dev`=`a765eb27`, `origin/main`=`eeeb3406` byte-identical before/after. Durable: `g0s-litter-bridge-restore-merge.md`, `g0s-push-transcript-20260814T000804Z.log`, `g0s-ci-watch-31756358121.log`, `g0s-delivery-summary.md`.
