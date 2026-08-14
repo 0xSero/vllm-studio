@@ -20,6 +20,7 @@ import { useProjectSessionsReloadEffect } from "@/features/agent/ui/projects-nav
 import { workspaceCommands } from "@/features/agent/workspace/commands";
 import type { Project as ProjectEntry } from "@/features/agent/projects/types";
 import { ChatIcon, Folder, FolderOpen, PlusIcon, TrashIcon } from "@/ui/icons";
+import { Spinner } from "@/ui";
 import {
   mergeActiveSessionPref,
   patchActiveSessionPref,
@@ -72,6 +73,13 @@ export function ProjectRow({
   onReorderDrop?: (event: DragEvent) => void;
 }) {
   const [missingErrorVisible, setMissingErrorVisible] = useState(false);
+  const activity = useSessionActivity();
+  const projectActive = useMemo(() => {
+    for (const cwd of activity.activeCwds) {
+      if (cwd === project.path || cwd.startsWith(`${project.path}/`)) return true;
+    }
+    return false;
+  }, [activity, project.path]);
   const handleToggle = () => {
     if (!project.exists) {
       setMissingErrorVisible(true);
@@ -112,6 +120,15 @@ export function ProjectRow({
             </span>
           )}
           <span className="truncate text-[length:var(--fs-md)] font-normal">{project.name}</span>
+          {projectActive ? (
+            <span
+              className="ml-1 flex h-3 w-3 shrink-0 items-center justify-center"
+              role="status"
+              aria-label="Project has active sessions"
+            >
+              <Spinner size="xs" className="text-(--spinner-warm)" />
+            </span>
+          ) : null}
           {!project.exists ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--warn)"
@@ -122,11 +139,7 @@ export function ProjectRow({
         </button>
         <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
           {onTogglePin ? (
-            <PinButton
-              pinned={pinned}
-              onToggle={onTogglePin}
-              target={project.name}
-            />
+            <PinButton pinned={pinned} onToggle={onTogglePin} target={project.name} />
           ) : null}
           {onRemove ? (
             <button

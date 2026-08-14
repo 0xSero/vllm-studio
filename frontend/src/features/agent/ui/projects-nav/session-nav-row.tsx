@@ -319,8 +319,12 @@ function SessionRowContent({
         {label}
       </span>
       {isRunning ? (
-        <span className="ml-auto flex w-8 shrink-0 justify-end" aria-label="Session running">
-          <Spinner size="xs" className="text-(--link)" />
+        <span
+          className="ml-auto flex w-8 shrink-0 justify-end"
+          role="status"
+          aria-label="Session active"
+        >
+          <Spinner size="xs" className="text-(--spinner-warm)" />
         </span>
       ) : finished ? (
         <span

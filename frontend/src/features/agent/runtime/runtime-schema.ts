@@ -58,7 +58,13 @@ const RuntimeStatusResponseSchema = Schema.Struct({
 
 const RuntimeSessionsResponseSchema = Schema.Struct({
   sessions: Schema.optional(
-    Schema.Array(Schema.Struct({ sessionId: Schema.String, status: RuntimeStatusSchema })),
+    Schema.Array(
+      Schema.Struct({
+        sessionId: Schema.String,
+        status: RuntimeStatusSchema,
+        cwd: Schema.optional(Schema.String),
+      }),
+    ),
   ),
 });
 

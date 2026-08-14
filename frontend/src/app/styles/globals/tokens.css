@@ -192,6 +192,7 @@
   --color-header: var(--gray-0);
   --color-panel: var(--gray-0);
   --color-sidebar: var(--gray-50);
+  --spinner-warm: #7d6242;
   --color-surface: var(--gray-75);
   --color-surface-hover: var(--gray-100);
 
@@ -372,6 +373,7 @@
   --color-header: var(--gray-900);
   --color-panel: var(--gray-900);
   --color-sidebar: color-mix(in srgb, var(--gray-800) 45%, var(--gray-900));
+  --spinner-warm: #e6dcc8;
   --color-surface: var(--gray-800);
   --color-surface-hover: var(--gray-750);
 

@@ -41,6 +41,7 @@ export type SessionActivity = "idle" | "running" | "unseen" | "finished";
 
 export type SessionActivitySnapshot = {
   active: ReadonlySet<string>;
+  activeCwds: ReadonlySet<string>;
   unseen: ReadonlySet<string>;
   // Sessions whose run finished while unviewed - a subset of `unseen` that earns
   // the green "done" dot instead of the plain blue unseen-activity dot.
@@ -49,6 +50,7 @@ export type SessionActivitySnapshot = {
 
 const EMPTY_ACTIVITY: SessionActivitySnapshot = {
   active: new Set(),
+  activeCwds: new Set(),
   unseen: new Set(),
   finished: new Set(),
 };
@@ -165,10 +167,12 @@ function sameIds(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean
 
 export function publishRuntimeActivity(entries: readonly RuntimeSessionSummary[]): void {
   const active = new Set<string>();
+  const activeCwds = new Set<string>();
   for (const entry of entries) {
     if (entry.status.active !== true) continue;
     active.add(entry.sessionId);
     if (entry.status.piSessionId) active.add(entry.status.piSessionId);
+    if (entry.cwd) activeCwds.add(entry.cwd);
   }
   const unseen = new Set(activitySnapshot.unseen);
   const finished = new Set(activitySnapshot.finished);
@@ -187,11 +191,12 @@ export function publishRuntimeActivity(entries: readonly RuntimeSessionSummary[]
   }
   if (
     sameIds(activitySnapshot.active, active) &&
+    sameIds(activitySnapshot.activeCwds, activeCwds) &&
     sameIds(activitySnapshot.unseen, unseen) &&
     sameIds(activitySnapshot.finished, finished)
   )
     return;
-  activitySnapshot = { active, unseen, finished };
+  activitySnapshot = { active, activeCwds, unseen, finished };
   for (const listener of activityListeners) listener();
 }
 
