@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -26,14 +26,30 @@ export function configuredGitRoots(): string[] {
 export function resolveGitCwd(input: string, roots = configuredGitRoots()): string | null {
   if (!path.isAbsolute(input)) return null;
   const candidate = path.resolve(input);
-  return roots.some((root) => {
-    const relative = path.relative(root, candidate);
-    return (
-      relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative))
-    );
-  })
-    ? candidate
-    : null;
+  const withinRoots = (target: string, bases: readonly string[]) =>
+    bases.some((base) => {
+      const relative = path.relative(base, target);
+      return (
+        relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative))
+      );
+    });
+  if (!withinRoots(candidate, roots)) return null;
+  const realRoots = roots
+    .map((root) => {
+      try {
+        return realpathSync(root);
+      } catch {
+        return null;
+      }
+    })
+    .filter((root): root is string => root !== null);
+  let realCandidate: string;
+  try {
+    realCandidate = realpathSync(candidate);
+  } catch {
+    return null;
+  }
+  return withinRoots(realCandidate, realRoots) ? realCandidate : null;
 }
 
 export function assertGitCwd(
