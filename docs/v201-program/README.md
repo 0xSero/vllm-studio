@@ -14,6 +14,10 @@
 | `d88453e1` | merge `origin/main` (`eeeb3406`) into the track (`--no-ff`) | `733c93a7` + `eeeb3406` |
 | `5e3e1703` | remove `frontend/desktop/logic/frontend-restart.test.ts` (62 del) | `d88453e1` |
 | `dcb790fd` | remove `services/agent-runtime/test/inkling-thinking-levels.test.ts` (47 del) — **H0** | `5e3e1703` |
+| `22103cbd` | B2 transplant 1 — cherry-pick of `75c80fa5` (branches/worktrees actions) | `8fa0bedc` |
+| `3a88ef4c` | B2 transplant 2 — cherry-pick of `5f8a3d5e` (branch search/switch/create) | `22103cbd` |
+| `c6be6e4d` | B2 transplant 3 — cherry-pick of `262f84c7` (worktree management) | `3a88ef4c` |
+| `de940589` | G0T GitAction single-source reconciliation (post-transplant; not a transplant) | `c6be6e4d` |
 
 ## Ledger map
 
@@ -31,6 +35,7 @@
 | `pr-inventory.md` | frozen 29-row census (R24/R26) + R25′/G0H2 discrepancy record |
 | `branch-inventory.md` | 58 locals: ahead/behind vs `eeeb3406`, gone, backup tags |
 | `worktree-inventory.md` | 35 backup worktrees + program/DS-lane rows, class |
+| `b2-landing.md` | G0U B2 transplant landing: source branch, original→copy map, patch-id identity, G0T reconciliation, rollback boundary |
 | `baselines/method.md` | frozen measurement methods: cloc 2.06, LOC pipeline, pattern set P, shard rule |
 | `baselines/totals.md` | cross-ref totals: code lines, files, bytes; installed-artifact baselines (attributed) |
 | `baselines/routes-eeeb3406.md` | R23 static route inventory (89 rows, 19 registrars) |
