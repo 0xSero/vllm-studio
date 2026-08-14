@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, lazy, type ReactNode } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { triggerAddProjectFlow } from "@/features/agent/ui/projects-nav/helpers";
 import {
   QuickPanelTopBar,
@@ -83,6 +83,7 @@ export function AgentWorkspaceShell({
 }: AgentWorkspaceShellProps) {
   const projects = useProjects();
   const tools = useTools();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const projectParam = searchParams.get("project");
 
@@ -91,6 +92,7 @@ export function AgentWorkspaceShell({
     lastHandledNavKey: state.lastHandledNavKey,
     projects,
     searchParams,
+    router,
     dispatch,
   });
 
