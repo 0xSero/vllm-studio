@@ -115,10 +115,12 @@ export const defaultAllowedHosts = (host: string): string[] => {
 export const normalizeRequestAuthority = (value: string, expectedPort: number): string | null => {
   const candidate = value.trim().toLowerCase();
   if (!candidate || /[\s/@?#]/.test(candidate)) return null;
-  const match = candidate.startsWith("[")
+  const bracketed = candidate.startsWith("[");
+  const match = bracketed
     ? candidate.match(/^\[([^\]]+)](?::([0-9]+))?$/)
     : candidate.match(/^([^:]+)(?::([0-9]+))?$/);
   if (!match?.[1]) return null;
+  if (bracketed && isIP(match[1]) !== 6) return null;
   const host = normalizeControllerHost(match[1]);
   if (!host || isWildcardHost(host)) return null;
   const suppliedPort = match[2];
