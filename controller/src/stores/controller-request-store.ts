@@ -1,6 +1,9 @@
 import type { Database } from "bun:sqlite";
-import { usageRate, type ControllerUsageStats } from "@local-studio/contracts/usage";
-import { decodeControllerUsage } from "@local-studio/contracts/usage-schema";
+import {
+  normalizeControllerUsage,
+  usageRate,
+  type ControllerUsageStats,
+} from "@local-studio/contracts/usage";
 import type { Effect } from "effect";
 import {
   openInitializedDatabase,
@@ -264,7 +267,7 @@ export class ControllerRequestStore {
       )
       .all() as NumberRow[];
 
-    return decodeControllerUsage({
+    return normalizeControllerUsage({
       totals: {
         ...totals,
         success_rate: usageRate(totals?.["successful_requests"], totals?.["total_requests"]),

@@ -1,10 +1,4 @@
-import { Schema, SchemaGetter } from "effect";
-import {
-  normalizeControllerUsage,
-  normalizeUsageStats,
-  type ControllerUsageStats,
-  type UsageStats,
-} from "./usage";
+import { Schema } from "effect";
 
 const ControllerTotalsSchema = Schema.Struct({
   total_requests: Schema.Number,
@@ -89,6 +83,8 @@ export const ControllerUsageStatsSchema = Schema.Struct({
   recent_errors: Schema.mutable(Schema.Array(ControllerErrorSchema)),
   function_calls: Schema.optionalKey(FunctionCallsSchema),
 });
+
+export type ControllerUsageStats = typeof ControllerUsageStatsSchema.Type;
 
 const UsageTotalsSchema = Schema.Struct({
   total_tokens: Schema.Number,
@@ -227,29 +223,16 @@ export const UsageStatsSchema = Schema.Struct({
   peak_hours: Schema.mutable(Schema.Array(PeakHourSchema)),
   by_model: Schema.mutable(Schema.Array(ModelUsageSchema)),
   daily: Schema.mutable(Schema.Array(DailyUsageSchema)),
-  daily_by_model: Schema.mutable(Schema.Array(DailyModelUsageSchema)),
+  daily_by_model: Schema.optionalKey(Schema.mutable(Schema.Array(DailyModelUsageSchema))),
   hourly_pattern: Schema.mutable(Schema.Array(HourlyUsageSchema)),
   controller: Schema.optionalKey(ControllerUsageStatsSchema),
 });
 
-const ControllerUsageProjectionSchema = Schema.Unknown.pipe(
-  Schema.decodeTo(Schema.UndefinedOr(ControllerUsageStatsSchema), {
-    decode: SchemaGetter.transform(normalizeControllerUsage),
-    encode: SchemaGetter.transform((value) => value),
-  }),
-);
+export type UsageStats = typeof UsageStatsSchema.Type;
 
-const UsageProjectionSchema = Schema.Unknown.pipe(
-  Schema.decodeTo(UsageStatsSchema, {
-    decode: SchemaGetter.transform(normalizeUsageStats),
-    encode: SchemaGetter.transform((value) => value),
-  }),
-);
+const isUsageStats = Schema.is(UsageStatsSchema);
 
-const decodeControllerUsageProjection = Schema.decodeUnknownSync(ControllerUsageProjectionSchema);
-const decodeUsageProjection = Schema.decodeUnknownSync(UsageProjectionSchema);
-
-export const decodeControllerUsage = (value: unknown): ControllerUsageStats | undefined =>
-  decodeControllerUsageProjection(value);
-
-export const decodeUsageStats = (value: unknown): UsageStats => decodeUsageProjection(value);
+export const validateUsageStats = (value: unknown): UsageStats => {
+  if (!isUsageStats(value)) throw new TypeError("Invalid normalized usage projection");
+  return value;
+};

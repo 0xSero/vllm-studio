@@ -1,4 +1,5 @@
 import type { UsageStats } from "@local-studio/contracts/usage";
+import { validateUsageStats } from "@local-studio/contracts/usage-schema";
 import { Effect } from "effect";
 import { observeControllerFunction } from "../../core/function-observability";
 import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
@@ -46,7 +47,7 @@ export const registerUsageRoutes = defineRoutes((app, context) => {
             return withControllerUsage(context, emptyResponse(), includeController);
           }),
         );
-        return usageEffect.pipe(Effect.map((body) => ctx.json(body)));
+        return usageEffect.pipe(Effect.map((body) => ctx.json(validateUsageStats(body))));
       }),
     ),
   );
