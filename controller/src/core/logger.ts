@@ -3,7 +3,7 @@ import type { WriteStream } from "node:fs";
 import { dirname } from "node:path";
 import { format as formatValue } from "node:util";
 import { Effect } from "effect";
-import { redactLogLine } from "./log-redaction";
+import { writeControllerLogLine } from "./process-boundary";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -64,12 +64,9 @@ export const createLogger = (level: LogLevel, options: LoggerOptions = {}): Logg
   };
 
   const write = (target: LogLevel, message: string, details?: Record<string, unknown>): void => {
-    const line = redactLogLine(toFileLine(target, message, details));
+    const rawLine = toFileLine(target, message, details);
+    const line = writeControllerLogLine(target, rawLine);
     const rendered = line.trimEnd();
-
-    try {
-      console[target](rendered);
-    } catch {}
 
     if (stream) {
       try {

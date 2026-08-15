@@ -1,120 +1,148 @@
 const REDACTED = "[redacted]";
 
+const ENVIRONMENT_KEY = String.raw`[A-Za-z_][A-Za-z0-9_]*_(?:API_KEY|TOKEN)`;
+const STRUCTURED_KEY = String.raw`(?:api_key|api-key|apikey|auth_token|access_token|token|secret|password|hf_token|openai_api_key|anthropic_api_key|${ENVIRONMENT_KEY})`;
+const ESCAPED_KEY_END = String.raw`(?:\\*["'])?`;
+const ASSIGNMENT = String.raw`(?:=>|[:=])`;
+
 const SECRET_MARKER = new RegExp(
   [
-    String.raw`(?<authorization>(?<![A-Za-z0-9_-])Authorization(?:\\*["'])?\s*[:=]\s*)`,
-    String.raw`(?<xApiKey>(?<![A-Za-z0-9_-])[Xx]-[Aa]pi-[Kk]ey(?:\\*["'])?\s*[:=]\s*)`,
-    String.raw`(?<environment>(?<![A-Za-z0-9_])(?:HF_TOKEN|HUGGING_FACE_HUB_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|[A-Za-z_][A-Za-z0-9_]*_API_KEY|[A-Za-z_][A-Za-z0-9_]*_TOKEN)\s*=\s*)`,
-    String.raw`(?<structured>(?<![A-Za-z0-9_-])(?:api_key|api-key|apikey|auth_token|access_token|token|secret|password|hf_token|openai_api_key|anthropic_api_key)(?:\\*["'])?\s*:\s*)`,
-    String.raw`(?<cli>(?<![A-Za-z0-9_-])--(?:api-key|apikey|api_token|auth-token|access-token|hf-token|token|secret|password)(?:\s*=\s*|\s+|["']?\s*,\s*["']?))`,
+    String.raw`(?<authorization>(?<![A-Za-z0-9_-])Authorization${ESCAPED_KEY_END}\s*${ASSIGNMENT}\s*)`,
+    String.raw`(?<xApiKey>(?<![A-Za-z0-9_-])[Xx]-[Aa]pi-[Kk]ey${ESCAPED_KEY_END}\s*${ASSIGNMENT}\s*)`,
+    String.raw`(?<environment>(?<![A-Za-z0-9_])${ENVIRONMENT_KEY}\s*=(?!>)\s*)`,
+    String.raw`(?<structured>(?<![A-Za-z0-9_-])${STRUCTURED_KEY}${ESCAPED_KEY_END}\s*${ASSIGNMENT}\s*)`,
+    String.raw`(?<cli>(?<![A-Za-z0-9_-])--(?:api-key|apikey|api_token|auth-token|access-token|hf-token|token|secret|password)(?:\s*=\s*|\s+|${ESCAPED_KEY_END}\s*,\s*))`,
     String.raw`(?<query>[?&](?:api_key|api-key|apikey|token|access_token|auth_token|key|secret|hf_token|openai_api_key|anthropic_api_key)=)`,
   ].join("|"),
   "gi",
 );
 
-const TOKEN_BOUNDARY = /[\s;,}"'\]]/;
+const TOKEN_BOUNDARY = /[\s;,}\]]/;
+const TOKEN_CONTINUATION_BOUNDARY = /[\s;,]/;
+const QUERY_BOUNDARY = /[\s&#]/;
+const AUTHORIZATION_BOUNDARY = /[\r\n}]/;
+const STRUCTURAL_BOUNDARY = /[\r\n,;}\]]/;
+const STRUCTURAL_CONTINUATION_BOUNDARY = /[\r\n,;]/;
 
-const redactedEnd = (line: string, start: number): number | null =>
-  line.startsWith(REDACTED, start) ? start + REDACTED.length : null;
+type ValueKind = "authorization" | "query" | "structured" | "token";
 
-const directQuotedEnd = (line: string, start: number, quote: string): number => {
-  let cursor = start + 1;
-  while (cursor < line.length) {
-    const value = line[cursor];
-    if (value === "\r" || value === "\n") return cursor;
-    if (value === "\\") {
-      cursor += 2;
-      continue;
-    }
-    cursor += 1;
-    if (value === quote) return cursor;
-  }
-  return line.length;
+const closingBoundaryIsComplete = (line: string, start: number): boolean => {
+  let cursor = start;
+  while (line[cursor] === "]" || line[cursor] === "}") cursor += 1;
+  return cursor >= line.length || /[\s,;]/.test(line[cursor] ?? "");
 };
 
-const escapedQuotedEnd = (line: string, quoteAt: number, quote: string): number => {
-  let cursor = quoteAt + 1;
-  let backslashes = 0;
+const scanToBoundary = (line: string, start: number, boundary: RegExp): number => {
+  let cursor = start;
   while (cursor < line.length) {
-    const value = line[cursor];
-    if (value === "\r" || value === "\n") return cursor;
-    if (value === "\\") {
-      backslashes += 1;
-      cursor += 1;
-      continue;
-    }
-    if (value === quote && backslashes > 0) {
-      let following = cursor + 1;
-      while (line[following] === " " || line[following] === "\t") following += 1;
-      const boundary = line[following];
-      if (
-        boundary === undefined ||
-        boundary === "\r" ||
-        boundary === "\n" ||
-        boundary === "," ||
-        boundary === "}" ||
-        boundary === "]"
-      ) {
-        return cursor + 1;
+    const value = line[cursor] ?? "";
+    if (boundary.test(value)) {
+      if ((value !== "]" && value !== "}") || closingBoundaryIsComplete(line, cursor)) {
+        return cursor;
       }
     }
-    backslashes = 0;
     cursor += 1;
   }
-  return line.length;
+  return cursor;
 };
 
-const quotedEnd = (line: string, start: number): number | null => {
+const isBoundary = (line: string, start: number, kind: ValueKind): boolean => {
+  if (start >= line.length) return true;
+  if (kind === "token") return TOKEN_BOUNDARY.test(line[start] ?? "");
+  if (kind === "query") return QUERY_BOUNDARY.test(line[start] ?? "");
+  let cursor = start;
+  while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
+  if (cursor >= line.length) return true;
+  const boundary = kind === "authorization" ? AUTHORIZATION_BOUNDARY : STRUCTURAL_BOUNDARY;
+  return boundary.test(line[cursor] ?? "");
+};
+
+const redactedEnd = (line: string, start: number, kind: ValueKind): number | null => {
+  if (!line.startsWith(REDACTED, start)) return null;
+  const end = start + REDACTED.length;
+  if (line[end] === '"' || line[end] === "'" || line[end] === "\\") return null;
+  if (!isBoundary(line, end, kind)) return null;
+  let boundaryAt = end;
+  if (kind === "authorization" || kind === "structured") {
+    while (line[boundaryAt] === " " || line[boundaryAt] === "\t") boundaryAt += 1;
+  }
+  if (line[boundaryAt] !== "]" && line[boundaryAt] !== "}") return end;
+  return closingBoundaryIsComplete(line, boundaryAt) ? end : null;
+};
+
+const quotedEnd = (line: string, start: number, kind: ValueKind): number | null => {
   let quoteAt = start;
   while (line[quoteAt] === "\\") quoteAt += 1;
   const quote = line[quoteAt];
   if (quote !== '"' && quote !== "'") return null;
-  return quoteAt === start
-    ? directQuotedEnd(line, start, quote)
-    : escapedQuotedEnd(line, quoteAt, quote);
-};
-
-const tokenEnd = (line: string, start: number): number => {
-  const knownRedactedEnd = redactedEnd(line, start);
-  if (knownRedactedEnd !== null) return knownRedactedEnd;
-  const knownQuotedEnd = quotedEnd(line, start);
-  if (knownQuotedEnd !== null) return knownQuotedEnd;
-  let cursor = start;
-  while (cursor < line.length && !TOKEN_BOUNDARY.test(line[cursor] ?? "")) cursor += 1;
-  return cursor;
-};
-
-const authorizationEnd = (line: string, start: number): number => {
-  const knownRedactedEnd = redactedEnd(line, start);
-  if (knownRedactedEnd !== null) return knownRedactedEnd;
-  const knownQuotedEnd = quotedEnd(line, start);
-  if (knownQuotedEnd !== null) return knownQuotedEnd;
-  let cursor = start;
-  while (
-    cursor < line.length &&
-    line[cursor] !== "\r" &&
-    line[cursor] !== "\n" &&
-    line[cursor] !== "}"
-  ) {
+  const openingEscapes = quoteAt - start;
+  const delimiterPeriod = 2 * (openingEscapes + 1);
+  let cursor = quoteAt + 1;
+  let escapeRun = 0;
+  while (cursor < line.length) {
+    const value = line[cursor];
+    if (value === "\r" || value === "\n") return cursor;
+    if (value === "\\") {
+      escapeRun += 1;
+      cursor += 1;
+      continue;
+    }
+    if (
+      value === quote &&
+      escapeRun >= openingEscapes &&
+      (escapeRun - openingEscapes) % delimiterPeriod === 0 &&
+      isBoundary(line, cursor + 1, kind)
+    ) {
+      return cursor + 1;
+    }
+    escapeRun = 0;
     cursor += 1;
   }
-  return cursor;
+  return line.length;
 };
 
-const queryEnd = (line: string, start: number): number => {
-  const knownRedactedEnd = redactedEnd(line, start);
-  if (knownRedactedEnd !== null) return knownRedactedEnd;
-  let cursor = start;
-  while (cursor < line.length && line[cursor] !== "&" && !/\s/.test(line[cursor] ?? "")) {
-    cursor += 1;
-  }
-  return cursor;
+const unquotedEnd = (line: string, start: number, kind: ValueKind): number => {
+  const boundary =
+    kind === "token"
+      ? TOKEN_BOUNDARY
+      : kind === "query"
+        ? QUERY_BOUNDARY
+        : kind === "authorization"
+          ? AUTHORIZATION_BOUNDARY
+          : STRUCTURAL_BOUNDARY;
+  return scanToBoundary(line, start, boundary);
+};
+
+const continuationEnd = (line: string, start: number, kind: ValueKind): number => {
+  const boundary =
+    kind === "token"
+      ? TOKEN_CONTINUATION_BOUNDARY
+      : kind === "query"
+        ? QUERY_BOUNDARY
+        : kind === "authorization"
+          ? AUTHORIZATION_BOUNDARY
+          : STRUCTURAL_CONTINUATION_BOUNDARY;
+  return scanToBoundary(line, start, boundary);
+};
+
+const kindFor = (groups: Record<string, string>): ValueKind => {
+  if (groups["authorization"]) return "authorization";
+  if (groups["query"]) return "query";
+  if (groups["structured"]) return "structured";
+  return "token";
 };
 
 const valueEnd = (line: string, start: number, groups: Record<string, string>): number => {
-  if (groups["authorization"]) return authorizationEnd(line, start);
-  if (groups["query"]) return queryEnd(line, start);
-  return tokenEnd(line, start);
+  const kind = kindFor(groups);
+  const knownRedactedEnd = redactedEnd(line, start, kind);
+  if (knownRedactedEnd !== null) return knownRedactedEnd;
+  const hasRedactedPrefix = line.startsWith(REDACTED, start);
+  const scanFrom = hasRedactedPrefix ? start + REDACTED.length : start;
+  const knownQuotedEnd = quotedEnd(line, scanFrom, kind);
+  if (knownQuotedEnd !== null) return knownQuotedEnd;
+  return hasRedactedPrefix
+    ? continuationEnd(line, scanFrom, kind)
+    : unquotedEnd(line, scanFrom, kind);
 };
 
 export function redactLogLine(line: string): string {
