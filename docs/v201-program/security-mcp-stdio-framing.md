@@ -9,7 +9,7 @@
 - Canonical product mapping: reviewed `f03488fdb` → integration `d4a30dd69` → evidence `7266933d0`.
 - Source was adapted manually from the independently audited intent of PR #374 by external author `fettpl`. Neither the PR head nor its merge commit was merged or cherry-picked.
 - Scope is two product files: `services/agent-runtime/src/mcp-client.ts` and `services/agent-runtime/src/mcp-stdio-transport.ts`.
-- Independent exact-product review returned GO and the accepted product is integrated into the consolidation track. Combined-branch CI, packaged-runtime verification, and installed-desktop acceptance remain pending.
+- Independent exact-product review returned GO and the accepted product is integrated into the consolidation track. Combined-branch CI passed at `1665df7b3`; packaged-runtime verification and installed-desktop acceptance remain pending.
 - No automated test or fixture files were added, restored, or run. Disposable probe programs and state files live outside the repository under `/Users/sero/projects/vllm-studio-v201-evidence/pr374-mcp-framing-20260815/`.
 - The stdio child still receives the current complete process environment. Raw PR #372 remains held; narrowing this pre-existing boundary requires a corrected future composition that preserves this accepted lifecycle.
 
@@ -97,6 +97,5 @@ Integration creates an explicit 251-line offset obligation against the 80,667 pr
 
 ## Remaining gates
 
-- Current-head CI after the combined canonical root check passed at `efa2b3acd`.
 - Packaged runtime byte provenance and installed desktop stdio/HTTP acceptance.
 - A corrected future environment-allowlist composition derived from PR #372 without weakening the lifecycle behavior proven here; raw PR #372 remains held.
