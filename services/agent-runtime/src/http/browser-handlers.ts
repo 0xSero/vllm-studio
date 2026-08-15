@@ -8,6 +8,7 @@ import {
   type BrowserOperationRunOptions,
 } from "../browser-host/browser-operation-coordinator";
 import { browserNetworkPolicy, type BrowserNavigation } from "../browser-host/network-policy";
+import { htmlTitle } from "../browser-host/readable-html";
 import { fetchReadable } from "../browser-host/reader";
 
 const ALLOWED_VERBS = new Set([
@@ -370,18 +371,6 @@ function parseCurrentPort(request: Request): number | null {
   return Number.isFinite(port) ? port : null;
 }
 
-function titleFromHtml(html: string): string {
-  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim();
-  return title
-    ? title
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-    : "";
-}
-
 function parseLsof(stdout: string): PortCandidate[] {
   const byPort = new Map<number, PortCandidate>();
   for (const line of stdout.split(/\r?\n/).slice(1)) {
@@ -423,7 +412,7 @@ async function probePort(
     const contentType = response.headers.get("content-type") ?? "";
     let title = "";
     if (contentType.includes("text/html")) {
-      title = titleFromHtml((await response.text()).slice(0, 64_000));
+      title = htmlTitle((await response.text()).slice(0, 64_000));
     }
     const displayUrl = `localhost:${candidate.port}`;
     return {

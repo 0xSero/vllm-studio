@@ -7,6 +7,7 @@ import {
   type BrowserAddress,
   type BrowserNetworkMode,
 } from "./network-policy";
+import { readableHtml } from "./readable-html";
 
 const MAX_BYTES = 512 * 1024;
 const FETCH_TIMEOUT_MS = 12_000;
@@ -39,8 +40,7 @@ type BoundedResponse = {
 declare global {
   var __LOCAL_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST: ReaderHostResolver | undefined;
   var __LOCAL_STUDIO_BROWSER_READER_REQUEST_FOR_TEST:
-    | ((url: string, address: ResolvedHostAddress) => Promise<BoundedResponse>)
-    | undefined;
+    ((url: string, address: ResolvedHostAddress) => Promise<BoundedResponse>) | undefined;
 }
 
 const abortError = (signal: AbortSignal): Error =>
@@ -86,53 +86,6 @@ async function resolveReaderHost(
 
 const readerNavigationPolicy = createBrowserNetworkPolicy(resolveReaderHost);
 
-function decodeEntities(value: string): string {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ");
-}
-
-function htmlToReadable(html: string, baseUrl: string): { title: string; text: string } {
-  const noScripts = html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, "")
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
-    .replace(/<svg[\s\S]*?<\/svg>/gi, "");
-  const titleMatch = noScripts.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const title = decodeEntities((titleMatch?.[1] ?? "").trim()) || baseUrl;
-  const bodyMatch = noScripts.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  const body = bodyMatch?.[1] ?? noScripts;
-  const withLinks = body.replace(
-    /<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
-    (_match, href: string, label: string) => {
-      const text = decodeEntities(label.replace(/<[^>]+>/g, "").trim());
-      const resolved = (() => {
-        try {
-          return new URL(href, baseUrl).toString();
-        } catch {
-          return href;
-        }
-      })();
-      return text ? `[${text}](${resolved})` : resolved;
-    },
-  );
-  const blocks = withLinks
-    .replace(/<\/(p|h[1-6]|li|tr|div|article|section|header|footer)>/gi, "\n\n")
-    .replace(/<br\s*\/?>(?!\s*<)/gi, "\n");
-  const stripped = blocks.replace(/<[^>]+>/g, "");
-  const text = decodeEntities(stripped)
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .join("\n\n");
-  return { title, text };
-}
-
 function isMarkdownResponse(url: string, contentType: string): boolean {
   return /\b(markdown|mdx?)\b/i.test(contentType) || /\.(md|mdx|markdown)(?:[?#].*)?$/i.test(url);
 }
@@ -140,17 +93,6 @@ function isMarkdownResponse(url: string, contentType: string): boolean {
 function markdownTitle(markdown: string, fallback: string): string {
   const heading = markdown.match(/^\s*#\s+(.+)$/m)?.[1]?.trim();
   return heading || fallback;
-}
-
-function cleanMarkdown(markdown: string): string {
-  return markdown
-    .replace(/<img\b[^>]*\balt=["']([^"']*)["'][^>]*>/gi, (_match, alt: string) =>
-      alt.trim() ? alt.trim() : "",
-    )
-    .replace(/<\/?(p|div|span|center|picture|source)\b[^>]*>/gi, "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .trim();
 }
 
 async function fetchBoundedUrl(
@@ -286,13 +228,13 @@ function renderReadable(response: BoundedResponse, fallbackUrl: string): ReaderR
   const contentType = response.contentType;
   const finalUrl = response.url || fallbackUrl;
   if (contentType.startsWith("text/html") || contentType.includes("xhtml")) {
-    const { title, text } = htmlToReadable(response.body, finalUrl);
+    const { title, text } = readableHtml(response.body, finalUrl);
     return { url: finalUrl, title, text, markdown: text, contentType };
   }
   if (contentType.startsWith("text/") || contentType.includes("application/json")) {
     const text = response.body.slice(0, MAX_BYTES);
     if (isMarkdownResponse(finalUrl, contentType)) {
-      const markdown = cleanMarkdown(text);
+      const markdown = text.trim();
       return {
         url: finalUrl,
         title: markdownTitle(markdown, finalUrl),
