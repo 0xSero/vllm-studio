@@ -14,6 +14,32 @@ const MAX_REDIRECTS = 5;
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
 const ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+const HTML_ENTITY_REPLACEMENTS: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  "#39": "'",
+  nbsp: " ",
+};
+const BLOCK_TAGS = new Set([
+  "article",
+  "body",
+  "br",
+  "div",
+  "footer",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "header",
+  "li",
+  "p",
+  "section",
+  "tr",
+]);
 
 export type ReaderResult = {
   url: string;
@@ -87,49 +113,94 @@ async function resolveReaderHost(
 const readerNavigationPolicy = createBrowserNetworkPolicy(resolveReaderHost);
 
 function decodeEntities(value: string): string {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ");
+  return value.replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (match, entity: string) =>
+    HTML_ENTITY_REPLACEMENTS[entity] ?? match,
+  );
 }
 
-function htmlToReadable(html: string, baseUrl: string): { title: string; text: string } {
-  const noScripts = html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, "")
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
-    .replace(/<svg[\s\S]*?<\/svg>/gi, "");
-  const titleMatch = noScripts.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const title = decodeEntities((titleMatch?.[1] ?? "").trim()) || baseUrl;
-  const bodyMatch = noScripts.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  const body = bodyMatch?.[1] ?? noScripts;
-  const withLinks = body.replace(
-    /<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
-    (_match, href: string, label: string) => {
-      const text = decodeEntities(label.replace(/<[^>]+>/g, "").trim());
-      const resolved = (() => {
-        try {
-          return new URL(href, baseUrl).toString();
-        } catch {
-          return href;
-        }
-      })();
-      return text ? `[${text}](${resolved})` : resolved;
-    },
+function removeHtmlComments(value: string): string {
+  let output = "";
+  let index = 0;
+  while (index < value.length) {
+    if (value.startsWith("<!--", index)) {
+      const end = value.indexOf("-->", index + 4);
+      index = end >= 0 ? end + 3 : value.length;
+      continue;
+    }
+    output += value[index] ?? "";
+    index += 1;
+  }
+  return output;
+}
+
+function removeTagBlock(value: string, tag: string): string {
+  let current = value;
+  const open = `<${tag}`;
+  const close = `</${tag}`;
+  while (true) {
+    const lower = current.toLowerCase();
+    const start = lower.indexOf(open);
+    if (start < 0) return current;
+    const openEnd = current.indexOf(">", start + open.length);
+    if (openEnd < 0) return current.slice(0, start);
+    const closeStart = lower.indexOf(close, openEnd + 1);
+    if (closeStart < 0) return `${current.slice(0, start)}${current.slice(openEnd + 1)}`;
+    const closeEnd = current.indexOf(">", closeStart + close.length);
+    current =
+      closeEnd < 0
+        ? current.slice(0, start)
+        : `${current.slice(0, start)}${current.slice(closeEnd + 1)}`;
+  }
+}
+
+function removeBlockedHtml(value: string): string {
+  return ["script", "style", "noscript", "iframe", "svg"].reduce(
+    (current, tag) => removeTagBlock(current, tag),
+    removeHtmlComments(value),
   );
-  const blocks = withLinks
-    .replace(/<\/(p|h[1-6]|li|tr|div|article|section|header|footer)>/gi, "\n\n")
-    .replace(/<br\s*\/?>(?!\s*<)/gi, "\n");
-  const stripped = blocks.replace(/<[^>]+>/g, "");
-  const text = decodeEntities(stripped)
-    .split(/\n+/)
+}
+
+function findTagContent(value: string, tag: string): string | null {
+  const lower = value.toLowerCase();
+  const start = lower.indexOf(`<${tag}`);
+  if (start < 0) return null;
+  const openEnd = value.indexOf(">", start + tag.length + 1);
+  if (openEnd < 0) return null;
+  const closeStart = lower.indexOf(`</${tag}`, openEnd + 1);
+  if (closeStart < 0) return null;
+  return value.slice(openEnd + 1, closeStart);
+}
+
+function extractPlainText(value: string): string {
+  let output = "";
+  let index = 0;
+  while (index < value.length) {
+    const char = value[index];
+    if (char !== "<") {
+      output += char ?? "";
+      index += 1;
+      continue;
+    }
+    const end = value.indexOf(">", index + 1);
+    if (end < 0) break;
+    const rawTag = value.slice(index + 1, end).trim().toLowerCase();
+    const normalized = rawTag.startsWith("/") ? rawTag.slice(1).trimStart() : rawTag;
+    const tag = normalized.split(/[\s/>]/u, 1)[0];
+    if (BLOCK_TAGS.has(tag)) output += tag === "br" ? "\n" : "\n\n";
+    index = end + 1;
+  }
+  return decodeEntities(output)
+    .split(/\n+/u)
     .map((line) => line.trim())
     .filter(Boolean)
     .join("\n\n");
+}
+
+function htmlToReadable(html: string, baseUrl: string): { title: string; text: string } {
+  const sanitized = removeBlockedHtml(html);
+  const title = extractPlainText(findTagContent(sanitized, "title") ?? "").trim() || baseUrl;
+  const body = findTagContent(sanitized, "body") ?? sanitized;
+  const text = extractPlainText(body);
   return { title, text };
 }
 
@@ -143,14 +214,7 @@ function markdownTitle(markdown: string, fallback: string): string {
 }
 
 function cleanMarkdown(markdown: string): string {
-  return markdown
-    .replace(/<img\b[^>]*\balt=["']([^"']*)["'][^>]*>/gi, (_match, alt: string) =>
-      alt.trim() ? alt.trim() : "",
-    )
-    .replace(/<\/?(p|div|span|center|picture|source)\b[^>]*>/gi, "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .trim();
+  return extractPlainText(removeBlockedHtml(markdown));
 }
 
 async function fetchBoundedUrl(
