@@ -2,10 +2,10 @@ const REDACTED = "[redacted]";
 
 const SECRET_MARKER = new RegExp(
   [
-    String.raw`(?<authorization>(?<![A-Za-z0-9_-])Authorization(?:\\{0,8}["'])?\s*[:=]\s*)`,
-    String.raw`(?<xApiKey>(?<![A-Za-z0-9_-])[Xx]-[Aa]pi-[Kk]ey(?:\\{0,8}["'])?\s*[:=]\s*)`,
+    String.raw`(?<authorization>(?<![A-Za-z0-9_-])Authorization(?:\\*["'])?\s*[:=]\s*)`,
+    String.raw`(?<xApiKey>(?<![A-Za-z0-9_-])[Xx]-[Aa]pi-[Kk]ey(?:\\*["'])?\s*[:=]\s*)`,
     String.raw`(?<environment>(?<![A-Za-z0-9_])(?:HF_TOKEN|HUGGING_FACE_HUB_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|[A-Za-z_][A-Za-z0-9_]*_API_KEY|[A-Za-z_][A-Za-z0-9_]*_TOKEN)\s*=\s*)`,
-    String.raw`(?<structured>(?<![A-Za-z0-9_-])(?:api_key|api-key|apikey|auth_token|access_token|token|secret|password|hf_token|openai_api_key|anthropic_api_key)(?:\\{0,8}["'])?\s*:\s*)`,
+    String.raw`(?<structured>(?<![A-Za-z0-9_-])(?:api_key|api-key|apikey|auth_token|access_token|token|secret|password|hf_token|openai_api_key|anthropic_api_key)(?:\\*["'])?\s*:\s*)`,
     String.raw`(?<cli>(?<![A-Za-z0-9_-])--(?:api-key|apikey|api_token|auth-token|access-token|hf-token|token|secret|password)(?:\s*=\s*|\s+|["']?\s*,\s*["']?))`,
     String.raw`(?<query>[?&](?:api_key|api-key|apikey|token|access_token|auth_token|key|secret|hf_token|openai_api_key|anthropic_api_key)=)`,
   ].join("|"),
