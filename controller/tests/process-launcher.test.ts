@@ -116,6 +116,15 @@ test("native launch retries durable proof and keeps non-Linux cleanup in memory"
   expect(await Effect.runPromise(fallbackLauncher.owns(fallback, durable))).toBe(false);
 });
 
+test("native proof failure kills the spawned group and returns its cleanup handle", async () => {
+  const signals: string[] = [];
+  const launcher = makeProcessLauncher(() => logPath, processRuntime("linux", [], signals));
+  const failure = await Effect.runPromise(Effect.flip(launcher.start({ ...plan, argv: [process.execPath, "-e", ""] }, record)));
+  expect(failure.kind).toBe("spawn-failed");
+  expect(failure.kind === "spawn-failed" ? failure.startedReference?.kind : null).toBe("process");
+  expect(signals).toEqual(["SIGKILL"]);
+});
+
 const containerId = "a".repeat(64);
 const dockerReference = { kind: "docker", containerId, daemonId: "daemon", executablePath: "/docker", executableToken: "exec" } as const satisfies HandleReference;
 const dockerRecord = { ...record, runtime: "docker" as const, ref: dockerReference };
@@ -150,7 +159,9 @@ test("Docker launch never removes a name and persists only post-launch proof", a
   expect(reference).toEqual(dockerReference);
   expect(fake.actions).toEqual(["run"]);
   fake.state.driftAfterStop = true;
-  expect((await Effect.runPromiseExit(launcher.start({ ...plan, kind: "docker", image: "image" }, { ...dockerRecord, ref: null })))._tag).toBe("Failure");
+  const failure = await Effect.runPromise(Effect.flip(launcher.start({ ...plan, kind: "docker", image: "image" }, { ...dockerRecord, ref: null })));
+  expect(failure.kind).toBe("spawn-failed");
+  expect(failure.kind === "spawn-failed" ? failure.startedReference : null).toEqual(dockerReference);
 });
 
 test("Docker cleanup revalidates every exact identity before actions", async () => {

@@ -77,6 +77,7 @@ const input = (overrides: Partial<ComputeLaunchInput> = {}): ComputeLaunchInput 
 /** Launcher whose world is a mutable script: which handles are alive, what start does. */
 interface FakeWorld {
   alivePids: Set<number>;
+  unknownAlivePids: Set<number>;
   started: InstanceRecord[];
   stopped: HandleReference[];
   nextPid: number;
@@ -98,7 +99,7 @@ const fakeLauncher = (world: FakeWorld): Launcher => ({
       startToken: null,
     });
   },
-  alive: (ref) => Effect.succeed(ref.kind === "process" && world.alivePids.has(ref.pid)),
+  alive: (ref) => Effect.succeed(ref.kind === "process" && (world.alivePids.has(ref.pid) || world.unknownAlivePids.has(ref.pid))),
   owns: (ref) => Effect.succeed(ref.kind === "process" && world.alivePids.has(ref.pid)),
   stop: (ref) =>
     Effect.sync(() => {
@@ -110,6 +111,7 @@ const fakeLauncher = (world: FakeWorld): Launcher => ({
 
 const makeWorld = (): FakeWorld => ({
   alivePids: new Set(),
+  unknownAlivePids: new Set(),
   started: [],
   stopped: [],
   nextPid: 1000,
@@ -334,6 +336,28 @@ describe("launch failure paths", () => {
     // The reservation must not leak: record gone, devices free.
     expect(store.all()).toHaveLength(0);
     expect(events).toContain("test-model:error");
+  });
+
+  test("post-spawn proof failure retains an unproved live handle", async () => {
+    const world = makeWorld();
+    const startedReference = {
+      kind: "process",
+      pid: 2000,
+      processGroupId: 2000,
+      sessionId: 2000,
+      startToken: null,
+    } as const satisfies HandleReference;
+    world.unknownAlivePids.add(startedReference.pid);
+    world.startFailure = {
+      kind: "spawn-failed",
+      detail: "spawned process identity could not be proved",
+      startedReference,
+    };
+    const { compute, store } = makeService(world);
+    const exit = await runExit(compute.launch(input()));
+    expect(exit._tag).toBe("Failure");
+    expect(store.read("test-model")?.ref).toEqual(startedReference);
+    expect(world.stopped).toEqual([]);
   });
 
   test("exited-early: daemon dies while waiting -> record dropped, log tail captured", async () => {

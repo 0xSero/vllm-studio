@@ -85,14 +85,14 @@ const ownership = (reference: HandleReference, record: InstanceRecord, runtime: 
     reference.kind !== "process" ||
     !sameProcessReference(reference, record) ||
     reference.processGroupId !== reference.pid ||
-    reference.sessionId !== reference.pid ||
-    reference.startToken === null
+    reference.sessionId !== reference.pid
   ) {
     return "unknown";
   }
   const members = runtime.readGroup(reference.processGroupId);
   if (members === null) return "unknown";
   if (members.length === 0) return "gone";
+  if (reference.startToken === null) return "unknown";
   if (new Set(members.map((member) => member.pid)).size !== members.length) return "unknown";
   const roots = members.filter((member) => member.pid === reference.pid);
   if (roots.length > 1 || (roots[0] && roots[0].startToken !== reference.startToken)) {
@@ -144,16 +144,18 @@ export const makeProcessLauncher = (
         if (identity?.pid === pid && identity.processGroupId === pid && identity.sessionId === pid && identity.launchMarker === record.nonce) proved = identity;
         if (!proved) yield* Effect.sleep(25);
       }
-      if (runtime.platform === "linux" && !proved) {
-        child.kill("SIGKILL"); localChildren.delete(pid); return yield* spawnFailed("spawned process identity could not be proved");
-      }
-      return {
+      const reference = {
         kind: "process",
         pid,
-        processGroupId: proved?.processGroupId ?? null,
-        sessionId: proved?.sessionId ?? null,
+        processGroupId: proved?.processGroupId ?? (runtime.platform === "linux" ? pid : null),
+        sessionId: proved?.sessionId ?? (runtime.platform === "linux" ? pid : null),
         startToken: proved?.startToken ?? null,
       } as const;
+      if (runtime.platform === "linux" && !proved) {
+        runtime.signalGroup(pid, "SIGKILL"); child.kill("SIGKILL"); localChildren.delete(pid);
+        return yield* spawnFailed("spawned process identity could not be proved", reference);
+      }
+      return reference;
     }),
 
   alive: (reference, record) => Effect.sync(() => {
