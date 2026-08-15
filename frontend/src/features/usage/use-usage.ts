@@ -2,10 +2,10 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { normalizeUsageStats } from "@local-studio/contracts/usage";
 import api from "@/lib/api/client";
 import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import type { UsageStats } from "@/lib/types";
-import { normalizeUsageStats } from "@/features/usage/normalize-usage-stats";
 
 export function useUsage() {
   const [stats, setStats] = useState<UsageStats | null>(() =>
