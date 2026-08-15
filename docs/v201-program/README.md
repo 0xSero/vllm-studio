@@ -50,6 +50,14 @@
 | `tts-removal.md` | row 1.2 TTS removal ledger: frozen main inventory, preserved STT/multimodal seams, DB residue, and exact remaining gaps |
 | `tts-remnants-20260815.md` | accepted follow-up removing dead voice settings, transcription-engine probe, and audio exports while preserving dictation and realtime seams |
 | `configure-retirement-audit.md` | row 2.4 read-only audit: staged Configure retirement, compatibility/relocation boundaries, Rig-table safety, projected LOC, and installed matrix |
+| `configure-retirement-models-deep-links.md` | Configure stage 1: canonical Models tabs, one-shot creation deep link, route/history evidence, and remaining installed boundary |
+| `configure-integrations-relocation.md` | Configure stage 2: intact Integrations relocation into Settings, canonical URL state, same-hash synchronization, and manual matrix |
+| `configure-operator-tools-20260815.md` | Configure stage 3: always-visible Settings operator links for Logs and the authenticated JSON API reference |
+| `configure-compatibility-shims-20260815.md` | Configure stage 4: deterministic legacy `/configure` and `/server` URL compatibility, browser route matrix, and history proof |
+| `configure-retirement-20260815.md` | Configure stage 5: obsolete Configure/server renderer deletion, preserved-surface manifest, exact LOC, and remaining installed acceptance |
+| `rigs-api-deprecation-20260815.md` | Configure stage 6: rigs controller/frontend API retirement with copied-database identity, 404/spec, rollback, and table-preservation proof |
+| `controller-effect-normalization-evidence.md` | audited controller Effect/Schema normalization: async census, canonical schema moves, bounded-body lifecycle, behavior matrix, and gates |
+| `post-rigs-effect-checkpoint-20260815.md` | combined canonical product, aggregate gate, frozen LOC, hosted-boundary split, and next-slice handoff through `a00e913e6` |
 | `test-deletion-disposition.md` | row 1.10 deletion ledger: exact 74/7,741 and 79/8,128 counts, removed coverage map, and replacement-evidence matrix |
 | `installed-provenance.md` | installed Stable/Dev provenance inventory: bundle identity, retained-artifact census, rebuild authority, and exact remaining installed acceptance gaps |
 | `pr-dispositions-maintainer.md` | current maintainer-PR census and selective-port/hold/closure dispositions for the six frozen harvest PRs |
