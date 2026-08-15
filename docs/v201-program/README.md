@@ -50,6 +50,8 @@
 | `tts-removal.md` | row 1.2 TTS removal ledger: frozen main inventory, preserved STT/multimodal seams, DB residue, and exact remaining gaps |
 | `test-deletion-disposition.md` | row 1.10 deletion ledger: exact 74/7,741 and 79/8,128 counts, removed coverage map, and replacement-evidence matrix |
 | `installed-provenance.md` | installed Stable/Dev provenance inventory: bundle identity, retained-artifact census, rebuild authority, and exact remaining installed acceptance gaps |
+| `pr-dispositions-maintainer.md` | current maintainer-PR census and selective-port/hold/closure dispositions for the six frozen harvest PRs |
+| `pr-dispositions-external.md` | line-level dispositions for all 23 frozen fork-external PRs, with zero premature closures |
 | `b2-landing.md` | G0U B2 transplant landing: source branch, original→copy map, patch-id identity, G0T reconciliation, rollback boundary |
 | `pr-403-t4-pack.md` | G0K R38 pre-merge pack for PR #403: pinned identity, lineage and dry-run merge-tree proof, conflict rulings, test/bench dispositions, harvest outcome |
 | `release-path.md` | R32/P9 A4 canonical workflow archive at `eeeb3406` (CI/release/maintenance + `release.config.cjs` fingerprints), branch protections, release-run dispositions, B1/B2 closure |
