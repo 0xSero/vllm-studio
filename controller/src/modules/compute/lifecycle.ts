@@ -122,7 +122,11 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
     failure: LaunchFailure,
   ): Effect.Effect<never, LaunchFailure> =>
     Effect.gen(function* () {
-      if (yield* stopRecord(record)) deps.store.drop(record.name);
+      const cleanupRecord = failure.kind === "spawn-failed" && failure.startedReference
+        ? { ...record, ref: failure.startedReference }
+        : record;
+      if (cleanupRecord !== record) deps.store.write(cleanupRecord);
+      if (yield* stopRecord(cleanupRecord)) deps.store.drop(record.name);
       cancelRequested.delete(record.name);
       const event = toEvent(failure);
       yield* deps.onEvent(record.name, event.stage, event.message);

@@ -282,7 +282,7 @@ export type LaunchFailure =
   | { readonly kind: "already-running"; readonly name: string }
   | { readonly kind: "no-capacity"; readonly need: number; readonly free: number }
   | { readonly kind: "install-failed"; readonly engine: EngineId; readonly detail: string }
-  | { readonly kind: "spawn-failed"; readonly detail: string }
+  | { readonly kind: "spawn-failed"; readonly detail: string; readonly startedReference?: HandleReference }
   | {
       readonly kind: "exited-early";
       readonly exitCode: number | null;

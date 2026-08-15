@@ -137,7 +137,7 @@ export const makeDockerLauncher = (
         executablePath: executable.path,
         executableToken: executable.token,
       } as const;
-      const proof = yield* ownership(reference, { ...record, ref: reference }, runtime); if (proof !== "owned" && proof !== "stopped") return yield* spawnFailed("docker identity changed during launch");
+      const proof = yield* ownership(reference, { ...record, ref: reference }, runtime); if (proof !== "owned" && proof !== "stopped") return yield* spawnFailed("docker identity changed during launch", reference);
       return reference;
     }),
 

@@ -30,5 +30,5 @@ export interface Launcher {
  *  200 chars on one path and 20 lines on another. */
 export const LOG_TAIL_BYTES = 4_096;
 
-export const spawnFailed = (detail: string): Effect.Effect<never, LaunchFailure> =>
-  Effect.fail<LaunchFailure>({ kind: "spawn-failed", detail });
+export const spawnFailed = (detail: string, startedReference?: HandleReference): Effect.Effect<never, LaunchFailure> =>
+  Effect.fail<LaunchFailure>({ kind: "spawn-failed", detail, ...(startedReference ? { startedReference } : {}) });
