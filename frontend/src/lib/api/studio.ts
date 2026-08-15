@@ -4,7 +4,7 @@ import {
   bundledModelIndexSource,
   type ModelIndexResponse,
 } from "@local-studio/contracts/model-index";
-import type { RuntimeJobType } from "@local-studio/contracts/system";
+import type { RuntimeJobBackend, RuntimeJobType } from "@local-studio/contracts/system";
 import type {
   ModelDownload,
   EngineJob,
@@ -58,7 +58,7 @@ export interface RuntimeJobResponse {
 }
 
 export type RuntimeJobPayload = {
-  backend: "vllm" | "sglang" | "llamacpp" | "mlx";
+  backend: RuntimeJobBackend;
   targetId?: string;
   type?: RuntimeJobType;
   version?: string;

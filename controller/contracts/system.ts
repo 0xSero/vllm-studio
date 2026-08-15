@@ -38,6 +38,10 @@ export interface RuntimeBackendInfo {
 
 export type EngineBackend = "vllm" | "sglang" | "llamacpp" | "mlx";
 
+export const RUNTIME_JOB_BACKENDS = ["vllm", "sglang", "llamacpp", "mlx", "cuda", "rocm"] as const;
+
+export type RuntimeJobBackend = (typeof RUNTIME_JOB_BACKENDS)[number];
+
 export type RuntimeKind = "venv" | "docker" | "binary" | "system";
 
 export const RUNTIME_JOB_TYPES = ["install", "update"] as const;
@@ -78,7 +82,7 @@ export interface RuntimeTarget {
 
 export interface EngineJob {
   id: string;
-  backend: EngineBackend;
+  backend: RuntimeJobBackend;
   targetId?: string;
   type: RuntimeJobType;
   status: "queued" | "running" | "success" | "error" | "cancelled";

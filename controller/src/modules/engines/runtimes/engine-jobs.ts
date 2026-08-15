@@ -5,6 +5,7 @@ import type { Config } from "../../../config/env";
 import type {
   EngineBackend,
   EngineJob,
+  RuntimeJobBackend,
   RuntimeJobType,
   RuntimeTarget,
   RuntimeUpgradeResult,
@@ -27,8 +28,6 @@ import {
 import { pidExists } from "./pid-exists";
 
 export { managedVenvPath } from "./managed-venv";
-
-type RuntimeJobBackend = EngineBackend | "cuda" | "rocm";
 
 type CreateEngineJobOptions = {
   backend: RuntimeJobBackend;
@@ -56,7 +55,7 @@ const isPlatformBackend = (backend: RuntimeJobBackend): backend is "cuda" | "roc
 
 const createJobRecord = (options: CreateEngineJobOptions): EngineJob => ({
   id: randomUUID(),
-  backend: isPlatformBackend(options.backend) ? "vllm" : options.backend,
+  backend: options.backend,
   ...(options.targetId ? { targetId: options.targetId } : {}),
   type: options.type,
   status: "queued",
@@ -79,9 +78,12 @@ const updateRunningJob = (id: string, updates: Partial<EngineJob>): void => {
   jobs.set(id, { ...current, ...updates });
 };
 
-const describeDefaultCommand = (options: CreateEngineJobOptions): string => {
-  if (isPlatformBackend(options.backend))
-    return `configured ${options.backend.toUpperCase()} upgrade command`;
+const describeDefaultCommand = (options: CreateEngineJobOptions): string | undefined => {
+  if (isPlatformBackend(options.backend)) {
+    return options.type === "update"
+      ? `configured ${options.backend.toUpperCase()} upgrade command`
+      : undefined;
+  }
   if (options.backend === "llamacpp") return "configured llama.cpp upgrade command";
   if (options.type === "install" && isManagedPythonBackend(options.backend)) {
     return `python -m venv $DATA_DIR/runtime/venvs/${managedVenvName(options.backend)} && pip install ${managedPackageSpec(options.backend, options.version)}`;
@@ -185,11 +187,12 @@ const runJob = (
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     if (jobs.get(job.id)?.status !== "queued") return;
+    const defaultCommand = describeDefaultCommand(options);
     updateJob(job.id, {
       status: "running",
       progress: 0.05,
       message: `${options.type} running for ${options.backend}`,
-      command: describeDefaultCommand(options),
+      ...(defaultCommand ? { command: defaultCommand } : {}),
     });
     let target: RuntimeTarget | null = null;
     if (options.targetId && !isPlatformBackend(options.backend)) {
