@@ -223,20 +223,3 @@ export function EmptySafeNotice({ children }: { children: ReactNode }) {
     </div>
   );
 }
-
-export function KeyValueRow({
-  label,
-  value,
-  className,
-}: {
-  label: ReactNode;
-  value: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cx("flex items-baseline justify-between gap-3 text-xs", className)}>
-      <dt className="text-(--ui-muted)">{label}</dt>
-      <dd className="min-w-0 truncate text-right font-mono text-(--ui-fg)">{value}</dd>
-    </div>
-  );
-}
