@@ -87,20 +87,11 @@ const rateLimitKey = (path: string, method: string, clientIp: string): string =>
 const nextEffect = (next: Next): Effect.Effect<void, unknown> =>
   Effect.tryPromise({ try: next, catch: (error) => error });
 
-const requestAuthority = (url: string, hostHeader: string | undefined): string | null => {
-  if (hostHeader !== undefined) return hostHeader;
-  try {
-    return new URL(url).host;
-  } catch {
-    return null;
-  }
-};
-
 export function createKeylessRequestGuardMiddleware(context: AppContext): MiddlewareHandler {
   return effectMiddleware((ctx, next) =>
     Effect.suspend(() => {
       if (context.config.api_key?.trim()) return nextEffect(next);
-      const authority = requestAuthority(ctx.req.url, ctx.req.header("host"));
+      const authority = ctx.req.header("host");
       const host = authority ? normalizeRequestAuthority(authority, context.config.port) : null;
       const originHeader = ctx.req.header("origin");
       const origin = originHeader === undefined ? undefined : normalizeHttpOrigin(originHeader);
