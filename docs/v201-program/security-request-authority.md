@@ -86,6 +86,8 @@ Method: `bun src/main.ts` from the worktree controller with a fresh disposable `
 
 Dependencies were installed fresh in this worktree via `node scripts/project.mjs setup` (bun frozen-lockfile installs + frontend `npm ci`). No hooks bypassed; the `.githooks` pre-commit (typecheck) ran during the production commit.
 
+The post-review full `npm run check` also passed after the amendment at `7d3e0ae9b`: all six top-level gates green, final `NPM-CHECK-EXIT:0`; transcript `/tmp/localstudio-v201-security-request-authority-check-r2.log`, SHA-256 `a26042481d7df3164782ab43ae076b62d7c514ca39c139b86217e4a30a861aee`. Later documentation and comment-only `.env.example` refinements do not change the checked implementation; the final range remains `git diff --check` clean.
+
 ## 6. Remaining proof (P)
 
 - Installed-app and final-head verification remain open for the release lane: probes above exercised the worktree controller only. The installed desktop app bundles a controller build and is refreshed only via `scripts/install-desktop-app.sh`; rebuild/reinstall was not triggered by this slice.
@@ -116,11 +118,10 @@ Shipped frontend proxy path against a keyless loopback controller (port 18080), 
 
 The proxy request carries no Origin and its Host is the controller's own, so the keyless guard admits the shipped browser/desktop path unchanged.
 
-Both probe processes were stopped, ports 18080–18083 and 13000 were closed, disposable data was removed, and the worktree was clean after the run.
+All three probe processes were stopped, ports 18080–18083 and 13000 were closed, disposable data was removed, and the worktree was clean after the run.
 
 ## 8. Follow-ups recorded, not fixed here (P)
 
 - Controller and frontend carry two divergent host-authority normalizers (`controller/src/config/request-authority.ts` vs `frontend/src/lib/security/request-boundary.ts`, both exporting `isLoopbackHost` with different acceptance rules). Consolidating into `shared/` would break the deliberate byte-identity with upstream `327b14bf`, so it stays a follow-up.
 - Guard rejections are silent because the guard precedes logging/observability, leaving no audit trail for blocked rebinding attempts and nothing server-side for misconfigured-Host support cases.
 - A trailing-comma or otherwise malformed allowlist entry throws a startup error that does not name the offending entry.
-- Full `npm run check` passed after applying this amendment: all six top-level gates green, final `NPM-CHECK-EXIT:0`; transcript `/tmp/localstudio-v201-security-request-authority-check-r2.log`, SHA-256 `a26042481d7df3164782ab43ae076b62d7c514ca39c139b86217e4a30a861aee`. This final evidence-line update is markdown-only.

@@ -217,7 +217,7 @@ allowlisted authority:
 - A wildcard bind (`LOCAL_STUDIO_HOST=0.0.0.0` or `::`) refuses to start until
   `LOCAL_STUDIO_ALLOWED_HOSTS` lists the exact hostnames or IP addresses
   clients will use.
-- A non-wildcard bind allowlists only the bind address by default. Setting
+- A non-wildcard, non-loopback bind allowlists only the bind address by default. Setting
   `LOCAL_STUDIO_ALLOWED_HOSTS` replaces that default, so list the bind address
   together with every hostname, MagicDNS name, or other alias clients use;
   omitted aliases return `403 Forbidden request origin`.
