@@ -4,11 +4,6 @@ import type { GpuInfo, Recipe } from "../models/types";
 /**
  * Resolves which physical GPUs a recipe asks for, from whichever of the several
  * visibility selectors it happens to carry.
- *
- * This file also used to hold a GPU *lease* registry with an "llm" and a
- * "speech" owner. The speech worker was its only real client — the llm owner
- * validated against the instance record it already had — so the registry went
- * with the speech service.
  */
 export interface GpuVisibilityResolution {
   readonly source: "all" | "recipe";
