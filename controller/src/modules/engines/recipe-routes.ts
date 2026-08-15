@@ -1,5 +1,6 @@
-import { Effect, Schema } from "effect";
 import { CONTROLLER_EVENTS } from "@local-studio/contracts/controller-events";
+import { RecipePayloadSchema } from "@local-studio/contracts/recipes";
+import { Effect } from "effect";
 import { badRequest, notFound } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
 import { effectHandler } from "../../http/effect-handler";
@@ -8,8 +9,6 @@ import { isRecipeRunning } from "../models/recipes/recipe-matching";
 import { parseRecipe } from "../models/recipes/recipe-serializer";
 import { Event } from "../system/event-manager";
 import { createGetObservedProcess } from "./observed-process";
-
-const RecipePayloadSchema = Schema.Record(Schema.String, Schema.Unknown);
 
 export const registerRecipeRoutes = defineRoutes((app, context) => {
   const getObservedProcess = createGetObservedProcess(context);

@@ -24,17 +24,17 @@ const readChunk = (
   reader: ReadableStreamDefaultReader<Uint8Array>,
 ): Effect.Effect<ReadChunkResult, RequestBodyReadError> =>
   Effect.tryPromise({
-    try: async (signal) => {
+    try: (signal) => {
       const abort = (): void => {
         void reader.cancel();
       };
       signal.addEventListener("abort", abort, { once: true });
-      try {
-        const result = await reader.read();
-        return result.done ? { done: true } : { done: false, value: result.value };
-      } finally {
-        signal.removeEventListener("abort", abort);
-      }
+      return reader
+        .read()
+        .then((result) =>
+          result.done ? ({ done: true } as const) : ({ done: false, value: result.value } as const),
+        )
+        .finally(() => signal.removeEventListener("abort", abort));
     },
     catch: (source) =>
       new RequestBodyReadError({
@@ -85,4 +85,3 @@ export const readBoundedRequestBody = (
       (activeReader) => Effect.sync(() => activeReader.releaseLock()),
     );
   });
-

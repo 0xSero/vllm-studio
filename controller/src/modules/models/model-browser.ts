@@ -123,9 +123,12 @@ export const estimateWeightsSizeBytes = (
           )) ?? 0;
       } else if (entry.isFile() && isWeightFile(entry.name)) {
         total += yield* Effect.tryPromise({
-          try: async () => (await stat(path)).size,
+          try: () => stat(path),
           catch: (source) => modelBrowserError("stat", path, source),
-        }).pipe(Effect.catch(() => Effect.succeed(0)));
+        }).pipe(
+          Effect.map((stats) => stats.size),
+          Effect.catch(() => Effect.succeed(0)),
+        );
       }
     }
     return total || null;
@@ -175,9 +178,12 @@ export const buildModelInfo = (
       Effect.catch(() => Effect.succeed({ architecture: null, context_length: null })),
     );
     const modifiedAt = yield* Effect.tryPromise({
-      try: async () => (await stat(modelDirectory)).mtimeMs,
+      try: () => stat(modelDirectory),
       catch: () => null,
-    }).pipe(Effect.catch(() => Effect.succeed(null)));
+    }).pipe(
+      Effect.map((stats) => stats.mtimeMs),
+      Effect.catch(() => Effect.succeed(null)),
+    );
     const name = modelDirectory.split("/").pop() ?? modelDirectory;
     const size = yield* estimateWeightsSizeBytes(modelDirectory, false).pipe(
       Effect.catch(() => Effect.succeed(null)),

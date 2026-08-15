@@ -1,3 +1,5 @@
+import { Schema } from "effect";
+
 export interface ServiceInfo {
   name: string;
   port: number;
@@ -45,6 +47,16 @@ export type RuntimeKind = "venv" | "docker" | "binary" | "system";
 export const RUNTIME_JOB_TYPES = ["install", "update"] as const;
 
 export type RuntimeJobType = (typeof RUNTIME_JOB_TYPES)[number];
+
+export const RuntimeJobBodySchema = Schema.Struct({
+  backend: Schema.optional(Schema.Literals(RUNTIME_JOB_BACKENDS)),
+  targetId: Schema.optional(Schema.String),
+  type: Schema.optional(Schema.Literals(RUNTIME_JOB_TYPES)),
+  version: Schema.optional(Schema.String),
+  prefer_bundled: Schema.optional(Schema.Boolean),
+  command: Schema.optional(Schema.Never),
+  args: Schema.optional(Schema.Never),
+});
 
 export interface RuntimeTarget {
   id: string;

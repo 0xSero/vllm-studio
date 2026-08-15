@@ -1,10 +1,10 @@
 import {
   RUNTIME_JOB_BACKENDS,
-  RUNTIME_JOB_TYPES,
+  RuntimeJobBodySchema,
   type RuntimeJobBackend,
   type RuntimeJobType,
 } from "@local-studio/contracts/system";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import { badRequest, notFound } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
 import { effectHandler } from "../../http/effect-handler";
@@ -34,16 +34,6 @@ type RuntimeJobBody = {
   version?: string;
   preferBundled?: boolean;
 };
-
-const RuntimeJobBodySchema = Schema.Struct({
-  backend: Schema.optional(Schema.Literals(RUNTIME_JOB_BACKENDS)),
-  targetId: Schema.optional(Schema.String),
-  type: Schema.optional(Schema.Literals(RUNTIME_JOB_TYPES)),
-  version: Schema.optional(Schema.String),
-  prefer_bundled: Schema.optional(Schema.Boolean),
-  command: Schema.optional(Schema.Never),
-  args: Schema.optional(Schema.Never),
-});
 
 const parseRuntimeJobBody = (
   ctx: Parameters<typeof decodeJsonBody>[0],

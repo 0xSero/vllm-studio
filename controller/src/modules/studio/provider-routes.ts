@@ -1,3 +1,8 @@
+import {
+  ProviderCreateSchema,
+  ProviderModelsSchema,
+  ProviderUpdateSchema,
+} from "@local-studio/contracts/providers";
 import { Effect, Schema } from "effect";
 import { badRequest, notFound } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
@@ -12,25 +17,6 @@ type ProviderView = {
   enabled: boolean;
   has_api_key: boolean;
 };
-
-const ProviderCreateSchema = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  base_url: Schema.String,
-  api_key: Schema.optional(Schema.String),
-  enabled: Schema.optional(Schema.Boolean),
-});
-
-const ProviderUpdateSchema = Schema.Struct({
-  name: Schema.optional(Schema.String),
-  base_url: Schema.optional(Schema.String),
-  api_key: Schema.optional(Schema.String),
-  enabled: Schema.optional(Schema.Boolean),
-});
-
-const ProviderModelsSchema = Schema.Struct({
-  data: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String) }))),
-});
 
 class ProviderPersistenceError extends Schema.TaggedErrorClass<ProviderPersistenceError>()(
   "ProviderPersistenceError",

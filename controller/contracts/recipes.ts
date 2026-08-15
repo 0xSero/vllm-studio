@@ -1,3 +1,5 @@
+import { Schema } from "effect";
+
 export type Backend = "vllm" | "sglang" | "llamacpp" | "mlx";
 
 export type ServeRuntimeKind = "managed_venv" | "system" | "docker" | "binary";
@@ -47,6 +49,8 @@ export interface RecipeBase {
  */
 export type RecipePayload = Pick<RecipeBase, "id" | "name" | "model_path"> &
   Partial<Omit<RecipeBase, "id" | "name" | "model_path">>;
+
+export const RecipePayloadSchema = Schema.Record(Schema.String, Schema.Unknown);
 
 export type Serve = RecipeBase;
 export type ServePayload = RecipePayload;
