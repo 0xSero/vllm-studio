@@ -2,7 +2,7 @@
 
 Date: 2026-08-15 EDT
 
-Status: **source and isolated headed-render evidence ready for independent integration review; aggregate, packaged, installed, and hosted acceptance remain open**.
+Status: **independently reviewed, integrated, and aggregate-gate green; full settings interaction, packaged, installed, and final hosted acceptance remain open**.
 
 ## Provenance
 
@@ -11,6 +11,8 @@ Status: **source and isolated headed-render evidence ready for independent integ
 - Branch: `codex/v201-theme-palette-20260815`.
 - Product head: `faf4d97d4dd25500b370e72aefb3e9452b5c8019`, tree `74f3ae86a4b86752a9c21d67dc160009acd500fb`.
 - External evidence root: `/Users/sero/projects/vllm-studio-v201-evidence/theme-palette-consolidation-20260815`.
+
+Canonical integration maps the four isolated product commits to `292ce73dd`, `a1483ab76`, `cd480f1f0`, and `0b88dadf2`, with evidence commit `f42314218`. Both product blobs are byte-identical to accepted isolated tip `faf4d97d4dd25500b370e72aefb3e9452b5c8019`, and independent review returned GO with no P0-P2 finding. The combined repository gate passed at exact product `c669a8c7e46eca5b19f3c390aa1c2bdca61e6224`; transcript SHA-256 is `82af086197b7550342a098ed71e23911a97a431e7926ef11848ca50da1d30da0`.
 
 The lane was created from the exact base and never rebased or cherry-picked into the canonical checkout. The audited implementations were read from `a25acb7cb7d1f0b7de65ca52d3eeae6410ca252a`, `bd1e497a9cdff3a0edb19bb2e1dabe5618018bca`, and `ad4709cdd1a315fc1c466b00e84f1e09e8dad63f`, then adapted rather than copied wholesale so the base's newer scrim, spinner, icon-scale, dimensions, and tool-preview work remained intact.
 
@@ -136,4 +138,4 @@ The HTML is self-contained and retains the full result JSON for independent insp
 
 ## Remaining acceptance
 
-The headed harness proves browser-computed stylesheet behavior, not the complete Next.js settings page or an installed desktop bundle. Parent aggregate `npm run check`, independent source/evidence review, full application keyboard and pointer interaction, reload persistence in the integrated application, production packaging, installation, hosted CI, and installed live behavior remain open. No commit was pushed.
+The headed harness proves browser-computed stylesheet behavior, not the complete Next.js settings page or an installed desktop bundle. Full application keyboard and pointer interaction, reload persistence in the integrated application, final-head hosted CI, production packaging, installation, and installed live behavior remain open.
