@@ -55,6 +55,7 @@
 | `baselines/routes-eeeb3406.md` | R23 static route inventory (89 rows, 19 registrars) |
 | `baselines/pages-eeeb3406.md` | App-Router page/route inventory (80 rows) |
 | `baselines/tables-eeeb3406.md` | CREATE TABLE scan (11 active + 9 drop-on-open) |
+| `baselines/workflows/` | verbatim `eeeb3406` workflow archive: `ci-eeeb3406.yml`, `maintenance-eeeb3406.yml`, `release-eeeb3406.yml`, `release.config-eeeb3406.cjs` (the four files fingerprinted in `release-path.md`) |
 | `baselines/loc/{main-eeeb3406,dev-a765eb27,track-dcb790fd}/*.tsv` | per-ref per-shard code-line manifests |
 
 ## Pinned refs
