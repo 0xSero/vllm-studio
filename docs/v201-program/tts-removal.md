@@ -5,18 +5,19 @@ Scope: GOAL row 1.2 — Local Studio does not use text-to-speech. This pass audi
 
 ## 1. TTS inventory at the frozen main baseline (`eeeb3406`)
 
-Per the frozen cloc 2.06 shards in `docs/v201-program/baselines/loc/main-eeeb3406/`, TTS product code at main was 23 files, 5,462 code lines:
+Per the frozen cloc 2.06 shards in `docs/v201-program/baselines/loc/main-eeeb3406/`, TTS product code at main was 24 files, 5,569 code lines:
 
 | Area | Files (code lines) |
 |---|---|
 | Controller contracts | `contracts/speech.ts` (43) |
-| Controller speech service | `src/modules/speech/{service,runtime,worker-client,voice-store,voice-vault,storage,reference-audio,routes}.ts`, `worker.py` (3,369) |
+| Controller speech service | `src/modules/speech/{service,runtime,worker-client,voice-store,voice-vault,storage,reference-audio,routes}.ts`, `worker.py` (3,373) |
+| Controller standalone TTS service | `src/services/tts.ts` (107) |
 | Controller audio routes | `src/modules/audio/{routes,helpers,interfaces}.ts` (455; `POST /v1/audio/speech` TTS + transcription forwarding) |
 | Frontend API client | `src/lib/api/speech.ts` (331) |
 | Frontend voice UI | `src/features/integrations/chatterbox-voice-*.tsx/ts` (1,239) |
 | Bundled voice plugin | `desktop/resources/plugins/chatterbox-voice/**` (21) |
 
-All 23 files are absent from the current track. The removal landed before this lane in `fe0d8196e` (chatterbox TTS), `3fe2dde4c` (Chatterbox voice surface), `adc4728b9` (`POST /v1/audio/speech`), `1347cacac` (audio body limits), and `89f0e6582` (speech module and TTS service). This lane found zero surviving TTS synthesis, voice-profile, TTS-provider, or TTS-route code by full-tree scan (case-insensitive `tts|text-to-speech|speech|voice|chatterbox|speak|utterance|speechSynthesis` over `controller/`, `frontend/src`, `frontend/desktop`, `services/`, `shared/`, `scripts/`, packaging, and every `package.json`).
+All 24 files are absent from the current track. The removal landed before this lane in `fe0d8196e` (chatterbox TTS), `3fe2dde4c` (Chatterbox voice surface), `adc4728b9` (`POST /v1/audio/speech`), `1347cacac` (audio body limits), and `89f0e6582` (speech module and TTS service). This lane found zero surviving TTS synthesis, voice-profile, TTS-provider, or TTS-route code by full-tree scan (case-insensitive `tts|text-to-speech|speech|voice|chatterbox|speak|utterance|speechSynthesis` over `controller/`, `frontend/src`, `frontend/desktop`, `services/`, `shared/`, `scripts/`, packaging, and every `package.json`).
 
 ## 2. False-positive classes verified and preserved
 
@@ -40,9 +41,9 @@ All 23 files are absent from the current track. The removal landed before this l
 
 - **STT dictation (retained, live):** `frontend/src/features/agent/ui/composer-dictation-button.tsx`, `use-composer-dictation.ts`; agent-runtime routes `/api/agent/transcribe` and `/api/agent/transcribe/engine` (`transcribe-handlers.ts`, `local-transcribe.ts`), 25 MB multipart cap. Local-dictation design recorded in `3780f153f`.
 - **Audio upload and media rendering (retained):** dictation recording upload; audio attachment rendering in `chat-attachments` and `user-message-block`.
-- **`realtime.session` shared seam (retained):** `shared/agent/litter-bridge.ts` realtime schemas and `shared/agent/litter-bridge-realtime-v1.fixture.json` cover provider-native OpenAI Realtime and local-pipeline audio/text WebRTC signaling — a cross-repo seam and general multimodal capability, not TTS-only product code. A lane-local removal attempt (unpushed commit `140f25f8c`, −464 lines) was fully restored to base `c0036a57d` after adjudication; no seam change is shipped here. Any future seam change requires the paired Litter PR and joint acceptance per GOAL "Repository ownership".
-- **Remote-STT settings remnant (retained, dead, routed to row 1.3):** `services/agent-runtime/src/settings-service.ts` persists `voiceUrl`/`voiceModel` (env `VOICE_URL`/`VOICE_MODEL`, default `whisper-large-v3-turbo`). Born in `3e55a4220` as a server-auth remote transcription proxy (`/api/voice/transcribe`, STT); zero consumers today (no reader of either field; dictation is local). Left in place because it is STT-flavored, not TTS residue; flagged for the row 1.3 dead-config sweep.
-- **PR #396 disposition:** its head `c452af5c` still retains all 20 TTS files (controller speech module, `contracts/speech.ts`, Chatterbox plugin and frontend surfaces, `lib/api/speech.ts`). It contains no TTS deletions to port; the current track is strictly ahead on row 1.2.
+- **`realtime.session` shared seam (retained):** `shared/agent/litter-bridge.ts` realtime schemas and `shared/agent/litter-bridge-realtime-v1.fixture.json` cover provider-native OpenAI Realtime and local-pipeline audio/text WebRTC signaling — a cross-repo seam and general multimodal capability, not TTS-only product code. A lane-local, unpushed removal attempt (`140f25f8c`, −464 lines, unreachable from any published ref) was fully restored to base `c0036a57d` after adjudication; no seam change is shipped here. Any future seam change requires the paired Litter PR and joint acceptance per GOAL "Repository ownership".
+- **Remote-STT settings remnant (retained, dead, routed to row 1.3):** `services/agent-runtime/src/settings-service.ts` persists `voiceUrl`/`voiceModel` (env `VOICE_URL`/`VOICE_MODEL`, default `whisper-large-v3-turbo`). Born in `3e55a4220` as a server-auth remote transcription proxy (`/api/voice/transcribe`, STT); the fields are still emitted on `GET`/`POST /api/settings` and `voiceUrl` is still validated on update, but there is no UI or dictation consumer for them. Left in place because they are STT-flavored, not TTS residue; flagged for the row 1.3 dead-config sweep as an API response-shape removal.
+- **PR #396 disposition:** its head `c452af5c` still retains 20 TTS-related files from its own branch state (controller speech module, `contracts/speech.ts`, Chatterbox plugin and frontend surfaces, `lib/api/speech.ts`) but not the main-era `src/services/tts.ts` or the deleted audio-route mix. It contains no TTS deletions to port; the current track is strictly ahead on row 1.2.
 
 ## 5. Database residue — disposition required by the migration workpack (row 1.9)
 
@@ -59,7 +60,7 @@ Frozen pipeline (`docs/v201-program/baselines/method.md`, pinned cloc 2.06 `ed9f
 | Lane base `c0036a57d` (before) | 791 | 104,378 | 4,166 |
 | Lane head (after) | 791 | 104,378 | 4,161 |
 
-Reproduced `SUM` row before: `791,SUM,8357,4166,104378`; after: `791,SUM,8357,4161,104378`. This lane's changes are documentation, comment, and packaging-text corrections: code LOC is unchanged (−5 comment lines; the YAML string replacement is line-neutral). The row 1.2 LOC reduction itself — the 23 files / 5,462 code lines in section 1 — landed in prior commits and is already reflected in the 104,378 base; PR #396 contributes nothing to it.
+Reproduced `SUM` row before: `791,SUM,8357,4166,104378`; after: `791,SUM,8357,4161,104378`. This lane's changes are documentation, comment, and packaging-text corrections: code LOC is unchanged (−5 comment lines; the YAML string replacement is line-neutral). The row 1.2 LOC reduction itself — the 24 files / 5,569 code lines in section 1 — landed in prior commits and is already reflected in the 104,378 base; PR #396 contributes nothing to it.
 
 ## 7. Validation
 
