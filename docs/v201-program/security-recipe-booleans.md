@@ -24,6 +24,8 @@ The scan used SQLite URI `mode=ro` plus `PRAGMA query_only=ON`. It selected only
 
 No persisted non-boolean value was found in the current locations. This is an inventory result, not a migration guarantee for databases on other machines.
 
+If a legacy database does contain a non-boolean value in either typed field, the stricter decoder now fails closed but silently: `RecipeStore.list()` omits that row from `GET /recipes` and model-name routing, while `RecipeStore.get()` returns `null`, so `GET /recipes/:recipeId` and `POST /launch/:recipeId` return 404. Those read paths do not log the decode failure. The local scan found no affected row, so no migration was needed for the inspected databases; machines outside this inventory could still encounter silent recipe disappearance.
+
 ## Disposable controller probe
 
 The manual endpoint probe ran the ported controller on loopback port `19161` with an isolated data directory, missing model directory, metrics disabled, and no model launch. Only disposable recipe IDs and the two boolean fields were printed.
@@ -42,7 +44,9 @@ After the second restart the disposable database held four accepted rows, and al
 
 ## Effective engine arguments
 
-A pure vLLM launch-plan probe used the parsed explicit-false recipe without spawning an engine. The effective argv contained the normal model, listen, context, memory, and concurrency arguments and contained neither `--trust-remote-code` nor `--enable-auto-tool-choice`. This confirms the false-valued probe does not become a truthy launch flag in the standard no-parser path.
+A pure vLLM launch-plan probe used the parsed explicit-false recipe without spawning an engine. The effective argv contained the normal model, listen, context, memory, and concurrency arguments and did not contain `--trust-remote-code`, confirming that the typed `trust_remote_code=false` value did not become a truthy launch flag. The typed `enable_auto_tool_choice` value is not read by `recipeToLaunchInput`; vLLM emits `--enable-auto-tool-choice` as the companion of a resolved `tool_call_parser`, and its absence in this no-parser probe therefore does not validate the typed boolean's launch behavior.
+
+The security claim is limited to strict decoding of the two typed top-level fields. The pre-existing `extra_args` path still serializes recipe keys into engine argv, so an entry such as `"trust-remote-code": true` can still emit `--trust-remote-code`; this port does not sanitize arbitrary argv keys.
 
 ## Validation and remaining gap
 
