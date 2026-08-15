@@ -25,6 +25,7 @@ const STRUCTURAL_BOUNDARY = /[\r\n,;}\]]/;
 const STRUCTURAL_CONTINUATION_BOUNDARY = /[\r\n,;]/;
 
 type ValueKind = "authorization" | "query" | "structured" | "token";
+type ValueRedaction = { end: number; replacement: string };
 
 const closingBoundaryIsComplete = (line: string, start: number): boolean => {
   let cursor = start;
@@ -70,7 +71,7 @@ const redactedEnd = (line: string, start: number, kind: ValueKind): number | nul
   return closingBoundaryIsComplete(line, boundaryAt) ? end : null;
 };
 
-const quotedEnd = (line: string, start: number, kind: ValueKind): number | null => {
+const quotedRedaction = (line: string, start: number, kind: ValueKind): ValueRedaction | null => {
   let quoteAt = start;
   while (line[quoteAt] === "\\") quoteAt += 1;
   const quote = line[quoteAt];
@@ -81,7 +82,7 @@ const quotedEnd = (line: string, start: number, kind: ValueKind): number | null 
   let escapeRun = 0;
   while (cursor < line.length) {
     const value = line[cursor];
-    if (value === "\r" || value === "\n") return cursor;
+    if (value === "\r" || value === "\n") return { end: cursor, replacement: REDACTED };
     if (value === "\\") {
       escapeRun += 1;
       cursor += 1;
@@ -93,12 +94,15 @@ const quotedEnd = (line: string, start: number, kind: ValueKind): number | null 
       (escapeRun - openingEscapes) % delimiterPeriod === 0 &&
       isBoundary(line, cursor + 1, kind)
     ) {
-      return cursor + 1;
+      return {
+        end: cursor + 1,
+        replacement: `${line.slice(start, quoteAt + 1)}${REDACTED}${line.slice(cursor - openingEscapes, cursor + 1)}`,
+      };
     }
     escapeRun = 0;
     cursor += 1;
   }
-  return line.length;
+  return { end: line.length, replacement: REDACTED };
 };
 
 const unquotedEnd = (line: string, start: number, kind: ValueKind): number => {
@@ -132,17 +136,24 @@ const kindFor = (groups: Record<string, string>): ValueKind => {
   return "token";
 };
 
-const valueEnd = (line: string, start: number, groups: Record<string, string>): number => {
+const valueRedaction = (
+  line: string,
+  start: number,
+  groups: Record<string, string>,
+): ValueRedaction => {
   const kind = kindFor(groups);
   const knownRedactedEnd = redactedEnd(line, start, kind);
-  if (knownRedactedEnd !== null) return knownRedactedEnd;
+  if (knownRedactedEnd !== null) return { end: knownRedactedEnd, replacement: REDACTED };
   const hasRedactedPrefix = line.startsWith(REDACTED, start);
   const scanFrom = hasRedactedPrefix ? start + REDACTED.length : start;
-  const knownQuotedEnd = quotedEnd(line, scanFrom, kind);
-  if (knownQuotedEnd !== null) return knownQuotedEnd;
-  return hasRedactedPrefix
-    ? continuationEnd(line, scanFrom, kind)
-    : unquotedEnd(line, scanFrom, kind);
+  const quoted = quotedRedaction(line, scanFrom, kind);
+  if (quoted !== null) return quoted;
+  return {
+    end: hasRedactedPrefix
+      ? continuationEnd(line, scanFrom, kind)
+      : unquotedEnd(line, scanFrom, kind),
+    replacement: REDACTED,
+  };
 };
 
 export function redactLogLine(line: string): string {
@@ -158,8 +169,9 @@ export function redactLogLine(line: string): string {
       continue;
     }
     const markerEnd = matchAt + match[0].length;
-    output.push(line.slice(copiedThrough, markerEnd), REDACTED);
-    copiedThrough = Math.max(markerEnd, valueEnd(line, markerEnd, match.groups ?? {}));
+    const redaction = valueRedaction(line, markerEnd, match.groups ?? {});
+    output.push(line.slice(copiedThrough, markerEnd), redaction.replacement);
+    copiedThrough = Math.max(markerEnd, redaction.end);
     SECRET_MARKER.lastIndex = copiedThrough;
     match = SECRET_MARKER.exec(line);
   }
