@@ -17,20 +17,27 @@ const SECRET_MARKER = new RegExp(
   "gi",
 );
 
-const TOKEN_BOUNDARY = /[\s;,}\]]/;
-const TOKEN_CONTINUATION_BOUNDARY = /[\s;,]/;
+const TOKEN_BOUNDARY = /\s/;
+const TOKEN_CONTINUATION_BOUNDARY = /\s/;
 const QUERY_BOUNDARY = /[\s&#]/;
 const AUTHORIZATION_BOUNDARY = /[\r\n}]/;
+const QUOTED_TOKEN_BOUNDARY = /[\s,;}\]]/;
+const QUOTED_AUTHORIZATION_BOUNDARY = /[\r\n,;}\]]/;
 const STRUCTURAL_BOUNDARY = /[\r\n,;}\]]/;
 const STRUCTURAL_CONTINUATION_BOUNDARY = /[\r\n,;]/;
 
 type ValueKind = "authorization" | "query" | "structured" | "token";
 type ValueRedaction = { end: number; replacement: string };
 
-const closingBoundaryIsComplete = (line: string, start: number): boolean => {
+const closingBoundaryEnd = (line: string, start: number): number => {
   let cursor = start;
   while (line[cursor] === "]" || line[cursor] === "}") cursor += 1;
-  return cursor >= line.length || /[\s,;]/.test(line[cursor] ?? "");
+  return cursor;
+};
+
+const closingBoundaryIsComplete = (line: string, start: number): boolean => {
+  const end = closingBoundaryEnd(line, start);
+  return end >= line.length || /[\s,;]/.test(line[end] ?? "");
 };
 
 const scanToBoundary = (line: string, start: number, boundary: RegExp): number => {
@@ -38,9 +45,11 @@ const scanToBoundary = (line: string, start: number, boundary: RegExp): number =
   while (cursor < line.length) {
     const value = line[cursor] ?? "";
     if (boundary.test(value)) {
-      if ((value !== "]" && value !== "}") || closingBoundaryIsComplete(line, cursor)) {
-        return cursor;
-      }
+      if (value !== "]" && value !== "}") return cursor;
+      const closingEnd = closingBoundaryEnd(line, cursor);
+      if (closingEnd >= line.length || /[\s,;]/.test(line[closingEnd] ?? "")) return cursor;
+      cursor = closingEnd;
+      continue;
     }
     cursor += 1;
   }
@@ -58,11 +67,38 @@ const isBoundary = (line: string, start: number, kind: ValueKind): boolean => {
   return boundary.test(line[cursor] ?? "");
 };
 
+const isQuotedBoundary = (line: string, start: number, kind: ValueKind): boolean => {
+  if (kind !== "authorization" && kind !== "token") return isBoundary(line, start, kind);
+  if (kind === "token") {
+    return start >= line.length || QUOTED_TOKEN_BOUNDARY.test(line[start] ?? "");
+  }
+  let cursor = start;
+  while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
+  if (cursor >= line.length) return true;
+  return QUOTED_AUTHORIZATION_BOUNDARY.test(line[cursor] ?? "");
+};
+
+const authorizationFieldFollows = (line: string, start: number): boolean => {
+  let cursor = start;
+  while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
+  if (line[cursor] !== ",") return false;
+  cursor += 1;
+  while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
+  if (!/[A-Za-z_]/.test(line[cursor] ?? "")) return false;
+  cursor += 1;
+  while (/[A-Za-z0-9_.-]/.test(line[cursor] ?? "")) cursor += 1;
+  while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
+  return line[cursor] === ":" || line[cursor] === "=";
+};
+
 const redactedEnd = (line: string, start: number, kind: ValueKind): number | null => {
   if (!line.startsWith(REDACTED, start)) return null;
   const end = start + REDACTED.length;
   if (line[end] === '"' || line[end] === "'" || line[end] === "\\") return null;
-  if (!isBoundary(line, end, kind)) return null;
+  if (!isBoundary(line, end, kind)) {
+    if (kind !== "authorization" || !authorizationFieldFollows(line, end)) return null;
+    return end;
+  }
   let boundaryAt = end;
   if (kind === "authorization" || kind === "structured") {
     while (line[boundaryAt] === " " || line[boundaryAt] === "\t") boundaryAt += 1;
@@ -92,7 +128,7 @@ const quotedRedaction = (line: string, start: number, kind: ValueKind): ValueRed
       value === quote &&
       escapeRun >= openingEscapes &&
       (escapeRun - openingEscapes) % delimiterPeriod === 0 &&
-      isBoundary(line, cursor + 1, kind)
+      isQuotedBoundary(line, cursor + 1, kind)
     ) {
       return {
         end: cursor + 1,
