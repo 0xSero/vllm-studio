@@ -1,6 +1,6 @@
 # v2.0.1 External-Contributor PR Dispositions — Frozen Audit Ledger
 
-GLM-5.3 read-only audit lane, 2026-08-15 UTC. Revised same day after Claude Opus-5 REVISE, r2 REVISE, and the r3 table-rendering review (corrections: #380 scope, #271 head SHA, #371/#395 test census, #395 doc/test line figures, validation section, audit-time head qualifier, #362 table-cell rendering). Scope: the 23 frozen fork-external PRs — #269, #271, #361–#380 inclusive, #395. Candidate track: **PR #408** (`feat/v201-consolidation` → `dev`, draft); `c0036a57d7e8c4d816d990bd0f9b1fc3a1f5fcbf` is its **audit-time integration head** and this branch's audit base (350 files, +10,713/−16,562 vs `dev` at audit time), not the live PR head. The live remote head is now `e8dacb6acb05b7755634c0d73b1e824f914a39fa`; §7 records the later accepted adaptations and supersedes the original cells for every named row. All 23 PRs were re-verified live (state, head SHA, base, metadata) and diffed head-vs-merge-base; equivalence claims cite code in the #408 tree, never titles.
+GLM-5.3 read-only audit lane, 2026-08-15 UTC. Revised same day after Claude Opus-5 REVISE, r2 REVISE, and the r3 table-rendering review (corrections: #380 scope, #271 head SHA, #371/#395 test census, #395 doc/test line figures, validation section, audit-time head qualifier, #362 table-cell rendering). Scope: the 23 frozen fork-external PRs — #269, #271, #361–#380 inclusive, #395. Candidate track: **PR #408** (`feat/v201-consolidation` → `dev`, draft); `c0036a57d7e8c4d816d990bd0f9b1fc3a1f5fcbf` is its **audit-time integration head** and this branch's audit base (350 files, +10,713/−16,562 vs `dev` at audit time), not the current checkpoint. Exact later action-pin checkpoint `e4b2c248e6523d5e2d3bc884c562517f0611d2e3` is locally and hosted green; §7 records the later accepted adaptations and supersedes the original cells for every named row. All 23 PRs were re-verified live (state, head SHA, base, metadata) and diffed head-vs-merge-base; equivalence claims cite code in the #408 tree, never titles.
 
 **Coverage: 23/23 audited.** Every row below was derived from the PR's actual diff and a current-tree grep/read of the touched behavior.
 
@@ -59,7 +59,7 @@ Security-first ordering with sequencing constraints (shared-file and module depe
 13. **#368** unified projects store.
 14. **#373** browser operation coordinator → **#375** session isolation (after #373; 11-file UI overlap with #408's newer panel requires re-derivation, not textual cherry-pick).
 15. **#362** semantic runtime job types.
-16. **#364** CI pinning (regenerate lockfile; decide root-lockfile posture — #408 tree has no root `package-lock.json`).
+16. **#364** raw lockfile/policy/release-tool remainder only; the configuration-only action-pin adaptation is accepted below.
 17. **#269** controller credential inheritance.
 18. **#271** notice layering.
 19. **#380** `/v1/models` provider-catalog merge (product-gated; controller-only remainder).
@@ -70,7 +70,7 @@ Security-first ordering with sequencing constraints (shared-file and module depe
 
 1. **#366 posture decision** — flipping the production default to fail-closed requires desktop wiring (`LOCAL_STUDIO_DESKTOP=1` + loopback `HOSTNAME` check) to be agreed and landed with it; otherwise the desktop app bricks in production mode.
 2. **#380 product call** — the fetch layer (`/studio/provider-models` + frontend client) already landed in #408; the open decision is whether #380's controller-only `/v1/models` catalog merge (`provider/model` ids, vision flags) belongs in v2.0.1. PR is live CONFLICTING against `main`.
-3. **#364 lockfile posture** — the repo (dev and #408) deliberately lacks a root `package-lock.json`; adopting the PR's lockfile is a dependency-management decision, not a mechanical copy.
+3. **#364 lockfile posture** — the accepted adaptation deliberately excludes the raw PR's root `package-lock.json`; adopting that lockfile and release-tool upgrade remains a dependency-management decision, not a mechanical copy.
 4. **#373/#375 rebase depth** — both predate #408's browser panel rework; the depth of drift (like #407's automation runner) is mapped only at file level, not API level.
 5. **#375 head drift** — live head `a08af0f7` ≠ census `d4b40a7`; any future action must re-verify head again.
 6. **#395 platform strategy** — Windows support is unadjudicated; the port targets the pre-#408 controller (28-file overlap) and would need a funded rebase plan.
@@ -114,6 +114,7 @@ This append-only checkpoint supersedes the original disposition and queue cells 
 | 361 | Strict recipe booleans, production serializer only | product `675b79f58`; final integration ledger `fa5fe8f95` | Installed UI and legacy malformed-row presentation remain acceptance work. |
 | 362 | Semantic `install`/`update` runtime-job contract and dispatch plus truthful platform-job backend/command presentation | reviewed contract product `f5af3284b`; canonical contract `b314dce36`; metadata repair `2977b63c2`; evidence `9bfe31d28` + `cdead91f2` | Raw PR remains held because it adds a prohibited automated test. The prior P2 is fixed: CUDA/ROCm jobs retain their real backend, unsupported platform installs expose no fictional command, and update plus managed-engine paths are unchanged. Manual loopback behavior and the combined exact-tree gate pass; all nine hosted contexts are green at exact encompassing PR #408 head `e8dacb6ac`, while installed acceptance remains open. |
 | 363 | Keyless Host/Origin authority plus strict authority syntax | product `d07b5b3e9` + `4988cffaf`; evidence through `b7b73e9ab` | Installed and release proof remain open. |
+| 364 | Pin the 24 existing CI/Maintenance third-party action references to reviewed immutable commits and schedule GitHub Actions Dependabot updates against `dev` | canonical product `2f76f1da9`; evidence `e4b2c248e`; exact-head hosted run [31886136504](https://github.com/sybil-solutions/local-studio/actions/runs/31886136504) | Raw policy/test/package/lock/release-tool changes remain held. The pinned workflow jobs plus head-bound CodeQL and Dependabot configuration check pass; scheduled Dependabot update creation begins only on the configured post-merge branch surface. |
 | 366 | Fail-closed production frontend access with desktop loopback posture | product `5ffaf8c49`; evidence `edd106d2c` | Shared-secret cookie, login-specific rate limiting, and installed acceptance remain explicit gaps. |
 | 367 + 373 | DNS-pinned browser transport plus composed operation lifecycle, cancellation, recovery, and terminal-dot policy | canonical browser composition through product `1009d435d`; evidence `3f173e3f8` | Session isolation, installed visible-panel proof, Windows/Linux, and combined release proof remain open. |
 | 374 | Bounded MCP stdio framing, detachable pending rejectors, sticky terminal state, and one shared idempotent shutdown | reviewed candidate product `f03488fdb`; canonical product `d4a30dd69`; evidence `7266933d0` | This adds 251 frozen product lines. Child environment, artifact identity, sandboxing, and installed/plugin proof remain open. |
@@ -126,7 +127,7 @@ The #374 and #378 raw PR heads are not accepted substitutes for the reviewed ada
 
 | PR | Live head | Disposition | Primary blockers |
 |---:|---|---|---|
-| 364 | `5c925a67d` | HOLD raw; audited only and absent from this checkpoint | The raw PR adds a prohibited automated test and generated root lockfile. A conforming current-tree CI pinning adaptation remains separate implementation and validation work; no #364 product bytes are accepted here. |
+| 364 | `5c925a67d` | HOLD raw; configuration-only adaptation accepted above | The raw PR still adds a prohibited automated test, generated root lockfile, incompatible workflow policy/package scripts, and unaccepted release-tool upgrades. None of those bytes are accepted by the bounded action-pin slice. |
 | 365 | `650d6a645` | HOLD raw and three-file production set | Pending metadata work can launch after shutdown; lexical reservations miss symlink/hardlink/volume aliases; locks are process-local and volume case semantics are inferred. |
 | 368 | `04c09dbb3` | HOLD raw store rewrite; conditional GO only for a re-derived authority-only precursor | Lock lease can admit simultaneous writers, migration is CWD/path based and resurrection-prone, persistence lacks no-follow/fsync/Windows ACL proof, and raw composition breaks the canonical session watcher. |
 | 369 | `757598a6d` | HOLD raw nonce-attempt port | Public stop remains name-only; cancellation is process-local; supervisor and placement-lock races release live ownership; store defects/interruption can orphan work; latest #370 semantics are not composed. |
@@ -143,7 +144,7 @@ All live heads in the two tables were OPEN, non-draft, and MERGEABLE but BLOCKED
 ### Corrected sequencing
 
 1. Preserve accepted #374 framing as the MCP base and accepted #378 controller-sink boundary as a bounded slice.
-2. Carry the completed #362 platform-job presentation repair through installed runtime-job acceptance; exact encompassing PR #408 head `e8dacb6ac` has passed all nine hosted contexts and no source P2 remains in the selective slice.
+2. Carry the completed #362 platform-job presentation repair through installed runtime-job acceptance; exact encompassing PR #408 action-pin head `e4b2c248e` has passed all ten hosted contexts and no source P2 remains in the selective slice.
 3. Rebuild a cross-platform private-file primitive before connector grant or artifact work.
 4. Resolve #371 grant authority before a corrected #372 digest/identity/discovery/snapshot lifecycle; rebase #379 last and retain only unique artifact-manager behavior.
 5. Rebuild #370 ownership with versioned legacy reconciliation, tri-state inspection, exact process-tree containment, typed store Effects, durable CAS, and crash recovery; compose corrected #369 nonce admission afterward.

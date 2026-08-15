@@ -57,7 +57,8 @@
 | `pr362-platform-job-metadata.md` | PR #362 P2 evidence: truthful platform backend/command presentation, loopback matrix, aggregate gate, and cleanup boundary |
 | `pr269-pr271-small-fixes.md` | accepted controller-credential and notice-placement adaptations, validator repair, disposable probe, LOC, and remaining visible gates |
 | `combined-post-small-checkpoint.md` | combined product/gate/LOC checkpoint through local product `6f5c77a6d`, with remote CI separation and durable artifact hashes |
-| `post-small-hosted-ci.md` | exact PR #408 hosted-CI proof at remote ledger head `e8dacb6ac`, including all nine context URLs and the source/package-only acceptance boundary |
+| `post-small-hosted-ci.md` | exact PR #408 hosted-CI proof at product ledger head `e8dacb6ac` and docs-only repeat `1d302def3`, including context URLs and the source/package-only acceptance boundary |
+| `pr364-action-pins.md` | immutable third-party action resolutions, bounded current-tree adaptation, full local gate, and ten-context hosted proof at `e4b2c248e` |
 | `security-recipe-booleans.md` | strict recipe-boolean port provenance, database inventory, API/argv probes, and fail-closed legacy-row caveats |
 | `security-request-authority.md` | keyless request-authority guard provenance, Host/Origin matrix, LAN/proxy probes, and remaining hardening gaps |
 | `security-request-authority-p2.md` | bracketed-authority and missing-Host follow-up, raw HTTP compatibility matrix, and canonical integration proof |

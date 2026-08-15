@@ -7,6 +7,8 @@
 - Branch: `codex/v201-pr364-pins-20260815`
 - Base: `e8dacb6acb05b7755634c0d73b1e824f914a39fa`
 - Product commit: `77f332ca8cc61bfe17fb028639d5d622a78e6c70`
+- Canonical product commit: `2f76f1da93eec82c703126e0c8647702abfb923d`
+- Canonical evidence head: `e4b2c248e6523d5e2d3bc884c562517f0611d2e3`
 - External source: PR 364 head `5c925a67da078082f2f0618402666b038fe66b81`
 
 This is the sealed configuration-only subset of PR 364. It pins the action references already present in CI and Maintenance and adds weekly GitHub Actions Dependabot updates against `dev`. It does not port the pull request's workflow policy, package scripts, lockfile changes, test code, release workflow changes, or release tooling.
@@ -45,6 +47,14 @@ The product diff is three files, 32 insertions, and 24 deletions:
 
 Product patch SHA-256: `fc795fb8f108dc90c72b59f4a90f69648fae32423e9ed9d2dcc9abc8a110211d`.
 
+## Canonical and hosted validation
+
+- The two isolated commits composed onto the canonical program branch without conflict as `2f76f1da9` and `e4b2c248e`.
+- Exact-tree `npm run check` passed at `e4b2c248e`, including frontend production and standalone builds, controller gates, and agent-runtime postbuild. Transcript SHA-256: `7fc8e449c43c770f9c6a92656ad38906c708884addf127022671a0eeb9fafdfa`; exit-marker SHA-256: `e3a60fdde876d0f385644030ccb144533271c46a6ce5da6eeeb90e2ac8552367`.
+- The normal push hook passed conventional-commit, frontend static/cleanup, and standalone gates.
+- Pull-request run [31886136504](https://github.com/sybil-solutions/local-studio/actions/runs/31886136504) completed `SUCCESS` at exact PR #408 head `e4b2c248e`. The pinned jobs passed: [gates](https://github.com/sybil-solutions/local-studio/actions/runs/31886136504/job/95015599880), [controller](https://github.com/sybil-solutions/local-studio/actions/runs/31886136504/job/95015599919), [agent-runtime](https://github.com/sybil-solutions/local-studio/actions/runs/31886136504/job/95015599885), [frontend](https://github.com/sybil-solutions/local-studio/actions/runs/31886136504/job/95015599868), [desktop-package](https://github.com/sybil-solutions/local-studio/actions/runs/31886136504/job/95015599917), [Secret Scanning](https://github.com/sybil-solutions/local-studio/actions/runs/31886136504/job/95015599900), [CodeQL Analysis](https://github.com/sybil-solutions/local-studio/actions/runs/31886136504/job/95015599886), and [Dependency Review](https://github.com/sybil-solutions/local-studio/actions/runs/31886136504/job/95015599915). The separate head-bound [CodeQL check](https://github.com/sybil-solutions/local-studio/runs/95015753690) and GitHub's `.github/dependabot.yml` configuration check also passed.
+- The hosted job step names expose the exact immutable checkout, setup-node, setup-bun, upload-artifact, CodeQL, and Dependency Review SHAs, proving that the new references executed rather than merely parsing.
+
 ## Remaining boundary
 
-The aggregate `npm run check` was intentionally not run while the shared build slot was held. The branch is unpushed and has no hosted workflow execution. Integration still requires canonical review, the combined aggregate gate, branch push, and exact-head hosted CI. Dependabot will not operate from this isolated branch; its live behavior begins only after the accepted configuration reaches the repository's configured default-branch surface.
+The configuration-only adaptation is locally and hosted green on the program branch, but raw PR 364 remains held: its automated test, workflow policy, package-script changes, generated root lockfile, release workflow edits, and release-tool upgrades are not accepted. Dependabot's configuration is validated on the pull-request branch, but scheduled update creation remains a post-merge `dev` operational surface. This checkpoint is not installed-desktop, signed-release, browser, physical-phone, or release acceptance.
