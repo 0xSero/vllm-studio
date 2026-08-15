@@ -1,13 +1,5 @@
-/**
- * Central icon barrel — the single import source for all icons in the app.
- *
- * Re-exports every lucide-react icon used across the codebase plus the custom
- * solid SVG set from icons.tsx. All files should import from here instead of
- * directly from "lucide-react", so the visual style can be changed in one place.
- */
 export type { LucideIcon } from "lucide-react";
 
-// Custom solid SVG icons (agent surface)
 export {
   ChatIcon,
   PlusIcon,
@@ -30,7 +22,6 @@ export {
   FolderOpen,
 } from "./icons";
 
-// Sidebar toggles — see panel-toggle-icons.tsx for why these are not lucide's.
 export {
   PanelLeftFilled,
   PanelLeftHollow,
@@ -38,10 +29,8 @@ export {
   PanelRightHollow,
 } from "./panel-toggle-icons";
 
-// Lucide-react re-exports — all icons used across the app
 export {
   Activity,
-  AudioLines,
   AlertCircle,
   AlertTriangle,
   Archive,
@@ -151,7 +140,6 @@ export {
   Trash2,
   Upload,
   Variable,
-  Volume2,
   Wrench,
   X,
   XCircle,
