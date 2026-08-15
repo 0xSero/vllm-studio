@@ -15,6 +15,10 @@ import { createBrowserProxy, type BrowserProxy } from "./pinning-proxy";
 const LAUNCH_TIMEOUT_MS = 15_000;
 const launchPersistentBrowser = chromium.launchPersistentContext.bind(chromium);
 
+class BrowserContextInvalidatedError extends Error {
+  readonly name = "BrowserContextInvalidatedError";
+}
+
 const browserDataDirectory = (mode: BrowserNetworkMode): string =>
   path.join(os.tmpdir(), `local-studio-browser-profile-${mode}`);
 
@@ -81,9 +85,11 @@ export const findBrowserBinary = (): string | null => {
 export class PlaywrightManager {
   private context: BrowserContext | null = null;
   private pendingContext: BrowserContext | null = null;
+  private contextGeneration = 0;
+  private generation = 0;
   private mode: BrowserNetworkMode | null = null;
   private proxies: Record<BrowserNetworkMode, BrowserProxy> | null = null;
-  private pendingProxy: BrowserProxy | null = null;
+  private pendingProxies = new Set<BrowserProxy>();
   private failure: unknown = null;
   private stopped = false;
   private readonly lock = Semaphore.makeUnsafe(1);
@@ -100,13 +106,20 @@ export class PlaywrightManager {
   }
 
   ensure(mode: BrowserNetworkMode = "public"): Promise<BrowserContext> {
-    return this.serial(() => this.ensureUnlocked(mode));
+    const generation = this.generation;
+    return this.serial(() => this.ensureUnlocked(mode, generation));
   }
 
-  private async ensureUnlocked(mode: BrowserNetworkMode): Promise<BrowserContext> {
+  private async ensureUnlocked(
+    mode: BrowserNetworkMode,
+    generation: number,
+  ): Promise<BrowserContext> {
     if (this.failure) throw this.failure;
     if (this.stopped) throw new Error("Browser manager stopped");
-    if (this.context && this.mode === mode) return this.context;
+    this.assertGeneration(generation);
+    if (this.context && this.contextGeneration === generation && this.mode === mode) {
+      return this.context;
+    }
     if (this.context) {
       const context = this.context;
       try {
@@ -115,13 +128,16 @@ export class PlaywrightManager {
         return this.abort(error);
       }
       if (this.context === context) this.context = null;
+      this.contextGeneration = 0;
       this.mode = null;
+      this.assertGeneration(generation);
     }
     const executablePath = this.resolveBinary();
     if (!executablePath) {
       throw new Error("Browser unavailable: no Chromium found — set LOCAL_STUDIO_CHROME_PATH");
     }
-    this.proxies ??= await this.createProxies();
+    this.proxies ??= await this.createProxies(generation);
+    this.assertGeneration(generation);
     const proxy = this.proxies[mode];
     const launch = (userDataDir: string): Promise<BrowserContext> =>
       this.launchBrowser(userDataDir, {
@@ -146,6 +162,7 @@ export class PlaywrightManager {
     try {
       context = await launch(dataDirectory).catch((error: unknown) => {
         if (!String(error).includes("ProcessSingleton")) throw error;
+        this.assertGeneration(generation);
         return launch(`${dataDirectory}-${process.pid}`);
       });
       this.pendingContext = context;
@@ -154,9 +171,11 @@ export class PlaywrightManager {
         if (this.pendingContext === context) this.pendingContext = null;
         if (this.context === context) {
           this.context = null;
+          this.contextGeneration = 0;
           this.mode = null;
         }
       });
+      await this.closeIfInvalidated(context, generation);
       await context.route(/^https?:\/\//u, async (route) => {
         try {
           await this.networkPolicy.resolve(route.request().url(), mode);
@@ -165,6 +184,7 @@ export class PlaywrightManager {
           await route.abort("blockedbyclient");
         }
       });
+      await this.closeIfInvalidated(context, generation);
       await context.routeWebSocket(/^wss?:\/\//u, async (route) => {
         try {
           await this.networkPolicy.resolve(route.url(), mode);
@@ -173,39 +193,93 @@ export class PlaywrightManager {
           await route.close({ code: 1008, reason: "Browser network policy blocked destination" });
         }
       });
+      await this.closeIfInvalidated(context, generation);
       if (closed) throw new Error("Browser context closed during initialization");
     } catch (error) {
+      if (error instanceof BrowserContextInvalidatedError) throw error;
       return this.abort(error);
     }
     this.pendingContext = null;
     this.context = context;
+    this.contextGeneration = generation;
     this.mode = mode;
     return context;
   }
 
-  stop(): Promise<void> {
+  invalidate(): Promise<void> {
+    this.generation += 1;
     return this.serial(async () => {
-      this.stopped = true;
-      const results = await this.cleanup();
-      const failed = results.filter((result) => result.status === "rejected");
-      if (failed.length) {
-        throw new AggregateError(
-          failed.map((result) => result.reason),
-          "Browser resources failed to close",
-        );
+      const priorFailure = this.failure;
+      const cleanupFailure = await this.cleanupFailure();
+      if (cleanupFailure) {
+        this.failure = priorFailure
+          ? new AggregateError(
+              [priorFailure, cleanupFailure],
+              "Browser recovery and prior setup failed",
+            )
+          : cleanupFailure;
+        throw this.failure;
       }
+      if (priorFailure) throw priorFailure;
+      if (this.stopped) throw new Error("Browser manager stopped");
     });
   }
 
-  private async createProxies(): Promise<Record<BrowserNetworkMode, BrowserProxy>> {
+  stop(): Promise<void> {
+    this.generation += 1;
+    return this.serial(async () => {
+      this.stopped = true;
+      const priorFailure = this.failure;
+      const cleanupFailure = await this.cleanupFailure();
+      if (cleanupFailure) {
+        this.failure = priorFailure
+          ? new AggregateError(
+              [priorFailure, cleanupFailure],
+              "Browser stop and prior setup failed",
+            )
+          : cleanupFailure;
+        throw this.failure;
+      }
+      if (priorFailure) throw priorFailure;
+    });
+  }
+
+  private async createProxies(
+    generation: number,
+  ): Promise<Record<BrowserNetworkMode, BrowserProxy>> {
     try {
       const publicProxy = await this.proxyFactory("public");
-      this.pendingProxy = publicProxy;
+      this.pendingProxies.add(publicProxy);
+      this.assertGeneration(generation);
       const loopbackProxy = await this.proxyFactory("loopback");
-      this.pendingProxy = null;
+      this.pendingProxies.add(loopbackProxy);
+      this.assertGeneration(generation);
+      this.pendingProxies.delete(publicProxy);
+      this.pendingProxies.delete(loopbackProxy);
       return { loopback: loopbackProxy, public: publicProxy };
     } catch (error) {
+      if (error instanceof BrowserContextInvalidatedError) throw error;
       return this.abort(error);
+    }
+  }
+
+  private async closeIfInvalidated(
+    context: BrowserContext,
+    generation: number,
+  ): Promise<void> {
+    if (generation === this.generation) return;
+    try {
+      await this.closeContext(context);
+    } catch (error) {
+      return this.abort(error);
+    }
+    if (this.pendingContext === context) this.pendingContext = null;
+    throw new BrowserContextInvalidatedError("Browser context invalidated during launch");
+  }
+
+  private assertGeneration(generation: number): void {
+    if (generation !== this.generation) {
+      throw new BrowserContextInvalidatedError("Browser context invalidated");
     }
   }
 
@@ -222,7 +296,7 @@ export class PlaywrightManager {
   private proxyResources(): BrowserProxy[] {
     return Array.from(
       new Set(
-        [this.pendingProxy, this.proxies?.public, this.proxies?.loopback].filter(
+        [...this.pendingProxies, this.proxies?.public, this.proxies?.loopback].filter(
           (value): value is BrowserProxy => value != null,
         ),
       ),
@@ -252,21 +326,31 @@ export class PlaywrightManager {
     const proxies = this.proxyResources();
     this.context = null;
     this.pendingContext = null;
+    this.contextGeneration = 0;
     this.mode = null;
     this.proxies = null;
-    this.pendingProxy = null;
+    this.pendingProxies.clear();
     return Promise.allSettled([
       ...contexts.map((context) => this.closeContext(context)),
       ...proxies.map((proxy) => proxy.close()),
     ]);
   }
 
-  private async abort(error: unknown): Promise<never> {
-    const results = await this.cleanup();
-    const failed = results.filter((result) => result.status === "rejected");
-    this.failure = failed.length
+  private async cleanupFailure(): Promise<AggregateError | null> {
+    const failed = (await this.cleanup()).filter((result) => result.status === "rejected");
+    return failed.length
       ? new AggregateError(
-          [error, ...failed.map((result) => result.reason)],
+          failed.map((result) => result.reason),
+          "Browser resources failed to close",
+        )
+      : null;
+  }
+
+  private async abort(error: unknown): Promise<never> {
+    const cleanupFailure = await this.cleanupFailure();
+    this.failure = cleanupFailure
+      ? new AggregateError(
+          [error, cleanupFailure],
           "Browser setup failed and resources failed to close",
         )
       : error;
@@ -296,7 +380,7 @@ export const playwrightManager = getGlobalSingleton(
 
 getGlobalSingleton("playwrightExitHook", () => {
   if (typeof process !== "undefined") {
-    process.on("exit", () => void playwrightManager.stop());
+    process.on("exit", () => void playwrightManager.stop().catch(() => undefined));
   }
   return true;
 });

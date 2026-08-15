@@ -19,6 +19,7 @@ class BrowserHost {
   private pages = new Map<string, HostedPage>();
   private activeId: string | null = null;
   private activeMode: BrowserNetworkMode | null = null;
+  private generation = 0;
 
   isAvailable(): boolean {
     return playwrightManager.isAvailable();
@@ -29,11 +30,8 @@ class BrowserHost {
     mode: BrowserNetworkMode = this.activeMode ?? "public",
   ): Promise<HostedPage> {
     const changingMode = this.activeMode !== mode;
-    if (changingMode) {
-      for (const page of this.pages.values()) page.close();
-      this.pages.clear();
-      this.activeId = null;
-    }
+    if (changingMode) this.resetPages();
+    const generation = this.generation;
     const targetId = pageId ?? this.activeId;
     const cached = targetId ? this.pages.get(targetId) : undefined;
     if (cached && !cached.closed) {
@@ -43,16 +41,22 @@ class BrowserHost {
     if (cached) this.pages.delete(cached.id);
 
     const context = await playwrightManager.ensure(mode);
-    if (changingMode) this.activeMode = mode;
+    this.assertGeneration(generation);
     const rawPage =
       context
         .pages()
         .find((candidate) =>
           Array.from(this.pages.values()).every((hosted) => !hosted.matches(candidate)),
         ) ?? (await context.newPage());
+    if (generation !== this.generation) {
+      await rawPage.close().catch(() => undefined);
+      this.assertGeneration(generation);
+    }
     const hosted = HostedPage.attach(rawPage);
+    this.assertGeneration(generation);
     this.pages.set(hosted.id, hosted);
     this.activeId = hosted.id;
+    this.activeMode = mode;
     return hosted;
   }
 
@@ -62,7 +66,9 @@ class BrowserHost {
     const page = await this.page(pageId, navigation.mode);
     await page.navigate(navigation.url, NAVIGATION_TIMEOUT_MS);
     const state = await page.readState();
-    return { url: state.url, title: state.title };
+    const finalNavigation = browserNetworkPolicy.navigation(state.url);
+    if (!finalNavigation) throw new Error("Browser network policy blocked final navigation URL");
+    return { url: finalNavigation.url, title: state.title };
   }
 
   async getUrl(pageId?: string): Promise<{ url: string; title: string }> {
@@ -146,12 +152,27 @@ class BrowserHost {
     await (await this.page(pageId)).dispatchKey(args);
   }
 
-  stop(): void {
+  async invalidate(): Promise<void> {
+    this.resetPages();
+    this.activeMode = null;
+    await playwrightManager.invalidate();
+  }
+
+  async stop(): Promise<void> {
+    this.resetPages();
+    this.activeMode = null;
+    await playwrightManager.stop();
+  }
+
+  private resetPages(): void {
+    this.generation += 1;
     for (const page of this.pages.values()) page.close();
     this.pages.clear();
     this.activeId = null;
-    this.activeMode = null;
-    void playwrightManager.stop();
+  }
+
+  private assertGeneration(generation: number): void {
+    if (generation !== this.generation) throw new Error("Browser context invalidated");
   }
 }
 
