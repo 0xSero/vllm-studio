@@ -58,7 +58,24 @@ Probe source digests:
 
 The full gate reported one non-failing pre-existing frontend complexity warning in `composer-project-drawer.tsx` (21 against a warning threshold of 20). The P2 lane does not touch that file. The root gate was intentionally run once after build-slot clearance at the sealed product head; the evidence-only documentation commit followed without changing a checked product path.
 
+## Canonical integration
+
+The independently approved product commit was transplanted without conflict onto canonical parent `fa5fe8f95dc534a06e9707aa6b170c9088c4b795` as `4988cffaf`; the lane evidence followed as `37e4840c6`. The resulting product blobs are byte-identical to the sealed lane. Canonical remained clean after composition.
+
+The complete manual matrix was then rerun against the canonical files and controller. Results remained 30/30 for pure authority normalization, 11/11 for keyless raw HTTP, and 5/5 for API-key raw HTTP. The canonical transcripts are byte-identical to the sealed-lane transcripts:
+
+| canonical proof | transcript SHA-256 |
+|---|---|
+| pure authority matrix | `020f9cd0e753266bf85c2bfcf68bfb3535f981eeace1091ef3bf21a2e9e3106d` |
+| keyless raw HTTP matrix | `c450280945c7b1f37c035e6b915d50c9bdf0f3114bbf737e15c56de845d2dea3` |
+| API-key raw HTTP matrix | `dbd651ab5e5bd60524dc01f3e61a8a41e37ec5ac05aa1fdbe47a13ff816655ab` |
+
+Both canonical controller processes were stopped, port 18091 was proven closed, and both isolated data trees were moved recoverably to Trash. Root `npm run check` then passed at exact canonical head `37e4840c6` with `CANONICAL-ROOT-NPM-CHECK-EXIT:0`; transcript `/Users/sero/projects/vllm-studio-v201-evidence/request-authority-p2-20260815/canonical-root-npm-check.log`, SHA-256 `74c71d0128a020eb666027e36d8255dfdf6e4c7486da67822e820658ba2a4fba`.
+
+The exact pre-integration parent `fa5fe8f95` passed all nine GitHub contexts on PR #408. That green result is retained as parent evidence and is not represented as CI for the new authority commits.
+
 ## Remaining gates
 
-- Independent review, canonical composition, push, remote CI, installed-desktop validation, and release acceptance remain integration-lane responsibilities.
-- This worktree is intentionally not pushed.
+- Push and remote CI at the integrated authority head remain pending.
+- Installed-desktop and release acceptance remain integration-lane responsibilities.
+- The isolated source worktree remains intentionally unpushed.
