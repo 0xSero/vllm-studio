@@ -348,13 +348,6 @@ const PROBE_TIMEOUT_MS = 650;
 const LSOF_TIMEOUT_MS = 2_500;
 const MAX_CANDIDATES = 48;
 const FALLBACK_PORTS = [3000, 3001, 3002, 3017, 4173, 5173, 5174, 8000, 8080, 8317, 1234];
-const HTML_ENTITY_REPLACEMENTS: Record<string, string> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  "#39": "'",
-};
 
 type PortCandidate = {
   port: number;
@@ -378,19 +371,15 @@ function parseCurrentPort(request: Request): number | null {
 }
 
 function titleFromHtml(html: string): string {
-  const lower = html.toLowerCase();
-  const start = lower.indexOf("<title");
-  if (start < 0) return "";
-  const openEnd = html.indexOf(">", start + 6);
-  if (openEnd < 0) return "";
-  const closeStart = lower.indexOf("</title", openEnd + 1);
-  if (closeStart < 0) return "";
-  return html
-    .slice(openEnd + 1, closeStart)
-    .trim()
-    .replace(/&(amp|lt|gt|quot|#39);/g, (match, entity: string) =>
-      HTML_ENTITY_REPLACEMENTS[entity] ?? match,
-    );
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim();
+  return title
+    ? title
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+    : "";
 }
 
 function parseLsof(stdout: string): PortCandidate[] {
