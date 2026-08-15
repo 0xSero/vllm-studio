@@ -9,13 +9,14 @@ routes, agent runtime integration, controller API bridge, and UI kit.
 - `/` — controller and hardware status.
 - `/agent` — Workbench sessions, panes, Pi agent runtime, terminals, browser,
   files, skills, and extensions.
-- `/configure` — overview, machines, models, integrations, and server controls.
+- `/models` — model discovery, downloads, serving recipes, and active serves.
 - `/usage` — inference and session usage.
-- `/settings` — application, connection, appearance, agent, and setup settings.
+- `/settings` — application, connection, system, integration, agent, and setup settings.
 - `/logs` — controller log sessions.
 
-`/recipes`, `/discover`, `/integrations`, and `/server` are compatibility
-redirects into Configure. New navigation must target the canonical route.
+`/configure`, `/recipes`, `/discover`, `/integrations`, and `/server` are
+compatibility routes into Models or Settings. New navigation must target the
+canonical route.
 
 ## Architecture
 
@@ -27,7 +28,9 @@ flowchart TB
     Routes --> ControllerApi["controller proxy routes"]
     AgentApi --> Pi["standalone Pi agent runtime"]
     ControllerApi --> Controller["Local Studio controller"]
-    Configure["/configure"] --> ControllerApi
+    Models["/models"] --> ControllerApi
+    Settings["/settings"] --> ControllerApi
+    Logs["/logs"] --> ControllerApi
     Workbench["/agent"] --> AgentApi
 ```
 
@@ -82,9 +85,10 @@ credentials into the controller database.
 
 - `src/app/` — thin route and API shells.
 - `src/features/agent/` — Workbench sessions, messages, workspace, and UI.
-- `src/features/configure/` — consolidated controller configuration.
-- `src/features/settings/` — application settings and runtime target controls.
-- `src/features/integrations/` — plugins, connectors, and skills.
+- `src/features/recipes/` — Models discovery, downloads, recipes, and serving.
+- `src/features/settings/` — application, system, integration, and runtime target controls.
+- `src/features/integrations/` — plugins, connectors, providers, and skills mounted in Settings.
+- `src/features/logs/` — controller log sessions and filtering.
 - `src/lib/` and `src/hooks/` — shared modules with multiple feature consumers.
 - `src/ui/` — shared primitives and ZCode design tokens.
 - `desktop/` — Electron main process, resources, signing, and packaging.

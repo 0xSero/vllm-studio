@@ -4,9 +4,9 @@ Local Studio is a local-first workstation for running, managing, and using
 self-hosted LLM backends. One machine can launch models, watch GPU/runtime
 state, chat with OpenAI-compatible endpoints, and run agent sessions against
 local or remote controllers. The current consolidation track presents Status,
-Workbench, Models, Configure, and Usage. Integrations and Server remain
-compatibility entry points while their reviewed relocation into Settings and
-Logs is still in progress.
+Workbench, Models, Automations, Usage, Settings, and Logs. Legacy Configure,
+Integrations, and Server URLs remain compatibility entry points that resolve to
+their canonical Models or Settings destinations.
 
 ## Download
 
@@ -22,8 +22,8 @@ It is built from two modules that share one controller API:
   OpenAI-compatible proxy (chat, models, tokenization), system state
   (GPU metrics, logs, usage, settings, SSE), and controller integrations.
 - [`frontend/`](frontend/README.md) — Next.js 16 + React 19 UI and the macOS
-  Electron desktop shell. Hosts the Workbench (`/agent`), consolidated
-  Configure surface, settings, usage, logs, and browser-facing API routes.
+  Electron desktop shell. Hosts the Workbench (`/agent`), Models, Settings,
+  Usage, Logs, and browser-facing API routes.
 
 ## Mobile companion
 
@@ -65,8 +65,9 @@ flowchart LR
 flowchart TB
     subgraph Frontend["frontend/"]
         AgentPage["/agent"]
-        Configure["/configure"]
-        Settings["/settings"]
+        ModelsPage["/models"]
+        SettingsPage["/settings"]
+        LogsPage["/logs"]
         Usage["/usage"]
         ProxyRoutes["/api/* proxy and agent routes"]
         DesktopMain["desktop/ Electron shell"]
@@ -82,6 +83,9 @@ flowchart TB
         Stores["src/stores"]
     end
 
+    ModelsPage --> ProxyRoutes
+    SettingsPage --> ProxyRoutes
+    LogsPage --> ProxyRoutes
     ProxyRoutes --> HttpApp
     HttpApp --> Engines
     HttpApp --> Models
@@ -138,9 +142,9 @@ precedence order as the CLI. Existing Local Studio session storage remains a
 read-compatible legacy source, while new sessions use Pi's resolved directory.
 Workbench sends only the active controller to Pi and shows that controller's
 advertised models by default. The model picker has an explicit Other models
-switch for models from the user's Pi catalog and providers connected in
-Configure. Those opt-in models use Pi's native provider routing without adding
-saved inactive controllers to the session.
+switch for models from the user's Pi catalog and providers connected under
+Settings → Integrations. Those opt-in models use Pi's native provider routing
+without adding saved inactive controllers to the session.
 
 New Workbench chats start with Pi's `read`, `grep`, `find`, and `ls` tools. Full
 access enables every tool registered in that Pi session, including extension
@@ -158,8 +162,10 @@ Recipes launch through the controller runtime layer. Wired backend families:
 - `llamacpp` — llama.cpp `llama-server` recipes for GGUF models.
 - `mlx` — MLX `mlx_lm.server` recipes for Apple Silicon.
 
-Runtime target discovery, models, integrations, and server controls are
-surfaced in Configure; selections persist in the controller data directory.
+Models and serving recipes live under Models. Runtime targets, engines,
+services, storage, hardware, and operator links live under Settings → System;
+plugins, connectors, providers, and skills live under Settings → Integrations.
+Selections persist in the controller data directory.
 
 ## Production
 
