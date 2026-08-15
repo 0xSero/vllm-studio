@@ -1,6 +1,12 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { browserHost, type KeyInput, type MouseInput } from "../browser-host/browser-host";
+import {
+  BrowserOperationCoordinator,
+  type BrowserOperationContext,
+  type BrowserOperationCoordinatorOptions,
+  type BrowserOperationRunOptions,
+} from "../browser-host/browser-operation-coordinator";
 import { browserNetworkPolicy, type BrowserNavigation } from "../browser-host/network-policy";
 import { fetchReadable } from "../browser-host/reader";
 
@@ -22,6 +28,20 @@ const UNAVAILABLE_ERROR = "Browser unavailable: no Chromium found — set LOCAL_
 
 let lastFallback: BrowserNavigation | null = null;
 
+export function createBrowserOperationQueue(
+  options: BrowserOperationCoordinatorOptions = {
+    recover: () => browserHost.invalidate(),
+  },
+) {
+  const coordinator = new BrowserOperationCoordinator(options);
+  return <A>(
+    runOptions: BrowserOperationRunOptions,
+    operation: (context: BrowserOperationContext) => Promise<A>,
+  ): Promise<A> => coordinator.run(runOptions, operation);
+}
+
+const runBrowserOperation = createBrowserOperationQueue();
+
 type VerbResult = { ok: boolean; data?: unknown; error?: string };
 
 export async function handleBrowserVerb(request: Request, verb: string): Promise<Response> {
@@ -30,7 +50,9 @@ export async function handleBrowserVerb(request: Request, verb: string): Promise
   }
   const payload = await readPayload(request);
   try {
-    const result = await dispatchVerb(verb, payload);
+    const result = await runBrowserOperation({ kind: "verb", signal: request.signal }, (context) =>
+      dispatchVerb(verb, payload, context),
+    );
     return Response.json(result);
   } catch (error) {
     return Response.json({
@@ -51,63 +73,106 @@ async function readPayload(request: Request): Promise<Record<string, unknown>> {
   return {};
 }
 
-async function dispatchVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
-  if (!browserHost.isAvailable()) return fallbackVerb(verb, payload);
+async function dispatchVerb(
+  verb: string,
+  payload: Record<string, unknown>,
+  context: BrowserOperationContext,
+): Promise<VerbResult> {
+  if (!browserHost.isAvailable()) return fallbackVerb(verb, payload, context);
   try {
-    return await runHostVerb(verb, payload);
+    return await runHostVerb(verb, payload, context);
   } catch (error) {
-    if (verb === "navigate" || verb === "get-text") return fallbackVerb(verb, payload);
+    if (["navigate", "get-url", "get-text", "get-html"].includes(verb)) {
+      return fallbackVerb(verb, payload, context);
+    }
     throw error;
   }
 }
 
-async function runHostVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
+async function runHostVerb(
+  verb: string,
+  payload: Record<string, unknown>,
+  context: BrowserOperationContext,
+): Promise<VerbResult> {
   switch (verb) {
     case "navigate":
-      return navigateVerb(payload);
-    case "get-url":
-      return { ok: true, data: await browserHost.getUrl() };
-    case "get-text":
-      return { ok: true, data: { text: await browserHost.getText() } };
-    case "get-html":
-      return { ok: true, data: { html: await browserHost.getHtml() } };
-    case "screenshot":
-      return { ok: true, data: { dataUri: await browserHost.screenshot() } };
-    case "click":
-      return selectorVerb(await browserHost.click({ selector: requireSelector(payload) }));
-    case "fill":
-      return selectorVerb(
-        await browserHost.fill({
-          selector: requireSelector(payload),
-          value: String(payload.value ?? ""),
-        }),
-      );
+      return navigateVerb(payload, context);
+    case "get-url": {
+      const data = await browserHost.getUrl();
+      publishFallback(data.url, context);
+      return { ok: true, data };
+    }
+    case "get-text": {
+      const text = await browserHost.getText();
+      context.assertActive();
+      return { ok: true, data: { text } };
+    }
+    case "get-html": {
+      const html = await browserHost.getHtml();
+      context.assertActive();
+      return { ok: true, data: { html } };
+    }
+    case "screenshot": {
+      const dataUri = await browserHost.screenshot();
+      context.assertActive();
+      return { ok: true, data: { dataUri } };
+    }
+    case "click": {
+      const result = await browserHost.click({ selector: requireSelector(payload) });
+      context.assertActive();
+      return selectorVerb(result);
+    }
+    case "fill": {
+      const result = await browserHost.fill({
+        selector: requireSelector(payload),
+        value: String(payload.value ?? ""),
+      });
+      context.assertActive();
+      return selectorVerb(result);
+    }
     case "scroll":
-      return scrollVerb(payload);
-    case "back":
+      return scrollVerb(payload, context);
+    case "back": {
       await browserHost.goBack();
-      return { ok: true, data: await browserHost.getState() };
-    case "forward":
+      const data = await browserHost.getState();
+      publishFallback(data.url, context);
+      return { ok: true, data };
+    }
+    case "forward": {
       await browserHost.goForward();
-      return { ok: true, data: await browserHost.getState() };
-    case "reload":
+      const data = await browserHost.getState();
+      publishFallback(data.url, context);
+      return { ok: true, data };
+    }
+    case "reload": {
       await browserHost.reload();
-      return { ok: true, data: await browserHost.getState() };
+      const data = await browserHost.getState();
+      publishFallback(data.url, context);
+      return { ok: true, data };
+    }
     default:
       return { ok: false, error: `Unsupported browser verb: ${verb}` };
   }
 }
 
-async function navigateVerb(payload: Record<string, unknown>): Promise<VerbResult> {
+async function navigateVerb(
+  payload: Record<string, unknown>,
+  context: BrowserOperationContext,
+): Promise<VerbResult> {
   const navigation = browserNetworkPolicy.navigation(String(payload.url ?? ""));
   if (!navigation) return { ok: false, error: "valid public or localhost http(s) url required" };
   const result = await browserHost.navigate(navigation.url);
+  publishFallback(result.url, context);
   return { ok: true, data: result };
 }
 
-async function scrollVerb(payload: Record<string, unknown>): Promise<VerbResult> {
+async function scrollVerb(
+  payload: Record<string, unknown>,
+  context: BrowserOperationContext,
+): Promise<VerbResult> {
   const deltaY = Number(payload.deltaY ?? 0);
   const result = await browserHost.scroll({ deltaY: Number.isFinite(deltaY) ? deltaY : 0 });
+  context.assertActive();
   return { ok: true, data: { deltaY: result.deltaY, scrollY: result.scrollY } };
 }
 
@@ -125,22 +190,39 @@ function requireSelector(payload: Record<string, unknown>): string {
   return selector;
 }
 
-async function fallbackVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
+function publishFallback(url: string, context: BrowserOperationContext): BrowserNavigation | null {
+  const navigation = browserNetworkPolicy.navigation(url);
+  context.assertActive();
+  lastFallback = navigation;
+  return navigation;
+}
+
+async function fallbackVerb(
+  verb: string,
+  payload: Record<string, unknown>,
+  context: BrowserOperationContext,
+): Promise<VerbResult> {
   if (verb === "navigate") {
     const navigation = browserNetworkPolicy.navigation(String(payload.url ?? ""));
     if (!navigation) return { ok: false, error: "valid public or localhost http(s) url required" };
-    const reader = await fetchReadable(navigation.url, navigation.mode);
-    lastFallback = { mode: navigation.mode, url: reader.url };
-    return { ok: true, data: { url: reader.url, title: reader.title, readingMode: true } };
+    const reader = await fetchReadable(navigation.url, navigation.mode, context.signal);
+    const finalNavigation = publishFallback(reader.url, context);
+    if (!finalNavigation) throw new Error("Browser network policy blocked final reader URL");
+    return {
+      ok: true,
+      data: { url: finalNavigation.url, title: reader.title, readingMode: true },
+    };
   }
   if (verb === "get-url") {
+    context.assertActive();
     return { ok: true, data: { url: lastFallback?.url ?? "", title: "" } };
   }
   if (verb === "get-text" || verb === "get-html") {
     const navigation = browserNetworkPolicy.navigation(String(payload.url ?? "")) ?? lastFallback;
     if (!navigation) return { ok: false, error: UNAVAILABLE_ERROR };
-    const reader = await fetchReadable(navigation.url, navigation.mode);
-    lastFallback = { mode: navigation.mode, url: reader.url };
+    const reader = await fetchReadable(navigation.url, navigation.mode, context.signal);
+    const finalNavigation = publishFallback(reader.url, context);
+    if (!finalNavigation) throw new Error("Browser network policy blocked final reader URL");
     return verb === "get-text"
       ? { ok: true, data: { text: reader.text, readingMode: true } }
       : { ok: true, data: { html: reader.markdown ?? reader.text, readingMode: true } };
@@ -152,7 +234,7 @@ export async function handleBrowserFetch(request: Request): Promise<Response> {
   const raw = new URL(request.url).searchParams.get("url");
   if (!raw) return Response.json({ error: "url is required" }, { status: 400 });
   try {
-    const result = await fetchReadable(raw);
+    const result = await fetchReadable(raw, "public", request.signal);
     return Response.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Fetch failed";
@@ -161,28 +243,47 @@ export async function handleBrowserFetch(request: Request): Promise<Response> {
   }
 }
 
-export async function handleBrowserFrame(): Promise<Response> {
-  if (!browserHost.isAvailable()) {
-    return Response.json({ ok: false, error: UNAVAILABLE_ERROR }, { status: 503 });
-  }
+export async function handleBrowserFrame(request: Request): Promise<Response> {
   try {
-    const { frame, state } = await browserHost.pollFrame();
-    return Response.json({
-      ok: true,
-      data: {
-        frame: frame?.data ?? null,
-        url: state.url,
-        title: state.title,
-        canGoBack: state.canGoBack,
-        canGoForward: state.canGoForward,
-      },
+    return await runBrowserOperation({ kind: "frame", signal: request.signal }, async (context) => {
+      if (!browserHost.isAvailable()) return fallbackFrame(UNAVAILABLE_ERROR, 503);
+      try {
+        const { frame, state } = await browserHost.pollFrame();
+        publishFallback(state.url, context);
+        return Response.json({
+          ok: true,
+          data: {
+            frame: frame?.data ?? null,
+            url: state.url,
+            title: state.title,
+            canGoBack: state.canGoBack,
+            canGoForward: state.canGoForward,
+          },
+        });
+      } catch (error) {
+        return fallbackFrame(error instanceof Error ? error.message : "frame poll failed");
+      }
     });
   } catch (error) {
-    return Response.json({
-      ok: false,
-      error: error instanceof Error ? error.message : "frame poll failed",
-    });
+    return fallbackFrame(error instanceof Error ? error.message : "frame poll failed");
   }
+}
+
+function fallbackFrame(error: string, status = 502): Response {
+  return Response.json(
+    {
+      ok: false,
+      error,
+      data: {
+        frame: null,
+        url: lastFallback?.url ?? "",
+        title: "",
+        canGoBack: false,
+        canGoForward: false,
+      },
+    },
+    { status },
+  );
 }
 
 type InputBody =
@@ -201,7 +302,10 @@ export async function handleBrowserInput(request: Request): Promise<Response> {
     return Response.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
   }
   try {
-    await dispatchInput(body);
+    await runBrowserOperation({ kind: "input", signal: request.signal }, async (context) => {
+      await dispatchInput(body);
+      context.assertActive();
+    });
     return Response.json({ ok: true });
   } catch (error) {
     return Response.json({
@@ -352,12 +456,21 @@ export async function handleBrowserLocalhosts(request: Request): Promise<Respons
   return Response.json({ sites });
 }
 
-export async function handleBrowserState(): Promise<Response> {
+export async function handleBrowserState(request: Request): Promise<Response> {
   if (!browserHost.isAvailable()) {
     return Response.json({ ok: false, error: "Browser unavailable" }, { status: 503 });
   }
   try {
-    return Response.json({ ok: true, data: await browserHost.peekState() });
+    const data = await runBrowserOperation(
+      { kind: "state", signal: request.signal },
+      async (context) => {
+        const state = await browserHost.peekState();
+        if (state) publishFallback(state.url, context);
+        else context.assertActive();
+        return state;
+      },
+    );
+    return Response.json({ ok: true, data });
   } catch (error) {
     return Response.json({
       ok: false,
@@ -382,7 +495,10 @@ export async function handleBrowserViewport(request: Request): Promise<Response>
     return Response.json({ ok: false, error: "width and height are required" }, { status: 400 });
   }
   try {
-    await browserHost.setViewport(width, height);
+    await runBrowserOperation({ kind: "viewport", signal: request.signal }, async (context) => {
+      await browserHost.setViewport(width, height);
+      context.assertActive();
+    });
     return Response.json({
       ok: true,
       data: { width: Math.round(width), height: Math.round(height) },

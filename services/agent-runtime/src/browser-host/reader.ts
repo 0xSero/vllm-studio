@@ -1,6 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { request as httpRequest, type RequestOptions } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { Effect } from "effect";
 import {
   createBrowserNetworkPolicy,
   type BrowserAddress,
@@ -42,17 +43,48 @@ declare global {
     | undefined;
 }
 
-async function resolveReaderHost(hostname: string): Promise<ResolvedHostAddress[]> {
+const abortError = (signal: AbortSignal): Error =>
+  new Error("Browser fetch aborted", { cause: signal.reason });
+
+const assertNotAborted = (signal?: AbortSignal): void => {
+  if (signal?.aborted) throw abortError(signal);
+};
+
+const awaitWithSignal = <A>(promise: Promise<A>, signal?: AbortSignal): Promise<A> => {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(abortError(signal));
+  return Effect.runPromise(
+    Effect.tryPromise({
+      try: () => promise,
+      catch: (error) => (signal.aborted ? abortError(signal) : error),
+    }),
+    { signal },
+  ).catch((error: unknown) => {
+    if (signal.aborted) throw abortError(signal);
+    throw error;
+  });
+};
+
+async function resolveReaderHost(
+  hostname: string,
+  signal?: AbortSignal,
+): Promise<ResolvedHostAddress[]> {
+  assertNotAborted(signal);
   const testResolver = globalThis.__LOCAL_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST;
-  if (testResolver) return (await testResolver(hostname)).map(normalizeResolvedAddress);
-  const results = await lookup(hostname, { all: true, verbatim: true });
+  if (testResolver) {
+    const inputs = await awaitWithSignal(testResolver(hostname), signal);
+    assertNotAborted(signal);
+    return inputs.map(normalizeResolvedAddress);
+  }
+  const results = await awaitWithSignal(lookup(hostname, { all: true, verbatim: true }), signal);
+  assertNotAborted(signal);
   return results.map((result) => ({
     address: result.address,
     family: result.family === 6 ? 6 : 4,
   }));
 }
 
-const readerNetworkPolicy = createBrowserNetworkPolicy(resolveReaderHost);
+const readerNavigationPolicy = createBrowserNetworkPolicy(resolveReaderHost);
 
 function decodeEntities(value: string): string {
   return value
@@ -125,16 +157,18 @@ async function fetchBoundedUrl(
   url: string,
   mode: BrowserNetworkMode,
   redirects = 0,
+  signal?: AbortSignal,
 ): Promise<BoundedResponse> {
-  const addresses = await resolvedAddresses(url, mode);
-  const response = await requestBoundedUrl(url, addresses[0]);
+  const addresses = await resolvedAddresses(url, mode, signal);
+  const response = await requestBoundedUrl(url, addresses[0], signal);
+  assertNotAborted(signal);
   if (isRedirectStatus(response.status)) {
     if (redirects >= MAX_REDIRECTS) throw new Error("Too many redirects");
     if (!response.location) throw new Error("Redirect missing Location header");
     const nextUrl = new URL(response.location, url).toString();
     const safeRedirect = acceptedReaderUrl(nextUrl, mode);
     if (!safeRedirect) throw new Error("Redirect rejected by browser network policy");
-    return fetchBoundedUrl(safeRedirect, mode, redirects + 1);
+    return fetchBoundedUrl(safeRedirect, mode, redirects + 1, signal);
   }
   return response;
 }
@@ -146,13 +180,17 @@ function isRedirectStatus(status: number): boolean {
 async function resolvedAddresses(
   raw: string,
   mode: BrowserNetworkMode,
+  signal?: AbortSignal,
 ): Promise<ResolvedHostAddress[]> {
-  const destination = await readerNetworkPolicy.resolve(raw, mode);
+  const readerNetworkPolicy = createBrowserNetworkPolicy((hostname) =>
+    resolveReaderHost(hostname, signal),
+  );
+  const destination = await awaitWithSignal(readerNetworkPolicy.resolve(raw, mode), signal);
   return [destination.address];
 }
 
 function acceptedReaderUrl(raw: string, mode: BrowserNetworkMode): string | null {
-  const navigation = readerNetworkPolicy.navigation(raw);
+  const navigation = readerNavigationPolicy.navigation(raw);
   return navigation && (mode === "loopback" || navigation.mode === "public")
     ? navigation.url
     : null;
@@ -163,13 +201,18 @@ function normalizeResolvedAddress(input: ResolvedHostInput): ResolvedHostAddress
   return { address: input, family: input.includes(":") ? 6 : 4 };
 }
 
-function requestBoundedUrl(url: string, address: ResolvedHostAddress): Promise<BoundedResponse> {
+function requestBoundedUrl(
+  url: string,
+  address: ResolvedHostAddress,
+  signal?: AbortSignal,
+): Promise<BoundedResponse> {
   const testRequest = globalThis.__LOCAL_STUDIO_BROWSER_READER_REQUEST_FOR_TEST;
-  if (testRequest) return testRequest(url, address);
+  if (testRequest) return awaitWithSignal(testRequest(url, address), signal);
   const parsed = new URL(url);
   const request = parsed.protocol === "https:" ? httpsRequest : httpRequest;
   const options: RequestOptions = {
     headers: { Accept: ACCEPT, "User-Agent": USER_AGENT },
+    signal,
     lookup: ((
       _hostname: string,
       lookupOptions: unknown,
@@ -271,10 +314,13 @@ function renderReadable(response: BoundedResponse, fallbackUrl: string): ReaderR
 export async function fetchReadable(
   rawUrl: string,
   mode: BrowserNetworkMode = "public",
+  signal?: AbortSignal,
 ): Promise<ReaderResult> {
+  assertNotAborted(signal);
   const safe = acceptedReaderUrl(rawUrl, mode);
   if (!safe) throw new Error("url rejected by browser network policy");
-  const response = await fetchBoundedUrl(safe, mode);
+  const response = await fetchBoundedUrl(safe, mode, 0, signal);
+  assertNotAborted(signal);
   if (!response.ok) throw new Error(`Upstream returned HTTP ${response.status}`);
   return renderReadable(response, safe);
 }
