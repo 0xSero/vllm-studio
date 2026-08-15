@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
-import type { UsageStats } from "@local-studio/contracts/usage";
+import { usageAverage, usageRate, type UsageStats } from "@local-studio/contracts/usage";
+import { decodeUsageStats } from "@local-studio/contracts/usage-schema";
 import type { Effect } from "effect";
 import {
   openInitializedDatabase,
@@ -7,7 +8,6 @@ import {
   repositoryEffect,
   type RepositoryError,
   toFiniteNumber,
-  toNullableNumber,
 } from "./sqlite";
 
 export interface InferenceRequestRecord {
@@ -261,7 +261,7 @@ export class InferenceRequestStore {
       return ((current - previous) / previous) * 100;
     };
 
-    return {
+    return decodeUsageStats({
       totals: {
         total_tokens: totalTokens,
         prompt_tokens: promptTokens,
@@ -269,12 +269,12 @@ export class InferenceRequestStore {
         total_requests: totalRequests,
         successful_requests: successful,
         failed_requests: totalRequests - successful,
-        success_rate: totalRequests ? (successful / totalRequests) * 100 : 0,
+        success_rate: usageRate(successful, totalRequests),
         unique_sessions: toFiniteNumber(summary?.["unique_sessions"]),
         unique_users: 0,
       },
       latency: {
-        avg_ms: toNullableNumber(summary?.["avg_dur"]),
+        avg_ms: summary?.["avg_dur"],
         p50_ms: null,
         p95_ms: null,
         p99_ms: null,
@@ -282,23 +282,17 @@ export class InferenceRequestStore {
         max_ms: null,
       },
       ttft: {
-        avg_ms: toNullableNumber(summary?.["avg_ttft"]),
+        avg_ms: summary?.["avg_ttft"],
         p50_ms: null,
         p95_ms: null,
         p99_ms: null,
       },
       tokens_per_request: {
-        avg: totalRequests ? Math.round(totalTokens / totalRequests) : 0,
-        avg_prompt: totalRequests ? Math.round(promptTokens / totalRequests) : 0,
-        avg_completion: totalRequests ? Math.round(completionTokens / totalRequests) : 0,
+        avg: usageAverage(totalTokens, totalRequests),
+        avg_prompt: usageAverage(promptTokens, totalRequests),
+        avg_completion: usageAverage(completionTokens, totalRequests),
         max: byModel.reduce(
-          (max, row) =>
-            Math.max(
-              max,
-              toFiniteNumber(row["requests"])
-                ? Math.round(toFiniteNumber(row["total_tokens"]) / toFiniteNumber(row["requests"]))
-                : 0,
-            ),
+          (max, row) => Math.max(max, usageAverage(row["total_tokens"], row["requests"])),
           0,
         ),
         p50: 0,
@@ -309,7 +303,7 @@ export class InferenceRequestStore {
         misses: cacheMisses,
         hit_tokens: cacheHits,
         miss_tokens: cacheMisses,
-        hit_rate: cacheHits + cacheMisses > 0 ? (cacheHits / (cacheHits + cacheMisses)) * 100 : 0,
+        hit_rate: usageRate(cacheHits, cacheHits + cacheMisses),
       },
       week_over_week: {
         this_week: {
@@ -343,70 +337,23 @@ export class InferenceRequestStore {
           toFiniteNumber(summary?.["prev_24h"]),
         ),
       },
-      peak_days: peakDays.map((row) => ({
-        date: String(row["date"] ?? ""),
-        requests: toFiniteNumber(row["requests"]),
-        tokens: toFiniteNumber(row["tokens"]),
+      peak_days: peakDays,
+      peak_hours: peakHours,
+      by_model: byModel.map((row) => ({
+        ...row,
+        success_rate: usageRate(row["successful"], row["requests"]),
+        avg_tokens: usageAverage(row["total_tokens"], row["requests"]),
       })),
-      peak_hours: peakHours.map((row) => ({
-        hour: toFiniteNumber(row["hour"]),
-        requests: toFiniteNumber(row["requests"]),
+      daily: daily.map((row) => ({
+        ...row,
+        success_rate: usageRate(row["successful"], row["requests"]),
       })),
-      by_model: byModel.map((row) => {
-        const requests = toFiniteNumber(row["requests"]);
-        const ok = toFiniteNumber(row["successful"]);
-        return {
-          model: String(row["model"] ?? "unknown"),
-          requests,
-          successful: ok,
-          success_rate: requests ? (ok / requests) * 100 : 0,
-          total_tokens: toFiniteNumber(row["total_tokens"]),
-          prompt_tokens: toFiniteNumber(row["prompt_tokens"]),
-          completion_tokens: toFiniteNumber(row["completion_tokens"]),
-          avg_tokens: requests ? Math.round(toFiniteNumber(row["total_tokens"]) / requests) : 0,
-          avg_latency_ms: toNullableNumber(row["avg_latency_ms"]),
-          p50_latency_ms: null,
-          avg_ttft_ms: toNullableNumber(row["avg_ttft_ms"]),
-          tokens_per_sec: null,
-          prefill_tps: null,
-          generation_tps: null,
-        };
-      }),
-      daily: daily.map((row) => {
-        const requests = toFiniteNumber(row["requests"]);
-        const ok = toFiniteNumber(row["successful"]);
-        return {
-          date: String(row["date"] ?? ""),
-          requests,
-          successful: ok,
-          success_rate: requests ? (ok / requests) * 100 : 0,
-          total_tokens: toFiniteNumber(row["total_tokens"]),
-          prompt_tokens: toFiniteNumber(row["prompt_tokens"]),
-          completion_tokens: toFiniteNumber(row["completion_tokens"]),
-          avg_latency_ms: toFiniteNumber(row["avg_latency_ms"]),
-        };
-      }),
-      daily_by_model: dailyByModel.map((row) => {
-        const requests = toFiniteNumber(row["requests"]);
-        const ok = toFiniteNumber(row["successful"]);
-        return {
-          date: String(row["date"] ?? ""),
-          model: String(row["model"] ?? "unknown"),
-          requests,
-          successful: ok,
-          success_rate: requests ? (ok / requests) * 100 : 0,
-          total_tokens: toFiniteNumber(row["total_tokens"]),
-          prompt_tokens: toFiniteNumber(row["prompt_tokens"]),
-          completion_tokens: toFiniteNumber(row["completion_tokens"]),
-        };
-      }),
-      hourly_pattern: hourly.map((row) => ({
-        hour: toFiniteNumber(row["hour"]),
-        requests: toFiniteNumber(row["requests"]),
-        successful: toFiniteNumber(row["successful"]),
-        tokens: toFiniteNumber(row["tokens"]),
+      daily_by_model: dailyByModel.map((row) => ({
+        ...row,
+        success_rate: usageRate(row["successful"], row["requests"]),
       })),
-    };
+      hourly_pattern: hourly,
+    });
   }
 
   public aggregateEffect(
