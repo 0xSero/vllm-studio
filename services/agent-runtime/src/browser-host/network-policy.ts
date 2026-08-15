@@ -39,7 +39,7 @@ function acceptedNavigation(raw: string, mode: BrowserNetworkMode): BrowserNavig
   try {
     const url = new URL(raw.trim());
     if (!/^(?:http|ws)s?:$/u.test(url.protocol) || url.username || url.password) return null;
-    const hostname = url.hostname.replace(/\.$/u, "");
+    const hostname = url.hostname.replace(/\.+$/u, "");
     if (!hostname) return null;
     url.hostname = hostname;
     const probe = new URL(url); probe.protocol = url.protocol.replace(/^ws/u, "http");
