@@ -110,6 +110,7 @@ This append-only checkpoint supersedes the original disposition and queue cells 
 | Source PR | Accepted boundary | Canonical evidence | Residual boundary |
 |---:|---|---|---|
 | 361 | Strict recipe booleans, production serializer only | product `675b79f58`; final integration ledger `fa5fe8f95` | Installed UI and legacy malformed-row presentation remain acceptance work. |
+| 362 | Semantic `install`/`update` runtime-job contract and dispatch, four production files only | reviewed product `f5af3284b`; canonical product `b314dce36`; evidence `9bfe31d28` | Raw PR remains held because it adds a prohibited automated test. Platform install jobs still expose misleading backend/command presentation before the unsupported error; combined gate, CI, and installed acceptance remain open. The slice adds 24 frozen product lines. |
 | 363 | Keyless Host/Origin authority plus strict authority syntax | product `d07b5b3e9` + `4988cffaf`; evidence through `b7b73e9ab` | Installed and release proof remain open. |
 | 366 | Fail-closed production frontend access with desktop loopback posture | product `5ffaf8c49`; evidence `edd106d2c` | Shared-secret cookie, login-specific rate limiting, and installed acceptance remain explicit gaps. |
 | 367 + 373 | DNS-pinned browser transport plus composed operation lifecycle, cancellation, recovery, and terminal-dot policy | canonical browser composition through product `1009d435d`; evidence `3f173e3f8` | Session isolation, installed visible-panel proof, Windows/Linux, and combined release proof remain open. |
@@ -132,14 +133,14 @@ The #374 and #378 raw PR heads are not accepted substitutes for the reviewed ada
 | 376 | `ac9264d1a` | HOLD private-file implementation | Windows fails closed, same-UID children can read plaintext, startup readers bypass the helper, rename/link/fsync/cross-process-lock/migration gaps remain, and args/query secrets stay exposed. |
 | 379 | `ceb594676` | HOLD whole artifact manager | It pins stale GitHub MCP v1.6.0 built with Go 1.25.0, has stale-config/orphan/promotion/TOCTOU defects, embeds obsolete partial #372, and does not resolve #371/#376 authority and secret boundaries. |
 
-PR #362 at live head `9debc4de8` is separately adjudicated **GO for a four-production-file, comment-free selective port** and **HOLD raw** because the raw PR includes a prohibited 245-line automated test. Its semantic `install | update` contract is the next small implementation slice; it is not yet part of this checkpoint.
+PR #362 at live head `9debc4de8` remains **HOLD raw** because the raw PR includes a prohibited 245-line automated test. The independently reviewed four-file selective adaptation is recorded in the accepted table above.
 
 All live heads in the two tables were OPEN, non-draft, and MERGEABLE but BLOCKED at refresh time, with no submitted reviews or successful hosted check runs. PR #372 exposed one `action_required` suite and zero registered check runs. These metadata facts are not source acceptance.
 
 ### Corrected sequencing
 
 1. Preserve accepted #374 framing as the MCP base and accepted #378 controller-sink boundary as a bounded slice.
-2. Land the four-file #362 semantic runtime-job port independently.
+2. Resolve the bounded #362 platform-job presentation P2 before installed runtime-job acceptance.
 3. Rebuild a cross-platform private-file primitive before connector grant or artifact work.
 4. Resolve #371 grant authority before a corrected #372 digest/identity/discovery/snapshot lifecycle; rebase #379 last and retain only unique artifact-manager behavior.
 5. Rebuild #370 ownership with versioned legacy reconciliation, tri-state inspection, exact process-tree containment, typed store Effects, durable CAS, and crash recovery; compose corrected #369 nonce admission afterward.
