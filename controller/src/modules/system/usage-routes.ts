@@ -20,6 +20,12 @@ const withControllerUsage = (
         .pipe(Effect.map((controller) => ({ ...body, controller })))
     : Effect.succeed(body);
 
+const validateResponse = (body: UsageStats): Effect.Effect<UsageStats, unknown> =>
+  Effect.try({
+    try: () => validateUsageStats(body),
+    catch: (error) => error,
+  });
+
 export const registerUsageRoutes = defineRoutes((app, context) => {
   let usageCache: { at: number; body: UsageStats } | null = null;
 
@@ -42,12 +48,15 @@ export const registerUsageRoutes = defineRoutes((app, context) => {
           usageCache = { at: Date.now(), body };
           return yield* withControllerUsage(context, body, includeController);
         }).pipe(
+          Effect.flatMap(validateResponse),
           Effect.catch((error) => {
             context.logger.error(`[Usage] Error fetching usage stats: ${(error as Error).message}`);
-            return withControllerUsage(context, emptyResponse(), includeController);
+            return withControllerUsage(context, emptyResponse(), includeController).pipe(
+              Effect.flatMap(validateResponse),
+            );
           }),
         );
-        return usageEffect.pipe(Effect.map((body) => ctx.json(validateUsageStats(body))));
+        return usageEffect.pipe(Effect.map((body) => ctx.json(body)));
       }),
     ),
   );
