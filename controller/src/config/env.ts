@@ -55,8 +55,6 @@ const defaultModelsDirectory = (): string =>
 export const createConfig = (): Config => {
   loadDotEnvironment();
 
-  // Anchor defaults to the controller package root (two levels up from src/config/)
-  // so the data dir lands at <repo>/data regardless of the cwd the process started from.
   const controllerRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const defaultDataDirectory = resolve(controllerRoot, "..", "data");
 
@@ -124,8 +122,6 @@ export const createConfig = (): Config => {
 
   const strictOpenAIModelsEnabled = parseBooleanFlag(parsed.LOCAL_STUDIO_STRICT_OPENAI_MODELS);
 
-  // The db default follows the resolved data dir so overriding LOCAL_STUDIO_DATA_DIR
-  // alone keeps the database inside it.
   const dataDirectory = resolve(parsed.LOCAL_STUDIO_DATA_DIR);
   const databasePath = resolve(
     parsed.LOCAL_STUDIO_DB_PATH ?? resolve(dataDirectory, "controller.db"),
