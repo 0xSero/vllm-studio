@@ -18,7 +18,7 @@ It is built from two modules that share one controller API:
 
 - [`controller/`](controller/README.md) — Bun/Hono backend. Owns model lifecycle
   (launch, evict, recipes, downloads, runtime process coordination), an
-  OpenAI-compatible proxy (chat, models, tokenization, audio), system state
+  OpenAI-compatible proxy (chat, models, tokenization), system state
   (GPU metrics, logs, usage, settings, SSE), and controller integrations.
 - [`frontend/`](frontend/README.md) — Next.js 16 + React 19 UI and the macOS
   Electron desktop shell. Hosts the Workbench (`/agent`), consolidated
@@ -78,7 +78,6 @@ flowchart TB
         Proxy["src/modules/proxy"]
         Studio["src/modules/studio"]
         System["src/modules/system"]
-        Audio["src/modules/audio"]
         Stores["src/stores"]
     end
 
@@ -88,7 +87,6 @@ flowchart TB
     HttpApp --> Proxy
     HttpApp --> Studio
     HttpApp --> System
-    HttpApp --> Audio
     System --> Stores
 ```
 

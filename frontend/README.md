@@ -84,7 +84,7 @@ credentials into the controller database.
 - `src/features/agent/` — Workbench sessions, messages, workspace, and UI.
 - `src/features/configure/` — consolidated controller configuration.
 - `src/features/settings/` — application settings and runtime target controls.
-- `src/features/integrations/` — plugins, connectors, skills, and speech.
+- `src/features/integrations/` — plugins, connectors, and skills.
 - `src/lib/` and `src/hooks/` — shared modules with multiple feature consumers.
 - `src/ui/` — shared primitives and ZCode design tokens.
 - `desktop/` — Electron main process, resources, signing, and packaging.
