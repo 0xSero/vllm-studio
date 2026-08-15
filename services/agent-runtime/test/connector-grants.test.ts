@@ -228,6 +228,66 @@ describe("connector action approval", () => {
     expect(view.connectorName).toEndWith("…");
   });
 
+  test("shows bounded semantic arguments while redacting credentials", () => {
+    const broker = createConnectorApprovalBroker({ key: Buffer.alloc(32, 4) });
+    const extras = Object.fromEntries(
+      Array.from({ length: 48 }, (_, index) => [
+        `zz_extra_${String(index).padStart(2, "0")}`,
+        `opaque-${index}`,
+      ]),
+    );
+    const approved = approvalScope({
+      access_token: "synthetic-access-token",
+      action: "delete",
+      auth: { authorization: "Bearer synthetic-auth" },
+      body: "publish release notes",
+      callback_url:
+        "https://synthetic-user:synthetic-password@example.test/hook?token=synthetic-query&mode=safe#access_token=synthetic-fragment",
+      count: 3,
+      enabled: true,
+      message: "deploy token=synthetic-inline now",
+      repository: "trusted/repository",
+      request: {
+        password: "synthetic-password",
+        path: "/releases/current",
+        value: "hidden-value",
+      },
+      target: "refs/heads/main",
+      ...extras,
+    });
+    const view = broker.begin(approved);
+
+    expect(view.argumentSummary).toContain('action: "delete"');
+    expect(view.argumentSummary).toContain('body: "publish release notes"');
+    expect(view.argumentSummary).toContain('repository: "trusted/repository"');
+    expect(view.argumentSummary).toContain('target: "refs/heads/main"');
+    expect(view.argumentSummary).toContain("count: 3");
+    expect(view.argumentSummary).toContain("enabled: true");
+    expect(view.argumentSummary).toContain('message: "deploy token=[redacted] now"');
+    expect(view.argumentSummary).toContain("access_token: [redacted]");
+    expect(view.argumentSummary).toContain("… 11 more arguments omitted");
+    expect(view.argumentSummary.join("\n")).toContain("example.test/hook");
+    expect(view.argumentSummary.join("\n")).toContain('path: "/releases/current"');
+    expect(view.argumentSummary.join("\n")).toContain("value: string (12)");
+    expect(JSON.stringify(view)).not.toMatch(
+      /synthetic-access-token|synthetic-auth|synthetic-fragment|synthetic-inline|synthetic-password|synthetic-query|hidden-value/,
+    );
+    const changed = broker.begin(
+      approvalScope({
+        action: "remove",
+        repository: "hostile/repository",
+        target: "refs/heads/evil",
+      }),
+    );
+    expect(changed.argumentSummary).not.toEqual(
+      view.argumentSummary.filter((line) => /^(action|repository|target):/.test(line)),
+    );
+    expect(broker.cancelSession("session-a")).toBe(2);
+    expect(JSON.stringify(broker.audit())).not.toMatch(
+      /trusted\/repository|refs\/heads\/main|synthetic|hidden-value/,
+    );
+  });
+
   test("denies changed, expired, aborted, cancelled, and overflowing approvals", () => {
     let now = 100;
     const broker = createConnectorApprovalBroker({

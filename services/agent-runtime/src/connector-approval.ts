@@ -53,23 +53,208 @@ const boundedLabel = (value: string, maximum = 96): string => {
   return visible.length <= maximum ? visible : `${visible.slice(0, maximum - 1)}…`;
 };
 
-const summarize = (args: ConnectorArguments): string[] =>
-  Object.keys(args)
-    .sort()
-    .slice(0, 48)
-    .map((key) => {
-      const value = args[key] as ConnectorJson;
-      const type = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
-      const size =
-        typeof value === "string"
-          ? value.length
-          : Array.isArray(value)
-            ? value.length
-            : value !== null && typeof value === "object"
-              ? Object.keys(value).length
-              : null;
-      return `${boundedLabel(key)}: ${type}${size === null ? "" : ` (${size})`}`;
-    });
+const SENSITIVE_ARGUMENT_PARTS = new Set([
+  "auth",
+  "authentication",
+  "authorization",
+  "cookie",
+  "credential",
+  "credentials",
+  "key",
+  "passphrase",
+  "password",
+  "secret",
+  "token",
+]);
+const SENSITIVE_ARGUMENT_KEYS = new Set([
+  "accesskey",
+  "accesstoken",
+  "apikey",
+  "authtoken",
+  "bearertoken",
+  "clientsecret",
+  "privatekey",
+  "secretkey",
+  "sessioncookie",
+  "sessionkey",
+  "sessiontoken",
+]);
+const VISIBLE_STRING_ARGUMENTS = new Set([
+  "account",
+  "action",
+  "attendee",
+  "attendees",
+  "bcc",
+  "body",
+  "branch",
+  "cc",
+  "channel",
+  "command",
+  "comment",
+  "content",
+  "description",
+  "destination",
+  "directory",
+  "email",
+  "end",
+  "endpoint",
+  "event",
+  "file",
+  "filename",
+  "from",
+  "host",
+  "id",
+  "issue",
+  "issue_number",
+  "label",
+  "labels",
+  "location",
+  "message",
+  "method",
+  "name",
+  "operation",
+  "organization",
+  "org",
+  "owner",
+  "path",
+  "project",
+  "prompt",
+  "pull_number",
+  "pull_request",
+  "query",
+  "recipient",
+  "recipients",
+  "ref",
+  "repo",
+  "repository",
+  "resource",
+  "role",
+  "room",
+  "scope",
+  "source",
+  "start",
+  "state",
+  "status",
+  "subject",
+  "summary",
+  "target",
+  "text",
+  "title",
+  "to",
+  "tweet",
+  "type",
+  "timezone",
+  "uri",
+  "url",
+]);
+const MAX_ARGUMENTS = 48;
+const MAX_COLLECTION_ITEMS = 6;
+const MAX_PREVIEW_DEPTH = 2;
+const MAX_PREVIEW_LINE = 320;
+
+const normalizedArgumentKey = (key: string): string =>
+  key
+    .replace(/([a-z\d])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/[^a-z\d]+/g, "_")
+    .replace(/^_|_$/g, "");
+
+const isSensitiveArgumentKey = (key: string): boolean => {
+  const normalized = normalizedArgumentKey(key);
+  return (
+    SENSITIVE_ARGUMENT_KEYS.has(normalized.replaceAll("_", "")) ||
+    normalized.split("_").some((part) => SENSITIVE_ARGUMENT_PARTS.has(part))
+  );
+};
+
+const isVisibleStringArgument = (key: string): boolean => {
+  const normalized = normalizedArgumentKey(key);
+  return (
+    VISIBLE_STRING_ARGUMENTS.has(normalized) ||
+    ["_id", "_name", "_path", "_ref", "_target", "_uri", "_url"].some((suffix) =>
+      normalized.endsWith(suffix),
+    )
+  );
+};
+
+const redactVisibleUrl = (value: string): string => {
+  try {
+    const url = new URL(value);
+    if (url.username) url.username = "[redacted]";
+    if (url.password) url.password = "[redacted]";
+    for (const key of [...url.searchParams.keys()]) {
+      if (isSensitiveArgumentKey(key)) url.searchParams.set(key, "[redacted]");
+    }
+    if (url.hash.includes("=")) {
+      const fragment = new URLSearchParams(url.hash.slice(1));
+      let redacted = false;
+      for (const key of [...fragment.keys()]) {
+        if (!isSensitiveArgumentKey(key)) continue;
+        fragment.set(key, "[redacted]");
+        redacted = true;
+      }
+      if (redacted) url.hash = fragment.toString();
+    }
+    return url.toString();
+  } catch {
+    return value;
+  }
+};
+
+const redactVisibleString = (value: string): string =>
+  redactVisibleUrl(value)
+    .replace(/(\bbearer\s+)[^\s,;]+/gi, "$1[redacted]")
+    .replace(
+      /((?:api[-_]?key|access[-_]?token|auth(?:orization|entication)?|cookie|credentials?|passphrase|password|private[-_]?key|secret|token)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&]+)/gi,
+      "$1[redacted]",
+    );
+
+const previewArgument = (value: ConnectorJson, key: string, depth = 0): string => {
+  if (isSensitiveArgumentKey(key)) return "[redacted]";
+  if (value === null) return "null";
+  if (typeof value === "boolean" || typeof value === "number") return String(value);
+  if (typeof value === "string") {
+    if (!isVisibleStringArgument(key)) return `string (${value.length})`;
+    return JSON.stringify(boundedLabel(redactVisibleString(value), 120));
+  }
+  if (Array.isArray(value)) {
+    if (depth >= MAX_PREVIEW_DEPTH) return `array (${value.length})`;
+    const shown = value.slice(0, MAX_COLLECTION_ITEMS);
+    const omitted = value.length - shown.length;
+    return `[${shown.map((entry) => previewArgument(entry, key, depth + 1)).join(", ")}${
+      omitted > 0 ? `, … ${omitted} more items omitted` : ""
+    }]`;
+  }
+  const object = value as Readonly<Record<string, ConnectorJson>>;
+  const keys = Object.keys(object).sort();
+  if (depth >= MAX_PREVIEW_DEPTH) return `object (${keys.length})`;
+  const shown = keys.slice(0, MAX_COLLECTION_ITEMS);
+  const omitted = keys.length - shown.length;
+  return `{ ${shown
+    .map(
+      (nestedKey) =>
+        `${boundedLabel(nestedKey, 48)}: ${previewArgument(
+          object[nestedKey] as ConnectorJson,
+          nestedKey,
+          depth + 1,
+        )}`,
+    )
+    .join(", ")}${omitted > 0 ? `, … ${omitted} more fields omitted` : ""} }`;
+};
+
+const summarize = (args: ConnectorArguments): string[] => {
+  const keys = Object.keys(args).sort();
+  const shown = keys.slice(0, MAX_ARGUMENTS);
+  const omitted = keys.length - shown.length;
+  const summary = shown.map((key) =>
+    boundedLabel(
+      `${boundedLabel(key)}: ${previewArgument(args[key] as ConnectorJson, key)}`,
+      MAX_PREVIEW_LINE,
+    ),
+  );
+  if (omitted > 0) summary.push(`… ${omitted} more arguments omitted`);
+  return summary;
+};
 
 class ConnectorApprovalBroker {
   private readonly key: BinaryLike;
