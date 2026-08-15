@@ -9,16 +9,8 @@ const TEXT_CAP_BYTES = 500 * 1024;
 const HTML_CAP_BYTES = 1024 * 1024;
 const NAVIGATION_TIMEOUT_MS = 8_000;
 
-const normalizeUrl = (value: string): string => {
-  const raw = /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}`;
-  try {
-    const url = new URL(raw);
-    url.hostname = url.hostname.replace(/\.+$/u, "");
-    return url.toString();
-  } catch {
-    return raw;
-  }
-};
+const normalizeUrl = (value: string): string =>
+  /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}`;
 
 const capString = (value: string, maximum: number): string =>
   value.length > maximum ? value.slice(0, maximum) : value;

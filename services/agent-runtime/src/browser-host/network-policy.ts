@@ -39,6 +39,9 @@ function acceptedNavigation(raw: string, mode: BrowserNetworkMode): BrowserNavig
   try {
     const url = new URL(raw.trim());
     if (!/^(?:http|ws)s?:$/u.test(url.protocol) || url.username || url.password) return null;
+    const hostname = url.hostname.replace(/\.$/u, "");
+    if (!hostname) return null;
+    url.hostname = hostname;
     const probe = new URL(url); probe.protocol = url.protocol.replace(/^ws/u, "http");
     const targetMode = sanitizePublicBrowserUrl(probe.toString())
       ? "public"
@@ -59,7 +62,7 @@ export function createBrowserNetworkPolicy(defaultResolver: BrowserResolver = sy
     const navigation = acceptedNavigation(raw, mode);
     if (!navigation) throw new Error("Browser network policy blocked URL");
     const url = new URL(navigation.url);
-    const hostname = url.hostname.replace(/^\[|\]$/gu, "").replace(/\.$/u, "").toLowerCase();
+    const hostname = url.hostname.replace(/^\[|\]$/gu, "").toLowerCase();
     const literalFamily = isIP(hostname);
     const input = literalFamily ? [{ address: hostname, family: literalFamily }] : await Effect.runPromise(
       Effect.tryPromise(() => defaultResolver(hostname)).pipe(Effect.timeout(5_000)),
