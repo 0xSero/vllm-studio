@@ -270,9 +270,15 @@ async function loadPersistedControllers(agentDir: string): Promise<PiControllerM
 
 async function savePersistedControllers(
   agentDir: string,
-  controllers: PiControllerConfig[],
+  controllers: PiControllerModelsRequest[],
 ): Promise<void> {
-  await writeFile(controllersPath(agentDir), JSON.stringify(controllers, null, 2), "utf-8");
+  const normalized = controllers
+    .map(normalizeControllerInput)
+    .filter((controller): controller is PiControllerConfig => controller !== null);
+  const unique = [
+    ...new Map(normalized.map((controller) => [controller.url, controller])).values(),
+  ];
+  await writeFile(controllersPath(agentDir), JSON.stringify(unique, null, 2), "utf-8");
   await chmod(controllersPath(agentDir), 0o600).catch(() => undefined);
 }
 
@@ -409,7 +415,7 @@ export async function refreshPiModels(
       ? requestedControllers
       : await loadPersistedControllers(agentDir);
   const controllers = mergeControllers(settings, persisted);
-  await savePersistedControllers(agentDir, controllers);
+  await savePersistedControllers(agentDir, persisted);
   let models: AgentModel[] = [];
   let controllerModels: ControllerModels[] = [];
   let controllerError: unknown = null;
