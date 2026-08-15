@@ -6,6 +6,10 @@ GLM-5.3 read-only audit lane, 2026-08-15 UTC. Revised same day after Claude Opus
 
 **Closure gate (standing):** no PR here is declared safe to close. `fully-harvested-close-after-acceptance` is assigned to **zero** PRs today; every closure requires the row's acceptance evidence plus a fresh state check. Security/reliability rows are never marked superseded without line-level code evidence in the #408 tree.
 
+### Census-precision note (post-REVISE)
+
+Path-glob test census overcounts two ways and was corrected: `frontend/src/app/api/agent/connectors/test/route.ts` (#371) and `controller/src/modules/engines/engine-spec.ts` (#395) match `/test/` and `spec` patterns but are production source and stay in port scope. Verified figures: #371 = 1 executable test + 1 fixture; #395 = 27 test files / 1,134 added lines, docs = 1,041 lines (windows-support 177 + windows-port-plan 436 + windows-port-audit 428) + README +12.
+
 ## §1 Ledger (23 rows)
 
 Legend — disp: **SP** = selectively-port, **SN** = superseded-no-port, **KD** = keep-open-dependency. ov = files also changed by #408 (textual-conflict surface). risk = omission risk class. All heads verified OPEN unless noted; base `dev` except #380 → `main`.
@@ -73,7 +77,15 @@ Security-first ordering with sequencing constraints (shared-file and module depe
 7. **#377 residual docs** — version-authority paragraph conflicts with `docs/workflow.md` as single source of truth; fold decision belongs to workflow.md's owner.
 8. **Zero closures now** — no PR carries acceptance evidence yet; `fully-harvested-close-after-acceptance` count is 0/23 and must stay 0 until ports land and are accepted.
 
-## §4 Method (commands, no secrets)
+## §4 Validation record
+
+All commands run in this worktree on the exact content committed; no claim below precedes its command finishing.
+
+- **Audit commit `4929ba9af`** (`docs(v201): audit 23 external contributor PR dispositions against 408 track`): `git diff --check` clean (0 whitespace errors); `npm run check` **exit 0** — all six stages green (`check:automation`, `check:contracts`, `check:structure`, `check:frontend` incl. production `next build` + `complete-standalone` + `assert-standalone`, `check:controller`, `check:agent-runtime`; postbuild rewrote 170 specifiers). Transcript `/tmp/praudit/npm-check-run4.log`, exit line `NPM-CHECK-EXIT:0`.
+- **Environment repair (pre-existing, docs-unrelated)**: the worktree's `frontend/node_modules` was a symlink into the primary v201 worktree; Next standalone re-emitted it as a symlink, so `complete-standalone`'s `cpSync` failed `ERR_FS_CP_EINVAL` (src≡dest) under both node v26.4.0 and v22.22.3 (transcripts `npm-check-run{1,2,3}.log`, exit 1 each; stale APFS-cloned `.next/standalone` from an Aug-13 run had the same inode as source). Fix scoped to this worktree: real `npm ci` (1,644 pkgs, exit 0) replacing the symlink + cleared ignored `.next` output. Primary worktree untouched.
+- **Correction commit (this one, Opus-5 REVISE fixes)**: `git diff --check` clean; `npm run check` **exit 0** on the corrected content (stale `​.next/standalone` cleared first). Transcript `/tmp/praudit/npm-check-run5.log`, exit line `NPM-CHECK-EXIT:0`.
+
+## §5 Method (commands, no secrets)
 
 - Live metadata: `gh pr view <N> --repo sybil-solutions/local-studio --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,author,additions,deletions,changedFiles,mergeable` for N ∈ {269, 271, 361…380, 395, 408} (read-only).
 - Read-only head fetch: `git fetch origin pull/<N>/head:refs/remotes/pr-audit/<N>`; heads resolved to full SHAs via `git for-each-ref refs/remotes/pr-audit`.
@@ -84,11 +96,6 @@ Security-first ordering with sequencing constraints (shared-file and module depe
 - Generated-vs-required split: per-file numstat (e.g. #364 lockfile 5,722/6,035 = 94.8% of additions; #395 docs+tests vs platform code).
 - Test census: path filter over `files-<N>.txt` (test/spec/fixtures), plus inline-test inspection for bundled `project.mjs` (#377).
 
-## §5 Provenance and harvest handling
+## §6 Provenance and harvest handling
 
-Authors: Dixith-dev (#269, #271), fettpl (#361–#379), MarioMartinezII (#380), JoaoZaokk (#395). All 23 are fork-external, all OPEN, none merged. Any harvest of these rows is future work executed under repository rules: branch from `dev`, one agent one branch, PR into `dev`, conventional commits, `npm run check` green, never bypass hooks; ports are conforming cherry-picks/re-implementations that preserve external authorship (original-author attribution / `Co-authored-by` per repo convention), exclude every added test file listed above, and leave GitHub PR state untouched until acceptance evidence exists and closure is explicitly authorized. Raw audit artifacts (metadata JSON, file lists, diffs) live outside the repo in `/tmp/praudit/`.
-
-## §6 Validation
-
-- `git diff --check` — clean after the documented corrections in this file.
-- `npm run check` — passed earlier in this worktree after installing real dependencies; these follow-up edits are documentation-only and do not change executable code.
+Authors: Dixith-dev (#269, #271), fettpl (#361–#379), MarioMartinezII (#380), JoaoZaokk (#395). All 23 are fork-external, all OPEN, none merged. Any harvest of these rows is future work executed under repository rules: branch from `dev`, one agent one branch, PR into `dev`, conventional commits, `npm run check` green, never bypass hooks; ports are conforming cherry-picks/re-implementations that preserve external authorship (original-author attribution / `Co-authored-by` per repo convention), exclude every added test file listed above, and leave GitHub PR state untouched until acceptance evidence exists and closure is explicitly authorized. Raw audit artifacts (metadata JSON, file lists, diffs) live outside the repo in `/tmp/praudit/`. A stale pre-existing `§6 Validation` trailer (appended to the file before the audit commit, worded against corrections not yet applied) was removed in this correction commit as redundant with §4.
