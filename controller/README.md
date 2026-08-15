@@ -6,7 +6,7 @@
 
 - Launches and evicts model-serving runtimes through recipes.
 - Discovers and selects runtime targets for vLLM, SGLang, llama.cpp, and MLX.
-- Proxies OpenAI-compatible model, chat, audio, and tokenization requests.
+- Proxies OpenAI-compatible model, chat, and tokenization requests.
 - Streams controller/runtime events over SSE.
 - Tracks GPU/system status, logs, downloads, usage, controller settings, and persisted runtime state.
 - Provides Swagger/OpenAPI documentation for the controller API.
@@ -31,14 +31,12 @@ flowchart TB
     App --> Proxy["modules/proxy"]
     App --> Studio["modules/studio"]
     App --> System["modules/system"]
-    App --> Audio["modules/audio"]
 
     Engines --> Runtime["runtime process coordination"]
     Engines --> Targets["runtime target discovery"]
     Models --> Recipes["recipe and model discovery"]
     Proxy --> Inference["OpenAI-compatible inference client"]
     System --> Metrics["metrics, logs, usage, events"]
-    Audio --> Speech["STT/TTS integrations"]
     System --> Stores["src/stores SQLite helpers"]
 ```
 
