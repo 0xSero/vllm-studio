@@ -53,3 +53,9 @@ The security claim is limited to strict decoding of the two typed top-level fiel
 - `cd controller && bun run typecheck`: PASS before the product commit.
 - Root `npm run check`: PASS. The final transcript is `/tmp/localstudio-v201-recipe-booleans-check-r3.log`, SHA-256 `352f8b34b927dc34d785c6bb1da8eaffb744a778c069777d7bb23c017b5d860f`; it reached all six top-level gates and ended after the agent-runtime build.
 - Installed Dev app recipe editor and command-preview acceptance: NOT RUN. This port has controller/API and launch-plan evidence only; it must not be presented as installed UI proof.
+
+## Canonical integration
+
+The published lane is already patch-equivalent in canonical and must not be cherry-picked again. Product commit `675b79f58` corresponds to published `2939d9cff`; evidence commits `6a5855626` and `134a69ae2` correspond to published `fe6315658` and `5d3125614`. `git cherry` marks all three published commits as already applied. The product hunk remains attributed to its source author.
+
+Commit `38d0d9136` removes the inherited comment tokens from the touched serializer without changing behavior, leaving that product source comment-free. The later combined canonical root check retained in `/Users/sero/projects/vllm-studio-v201-evidence/pr366-security-20260815/canonical-root-check.log`, SHA-256 `03c0e150cf1f7af5e4dfbf1a5b699aaa84a0fc76f6aafdef2b038b260250ebc8`, passed with the strict decoder in place. Installed recipe-editor and command-preview acceptance remains open.
