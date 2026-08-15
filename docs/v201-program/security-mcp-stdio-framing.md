@@ -97,6 +97,6 @@ Integration creates an explicit 251-line offset obligation against the 80,667 pr
 
 ## Remaining gates
 
-- Combined canonical root check and current-head CI after integration.
+- Current-head CI after the combined canonical root check passed at `efa2b3acd`.
 - Packaged runtime byte provenance and installed desktop stdio/HTTP acceptance.
 - A corrected future environment-allowlist composition derived from PR #372 without weakening the lifecycle behavior proven here; raw PR #372 remains held.
