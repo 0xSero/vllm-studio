@@ -91,7 +91,6 @@ class BoundedMcpReadBuffer {
     this.length = 0;
     this.items = [];
     this.head = 0;
-    this.terminal = false;
   }
 
   bufferedBytes(): number {
@@ -177,6 +176,7 @@ export const createBoundedStdioTransport = (
     maxBufferSize: MAX_MCP_STDIO_FRAME_BYTES,
   });
   installReadBuffer(transport, buffer);
+  const close = transport.close.bind(transport);
   let terminalError: McpProtocolError | null = null;
   let closing: Promise<void> | null = null;
   const settle = (error: unknown): McpProtocolError => {
@@ -191,9 +191,14 @@ export const createBoundedStdioTransport = (
     onTerminalError(terminalError);
     return terminalError;
   };
+  const shutdown = (): Promise<void> => {
+    closing ??= close().catch(() => undefined);
+    return closing;
+  };
+  transport.close = () => shutdown();
   transport.onerror = (error) => {
     settle(error);
-    closing ??= transport.close().catch(() => undefined);
+    void shutdown();
   };
   transport.onclose = () => {
     const bufferedBytes = buffer.bufferedBytes();
@@ -204,6 +209,7 @@ export const createBoundedStdioTransport = (
           ? new McpProtocolError("truncated-frame", "MCP stdio connection closed mid-frame")
           : new McpProtocolError("transport-closed", "MCP stdio connection closed"),
     );
+    void shutdown();
   };
   return transport;
 };

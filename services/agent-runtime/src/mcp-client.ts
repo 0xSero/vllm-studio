@@ -92,11 +92,8 @@ class SdkMcpConnection implements McpConnection {
   private readonly connected: Promise<void>;
   private readonly signal: AbortSignal | undefined;
   private readonly isStdio: boolean;
+  private readonly pending = new Set<(error: Error) => void>();
   private terminalError: Error | null = null;
-  private rejectTerminal!: (error: Error) => void;
-  private readonly terminal = new Promise<never>((_, reject) => {
-    this.rejectTerminal = reject;
-  });
   private closed = false;
 
   constructor(target: McpTarget) {
@@ -125,7 +122,8 @@ class SdkMcpConnection implements McpConnection {
     if (this.closed) return;
     this.closed = true;
     if (this.isStdio) {
-      this.fail(new McpProtocolError("transport-closed", "MCP stdio connection was closed"));
+      const error = new McpProtocolError("transport-closed", "MCP stdio connection was closed");
+      this.fail(error);
     }
     void this.client.close().catch(() => undefined);
   }
@@ -133,13 +131,35 @@ class SdkMcpConnection implements McpConnection {
   private run<T>(operation: () => Promise<T>): Promise<T> {
     if (!this.isStdio) return operation();
     if (this.terminalError) return Promise.reject(this.terminalError);
-    return Promise.race([operation(), this.terminal]);
+    return new Promise<T>((resolve, reject) => {
+      const rejectPending = (error: Error): void => {
+        this.pending.delete(rejectPending);
+        reject(error);
+      };
+      this.pending.add(rejectPending);
+      try {
+        void operation().then(
+          (value) => {
+            this.pending.delete(rejectPending);
+            resolve(value);
+          },
+          (error) => {
+            this.pending.delete(rejectPending);
+            reject(error);
+          },
+        );
+      } catch (error) {
+        this.pending.delete(rejectPending);
+        reject(error);
+      }
+    });
   }
 
   private fail(error: Error): void {
     if (this.terminalError) return;
     this.terminalError = error;
-    this.rejectTerminal(error);
+    for (const reject of this.pending) reject(error);
+    this.pending.clear();
   }
 }
 
