@@ -3,6 +3,10 @@ import {
   ProviderModelsSchema,
   ProviderUpdateSchema,
 } from "@local-studio/contracts/providers";
+import type {
+  StudioProviderModelsResponse,
+  StudioProviderView,
+} from "@local-studio/contracts/studio";
 import { Effect, Schema } from "effect";
 import { badRequest, notFound } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
@@ -10,20 +14,12 @@ import { effectHandler } from "../../http/effect-handler";
 import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import { savePersistedConfig, type ProviderConfig } from "../../config/persisted-config";
 
-type ProviderView = {
-  id: string;
-  name: string;
-  base_url: string;
-  enabled: boolean;
-  has_api_key: boolean;
-};
-
 class ProviderPersistenceError extends Schema.TaggedErrorClass<ProviderPersistenceError>()(
   "ProviderPersistenceError",
   { message: Schema.String, source: Schema.optional(Schema.Unknown) },
 ) {}
 
-const serializeProvider = (provider: ProviderConfig): ProviderView => ({
+const serializeProvider = (provider: ProviderConfig): StudioProviderView => ({
   id: provider.id,
   name: provider.name,
   base_url: provider.base_url,
@@ -54,7 +50,7 @@ const required = (
 
 const providerModels = (
   provider: ProviderConfig,
-): Effect.Effect<{ provider: string; models: Array<{ id: string }> }, unknown> =>
+): Effect.Effect<StudioProviderModelsResponse["providers"][number], unknown> =>
   Effect.gen(function* () {
     const url = `${provider.base_url.replace(/\/+$/, "")}/v1/models`;
     const response = yield* Effect.tryPromise({
@@ -177,7 +173,7 @@ export const registerStudioProviderRoutes = defineRoutes((app, context) => {
               providers: results.flatMap((result) =>
                 result._tag === "Some" ? [result.value] : [],
               ),
-            }),
+            } satisfies StudioProviderModelsResponse),
           ),
         ),
       ),

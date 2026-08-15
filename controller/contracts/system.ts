@@ -58,6 +58,8 @@ export const RuntimeJobBodySchema = Schema.Struct({
   args: Schema.optional(Schema.Never),
 });
 
+export type RuntimeJobBody = Schema.Schema.Type<typeof RuntimeJobBodySchema>;
+
 export interface RuntimeTarget {
   id: string;
   backend: EngineBackend;
@@ -104,6 +106,20 @@ export interface EngineJob {
   outputTail?: string;
   error?: string;
 }
+
+export interface VllmRuntimeInfo {
+  installed: boolean;
+  version: string | null;
+  python_path: string | null;
+  vllm_bin: string | null;
+  upgrade_command_available: boolean;
+  bundled_wheel: { path: string; version: string | null } | null;
+}
+
+export type RuntimeTargetsResponse = { targets: RuntimeTarget[] };
+export type RuntimeJobsResponse = { jobs: EngineJob[] };
+export type RuntimeJobResponse = { job: EngineJob };
+export type RuntimeUpgradeResponse = { job_id: string; job: EngineJob };
 
 export type RuntimePlatformKind = "cuda" | "rocm" | "metal" | "unknown";
 

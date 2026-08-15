@@ -4,10 +4,26 @@ import {
   bundledModelIndexSource,
   type ModelIndexResponse,
 } from "@local-studio/contracts/model-index";
-import type { RuntimeJobBackend, RuntimeJobType } from "@local-studio/contracts/system";
+import type {
+  RuntimeJobBackend,
+  RuntimeJobResponse,
+  RuntimeJobsResponse,
+  RuntimeTargetsResponse,
+  RuntimeJobType,
+  RuntimeUpgradeResponse,
+  VllmRuntimeInfo,
+} from "@local-studio/contracts/system";
+import type {
+  StudioProviderModelsResponse,
+  StudioProviderMutationResponse,
+  StudioProviderCreate,
+  StudioProvidersResponse,
+  StudioProviderUpdate,
+  StudioSettingsUpdate,
+  StudioSettingsUpdateResponse,
+} from "@local-studio/contracts/studio";
 import type {
   ModelDownload,
-  EngineJob,
   ModelInfo,
   StarterPreset,
   StorageInfo,
@@ -16,7 +32,6 @@ import type {
   RuntimeBackendInfo,
   RuntimeCudaInfo,
   RuntimeRocmInfo,
-  RuntimeTarget,
 } from "../types";
 import { encodePathSegments, type ApiCore, type RequestOptions } from "./core";
 
@@ -35,26 +50,9 @@ export interface StudioModelsRoot {
   recipe_ids?: string[];
 }
 
-export interface VllmRuntimeInfo {
-  installed: boolean;
-  version: string | null;
-  python_path: string | null;
-  vllm_bin: string | null;
-  upgrade_command_available?: boolean;
-  bundled_wheel: {
-    path: string;
-    version: string | null;
-  } | null;
-}
-
 export interface VllmRuntimeConfig {
   config: string | null;
   error?: string | null;
-}
-
-export interface RuntimeJobResponse {
-  job_id: string;
-  job: EngineJob;
 }
 
 const bundledModelIndex = Schema.decodeUnknownSync(ModelIndexSchema)(bundledModelIndexSource);
@@ -71,24 +69,21 @@ export function createStudioApi(core: ApiCore) {
     }> => core.request("/v1/studio/models"),
 
     getStudioSettings: (options?: RequestOptions): Promise<StudioSettings> =>
-      core.request("/studio/settings", options),
+      core.rpcJson(core.rpc.studio.settings.$get(undefined, { init: options })),
 
-    updateStudioSettings: (payload: {
-      models_dir?: string | null;
-      ui_preferences?: Record<string, string> | null;
-    }): Promise<StudioSettings & { success: boolean }> =>
-      core.request("/studio/settings", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }),
+    updateStudioSettings: (payload: StudioSettingsUpdate): Promise<StudioSettingsUpdateResponse> =>
+      core.rpcJson(core.rpc.studio.settings.$post({ json: payload })),
 
-    getStudioDiagnostics: (): Promise<StudioDiagnostics> => core.request("/studio/diagnostics"),
+    getStudioDiagnostics: (): Promise<StudioDiagnostics> =>
+      core.rpcJson(core.rpc.studio.diagnostics.$get()),
 
-    getStudioStorage: (): Promise<StorageInfo> => core.request("/studio/storage"),
+    getStudioStorage: (): Promise<StorageInfo> => core.rpcJson(core.rpc.studio.storage.$get()),
 
     getModelIndex: async (options?: RequestOptions): Promise<ModelIndexResponse> => {
       try {
-        return await core.request("/studio/model-index", options);
+        return await core.rpcJson<ModelIndexResponse>(
+          core.rpc.studio["model-index"].$get(undefined, { init: options }),
+        );
       } catch (error) {
         if (!hasStatus(error, 404)) throw error;
         return bundledModelIndex;
@@ -98,7 +93,7 @@ export function createStudioApi(core: ApiCore) {
     getStarterPresets: (): Promise<{
       presets: StarterPreset[];
       max_vram_gb: number;
-    }> => core.request("/studio/presets"),
+    }> => core.rpcJson(core.rpc.studio.presets.$get()),
 
     getDownloads: (): Promise<{ downloads: ModelDownload[] }> => core.request("/studio/downloads"),
 
@@ -141,76 +136,35 @@ export function createStudioApi(core: ApiCore) {
         body: JSON.stringify({ source_path: sourcePath, target_root: targetRoot }),
       }),
 
-    getProviders: (): Promise<{
-      providers: Array<{
-        id: string;
-        name: string;
-        base_url: string;
-        enabled: boolean;
-        has_api_key: boolean;
-      }>;
-    }> => core.request("/studio/providers"),
+    getProviders: (): Promise<StudioProvidersResponse> =>
+      core.rpcJson(core.rpc.studio.providers.$get()),
 
-    createProvider: (payload: {
-      id: string;
-      name: string;
-      base_url: string;
-      api_key: string;
-      enabled?: boolean;
-    }): Promise<{
-      success: boolean;
-      provider: {
-        id: string;
-        name: string;
-        base_url: string;
-        enabled: boolean;
-        has_api_key: boolean;
-      };
-    }> =>
-      core.request("/studio/providers", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }),
+    createProvider: (payload: StudioProviderCreate): Promise<StudioProviderMutationResponse> =>
+      core.rpcJson(core.rpc.studio.providers.$post({ json: payload })),
 
     updateProvider: (
       id: string,
-      payload: {
-        name?: string;
-        base_url?: string;
-        api_key?: string;
-        enabled?: boolean;
-      },
-    ): Promise<{
-      success: boolean;
-      provider: {
-        id: string;
-        name: string;
-        base_url: string;
-        enabled: boolean;
-        has_api_key: boolean;
-      };
-    }> =>
-      core.request(`/studio/providers/${encodePathSegments(id)}`, {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      }),
+      payload: StudioProviderUpdate,
+    ): Promise<StudioProviderMutationResponse> =>
+      core.rpcJson(
+        core.rpc.studio.providers[":id"].$put({
+          param: { id: encodePathSegments(id) },
+          json: payload,
+        }),
+      ),
 
     deleteProvider: (id: string): Promise<{ success: boolean }> =>
-      core.request(`/studio/providers/${encodePathSegments(id)}`, {
-        method: "DELETE",
-      }),
+      core.rpcJson(
+        core.rpc.studio.providers[":id"].$delete({ param: { id: encodePathSegments(id) } }),
+      ),
 
-    getProviderModels: (): Promise<{
-      providers: Array<{
-        provider: string;
-        models: Array<{ id: string; name?: string }>;
-      }>;
-    }> => core.request("/studio/provider-models"),
+    getProviderModels: (): Promise<StudioProviderModelsResponse> =>
+      core.rpcJson(core.rpc.studio["provider-models"].$get()),
 
-    getVllmRuntime: (): Promise<VllmRuntimeInfo> => core.request("/runtime/vllm"),
+    getVllmRuntime: (): Promise<VllmRuntimeInfo> => core.rpcJson(core.rpc.runtime.vllm.$get()),
 
-    getRuntimeTargets: (): Promise<{ targets: RuntimeTarget[] }> =>
-      core.request("/runtime/targets"),
+    getRuntimeTargets: (): Promise<RuntimeTargetsResponse> =>
+      core.rpcJson(core.rpc.runtime.targets.$get()),
 
     createRuntimeJob: (payload: {
       backend: RuntimeJobBackend;
@@ -220,54 +174,65 @@ export function createStudioApi(core: ApiCore) {
       args?: string[];
       version?: string;
       preferBundled?: boolean;
-    }): Promise<{ job: EngineJob }> =>
-      core.request("/runtime/jobs", {
-        method: "POST",
-        body: JSON.stringify({
-          backend: payload.backend,
-          targetId: payload.targetId,
-          type: payload.type,
-          command: payload.command,
-          args: payload.args,
-          version: payload.version,
-          prefer_bundled: payload.preferBundled,
+    }): Promise<RuntimeJobResponse> =>
+      core.rpcJson(
+        core.rpc.runtime.jobs.$post({
+          json: {
+            backend: payload.backend,
+            targetId: payload.targetId,
+            type: payload.type,
+            command: payload.command,
+            args: payload.args,
+            version: payload.version,
+            prefer_bundled: payload.preferBundled,
+          },
         }),
-      }),
+      ),
 
-    getRuntimeJobs: (): Promise<{ jobs: EngineJob[] }> => core.request("/runtime/jobs"),
+    getRuntimeJobs: (): Promise<RuntimeJobsResponse> => core.rpcJson(core.rpc.runtime.jobs.$get()),
 
-    getRuntimeJob: (id: string): Promise<{ job: EngineJob }> =>
-      core.request(`/runtime/jobs/${encodePathSegments(id)}`),
+    getRuntimeJob: (id: string): Promise<RuntimeJobResponse> =>
+      core.rpcJson(
+        core.rpc.runtime.jobs[":jobId"].$get({ param: { jobId: encodePathSegments(id) } }),
+      ),
 
-    cancelRuntimeJob: (id: string): Promise<{ job: EngineJob }> =>
-      core.request(`/runtime/jobs/${encodePathSegments(id)}/cancel`, { method: "POST" }),
+    cancelRuntimeJob: (id: string): Promise<RuntimeJobResponse> =>
+      core.rpcJson(
+        core.rpc.runtime.jobs[":jobId"].cancel.$post({
+          param: { jobId: encodePathSegments(id) },
+        }),
+      ),
 
     getVllmRuntimeConfig: (): Promise<VllmRuntimeConfig> => core.request("/runtime/vllm/config"),
 
-    getSglangRuntime: (): Promise<RuntimeBackendInfo> => core.request("/runtime/sglang"),
+    getSglangRuntime: (): Promise<RuntimeBackendInfo> =>
+      core.rpcJson(core.rpc.runtime.sglang.$get()),
 
-    getLlamacppRuntime: (): Promise<RuntimeBackendInfo> => core.request("/runtime/llamacpp"),
+    getLlamacppRuntime: (): Promise<RuntimeBackendInfo> =>
+      core.rpcJson(core.rpc.runtime.llamacpp.$get()),
 
-    getMlxRuntime: (): Promise<RuntimeBackendInfo> => core.request("/runtime/mlx"),
+    getMlxRuntime: (): Promise<RuntimeBackendInfo> => core.rpcJson(core.rpc.runtime.mlx.$get()),
 
     getLlamacppRuntimeConfig: (): Promise<{ config: string | null; error?: string | null }> =>
       core.request("/runtime/llamacpp/config"),
 
-    getCudaRuntime: (): Promise<RuntimeCudaInfo> => core.request("/runtime/cuda"),
+    getCudaRuntime: (): Promise<RuntimeCudaInfo> => core.rpcJson(core.rpc.runtime.cuda.$get()),
 
-    getRocmRuntime: (): Promise<RuntimeRocmInfo> => core.request("/runtime/rocm"),
+    getRocmRuntime: (): Promise<RuntimeRocmInfo> => core.rpcJson(core.rpc.runtime.rocm.$get()),
 
     upgradeRuntime: (
       backend: "vllm" | "sglang" | "llamacpp" | "mlx" | "cuda" | "rocm",
       payload: { preferBundled?: boolean; version?: string; targetId?: string } = {},
-    ): Promise<RuntimeJobResponse> =>
-      core.request(`/runtime/${backend}/upgrade`, {
-        method: "POST",
-        body: JSON.stringify({
-          prefer_bundled: payload.preferBundled,
-          version: payload.version,
-          targetId: payload.targetId,
+    ): Promise<RuntimeUpgradeResponse> =>
+      core.rpcJson(
+        core.rpc.runtime[":backend"].upgrade.$post({
+          param: { backend },
+          json: {
+            prefer_bundled: payload.preferBundled,
+            version: payload.version,
+            targetId: payload.targetId,
+          },
         }),
-      }),
+      ),
   };
 }

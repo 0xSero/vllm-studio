@@ -1,8 +1,8 @@
 import {
   RUNTIME_JOB_BACKENDS,
   RuntimeJobBodySchema,
-  type RuntimeJobBackend,
-  type RuntimeJobType,
+  type RuntimeJobBody,
+  type VllmRuntimeInfo,
 } from "@local-studio/contracts/system";
 import { Effect } from "effect";
 import { badRequest, notFound } from "../../core/errors";
@@ -27,27 +27,21 @@ import {
 } from "./runtimes/runtime-targets";
 import { getVllmConfigHelp, getVllmRuntimeInfo } from "./runtimes/vllm-runtime";
 
-type RuntimeJobBody = {
-  backend?: RuntimeJobBackend;
-  targetId?: string;
-  type?: RuntimeJobType;
-  version?: string;
+type ParsedRuntimeJobBody = Omit<RuntimeJobBody, "command" | "args" | "prefer_bundled"> & {
   preferBundled?: boolean;
 };
 
 const parseRuntimeJobBody = (
   ctx: Parameters<typeof decodeJsonBody>[0],
-): Effect.Effect<RuntimeJobBody, ReturnType<typeof badRequest>> =>
+): Effect.Effect<ParsedRuntimeJobBody, ReturnType<typeof badRequest>> =>
   decodeJsonBody(ctx, RuntimeJobBodySchema).pipe(
-    Effect.map(
-      (body): RuntimeJobBody => ({
-        ...(body.backend ? { backend: body.backend } : {}),
-        ...(body.targetId ? { targetId: body.targetId } : {}),
-        ...(body.type ? { type: body.type } : {}),
-        ...(body.version ? { version: body.version } : {}),
-        ...(body.prefer_bundled !== undefined ? { preferBundled: body.prefer_bundled } : {}),
-      }),
-    ),
+    Effect.map((body) => ({
+      ...(body.backend ? { backend: body.backend } : {}),
+      ...(body.targetId ? { targetId: body.targetId } : {}),
+      ...(body.type ? { type: body.type } : {}),
+      ...(body.version ? { version: body.version } : {}),
+      ...(body.prefer_bundled !== undefined ? { preferBundled: body.prefer_bundled } : {}),
+    })),
   );
 
 export const registerRuntimeRoutes = defineRoutes((app, context) => {
@@ -139,7 +133,9 @@ export const registerRuntimeRoutes = defineRoutes((app, context) => {
     app.get(
       "/runtime/vllm",
       documentRoute,
-      effectHandler((ctx) => getVllmRuntimeInfo().pipe(Effect.map((info) => ctx.json(info)))),
+      effectHandler((ctx) =>
+        getVllmRuntimeInfo().pipe(Effect.map((info) => ctx.json(info satisfies VllmRuntimeInfo))),
+      ),
     ),
 
     app.get(

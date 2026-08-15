@@ -31,8 +31,12 @@ export interface ChatRunStreamEvent {
 }
 
 type RpcRequest = (
-  input?: { param?: Record<string, string>; query?: Record<string, string> },
-  options?: { init?: RequestInit },
+  input?: {
+    param?: Record<string, string>;
+    query?: Record<string, string>;
+    json?: unknown;
+  },
+  options?: { init?: RequestOptions },
 ) => Promise<Response>;
 
 interface RpcRoute {
@@ -43,8 +47,18 @@ interface RpcRoute {
   $delete: RpcRequest;
 }
 
+type RpcRoutes<Names extends string> = Record<Names, RpcRoute>;
+
 interface ControllerRpc {
   recipes: RpcRoute & { ":recipeId": RpcRoute };
+  studio: RpcRoutes<"settings" | "diagnostics" | "storage" | "model-index" | "presets"> & {
+    providers: RpcRoute & { ":id": RpcRoute };
+    "provider-models": RpcRoute;
+  };
+  runtime: RpcRoutes<"targets" | "vllm" | "sglang" | "llamacpp" | "mlx" | "cuda" | "rocm"> & {
+    jobs: RpcRoute & { ":jobId": RpcRoute & { cancel: RpcRoute } };
+    ":backend": RpcRoute & { upgrade: RpcRoute };
+  };
 }
 
 export type ApiCore = ReturnType<typeof createApiCore>;

@@ -2,6 +2,7 @@ import { cp, mkdir, rename, rm, statfs } from "node:fs/promises";
 import { cpus, freemem, totalmem, platform, arch, release } from "node:os";
 import { basename, resolve, sep } from "node:path";
 import { Effect, Schema } from "effect";
+import { StudioSettingsUpdateSchema } from "@local-studio/contracts/studio";
 import { badRequest, notFound } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
 import { effectHandler } from "../../http/effect-handler";
@@ -19,11 +20,6 @@ import {
   type PersistedConfig,
 } from "../../config/persisted-config";
 import { getVllmRuntimeInfo } from "../engines/runtimes/vllm-runtime";
-
-const SettingsUpdateSchema = Schema.Struct({
-  models_dir: Schema.optional(Schema.NullOr(Schema.String)),
-  ui_preferences: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, Schema.String))),
-});
 
 const ModelDeleteSchema = Schema.Struct({ path: Schema.String });
 const ModelMoveSchema = Schema.Struct({ source_path: Schema.String, target_root: Schema.String });
@@ -133,7 +129,7 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
       documentRoute,
       effectHandler((ctx) =>
         Effect.gen(function* () {
-          const body = yield* decodeJsonBody(ctx, SettingsUpdateSchema);
+          const body = yield* decodeJsonBody(ctx, StudioSettingsUpdateSchema);
           const modelsDirectory = normalizedOptionalString(body.models_dir);
           const uiPreferences = body.ui_preferences;
           if (modelsDirectory === undefined && uiPreferences === undefined) {
@@ -247,9 +243,7 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
             ).map((preset) => ({
               ...preset,
               fits:
-                preset.min_vram_gb === null ||
-                maxVramGb === 0 ||
-                preset.min_vram_gb <= maxVramGb,
+                preset.min_vram_gb === null || maxVramGb === 0 || preset.min_vram_gb <= maxVramGb,
             }));
             return ctx.json({ presets, max_vram_gb: maxVramGb });
           }),
