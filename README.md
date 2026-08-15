@@ -208,7 +208,23 @@ awake, online, and connected to Tailscale.
 The controller binds `127.0.0.1` by default. Binding a non-loopback host (e.g.
 `LOCAL_STUDIO_HOST=0.0.0.0`) requires `LOCAL_STUDIO_API_KEY` — startup throws
 without it. On a trusted LAN you may instead set
-`LOCAL_STUDIO_ALLOW_UNAUTHENTICATED=true` to opt out of authentication.
+`LOCAL_STUDIO_ALLOW_UNAUTHENTICATED=true` to opt out of authentication, but a
+keyless controller then only serves requests whose Host header names an
+allowlisted authority:
+
+- A wildcard bind (`LOCAL_STUDIO_HOST=0.0.0.0` or `::`) refuses to start until
+  `LOCAL_STUDIO_ALLOWED_HOSTS` lists the exact hostnames or IP addresses
+  clients will use.
+- A non-wildcard bind allowlists only the bind address by default. Hostname,
+  MagicDNS-name, or other alias access returns `403 Forbidden request origin`
+  until that name is added to `LOCAL_STUDIO_ALLOWED_HOSTS`.
+- Allowlist entries are bare hostnames or IP addresses — no ports, no
+  wildcards, no schemes. Empty, wildcard, or malformed entries abort startup.
+- When a request supplies an explicit port it must equal `LOCAL_STUDIO_PORT`,
+  so a reverse proxy or tunnel that forwards the client's original Host
+  (typically carrying `:443` or `:8443`) is rejected even with the hostname
+  allowlisted. Rewrite the forwarded Host to the controller's own port, or run
+  with `LOCAL_STUDIO_API_KEY` instead (API-key mode applies no allowlist).
 
 Point the frontend at a remote controller with `BACKEND_URL` or
 `NEXT_PUBLIC_API_URL` (default `http://localhost:8080`).
