@@ -84,8 +84,6 @@ export const ControllerUsageStatsSchema = Schema.Struct({
   function_calls: Schema.optionalKey(FunctionCallsSchema),
 });
 
-export type ControllerUsageStats = typeof ControllerUsageStatsSchema.Type;
-
 const UsageTotalsSchema = Schema.Struct({
   total_tokens: Schema.Number,
   prompt_tokens: Schema.Number,
@@ -228,11 +226,9 @@ export const UsageStatsSchema = Schema.Struct({
   controller: Schema.optionalKey(ControllerUsageStatsSchema),
 });
 
-export type UsageStats = typeof UsageStatsSchema.Type;
-
 const isUsageStats = Schema.is(UsageStatsSchema);
 
-export const validateUsageStats = (value: unknown): UsageStats => {
+export const validateUsageStats = (value: unknown): typeof UsageStatsSchema.Type => {
   if (!isUsageStats(value)) throw new TypeError("Invalid normalized usage projection");
   return value;
 };

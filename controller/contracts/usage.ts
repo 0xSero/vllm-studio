@@ -1,3 +1,5 @@
+import type { ControllerUsageStatsSchema, UsageStatsSchema } from "./usage-schema";
+
 type UnknownRecord = Record<string, unknown>;
 
 const objectOrEmpty = (value: unknown): UnknownRecord =>
@@ -244,7 +246,8 @@ export const normalizeUsageStats = projector((input) => {
   };
 });
 
-export type { ControllerUsageStats, UsageStats } from "./usage-schema";
+export type ControllerUsageStats = typeof ControllerUsageStatsSchema.Type;
+export type UsageStats = typeof UsageStatsSchema.Type;
 
 export const usageRate = (successful: unknown, total: unknown): number => {
   const count = finiteNumber(total);
