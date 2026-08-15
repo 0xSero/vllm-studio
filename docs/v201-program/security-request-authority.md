@@ -89,7 +89,7 @@ Dependencies were installed fresh in this worktree via `node scripts/project.mjs
 ## 6. Remaining proof (P)
 
 - Installed-app and final-head verification remain open for the release lane: probes above exercised the worktree controller only. The installed desktop app bundles a controller build and is refreshed only via `scripts/install-desktop-app.sh`; rebuild/reinstall was not triggered by this slice.
-- Not pushed; branch awaits PR into `dev` per `docs/workflow.md`.
+- Publication follows the branch-to-PR-into-`dev` workflow; no direct `dev` or `main` push is part of this lane.
 
 ## 7. Post-review follow-up probes (C)
 
@@ -115,6 +115,8 @@ Shipped frontend proxy path against a keyless loopback controller (port 18080), 
 | G2 | SSE attach `GET /api/proxy/events` (the browser EventSource path) | `HTTP/1.1 200`, `content-type: text/event-stream`, 3,177 bytes of keepalive/event frames within 4 s; curl exit 28 is the expected never-ending stream |
 
 The proxy request carries no Origin and its Host is the controller's own, so the keyless guard admits the shipped browser/desktop path unchanged.
+
+Both probe processes were stopped, ports 18080–18083 and 13000 were closed, disposable data was removed, and the worktree was clean after the run.
 
 ## 8. Follow-ups recorded, not fixed here (P)
 
