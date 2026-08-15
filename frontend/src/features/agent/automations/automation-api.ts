@@ -46,9 +46,10 @@ async function errorMessage(response: Response): Promise<string> {
 
 function requestJson<A>(
   input: string,
-  decode: (input: unknown) => A,
+  schema: Schema.ConstraintDecoder<A>,
   init?: RequestInit,
 ): Effect.Effect<A, Error> {
+  const decode = Schema.decodeUnknownSync(schema);
   return Effect.tryPromise({
     try: async () => {
       const response = await fetch(input, { cache: "no-store", ...init });
@@ -61,21 +62,20 @@ function requestJson<A>(
 
 export function listAutomations(): Effect.Effect<Automation[], Error> {
   return Effect.map(
-    requestJson("/api/agent/automations", Schema.decodeUnknownSync(AutomationsResponseSchema)),
+    requestJson("/api/agent/automations", AutomationsResponseSchema),
     ({ automations }) => [...automations],
   );
 }
 
 export function listAutomationModels(): Effect.Effect<AutomationModel[], Error> {
-  return Effect.map(
-    requestJson("/api/agent/models", Schema.decodeUnknownSync(AgentModelsResponseSchema)),
-    ({ models }) => [...models],
-  );
+  return Effect.map(requestJson("/api/agent/models", AgentModelsResponseSchema), ({ models }) => [
+    ...models,
+  ]);
 }
 
 export function createAutomation(draft: AutomationDraft): Effect.Effect<Automation, Error> {
   return Effect.map(
-    requestJson("/api/agent/automations", Schema.decodeUnknownSync(AutomationResponseSchema), {
+    requestJson("/api/agent/automations", AutomationResponseSchema, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(draft),
@@ -89,41 +89,29 @@ export function updateAutomation(
   patch: Partial<AutomationDraft> & { status?: Automation["status"]; unread?: boolean },
 ): Effect.Effect<Automation, Error> {
   return Effect.map(
-    requestJson(
-      `/api/agent/automations/${encodeURIComponent(id)}`,
-      Schema.decodeUnknownSync(AutomationResponseSchema),
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      },
-    ),
+    requestJson(`/api/agent/automations/${encodeURIComponent(id)}`, AutomationResponseSchema, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }),
     ({ automation }) => automation,
   );
 }
 
 export function deleteAutomation(id: string): Effect.Effect<boolean, Error> {
   return Effect.map(
-    requestJson(
-      `/api/agent/automations/${encodeURIComponent(id)}`,
-      Schema.decodeUnknownSync(DeleteResponseSchema),
-      {
-        method: "DELETE",
-      },
-    ),
+    requestJson(`/api/agent/automations/${encodeURIComponent(id)}`, DeleteResponseSchema, {
+      method: "DELETE",
+    }),
     ({ ok }) => ok,
   );
 }
 
 export function runAutomation(id: string): Effect.Effect<boolean, Error> {
   return Effect.map(
-    requestJson(
-      `/api/agent/automations/${encodeURIComponent(id)}/run`,
-      Schema.decodeUnknownSync(RunResponseSchema),
-      {
-        method: "POST",
-      },
-    ),
+    requestJson(`/api/agent/automations/${encodeURIComponent(id)}/run`, RunResponseSchema, {
+      method: "POST",
+    }),
     ({ started }) => started,
   );
 }
