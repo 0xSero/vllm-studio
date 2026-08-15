@@ -4,7 +4,7 @@
 
 **Program label:** `v201` is the program label only. There is **no** `v2.0.1` tag and never will be — semantic-release determines the actual version (expected next minor), and the label refers to the *consolidation effort*, not a regressive semver. Every earlier "30 open PRs" reference reads **"29 census + 1 unresolved historical"** (G0H2).
 
-**Heads (R16):** `H0 := dcb790fd` (code head, immutable). Every Phase-0 commit after H0 is docs-only under `docs/v201-program/**`. `Hpush := final pre-push head`, and the proof obligation is: `git diff --name-only dcb790fd..Hpush` ⊆ `docs/v201-program/`. Manifests measure `eeeb3406` / `a765eb27` / `H0` — never Hpush — so ledger commits cannot perturb any measured number.
+**Frozen Phase-0 heads (R16):** `H0 := dcb790fd` is the immutable code head used by the original Phase-0 measurement. The docs-only `H0..Hpush` invariant applied to that original ledger publication; it is historical and does not describe the later implementation range on the current branch. Baseline manifests remain pinned to `eeeb3406` / `a765eb27` / `H0`; later product checkpoints are measured separately and recorded in `GOAL.md` plus the appended checkpoint ledgers below.
 
 ## Immutable-SHA register (R12b)
 
@@ -48,10 +48,15 @@
 | `g0i-pre-push-range-fix.md` | G0I evidence: pre-push message-lint range defect, R27–R30 amendment (`52c28a56`), harvest doctrine |
 | `wp0-evidence.md` | GOAL-era WP-0 evidence: LOC re-measurement, #396/#407 dispositions, added-route justification, singleton touchpoints, Effect/Schema/RPC gaps, DB gaps, lane blockers |
 | `tts-removal.md` | row 1.2 TTS removal ledger: frozen main inventory, preserved STT/multimodal seams, DB residue, and exact remaining gaps |
+| `tts-remnants-20260815.md` | accepted follow-up removing dead voice settings, transcription-engine probe, and audio exports while preserving dictation and realtime seams |
+| `configure-retirement-audit.md` | row 2.4 read-only audit: staged Configure retirement, compatibility/relocation boundaries, Rig-table safety, projected LOC, and installed matrix |
 | `test-deletion-disposition.md` | row 1.10 deletion ledger: exact 74/7,741 and 79/8,128 counts, removed coverage map, and replacement-evidence matrix |
 | `installed-provenance.md` | installed Stable/Dev provenance inventory: bundle identity, retained-artifact census, rebuild authority, and exact remaining installed acceptance gaps |
 | `pr-dispositions-maintainer.md` | current maintainer-PR census and selective-port/hold/closure dispositions for the six frozen harvest PRs |
 | `pr-dispositions-external.md` | line-level dispositions for all 23 frozen fork-external PRs, with zero premature closures |
+| `pr362-platform-job-metadata.md` | PR #362 P2 evidence: truthful platform backend/command presentation, loopback matrix, aggregate gate, and cleanup boundary |
+| `pr269-pr271-small-fixes.md` | accepted controller-credential and notice-placement adaptations, validator repair, disposable probe, LOC, and remaining visible gates |
+| `combined-post-small-checkpoint.md` | combined product/gate/LOC checkpoint through local product `6f5c77a6d`, with remote CI separation and durable artifact hashes |
 | `security-recipe-booleans.md` | strict recipe-boolean port provenance, database inventory, API/argv probes, and fail-closed legacy-row caveats |
 | `security-request-authority.md` | keyless request-authority guard provenance, Host/Origin matrix, LAN/proxy probes, and remaining hardening gaps |
 | `security-request-authority-p2.md` | bracketed-authority and missing-Host follow-up, raw HTTP compatibility matrix, and canonical integration proof |

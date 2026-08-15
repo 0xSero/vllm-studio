@@ -3,9 +3,10 @@
 Local Studio is a local-first workstation for running, managing, and using
 self-hosted LLM backends. One machine can launch models, watch GPU/runtime
 state, chat with OpenAI-compatible endpoints, and run agent sessions against
-local or remote controllers. Version 2.0 unifies day-to-day operation around
-Status, Workbench, Configure, and Usage instead of separate model, integration,
-and server surfaces.
+local or remote controllers. The current consolidation track presents Status,
+Workbench, Models, Configure, and Usage. Integrations and Server remain
+compatibility entry points while their reviewed relocation into Settings and
+Logs is still in progress.
 
 ## Download
 
