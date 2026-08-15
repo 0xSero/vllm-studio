@@ -70,7 +70,7 @@ Method: `bun src/main.ts` from the worktree controller with a fresh disposable `
 | D1 | API-key mode, wildcard bind, hostile Host+Origin, valid Bearer key | 200 (guard skipped) |
 | D2 | same without key | 401 (auth unchanged) |
 | D3 | API-key mode, native Host, `x-api-key` | 200 |
-| E1 | keyless wildcard bind, `ALLOWED_HOSTS=localhost,127.0.0.1`, `Host: localhost:18082` | 200 |
+| E1 | keyless wildcard bind, `ALLOW_UNAUTHENTICATED=true` + `ALLOWED_HOSTS=localhost,127.0.0.1` (required for this server to start, matching row B), `Host: localhost:18082` | 200 |
 | E2 | same server, `Host: studio.lan:18082` (not allowlisted) | 403 |
 | E3 | same server, `Host: evil.example` | 403 |
 
@@ -90,3 +90,35 @@ Dependencies were installed fresh in this worktree via `node scripts/project.mjs
 
 - Installed-app and final-head verification remain open for the release lane: probes above exercised the worktree controller only. The installed desktop app bundles a controller build and is refreshed only via `scripts/install-desktop-app.sh`; rebuild/reinstall was not triggered by this slice.
 - Not pushed; branch awaits PR into `dev` per `docs/workflow.md`.
+
+## 7. Post-review follow-up probes (C)
+
+Run after the Opus-5 R1 review (approve with findings) against the unchanged production head `6f1f06c5c`; no repository file was modified to run them.
+
+Non-wildcard keyless bind shape. The preferred `127.0.0.2` loopback-alias bind is blocked on this host: `lo0` carries only `127.0.0.1`, so binding `127.0.0.2` fails with `EADDRNOTAVAIL` (adding the alias requires sudo and was not performed). The alias's product-level classification was still proven at config time: keyless `LOCAL_STUDIO_HOST=127.0.0.2` without the opt-out refuses startup with the non-loopback API-key error. The live bind therefore used the host's true LAN address on `en0`:
+
+| # | scenario | result |
+|---|---|---|
+| F0 | keyless `LOCAL_STUDIO_HOST=127.0.0.2`, no opt-out | exit 1, `LOCAL_STUDIO_API_KEY is required when binding the controller to a non-loopback host…` |
+| F1 | keyless `LOCAL_STUDIO_HOST=192.168.1.62` + `ALLOW_UNAUTHENTICATED=true`, no allowlist | listening; `Host: 192.168.1.62:18083` → 200 |
+| F2 | same server, `Host: localhost:18083` (hostname alias) | 403 |
+| F3 | same server, `Host: 127.0.0.1:18083` (address alias) | 403 |
+| F4 | connect via `127.0.0.1:18083` | unreachable — the bind is interface-specific |
+
+Limitation (C): the LAN bind was reachable from the local network for a ~15-second window on disposable `mktemp` data; isolation relied on the enabled macOS application firewall and the exact-Host guard rather than a dedicated firewall rule, and no remote client actually connected. A fully firewalled LAN environment was not available without privileged network changes.
+
+Shipped frontend proxy path against a keyless loopback controller (port 18080), using the pre-existing `frontend/.next/standalone` build output with `BACKEND_URL=http://localhost:18080` and a fresh `LOCAL_STUDIO_DATA_DIR` containing no `api-settings.json` (defaults applied); no build or install was performed:
+
+| # | scenario | result |
+|---|---|---|
+| G1 | `GET /api/proxy/health` through the frontend on `localhost:13000` | 200, body `{"status":"ok"}` from the controller |
+| G2 | SSE attach `GET /api/proxy/events` (the browser EventSource path) | `HTTP/1.1 200`, `content-type: text/event-stream`, 3,177 bytes of keepalive/event frames within 4 s; curl exit 28 is the expected never-ending stream |
+
+The proxy request carries no Origin and its Host is the controller's own, so the keyless guard admits the shipped browser/desktop path unchanged.
+
+## 8. Follow-ups recorded, not fixed here (P)
+
+- Controller and frontend carry two divergent host-authority normalizers (`controller/src/config/request-authority.ts` vs `frontend/src/lib/security/request-boundary.ts`, both exporting `isLoopbackHost` with different acceptance rules). Consolidating into `shared/` would break the deliberate byte-identity with upstream `327b14bf`, so it stays a follow-up.
+- Guard rejections are silent because the guard precedes logging/observability, leaving no audit trail for blocked rebinding attempts and nothing server-side for misconfigured-Host support cases.
+- A trailing-comma or otherwise malformed allowlist entry throws a startup error that does not name the offending entry.
+- Full `npm run check` passed after applying this amendment: all six top-level gates green, final `NPM-CHECK-EXIT:0`; transcript `/tmp/localstudio-v201-security-request-authority-check-r2.log`, SHA-256 `a26042481d7df3164782ab43ae076b62d7c514ca39c139b86217e4a30a861aee`. This final evidence-line update is markdown-only.
