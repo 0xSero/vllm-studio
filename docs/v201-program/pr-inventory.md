@@ -50,3 +50,7 @@ The dossier matrix (earlier capture, GLM session `…0f4b…`) enumerates **exac
 Maintainer (0xSero): 407, 404, 403, 401, 396, 382. Fork-external: 395 (JoaoZaokk), 380 (MarioMartinezII), 379–361 (fettpl, 19), 271/269 (Dixith-dev). = 29, identical to the snapshot.
 
 > Quarantine: `/tmp/litter-v201-pi` is a dossier for the separate **Litter** repository (Q1/C4) — never ingested here; not deleted (standing no-delete rule). See `decisions-pending.md`.
+
+## §4 GOAL-era disposition pointer (2026-08-15, WP-0)
+
+The frozen census rows above remain untouched (dispositions still execute at Phase 3 against a fresh sweep). GOAL-row-0.2 harvest dispositions for **#396** (selective frontend/services review; never wholesale controller harvest) and **#407** (port chat-scoped automation/UI onto current session contracts; never merge the 88-file overlap) are recorded with evidence in `wp0-evidence.md` §§2–3.
