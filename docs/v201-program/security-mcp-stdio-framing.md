@@ -37,16 +37,16 @@ The final disposable probe completed 52 checks:
 - malformed JSON, invalid JSON-RPC, fatal invalid UTF-8, partial EOF, and unexpected exit;
 - same-object rejection for multiple pending calls, future calls, and explicit close;
 - repeated close and protocol failure each producing one child shutdown event;
-- 24,000 successful operations on one connection with zero retained pending rejectors and a 0.64 MiB second-round RSS delta;
+- 24,000 successful operations on one connection with zero retained pending rejectors asserted before explicit close and a 0.69 MiB second-round RSS delta;
 - 12,000 valid frames emitted maliciously after malformed JSON, with zero post-error frames forwarded;
 - protocol failure and subsequent pool close converging on one shutdown promise, one staged child shutdown, and terminal state surviving `clear()`;
-- 250,000 one-byte no-newline writes with a 16.67 MiB parent RSS delta;
-- two 40,000-frame rounds with an 8.63 MiB second-round RSS delta;
+- 250,000 one-byte no-newline writes with a 16.38 MiB parent RSS delta;
+- two 40,000-frame rounds with an 8.47 MiB second-round RSS delta;
 - 24 connection cycles with active handles `3 -> 3`, process listeners `0 -> 0`, a 0.20 MiB RSS delta, and no surviving fixture process;
 - SDK private-seam shape success and simulated incompatible-seam fail-closed behavior;
 - live HTTP initialize, tools/list, tools/call, and 401 authorization refresh.
 
-Final repaired-product probe transcript: `manual-probe-final-f03488fdb.log`, SHA-256 `0d96ba76cdd12d2f968ee95ce12fc64be76da2e9b67c7f4e97cf305fde13ddda`.
+Final repaired-product probe transcript: `manual-probe-final-f03488fdb-r2.log`, SHA-256 `e718540e2fae6570fdaeffe0f86b99a443485381c822931653611975707ba102`. The disposable probe source has SHA-256 `f6e590197486097b27594ad3bf24159491b1854b93fd0606f06c142446aa56b7`; its zero-pending-rejector assertion executes before `highCount.close()`.
 
 Focused agent-runtime check at the repaired product commit: PASS. Transcript `agent-runtime-check-final-f03488fdb.log`, SHA-256 `a1c3b9a6798d4f8ac45d84943ad3b237a295907a19989043166aca6ad1447a26`.
 
