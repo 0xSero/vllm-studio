@@ -142,15 +142,11 @@ export class BrowserOperationCoordinator {
         if (settled) return;
         settled = true;
         cleanup();
+        this.generation += 1;
         const failure =
           signal.reason instanceof BrowserOperationError
             ? signal.reason
             : operationError(kind, "aborted", signal.reason);
-        if (failure.reason === "aborted") {
-          resume(Effect.fail(failure));
-          return;
-        }
-        this.generation += 1;
         void this.recover(failure).then((recoveryFailure) => {
           resume(Effect.fail(recoveryFailure ?? failure));
         });
