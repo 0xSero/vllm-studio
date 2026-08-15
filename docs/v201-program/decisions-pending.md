@@ -13,7 +13,7 @@ Open items, watch items, and quarantines. Fable adjudicates; nothing here is act
 
 - **dev carries the old `inkling-thinking-levels.test.ts` + its old tsconfig.** If dev modifies it before the final PR merge, the server-side merge surfaces a modify/delete conflict — resolved by deletion under the same law. Noted so nobody improvises later.
 - **`AGENTS.md` cites removed `docs/workflow.md`** (C3). Inline-flow default under the track is the resolution; restoring the doc contradicts #348's deliberate cleanup. Pending Codex override.
-- **LOC target ≤ 80,667** (25% of 107,556). Current track = 107,563 (H0, code head); the shrink is Phase-1 harvest (#403/#396/#407 waves), not Phase 0.
+- **LOC target ≤ 80,667** (25% of 107,556). GOAL-era head `359510ae6` measures **104,378** (791 files, frozen pipeline re-run 2026-08-15); PR #396 head `c452af5c` measures 93,506; remaining cut −23,711 — ledger at `wp0-evidence.md` §1. The shrink is harvest-plus-deletion-inventory work, not Phase 0.
 
 ## Quarantine
 

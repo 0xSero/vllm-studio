@@ -41,10 +41,11 @@
 | `sweeps.md` | R12c results + allowlist; GLM-Δ8 audio/speech per-ref presence; C14 registrar correction |
 | `symlinks.md` | GLM-Δ7 symlink table |
 | `decisions-pending.md` | B1–B4 status, watch items, Litter-dossier quarantine |
-| `pr-inventory.md` | frozen 29-row census (R24/R26) + R25′/G0H2 discrepancy record |
+| `pr-inventory.md` | frozen 29-row census (R24/R26) + R25′/G0H2 discrepancy record + §4 GOAL-era disposition pointer |
 | `branch-inventory.md` | 58 locals: ahead/behind vs `eeeb3406`, gone, backup tags |
 | `worktree-inventory.md` | 35 backup worktrees + program/DS-lane rows, class |
 | `slices.md` | G0S per-slice integration ledger (subset-proof law, S-0 onward) |
+| `wp0-evidence.md` | GOAL-era WP-0 evidence: LOC re-measurement, #396/#407 dispositions, added-route justification, singleton touchpoints, Effect/Schema/RPC gaps, DB gaps, lane blockers |
 | `b2-landing.md` | G0U B2 transplant landing: source branch, original→copy map, patch-id identity, G0T reconciliation, rollback boundary |
 | `baselines/method.md` | frozen measurement methods: cloc 2.06, LOC pipeline, pattern set P, shard rule |
 | `baselines/totals.md` | cross-ref totals: code lines, files, bytes; installed-artifact baselines (attributed) |
