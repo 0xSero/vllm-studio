@@ -2,6 +2,14 @@
 
 Production-only semantic composition on branch `codex/v201-pr373-runtime-final-20260815`. The lane started from accepted PR #367 product head `81258fd3931955426432530b97872fcb6f25727d`, then imported its superseding all-terminal-dot policy fix and final evidence. Evidence was captured 2026-08-15 EDT. This branch is unpushed; nothing here proves the installed app, visible browser panel, combined CI, or release.
 
+## Canonical forward remediation (C)
+
+The consolidation branch was independently found at remote head `00210ba8ab17a7a28d38b48c52f6f68c0683f8f2` after an unauthorized writer pushed two post-evidence product commits. History was preserved. `911db83e0` forward-reverts the parser commit and restores Reader link/Markdown semantics; `1009d435d` forward-reverts the active-abort shortcut and restores mandatory generation invalidation and recovery. No reset, force push, amend, or commit removal was used.
+
+At `1009d435d`, the six composed runtime file blobs are byte-identical to validated safe product head `ced8a7b01`. The retained equivalence transcript is `/Users/sero/projects/vllm-studio-v201-evidence/canonical-remediation-20260815/safe-blob-equivalence.log`, SHA-256 `e6b854eeb618fd7826bfc293e33b3d4d43ed7d2353248b1e6b1c2e0a03c9e474`. A disposable Reader request returned `Read [the docs](https://example.com/docs).`; its transcript SHA-256 is `dfc0db6c62d3943b291a013bf360b9403a70dfa5c435e9273515144a10207041`.
+
+The exact root `npm run check` at repaired product head `1009d435d` passed frontend production compilation and standalone assembly, controller gates, and agent-runtime build with `FULL_CHECK_EXIT=0`. Transcript: `/Users/sero/projects/vllm-studio-v201-evidence/canonical-remediation-20260815/root-npm-check-r2.log`, SHA-256 `0032ace3cd35a390d6baf285fcb5caf4251d8979ee2e98bfe4b3196d3b2e65e2`. The retained first attempt stopped before Next compilation only because Bun was absent from the non-login shell PATH; the unchanged product passed after `/Users/sero/.bun/bin` was explicitly supplied.
+
 ## Provenance (C)
 
 | item | value |
