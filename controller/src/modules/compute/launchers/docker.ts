@@ -4,15 +4,6 @@ import { runCommandAsyncEffect } from "../../../core/command";
 import { dockerFlagsFor } from "../engines/devices";
 import { LOG_TAIL_BYTES, spawnFailed, type Launcher } from "./launcher";
 
-/**
- * Container launcher. Ownership is a label pair written at `docker run` time: the
- * instance name and the record's nonce. `owns` compares the nonce, so a container someone
- * recreated by hand under the same name is never signalled — the exact analogue of the
- * process launcher's start-token check. All state queries are one `docker inspect` by
- * exact name; nothing ever lists all containers and filters, which is what made the old
- * launch path O(running containers).
- */
-
 const NAME_LABEL = "local-studio.instance";
 const NONCE_LABEL = "local-studio.nonce";
 const DOCKER_TIMEOUT_MS = 30_000;
@@ -31,9 +22,6 @@ export const makeDockerLauncher = (accelerator: Accelerator): Launcher => ({
     Effect.gen(function* () {
       if (!plan.image) return yield* spawnFailed(`no image for ${record.engine} on this host`);
       const name = containerName(record.name);
-      // A previous container under our name that we no longer track is torn down first —
-      // by exact name, with force; `docker run` would otherwise fail on the name clash.
-      yield* docker(["rm", "-f", name]).pipe(Effect.ignore);
       const deviceFlags = dockerFlagsFor(accelerator, plan.devices);
       const arguments_: string[] = [
         "run",
