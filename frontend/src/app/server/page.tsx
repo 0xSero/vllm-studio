@@ -1,5 +1,12 @@
-import { permanentRedirect } from "next/navigation";
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 export default function ServerRedirect() {
-  permanentRedirect("/configure?section=server#server");
+  const router = useRouter();
+  useMountSubscription(() => {
+    router.replace("/settings#system");
+  }, [router]);
+  return null;
 }
