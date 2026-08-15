@@ -1,7 +1,9 @@
 import { createWriteStream, mkdirSync } from "node:fs";
 import type { WriteStream } from "node:fs";
 import { dirname } from "node:path";
+import { format as formatValue } from "node:util";
 import { Effect } from "effect";
+import { redactLogLine } from "./log-redaction";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -44,7 +46,11 @@ export const createLogger = (level: LogLevel, options: LoggerOptions = {}): Logg
     if (!details || Object.keys(details).length === 0) {
       return message;
     }
-    return `${message} ${JSON.stringify(details)}`;
+    try {
+      return `${message} ${JSON.stringify(details)}`;
+    } catch {
+      return `${message} ${formatValue("%o", details)}`;
+    }
   };
 
   const toFileLine = (
@@ -57,8 +63,13 @@ export const createLogger = (level: LogLevel, options: LoggerOptions = {}): Logg
     return `${ts} ${target.toUpperCase()} ${base}\n`;
   };
 
-  const tryWrite = (target: LogLevel, message: string, details?: Record<string, unknown>): void => {
-    const line = toFileLine(target, message, details);
+  const write = (target: LogLevel, message: string, details?: Record<string, unknown>): void => {
+    const line = redactLogLine(toFileLine(target, message, details));
+    const rendered = line.trimEnd();
+
+    try {
+      console[target](rendered);
+    } catch {}
 
     if (stream) {
       try {
@@ -68,7 +79,7 @@ export const createLogger = (level: LogLevel, options: LoggerOptions = {}): Logg
 
     if (options.onLine) {
       try {
-        options.onLine(line.trimEnd(), { level: target });
+        options.onLine(rendered, { level: target });
       } catch {}
     }
   };
@@ -104,28 +115,16 @@ export const createLogger = (level: LogLevel, options: LoggerOptions = {}): Logg
 
   return {
     debug: (message, details): void => {
-      if (shouldLog("debug")) {
-        console.debug(format(message, details));
-        tryWrite("debug", message, details);
-      }
+      if (shouldLog("debug")) write("debug", message, details);
     },
     info: (message, details): void => {
-      if (shouldLog("info")) {
-        console.info(format(message, details));
-        tryWrite("info", message, details);
-      }
+      if (shouldLog("info")) write("info", message, details);
     },
     warn: (message, details): void => {
-      if (shouldLog("warn")) {
-        console.warn(format(message, details));
-        tryWrite("warn", message, details);
-      }
+      if (shouldLog("warn")) write("warn", message, details);
     },
     error: (message, details): void => {
-      if (shouldLog("error")) {
-        console.error(format(message, details));
-        tryWrite("error", message, details);
-      }
+      if (shouldLog("error")) write("error", message, details);
     },
     shutdown,
   };
