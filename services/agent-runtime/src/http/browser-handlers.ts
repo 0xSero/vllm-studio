@@ -44,13 +44,10 @@ async function readPayload(request: Request): Promise<Record<string, unknown>> {
   try {
     const body = (await request.json()) as Record<string, unknown> | null;
     if (body && typeof body === "object") {
-      // sessionId was a renderer-bridge affinity hint; the host is global now.
       const { sessionId: _sessionId, ...rest } = body;
       return rest;
     }
-  } catch {
-    // empty body is fine
-  }
+  } catch {}
   return {};
 }
 
@@ -59,8 +56,6 @@ async function dispatchVerb(verb: string, payload: Record<string, unknown>): Pro
   try {
     return await runHostVerb(verb, payload);
   } catch (error) {
-    // A launch/connection failure for the reading verbs still degrades to
-    // reading mode rather than failing the tool call outright.
     if (verb === "navigate" || verb === "get-text") return fallbackVerb(verb, payload);
     throw error;
   }
@@ -104,8 +99,6 @@ async function runHostVerb(verb: string, payload: Record<string, unknown>): Prom
 }
 
 async function navigateVerb(payload: Record<string, unknown>): Promise<VerbResult> {
-  // Pane rules: public web plus loopback (previewing local dev servers is the
-  // pane's main job); other private ranges stay blocked.
   const navigation = browserNetworkPolicy.navigation(String(payload.url ?? ""));
   if (!navigation) return { ok: false, error: "valid public or localhost http(s) url required" };
   const result = await browserHost.navigate(navigation.url);
@@ -132,11 +125,6 @@ function requireSelector(payload: Record<string, unknown>): string {
   return selector;
 }
 
-// Chromium-unavailable fallbacks. navigate/get-url/get-text/get-html degrade to
-// reading mode (remembering the last navigated URL per process so reads work
-// without a url arg); every other verb returns the clear unavailable error. The
-// fallback honors pane rules (public + loopback) so local dev servers stay
-// previewable even when there's no headless Chromium to drive a full surface.
 async function fallbackVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
   if (verb === "navigate") {
     const navigation = browserNetworkPolicy.navigation(String(payload.url ?? ""));
@@ -168,18 +156,10 @@ export async function handleBrowserFetch(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Fetch failed";
-    // Only the initial url-rejection is a client error (400); resolved-host,
-    // redirect, and upstream failures are bad-gateway (502) like before.
     const status = message.startsWith("url rejected") ? 400 : 502;
     return Response.json({ error: message }, { status });
   }
 }
-
-// ─── GET /api/agent/browser/frame ─────────────────────────────────────────
-//
-// Frame poll for the visible browser panel (~10fps JSON poll instead of SSE:
-// Next's standalone server buffers locally-built event streams, and polling
-// survives buffering proxies for remote deploys).
 
 export async function handleBrowserFrame(): Promise<Response> {
   if (!browserHost.isAvailable()) {
@@ -259,11 +239,6 @@ async function dispatchInput(body: InputBody): Promise<void> {
   });
 }
 
-// ─── GET /api/agent/browser/localhosts ────────────────────────────────────
-//
-// Discovers locally listening HTTP dev servers for the browser panel's
-// localhost picker.
-
 const execFileAsync = promisify(execFile);
 const PROBE_TIMEOUT_MS = 650;
 const LSOF_TIMEOUT_MS = 2_500;
@@ -324,9 +299,7 @@ async function listListeningPorts(): Promise<PortCandidate[]> {
     });
     const ports = parseLsof(stdout);
     if (ports.length > 0) return ports;
-  } catch {
-    // Fall through to common dev-server ports.
-  }
+  } catch {}
   return FALLBACK_PORTS.map((port) => ({ port }));
 }
 
@@ -379,8 +352,6 @@ export async function handleBrowserLocalhosts(request: Request): Promise<Respons
   return Response.json({ sites });
 }
 
-// ─── GET /api/agent/browser/state ─────────────────────────────────────────
-
 export async function handleBrowserState(): Promise<Response> {
   if (!browserHost.isAvailable()) {
     return Response.json({ ok: false, error: "Browser unavailable" }, { status: 503 });
@@ -394,11 +365,6 @@ export async function handleBrowserState(): Promise<Response> {
     });
   }
 }
-
-// ─── POST /api/agent/browser/viewport ─────────────────────────────────────
-//
-// Sets the headless Chromium viewport so it matches the visible panel's
-// dimensions. Body: { width, height }.
 
 export async function handleBrowserViewport(request: Request): Promise<Response> {
   if (!browserHost.isAvailable()) {
