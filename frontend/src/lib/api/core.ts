@@ -45,13 +45,6 @@ interface RpcRoute {
 
 interface ControllerRpc {
   recipes: RpcRoute & { ":recipeId": RpcRoute };
-  studio: {
-    rigs: RpcRoute & {
-      ":rigId": RpcRoute & {
-        nodes: RpcRoute & { ":nodeId": RpcRoute };
-      };
-    };
-  };
 }
 
 export type ApiCore = ReturnType<typeof createApiCore>;

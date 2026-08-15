@@ -51,16 +51,6 @@ export type {
 export type { ControllerUsageStats, UsageStats } from "@local-studio/contracts/usage";
 
 export type {
-  Rig,
-  RigAccelerator,
-  RigHardwareType,
-  RigNode,
-  RigNodeRole,
-  RigNodeSource,
-  RigsPayload,
-} from "@local-studio/contracts/rigs";
-
-export type {
   GPU,
   LogSession,
   Metrics,

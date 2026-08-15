@@ -8,7 +8,6 @@ import { effectHandler } from "../../http/effect-handler";
 import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import { registerStudioModelIndexRoutes } from "./model-index";
 import { registerStudioProviderRoutes } from "./provider-routes";
-import { registerStudioRigRoutes } from "./rig-routes";
 import { getGpuInfo } from "../system/platform/gpu";
 import type { GpuInfo } from "../models/types";
 import { discoverModelDirectories, estimateWeightsSizeBytes } from "../models/model-browser";
@@ -354,6 +353,5 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
 
     registerStudioModelIndexRoutes(app, context),
     registerStudioProviderRoutes(app, context),
-    registerStudioRigRoutes(app, context),
   );
 });

@@ -21,7 +21,6 @@ import { PeakMetricsStore, LifetimeMetricsStore } from "./modules/system/metrics
 import { ControllerRequestStore } from "./stores/controller-request-store";
 import { ControllerSettingsStore } from "./stores/controller-settings-store";
 import { InferenceRequestStore } from "./stores/inference-request-store";
-import { RigStore } from "./stores/rig-store";
 
 export interface AppContext {
   config: Config;
@@ -39,7 +38,6 @@ export interface AppContext {
     inferenceRequestStore: InferenceRequestStore;
     controllerSettingsStore: ControllerSettingsStore;
     controllerRequestStore: ControllerRequestStore;
-    rigStore: RigStore;
   };
 }
 
@@ -154,10 +152,6 @@ export const makeAppContext = Effect.gen(function* () {
     initializeSync("controller-request-store.open", () => new ControllerRequestStore(dbPath)),
     (resource) => releaseSafely("controller-request-store.close", logger, resource.close()),
   );
-  const rigStore = yield* Effect.acquireRelease(
-    initializeSync("rig-store.open", () => new RigStore(dbPath)),
-    (resource) => releaseSafely("rig-store.close", logger, resource.close()),
-  );
   yield* initialize(
     "lifetime-metrics-store.initialize",
     lifetimeMetricsStore.ensureFirstStartedEffect(),
@@ -201,7 +195,6 @@ export const makeAppContext = Effect.gen(function* () {
       inferenceRequestStore,
       controllerSettingsStore,
       controllerRequestStore,
-      rigStore,
     },
   } satisfies AppContext;
 });
