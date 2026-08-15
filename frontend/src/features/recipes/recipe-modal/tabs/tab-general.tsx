@@ -1,7 +1,7 @@
 "use client";
 
 import { Cpu, Info, Network, Rocket, Server } from "@/ui/icon-registry";
-import { Alert, Button, FormField, FormSection, Input, Select, StatusPill } from "@/ui";
+import { Alert, Button, FormField, FormSection, Select, StatusPill } from "@/ui";
 import { ModelLogo } from "@/ui/model-logo";
 import { modelIdFromPath } from "@/lib/huggingface";
 import type { ModelInfo, RuntimeTarget } from "@/lib/types";
@@ -12,6 +12,7 @@ import {
   runtimeOptionFor,
   runtimeOptionsFor,
 } from "@/features/recipes/serve-runtime-options";
+import { createRecipeFields } from "../recipe-fields";
 
 const PIPELINE_STEPS = ["Get", "Runtime", "Configure", "Serve"];
 
@@ -77,6 +78,7 @@ export function RecipeModalTabGeneral({
   const isCustomPath =
     Boolean(recipe.model_path) &&
     !availableModels.some((model) => model.path === recipe.model_path);
+  const field = createRecipeFields(recipe, onChange);
 
   return (
     <div className="space-y-6">
@@ -134,13 +136,11 @@ export function RecipeModalTabGeneral({
       </FormSection>
 
       <FormSection icon={<Info className="h-4 w-4" />} title="Serve Identity">
-        <FormField label="Name" required>
-          <Input
-            value={recipe.name ?? ""}
-            onChange={(event) => onChange({ ...recipe, name: event.target.value })}
-            placeholder="Llama 3.1 8B · fast chat"
-          />
-        </FormField>
+        {field.input("name", "Name", {
+          required: true,
+          preserveEmpty: true,
+          placeholder: "Llama 3.1 8B · fast chat",
+        })}
 
         <FormField
           label="Model weights"
@@ -174,34 +174,15 @@ export function RecipeModalTabGeneral({
 
       <FormSection icon={<Server className="h-4 w-4" />} title="API Endpoint">
         <div className="grid grid-cols-2 gap-3">
-          <FormField label="Host">
-            <Input
-              value={recipe.host ?? "0.0.0.0"}
-              onChange={(event) => onChange({ ...recipe, host: event.target.value || undefined })}
-              placeholder="0.0.0.0"
-            />
-          </FormField>
-          <FormField label="Port">
-            <Input
-              type="number"
-              value={recipe.port ?? 8000}
-              onChange={(event) =>
-                onChange({ ...recipe, port: Number(event.target.value) || undefined })
-              }
-            />
-          </FormField>
+          {field.input("host", "Host", { fallback: "0.0.0.0", placeholder: "0.0.0.0" })}
+          {field.input("port", "Port", { type: "number", fallback: 8000 })}
         </div>
 
-        <FormField label="Model API name" description="The name exposed through /v1/models.">
-          <Input
-            value={recipe.served_model_name || ""}
-            onChange={(event) =>
-              onChange({ ...recipe, served_model_name: event.target.value || undefined })
-            }
-            placeholder="deepseek-v4-flash"
-            icon={<Network className="h-3.5 w-3.5" />}
-          />
-        </FormField>
+        {field.input("served_model_name", "Model API name", {
+          description: "The name exposed through /v1/models.",
+          placeholder: "deepseek-v4-flash",
+          icon: <Network className="h-3.5 w-3.5" />,
+        })}
 
         <div className="flex items-center gap-2 rounded-md border border-(--ui-separator) bg-(--ui-bg) px-3 py-2 text-[length:var(--fs-xs)] text-(--ui-muted)">
           <Rocket className="h-3.5 w-3.5 text-(--ui-info)" />
