@@ -1,6 +1,6 @@
 # Local Studio v2.0.1 convergence goal
 
-Updated: 2026-08-15 07:04 EDT
+Updated: 2026-08-15
 
 This is the single controlling document for the Local Studio v2.0.1 convergence. No source, PR, release, cleanup, or acceptance work is complete unless its row here is `DONE` with exact evidence. Update this file whenever status changes.
 
@@ -16,7 +16,7 @@ The work is not complete today. The current branch is a source checkpoint, not a
 
 - `origin/main`: `eeeb3406d4bcef255b6405c5508fb324d5e38e77`.
 - `origin/dev`: `a765eb27bca4baffabc6dc84c553fc6d8be5590d`.
-- Pre-ledger local security checkpoint: `feat/v201-consolidation` at `4dcd2b447`, containing the independently accepted controller-redaction and MCP-framing descendants plus the narrow Docker preservation fix. The commit containing this refresh becomes the local branch head; push and current-head CI are required before this checkpoint is remote truth.
+- Pre-ledger local security checkpoint: `feat/v201-consolidation` at `4dcd2b447`, containing the independently accepted controller-redaction and MCP-framing descendants plus the narrow Docker preservation fix. The ledger commits are docs-only descendants; push and current-head CI are required before this checkpoint is remote truth.
 - PR [#408](https://github.com/sybil-solutions/local-studio/pull/408): draft, open, mergeable into `dev`; remote head `b7b73e9aba0f7a0e8284bf8433c2e6ca343324ae`, 408 files, +14,773/−18,593, `CLEAN`, with all nine check contexts green at that remote head (live re-verified 2026-08-15). The local security checkpoint is newer and unpushed at this ledger edit, so those green checks do not cover it. This aggregate diff is not the product-LOC metric.
 - Installed Local Studio stable: version `2.11.2`, build ID `mspwrtd1nz7gi7`, 970,144 KiB, valid strict code signature. Byte-tied to the published release: the bundle stamps `localStudioCommit` `0f34634f3ed1bb47026f33063acf68d2f659fc71` (tag `v2.11.2` resolves to the same commit, an ancestor of current `origin/main`), and the installed `app.asar` SHA-256 `39324f59835150d0011c907a696c9ea074484f3103c56c65d0efd5ba7910cd34` matches the `app.asar` streamed from the published v2.11.2 ZIP. Stable is therefore an older tagged `main` commit, not current `main` and not the v2.0.1 candidate.
 - Installed Local Studio Dev: version `2.1.0`, build ID `mstikvyxdqk3dm`, 985,900 KiB, valid strict code signature. The bundle carries no `localStudioCommit` and no matching local build artifact was found, so its source commit remains unproven; it is not the requested v2.0.1 release proof.
@@ -150,7 +150,7 @@ The program remains active and cannot merge without the missing architecture, LO
 
 ## Execution order
 
-1. Commit/push this goal, record its file SHA-256 in PR #408, align the PR title/body, and resolve its plan-review findings.
+1. Push this committed goal checkpoint, record its file SHA-256 in PR #408, align the PR title/body, and resolve its plan-review findings.
 2. Finish authority: deployed/installed/phone provenance and per-PR/per-branch harvest dispositions. Publish cleanup candidates but delete nothing.
 3. Lock the controller architecture: Effect v4 primitives, single RPC/contracts, session identity, multi-model/multi-port ownership, safe DB migration, Responses and Anthropic boundaries.
 4. Implement all controller/data work first, then session/history/browser primitives, then pages/styles/icons. GLM and DeepSeek own non-overlapping branches/files. Integrate small reviewed commits and update this matrix.
