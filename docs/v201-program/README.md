@@ -45,8 +45,10 @@
 | `branch-inventory.md` | 58 locals: ahead/behind vs `eeeb3406`, gone, backup tags |
 | `worktree-inventory.md` | 35 backup worktrees + program/DS-lane rows, class |
 | `slices.md` | G0S per-slice integration ledger (subset-proof law, S-0 onward) |
+| `g0i-pre-push-range-fix.md` | G0I evidence: pre-push message-lint range defect, R27–R30 amendment (`52c28a56`), harvest doctrine |
 | `wp0-evidence.md` | GOAL-era WP-0 evidence: LOC re-measurement, #396/#407 dispositions, added-route justification, singleton touchpoints, Effect/Schema/RPC gaps, DB gaps, lane blockers |
 | `b2-landing.md` | G0U B2 transplant landing: source branch, original→copy map, patch-id identity, G0T reconciliation, rollback boundary |
+| `release-path.md` | R32/P9 A4 canonical workflow archive at `eeeb3406` (CI/release/maintenance + `release.config.cjs` fingerprints), branch protections, release-run dispositions, B1/B2 closure |
 | `baselines/method.md` | frozen measurement methods: cloc 2.06, LOC pipeline, pattern set P, shard rule |
 | `baselines/totals.md` | cross-ref totals: code lines, files, bytes; installed-artifact baselines (attributed) |
 | `baselines/routes-eeeb3406.md` | R23 static route inventory (89 rows, 19 registrars) |
