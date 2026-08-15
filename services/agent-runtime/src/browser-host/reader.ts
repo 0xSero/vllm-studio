@@ -1,12 +1,3 @@
-// Reading-mode fallback used when headless Chromium is unavailable (and by the
-// /api/agent/browser/fetch route directly). Fetches a public http(s) URL with a
-// vetted DNS lookup so the embedded server never SSRFs into private nets, caps
-// the body, and converts HTML/Markdown into readable text for the model.
-//
-// This is the fetch+sanitize core that previously lived inline in the fetch
-// route; it is shared so the embedded [verb] path can fall back without an HTTP
-// self-call.
-
 import { lookup } from "node:dns/promises";
 import { request as httpRequest, type RequestOptions } from "node:http";
 import { request as httpsRequest } from "node:https";
@@ -45,7 +36,6 @@ type BoundedResponse = {
 };
 
 declare global {
-  // Test-only hooks for simulating DNS answers / responses without real network.
   var __LOCAL_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST: ReaderHostResolver | undefined;
   var __LOCAL_STUDIO_BROWSER_READER_REQUEST_FOR_TEST:
     | ((url: string, address: ResolvedHostAddress) => Promise<BoundedResponse>)
@@ -74,8 +64,6 @@ function decodeEntities(value: string): string {
     .replace(/&nbsp;/g, " ");
 }
 
-// Lightweight HTML → readable text. We intentionally avoid pulling in
-// readability/cheerio; the goal is "good enough for the model to read".
 function htmlToReadable(html: string, baseUrl: string): { title: string; text: string } {
   const noScripts = html
     .replace(/<script[\s\S]*?<\/script>/gi, "")
@@ -138,13 +126,15 @@ async function fetchBoundedUrl(
   mode: BrowserNetworkMode,
   redirects = 0,
 ): Promise<BoundedResponse> {
-  const addresses = await publicResolvedAddresses(url, mode);
+  const addresses = await resolvedAddresses(url, mode);
   const response = await requestBoundedUrl(url, addresses[0]);
   if (isRedirectStatus(response.status)) {
     if (redirects >= MAX_REDIRECTS) throw new Error("Too many redirects");
     if (!response.location) throw new Error("Redirect missing Location header");
     const nextUrl = new URL(response.location, url).toString();
-    return fetchBoundedUrl(nextUrl, mode, redirects + 1);
+    const safeRedirect = acceptedReaderUrl(nextUrl, mode);
+    if (!safeRedirect) throw new Error("Redirect rejected by browser network policy");
+    return fetchBoundedUrl(safeRedirect, mode, redirects + 1);
   }
   return response;
 }
@@ -153,12 +143,19 @@ function isRedirectStatus(status: number): boolean {
   return status >= 300 && status < 400;
 }
 
-async function publicResolvedAddresses(
+async function resolvedAddresses(
   raw: string,
   mode: BrowserNetworkMode,
 ): Promise<ResolvedHostAddress[]> {
   const destination = await readerNetworkPolicy.resolve(raw, mode);
   return [destination.address];
+}
+
+function acceptedReaderUrl(raw: string, mode: BrowserNetworkMode): string | null {
+  const navigation = readerNetworkPolicy.navigation(raw);
+  return navigation && (mode === "loopback" || navigation.mode === "public")
+    ? navigation.url
+    : null;
 }
 
 function normalizeResolvedAddress(input: ResolvedHostInput): ResolvedHostAddress {
@@ -271,15 +268,11 @@ function renderReadable(response: BoundedResponse, fallbackUrl: string): ReaderR
   };
 }
 
-// Fetch a public URL and return reading-mode text. Throws on rejected/invalid
-// URLs or upstream failures; callers map errors to their own response shape.
 export async function fetchReadable(
   rawUrl: string,
   mode: BrowserNetworkMode = "public",
 ): Promise<ReaderResult> {
-  const navigation = readerNetworkPolicy.navigation(rawUrl);
-  const safe =
-    navigation && (mode === "loopback" || navigation.mode === "public") ? navigation.url : null;
+  const safe = acceptedReaderUrl(rawUrl, mode);
   if (!safe) throw new Error("url rejected by browser network policy");
   const response = await fetchBoundedUrl(safe, mode);
   if (!response.ok) throw new Error(`Upstream returned HTTP ${response.status}`);

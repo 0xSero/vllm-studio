@@ -4,6 +4,7 @@ import type { Duplex } from "node:stream";
 import { browserNetworkPolicy, type BrowserDestination, type BrowserNetworkMode, type BrowserNetworkPolicy } from "./network-policy";
 export type BrowserProxy = { close: () => Promise<void>; url: string };
 function tracked(socket: Socket, sockets: Set<Socket>): Socket {
+  if (sockets.has(socket)) return socket;
   sockets.add(socket);
   socket.on("error", () => undefined);
   socket.once("close", () => sockets.delete(socket));
@@ -20,6 +21,19 @@ function reject(client: Duplex | ServerResponse): void {
     client.end();
   } else {
     client.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+  }
+}
+function connectUrl(raw: string): string | null {
+  if (!raw || raw !== raw.trim() || /[\s/?#@\\]/u.test(raw)) return null;
+  const match = raw.startsWith("[")
+    ? raw.match(/^\[[^\]]+\]:(\d{1,5})$/u)
+    : raw.match(/^[^:]+:(\d{1,5})$/u);
+  const port = Number(match?.[1]);
+  if (!match || !Number.isInteger(port) || port < 1 || port > 65_535) return null;
+  try {
+    return new URL(`https://${raw}`).toString();
+  } catch {
+    return null;
   }
 }
 function headers(input: IncomingHttpHeaders, host: string): IncomingHttpHeaders {
@@ -81,7 +95,12 @@ export async function createBrowserProxy(mode: BrowserNetworkMode, policy: Brows
   });
   server.on("connection", (socket) => tracked(socket, sockets));
   server.on("connect", (request, client, head) => {
-    resolve(`https://${request.url ?? ""}`, client, (destination) => tunnel(
+    const raw = connectUrl(request.url ?? "");
+    if (!raw) {
+      reject(client);
+      return;
+    }
+    resolve(raw, client, (destination) => tunnel(
       client, head, destination, sockets,
       () => client.write("HTTP/1.1 200 Connection Established\r\n\r\n"),
     ));
@@ -93,14 +112,24 @@ export async function createBrowserProxy(mode: BrowserNetworkMode, policy: Brows
       (upstream) => upstream.write(serializeUpgrade(request, new URL(destination.url))),
     ));
   });
-  const port = await new Promise<number>((resolve, rejectListen) => {
-    server.once("error", rejectListen);
-    server.listen(0, "127.0.0.1", () => {
+  const port = await new Promise<number>((resolvePort, rejectListen) => {
+    const onError = (error: Error) => {
+      server.off("listening", onListening);
+      rejectListen(error);
+    };
+    const onListening = () => {
+      server.off("error", onError);
       const address = server.address();
-      typeof address === "object" && address
-        ? resolve(address.port)
-        : rejectListen(new Error("Browser proxy failed to listen"));
-    });
+      if (typeof address === "object" && address) {
+        resolvePort(address.port);
+        return;
+      }
+      server.close();
+      rejectListen(new Error("Browser proxy failed to listen"));
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(0, "127.0.0.1");
   });
   return {
     close: () => {
