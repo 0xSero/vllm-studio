@@ -13,7 +13,12 @@ type InputOptions = FieldOptions & {
   icon?: ReactNode;
   preserveEmpty?: boolean;
 };
-type SelectOptions = FieldOptions & { fallback?: string; numeric?: boolean; empty?: string };
+type SelectOptions = FieldOptions & {
+  fallback?: string;
+  numeric?: boolean;
+  empty?: string;
+  zeroIsEmpty?: boolean;
+};
 type SelectChoices = Readonly<Record<string, string | Readonly<Record<string, string>>>>;
 
 const renderChoices = (choices: SelectChoices): ReactNode =>
@@ -87,11 +92,20 @@ export function createRecipeFields(recipe: RecipeEditor, onChange: (next: Recipe
     children: ReactNode,
     options: SelectOptions = {},
   ) => {
-    const { description, fallback = "", numeric = false, empty = "" } = options;
+    const {
+      description,
+      fallback = "",
+      numeric = false,
+      empty = "",
+      zeroIsEmpty = false,
+    } = options;
+    const current = recipe[name];
+    const value =
+      current === "" || (zeroIsEmpty && current === 0) ? fallback : (current ?? fallback);
     return (
       <FormField label={label} description={description}>
         <Select
-          value={String(recipe[name] ?? fallback)}
+          value={String(value)}
           onChange={(event) => {
             const next = event.target.value;
             update(name, next === empty ? undefined : numeric ? numericValue(next) : next);
