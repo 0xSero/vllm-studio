@@ -1,7 +1,11 @@
-import { Stat, StatusPill } from "@/ui";
+import Link from "next/link";
+import { buttonClasses, Stat, StatusPill } from "@/ui";
+import { ExternalLink } from "@/ui/icon-registry";
 import {
   SettingsFactRows,
   SettingsGroup,
+  SettingsLink,
+  SettingsRow,
   type SettingsFactRow,
   type StatusTone,
 } from "./settings-ui";
@@ -99,6 +103,7 @@ export function SystemDetails({
 }) {
   return (
     <div>
+      <OperatorTools />
       <SettingsGroup
         title="Machine details"
         description="Ports, paths, platform versions, and GPU inventory reported by the controller."
@@ -112,6 +117,38 @@ export function SystemDetails({
         report={compatibilityReport}
       />
     </div>
+  );
+}
+
+function OperatorTools() {
+  return (
+    <SettingsGroup
+      title="Operator tools"
+      description="Inspect controller activity and its API contract."
+    >
+      <SettingsRow
+        label="Logs"
+        description="Review controller and model server activity."
+        actions={
+          <Link href="/logs" className={buttonClasses("ghost", "sm")}>
+            Open logs
+          </Link>
+        }
+      />
+      <SettingsRow
+        label="Controller API"
+        description="Open the controller OpenAPI specification."
+        actions={
+          <SettingsLink
+            href="/api/proxy/api/spec"
+            aria-label="Open controller API specification in a browser"
+          >
+            Open specification
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+          </SettingsLink>
+        }
+      />
+    </SettingsGroup>
   );
 }
 
