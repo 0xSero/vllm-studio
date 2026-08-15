@@ -21,3 +21,27 @@ export function pluginConnectorConfigurationDigest(connector: ConnectorConfig): 
   ]);
   return `sha256:${createHash("sha256").update(identity).digest("hex")}`;
 }
+
+export function connectorExecutionConfigurationDigest(connector: ConnectorConfig): string {
+  const origin = connector.origin;
+  const identity = JSON.stringify([
+    "local-studio-connector-execution-v1",
+    pluginConnectorConfigurationDigest(connector),
+    connector.enabled,
+    connector.allowTools ?? null,
+    origin
+      ? [
+          origin.kind,
+          origin.id,
+          origin.version ?? null,
+          origin.binding ?? null,
+          origin.artifactDigest ?? null,
+          origin.configurationDigest ?? null,
+          origin.snapshotDigest ?? null,
+          origin.runtimeDigest ?? null,
+          origin.sourceDigest ?? null,
+        ]
+      : null,
+  ]);
+  return `sha256:${createHash("sha256").update(identity).digest("hex")}`;
+}

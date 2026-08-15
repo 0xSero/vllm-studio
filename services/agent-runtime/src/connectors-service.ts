@@ -13,15 +13,13 @@ import {
   GOOGLE_WORKSPACE_BINDINGS,
   googleWorkspaceConnectorAccount,
 } from "./google-workspace-binding";
-import {
-  closePendingPooledConnections,
-  closePooledConnection,
-} from "./connector-pool-state";
+import { closePooledConnection, withConnectorAdmission } from "./connector-pool-state";
 import {
   garbageCollectPluginExecutionSnapshots,
   type PluginExecutionSnapshotLease,
   withPluginExecutionSnapshotLifecycle,
 } from "./plugin-execution-snapshot";
+import { connectorExecutionConfigurationDigest } from "./plugin-connector-identity";
 
 export {
   type ConnectorAuthReference,
@@ -38,9 +36,7 @@ function connectorMutationEffect<A>(
   lifecycle: PluginExecutionSnapshotLease,
   operation: (active: PluginExecutionSnapshotLease) => Effect.Effect<A, unknown>,
 ): Effect.Effect<A, unknown> {
-  return connectorMutation.withPermit(
-    Effect.uninterruptible(operation(lifecycle)),
-  );
+  return connectorMutation.withPermit(Effect.uninterruptible(operation(lifecycle)));
 }
 
 function runConnectorMutation<A>(
@@ -142,25 +138,26 @@ function persistConnectorsEffect(
   closeIds: Iterable<string>,
 ): Effect.Effect<void, unknown> {
   return Effect.gen(function* () {
+    const closing = yield* withConnectorAdmission(
+      Effect.gen(function* () {
+        yield* Effect.tryPromise({
+          try: () => writeConnectors(connectors),
+          catch: (error) => error,
+        });
+        return yield* Effect.sync(() =>
+          [...new Set(closeIds)].map((connectorId) => closePooledConnection(connectorId)),
+        );
+      }),
+    );
     yield* Effect.tryPromise({
-      try: () => writeConnectors(connectors),
-      catch: (error) => error,
-    });
-    yield* Effect.tryPromise({
-      try: () => Promise.all([...new Set(closeIds)].map(closePooledConnection)).then(() => undefined),
-      catch: (error) => error,
-    });
-    yield* Effect.tryPromise({
-      try: closePendingPooledConnections,
+      try: () => Promise.all(closing).then(() => undefined),
       catch: (error) => error,
     });
     yield* garbageCollectPluginExecutionSnapshots(connectors, lifecycle);
   });
 }
 
-export function saveConnectors(
-  connectors: ConnectorConfig[],
-): Promise<void> {
+export function saveConnectors(connectors: ConnectorConfig[]): Promise<void> {
   return runConnectorMutation((active) => saveConnectorsMutation(connectors, active));
 }
 
@@ -168,9 +165,7 @@ export function saveConnectorsEffect(
   connectors: ConnectorConfig[],
   lifecycle: PluginExecutionSnapshotLease,
 ): Effect.Effect<void, unknown> {
-  return connectorMutationEffect(lifecycle, (active) =>
-    saveConnectorsMutation(connectors, active),
-  );
+  return connectorMutationEffect(lifecycle, (active) => saveConnectorsMutation(connectors, active));
 }
 
 function saveConnectorsMutation(
@@ -178,20 +173,29 @@ function saveConnectorsMutation(
   active: PluginExecutionSnapshotLease,
 ): Effect.Effect<void, unknown> {
   return Effect.gen(function* () {
-    const closeIds = (yield* listConnectorsEffect()).map((connector) => connector.id);
+    const existing = yield* listConnectorsEffect();
+    const existingIds = new Set(existing.map((connector) => connector.id));
+    const incomingById = new Map(connectors.map((connector) => [connector.id, connector]));
+    const closeIds = [
+      ...existing.flatMap((connector) => {
+        const replacement = incomingById.get(connector.id);
+        return !replacement ||
+          connectorExecutionConfigurationDigest(connector) !==
+            connectorExecutionConfigurationDigest(replacement)
+          ? [connector.id]
+          : [];
+      }),
+      ...connectors.filter((connector) => !existingIds.has(connector.id)).map(({ id }) => id),
+    ];
     yield* persistConnectorsEffect(connectors, active, closeIds);
   });
 }
 
-export async function upsertConnector(
-  connector: ConnectorConfig,
-): Promise<ConnectorConfig[]> {
+export async function upsertConnector(connector: ConnectorConfig): Promise<ConnectorConfig[]> {
   return upsertConnectors([connector]);
 }
 
-export function upsertConnectors(
-  incoming: ConnectorConfig[],
-): Promise<ConnectorConfig[]> {
+export function upsertConnectors(incoming: ConnectorConfig[]): Promise<ConnectorConfig[]> {
   return runConnectorMutation((active) => upsertConnectorsMutation(incoming, active));
 }
 
@@ -199,9 +203,7 @@ export function upsertConnectorsEffect(
   incoming: ConnectorConfig[],
   lifecycle: PluginExecutionSnapshotLease,
 ): Effect.Effect<ConnectorConfig[], unknown> {
-  return connectorMutationEffect(lifecycle, (active) =>
-    upsertConnectorsMutation(incoming, active),
-  );
+  return connectorMutationEffect(lifecycle, (active) => upsertConnectorsMutation(incoming, active));
 }
 
 function upsertConnectorsMutation(
@@ -213,7 +215,6 @@ function upsertConnectorsMutation(
     const closeIds = new Set<string>();
     for (const candidate of incoming) {
       const connector = protectManagedConnector(candidate);
-      closeIds.add(connector.id);
       const index = connectors.findIndex((entry) => entry.id === connector.id);
       const existing = index === -1 ? null : connectors[index];
       const merged: ConnectorConfig = {
@@ -225,6 +226,13 @@ function upsertConnectorsMutation(
         origin: connector.origin ?? existing?.origin,
         auth: connector.auth ?? existing?.auth,
       };
+      if (
+        !existing ||
+        connectorExecutionConfigurationDigest(existing) !==
+          connectorExecutionConfigurationDigest(merged)
+      ) {
+        closeIds.add(connector.id);
+      }
       if (index === -1) connectors.push(merged);
       else connectors[index] = merged;
     }
@@ -233,9 +241,7 @@ function upsertConnectorsMutation(
   });
 }
 
-export function replaceConnectors(
-  incoming: ConnectorConfig[],
-): Promise<ConnectorConfig[]> {
+export function replaceConnectors(incoming: ConnectorConfig[]): Promise<ConnectorConfig[]> {
   return replaceConnectorIdentities(
     incoming.map((connector) => ({ existingId: connector.id, connector })),
   );
@@ -244,9 +250,7 @@ export function replaceConnectors(
 export function replaceConnectorIdentities(
   incoming: { existingId: string; connector: ConnectorConfig }[],
 ): Promise<ConnectorConfig[]> {
-  return runConnectorMutation((active) =>
-    replaceConnectorIdentitiesMutation(incoming, active),
-  );
+  return runConnectorMutation((active) => replaceConnectorIdentitiesMutation(incoming, active));
 }
 
 export function replaceConnectorIdentitiesEffect(
@@ -274,18 +278,14 @@ function replaceConnectorIdentitiesMutation(
     const removedIds = new Set(
       replacements.flatMap(({ existingId, connector }) => [existingId, connector.id]),
     );
-    const connectors = (yield* listConnectorsEffect()).filter(
-      (entry) => !removedIds.has(entry.id),
-    );
+    const connectors = (yield* listConnectorsEffect()).filter((entry) => !removedIds.has(entry.id));
     connectors.push(...replacements.map(({ connector }) => connector));
     yield* persistConnectorsEffect(connectors, active, removedIds);
     return connectors;
   });
 }
 
-export function removeConnector(
-  id: string,
-): Promise<ConnectorConfig[]> {
+export function removeConnector(id: string): Promise<ConnectorConfig[]> {
   if (googleWorkspaceConnectorAccount(id)) {
     return Promise.reject(
       new Error(`Managed Google Workspace connector "${id}" cannot be removed`),
@@ -299,13 +299,9 @@ export function removeConnectorEffect(
   lifecycle: PluginExecutionSnapshotLease,
 ): Effect.Effect<ConnectorConfig[], unknown> {
   if (googleWorkspaceConnectorAccount(id)) {
-    return Effect.fail(
-      new Error(`Managed Google Workspace connector "${id}" cannot be removed`),
-    );
+    return Effect.fail(new Error(`Managed Google Workspace connector "${id}" cannot be removed`));
   }
-  return connectorMutationEffect(lifecycle, (active) =>
-    removeConnectorMutation(id, active),
-  );
+  return connectorMutationEffect(lifecycle, (active) => removeConnectorMutation(id, active));
 }
 
 function removeConnectorMutation(

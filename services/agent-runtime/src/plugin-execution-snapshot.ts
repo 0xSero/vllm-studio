@@ -5,11 +5,7 @@ import path from "node:path";
 import { Effect, Semaphore } from "effect";
 import type { ConnectorConfig } from "./connector-contract";
 import { resolveDataDir } from "./data-dir";
-import {
-  closePendingPooledConnections,
-  closeSnapshotConnections,
-  hasPendingPooledConnections,
-} from "./connector-pool-state";
+import { closeSnapshotConnections, hasPendingPooledConnections } from "./connector-pool-state";
 import { pluginArtifactDigest } from "./plugin-artifact-digest";
 import { pluginConnectorConfigurationDigest } from "./plugin-connector-identity";
 import type { PluginBundle } from "./plugin-discovery";
@@ -542,7 +538,6 @@ const referencedSnapshots = (
 
 async function collectSnapshots(connectors: ConnectorConfig[]): Promise<void> {
   await closeSnapshotConnections();
-  await closePendingPooledConnections();
   if (hasPendingPooledConnections()) return;
   let storage: SnapshotStorageGuard | undefined;
   try {

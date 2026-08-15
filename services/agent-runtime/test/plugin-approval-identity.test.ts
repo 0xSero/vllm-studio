@@ -16,7 +16,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Effect } from "effect";
 import type { ConnectorConfig } from "../src/connector-contract";
-import { callConnectorTool, probePersistedConnector } from "../src/connector-pool";
+import {
+  callConnectorTool,
+  listConnectorTools,
+  probePersistedConnector,
+} from "../src/connector-pool";
 import { closePooledConnection, getOrCreatePooledConnection } from "../src/connector-pool-state";
 import {
   listConnectors,
@@ -132,6 +136,37 @@ async function approvedConnector(root: string, source: PluginSource[]): Promise<
   };
 }
 
+async function approvedHttpConnector(
+  source: PluginSource[],
+  id = "plugin-fixture-http",
+): Promise<ConnectorConfig> {
+  const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
+  if (!bundle) throw new Error("fixture plugin was not discovered");
+  const connector: ConnectorConfig = {
+    id,
+    name: "fixture-http",
+    transport: "http",
+    url: "https://example.test/mcp",
+    allowTools: ["read"],
+    enabled: true,
+    origin: {
+      kind: "plugin",
+      id: "fixture",
+      version: "1.0.0",
+      binding: "http",
+      artifactDigest: bundle.artifactDigest,
+      sourceDigest: bundle.sourceDigest,
+    },
+  };
+  return {
+    ...connector,
+    origin: {
+      ...connector.origin,
+      configurationDigest: pluginConnectorConfigurationDigest(connector),
+    },
+  };
+}
+
 async function prepareSnapshot(
   root: string,
   source: PluginSource[],
@@ -209,6 +244,38 @@ describe("plugin approval identity", () => {
     expect(revoked?.allowTools).toEqual([]);
     expect(revoked?.origin?.artifactDigest).not.toBe(approved.origin?.artifactDigest);
     await expect(callConnectorTool(approved.id, "read", {})).rejects.toThrow(/disabled/);
+  });
+
+  test("admits an approved HTTP plugin without an executable snapshot", async () => {
+    const { source } = fixture();
+    const connector = await approvedHttpConnector(source);
+    await saveConnectors([connector]);
+    await getOrCreatePooledConnection(connector.id, async () => ({
+      listTools: async () => [
+        { name: "read", description: "Read", inputSchema: { type: "object" } },
+      ],
+      callTool: async (_name, args) => ({ echoed: args }),
+      close: async () => undefined,
+    }));
+    expect((await listConnectorTools(connector.id)).map(({ name }) => name)).toEqual(["read"]);
+    await expect(callConnectorTool(connector.id, "read", { value: 1 })).resolves.toEqual({
+      echoed: { value: 1 },
+    });
+    await removeConnector(connector.id);
+  });
+
+  test("denies stale HTTP plugin configuration and incomplete artifact identity", async () => {
+    const { source } = fixture();
+    const connector = await approvedHttpConnector(source);
+    await saveConnectors([{ ...connector, url: "https://changed.example.test/mcp" }]);
+    await expect(callConnectorTool(connector.id, "read", {})).rejects.toThrow(/not approved/);
+    await saveConnectors([
+      {
+        ...connector,
+        origin: { ...connector.origin, artifactDigest: undefined },
+      },
+    ]);
+    await expect(listConnectorTools(connector.id)).rejects.toThrow(/not approved/);
   });
 
   test("revokes approval after persisted configuration drift", async () => {
@@ -756,7 +823,7 @@ process.exit(2);`;
         await allowClose.promise;
       },
     }));
-    const cleanup = saveConnectors([prepared]);
+    const cleanup = saveConnectors([{ ...prepared, allowTools: ["read", "write"] }]);
     await closeStarted.promise;
     expect(existsSync(retained)).toBe(true);
     expect(existsSync(stale)).toBe(true);
@@ -898,7 +965,7 @@ process.exit(2);`;
           garbageCollectPluginExecutionSnapshots([], lifecycle),
         ),
       ),
-    ).rejects.toThrow(/snapshot cleanup failed/);
+    ).resolves.toBeUndefined();
     expect(existsSync(retained)).toBe(true);
     allowClose = true;
     await closePooledConnection(prepared.id);
@@ -1025,100 +1092,231 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     expect(existsSync(marker)).toBe(false);
   });
 
-  test("holds snapshot retirement until an admitted tool call settles", async () => {
+  test("holds snapshot retirement until an interrupted tool call terminates", async () => {
     const { root, source } = fixture();
     const prepared = await prepareSnapshot(root, source, await approvedConnector(root, source));
     await saveConnectors([prepared]);
     const callStarted = Promise.withResolvers<void>();
-    const allowCall = Promise.withResolvers<void>();
+    const closeStarted = Promise.withResolvers<void>();
+    const allowClose = Promise.withResolvers<void>();
+    const remote = Promise.withResolvers<unknown>();
     await getOrCreatePooledConnection(prepared.id, async () => ({
       listTools: async () => [],
       callTool: async () => {
         callStarted.resolve();
-        await allowCall.promise;
-        return "complete";
+        return remote.promise;
       },
-      close: async () => undefined,
+      close: async () => {
+        closeStarted.resolve();
+        await allowClose.promise;
+        remote.reject(new Error("connection closed"));
+      },
     }));
     const call = callConnectorTool(prepared.id, "read", {});
+    const callFailure = call.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
     await callStarted.promise;
     let retired = false;
     const retirement = removeConnector(prepared.id).then(() => {
       retired = true;
     });
+    await closeStarted.promise;
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(retired).toBe(false);
     expect(existsSync(snapshotRoot(prepared))).toBe(true);
-    allowCall.resolve();
-    expect(await call).toBe("complete");
+    allowClose.resolve();
+    expect(String(await callFailure)).toMatch(/interrupted|closed/i);
     await retirement;
     expect(retired).toBe(true);
     expect(existsSync(snapshotRoot(prepared))).toBe(false);
   });
 
-  test("denies a queued tool call when revocation acquires the lifecycle first", async () => {
+  test("interrupts a stalled stdio call while unrelated connector work continues", async () => {
+    const { root, source } = fixture();
+    const stdio = await prepareSnapshot(root, source, await approvedConnector(root, source));
+    const http = await approvedHttpConnector(source);
+    await saveConnectors([stdio, http]);
+    const stdioStarted = Promise.withResolvers<void>();
+    const stdioCloseStarted = Promise.withResolvers<void>();
+    const allowStdioClose = Promise.withResolvers<void>();
+    const stdioRemote = Promise.withResolvers<unknown>();
+    await getOrCreatePooledConnection(stdio.id, async () => ({
+      listTools: async () => [],
+      callTool: async () => {
+        stdioStarted.resolve();
+        return stdioRemote.promise;
+      },
+      close: async () => {
+        stdioCloseStarted.resolve();
+        await allowStdioClose.promise;
+        stdioRemote.reject(new Error("connection closed"));
+      },
+    }));
+    await getOrCreatePooledConnection(http.id, async () => ({
+      listTools: async () => [],
+      callTool: async () => "unrelated-complete",
+      close: async () => undefined,
+    }));
+    const stalled = callConnectorTool(stdio.id, "read", {});
+    const stalledFailure = stalled.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await stdioStarted.promise;
+    let disableSettled = false;
+    const disable = saveConnectors([{ ...stdio, enabled: false, allowTools: [] }, http]).finally(
+      () => {
+        disableSettled = true;
+      },
+    );
+    await Promise.race([
+      stdioCloseStarted.promise,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Stdio shutdown did not start")), 500),
+      ),
+    ]);
+    await expect(
+      Promise.race([
+        callConnectorTool(http.id, "read", {}),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Unrelated connector was blocked")), 500),
+        ),
+      ]),
+    ).resolves.toBe("unrelated-complete");
+    expect(disableSettled).toBe(false);
+    expect(existsSync(snapshotRoot(stdio))).toBe(true);
+    allowStdioClose.resolve();
+    expect(String(await stalledFailure)).toMatch(/interrupted|closed/i);
+    await disable;
+    expect(existsSync(snapshotRoot(stdio))).toBe(false);
+    await closePooledConnection(http.id);
+  });
+
+  test("interrupts a stalled HTTP plugin call before disable completes", async () => {
+    const { source } = fixture();
+    const connector = await approvedHttpConnector(source);
+    await saveConnectors([connector]);
+    const callStarted = Promise.withResolvers<void>();
+    const closeStarted = Promise.withResolvers<void>();
+    const allowClose = Promise.withResolvers<void>();
+    const closeFinished = Promise.withResolvers<void>();
+    const remote = Promise.withResolvers<unknown>();
+    let lateSideEffect = false;
+    await getOrCreatePooledConnection(connector.id, async () => ({
+      listTools: async () => [],
+      callTool: async () => {
+        callStarted.resolve();
+        return remote.promise.then(() => {
+          lateSideEffect = true;
+        });
+      },
+      close: async () => {
+        closeStarted.resolve();
+        await allowClose.promise;
+        closeFinished.resolve();
+      },
+    }));
+    const stalled = callConnectorTool(connector.id, "read", {});
+    let stalledSettled = false;
+    const stalledFailure = stalled
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      .finally(() => {
+        stalledSettled = true;
+      });
+    await callStarted.promise;
+    let disableSettled = false;
+    const disable = saveConnectors([{ ...connector, enabled: false, allowTools: [] }]).finally(
+      () => {
+        disableSettled = true;
+      },
+    );
+    await closeStarted.promise;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(disableSettled).toBe(false);
+    expect(lateSideEffect).toBe(false);
+    allowClose.resolve();
+    await closeFinished.promise;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(disableSettled).toBe(false);
+    expect(stalledSettled).toBe(false);
+    remote.reject(new Error("request terminated"));
+    expect(String(await stalledFailure)).toMatch(/interrupted|terminated/i);
+    await disable;
+    await Promise.resolve();
+    expect(lateSideEffect).toBe(false);
+    await expect(callConnectorTool(connector.id, "read", {})).rejects.toThrow(
+      /disabled|not approved/,
+    );
+  });
+
+  test("denies a tool call queued behind connector revocation", async () => {
     const { root, source } = fixture();
     const prepared = await prepareSnapshot(root, source, await approvedConnector(root, source));
     await saveConnectors([prepared]);
     let calls = 0;
+    const closeStarted = Promise.withResolvers<void>();
+    const allowClose = Promise.withResolvers<void>();
     await getOrCreatePooledConnection(prepared.id, async () => ({
       listTools: async () => [],
       callTool: async () => {
         calls += 1;
         return "called";
       },
-      close: async () => undefined,
+      close: async () => {
+        closeStarted.resolve();
+        await allowClose.promise;
+      },
     }));
-    const mutationStarted = Promise.withResolvers<void>();
-    const allowMutation = Promise.withResolvers<void>();
-    const mutation = Effect.runPromise(
-      withPluginExecutionSnapshotLifecycle((lifecycle) =>
-        Effect.gen(function* () {
-          mutationStarted.resolve();
-          yield* Effect.promise(() => allowMutation.promise);
-          yield* saveConnectorsEffect([{ ...prepared, enabled: false, allowTools: [] }], lifecycle);
-        }),
-      ),
-    );
-    await mutationStarted.promise;
+    const mutation = saveConnectors([{ ...prepared, enabled: false, allowTools: [] }]);
+    await closeStarted.promise;
     const call = callConnectorTool(prepared.id, "read", {});
+    const callFailure = call.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
     await Promise.resolve();
-    allowMutation.resolve();
+    allowClose.resolve();
     await mutation;
-    await expect(call).rejects.toThrow(/disabled|not approved/);
+    expect(String(await callFailure)).toMatch(/disabled|not approved/);
     expect(calls).toBe(0);
   });
 
-  test("does not launch a persisted probe aborted while waiting for its lifecycle", async () => {
+  test("does not launch a persisted probe aborted behind connector revocation", async () => {
     const { root, source } = fixture();
     const marker = path.join(path.dirname(root), "cancelled-probe-launched");
     writeProbeServer(root, marker);
     const prepared = await prepareSnapshot(root, source, await approvedConnector(root, source));
     await saveConnectors([prepared]);
-    const entered = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
-    const holder = Effect.runPromise(
-      withPluginExecutionSnapshotLifecycle(() =>
-        Effect.promise(() => {
-          entered.resolve();
-          return release.promise;
-        }),
-      ),
-    );
-    await entered.promise;
+    const closeStarted = Promise.withResolvers<void>();
+    const allowClose = Promise.withResolvers<void>();
+    await getOrCreatePooledConnection(prepared.id, async () => ({
+      listTools: async () => [],
+      callTool: async () => undefined,
+      close: async () => {
+        closeStarted.resolve();
+        await allowClose.promise;
+      },
+    }));
+    const disable = saveConnectors([{ ...prepared, enabled: false, allowTools: [] }]);
+    await closeStarted.promise;
     const controller = new AbortController();
     const probe = probePersistedConnector(prepared.id, controller.signal);
     await Promise.resolve();
     controller.abort();
     expect(existsSync(marker)).toBe(false);
-    release.resolve();
     await expect(probe).rejects.toThrow();
-    await holder;
+    allowClose.resolve();
+    await disable;
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(existsSync(marker)).toBe(false);
   });
 
-  test("serializes persisted plugin probes with snapshot retirement", async () => {
+  test("interrupts persisted plugin probes before snapshot retirement", async () => {
     const { root, source } = fixture();
     const pidFile = path.join(path.dirname(root), "route-probe.pid");
     const readyFile = path.join(path.dirname(root), "route-probe.ready");
@@ -1139,20 +1337,15 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       env: { PID_FILE: pidFile, READY_FILE: readyFile },
     });
     await saveConnectors([prepared]);
-    const controller = new AbortController();
-    const probe = probePersistedConnector(prepared.id, controller.signal);
+    const probe = probePersistedConnector(prepared.id);
+    const probeFailure = probe.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
     await waitFor(() => existsSync(readyFile));
     const pid = Number(readFileSync(pidFile, "utf8"));
-    let retired = false;
-    const retirement = removeConnector(prepared.id).then(() => {
-      retired = true;
-    });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(retired).toBe(false);
-    expect(processIsAlive(pid)).toBe(true);
-    expect(existsSync(snapshotRoot(prepared))).toBe(true);
-    controller.abort();
-    await expect(probe).rejects.toThrow();
+    const retirement = removeConnector(prepared.id);
+    expect(String(await probeFailure)).toMatch(/interrupted|closed|abort/i);
     await retirement;
     await waitFor(() => !processIsAlive(pid));
     expect(existsSync(snapshotRoot(prepared))).toBe(false);

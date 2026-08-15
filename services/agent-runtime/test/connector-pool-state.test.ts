@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { McpConnection } from "../src/mcp-client";
 import {
+  beginPooledConnectorExecution,
   closePooledConnection,
   getOrCreatePooledConnection,
+  getOrCreatePooledConnectionForExecution,
   hasPendingPooledConnections,
+  releasePooledConnectorExecution,
 } from "../src/connector-pool-state";
 
 function connection(close: () => Promise<void>): McpConnection {
@@ -85,6 +88,32 @@ describe("connector pool state", () => {
     await closePooledConnection(connectorId);
     await getOrCreatePooledConnection(connectorId, create);
     expect(creations).toBe(2);
+    await closePooledConnection(connectorId);
+    expect(hasPendingPooledConnections()).toBe(false);
+  });
+
+  test("admits a replacement generation only after the old generation shuts down", async () => {
+    const connectorId = "generation-replacement";
+    let allowClose = false;
+    let creations = 0;
+    const create = async () => {
+      creations += 1;
+      return connection(async () => {
+        if (!allowClose) throw new Error("shutdown refused");
+      });
+    };
+    const first = beginPooledConnectorExecution(connectorId);
+    await getOrCreatePooledConnectionForExecution(first, create);
+    releasePooledConnectorExecution(first);
+    await expect(closePooledConnection(connectorId)).rejects.toThrow(/shutdown failed/);
+    expect(() => beginPooledConnectorExecution(connectorId)).toThrow(/interrupted/);
+    expect(creations).toBe(1);
+    allowClose = true;
+    await closePooledConnection(connectorId);
+    const replacement = beginPooledConnectorExecution(connectorId);
+    await getOrCreatePooledConnectionForExecution(replacement, create);
+    expect(creations).toBe(2);
+    releasePooledConnectorExecution(replacement);
     await closePooledConnection(connectorId);
     expect(hasPendingPooledConnections()).toBe(false);
   });
