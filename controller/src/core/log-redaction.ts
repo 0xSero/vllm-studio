@@ -23,8 +23,8 @@ const QUERY_BOUNDARY = /[\s&#]/;
 const AUTHORIZATION_BOUNDARY = /[\r\n}]/;
 const QUOTED_TOKEN_BOUNDARY = /[\s,;}\]]/;
 const QUOTED_AUTHORIZATION_BOUNDARY = /[\r\n,;}\]]/;
-const STRUCTURAL_BOUNDARY = /[\r\n,;}\]]/;
-const STRUCTURAL_CONTINUATION_BOUNDARY = /[\r\n,;]/;
+const QUOTED_STRUCTURAL_BOUNDARY = /[\r\n,;}\]]/;
+const UNQUOTED_STRUCTURAL_BOUNDARY = /[\r\n}\]]/;
 
 type ValueKind = "authorization" | "query" | "structured" | "token";
 type ValueRedaction = { end: number; replacement: string };
@@ -63,42 +63,28 @@ const isBoundary = (line: string, start: number, kind: ValueKind): boolean => {
   let cursor = start;
   while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
   if (cursor >= line.length) return true;
-  const boundary = kind === "authorization" ? AUTHORIZATION_BOUNDARY : STRUCTURAL_BOUNDARY;
+  const boundary = kind === "authorization" ? AUTHORIZATION_BOUNDARY : UNQUOTED_STRUCTURAL_BOUNDARY;
   return boundary.test(line[cursor] ?? "");
 };
 
 const isQuotedBoundary = (line: string, start: number, kind: ValueKind): boolean => {
-  if (kind !== "authorization" && kind !== "token") return isBoundary(line, start, kind);
+  if (kind === "query") return isBoundary(line, start, kind);
   if (kind === "token") {
     return start >= line.length || QUOTED_TOKEN_BOUNDARY.test(line[start] ?? "");
   }
   let cursor = start;
   while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
   if (cursor >= line.length) return true;
-  return QUOTED_AUTHORIZATION_BOUNDARY.test(line[cursor] ?? "");
-};
-
-const authorizationFieldFollows = (line: string, start: number): boolean => {
-  let cursor = start;
-  while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
-  if (line[cursor] !== ",") return false;
-  cursor += 1;
-  while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
-  if (!/[A-Za-z_]/.test(line[cursor] ?? "")) return false;
-  cursor += 1;
-  while (/[A-Za-z0-9_.-]/.test(line[cursor] ?? "")) cursor += 1;
-  while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
-  return line[cursor] === ":" || line[cursor] === "=";
+  const boundary =
+    kind === "authorization" ? QUOTED_AUTHORIZATION_BOUNDARY : QUOTED_STRUCTURAL_BOUNDARY;
+  return boundary.test(line[cursor] ?? "");
 };
 
 const redactedEnd = (line: string, start: number, kind: ValueKind): number | null => {
   if (!line.startsWith(REDACTED, start)) return null;
   const end = start + REDACTED.length;
   if (line[end] === '"' || line[end] === "'" || line[end] === "\\") return null;
-  if (!isBoundary(line, end, kind)) {
-    if (kind !== "authorization" || !authorizationFieldFollows(line, end)) return null;
-    return end;
-  }
+  if (!isBoundary(line, end, kind)) return null;
   let boundaryAt = end;
   if (kind === "authorization" || kind === "structured") {
     while (line[boundaryAt] === " " || line[boundaryAt] === "\t") boundaryAt += 1;
@@ -149,7 +135,7 @@ const unquotedEnd = (line: string, start: number, kind: ValueKind): number => {
         ? QUERY_BOUNDARY
         : kind === "authorization"
           ? AUTHORIZATION_BOUNDARY
-          : STRUCTURAL_BOUNDARY;
+          : UNQUOTED_STRUCTURAL_BOUNDARY;
   return scanToBoundary(line, start, boundary);
 };
 
@@ -161,7 +147,7 @@ const continuationEnd = (line: string, start: number, kind: ValueKind): number =
         ? QUERY_BOUNDARY
         : kind === "authorization"
           ? AUTHORIZATION_BOUNDARY
-          : STRUCTURAL_CONTINUATION_BOUNDARY;
+          : UNQUOTED_STRUCTURAL_BOUNDARY;
   return scanToBoundary(line, start, boundary);
 };
 
