@@ -4,14 +4,15 @@ Open items, watch items, and quarantines. Fable adjudicates; nothing here is act
 
 ## B1–B4 status
 
-- **B1 — CI workflow definitions verbatim.** `ci.yml` / `release.yml` / `maintenance.yml` at `eeeb3406` not yet filed to the ledger (P9 A4). Open.
-- **B2 — branch protections/rulesets for `dev`/`main`; Release run dispositions** (31618544799 waiting, 31617165280 cancelled). Open; closes at P9.
+- **B1 — CI workflow definitions verbatim.** Closed by R32/P9 A4: the canonical verbatim archive (sha256-fingerprinted `ci.yml`/`release.yml`/`maintenance.yml`/`release.config.cjs` at `eeeb3406`) and structural digests live in `release-path.md`. That archive is time-scoped to `eeeb3406` — the track has since evolved `ci.yml` (commit-lint `--mode=ci`) and the live PR rollup now shows nine checks — so re-audit live before release-time reliance.
+- **B2 — branch protections/rulesets for `dev`/`main`; Release run dispositions.** Closed by R32/P9 A4 (`release-path.md`): classic protections tabled, rulesets empty, Release #464 `waiting@sign` and #463 `cancelled` recorded. Protection settings are GitHub-side facts; re-audit live when required check names or workflow behavior change.
 - **B3 — `prod` remote unreachable.** `ser@192.168.1.70` SSH timeout during fetch (known; recorded as evidence, not chased).
 - **B4 — (reserved for items surfaced during the program).** None currently.
 
 ## Watch items (non-blocking)
 
 - **dev carries the old `inkling-thinking-levels.test.ts` + its old tsconfig.** If dev modifies it before the final PR merge, the server-side merge surfaces a modify/delete conflict — resolved by deletion under the same law. Noted so nobody improvises later.
+- **`AGENTS.md` cites the absent `docs/workflow.md`** (C3) — pending. The Codex integration-owner ruling (recorded 2026-08-14; this is a Codex ruling, not a Fable adjudication): `AGENTS.md` plus GOAL row 1.11 justify restoring one current workflow authority instead of retaining the inline-flow workaround. Durable lane proof: tmux session `localstudio-v201-workflow-glm53-20260814-r1`, Pi/ZAI model `zai/glm-5.3`, session `F02DC088-F5BB-4599-B9D0-DEC1BF178EE0`, assigned worktree `/private/tmp/localstudio-v201-workflow-authority` on branch `codex/v201-workflow-authority-20260814`, base `c0036a57d7e8c4d816d990bd0f9b1fc3a1f5fcbf`, candidate `550f4fb7f449397b32e78df38ccc0fde7b384c42` plus the correction commit, `npm run check` exit 0, Opus-5 review verdict REVISE with every medium and actionable low finding corrected. Final resolution waits for the lane push, integration into `feat/v201-consolidation`/PR #408, re-verification of the citation on the merged ref, and a clean Opus-5 re-review.
 - **LOC target ≤ 80,667** (25% of 107,556). GOAL-era head `359510ae6` measures **104,378** (791 files, frozen pipeline re-run 2026-08-15); PR #396 head `c452af5c` measures 93,506; remaining cut −23,711 — ledger at `wp0-evidence.md` §1. The shrink is harvest-plus-deletion-inventory work, not Phase 0.
 
 ## Quarantine
@@ -21,7 +22,6 @@ Open items, watch items, and quarantines. Fable adjudicates; nothing here is act
 
 ## Resolved this phase (recorded for traceability)
 
-- **`AGENTS.md` citing removed `docs/workflow.md`** (C3) — resolved 2026-08-14 under GOAL row 1.11: the GLM-5.3 workflow-authority lane restored a current, reviewed `docs/workflow.md` (verified against `origin/dev`/`origin/main`, the live `.github/workflows/*`, `release.config.cjs`, `scripts/project.mjs`, `package.json`, and `AGENTS.md`; stale test-gate, performance-campaign, and non-macOS surface material from the `0ece3be82` draft removed). This supersedes the inline-flow default recorded here earlier and deliberately re-adds the one root authority document without reopening #348's broader root-documentation cleanup. GitHub-side facts inside the restored doc are marked for live re-audit per `release-path.md`.
 - **Routes manifest** — G0G/R23: whole-tree static scan replaces R19's "six registrar files" phrasing; controller.md §5 not tracked at `eeeb3406`; optional runtime corroboration is DeepSeek/Phase-2 (not exercised).
 - **PR census** — G0H/G0H2/R25′: frozen 29-row snapshot census stands; the historical "30" is `unresolved-historical`/`unresolved-benign` (prose arithmetic; empty 18:26–19:03Z archaeology probe).
 
