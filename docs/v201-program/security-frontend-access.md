@@ -138,3 +138,13 @@ After acceptance, ports 14783 and 14881 had no listeners, no matching frontend/r
 - The frontend gate remains a shared-secret design. It has no login-specific rate limiting, and the HttpOnly cookie contains the shared secret rather than an independently minted session identifier.
 - Trusted forwarded-protocol handling is an operational boundary. A directly exposed proxy that preserves client-supplied `X-Forwarded-Proto` can misstate the cookie's Secure attribute; the README now requires header replacement by the trusted TLS terminator.
 - This lane is unpushed and has no CI, independent final-head review, installed desktop verification, merge, or release proof. Those remain program integration gates.
+
+## 9. Canonical integration
+
+The approved eight-path product slice was applied after parser reconciliation head `a3e51ddd1` as canonical commit `5ffaf8c49`. The operator documentation followed as `f695669bc`, and this evidence ledger followed as `edd106d2c`. No stale branch range or excluded test path was merged. A second independent line-by-line review approved the eight product paths with no P0, P1, or P2 finding and confirmed there is no product-path overlap with the already integrated controller request-authority or browser-reader work.
+
+The canonical posture probe passed development, closed production, IPv4 and IPv6 desktop loopback, rejected wide-bind desktop, token, exact acknowledgement, and rejected nonexact acknowledgement cases. Transcript: `/Users/sero/projects/vllm-studio-v201-evidence/pr366-security-20260815/canonical-posture-probe.log`, SHA-256 `a11446b6eb276e06724e22aada64644cdf7e315a75d194d7e6f8c275d1265b4b`.
+
+The exact root `npm run check` passed at canonical head `edd106d2c`, including all 22 static/dynamic page-generation entries, `/access`, `/api/auth/session`, standalone repair/assertion, controller gates, and the agent-runtime build. Transcript: `/Users/sero/projects/vllm-studio-v201-evidence/pr366-security-20260815/canonical-root-check.log`, SHA-256 `03c0e150cf1f7af5e4dfbf1a5b699aaa84a0fc76f6aafdef2b038b260250ebc8`, ending `CANONICAL_ROOT_CHECK_EXIT=0`. Touched product source remains comment-free, and no automated test path was added, restored, modified, or run.
+
+Canonical push, CI, installed-app login behavior, and release acceptance remain pending at this checkpoint.

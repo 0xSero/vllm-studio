@@ -32,8 +32,13 @@ The disposable parser probe covers title/entity behavior, relative links, hidden
 
 `bun run check` passed for `services/agent-runtime` with `AGENT_RUNTIME_CHECK_EXIT=0`. The exact root `npm run check` passed at product head `cfbd16c39`, including frontend production compilation and standalone assembly, controller gates, and the agent-runtime production build, with `ROOT_NPM_CHECK_EXIT=0`. The only frontend lint output was the pre-existing `ComposerProjectDrawer` complexity warning.
 
+## Remote result
+
+Concurrent commit `94c607428` independently carried the same parser implementation onto the remote branch while the validated commits were awaiting their pre-push gate. Merge commit `a3e51ddd1` preserves both histories and retains the exact-version, wrapper-free tree from `cfbd16c39`; its tree is byte-identical to its first parent. Local, remote-tracking, and live remote refs were all verified at `a3e51ddd108adee2e13c4caed573ac9f7c50c0ff` after the unbypassed pre-push static, cleanup, and standalone checks passed.
+
+At that exact remote head, all nine checks passed: the separate CodeQL pull-request check, repository CodeQL Analysis, gates, controller, agent-runtime, frontend, desktop-package, Secret Scanning, and Dependency Review. This closes alerts 172 through 180 as branch-diff blockers without accepting the rejected quadratic parser.
+
 ## Remaining proof
 
-- The replacement still requires the remote CodeQL pull-request check to prove that alerts 172 through 180 no longer intersect the branch diff.
-- Dependency Review and the complete branch CI matrix must pass at the committed parser head.
+- Later integration commits must rerun the complete matrix rather than inheriting this exact-head result.
 - Visible reader-mode behavior and the installed desktop application remain separate acceptance gates.
