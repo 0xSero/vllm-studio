@@ -20,10 +20,14 @@ import type { Project } from "@/features/agent/projects/types";
 import type {
   PaneId,
   PaneState,
+  WorkspaceNavigation,
   WorkspaceSessionPayload,
   WorkspaceState,
 } from "@/features/agent/workspace/types";
-import { restoreSessionDraft } from "@/features/agent/workspace/session-drafts";
+import {
+  restoreSessionDraft,
+  updateSessionDrafts,
+} from "@/features/agent/workspace/session-drafts";
 
 function isSession(value: Session | undefined): value is Session {
   return Boolean(value && typeof value.id === "string" && value.id.length > 0);
@@ -96,6 +100,26 @@ export function claimCanonicalSession(state: WorkspaceState, canonical: Session)
     layout,
     focusedPaneId: keptPaneId,
   };
+}
+
+export function patchWorkspaceSession(
+  state: WorkspaceState,
+  sessionId: SessionId,
+  patch: Partial<Session> | ((session: Session) => Session),
+): WorkspaceState {
+  const before = state.sessions.get(sessionId);
+  if (!before) return state;
+  const sessions = patchSessionInMap(state.sessions, sessionId, patch);
+  const after = sessions.get(sessionId);
+  if (!after || after === before) return state;
+  return claimCanonicalSession(
+    {
+      ...state,
+      sessions,
+      sessionDrafts: updateSessionDrafts(state.sessionDrafts, before, after),
+    },
+    after,
+  );
 }
 
 function focusExistingSession(
@@ -506,7 +530,7 @@ export function patchActiveTab(
 
 export function applyUrlNavigation(
   state: WorkspaceState,
-  payload: UrlNavigationPayload,
+  payload: WorkspaceNavigation,
 ): WorkspaceState {
   if (state.lastHandledNavKey === payload.key) return state;
   if (supersededNavigationIntent(payload.intent, state.lastHandledNavIntent)) return state;
@@ -577,17 +601,6 @@ type SplitTabPayload = SessionPayload & {
   sourcePaneId: PaneId;
   sourceTabId: SessionId;
   newPaneId?: PaneId;
-};
-type UrlNavigationPayload = SessionPayload & {
-  key: string;
-  intent?: string;
-  project: Project | null;
-  sessionId?: string | null;
-  sessionTitle?: string;
-  newSession?: boolean;
-  split?: boolean;
-  paneId?: PaneId;
-  replaceWorkspace?: boolean;
 };
 
 function navigationIntentParts(intent: string): [number, number] | null {

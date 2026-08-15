@@ -45,6 +45,19 @@ export type WorkspaceSessionPayload = {
   title?: string;
 };
 
+export type WorkspaceNavigation = {
+  key: string;
+  intent?: string;
+  project: Project | null;
+  sessionId?: string | null;
+  sessionTitle?: string;
+  newSession?: boolean;
+  split?: boolean;
+  paneId: PaneId;
+  replaceWorkspace?: boolean;
+  tab: Session;
+};
+
 export type WorkspaceHydration = Partial<WorkspaceState>;
 
 export type WorkspaceAction =
@@ -96,16 +109,4 @@ export type WorkspaceAction =
     }
   | { type: "patchActiveTab"; paneId: PaneId; patch: Partial<Session> }
   | { type: "notifySessionsChanged" }
-  | {
-      type: "urlNavRequested";
-      key: string;
-      intent?: string;
-      project: Project | null;
-      sessionId?: string | null;
-      sessionTitle?: string;
-      newSession?: boolean;
-      split?: boolean;
-      paneId: PaneId;
-      replaceWorkspace?: boolean;
-      tab: Session;
-    };
+  | ({ type: "urlNavRequested" } & WorkspaceNavigation);

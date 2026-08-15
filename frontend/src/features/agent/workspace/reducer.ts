@@ -1,24 +1,19 @@
-import {
-  patchSession as patchSessionInMap,
-  removeSession,
-  setSession,
-} from "@/features/agent/runtime/store";
+import { removeSession, setSession } from "@/features/agent/runtime/store";
 import type { AgentModel, WorkspaceAction, WorkspaceState } from "@/features/agent/workspace/types";
 import {
   applyUrlNavigation,
-  claimCanonicalSession,
   closePane,
   focusPane,
   focusPaneSession,
   openSessionPayloadInPane,
   patchActiveTab,
+  patchWorkspaceSession,
   setPaneSession,
   setWorkspaceSplitRatio,
   splitPaneWithPayload,
   splitTabIntoNewPane,
   renameTab,
 } from "@/features/agent/workspace/pane-controller";
-import { updateSessionDrafts } from "@/features/agent/workspace/session-drafts";
 
 function chooseModelId(
   models: AgentModel[],
@@ -160,26 +155,6 @@ function reduceSessionEditAction(
     default:
       return null;
   }
-}
-
-function patchWorkspaceSession(
-  state: WorkspaceState,
-  sessionId: string,
-  patch: Extract<WorkspaceAction, { type: "patchSession" }>["patch"],
-): WorkspaceState {
-  const before = state.sessions.get(sessionId);
-  if (!before) return state;
-  const sessions = patchSessionInMap(state.sessions, sessionId, patch);
-  const after = sessions.get(sessionId);
-  if (!after || after === before) return state;
-  return claimCanonicalSession(
-    {
-      ...state,
-      sessions,
-      sessionDrafts: updateSessionDrafts(state.sessionDrafts, before, after),
-    },
-    after,
-  );
 }
 
 export function reducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
