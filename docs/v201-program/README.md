@@ -40,7 +40,7 @@
 | `backups.md` | R17 catalog (durable backup + raw-reports) + restore commands |
 | `sweeps.md` | R12c results + allowlist; GLM-Δ8 audio/speech per-ref presence; C14 registrar correction |
 | `symlinks.md` | GLM-Δ7 symlink table |
-| `decisions-pending.md` | B1–B4 status, watch items, Litter-dossier quarantine |
+| `decisions-pending.md` | B1–B4 status, watch items, Litter-dossier quarantine, DRAFT row-0.7 topology packet |
 | `pr-inventory.md` | frozen 29-row census (R24/R26) + R25′/G0H2 discrepancy record + §4 GOAL-era disposition pointer |
 | `branch-inventory.md` | 58 locals: ahead/behind vs `eeeb3406`, gone, backup tags |
 | `worktree-inventory.md` | 35 backup worktrees + program/DS-lane rows, class |
