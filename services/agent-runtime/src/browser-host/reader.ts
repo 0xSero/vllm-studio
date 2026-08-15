@@ -7,6 +7,7 @@ import {
   type BrowserAddress,
   type BrowserNetworkMode,
 } from "./network-policy";
+import { readableHtml } from "./readable-html";
 
 const MAX_BYTES = 512 * 1024;
 const FETCH_TIMEOUT_MS = 12_000;
@@ -86,51 +87,8 @@ async function resolveReaderHost(
 
 const readerNavigationPolicy = createBrowserNetworkPolicy(resolveReaderHost);
 
-function decodeEntities(value: string): string {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ");
-}
-
 function htmlToReadable(html: string, baseUrl: string): { title: string; text: string } {
-  const noScripts = html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, "")
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
-    .replace(/<svg[\s\S]*?<\/svg>/gi, "");
-  const titleMatch = noScripts.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const title = decodeEntities((titleMatch?.[1] ?? "").trim()) || baseUrl;
-  const bodyMatch = noScripts.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  const body = bodyMatch?.[1] ?? noScripts;
-  const withLinks = body.replace(
-    /<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
-    (_match, href: string, label: string) => {
-      const text = decodeEntities(label.replace(/<[^>]+>/g, "").trim());
-      const resolved = (() => {
-        try {
-          return new URL(href, baseUrl).toString();
-        } catch {
-          return href;
-        }
-      })();
-      return text ? `[${text}](${resolved})` : resolved;
-    },
-  );
-  const blocks = withLinks
-    .replace(/<\/(p|h[1-6]|li|tr|div|article|section|header|footer)>/gi, "\n\n")
-    .replace(/<br\s*\/?>(?!\s*<)/gi, "\n");
-  const stripped = blocks.replace(/<[^>]+>/g, "");
-  const text = decodeEntities(stripped)
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .join("\n\n");
-  return { title, text };
+  return readableHtml(html, baseUrl);
 }
 
 function isMarkdownResponse(url: string, contentType: string): boolean {
@@ -143,14 +101,7 @@ function markdownTitle(markdown: string, fallback: string): string {
 }
 
 function cleanMarkdown(markdown: string): string {
-  return markdown
-    .replace(/<img\b[^>]*\balt=["']([^"']*)["'][^>]*>/gi, (_match, alt: string) =>
-      alt.trim() ? alt.trim() : "",
-    )
-    .replace(/<\/?(p|div|span|center|picture|source)\b[^>]*>/gi, "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .trim();
+  return markdown.trim();
 }
 
 async function fetchBoundedUrl(
