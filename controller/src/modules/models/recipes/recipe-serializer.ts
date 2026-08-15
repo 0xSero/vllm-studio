@@ -40,10 +40,6 @@ const normalizedRuntime = (
   return defaultRuntime(data["backend"]);
 };
 
-// Defense-in-depth range checks: the editor floors these, but a recipe can also
-// arrive via the API / DB. A NaN previously failed schema validation and made
-// the whole recipe silently vanish; a negative/zero passed straight into the
-// engine launch command. Clamp to a valid value instead.
 const coercePositiveInt = (
   value: unknown,
   fallback: number,
@@ -79,11 +75,6 @@ const booleanSetting = (
   }
 };
 
-/**
- * Normalize raw recipe input before validation.
- * @param raw - Unknown recipe payload.
- * @returns Normalized record.
- */
 export const normalizeRecipeInput = (raw: unknown): Record<string, unknown> => {
   if (!raw || typeof raw !== "object") {
     throw new Error("Invalid recipe payload");
@@ -184,12 +175,7 @@ export const normalizeRecipeInput = (raw: unknown): Record<string, unknown> => {
   return data;
 };
 
-/**
- * Effect v4 schema for validated recipe input.
- */
 export const recipeSchema = Schema.Struct({
-  // An empty id would create a ghost recipe that can't be fetched, updated,
-  // deleted, or launched (routes address recipes by /recipes/:recipeId).
   id: Schema.String.check(Schema.isNonEmpty()),
   name: Schema.String,
   model_path: Schema.String,
@@ -203,10 +189,6 @@ export const recipeSchema = Schema.Struct({
   gpu_memory_utilization: Schema.Number,
   kv_cache_dtype: Schema.String,
   max_num_seqs: integerSchema,
-  // Defaults to true (unchanged from before) so launching models that need
-  // custom modeling code keeps working out of the box. Security-conscious
-  // operators can flip the default off with
-  // LOCAL_STUDIO_DEFAULT_TRUST_REMOTE_CODE=false.
   trust_remote_code: Schema.Boolean,
   tool_call_parser: nullableStringSchema,
   reasoning_parser: nullableStringSchema,
@@ -222,11 +204,6 @@ export const recipeSchema = Schema.Struct({
   thinking_mode: Schema.String,
 });
 
-/**
- * Parse and normalize a recipe payload.
- * @param raw - Raw recipe payload.
- * @returns Parsed recipe.
- */
 export const parseRecipe = (raw: unknown): Recipe => {
   const normalized = normalizeRecipeInput(raw);
   const parsed = Schema.decodeUnknownSync(recipeSchema, {
