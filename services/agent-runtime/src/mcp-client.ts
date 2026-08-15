@@ -37,7 +37,9 @@ const CLIENT_INFO = { name: "local-studio", version: "2.0.0" };
 
 const processEnvironment = (): Record<string, string> =>
   Object.fromEntries(
-    Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    Object.entries(process.env).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ),
   );
 
 const combinedSignal = (
@@ -48,7 +50,8 @@ const combinedSignal = (
   return requestSignal ?? targetSignal ?? undefined;
 };
 
-const authorizedFetch = (target: HttpTarget): typeof fetch =>
+const authorizedFetch =
+  (target: HttpTarget): typeof fetch =>
   async (input, init) => {
     const send = async (forceRefresh: boolean): Promise<Response> => {
       const headers = new Headers(init?.headers);
@@ -65,10 +68,7 @@ const authorizedFetch = (target: HttpTarget): typeof fetch =>
     return response.status === 401 && target.authorize ? send(true) : response;
   };
 
-const transportFor = (
-  target: McpTarget,
-  onTerminalError: (error: Error) => void,
-): Transport => {
+const transportFor = (target: McpTarget, onTerminalError: (error: Error) => void): Transport => {
   if (target.transport === "stdio") {
     return createBoundedStdioTransport(
       {
@@ -117,11 +117,7 @@ class SdkMcpConnection implements McpConnection {
   callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
     return this.run(async () => {
       await this.connected;
-      return this.client.callTool(
-        { name, arguments: args },
-        undefined,
-        { signal: this.signal },
-      );
+      return this.client.callTool({ name, arguments: args }, undefined, { signal: this.signal });
     });
   }
 

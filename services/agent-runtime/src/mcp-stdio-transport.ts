@@ -20,12 +20,21 @@ export type McpProtocolErrorCode =
 export class McpProtocolError extends Error {
   override readonly name = "McpProtocolError";
 
-  constructor(readonly code: McpProtocolErrorCode, message: string) {
+  constructor(
+    readonly code: McpProtocolErrorCode,
+    message: string,
+  ) {
     super(message);
   }
 }
 
 type FramedItem = JSONRPCMessage | McpProtocolError;
+
+const frameTooLarge = (): McpProtocolError =>
+  new McpProtocolError(
+    "frame-too-large",
+    `MCP stdio frame payload exceeds ${MAX_MCP_STDIO_FRAME_BYTES} bytes`,
+  );
 
 class BoundedMcpReadBuffer {
   private bytes = Buffer.allocUnsafe(1024);
@@ -46,14 +55,10 @@ class BoundedMcpReadBuffer {
       const trailingByte =
         segment.length > 0 ? segment[segment.length - 1] : this.bytes[this.length - 1];
       const framedCr = newline !== -1 && trailingByte === 0x0d;
-      const provisionalCr = newline === -1 && total === MAX_MCP_STDIO_FRAME_BYTES + 1 && trailingByte === 0x0d;
+      const provisionalCr =
+        newline === -1 && total === MAX_MCP_STDIO_FRAME_BYTES + 1 && trailingByte === 0x0d;
       if (total - (framedCr ? 1 : 0) > MAX_MCP_STDIO_FRAME_BYTES && !provisionalCr) {
-        this.queueError(
-          new McpProtocolError(
-            "frame-too-large",
-            `MCP stdio frame payload exceeds ${MAX_MCP_STDIO_FRAME_BYTES} bytes`,
-          ),
-        );
+        this.queueError(frameTooLarge());
         return;
       }
       this.write(segment);
@@ -89,8 +94,8 @@ class BoundedMcpReadBuffer {
     this.terminal = false;
   }
 
-  hasPartialFrame(): boolean {
-    return this.length > 0;
+  bufferedBytes(): number {
+    return this.length;
   }
 
   private write(segment: Buffer): void {
@@ -130,10 +135,7 @@ class BoundedMcpReadBuffer {
       this.items.push(JSONRPCMessageSchema.parse(value));
     } catch {
       this.queueError(
-        new McpProtocolError(
-          "invalid-json-rpc",
-          "MCP stdio frame is not a valid JSON-RPC message",
-        ),
+        new McpProtocolError("invalid-json-rpc", "MCP stdio frame is not a valid JSON-RPC message"),
       );
     }
   }
@@ -145,14 +147,12 @@ class BoundedMcpReadBuffer {
   }
 }
 
-const installReadBuffer = (
-  transport: StdioClientTransport,
-  buffer: BoundedMcpReadBuffer,
-): void => {
+const installReadBuffer = (transport: StdioClientTransport, buffer: BoundedMcpReadBuffer): void => {
   const descriptor = Object.getOwnPropertyDescriptor(transport, "_readBuffer");
   const current = descriptor && "value" in descriptor ? descriptor.value : undefined;
   const compatible = ["append", "readMessage", "clear"].every(
-    (name) => typeof current === "object" && current && typeof Reflect.get(current, name) === "function",
+    (name) =>
+      typeof current === "object" && current && typeof Reflect.get(current, name) === "function",
   );
   if (
     descriptor?.writable !== true ||
@@ -196,10 +196,13 @@ export const createBoundedStdioTransport = (
     closing ??= transport.close().catch(() => undefined);
   };
   transport.onclose = () => {
+    const bufferedBytes = buffer.bufferedBytes();
     settle(
-      buffer.hasPartialFrame()
-        ? new McpProtocolError("truncated-frame", "MCP stdio connection closed mid-frame")
-        : new McpProtocolError("transport-closed", "MCP stdio connection closed"),
+      bufferedBytes > MAX_MCP_STDIO_FRAME_BYTES
+        ? frameTooLarge()
+        : bufferedBytes > 0
+          ? new McpProtocolError("truncated-frame", "MCP stdio connection closed mid-frame")
+          : new McpProtocolError("transport-closed", "MCP stdio connection closed"),
     );
   };
   return transport;
