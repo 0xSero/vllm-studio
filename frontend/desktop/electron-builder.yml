@@ -120,7 +120,7 @@ mac:
   entitlements: desktop/resources/entitlements.mac.plist
   entitlementsInherit: desktop/resources/entitlements.mac.plist
   extendInfo:
-    NSMicrophoneUsageDescription: Record your own voice to create a private, local voice profile.
+    NSMicrophoneUsageDescription: Record audio for local dictation.
 
 dmg:
   sign: true
