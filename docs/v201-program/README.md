@@ -47,6 +47,7 @@
 | `slices.md` | G0S per-slice integration ledger (subset-proof law, S-0 onward) |
 | `g0i-pre-push-range-fix.md` | G0I evidence: pre-push message-lint range defect, R27–R30 amendment (`52c28a56`), harvest doctrine |
 | `wp0-evidence.md` | GOAL-era WP-0 evidence: LOC re-measurement, #396/#407 dispositions, added-route justification, singleton touchpoints, Effect/Schema/RPC gaps, DB gaps, lane blockers |
+| `tts-removal.md` | row 1.2 TTS removal ledger: frozen main inventory, preserved STT/multimodal seams, DB residue, and exact remaining gaps |
 | `b2-landing.md` | G0U B2 transplant landing: source branch, original→copy map, patch-id identity, G0T reconciliation, rollback boundary |
 | `pr-403-t4-pack.md` | G0K R38 pre-merge pack for PR #403: pinned identity, lineage and dry-run merge-tree proof, conflict rulings, test/bench dispositions, harvest outcome |
 | `release-path.md` | R32/P9 A4 canonical workflow archive at `eeeb3406` (CI/release/maintenance + `release.config.cjs` fingerprints), branch protections, release-run dispositions, B1/B2 closure |

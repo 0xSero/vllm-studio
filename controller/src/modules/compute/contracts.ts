@@ -171,8 +171,6 @@ export type HandleReference =
     }
   | { readonly kind: "docker"; readonly container: string }
   | { readonly kind: "remote"; readonly nodeId: NodeId; readonly name: string }
-  /** A device hold with no supervised process — e.g. the speech worker claims its GPU
-   *  through the lease shim. Always "alive"; freed only by explicit release. */
   | { readonly kind: "pinned"; readonly holder: string };
 
 /**

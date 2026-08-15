@@ -21,14 +21,6 @@ import {
 import type { ComputeLaunchInput, ComputeService } from "./lifecycle";
 import type { InstanceStore } from "./instances/store";
 
-/**
- * The legacy-surface bridge: everything the old engine coordinator and process manager
- * answered — "what is serving on the inference port", "what is launching", launch,
- * evict, wait-ready — answered from compute instance records instead. One model at a
- * time is preserved by giving the active model a fixed instance name and serving it on
- * the legacy inference port, so the proxy, metrics and speech surfaces are unchanged.
- */
-
 export const LLM_INSTANCE = "llm";
 
 export interface ComputeBridge {
