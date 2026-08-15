@@ -244,17 +244,7 @@ export const normalizeUsageStats = projector((input) => {
   };
 });
 
-type NormalizedControllerUsage = Exclude<ReturnType<typeof normalizeControllerUsage>, undefined>;
-type NormalizedUsage = ReturnType<typeof normalizeUsageStats>;
-
-export type ControllerUsageStats = Omit<NormalizedControllerUsage, "function_calls"> & {
-  function_calls?: NormalizedControllerUsage["function_calls"];
-};
-
-export type UsageStats = Omit<NormalizedUsage, "controller" | "daily_by_model"> & {
-  daily_by_model?: NormalizedUsage["daily_by_model"];
-  controller?: ControllerUsageStats;
-};
+export type { ControllerUsageStats, UsageStats } from "./usage-schema";
 
 export const usageRate = (successful: unknown, total: unknown): number => {
   const count = finiteNumber(total);

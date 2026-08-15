@@ -1,6 +1,10 @@
 import type { Database } from "bun:sqlite";
-import { usageAverage, usageRate, type UsageStats } from "@local-studio/contracts/usage";
-import { decodeUsageStats } from "@local-studio/contracts/usage-schema";
+import {
+  normalizeUsageStats,
+  usageAverage,
+  usageRate,
+  type UsageStats,
+} from "@local-studio/contracts/usage";
 import type { Effect } from "effect";
 import {
   openInitializedDatabase,
@@ -8,6 +12,7 @@ import {
   repositoryEffect,
   type RepositoryError,
   toFiniteNumber,
+  toNullableNumber,
 } from "./sqlite";
 
 export interface InferenceRequestRecord {
@@ -261,7 +266,7 @@ export class InferenceRequestStore {
       return ((current - previous) / previous) * 100;
     };
 
-    return decodeUsageStats({
+    return normalizeUsageStats({
       totals: {
         total_tokens: totalTokens,
         prompt_tokens: promptTokens,
@@ -274,7 +279,7 @@ export class InferenceRequestStore {
         unique_users: 0,
       },
       latency: {
-        avg_ms: summary?.["avg_dur"],
+        avg_ms: toNullableNumber(summary?.["avg_dur"]),
         p50_ms: null,
         p95_ms: null,
         p99_ms: null,
@@ -282,7 +287,7 @@ export class InferenceRequestStore {
         max_ms: null,
       },
       ttft: {
-        avg_ms: summary?.["avg_ttft"],
+        avg_ms: toNullableNumber(summary?.["avg_ttft"]),
         p50_ms: null,
         p95_ms: null,
         p99_ms: null,
@@ -343,6 +348,8 @@ export class InferenceRequestStore {
         ...row,
         success_rate: usageRate(row["successful"], row["requests"]),
         avg_tokens: usageAverage(row["total_tokens"], row["requests"]),
+        avg_latency_ms: toNullableNumber(row["avg_latency_ms"]),
+        avg_ttft_ms: toNullableNumber(row["avg_ttft_ms"]),
       })),
       daily: daily.map((row) => ({
         ...row,
