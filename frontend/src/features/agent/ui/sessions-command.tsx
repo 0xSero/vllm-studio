@@ -6,6 +6,7 @@ import { Search } from "@/ui/icon-registry";
 import { POPOVER_PANEL_CLASS } from "@/ui/popover";
 import { ChatIcon, Folder } from "@/ui/icons";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
+import { integrationSettingsHref } from "@/features/integrations/integration-navigation";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 import { type ActiveSession, indexOpenByThreadId } from "@/features/agent/session-contracts";
@@ -47,15 +48,32 @@ const APP_DESTINATIONS: AppDestination[] = [
   {
     href: "/usage",
     label: "Usage",
-    keywords: "tokens requests analytics costs provider pi sessions peaks",
+    keywords: "tokens requests analytics costs pi sessions peaks",
     description: "Token, request, and model usage analytics.",
   },
   {
-    href: "/configure",
-    label: "Configure",
-    keywords:
-      "machines hardware models recipes launch downloads integrations mcp connectors plugins skills server logs api docs swagger controller engines runtime",
-    description: "Manage machines, models, integrations, and the controller.",
+    href: "/models",
+    label: "Models",
+    keywords: "models recipes weights serving launch downloads inference",
+    description: "Browse, download, and configure models for serving.",
+  },
+  {
+    href: integrationSettingsHref("plugins"),
+    label: "Integrations",
+    keywords: "integrations plugins connectors providers skills mcp accounts oauth",
+    description: "Manage plugins, connectors, model providers, and skills.",
+  },
+  {
+    href: "/settings#system",
+    label: "System",
+    keywords: "system machines hardware controller engines services storage runtime",
+    description: "Inspect engines, services, storage, and hardware.",
+  },
+  {
+    href: "/logs",
+    label: "Logs",
+    keywords: "logs output diagnostics events activity",
+    description: "Inspect and filter controller logs.",
   },
   {
     href: "/agent",
@@ -66,8 +84,8 @@ const APP_DESTINATIONS: AppDestination[] = [
   {
     href: "/settings",
     label: "Settings",
-    keywords: "connection system appearance archived chats skills setup configuration",
-    description: "Connection, system, appearance, skills, and setup.",
+    keywords: "profile phone pairing connection appearance shortcuts archived chats setup",
+    description: "Manage your profile, connection, appearance, shortcuts, and setup.",
   },
 ];
 

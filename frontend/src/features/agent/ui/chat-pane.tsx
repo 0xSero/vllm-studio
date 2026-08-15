@@ -116,6 +116,7 @@ import {
   respondExtensionUi,
   updateSessionGoal,
 } from "@/features/agent/runtime/api";
+import { integrationSettingsHref } from "@/features/integrations/integration-navigation";
 export type { ChatPaneHandle, SessionTab };
 
 const Timeline = dynamic(
@@ -492,7 +493,7 @@ export function ChatPane({
           compact: () => void compactSession(),
           openStatus: openComputerStatus,
           toggleBrowserTool: onToggleBrowserTool,
-          openPlugins: () => router.push("/integrations"),
+          openPlugins: () => router.push(integrationSettingsHref("plugins")),
           ...(openTerminalAction ? { openTerminal: openTerminalAction } : {}),
           ...(onForkSession ? { forkSession: onForkSession } : {}),
           ...(canExport ? { exportSession } : {}),

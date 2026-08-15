@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   Archive,
   Cable,
@@ -8,6 +8,7 @@ import {
   Keyboard,
   type LucideIcon,
   Paintbrush,
+  Plug,
   ServerCog,
   Smartphone,
 } from "@/ui/icon-registry";
@@ -22,12 +23,18 @@ import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { ProfileSettings } from "./profile-settings";
 import { useSettings } from "./use-settings";
 import { SetupView } from "@/features/setup/setup-view/setup-view";
-import { legacyIntegrationHref } from "@/features/integrations/integration-navigation";
+import { IntegrationsContent } from "@/features/integrations/integrations-page";
+import {
+  integrationSectionFromHash,
+  integrationSettingsHref,
+  legacyIntegrationHref,
+} from "@/features/integrations/integration-navigation";
 const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
 const SECTIONS: SettingsSectionDef[] = [
   ["profile", "Profile & phone", "Your identity and phone pairing.", Smartphone],
   ["connection", "General", "Controller connections and API access.", Cable],
   ["system", "System", "Engines, services, storage, and hardware.", Cpu],
+  ["integrations", "Integrations", "Plugins, connectors, model providers, and skills.", Plug],
   ["appearance", "Appearance", "Theme, typography, and interface scale.", Paintbrush],
   ["terminal", "Shortcuts", "Quick panel and terminal key bindings.", Keyboard],
   ["archive", "Archived chats", "Sessions hidden from the task list.", Archive],
@@ -44,21 +51,17 @@ const normalizeSectionId = (value: string): SettingsSectionId | null => {
   if (isSectionId(value)) return value;
   if (value === "desktop") return "terminal";
   if (value === "engines" || value === "services") return "system";
+  if (value === "connectors" || value === "skills") return "integrations";
   return null;
 };
 
 export function SettingsView() {
-  const router = useRouter();
   const configs = useSettings();
   const [setupComplete] = useState(() =>
     typeof window === "undefined"
       ? false
       : localStorage.getItem("local-studio-setup-complete") === "true",
   );
-  useMountSubscription(() => {
-    const integrationHref = legacyIntegrationHref(window.location.hash);
-    if (integrationHref) router.replace(integrationHref);
-  }, [router]);
   const showSetupWizard =
     typeof window !== "undefined" &&
     window.location.hash.length <= 1 &&
@@ -70,6 +73,14 @@ export function SettingsView() {
 }
 
 function SettingsContent({ configs }: { configs: ReturnType<typeof useSettings> }) {
+  const searchParams = useSearchParams();
+  const requestedIntegration = integrationSectionFromHash(searchParams.get("integration") ?? "");
+  const integrationSection =
+    typeof window === "undefined"
+      ? requestedIntegration
+      : integrationSectionFromHash(
+          new URLSearchParams(window.location.search).get("integration") ?? "",
+        );
   const {
     data,
     compatibilityReport,
@@ -92,6 +103,15 @@ function SettingsContent({ configs }: { configs: ReturnType<typeof useSettings> 
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("connection");
   useMountSubscription(() => {
     const onHashChange = () => {
+      const legacyHref = legacyIntegrationHref(window.location.hash);
+      const integrationHref =
+        window.location.hash === "#integrations"
+          ? integrationSettingsHref(new URLSearchParams(window.location.search).get("integration"))
+          : legacyHref;
+      const currentHref = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (integrationHref && integrationHref !== currentHref) {
+        window.history.replaceState(null, "", integrationHref);
+      }
       const hash = window.location.hash.replace("#", "");
       const normalized = normalizeSectionId(hash);
       if (!normalized) return;
@@ -106,7 +126,15 @@ function SettingsContent({ configs }: { configs: ReturnType<typeof useSettings> 
     setActiveSection(section);
     if (section === "system") onSystemSectionActive();
     if (typeof window !== "undefined") {
-      window.history.replaceState(null, "", `#${section}`);
+      if (section === "integrations") {
+        const selected = new URLSearchParams(window.location.search).get("integration");
+        window.history.replaceState(null, "", integrationSettingsHref(selected));
+      } else {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("integration");
+        url.hash = section;
+        window.history.replaceState(null, "", url);
+      }
     }
   };
   const layoutStatus = useMemo(() => {
@@ -125,6 +153,7 @@ function SettingsContent({ configs }: { configs: ReturnType<typeof useSettings> 
       loading={loading}
       onReload={onReload}
       onSelectSection={selectSection}
+      showRefresh={activeSection !== "integrations"}
     >
       {activeSection === "connection" ? (
         <ApiConnectionSection
@@ -153,6 +182,7 @@ function SettingsContent({ configs }: { configs: ReturnType<typeof useSettings> 
           <SystemDetails data={data} compatibilityReport={compatibilityReport} />
         </div>
       ) : null}
+      {activeSection === "integrations" ? <IntegrationsContent key={integrationSection} /> : null}
       {activeSection === "appearance" ? <AppearanceSettings /> : null}
       {activeSection === "terminal" ? <ShortcutsSettings /> : null}
       {activeSection === "archive" ? <ArchivedChatsSettings /> : null}
