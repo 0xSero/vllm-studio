@@ -1025,6 +1025,70 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     expect(existsSync(marker)).toBe(false);
   });
 
+  test("holds snapshot retirement until an admitted tool call settles", async () => {
+    const { root, source } = fixture();
+    const prepared = await prepareSnapshot(root, source, await approvedConnector(root, source));
+    await saveConnectors([prepared]);
+    const callStarted = Promise.withResolvers<void>();
+    const allowCall = Promise.withResolvers<void>();
+    await getOrCreatePooledConnection(prepared.id, async () => ({
+      listTools: async () => [],
+      callTool: async () => {
+        callStarted.resolve();
+        await allowCall.promise;
+        return "complete";
+      },
+      close: async () => undefined,
+    }));
+    const call = callConnectorTool(prepared.id, "read", {});
+    await callStarted.promise;
+    let retired = false;
+    const retirement = removeConnector(prepared.id).then(() => {
+      retired = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(retired).toBe(false);
+    expect(existsSync(snapshotRoot(prepared))).toBe(true);
+    allowCall.resolve();
+    expect(await call).toBe("complete");
+    await retirement;
+    expect(retired).toBe(true);
+    expect(existsSync(snapshotRoot(prepared))).toBe(false);
+  });
+
+  test("denies a queued tool call when revocation acquires the lifecycle first", async () => {
+    const { root, source } = fixture();
+    const prepared = await prepareSnapshot(root, source, await approvedConnector(root, source));
+    await saveConnectors([prepared]);
+    let calls = 0;
+    await getOrCreatePooledConnection(prepared.id, async () => ({
+      listTools: async () => [],
+      callTool: async () => {
+        calls += 1;
+        return "called";
+      },
+      close: async () => undefined,
+    }));
+    const mutationStarted = Promise.withResolvers<void>();
+    const allowMutation = Promise.withResolvers<void>();
+    const mutation = Effect.runPromise(
+      withPluginExecutionSnapshotLifecycle((lifecycle) =>
+        Effect.gen(function* () {
+          mutationStarted.resolve();
+          yield* Effect.promise(() => allowMutation.promise);
+          yield* saveConnectorsEffect([{ ...prepared, enabled: false, allowTools: [] }], lifecycle);
+        }),
+      ),
+    );
+    await mutationStarted.promise;
+    const call = callConnectorTool(prepared.id, "read", {});
+    await Promise.resolve();
+    allowMutation.resolve();
+    await mutation;
+    await expect(call).rejects.toThrow(/disabled|not approved/);
+    expect(calls).toBe(0);
+  });
+
   test("does not launch a persisted probe aborted while waiting for its lifecycle", async () => {
     const { root, source } = fixture();
     const marker = path.join(path.dirname(root), "cancelled-probe-launched");

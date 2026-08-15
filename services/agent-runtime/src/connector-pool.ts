@@ -64,22 +64,72 @@ function assertToolAllowed(connector: ConnectorConfig, tool: string): void {
   );
 }
 
-export async function getPooledConnection(connectorId: string): Promise<McpConnection> {
-  return getOrCreatePooledConnection(connectorId, async () => {
-    const connector = await enabledConnector(connectorId);
-    return connectMcp(toTarget(connector));
-  });
+function hasPluginExecutionGrant(connector: ConnectorConfig): boolean {
+  const origin = connector.origin;
+  return Boolean(
+    connector.enabled &&
+    connector.allowTools?.length &&
+    origin?.kind === "plugin" &&
+    origin.artifactDigest &&
+    origin.sourceDigest &&
+    origin.snapshotDigest &&
+    origin.configurationDigest === pluginConnectorConfigurationDigest(connector),
+  );
+}
+
+const connectionFor = (connector: ConnectorConfig): Promise<McpConnection> =>
+  getOrCreatePooledConnection(connector.id, async () => connectMcp(toTarget(connector)));
+
+async function usePooledConnector<A>(
+  connector: ConnectorConfig,
+  use: (connection: McpConnection) => Promise<A>,
+): Promise<A> {
+  try {
+    return await use(await connectionFor(connector));
+  } catch (error) {
+    await closePooledConnection(connector.id).catch(() => undefined);
+    throw error;
+  }
+}
+
+function withPersistedConnectorExecution<A>(
+  connectorId: string,
+  use: (connector: ConnectorConfig) => Promise<A>,
+): Promise<A> {
+  return Effect.runPromise(
+    withPluginExecutionSnapshotLifecycle(() =>
+      Effect.gen(function* () {
+        const connector = yield* Effect.tryPromise({
+          try: () => enabledConnector(connectorId),
+          catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+        });
+        if (connector.origin?.kind === "plugin") {
+          if (!hasPluginExecutionGrant(connector)) {
+            return yield* Effect.fail(
+              new ConnectorToolDeniedError(`Connector "${connectorId}" is not approved`),
+            );
+          }
+          yield* verifyPluginExecutionSnapshot(connector).pipe(
+            Effect.mapError(
+              () => new ConnectorToolDeniedError(`Connector "${connectorId}" is not approved`),
+            ),
+          );
+        }
+        return yield* Effect.tryPromise({
+          try: () => use(connector),
+          catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+        });
+      }),
+    ),
+  );
 }
 
 export async function listConnectorTools(connectorId: string): Promise<McpToolInfo[]> {
-  const connector = await enabledConnector(connectorId);
-  try {
-    const connection = await getPooledConnection(connectorId);
-    return allowedTools(connector, await connection.listTools());
-  } catch (error) {
-    await closePooledConnection(connectorId).catch(() => undefined);
-    throw error;
-  }
+  return withPersistedConnectorExecution(connectorId, (connector) =>
+    usePooledConnector(connector, async (connection) =>
+      allowedTools(connector, await connection.listTools()),
+    ),
+  );
 }
 
 export async function callConnectorTool(
@@ -87,14 +137,10 @@ export async function callConnectorTool(
   tool: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
-  const connector = await enabledConnector(connectorId);
-  assertToolAllowed(connector, tool);
-  try {
-    return await (await getPooledConnection(connectorId)).callTool(tool, args);
-  } catch (error) {
-    await closePooledConnection(connectorId).catch(() => undefined);
-    throw error;
-  }
+  return withPersistedConnectorExecution(connectorId, (connector) => {
+    assertToolAllowed(connector, tool);
+    return usePooledConnector(connector, (connection) => connection.callTool(tool, args));
+  });
 }
 
 export async function probeConnector(
@@ -141,22 +187,15 @@ export function probePersistedConnector(
   const operation = withPluginExecutionSnapshotLifecycle(() =>
     Effect.gen(function* () {
       const connector = yield* Effect.tryPromise({
-        try: () => listConnectors().then((connectors) =>
-          connectors.find((entry) => entry.id === connectorId),
-        ),
+        try: () =>
+          listConnectors().then((connectors) =>
+            connectors.find((entry) => entry.id === connectorId),
+          ),
         catch: (error) => (error instanceof Error ? error : new Error(String(error))),
       });
       if (!connector) return { _tag: "unknown" as const };
       if (connector.origin?.kind === "plugin") {
-        const origin = connector.origin;
-        if (
-          !connector.enabled ||
-          !connector.allowTools?.length ||
-          !origin.artifactDigest ||
-          !origin.sourceDigest ||
-          !origin.snapshotDigest ||
-          origin.configurationDigest !== pluginConnectorConfigurationDigest(connector)
-        ) {
+        if (!hasPluginExecutionGrant(connector)) {
           return { _tag: "denied" as const };
         }
         const verified = yield* verifyPluginExecutionSnapshot(connector).pipe(
@@ -167,20 +206,14 @@ export function probePersistedConnector(
       const result = yield* Effect.tryPromise({
         try: (lifecycleSignal) => {
           lifecycleSignal.throwIfAborted();
-          return probeConnector(
-            connector,
-            lifecycleSignal,
-            connector.origin?.kind === "plugin",
-          );
+          return probeConnector(connector, lifecycleSignal, connector.origin?.kind === "plugin");
         },
         catch: (error) => (error instanceof Error ? error : new Error(String(error))),
       });
       return { _tag: "result" as const, result };
     }),
   );
-  const running = signal
-    ? Effect.runPromise(operation, { signal })
-    : Effect.runPromise(operation);
+  const running = signal ? Effect.runPromise(operation, { signal }) : Effect.runPromise(operation);
   return running.then((outcome) => {
     if (outcome._tag === "unknown") {
       throw new UnknownConnectorError(`Unknown connector "${connectorId}"`);

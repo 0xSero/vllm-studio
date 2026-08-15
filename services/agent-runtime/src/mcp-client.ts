@@ -137,7 +137,9 @@ class SdkMcpConnection implements McpConnection {
   private readonly signal: AbortSignal | undefined;
   private readonly transport: ReturnType<typeof transportFor>;
   private readonly transportClosed: Promise<void>;
+  private closed = false;
   private closing: Promise<void> | undefined;
+  private stdioExitPending = false;
 
   constructor(target: McpTarget) {
     this.signal = target.transport === "http" ? target.signal : undefined;
@@ -160,10 +162,13 @@ class SdkMcpConnection implements McpConnection {
   }
 
   async close(): Promise<void> {
+    if (this.closed) return;
     if (this.closing) return this.closing;
     const waitForStdioExit =
-      this.transport instanceof StdioClientTransport && this.transport.pid !== null;
-    this.closing = this.client.close().then(async () => {
+      this.stdioExitPending ||
+      (this.transport instanceof StdioClientTransport && this.transport.pid !== null);
+    if (waitForStdioExit) this.stdioExitPending = true;
+    const closing = this.client.close().then(async () => {
       if (!waitForStdioExit) return;
       await Promise.race([
         this.transportClosed,
@@ -176,7 +181,14 @@ class SdkMcpConnection implements McpConnection {
         }),
       ]);
     });
-    return this.closing;
+    this.closing = closing;
+    try {
+      await closing;
+      this.closed = true;
+      this.stdioExitPending = false;
+    } finally {
+      if (this.closing === closing) this.closing = undefined;
+    }
   }
 }
 
