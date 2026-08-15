@@ -13,7 +13,7 @@ All counts below are derived from the pinned cloc 2.06 manifests in `docs/v201-p
 |---|---|
 | Controller synthesis service | `src/services/tts.ts` (107; 114 raw lines deleted by `fe0d8196e`) |
 | Controller contracts | `contracts/speech.ts` (43) |
-| Controller speech service | `src/modules/speech/{service,runtime,worker-client,voice-store,voice-vault,storage,reference-audio,routes}.ts`, `worker.py` (3,369) |
+| Controller speech service | `src/modules/speech/{service,runtime,worker-client,voice-store,voice-vault,storage,reference-audio,routes}.ts`, `worker.py` (3,373) |
 | Controller audio routes | `src/modules/audio/{routes,helpers,interfaces}.ts` (455; `POST /v1/audio/speech` TTS + transcription forwarding) |
 | Frontend API client | `src/lib/api/speech.ts` (331) |
 | Frontend voice UI | `src/features/integrations/chatterbox-voice-*.tsx/ts` (1,239) |
