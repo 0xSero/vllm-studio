@@ -2,17 +2,24 @@
 
 Date: 2026-08-15 EDT
 
-Status: **source, independent review, aggregate repository, frozen LOC, and isolated recipe-browser gates are green. Final hosted, installed desktop, release, and cross-app acceptance remain open.**
+Status: **source, independent review, aggregate repository, frozen LOC, isolated recipe-browser, and exact-checkpoint hosted gates are green. Installed desktop, release, and cross-app acceptance remain open.**
 
 ## Exact checkpoint
 
 - Immutable composition base: `1a2205e95a56a154691654ddc0d0547dbd60f491`.
 - Accepted application/product head: `c669a8c7e46eca5b19f3c390aa1c2bdca61e6224`.
 - First evidence commit: `1838bfa4f`.
+- Published checkpoint: `30ba89b396596075fd013b0bd044d42992e79b56`.
 - Branch: `feat/v201-consolidation`, PR #408 into `dev`.
 - Shared refs remain `origin/main` `eeeb3406d4bcef255b6405c5508fb324d5e38e77` and `origin/dev` `a765eb27bca4baffabc6dc84c553fc6d8be5590d`.
 
 Before final reconciliation, concurrent validator work published intermediate head `00d48729f5f173886f685f63d0c981eeb81f3a48`. Hosted run [31898202968](https://github.com/sybil-solutions/local-studio/actions/runs/31898202968) completed successfully there: desktop-package, agent-runtime, gates, dependency review, frontend, secret scanning, CodeQL Analysis, and controller all passed, as did the separate head-bound CodeQL check. This is useful intermediate source/package evidence, not final-head acceptance.
+
+## Hosted checkpoint closure
+
+Published checkpoint `30ba89b396596075fd013b0bd044d42992e79b56` contains exact product `c669a8c7e`, its three focused evidence ledgers, and this combined checkpoint. PR #408 remained draft, clean, and mergeable into `dev`. [Run 31900116338](https://github.com/sybil-solutions/local-studio/actions/runs/31900116338) completed successfully from 2026-08-15 18:04:28Z through 18:10:27Z.
+
+All eight workflow jobs passed: gates `95049423534`, Dependency Review `95049423542`, Secret Scanning `95049423550`, CodeQL Analysis `95049423553`, frontend `95049423566`, desktop-package `95049423584`, controller `95049423588`, and agent-runtime `95049423603`. The separate head-bound CodeQL context `95049633512` also passed, producing nine green PR contexts. This closes source/package CI only; it does not prove an installed, signed, released, or cross-app build.
 
 ## Accepted slices
 
@@ -88,4 +95,4 @@ Two validator-scope violations affected canonical history. The first integrated 
 
 The old canonical `.next`, desktop dist, agent-runtime dist, `next-env.d.ts`, and TypeScript build info were moved recoverably out of the worktree before the authoritative build. The aggregate gate regenerated its own ignored outputs. The isolated usage lane moved 3.1 GiB of dependencies and generated output recoverably to Trash; its tracked and ignored status is clean. No user-authored source was deleted.
 
-Remaining boundaries include final-head hosted CI, installed settings/theme/recipe interaction, DB Stage B/versioned backup and restore, the remaining 21,732-line product reduction, Responses and Anthropic passthroughs, multi-model/multi-port authority, session/history/browser primitives, performance budgets, physical Litter pairing, final reviews, merge, release, and user-approved cleanup.
+Remaining boundaries include installed settings/theme/recipe interaction, DB Stage B/versioned backup and restore, the remaining 21,732-line product reduction, Responses and Anthropic passthroughs, multi-model/multi-port authority, session/history/browser primitives, performance budgets, physical Litter pairing, final reviews, final-head local and hosted reruns after later implementation, merge, release, and user-approved cleanup.
