@@ -4,7 +4,7 @@ import {
   bundledModelIndexSource,
   type ModelIndexResponse,
 } from "@local-studio/contracts/model-index";
-import type { RuntimeJobType } from "@local-studio/contracts/system";
+import type { RuntimeJobBackend, RuntimeJobType } from "@local-studio/contracts/system";
 import type {
   ModelDownload,
   EngineJob,
@@ -213,7 +213,7 @@ export function createStudioApi(core: ApiCore) {
       core.request("/runtime/targets"),
 
     createRuntimeJob: (payload: {
-      backend: "vllm" | "sglang" | "llamacpp" | "mlx";
+      backend: RuntimeJobBackend;
       targetId?: string;
       type?: RuntimeJobType;
       command?: string;
