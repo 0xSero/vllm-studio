@@ -1,6 +1,6 @@
 # Test-Deletion Disposition Ledger — GOAL row 1.10 adjudication evidence
 
-Docs-only slice from the GLM-5.3 documentation/evidence lane (Pi/ZAI), branch `codex/v201-test-deletion-ledger-20260814`, based on `c0036a57d7e8c4d816d990bd0f9b1fc3a1f5fcbf` on `feat/v201-consolidation`. Every count in this file was reproduced in this worktree against `origin/dev` = `a765eb27bca4baffabc6dc84c553fc6d8be5590d` and `origin/main` = `eeeb3406d4bcef255b6405c5508fb324d5e38e77` unless attributed otherwise. This file adjudicates GOAL.md row 1.10 ("Adjudicate the deletion of 74 automated-test files (7,741 lines) without counting them toward product-LOC reduction"). It creates no test code, modifies no product source, and upgrades no GOAL status: **row 1.10 remains `PARTIAL`** until the replacement-evidence rows cited below actually pass.
+Docs-only slice from the GLM-5.3 documentation/evidence lane (Pi/ZAI), branch `codex/v201-test-deletion-ledger-20260814`, based on `a5813610f6490f560b54f58cc61a18b5bed5ca75` on `feat/v201-consolidation` (initially drafted on `c0036a57d7e8c4d816d990bd0f9b1fc3a1f5fcbf`, rebased without content change to the ledger body). Every count in this file was reproduced in this worktree against `origin/dev` = `a765eb27bca4baffabc6dc84c553fc6d8be5590d` and `origin/main` = `eeeb3406d4bcef255b6405c5508fb324d5e38e77` unless attributed otherwise. This file adjudicates GOAL.md row 1.10 ("Adjudicate the deletion of 74 automated-test files (7,741 lines) without counting them toward product-LOC reduction"). It creates no test code, modifies no product source, and upgrades no GOAL status: **row 1.10 remains `PARTIAL`** until the replacement-evidence rows cited below actually pass.
 
 Labels: **(C)** = confirmed fact with command/method; **(P)** = proposal awaiting adjudication.
 
@@ -8,7 +8,7 @@ Labels: **(C)** = confirmed fact with command/method; **(P)** = proposal awaitin
 
 - Repository policy: `AGENTS.md` — "NEVER WRITE TESTS. Do not add or restore unit, integration, end-to-end, snapshot, browser, smoke, or any other automated test code." The policy entered the tree in commit `b1d129ae107f0232aa7aae4b4daece038d988662` ("chore: prohibit and disable automated tests" is one of its squashed bullet points), which also rewrote the `AGENTS.md` check instruction from "runs the frontend quality gate and the unit tests … Add `npm run test:integration`" to "runs static analysis, type checks, structural checks, and production builds".
 - Program policy: `GOAL.md` operating contract — "Do not add or restore automated test code. 'Test thoroughly' means static gates, production builds, live endpoint probes, measured manual scenarios, Computer Use, recordings, restarts, and installed-app acceptance."
-- Rationale as evidenced by the deletion commit: automated tests were removed as a class of maintenance surface; the replacement acceptance model is the GOAL matrix itself (static gates plus live/manual/recorded proof on installed surfaces). This ledger records that substitution contract and audits which halves of it exist today.
+- Inferred rationale from the deletion commit and policy change: automated tests were removed as a class of maintenance surface; the replacement acceptance model is the GOAL matrix itself (static gates plus live/manual/recorded proof on installed surfaces). This ledger records that substitution contract and audits which halves of it exist today.
 - Enforcement: zero `*.test.*`/`*.spec.*` files, `tests/`, `__tests__/`, `e2e/`, or `fixtures/` paths remain tracked at the candidate head (`git ls-files | rg '\.(test|spec)\.(ts|tsx|js|jsx|mjs)$|(^|/)(tests|__tests__|e2e|fixtures)(/|$)'` → no matches). CI no longer runs any test job (the `b1d129ae1` diff removed the controller `bun run test` step, the agent-runtime "Build and test"→"Build" step, and the frontend Playwright browser-acceptance steps from `.github/workflows/ci.yml`).
 
 ## 2. Authoritative comparison bases and deletion topology (C)
@@ -35,9 +35,9 @@ Exclusions applied (with disposition of each exclusion class in this diff):
 
 | Exclusion class | Rule | Instances in deletion set |
 |---|---|---|
-| Benchmarks | never count performance harnesses as automated tests | none deleted; live benchmark code is retained, not counted: `scripts/bench/session-fold.bench.ts`, `scripts/bench/timeline-merge.bench.ts`, `frontend/src/features/setup/use-setup-benchmark.ts` (product feature) |
+| Benchmarks | never count performance harnesses as automated tests | none deleted; the seven live `.bench.ts` harnesses were added on the track and remain out of scope: `scripts/bench/{session-fold,timeline-merge}.bench.ts`, `frontend/bench/{markdown-render,transcript-cache-quota}.bench.ts`, `services/agent-runtime/bench/{rollout-census,session-load,session-usage}.bench.ts`. `frontend/src/features/setup/use-setup-benchmark.ts` is a product feature, not a benchmark harness. |
 | Fixtures | count separately, never as executable test files | 3 deleted: `frontend/e2e/fixtures/{e2e-providers,fake-cloud,fake-controller}.mjs` (397 lines) |
-| Live routes with "test" in the path | a served route is product code even when named "test" | `frontend/src/app/api/agent/connectors/test/route.ts` is live product code, retained at head, correctly not counted |
+| Live routes with "test" in the path | a served route is product code even when named "test" | `frontend/src/app/api/agent/connectors/test/route.ts` is live product code, retained at head, correctly not counted; the same frozen product-LOC filter also excludes it from every LOC manifest because of its `/test/` path segment |
 | Generated/vendor files | never counted in either direction | none present in the deletion set |
 
 Result — **the stated 74 files / 7,741 lines is reproduced exactly (C)**:
