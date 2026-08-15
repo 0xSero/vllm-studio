@@ -59,6 +59,9 @@
 | `controller-effect-normalization-evidence.md` | audited controller Effect/Schema normalization: async census, canonical schema moves, bounded-body lifecycle, behavior matrix, and gates |
 | `post-rigs-effect-checkpoint-20260815.md` | combined canonical product, aggregate gate, frozen LOC, hosted-boundary split, and next-slice handoff through `a00e913e6` |
 | `post-rpc-checkpoint-20260815.md` | canonical setup/runtime RPC integration, validator-boundary disclosure, aggregate gate, frozen LOC, and remaining manual-RPC debt |
+| `database-safety-stage-a-20260815.md` | isolated Stage A removal of drop-on-open and raw SQLite copying, disposable probes, focused gates, and retained migration boundaries |
+| `post-db-safety-stage-a-checkpoint-20260815.md` | canonical Stage A integration, aggregate gate and LOC, prior RPC hosted success, pending-at-write-time CI plus timestamped hosted closure, and remaining database-safety work |
+| `recipe-editor-consolidation-20260815.md` | canonical type/field/tab consolidation, save/reload/render parity, invalid browser-attempt disclosure, frozen scoped LOC, and remaining visual/installed gates |
 | `test-deletion-disposition.md` | row 1.10 deletion ledger: exact 74/7,741 and 79/8,128 counts, removed coverage map, and replacement-evidence matrix |
 | `installed-provenance.md` | installed Stable/Dev provenance inventory: bundle identity, retained-artifact census, rebuild authority, and exact remaining installed acceptance gaps |
 | `pr-dispositions-maintainer.md` | current maintainer-PR census and selective-port/hold/closure dispositions for the six frozen harvest PRs |
