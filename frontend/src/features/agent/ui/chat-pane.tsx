@@ -403,9 +403,6 @@ export function ChatPane({
   const { selectedSkills, selectedPromptTemplates, removeLoadedContext } = useComposerLoadedContext(
     { activeTab, tools },
   );
-  // Per-session choice wins; a fresh session (no saved level) falls back to the
-  // level the user last picked, then the model's "high" default. This stops new
-  // sessions from always snapping back to High (issue #277).
   const thinkingLevel = pickThinkingLevel(
     modelThinkingLevels,
     activeTab?.thinkingLevel,
@@ -414,8 +411,6 @@ export function ChatPane({
   const selectThinkingLevel = useCallback(
     (level: AgentThinkingLevel) => {
       if (!activeTab || running) return;
-      // Persist on the session (survives turns + reloads) and remember it as the
-      // default for the next fresh session.
       updateTab(activeTab.id, (session) => ({ ...session, thinkingLevel: level }));
       setThinkingLevelDefault(level);
     },
@@ -771,9 +766,6 @@ export function ChatPane({
   );
 }
 
-/** The pane's fixed furniture: a pending extension prompt, the header, and the
- *  terminal surface that swaps places with the transcript. Kept out of ChatPane
- *  so the container reads as state and wiring rather than layout. */
 function ChatPaneChrome({
   extensionUiRequest,
   onExtensionUiRespond,
@@ -809,11 +801,6 @@ function ChatPaneChrome({
     </>
   );
 }
-
-/** Remounts per session so the goal poll and project selection never carry
- *  across tabs, and hides project switching while a turn is in flight. */
-// The drawer's Interrupt button has no form event of its own, and sendMessage
-// only ever uses the event to cancel the browser's native submit.
 
 function SessionProjectDrawer({
   tabId,
