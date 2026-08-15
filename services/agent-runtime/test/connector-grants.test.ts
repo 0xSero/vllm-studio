@@ -9,7 +9,12 @@ import {
   createConnectorApprovalBroker,
   executeConnectorTool,
 } from "../src/connector-approval";
-import type { ConnectorArguments, ConnectorConfig } from "../src/connector-contract";
+import type {
+  ConnectorApprovalView,
+  ConnectorArguments,
+  ConnectorConfig,
+  ConnectorJson,
+} from "../src/connector-contract";
 import {
   closePooledConnection,
   filterAllowedConnectorTools,
@@ -228,24 +233,102 @@ describe("connector action approval", () => {
     expect(view.connectorName).toEndWith("…");
   });
 
-  test("shows bounded semantic arguments while redacting credentials", () => {
+  test("keeps untrusted schema forms opaque", () => {
+    const broker = createConnectorApprovalBroker({ key: Buffer.alloc(32, 9) });
+    const approved = approvalScope({ bucket: "synthetic-hidden" });
+    const schemas = [
+      true,
+      false,
+      { type: 7, properties: "invalid" },
+      {
+        type: "object",
+        properties: {
+          bucket: { $ref: "https://example.test/schema.json#/bucket", type: "string" },
+        },
+      },
+    ] as ConnectorJson[];
+    const previews = schemas.map(
+      (schema) => broker.begin(approved, undefined, schema).argumentSummary,
+    );
+    expect(previews).toEqual(schemas.map(() => ["bucket: string (16)"]));
+    expect(JSON.stringify(previews)).not.toContain("synthetic-hidden");
+    expect(broker.cancelSession("session-a")).toBe(schemas.length);
+  });
+
+  test("shows schema-backed arbitrary arguments while failing closed on secrets", () => {
     const broker = createConnectorApprovalBroker({ key: Buffer.alloc(32, 4) });
+    const arbitrary = {
+      bucket: "trusted-bucket",
+      database: "trusted-db",
+      namespace: "safe-space",
+      payload: "deploy=blue",
+      slug: "release-a",
+      workspace: "team-alpha",
+    };
     const extras = Object.fromEntries(
       Array.from({ length: 48 }, (_, index) => [
         `zz_extra_${String(index).padStart(2, "0")}`,
         `opaque-${index}`,
       ]),
     );
+    const boundedFields = Object.fromEntries(
+      Array.from({ length: 9 }, (_, index) => [`field_${index}`, `visible-${index}`]),
+    );
+    const schema = {
+      $defs: {
+        credential: {
+          type: "string",
+          writeOnly: true,
+          description: "API credential for the remote service",
+        },
+      },
+      type: "object",
+      properties: {
+        ...Object.fromEntries(Object.keys(arbitrary).map((key) => [key, { type: "string" }])),
+        action: { type: "string" },
+        body: { type: "string" },
+        bounded_object: {
+          type: "object",
+          properties: Object.fromEntries(
+            Object.keys(boundedFields).map((key) => [key, { type: "string" }]),
+          ),
+        },
+        callback_url: { type: "string", format: "uri" },
+        command: { type: "string" },
+        count: { type: "number" },
+        enabled: { type: "boolean" },
+        long_target: { type: "string" },
+        message: { type: "string" },
+        pin: { type: "string", format: "password" },
+        recipients: { type: "array", items: { type: "string" } },
+        repository: { type: "string" },
+        request: {
+          type: "object",
+          properties: {
+            password: { type: "string" },
+            path: { type: "string" },
+          },
+        },
+        target: { type: "string" },
+        verification: { $ref: "#/$defs/credential" },
+      },
+    } as ConnectorJson;
     const approved = approvalScope({
       access_token: "synthetic-access-token",
       action: "delete",
       auth: { authorization: "Bearer synthetic-auth" },
       body: "publish release notes",
+      bounded_object: boundedFields,
       callback_url:
-        "https://synthetic-user:synthetic-password@example.test/hook?token=synthetic-query&mode=safe#access_token=synthetic-fragment",
+        "https://synthetic-user:synthetic-password@example.test/hook?X-Amz-Signature=synthetic-signature&mode=safe#access_token=synthetic-fragment",
+      command: "deploy --password synthetic-flag --target production",
       count: 3,
       enabled: true,
-      message: "deploy token=synthetic-inline now",
+      long_target: "x".repeat(200),
+      message: "notify to\u200bken=synthetic-unicode now",
+      opaque: "synthetic-opaque",
+      pin: "synthetic-pin",
+      recipients: Array.from({ length: 8 }, (_, index) => `user-${index}@example.test`),
       repository: "trusted/repository",
       request: {
         password: "synthetic-password",
@@ -253,34 +336,64 @@ describe("connector action approval", () => {
         value: "hidden-value",
       },
       target: "refs/heads/main",
+      verification: "synthetic-verification",
+      ...arbitrary,
       ...extras,
     });
-    const view = broker.begin(approved);
+    const view = broker.begin(approved, undefined, schema);
 
     expect(view.argumentSummary).toContain('action: "delete"');
     expect(view.argumentSummary).toContain('body: "publish release notes"');
     expect(view.argumentSummary).toContain('repository: "trusted/repository"');
     expect(view.argumentSummary).toContain('target: "refs/heads/main"');
+    for (const [key, value] of Object.entries(arbitrary))
+      expect(view.argumentSummary).toContain(`${key}: ${JSON.stringify(value)}`);
     expect(view.argumentSummary).toContain("count: 3");
     expect(view.argumentSummary).toContain("enabled: true");
-    expect(view.argumentSummary).toContain('message: "deploy token=[redacted] now"');
+    expect(view.argumentSummary).toContain(
+      'command: "deploy --password [redacted] --target production"',
+    );
+    expect(view.argumentSummary).toContain('message: "notify token=[redacted] now"');
     expect(view.argumentSummary).toContain("access_token: [redacted]");
-    expect(view.argumentSummary).toContain("… 11 more arguments omitted");
-    expect(view.argumentSummary.join("\n")).toContain("example.test/hook");
-    expect(view.argumentSummary.join("\n")).toContain('path: "/releases/current"');
-    expect(view.argumentSummary.join("\n")).toContain("value: string (12)");
+    expect(view.argumentSummary).toContain("pin: [redacted]");
+    expect(view.argumentSummary).toContain("verification: [redacted]");
+    const summary = view.argumentSummary.join("\n");
+    for (const detail of [
+      "example.test/hook",
+      "mode=safe",
+      'path: "/releases/current"',
+      "value: string (12)",
+      "… 3 more fields omitted",
+      "… 2 more items omitted",
+    ])
+      expect(summary).toContain(detail);
+    expect(view.argumentSummary).toHaveLength(49);
+    const omitted = view.argumentSummary.at(-1)?.match(/^… (\d+) more arguments omitted$/);
+    expect(Number(omitted?.[1])).toBe(Object.keys(approved.args).length - 48);
+    expect(view.argumentSummary.every((line) => line.length <= 320)).toBe(true);
+    expect(view.argumentSummary).toContain("opaque: string (16)");
     expect(JSON.stringify(view)).not.toMatch(
-      /synthetic-access-token|synthetic-auth|synthetic-fragment|synthetic-inline|synthetic-password|synthetic-query|hidden-value/,
+      /synthetic-access-token|synthetic-auth|synthetic-flag|synthetic-fragment|synthetic-opaque|synthetic-password|synthetic-pin|synthetic-signature|synthetic-unicode|synthetic-user|synthetic-verification|hidden-value/,
     );
     const changed = broker.begin(
       approvalScope({
         action: "remove",
+        bucket: "hostile-bucket",
+        database: "hostile-db",
+        namespace: "evil-space",
+        payload: "delete=blue",
         repository: "hostile/repository",
+        slug: "malware-a",
         target: "refs/heads/evil",
+        workspace: "team-omega",
       }),
+      undefined,
+      schema,
     );
     expect(changed.argumentSummary).not.toEqual(
-      view.argumentSummary.filter((line) => /^(action|repository|target):/.test(line)),
+      view.argumentSummary.filter((line) =>
+        /^(action|bucket|database|namespace|payload|repository|slug|target|workspace):/.test(line),
+      ),
     );
     expect(broker.cancelSession("session-a")).toBe(2);
     expect(JSON.stringify(broker.audit())).not.toMatch(
@@ -329,12 +442,12 @@ describe("connector action approval", () => {
       url: undefined,
     });
     const sessionId = "direct-session";
-    const execute = (approve?: () => Promise<boolean>) =>
+    const execute = (approve?: (view: ConnectorApprovalView) => Promise<boolean>) =>
       executeConnectorTool({
         sessionId,
         connectorId: "custom",
         tool: "write",
-        args: { credential: "synthetic" },
+        args: { bucket: "runtime-bucket", credential: "synthetic" },
         ...(approve ? { approve } : {}),
       });
     await saveConnectors([live]);
@@ -348,12 +461,27 @@ describe("connector action approval", () => {
     expect(cancelConnectorApprovals(sessionId)).toBe(0);
     await saveConnectors([live]);
     let approvals = 0;
+    let observed: ConnectorApprovalView | null = null;
     expect(
-      await execute(async () => {
+      await execute(async (view) => {
         approvals += 1;
+        observed = view;
         return true;
       }),
     ).toEqual({ content: [{ type: "text", text: "write:called" }] });
     expect(approvals).toBe(1);
+    expect(observed?.argumentSummary).toContain('bucket: "runtime-bucket"');
+    expect(observed?.argumentSummary).toContain("credential: [redacted]");
+    await saveConnectors([
+      {
+        ...live,
+        args: [join(import.meta.dir, "fixtures/connector-server.mjs"), "--drift-schema"],
+      },
+    ]);
+    try {
+      await expect(execute(async () => true)).rejects.toThrow(/not approved/);
+    } finally {
+      closePooledConnection(live.id);
+    }
   });
 });
