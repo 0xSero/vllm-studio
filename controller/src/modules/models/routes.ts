@@ -44,6 +44,7 @@ import { notFound } from "../../core/errors";
 import { findObservedInferenceProcess } from "../../core/function-observability";
 import { parseBooleanFlag } from "../../core/validation";
 import { fetchInference } from "../../http/local-fetch";
+import { discoverProviderModels, enabledProvidersWithApiKey } from "../../services/provider-routing";
 
 function isMockInferenceEnabled(): boolean {
   return parseBooleanFlag(process.env["LOCAL_STUDIO_MOCK_INFERENCE"]);
@@ -133,6 +134,28 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
                 vision: resolveModelVision({ identifiers: [inferredId] }),
               },
             });
+          }
+
+          const providerResults = yield* Effect.forEach(
+            enabledProvidersWithApiKey(context.config.providers),
+            (provider) => discoverProviderModels(provider).pipe(Effect.option),
+            { concurrency: "unbounded" },
+          );
+          for (const result of providerResults) {
+            if (result._tag !== "Some") continue;
+            for (const model of result.value.models) {
+              const modelId = `${result.value.provider}/${model.id}`;
+              models.push({
+                id: modelId,
+                object: "model",
+                created: now,
+                owned_by: result.value.provider,
+                active: false,
+                metadata: {
+                  vision: resolveModelVision({ identifiers: [modelId, model.id] }),
+                },
+              });
+            }
           }
 
           const payload: OpenAIModelList = { object: "list", data: models };

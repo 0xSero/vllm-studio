@@ -1,3 +1,4 @@
+import { Effect, Schema } from "effect";
 import type { ProviderConfig } from "../config/persisted-config";
 
 export const DEFAULT_CHAT_PROVIDER = "openai";
@@ -49,3 +50,41 @@ export const resolveProviderConfig = (
 ): ProviderRouteConfig | null => {
   return resolveConfiguredProviderConfig(provider, config.providers);
 };
+
+export interface DiscoveredProviderModels {
+  provider: string;
+  models: Array<{ id: string }>;
+}
+
+const ProviderModelsSchema = Schema.Struct({
+  data: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String) }))),
+});
+
+export const discoverProviderModels = (
+  provider: ProviderConfig,
+): Effect.Effect<DiscoveredProviderModels, unknown> =>
+  Effect.gen(function* () {
+    const url = `${provider.base_url.replace(/\/+$/, "")}/v1/models`;
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(url, {
+          headers: { Authorization: `Bearer ${provider.api_key}` },
+          signal: AbortSignal.timeout(10_000),
+        }),
+      catch: (source) => source,
+    });
+    if (!response.ok) return yield* Effect.fail(response.status);
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: (source) => source,
+    });
+    const decoded = yield* Schema.decodeUnknownEffect(ProviderModelsSchema)(payload);
+    const models = (decoded.data ?? []).flatMap((model) => {
+      const id = model.id?.trim();
+      return id ? [{ id }] : [];
+    });
+    return { provider: provider.id, models };
+  });
+
+export const enabledProvidersWithApiKey = (providers: ProviderConfig[] = []): ProviderConfig[] =>
+  providers.filter((provider) => provider.enabled && provider.api_key);
