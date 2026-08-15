@@ -239,6 +239,8 @@ describe("connector action approval", () => {
     const schemas = [
       true,
       false,
+      { type: "object", properties: { bucket: true } },
+      { type: "object", properties: { bucket: false } },
       { type: 7, properties: "invalid" },
       {
         type: "object",
@@ -253,6 +255,141 @@ describe("connector action approval", () => {
     expect(previews).toEqual(schemas.map(() => ["bucket: string (16)"]));
     expect(JSON.stringify(previews)).not.toContain("synthetic-hidden");
     expect(broker.cancelSession("session-a")).toBe(schemas.length);
+  });
+
+  test("fails closed for every invalid composition branch", () => {
+    const broker = createConnectorApprovalBroker({ key: Buffer.alloc(32, 10) });
+    const approved = approvalScope({ bucket: "synthetic-hidden" });
+    const remote = { $ref: "https://example.test/secret-schema.json" };
+    const remoteDynamic = { $dynamicRef: "https://example.test/secret-schema.json" };
+    const unresolved = { $ref: "#/$defs/missing" };
+    const unsafe: ConnectorJson[] = [
+      { type: "object", properties: { bucket: { type: ["string", 7] } } },
+      { type: "object", properties: { bucket: { type: "string", pattern: 7 } } },
+      { type: "object", properties: { bucket: { type: "string", pattern: "^[a-z]+$" } } },
+      { type: "object", properties: { bucket: { type: "string", const: "allowed" } } },
+      { type: "object", properties: { bucket: { type: "string", enum: ["allowed"] } } },
+      { type: "object", properties: { bucket: { type: "string", ...remoteDynamic } } },
+      {
+        $defs: { number: { type: "number" } },
+        type: "object",
+        properties: { bucket: { $ref: "#/$defs/number", type: "string" } },
+      },
+    ];
+    for (const keyword of ["allOf", "anyOf", "oneOf"]) {
+      for (const branch of [false, 7, remote, remoteDynamic, unresolved] as ConnectorJson[])
+        unsafe.push({
+          type: "object",
+          properties: { bucket: { [keyword]: [{ type: "string" }, branch] } },
+        });
+      const cycle = { $ref: "#/$defs/cycle" };
+      unsafe.push({
+        $defs: { cycle },
+        type: "object",
+        properties: { bucket: { [keyword]: [{ type: "string" }, cycle] } },
+      });
+    }
+    const previews = unsafe.map(
+      (schema) => broker.begin(approved, undefined, schema).argumentSummary,
+    );
+    expect(previews).toEqual(unsafe.map(() => ["bucket: string (16)"]));
+    expect(JSON.stringify(previews)).not.toContain("synthetic-hidden");
+    expect(broker.cancelSession("session-a")).toBe(unsafe.length);
+  });
+
+  test("rejects schemas and requests that exceed approval budgets", () => {
+    const broker = createConnectorApprovalBroker({ key: Buffer.alloc(32, 12) });
+    const approved = approvalScope({ bucket: "synthetic-hidden" });
+    let tooDeep: ConnectorJson = { type: "string" };
+    for (let depth = 0; depth < 40; depth += 1) tooDeep = { allOf: [tooDeep] };
+    const overNodes = {
+      type: "object",
+      properties: Object.fromEntries(
+        Array.from({ length: 2_100 }, (_, index) => [`field_${index}`, { type: "string" }]),
+      ),
+    };
+    const overBudget: ConnectorJson[] = [
+      overNodes,
+      { type: "object", description: "x".repeat(70_000), properties: {} },
+    ];
+    for (const keyword of ["allOf", "anyOf", "oneOf"]) {
+      overBudget.push({
+        type: "object",
+        properties: { bucket: { [keyword]: [{ type: "string" }, tooDeep] } },
+      });
+      overBudget.push({
+        type: "object",
+        properties: {
+          bucket: { [keyword]: Array.from({ length: 129 }, () => ({ type: "string" })) },
+        },
+      });
+    }
+    const cyclicSchema = {} as Record<string, ConnectorJson>;
+    cyclicSchema.self = cyclicSchema;
+    overBudget.push(cyclicSchema);
+    for (const schema of overBudget)
+      expect(() => broker.begin(approved, undefined, schema)).toThrow(/schema.*limit/i);
+    expect(() =>
+      broker.begin(approvalScope({ bucket: "x".repeat(1_100_000) }), undefined, {
+        type: "object",
+        properties: { bucket: { type: "string" } },
+      }),
+    ).toThrow(/request.*limit/i);
+    const cyclicArgs = {} as Record<string, ConnectorJson>;
+    cyclicArgs.self = cyclicArgs;
+    expect(() => broker.begin(approvalScope(cyclicArgs))).toThrow(/request.*limit/i);
+  });
+
+  test("resolves a bounded repeated-reference graph without expanding it", () => {
+    const broker = createConnectorApprovalBroker({ key: Buffer.alloc(32, 13) });
+    const definitions: Record<string, ConnectorJson> = { level_0: { type: "string" } };
+    for (let level = 1; level <= 20; level += 1)
+      definitions[`level_${level}`] = {
+        allOf: [{ $ref: `#/$defs/level_${level - 1}` }, { $ref: `#/$defs/level_${level - 1}` }],
+      };
+    const view = broker.begin(approvalScope({ bucket: "memoized-target" }), undefined, {
+      $defs: definitions,
+      type: "object",
+      properties: { bucket: { $ref: "#/$defs/level_20" } },
+    });
+    expect(view.argumentSummary).toEqual(["bucket: string (15)"]);
+    expect(broker.cancelSession("session-a")).toBe(1);
+  });
+
+  test("redacts credential aliases and keeps confusable or oversized keys opaque", () => {
+    const broker = createConnectorApprovalBroker({ key: Buffer.alloc(32, 11) });
+    const confusable = "p\u0430ssword";
+    const oversized = "target_" + "x".repeat(1_000);
+    const args = {
+      passwd: "synthetic-passwd",
+      pwd: "synthetic-pwd",
+      pat: "synthetic-pat",
+      jwt: "synthetic-jwt",
+      command: "deploy --pwd synthetic-flag jwt=synthetic-inline",
+      backslash_url: "https:\\synthetic-user:synthetic-backslash@example.test/path",
+      confusable_command: "deploy p\u0430ssword=synthetic-command-confusable",
+      confusable_url: "https://example.test/?p%D0%B0ssword=synthetic-url-confusable",
+      encoded_url:
+        "https://example.test/password%253Dsynthetic-path-encoded?q=password%253Dsynthetic-encoded#q=jwt%253Dsynthetic-fragment-encoded",
+      relative_url: "//u:synthetic-relative@example.test/?q=password%253Dsynthetic-relative-query",
+      malformed_url: "https:\\\\u:synthetic-malformed@exa[mple.test/path",
+      encoded_command: "deploy password%253Dsynthetic-command-encoded",
+      [confusable]: "synthetic-confusable",
+      [oversized]: "synthetic-oversized",
+    };
+    const schema = {
+      type: "object",
+      properties: Object.fromEntries(Object.keys(args).map((key) => [key, { type: "string" }])),
+    } as ConnectorJson;
+    const view = broker.begin(approvalScope(args), undefined, schema);
+    for (const alias of ["passwd", "pwd", "pat", "jwt"])
+      expect(view.argumentSummary).toContain(`${alias}: [redacted]`);
+    expect(view.argumentSummary).toContain('command: "deploy --pwd [redacted] jwt=[redacted]"');
+    expect(JSON.stringify(view)).not.toMatch(
+      /synthetic-passwd|synthetic-pwd|synthetic-pat|synthetic-jwt|synthetic-flag|synthetic-inline|synthetic-backslash|synthetic-command-confusable|synthetic-url-confusable|synthetic-path-encoded|synthetic-encoded|synthetic-fragment-encoded|synthetic-relative|synthetic-malformed|synthetic-command-encoded|synthetic-confusable|synthetic-oversized/,
+    );
+    expect(view.argumentSummary.some((line) => line.startsWith(confusable))).toBe(true);
+    expect(view.argumentSummary.every((line) => line.length <= 320)).toBe(true);
   });
 
   test("shows schema-backed arbitrary arguments while failing closed on secrets", () => {
