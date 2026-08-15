@@ -1,6 +1,6 @@
 # Browser network pinning — PR #367 port evidence
 
-Production-only security slice on branch `codex/v201-security-browser-network-20260814`, exact convergence base `a5813610f6490f560b54f58cc61a18b5bed5ca75`. This lane ports the unique browser destination-policy behavior from PR #367, excludes its test file, and closes one audit gap in the source PR by classifying `192.88.99.0/24` as non-global. Evidence captured 2026-08-14 EDT; nothing here upgrades a `GOAL.md` row or proves the installed app.
+Production-only security slice recovered on branch `codex/v201-security-browser-network-final-20260815`, exact convergence base `a5813610f6490f560b54f58cc61a18b5bed5ca75`. This lane ports the unique browser destination-policy behavior from PR #367, excludes its test file, and closes one audit gap in the source PR by classifying `192.88.99.0/24` as non-global. Evidence was captured 2026-08-14–15 EDT; nothing here upgrades a `GOAL.md` row or proves the installed app.
 
 ## 1. Provenance (C)
 
@@ -96,70 +96,94 @@ The check used each PR's exact `a765eb27…` base-to-head production patch piped
 
 The first fresh-worktree aggregate attempts exposed dependency-layout artifacts only: missing root-level Effect resolution with package-only links, then `ERR_FS_CP_EINVAL` when Next standalone traced a whole `frontend/node_modules` symlink back onto itself. Replacing those with APFS copy-on-write dependency directories produced the complete passing run above. After validation, the lane removed its generated `.next`, dependency clones/links, and agent-runtime `dist`; free disk increased from 5.3 GiB to 8.9 GiB at that cleanup point. No tracked source was removed.
 
-## 8. Opus-5 r1 remediation (C)
+## 8. Opus-5 r1 remediation and final policy correction (C)
 
-Claude Opus-5 reviewed exact product tip `cbd8c7acd60be77350135979e2ccfde06d2e3c83` and evidence tip `9b1fc1d256aef632ad1dd7030979691a9ca7caf0`. The retained review transcript is `/tmp/localstudio-v201-security-browser-network-opus-r1.log`, SHA-256 `d9c8e6797c5a69a7c849b63c5f7a210a0f04fa9ac8938c75a42ad9a89ed8e1f0`; verdict: **REVISE**. Remediation is split into `a7ee5fa1792da075c94f1f4341d3a184c982403b` (`fix(agent-runtime): reset browser host cleanly across mode switches`) and `f6db2015c65628062b2941b2801f7b7fd4669ac9` (`fix(agent-runtime): harden browser proxy inputs`).
+Claude Opus-5 reviewed exact product tip `cbd8c7acd60be77350135979e2ccfde06d2e3c83` and evidence tip `9b1fc1d256aef632ad1dd7030979691a9ca7caf0`; verdict: **REVISE**. The review transcript was captured at `/tmp/localstudio-v201-security-browser-network-opus-r1.log`, SHA-256 `d9c8e6797c5a69a7c849b63c5f7a210a0f04fa9ac8938c75a42ad9a89ed8e1f0`, then lost when macOS purged `/private/tmp` under low-disk pressure. Its recorded digest and the committed disposition below remain.
 
-| finding | disposition at `f6db2015c` |
+Remediation was split into `a7ee5fa1792da075c94f1f4341d3a184c982403b` (`fix(agent-runtime): reset browser host cleanly across mode switches`) and `f6db2015c65628062b2941b2801f7b7fd4669ac9` (`fix(agent-runtime): harden browser proxy inputs`). Commit `a7ee5fa17` arrived as concurrent candidate work from a mis-scoped PR #396 validator. It was audited line by line, reconciled to the controlling sticky fail-closed lifecycle contract, and retained because its resource invalidation and cleanup behavior was correct.
+
+| Opus-5 r1 finding | final disposition |
 |---|---|
-| M1, close failure leaks context/proxies | fixed: a context-close failure enters the shared abort path; cleanup snapshots and invalidates active/pending context state and both proxies, retries context close, falls back to closing the owning browser process, and retains the original failure unless cleanup also fails |
+| M1, close failure leaks context/proxies | fixed: a context-close failure enters the shared abort path; cleanup snapshots and invalidates active and pending context state plus both proxies, retries context close, falls back to closing the owning browser process, and retains the original failure unless cleanup also fails |
 | M1, closed setup context can publish/reuse | fixed: the launched context is owned as pending before route installation; its close listener is installed immediately; a close during setup rejects, closes both proxies, and stores the sticky failure |
 | L1, pooled socket listener duplication | fixed: socket tracking is idempotent by object identity, so a reused socket receives one error listener and one close listener |
 | L2, malformed CONNECT authority | fixed: CONNECT requires an explicit valid `host:port` or `[IPv6]:port`, ports 1–65535, and rejects whitespace, userinfo, path/query/fragment, slash, and backslash forms before policy resolution |
 | L3, reader WS(S) redirect | fixed: every redirect is re-admitted through the reader's HTTP(S)-only navigation boundary before DNS resolution or request creation |
-| L4, stale reader public-only description | fixed: stale source comments were removed; no source comment was added |
+| L4, stale reader public-only description | fixed: stale source comments were removed |
 | L5, startup listen-error handler remains armed | fixed: the temporary handler is removed on successful listening; the retained listener count is zero |
-| L6, dropped hosted pages / early mode publication / `localhost.` classification | fixed: owned pages are closed before clearing; `activeMode` changes only after `ensure()` succeeds; trailing DNS dots are normalized before lexical mode classification |
+| L6, dropped hosted pages / early mode publication | fixed: owned pages are closed before clearing and `activeMode` changes only after `ensure()` succeeds |
+| L6, `localhost.` classification | the first remediation normalized only BrowserHost input; final validator correctly found the shared policy/Reader gap; fixed canonically in `d3bb89f22b190d649000bbc068b59ca3eda8306d` |
 | L7, diagnostic rejection wrapping | fixed defensively: the semaphore carries a fulfilled success/error envelope, then rethrows the exact original rejection outside Effect; the missing-browser `Error.name` and `Error.message` remain exact |
-| L8, two lifetime proxy listeners | accepted tradeoff: both bind only to `127.0.0.1`, enforce the same destination policy for every caller, and are closed centrally on abort/stop; lazy provisioning is deferred until the #373/#375 semantic composition so teardown ownership is changed once |
+| L8, two lifetime proxy listeners | accepted tradeoff: both bind only to `127.0.0.1`, enforce the same destination policy for every caller, and are closed centrally on abort/stop; lazy provisioning is deferred until the #373/#375 semantic composition so teardown ownership changes once |
 
 Spontaneous clean context closure is intentionally retryable: the close listener clears only the active context and mode. Explicit stop, setup failure, transition close failure, proxy creation failure, route-install failure, and cleanup failure remain sticky fail-closed states for the process-global manager. Cleanup failures are aggregated without making stale resources reusable.
 
-Final cumulative production scope from convergence base `a5813610f` remains the same six paths and is +499/−87:
+An independent final validator reviewed evidence commit `6ffbc487f` and returned **REVISE** on one medium finding: `acceptedNavigation()` classified raw `url.hostname` before trailing-dot normalization, so `http://localhost./` became public in the no-Chromium Reader fallback even though BrowserHost normalization masked the defect in Chromium. Commit `d3bb89f22` now strips one terminal DNS dot at the single shared admission boundary, rejects an empty normalized hostname, writes the normalized hostname back into the URL before classification, and removes the BrowserHost-only workaround. Both `navigation()` and `resolve()` therefore use the same canonical URL and mode.
+
+Commit `81258fd3931955426432530b97872fcb6f25727d` (`chore(agent-runtime): remove browser handler comments`) then removed the remaining 28 source-comment lines from the sixth touched production file without changing behavior. A final scan across all six production paths found no source comments; the remaining `//` text is limited to URL strings and regular expressions.
+
+Final cumulative production scope from convergence base `a5813610f` remains the same six paths and is +494/−121:
 
 | path | final delta | final SHA-256 |
 |---|---:|---|
-| `services/agent-runtime/src/browser-host/browser-host.ts` | +30/−7 | `7c7edf8634db814c524062f67fb6efd98235bc0a36749a984b5d16371d4cd3a7` |
-| `services/agent-runtime/src/browser-host/network-policy.ts` | +76/−0 | `cc1f7993bb34365bb25c6acfdeae02d8903d5ae29a47e73b9a5b6796c10f34d8` |
+| `services/agent-runtime/src/browser-host/browser-host.ts` | +20/−5 | `ede288af9489f5476a522e5eec7083828d272f013662cc471a2b48e08ddcb73c` |
+| `services/agent-runtime/src/browser-host/network-policy.ts` | +79/−0 | `1f075176dd870b312e2e5b315c11bd1b39a86cc3c232261c46d6d74e66da1b90` |
 | `services/agent-runtime/src/browser-host/pinning-proxy.ts` | +144/−0 | `098110c253136a6fac4f60e6dba8a883325c8737a3f89682451e6fb781bcbfec` |
 | `services/agent-runtime/src/browser-host/playwright.ts` | +200/−29 | `4c698d5c83cdd33467f226eecb8ab7e643733dd8cf3f47dbedeef324d5d9c767` |
 | `services/agent-runtime/src/browser-host/reader.ts` | +35/−37 | `ecd50e55c28e7f843edbd5fde55dc6dec4eda9fc536e80fa95c414d3d842a9f4` |
-| `services/agent-runtime/src/http/browser-handlers.ts` | +14/−14 | `ed7cab9fd4896cf542f91f5b638d09c5e05d78ea02974a1b54268099024c21e3` |
+| `services/agent-runtime/src/http/browser-handlers.ts` | +16/−50 | `0d5036dffb7bd9ba2739cd0cc71c404f9c2bb6388641d8aa89dcb328b32d9a14` |
 
-## 9. Remediation probes and gates (C)
+## 9. Remediation probes, purge recovery, and gates (C)
 
-The before/after lifecycle probe used fake contexts and proxies only to make cleanup and race ordering deterministic. Before remediation it proved: zero proxy closes after an active context-close rejection; a context closed during route setup was returned and reused; a failed mode switch closed zero owned pages and published `loopback`; malformed `/path` CONNECT reached policy as `https:///path`; and a reader redirect to `ws://` reached a second request. Before-probe script SHA-256: `4cab3ea467ae99ba350b44f92b8d01c8551147c7ed4bb36c40616f80746bcfda`; transcript SHA-256: `0b84f54683f99138aee06c602438c163bf6290e6af4b4ca6155fff043915a87f`.
+The original before/after lifecycle probe used fake contexts and proxies only to make cleanup and race ordering deterministic. Before remediation it proved: zero proxy closes after an active context-close rejection; a context closed during route setup was returned and reused; a failed mode switch closed zero owned pages and published `loopback`; malformed `/path` CONNECT reached policy as `https:///path`; and a reader redirect to `ws://` reached a second request. Before-probe script SHA-256: `4cab3ea467ae99ba350b44f92b8d01c8551147c7ed4bb36c40616f80746bcfda`; transcript SHA-256: `0b84f54683f99138aee06c602438c163bf6290e6af4b4ca6155fff043915a87f`.
 
-Post-remediation command: `bun <mktemp>/post-probe.ts`. Script SHA-256: `543653545c8eab4135fbbe6afe7acaf3fbd1252f61497a32dac3913de739669d`; transcript SHA-256: `0c8fd220324721ce957ae12496f2c4ad29ea07ddd8b679c8f5dc0818ae5e08f8`.
+The original post-remediation probe script SHA-256 was `543653545c8eab4135fbbe6afe7acaf3fbd1252f61497a32dac3913de739669d`; transcript SHA-256 was `0c8fd220324721ce957ae12496f2c4ad29ea07ddd8b679c8f5dc0818ae5e08f8`.
 
-| scenario | exact result |
+| scenario | exact historical result |
 |---|---|
 | active context close rejects during mode switch | context close calls 2; browser-process fallback close 1; public and loopback proxy closes 1 each; launch count remains 1; the identical original failure is sticky |
 | context closes during route setup | no context returned; launch count remains 1; both proxies close once; identical failure is sticky |
 | missing browser diagnostic | exact `Error` message `Browser unavailable: no Chromium found — set LOCAL_STUDIO_CHROME_PATH` |
 | failed hosted-page mode transition | owned page closed once; map and active id cleared; `activeMode` stays on the successfully established prior mode |
-| `http://localhost./` | normalized and requests loopback mode |
+| `http://localhost./` | BrowserHost-only normalization requested loopback mode; this did **not** prove direct shared-policy or Reader fallback classification and the earlier broader claim is withdrawn |
 | malformed CONNECT matrix | `/path`, missing port, port 0, port 65536, userinfo, backslash path, and bracketed IPv6 without port: 7/7 HTTP 403 and zero policy calls |
 | valid CONNECT matrix | `example.com:443` and `[2001:db8::1]:8443`: 2/2 HTTP 200; canonical authorities were the only policy calls |
 | proxy after successful listen | zero retained `error` listeners |
 | reader `ws://` redirect | rejected by browser policy after one HTTP request; no second request |
 | delayed policy resolution after two closes | close promise identity equal; disposable origin accepted TCP count 0 |
 
-The isolated real-Chromium remediation command was `TMPDIR=<mktemp directory> bun <mktemp>/chromium-probe.ts`. Script SHA-256: `693217cb536fb34807098be8cf8bda37c758100831675bff3b7c9b449251dc5d`; transcript SHA-256: `cff0da9b5aa1da844313e75cc2df397b7c26bee3228d4f38d0f6b8b49f588a0c`. Chromium 1228 loaded a disposable loopback page with DOM text `loopback-ok`; switching to public closed the prior page; the public context's loopback attempt was blocked with origin accept count unchanged at 1; stop made both proxy ports refuse new connections and `isAvailable()` false. The unique 4.7 MiB profile root had no open handles or matching Chromium residue, then was deleted and absence confirmed.
+The original isolated real-Chromium remediation script SHA-256 was `693217cb536fb34807098be8cf8bda37c758100831675bff3b7c9b449251dc5d`; transcript SHA-256 was `cff0da9b5aa1da844313e75cc2df397b7c26bee3228d4f38d0f6b8b49f588a0c`. Chromium 1228 loaded a disposable loopback page with DOM text `loopback-ok`; switching to public closed the prior page; the public context's loopback attempt was blocked with origin accept count unchanged at 1; stop made both proxy ports refuse new connections and `isAvailable()` false. The unique 4.7 MiB profile root had no open handles or matching Chromium residue, then was deleted and absence confirmed.
 
-| gate at `f6db2015c` | outcome |
+At historical product head `f6db2015c`, `cd services/agent-runtime && bun run check` passed with transcript SHA-256 `ba4a58a6fdd410276695a397888a0812f07d2576eaa6e3dd6b5a7d64990ef7d2`, and root `npm run check` passed with transcript SHA-256 `2a782ccf0b43958df7af8b1baa977dbf5e3135dd4e79d9f6869732f94b6a6083`.
+
+The prior remediation directory `/private/tmp/localstudio-pr367-remediation.lmGRQ8`, the prior worktree `/private/tmp/localstudio-v201-security-browser-network`, the Opus transcript, and the original scripts/logs above were purged by macOS under low-disk pressure. Their committed hashes and outcomes remain historical evidence, but the files are no longer retained. The branch ref survived at `d3bb89f22`. A root check in the purged lane was last observed in the Next production build, had no `FULL_CHECK_EXIT` marker, and disappeared with the worktree; it is classified as interrupted/lost and is not counted as a pass. No source or evidence commit after `d3bb89f22` was lost.
+
+Recovery used only persistent storage: worktree `/Users/sero/projects/vllm-studio-v201-browser-network-final`, branch `codex/v201-security-browser-network-final-20260815`, and evidence directory `/Users/sero/projects/vllm-studio-v201-evidence/browser-network-20260815/`. The stale absent `/private/tmp` worktree registration was not changed.
+
+The persistent disposable proof script is `trailing-dot-proof.ts`, SHA-256 `f3a262af2ba73972c220e8ff2fd39bf256d5b09d2d8c1c3203472cae9f75d596`; its transcript is `trailing-dot-proof.log`, SHA-256 `09089b916a122d44c4261dd1e5c08b1a09396b067c0ce408816404e9dedccc9d`, with `PROOF_EXIT=0`.
+
+| final trailing-dot scenario | exact result |
 |---|---|
-| `cd services/agent-runtime && bun run check` | pass; transcript SHA-256 `ba4a58a6fdd410276695a397888a0812f07d2576eaa6e3dd6b5a7d64990ef7d2` |
-| `npm run check` | pass end-to-end; transcript SHA-256 `2a782ccf0b43958df7af8b1baa977dbf5e3135dd4e79d9f6869732f94b6a6083` |
-| frontend lint | zero errors; the one pre-existing `ComposerProjectDrawer` complexity warning remains |
-| `git diff --check` | clean |
-| test/comment scope | no automated test file added, restored, modified, or run; final remediation source diff adds no comment and removes stale reader comments |
+| `navigation("http://localhost.:3210/")` | `{ mode: "loopback", url: "http://localhost:3210/" }` |
+| `navigation("https://example.com./path")` | `{ mode: "public", url: "https://example.com/path" }` |
+| public resolution of lexical `localhost.` | rejected before DNS with `Browser network policy blocked URL`; resolver calls 0 |
+| Reader loopback fallback for `localhost.` | resolver called once with `localhost`; one request to normalized `http://localhost:3210/` pinned to `127.0.0.1`; body `reader-loopback-ok` |
+| Reader public fallback for `localhost.` | rejected with `url rejected by browser network policy` |
 
-The remediation scripts and transcripts remain retained only in `/private/tmp/localstudio-pr367-remediation.lmGRQ8` for exact-head re-review. The real dependency clones and generated worktree outputs used by the full gate were removed afterward. A final ignored-residue audit also removed the lane's 208 KiB leaked standalone `Users/` trace, `next-env.d.ts`, TypeScript build info, and `services/node_modules` link; free disk returned to 5.3 GiB. No tracked source or user profile was removed.
+| final gate at product head `81258fd39` | outcome |
+|---|---|
+| `cd services/agent-runtime && bun run check` | pass with `AGENT_RUNTIME_CHECK_EXIT=0`; persistent transcript SHA-256 `111b36022cc1fbd71615ea11af9039fd42f4f3c128e5af17f4ff41d988436142` |
+| exact root `npm run check` | pass with `FULL_CHECK_EXIT=0`; persistent transcript SHA-256 `5e2c94d5659a3173ca6893ac5d6e3ed1e6aeb78c82c6e47422f43963f1997bb0` |
+| root gate coverage | automation, shared contracts, structure, frontend static and production build, standalone repair/assertion, controller, and agent-runtime all passed |
+| frontend lint | zero errors; the one pre-existing `ComposerProjectDrawer` complexity warning remains |
+| source diff and comment scan | `git diff --check a5813610f..81258fd39` clean; all six touched production paths contain no source comments |
+| test scope | no automated test file was added, restored, modified, or run |
+
+After the passing gates, only lane-generated dependency copies and build outputs were removed: the five `node_modules` trees, `frontend/.next`, agent-runtime and desktop `dist`, `frontend/next-env.d.ts`, and `frontend/tsconfig.tsbuildinfo`. No tracked source, user profile, or persistent evidence was removed. The retained evidence directory is 28 KiB, the worktree has no generated residue from that list, and free disk was 64 GiB after cleanup.
 
 ## 10. Remaining proof (P)
 
-- This branch is not pushed and has no CI result. The Opus-5 r1 **REVISE** findings are remediated and await exact-head re-review before integration into the canonical PR branch.
+- This branch is not pushed and has no CI result. The Opus-5 r1 findings and final validator medium are remediated, but exact-head re-review remains a separate gate before integration.
 - The final combined head still needs semantic composition with accepted portions of #373 and #375; their raw patches do not apply cleanly.
-- No installed Local Studio Dev build, live controller/browser recording, Windows browser, or Linux browser was exercised from this commit. The real-browser proof is isolated macOS arm64 worktree evidence only.
-- Installed-app provenance, combined CI, and final release acceptance remain separate gates. Revert `f6db2015c`, `a7ee5fa17`, then `cbd8c7acd` to roll back the production behavior; evidence commits can be reverted independently.
+- No installed Local Studio Dev build, live controller/browser recording, Windows browser, or Linux browser was exercised from this commit. The historical real-browser proof is isolated macOS arm64 worktree evidence only.
+- Installed-app provenance, combined CI, and final release acceptance remain separate gates. Revert `81258fd39`, `d3bb89f22`, `f6db2015c`, `a7ee5fa17`, then `cbd8c7acd` to roll back the production behavior; evidence commits can be reverted independently.
