@@ -108,6 +108,16 @@ export const ENGINE_ARG_SPECS = [
   },
 ] as const satisfies readonly EngineArgSpec[];
 
+type EngineArgValue<Type extends EngineArgType> = Type extends "number"
+  ? number
+  : Type extends "boolean"
+    ? boolean
+    : string;
+
+export type EngineArgValues = {
+  [Spec in (typeof ENGINE_ARG_SPECS)[number] as Spec["field"]]?: EngineArgValue<Spec["type"]>;
+};
+
 const VLLM_ONLY_FLAG_KEYS: readonly string[] = ENGINE_ARG_SPECS.filter(
   (spec) => spec.scope === "vllm",
 ).map((spec) => engineArgKey(spec.field));
