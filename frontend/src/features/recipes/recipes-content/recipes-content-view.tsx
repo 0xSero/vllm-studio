@@ -44,11 +44,14 @@ export function RecipesContentView({ embedded = false }: { embedded?: boolean })
   const selectTab = useCallback(
     (tab: RecipesContentTab) => {
       setTab(tab);
-      if (!embedded) return;
+      if (!embedded) {
+        window.history.replaceState(window.history.state, "", `/models?tab=${tab}`);
+        return;
+      }
       const url = new URL(window.location.href);
       url.searchParams.set("tab", tab);
       url.hash = "models";
-      window.history.replaceState(null, "", url);
+      window.history.replaceState(window.history.state, "", url);
     },
     [embedded, setTab],
   );
