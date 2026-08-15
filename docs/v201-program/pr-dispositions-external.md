@@ -1,6 +1,6 @@
 # v2.0.1 External-Contributor PR Dispositions — Frozen Audit Ledger
 
-GLM-5.3 read-only audit lane, 2026-08-15 UTC. Revised same day after Claude Opus-5 REVISE, r2 REVISE, and the r3 table-rendering review (corrections: #380 scope, #271 head SHA, #371/#395 test census, #395 doc/test line figures, validation section, audit-time head qualifier, #362 table-cell rendering). Scope: the 23 frozen fork-external PRs — #269, #271, #361–#380 inclusive, #395. Candidate track: **PR #408** (`feat/v201-consolidation` → `dev`, draft); `c0036a57d7e8c4d816d990bd0f9b1fc3a1f5fcbf` is its **audit-time integration head** and this branch's audit base (350 files, +10,713/−16,562 vs `dev` at audit time), not the live PR head — the live head has since advanced docs-only (`a5813610f…` at this revision), which leaves every code-equivalence row below valid. All 23 PRs were re-verified live (state, head SHA, base, metadata) and diffed head-vs-merge-base; equivalence claims cite code in the #408 tree, never titles.
+GLM-5.3 read-only audit lane, 2026-08-15 UTC. Revised same day after Claude Opus-5 REVISE, r2 REVISE, and the r3 table-rendering review (corrections: #380 scope, #271 head SHA, #371/#395 test census, #395 doc/test line figures, validation section, audit-time head qualifier, #362 table-cell rendering). Scope: the 23 frozen fork-external PRs — #269, #271, #361–#380 inclusive, #395. Candidate track: **PR #408** (`feat/v201-consolidation` → `dev`, draft); `c0036a57d7e8c4d816d990bd0f9b1fc3a1f5fcbf` is its **audit-time integration head** and this branch's audit base (350 files, +10,713/−16,562 vs `dev` at audit time), not the live PR head. The live remote head is now `b7b73e9aba0f7a0e8284bf8433c2e6ca343324ae`; §7 records the later accepted adaptations and supersedes the original cells for every named row. All 23 PRs were re-verified live (state, head SHA, base, metadata) and diffed head-vs-merge-base; equivalence claims cite code in the #408 tree, never titles.
 
 **Coverage: 23/23 audited.** Every row below was derived from the PR's actual diff and a current-tree grep/read of the touched behavior.
 
@@ -99,4 +99,50 @@ All commands run in this worktree on the exact content committed; no claim below
 
 ## §6 Provenance and harvest handling
 
-Authors: Dixith-dev (#269, #271), fettpl (#361–#379), MarioMartinezII (#380), JoaoZaokk (#395). All 23 are fork-external, all OPEN, none merged. Any harvest of these rows is future work executed under repository rules: branch from `dev`, one agent one branch, PR into `dev`, conventional commits, `npm run check` green, never bypass hooks; ports are conforming cherry-picks/re-implementations that preserve external authorship (original-author attribution / `Co-authored-by` per repo convention), exclude every added test file listed above, and leave GitHub PR state untouched until acceptance evidence exists and closure is explicitly authorized. Raw audit artifacts (metadata JSON, file lists, diffs) live outside the repo in `/tmp/praudit/`.
+Authors: Dixith-dev (#269, #271), fettpl (#361–#379), MarioMartinezII (#380), JoaoZaokk (#395). All 23 are fork-external, all OPEN, none merged. At the frozen audit point every harvest was future work; §7 now records the accepted adaptations. Any further harvest follows repository rules: branch from `dev`, one agent one branch, PR into `dev`, conventional commits, `npm run check` green, never bypass hooks; ports are conforming cherry-picks/re-implementations that preserve external authorship (original-author attribution / `Co-authored-by` per repo convention), exclude every added test file listed above, and leave GitHub PR state untouched until acceptance evidence exists and closure is explicitly authorized. Raw audit artifacts (metadata JSON, file lists, diffs) live outside the repo in `/tmp/praudit/`.
+
+## §7 Security and reliability adjudication checkpoint — 2026-08-15
+
+This append-only checkpoint supersedes the original disposition and queue cells only for the rows named below. The frozen census remains historical evidence. Live metadata was refreshed against GitHub on 2026-08-15; no contributor PR was closed, edited, reviewed, or otherwise mutated.
+
+### Accepted selective adaptations
+
+| Source PR | Accepted boundary | Canonical evidence | Residual boundary |
+|---:|---|---|---|
+| 361 | Strict recipe booleans, production serializer only | product `675b79f58`; final integration ledger `fa5fe8f95` | Installed UI and legacy malformed-row presentation remain acceptance work. |
+| 363 | Keyless Host/Origin authority plus strict authority syntax | product `d07b5b3e9` + `4988cffaf`; evidence through `b7b73e9ab` | Installed and release proof remain open. |
+| 366 | Fail-closed production frontend access with desktop loopback posture | product `5ffaf8c49`; evidence `edd106d2c` | Shared-secret cookie, login-specific rate limiting, and installed acceptance remain explicit gaps. |
+| 367 + 373 | DNS-pinned browser transport plus composed operation lifecycle, cancellation, recovery, and terminal-dot policy | canonical browser composition through product `1009d435d`; evidence `3f173e3f8` | Session isolation, installed visible-panel proof, Windows/Linux, and combined release proof remain open. |
+| 374 | Bounded MCP stdio framing, detachable pending rejectors, sticky terminal state, and one shared idempotent shutdown | reviewed candidate product `f03488fdb`; canonical product `d4a30dd69`; evidence `7266933d0` | This adds 251 frozen product lines. Child environment, artifact identity, sandboxing, and installed/plugin proof remain open. |
+| 378 | Controller logger and five patched console methods only, with linear fail-closed value scanning and equal console/file/event rendering | reviewed candidate product `cf46b92a4`; canonical product `6eb126b5d`; evidence `4dcd2b447` | Raw service/child stdout and stderr, direct process/file writes, desktop output, existing logs at rest, and launcher/installer hardening are not covered. |
+| 370 | Only removal of the unproved pre-launch `docker rm -f` | canonical `68559e4d8`, externally attributed | The seven-file ownership protocol remains held; same-name foreign containers now fail launch rather than being destroyed. |
+
+The #374 and #378 raw PR heads are not accepted substitutes for the reviewed adaptations. #374 required the lifecycle repair beyond raw head `79976b995`; #378 required the descendant through `cf46b92a4`, and the evidence ledger explicitly rejects its intermediate candidates.
+
+### Current HOLD and rework dispositions
+
+| PR | Live head | Disposition | Primary blockers |
+|---:|---|---|---|
+| 365 | `650d6a645` | HOLD raw and three-file production set | Pending metadata work can launch after shutdown; lexical reservations miss symlink/hardlink/volume aliases; locks are process-local and volume case semantics are inferred. |
+| 368 | `04c09dbb3` | HOLD raw store rewrite; conditional GO only for a re-derived authority-only precursor | Lock lease can admit simultaneous writers, migration is CWD/path based and resurrection-prone, persistence lacks no-follow/fsync/Windows ACL proof, and raw composition breaks the canonical session watcher. |
+| 369 | `757598a6d` | HOLD raw nonce-attempt port | Public stop remains name-only; cancellation is process-local; supervisor and placement-lock races release live ownership; store defects/interruption can orphan work; latest #370 semantics are not composed. |
+| 370 | `bd073c809` | HOLD raw seven-file ownership protocol | No legacy-record migration, unknown owners can become ready, PID-only child tracking can kill replacements, non-Linux process trees/restart recovery are unsafe, started-reference coverage and nonce-CAS cleanup are incomplete. |
+| 371 | `72221172d` | HOLD; no safe current execution subset | Caller-controlled mutation can self-grant tools, grants are not artifact-bound, discovery launches before approval with broad environment, mutable `npx` specs remain, and token-required frontend inventory is incomplete. |
+| 372 | `e3eb719a7` | HOLD raw and 17-file production set | One malformed plugin disables all connectors; unbounded global discovery/hash work precedes limits and serializes admissions; env filtering is a loader blocklist; same-UID snapshots/grants are mutable; traversal, collision, crash/orphan, and durable-private-store gaps remain. Raw composition also overwrites accepted #374 and restores removed TTS capability. |
+| 376 | `ac9264d1a` | HOLD private-file implementation | Windows fails closed, same-UID children can read plaintext, startup readers bypass the helper, rename/link/fsync/cross-process-lock/migration gaps remain, and args/query secrets stay exposed. |
+| 379 | `ceb594676` | HOLD whole artifact manager | It pins stale GitHub MCP v1.6.0 built with Go 1.25.0, has stale-config/orphan/promotion/TOCTOU defects, embeds obsolete partial #372, and does not resolve #371/#376 authority and secret boundaries. |
+
+PR #362 at live head `9debc4de8` is separately adjudicated **GO for a four-production-file, comment-free selective port** and **HOLD raw** because the raw PR includes a prohibited 245-line automated test. Its semantic `install | update` contract is the next small implementation slice; it is not yet part of this checkpoint.
+
+All live heads in the two tables were OPEN, non-draft, and MERGEABLE but BLOCKED at refresh time, with no submitted reviews or successful hosted check runs. PR #372 exposed one `action_required` suite and zero registered check runs. These metadata facts are not source acceptance.
+
+### Corrected sequencing
+
+1. Preserve accepted #374 framing as the MCP base and accepted #378 controller-sink boundary as a bounded slice.
+2. Land the four-file #362 semantic runtime-job port independently.
+3. Rebuild a cross-platform private-file primitive before connector grant or artifact work.
+4. Resolve #371 grant authority before a corrected #372 digest/identity/discovery/snapshot lifecycle; rebase #379 last and retain only unique artifact-manager behavior.
+5. Rebuild #370 ownership with versioned legacy reconciliation, tri-state inspection, exact process-tree containment, typed store Effects, durable CAS, and crash recovery; compose corrected #369 nonce admission afterward.
+6. Re-derive #368 authority first, then repair its migration/lock/private-file store atomically with the canonical session watcher.
+
+No row in this addendum authorizes PR closure. Closure still requires accepted integration, current CI, applicable installed/manual evidence, and a fresh unique-commit/state check.

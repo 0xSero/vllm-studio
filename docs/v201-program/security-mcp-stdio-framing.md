@@ -1,4 +1,4 @@
-# MCP stdio framing candidate
+# MCP stdio framing acceptance evidence
 
 ## Provenance and disposition
 
@@ -6,11 +6,12 @@
 - Initial product commit: `e1009cf2884e945f70769677fbbc0be6a85204ab`.
 - Formatted framing product commit: `9a569145448b0d7e53e079cf8a30d675cb130ec4`.
 - Lifecycle repair product commit: `f03488fdbff8327489a051208836d24f8d030f14`.
-- Source was adapted manually from the independently audited intent of PR #374. Neither the PR head nor its merge commit was merged or cherry-picked.
+- Canonical product mapping: reviewed `f03488fdb` → integration `d4a30dd69` → evidence `7266933d0`.
+- Source was adapted manually from the independently audited intent of PR #374 by external author `fettpl`. Neither the PR head nor its merge commit was merged or cherry-picked.
 - Scope is two product files: `services/agent-runtime/src/mcp-client.ts` and `services/agent-runtime/src/mcp-stdio-transport.ts`.
-- This is a review candidate, not an automatic integration decision. The exact repaired product commit passed the repository root gate; fresh independent review, CI, packaged-runtime verification, and installed-desktop acceptance remain pending.
+- Independent exact-product review returned GO and the accepted product is integrated into the consolidation track. Combined-branch CI, packaged-runtime verification, and installed-desktop acceptance remain pending.
 - No automated test or fixture files were added, restored, or run. Disposable probe programs and state files live outside the repository under `/Users/sero/projects/vllm-studio-v201-evidence/pr374-mcp-framing-20260815/`.
-- The stdio child still receives the current complete process environment. Narrowing that pre-existing boundary belongs to the later PR #372 composition slice.
+- The stdio child still receives the current complete process environment. Raw PR #372 remains held; narrowing this pre-existing boundary requires a corrected future composition that preserves this accepted lifecycle.
 
 ## Framing contract
 
@@ -96,7 +97,6 @@ Integration creates an explicit 251-line offset obligation against the 80,667 pr
 
 ## Remaining gates
 
-- Independent exact-commit P0-P2 review.
-- Candidate integration onto the then-current consolidation head followed by a fresh root check and CI.
+- Combined canonical root check and current-head CI after integration.
 - Packaged runtime byte provenance and installed desktop stdio/HTTP acceptance.
-- Separate composition with the PR #372 environment allowlist without weakening the full-environment behavior proven here.
+- A corrected future environment-allowlist composition derived from PR #372 without weakening the lifecycle behavior proven here; raw PR #372 remains held.
