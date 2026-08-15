@@ -12,7 +12,6 @@ Open items, watch items, and quarantines. Fable adjudicates; nothing here is act
 ## Watch items (non-blocking)
 
 - **dev carries the old `inkling-thinking-levels.test.ts` + its old tsconfig.** If dev modifies it before the final PR merge, the server-side merge surfaces a modify/delete conflict — resolved by deletion under the same law. Noted so nobody improvises later.
-- **`AGENTS.md` cites removed `docs/workflow.md`** (C3). Inline-flow default under the track is the resolution; restoring the doc contradicts #348's deliberate cleanup. Pending Codex override.
 - **LOC target ≤ 80,667** (25% of 107,556). GOAL-era head `359510ae6` measures **104,378** (791 files, frozen pipeline re-run 2026-08-15); PR #396 head `c452af5c` measures 93,506; remaining cut −23,711 — ledger at `wp0-evidence.md` §1. The shrink is harvest-plus-deletion-inventory work, not Phase 0.
 
 ## Quarantine
@@ -22,6 +21,7 @@ Open items, watch items, and quarantines. Fable adjudicates; nothing here is act
 
 ## Resolved this phase (recorded for traceability)
 
+- **`AGENTS.md` citing removed `docs/workflow.md`** (C3) — resolved 2026-08-14 under GOAL row 1.11: the GLM-5.3 workflow-authority lane restored a current, reviewed `docs/workflow.md` (verified against `origin/dev`/`origin/main`, the live `.github/workflows/*`, `release.config.cjs`, `scripts/project.mjs`, `package.json`, and `AGENTS.md`; stale test-gate, performance-campaign, and non-macOS surface material from the `0ece3be82` draft removed). This supersedes the inline-flow default recorded here earlier and deliberately re-adds the one root authority document without reopening #348's broader root-documentation cleanup. GitHub-side facts inside the restored doc are marked for live re-audit per `release-path.md`.
 - **Routes manifest** — G0G/R23: whole-tree static scan replaces R19's "six registrar files" phrasing; controller.md §5 not tracked at `eeeb3406`; optional runtime corroboration is DeepSeek/Phase-2 (not exercised).
 - **PR census** — G0H/G0H2/R25′: frozen 29-row snapshot census stands; the historical "30" is `unresolved-historical`/`unresolved-benign` (prose arithmetic; empty 18:26–19:03Z archaeology probe).
 
