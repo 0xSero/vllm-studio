@@ -1,39 +1,15 @@
-/**
- * Server-only support for attaching a Local Studio model to locally installed
- * coding-agent CLIs (pi, opencode, droid, hermes). Detection inspects well-known
- * config directories under a given home dir; attachment merges a provider /
- * model entry into each agent's own config file, preserving everything else
- * in the file and backing the file up before the first modification.
- */
-import path from "node:path";
 import { isRecord } from "@/lib/guards";
 import {
   backupExistingFile,
   existingFileMode,
-  pathExists,
   readJsonFile,
   readYamlFile,
   writeJsonAtomic,
   writeYamlAtomic,
   type JsonRecord,
 } from "./local-agent-config-file-io";
-import {
-  mergeDroidConfig,
-  mergeHermesConfig,
-  mergeOpencodeConfig,
-  mergePiConfig,
-  providerKeyForBaseUrl,
-} from "./local-agent-config-merge";
-import {
-  detectLocalAgents,
-  droidConfigPath,
-  hermesConfigPath,
-  ompSettingsPath,
-  opencodeCandidatePaths,
-  piConfigPath,
-  resolveOmpConfigPath,
-  resolveOpencodeConfigPath,
-} from "./local-agent-detection";
+import { providerKeyForBaseUrl } from "./local-agent-config-merge";
+import { detectLocalAgents, ompSettingsPath, resolveAgentSpec } from "./local-agent-registry";
 import type {
   AttachAction,
   AttachExtraUpdate,
@@ -47,67 +23,8 @@ export { LOCAL_AGENT_IDS, type LocalAgentId, type LocalAgentTarget } from "./loc
 export type { AttachAction, AttachModelInput, AttachResult, LocalAgentModel };
 export { detectLocalAgents };
 
-interface AgentAttachPlan {
-  configPath: string;
-  detected: boolean;
-  format: "json" | "yaml";
-  /** Object to start from when the config file does not exist yet. */
-  emptyConfig: () => JsonRecord;
-  merge: (config: JsonRecord, model: LocalAgentModel) => AttachAction;
-}
-
-async function planFor(
-  agent: LocalAgentId,
-  home: string,
-  model: LocalAgentModel,
-): Promise<AgentAttachPlan> {
-  if (agent === "pi") {
-    return {
-      configPath: piConfigPath(home),
-      detected: await pathExists(path.join(home, ".pi")),
-      format: "json",
-      emptyConfig: () => ({ providers: {} }),
-      merge: mergePiConfig,
-    };
-  }
-  if (agent === "opencode") {
-    const { xdg, dot } = opencodeCandidatePaths(home);
-    const detected = (await pathExists(path.dirname(xdg))) || (await pathExists(path.dirname(dot)));
-    return {
-      configPath: await resolveOpencodeConfigPath(home, model.baseUrl),
-      detected,
-      format: "json",
-      emptyConfig: () => ({ $schema: "https://opencode.ai/config.json" }),
-      merge: mergeOpencodeConfig,
-    };
-  }
-  if (agent === "hermes") {
-    return {
-      configPath: hermesConfigPath(home),
-      detected: await pathExists(path.join(home, ".hermes")),
-      format: "yaml",
-      emptyConfig: () => ({ custom_models: [] }),
-      merge: mergeHermesConfig,
-    };
-  }
-  if (agent === "omp") {
-    const configPath = await resolveOmpConfigPath(home);
-    return {
-      configPath,
-      detected: await pathExists(path.join(home, ".omp")),
-      format: configPath.endsWith(".json") ? "json" : "yaml",
-      emptyConfig: () => ({ providers: {} }),
-      merge: mergePiConfig,
-    };
-  }
-  return {
-    configPath: droidConfigPath(home),
-    detected: await pathExists(path.join(home, ".factory")),
-    format: "json",
-    emptyConfig: () => ({ customModels: [] }),
-    merge: mergeDroidConfig,
-  };
-}
+const planFor = (agent: LocalAgentId, home: string, model: LocalAgentModel) =>
+  resolveAgentSpec(agent, home, model);
 
 async function attachToAgent(
   agent: LocalAgentId,
