@@ -41,12 +41,6 @@ export const makeDatabaseCloser = (
     });
 };
 
-export const toNullableNumber = (value: unknown): number | null => {
-  if (value === null || value === undefined) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
 export const openSqliteDatabase = (dbPath: string): Database => {
   const db = new Database(dbPath);
   try {
