@@ -1,21 +1,7 @@
-// Local speech-to-text. Runs on the machine the app is running on, which is
-// where the microphone and (on a laptop) a perfectly good accelerator already
-// are — see local-transcribe.ts for why this is not a controller concern.
-
-import {
-  LocalTranscriptionError,
-  resolveTranscriptionEngine,
-  transcribeLocally,
-} from "../local-transcribe";
+import { LocalTranscriptionError, transcribeLocally } from "../local-transcribe";
 import { jsonError } from "./helpers";
 
-/** Roughly 10 minutes of Opus at the composer's bitrate. */
 const MAX_RECORDING_BYTES = 25 * 1024 * 1024;
-
-export async function handleTranscriptionEngine(): Promise<Response> {
-  const engine = await resolveTranscriptionEngine();
-  return Response.json({ available: engine !== null, engine });
-}
 
 export async function handleTranscribe(request: Request): Promise<Response> {
   let form: FormData;

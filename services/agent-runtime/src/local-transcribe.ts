@@ -7,25 +7,11 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 
-/**
- * Dictation runs on the machine the user is sitting at, not on the controller.
- *
- * The controller-side path this replaces needed a GPU box reachable over the
- * tailnet and a model configured there; in practice it was never configured, so
- * every press of the mic button recorded audio and then failed with a 400. A
- * laptop already has an accelerator and the models tend to be a few hundred MB,
- * so the work belongs here.
- *
- * Engines are probed in order and the first usable one wins, because which of
- * these a given machine has is not something we can know from inside the app.
- */
 type Engine = {
   readonly id: string;
   readonly bin: string;
-  /** Extra proof the engine can actually run — a model file, usually. */
   readonly ready?: () => boolean;
   readonly args: (wavPath: string) => readonly string[];
-  /** Pulls the transcript out of whatever the tool prints. */
   readonly parse: (stdout: string, wavPath: string) => Promise<string> | string;
 };
 
@@ -34,7 +20,6 @@ const WHISPER_MODEL_ENV = "LOCAL_STUDIO_WHISPER_MODEL";
 const MLX_WHISPER_MODEL = process.env.LOCAL_STUDIO_MLX_WHISPER_MODEL?.trim() ||
   "mlx-community/whisper-large-v3-turbo";
 
-/** whisper.cpp-family tools print timestamped lines; keep only the spoken text. */
 function stripTimestamps(stdout: string): string {
   return stdout
     .split("\n")
@@ -55,8 +40,6 @@ function envModel(variable: string): string | null {
 
 const ENGINES: readonly Engine[] = [
   {
-    // NVIDIA Parakeet via whisper.cpp's parakeet binary. Preferred when its
-    // model is present: it is the fastest of these on Apple silicon.
     id: "parakeet-cli",
     bin: "parakeet-cli",
     ready: () => envModel(PARAKEET_MODEL_ENV) !== null,
@@ -71,8 +54,6 @@ const ENGINES: readonly Engine[] = [
     parse: stripTimestamps,
   },
   {
-    // MLX Whisper downloads and caches its own weights, so it needs no model
-    // configuration — which makes it the dependable last resort.
     id: "mlx-whisper",
     bin: "mlx_whisper",
     args: (wav) => [
@@ -102,17 +83,6 @@ async function binaryOnPath(bin: string): Promise<boolean> {
   }
 }
 
-export type LocalTranscriptionEngine = { id: string; bin: string };
-
-/** The engine that would be used right now, or null when none is usable. */
-export async function resolveTranscriptionEngine(): Promise<LocalTranscriptionEngine | null> {
-  for (const engine of ENGINES) {
-    if (engine.ready && !engine.ready()) continue;
-    if (await binaryOnPath(engine.bin)) return { id: engine.id, bin: engine.bin };
-  }
-  return null;
-}
-
 export class LocalTranscriptionError extends Error {
   constructor(
     readonly status: number,
@@ -123,10 +93,6 @@ export class LocalTranscriptionError extends Error {
   }
 }
 
-/**
- * Browsers hand us webm/opus or mp4, and none of these engines read either, so
- * everything goes through ffmpeg to 16kHz mono PCM first.
- */
 async function toWav(input: string, output: string): Promise<void> {
   try {
     await run("ffmpeg", ["-nostdin", "-y", "-i", input, "-ar", "16000", "-ac", "1", output], {
@@ -184,7 +150,6 @@ async function pickEngine(): Promise<Engine> {
   );
 }
 
-/** Keeps the extension (ffmpeg sniffs it) and nothing else from the client. */
 function sanitizedName(filename: string): string {
   const extension = path.extname(filename).toLowerCase().replace(/[^.a-z0-9]/g, "");
   return `recording${extension || ".webm"}`;

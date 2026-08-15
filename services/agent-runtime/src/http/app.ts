@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createLitterBridgeGateway } from "../litter-bridge-gateway";
-import { handleTranscribe, handleTranscriptionEngine } from "./transcribe-handlers";
+import { handleTranscribe } from "./transcribe-handlers";
 import {
   handleAgentAbort,
   handleAgentCompact,
@@ -74,7 +74,6 @@ export function createAgentRuntimeApp() {
   app.get("/api/agent/runtime/events", (c) => handleRuntimeEvents(c.req.raw));
   app.get("/api/agent/session-list-changed", (c) => handleSessionListChanged(c.req.raw));
   app.post("/api/agent/transcribe", (c) => handleTranscribe(c.req.raw));
-  app.get("/api/agent/transcribe/engine", () => handleTranscriptionEngine());
   app.get("/api/agent/setup-checks", () => handleSetupChecks());
   app.get("/api/agent/models", () => handleAgentModels());
   app.post("/api/agent/models", (c) => handleAgentModels(c.req.raw));
