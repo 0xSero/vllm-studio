@@ -9,8 +9,16 @@ const TEXT_CAP_BYTES = 500 * 1024;
 const HTML_CAP_BYTES = 1024 * 1024;
 const NAVIGATION_TIMEOUT_MS = 8_000;
 
-const normalizeUrl = (value: string): string =>
-  /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}`;
+const normalizeUrl = (value: string): string => {
+  const raw = /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}`;
+  try {
+    const url = new URL(raw);
+    url.hostname = url.hostname.replace(/\.+$/u, "");
+    return url.toString();
+  } catch {
+    return raw;
+  }
+};
 
 const capString = (value: string, maximum: number): string =>
   value.length > maximum ? value.slice(0, maximum) : value;
@@ -28,10 +36,11 @@ class BrowserHost {
     pageId?: string,
     mode: BrowserNetworkMode = this.activeMode ?? "public",
   ): Promise<HostedPage> {
-    if (this.activeMode !== mode) {
+    const changingMode = this.activeMode !== mode;
+    if (changingMode) {
+      for (const page of this.pages.values()) page.close();
       this.pages.clear();
       this.activeId = null;
-      this.activeMode = mode;
     }
     const targetId = pageId ?? this.activeId;
     const cached = targetId ? this.pages.get(targetId) : undefined;
@@ -42,6 +51,7 @@ class BrowserHost {
     if (cached) this.pages.delete(cached.id);
 
     const context = await playwrightManager.ensure(mode);
+    if (changingMode) this.activeMode = mode;
     const rawPage =
       context
         .pages()

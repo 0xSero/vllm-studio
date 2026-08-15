@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Effect, Semaphore } from "effect";
-import { chromium, type BrowserContext } from "playwright-core";
+import { chromium, type Browser, type BrowserContext } from "playwright-core";
 import { getGlobalSingleton } from "../instances";
 import {
   browserNetworkPolicy,
@@ -80,6 +80,7 @@ export const findBrowserBinary = (): string | null => {
 
 export class PlaywrightManager {
   private context: BrowserContext | null = null;
+  private pendingContext: BrowserContext | null = null;
   private mode: BrowserNetworkMode | null = null;
   private proxies: Record<BrowserNetworkMode, BrowserProxy> | null = null;
   private pendingProxy: BrowserProxy | null = null;
@@ -107,13 +108,14 @@ export class PlaywrightManager {
     if (this.stopped) throw new Error("Browser manager stopped");
     if (this.context && this.mode === mode) return this.context;
     if (this.context) {
+      const context = this.context;
       try {
-        await this.context.close();
+        await context.close();
       } catch (error) {
-        this.failure = error;
-        throw error;
+        return this.abort(error);
       }
-      this.context = null;
+      if (this.context === context) this.context = null;
+      this.mode = null;
     }
     const executablePath = this.resolveBinary();
     if (!executablePath) {
@@ -140,12 +142,21 @@ export class PlaywrightManager {
       });
     const dataDirectory = browserDataDirectory(mode);
     let context: BrowserContext;
+    let closed = false;
     try {
       context = await launch(dataDirectory).catch((error: unknown) => {
         if (!String(error).includes("ProcessSingleton")) throw error;
         return launch(`${dataDirectory}-${process.pid}`);
       });
-      this.context = context;
+      this.pendingContext = context;
+      context.once("close", () => {
+        closed = true;
+        if (this.pendingContext === context) this.pendingContext = null;
+        if (this.context === context) {
+          this.context = null;
+          this.mode = null;
+        }
+      });
       await context.route(/^https?:\/\//u, async (route) => {
         try {
           await this.networkPolicy.resolve(route.request().url(), mode);
@@ -162,22 +173,27 @@ export class PlaywrightManager {
           await route.close({ code: 1008, reason: "Browser network policy blocked destination" });
         }
       });
+      if (closed) throw new Error("Browser context closed during initialization");
     } catch (error) {
       return this.abort(error);
     }
+    this.pendingContext = null;
     this.context = context;
     this.mode = mode;
-    context.once("close", () => {
-      if (this.context === context) this.context = null;
-    });
     return context;
   }
 
   stop(): Promise<void> {
     return this.serial(async () => {
       this.stopped = true;
-      await Promise.all(this.resources().map((resource) => resource.close()));
-      this.context = this.proxies = this.pendingProxy = null;
+      const results = await this.cleanup();
+      const failed = results.filter((result) => result.status === "rejected");
+      if (failed.length) {
+        throw new AggregateError(
+          failed.map((result) => result.reason),
+          "Browser resources failed to close",
+        );
+      }
     });
   }
 
@@ -193,25 +209,83 @@ export class PlaywrightManager {
     }
   }
 
-  private resources(): Array<BrowserProxy | BrowserContext> {
-    return [this.context, this.pendingProxy, this.proxies?.public, this.proxies?.loopback].filter(
-      (resource): resource is BrowserProxy | BrowserContext => resource != null,
+  private contexts(): BrowserContext[] {
+    return Array.from(
+      new Set(
+        [this.context, this.pendingContext].filter(
+          (value): value is BrowserContext => value != null,
+        ),
+      ),
     );
+  }
+
+  private proxyResources(): BrowserProxy[] {
+    return Array.from(
+      new Set(
+        [this.pendingProxy, this.proxies?.public, this.proxies?.loopback].filter(
+          (value): value is BrowserProxy => value != null,
+        ),
+      ),
+    );
+  }
+
+  private closeContext(context: BrowserContext): Promise<void> {
+    return context.close().catch(async (contextError: unknown) => {
+      let browser: Browser | null = null;
+      try {
+        browser = context.browser();
+      } catch {}
+      if (!browser) throw contextError;
+      try {
+        await browser.close();
+      } catch (browserError) {
+        throw new AggregateError(
+          [contextError, browserError],
+          "Browser context and process failed to close",
+        );
+      }
+    });
+  }
+
+  private cleanup(): Promise<PromiseSettledResult<void>[]> {
+    const contexts = this.contexts();
+    const proxies = this.proxyResources();
+    this.context = null;
+    this.pendingContext = null;
+    this.mode = null;
+    this.proxies = null;
+    this.pendingProxy = null;
+    return Promise.allSettled([
+      ...contexts.map((context) => this.closeContext(context)),
+      ...proxies.map((proxy) => proxy.close()),
+    ]);
   }
 
   private async abort(error: unknown): Promise<never> {
-    const results = await Promise.allSettled(
-      this.resources().map((resource) => Promise.resolve().then(() => resource.close())),
-    );
-    const failed = results.find((result) => result.status === "rejected");
-    this.failure = failed?.status === "rejected" ? failed.reason : error;
+    const results = await this.cleanup();
+    const failed = results.filter((result) => result.status === "rejected");
+    this.failure = failed.length
+      ? new AggregateError(
+          [error, ...failed.map((result) => result.reason)],
+          "Browser setup failed and resources failed to close",
+        )
+      : error;
     throw this.failure;
   }
 
-  private serial<A>(task: () => Promise<A>): Promise<A> {
-    return Effect.runPromise(
-      this.lock.withPermit(Effect.tryPromise({ try: task, catch: (error) => error })),
+  private async serial<A>(task: () => Promise<A>): Promise<A> {
+    const outcome = await Effect.runPromise(
+      this.lock.withPermit(
+        Effect.promise(() =>
+          task().then(
+            (value) => ({ success: true as const, value }),
+            (error: unknown) => ({ success: false as const, error }),
+          ),
+        ),
+      ),
     );
+    if (!outcome.success) throw outcome.error;
+    return outcome.value;
   }
 }
 
