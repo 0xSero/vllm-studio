@@ -257,7 +257,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
           catch: (error) => error,
         });
 
-        const sessionOptions = buildAgentSessionOptionsSync({ options });
+        const sessionOptions = buildAgentSessionOptionsSync({ options, cwd: resolvedCwd });
         applyRuntimeEnvInjections(sessionOptions.envInjections);
         // Expose the current session's model so the automations extension can
         // default a scheduled run to the same model the user is talking to.

@@ -32,6 +32,8 @@ export type RuntimeStartOptions = {
 
 export type AgentSessionOptionsInput = {
   options: RuntimeStartOptions;
+  /** Resolved session cwd, exported to extensions as LOCAL_STUDIO_CWD. */
+  cwd?: string;
   processEnv?: NodeJS.ProcessEnv;
 };
 
@@ -273,11 +275,16 @@ function runtimeSkillPaths(options: RuntimeStartOptions): string[] {
 function runtimeEnvInjections(
   options: RuntimeStartOptions,
   env: NodeJS.ProcessEnv,
+  cwd: string,
 ): Record<string, string> {
   const frontendBase = env.LOCAL_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(env);
   const relay = readSitegeistRelayEnv(env);
   return {
     LOCAL_STUDIO_BROWSER_SESSION_ID: options.browserSessionId ?? "",
+    // The project this session runs in. Extensions that spawn later work (the
+    // automations extension) would otherwise store an empty cwd and get the
+    // first registered project when the scheduler resolves the default.
+    LOCAL_STUDIO_CWD: cwd,
     LOCAL_STUDIO_FRONTEND_BASE: frontendBase,
     SITEGEIST_RELAY_URL: env.SITEGEIST_RELAY_URL ?? relay.SITEGEIST_RELAY_URL ?? "",
     SITEGEIST_RELAY_TOKEN: env.SITEGEIST_RELAY_TOKEN ?? relay.SITEGEIST_RELAY_TOKEN ?? "",
@@ -326,6 +333,6 @@ export function buildAgentSessionOptionsSync(input: AgentSessionOptionsInput): A
     extensionPaths: runtimeExtensionPaths(options),
     skills: runtimeSkillPaths(options),
     promptTemplatePaths: selectedPromptTemplatePaths(options.promptTemplates ?? []),
-    envInjections: runtimeEnvInjections(options, input.processEnv ?? process.env),
+    envInjections: runtimeEnvInjections(options, input.processEnv ?? process.env, input.cwd ?? ""),
   };
 }

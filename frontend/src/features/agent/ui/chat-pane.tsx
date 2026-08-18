@@ -15,6 +15,7 @@ import { AgentChatPaneHeader } from "@/features/agent/ui/agent-chat-pane-header"
 import { AgentComposerFrame } from "@/features/agent/ui/agent-composer-frame";
 import { type FileMentionRow, type MentionRow } from "@/features/agent/ui/agent-composer-context";
 import { builtinCommandProvider } from "@/features/agent/composer/builtin-commands";
+import { AutomationDrawer } from "@/features/agent/ui/automation-drawer";
 import { ComposerProjectDrawer } from "@/features/agent/ui/composer-project-drawer";
 import { SubagentChips } from "@/features/agent/ui/subagent-chips";
 import { GitDiffDrawer } from "@/features/agent/ui/git-diff-drawer";
@@ -490,6 +491,15 @@ export function ChatPane({
     [activeTab, tools],
   );
   const [goalModeOn, setGoalModeOn] = useState(false);
+  const [automationDrawerOpen, setAutomationDrawerOpen] = useState(false);
+  // Seed the automation with the last thing the user asked for: the common case
+  // is "keep doing what I just asked, on a schedule".
+  const lastUserPrompt = useMemo(
+    () =>
+      [...(activeTab?.messages ?? [])].reverse().find((message) => message.role === "user")?.text ??
+      "",
+    [activeTab?.messages],
+  );
   const handleProjectPicked = useCallback(
     (project: Project) => {
       if (!activeTab || activeTab.messages.length > 0) return;
@@ -514,6 +524,7 @@ export function ChatPane({
           ...(canExport ? { exportSession } : {}),
           goal: goalAction,
           enterGoalMode: () => setGoalModeOn(true),
+          openAutomation: () => setAutomationDrawerOpen(true),
         }),
         promptTemplateCommandProvider({
           templates: tools.promptTemplateCatalogue,
@@ -691,6 +702,14 @@ export function ChatPane({
           gitSummary,
           onClose: closeDiffDrawer,
         })}
+        {automationDrawerOpen ? (
+          <AutomationDrawer
+            modelId={modelId}
+            cwd={cwd}
+            prompt={lastUserPrompt}
+            onClose={() => setAutomationDrawerOpen(false)}
+          />
+        ) : null}
         {subagentChipsFor(activePiSessionId)}
         <AgentComposerFrame
           attachments={attachments}
