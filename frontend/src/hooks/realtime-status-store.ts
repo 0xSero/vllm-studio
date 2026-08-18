@@ -232,10 +232,15 @@ function runtimeSummaryFromCompatibility(
   compatibility: PolledCompatibility | null,
 ): RuntimeSummaryData | null {
   if (current || !compatibility) return current;
-  const kind = compatibility.platform.kind;
+  // A controller can answer /compat with a degraded payload — an older build
+  // returns a bare `{}` — and reading through it threw inside the poll promise,
+  // which killed the polling chain and froze the whole status surface. Without
+  // a platform there is no summary worth synthesizing, so keep what we had.
+  const kind = compatibility.platform?.kind;
+  if (!kind) return current;
   return {
     platform: { kind, vendor: fallbackRuntimeVendor(kind) },
-    gpu_monitoring: compatibility.gpu_monitoring,
+    gpu_monitoring: compatibility.gpu_monitoring ?? { available: false, tool: null },
     backends: normalizeRuntimeBackends(compatibility.backends),
   };
 }
