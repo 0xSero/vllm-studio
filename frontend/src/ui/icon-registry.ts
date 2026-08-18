@@ -28,6 +28,15 @@ export {
   PinOffIcon,
   Folder,
   FolderOpen,
+  StatusIcon,
+  ModelsIcon,
+  AutomationsIcon,
+  ConfigureIcon,
+  UsageIcon,
+  NewTaskIcon,
+  SettingsIcon,
+  SearchIcon,
+  BellIcon,
 } from "./icons";
 
 // Sidebar toggles — see panel-toggle-icons.tsx for why these are not lucide's.
@@ -49,6 +58,7 @@ export {
   ArrowUp,
   ArrowUpCircle,
   AtSign,
+  Bell,
   Boxes,
   Braces,
   Brain,
@@ -106,7 +116,6 @@ export {
   MessageCircle,
   MessageSquare,
   MessageSquarePlus,
-  Mic,
   Microchip,
   Minus,
   Monitor,

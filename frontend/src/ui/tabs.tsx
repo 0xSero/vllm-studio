@@ -32,14 +32,17 @@ function Tabs<T extends string = string>({
           <button
             key={tab.id}
             onClick={() => onSelectTab(tab.id)}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+            // inline-flex, not inline: the icons render as block-level SVGs, so
+            // an `inline` wrapper dropped them onto their own line above the
+            // label instead of sitting beside it.
+            className={`inline-flex items-center gap-2 whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
               activeTab === tab.id
                 ? "border-(--ui-accent) text-(--ui-fg)"
                 : "border-transparent text-(--ui-muted) hover:text-(--ui-fg)"
             }`}
           >
-            {tab.icon && <span className="inline mr-2">{tab.icon}</span>}
-            {tab.label}
+            {tab.icon ? <span className="flex shrink-0 items-center">{tab.icon}</span> : null}
+            <span>{tab.label}</span>
           </button>
         ))}
       </div>
