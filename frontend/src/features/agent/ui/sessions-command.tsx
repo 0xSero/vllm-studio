@@ -9,6 +9,7 @@ import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 import { type ActiveSession, indexOpenByThreadId } from "@/features/agent/session-contracts";
+import { formatRelative } from "@/features/agent/ui/session-recency";
 import type { AggregatedSession } from "@shared/agent/session-summary";
 
 type Props = {
@@ -58,24 +59,25 @@ const APP_DESTINATIONS: AppDestination[] = [
   },
 ];
 
-function formatRelative(iso: string): string {
-  const ts = new Date(iso).getTime();
-  if (!Number.isFinite(ts)) return "";
-  const delta = Date.now() - ts;
-  const minute = 60_000;
-  const hour = 3_600_000;
-  const day = 86_400_000;
-  if (delta < minute) return "just now";
-  if (delta < hour) return `${Math.floor(delta / minute)}m`;
-  if (delta < day) return `${Math.floor(delta / hour)}h`;
-  return `${Math.floor(delta / day)}d`;
-}
-
 function isRunning(status: string): boolean {
   return Boolean(status) && status !== "idle" && status !== "done";
 }
 
+/** ⌘K opens the centered search palette. */
 export function SessionsCommand({ open, onClose, activeSessions }: Props) {
+  if (!open) return null;
+  return <SearchPalette open onClose={onClose} activeSessions={activeSessions} />;
+}
+
+function SearchPalette({
+  open,
+  onClose,
+  activeSessions,
+}: {
+  open: boolean;
+  onClose: () => void;
+  activeSessions: readonly ActiveSession[];
+}) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [sessions, setSessions] = useState<AggregatedSession[] | null>(null);

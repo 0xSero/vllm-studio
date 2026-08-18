@@ -55,6 +55,7 @@ type PiMessageContent = string | Array<{ type?: string; text?: string }>;
 type UserTurn = {
   isUser: boolean;
   text: string | null;
+  at: string | null;
 };
 
 function summaryStartTime(session: Pick<SessionSummary, "startedAt" | "updatedAt">): number {
@@ -126,28 +127,39 @@ function piTextContent(content: PiMessageContent | undefined): string | null {
   return text || null;
 }
 
+function userEventTimestamp(event: Record<string, unknown>): string | null {
+  if (typeof event.timestamp === "string" && event.timestamp) return event.timestamp;
+  const message = event.message as { timestamp?: unknown } | undefined;
+  return message && typeof message.timestamp === "string" && message.timestamp
+    ? message.timestamp
+    : null;
+}
+
 function userTurnFromEvent(event: Record<string, unknown>): UserTurn {
   if (event.type === "user_message") {
-    return { isUser: true, text: piTextContent(event.content as PiMessageContent | undefined) };
+    return {
+      isUser: true,
+      text: piTextContent(event.content as PiMessageContent | undefined),
+      at: userEventTimestamp(event),
+    };
   }
   if (event.type !== "message" && event.type !== "message_end") {
-    return { isUser: false, text: null };
+    return { isUser: false, text: null, at: null };
   }
   const message = event.message as { role?: string; content?: PiMessageContent } | undefined;
-  if (message?.role !== "user") return { isUser: false, text: null };
-  return { isUser: true, text: piTextContent(message.content) };
+  if (message?.role !== "user") return { isUser: false, text: null, at: null };
+  return { isUser: true, text: piTextContent(message.content), at: userEventTimestamp(event) };
 }
 
 const SUMMARY_SCAN_LINE_CAP = 2000;
 
 // Summary scans are the sidebar's hot path: every refresh re-lists every
-// session file for every project. The scanned fields (header + first user
-// message) are immutable once both are found — only `updatedAt` tracks the
-// file — so cache the scan result per filepath and re-read a file only when
-// the scan was incomplete and the file has since changed.
+// session file for every project, so cache the scan result per filepath and
+// re-read only when the file changed. The header and first user message are
+// immutable once found, but the last user prompt moves with every turn, so
+// mtime — not scan completeness — is what keeps an entry valid.
 type SummaryCacheEntry = {
   mtimeMs: number;
-  complete: boolean;
   core: Omit<
     SessionSummary,
     "updatedAt" | "archived" | "archivedAt" | "parentSessionId" | "subagentName"
@@ -178,13 +190,27 @@ function rememberSummary(filepath: string, entry: SummaryCacheEntry): void {
   }
 }
 
+// The recents list labels rows by the newest user prompt, which lives at the
+// end of the transcript — read backward from the tail rather than rescanning
+// the whole file.
+async function readLastUserTurn(filepath: string): Promise<{ text: string; at: string } | null> {
+  const transcript = await transcriptSource(filepath);
+  if (!transcript.size) return null;
+  const { events } = readTailRegion(transcript.filepath, transcript.size, 1, undefined);
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const turn = userTurnFromEvent(events[index]);
+    if (turn.isUser && turn.text && turn.at) return { text: turn.text, at: turn.at };
+  }
+  return null;
+}
+
 async function readSessionSummary(
   filepath: string,
   filename: string,
 ): Promise<SessionSummary | null> {
   const stats = statSync(filepath);
   const cached = summaryCache.get(filepath);
-  if (cached && (cached.complete || cached.mtimeMs === stats.mtimeMs)) {
+  if (cached && cached.mtimeMs === stats.mtimeMs) {
     return summaryFromCore(cached.core, stats.mtime);
   }
   let header: Record<string, unknown> | null = null;
@@ -218,6 +244,16 @@ async function readSessionSummary(
     stream.destroy();
   }
 
+  let lastUserPromptText: string | undefined;
+  let lastUserPromptAt: string | undefined;
+  if (header && firstUserMessage) {
+    const lastTurn = await readLastUserTurn(filepath);
+    if (lastTurn) {
+      lastUserPromptText = lastTurn.text;
+      lastUserPromptAt = lastTurn.at;
+    }
+  }
+
   const core = header
     ? {
         id: typeof header.id === "string" ? header.id : "",
@@ -228,13 +264,11 @@ async function readSessionSummary(
         modelId: typeof header.modelId === "string" ? header.modelId : null,
         provider: typeof header.provider === "string" ? header.provider : null,
         firstUserMessage,
+        ...(lastUserPromptText !== undefined ? { lastUserPromptText } : {}),
+        ...(lastUserPromptAt !== undefined ? { lastUserPromptAt } : {}),
       }
     : null;
-  rememberSummary(filepath, {
-    mtimeMs: stats.mtimeMs,
-    complete: Boolean(header && firstUserMessage),
-    core,
-  });
+  rememberSummary(filepath, { mtimeMs: stats.mtimeMs, core });
   return summaryFromCore(core, stats.mtime);
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Download, RefreshCw, Settings, Smartphone } from "@/ui/icon-registry";
+import { Download, RefreshCw, SettingsIcon, Smartphone } from "@/ui/icon-registry";
 import { Spinner } from "@/ui";
 import { ProfileAvatar, useLocalProfile } from "@/features/shell/local-profile";
 import { useAppUpdate } from "@/features/shell/use-app-update";
@@ -73,7 +73,7 @@ export function ProfileFooter({ settingsActive }: { settingsActive: boolean }) {
             : "text-(--fg)/60 hover:bg-(--hover) hover:text-(--fg)"
         }`}
       >
-        <Settings className="h-3.5 w-3.5" strokeWidth={1.75} />
+        <SettingsIcon className="h-3.5 w-3.5" />
       </Link>
     </div>
   );

@@ -13,15 +13,23 @@ import { sessionActivity } from "@/features/agent/session-index";
 import { useProjects } from "@/features/agent/projects/context";
 import { addProjectFromPath, openProjectDirectory } from "@/features/agent/projects/api";
 import { isChatsProject, type Project as ProjectEntry } from "@/features/agent/projects/types";
+import type { NavView } from "@/features/shell/left-sidebar-lazy";
 import { ProjectDirectoryPickerModal } from "./projects-nav/directory-picker-modal";
 import { SidebarSectionHeader } from "./projects-nav/nav-chrome";
 import { useNavSectionOrder, type SectionId } from "./projects-nav/nav-sections";
 import { isProjectPinned, toggleProjectPin, usePinnedNav } from "./projects-nav/pinned";
 import { PinnedSection } from "./projects-nav/pinned-section";
+import { RecentSessionsSection } from "./projects-nav/recent-sessions-section";
 import { NewChatPlusButton, ProjectRow, ProjectSessions } from "./projects-nav/session-rows";
 import { TerminalRow } from "./projects-nav/terminal-rows";
 
-export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
+export function ProjectsNavSection({
+  expanded,
+  view,
+}: {
+  expanded: boolean;
+  view: NavView;
+}) {
   const projectsContext = useProjects();
   const projects = projectsContext.projects;
   const { moveProjectBefore, refresh: refreshProjects, upsertProject } = projectsContext;
@@ -106,6 +114,10 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   });
 
   if (!expanded) return null;
+
+  // The bell's view is the recents list on its own — pinned rows, the project
+  // tree, and terminals all belong to the projects view.
+  if (view === "notifications") return <RecentSessionsSection />;
 
   // Pinned projects render under Pinned instead, so they are not listed twice.
   const unpinnedProjects = projects.filter(

@@ -602,16 +602,18 @@
 }
 
 :root {
-  /* Density / dimensions */
-  --sidebar-w: 260px;
+  /* Density / dimensions — thread nav matches the Codex desktop app:
+     preferred width 275px (clamp 240px), 30px rows, 8px inline padding,
+     10px row radius, 1px row gap. */
+  --sidebar-w: 275px;
   --sidebar-w-collapsed: 48px;
   --sidebar-row-height: 30px;
   /* Rows sat at a 30px pitch against a 30px height, i.e. touching, with no gap
      anywhere in the sidebar. That reads as a wall of text rather than a list.
      Costs 2px per row and no change to the row itself. */
   --sidebar-row-gap: 1px;
-  --sidebar-row-radius: 8px;
-  --sidebar-padding-x: 7px;
+  --sidebar-row-radius: 10px;
+  --sidebar-padding-x: 8px;
   --row-h: 36px;
   --row-h-sm: 28px;
   --row-radius: var(--rad-md);

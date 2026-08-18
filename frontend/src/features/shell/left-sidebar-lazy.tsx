@@ -3,7 +3,12 @@
 import { type ComponentType } from "react";
 import type { ActiveSession } from "@/features/agent/session-contracts";
 
-export type ProjectsNavSectionComponent = ComponentType<{ expanded: boolean }>;
+export type NavView = "projects" | "notifications";
+
+export type ProjectsNavSectionComponent = ComponentType<{
+  expanded: boolean;
+  view: NavView;
+}>;
 
 export type SessionsCommandComponent = ComponentType<{
   open: boolean;

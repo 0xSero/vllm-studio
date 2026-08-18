@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings, SquarePen, X } from "@/ui/icon-registry";
+import { NewTaskIcon, SettingsIcon, X } from "@/ui/icon-registry";
 import type { ProjectsNavSectionComponent } from "@/features/shell/left-sidebar-lazy";
 import {
   NavItemMobile,
@@ -52,7 +52,7 @@ export function MobileNavigationDrawer({
           <NavItemMobile
             href="/agent?new=1&replace=1"
             label="New task"
-            Icon={SquarePen}
+            Icon={NewTaskIcon}
             active={false}
             onClick={(event) => {
               onClose();
@@ -74,14 +74,14 @@ export function MobileNavigationDrawer({
           <NavItemMobile
             href="/settings"
             label="Settings"
-            Icon={Settings}
+            Icon={SettingsIcon}
             active={isRouteActive(pathname, "/settings")}
             onClick={onClose}
           />
           <div className="h-4" />
           {projectsNavReady ? (
             ProjectsNavSection ? (
-              <ProjectsNavSection expanded />
+              <ProjectsNavSection expanded view="projects" />
             ) : (
               <ProjectsNavPlaceholder />
             )
