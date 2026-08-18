@@ -76,7 +76,7 @@ import {
   useChatPaneRuntimeHandle,
 } from "@/features/agent/ui/chat-pane-hooks";
 import { useChatPaneSessionTitle } from "@/features/agent/ui/chat-pane-session-title";
-import { canRunGoalCommand, useGoalCommand } from "@/features/agent/ui/use-goal-command";
+import { useGoalCommand } from "@/features/agent/ui/use-goal-command";
 import { useGoalMode } from "@/features/agent/ui/use-goal-mode";
 import { useChatPaneComposerActions } from "@/features/agent/ui/use-chat-pane-composer-actions";
 import { useComposerCommandHandlers } from "@/features/agent/ui/use-composer-command-handlers";
@@ -429,6 +429,18 @@ export function ChatPane({
     onSelectReasoning: selectThinkingLevel,
   });
 
+  const activePiSessionId = piSessionIdOf(activeTab);
+  const { goalRevision, goalAction, flushPendingGoal } = useGoalCommand(activePiSessionId);
+  const handlePiSessionIdAssigned = useCallback(
+    (piSessionId: string) => {
+      handlePiSessionIdChange(piSessionId);
+      // A goal set on a brand-new chat has no id to key its write on; the first
+      // turn response is the first moment it does, so land it here.
+      flushPendingGoal(piSessionId);
+    },
+    [flushPendingGoal, handlePiSessionIdChange],
+  );
+
   const engine = useSessionEngine({
     tabs,
     activeTabId,
@@ -438,7 +450,7 @@ export function ChatPane({
     cwd,
     browserToolEnabled,
     browserBackend,
-    onPiSessionIdChange: handlePiSessionIdChange,
+    onPiSessionIdChange: handlePiSessionIdAssigned,
     updateSession: updateTab,
     selectionFor: tools.selectionFor,
   });
@@ -477,8 +489,6 @@ export function ChatPane({
       activeTab ? applyContextRow(activeTab.id, "skill", row, tools) : Promise.resolve(),
     [activeTab, tools],
   );
-  const activePiSessionId = piSessionIdOf(activeTab);
-  const { goalRevision, goalAction } = useGoalCommand(activePiSessionId);
   const [goalModeOn, setGoalModeOn] = useState(false);
   const handleProjectPicked = useCallback(
     (project: Project) => {
@@ -589,8 +599,15 @@ export function ChatPane({
       abortTurn,
       attachFiles,
     });
+  const reportGoalError = useCallback(
+    (message: string) => {
+      if (activeTab) updateTab(activeTab.id, (tab) => ({ ...tab, error: message }));
+    },
+    [activeTab, updateTab],
+  );
   const goalModeApi = useGoalMode({
     goalAction,
+    reportError: reportGoalError,
     sendMessage,
     goalMode: goalModeOn,
     setGoalMode: setGoalModeOn,
@@ -599,8 +616,7 @@ export function ChatPane({
     (event: FormEvent) => {
       if (goalModeApi.submitAsGoal(event, activeTab?.input ?? "")) return;
       const invocation = parseSlashInvocation(activeTab?.input ?? "");
-      const commandCanRun = invocation?.name !== "goal" || canRunGoalCommand(activePiSessionId);
-      if (invocation && commandCanRun && commandRegistry.find(invocation.name, commandContext)) {
+      if (invocation && commandRegistry.find(invocation.name, commandContext)) {
         event.preventDefault();
         void runCommandInvocation(invocation);
         return;
@@ -609,7 +625,6 @@ export function ChatPane({
     },
     [
       activeTab,
-      activePiSessionId,
       commandContext,
       commandRegistry,
       goalModeApi,
