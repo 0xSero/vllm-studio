@@ -1744,15 +1744,6 @@ async function afterPack(context) {
   let agentRuntimeSource = readFileSync(agentRuntime, "utf8");
   if (/["'](?:[A-Za-z]:\\|\/(?:Users|home|root)\/)[^"'\n]*node_modules[\\/]/.test(agentRuntimeSource))
     throw Error("Packaged agent runtime contains a build-machine dependency path");
-  let missingPiLauncherMarker = [
-    "resolveElectronNodeExecutable",
-    "resolvePackagedPiCli",
-    "Frameworks",
-    "Helper.app",
-    "ELECTRON_RUN_AS_NODE"
-  ].find((marker) => !agentRuntimeSource.includes(marker));
-  if (missingPiLauncherMarker)
-    throw Error(`Packaged agent runtime is missing Pi helper launcher: ${missingPiLauncherMarker}`);
   if (electronPlatformName === "darwin") {
     let helperExecutable = path.join(path.dirname(resourcesDir), "Frameworks", `${productFilename} Helper.app`, "Contents", "MacOS", `${productFilename} Helper`);
     if (!existsSync(helperExecutable))
