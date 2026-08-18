@@ -97,9 +97,7 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
           <header className="mb-5 flex min-h-8 items-start justify-between gap-4">
             <div className="min-w-0">
               {eyebrow ? (
-                <div className="mb-1 text-[length:var(--fs-xs)] uppercase tracking-[0.12em] text-(--ui-muted)">
-                  {eyebrow}
-                </div>
+                <div className="mb-1 text-[length:var(--fs-sm)] text-(--ui-muted)">{eyebrow}</div>
               ) : null}
               <h2 className="text-[length:var(--fs-xl)] font-medium tracking-[-0.015em] text-(--ui-fg)">
                 {active?.label ?? title}

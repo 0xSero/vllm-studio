@@ -9,8 +9,6 @@ import { resolveDataDir, resolveSettingsFilePath } from "./data-dir";
 export interface ApiSettings {
   backendUrl: string;
   apiKey: string;
-  voiceUrl: string;
-  voiceModel: string;
 }
 
 /** Marker substring used to mask secrets in UI surfaces. */
@@ -19,9 +17,6 @@ const MASKED_KEY_MARKER = "••••";
 const DEFAULT_SETTINGS: ApiSettings = {
   backendUrl: resolveSettingsDefaultBackendUrl(),
   apiKey: process.env.API_KEY || "",
-  voiceUrl: process.env.VOICE_URL || process.env.NEXT_PUBLIC_VOICE_URL || "",
-  voiceModel:
-    process.env.VOICE_MODEL || process.env.NEXT_PUBLIC_VOICE_MODEL || "whisper-large-v3-turbo",
 };
 
 export async function getApiSettings(): Promise<ApiSettings> {
@@ -32,8 +27,6 @@ export async function getApiSettings(): Promise<ApiSettings> {
     return {
       backendUrl: saved.backendUrl || DEFAULT_SETTINGS.backendUrl,
       apiKey: saved.apiKey || DEFAULT_SETTINGS.apiKey,
-      voiceUrl: saved.voiceUrl || DEFAULT_SETTINGS.voiceUrl,
-      voiceModel: saved.voiceModel || DEFAULT_SETTINGS.voiceModel,
     };
   } catch (error) {
     console.error(`[API Settings] Failed to read ${settingsFile}:`, error);
@@ -75,13 +68,10 @@ function isValidUrl(url: string): boolean {
 // unchanged values, ignoring a masked API key), and persist. Throws
 // `InvalidSettingsError` when a provided URL is malformed.
 export async function applySettingsUpdate(update: Partial<ApiSettings>): Promise<ApiSettings> {
-  const { backendUrl, apiKey, voiceUrl, voiceModel } = update;
+  const { backendUrl, apiKey } = update;
 
   if (backendUrl && !isValidUrl(backendUrl)) {
     throw new InvalidSettingsError("Invalid backend URL format");
-  }
-  if (voiceUrl && !isValidUrl(voiceUrl)) {
-    throw new InvalidSettingsError("Invalid voice URL format");
   }
 
   const current = await getApiSettings();
@@ -89,8 +79,6 @@ export async function applySettingsUpdate(update: Partial<ApiSettings>): Promise
     backendUrl: backendUrl || current.backendUrl,
     // Only update API key if explicitly provided (not the masked value).
     apiKey: apiKey && !apiKey.includes(MASKED_KEY_MARKER) ? apiKey : current.apiKey,
-    voiceUrl: voiceUrl || current.voiceUrl,
-    voiceModel: voiceModel || current.voiceModel,
   };
 
   await saveApiSettings(next);
@@ -103,7 +91,5 @@ export function maskedSettingsView(settings: ApiSettings) {
     backendUrl: settings.backendUrl,
     apiKey: maskApiKey(settings.apiKey),
     hasApiKey: Boolean(settings.apiKey),
-    voiceUrl: settings.voiceUrl,
-    voiceModel: settings.voiceModel,
   };
 }

@@ -69,8 +69,15 @@ export function useChatPaneRuntimeHandle({
   const replayedRef = useRef<Set<string>>(new Set());
   useMountSubscription(() => {
     if (!isFocused || !activeTab) return;
-    const { piSessionId, messages, status } = activeTab;
-    if (!piSessionId || messages.length > 0 || status !== "idle") return;
+    const { piSessionId, messages, status, hydratedFromCache } = activeTab;
+    // Messages restored from the localStorage snapshot do NOT count as having
+    // the transcript. Treating them as such is what made a reloaded session
+    // show a truncated history with no "Load earlier": the snapshot is capped
+    // at 200 messages / 512KB and carries no history cursor, so the replay
+    // that would fetch the real tail was skipped and there was no way back to
+    // the rest of the conversation short of reopening the session.
+    const hasRealTranscript = messages.length > 0 && !hydratedFromCache;
+    if (!piSessionId || hasRealTranscript || status !== "idle") return;
     if (replayedRef.current.has(activeTabId)) return;
     replayedRef.current.add(activeTabId);
     void engine.loadAndReplay(piSessionId, activeTabId);

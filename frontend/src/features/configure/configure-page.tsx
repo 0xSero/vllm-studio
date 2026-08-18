@@ -139,7 +139,6 @@ export default function ConfigurePage() {
       sections={CONFIGURE_SECTIONS}
       activeSection={section}
       title="Configure"
-      eyebrow="Workspace"
       width="wide"
       loading={state.refreshing || state.loading}
       showRefresh={machineSection}

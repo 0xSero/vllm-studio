@@ -17,6 +17,16 @@ export const ModelIndexModelSchema = Schema.Struct({
   role: Schema.NullOr(Schema.Literals(["fast", "smart"])),
   description: Schema.String,
   params: Schema.String,
+  // Short architecture phrase for the card's spec line ("MoE · 384 experts,
+  // top-8"). Optional so an operator's hand-written data/model-index.json
+  // override from an older build still validates.
+  architecture: Schema.optional(Schema.NullOr(Schema.String)),
+  total_params_b: Schema.optional(Schema.NullOr(Schema.Number)),
+  // Artificial Analysis Intelligence Index (0-100) and its agentic subscore,
+  // taken from the reasoning-enabled entry where a model ships thinking on by
+  // default. Null means AA has not benchmarked the model, not that it scored 0.
+  intelligence_index: Schema.optional(Schema.NullOr(Schema.Number)),
+  agentic_index: Schema.optional(Schema.NullOr(Schema.Number)),
   active_params_b: Schema.NullOr(Schema.Number),
   context_tokens: Schema.Number,
   license: Schema.String,
@@ -35,6 +45,8 @@ export const ModelIndexTierSchema = Schema.Struct({
 export const ModelIndexSchema = Schema.Struct({
   version: Schema.Number,
   updated: Schema.String,
+  /** Attribution for the intelligence scores, shown under the catalog table. */
+  intelligence_source: Schema.optional(Schema.String),
   tiers: Schema.Array(ModelIndexTierSchema),
 });
 

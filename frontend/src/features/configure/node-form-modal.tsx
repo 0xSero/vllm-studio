@@ -154,25 +154,23 @@ export function NodeFormModal({
             : " Everything else is optional."}
         </div>
 
-        <FormField label="What kind of machine is this?" asGroup>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-            {RIG_HARDWARE_TYPES.map((type) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => set("hardware_type", type)}
-                aria-pressed={form.hardware_type === type}
-                className={cx(
-                  "flex flex-col items-center gap-1 rounded-lg border p-2 transition-colors",
-                  form.hardware_type === type
-                    ? "border-(--ui-accent)/60 bg-(--ui-accent)/10 text-(--ui-fg)"
-                    : "border-(--ui-border) text-(--ui-muted) hover:border-(--ui-separator) hover:text-(--ui-fg)",
-                )}
-              >
-                <HardwareArt type={type} className="h-12 w-full" />
-                <span className="text-[length:var(--fs-xs)]">{RIG_HARDWARE_TYPE_LABELS[type]}</span>
-              </button>
-            ))}
+        {/* A seven-option picker that ate the top third of the sheet as a 4x2
+            grid of illustrated cards. It is a one-time choice — it gets one
+            row, with the art alongside as confirmation of the pick. */}
+        <FormField label="Machine type">
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-(--ui-border) bg-(--surface-3)">
+              <HardwareArt type={form.hardware_type} className="h-7 w-full opacity-90" />
+            </span>
+            <Select
+              value={form.hardware_type}
+              onChange={(event) => set("hardware_type", event.target.value as RigHardwareType)}
+              options={RIG_HARDWARE_TYPES.map((type) => ({
+                value: type,
+                label: RIG_HARDWARE_TYPE_LABELS[type],
+              }))}
+              className="min-w-0 flex-1"
+            />
           </div>
         </FormField>
 

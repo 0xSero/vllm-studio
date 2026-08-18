@@ -148,9 +148,7 @@ export function RowFacts({ items, className }: { items: RowFact[]; className?: s
     >
       {items.map((item) => (
         <div key={item.label} className="contents">
-          <dt className="text-[length:var(--fs-xs)] font-medium uppercase text-(--ui-muted)/70">
-            {item.label}
-          </dt>
+          <dt className="text-[length:var(--fs-sm)] text-(--ui-muted)">{item.label}</dt>
           <dd
             className={cx(
               "min-w-0 text-[length:var(--fs-sm)] text-(--ui-fg)/80",

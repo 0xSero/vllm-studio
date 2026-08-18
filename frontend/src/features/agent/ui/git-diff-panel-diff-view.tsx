@@ -156,7 +156,7 @@ function StackedDiff({ file }: { file: DiffFile }) {
   return (
     <div className="grid gap-2 p-2">
       <div className="rounded border border-red-500/20">
-        <div className="border-b border-red-500/20 px-2 py-1 text-[length:var(--fs-xs)] uppercase tracking-wide text-red-300">
+        <div className="border-b border-red-500/20 px-2 py-1 text-[length:var(--fs-sm)] text-red-300">
           Before
         </div>
         {oldLines.map((line, index) => (
@@ -164,7 +164,7 @@ function StackedDiff({ file }: { file: DiffFile }) {
         ))}
       </div>
       <div className="rounded-lg border border-(--color-diff-added)/25">
-        <div className="border-b border-(--color-diff-added)/25 px-2 py-1 text-[length:var(--fs-xs)] uppercase tracking-wide text-(--color-diff-added)">
+        <div className="border-b border-(--color-diff-added)/25 px-2 py-1 text-[length:var(--fs-sm)] text-(--color-diff-added)">
           After
         </div>
         {newLines.map((line, index) => (

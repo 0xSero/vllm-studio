@@ -146,6 +146,9 @@ function seedCachedTranscripts(
       ...session,
       ...(cached.title ? { title: cached.title } : {}),
       messages: cached.messages,
+      // Marked so the replay still runs: these are a truncated placeholder,
+      // not the transcript.
+      hydratedFromCache: true,
     });
   }
   return next ?? sessions;

@@ -46,7 +46,10 @@ export function DrawerOverlay({ children, onClose }: { children: ReactNode; onCl
 
   return (
     <div
-      className="fixed inset-0 z-50 flex justify-end bg-black/30"
+      // m-0 because the overlay is rendered inline wherever it is used: drop it
+      // inside a `space-y-*` stack and the sibling margin lands on this fixed
+      // box, shrinking it away from the bottom of the viewport.
+      className="fixed inset-0 z-50 m-0 flex justify-end bg-black/30"
       onClick={onClose}
       role="presentation"
     >

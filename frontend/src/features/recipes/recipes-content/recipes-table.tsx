@@ -4,9 +4,9 @@ import { useState } from "react";
 import { Plus } from "@/ui/icon-registry";
 import { ModelButton } from "@/ui";
 import type { RecipeWithStatus } from "@/lib/types";
-import { ModelRow, ModelSection, ModelStatus, ModelValue } from "./model-page";
 import { AttachLocalAgentsDialog } from "@/features/settings/attach-local-agents-dialog";
-import { RecipeRow } from "./recipe-row";
+import { ServerRow } from "./recipe-row";
+import { GroupRow, HeadCell, TableFrame, TableNotice } from "./catalog-table-shell";
 
 type Props = {
   recipes: RecipeWithStatus[];
@@ -24,27 +24,6 @@ type Props = {
   onRequestDelete: (recipeId: string) => void;
   onNewRecipe: () => void;
 };
-
-const TEMPLATE_ROWS = [
-  {
-    label: "vLLM default",
-    description: "CUDA-first OpenAI-compatible Serve.",
-    value: "backend vLLM · tp/pp 1/1",
-    status: "template",
-  },
-  {
-    label: "SGLang server",
-    description: "Structured generation runtime with metrics enabled by default.",
-    value: "backend SGLang · metrics ready",
-    status: "template",
-  },
-  {
-    label: "llama.cpp local",
-    description: "GGUF-oriented CPU, Metal, or CUDA target.",
-    value: "backend llama.cpp · local path",
-    status: "template",
-  },
-];
 
 export function RecipesTable({
   recipes,
@@ -67,42 +46,57 @@ export function RecipesTable({
   const launchDisabledReason = launching
     ? "A launch is already in progress."
     : runningRecipeId
-      ? "Stop the running model before launching another Serve."
+      ? "Stop the running server before launching another."
       : null;
 
+  if (recipes.length === 0) {
+    return (
+      <TableNotice
+        title={
+          emptyBecauseSearch
+            ? `No server matches “${filter.trim()}”`
+            : loading
+              ? "Loading servers from the controller…"
+              : "No servers yet"
+        }
+        body="A server binds downloaded weights to a runtime and its launch flags — tensor parallelism, context length, quantization — so you can start it again with one click."
+        action={
+          emptyBecauseSearch ? null : (
+            <ModelButton onClick={onNewRecipe} tone="primary">
+              <Plus className="h-3 w-3" />
+              New server
+            </ModelButton>
+          )
+        }
+      />
+    );
+  }
+
   return (
-    <ModelSection
-      title="Saved Serves"
-      description="Launch-ready model, runtime, and configuration combinations."
-      actions={
-        <ModelStatus tone={recipes.length ? "good" : loading ? "info" : "default"}>
-          {recipes.length ? `${recipes.length} rows` : loading ? "syncing" : "defaults"}
-        </ModelStatus>
-      }
-    >
-      {loading ? (
-        <ModelRow
-          label="Controller sync"
-          description="Serve requests are still in flight; stable defaults stay visible below."
-          value={<ModelValue dim>Loading controller Serves…</ModelValue>}
-          status={<ModelStatus tone="info">syncing</ModelStatus>}
-        />
-      ) : null}
-
-      {launchDisabledReason ? (
-        <ModelRow
-          label="Launch controls"
-          description={launchDisabledReason}
-          value={
-            <ModelValue dim>Launch buttons are locked until the controller is ready.</ModelValue>
-          }
-          status={<ModelStatus tone="info">locked</ModelStatus>}
-        />
-      ) : null}
-
-      {recipes.length
-        ? recipes.map((recipe) => (
-            <RecipeRow
+    <>
+      <TableFrame minWidthClass="min-w-[44rem]">
+        <thead>
+          <tr>
+            <HeadCell>Server</HeadCell>
+            <HeadCell numeric title="Inference engine, and the runtime it launches under">
+              Engine
+            </HeadCell>
+            <HeadCell numeric>Context</HeadCell>
+            <HeadCell numeric title="Tensor-parallel / pipeline-parallel split across GPUs">
+              tp / pp
+            </HeadCell>
+            <HeadCell numeric>Status</HeadCell>
+          </tr>
+        </thead>
+        <tbody>
+          <GroupRow
+            colSpan={5}
+            label="Saved servers"
+            blurb={launchDisabledReason ?? "Click a row to edit it, or launch it from the right."}
+            right={`${recipes.length} ${recipes.length === 1 ? "server" : "servers"}`}
+          />
+          {recipes.map((recipe) => (
+            <ServerRow
               key={recipe.id}
               recipe={recipe}
               isPinned={pinnedRecipes.has(recipe.id)}
@@ -117,26 +111,9 @@ export function RecipesTable({
               onRequestDelete={onRequestDelete}
               onAttachAgents={setAttachRecipe}
             />
-          ))
-        : TEMPLATE_ROWS.map((row) => (
-            <ModelRow
-              key={row.label}
-              label={row.label}
-              description={
-                emptyBecauseSearch
-                  ? `No exact match for "${filter.trim()}". ${row.description}`
-                  : row.description
-              }
-              value={<ModelValue mono>{row.value}</ModelValue>}
-              status={<ModelStatus>{row.status}</ModelStatus>}
-              actions={
-                <ModelButton onClick={onNewRecipe}>
-                  <Plus className="h-3 w-3" />
-                  Use
-                </ModelButton>
-              }
-            />
           ))}
+        </tbody>
+      </TableFrame>
 
       {attachRecipe ? (
         <AttachLocalAgentsDialog
@@ -145,6 +122,6 @@ export function RecipesTable({
           onClose={() => setAttachRecipe(null)}
         />
       ) : null}
-    </ModelSection>
+    </>
   );
 }

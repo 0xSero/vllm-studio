@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, UiModal, UiModalHeader } from "@/ui";
+import { Button, UiModal, UiModalBody, UiModalFooter, UiModalHeader } from "@/ui";
 
 type Props = {
   recipeName: string;
@@ -12,19 +12,19 @@ export function DeleteRecipeConfirmModal({ recipeName, onCancel, onConfirm }: Pr
   return (
     <UiModal isOpen onClose={onCancel} maxWidth="max-w-md">
       <UiModalHeader title="Delete Serve" onClose={onCancel} />
-      <div className="p-6">
-        <p className="mb-6 text-sm text-(--ui-muted)">
+      <UiModalBody>
+        <p className="text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
           Delete &quot;{recipeName}&quot;? Model weights stay on disk.
         </p>
-        <div className="flex justify-end gap-3">
-          <Button variant="secondary" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button variant="danger" onClick={onConfirm}>
-            Delete
-          </Button>
-        </div>
-      </div>
+      </UiModalBody>
+      <UiModalFooter>
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button variant="danger" onClick={onConfirm}>
+          Delete
+        </Button>
+      </UiModalFooter>
     </UiModal>
   );
 }

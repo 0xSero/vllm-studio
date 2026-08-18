@@ -1,4 +1,5 @@
 import { memo, useMemo, useState } from "react";
+import { PreviewScroll } from "@/ui";
 import { ChevronRight } from "@/ui/icon-registry";
 import type { ThinkingBlock, ToolBlock } from "@/features/agent/messages";
 import type { ToolKind } from "@/features/agent/ui/timeline/tool-metadata";
@@ -38,9 +39,9 @@ function ReasoningDisclosure({ block, active }: { block: ThinkingBlock; active: 
         <ChevronRight className="h-3 w-3 text-(--dim)/50 transition-transform group-open:rotate-90" />
       </summary>
       {open ? (
-        <div className="mb-1.5 ml-1.5 mt-1 max-h-[320px] min-w-0 overflow-auto whitespace-pre-wrap border-l-2 border-(--border) pl-3 text-[length:var(--fs-base)] leading-[1.625] text-(--fg)/60">
+        <PreviewScroll className="mb-1.5 ml-1.5 mt-1 whitespace-pre-wrap border-l-2 border-(--border) pl-3 text-[length:var(--fs-base)] leading-[1.625] text-(--fg)/60">
           {block.text}
-        </div>
+        </PreviewScroll>
       ) : null}
     </details>
   );

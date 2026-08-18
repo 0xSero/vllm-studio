@@ -128,7 +128,7 @@ export function ExploreTab() {
   );
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-7">
       <ExploreControls
         groupsCount={groups.length}
         maxVramGb={maxVramGb}

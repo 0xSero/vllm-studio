@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -13,8 +17,12 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "types": ["node"],
-    "typeRoots": ["./node_modules/@types"],
+    "types": [
+      "node"
+    ],
+    "typeRoots": [
+      "./node_modules/@types"
+    ],
     "plugins": [
       {
         "name": "next"
@@ -22,12 +30,24 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@local-studio/agent-runtime": ["../services/agent-runtime/src/index.ts"],
-      "@local-studio/agent-runtime/*": ["../services/agent-runtime/src/*.ts"],
-      "@local-studio/contracts/*": ["../controller/contracts/*.ts"],
-      "@shared/agent/*": ["../shared/agent/*.ts"],
-      "@shared/*": ["../shared/*"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@local-studio/agent-runtime": [
+        "../services/agent-runtime/src/index.ts"
+      ],
+      "@local-studio/agent-runtime/*": [
+        "../services/agent-runtime/src/*.ts"
+      ],
+      "@local-studio/contracts/*": [
+        "../controller/contracts/*.ts"
+      ],
+      "@shared/agent/*": [
+        "../shared/agent/*.ts"
+      ],
+      "@shared/*": [
+        "../shared/*"
+      ]
     }
   },
   "include": [
@@ -38,7 +58,14 @@
     "**/*.mts",
     ".next/dev/types/**/*.ts",
     "./.next/types/**/*.ts",
-    "./.next/dev/types/**/*.ts"
+    "./.next/dev/types/**/*.ts",
+    ".next-dev/types/**/*.ts",
+    ".next-dev/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "knip.ts", "desktop/**", "dist-desktop*/**"]
+  "exclude": [
+    "node_modules",
+    "knip.ts",
+    "desktop/**",
+    "dist-desktop*/**"
+  ]
 }

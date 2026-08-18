@@ -269,7 +269,7 @@ function usedSkillsForSession(session: Session | null): ComposerSkillRef[] {
 function UsedSkillsSection({ skills }: { skills: ComposerSkillRef[] }) {
   return (
     <div className="mt-4 border-t border-(--border) pt-3">
-      <div className="mb-2 flex items-center gap-2 text-[length:var(--fs-xs)] uppercase tracking-wide text-(--dim)">
+      <div className="mb-2 flex items-center gap-2 text-[length:var(--fs-sm)] text-(--dim)">
         <span>Skills · session</span>
         <span className="font-mono normal-case tracking-normal">{skills.length}</span>
       </div>
@@ -329,7 +329,7 @@ function SessionSummary({
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <div className="truncate text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim)">
+      <div className="truncate text-[length:var(--fs-sm)] text-(--dim)">
         {label}
       </div>
       <div className="mt-1 truncate text-[length:var(--fs-base)] text-(--fg)">{value}</div>
@@ -340,7 +340,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 function StatusSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="mt-4 border-t border-(--border) pt-3">
-      <div className="mb-2 text-[length:var(--fs-xs)] uppercase tracking-wide text-(--dim)">
+      <div className="mb-2 text-[length:var(--fs-sm)] text-(--dim)">
         {title}
       </div>
       <div className="grid gap-1">{children}</div>

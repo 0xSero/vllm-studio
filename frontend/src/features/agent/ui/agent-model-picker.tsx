@@ -3,14 +3,16 @@
 import {
   useCallback,
   useMemo,
+  useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
   type PointerEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Pin } from "@/ui/icon-registry";
-import { AGENT_THINKING_LEVELS, type AgentThinkingLevel } from "@/features/agent/contracts";
+import type { AgentThinkingLevel } from "@/features/agent/contracts";
 import type { AgentModel } from "@/features/agent/workspace/types";
 import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import { cx } from "@/ui/utils";
@@ -29,11 +31,15 @@ type AgentModelPickerProps = {
   onSelectReasoning?: (level: AgentThinkingLevel) => void;
 };
 
+const PANEL_GAP_PX = 6;
+const VIEWPORT_MARGIN_PX = 8;
+
 type ModelGroup = { key: string; name: string; models: AgentModel[] };
 type PickerView = "root" | "models" | "reasoning";
 
 const REASONING_LABELS: Record<AgentThinkingLevel, string> = {
   off: "Off",
+  auto: "Auto",
   minimal: "Minimal",
   low: "Low",
   medium: "Medium",
@@ -41,6 +47,17 @@ const REASONING_LABELS: Record<AgentThinkingLevel, string> = {
   xhigh: "XHigh",
   max: "Max",
 };
+
+const REASONING_MENU_LEVELS: readonly AgentThinkingLevel[] = [
+  "auto",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "off",
+];
 
 export function AgentModelPicker({
   models,
@@ -80,9 +97,38 @@ export function AgentModelPicker({
   const reasoningLabel = REASONING_LABELS[effectiveReasoning];
   const triggerLabel = supportsReasoning ? `${modelLabel} ${reasoningLabel}` : modelLabel;
   const selectedModelNotRunning = !loading && Boolean(active && active.active === false);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const close = useCallback(() => {
     setOpen(false);
     setView("root");
+  }, []);
+
+  const placePanel = useCallback((node: HTMLDivElement | null) => {
+    panelRef.current = node;
+    if (!node) return;
+    const place = () => {
+      const anchor = anchorRef.current?.getBoundingClientRect();
+      if (!anchor) return;
+      const { offsetWidth: width, offsetHeight: height } = node;
+      const maxLeft = window.innerWidth - width - VIEWPORT_MARGIN_PX;
+      const left = Math.min(Math.max(VIEWPORT_MARGIN_PX, anchor.right - width), maxLeft);
+      const fitsAbove = anchor.top - height - PANEL_GAP_PX >= VIEWPORT_MARGIN_PX;
+      const top = fitsAbove ? anchor.top - height - PANEL_GAP_PX : anchor.bottom + PANEL_GAP_PX;
+      node.style.left = `${Math.round(Math.max(VIEWPORT_MARGIN_PX, left))}px`;
+      node.style.top = `${Math.round(top)}px`;
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(node);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+      panelRef.current = null;
+    };
   }, []);
   const select = useCallback(
     (modelId: string) => {
@@ -94,10 +140,14 @@ export function AgentModelPicker({
 
   return (
     <div
+      ref={anchorRef}
       className="relative min-w-0 shrink"
       onBlur={(event) => {
         const nextTarget = event.relatedTarget;
-        if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
+        if (nextTarget instanceof Node) {
+          if (event.currentTarget.contains(nextTarget)) return;
+          if (panelRef.current?.contains(nextTarget)) return;
+        }
         close();
       }}
       onPointerDown={stopToolbarEvent}
@@ -118,50 +168,56 @@ export function AgentModelPicker({
           }
         }}
       />
-      {open ? (
-        <div
-          className={`absolute bottom-full right-0 z-[300] mb-1.5 w-80 max-w-[calc(100vw-2rem)] ${POPOVER_MENU_CLASS}`}
-          role="menu"
-          aria-label="Model and reasoning"
-          onKeyDown={(event) => handleMenuKeyDown(event, view, setView, close)}
-        >
-          {view === "root" ? (
-            <PickerRoot
-              modelLabel={modelLabel}
-              reasoningLabel={reasoningLabel}
-              reasoningFixed={reasoningLevels.length <= 1}
-              onOpenModels={() => setView("models")}
-              onOpenReasoning={() => setView("reasoning")}
-            />
-          ) : null}
-          {view === "models" ? (
-            <ModelList
-              groups={groups}
-              selectedModel={selectedModel}
-              defaultModel={defaultModel}
-              showOtherModels={showOtherModels}
-              otherModelCount={visible.otherModels.length}
-              onBack={supportsReasoning ? () => setView("root") : undefined}
-              onSelect={select}
-              onSetDefault={onSetDefault}
-              onToggleOtherModels={() => setShowOtherModels((current) => !current)}
-              onClose={close}
-            />
-          ) : null}
-          {view === "reasoning" && onSelectReasoning ? (
-            <ReasoningList
-              value={effectiveReasoning}
-              levels={reasoningLevels}
-              disabled={reasoningDisabled}
-              onBack={() => setView("root")}
-              onSelect={(level) => {
-                onSelectReasoning(level);
-                close();
-              }}
-            />
-          ) : null}
-        </div>
-      ) : null}
+      {open
+        ? createPortal(
+            <div
+              ref={placePanel}
+              className={`fixed z-[300] w-[22rem] max-w-[calc(100vw-1rem)] ${POPOVER_MENU_CLASS}`}
+              role="menu"
+              aria-label="Model and reasoning"
+              onKeyDown={(event) => handleMenuKeyDown(event, view, setView, close)}
+              onPointerDown={stopToolbarEvent}
+              onMouseDown={stopToolbarEvent}
+            >
+              {view === "root" ? (
+                <PickerRoot
+                  modelLabel={modelLabel}
+                  reasoningLabel={reasoningLabel}
+                  reasoningFixed={reasoningLevels.length <= 1}
+                  onOpenModels={() => setView("models")}
+                  onOpenReasoning={() => setView("reasoning")}
+                />
+              ) : null}
+              {view === "models" ? (
+                <ModelList
+                  groups={groups}
+                  selectedModel={selectedModel}
+                  defaultModel={defaultModel}
+                  showOtherModels={showOtherModels}
+                  otherModelCount={visible.otherModels.length}
+                  onBack={supportsReasoning ? () => setView("root") : undefined}
+                  onSelect={select}
+                  onSetDefault={onSetDefault}
+                  onToggleOtherModels={() => setShowOtherModels((current) => !current)}
+                  onClose={close}
+                />
+              ) : null}
+              {view === "reasoning" && onSelectReasoning ? (
+                <ReasoningList
+                  value={effectiveReasoning}
+                  levels={reasoningLevels}
+                  disabled={reasoningDisabled}
+                  onBack={() => setView("root")}
+                  onSelect={(level) => {
+                    onSelectReasoning(level);
+                    close();
+                  }}
+                />
+              ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
@@ -355,7 +411,7 @@ function ReasoningList({
     <div>
       <PickerHeader title="Reasoning" onBack={onBack} />
       <div className="grid gap-0.5 pt-1">
-        {AGENT_THINKING_LEVELS.filter((level) => levels.includes(level)).map((level) => (
+        {REASONING_MENU_LEVELS.filter((level) => levels.includes(level)).map((level) => (
           <button
             key={level}
             type="button"

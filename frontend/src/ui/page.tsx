@@ -57,13 +57,11 @@ export function PageContainer({
 }
 
 export function PageHeader({
-  eyebrow,
   title,
   description,
   status,
   actions,
 }: {
-  eyebrow?: string;
   title: ReactNode;
   description?: ReactNode;
   status?: ReactNode;
@@ -72,12 +70,7 @@ export function PageHeader({
   return (
     <div className="mb-4 flex min-h-8 items-center justify-between gap-3">
       <div className="min-w-0">
-        {eyebrow ? (
-          <div className="text-[length:var(--fs-xs)] uppercase tracking-[0.14em] text-(--ui-muted)">
-            {eyebrow}
-          </div>
-        ) : null}
-        <h2 className="mt-1 truncate text-[length:var(--fs-3xl)] font-medium tracking-[-0.02em] text-(--ui-fg)">
+        <h2 className="truncate text-[length:var(--fs-3xl)] font-medium tracking-[-0.02em] text-(--ui-fg)">
           {title}
         </h2>
         {description ? (
@@ -141,7 +134,6 @@ export function SectionNav<Id extends string = string>({
 }
 
 export function TabbedPage<T extends string = string>({
-  eyebrow,
   title,
   description,
   actions,
@@ -152,7 +144,6 @@ export function TabbedPage<T extends string = string>({
   children,
   className,
 }: {
-  eyebrow?: string;
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
@@ -166,7 +157,7 @@ export function TabbedPage<T extends string = string>({
   return (
     <AppPage>
       <PageContainer width={width} className={cx("pt-6 sm:pt-8", className)}>
-        <PageHeader eyebrow={eyebrow} title={title} description={description} actions={actions} />
+        <PageHeader title={title} description={description} actions={actions} />
         <div className="mt-7 border-b border-(--ui-separator)">
           <Tabs items={tabs} activeTab={activeTab} onSelectTab={onSelectTab} className="-mb-px" />
         </div>

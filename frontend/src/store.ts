@@ -18,6 +18,11 @@ import {
   applyStoredUiControls,
   applyThemeToDocument,
 } from "@/lib/theme-runtime";
+import type { PreviewHeight } from "@/ui/preview-scroll";
+import type {
+  ToolKind,
+  ToolPreviewHeightOverrides,
+} from "@/features/agent/ui/timeline/tool-metadata";
 
 // --- App slice ---
 
@@ -36,11 +41,15 @@ export interface AppSlice {
   setSidebarWidth: (width: number) => void;
   fileViewerFontSize: number;
   setFileViewerFontSize: (size: number) => void;
+  toolPreviewHeight: PreviewHeight;
+  setToolPreviewHeight: (height: PreviewHeight) => void;
+  toolPreviewHeightOverrides: ToolPreviewHeightOverrides;
+  setToolPreviewHeightOverride: (kind: ToolKind, height: PreviewHeight | undefined) => void;
   lastOpenFileByProject: Record<string, string>;
   setLastOpenFileByProject: (cwd: string, rel: string) => void;
 }
 
-export const DEFAULT_SIDEBAR_WIDTH = 224;
+export const DEFAULT_SIDEBAR_WIDTH = 275;
 
 const LEGACY_DEFAULT_SIDEBAR_WIDTHS = new Set([204, 220, 224, 240, 260, 275]);
 
@@ -69,6 +78,16 @@ const createAppSlice: StateCreator<AppSlice, [], [], AppSlice> = (set) => ({
   setSidebarWidth: (sidebarWidth) => set({ sidebarWidth }),
   fileViewerFontSize: 12,
   setFileViewerFontSize: (fileViewerFontSize) => set({ fileViewerFontSize }),
+  toolPreviewHeight: "md",
+  setToolPreviewHeight: (toolPreviewHeight) => set({ toolPreviewHeight }),
+  toolPreviewHeightOverrides: {},
+  setToolPreviewHeightOverride: (kind, height) =>
+    set((state) => {
+      const toolPreviewHeightOverrides = { ...state.toolPreviewHeightOverrides };
+      if (height) toolPreviewHeightOverrides[kind] = height;
+      else delete toolPreviewHeightOverrides[kind];
+      return { toolPreviewHeightOverrides };
+    }),
   lastOpenFileByProject: {},
   setLastOpenFileByProject: (cwd, rel) =>
     set((state) => ({
@@ -163,6 +182,8 @@ export const useAppStore = create<AppStore>()(
         sidebarCollapsed: state.sidebar.collapsed,
         sidebarWidth: state.sidebarWidth,
         fileViewerFontSize: state.fileViewerFontSize,
+        toolPreviewHeight: state.toolPreviewHeight,
+        toolPreviewHeightOverrides: state.toolPreviewHeightOverrides,
         lastOpenFileByProject: state.lastOpenFileByProject,
       }),
       merge: (persisted, current) => {

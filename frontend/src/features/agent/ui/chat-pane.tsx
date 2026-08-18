@@ -621,10 +621,9 @@ export function ChatPane({
     () => (activeTabId ? engine.loadEarlier(activeTabId) : Promise.resolve()),
     [activeTabId, engine],
   );
-  const { handleTranscript, handleExtensionUiResponse } = useChatPaneComposerActions({
+  const { handleExtensionUiResponse } = useChatPaneComposerActions({
     activeTab,
     updateTab,
-    textareaRef,
   });
   const composerVisual = deriveComposerVisual({
     compacting,
@@ -718,7 +717,6 @@ export function ChatPane({
           onSelectMention={(entry) => void handleSelectMention(entry)}
           onSteerQueued={(queueId) => void steerQueued(queueId)}
           onSubmit={handleComposerSubmit}
-          onTranscript={handleTranscript}
           onToggleBrowserBackend={onToggleBrowserBackend}
           onToggleBrowserTool={onToggleBrowserTool}
           placeholder={goalModeApi.goalPlaceholder ?? composerVisual.placeholder}

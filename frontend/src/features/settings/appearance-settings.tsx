@@ -14,6 +14,13 @@ import {
 } from "@/lib/themes";
 import { applyTokensToDocument, applyUiControl } from "@/lib/theme-runtime";
 import { ColorField, SegmentedControl, type SegmentedItem, Slider } from "@/ui";
+import type { PreviewHeight } from "@/ui/preview-scroll";
+import {
+  TOOL_PREVIEW_HEIGHT_OPTIONS,
+  TOOL_PREVIEW_KIND_LABELS,
+  type ToolKind,
+  type ToolPreviewHeightOverrides,
+} from "@/features/agent/ui/timeline/tool-metadata";
 import { SettingsButton, SettingsGroup, SettingsRow } from "./settings-ui";
 
 const CUSTOM_THEME_TOKEN_KEY = "local-studio.customThemeTokens";
@@ -26,6 +33,12 @@ const MODE_ITEMS: SegmentedItem<ThemeMode>[] = [
   { id: "light", label: "Light", icon: <Sun className="h-3.5 w-3.5" /> },
   { id: "dark", label: "Dark", icon: <Moon className="h-3.5 w-3.5" /> },
   { id: "system", label: "System", icon: <Laptop className="h-3.5 w-3.5" /> },
+];
+
+const TOOL_PREVIEW_KINDS: ToolKind[] = ["edit", "read", "search", "exec", "browser", "generic"];
+const TOOL_PREVIEW_OVERRIDE_OPTIONS: Array<{ id: PreviewHeight | "default"; label: string }> = [
+  { id: "default", label: "Default" },
+  ...TOOL_PREVIEW_HEIGHT_OPTIONS,
 ];
 
 function readCustomTokens(): ThemeTokens | null {
@@ -110,6 +123,10 @@ export function AppearanceSettings() {
   const setFontFamilyId = useAppStore((s) => s.setFontFamilyId);
   const fontSizeId = useAppStore((s) => s.fontSizeId);
   const setFontSizeId = useAppStore((s) => s.setFontSizeId);
+  const toolPreviewHeight = useAppStore((s) => s.toolPreviewHeight);
+  const setToolPreviewHeight = useAppStore((s) => s.setToolPreviewHeight);
+  const toolPreviewHeightOverrides = useAppStore((s) => s.toolPreviewHeightOverrides);
+  const setToolPreviewHeightOverride = useAppStore((s) => s.setToolPreviewHeightOverride);
 
   const [query, setQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
@@ -560,6 +577,58 @@ export function AppearanceSettings() {
           control={<ColorField value={bubbleTone} label="Bubble tone" onChange={setBubble} />}
         />
       </SettingsGroup>
+
+      <SettingsGroup
+        title="Tool previews"
+        description="Set one preview height for all tools, then override individual tool types."
+      >
+        <SettingsRow
+          label="All tools"
+          description="Default maximum preview height"
+          control={
+            <SegmentedControl
+              items={TOOL_PREVIEW_HEIGHT_OPTIONS}
+              value={toolPreviewHeight}
+              onChange={setToolPreviewHeight}
+              size="sm"
+            />
+          }
+        />
+        {TOOL_PREVIEW_KINDS.map((kind) => (
+          <ToolPreviewHeightRow
+            key={kind}
+            kind={kind}
+            overrides={toolPreviewHeightOverrides}
+            onChange={setToolPreviewHeightOverride}
+          />
+        ))}
+      </SettingsGroup>
     </div>
+  );
+}
+
+function ToolPreviewHeightRow({
+  kind,
+  overrides,
+  onChange,
+}: {
+  kind: ToolKind;
+  overrides: ToolPreviewHeightOverrides;
+  onChange: (kind: ToolKind, height: PreviewHeight | undefined) => void;
+}) {
+  const value = overrides[kind] ?? "default";
+  return (
+    <SettingsRow
+      label={TOOL_PREVIEW_KIND_LABELS[kind]}
+      description={value === "default" ? "Uses the all-tools setting" : "Custom preview height"}
+      control={
+        <SegmentedControl
+          items={TOOL_PREVIEW_OVERRIDE_OPTIONS}
+          value={value}
+          onChange={(height) => onChange(kind, height === "default" ? undefined : height)}
+          size="sm"
+        />
+      }
+    />
   );
 }

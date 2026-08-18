@@ -4,15 +4,16 @@ import Link from "next/link";
 import { ProfileFooter } from "@/features/shell/profile-footer";
 import { type MouseEvent as ReactMouseEvent } from "react";
 import {
+  BellIcon,
   ChevronLeft,
   ChevronRight,
-  Search as SearchIcon,
-  SquarePen,
-  Settings,
+  SearchIcon,
+  NewTaskIcon,
+  SettingsIcon,
   PanelLeftHollow,
   PanelLeftFilled,
 } from "@/ui/icon-registry";
-import type { ProjectsNavSectionComponent } from "@/features/shell/left-sidebar-lazy";
+import type { NavView, ProjectsNavSectionComponent } from "@/features/shell/left-sidebar-lazy";
 import {
   NavItemDesktop,
   ProjectsNavPlaceholder,
@@ -34,6 +35,9 @@ export function DesktopSidebar({
   onRevealProjectsNav,
   onSetPinnedOpen,
   onOpenSearch,
+  navView,
+  onToggleNavView,
+  notificationsIndicator,
   onNewTask,
 }: {
   pathname: string;
@@ -46,6 +50,9 @@ export function DesktopSidebar({
   onRevealProjectsNav: () => void;
   onSetPinnedOpen: (open: boolean) => void;
   onOpenSearch: () => void;
+  navView: NavView;
+  onToggleNavView: () => void;
+  notificationsIndicator: boolean;
   onNewTask: () => void;
 }) {
   return (
@@ -123,7 +130,29 @@ export function DesktopSidebar({
                 title="Search sessions (⌘K)"
                 aria-label="Search sessions"
               >
-                <SearchIcon className="h-4 w-4" strokeWidth={1.75} />
+                <SearchIcon className="h-4 w-4" />
+              </button>
+              {/* The bell swaps what the nav below lists — notifications when
+                  lit, the project tree otherwise — so it reads as a view toggle
+                  and stays pressed while that view is showing. Unread state is a
+                  ringed badge rather than a bare dot: the ring in sidebar-bg
+                  keeps it legible against the bell's own strokes at this size. */}
+              <button
+                onClick={onToggleNavView}
+                aria-pressed={navView === "notifications"}
+                className="relative flex h-7 w-7 items-center justify-center rounded-md text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg) aria-pressed:bg-(--link)/15 aria-pressed:text-(--link)"
+                title={navView === "notifications" ? "Show projects" : "Show notifications"}
+                aria-label={
+                  notificationsIndicator ? "Notifications, unseen activity" : "Notifications"
+                }
+              >
+                <BellIcon className="h-4 w-4" />
+                {notificationsIndicator ? (
+                  <span
+                    className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-(--link) ring-2 ring-(--sidebar-bg)"
+                    aria-hidden
+                  />
+                ) : null}
               </button>
             </div>
 
@@ -139,7 +168,7 @@ export function DesktopSidebar({
                 className="flex h-[var(--sidebar-row-height)] shrink-0 items-center gap-2 rounded-[var(--sidebar-row-radius)] px-2 text-(--fg)/85 transition-colors hover:bg-(--hover) hover:text-(--fg)"
                 title="New task"
               >
-                <SquarePen className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.6} />
+                <NewTaskIcon className="h-4 w-4 shrink-0 opacity-70" />
                 <span className="flex-1 truncate text-left text-[length:var(--fs-md)] font-normal">
                   New task
                 </span>
@@ -155,7 +184,7 @@ export function DesktopSidebar({
               ))}
               {projectsNavReady ? (
                 ProjectsNavSection ? (
-                  <ProjectsNavSection expanded={isExpanded} />
+                  <ProjectsNavSection expanded={isExpanded} view={navView} />
                 ) : (
                   <ProjectsNavPlaceholder />
                 )

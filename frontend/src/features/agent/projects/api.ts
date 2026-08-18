@@ -1,5 +1,5 @@
 import { safeJson } from "@/features/agent/safe-json";
-import type { GitState } from "@/features/agent/contracts";
+import type { GitAction, GitBranch, GitState, GitWorktree } from "@/features/agent/contracts";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 
 type DesktopBridge = {
@@ -91,4 +91,50 @@ export async function initGit(cwd: string): Promise<void> {
     const payload = await safeJson<{ error?: string }>(response);
     throw new Error(payload.error || "Failed to initialize git repository");
   }
+}
+
+export async function listBranches(cwd: string): Promise<GitBranch[]> {
+  const response = await fetch(`/api/agent/git/branches?cwd=${encodeURIComponent(cwd)}`, {
+    cache: "no-store",
+  });
+  const payload = await safeJson<{ branches?: GitBranch[]; error?: string }>(response);
+  if (!response.ok) throw new Error(payload.error || "Failed to list branches");
+  return payload.branches ?? [];
+}
+
+export async function listWorktrees(cwd: string): Promise<GitWorktree[]> {
+  const response = await fetch(`/api/agent/git/worktrees?cwd=${encodeURIComponent(cwd)}`, {
+    cache: "no-store",
+  });
+  const payload = await safeJson<{ worktrees?: GitWorktree[]; error?: string }>(response);
+  if (!response.ok) throw new Error(payload.error || "Failed to list worktrees");
+  return payload.worktrees ?? [];
+}
+
+export async function runGitAction(cwd: string, action: GitAction): Promise<void> {
+  const response = await fetch(`/api/agent/git?cwd=${encodeURIComponent(cwd)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(action),
+  });
+  if (!response.ok) {
+    const payload = await safeJson<{ error?: string }>(response);
+    throw new Error(payload.error || "Git operation failed");
+  }
+}
+
+export async function switchBranch(cwd: string, branch: string): Promise<void> {
+  await runGitAction(cwd, { action: "switch_branch", branch });
+}
+
+export async function createBranch(cwd: string, branch: string): Promise<void> {
+  await runGitAction(cwd, { action: "create_branch", branch });
+}
+
+export async function addWorktree(cwd: string, branch: string, path: string): Promise<void> {
+  await runGitAction(cwd, { action: "add_worktree", branch, path });
+}
+
+export async function removeWorktree(cwd: string, path: string): Promise<void> {
+  await runGitAction(cwd, { action: "remove_worktree", path });
 }
