@@ -152,6 +152,18 @@
   --color-slate-300: oklch(86.9% 0.022 252.894);
   --color-slate-500: oklch(55.4% 0.046 257.417);
 
+  /* Syntax palette baseline. The theme runtime only emits `--color-*` surface
+     tokens, so these must resolve for every theme id — not just the handful the
+     blocks below name — or `.syntax-highlight .hljs-*` becomes invalid at
+     computed-value time and code renders monochrome. Dark values here; the
+     light block overrides them. */
+  --color-syntax-keyword: #339cff;
+  --color-syntax-string: #85df7b;
+  --color-syntax-title: #f67576;
+  --color-syntax-value: #ff66ad;
+  --color-syntax-comment: #8f8f8f;
+  --color-syntax-deletion: var(--red-300);
+
   /* Default theme is dark. The `.dark` alias and the `[data-theme="zai-dark"]`
      attribute both select the default dark system; `.theme-zai-*` class hooks are
      also wired for parity. */
@@ -165,6 +177,7 @@
    ────────────────────────────────────────────────────────────────────────── */
 .theme-zai-light,
 :root[data-theme="zai-light"],
+:root[data-theme="nordic-light"],
 :root[data-theme="paper"] {
   color-scheme: light;
 
@@ -344,8 +357,7 @@
    ────────────────────────────────────────────────────────────────────────── */
 .theme-zai-dark,
 .dark,
-:root[data-theme="zai-dark"],
-:root[data-theme="omlx-dark"] {
+:root[data-theme="zai-dark"] {
   color-scheme: dark;
 
   --animated-gradient-text-strong: #fff;
@@ -526,8 +538,7 @@
 :root,
 .theme-zai-dark,
 .dark,
-:root[data-theme="zai-dark"],
-:root[data-theme="omlx-dark"] {
+:root[data-theme="zai-dark"] {
   --bg: var(--color-background);
   --fg: var(--color-foreground);
   --dim: var(--color-foreground-subtle);
@@ -562,6 +573,7 @@
 
 .theme-zai-light,
 :root[data-theme="zai-light"],
+:root[data-theme="nordic-light"],
 :root[data-theme="paper"] {
   --bg: var(--color-background);
   --fg: var(--color-foreground);

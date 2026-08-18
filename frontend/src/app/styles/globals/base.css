@@ -174,7 +174,6 @@ a.nav-link:hover,
   color: var(--fg);
 }
 
-:root[data-theme="omlx-dark"] ::selection,
 .dark ::selection {
   background: color-mix(in srgb, var(--hl1) 52%, #000 28%);
   color: #fff;
