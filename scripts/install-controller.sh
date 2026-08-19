@@ -204,7 +204,7 @@ else
 fi
 
 # --- health ------------------------------------------------------------------
-log "waiting for controller on :$PORT…"
+log "waiting for controller on :${PORT}…"
 HEALTH_HOST="$HOST"
 case "$HEALTH_HOST" in
   ""|"0.0.0.0"|"::") HEALTH_HOST="127.0.0.1" ;;
