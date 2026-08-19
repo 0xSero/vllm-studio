@@ -18,6 +18,7 @@ const config = {
     "@local-studio/agent-runtime",
     "@hono/node-server",
     "@modelcontextprotocol/sdk",
+    "@lydell/node-pty",
     "playwright-core",
     "chromium-bidi",
     "proper-lockfile",

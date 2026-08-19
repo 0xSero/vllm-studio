@@ -1,4 +1,4 @@
-import { BrowserWindow, screen, type Rectangle } from "electron";
+import { app, BrowserWindow, screen, type Rectangle } from "electron";
 import path from "node:path";
 import { DESKTOP_CONFIG } from "../configs";
 import {
@@ -84,7 +84,7 @@ function createQuickPanelWindow(appUrl: string): BrowserWindow {
     backgroundColor: "#00000000",
     ...(process.platform === "darwin" ? { type: "panel" as const } : {}),
     webPreferences: {
-      preload: path.join(__dirname, "../preload.js"),
+      preload: path.join(app.getAppPath(), "desktop", "dist", "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

@@ -30,7 +30,14 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.sha }}
-        run: node scripts/project.mjs check-commits --range "$BASE_SHA..$HEAD_SHA"
+        run: |
+          if [[ "$GITHUB_HEAD_REF" == "dev" ]]; then
+            node scripts/project.mjs check-commits --range "$BASE_SHA..$HEAD_SHA" --exclude origin/dev
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            node scripts/project.mjs check-commits --range "$BASE_SHA..$HEAD_SHA" --exclude origin/main
+          else
+            node scripts/project.mjs check-commits --range "$BASE_SHA..$HEAD_SHA"
+          fi
       - name: Shared-contract duplication gate
         run: node scripts/project.mjs validate-contracts
       - name: Barrel/dir sibling structure gate

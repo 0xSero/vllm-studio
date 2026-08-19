@@ -29,17 +29,7 @@ process.once("exit", () => {
 function agentRuntimeEntry(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, "app", "agent-runtime", "standalone.mjs")
-    : path.resolve(
-        __dirname,
-        "..",
-        "..",
-        "..",
-        "..",
-        "services",
-        "agent-runtime",
-        "dist",
-        "standalone.mjs",
-      );
+    : path.resolve(app.getAppPath(), "..", "services", "agent-runtime", "dist", "standalone.mjs");
 }
 
 async function isAgentRuntimeHealthy(url: string): Promise<boolean> {
