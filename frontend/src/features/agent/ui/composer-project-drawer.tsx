@@ -148,7 +148,22 @@ export function ComposerProjectDrawer({
   }, [piSessionId]);
 
   const activeProject = projects.findByPath(cwd) ?? projects.selectedProject;
-  const label = projectName ?? activeProject?.name ?? "Choose project";
+  // The projects store seeds itself from localStorage synchronously at
+  // creation, so the client's very first render already knows the selected
+  // project while the server's render cannot. Naming it during hydration is a
+  // mismatch, and React responds by throwing away and re-rendering the whole
+  // subtree — the composer. Hold the neutral label until after mount, which is
+  // one frame, and hydrate clean.
+  const [hydrated, setHydrated] = useState(false);
+  useMountSubscription(() => setHydrated(true), []);
+  // Every source of this name is client-only: `projectName` comes from the
+  // pane's restored view state and `activeProject` from the projects store,
+  // which seeds from localStorage synchronously. The server can know none of
+  // it, so the first client render must say what the server said and only then
+  // fill in — otherwise React discards and re-renders the whole composer.
+  const label = hydrated
+    ? (projectName ?? activeProject?.name ?? "Choose project")
+    : "Choose project";
   const hasQueue = queueItems.length > 0;
   const paused = goal?.status === "paused";
   const terminal =

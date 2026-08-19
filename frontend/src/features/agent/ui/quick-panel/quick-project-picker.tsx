@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type MouseEvent, type PointerEvent } from "react";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { Folder } from "@/ui/icons";
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
 import { POPOVER_SURFACE_CLASS } from "@/ui/popover";
@@ -16,7 +17,13 @@ function stopToolbarEvent(event: MouseEvent | PointerEvent) {
 
 export function QuickProjectPicker({ projects }: Props) {
   const [open, setOpen] = useState(false);
-  const active = projects.selectedProject ?? projects.projects[0] ?? null;
+  // The projects store seeds from localStorage synchronously, so the client
+  // knows the project on its first render and the server does not. Naming it
+  // during hydration mismatches, and React answers a mismatch by discarding
+  // and re-rendering the subtree — here, the whole composer toolbar.
+  const [hydrated, setHydrated] = useState(false);
+  useMountSubscription(() => setHydrated(true), []);
+  const active = hydrated ? (projects.selectedProject ?? projects.projects[0] ?? null) : null;
 
   return (
     <div

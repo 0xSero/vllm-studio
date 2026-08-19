@@ -37,7 +37,8 @@ export function DesktopSidebar({
   onOpenSearch,
   navView,
   onToggleNavView,
-  notificationsIndicator,
+  runningSessions,
+  finishedSessions,
   onNewTask,
 }: {
   pathname: string;
@@ -52,7 +53,8 @@ export function DesktopSidebar({
   onOpenSearch: () => void;
   navView: NavView;
   onToggleNavView: () => void;
-  notificationsIndicator: boolean;
+  runningSessions: number;
+  finishedSessions: number;
   onNewTask: () => void;
 }) {
   return (
@@ -132,27 +134,25 @@ export function DesktopSidebar({
               >
                 <SearchIcon className="h-4 w-4" />
               </button>
+              {/* Session state, stated rather than hinted. The bell used to
+                  carry a bare blue dot that meant "something happened" and
+                  nothing more; a count of what is running — or of what finished
+                  while you were elsewhere — is the thing you actually wanted to
+                  know, and it reads without opening anything. */}
+              <SessionStatus running={runningSessions} finished={finishedSessions} />
               {/* The bell swaps what the nav below lists — notifications when
-                  lit, the project tree otherwise — so it reads as a view toggle
-                  and stays pressed while that view is showing. Unread state is a
-                  ringed badge rather than a bare dot: the ring in sidebar-bg
-                  keeps it legible against the bell's own strokes at this size. */}
+                  lit, the project tree otherwise — so it reads as a view toggle.
+                  Pressed is a foreground shift only, matching the other chrome
+                  buttons: a filled pill here sat lit whenever the notifications
+                  view was open, which read as a stuck hover state. */}
               <button
                 onClick={onToggleNavView}
                 aria-pressed={navView === "notifications"}
-                className="relative flex h-7 w-7 items-center justify-center rounded-md text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg) aria-pressed:bg-(--link)/15 aria-pressed:text-(--link)"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg) aria-pressed:text-(--fg)"
                 title={navView === "notifications" ? "Show projects" : "Show notifications"}
-                aria-label={
-                  notificationsIndicator ? "Notifications, unseen activity" : "Notifications"
-                }
+                aria-label={navView === "notifications" ? "Show projects" : "Show notifications"}
               >
                 <BellIcon className="h-4 w-4" />
-                {notificationsIndicator ? (
-                  <span
-                    className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-(--link) ring-2 ring-(--sidebar-bg)"
-                    aria-hidden
-                  />
-                ) : null}
               </button>
             </div>
 
@@ -199,4 +199,37 @@ export function DesktopSidebar({
       </div>
     </aside>
   );
+}
+
+/**
+ * What the sessions are doing, in the width of a chip.
+ *
+ * Running wins over finished: a live run is the thing you might want to go
+ * watch, and a finished one will still be there afterwards. Nothing renders
+ * when nothing is happening, so the resting nav stays quiet.
+ */
+function SessionStatus({ running, finished }: { running: number; finished: number }) {
+  if (running > 0) {
+    return (
+      <span
+        className="flex shrink-0 items-center gap-1 rounded-md px-1.5 text-[length:var(--fs-xs)] tabular-nums text-(--hl2)"
+        title={`${running} ${running === 1 ? "session is" : "sessions are"} running`}
+      >
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-(--ok)" aria-hidden />
+        {running}
+      </span>
+    );
+  }
+  if (finished > 0) {
+    return (
+      <span
+        className="flex shrink-0 items-center gap-1 rounded-md px-1.5 text-[length:var(--fs-xs)] tabular-nums text-(--hl2)"
+        title={`${finished} ${finished === 1 ? "session" : "sessions"} finished while you were away`}
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-(--ok)/60" aria-hidden />
+        {finished}
+      </span>
+    );
+  }
+  return null;
 }
