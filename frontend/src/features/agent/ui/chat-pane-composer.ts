@@ -35,6 +35,7 @@ import {
   stepComposerHistory,
   type ComposerHistoryCursor,
 } from "@/features/agent/ui/composer-history";
+import { isComposerImeConfirmation } from "@/features/agent/ui/composer-ime";
 
 export type UpdateTab = (tabId: string, patch: (tab: SessionTab) => SessionTab) => void;
 
@@ -318,6 +319,7 @@ export function useComposerTextareaBehavior({
 
   const handleComposerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (isComposerImeConfirmation(event)) return;
       if (mention && handleMentionKey(event)) return;
       if (handleComposerHistoryKey(event)) return;
       // While a turn is running, Enter QUEUES rather than steers. Steering
