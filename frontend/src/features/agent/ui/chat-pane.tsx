@@ -431,15 +431,19 @@ export function ChatPane({
   });
 
   const activePiSessionId = piSessionIdOf(activeTab);
-  const { goalRevision, goalAction, flushPendingGoal } = useGoalCommand(activePiSessionId);
+  const { goalRevision, goalAction, flushPendingGoal } = useGoalCommand(
+    activePiSessionId,
+    activeTabId,
+  );
   const handlePiSessionIdAssigned = useCallback(
     (piSessionId: string) => {
       handlePiSessionIdChange(piSessionId);
       // A goal set on a brand-new chat has no id to key its write on; the first
-      // turn response is the first moment it does, so land it here.
-      flushPendingGoal(piSessionId);
+      // turn response is the first moment it does, so land it here — but only
+      // for the tab that actually queued it.
+      flushPendingGoal(piSessionId, activeTabId);
     },
-    [flushPendingGoal, handlePiSessionIdChange],
+    [activeTabId, flushPendingGoal, handlePiSessionIdChange],
   );
 
   const engine = useSessionEngine({
