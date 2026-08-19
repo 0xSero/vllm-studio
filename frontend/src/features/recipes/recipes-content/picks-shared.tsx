@@ -2,10 +2,9 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { DownloadCloud } from "@/ui/icon-registry";
-import { ModelButton } from "@/ui";
+import { ModelButton, StatusPill } from "@/ui";
 import { ModelLogo } from "@/ui/model-logo";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
-import { ModelStatus } from "./model-page";
 import { cx } from "@/ui/utils";
 import api from "@/lib/api/client";
 import type {
@@ -196,7 +195,7 @@ function PickDrawer({
     <ResourceDrawer
       title={model.name}
       icon={<ModelLogo modelId={brand.repo} author={brand.owner} label={model.name} size="sm" />}
-      badge={model.multimodal ? <ModelStatus tone="info">vision</ModelStatus> : undefined}
+      badge={model.multimodal ? <StatusPill tone="info">vision</StatusPill> : undefined}
       status={`${brand.label} · ${model.params}`}
       footer={
         <>

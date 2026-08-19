@@ -9,16 +9,31 @@ import {
   type ConnectorView,
 } from "@local-studio/agent-runtime/connector-contract";
 import { ApiErrorResponseSchema } from "@local-studio/agent-runtime/api-contract";
-import { Button, Checkbox, FormField, Input, ModelButton, SearchInput, Spinner } from "@/ui";
+import {
+  Button,
+  Checkbox,
+  FormField,
+  Input,
+  ModelButton,
+  SearchInput,
+  Spinner,
+  StatusPill,
+} from "@/ui";
 import { Plus, Trash2 } from "@/ui/icon-registry";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceLogo } from "@/ui/resource-logo";
 import {
-  ModelRow,
-  ModelSection,
-  ModelStatus,
-  ModelValue,
-} from "@/features/recipes/recipes-content/model-page";
+  DataRow,
+  EndCell,
+  HeadCell,
+  IdentityCell,
+  RowAction,
+  StatusText,
+  TableFrame,
+  TableNotice,
+  TableSection,
+  TextCell,
+} from "@/features/recipes/recipes-content/catalog-table-shell";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 interface CatalogEntry {
@@ -154,9 +169,9 @@ function ConnectorDrawer({
       title={connector.name}
       icon={<ResourceLogo identity={connector.id} label={connector.name} />}
       badge={
-        <ModelStatus tone={connector.enabled ? "good" : "default"}>
+        <StatusPill tone={connector.enabled ? "good" : "default"}>
           {connector.enabled ? "enabled" : "disabled"}
-        </ModelStatus>
+        </StatusPill>
       }
       status={
         connector.origin
@@ -303,7 +318,7 @@ function CatalogDrawer({
     <ResourceDrawer
       title={`Connect ${entry.name}`}
       icon={<ResourceLogo identity={entry.id} label={entry.name} company={entry.company} />}
-      badge={<ModelStatus>catalog</ModelStatus>}
+      badge={<StatusPill>catalog</StatusPill>}
       status={`${entry.company} · ${entry.transport}`}
       footer={
         <>
@@ -404,39 +419,40 @@ function ConnectorRow({
   };
 
   return (
-    <ModelRow
-      label={connector.name}
-      description={
-        connector.origin
-          ? `${connector.origin.kind} · ${connector.origin.id}`
-          : `${connector.transport} connector`
-      }
-      leading={<ResourceLogo identity={connector.id} label={connector.name} />}
-      value={<ModelValue mono>{connectorCommand(connector)}</ModelValue>}
-      status={
-        <ModelStatus tone={connector.enabled ? "good" : "default"}>
-          {testResult || (connector.enabled ? "enabled" : "disabled")}
-        </ModelStatus>
-      }
-      actions={
-        <>
-          <ModelButton onClick={() => void test()} disabled={testing}>
+    <DataRow onOpen={onOpen} ariaLabel={`Open ${connector.name}`}>
+      <IdentityCell
+        leading={<ResourceLogo identity={connector.id} label={connector.name} />}
+        label={connector.name}
+        description={
+          connector.origin
+            ? `${connector.origin.kind} · ${connector.origin.id}`
+            : `${connector.transport} connector`
+        }
+      />
+      <TextCell mono>{connectorCommand(connector)}</TextCell>
+      <EndCell>
+        <div className="flex items-center justify-end gap-2">
+          <StatusText tone={connector.enabled ? "ok" : "dim"}>
+            {testResult || (connector.enabled ? "enabled" : "disabled")}
+          </StatusText>
+          <RowAction onClick={() => void test()} disabled={testing} title="Test this connector">
             {testing ? <Spinner size="xs" /> : "Test"}
-          </ModelButton>
-          <ModelButton onClick={() => void toggle()}>
+          </RowAction>
+          <RowAction onClick={() => void toggle()}>
             {connector.enabled ? "Disable" : "Enable"}
-          </ModelButton>
+          </RowAction>
           {!connector.origin ? (
-            <ModelButton onClick={() => void remove()} tone="danger" title="Remove connector">
+            <RowAction onClick={() => void remove()} tone="danger" title="Remove connector">
               <Trash2 className="h-3 w-3" />
-            </ModelButton>
+            </RowAction>
           ) : null}
-        </>
-      }
-      onClick={onOpen}
-    />
+        </div>
+      </EndCell>
+    </DataRow>
   );
 }
+
+const CONNECTOR_MIN_WIDTH = "min-w-[42rem]";
 
 export function ConnectorsSection() {
   const [connectors, setConnectors] = useState<readonly ConnectorView[]>([]);
@@ -477,79 +493,121 @@ export function ConnectorsSection() {
 
   return (
     <div className="space-y-7">
-      <ModelSection
+      <TableSection
         title="Connectors"
         description="MCP servers, accounts, services, and machines available to Workbench."
         actions={
-          <ModelStatus tone={loaded ? "good" : "default"}>
-            {loaded ? `${visibleConnectors.length} connected` : "discovering"}
-          </ModelStatus>
-        }
-      >
-        <ModelRow
-          label="Search connectors"
-          description="Name, company, transport, command, or endpoint."
-          control={
+          <div className="flex items-center gap-2">
             <SearchInput
               value={query}
               onChange={setQuery}
               placeholder="Search connectors"
-              className="w-full"
+              className="w-56"
             />
-          }
-          status={<ModelStatus>{visibleConnectors.length + visibleCatalog.length}</ModelStatus>}
-        />
-        {visibleConnectors.map((connector) => (
-          <ConnectorRow
-            key={connector.id}
-            connector={connector}
-            onOpen={() => setSelectedConnector(connector)}
-            onChanged={setConnectors}
-          />
-        ))}
-        {loaded && visibleConnectors.length === 0 ? (
-          <div className="px-4 py-7 text-center text-[length:var(--fs-md)] text-(--ui-muted)">
-            No connected MCP servers match this search.
+            <StatusText tone={loaded ? "ok" : "dim"}>
+              {loaded ? `${visibleConnectors.length} connected` : "discovering"}
+            </StatusText>
           </div>
-        ) : null}
-      </ModelSection>
+        }
+      >
+        {loaded && visibleConnectors.length === 0 ? (
+          <TableNotice
+            title="No connected MCP servers match this search"
+            body="Connect one from the catalog below, or clear the search to see everything already connected."
+          />
+        ) : (
+          <TableFrame minWidthClass={CONNECTOR_MIN_WIDTH}>
+            <thead>
+              <tr>
+                <HeadCell>Connector</HeadCell>
+                <HeadCell>Command</HeadCell>
+                <HeadCell numeric>State</HeadCell>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleConnectors.map((connector) => (
+                <ConnectorRow
+                  key={connector.id}
+                  connector={connector}
+                  onOpen={() => setSelectedConnector(connector)}
+                  onChanged={setConnectors}
+                />
+              ))}
+            </tbody>
+          </TableFrame>
+        )}
+      </TableSection>
 
-      <ModelSection
+      <TableSection
         title="Catalog"
         description="Known integrations with their provider and launch configuration."
-        actions={<ModelStatus>{visibleCatalog.length} integrations</ModelStatus>}
+        actions={<StatusText>{`${visibleCatalog.length} integrations`}</StatusText>}
       >
-        {visibleCatalog.map((entry) => {
-          const installedConnector = connectors.find((connector) => connector.id === entry.id);
-          const installed = Boolean(installedConnector);
-          const openEntry = () =>
-            installedConnector
-              ? setSelectedConnector(installedConnector)
-              : setSelectedCatalog(entry);
-          return (
-            <ModelRow
-              key={entry.id}
-              label={entry.name}
-              description={`${entry.company} · ${entry.description}`}
-              leading={
-                <ResourceLogo identity={entry.id} label={entry.name} company={entry.company} />
-              }
-              value={<ModelValue mono>{[entry.command, ...entry.args].join(" ")}</ModelValue>}
-              status={
-                <ModelStatus tone={installed ? "good" : "default"}>
-                  {installed ? "connected" : "available"}
-                </ModelStatus>
-              }
-              actions={
-                <ModelButton onClick={openEntry} tone={installed ? "default" : "primary"}>
-                  {installed && entry.id !== "computer" ? "Open" : <Plus className="h-3 w-3" />}
-                </ModelButton>
-              }
-              onClick={openEntry}
-            />
-          );
-        })}
-      </ModelSection>
+        {visibleCatalog.length === 0 ? (
+          <TableNotice
+            title="No integration matches this search"
+            body="The catalog lists the integrations Local Studio knows how to launch. Clear the search to see them all."
+          />
+        ) : (
+          <TableFrame minWidthClass={CONNECTOR_MIN_WIDTH}>
+            <thead>
+              <tr>
+                <HeadCell>Integration</HeadCell>
+                <HeadCell>Launches</HeadCell>
+                <HeadCell numeric>State</HeadCell>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleCatalog.map((entry) => {
+                const installedConnector = connectors.find(
+                  (connector) => connector.id === entry.id,
+                );
+                const installed = Boolean(installedConnector);
+                const openEntry = () =>
+                  installedConnector
+                    ? setSelectedConnector(installedConnector)
+                    : setSelectedCatalog(entry);
+                return (
+                  <DataRow key={entry.id} onOpen={openEntry} ariaLabel={`Open ${entry.name}`}>
+                    <IdentityCell
+                      leading={
+                        <ResourceLogo
+                          identity={entry.id}
+                          label={entry.name}
+                          company={entry.company}
+                        />
+                      }
+                      label={entry.name}
+                      description={`${entry.company} · ${entry.description}`}
+                    />
+                    <TextCell mono>{[entry.command, ...entry.args].join(" ")}</TextCell>
+                    <EndCell>
+                      <div className="flex items-center justify-end gap-2">
+                        <StatusText tone={installed ? "ok" : "dim"}>
+                          {installed ? "connected" : "available"}
+                        </StatusText>
+                        <RowAction
+                          onClick={openEntry}
+                          title={installed ? `Open ${entry.name}` : `Connect ${entry.name}`}
+                        >
+                          {installed && entry.id !== "computer" ? (
+                            "Open"
+                          ) : (
+                            <>
+                              <Plus className="h-3 w-3" />
+                              Connect
+                            </>
+                          )}
+                        </RowAction>
+                      </div>
+                    </EndCell>
+                  </DataRow>
+                );
+              })}
+            </tbody>
+          </TableFrame>
+        )}
+      </TableSection>
 
       {selectedConnector ? (
         <ConnectorDrawer

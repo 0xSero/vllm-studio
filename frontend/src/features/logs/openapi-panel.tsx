@@ -4,6 +4,14 @@ import { useCallback, useMemo, useState } from "react";
 import { Effect, Schema } from "effect";
 import { RefreshCw } from "@/ui/icon-registry";
 import { Button, StatusPill } from "@/ui";
+import {
+  DataRow,
+  HeadCell,
+  LeadCell,
+  TableFrame,
+  TableNotice,
+  TextCell,
+} from "@/features/recipes/recipes-content/catalog-table-shell";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 const OpenApiSpecSchema = Schema.Struct({
@@ -131,33 +139,45 @@ export function OpenApiPanel() {
           </div>
         ) : null}
 
+        {!error && operations.length === 0 && !loading ? (
+          <TableNotice
+            title="No operations to show"
+            body="The controller answered without any documented paths. Refresh once it is up, or check that /api/spec is being served."
+          />
+        ) : null}
+
         {!error && operations.length > 0 ? (
-          <div className="mt-5 overflow-hidden rounded-lg border border-(--color-card-border)">
-            {operations.map((operation) => (
-              <div
-                key={`${operation.method}:${operation.path}`}
-                className="grid gap-2 border-b border-(--color-card-border) bg-(--color-card) px-4 py-3 last:border-b-0 md:grid-cols-[5rem_minmax(0,1fr)]"
-              >
-                <span className="w-fit rounded border border-(--border) bg-(--surface) px-1.5 py-0.5 font-mono text-[length:var(--fs-xs)] font-semibold text-(--fg)">
-                  {operation.method}
-                </span>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <span className="font-mono text-[length:var(--fs-sm)] text-(--link)">
-                      {operation.path}
-                    </span>
-                    <span className="text-[length:var(--fs-sm)] font-medium text-(--fg)">
+          <div className="mt-3">
+            <TableFrame minWidthClass="min-w-[40rem]">
+              <thead>
+                <tr>
+                  <HeadCell>Method</HeadCell>
+                  <HeadCell>Path</HeadCell>
+                  <HeadCell>Summary</HeadCell>
+                </tr>
+              </thead>
+              <tbody>
+                {operations.map((operation) => (
+                  <DataRow key={`${operation.method}:${operation.path}`}>
+                    <LeadCell>
+                      <span className="font-mono text-[length:var(--fs-xs)] font-semibold text-(--fg)">
+                        {operation.method}
+                      </span>
+                    </LeadCell>
+                    <TextCell mono>
+                      <span className="text-(--link)">{operation.path}</span>
+                    </TextCell>
+                    <TextCell
+                      sub={operation.description ?? undefined}
+                      widthClass="max-w-[28rem]"
+                      title={operation.summary}
+                    >
                       {operation.summary}
-                    </span>
-                  </div>
-                  {operation.description ? (
-                    <p className="mt-1 text-[length:var(--fs-xs)] leading-5 text-(--color-foreground-subtle)">
-                      {operation.description}
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            ))}
+                    </TextCell>
+                  </DataRow>
+                ))}
+              </tbody>
+            </TableFrame>
           </div>
         ) : null}
       </div>

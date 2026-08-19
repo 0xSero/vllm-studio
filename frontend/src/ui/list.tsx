@@ -12,7 +12,6 @@ export function ListRow({
   actions,
   children,
   className,
-  variant = "settings",
 }: {
   label: string;
   description?: ReactNode;
@@ -22,45 +21,8 @@ export function ListRow({
   actions?: ReactNode;
   children?: ReactNode;
   className?: string;
-  variant?: "settings" | "resource";
 }) {
   const primaryValue = control ?? value;
-
-  if (variant === "resource") {
-    return (
-      <div className={cx("px-3 py-2.5 transition-colors hover:bg-(--ui-hover)/30", className)}>
-        <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-          <div className="min-w-0 space-y-1">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <div
-                className="min-w-0 break-words text-[length:var(--fs-base)] font-medium leading-snug text-(--ui-fg)"
-                title={label}
-              >
-                {label}
-              </div>
-            </div>
-            {description ? (
-              <div className="line-clamp-2 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
-                {description}
-              </div>
-            ) : null}
-          </div>
-          {status || actions ? (
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:justify-end sm:pt-0.5">
-              {status ? <div className="shrink-0">{status}</div> : null}
-              {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
-            </div>
-          ) : null}
-        </div>
-        {primaryValue ? <div className="mt-2 min-w-0 text-(--ui-muted)">{primaryValue}</div> : null}
-        {children ? (
-          <div className="mt-2 min-w-0 space-y-1.5 border-t border-(--ui-separator)/70 pt-2 text-[length:var(--fs-sm)] leading-relaxed">
-            {children}
-          </div>
-        ) : null}
-      </div>
-    );
-  }
 
   return (
     <div
@@ -130,92 +92,6 @@ export function RowValue({
   );
 }
 
-export type RowFact = {
-  label: string;
-  value: ReactNode;
-  mono?: boolean;
-  title?: string;
-  truncate?: boolean;
-};
-
-export function RowFacts({ items, className }: { items: RowFact[]; className?: string }) {
-  return (
-    <dl
-      className={cx(
-        "grid min-w-0 grid-cols-1 gap-x-3 gap-y-1.5 sm:grid-cols-[6rem_minmax(0,1fr)]",
-        className,
-      )}
-    >
-      {items.map((item) => (
-        <div key={item.label} className="contents">
-          <dt className="text-[length:var(--fs-sm)] text-(--ui-muted)">{item.label}</dt>
-          <dd
-            className={cx(
-              "min-w-0 text-[length:var(--fs-sm)] text-(--ui-fg)/80",
-              item.mono ? "font-mono" : "",
-              item.truncate ? "truncate" : "break-words",
-            )}
-            title={item.title ?? (typeof item.value === "string" ? item.value : undefined)}
-          >
-            {item.value}
-          </dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-type RowDetailTone = "muted" | "warning" | "danger";
-type RowDetailSize = "inherit" | "sm" | "md";
-
-const rowDetailToneClass: Record<RowDetailTone, string> = {
-  muted: "text-(--ui-muted)",
-  warning: "text-(--ui-warning)",
-  danger: "text-(--ui-danger)/80",
-};
-
-const rowDetailSizeClass: Record<RowDetailSize, string> = {
-  inherit: "",
-  sm: "text-[length:var(--fs-sm)]",
-  md: "text-[length:var(--fs-md)]",
-};
-
-export function RowDetailLine({
-  children,
-  tone = "muted",
-  size = "inherit",
-  mono = false,
-  truncate = false,
-  clamp = false,
-  title,
-  className,
-}: {
-  children: ReactNode;
-  tone?: RowDetailTone;
-  size?: RowDetailSize;
-  mono?: boolean;
-  truncate?: boolean;
-  clamp?: boolean;
-  title?: string;
-  className?: string;
-}) {
-  return (
-    <p
-      className={cx(
-        rowDetailToneClass[tone],
-        rowDetailSizeClass[size],
-        mono ? "font-mono" : "",
-        truncate ? "truncate" : "",
-        clamp ? "line-clamp-3 whitespace-pre-wrap" : "",
-        className,
-      )}
-      title={title ?? (typeof children === "string" ? children : undefined)}
-    >
-      {children}
-    </p>
-  );
-}
-
 export function EmptySafeNotice({ children }: { children: ReactNode }) {
   return (
     <div className="px-3.5 py-2.5 text-[length:var(--fs-md)] leading-relaxed text-(--ui-muted)">
@@ -227,16 +103,30 @@ export function EmptySafeNotice({ children }: { children: ReactNode }) {
 export function KeyValueRow({
   label,
   value,
+  tone = "default",
   className,
 }: {
   label: ReactNode;
   value: ReactNode;
+  tone?: "default" | "ok" | "error";
   className?: string;
 }) {
   return (
-    <div className={cx("flex items-baseline justify-between gap-3 text-xs", className)}>
+    <div
+      className={cx(
+        "flex items-baseline justify-between gap-3 text-[length:var(--fs-xs)]",
+        className,
+      )}
+    >
       <dt className="text-(--ui-muted)">{label}</dt>
-      <dd className="min-w-0 truncate text-right font-mono text-(--ui-fg)">{value}</dd>
+      <dd
+        className={cx(
+          "min-w-0 truncate text-right font-mono",
+          tone === "ok" ? "text-(--ok)" : tone === "error" ? "text-(--err)" : "text-(--ui-fg)",
+        )}
+      >
+        {value}
+      </dd>
     </div>
   );
 }

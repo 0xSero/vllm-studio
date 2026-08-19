@@ -52,8 +52,7 @@ export {
 } from "./page";
 export type { SectionNavItem, PageWidth } from "./page";
 
-export { ListRow, RowDetailLine, RowFacts, RowValue, EmptySafeNotice, KeyValueRow } from "./list";
-export type { RowFact } from "./list";
+export { ListRow, RowValue, EmptySafeNotice, KeyValueRow } from "./list";
 
 export { Slider } from "./slider";
 export { SegmentedControl } from "./segmented-control";

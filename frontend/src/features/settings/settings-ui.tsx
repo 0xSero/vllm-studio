@@ -19,7 +19,6 @@ import { ChevronDown } from "@/ui/icon-registry";
 import { cx } from "@/ui/utils";
 
 export type SettingsSectionId = string;
-export type StatusTone = UiTone;
 export type SettingsSectionDef<Id extends SettingsSectionId = SettingsSectionId> =
   SectionNavItem<Id>;
 
@@ -46,7 +45,6 @@ type RowProps = {
   status?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
-  variant?: "settings" | "resource";
 };
 
 export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>({
@@ -217,12 +215,11 @@ export type SettingsFactRow = {
   value: ReactNode;
   key?: string | number;
   description?: ReactNode;
-  variant?: "settings" | "resource";
   mono?: boolean;
   dim?: boolean;
   truncate?: boolean;
   wrap?: boolean;
-  status?: { label: ReactNode; tone?: StatusTone };
+  status?: { label: ReactNode; tone?: UiTone };
   actions?: ReactNode;
   children?: ReactNode;
 };
@@ -233,7 +230,6 @@ export function SettingsFactRows({ rows }: { rows: SettingsFactRow[] }) {
       {rows.map((row) => (
         <SettingsRow
           key={row.key ?? row.label}
-          variant={row.variant}
           label={row.label}
           description={row.description}
           value={

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import type { UiTone } from "@/ui";
 import { cx } from "@/ui/utils";
 
 /**
@@ -24,6 +25,43 @@ export function TableFrame({
     <div className="min-w-0 overflow-x-auto">
       <table className={cx("w-full border-collapse tabular-nums", minWidthClass)}>{children}</table>
     </div>
+  );
+}
+
+/**
+ * The heading a table stands under: what this set of rows is, what it is for,
+ * and the one control that acts on the set rather than on a row (a search box,
+ * an "add" button, a count).
+ *
+ * Settings, Integrations and Configure used to draw this as a bordered card
+ * with hairline-separated rows inside it, which made the same data look like a
+ * different kind of object depending on which page you were on. The heading
+ * survived that migration; the box did not.
+ */
+export function TableSection({
+  title,
+  description,
+  actions,
+  children,
+}: {
+  title: string;
+  description?: string;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="min-w-0">
+      <div className="flex min-h-8 items-end justify-between gap-4 px-3 pb-1">
+        <div className="min-w-0">
+          <h3 className="text-[length:var(--fs-md)] font-medium text-(--fg)">{title}</h3>
+          {description ? (
+            <p className="mt-0.5 text-[length:var(--fs-sm)] text-(--dim)">{description}</p>
+          ) : null}
+        </div>
+        {actions ? <div className="shrink-0">{actions}</div> : null}
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -160,9 +198,128 @@ export function DataRow({
   );
 }
 
+/**
+ * A full-width row attached to the one above it: an install log, a failure
+ * reason, a "what changed" note.
+ *
+ * Some rows carry an explanation that has no column — it is a paragraph, not a
+ * value — and squeezing it into a cell either truncates it into uselessness or
+ * makes one row three times the height of its neighbours. Giving it its own
+ * spanning row keeps the columns rigid and the prose readable.
+ */
+export function DetailRow({ colSpan, children }: { colSpan: number; children: ReactNode }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="px-3 pb-2">
+        <div className="flex flex-col gap-1 border-l border-(--ui-border) pl-2.5 text-[length:var(--fs-xs)] leading-4 text-(--dim)">
+          {children}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 /** Leftmost cell: identity. Rounded so the hover wash has a shaped left edge. */
 export function LeadCell({ children }: { children: ReactNode }) {
   return <td className="rounded-l-lg px-3 py-2">{children}</td>;
+}
+
+/**
+ * The identity block a lead cell is almost always made of: an optional mark, a
+ * name, and one quiet line qualifying it.
+ *
+ * Extracted because every surface that moved onto this table — servers,
+ * models, connectors, providers, plugins, skills, engines, rigs — draws the
+ * same three things in the same order, and having each one re-type the
+ * truncation and the type ramp is how the columns drift apart again.
+ */
+export function IdentityCell({
+  leading,
+  label,
+  description,
+  title,
+}: {
+  leading?: ReactNode;
+  label: ReactNode;
+  description?: ReactNode;
+  title?: string;
+}) {
+  return (
+    <LeadCell>
+      <div className="flex min-w-0 items-center gap-2.5">
+        {leading ? <span className="flex shrink-0 items-center">{leading}</span> : null}
+        <div className="min-w-0">
+          <div
+            className="truncate text-[length:var(--fs-md)] font-medium text-(--fg)"
+            title={title ?? (typeof label === "string" ? label : undefined)}
+          >
+            {label}
+          </div>
+          {description ? (
+            <div
+              className="truncate text-[length:var(--fs-xs)] text-(--dim)/60"
+              title={typeof description === "string" ? description : undefined}
+            >
+              {description}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </LeadCell>
+  );
+}
+
+/**
+ * A value cell for text rather than numbers.
+ *
+ * NumCell's `whitespace-nowrap` is right for a figure and wrong for a
+ * filesystem path or a provider blurb, which have no natural width and will
+ * push every column after them off the viewport. This one truncates instead,
+ * and stays left-aligned by default because prose scans from the left.
+ */
+export function TextCell({
+  children,
+  sub,
+  mono,
+  align = "left",
+  title,
+  widthClass = "max-w-[20rem]",
+}: {
+  children: ReactNode;
+  sub?: ReactNode;
+  mono?: boolean;
+  align?: "left" | "right";
+  title?: string;
+  widthClass?: string;
+}) {
+  return (
+    <td
+      className={cx("px-3 py-2", align === "right" ? "text-right" : "text-left")}
+      title={title ?? (typeof children === "string" ? children : undefined)}
+    >
+      <div
+        className={cx(
+          "truncate text-[length:var(--fs-sm)] text-(--dim)",
+          mono ? "font-mono" : "",
+          widthClass,
+          align === "right" ? "ml-auto" : "",
+        )}
+      >
+        {children}
+      </div>
+      {sub ? (
+        <div
+          className={cx(
+            "truncate text-[length:var(--fs-xs)] text-(--dim)/60",
+            widthClass,
+            align === "right" ? "ml-auto" : "",
+          )}
+        >
+          {sub}
+        </div>
+      ) : null}
+    </td>
+  );
 }
 
 /** A right-aligned value cell, with an optional quieter second line beneath. */
@@ -218,12 +375,20 @@ export function RowAction({
   disabled,
   title,
   tone = "accent",
+  alwaysVisible,
 }: {
   children: ReactNode;
   onClick: () => void;
   disabled?: boolean;
   title?: string;
   tone?: "accent" | "danger" | "quiet";
+  /**
+   * Keep the action on screen at rest. Hover-reveal is right when the row
+   * itself is clickable and the button is only a shortcut to the same place;
+   * it is wrong when the button is the only way to act on the row, which is
+   * also the case on any touch device where hover never happens.
+   */
+  alwaysVisible?: boolean;
 }) {
   return (
     <button
@@ -237,7 +402,8 @@ export function RowAction({
       // -mr-2 cancels the button's own right padding so its label lands on the
       // same right edge as the plain-text statuses and the header above.
       className={cx(
-        "-mr-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[length:var(--fs-xs)] font-medium opacity-0 transition-opacity focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 group-hover:opacity-100 disabled:cursor-not-allowed",
+        "-mr-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[length:var(--fs-xs)] font-medium transition-opacity focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 group-hover:opacity-100 disabled:cursor-not-allowed",
+        alwaysVisible ? "opacity-100 disabled:opacity-45" : "opacity-0",
         tone === "danger"
           ? "text-(--err) focus-visible:ring-(--err)/50"
           : tone === "quiet"
@@ -250,23 +416,51 @@ export function RowAction({
   );
 }
 
-/** Plain right-aligned status text, the resting state of the end cell. */
+export type StatusTone = "dim" | "error" | "ok" | "warn" | "info";
+
+const UI_TONE_TO_STATUS: Record<UiTone, StatusTone> = {
+  default: "dim",
+  good: "ok",
+  warning: "warn",
+  danger: "error",
+  info: "info",
+};
+
+/**
+ * Bridge from the pill vocabulary to the table's.
+ *
+ * Surfaces that also render a drawer already compute a `UiTone` for the badge
+ * there; this lets the row reuse that decision instead of restating it, so a
+ * row and the drawer it opens can never disagree about what colour a thing is.
+ */
+export function statusToneFor(tone: UiTone): StatusTone {
+  return UI_TONE_TO_STATUS[tone];
+}
+
+const STATUS_TONE_CLASS: Record<StatusTone, string> = {
+  dim: "text-(--dim)",
+  error: "text-(--err)",
+  ok: "text-(--ok)",
+  warn: "text-(--warn)",
+  info: "text-(--link)",
+};
+
+/**
+ * Plain right-aligned status text, the resting state of the end cell.
+ *
+ * A word in a colour, not a pill: a table of thirty rows with thirty badges in
+ * it reads as decoration, and the colour alone already carries "fine / needs
+ * attention / broken" at a glance.
+ */
 export function StatusText({
   children,
   tone = "dim",
 }: {
   children: ReactNode;
-  tone?: "dim" | "error" | "ok";
+  tone?: StatusTone;
 }) {
   return (
-    <span
-      className={cx(
-        "text-[length:var(--fs-xs)]",
-        tone === "error" ? "text-(--err)" : tone === "ok" ? "text-(--ok)" : "text-(--dim)",
-      )}
-    >
-      {children}
-    </span>
+    <span className={cx("text-[length:var(--fs-xs)]", STATUS_TONE_CLASS[tone])}>{children}</span>
   );
 }
 

@@ -268,15 +268,12 @@ function ServicesGroup({ realtime }: { realtime: RealtimeStatusSnapshot }) {
   return (
     <StatusGroup title="Services">
       {realtime.services.map((svc) => (
-        <div
+        <KeyValueRow
           key={svc.id}
-          className="flex items-center justify-between py-0.5 text-[length:var(--fs-sm)]"
-        >
-          <span className="min-w-0 truncate text-(--color-foreground-subtle)">{svc.id}</span>
-          <span className={`shrink-0 font-mono ${serviceToneClass(svc.status, svc.last_error)}`}>
-            {svc.status}
-          </span>
-        </div>
+          label={svc.id}
+          value={svc.status}
+          tone={serviceTone(svc.status, svc.last_error)}
+        />
       ))}
     </StatusGroup>
   );
@@ -284,14 +281,11 @@ function ServicesGroup({ realtime }: { realtime: RealtimeStatusSnapshot }) {
 
 function BackendRow({ name, info }: { name: string; info: BackendInfo }) {
   return (
-    <div className="flex items-center justify-between py-0.5 text-[length:var(--fs-sm)]">
-      <span className="font-mono text-(--color-foreground-subtle)">{name}</span>
-      {info.installed ? (
-        <span className="font-mono text-(--color-success)">{info.version ?? "installed"}</span>
-      ) : (
-        <span className="text-(--color-foreground-subtlest)">not installed</span>
-      )}
-    </div>
+    <KeyValueRow
+      label={name}
+      value={info.installed ? (info.version ?? "installed") : "not installed"}
+      tone={info.installed ? "ok" : "default"}
+    />
   );
 }
 
@@ -450,8 +444,8 @@ function deriveBackends(
   return entries.filter((e): e is [string, BackendInfo] => e !== null);
 }
 
-function serviceToneClass(status: string, lastError?: string | null): string {
-  if (status === "ok" || status === "healthy") return "text-(--color-success)";
-  if (status === "error" || lastError) return "text-(--color-destructive)";
-  return "text-(--color-foreground-subtle)";
+function serviceTone(status: string, lastError?: string | null): "default" | "ok" | "error" {
+  if (status === "ok" || status === "healthy") return "ok";
+  if (status === "error" || lastError) return "error";
+  return "default";
 }
