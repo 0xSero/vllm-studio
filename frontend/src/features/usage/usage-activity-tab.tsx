@@ -15,7 +15,6 @@ import {
   TableNotice,
   type Stat,
 } from "@/features/recipes/recipes-content/catalog-table-shell";
-import { TokenActivityHeatmap } from "./token-activity-heatmap";
 import { UsageBarRow, type UsageBar } from "./usage-bars";
 import { useSortedRows } from "./usage-sort";
 
@@ -237,16 +236,6 @@ export function UsageActivityTab({ stats }: { stats: UsageStats }) {
           ) : null}
         </TableFrame>
       )}
-
-      <section>
-        <div className="flex items-baseline justify-between gap-4">
-          <h3 className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">Past year</h3>
-          <span className="text-[length:var(--fs-xs)] text-(--dim)/70">tokens per day</span>
-        </div>
-        <div className="mt-3">
-          <TokenActivityHeatmap daily={stats.daily} />
-        </div>
-      </section>
     </div>
   );
 }
