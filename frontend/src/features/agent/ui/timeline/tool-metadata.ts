@@ -194,7 +194,7 @@ export function classifyTool(block: ToolBlock): ToolKind {
   if (hasAnyNeedle(name, ["search", "grep", "find", "ripgrep", "rg"])) return "search";
   if (hasAnyNeedle(name, ["read", "open", "cat", "view", "list"])) return "read";
   if (hasAnyNeedle(name, ["exec", "command", "shell", "bash", "run", "terminal"])) return "exec";
-  if (hasAnyNeedle(name, ["browser", "web", "open_url", "navigate"])) return "browser";
+  if (hasAnyNeedle(name, ["browser", "chrome", "web", "open_url", "navigate"])) return "browser";
   return "generic";
 }
 

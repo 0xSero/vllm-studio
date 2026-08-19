@@ -4,7 +4,7 @@ import type { ReactNode, RefObject } from "react";
 import { Spinner } from "@/ui";
 import { ArrowUp, Plus } from "@/ui/icon-registry";
 import type { BrowserBackend } from "@/features/agent/tools/types";
-import { GlobeIcon, PanelIcon, SitegeistIcon, StopIcon } from "@/ui/icons";
+import { GlobeIcon, PanelIcon, StopIcon, UserBrowserIcon } from "@/ui/icons";
 
 export function AgentComposerActions({
   fileInputRef,
@@ -38,9 +38,14 @@ export function AgentComposerActions({
   const inputHasText = Boolean(input.trim());
   const starting = status === "starting";
   const stopping = status === "stopping";
-  const usingSitegeist = browserBackend === "sitegeist";
-  const browserBackendLabel = usingSitegeist ? "Sitegeist relay" : "embedded panel";
-  const browserBackendTarget = usingSitegeist ? "embedded panel" : "Sitegeist relay";
+  // The sandbox browser is always armed once the browser tool is on; this
+  // second button adds the user's own browser on top of it, so it reads as an
+  // on/off for Chrome rather than a choice between two backends.
+  const chromeArmed = browserBackend === "chrome";
+  const chromeLabel = chromeArmed
+    ? "Your Chrome is armed — the agent can drive your real browser, with your logins"
+    : "Your Chrome is off — the agent only has the headless sandbox browser";
+  const chromeAction = chromeArmed ? "Stop letting it use your browser" : "Let it use your browser";
   const inactiveIconClass = "text-(--hl2) hover:bg-(--hover) hover:text-(--fg)";
   const activeIconClass = "bg-(--active) text-(--fg)";
 
@@ -83,12 +88,13 @@ export function AgentComposerActions({
         <button
           type="button"
           onClick={onToggleBrowserBackend}
-          aria-label={`Browser backend: ${browserBackendLabel}. Switch to ${browserBackendTarget}.`}
-          className={`composer-action-optional inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-full ${usingSitegeist ? activeIconClass : inactiveIconClass}`}
-          title={`Browser: ${browserBackendLabel}. Click to use ${browserBackendTarget}.`}
+          aria-pressed={chromeArmed}
+          aria-label={`${chromeLabel}. ${chromeAction}.`}
+          className={`composer-action-optional inline-flex !h-7 !min-h-7 !w-7 !min-w-7 shrink-0 items-center justify-center rounded-full ${chromeArmed ? activeIconClass : inactiveIconClass}`}
+          title={`${chromeLabel}. Click to ${chromeAction.toLowerCase()}.`}
         >
-          {usingSitegeist ? (
-            <SitegeistIcon className="h-4 w-4" />
+          {chromeArmed ? (
+            <UserBrowserIcon className="h-4 w-4" />
           ) : (
             <PanelIcon className="h-4 w-4" />
           )}

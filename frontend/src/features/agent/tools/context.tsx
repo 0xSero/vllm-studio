@@ -214,7 +214,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
 
   const toggleBrowserBackend = useCallback(() => {
     setBrowser((current) => {
-      const backend = current.backend === "sitegeist" ? "embedded" : "sitegeist";
+      const backend = current.backend === "chrome" ? "embedded" : "chrome";
       writeBrowserBackend(backend);
       return { ...current, backend };
     });

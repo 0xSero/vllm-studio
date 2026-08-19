@@ -21,7 +21,7 @@ export {
   FileIcon,
   GlobeIcon,
   GitBranchIcon,
-  SitegeistIcon,
+  UserBrowserIcon,
   PanelIcon,
   MoreIcon,
   PinIcon,

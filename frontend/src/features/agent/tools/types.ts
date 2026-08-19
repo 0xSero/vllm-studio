@@ -27,7 +27,10 @@ export const COMPUTER_TAB_IDS = [
 
 export type ComputerTab = (typeof COMPUTER_TAB_IDS)[number];
 
-export type BrowserBackend = "embedded" | "sitegeist";
+// Which browsers the session arms for the model. "embedded" is the headless
+// sandbox on its own; "chrome" arms the user's real browser as well, so the
+// model chooses per task rather than the composer choosing for it.
+export type BrowserBackend = "embedded" | "chrome";
 
 export type BrowserState = {
   enabled: boolean;

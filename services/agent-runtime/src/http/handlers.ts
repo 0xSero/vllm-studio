@@ -317,7 +317,7 @@ type CompactRequest = {
   customInstructions?: string;
   browserToolEnabled?: boolean;
   browserSessionId?: string;
-  browserBackend?: "embedded" | "sitegeist";
+  browserBackend?: "embedded" | "chrome";
   skills?: ComposerSkillRef[];
   promptTemplates?: ComposerPromptTemplateRef[];
 };
@@ -366,7 +366,7 @@ function compactRouteEffect(request: Request): Effect.Effect<Response, unknown> 
             browserToolEnabled: body.browserToolEnabled === true,
             browserSessionId:
               typeof body.browserSessionId === "string" ? body.browserSessionId.trim() : undefined,
-            browserBackend: body.browserBackend === "sitegeist" ? "sitegeist" : "embedded",
+            browserBackend: body.browserBackend === "chrome" ? "chrome" : "embedded",
             skills,
             promptTemplates,
           }),

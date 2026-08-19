@@ -179,9 +179,12 @@ export function writeBrowserEnabled(enabled: boolean): void {
 }
 
 function parseBrowserBackend(value: string | null): BrowserBackend {
-  // A previously-stored "parchi" (now removed) falls back to the default so
-  // existing installs don't break on reload.
-  return value === "embedded" || value === "sitegeist" ? value : DEFAULT_BROWSER_BACKEND;
+  // "sitegeist" was this option's name while the relay-backed real browser was
+  // a backend of the browser tool rather than its own plugin; an install that
+  // stored it meant "drive my own browser", which is what "chrome" is now.
+  // Anything else (the long-removed "parchi") falls back to the default.
+  if (value === "sitegeist") return "chrome";
+  return value === "embedded" || value === "chrome" ? value : DEFAULT_BROWSER_BACKEND;
 }
 
 export function writeBrowserBackend(backend: BrowserBackend): void {

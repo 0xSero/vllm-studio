@@ -5,8 +5,13 @@ import path from "node:path";
 import { Effect } from "effect";
 import { listProjectsFromStore, resolveAllowedWorkspace } from "./projects-store";
 import { hasEnabledConnectorsSync } from "./connectors-service";
+import { githubCliPathSync, hasGithubCliSync } from "./github-cli";
 import { resolveBundledResource } from "./plugin-resources";
-import type { AgentThinkingLevel, AgentToolAccess } from "../../../shared/agent/agent-turn";
+import type {
+  AgentBrowserBackend as BrowserBackend,
+  AgentThinkingLevel,
+  AgentToolAccess,
+} from "../../../shared/agent/agent-turn";
 
 export type RuntimeSkillRef = {
   id?: string;
@@ -25,7 +30,7 @@ export type RuntimeStartOptions = {
   toolAccess?: AgentToolAccess;
   browserToolEnabled?: boolean;
   browserSessionId?: string;
-  browserBackend?: "embedded" | "sitegeist";
+  browserBackend?: BrowserBackend;
   skills?: RuntimeSkillRef[];
   promptTemplates?: RuntimePromptTemplateRef[];
 };
@@ -109,12 +114,26 @@ export function resolveBundledPiExtensionPath(
   return resolveBundledResourcePath("pi-extensions", fileName, envOverride);
 }
 
-// cua = computer use. One extension for every browser backend: it reads
-// LOCAL_STUDIO_BROWSER_BACKEND itself and registers the same `browser_*` tool
-// names either way, so switching backends no longer swaps the model's
-// vocabulary out from under it.
+// cua = computer use: the headless throwaway browser this app launches and
+// renders in the Browser panel. Armed whenever the browser tool is on, because
+// it is the safe default and the only backend the panel can show.
 export function resolveCuaExtensionPath(): string | null {
   return resolveBundledPiExtensionPath("cua.ts", process.env.LOCAL_STUDIO_CUA_EXTENSION_PATH);
+}
+
+// chrome = the user's OWN browser, reached through the local extension relay.
+// It is registered ALONGSIDE cua rather than instead of it: the two drive
+// different browsers under different names (`chrome_*` vs `browser_*`), and a
+// model that can see both picks per task — the user's session for signed-in
+// work, the sandbox for anonymous fetching. Replacing one with the other would
+// force the choice at composer time, before anyone knows what the task needs.
+export function resolveChromeExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath("chrome.ts", process.env.LOCAL_STUDIO_CHROME_EXTENSION_PATH);
+}
+
+// github wraps the `gh` CLI, so it only loads where a gh binary exists.
+export function resolveGithubExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath("github.ts", process.env.LOCAL_STUDIO_GITHUB_EXTENSION_PATH);
 }
 
 /** Bundled stdio MCP servers (desktop/resources/mcp) — same ladder as extensions. */
@@ -168,6 +187,14 @@ export function resolveCuaSkillPath(): string | null {
   return resolveBundledSkillPath("cua", process.env.LOCAL_STUDIO_CUA_SKILL_PATH);
 }
 
+export function resolveChromeSkillPath(): string | null {
+  return resolveBundledSkillPath("chrome", process.env.LOCAL_STUDIO_CHROME_SKILL_PATH);
+}
+
+export function resolveGithubSkillPath(): string | null {
+  return resolveBundledSkillPath("github", process.env.LOCAL_STUDIO_GITHUB_SKILL_PATH);
+}
+
 export function resolveAutomationsSkillPath(): string | null {
   return resolveBundledSkillPath("automations", process.env.LOCAL_STUDIO_AUTOMATIONS_SKILL_PATH);
 }
@@ -218,20 +245,28 @@ function shouldLoadBrowserTool(options: RuntimeStartOptions): boolean {
   return options.browserToolEnabled === true;
 }
 
-function browserBackend(options: RuntimeStartOptions): "embedded" | "sitegeist" {
+function browserBackend(options: RuntimeStartOptions): BrowserBackend {
   const backend = options.browserBackend ?? process.env.LOCAL_STUDIO_BROWSER_BACKEND;
-  if (backend === "sitegeist") return "sitegeist";
+  if (backend === "chrome") return "chrome";
   return "embedded";
+}
+
+/** The user's own browser is armed on top of the sandbox, never instead of it. */
+function shouldLoadChromeTool(options: RuntimeStartOptions): boolean {
+  return shouldLoadBrowserTool(options) && browserBackend(options) === "chrome";
 }
 
 function runtimeExtensionPaths(options: RuntimeStartOptions): string[] {
   const timeoutExtensionPath = resolveTimeoutExtensionPath();
   const agentPolicyExtensionPath = resolveAgentPolicyExtensionPath();
   const cuaExtensionPath = shouldLoadBrowserTool(options) ? resolveCuaExtensionPath() : null;
+  const chromeExtensionPath = shouldLoadChromeTool(options) ? resolveChromeExtensionPath() : null;
   return uniqueExistingPaths([
     timeoutExtensionPath,
     agentPolicyExtensionPath,
     cuaExtensionPath,
+    chromeExtensionPath,
+    hasGithubCliSync() ? resolveGithubExtensionPath() : null,
     hasEnabledConnectorsSync() ? resolveConnectorsExtensionPath() : null,
     resolveSubagentsExtensionPath(),
     // Lets the agent create/list/delete scheduled automations.
@@ -246,6 +281,10 @@ function runtimeSkillPaths(options: RuntimeStartOptions): string[] {
   return uniqueExistingPaths([
     ...selectedSkillPaths(options.skills ?? []),
     shouldLoadBrowserTool(options) ? resolveCuaSkillPath() : null,
+    shouldLoadChromeTool(options) ? resolveChromeSkillPath() : null,
+    // Same rule as the automations skill below: the tools are registered, so
+    // the guidance that says when to reach for them has to be there too.
+    hasGithubCliSync() ? resolveGithubSkillPath() : null,
     // Unconditional, because the automations extension is: the tools are always
     // registered, so the guidance that says when to reach for them has to be
     // there too. Skills are progressively disclosed — this costs one line in
@@ -260,11 +299,12 @@ function runtimeEnvInjections(
   cwd: string,
 ): Record<string, string> {
   const frontendBase = env.LOCAL_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(env);
-  const relay = readSitegeistRelayEnv(env);
+  const relay = readChromeRelayEnv(env);
+  const githubCliPath = githubCliPathSync();
   return {
-    // The cua extension picks its transport from this. It used to be implied by
-    // which extension file got loaded; now that one extension serves both
-    // backends, the choice has to reach the extension process explicitly.
+    // Which browsers this session armed. Nothing reads it to choose a transport
+    // any more — that is decided by which extension got loaded — but the
+    // composer's browser context prompt names the same value, so keep it honest.
     LOCAL_STUDIO_BROWSER_BACKEND: browserBackend(options),
     LOCAL_STUDIO_BROWSER_SESSION_ID: options.browserSessionId ?? "",
     // The project this session runs in. Extensions that spawn later work (the
@@ -272,13 +312,20 @@ function runtimeEnvInjections(
     // first registered project when the scheduler resolves the default.
     LOCAL_STUDIO_CWD: cwd,
     LOCAL_STUDIO_FRONTEND_BASE: frontendBase,
-    SITEGEIST_RELAY_URL: env.SITEGEIST_RELAY_URL ?? relay.SITEGEIST_RELAY_URL ?? "",
-    SITEGEIST_RELAY_TOKEN: env.SITEGEIST_RELAY_TOKEN ?? relay.SITEGEIST_RELAY_TOKEN ?? "",
-    SITEGEIST_RELAY_SESSION_ID: options.browserSessionId ?? "",
+    // The chrome extension's address for the browser-extension relay. The relay
+    // is the user's own process and keeps its own env names (below); these are
+    // what the extension reads, so the two can be renamed independently.
+    LOCAL_STUDIO_CHROME_RELAY_URL: env.SITEGEIST_RELAY_URL ?? relay.SITEGEIST_RELAY_URL ?? "",
+    LOCAL_STUDIO_CHROME_RELAY_TOKEN: env.SITEGEIST_RELAY_TOKEN ?? relay.SITEGEIST_RELAY_TOKEN ?? "",
+    LOCAL_STUDIO_CHROME_RELAY_SESSION: options.browserSessionId ?? "",
+    // Resolved here so the extension runs the binary this process found, rather
+    // than whatever a packaged app's stripped-down PATH resolves `gh` to.
+    ...(githubCliPath ? { LOCAL_STUDIO_GH_PATH: githubCliPath } : {}),
   };
 }
 
-function readSitegeistRelayEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+/** The relay's own env contract, unchanged: `~/.config/sitegeist-relay/env`. */
+function readChromeRelayEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   const filePath = expandHome(
     env.LOCAL_STUDIO_SITEGEIST_RELAY_ENV_PATH ?? "~/.config/sitegeist-relay/env",
   );
