@@ -2,6 +2,16 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { sanitizeBrowserPaneUrl } from "../../../../shared/agent/sanitize-embedded-browser-url";
 import { browserHost, type KeyInput, type MouseInput } from "../browser-host/browser-host";
+import {
+  explicitBinaryOverride,
+  isBrowserEngineId,
+  listBrowserEngines,
+  readEnginePreference,
+  resolveBrowserEngine,
+  writeEnginePreference,
+} from "../browser-host/browser-engines";
+import { browserHistory } from "../browser-host/browser-history";
+import { playwrightManager } from "../browser-host/playwright";
 import { fetchReadable } from "../browser-host/reader";
 
 const ALLOWED_VERBS = new Set([
@@ -18,7 +28,17 @@ const ALLOWED_VERBS = new Set([
   "reload",
 ]);
 
-const UNAVAILABLE_ERROR = "Browser unavailable: no Chromium found — set LOCAL_STUDIO_CHROME_PATH";
+// The reason the engine could not be resolved, phrased for whoever has to fix
+// it — a missing LOCAL_STUDIO_CHROME_PATH binary reads differently from "no
+// browser installed", and the old single string blamed the wrong dial.
+function unavailableError(): string {
+  try {
+    resolveBrowserEngine();
+    return "Browser unavailable";
+  } catch (error) {
+    return error instanceof Error ? error.message : "Browser unavailable";
+  }
+}
 
 let lastFallbackUrl = "";
 
@@ -54,7 +74,25 @@ async function readPayload(request: Request): Promise<Record<string, unknown>> {
   return {};
 }
 
+// Every verb — model-issued or panel-issued, both arrive here — lands in the
+// history ring before the result goes back out.
 async function dispatchVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
+  try {
+    const result = await runVerb(verb, payload);
+    recordHistory(verb, payload, result);
+    return result;
+  } catch (error) {
+    browserHistory.record({
+      action: verb,
+      detail: historyDetail(verb, payload),
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
+async function runVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
   if (!browserHost.isAvailable()) return fallbackVerb(verb, payload);
   try {
     return await runHostVerb(verb, payload);
@@ -64,6 +102,30 @@ async function dispatchVerb(verb: string, payload: Record<string, unknown>): Pro
     if (verb === "navigate" || verb === "get-text") return fallbackVerb(verb, payload);
     throw error;
   }
+}
+
+function recordHistory(
+  verb: string,
+  payload: Record<string, unknown>,
+  result: VerbResult,
+): void {
+  const data = (result.data ?? {}) as { url?: unknown; title?: unknown };
+  browserHistory.record({
+    action: verb,
+    url: typeof data.url === "string" ? data.url : undefined,
+    title: typeof data.title === "string" ? data.title : undefined,
+    detail: historyDetail(verb, payload),
+    ok: result.ok,
+    error: result.error,
+  });
+}
+
+function historyDetail(verb: string, payload: Record<string, unknown>): string | undefined {
+  if (verb === "navigate") return String(payload.url ?? "") || undefined;
+  if (verb === "click") return String(payload.selector ?? "") || undefined;
+  if (verb === "fill") return `${String(payload.selector ?? "")} = ${String(payload.value ?? "")}`;
+  if (verb === "scroll") return `deltaY ${Number(payload.deltaY ?? 0)}`;
+  return undefined;
 }
 
 async function runHostVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
@@ -150,14 +212,14 @@ async function fallbackVerb(verb: string, payload: Record<string, unknown>): Pro
   }
   if (verb === "get-text" || verb === "get-html") {
     const url = sanitizeBrowserPaneUrl(String(payload.url ?? "")) || lastFallbackUrl;
-    if (!url) return { ok: false, error: UNAVAILABLE_ERROR };
+    if (!url) return { ok: false, error: unavailableError() };
     const reader = await fetchReadable(url);
     lastFallbackUrl = reader.url;
     return verb === "get-text"
       ? { ok: true, data: { text: reader.text, readingMode: true } }
       : { ok: true, data: { html: reader.markdown ?? reader.text, readingMode: true } };
   }
-  return { ok: false, error: UNAVAILABLE_ERROR };
+  return { ok: false, error: unavailableError() };
 }
 
 export async function handleBrowserFetch(request: Request): Promise<Response> {
@@ -183,7 +245,7 @@ export async function handleBrowserFetch(request: Request): Promise<Response> {
 
 export async function handleBrowserFrame(): Promise<Response> {
   if (!browserHost.isAvailable()) {
-    return Response.json({ ok: false, error: UNAVAILABLE_ERROR }, { status: 503 });
+    return Response.json({ ok: false, error: unavailableError() }, { status: 503 });
   }
   try {
     const { frame, state } = await browserHost.pollFrame();
@@ -427,4 +489,74 @@ export async function handleBrowserViewport(request: Request): Promise<Response>
       error: error instanceof Error ? error.message : "setViewport failed",
     });
   }
+}
+
+// ─── GET /api/agent/browser/history ───────────────────────────────────────
+//
+// The computer-use log: every browser action this runtime performed, model- or
+// panel-driven. `?limit=` bounds the reply; `?visited=1` collapses it to the
+// distinct pages in visit order.
+
+export async function handleBrowserHistory(request: Request): Promise<Response> {
+  const params = new URL(request.url).searchParams;
+  const limit = Number(params.get("limit") ?? 50);
+  const visitedOnly = params.get("visited") === "1";
+  return Response.json({
+    ok: true,
+    data: visitedOnly
+      ? { visited: browserHistory.visitedUrls(limit) }
+      : { entries: browserHistory.list(limit) },
+  });
+}
+
+// ─── GET /api/agent/browser/engines · POST /api/agent/browser/engine ──────
+//
+// Which Chromium-family binary the embedded browser drives. GET reports what is
+// installed and what is running; POST persists a choice and drops the live
+// context so the next action relaunches on the new engine.
+
+function enginesPayload() {
+  const preference = readEnginePreference();
+  const engines = listBrowserEngines();
+  const active = playwrightManager.activeEngine();
+  const chosen = engines.find((engine) => engine.id === preference);
+  return {
+    preference,
+    // True when the user picked a browser that is not installed here, so the UI
+    // can say "Brave not found — running Chromium" instead of quietly lying.
+    preferenceUnavailable: preference !== "auto" && !chosen?.path,
+    override: explicitBinaryOverride(),
+    active: active
+      ? { id: active.id, label: active.label, path: active.path, source: active.source }
+      : null,
+    unavailableReason: active ? null : unavailableError(),
+    engines,
+  };
+}
+
+export async function handleBrowserEngines(): Promise<Response> {
+  return Response.json({ ok: true, data: enginesPayload() });
+}
+
+export async function handleBrowserEngineSelect(request: Request): Promise<Response> {
+  let body: { engine?: unknown };
+  try {
+    body = (await request.json()) as { engine?: unknown };
+  } catch {
+    return Response.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+  }
+  if (!isBrowserEngineId(body.engine)) {
+    return Response.json({ ok: false, error: "unknown browser engine" }, { status: 400 });
+  }
+  try {
+    writeEnginePreference(body.engine);
+  } catch (error) {
+    return Response.json({
+      ok: false,
+      error: error instanceof Error ? error.message : "failed to save browser engine",
+    });
+  }
+  // The running context is bound to the old binary; the next verb relaunches.
+  browserHost.stop();
+  return Response.json({ ok: true, data: enginesPayload() });
 }

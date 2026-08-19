@@ -10,8 +10,11 @@ import {
   handleSetupChecks,
 } from "./handlers";
 import {
+  handleBrowserEngineSelect,
+  handleBrowserEngines,
   handleBrowserFetch,
   handleBrowserFrame,
+  handleBrowserHistory,
   handleBrowserInput,
   handleBrowserLocalhosts,
   handleBrowserState,
@@ -126,7 +129,11 @@ export function createAgentRuntimeApp() {
   app.post("/api/agent/browser/input", (c) => handleBrowserInput(c.req.raw));
   app.get("/api/agent/browser/localhosts", (c) => handleBrowserLocalhosts(c.req.raw));
   app.get("/api/agent/browser/state", () => handleBrowserState());
+  app.get("/api/agent/browser/history", (c) => handleBrowserHistory(c.req.raw));
+  app.get("/api/agent/browser/engines", () => handleBrowserEngines());
   app.post("/api/agent/browser/viewport", (c) => handleBrowserViewport(c.req.raw));
+  // Registered ahead of the :verb catch-all, which would otherwise reject it.
+  app.post("/api/agent/browser/engine", (c) => handleBrowserEngineSelect(c.req.raw));
   app.post("/api/agent/browser/:verb", (c) => handleBrowserVerb(c.req.raw, c.req.param("verb")));
 
   return { app };

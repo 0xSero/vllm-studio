@@ -109,18 +109,12 @@ export function resolveBundledPiExtensionPath(
   return resolveBundledResourcePath("pi-extensions", fileName, envOverride);
 }
 
-export function resolveBrowserExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath(
-    "browser.ts",
-    process.env.LOCAL_STUDIO_BROWSER_EXTENSION_PATH,
-  );
-}
-
-export function resolveSitegeistBrowserExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath(
-    "sitegeist-browser.ts",
-    process.env.LOCAL_STUDIO_SITEGEIST_BROWSER_EXTENSION_PATH,
-  );
+// cua = computer use. One extension for every browser backend: it reads
+// LOCAL_STUDIO_BROWSER_BACKEND itself and registers the same `browser_*` tool
+// names either way, so switching backends no longer swaps the model's
+// vocabulary out from under it.
+export function resolveCuaExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath("cua.ts", process.env.LOCAL_STUDIO_CUA_EXTENSION_PATH);
 }
 
 /** Bundled stdio MCP servers (desktop/resources/mcp) — same ladder as extensions. */
@@ -170,15 +164,8 @@ function resolveBundledSkillPath(name: string, override?: string): string | null
   return resolveBundledResourcePath("skills", name, override);
 }
 
-export function resolveBrowserSkillPath(): string | null {
-  return resolveBundledSkillPath("browser", process.env.LOCAL_STUDIO_BROWSER_SKILL_PATH);
-}
-
-export function resolveSitegeistBrowserSkillPath(): string | null {
-  return resolveBundledSkillPath(
-    "sitegeist-browser",
-    process.env.LOCAL_STUDIO_SITEGEIST_BROWSER_SKILL_PATH,
-  );
+export function resolveCuaSkillPath(): string | null {
+  return resolveBundledSkillPath("cua", process.env.LOCAL_STUDIO_CUA_SKILL_PATH);
 }
 
 export function resolveAutomationsSkillPath(): string | null {
@@ -237,26 +224,14 @@ function browserBackend(options: RuntimeStartOptions): "embedded" | "sitegeist" 
   return "embedded";
 }
 
-function browserExtensionPathFor(backend: "embedded" | "sitegeist"): string | null {
-  if (backend === "sitegeist") return resolveSitegeistBrowserExtensionPath();
-  return resolveBrowserExtensionPath();
-}
-
-function browserSkillPathFor(backend: "embedded" | "sitegeist"): string | null {
-  if (backend === "sitegeist") return resolveSitegeistBrowserSkillPath();
-  return resolveBrowserSkillPath();
-}
-
 function runtimeExtensionPaths(options: RuntimeStartOptions): string[] {
   const timeoutExtensionPath = resolveTimeoutExtensionPath();
   const agentPolicyExtensionPath = resolveAgentPolicyExtensionPath();
-  const browserExtensionPath = shouldLoadBrowserTool(options)
-    ? browserExtensionPathFor(browserBackend(options))
-    : null;
+  const cuaExtensionPath = shouldLoadBrowserTool(options) ? resolveCuaExtensionPath() : null;
   return uniqueExistingPaths([
     timeoutExtensionPath,
     agentPolicyExtensionPath,
-    browserExtensionPath,
+    cuaExtensionPath,
     hasEnabledConnectorsSync() ? resolveConnectorsExtensionPath() : null,
     resolveSubagentsExtensionPath(),
     // Lets the agent create/list/delete scheduled automations.
@@ -268,11 +243,9 @@ function runtimeExtensionPaths(options: RuntimeStartOptions): string[] {
 }
 
 function runtimeSkillPaths(options: RuntimeStartOptions): string[] {
-  const loadBrowser = shouldLoadBrowserTool(options);
-  const backend = browserBackend(options);
   return uniqueExistingPaths([
     ...selectedSkillPaths(options.skills ?? []),
-    loadBrowser ? browserSkillPathFor(backend) : null,
+    shouldLoadBrowserTool(options) ? resolveCuaSkillPath() : null,
     // Unconditional, because the automations extension is: the tools are always
     // registered, so the guidance that says when to reach for them has to be
     // there too. Skills are progressively disclosed — this costs one line in
@@ -289,6 +262,10 @@ function runtimeEnvInjections(
   const frontendBase = env.LOCAL_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(env);
   const relay = readSitegeistRelayEnv(env);
   return {
+    // The cua extension picks its transport from this. It used to be implied by
+    // which extension file got loaded; now that one extension serves both
+    // backends, the choice has to reach the extension process explicitly.
+    LOCAL_STUDIO_BROWSER_BACKEND: browserBackend(options),
     LOCAL_STUDIO_BROWSER_SESSION_ID: options.browserSessionId ?? "",
     // The project this session runs in. Extensions that spawn later work (the
     // automations extension) would otherwise store an empty cwd and get the

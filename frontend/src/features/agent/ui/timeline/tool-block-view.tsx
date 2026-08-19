@@ -119,6 +119,7 @@ function browserToolLabel(block: ToolBlock): string {
   if (normalized.includes("fill")) return running ? "Filling field" : "Filled field";
   if (normalized.includes("scroll")) return running ? "Scrolling" : "Scrolled";
   if (normalized.includes("get_url")) return running ? "Checking URL" : "Checked URL";
+  if (normalized.includes("history")) return running ? "Checking history" : "Checked history";
   return running ? "Using browser" : "Used browser";
 }
 

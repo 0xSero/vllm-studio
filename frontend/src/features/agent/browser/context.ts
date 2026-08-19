@@ -21,6 +21,7 @@ export function browserContextPrompt({
     `Backend: ${backend}.`,
     `Active URL: ${activeUrl}.`,
     "The page body has not been preloaded into this prompt. To inspect it, call browser_get_text or browser_get_html first.",
+    "browser_history returns what this browser has already done and visited this session, including navigation the user drove in the panel — check it before redoing work.",
     vision
       ? "Screenshots are available on demand with browser_screenshot when visual layout matters."
       : "This model may not be vision-capable; prefer browser_get_text/browser_get_html over browser_screenshot.",
