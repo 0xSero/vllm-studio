@@ -4,7 +4,8 @@ import {
   bundledModelIndexSource,
   type ModelIndexResponse,
 } from "@local-studio/contracts/model-index";
-import type { ExclusiveLane, ResidentLane } from "@shared/agent/lane-identity";
+import type { ExclusiveLane } from "@shared/agent/lane-identity";
+import type { LaneStatus, LaneSwitchJobView as LaneSwitchJob } from "@local-studio/contracts/lanes";
 import type {
   ModelDownload,
   EngineJob,
@@ -56,29 +57,12 @@ export interface RuntimeJobResponse {
   job_id: string;
   job: EngineJob;
 }
-export type LaneSwitchState = "idle" | "running" | "ready" | "failed" | "restoring";
-export type LaneProbeView = { ready: boolean; port: number; model_ids: string[] };
-export type LaneSwitchJob = {
-  id: string | null;
-  state: LaneSwitchState;
-  from_lane: ResidentLane | null;
-  to_lane: ExclusiveLane | null;
-  script: string | null;
-  exit_code: number | null;
-  message: string | null;
-  error: string | null;
-  started_at: string | null;
-  finished_at: string | null;
-  idempotent?: boolean;
-};
-export type LaneStatus = {
-  enabled: boolean;
-  configured: boolean;
-  resident_lane: ResidentLane;
-  omlx: LaneProbeView;
-  ds4: LaneProbeView;
-  switch: LaneSwitchJob;
-};
+export type {
+  LaneProbeView,
+  LaneStatus,
+  LaneSwitchJobView as LaneSwitchJob,
+  LaneSwitchState,
+} from "@local-studio/contracts/lanes";
 
 const bundledModelIndex = Schema.decodeUnknownSync(ModelIndexSchema)(bundledModelIndexSource);
 
