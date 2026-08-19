@@ -74,8 +74,11 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   // resting view, so the toggle always has somewhere to fall back to.
   const [navView, setNavView] = useState<NavView>("projects");
   const sessionActivity = useSessionActivity();
-  const notificationsIndicator =
-    sessionActivity.active.size > 0 || sessionActivity.unseen.size > 0;
+  // The bell used to carry a bare "something happened" dot, which said nothing
+  // about what. What the nav can usefully show is session state: how many runs
+  // are live right now, and how many finished while you were elsewhere.
+  const runningSessions = sessionActivity.active.size;
+  const finishedSessions = sessionActivity.finished.size;
   const activeSessions = useOpenSessions();
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [projectsNavReady, setProjectsNavReady] = useState(projectsNavImmediate);
@@ -205,7 +208,8 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
         onToggleNavView={() =>
           setNavView((view) => (view === "notifications" ? "projects" : "notifications"))
         }
-        notificationsIndicator={notificationsIndicator}
+        runningSessions={runningSessions}
+        finishedSessions={finishedSessions}
         onNewTask={openNewTask}
       />
 
