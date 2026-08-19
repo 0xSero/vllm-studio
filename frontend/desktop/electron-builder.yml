@@ -1,6 +1,7 @@
 appId: org.local.studio.desktop
 productName: Local Studio
 asar: true
+compression: maximum
 electronLanguages:
   - en
 
