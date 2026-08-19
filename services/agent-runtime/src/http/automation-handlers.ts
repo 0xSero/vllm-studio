@@ -73,8 +73,12 @@ export async function handleAutomationDelete(id: string): Promise<Response> {
 export async function handleAutomationRun(id: string): Promise<Response> {
   const automation = await getAutomation(id);
   if (!automation) return jsonError(`Unknown automation '${id}'.`, 404);
+  // Awaits the whole run: the automation exists, so a null result can only mean
+  // the scheduler is already running it. `automation` carries the recorded run
+  // back so a caller does not have to re-list to learn how it went (the tab
+  // ignores the extra field and reloads its own list).
   const completed = await runAutomationNow(id);
-  return Response.json({ ok: true, started: completed !== null });
+  return Response.json({ ok: true, started: completed !== null, automation: completed });
 }
 
 // ─── Goals ────────────────────────────────────────────────────────────────

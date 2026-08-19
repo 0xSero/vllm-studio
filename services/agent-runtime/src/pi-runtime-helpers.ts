@@ -181,6 +181,10 @@ export function resolveSitegeistBrowserSkillPath(): string | null {
   );
 }
 
+export function resolveAutomationsSkillPath(): string | null {
+  return resolveBundledSkillPath("automations", process.env.LOCAL_STUDIO_AUTOMATIONS_SKILL_PATH);
+}
+
 export function runtimeOptionsFingerprint(options: RuntimeStartOptions): string {
   const skills = (options.skills ?? [])
     .map((skill) => `${skill.name ?? ""}:${skill.path ?? ""}`)
@@ -269,6 +273,11 @@ function runtimeSkillPaths(options: RuntimeStartOptions): string[] {
   return uniqueExistingPaths([
     ...selectedSkillPaths(options.skills ?? []),
     loadBrowser ? browserSkillPathFor(backend) : null,
+    // Unconditional, because the automations extension is: the tools are always
+    // registered, so the guidance that says when to reach for them has to be
+    // there too. Skills are progressively disclosed — this costs one line in
+    // the prompt until the model opens it.
+    resolveAutomationsSkillPath(),
   ]);
 }
 
