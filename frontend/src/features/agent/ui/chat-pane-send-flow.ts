@@ -395,6 +395,24 @@ export function useChatPaneSendFlow({
       const item = (activeTab.queue ?? []).find((entry) => entry.id === queueId);
       if (!item) return Promise.resolve();
       const runtime = activeTab.id;
+      // Promoting a queued follow-up to a steer delivers it into the running
+      // turn immediately, so it lands in the transcript optimistically the same
+      // way a composer steer does: dimmed until Pi echoes it back to the model.
+      const pendingSteerId = newId("user");
+      updateTab(activeTab.id, (t) => ({
+        ...t,
+        messages: [
+          ...t.messages,
+          {
+            id: pendingSteerId,
+            role: "user",
+            text: item.text,
+            pending: true,
+            awaitingEcho: true,
+            timestamp: nowLabel(),
+          },
+        ],
+      }));
       return Effect.runPromise(
         Effect.gen(function* () {
           const result = yield* Effect.tryPromise({
@@ -412,6 +430,7 @@ export function useChatPaneSendFlow({
           if (!result.ok) {
             updateTab(activeTab.id, (t) => ({
               ...t,
+              messages: t.messages.filter((message) => message.id !== pendingSteerId),
               error: result.error || "Steer failed",
             }));
           }

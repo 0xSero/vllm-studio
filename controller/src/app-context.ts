@@ -16,11 +16,8 @@ import { makeCompute, type Compute } from "./modules/compute/service";
 import { shutdownEngineJobs } from "./modules/engines/runtimes/engine-jobs";
 import { shutdownRuntimeInfo } from "./modules/engines/runtimes/runtime-info";
 import { RecipeStore } from "./modules/models/recipes/recipe-store";
-import { SpeechService } from "./modules/speech/service";
 import { EventManager } from "./modules/system/event-manager";
-import { createGpuLeaseRegistry, type GpuLeaseRegistry } from "./modules/system/gpu-leases";
 import { PeakMetricsStore, LifetimeMetricsStore } from "./modules/system/metrics-store";
-import { getGpuInfo } from "./modules/system/platform/gpu";
 import { ControllerRequestStore } from "./stores/controller-request-store";
 import { ControllerSettingsStore } from "./stores/controller-settings-store";
 import { InferenceRequestStore } from "./stores/inference-request-store";
@@ -34,8 +31,6 @@ export interface AppContext {
   downloadManager: DownloadManager;
   compute: Compute;
   bridge: ComputeBridge;
-  gpuLeaseRegistry: GpuLeaseRegistry;
-  speechService: SpeechService;
   stores: {
     recipeStore: RecipeStore;
     downloadStore: DownloadStore;
@@ -176,11 +171,6 @@ export const makeAppContext = Effect.gen(function* () {
     store: compute.store,
     getRecipe: (recipeId) => recipeStore.get(recipeId),
   });
-  const gpuLeaseRegistry = createGpuLeaseRegistry({
-    store: compute.store,
-    recordAlive: (record) =>
-      compute.service.stateOf(record).pipe(Effect.map((state) => state !== "exited")),
-  });
   const downloadManager = yield* initialize(
     "download-manager.open",
     DownloadManager.make(config, downloadStore, eventManager, logger),
@@ -194,25 +184,6 @@ export const makeAppContext = Effect.gen(function* () {
   yield* Effect.acquireRelease(Effect.succeed(downloadManager), (resource) =>
     releaseSafely("download-manager.shutdown", logger, resource.shutdown()),
   );
-  const speechService = yield* Effect.acquireRelease(
-    initializeSync(
-      "speech-service.open",
-      () =>
-        new SpeechService({
-          dataDirectory: config.data_dir,
-          databasePath: dbPath,
-          engine: {
-            getCurrentProcess: (): ReturnType<ComputeBridge["findInferenceProcess"]> =>
-              bridge.findInferenceProcess(),
-            getCurrentRecipe: (): ReturnType<ComputeBridge["getCurrentRecipe"]> =>
-              bridge.getCurrentRecipe(),
-          },
-          gpuLeaseRegistry,
-          gpuInfo: getGpuInfo,
-        }),
-    ),
-    (resource) => releaseSafely("speech-service.shutdown", logger, resource.shutdown()),
-  );
 
   return {
     config,
@@ -222,8 +193,6 @@ export const makeAppContext = Effect.gen(function* () {
     downloadManager,
     compute,
     bridge,
-    gpuLeaseRegistry,
-    speechService,
     stores: {
       recipeStore,
       downloadStore,

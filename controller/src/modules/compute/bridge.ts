@@ -10,7 +10,7 @@ import {
 import { getExtraArgument } from "../engines/argument-utilities";
 import { resolveLlamaBinary } from "../engines/specs/llamacpp-spec";
 import type { GpuInfo, ProcessInfo, Recipe } from "../models/types";
-import { resolveRecipeGpuUuids } from "../system/gpu-leases";
+import { resolveRecipeGpuUuids } from "../system/gpu-visibility";
 import { getGpuInfo } from "../system/platform/gpu";
 import type { DeviceId, EngineId, InstanceRecord, LaunchFailure } from "./contracts";
 import {

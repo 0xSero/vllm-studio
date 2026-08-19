@@ -8,9 +8,6 @@ import {
   Input,
   RefreshIconButton,
   SectionNav,
-  ListRow,
-  RowValue,
-  EmptySafeNotice,
   StatusPill,
   type SectionNavItem,
   type UiTone,
@@ -19,7 +16,6 @@ import { ChevronDown } from "@/ui/icon-registry";
 import { cx } from "@/ui/utils";
 
 export type SettingsSectionId = string;
-export type StatusTone = UiTone;
 export type SettingsSectionDef<Id extends SettingsSectionId = SettingsSectionId> =
   SectionNavItem<Id>;
 
@@ -46,7 +42,6 @@ type RowProps = {
   status?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
-  variant?: "settings" | "resource";
 };
 
 export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>({
@@ -73,7 +68,7 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
     <AppPage>
       <div
         className={cx(
-          "mx-auto grid w-full grid-cols-1 gap-4 px-4 py-4 sm:px-6 lg:justify-center lg:gap-8 lg:py-6",
+          "mx-auto grid w-full grid-cols-1 gap-4 px-4 py-4 sm:px-6 lg:justify-center lg:gap-6 lg:py-5",
           layoutWidth,
         )}
       >
@@ -93,13 +88,11 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
             onSelectItem={onSelectSection}
           />
         </aside>
-        <section className="min-w-0 pb-12">
-          <header className="mb-6 flex min-h-8 items-start justify-between gap-4">
+        <section className="min-w-0 pb-10">
+          <header className="mb-5 flex min-h-8 items-start justify-between gap-4">
             <div className="min-w-0">
               {eyebrow ? (
-                <div className="mb-1 text-[length:var(--fs-xs)] uppercase tracking-[0.12em] text-(--ui-muted)">
-                  {eyebrow}
-                </div>
+                <div className="mb-1 text-[length:var(--fs-sm)] text-(--ui-muted)">{eyebrow}</div>
               ) : null}
               <h2 className="text-[length:var(--fs-xl)] font-medium tracking-[-0.015em] text-(--ui-fg)">
                 {active?.label ?? title}
@@ -147,7 +140,7 @@ export function SettingsGroup({
   const showBody = collapsible ? open : true;
 
   return (
-    <section className="mb-8 last:mb-0">
+    <section className="mb-6 last:mb-0">
       <div className="mb-2 flex items-start justify-between gap-4 px-1">
         <div className="min-w-0">
           {collapsible ? (
@@ -190,8 +183,56 @@ export function SettingsGroup({
   );
 }
 
-export function SettingsRow(props: RowProps) {
-  return <ListRow {...props} />;
+/**
+ * The settings label/value row.
+ *
+ * This used to be a pass-through to a generic `ListRow` in `src/ui`, kept there
+ * from when several surfaces shared a row language. Those surfaces now speak
+ * the catalog table language instead, so the generic layer had exactly one
+ * caller wrapping it in another component of the same shape. The markup lives
+ * here now, where the only page that renders it can be read in one file.
+ */
+export function SettingsRow({
+  label,
+  description,
+  value,
+  control,
+  status,
+  actions,
+  children,
+}: RowProps) {
+  const primaryValue = control ?? value;
+
+  return (
+    <div className="rounded-md px-2 py-2 transition-colors hover:bg-(--ui-hover)/30">
+      <div className="grid min-h-7 grid-cols-1 gap-1.5 md:grid-cols-[minmax(168px,0.3fr)_minmax(0,1fr)] md:items-center md:gap-4">
+        <div className="min-w-0">
+          <div
+            className="truncate text-[length:var(--fs-base)] font-medium text-(--ui-fg)"
+            title={label}
+          >
+            {label}
+          </div>
+          {description ? (
+            <div className="mt-0.5 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
+              {description}
+            </div>
+          ) : null}
+        </div>
+        <div className="flex min-w-0 items-center justify-end gap-2">
+          {primaryValue ? <div className="min-w-0 flex-1">{primaryValue}</div> : null}
+          {status ? <div className="shrink-0">{status}</div> : null}
+          {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
+        </div>
+      </div>
+      {children ? (
+        <div className="mt-2 grid grid-cols-1 gap-1.5 md:grid-cols-[minmax(168px,0.3fr)_minmax(0,1fr)] md:gap-4">
+          <div className="hidden md:block" />
+          <div className="min-w-0">{children}</div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function SettingsValue({
@@ -207,10 +248,21 @@ export function SettingsValue({
   truncate?: boolean;
   wrap?: boolean;
 }) {
+  const value =
+    children === null || children === undefined || children === "" ? "Not set" : children;
   return (
-    <RowValue mono={mono} dim={dim} truncate={truncate} wrap={wrap}>
-      {children}
-    </RowValue>
+    <div
+      className={cx(
+        "text-[length:var(--fs-base)]",
+        mono ? "font-mono text-[length:var(--fs-md)]" : "",
+        dim ? "text-(--ui-muted)" : "text-(--ui-fg)/80",
+        truncate ? "min-w-0 truncate" : "",
+        wrap && !truncate ? "min-w-0 whitespace-normal break-words [overflow-wrap:anywhere]" : "",
+      )}
+      title={typeof children === "string" ? children : undefined}
+    >
+      {value}
+    </div>
   );
 }
 
@@ -219,12 +271,11 @@ export type SettingsFactRow = {
   value: ReactNode;
   key?: string | number;
   description?: ReactNode;
-  variant?: "settings" | "resource";
   mono?: boolean;
   dim?: boolean;
   truncate?: boolean;
   wrap?: boolean;
-  status?: { label: ReactNode; tone?: StatusTone };
+  status?: { label: ReactNode; tone?: UiTone };
   actions?: ReactNode;
   children?: ReactNode;
 };
@@ -235,7 +286,6 @@ export function SettingsFactRows({ rows }: { rows: SettingsFactRow[] }) {
       {rows.map((row) => (
         <SettingsRow
           key={row.key ?? row.label}
-          variant={row.variant}
           label={row.label}
           description={row.description}
           value={
@@ -386,4 +436,4 @@ export function SettingsInput({
   );
 }
 
-export { EmptySafeNotice, StatusPill };
+export { StatusPill };

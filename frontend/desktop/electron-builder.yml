@@ -1,39 +1,17 @@
 appId: org.local.studio.desktop
 productName: Local Studio
 asar: true
+compression: maximum
+electronLanguages:
+  - en
 
 afterPack: ./desktop/project.mjs
 
-asarUnpack:
-  - "node_modules/@lydell/**/*.node"
-  - "node_modules/@lydell/**/spawn-helper"
-
 files:
-  - desktop/dist/**
+  - desktop/dist/main.js
+  - desktop/dist/preload.js
   - package.json
-  - node_modules/@lydell/node-pty/**
-  - node_modules/@lydell/node-pty-${platform}-${arch}/**
-  # electron-builder auto-includes EVERY production dependency, but the Electron
-  # main process only requires electron, electron-updater, effect and node-pty
-  # (verified: those are the only non-relative requires in desktop/dist). The web
-  # app is NOT loaded from the asar — app-server.ts forks
-  # .next/standalone/server.js, which ships separately under extraResources with
-  # its own output-traced node_modules. Dropping the framework and its build-time
-  # toolchain from the asar takes it from 494 MB to 336 MB.
-  #
-  # NB: a stricter "!node_modules/** + re-add the transitive closure" inversion
-  # gets the asar to 40 MB but the packaged app then hangs before its first log
-  # line, so it is deliberately not used. Re-attempt only with a passing
-  # `npm run desktop:smoke`.
-  - "!node_modules/next/**"
-  - "!node_modules/@next/**"
-  - "!node_modules/react/**"
-  - "!node_modules/react-dom/**"
-  - "!node_modules/typescript/**"
-  - "!node_modules/@img/**"
-  - "!node_modules/sharp/**"
-  - "!node_modules/playwright-core/**"
-  - "!node_modules/@playwright/**"
+  - "!node_modules/**"
 
 extraResources:
   - from: desktop/resources/app-update.yml
@@ -42,22 +20,54 @@ extraResources:
     to: app/agent-runtime/standalone.mjs
   - from: ../services/agent-runtime/dist/node_modules/playwright-core
     to: app/agent-runtime/node_modules/playwright-core
+    filter:
+      - "**/*"
+      - "!**/*.{map,ts,mts,cts}"
   - from: ../services/agent-runtime/dist/node_modules/chromium-bidi
     to: app/agent-runtime/node_modules/chromium-bidi
+    filter:
+      - "**/*"
+      - "!**/*.{map,ts,mts,cts}"
   - from: ../services/agent-runtime/dist/node_modules/chromium-bidi/node_modules/zod
     to: app/agent-runtime/node_modules/chromium-bidi/node_modules/zod
+    filter:
+      - "**/*"
+      - "!**/*.{map,ts,mts,cts}"
   - from: ../services/agent-runtime/dist/node_modules/mitt
     to: app/agent-runtime/node_modules/mitt
+    filter:
+      - "**/*"
+      - "!**/*.{map,ts,mts,cts}"
   - from: ../services/agent-runtime/dist/node_modules/devtools-protocol
     to: app/agent-runtime/node_modules/devtools-protocol
+    filter:
+      - "**/*"
+      - "!**/*.{map,ts,mts,cts}"
   - from: ../services/agent-runtime/dist/node_modules/@silvia-odwyer/photon-node
     to: app/agent-runtime/node_modules/@silvia-odwyer/photon-node
+    filter:
+      - "**/*"
+      - "!**/*.{map,ts,mts,cts}"
   - from: ../services/agent-runtime/dist/node_modules/undici
     to: app/agent-runtime/node_modules/undici
-  # Server-side terminals: node-pty is dynamically required by pty-service, so
-  # it ships as real files next to standalone.mjs (native addon, cannot bundle).
+    filter:
+      - "**/*"
+      - "!**/*.{map,ts,mts,cts}"
   - from: ../services/agent-runtime/dist/node_modules/@lydell
     to: app/agent-runtime/node_modules/@lydell
+    filter:
+      - "**/*"
+      - "!**/*.{map,ts,mts,cts}"
+  - from: node_modules/@lydell/node-pty
+    to: desktop-runtime/node_modules/@lydell/node-pty
+    filter:
+      - "**/*"
+      - "!**/*.{map,ts,mts,cts}"
+  - from: node_modules/@lydell/node-pty-${platform}-${arch}
+    to: desktop-runtime/node_modules/@lydell/node-pty-${platform}-${arch}
+    filter:
+      - "**/*"
+      - "!**/*.{map,ts,mts,cts}"
   - from: .next/standalone
     to: app/frontend/.next/standalone
     filter:
@@ -66,16 +76,11 @@ extraResources:
       - "!frontend/data/**"
       - "!**/dist-desktop/**"
       - "!**/*.log"
-  - from: .next/static
-    to: app/frontend/.next/standalone/.next/static
-    filter:
-      - "**/*"
+      - "!**/*.{map,ts,mts,cts}"
+      - "!**/.next/cache/**"
+      - "!**/.next/trace"
   - from: .next/static
     to: app/frontend/.next/standalone/frontend/.next/static
-    filter:
-      - "**/*"
-  - from: public
-    to: app/frontend/.next/standalone/public
     filter:
       - "**/*"
   - from: public

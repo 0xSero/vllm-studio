@@ -4,6 +4,7 @@ import { useMemo, useState, useCallback } from "react";
 import { Check, ChevronDown, Laptop, Moon, RotateCcw, Search, Sun, X } from "@/ui/icon-registry";
 import { useAppStore } from "@/store";
 import {
+  FONT_FAMILY_BY_ID,
   FONT_FAMILY_OPTIONS,
   type FontFamilyId,
   THEMES,
@@ -13,6 +14,13 @@ import {
 } from "@/lib/themes";
 import { applyTokensToDocument, applyUiControl } from "@/lib/theme-runtime";
 import { ColorField, SegmentedControl, type SegmentedItem, Slider } from "@/ui";
+import type { PreviewHeight } from "@/ui/preview-scroll";
+import {
+  TOOL_PREVIEW_HEIGHT_OPTIONS,
+  TOOL_PREVIEW_KIND_LABELS,
+  type ToolKind,
+  type ToolPreviewHeightOverrides,
+} from "@/features/agent/ui/timeline/tool-metadata";
 import { SettingsButton, SettingsGroup, SettingsRow } from "./settings-ui";
 
 const CUSTOM_THEME_TOKEN_KEY = "local-studio.customThemeTokens";
@@ -25,6 +33,12 @@ const MODE_ITEMS: SegmentedItem<ThemeMode>[] = [
   { id: "light", label: "Light", icon: <Sun className="h-3.5 w-3.5" /> },
   { id: "dark", label: "Dark", icon: <Moon className="h-3.5 w-3.5" /> },
   { id: "system", label: "System", icon: <Laptop className="h-3.5 w-3.5" /> },
+];
+
+const TOOL_PREVIEW_KINDS: ToolKind[] = ["edit", "read", "search", "exec", "browser", "generic"];
+const TOOL_PREVIEW_OVERRIDE_OPTIONS: Array<{ id: PreviewHeight | "default"; label: string }> = [
+  { id: "default", label: "Default" },
+  ...TOOL_PREVIEW_HEIGHT_OPTIONS,
 ];
 
 function readCustomTokens(): ThemeTokens | null {
@@ -49,6 +63,7 @@ function matchesQuery(theme: ThemeMeta, query: string): boolean {
   return (
     theme.name.toLowerCase().includes(q) ||
     theme.group.toLowerCase().includes(q) ||
+    (FONT_FAMILY_BY_ID.get(theme.fontFamilyId)?.label.toLowerCase().includes(q) ?? false) ||
     theme.description.toLowerCase().includes(q)
   );
 }
@@ -89,11 +104,11 @@ function readVar(name: string, fallback: number): number {
 
 function ThemeSwatches({ theme }: { theme: ThemeMeta }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-0.5">
       {theme.swatches.map((color, i) => (
         <span
           key={i}
-          className="h-3.5 w-3.5 rounded-[var(--rad-2xs)] border border-(--ui-border)"
+          className="h-3 w-3 rounded-[var(--rad-2xs)] border border-(--ui-border)"
           style={{ backgroundColor: color }}
         />
       ))}
@@ -108,9 +123,15 @@ export function AppearanceSettings() {
   const setFontFamilyId = useAppStore((s) => s.setFontFamilyId);
   const fontSizeId = useAppStore((s) => s.fontSizeId);
   const setFontSizeId = useAppStore((s) => s.setFontSizeId);
+  const toolPreviewHeight = useAppStore((s) => s.toolPreviewHeight);
+  const setToolPreviewHeight = useAppStore((s) => s.setToolPreviewHeight);
+  const toolPreviewHeightOverrides = useAppStore((s) => s.toolPreviewHeightOverrides);
+  const setToolPreviewHeightOverride = useAppStore((s) => s.setToolPreviewHeightOverride);
 
   const [query, setQuery] = useState("");
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set(["Classic"]));
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    () => new Set(["Reference", "Studio"]),
+  );
 
   const sizeMap: Record<string, number> = { sm: 14, md: 16, lg: 17, xl: 18, "2xl": 20 };
   const [uiFontSize, setUiFontSize] = useState(sizeMap[fontSizeId] ?? 16);
@@ -237,6 +258,99 @@ export function AppearanceSettings() {
 
   const advancedTokens: Array<keyof ThemeTokens> = ["dim", "border", "hl1", "hl2", "hl3", "err"];
 
+  const themeLibrary = (
+    <SettingsGroup
+      title="Theme library"
+      description="Presets pair a complete surface palette with a typeface."
+    >
+      <div>
+        <div className="flex h-9 items-center gap-2 px-3">
+          <Search className="h-3 w-3 shrink-0 text-(--ui-muted)" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search colors or fonts"
+            className="min-w-0 flex-1 bg-transparent text-[length:var(--fs-md)] text-(--ui-fg) outline-none placeholder:text-(--ui-muted)/60"
+          />
+          {query ? (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="shrink-0 text-(--ui-muted) hover:text-(--ui-fg)"
+              aria-label="Clear theme search"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          ) : null}
+        </div>
+        {groups.length === 0 ? (
+          <div className="border-t border-(--ui-separator) px-3 py-3 text-[length:var(--fs-md)] text-(--ui-muted)">
+            No themes match your search.
+          </div>
+        ) : (
+          groups.map(([group, themes]) => {
+            const expanded = expandedGroups.has(group);
+            return (
+              <div key={group} className="border-t border-(--ui-separator)">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group)}
+                  className="flex h-8 w-full items-center justify-between px-3 text-left hover:bg-(--ui-hover)"
+                >
+                  <span className="text-[length:var(--fs-sm)] font-medium text-(--ui-fg)">
+                    {group}
+                  </span>
+                  <span className="flex items-center gap-1 text-[length:var(--fs-xs)] text-(--ui-muted)">
+                    {themes.length}
+                    <ChevronDown
+                      className={`h-3 w-3 transition-transform ${expanded ? "" : "-rotate-90"}`}
+                    />
+                  </span>
+                </button>
+                {expanded ? (
+                  <div className="grid grid-cols-1 gap-1 p-2 sm:grid-cols-2">
+                    {themes.map((theme) => {
+                      const active = theme.id === themeId && !isCustomActive;
+                      const font = FONT_FAMILY_BY_ID.get(theme.fontFamilyId);
+                      return (
+                        <button
+                          key={theme.id}
+                          type="button"
+                          onClick={() => setThemeId(theme.id)}
+                          className={`min-w-0 rounded-[var(--rad-md)] border px-2.5 py-2 text-left transition-colors ${
+                            active
+                              ? "border-(--ui-accent)/35 bg-(--ui-active)"
+                              : "border-transparent hover:border-(--ui-border) hover:bg-(--ui-hover)"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span
+                              className="truncate text-[length:var(--fs-md)] font-medium text-(--ui-fg)"
+                              style={{ fontFamily: font?.cssValue }}
+                            >
+                              {theme.name}
+                            </span>
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              <ThemeSwatches theme={theme} />
+                              {active ? <Check className="h-3 w-3 text-(--ui-success)" /> : null}
+                            </div>
+                          </div>
+                          <div className="mt-0.5 truncate text-[length:var(--fs-xs)] text-(--ui-muted)">
+                            {font?.label} · {theme.description}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </SettingsGroup>
+  );
+
   return (
     <div>
       <SettingsGroup
@@ -264,6 +378,8 @@ export function AppearanceSettings() {
           }
         />
       </SettingsGroup>
+
+      {themeLibrary}
 
       <SettingsGroup
         title="Theme editor"
@@ -462,86 +578,57 @@ export function AppearanceSettings() {
         />
       </SettingsGroup>
 
-      <SettingsGroup title="Theme library" collapsible defaultOpen={false}>
-        <div>
-          <div className="flex items-center gap-2 px-3.5 py-2.5">
-            <Search className="h-3.5 w-3.5 shrink-0 text-(--ui-muted)" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search themes"
-              className="min-w-0 flex-1 bg-transparent text-[length:var(--fs-base)] text-(--ui-fg) outline-none placeholder:text-(--ui-muted)/60"
+      <SettingsGroup
+        title="Tool previews"
+        description="Set one preview height for all tools, then override individual tool types."
+      >
+        <SettingsRow
+          label="All tools"
+          description="Default maximum preview height"
+          control={
+            <SegmentedControl
+              items={TOOL_PREVIEW_HEIGHT_OPTIONS}
+              value={toolPreviewHeight}
+              onChange={setToolPreviewHeight}
+              size="sm"
             />
-            {query ? (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                className="shrink-0 text-(--ui-muted) hover:text-(--ui-fg)"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            ) : null}
-          </div>
-          {groups.length === 0 ? (
-            <div className="px-3.5 py-2.5 text-[length:var(--fs-base)] text-(--ui-muted)">
-              No themes match your search.
-            </div>
-          ) : (
-            groups.map(([group, themes]) => {
-              const expanded = expandedGroups.has(group);
-              return (
-                <div key={group} className="border-t border-(--ui-separator)">
-                  <button
-                    type="button"
-                    onClick={() => toggleGroup(group)}
-                    className="flex w-full items-center justify-between px-3.5 py-2 text-left hover:bg-(--ui-hover)"
-                  >
-                    <span className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">
-                      {group}
-                    </span>
-                    <span className="flex items-center gap-1.5 text-[length:var(--fs-sm)] text-(--ui-muted)">
-                      {themes.length}
-                      <ChevronDown
-                        className={`h-3 w-3 transition-transform ${expanded ? "" : "-rotate-90"}`}
-                      />
-                    </span>
-                  </button>
-                  {expanded
-                    ? themes.map((theme) => {
-                        const active = theme.id === themeId;
-                        return (
-                          <button
-                            key={theme.id}
-                            type="button"
-                            onClick={() => setThemeId(theme.id)}
-                            className={`flex w-full items-center justify-between gap-4 px-3.5 py-2 text-left transition-colors ${
-                              active ? "bg-(--ui-hover)" : "hover:bg-(--ui-hover)"
-                            }`}
-                          >
-                            <div className="min-w-0">
-                              <div className="text-[length:var(--fs-base)] text-(--ui-fg)">
-                                {theme.name}
-                              </div>
-                              <div className="truncate text-[length:var(--fs-sm)] text-(--ui-muted)">
-                                {theme.description}
-                              </div>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-2">
-                              <ThemeSwatches theme={theme} />
-                              {active && !isCustomActive ? (
-                                <Check className="h-3.5 w-3.5 text-(--ui-success)" />
-                              ) : null}
-                            </div>
-                          </button>
-                        );
-                      })
-                    : null}
-                </div>
-              );
-            })
-          )}
-        </div>
+          }
+        />
+        {TOOL_PREVIEW_KINDS.map((kind) => (
+          <ToolPreviewHeightRow
+            key={kind}
+            kind={kind}
+            overrides={toolPreviewHeightOverrides}
+            onChange={setToolPreviewHeightOverride}
+          />
+        ))}
       </SettingsGroup>
     </div>
+  );
+}
+
+function ToolPreviewHeightRow({
+  kind,
+  overrides,
+  onChange,
+}: {
+  kind: ToolKind;
+  overrides: ToolPreviewHeightOverrides;
+  onChange: (kind: ToolKind, height: PreviewHeight | undefined) => void;
+}) {
+  const value = overrides[kind] ?? "default";
+  return (
+    <SettingsRow
+      label={TOOL_PREVIEW_KIND_LABELS[kind]}
+      description={value === "default" ? "Uses the all-tools setting" : "Custom preview height"}
+      control={
+        <SegmentedControl
+          items={TOOL_PREVIEW_OVERRIDE_OPTIONS}
+          value={value}
+          onChange={(height) => onChange(kind, height === "default" ? undefined : height)}
+          size="sm"
+        />
+      }
+    />
   );
 }

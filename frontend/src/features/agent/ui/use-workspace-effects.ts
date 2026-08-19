@@ -93,6 +93,33 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
     sessionRuntimeController().pollNow();
   }, [registryKey]);
 
+  useMountSubscription(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    const controller = sessionRuntimeController();
+    let lastWakeAt = 0;
+    const wake = () => {
+      const now = Date.now();
+      if (now - lastWakeAt < 500) return;
+      lastWakeAt = now;
+      controller.reconcile(sessionsRef.current);
+      controller.pollNow();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") wake();
+    };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted || document.visibilityState === "visible") wake();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("online", wake);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("online", wake);
+    };
+  }, []);
+
   useMountSubscription(
     () => () => {
       sessionRuntimeController().closeAll();

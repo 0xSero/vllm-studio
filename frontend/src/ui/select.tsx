@@ -2,6 +2,7 @@
 
 import { forwardRef, useId, type SelectHTMLAttributes } from "react";
 import { useFormControlAttributes } from "./form-field-context";
+import { FIELD_LABEL_CLASS } from "./utils";
 
 interface SelectOption {
   value: string;
@@ -43,7 +44,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
       {label && (
         <label
           htmlFor={selectId}
-          className="mb-2 block text-xs font-medium uppercase tracking-wider text-(--ui-muted)"
+          className={FIELD_LABEL_CLASS}
         >
           {label}
         </label>

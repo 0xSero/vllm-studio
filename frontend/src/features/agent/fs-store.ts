@@ -1,4 +1,4 @@
-import { existsSync, promises as fs, readdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, promises as fs, lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import type { FsEntry } from "@/features/agent/filesystem-types";
 import { listProjectsFromStore } from "@local-studio/agent-runtime/projects-store";
@@ -150,6 +150,70 @@ export function listDirectory(rootCwd: string, relPath: string): FsEntry[] {
     return a.name.localeCompare(b.name);
   });
   return entries;
+}
+
+const SEARCH_MAX_VISITED = 20_000;
+const SEARCH_MAX_DEPTH = 12;
+
+// Recursive, query-aware file lookup for the composer's @-mention picker. A
+// single-level listing can only offer files sitting directly in the workspace
+// root, so every nested file — nearly all of them in a real repo — was
+// unreachable. Walks breadth-first (shallow matches first) under the same
+// ignore rules as listDirectory, with hard caps so a huge tree cannot stall the
+// request. Symlinks are skipped entirely: that keeps the walk inside the root
+// and cannot loop, so no per-entry ensureInside is needed.
+export function searchFiles(rootCwd: string, query: string, limit = 20): FsEntry[] {
+  const root = resolveWorkspaceRoot(rootCwd);
+  const q = query.trim().toLowerCase();
+  // Basename matches rank above path-segment matches, matching byQuery's idiom.
+  const nameMatches: FsEntry[] = [];
+  const pathMatches: FsEntry[] = [];
+  const queue: Array<{ dir: string; depth: number }> = [{ dir: root, depth: 0 }];
+  let visited = 0;
+  while (queue.length > 0 && nameMatches.length < limit && visited < SEARCH_MAX_VISITED) {
+    const current = queue.shift();
+    if (!current) break;
+    let names: string[];
+    try {
+      names = readdirSync(current.dir);
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      if (visited >= SEARCH_MAX_VISITED || nameMatches.length >= limit) break;
+      visited += 1;
+      if (IGNORE_DIRS.has(name)) continue;
+      if (name.startsWith(".") && name !== ".env.example") continue;
+      const abs = path.join(current.dir, name);
+      let s: ReturnType<typeof lstatSync>;
+      try {
+        s = lstatSync(abs);
+      } catch {
+        continue;
+      }
+      if (s.isSymbolicLink()) continue;
+      if (s.isDirectory()) {
+        if (current.depth < SEARCH_MAX_DEPTH) queue.push({ dir: abs, depth: current.depth + 1 });
+        continue;
+      }
+      if (!s.isFile()) continue;
+      const rel = path.relative(root, abs);
+      const nameHit = !q || name.toLowerCase().includes(q);
+      const pathHit = !q || rel.toLowerCase().includes(q);
+      if (!nameHit && !pathHit) continue;
+      const entry: FsEntry = {
+        name,
+        path: abs,
+        rel,
+        kind: "file",
+        size: s.size,
+        modifiedAt: s.mtime.toISOString(),
+      };
+      if (nameHit) nameMatches.push(entry);
+      else pathMatches.push(entry);
+    }
+  }
+  return [...nameMatches, ...pathMatches].slice(0, limit);
 }
 
 export async function readFileSnippet(

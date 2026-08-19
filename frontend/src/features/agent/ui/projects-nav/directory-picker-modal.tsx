@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Button, ErrorBox, UiModal, UiModalHeader } from "@/ui";
+import { Button, ErrorBox, UiModal, UiModalBody, UiModalFooter, UiModalHeader } from "@/ui";
 import { Folder } from "@/ui/icons";
 import { useProjectDirectoryPickerModalEffects } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import type { DirectoryBrowserEntry, DirectoryBrowserPayload } from "./types";
@@ -59,7 +59,7 @@ export function ProjectDirectoryPickerModal({
         icon={<Folder className="h-4 w-4" />}
         onClose={onClose}
       />
-      <div className="space-y-4 p-5 text-sm text-(--fg)">
+      <UiModalBody className="space-y-4 text-[length:var(--fs-base)] text-(--fg)">
         <p className="text-xs leading-5 text-(--dim)">
           Browse folders on the machine running Local Studio, or paste an absolute path.
         </p>
@@ -124,21 +124,21 @@ export function ProjectDirectoryPickerModal({
           )}
         </div>
         {(browseError || error) && <ErrorBox>{browseError || error}</ErrorBox>}
-        <div className="flex justify-end gap-2 border-t border-(--border) pt-4">
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            onClick={() => {
-              const selectedPath = draftPath.trim() || currentPath;
-              if (selectedPath) onSelect(selectedPath);
-            }}
-            disabled={!(draftPath.trim() || currentPath) || loading}
-          >
-            Select this folder
-          </Button>
-        </div>
-      </div>
+      </UiModalBody>
+      <UiModalFooter>
+        <Button variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          onClick={() => {
+            const selectedPath = draftPath.trim() || currentPath;
+            if (selectedPath) onSelect(selectedPath);
+          }}
+          disabled={!(draftPath.trim() || currentPath) || loading}
+        >
+          Select this folder
+        </Button>
+      </UiModalFooter>
     </UiModal>
   );
 }

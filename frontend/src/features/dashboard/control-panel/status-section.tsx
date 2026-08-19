@@ -9,6 +9,7 @@ interface StatusSectionProps {
   currentProcess: ProcessInfo | null;
   currentRecipe: RecipeWithStatus | null;
   metrics: Metrics | null;
+  metricsDetached?: boolean;
   gpus: GPU[];
   isConnected: boolean;
   isStatusLoading: boolean;
@@ -30,6 +31,7 @@ export function StatusSection({
   currentProcess,
   currentRecipe,
   metrics,
+  metricsDetached = false,
   gpus,
   isConnected,
   isStatusLoading,
@@ -70,7 +72,9 @@ export function StatusSection({
         isStatusLoading={isStatusLoading}
         lifecycleStatus={lifecycleStatus}
         lifecycleError={lifecycleError}
+        metricsDetached={metricsDetached}
         modelName={view.modelName}
+        pid={view.pid}
         onBenchmark={onBenchmark}
         onLaunch={onLaunch}
         onNavigateLogs={onNavigateLogs}
@@ -78,7 +82,11 @@ export function StatusSection({
         onViewAll={onViewAll}
         recipes={recipes}
       />
-      <StatusMetricStrip compactMetrics={view.compactMetrics} metricColumns={view.metricColumns} />
+      <StatusMetricStrip
+        live={view.liveMetrics}
+        steady={view.steadyMetrics}
+        detached={metricsDetached}
+      />
       <MetricTrends samples={trendData.samples} peaks={trendData.peaks} />
     </section>
   );

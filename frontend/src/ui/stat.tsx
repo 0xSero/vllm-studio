@@ -19,10 +19,8 @@ export function Stat({
         className,
       )}
     >
-      <dt className="truncate font-mono text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.18em] text-(--ui-muted)/75">
-        {label}
-      </dt>
-      <dd className="mt-1 font-mono text-[length:var(--fs-xl)] leading-none tabular-nums text-(--ui-fg)">
+      <dt className="truncate text-[length:var(--fs-md)] text-(--ui-muted)">{label}</dt>
+      <dd className="mt-1 text-[length:var(--fs-xl)] leading-none tabular-nums text-(--ui-fg)">
         {value}
       </dd>
     </div>
