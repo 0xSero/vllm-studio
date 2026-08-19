@@ -9,6 +9,8 @@ type UseFilesystemPanelEffectsParams = {
   relPath: string;
   openFile: string | null;
   skipTextRead: boolean;
+  refreshRevision: number;
+  preserveDraft: boolean;
   fileOpenRequest: FileOpenRequest | null;
   lastOpenFileByProject: Record<string, string>;
   rootRef: MutableRefObject<string | null>;
@@ -36,6 +38,8 @@ export function useFilesystemPanelEffects({
   relPath,
   openFile,
   skipTextRead,
+  refreshRevision,
+  preserveDraft,
   fileOpenRequest,
   lastOpenFileByProject,
   rootRef,
@@ -129,7 +133,7 @@ export function useFilesystemPanelEffects({
     return () => {
       cancelled = true;
     };
-  }, [root, relPath, setEntries]);
+  }, [root, relPath, refreshRevision, setEntries]);
 
   useMountSubscription(() => {
     if (!root || pendingApplied.current === root) return;
@@ -183,6 +187,7 @@ export function useFilesystemPanelEffects({
       setComments([]);
       return;
     }
+    if (preserveDraft) return;
     let cancelled = false;
     setLoadingFile(true);
     setSaveError(null);
@@ -233,6 +238,8 @@ export function useFilesystemPanelEffects({
     root,
     openFile,
     skipTextRead,
+    refreshRevision,
+    preserveDraft,
     setComments,
     setDraftContent,
     setFileContent,

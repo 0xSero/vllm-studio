@@ -8,17 +8,26 @@ import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import api from "@/lib/api/client";
 import type { EngineJob, RuntimeBackendInfo, RuntimeTarget, SystemRuntimeInfo } from "@/lib/types";
-import { RowDetailLine, StatusPill, Spinner } from "@/ui";
+import { StatusPill, Spinner } from "@/ui";
+import { SettingsGroup, SettingsNotice } from "./settings-ui";
 import {
-  SettingsButton,
-  SettingsGroup,
-  SettingsNotice,
-  SettingsRow,
-  SettingsValue,
-} from "./settings-ui";
+  DataRow,
+  DetailRow,
+  EndCell,
+  HeadCell,
+  GroupRow,
+  IdentityCell,
+  RowAction,
+  StatusText,
+  TableFrame,
+  TextCell,
+} from "@/features/recipes/recipes-content/catalog-table-shell";
 import {
   ENGINE_META,
   MANAGED_RUNTIME_BACKENDS,
+  ENGINE_TABLE_COLSPAN,
+  ENGINE_TABLE_COLUMNS,
+  ENGINE_TABLE_MIN_WIDTH,
   ManagedRuntimeInstallRows,
   RuntimeTargetRows,
   RuntimeTargetStatus,
@@ -97,14 +106,32 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
             {lostJobNotice}
           </SettingsNotice>
         ) : null}
-        <EngineRows
-          activeBackend={activeBackend}
-          jobs={jobs}
-          onJobCreated={refreshRuntimeJobs}
-          view={engineRows}
-        />
-        <GpuMonitoringRow gpuMon={gpuMon} />
-        <GpuLeaseRow holder={lease?.holder} />
+        <TableFrame minWidthClass={ENGINE_TABLE_MIN_WIDTH}>
+          <thead>
+            <tr>
+              {ENGINE_TABLE_COLUMNS.map((column, index) => (
+                <HeadCell key={column} numeric={index === ENGINE_TABLE_COLUMNS.length - 1}>
+                  {column}
+                </HeadCell>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <EngineRows
+              activeBackend={activeBackend}
+              jobs={jobs}
+              onJobCreated={refreshRuntimeJobs}
+              view={engineRows}
+            />
+            <GroupRow
+              colSpan={ENGINE_TABLE_COLSPAN}
+              label="Host"
+              blurb="What the controller can see of this machine's GPUs."
+            />
+            <GpuMonitoringRow gpuMon={gpuMon} />
+            <GpuLeaseRow holder={lease?.holder} />
+          </tbody>
+        </TableFrame>
       </SettingsGroup>
     </div>
   );
@@ -120,27 +147,35 @@ function HydrationStatus({ hasRows }: { hasRows: boolean }) {
 
 function GpuMonitoringRow({ gpuMon }: { gpuMon?: SystemRuntimeInfo["gpu_monitoring"] }) {
   return (
-    <SettingsRow
-      label="GPU monitoring"
-      description="nvidia-smi, amd-smi, rocm-smi, or Intel sysfs discovery from the controller."
-      value={<SettingsValue mono>{gpuMonitorValue(gpuMon)}</SettingsValue>}
-      status={
-        <StatusPill tone={gpuMon?.available ? "good" : "warning"}>
+    <DataRow>
+      <IdentityCell
+        label="GPU monitoring"
+        description="nvidia-smi, amd-smi, rocm-smi, or Intel sysfs discovery from the controller."
+      />
+      <TextCell mono>{gpuMonitorValue(gpuMon)}</TextCell>
+      <TextCell>—</TextCell>
+      <EndCell>
+        <StatusText tone={gpuMon?.available ? "ok" : "warn"}>
           {gpuMon?.available ? "online" : "fallback"}
-        </StatusPill>
-      }
-    />
+        </StatusText>
+      </EndCell>
+    </DataRow>
   );
 }
 
 function GpuLeaseRow({ holder }: { holder?: string | null }) {
   return (
-    <SettingsRow
-      label="GPU lease"
-      description="Current runtime lock holder when a launch or engine job owns the GPU lane."
-      value={<SettingsValue mono>{holder ?? "No active lease"}</SettingsValue>}
-      status={<StatusPill>{holder ? "held" : "free"}</StatusPill>}
-    />
+    <DataRow>
+      <IdentityCell
+        label="GPU lease"
+        description="Current runtime lock holder when a launch or engine job owns the GPU lane."
+      />
+      <TextCell mono>{holder ?? "No active lease"}</TextCell>
+      <TextCell>—</TextCell>
+      <EndCell>
+        <StatusText tone={holder ? "info" : "dim"}>{holder ? "held" : "free"}</StatusText>
+      </EndCell>
+    </DataRow>
   );
 }
 
@@ -195,9 +230,9 @@ function EngineRows({
   );
 
   const errorNotice = actionError ? (
-    <SettingsNotice tone="danger" className="m-3">
-      {actionError}
-    </SettingsNotice>
+    <DetailRow colSpan={ENGINE_TABLE_COLSPAN}>
+      <span className="text-(--err)">{actionError}</span>
+    </DetailRow>
   ) : null;
 
   if (view.kind === "targets") {
@@ -205,6 +240,11 @@ function EngineRows({
     return (
       <>
         {errorNotice}
+        <GroupRow
+          colSpan={ENGINE_TABLE_COLSPAN}
+          label="Managed environments"
+          blurb="Python environments the controller creates and updates itself."
+        />
         <ManagedRuntimeInstallRows
           backends={MANAGED_RUNTIME_BACKENDS}
           targets={view.targets}
@@ -213,11 +253,18 @@ function EngineRows({
           onUpdateTarget={handleTargetAction}
         />
         {discoveredTargets.length > 0 ? (
-          <RuntimeTargetRows
-            targets={discoveredTargets}
-            jobs={jobs}
-            onAction={handleTargetAction}
-          />
+          <>
+            <GroupRow
+              colSpan={ENGINE_TABLE_COLSPAN}
+              label="Discovered runtimes"
+              blurb="Installs found on this machine that the controller did not create."
+            />
+            <RuntimeTargetRows
+              targets={discoveredTargets}
+              jobs={jobs}
+              onAction={handleTargetAction}
+            />
+          </>
         ) : null}
       </>
     );
@@ -228,13 +275,14 @@ function EngineRows({
     ));
   }
   return view.engineIds.map((key) => (
-    <SettingsRow
-      key={key}
-      label={ENGINE_META[key].label}
-      description={ENGINE_META[key].description}
-      value={<SettingsValue dim>Runtime data has not hydrated yet.</SettingsValue>}
-      status={<StatusPill tone="info">pending</StatusPill>}
-    />
+    <DataRow key={key}>
+      <IdentityCell label={ENGINE_META[key].label} description={ENGINE_META[key].description} />
+      <TextCell>Runtime data has not hydrated yet.</TextCell>
+      <TextCell>—</TextCell>
+      <EndCell>
+        <StatusText tone="info">pending</StatusText>
+      </EndCell>
+    </DataRow>
   ));
 }
 
@@ -250,6 +298,7 @@ function BackendRow({
   const meta = ENGINE_META[id] ?? { label: id, description: "Runtime backend" };
   const [state, setState] = useState<UpgradeState>({ status: "idle" });
   const onUpgrade = upgradeHandler(id);
+  const location = info.python_path ?? info.binary_path ?? "";
 
   const handleUpgrade = useCallback(async () => {
     if (!onUpgrade) return;
@@ -265,47 +314,44 @@ function BackendRow({
   }, [onUpgrade]);
 
   return (
-    <SettingsRow
-      variant="resource"
-      label={meta.label}
-      description={meta.description}
-      value={
-        <SettingsValue mono truncate>
-          {info.installed ? (info.version ?? "installed") : "not installed"}
-        </SettingsValue>
-      }
-      status={<EngineStatus installed={info.installed} active={active} />}
-      actions={
-        onUpgrade && info.upgrade_command_available ? (
-          <SettingsButton
-            onClick={() => void handleUpgrade()}
-            disabled={state.status === "upgrading"}
-          >
-            {state.status === "upgrading" ? (
-              <Spinner size="xs" />
-            ) : state.status === "success" ? (
-              <Check className="h-3 w-3 text-(--hl2)" />
-            ) : state.status === "error" ? (
-              <XCircle className="h-3 w-3 text-(--err)" />
-            ) : (
-              <ArrowUpCircle className="h-3 w-3" />
-            )}
-            {state.status === "idle" ? (info.installed ? "Update" : "Install") : state.status}
-          </SettingsButton>
-        ) : null
-      }
-    >
-      {info.python_path || info.binary_path ? (
-        <RowDetailLine mono truncate size="md">
-          {info.python_path ?? info.binary_path}
-        </RowDetailLine>
-      ) : null}
+    <>
+      <DataRow>
+        <IdentityCell label={meta.label} description={meta.description} />
+        <TextCell mono>{info.installed ? (info.version ?? "installed") : "not installed"}</TextCell>
+        <TextCell mono title={location || undefined}>
+          {location || "—"}
+        </TextCell>
+        <EndCell>
+          <div className="flex items-center justify-end gap-2">
+            <EngineStatus installed={info.installed} active={active} />
+            {onUpgrade && info.upgrade_command_available ? (
+              <RowAction
+                alwaysVisible
+                onClick={() => void handleUpgrade()}
+                disabled={state.status === "upgrading"}
+                title={`${info.installed ? "Update" : "Install"} ${meta.label}`}
+              >
+                {state.status === "upgrading" ? (
+                  <Spinner size="xs" />
+                ) : state.status === "success" ? (
+                  <Check className="h-3 w-3 text-(--ok)" />
+                ) : state.status === "error" ? (
+                  <XCircle className="h-3 w-3 text-(--err)" />
+                ) : (
+                  <ArrowUpCircle className="h-3 w-3" />
+                )}
+                {state.status === "idle" ? (info.installed ? "Update" : "Install") : state.status}
+              </RowAction>
+            ) : null}
+          </div>
+        </EndCell>
+      </DataRow>
       {state.status === "error" && state.message ? (
-        <RowDetailLine tone="danger" truncate>
-          {state.message}
-        </RowDetailLine>
+        <DetailRow colSpan={ENGINE_TABLE_COLSPAN}>
+          <span className="text-(--err)">{state.message}</span>
+        </DetailRow>
       ) : null}
-    </SettingsRow>
+    </>
   );
 }
 

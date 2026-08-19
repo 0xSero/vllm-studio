@@ -10,11 +10,9 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
 # next.js
 /.next/
+/.next-dev/
 /out/
 
 # production

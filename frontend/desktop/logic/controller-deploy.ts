@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { app } from "electron";
 
 export interface ControllerDeployResult {
   ok: boolean;
@@ -31,7 +32,7 @@ export const isValidDeployHost = (host: string): boolean =>
 const findLocalInstallScript = (resourcesPath: string | null): string | null => {
   const candidates = [
     resourcesPath ? resolve(resourcesPath, "install-controller.sh") : null,
-    resolve(__dirname, "..", "..", "..", "scripts", "install-controller.sh"),
+    resolve(app.getAppPath(), "..", "scripts", "install-controller.sh"),
     resolve(process.cwd(), "..", "scripts", "install-controller.sh"),
   ].filter((candidate): candidate is string => Boolean(candidate));
   for (const candidate of candidates) {

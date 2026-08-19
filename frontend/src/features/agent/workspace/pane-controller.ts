@@ -68,14 +68,34 @@ export function claimCanonicalSession(state: WorkspaceState, canonical: Session)
       )
       .map(([id]) => id),
   );
-  if (duplicateIds.size === 0) return state;
   const sessions = new Map(state.sessions);
   for (const id of duplicateIds) sessions.delete(id);
   const panesById = new Map(state.panesById);
   for (const [paneId, pane] of panesById) {
     if (duplicateIds.has(pane.sessionId)) panesById.set(paneId, { sessionId: canonical.id });
   }
-  return { ...state, sessions, panesById };
+  const canonicalPanes = [...panesById]
+    .filter(([, pane]) => pane.sessionId === canonical.id)
+    .map(([paneId]) => paneId);
+  if (duplicateIds.size === 0 && canonicalPanes.length <= 1) return state;
+  if (canonicalPanes.length <= 1) return { ...state, sessions, panesById };
+  const keptPaneId = canonicalPanes.includes(state.focusedPaneId)
+    ? state.focusedPaneId
+    : canonicalPanes[0];
+  const nextPanes = new Map(panesById);
+  let layout = state.layout;
+  for (const paneId of canonicalPanes) {
+    if (paneId === keptPaneId) continue;
+    nextPanes.delete(paneId);
+    layout = removeLeaf(layout, paneId) ?? layout;
+  }
+  return {
+    ...state,
+    sessions,
+    panesById: nextPanes,
+    layout,
+    focusedPaneId: keptPaneId,
+  };
 }
 
 function focusExistingSession(

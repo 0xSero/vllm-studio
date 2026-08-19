@@ -46,7 +46,7 @@ export function PageContainer({
   return (
     <div
       className={cx(
-        "mx-auto w-full px-4 pt-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 sm:pt-6",
+        "mx-auto w-full px-4 pt-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 sm:pt-5",
         pageWidthClasses[width],
         className,
       )}
@@ -57,27 +57,20 @@ export function PageContainer({
 }
 
 export function PageHeader({
-  eyebrow,
   title,
   description,
   status,
   actions,
 }: {
-  eyebrow?: string;
   title: ReactNode;
   description?: ReactNode;
   status?: ReactNode;
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-5 flex min-h-8 items-center justify-between gap-3">
+    <div className="mb-4 flex min-h-8 items-center justify-between gap-3">
       <div className="min-w-0">
-        {eyebrow ? (
-          <div className="text-[length:var(--fs-xs)] uppercase tracking-[0.14em] text-(--ui-muted)">
-            {eyebrow}
-          </div>
-        ) : null}
-        <h2 className="mt-1 truncate text-[length:var(--fs-3xl)] font-medium tracking-[-0.02em] text-(--ui-fg)">
+        <h2 className="truncate text-[length:var(--fs-3xl)] font-medium tracking-[-0.02em] text-(--ui-fg)">
           {title}
         </h2>
         {description ? (
@@ -116,7 +109,7 @@ export function SectionNav<Id extends string = string>({
               type="button"
               onClick={() => onSelectItem(item.id)}
               className={cx(
-                "group grid h-9 max-w-[calc(50%_-_0.125rem)] min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-2 rounded-[10px] px-2 text-left text-[length:var(--fs-base)] transition-[transform,color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:scale-[0.99] sm:max-w-none lg:w-full",
+                "group grid h-8 max-w-[calc(50%_-_0.125rem)] min-w-0 grid-cols-[16px_minmax(0,1fr)] items-center gap-2 rounded-[8px] px-2 text-left text-[length:var(--fs-md)] transition-[transform,color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:scale-[0.99] sm:max-w-none lg:w-full",
                 active
                   ? "bg-(--ui-active) text-(--ui-fg)"
                   : "text-(--ui-muted) hover:bg-(--ui-hover)/70 hover:text-(--ui-fg)",
@@ -125,7 +118,7 @@ export function SectionNav<Id extends string = string>({
             >
               <span
                 className={cx(
-                  "flex h-4 w-4 items-center justify-center text-(--ui-muted)",
+                  "flex h-3.5 w-3.5 items-center justify-center text-(--ui-muted)",
                   active ? "opacity-100" : "opacity-70 group-hover:opacity-100",
                 )}
               >
@@ -141,7 +134,6 @@ export function SectionNav<Id extends string = string>({
 }
 
 export function TabbedPage<T extends string = string>({
-  eyebrow,
   title,
   description,
   actions,
@@ -152,7 +144,6 @@ export function TabbedPage<T extends string = string>({
   children,
   className,
 }: {
-  eyebrow?: string;
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
@@ -166,7 +157,7 @@ export function TabbedPage<T extends string = string>({
   return (
     <AppPage>
       <PageContainer width={width} className={cx("pt-6 sm:pt-8", className)}>
-        <PageHeader eyebrow={eyebrow} title={title} description={description} actions={actions} />
+        <PageHeader title={title} description={description} actions={actions} />
         <div className="mt-7 border-b border-(--ui-separator)">
           <Tabs items={tabs} activeTab={activeTab} onSelectTab={onSelectTab} className="-mb-px" />
         </div>

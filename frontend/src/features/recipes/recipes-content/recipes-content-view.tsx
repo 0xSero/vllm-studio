@@ -1,13 +1,13 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Compass, Download, HardDrive, Sparkles } from "@/ui/icon-registry";
+import { Download, Search, Server, Sparkles } from "@/ui/icon-registry";
 import type { ModelDownload, ModelInfo, RecipeWithStatus, RuntimeTarget } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
-import { RefreshButton, TabbedPage, Tabs } from "@/ui";
+import { ConfirmDeleteModal, RefreshButton, TabbedPage, Tabs } from "@/ui";
+import { DrawerOverlay } from "@/ui/drawer";
 import type { RecipesContentTab } from "./recipes-content-model";
 import type { RecipesTableProps } from "./types";
-import { DeleteRecipeConfirmModal } from "./delete-recipe-confirm-modal";
 import { RecipesTab } from "./recipes-tab";
 import { RecipeModal } from "../recipe-modal/recipe-modal";
 import { ExploreTab } from "./explore-tab";
@@ -46,29 +46,32 @@ type Props = {
   table: RecipesTableProps;
 };
 
+// Tab ids are storage/URL keys and stay put; the labels say what each tab
+// actually does, because "Picks / Get / Serves" told you nothing from outside.
 const MODEL_TABS: Array<{ id: RecipesContentTab; label: string; icon: ReactNode }> = [
-  { id: "picks", label: "Picks", icon: <Sparkles className="h-3.5 w-3.5" /> },
-  { id: "get", label: "Get", icon: <Compass className="h-3.5 w-3.5" /> },
-  { id: "serves", label: "Serves", icon: <HardDrive className="h-3.5 w-3.5" /> },
+  { id: "picks", label: "Recommended", icon: <Sparkles className="h-3.5 w-3.5" /> },
+  { id: "get", label: "Search Hugging Face", icon: <Search className="h-3.5 w-3.5" /> },
+  { id: "serves", label: "Your servers", icon: <Server className="h-3.5 w-3.5" /> },
   { id: "downloads", label: "Downloads", icon: <Download className="h-3.5 w-3.5" /> },
 ];
 
 const TAB_HEADINGS: Record<RecipesContentTab, { title: string; description: string }> = {
   picks: {
-    title: "Picks",
-    description: "Curated model catalog grouped by hardware tier, with per-variant downloads.",
+    title: "Recommended models",
+    description:
+      "Hand-picked models grouped by the hardware they need, each checked against this machine's memory.",
   },
   get: {
-    title: "Get",
-    description: "Find the right model, check hardware fit, and download its weights.",
+    title: "Search Hugging Face",
+    description: "Search the Hub, check whether a model fits this machine, and pull its weights.",
   },
   serves: {
-    title: "Serves",
-    description: "Saved model, runtime, and configuration combinations ready to launch.",
+    title: "Your servers",
+    description: "Saved model + runtime + configuration combinations, ready to launch.",
   },
   downloads: {
     title: "Downloads",
-    description: "Download queue, progress, retry, and cancel controls.",
+    description: "Everything currently downloading, with progress, retry, and cancel.",
   },
 };
 
@@ -154,9 +157,8 @@ export function RecipesContentView(props: Props) {
         </div>
       ) : (
         <TabbedPage
-          eyebrow="Model library"
           title="Models"
-          description="Manage model profiles, downloads, and the model marketplace available to Local Studio."
+          description="Find models that fit this machine, download their weights, and turn them into servers."
           width="md"
           tabs={MODEL_TABS}
           activeTab={tab}
@@ -175,13 +177,7 @@ export function RecipesContentView(props: Props) {
       )}
 
       {modalOpen && modalRecipe ? (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <button
-            type="button"
-            aria-label="Close recipe editor"
-            className="absolute inset-0 bg-(--color-background)"
-            onClick={onCloseRecipeModal}
-          />
+        <DrawerOverlay onClose={onCloseRecipeModal}>
           <RecipeModal
             recipe={modalRecipe}
             onClose={onCloseRecipeModal}
@@ -192,12 +188,13 @@ export function RecipesContentView(props: Props) {
             runtimeTargets={runtimeTargets}
             recipes={recipes}
           />
-        </div>
+        </DrawerOverlay>
       ) : null}
 
       {deleteConfirm ? (
-        <DeleteRecipeConfirmModal
-          recipeName={deleteRecipeName}
+        <ConfirmDeleteModal
+          title="Delete Serve"
+          message={`Delete "${deleteRecipeName}"? Model weights stay on disk.`}
           onCancel={onCancelDelete}
           onConfirm={onConfirmDelete}
         />

@@ -53,7 +53,7 @@ export function parseParamsBillions(modelId: string): number | null {
   return null;
 }
 
-/** Rough runtime VRAM footprint (GB) from name + quantization tags — for sorting, UI hints, and fit tests.
+/** Rough runtime VRAM footprint (GB) from name + quantization tags — for sorting, UI hints, and fit estimates.
  *
  * This is NOT just static weight bytes: a 1.25x overhead is applied so the
  * displayed footprint and the fit comparison reflect actual run VRAM

@@ -20,9 +20,8 @@ const LEGACY_APP_DATA_DIR = ["v", "LLM Studio"].join("");
 const LEGACY_APP_DATA_SLUG = ["v", "llm-studio-app"].join("");
 
 let cachedDataDir: string | null = null;
-// The env value the cache was computed from: LOCAL_STUDIO_DATA_DIR never
-// changes mid-process in production, but single-process test runners flip it
-// between files — a blind cache would pin every file to the first dir.
+// The env value the cache was computed from so an explicit runtime override
+// can move the data directory without retaining a stale cached path.
 let cachedDataDirEnv: string | undefined;
 let migrated = false;
 

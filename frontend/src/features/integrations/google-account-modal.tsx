@@ -8,7 +8,7 @@ import {
   type GoogleAccountView,
 } from "@local-studio/agent-runtime/google-account-contract";
 import type { GoogleWorkspacePluginId } from "@local-studio/agent-runtime/google-workspace-binding";
-import { Alert, UiModal, UiModalHeader } from "@/ui";
+import { Alert, UiModal, UiModalBody, UiModalHeader } from "@/ui";
 import { KeyRound, X } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
@@ -249,7 +249,7 @@ export function GoogleAccountModal({
         showCloseButton={!awaiting}
         closeIcon={<X className="h-4 w-4" />}
       />
-      <div className="space-y-5 px-6 py-5">
+      <UiModalBody className="space-y-4 pb-5">
         <Alert variant="info">
           Google&apos;s first-party Workspace MCP is in developer preview. Add a Desktop OAuth
           client once; Local Studio encrypts it with the desktop keychain and exposes only declared
@@ -257,7 +257,7 @@ export function GoogleAccountModal({
         </Alert>
         {content}
         {error && account ? <Alert variant="error">{error}</Alert> : null}
-      </div>
+      </UiModalBody>
     </UiModal>
   );
 }

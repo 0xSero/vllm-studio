@@ -54,6 +54,7 @@ export type AgentStreamingBehavior = "steer" | "followUp";
 export type AgentQueueAction = "promote" | "remove" | "replace";
 export const AGENT_THINKING_LEVELS = [
   "off",
+  "auto",
   "minimal",
   "low",
   "medium",

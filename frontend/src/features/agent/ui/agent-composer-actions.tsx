@@ -5,7 +5,6 @@ import { Spinner } from "@/ui";
 import { ArrowUp, Plus } from "@/ui/icon-registry";
 import type { BrowserBackend } from "@/features/agent/tools/types";
 import { GlobeIcon, PanelIcon, SitegeistIcon, StopIcon } from "@/ui/icons";
-import { ComposerDictationButton } from "./composer-dictation-button";
 
 export function AgentComposerActions({
   fileInputRef,
@@ -20,7 +19,6 @@ export function AgentComposerActions({
   onToggleBrowserBackend,
   onToggleBrowserTool,
   onAbortTurn,
-  onTranscript,
   modelSelector,
 }: {
   fileInputRef: RefObject<HTMLInputElement | null>;
@@ -35,7 +33,6 @@ export function AgentComposerActions({
   onToggleBrowserBackend: () => void;
   onToggleBrowserTool: () => void;
   onAbortTurn: () => void;
-  onTranscript: (text: string) => void;
   modelSelector?: ReactNode;
 }) {
   const inputHasText = Boolean(input.trim());
@@ -99,12 +96,6 @@ export function AgentComposerActions({
       ) : null}
       <div className="ml-auto flex min-w-0 shrink items-center gap-0.5">
         {modelSelector}
-        <ComposerDictationButton
-          disabled={running}
-          inactiveClassName={inactiveIconClass}
-          idleClassName="composer-action-optional"
-          onTranscript={onTranscript}
-        />
         {running ? (
           <>
             {starting || stopping ? (

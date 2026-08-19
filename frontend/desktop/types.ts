@@ -17,4 +17,5 @@ export interface DesktopUpdateSnapshot {
     | "error";
   version?: string;
   message?: string;
+  progress?: number;
 }

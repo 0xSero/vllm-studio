@@ -87,7 +87,13 @@ export function createStudioApi(core: ApiCore) {
 
     getModelIndex: async (options?: RequestOptions): Promise<ModelIndexResponse> => {
       try {
-        return await core.request("/studio/model-index", options);
+        const served = await core.request<ModelIndexResponse>("/studio/model-index", options);
+        // The app ships its own copy of the catalog, and the controller is
+        // deployed separately — so a freshly updated app would otherwise show a
+        // stale set of picks until someone restarts the controller. Whichever
+        // catalog carries the later `updated` date wins; ties go to the
+        // controller, since that is where an operator's curated override lives.
+        return served.updated >= bundledModelIndex.updated ? served : bundledModelIndex;
       } catch (error) {
         if (!hasStatus(error, 404)) throw error;
         return bundledModelIndex;

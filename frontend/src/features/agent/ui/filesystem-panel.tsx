@@ -26,6 +26,8 @@ import {
 import { FileOpenActions } from "@/features/agent/ui/file-open-actions";
 import { Breadcrumb, fileTone, TreeFileList } from "@/features/agent/ui/filesystem-tree";
 import { useFilesystemPanelEffects } from "@/features/agent/ui/filesystem-panel-effects";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { FILESYSTEM_CHANGED_EVENT } from "@/lib/workspace-events";
 
 type Props = { cwd: string | null };
 // eslint-disable-next-line complexity
@@ -55,6 +57,7 @@ export function FilesystemPanel({ cwd }: Props) {
   const [dirChildren, setDirChildren] = useState<Map<string, FsEntry[]>>(new Map());
   const [dirLoading, setDirLoading] = useState<Set<string>>(new Set());
   const [fileListOpen, setFileListOpen] = useState(true);
+  const [refreshRevision, setRefreshRevision] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
   const { fileOpenRequest } = useToolSelections();
   const { requestContextAttach } = useToolsActions();
@@ -66,12 +69,20 @@ export function FilesystemPanel({ cwd }: Props) {
   const pendingEditRef = useRef<{ caret: number; insert: string | null } | null>(null);
   const previewKind = useMemo(() => previewKindForOpenFile(openFile), [openFile]);
   const binaryPreview = isBinaryPreviewKind(previewKind);
+  const dirty = draftContent !== fileContent;
+  useMountSubscription(() => {
+    const refresh = () => setRefreshRevision((revision) => revision + 1);
+    window.addEventListener(FILESYSTEM_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(FILESYSTEM_CHANGED_EVENT, refresh);
+  }, []);
   useFilesystemPanelEffects({
     cwd: projectRoot,
     root,
     relPath,
     openFile,
     skipTextRead: binaryPreview,
+    refreshRevision,
+    preserveDraft: dirty,
     fileOpenRequest,
     lastOpenFileByProject,
     rootRef,
@@ -145,8 +156,11 @@ export function FilesystemPanel({ cwd }: Props) {
     },
     [dirChildren, fetchDirChildren],
   );
+  useMountSubscription(() => {
+    if (refreshRevision === 0) return;
+    for (const dir of expandedDirs) void fetchDirChildren(dir);
+  }, [expandedDirs, fetchDirChildren, refreshRevision]);
   const lines = useMemo(() => fileContent.split("\n"), [fileContent]);
-  const dirty = draftContent !== fileContent;
   const enterEditMode = useCallback(
     (line: number | null, insert: string | null) => {
       pendingEditRef.current = {

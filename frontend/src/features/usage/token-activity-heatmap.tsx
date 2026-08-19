@@ -6,18 +6,18 @@ import type { UsageStats } from "@/lib/types";
 
 const DAY_MS = 86_400_000;
 const WEEKS = 53;
+// --accent, not a raw palette colour: this is the only token surface on the
+// page that was reaching past the design tokens into Tailwind's blue ramp, and
+// it made the calendar the one element that ignored the theme.
 const LEVEL_CLASSES = [
   "bg-(--ui-surface-2)",
-  "bg-[color:var(--color-blue-500)]/20",
-  "bg-[color:var(--color-blue-500)]/38",
-  "bg-[color:var(--color-blue-500)]/62",
-  "bg-[color:var(--color-blue-500)]/90",
+  "bg-(--accent)/20",
+  "bg-(--accent)/38",
+  "bg-(--accent)/62",
+  "bg-(--accent)/90",
 ];
 
 type DailyUsage = UsageStats["daily"][number];
-type ActivityUsage = Pick<DailyUsage, "requests" | "total_tokens">;
-
-export type ActivityPeriod = "daily" | "weekly";
 
 const startOfUtcDay = (date: Date): Date =>
   new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -37,21 +37,10 @@ const dateLabel = (date: Date): string =>
     timeZone: "UTC",
   });
 
-const weekLabel = (date: Date): string => {
-  const end = new Date(date.getTime() + 6 * DAY_MS);
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-  return `${formatter.format(date)} – ${formatter.format(end)}`;
-};
-
 const quantile = (values: number[], fraction: number): number =>
   values[Math.min(values.length - 1, Math.floor(values.length * fraction))] ?? 0;
 
-const thresholds = (daily: ActivityUsage[]): number[] => {
+const thresholds = (daily: DailyUsage[]): number[] => {
   const values = daily
     .map((day) => day.total_tokens)
     .filter((value) => value > 0)
@@ -75,38 +64,20 @@ const monthLabels = (start: Date): Array<string | null> =>
     return date.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
   });
 
-const weeklyUsage = (daily: DailyUsage[]): Map<string, ActivityUsage> => {
-  const weekly = new Map<string, ActivityUsage>();
-  for (const day of daily) {
-    const date = new Date(`${day.date}T00:00:00.000Z`);
-    const week = new Date(date.getTime() - date.getUTCDay() * DAY_MS);
-    const key = dateKey(week);
-    const existing = weekly.get(key) ?? { requests: 0, total_tokens: 0 };
-    weekly.set(key, {
-      requests: existing.requests + day.requests,
-      total_tokens: existing.total_tokens + day.total_tokens,
-    });
-  }
-  return weekly;
-};
-
-export function TokenActivityHeatmap({
-  daily,
-  period = "daily",
-}: {
-  daily: DailyUsage[];
-  period?: ActivityPeriod;
-}) {
+/**
+ * A year of daily token volume.
+ *
+ * Daily is the only resolution this shape supports: the weekly mode it used to
+ * offer compressed 371 days into 53 cells, which reads as a strip of noise and
+ * answers nothing the daily table above it does not answer better.
+ */
+export function TokenActivityHeatmap({ daily }: { daily: DailyUsage[] }) {
   const end = startOfUtcDay(new Date());
   const start = calendarStart(end);
-  const byDate =
-    period === "daily" ? new Map(daily.map((day) => [day.date, day])) : weeklyUsage(daily);
-  const values = Array.from(byDate.values());
-  const limits = thresholds(values);
-  const cellCount = period === "daily" ? WEEKS * 7 : WEEKS;
-  const interval = period === "daily" ? DAY_MS : 7 * DAY_MS;
-  const cells = Array.from({ length: cellCount }, (_, index) => {
-    const date = new Date(start.getTime() + index * interval);
+  const byDate = new Map(daily.map((day) => [day.date, day]));
+  const limits = thresholds(daily);
+  const cells = Array.from({ length: WEEKS * 7 }, (_, index) => {
+    const date = new Date(start.getTime() + index * DAY_MS);
     const usage = byDate.get(dateKey(date));
     return { date, usage, level: activityLevel(usage?.total_tokens ?? 0, limits) };
   });
@@ -124,12 +95,8 @@ export function TokenActivityHeatmap({
           ))}
         </div>
         <div
-          className={
-            period === "daily"
-              ? "grid grid-flow-col grid-cols-[repeat(53,minmax(0,1fr))] grid-rows-7 gap-[3px]"
-              : "grid grid-cols-[repeat(53,minmax(0,1fr))] gap-[3px]"
-          }
-          aria-label={`${period === "daily" ? "Daily" : "Weekly"} token activity for the past year`}
+          className="grid grid-flow-col grid-cols-[repeat(53,minmax(0,1fr))] grid-rows-7 gap-[3px]"
+          aria-label="Daily token activity for the past year"
         >
           {cells.map(({ date, usage, level }) => (
             <button
@@ -137,7 +104,7 @@ export function TokenActivityHeatmap({
               type="button"
               onFocus={() => setActiveDate(dateKey(date))}
               onMouseEnter={() => setActiveDate(dateKey(date))}
-              aria-label={`${period === "daily" ? dateLabel(date) : weekLabel(date)}: ${formatNumber(usage?.total_tokens ?? 0)} tokens, ${formatNumber(usage?.requests ?? 0)} requests`}
+              aria-label={`${dateLabel(date)}: ${formatNumber(usage?.total_tokens ?? 0)} tokens, ${formatNumber(usage?.requests ?? 0)} requests`}
               className={`aspect-square min-h-2.5 rounded-[2px] outline-none ring-(--link) transition-[transform,box-shadow] hover:scale-125 hover:ring-1 focus-visible:scale-125 focus-visible:ring-2 ${LEVEL_CLASSES[level]}`}
             />
           ))}
@@ -145,7 +112,7 @@ export function TokenActivityHeatmap({
         <div className="mt-3 flex min-h-5 items-center justify-between gap-5 text-[length:var(--fs-2xs)] text-(--ui-muted)">
           <span className="tabular-nums text-(--ui-fg)/85">
             {activeCell
-              ? `${period === "daily" ? dateLabel(activeCell.date) : weekLabel(activeCell.date)} · ${formatNumber(activeCell.usage?.total_tokens ?? 0)} tokens · ${formatNumber(activeCell.usage?.requests ?? 0)} requests`
+              ? `${dateLabel(activeCell.date)} · ${formatNumber(activeCell.usage?.total_tokens ?? 0)} tokens · ${formatNumber(activeCell.usage?.requests ?? 0)} requests`
               : null}
           </span>
           <div className="flex shrink-0 items-center gap-1.5">

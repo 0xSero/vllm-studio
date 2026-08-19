@@ -225,14 +225,14 @@ function BenchmarkReadout({ result }: { result: SetupBenchmarkResult | null }) {
           {result.generation_tps.toFixed(1)}
           <span className="ml-1 text-[11px] text-(--ui-muted)">tok/s</span>
         </div>
-        <div className="text-[10px] uppercase tracking-wide text-(--ui-muted)">decode</div>
+        <div className="text-[length:var(--fs-sm)] text-(--ui-muted)">decode</div>
       </div>
       <div>
         <div className="text-[length:var(--fs-xl)] text-(--fg)">
           {result.total_time_s.toFixed(1)}
           <span className="ml-1 text-[11px] text-(--ui-muted)">s</span>
         </div>
-        <div className="text-[10px] uppercase tracking-wide text-(--ui-muted)">
+        <div className="text-[length:var(--fs-sm)] text-(--ui-muted)">
           {result.completion_tokens} tokens
         </div>
       </div>

@@ -182,7 +182,7 @@ export function AgentBrowser({
             setReadingMode((value) => !value);
           }}
           disabled={Boolean(liveUnavailable && readingMode)}
-          className={`shrink-0 rounded border px-1.5 py-1 text-[length:var(--fs-xs)] uppercase tracking-wide disabled:opacity-40 ${
+          className={`shrink-0 rounded border px-1.5 py-1 text-[length:var(--fs-sm)] disabled:opacity-40 ${
             readingMode
               ? "border-(--accent) bg-(--accent)/10 text-(--accent)"
               : "border-(--border) text-(--dim) hover:text-(--fg)"

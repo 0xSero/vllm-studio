@@ -14,6 +14,13 @@ function setUpdateState(nextState: DesktopUpdateSnapshot): void {
   latestUpdateState = nextState;
 }
 
+function setUpdateError(error: unknown): void {
+  installIntent.clear();
+  const message = String(error);
+  setUpdateState({ status: "error", message });
+  log.error(`Auto update error: ${message}`);
+}
+
 function resolveFeedUrl(): string | null {
   const raw = process.env.LOCAL_STUDIO_UPDATE_URL?.trim();
   if (!raw) return null;
@@ -100,7 +107,7 @@ export async function checkForUpdates(force = false): Promise<DesktopUpdateSnaps
     setUpdateState({ status: "checking" });
     autoUpdater.allowPrerelease = false;
     const result = await autoUpdater.checkForUpdates();
-    if (result?.downloadPromise) void result.downloadPromise.catch(() => undefined);
+    if (result?.downloadPromise) void result.downloadPromise.catch(setUpdateError);
     // An unpackaged app resolves null without emitting any status event; leave
     // "checking" behind and the renderer would poll forever.
     if (!result && latestUpdateState.status === "checking") {
@@ -174,7 +181,9 @@ export function initializeAutoUpdates(): void {
   autoUpdater.on("download-progress", (progress) => {
     setUpdateState({
       status: "downloading",
+      version: latestUpdateState.version,
       message: `${progress.percent.toFixed(1)}%`,
+      progress: progress.percent,
     });
   });
 
@@ -188,9 +197,7 @@ export function initializeAutoUpdates(): void {
   });
 
   autoUpdater.on("error", (error) => {
-    installIntent.clear();
-    setUpdateState({ status: "error", message: String(error) });
-    log.error(`Auto update error: ${String(error)}`);
+    setUpdateError(error);
   });
 
   if (app.isPackaged) {

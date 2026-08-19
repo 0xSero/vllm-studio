@@ -1,11 +1,10 @@
 // Theme catalogue data lives in themes-data.ts; this module exposes the lookup
 // maps and font options the UI consumes.
-import { THEMES, type ThemeId, type ThemeMeta } from "./themes-data";
+import { THEMES, type FontFamilyId, type ThemeId, type ThemeMeta } from "./themes-data";
 
-export type { ThemeId, ThemeTokens, ThemeMeta } from "./themes-data";
+export type { FontFamilyId, ThemeId, ThemeMeta, ThemeTokens, ThemeUiTokens } from "./themes-data";
 export { THEMES } from "./themes-data";
 
-export type FontFamilyId = "geist" | "system" | "serif" | "mono" | "rounded";
 export type FontSizeId = "sm" | "md" | "lg" | "xl" | "2xl";
 
 export interface FontFamilyOption {
@@ -25,14 +24,24 @@ export const DEFAULT_FONT_SIZE_ID: FontSizeId = "md";
 
 export const FONT_FAMILY_OPTIONS: FontFamilyOption[] = [
   {
+    id: "openai",
+    label: "OpenAI Sans",
+    cssValue: "'OpenAI Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif",
+  },
+  {
     id: "geist",
     label: "Geist",
-    cssValue: "var(--font-geist-sans), system-ui, sans-serif",
+    cssValue: "var(--font-geist-sans, 'Geist'), system-ui, sans-serif",
   },
   {
     id: "system",
     label: "System UI",
     cssValue: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  },
+  {
+    id: "avenir",
+    label: "Avenir",
+    cssValue: "'Avenir Next', Avenir, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
   },
   {
     id: "serif",

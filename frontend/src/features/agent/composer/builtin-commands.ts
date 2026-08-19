@@ -15,6 +15,7 @@ export type BuiltinComposerActions = {
   /** `/goal <objective>` and `/goal pause|resume|clear`. Resolves to an error message or null. */
   goal?: (args: string) => Promise<string | null>;
   enterGoalMode?: () => void;
+  openAutomation?: () => void;
 };
 
 export function builtinCommandProvider(actions: BuiltinComposerActions): ComposerCommandProvider {
@@ -59,6 +60,12 @@ export function builtinCommandProvider(actions: BuiltinComposerActions): Compose
       ...command("terminal", "Terminal", "Open the terminal", actions.openTerminal),
       ...command("fork", "Fork", "Fork this session into a new pane", actions.forkSession),
       ...command("export", "Export", "Export this session as Markdown", actions.exportSession),
+      ...command(
+        "automation",
+        "Automation",
+        "Schedule this work to run on a timer",
+        actions.openAutomation,
+      ),
       ...(actions.goal
         ? [
             {

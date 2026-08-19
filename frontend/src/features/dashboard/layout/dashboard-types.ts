@@ -12,6 +12,8 @@ export interface DashboardLayoutProps {
   currentProcess: ProcessInfo | null;
   currentRecipe: RecipeWithStatus | null;
   metrics: Metrics | null;
+  /** Metrics were received but do not match the running process. */
+  metricsDetached?: boolean;
   gpus: GPU[];
   recipes: RecipeWithStatus[];
   logs: string[];

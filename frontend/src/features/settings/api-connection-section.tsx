@@ -26,7 +26,7 @@ import {
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import { DeployControllerPanel } from "./deploy-controller-panel";
 import { AppVersionSection } from "./app-version-section";
-import { StatusPill, Spinner } from "@/ui";
+import { StatusPill, Spinner, type UiTone } from "@/ui";
 import { ApiUrlCensorToggle, useApiUrlCensored } from "@/ui/api-url-censor";
 import {
   SettingsButton,
@@ -34,7 +34,6 @@ import {
   SettingsInput,
   SettingsRow,
   SettingsValue,
-  type StatusTone,
 } from "./settings-ui";
 
 type ControllerEntry = SavedController & { id: string };
@@ -447,7 +446,7 @@ function ApiStatus({
   if (loading) {
     return <StatusPill tone="info">loading</StatusPill>;
   }
-  const tone: StatusTone =
+  const tone: UiTone =
     status === "connected" ? "good" : status === "error" ? "danger" : "default";
   const label = message || (status === "unknown" ? "not tested" : status);
   return (

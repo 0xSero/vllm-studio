@@ -1,9 +1,47 @@
+@font-face {
+  font-family: "OpenAI Sans";
+  src:
+    local("OpenAI Sans"),
+    url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Regular.woff2")
+      format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "OpenAI Sans";
+  src:
+    local("OpenAI Sans Medium"),
+    url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Medium.woff2")
+      format("woff2");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "OpenAI Sans";
+  src:
+    local("OpenAI Sans Semibold"),
+    url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Semibold.woff2")
+      format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
 *,
 *::before,
 *::after {
   border-color: var(--border);
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--hl1) 18%, transparent) transparent;
+}
+
+svg.lucide {
+  scale: var(--icon-scale);
+  transform-origin: center;
 }
 
 html,
@@ -23,7 +61,7 @@ html {
 body {
   background-color: var(--bg);
   color: var(--fg);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
   font-weight: var(--app-font-weight);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -136,36 +174,9 @@ a.nav-link:hover,
   color: var(--fg);
 }
 
-:root[data-theme="omlx-dark"] ::selection,
 .dark ::selection {
   background: color-mix(in srgb, var(--hl1) 52%, #000 28%);
   color: #fff;
-}
-
-/* Scroll shadows */
-.scroll-shadow-top {
-  box-shadow: inset 0 10px 10px -10px rgba(0, 0, 0, 0.3);
-}
-
-.scroll-shadow-bottom {
-  box-shadow: inset 0 -10px 10px -10px rgba(0, 0, 0, 0.3);
-}
-
-.scroll-shadow-both {
-  box-shadow:
-    inset 0 10px 10px -10px rgba(0, 0, 0, 0.3),
-    inset 0 -10px 10px -10px rgba(0, 0, 0, 0.3);
-}
-
-.text-fade-right::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 40px;
-  background: linear-gradient(to right, transparent, var(--surface));
-  pointer-events: none;
 }
 
 /* Left sidebar scroller: no scrollbar at rest, a slim overlay thumb only while

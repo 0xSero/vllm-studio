@@ -2,15 +2,20 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { Effect, Schema } from "effect";
-import { Button, SearchInput } from "@/ui";
+import { Button, SearchInput, StatusPill } from "@/ui";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceLogo } from "@/ui/resource-logo";
 import {
-  ModelRow,
-  ModelSection,
-  ModelStatus,
-  ModelValue,
-} from "@/features/recipes/recipes-content/model-page";
+  DataRow,
+  EndCell,
+  HeadCell,
+  IdentityCell,
+  StatusText,
+  TableFrame,
+  TableNotice,
+  TableSection,
+  TextCell,
+} from "@/features/recipes/recipes-content/catalog-table-shell";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { writeClipboardText } from "@/lib/clipboard";
 
@@ -62,7 +67,9 @@ function SkillDrawer({
       title={skill.name}
       icon={<ResourceLogo identity={skill.source} label={skill.name} />}
       badge={
-        <ModelStatus tone={error ? "danger" : loading ? "info" : "good"}>SKILL.md</ModelStatus>
+        <StatusPill tone={error ? "danger" : loading ? "info" : "good"} variant="dot">
+          SKILL.md
+        </StatusPill>
       }
       status={`${skill.source} · ${skill.path}`}
       footer={
@@ -160,45 +167,59 @@ export function SkillsSection() {
 
   return (
     <>
-      <ModelSection
+      <TableSection
         title="Skills"
         description="Reusable instruction sets discovered across Local Studio, Codex, Claude, Pi, Factory, and OpenCode."
         actions={
-          <ModelStatus tone={error ? "warning" : loaded ? "good" : "default"}>
-            {loaded ? `${visibleSkills.length} of ${skills.length}` : "discovering"}
-          </ModelStatus>
-        }
-      >
-        <ModelRow
-          label="Search skills"
-          description="Name, source, company, or path."
-          control={
+          <div className="flex items-center gap-2">
             <SearchInput
               value={query}
               onChange={setQuery}
               placeholder="Search skills"
-              className="w-full"
+              className="w-56"
             />
-          }
-          status={<ModelStatus>{visibleSkills.length}</ModelStatus>}
-        />
-        {visibleSkills.map((skill) => (
-          <ModelRow
-            key={skill.id}
-            label={skill.name}
-            description={`Available in Workbench · ${skill.source}`}
-            leading={<ResourceLogo identity={skill.source} label={skill.name} />}
-            value={<ModelValue mono>{skill.path}</ModelValue>}
-            status={<ModelStatus tone="info">discovered</ModelStatus>}
-            onClick={() => openSkill(skill)}
-          />
-        ))}
-        {loaded && visibleSkills.length === 0 ? (
-          <div className="px-4 py-8 text-center text-[length:var(--fs-md)] text-(--ui-muted)">
-            {skills.length ? `No skills match “${query}”.` : "No SKILL.md entries were found."}
+            <StatusText tone={error ? "warn" : loaded ? "ok" : "dim"}>
+              {loaded ? `${visibleSkills.length} of ${skills.length}` : "discovering"}
+            </StatusText>
           </div>
-        ) : null}
-      </ModelSection>
+        }
+      >
+        {loaded && visibleSkills.length === 0 ? (
+          <TableNotice
+            title={skills.length ? `No skill matches “${query}”` : "No skills found"}
+            body="A skill is a SKILL.md file discovered under one of the agent tools on this machine. Install one, or clear the search."
+          />
+        ) : (
+          <TableFrame minWidthClass="min-w-[38rem]">
+            <thead>
+              <tr>
+                <HeadCell>Skill</HeadCell>
+                <HeadCell>Directory</HeadCell>
+                <HeadCell numeric>State</HeadCell>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleSkills.map((skill) => (
+                <DataRow
+                  key={skill.id}
+                  onOpen={() => openSkill(skill)}
+                  ariaLabel={`Open ${skill.name}`}
+                >
+                  <IdentityCell
+                    leading={<ResourceLogo identity={skill.source} label={skill.name} />}
+                    label={skill.name}
+                    description={`Available in Workbench · ${skill.source}`}
+                  />
+                  <TextCell mono>{skill.path}</TextCell>
+                  <EndCell>
+                    <StatusText tone="info">discovered</StatusText>
+                  </EndCell>
+                </DataRow>
+              ))}
+            </tbody>
+          </TableFrame>
+        )}
+      </TableSection>
       {selected ? (
         <SkillDrawer
           skill={selected}

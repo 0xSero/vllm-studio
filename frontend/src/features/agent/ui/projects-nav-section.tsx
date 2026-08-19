@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, type DragEvent, type ReactNode } from "react";
-import { Button, UiModal, UiModalHeader } from "@/ui";
+import { Button, UiModal, UiModalBody, UiModalFooter, UiModalHeader } from "@/ui";
 import { PlusIcon } from "@/ui/icons";
 import { usePersistentTerminalOwners } from "@/features/agent/ui/use-persistent-terminal-owners";
 import {
@@ -13,15 +13,23 @@ import { sessionActivity } from "@/features/agent/session-index";
 import { useProjects } from "@/features/agent/projects/context";
 import { addProjectFromPath, openProjectDirectory } from "@/features/agent/projects/api";
 import { isChatsProject, type Project as ProjectEntry } from "@/features/agent/projects/types";
+import type { NavView } from "@/features/shell/left-sidebar-lazy";
 import { ProjectDirectoryPickerModal } from "./projects-nav/directory-picker-modal";
 import { SidebarSectionHeader } from "./projects-nav/nav-chrome";
 import { useNavSectionOrder, type SectionId } from "./projects-nav/nav-sections";
 import { isProjectPinned, toggleProjectPin, usePinnedNav } from "./projects-nav/pinned";
 import { PinnedSection } from "./projects-nav/pinned-section";
+import { RecentSessionsSection } from "./projects-nav/recent-sessions-section";
 import { NewChatPlusButton, ProjectRow, ProjectSessions } from "./projects-nav/session-rows";
 import { TerminalRow } from "./projects-nav/terminal-rows";
 
-export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
+export function ProjectsNavSection({
+  expanded,
+  view,
+}: {
+  expanded: boolean;
+  view: NavView;
+}) {
   const projectsContext = useProjects();
   const projects = projectsContext.projects;
   const { moveProjectBefore, refresh: refreshProjects, upsertProject } = projectsContext;
@@ -106,6 +114,10 @@ export function ProjectsNavSection({ expanded }: { expanded: boolean }) {
   });
 
   if (!expanded) return null;
+
+  // The bell's view is the recents list on its own — pinned rows, the project
+  // tree, and terminals all belong to the projects view.
+  if (view === "notifications") return <RecentSessionsSection />;
 
   // Pinned projects render under Pinned instead, so they are not listed twice.
   const unpinnedProjects = projects.filter(
@@ -310,26 +322,26 @@ function ProjectRemoveConfirmModal({
   return (
     <UiModal isOpen onClose={removing ? () => {} : onCancel} maxWidth="max-w-md">
       <UiModalHeader title="Remove project" onClose={removing ? undefined : onCancel} />
-      <div className="space-y-5 p-6">
-        <div className="space-y-2 text-[length:var(--fs-sm)] text-(--ui-muted)">
+      <UiModalBody>
+        <div className="space-y-2 text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
           <p>
             Remove <span className="font-medium text-(--ui-fg)">{project.name}</span> from the
             sidebar?
           </p>
-          <p className="break-all font-mono text-[length:var(--fs-xs)] text-(--dim)">
+          <p className="break-all font-mono text-[length:var(--fs-sm)] text-(--dim)">
             {project.path}
           </p>
           <p>This does not delete files from disk or archive existing sessions.</p>
         </div>
-        <div className="flex justify-end gap-3">
-          <Button variant="secondary" onClick={onCancel} disabled={removing}>
-            Cancel
-          </Button>
-          <Button variant="danger" onClick={onConfirm} disabled={removing}>
-            {removing ? "Removing..." : "Remove"}
-          </Button>
-        </div>
-      </div>
+      </UiModalBody>
+      <UiModalFooter>
+        <Button variant="ghost" onClick={onCancel} disabled={removing}>
+          Cancel
+        </Button>
+        <Button variant="danger" onClick={onConfirm} disabled={removing}>
+          {removing ? "Removing..." : "Remove"}
+        </Button>
+      </UiModalFooter>
     </UiModal>
   );
 }
