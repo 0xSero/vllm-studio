@@ -1,8 +1,8 @@
 "use client";
 
-import { createContext, useContext, useId, useRef, useState, type ReactNode } from "react";
-import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { createContext, useContext, useId, useRef, type ReactNode } from "react";
 import { X } from "@/ui/icon-registry";
+import { useDialogFocusTrap } from "./dialog-focus";
 import { MODAL_SURFACE_CLASS } from "./popover";
 import { cx } from "./utils";
 
@@ -16,67 +16,10 @@ interface UiModalProps {
 
 const UiModalTitleIdContext = createContext<string | null>(null);
 
-const focusableSelector = [
-  "a[href]",
-  "button:not([disabled])",
-  "input:not([disabled])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  '[tabindex]:not([tabindex="-1"])',
-].join(",");
-
-function focusableElements(dialog: HTMLDivElement): HTMLElement[] {
-  return Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector)).filter(
-    (element) =>
-      element.getClientRects().length > 0 && element.getAttribute("aria-hidden") !== "true",
-  );
-}
-
 function UiModal({ isOpen, onClose, children, className, maxWidth = "max-w-lg" }: UiModalProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
-  const [callbacks] = useState(() => ({ onClose }));
-  callbacks.onClose = onClose;
-
-  useMountSubscription(() => {
-    if (!isOpen) return;
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const previousFocus = document.activeElement;
-    const focusables = focusableElements(dialog);
-    (focusables[0] ?? dialog).focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        callbacks.onClose();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const current = focusableElements(dialog);
-      if (!current.length) {
-        event.preventDefault();
-        dialog.focus();
-        return;
-      }
-      const first = current[0];
-      const last = current[current.length - 1];
-      if (!dialog.contains(document.activeElement)) {
-        event.preventDefault();
-        (event.shiftKey ? last : first).focus();
-      } else if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
-    };
-  }, [isOpen]);
+  useDialogFocusTrap({ dialogRef, active: isOpen, onClose });
 
   if (!isOpen) return null;
 

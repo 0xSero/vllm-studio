@@ -1,7 +1,9 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { ChevronLeft, Trash2 } from "@/ui/icon-registry";
 import { Button, SearchInput, StatusPill } from "@/ui";
+import { Drawer, DrawerOverlay } from "@/ui/drawer";
 import type { LogSession } from "@/lib/types";
 
 export function LogsSessionsSidebar({
@@ -32,9 +34,6 @@ export function LogsSessionsSidebar({
       ? `${filteredSessions.length} of ${sessions.length}`
       : String(sessions.length);
   const countNoun = filteredSessions.length === 1 ? "session" : "sessions";
-  const renderFilter = () => (
-    <SearchInput value={filter} onChange={onFilterChange} placeholder="Filter..." />
-  );
 
   const renderSessionRow = (session: LogSession) => (
     <div
@@ -55,7 +54,7 @@ export function LogsSessionsSidebar({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-(--fg) truncate">
+          <div className="text-[length:var(--fs-md)] font-medium text-(--fg) truncate">
             {session.model || session.id}
           </div>
           <div className="text-[length:var(--fs-sm)] text-(--dim) mt-1">
@@ -85,58 +84,49 @@ export function LogsSessionsSidebar({
     </div>
   );
 
-  const renderSessions = () =>
-    filteredSessions.length === 0 ? (
-      <div className="p-4 text-center text-(--dim) text-sm">No log files found</div>
-    ) : (
-      filteredSessions.map(renderSessionRow)
-    );
+  /** One body, two hosts: the docked desktop column and the mobile drawer used
+   * to render this markup twice, which is how the two copies drifted apart. */
+  const renderPanel = (collapseAction?: ReactNode) => (
+    <>
+      <div className="p-4 border-b border-(--border)">
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="text-[length:var(--fs-base)] font-medium text-(--dim)">Log Sessions</h1>
+          {collapseAction}
+        </div>
+        <SearchInput value={filter} onChange={onFilterChange} placeholder="Filter..." />
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {filteredSessions.length === 0 ? (
+          <div className="p-4 text-center text-(--dim) text-[length:var(--fs-md)]">
+            No log files found
+          </div>
+        ) : (
+          filteredSessions.map(renderSessionRow)
+        )}
+      </div>
+      <div className="p-3 border-t border-(--border) text-[length:var(--fs-sm)] text-(--dim)">
+        {countLabel} {countNoun}
+      </div>
+    </>
+  );
 
   return (
     <>
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-20 md:hidden"
-          onClick={() => onSidebarToggle(false)}
-        />
-      )}
-
       <div className="w-72 border-r border-(--border) flex-col bg-(--surface) shrink-0 hidden md:flex">
-        <div className="p-4 border-b border-(--border)">
-          <div className="flex items-center justify-between mb-3">
-            <h1 className="text-[length:var(--fs-base)] font-medium text-(--dim)">
-              Log Sessions
-            </h1>
-          </div>
-          {renderFilter()}
-        </div>
-        <div className="flex-1 overflow-y-auto">{renderSessions()}</div>
-        <div className="p-3 border-t border-(--border) text-[length:var(--fs-sm)] text-(--dim)">
-          {countLabel} {countNoun}
-        </div>
+        {renderPanel()}
       </div>
 
-      <div
-        className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-(--border) flex flex-col bg-(--surface) transform transition-transform duration-200 ease-in-out md:hidden ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className="p-4 border-b border-(--border)">
-          <div className="flex items-center justify-between mb-3">
-            <h1 className="text-[length:var(--fs-base)] font-medium text-(--dim)">
-              Log Sessions
-            </h1>
-            <Button variant="icon" size="sm" onClick={() => onSidebarToggle(false)}>
-              <ChevronLeft className="h-4 w-4 text-(--dim)" />
-            </Button>
-          </div>
-          {renderFilter()}
-        </div>
-        <div className="flex-1 overflow-y-auto">{renderSessions()}</div>
-        <div className="p-3 border-t border-(--border) text-[length:var(--fs-sm)] text-(--dim)">
-          {countLabel} {countNoun}
-        </div>
-      </div>
+      {sidebarOpen ? (
+        <DrawerOverlay side="left" onClose={() => onSidebarToggle(false)} className="md:hidden">
+          <Drawer side="left" width={288} className="h-full bg-(--surface)">
+            {renderPanel(
+              <Button variant="icon" size="sm" onClick={() => onSidebarToggle(false)}>
+                <ChevronLeft className="h-4 w-4 text-(--dim)" />
+              </Button>,
+            )}
+          </Drawer>
+        </DrawerOverlay>
+      ) : null}
     </>
   );
 }

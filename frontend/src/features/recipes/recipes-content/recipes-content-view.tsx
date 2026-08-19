@@ -5,6 +5,7 @@ import { Download, Search, Server, Sparkles } from "@/ui/icon-registry";
 import type { ModelDownload, ModelInfo, RecipeWithStatus, RuntimeTarget } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { ConfirmDeleteModal, RefreshButton, TabbedPage, Tabs } from "@/ui";
+import { DrawerOverlay } from "@/ui/drawer";
 import type { RecipesContentTab } from "./recipes-content-model";
 import type { RecipesTableProps } from "./types";
 import { RecipesTab } from "./recipes-tab";
@@ -176,13 +177,7 @@ export function RecipesContentView(props: Props) {
       )}
 
       {modalOpen && modalRecipe ? (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <button
-            type="button"
-            aria-label="Close recipe editor"
-            className="absolute inset-0 bg-(--color-scrim) backdrop-blur-[2px]"
-            onClick={onCloseRecipeModal}
-          />
+        <DrawerOverlay onClose={onCloseRecipeModal}>
           <RecipeModal
             recipe={modalRecipe}
             onClose={onCloseRecipeModal}
@@ -193,7 +188,7 @@ export function RecipesContentView(props: Props) {
             runtimeTargets={runtimeTargets}
             recipes={recipes}
           />
-        </div>
+        </DrawerOverlay>
       ) : null}
 
       {deleteConfirm ? (

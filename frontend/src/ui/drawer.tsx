@@ -1,61 +1,91 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
-import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { useRef, type CSSProperties, type ReactNode } from "react";
 import { X } from "@/ui/icon-registry";
 import { Button } from "./button";
+import { useDialogFocusTrap } from "./dialog-focus";
 import { cx } from "./utils";
+
+export type DrawerSide = "left" | "right";
 
 export function Drawer({
   children,
+  id,
   width = 720,
   className,
   style,
+  side = "right",
+  fullBleed = false,
 }: {
   children: ReactNode;
+  id?: string;
   width?: number;
   className?: string;
   style?: CSSProperties;
+  side?: DrawerSide;
+  /**
+   * Fill the overlay edge to edge instead of sitting at `width`. The mobile
+   * navigation drawer needs this: the panel is the whole screen on a phone, and
+   * the desktop `min(420px, 40%)` floor would leave a dead strip beside it.
+   */
+  fullBleed?: boolean;
 }) {
+  // 100vw rather than 100%: the overlay's dialog wrapper is a shrink-to-fit
+  // flex item, so a percentage width would resolve against the panel's own
+  // content and collapse.
+  const sizing: CSSProperties = fullBleed
+    ? { width: "100vw", minWidth: 0, maxWidth: "100vw" }
+    : { width: `${width}px`, minWidth: "min(420px, 40%)", maxWidth: "min(960px, 76%)" };
+
   return (
     <aside
+      id={id}
       className={cx(
-        "relative flex shrink-0 flex-col border-l border-(--color-popover-border) bg-(--color-popover) shadow-[-24px_0_80px_rgba(0,0,0,0.38)]",
+        "relative flex shrink-0 flex-col bg-(--color-popover)",
+        side === "right"
+          ? "border-l border-(--color-popover-border) shadow-[-24px_0_80px_rgba(0,0,0,0.38)]"
+          : "border-r border-(--color-popover-border) shadow-[24px_0_80px_rgba(0,0,0,0.38)]",
         className,
       )}
-      style={{
-        width: `${width}px`,
-        minWidth: "min(420px, 40%)",
-        maxWidth: "min(960px, 76%)",
-        ...style,
-      }}
+      style={{ ...sizing, ...style }}
     >
       {children}
     </aside>
   );
 }
 
-export function DrawerOverlay({ children, onClose }: { children: ReactNode; onClose: () => void }) {
-  useMountSubscription(() => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
+export function DrawerOverlay({
+  children,
+  onClose,
+  side = "right",
+  className,
+}: {
+  children: ReactNode;
+  onClose: () => void;
+  side?: DrawerSide;
+  className?: string;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocusTrap({ dialogRef, active: true, onClose, focusFirstElement: false });
 
   return (
     <div
       // m-0 because the overlay is rendered inline wherever it is used: drop it
       // inside a `space-y-*` stack and the sibling margin lands on this fixed
       // box, shrinking it away from the bottom of the viewport.
-      className="fixed inset-0 z-50 m-0 flex justify-end bg-black/30"
+      className={cx(
+        "fixed inset-0 z-50 m-0 flex bg-(--color-scrim) backdrop-blur-[2px]",
+        side === "right" ? "justify-end" : "justify-start",
+        className,
+      )}
       onClick={onClose}
       role="presentation"
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         aria-modal="true"
-        className="flex h-full"
+        className="flex h-full outline-none"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
       >

@@ -1,6 +1,7 @@
 "use client";
 
-import { NewTaskIcon, SettingsIcon, X } from "@/ui/icon-registry";
+import { NewTaskIcon, SettingsIcon } from "@/ui/icon-registry";
+import { Drawer, DrawerHeader, DrawerOverlay } from "@/ui/drawer";
 import type { ProjectsNavSectionComponent } from "@/features/shell/left-sidebar-lazy";
 import {
   NavItemMobile,
@@ -23,30 +24,24 @@ export function MobileNavigationDrawer({
   onNewTask: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
-      <button
-        type="button"
-        className="absolute inset-0 h-full w-full bg-black/60"
-        aria-label="Close navigation menu"
-        onClick={onClose}
-      />
-      <aside
+    <DrawerOverlay onClose={onClose} className="md:hidden">
+      <Drawer
         id="mobile-navigation-drawer"
-        className="mobile-pwa-drawer absolute right-0 top-0 flex h-full w-full flex-col bg-(--bg) md:w-[min(22rem,88vw)] md:border-l md:border-(--border)"
+        fullBleed
+        // `mobile-pwa-drawer` carries the safe-area insets, the slide-in
+        // animation and the phone type scale; the shared Drawer supplies the
+        // surface, so the PWA class only has to keep doing the PWA parts.
+        className="mobile-pwa-drawer h-full bg-(--bg)"
       >
-        <div className="mobile-pwa-drawer-header flex shrink-0 items-center justify-between gap-3 px-4">
-          <div className="min-w-0 truncate text-[19px] font-semibold tracking-[-0.01em] text-(--fg)">
-            Local Studio
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--surface) text-(--fg)/70 transition-colors hover:text-(--fg)"
-            aria-label="Close navigation menu"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        <DrawerHeader
+          title={
+            <span className="text-[19px] font-semibold tracking-[-0.01em] text-(--fg)">
+              Local Studio
+            </span>
+          }
+          onClose={onClose}
+          className="mobile-pwa-drawer-header h-auto px-4"
+        />
 
         <nav className="min-h-0 flex-1 touch-pan-y overscroll-contain overflow-y-auto px-3 pb-4 pt-1">
           <NavItemMobile
@@ -87,7 +82,7 @@ export function MobileNavigationDrawer({
             )
           ) : null}
         </nav>
-      </aside>
-    </div>
+      </Drawer>
+    </DrawerOverlay>
   );
 }
