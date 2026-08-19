@@ -234,7 +234,9 @@ function gpuCells(gpu: GPU) {
       ? `${Math.round(power)}${powerLimit > 0 ? `/${Math.round(powerLimit)}` : ""} W`
       : "—",
     powerSub:
-      powerReadable && powerLimit > 0 ? `${Math.round((power / powerLimit) * 100)}% of cap` : undefined,
+      powerReadable && powerLimit > 0
+        ? `${Math.round((power / powerLimit) * 100)}% of cap`
+        : undefined,
     stateText: utilReadable ? (busy ? "busy" : "idle") : "unreported",
     stateTone: busy ? ("ok" as const) : ("dim" as const),
   };
@@ -276,6 +278,7 @@ function GpuRow({ gpu, pool }: { gpu: GPU; pool: number }) {
           <StatusText tone={cells.stateTone}>{cells.stateText}</StatusText>
           {gpu.uuid ? (
             <RowAction
+              alwaysVisible
               tone="quiet"
               title={gpu.uuid}
               onClick={() => {

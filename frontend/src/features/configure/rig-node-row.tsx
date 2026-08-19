@@ -103,7 +103,7 @@ export function RigNodeRow({
             Edit
           </RowAction>
           {onDelete ? (
-            <RowAction onClick={onDelete} tone="danger" title={`Remove ${node.name}`}>
+            <RowAction alwaysVisible onClick={onDelete} tone="danger" title={`Remove ${node.name}`}>
               Remove
             </RowAction>
           ) : null}

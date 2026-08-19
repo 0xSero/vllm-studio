@@ -435,14 +435,24 @@ function ConnectorRow({
           <StatusText tone={connector.enabled ? "ok" : "dim"}>
             {testResult || (connector.enabled ? "enabled" : "disabled")}
           </StatusText>
-          <RowAction onClick={() => void test()} disabled={testing} title="Test this connector">
+          <RowAction
+            alwaysVisible
+            onClick={() => void test()}
+            disabled={testing}
+            title="Test this connector"
+          >
             {testing ? <Spinner size="xs" /> : "Test"}
           </RowAction>
-          <RowAction onClick={() => void toggle()}>
+          <RowAction alwaysVisible onClick={() => void toggle()}>
             {connector.enabled ? "Disable" : "Enable"}
           </RowAction>
           {!connector.origin ? (
-            <RowAction onClick={() => void remove()} tone="danger" title="Remove connector">
+            <RowAction
+              alwaysVisible
+              onClick={() => void remove()}
+              tone="danger"
+              title="Remove connector"
+            >
               <Trash2 className="h-3 w-3" />
             </RowAction>
           ) : null}
