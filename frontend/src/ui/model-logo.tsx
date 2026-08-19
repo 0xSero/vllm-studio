@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { hfAvatarUrl } from "@/lib/huggingface";
+import { bundledLogoUrl } from "./model-logo-bundled";
 import { cx } from "./utils";
 
 const PALETTE = [
@@ -119,7 +120,11 @@ export function ModelLogo({
   const fallbackClass = PALETTE[hashString(title) % PALETTE.length];
   const owner = candidates[imageState.index];
   const requestImage = owner !== undefined;
-  const showImage = requestImage && imageState.loaded;
+  // A bundled logo is a static asset on our own origin: it is already in the
+  // browser cache on the second view and needs no Hugging Face round trip on
+  // the first, so it paints with the row instead of after it.
+  const bundled = owner === undefined ? null : bundledLogoUrl(owner);
+  const showImage = requestImage && (imageState.loaded || bundled !== null);
 
   return (
     <span
@@ -134,13 +139,16 @@ export function ModelLogo({
     >
       {requestImage ? (
         <img
-          src={hfAvatarUrl(modelId, owner)}
+          src={bundled ?? hfAvatarUrl(modelId, owner)}
           alt=""
           className={cx(
             "absolute inset-0 h-full w-full object-cover",
             showImage ? "" : "opacity-0",
           )}
-          loading="lazy"
+          // eager: these are 28px icons in the first screenful, and lazy-loading
+          // them only delayed the swap from initials to logo.
+          loading={bundled ? "eager" : "lazy"}
+          decoding={bundled ? "sync" : "async"}
           onLoad={() =>
             setImageState((state) =>
               state.imageKey === imageKey ? { ...state, loaded: true } : state,

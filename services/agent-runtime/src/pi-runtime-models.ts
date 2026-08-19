@@ -269,6 +269,10 @@ async function savePersistedControllers(
   await chmod(controllersPath(agentDir), 0o600).catch(() => undefined);
 }
 
+/** How long a single controller gets to answer /v1/models before it is
+ *  treated as down. */
+const CONTROLLER_MODELS_TIMEOUT_MS = 4_000;
+
 async function fetchModelsFromController(
   controller: PiControllerConfig,
   index: number,
@@ -277,7 +281,18 @@ async function fetchModelsFromController(
   const backendUrl = normalizeBackendUrl(controller.url);
   const headers: HeadersInit = { Accept: "application/json" };
   if (controller.apiKey) headers.Authorization = `Bearer ${controller.apiKey}`;
-  const response = await fetch(`${backendUrl}/v1/models`, { headers, cache: "no-store" });
+  const response = await fetch(`${backendUrl}/v1/models`, {
+    headers,
+    cache: "no-store",
+    // Every saved controller is listed before the composer can show a single
+    // model, and Promise.allSettled below waits for all of them. Without a
+    // deadline one unreachable host holds the whole model picker hostage for
+    // however long its network stack takes to give up — measured at 10.5s for
+    // a tailnet peer that is simply off. Healthy peers answer in 0.02-1.2s, so
+    // a few seconds is generous; a controller slower than this is reported as
+    // failed and the rest of the list still loads.
+    signal: AbortSignal.timeout(CONTROLLER_MODELS_TIMEOUT_MS),
+  });
   if (!response.ok) {
     throw new Error(`${backendUrl}/v1/models failed with HTTP ${response.status}`);
   }
