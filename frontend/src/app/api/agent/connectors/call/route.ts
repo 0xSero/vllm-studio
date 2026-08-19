@@ -1,12 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 import {
   callConnectorTool,
   ConnectorToolDeniedError,
   listConnectorTools,
 } from "@local-studio/agent-runtime/connector-pool";
 import { enabledConnectors } from "@local-studio/agent-runtime/connectors-service";
-import { refreshEnabledPluginConnectors } from "@local-studio/agent-runtime/plugin-runtime";
 import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
@@ -21,7 +20,6 @@ const ConnectorToolCallSchema = Schema.Struct({
 export async function GET(request: NextRequest) {
   const denied = requireApiAccess(request);
   if (denied) return denied;
-  await Effect.runPromise(refreshEnabledPluginConnectors());
   const connectors = await enabledConnectors();
   const inventory = await Promise.all(
     connectors.map(async (connector) => {

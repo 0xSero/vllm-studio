@@ -201,9 +201,9 @@ export default function ConfigurePage() {
             <OverviewRow
               icon={<Plug className="h-3.5 w-3.5" />}
               title="Integrations"
-              description="Connect capability bundles, tools, services, accounts, and skills."
-              detail="Plugins"
-              state="connectors · skills"
+              description="Connect tools, services, accounts, and skills."
+              detail="Connectors"
+              state="accounts · skills"
               onOpen={() => selectSection("integrations")}
             />
             <OverviewRow

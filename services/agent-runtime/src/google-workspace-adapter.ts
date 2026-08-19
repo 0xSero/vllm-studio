@@ -1,55 +1,17 @@
-import { readFile, realpath } from "node:fs/promises";
-import path from "node:path";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import { closePooledConnection, probeConnector } from "./connector-pool";
 import { listConnectors, upsertConnectors, type ConnectorConfig } from "./connectors-service";
 import {
   GOOGLE_WORKSPACE_BINDINGS,
-  isGoogleWorkspacePlugin,
   type GoogleWorkspacePluginId,
 } from "./google-workspace-binding";
-import type { PluginBundle } from "./plugin-discovery";
 
-export { GOOGLE_WORKSPACE_PLUGIN_IDS, isGoogleWorkspacePlugin } from "./google-workspace-binding";
-export type { GoogleWorkspacePluginId } from "./google-workspace-binding";
-
-const AppsSchema = Schema.Struct({ apps: Schema.Record(Schema.String, Schema.Unknown) });
-const GoogleWorkspaceAppSchema = Schema.Struct({
-  adapter: Schema.Literal("google-workspace"),
-  mode: Schema.Literal("read-only"),
-});
-
-function isContained(root: string, candidate: string): boolean {
-  const relative = path.relative(root, candidate);
-  return (
-    relative === "" ||
-    (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
-  );
-}
-
-export function trustedGoogleWorkspacePlugin(
-  bundle: PluginBundle,
-): Effect.Effect<GoogleWorkspacePluginId | null> {
-  return Effect.promise(async () => {
-    if (!bundle.trusted || !isGoogleWorkspacePlugin(bundle.plugin.id) || !bundle.manifest.apps) {
-      return null;
-    }
-    try {
-      const root = await realpath(bundle.rootDir);
-      const file = await realpath(path.resolve(root, bundle.manifest.apps));
-      if (!isContained(root, file)) return null;
-      const manifest = Schema.decodeUnknownSync(AppsSchema)(
-        JSON.parse(await readFile(file, "utf8")),
-      );
-      Schema.decodeUnknownSync(GoogleWorkspaceAppSchema)(manifest.apps[bundle.plugin.id]);
-      return bundle.plugin.id;
-    } catch {
-      return null;
-    }
-  });
-}
-
-export function googleWorkspaceConnector(
+/**
+ * Turns a Google Workspace account into the one connector that exposes its
+ * read-only tools. The binding is fixed in code — there is no manifest to read
+ * and no bundle on disk to trust, so the account id is the whole identity.
+ */
+function googleWorkspaceConnector(
   id: GoogleWorkspacePluginId,
   enabled: boolean,
 ): ConnectorConfig {

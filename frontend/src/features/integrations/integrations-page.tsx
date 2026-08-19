@@ -2,22 +2,22 @@
 
 import { useState, type ReactNode } from "react";
 import { RefreshButton, Tabs } from "@/ui";
-import { Boxes, Brain, GraduationCap, Plug } from "@/ui/icon-registry";
+import { Brain, GraduationCap, KeyRound, Plug } from "@/ui/icon-registry";
 import { ConnectorsSection } from "@/features/settings/connectors-section";
-import { PluginsSection } from "./plugins-section";
+import { GoogleAccountsSection } from "./google-accounts-section";
 import { ModelProvidersSection } from "./model-providers-section";
 import { SkillsSection } from "./skills-section";
 import { integrationSectionFromHash, type IntegrationSectionId } from "./integration-navigation";
 
 const INTEGRATION_TABS = [
-  { id: "plugins", label: "Plugins", icon: <Boxes className="h-3.5 w-3.5" /> },
   { id: "connectors", label: "Connectors", icon: <Plug className="h-3.5 w-3.5" /> },
+  { id: "accounts", label: "Accounts", icon: <KeyRound className="h-3.5 w-3.5" /> },
   { id: "models", label: "Models", icon: <Brain className="h-3.5 w-3.5" /> },
   { id: "skills", label: "Skills", icon: <GraduationCap className="h-3.5 w-3.5" /> },
 ] satisfies Array<{ id: IntegrationSectionId; label: string; icon: ReactNode }>;
 
 const initialSection = (): IntegrationSectionId => {
-  if (typeof window === "undefined") return "plugins";
+  if (typeof window === "undefined") return "connectors";
   const section = new URLSearchParams(window.location.search).get("integration") ?? "";
   return integrationSectionFromHash(section);
 };
@@ -50,8 +50,8 @@ export function IntegrationsContent() {
         />
       </div>
       <div key={`${activeSection}-${revision}`}>
-        {activeSection === "plugins" ? <PluginsSection /> : null}
         {activeSection === "connectors" ? <ConnectorsSection /> : null}
+        {activeSection === "accounts" ? <GoogleAccountsSection /> : null}
         {activeSection === "models" ? <ModelProvidersSection /> : null}
         {activeSection === "skills" ? <SkillsSection /> : null}
       </div>

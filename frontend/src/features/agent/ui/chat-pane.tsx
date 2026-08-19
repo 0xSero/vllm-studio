@@ -522,7 +522,7 @@ export function ChatPane({
           compact: () => void compactSession(),
           openStatus: openComputerStatus,
           toggleBrowserTool: onToggleBrowserTool,
-          openPlugins: () => router.push("/integrations"),
+          openIntegrations: () => router.push("/integrations"),
           ...(openTerminalAction ? { openTerminal: openTerminalAction } : {}),
           ...(onForkSession ? { forkSession: onForkSession } : {}),
           ...(canExport ? { exportSession } : {}),
