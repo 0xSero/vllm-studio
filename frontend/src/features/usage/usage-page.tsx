@@ -16,6 +16,7 @@ import { UsageModelsTab } from "./usage-models-tab";
 import { UsageActivityTab } from "./usage-activity-tab";
 import { UsageControllerTab } from "./usage-controller-tab";
 import { UsageErrorsTab } from "./usage-errors-tab";
+import { TokenActivityHeatmap } from "./token-activity-heatmap";
 
 type UsageTab = "models" | "activity" | "routes" | "errors";
 
@@ -179,6 +180,19 @@ export default function UsagePage() {
           <Stat label="Success rate" value={`${Math.round(stats.totals.success_rate)}%`} />
           <Stat label="P95 latency" value={milliseconds(stats.latency.p95_ms)} />
         </StatGrid>
+
+        {/* The year at a glance, above the tabs rather than inside one: it is
+            true of the whole window like the grid above it, and it is the thing
+            people come to this page to look at. */}
+        <section className="mt-8">
+          <div className="flex items-baseline justify-between gap-4">
+            <h2 className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">Past year</h2>
+            <span className="text-[length:var(--fs-xs)] text-(--ui-muted)">tokens per day</span>
+          </div>
+          <div className="mt-3">
+            <TokenActivityHeatmap daily={stats.daily} />
+          </div>
+        </section>
 
         <div className="mt-8 border-b border-(--ui-separator)">
           <Tabs items={USAGE_TABS} activeTab={tab} onSelectTab={setTab} className="-mb-px" />
