@@ -48,7 +48,7 @@ export function useDashboardData() {
     onLaunch: lifecycle.start,
     onBenchmark: actions.onBenchmark,
     onNavigateLogs: navigate("/logs"),
-    onNewRecipe: navigate("/configure?new=1&tab=serves#models"),
-    onViewAll: navigate("/configure#models"),
+    onNewRecipe: navigate("/models?new=1&tab=serves"),
+    onViewAll: navigate("/models"),
   };
 }

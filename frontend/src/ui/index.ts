@@ -22,6 +22,9 @@ export { SearchInput } from "./search-input";
 export type { SearchInputProps } from "./search-input";
 
 export { UiModal, UiModalHeader, UiModalBody, UiModalFooter } from "./modal";
+
+export { ConfirmDeleteModal } from "./confirm-delete-modal";
+export type { ConfirmDeleteModalProps } from "./confirm-delete-modal";
 export type { UiModalProps, UiModalHeaderProps, UiModalFooterProps } from "./modal";
 
 export { Tabs } from "./tabs";
