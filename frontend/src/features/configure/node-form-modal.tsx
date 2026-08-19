@@ -7,11 +7,16 @@ import {
   RIG_NODE_ROLES,
 } from "@local-studio/contracts/rigs";
 import { Button, Checkbox, FormField, Input, Select, Textarea } from "@/ui";
-import { cx } from "@/ui/utils";
 import { ResourceDrawer } from "@/ui/resource-drawer";
 import type { RigHardwareType, RigNode, RigNodeRole } from "@/lib/types";
 import type { RigNodePayload } from "@/lib/api/rigs";
-import { HardwareArt } from "./hardware-art";
+import { MachineImage } from "./hardware-image";
+
+/** Sentinel for the "start a new group" option in the group picker. */
+const NEW_GROUP = "__new__";
+
+/** Where a newly added machine should live. */
+export type NodeGroupChoice = { kind: "existing"; rigId: string } | { kind: "new"; name: string };
 
 export interface NodeFormState {
   name: string;
@@ -25,6 +30,8 @@ export interface NodeFormState {
   accelerator_memory_gb: string;
   unified_memory: boolean;
   notes: string;
+  group_id: string;
+  group_name: string;
 }
 
 const EMPTY_FORM: NodeFormState = {
@@ -39,6 +46,8 @@ const EMPTY_FORM: NodeFormState = {
   accelerator_memory_gb: "",
   unified_memory: false,
   notes: "",
+  group_id: "",
+  group_name: "",
 };
 
 const ROLE_OPTIONS: Array<{ value: RigNodeRole; label: string }> = [
@@ -54,6 +63,7 @@ function isRigNodeRole(value: string): value is RigNodeRole {
 export function nodeToForm(node: RigNode): NodeFormState {
   const accelerator = node.accelerators[0];
   return {
+    ...EMPTY_FORM,
     name: node.name,
     hardware_type: node.hardware_type,
     role: node.role,
@@ -93,35 +103,96 @@ const formToPayload = (form: NodeFormState): RigNodePayload & { name: string } =
   };
 };
 
+/**
+ * The form's answer to "which machine is this?", drawn the way the card will
+ * draw it.
+ *
+ * The picture is chosen from the accelerator name and the machine type, so
+ * typing "NVIDIA GB10" is what turns the tile into a Spark. Showing that here
+ * makes the choice self-correcting instead of a surprise after saving.
+ */
+const previewNode = (form: NodeFormState): RigNode => ({
+  id: "preview",
+  name: form.name,
+  hardware_type: form.hardware_type,
+  role: form.role,
+  source: "manual",
+  hostname: null,
+  address: null,
+  os: null,
+  cpu_model: null,
+  cpu_cores: null,
+  memory_gb: null,
+  accelerators: form.accelerator_name.trim()
+    ? [
+        {
+          name: form.accelerator_name.trim(),
+          count: Math.max(1, Number(form.accelerator_count) || 1),
+          memory_gb: null,
+          memory_type: null,
+          memory_bandwidth_gbs: null,
+          unified_memory: form.unified_memory,
+        },
+      ]
+    : [],
+  notes: null,
+});
+
 export function NodeFormModal({
   title,
   initial,
   detected,
+  groups,
   onClose,
   onSubmit,
 }: {
   title: string;
   initial?: NodeFormState;
   detected?: boolean;
+  /**
+   * Present only when adding. A machine's group is decided once, when it joins
+   * the workspace — the controller has no endpoint for moving a node between
+   * groups, so offering the choice again while editing would be a lie.
+   */
+  groups?: { options: Array<{ id: string; label: string }>; defaultRigId: string | null };
   onClose: () => void;
-  onSubmit: (payload: RigNodePayload & { name: string }) => Promise<void>;
+  onSubmit: (
+    payload: RigNodePayload & { name: string },
+    group: NodeGroupChoice | null,
+  ) => Promise<void>;
 }) {
-  const [form, setForm] = useState<NodeFormState>(initial ?? EMPTY_FORM);
+  const [form, setForm] = useState<NodeFormState>(() => ({
+    ...(initial ?? EMPTY_FORM),
+    group_id: groups?.defaultRigId ?? (groups ? NEW_GROUP : ""),
+  }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const set = <K extends keyof NodeFormState>(key: K, value: NodeFormState[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
 
+  const creatingGroup = form.group_id === NEW_GROUP;
+
+  const groupChoice = (): NodeGroupChoice | null => {
+    if (!groups) return null;
+    return creatingGroup
+      ? { kind: "new", name: form.group_name.trim() }
+      : { kind: "existing", rigId: form.group_id };
+  };
+
   const submit = async () => {
     if (!form.name.trim()) {
-      setError("Give this device a name");
+      setError("Give this machine a name");
+      return;
+    }
+    if (groups && creatingGroup && !form.group_name.trim()) {
+      setError("Name the new group");
       return;
     }
     setSaving(true);
     setError(null);
     try {
-      await onSubmit(formToPayload(form));
+      await onSubmit(formToPayload(form), groupChoice());
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -133,14 +204,18 @@ export function NodeFormModal({
     <ResourceDrawer
       title={title}
       onClose={onClose}
-      status={detected ? "Hardware details synchronize automatically" : "Manual machine profile"}
+      status={
+        detected
+          ? "Detected — hardware details are re-read on every load"
+          : "Manual machine profile"
+      }
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
           <Button variant="primary" loading={saving} onClick={() => void submit()}>
-            Save device
+            Save machine
           </Button>
         </>
       }
@@ -150,18 +225,16 @@ export function NodeFormModal({
         <div className="rounded-[var(--rad-lg)] bg-(--surface-3) px-3 py-2.5 text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
           Only the name and how this machine is used are required.
           {detected
-            ? " Hardware details stay synchronized automatically."
+            ? " The name, type, role, address and notes are yours; everything else is re-detected."
             : " Everything else is optional."}
         </div>
 
         {/* A seven-option picker that ate the top third of the sheet as a 4x2
             grid of illustrated cards. It is a one-time choice — it gets one
-            row, with the art alongside as confirmation of the pick. */}
+            row, with the picture alongside as confirmation of the pick. */}
         <FormField label="Machine type">
           <div className="flex items-center gap-3">
-            <span className="flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-(--ui-border) bg-(--surface-3)">
-              <HardwareArt type={form.hardware_type} className="h-7 w-full opacity-90" />
-            </span>
+            <MachineImage node={previewNode(form)} className="h-11 w-16" />
             <Select
               value={form.hardware_type}
               onChange={(event) => set("hardware_type", event.target.value as RigHardwareType)}
@@ -221,6 +294,35 @@ export function NodeFormModal({
               />
             </FormField>
           )}
+          {groups ? (
+            <>
+              <FormField
+                label="Group"
+                description="Machines that serve one model together belong in one group."
+              >
+                <Select
+                  value={form.group_id}
+                  onChange={(event) => set("group_id", event.target.value)}
+                  options={[
+                    ...groups.options.map((option) => ({
+                      value: option.id,
+                      label: option.label,
+                    })),
+                    { value: NEW_GROUP, label: "New group…" },
+                  ]}
+                />
+              </FormField>
+              {creatingGroup ? (
+                <FormField label="New group name" required>
+                  <Input
+                    value={form.group_name}
+                    onChange={(event) => set("group_name", event.target.value)}
+                    placeholder="Lab cluster"
+                  />
+                </FormField>
+              ) : null}
+            </>
+          ) : null}
         </div>
 
         {detected ? null : (
@@ -230,7 +332,8 @@ export function NodeFormModal({
                 GPU details
               </h3>
               <p className="mt-0.5 text-[length:var(--fs-xs)] text-(--ui-muted)">
-                Optional capacity information for a machine Local Studio cannot detect.
+                Optional capacity information for a machine Local Studio cannot detect. The name is
+                what picks the picture — write it the way the driver reports it.
               </p>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
