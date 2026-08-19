@@ -46,6 +46,18 @@ export function routeHidesAppSidebar(pathname: string): boolean {
   return pathname.startsWith("/setup") || pathname.startsWith("/quick");
 }
 
+// Exactly one thing may name the current surface on a phone. Agent routes draw
+// their own full-width header — the chat pane and the automations list both
+// have a bar with the hamburger in it — so the app topbar would be a second
+// stacked row there. Everywhere else the topbar is the only chrome.
+//
+// Deliberately not `isRouteActive(pathname, "/agent")`: that predicate excludes
+// /agent/automations so the Automations nav row stays lit, which is the wrong
+// question to ask about chrome ownership.
+export function routeOwnsMobileHeader(pathname: string): boolean {
+  return pathname.startsWith("/agent");
+}
+
 export function ProjectsNavPlaceholder() {
   return (
     <div className="px-2 py-1 text-[length:var(--fs-md)] text-(--dim)">Loading projects...</div>

@@ -70,7 +70,10 @@ export function PageHeader({
   return (
     <div className="mb-4 flex min-h-8 items-center justify-between gap-3">
       <div className="min-w-0">
-        <h2 className="truncate text-[length:var(--fs-3xl)] font-medium tracking-[-0.02em] text-(--ui-fg)">
+        {/* The phone topbar already names this surface, so showing the title
+            again here is the second of two chromes. Keep it for screen readers
+            and for desktop, where there is no topbar. */}
+        <h2 className="sr-only truncate text-[length:var(--fs-3xl)] font-medium tracking-[-0.02em] text-(--ui-fg) md:not-sr-only">
           {title}
         </h2>
         {description ? (

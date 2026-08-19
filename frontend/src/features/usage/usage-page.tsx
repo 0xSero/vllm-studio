@@ -138,7 +138,11 @@ export default function UsagePage() {
               onChange={(event) => void updateImage(event.currentTarget.files?.[0])}
             />
             <div className="min-w-0">
-              <h1 className="text-[length:var(--fs-sm)] text-(--ui-muted)">Usage</h1>
+              {/* Duplicated by the phone topbar; kept for desktop and for
+                  screen readers, where it is the page's only heading. */}
+              <h1 className="sr-only text-[length:var(--fs-sm)] text-(--ui-muted) md:not-sr-only">
+                Usage
+              </h1>
               <input
                 value={profile.name}
                 onChange={(event) => updateProfile({ name: event.target.value })}

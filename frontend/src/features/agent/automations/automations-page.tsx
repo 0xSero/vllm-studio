@@ -161,7 +161,9 @@ export default function AutomationsPage() {
   const missing = !creating && requestedId !== null && automations !== null && selected === null;
 
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full bg-(--ui-bg) text-(--ui-fg)">
+    // h-full, not h-[100dvh]: the scroll parent already subtracts the phone's
+    // bottom safe-area inset, so a viewport-height child overflows it.
+    <div className="flex h-full min-h-0 w-full bg-(--ui-bg) text-(--ui-fg) md:h-[100dvh]">
       <div
         className={
           editorOpen
