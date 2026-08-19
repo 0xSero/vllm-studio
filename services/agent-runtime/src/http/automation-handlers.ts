@@ -108,7 +108,10 @@ export async function handleGoalPut(request: Request): Promise<Response> {
       ...(typeof body.turnBudget === "number" || body.turnBudget === null
         ? { turnBudget: body.turnBudget as number | null }
         : {}),
-      ...(body.resetTurns === true ? { turnsUsed: 0 } : {}),
+      // `resetTurns` restarts the whole pursuit — turns, banked time and
+      // `createdAt`. Keeping `createdAt` across a re-set objective is what made
+      // a goal set a minute ago report itself as days old.
+      ...(body.resetTurns === true ? { resetProgress: true } : {}),
     });
     return Response.json({ goal: goal.objective ? goal : null });
   } catch (error) {

@@ -18,7 +18,10 @@ function readTail(filepath: string): string {
   return buffer.toString("utf8");
 }
 
-function textFromContent(content: unknown): string {
+/** Flatten a pi message `content` field to its plain text. Shared with the goal
+ *  driver, which reads assistant text off the live event stream rather than the
+ *  transcript so it only ever sees the turn that just settled. */
+export function assistantMessageText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
@@ -47,7 +50,7 @@ export function lastAssistantResultFromJsonl(raw: string): LastAssistantResult {
     }
     if (!isRecord(entry) || entry.type !== "message" || !isRecord(entry.message)) continue;
     if (entry.message.role !== "assistant") continue;
-    const messageText = textFromContent(entry.message.content).trim();
+    const messageText = assistantMessageText(entry.message.content).trim();
     if (messageText) {
       text = messageText;
       error = null;

@@ -185,14 +185,17 @@ export function AgentComposerFrame({
         />
         {goalMode ? (
           <div className="flex items-center gap-1.5 px-3 pt-2.5">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 py-0.5 pl-2 pr-1 text-[length:var(--fs-sm)] font-medium text-amber-500">
+            {/* Themed, not amber-500. A literal Tailwind colour was the one
+                hardcoded hue in the composer chrome and read as foreign on the
+                other ~15 themes; --accent has a bare-:root baseline. */}
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-(--accent)/30 bg-(--accent)/10 py-0.5 pl-2 pr-1 text-[length:var(--fs-sm)] font-medium text-(--accent)">
               <Target className="size-3.5" aria-hidden />
               Goal
               <button
                 type="button"
                 onClick={onExitGoalMode}
                 aria-label="Exit goal mode"
-                className="rounded-full p-0.5 text-amber-500/70 transition-colors hover:bg-amber-500/15 hover:text-amber-400"
+                className="rounded-full p-0.5 text-(--accent)/70 transition-colors hover:bg-(--accent)/15 hover:text-(--accent)"
               >
                 <CloseIcon className="size-3" />
               </button>

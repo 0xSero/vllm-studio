@@ -1,3 +1,4 @@
+import { isGoalContinuationPrompt } from "@shared/agent/goal-protocol";
 import { piEventIsSuccessfulCompaction } from "@shared/agent/pi-events";
 import {
   cleanSessionTitle,
@@ -118,6 +119,12 @@ export function visibleUserTextFromPi(text: string): string {
   const marker = "\n\nUser prompt:\n";
   const idx = text.lastIndexOf(marker);
   const body = idx === -1 ? text : text.slice(idx + marker.length);
+  // The goal driver keeps a pursuit moving by re-prompting through the ordinary
+  // user channel, so the runtime echoes its continuation back as a user
+  // message. It is machine steering, never the user's words: returning "" here
+  // means no bubble is appended and no assistant bubble is opened for it, so a
+  // long goal reads as the agent working rather than talking to itself.
+  if (isGoalContinuationPrompt(body)) return "";
   return stripAttachmentPromptText(stripBrowserContextText(body)).trim();
 }
 
