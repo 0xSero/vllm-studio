@@ -160,6 +160,14 @@
   --color-syntax-comment: #8f8f8f;
   --color-syntax-deletion: var(--red-300);
 
+  /* Dialog scrim baseline, for exactly the reason the syntax palette above has
+     one: the theme runtime emits only surface tokens, so a `--color-scrim`
+     defined solely in the light/dark blocks below is undefined on every other
+     theme id. `background-color: var(--color-scrim)` then becomes invalid at
+     computed-value time and the overlay renders fully transparent — a drawer or
+     modal with no backdrop at all. Dark default; the light block overrides. */
+  --color-scrim: rgba(0, 0, 0, 0.55);
+
   /* Default theme is dark. The `.dark` alias and the `[data-theme="zai-dark"]`
      attribute both select the default dark system. */
   color-scheme: dark;
