@@ -10,6 +10,7 @@ import { getGlobalSingleton } from "./instances";
 import { piRuntimeManager } from "./pi-runtime";
 import { lastAssistantResult } from "./session-text";
 import { listProjectsFromStore } from "./projects-store";
+import { refreshPiModels } from "./pi-runtime-models";
 
 const TICK_MS = 30_000;
 
@@ -37,6 +38,30 @@ export function automationRunError(lastError: string | null, summary: string): s
   return summary.trim() ? null : "Automation completed without an assistant response.";
 }
 
+/**
+ * The model an automation should actually run on.
+ *
+ * A schedule outlives the model it was written against: the configured model
+ * gets evicted, a different one is serving, and the run fails at 3am on a
+ * machine nobody is watching. If the configured model is not live, any live
+ * model is a better outcome than no run at all. The configured id is kept when
+ * nothing is live, so the failure still names the model the user chose.
+ */
+async function runnableModelId(configured: string): Promise<string> {
+  try {
+    const { models } = await refreshPiModels();
+    if (models.some((model) => model.id === configured && model.active)) return configured;
+    const live = models.find((model) => model.active);
+    if (!live) return configured;
+    console.warn(
+      `[automation] ${configured} is not live; running on ${live.id} instead`,
+    );
+    return live.id;
+  } catch {
+    return configured;
+  }
+}
+
 export async function runAutomationNow(id: string): Promise<Automation | null> {
   const scheduler = state();
   const automation = await getAutomation(id);
@@ -45,7 +70,8 @@ export async function runAutomationNow(id: string): Promise<Automation | null> {
   const runtimeSessionId = `automation:${id}:${Date.now()}`;
   try {
     const { session } = piRuntimeManager.getSessionForLookup(runtimeSessionId, null);
-    await session.ensureStarted(automation.modelId, automation.cwd || undefined, null, {});
+    const modelId = await runnableModelId(automation.modelId);
+    await session.ensureStarted(modelId, automation.cwd || undefined, null, {});
     await session.prompt(runPrompt(automation), () => {});
     const status = session.status;
     const piSessionId = status.piSessionId;

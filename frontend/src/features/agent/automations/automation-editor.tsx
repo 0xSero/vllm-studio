@@ -314,10 +314,14 @@ function RunHistory({ automation }: { automation: Automation }) {
       </div>
       <div className="divide-y divide-(--ui-separator) border-y border-(--ui-separator)">
         {automation.runs.map((run, index) => {
-          const transcriptHref =
-            run.piSessionId && run.projectId
-              ? `/agent?project=${encodeURIComponent(run.projectId)}&session=${encodeURIComponent(run.piSessionId)}&replace=1`
-              : null;
+          // The session id is what opens the thread; the project only preselects
+          // the sidebar. Requiring both hid every run of an automation whose cwd
+          // is not a registered project — the scheduler resolves projectId by
+          // matching cwd against the project list, so that is most of them — and
+          // the UI claimed "Transcript unavailable" for threads that existed.
+          const transcriptHref = run.piSessionId
+            ? `/agent?${run.projectId ? `project=${encodeURIComponent(run.projectId)}&` : ""}session=${encodeURIComponent(run.piSessionId)}&replace=1`
+            : null;
           return (
             <div
               key={`${run.at}-${run.piSessionId ?? index}`}
