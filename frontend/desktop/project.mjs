@@ -1887,11 +1887,19 @@ function prePush() {
       throw Error(`pre-push: direct pushes to ${remoteRef} are blocked; merge through GitHub`);
     if (/^0{40}$/.test(localSha))
       continue;
-    let defaultRef, range2;
+    let defaultRef, excludedRef, range2;
     try {
       defaultRef = git(["symbolic-ref", "--quiet", "--short", `refs/remotes/${remote}/HEAD`]);
     } catch {
       defaultRef = `${remote}/main`;
+    }
+    excludedRef = defaultRef;
+    try {
+      let devRef = `${remote}/dev`;
+      git(["rev-parse", "--verify", "--quiet", devRef]);
+      git(["merge-base", "--is-ancestor", devRef, localSha]);
+      excludedRef = devRef;
+    } catch {
     }
     if (/^0{40}$/.test(remoteSha)) {
       try {
@@ -1903,7 +1911,7 @@ function prePush() {
       range2 = `${remoteSha}..${localSha}`;
     let checkArgs = [path11.join(root5, "scripts/project.mjs"), "check-commits", "--range", range2];
     try {
-      git(["rev-parse", "--verify", "--quiet", defaultRef]), checkArgs.push("--exclude", defaultRef);
+      git(["rev-parse", "--verify", "--quiet", excludedRef]), checkArgs.push("--exclude", excludedRef);
     } catch {
     }
     console.log(`Checking conventional commits for ${localRef} -> ${remote}/${remoteRef} (${url})`), run3(process.execPath, checkArgs);
