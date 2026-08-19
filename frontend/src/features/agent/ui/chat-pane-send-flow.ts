@@ -25,6 +25,7 @@ import {
   messagesToResumeAfterAbort,
   removePendingSteersClearedByAbort,
 } from "@/features/agent/ui/chat-pane-send-flow-model";
+import { composerLaneBlockReason } from "@/features/agent/ui/use-lane-enable-switch";
 
 type UseChatPaneSendFlowOptions = {
   activeTab: SessionTab | null;
@@ -120,6 +121,16 @@ export function useChatPaneSendFlow({
     [attachments, browserToolEnabled, modelId, modelSupportsVision, tools],
   );
 
+  const rejectLaneBlocked = useCallback(
+    (tabId: string) => {
+      const reason = composerLaneBlockReason(modelId);
+      if (!reason) return false;
+      updateTab(tabId, (tab) => ({ ...tab, error: reason }));
+      return true;
+    },
+    [modelId, updateTab],
+  );
+
   const submitPrompt = useCallback(
     (rawText: string, targetTabId?: string) => {
       const targetId = targetTabId ?? activeTab?.id;
@@ -127,6 +138,7 @@ export function useChatPaneSendFlow({
       if ((!rawText.trim() && attachments.length === 0) || !modelId || readingAttachments) {
         return Promise.resolve();
       }
+      if (rejectLaneBlocked(targetId)) return Promise.resolve();
       const args = buildPromptArgs(targetId, rawText, browserToolEnabled);
       const currentSelection = tools.selectionFor(targetId);
       if (currentSelection.skills.length > 0) {
@@ -146,6 +158,7 @@ export function useChatPaneSendFlow({
       engine,
       modelId,
       readingAttachments,
+      rejectLaneBlocked,
       resetComposerHeight,
       setStickToBottom,
       tools,
@@ -160,6 +173,7 @@ export function useChatPaneSendFlow({
       runtime: string,
       cwdHint?: string,
     ) => {
+      if (rejectLaneBlocked(tab.id)) return Promise.resolve();
       const queuedId = newId("queue");
       // A steer lands in the transcript immediately, dimmed, so the user sees it
       // the moment they send it; the runtime echo clears `pending` once Pi shows
@@ -214,7 +228,7 @@ export function useChatPaneSendFlow({
         }),
       );
     },
-    [engine, resetComposerHeight, updateTab],
+    [engine, rejectLaneBlocked, resetComposerHeight, updateTab],
   );
 
   // Single-flight a submit through one of the in-flight guards: bail if this
@@ -250,6 +264,7 @@ export function useChatPaneSendFlow({
         updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
         return Promise.resolve();
       }
+      if (rejectLaneBlocked(activeTab.id)) return Promise.resolve();
       return Effect.runPromise(
         Effect.gen(function* () {
           // Fail open, same reasoning as runtimeStatusAcceptsControl: a probe
@@ -287,6 +302,7 @@ export function useChatPaneSendFlow({
       modelId,
       queueAndSendControl,
       readingAttachments,
+      rejectLaneBlocked,
       runGuardedSubmit,
       submitPrompt,
       updateTab,
@@ -301,6 +317,7 @@ export function useChatPaneSendFlow({
       updateTab(activeTab.id, (t) => ({ ...t, error: "Select a model to send." }));
       return Promise.resolve();
     }
+    if (rejectLaneBlocked(activeTab.id)) return Promise.resolve();
     const runtime = activeTab.id;
     return Effect.runPromise(
       Effect.gen(function* () {
@@ -333,6 +350,7 @@ export function useChatPaneSendFlow({
     engine,
     modelId,
     queueAndSendControl,
+    rejectLaneBlocked,
     runGuardedSubmit,
     submitPrompt,
     updateTab,
@@ -343,6 +361,7 @@ export function useChatPaneSendFlow({
       if (!activeTab) return Promise.resolve();
       const item = (activeTab.queue ?? []).find((entry) => entry.id === queueId);
       if (!item) return Promise.resolve();
+      if (rejectLaneBlocked(activeTab.id)) return Promise.resolve();
       return engine
         .sendControl({
           mode: "follow_up",
@@ -360,7 +379,7 @@ export function useChatPaneSendFlow({
           }));
         });
     },
-    [activeTab, engine, updateTab],
+    [activeTab, engine, rejectLaneBlocked, updateTab],
   );
 
   const editQueued = useCallback(
@@ -368,6 +387,7 @@ export function useChatPaneSendFlow({
       if (!activeTab) return Promise.resolve();
       const item = (activeTab.queue ?? []).find((entry) => entry.id === queueId);
       if (!item) return Promise.resolve();
+      if (rejectLaneBlocked(activeTab.id)) return Promise.resolve();
       return engine
         .sendControl({
           mode: "follow_up",
@@ -386,7 +406,7 @@ export function useChatPaneSendFlow({
           }));
         });
     },
-    [activeTab, engine, updateTab],
+    [activeTab, engine, rejectLaneBlocked, updateTab],
   );
 
   const steerQueued = useCallback(
@@ -394,6 +414,7 @@ export function useChatPaneSendFlow({
       if (!activeTab) return Promise.resolve();
       const item = (activeTab.queue ?? []).find((entry) => entry.id === queueId);
       if (!item) return Promise.resolve();
+      if (rejectLaneBlocked(activeTab.id)) return Promise.resolve();
       const runtime = activeTab.id;
       // Promoting a queued follow-up to a steer delivers it into the running
       // turn immediately, so it lands in the transcript optimistically the same
@@ -437,7 +458,7 @@ export function useChatPaneSendFlow({
         }),
       );
     },
-    [activeTab, engine, updateTab],
+    [activeTab, engine, rejectLaneBlocked, updateTab],
   );
 
   const abortTurn = useCallback(() => {
@@ -467,6 +488,7 @@ export function useChatPaneSendFlow({
   // so retry resends the last user message directly.
   const retryLast = useCallback(() => {
     if (!activeTab || !modelId) return Promise.resolve();
+    if (rejectLaneBlocked(activeTab.id)) return Promise.resolve();
     const lastUserText = [...activeTab.messages].reverse().find((m) => m.role === "user")?.text;
     const text = (lastUserText ?? activeTab.input).trim();
     if (!text) return Promise.resolve();
@@ -474,7 +496,7 @@ export function useChatPaneSendFlow({
       updateTab(activeTab.id, (t) => ({ ...t, error: "", input: "" }));
       return submitPrompt(text, activeTab.id);
     });
-  }, [activeTab, modelId, runGuardedSubmit, submitPrompt, updateTab]);
+  }, [activeTab, modelId, rejectLaneBlocked, runGuardedSubmit, submitPrompt, updateTab]);
 
   return { sendMessage, queueMessage, removeQueued, editQueued, steerQueued, abortTurn, retryLast };
 }

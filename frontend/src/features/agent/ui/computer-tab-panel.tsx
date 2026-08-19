@@ -15,6 +15,7 @@ import type { Session, UpdateSession } from "@/features/agent/runtime/types";
 import type { AgentModel } from "@/features/agent/workspace/types";
 import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
+import { useLaneEnableSwitch } from "@/features/agent/ui/use-lane-enable-switch";
 
 const LazyAgentBrowser = lazy(() =>
   import("@/features/agent/ui/agent-browser").then(({ AgentBrowser }) => ({
@@ -114,8 +115,17 @@ function SideChatTab({
       onUpdateSideChatTabs((tabs) => tabs.map((tab) => (tab.id === sessionId ? patch(tab) : tab))),
     [onUpdateSideChatTabs],
   );
+  const { requestModelChange, notResident, dialog } = useLaneEnableSwitch({
+    setError: (error) =>
+      updateSession(sideChatSession.id, (tab) => ({
+        ...tab,
+        error: error === "lane_status_unavailable" ? "Lane status unavailable." : error,
+      })),
+    setSessionError: (error) => updateSession(sideChatSession.id, (tab) => ({ ...tab, error })),
+  });
   return (
     <section className="flex min-h-0 flex-1 flex-col">
+      {dialog}
       <ChatPane
         paneId="computer-side-chat"
         modelId={modelId}
@@ -130,10 +140,13 @@ function SideChatTab({
           <AgentModelPicker
             models={models}
             selectedModel={modelId}
-            onSelect={(nextModelId) =>
-              onUpdateSideChatTabs((tabs) => tabs.map((tab) => ({ ...tab, modelId: nextModelId })))
+            onSelect={(id) =>
+              requestModelChange(id, (next) =>
+                onUpdateSideChatTabs((tabs) => tabs.map((tab) => ({ ...tab, modelId: next }))),
+              )
             }
             loading={modelsLoading}
+            notResident={notResident(modelId)}
             {...reasoning}
           />
         )}

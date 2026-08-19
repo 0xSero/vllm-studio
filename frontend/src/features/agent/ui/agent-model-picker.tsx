@@ -25,6 +25,7 @@ type AgentModelPickerProps = {
   onSelect: (id: string) => void;
   onSetDefault?: (id: string) => void;
   loading: boolean;
+  notResident?: boolean;
   reasoningLevel?: AgentThinkingLevel;
   reasoningLevels?: readonly AgentThinkingLevel[];
   reasoningDisabled?: boolean;
@@ -33,6 +34,24 @@ type AgentModelPickerProps = {
 
 const PANEL_GAP_PX = 6;
 const VIEWPORT_MARGIN_PX = 8;
+
+const NOT_RESIDENT_HINT = "Not resident — pick this model to switch lanes.";
+
+export function modelPickerTriggerAccessibility(args: {
+  notResident: boolean;
+  notRunning: boolean;
+  title: string;
+}): { title: string; ariaLabel: string } {
+  if (args.notResident) {
+    return { title: NOT_RESIDENT_HINT, ariaLabel: NOT_RESIDENT_HINT };
+  }
+  return {
+    title: args.notRunning
+      ? `${args.title} is not running — launch it or pick a running model`
+      : args.title,
+    ariaLabel: `Model: ${args.title}${args.notRunning ? " (not running)" : ""}`,
+  };
+}
 
 type ModelGroup = { key: string; name: string; models: AgentModel[] };
 type PickerView = "root" | "models" | "reasoning";
@@ -66,6 +85,7 @@ export function AgentModelPicker({
   onSelect,
   onSetDefault,
   loading,
+  notResident = false,
   reasoningLevel,
   reasoningLevels = [],
   reasoningDisabled = false,
@@ -159,6 +179,7 @@ export function AgentModelPicker({
         disabled={disabled}
         open={open}
         notRunning={selectedModelNotRunning}
+        notResident={notResident}
         onToggle={() => {
           if (disabled) return;
           if (open) close();
@@ -439,6 +460,7 @@ function ModelPickerTrigger({
   disabled,
   open,
   notRunning,
+  notResident,
   onToggle,
 }: {
   label: string;
@@ -446,8 +468,10 @@ function ModelPickerTrigger({
   disabled: boolean;
   open: boolean;
   notRunning: boolean;
+  notResident: boolean;
   onToggle: () => void;
 }) {
+  const hint = modelPickerTriggerAccessibility({ notResident, notRunning, title });
   return (
     <button
       type="button"
@@ -456,18 +480,23 @@ function ModelPickerTrigger({
       onClick={onToggle}
       disabled={disabled}
       className={cx(
-        // Codex: the model control sits at the shared chat size (16px) with
-        // primary-strength text; only the chevron reads dim.
         "group/model inline-flex !h-[30px] !min-h-[30px] !min-w-0 max-w-full items-center justify-between gap-1 rounded-lg bg-transparent pl-2 pr-1.5 text-[length:var(--fs-base)] whitespace-nowrap text-(--fg)/85 transition-colors hover:bg-(--hover) hover:text-(--fg) active:translate-y-px disabled:opacity-60",
         open && "bg-(--hover) text-(--fg)",
       )}
-      title={notRunning ? `${title} is not running — launch it or pick a running model` : title}
-      aria-label={`Model: ${title}${notRunning ? " (not running)" : ""}`}
+      title={hint.title}
+      aria-label={hint.ariaLabel}
       aria-expanded={open}
       aria-haspopup="menu"
     >
       <span className="min-w-0 max-w-[180px] truncate text-left">{label}</span>
-      {notRunning ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--warn)" /> : null}
+      {notResident ? (
+        <>
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--warn)" />
+          <span className="shrink-0 text-[length:var(--fs-xs)] text-(--warn)">Not resident</span>
+        </>
+      ) : notRunning ? (
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--warn)" />
+      ) : null}
       <ChevronDown className="pointer-events-none h-3.5 w-3.5 shrink-0 text-(--dim)" />
     </button>
   );

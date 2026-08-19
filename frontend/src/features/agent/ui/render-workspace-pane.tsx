@@ -3,6 +3,7 @@
 import { memo } from "react";
 import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
+import { useLaneEnableSwitch } from "@/features/agent/ui/use-lane-enable-switch";
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
 import type { useTools } from "@/features/agent/tools/context";
 import type { Project } from "@/features/agent/projects/types";
@@ -169,8 +170,16 @@ const WorkspacePane = memo(function WorkspacePane({
   composerOnly,
 }: WorkspacePaneProps) {
   const sessions = view.session ? [view.session] : [];
-  return (
+  const sessionId = view.session?.id;
+  const { requestModelChange, notResident, dialog } = useLaneEnableSwitch({
+    setError: (error) => dispatch({ type: "setError", error }),
+    setSessionError: sessionId
+      ? (error) => handles.updateSession(sessionId, (tab) => ({ ...tab, error }))
+      : undefined,
+  });
+  return [
     <ChatPane
+      key={view.paneId}
       paneId={view.paneId}
       modelId={view.modelId}
       modelName={view.model?.name ?? view.modelId ?? null}
@@ -188,9 +197,12 @@ const WorkspacePane = memo(function WorkspacePane({
           models={models}
           selectedModel={view.modelId}
           defaultModel={defaultModel}
-          onSelect={(modelId) => handles.selectPaneModel(view.paneId, modelId)}
+          onSelect={(id) =>
+            requestModelChange(id, (next) => handles.selectPaneModel(view.paneId, next))
+          }
           onSetDefault={handles.setDefaultModel}
           loading={modelsLoading}
+          notResident={notResident(view.modelId)}
           {...reasoning}
         />
       )}
@@ -222,8 +234,9 @@ const WorkspacePane = memo(function WorkspacePane({
       onRegisterHandle={(handle) => handles.registerPaneHandle(view.paneId, handle)}
       showHeader={!compact}
       composerOnly={composerOnly}
-    />
-  );
+    />,
+    dialog,
+  ];
 }, sameWorkspacePaneProps);
 
 export function renderWorkspacePane({

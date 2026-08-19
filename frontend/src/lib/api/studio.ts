@@ -4,6 +4,7 @@ import {
   bundledModelIndexSource,
   type ModelIndexResponse,
 } from "@local-studio/contracts/model-index";
+import type { ExclusiveLane, ResidentLane } from "@shared/agent/lane-identity";
 import type {
   ModelDownload,
   EngineJob,
@@ -55,6 +56,29 @@ export interface RuntimeJobResponse {
   job_id: string;
   job: EngineJob;
 }
+export type LaneSwitchState = "idle" | "running" | "ready" | "failed" | "restoring";
+export type LaneProbeView = { ready: boolean; port: number; model_ids: string[] };
+export type LaneSwitchJob = {
+  id: string | null;
+  state: LaneSwitchState;
+  from_lane: ResidentLane | null;
+  to_lane: ExclusiveLane | null;
+  script: string | null;
+  exit_code: number | null;
+  message: string | null;
+  error: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  idempotent?: boolean;
+};
+export type LaneStatus = {
+  enabled: boolean;
+  configured: boolean;
+  resident_lane: ResidentLane;
+  omlx: LaneProbeView;
+  ds4: LaneProbeView;
+  switch: LaneSwitchJob;
+};
 
 const bundledModelIndex = Schema.decodeUnknownSync(ModelIndexSchema)(bundledModelIndexSource);
 
@@ -144,6 +168,16 @@ export function createStudioApi(core: ApiCore) {
       core.request("/studio/models/move", {
         method: "POST",
         body: JSON.stringify({ source_path: sourcePath, target_root: targetRoot }),
+      }),
+
+    getLanes: (options?: RequestOptions): Promise<LaneStatus> =>
+      core.request("/studio/lanes", { retries: 0, ...options }),
+
+    switchLane: (target_lane: ExclusiveLane): Promise<LaneSwitchJob> =>
+      core.request("/studio/lanes/switch", {
+        method: "POST",
+        body: JSON.stringify({ target_lane }),
+        retries: 0,
       }),
 
     getProviders: (): Promise<{
