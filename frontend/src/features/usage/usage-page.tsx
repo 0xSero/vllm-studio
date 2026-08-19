@@ -1,10 +1,15 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { AppPage, Button, ErrorBox, RefreshButton, TabbedPage } from "@/ui";
-import { Activity, AlertTriangle, Server, Sparkles } from "@/ui/icon-registry";
+import { useRef, useState, type ReactNode } from "react";
+import { AppPage, Button, ErrorBox, PageContainer, RefreshButton, Tabs } from "@/ui";
+import { Activity, AlertTriangle, Server, Sparkles, Upload } from "@/ui/icon-registry";
 import { formatNumber } from "@/lib/formatters";
 import type { UsageStats } from "@/lib/types";
+import {
+  ProfileAvatar,
+  profileImageFromFile,
+  useLocalProfile,
+} from "@/features/shell/local-profile";
 import { useUsage } from "./use-usage";
 import { UsageSkeleton } from "./usage-skeleton";
 import { UsageModelsTab } from "./usage-models-tab";
@@ -44,55 +49,53 @@ const TAB_HEADINGS: Record<UsageTab, { title: string; description: string }> = {
   },
 };
 
-/** The left half of the context strip: what window the tab's numbers cover. */
-const tabScope = (tab: UsageTab, stats: UsageStats): { scale: string; detail: string } => {
-  if (tab === "models") {
-    return {
-      scale: `${stats.by_model.length} ${stats.by_model.length === 1 ? "model" : "models"}`,
-      detail: `${formatNumber(stats.totals.total_requests)} requests · ${formatNumber(stats.totals.total_tokens)} tokens proxied`,
-    };
+const activeDays = (stats: UsageStats): number =>
+  stats.daily.filter((day) => day.total_tokens > 0).length;
+
+const currentStreak = (stats: UsageStats): number => {
+  const active = new Set(stats.daily.filter((day) => day.total_tokens > 0).map((day) => day.date));
+  const cursor = new Date();
+  cursor.setUTCHours(0, 0, 0, 0);
+  if (!active.has(cursor.toISOString().slice(0, 10))) cursor.setUTCDate(cursor.getUTCDate() - 1);
+  let streak = 0;
+  while (active.has(cursor.toISOString().slice(0, 10))) {
+    streak += 1;
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
   }
-  if (tab === "activity") {
-    return {
-      scale: `${stats.daily.length} days recorded`,
-      detail: `${formatNumber(stats.recent_activity.last_24h_requests)} requests in the last 24 hours`,
-    };
-  }
-  if (tab === "routes") {
-    const controller = stats.controller;
-    return {
-      scale: controller ? `${controller.by_path.length} routes` : "No controller telemetry",
-      detail: controller
-        ? `${formatNumber(controller.totals.total_requests)} controller requests · ${controller.totals.success_rate.toFixed(1)}% served`
-        : "This controller build does not report request stats.",
-    };
-  }
-  const requests = stats.controller?.recent_errors.length ?? 0;
-  const tools = stats.controller?.function_calls?.recent_errors.length ?? 0;
-  return {
-    scale: `${requests + tools} recorded`,
-    detail: `${requests} request errors · ${tools} tool-call errors`,
-  };
+  return streak;
 };
 
+const milliseconds = (value: number | null): string =>
+  value === null ? "—" : `${Math.round(value)} ms`;
+
 /**
- * Usage as four tables.
+ * Usage: the profile summary it always had, with the four tabs underneath.
  *
- * The page used to open on one number at display size and then show three
- * proportional-bar cards, while roughly seventy percent of the payload it
- * already fetched — every throughput field, the whole controller block, the
- * hour-of-day pattern — was normalised and dropped. It is now the Models page's
- * sibling: the same tabbed shell, the same table language, and each tab's stat
- * strip summarising the rows directly beneath it rather than floating free.
+ * The tabs earn their place — they surface throughput, the controller block and
+ * the hour-of-day pattern that the page used to fetch and drop — but the page
+ * still opens the way it did: who this machine is, one headline number, and the
+ * six-cell grid. Those six are true of the whole retention window, so they sit
+ * above the tab strip rather than inside any one tab.
  */
 export default function UsagePage() {
   const { stats, loading, error, loadStats } = useUsage();
   const [tab, setTab] = useState<UsageTab>("models");
+  const [profile, updateProfile] = useLocalProfile();
+  const [imageError, setImageError] = useState("");
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const updateImage = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      updateProfile({ imageUrl: await profileImageFromFile(file) });
+      setImageError("");
+    } catch (nextError) {
+      setImageError(nextError instanceof Error ? nextError.message : "Image failed to load");
+    }
+  };
 
   if (loading && !stats) return <UsageSkeleton />;
 
-  // The skeleton above already owns the first-load case, so the only state left
-  // to draw here is "the fetch failed and we have nothing cached".
   if (error && !stats) {
     return (
       <AppPage>
@@ -108,54 +111,119 @@ export default function UsagePage() {
   if (!stats) return null;
 
   const heading = TAB_HEADINGS[tab];
-  const scope = tabScope(tab, stats);
 
   return (
-    <TabbedPage
-      title="Usage"
-      description="Everything this controller has proxied — per model, over time, and where it failed."
-      width="sm"
-      tabs={USAGE_TABS}
-      activeTab={tab}
-      onSelectTab={setTab}
-      actions={
-        <RefreshButton
-          onRefresh={loadStats}
-          loading={loading}
-          label="Refresh usage"
-          className="h-8 w-8"
-        />
-      }
-    >
-      <section>
-        <h2 className="text-[length:var(--fs-2xl)] font-medium tracking-[-0.015em] text-(--ui-fg)">
-          {heading.title}
-        </h2>
-        <p className="mt-1 text-[length:var(--fs-sm)] text-(--ui-muted)">{heading.description}</p>
-
-        {/* One quiet line of context, matching the Models page: the window
-            these numbers cover, and how much of it there is. */}
-        <div className="mt-6 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-(--ui-separator) pb-3">
-          <div className="flex min-w-0 items-baseline gap-2">
-            <span className="text-[length:var(--fs-md)] text-(--ui-fg)">{scope.scale}</span>
-            <span className="truncate text-[length:var(--fs-sm)] text-(--ui-muted)">
-              {scope.detail}
-            </span>
+    <AppPage>
+      <PageContainer width="sm" className="pt-5 sm:pt-7">
+        <header className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => imageInputRef.current?.click()}
+              className="group relative shrink-0 rounded-full"
+              title="Update profile image"
+              aria-label="Update profile image"
+            >
+              <ProfileAvatar profile={profile} size={38} />
+              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/55 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                <Upload className="h-4 w-4 text-white" />
+              </span>
+            </button>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => void updateImage(event.currentTarget.files?.[0])}
+            />
+            <div className="min-w-0">
+              <h1 className="text-[length:var(--fs-sm)] text-(--ui-muted)">Usage</h1>
+              <input
+                value={profile.name}
+                onChange={(event) => updateProfile({ name: event.target.value })}
+                onBlur={() => {
+                  if (!profile.name.trim()) updateProfile({ name: "Studio" });
+                }}
+                aria-label="Profile display name"
+                className="mt-0.5 block h-7 max-w-56 bg-transparent text-[length:var(--fs-lg)] font-medium text-(--ui-fg) outline-none placeholder:text-(--ui-muted)"
+                placeholder="Studio"
+              />
+              {imageError ? (
+                <p className="mt-1 text-[length:var(--fs-xs)] text-(--err)">{imageError}</p>
+              ) : null}
+            </div>
           </div>
+          <RefreshButton onRefresh={loadStats} loading={loading} className="h-7 w-7" />
+        </header>
+
+        <section className="mt-8">
+          <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">Proxied tokens</p>
+          <div className="mt-1 text-[length:var(--fs-display)] font-medium leading-none tracking-[-0.03em] tabular-nums text-(--ui-fg)">
+            {formatNumber(stats.totals.total_tokens)}
+          </div>
+          <p className="mt-2 text-[length:var(--fs-sm)] text-(--ui-muted)">
+            Requests proxied through this controller
+          </p>
+        </section>
+
+        {/* gap-px over a border-coloured ground, rather than divide-x: a divided
+            grid draws a stray left edge on the first cell of every wrapped row,
+            so the rule only looked right at the one breakpoint where all six
+            cells fit on a single line. This way the hairlines are exact at 2, 3
+            and 6 columns, and the rounded corners clip cleanly. */}
+        <StatGrid>
+          <Stat label="Requests" value={formatNumber(stats.totals.total_requests)} />
+          <Stat label="Sessions" value={formatNumber(stats.totals.unique_sessions)} />
+          <Stat label="Active days" value={formatNumber(activeDays(stats))} />
+          <Stat label="Active streak" value={`${currentStreak(stats)} days`} />
+          <Stat label="Success rate" value={`${Math.round(stats.totals.success_rate)}%`} />
+          <Stat label="P95 latency" value={milliseconds(stats.latency.p95_ms)} />
+        </StatGrid>
+
+        <div className="mt-8 border-b border-(--ui-separator)">
+          <Tabs items={USAGE_TABS} activeTab={tab} onSelectTab={setTab} className="-mb-px" />
         </div>
 
-        <div className="mt-6">
-          {tab === "models" ? (
-            <UsageModelsTab stats={stats} />
-          ) : tab === "activity" ? (
-            <UsageActivityTab stats={stats} />
-          ) : tab === "routes" ? (
-            <UsageControllerTab stats={stats} />
-          ) : (
-            <UsageErrorsTab stats={stats} />
-          )}
-        </div>
-      </section>
-    </TabbedPage>
+        <section className="mt-8">
+          <h2 className="text-[length:var(--fs-2xl)] font-medium tracking-[-0.015em] text-(--ui-fg)">
+            {heading.title}
+          </h2>
+          <p className="mt-1 text-[length:var(--fs-sm)] text-(--ui-muted)">{heading.description}</p>
+
+          <div className="mt-6">
+            {tab === "models" ? (
+              <UsageModelsTab stats={stats} />
+            ) : tab === "activity" ? (
+              <UsageActivityTab stats={stats} />
+            ) : tab === "routes" ? (
+              <UsageControllerTab stats={stats} />
+            ) : (
+              <UsageErrorsTab stats={stats} />
+            )}
+          </div>
+        </section>
+      </PageContainer>
+    </AppPage>
+  );
+}
+
+function StatGrid({ children }: { children: ReactNode }) {
+  return (
+    <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-[var(--rad-xl)] bg-(--ui-border) sm:grid-cols-3 lg:grid-cols-6">
+      {children}
+    </dl>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 bg-(--ui-surface) px-3 py-2.5 sm:px-4">
+      {/* truncate, because "Active streak" and a five-digit millisecond value
+          both have to survive a six-column row on a narrow window. */}
+      <dd className="truncate text-[length:var(--fs-lg)] font-medium tabular-nums text-(--ui-fg)">
+        {value}
+      </dd>
+      <dt className="mt-0.5 truncate text-[length:var(--fs-sm)] text-(--ui-muted)">{label}</dt>
+    </div>
   );
 }
