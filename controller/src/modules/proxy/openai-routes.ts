@@ -6,6 +6,7 @@ import { isRecipeRunning } from "../models/recipes/recipe-matching";
 import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import type { Recipe } from "../models/types";
 import { buildInferenceUrl } from "../../http/local-fetch";
+import { exclusiveLaneOf } from "../../services/lane-identity";
 import {
   DEFAULT_CHAT_PROVIDER,
   parseProviderModel,
@@ -33,6 +34,13 @@ export interface ModelNotRunningError {
   detail: string;
 }
 
+export type ExclusiveLaneChatCode = "lane_switch_in_progress" | "lane_not_resident";
+
+export interface ExclusiveLaneChatError {
+  error: { message: string; type: ExclusiveLaneChatCode; code: ExclusiveLaneChatCode };
+  detail: string;
+}
+
 export const modelNotRunningError = (
   activeModel: string | null,
   requestedModel: string | null | undefined,
@@ -42,6 +50,15 @@ export const modelNotRunningError = (
     : `No model is running. Launch ${requestedModel} from the frontend before sending requests.`;
   return {
     error: { message, type: "model_not_running", code: "model_not_running" },
+    detail: message,
+  };
+};
+
+export const exclusiveLaneChatError = (code: ExclusiveLaneChatCode): ExclusiveLaneChatError => {
+  const message =
+    code === "lane_switch_in_progress" ? "Lane switch in progress." : "Lane is not resident.";
+  return {
+    error: { message, type: code, code },
     detail: message,
   };
 };
@@ -106,6 +123,7 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
   interface ParsedChatBody {
     parsed: Record<string, unknown>;
     requestedModel: string | null;
+    originalRequestedModel: string | null;
     matchedRecipe: Recipe | null;
     isStreaming: boolean;
     bodyChanged: boolean;
@@ -127,15 +145,16 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
       });
       const parsed: Record<string, unknown> = { ...decoded };
       const sessionId = extractSessionId(parsed, getHeader);
-      let requestedModel: string | null = null;
+      const originalRequestedModel =
+        typeof decoded["model"] === "string" ? decoded["model"] : null;
+      let requestedModel: string | null = originalRequestedModel;
       let matchedRecipe: Recipe | null = null;
       let bodyChanged = false;
       normalizeToolRequest(parsed);
       if (normalizeChatMessageContentParts(parsed)) {
         bodyChanged = true;
       }
-      if (typeof parsed["model"] === "string") {
-        requestedModel = parsed["model"];
+      if (requestedModel) {
         matchedRecipe = yield* findRecipeByModel(requestedModel, context);
         if (matchedRecipe) {
           const canonical = matchedRecipe.served_model_name ?? matchedRecipe.id;
@@ -156,7 +175,15 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
       if (ensureStreamingUsageIncluded(parsed)) {
         bodyChanged = true;
       }
-      return { parsed, requestedModel, matchedRecipe, isStreaming, bodyChanged, sessionId };
+      return {
+        parsed,
+        requestedModel,
+        originalRequestedModel,
+        matchedRecipe,
+        isStreaming,
+        bodyChanged,
+        sessionId,
+      };
     });
 
   const resolveChatUpstream = (
@@ -198,6 +225,28 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
           : {}),
     };
     return { upstreamUrl, headers, requestProvider, providerRouting, rewroteModel };
+  };
+
+  const gateExclusiveLaneChat = (
+    originalRequestedModel: string | null,
+    providerRouting: ReturnType<typeof resolveProviderConfig>,
+  ): Effect.Effect<ExclusiveLaneChatError | null> => {
+    if (!context.laneSwitch.enabled) return Effect.succeed(null);
+    const requestedLane = originalRequestedModel
+      ? exclusiveLaneOf(originalRequestedModel)
+      : null;
+    if (!requestedLane) return Effect.succeed(null);
+    return Effect.gen(function* () {
+      const job = context.laneSwitch.jobSnapshot();
+      if (job.state === "running" || job.state === "restoring") {
+        return exclusiveLaneChatError("lane_switch_in_progress");
+      }
+      const residency = yield* context.laneSwitch.probeFresh();
+      if (residency.resident_lane !== requestedLane || !providerRouting) {
+        return exclusiveLaneChatError("lane_not_resident");
+      }
+      return null;
+    });
   };
 
   const gateOnRunningModel = (
@@ -267,8 +316,15 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
               : yield* Effect.fail(bodyRead.error);
           }
           const bodyBuffer = bodyRead.value;
-          const { parsed, requestedModel, matchedRecipe, isStreaming, bodyChanged, sessionId } =
-            yield* parseChatBody(bodyBuffer, (name) => ctx.req.header(name));
+          const {
+            parsed,
+            requestedModel,
+            originalRequestedModel,
+            matchedRecipe,
+            isStreaming,
+            bodyChanged,
+            sessionId,
+          } = yield* parseChatBody(bodyBuffer, (name) => ctx.req.header(name));
           const { upstreamUrl, headers, requestProvider, providerRouting, rewroteModel } =
             resolveChatUpstream(requestedModel, parsed);
           const sourceHeader =
@@ -276,6 +332,12 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
             ctx.req.header("x-source") ??
             ctx.req.header("user-agent") ??
             null;
+
+          const laneRejection = yield* gateExclusiveLaneChat(
+            originalRequestedModel,
+            providerRouting,
+          );
+          if (laneRejection) return ctx.json(laneRejection, { status: 503 });
 
           if (
             !matchedRecipe &&
