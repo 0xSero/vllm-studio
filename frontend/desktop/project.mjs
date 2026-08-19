@@ -403,6 +403,7 @@ var init_bundle = __esm(() => {
     "@silvia-odwyer/photon-node",
     "--external",
     "undici",
+    "--minify",
     "--outfile=dist/standalone.mjs"
   ], { cwd: packageDir, stdio: "inherit" });
   if (build.status !== 0)
@@ -1714,6 +1715,9 @@ async function afterPack(context) {
     path.join(standaloneBase, "frontend", "server.js"),
     path.join(standaloneBase, "server.js")
   ], standaloneServer = candidates.find((candidate) => existsSync(candidate));
+  let appArchive = path.join(resourcesDir, "app.asar"), appArchiveBytes = statSync(appArchive).size;
+  if (appArchiveBytes > 5 * 1024 * 1024)
+    throw Error(`Packaged app.asar is unexpectedly large: ${appArchiveBytes} bytes`);
   if (!standaloneServer)
     throw Error([
       "Packaged app is missing the embedded Next standalone server — refusing to sign/ship a broken bundle.",
@@ -1741,6 +1745,15 @@ async function afterPack(context) {
   ].find((file) => !existsSync(file));
   if (missingAgentRuntimeFile)
     throw Error(`Packaged app is missing an agent runtime dependency: ${missingAgentRuntimeFile}`);
+  let desktopRuntimeRoot = path.join(resourcesDir, "desktop-runtime", "node_modules", "@lydell"), missingDesktopRuntimeFile = [
+    path.join(desktopRuntimeRoot, "node-pty", "package.json"),
+    path.join(desktopRuntimeRoot, `node-pty-${process.platform}-${process.arch}`, "package.json")
+  ].find((file) => !existsSync(file));
+  if (missingDesktopRuntimeFile)
+    throw Error(`Packaged app is missing a desktop runtime dependency: ${missingDesktopRuntimeFile}`);
+  let unwantedRuntimeFile = [standaloneBase, agentRuntimeRoot].flatMap((directory) => readdirSync10(directory, { recursive: !0, withFileTypes: !0 }).filter((entry) => entry.isFile() && /\.(?:map|[cm]?ts)$/.test(entry.name)).map((entry) => path.join(entry.parentPath, entry.name)))[0];
+  if (unwantedRuntimeFile)
+    throw Error(`Packaged app contains a non-runtime source artifact: ${unwantedRuntimeFile}`);
   let agentRuntimeSource = readFileSync(agentRuntime, "utf8");
   if (/["'](?:[A-Za-z]:\\|\/(?:Users|home|root)\/)[^"'\n]*node_modules[\\/]/.test(agentRuntimeSource))
     throw Error("Packaged agent runtime contains a build-machine dependency path");
@@ -1752,7 +1765,7 @@ async function afterPack(context) {
   let packagedPiCli = path.join(resourcesDir, "app", "frontend", ".next", "standalone", "frontend", "node_modules", "@earendil-works", "pi-coding-agent", "dist", "cli.js");
   if (!existsSync(packagedPiCli))
     throw Error(`Packaged app is missing its Pi CLI: ${packagedPiCli}`);
-  console.log(`  afterPack: embedded frontend and agent runtime present (${electronPlatformName})`);
+  console.log(`  afterPack: embedded frontend and agent runtime present, app.asar ${appArchiveBytes} bytes (${electronPlatformName})`);
 }
 
 var project_entry_default = afterPack, root5 = path11.resolve(path11.dirname(fileURLToPath11(import.meta.url)), "../.."), commands = new Map([

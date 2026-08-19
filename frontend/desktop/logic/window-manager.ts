@@ -24,7 +24,7 @@ export function createMainWindow(appUrl: string): BrowserWindow {
     title: DESKTOP_CONFIG.appName,
     autoHideMenuBar: true,
     webPreferences: {
-      preload: path.join(__dirname, "../preload.js"),
+      preload: path.join(app.getAppPath(), "desktop", "dist", "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
