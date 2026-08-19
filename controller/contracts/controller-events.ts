@@ -5,6 +5,7 @@ export const CONTROLLER_EVENTS = {
   RUNTIME_SUMMARY: "runtime_summary",
   LAUNCH_PROGRESS: "launch_progress",
   MODEL_SWITCH: "model_switch",
+  LANE_SWITCH: "lane_switch",
   DOWNLOAD_PROGRESS: "download_progress",
   DOWNLOAD_STATE: "download_state",
   RECIPE_CREATED: "recipe_created",
@@ -25,8 +26,7 @@ export const CONTROLLER_EVENTS = {
   LOG: "log",
 } as const;
 
-export type ControllerEventType =
-  (typeof CONTROLLER_EVENTS)[keyof typeof CONTROLLER_EVENTS];
+export type ControllerEventType = (typeof CONTROLLER_EVENTS)[keyof typeof CONTROLLER_EVENTS];
 
 export const CONTROLLER_STREAM_EVENT_TYPES = [
   CONTROLLER_EVENTS.STATUS,
@@ -35,6 +35,7 @@ export const CONTROLLER_STREAM_EVENT_TYPES = [
   CONTROLLER_EVENTS.RUNTIME_SUMMARY,
   CONTROLLER_EVENTS.LAUNCH_PROGRESS,
   CONTROLLER_EVENTS.MODEL_SWITCH,
+  CONTROLLER_EVENTS.LANE_SWITCH,
   CONTROLLER_EVENTS.DOWNLOAD_PROGRESS,
   CONTROLLER_EVENTS.DOWNLOAD_STATE,
   CONTROLLER_EVENTS.RECIPE_CREATED,
@@ -54,25 +55,18 @@ export const CONTROLLER_STREAM_EVENT_TYPES = [
   CONTROLLER_EVENTS.RUNTIME_ROCM_UPGRADED,
 ] as const;
 
-export type ControllerStreamEventType =
-  (typeof CONTROLLER_STREAM_EVENT_TYPES)[number];
+export type ControllerStreamEventType = (typeof CONTROLLER_STREAM_EVENT_TYPES)[number];
 
-export type ControllerEventDomain =
-  | "recipe"
-  | "runtime"
-  | "controller"
-  | "mcp";
+export type ControllerEventDomain = "recipe" | "runtime" | "controller" | "mcp";
 
-const CONTROLLER_EVENT_DOMAIN_MAP: Record<
-  ControllerStreamEventType,
-  ControllerEventDomain
-> = {
+const CONTROLLER_EVENT_DOMAIN_MAP: Record<ControllerStreamEventType, ControllerEventDomain> = {
   [CONTROLLER_EVENTS.STATUS]: "controller",
   [CONTROLLER_EVENTS.GPU]: "controller",
   [CONTROLLER_EVENTS.METRICS]: "controller",
   [CONTROLLER_EVENTS.RUNTIME_SUMMARY]: "controller",
   [CONTROLLER_EVENTS.LAUNCH_PROGRESS]: "controller",
   [CONTROLLER_EVENTS.MODEL_SWITCH]: "controller",
+  [CONTROLLER_EVENTS.LANE_SWITCH]: "controller",
   [CONTROLLER_EVENTS.DOWNLOAD_PROGRESS]: "controller",
   [CONTROLLER_EVENTS.DOWNLOAD_STATE]: "controller",
   [CONTROLLER_EVENTS.RECIPE_CREATED]: "recipe",
@@ -102,9 +96,7 @@ export const CONTROLLER_BROWSER_EVENT_CHANNEL = {
 export type ControllerBrowserEventChannel =
   (typeof CONTROLLER_BROWSER_EVENT_CHANNEL)[ControllerEventDomain];
 
-const CONTROLLER_STREAM_EVENT_SET = new Set<string>(
-  CONTROLLER_STREAM_EVENT_TYPES,
-);
+const CONTROLLER_STREAM_EVENT_SET = new Set<string>(CONTROLLER_STREAM_EVENT_TYPES);
 
 export const isControllerStreamEventType = (
   eventType: string,
@@ -112,9 +104,7 @@ export const isControllerStreamEventType = (
   return CONTROLLER_STREAM_EVENT_SET.has(eventType);
 };
 
-export const getControllerEventDomain = (
-  eventType: string,
-): ControllerEventDomain | null => {
+export const getControllerEventDomain = (eventType: string): ControllerEventDomain | null => {
   if (!isControllerStreamEventType(eventType)) {
     return null;
   }

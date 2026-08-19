@@ -43,6 +43,8 @@ import { isRecipeRunning } from "./recipes/recipe-matching";
 import { notFound } from "../../core/errors";
 import { findObservedInferenceProcess } from "../../core/function-observability";
 import { fetchInference } from "../../http/local-fetch";
+import type { ExclusiveModelRow } from "../studio/lane-switch";
+import { exclusiveLaneOf } from "../../services/lane-identity";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -51,6 +53,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function recipeMetadata(recipe: Recipe): Record<string, unknown> {
   const metadata = recipe.extra_args?.["metadata"];
   return isRecord(metadata) ? metadata : {};
+}
+
+function decodeModelId(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function exclusiveModelInfo(row: ExclusiveModelRow, created: number): OpenAIModelInfo {
+  const payload: OpenAIModelInfo = {
+    id: row.id,
+    object: "model",
+    created,
+    owned_by: row.lane,
+    active: row.active,
+    metadata: { lane: row.lane },
+  };
+  if (row.max_model_len !== undefined) payload.max_model_len = row.max_model_len;
+  return payload;
 }
 
 function resolvedRecipeMetadata(recipe: Recipe, modelId: string): Record<string, unknown> {
@@ -129,6 +152,13 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
             });
           }
 
+          const exclusiveRows = yield* context.laneSwitch.exclusiveModelRows();
+          const existingIds = new Set(models.map((model) => model.id));
+          for (const row of exclusiveRows) {
+            if (existingIds.has(row.id)) continue;
+            models.push(exclusiveModelInfo(row, now));
+          }
+
           const payload: OpenAIModelList = { object: "list", data: models };
           return ctx.json(payload);
         }),
@@ -140,20 +170,32 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
       documentRoute,
       effectHandler((ctx) =>
         Effect.gen(function* () {
-          const modelId = ctx.req.param("modelId");
+          const modelId = ctx.req.param("modelId") ?? "";
+          const decodedModelId = decodeModelId(modelId);
           const recipes = yield* context.stores.recipeStore.list();
           let recipe: Recipe | null = null;
           for (const entry of recipes) {
             if (
-              (entry.served_model_name && entry.served_model_name === modelId) ||
-              entry.id === modelId
+              (entry.served_model_name &&
+                (entry.served_model_name === modelId ||
+                  entry.served_model_name === decodedModelId)) ||
+              entry.id === modelId ||
+              entry.id === decodedModelId
             ) {
               recipe = entry;
               break;
             }
           }
           if (!recipe) {
-            return yield* Effect.fail(notFound("Model not found"));
+            const exclusiveId = exclusiveLaneOf(decodedModelId)
+              ? decodedModelId
+              : exclusiveLaneOf(modelId)
+                ? modelId
+                : null;
+            if (!exclusiveId) return yield* Effect.fail(notFound("Model not found"));
+            const exclusive = yield* context.laneSwitch.findExclusiveModel(exclusiveId);
+            if (!exclusive) return yield* Effect.fail(notFound("Model not found"));
+            return ctx.json(exclusiveModelInfo(exclusive, Math.floor(Date.now() / 1000)));
           }
 
           const current = yield* findObservedInferenceProcess(context, "models.detail");

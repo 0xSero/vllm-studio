@@ -7,6 +7,7 @@ import { decodeJsonBody } from "../../core/validation";
 import { effectHandler } from "../../http/effect-handler";
 import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import { registerStudioModelIndexRoutes } from "./model-index";
+import { registerStudioLaneRoutes } from "./lane-routes";
 import { registerStudioProviderRoutes } from "./provider-routes";
 import { registerStudioRigRoutes } from "./rig-routes";
 import { getGpuInfo } from "../system/platform/gpu";
@@ -248,9 +249,7 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
             ).map((preset) => ({
               ...preset,
               fits:
-                preset.min_vram_gb === null ||
-                maxVramGb === 0 ||
-                preset.min_vram_gb <= maxVramGb,
+                preset.min_vram_gb === null || maxVramGb === 0 || preset.min_vram_gb <= maxVramGb,
             }));
             return ctx.json({ presets, max_vram_gb: maxVramGb });
           }),
@@ -354,6 +353,7 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
 
     registerStudioModelIndexRoutes(app, context),
     registerStudioProviderRoutes(app, context),
+    registerStudioLaneRoutes(app, context),
     registerStudioRigRoutes(app, context),
   );
 });

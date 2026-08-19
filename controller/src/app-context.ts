@@ -16,6 +16,7 @@ import { makeCompute, type Compute } from "./modules/compute/service";
 import { shutdownEngineJobs } from "./modules/engines/runtimes/engine-jobs";
 import { shutdownRuntimeInfo } from "./modules/engines/runtimes/runtime-info";
 import { RecipeStore } from "./modules/models/recipes/recipe-store";
+import { LaneSwitchService } from "./modules/studio/lane-switch";
 import { EventManager } from "./modules/system/event-manager";
 import { PeakMetricsStore, LifetimeMetricsStore } from "./modules/system/metrics-store";
 import { ControllerRequestStore } from "./stores/controller-request-store";
@@ -29,6 +30,7 @@ export interface AppContext {
   eventManager: EventManager;
   launchFailureBudget: LaunchFailureBudget;
   downloadManager: DownloadManager;
+  laneSwitch: LaneSwitchService;
   compute: Compute;
   bridge: ComputeBridge;
   stores: {
@@ -184,6 +186,18 @@ export const makeAppContext = Effect.gen(function* () {
   yield* Effect.acquireRelease(Effect.succeed(downloadManager), (resource) =>
     releaseSafely("download-manager.shutdown", logger, resource.shutdown()),
   );
+  const laneSwitch = yield* initializeSync(
+    "lane-switch.open",
+    () =>
+      new LaneSwitchService({
+        logger,
+        eventManager,
+        getProviders: (): Config["providers"] => config.providers,
+      }),
+  );
+  yield* Effect.acquireRelease(Effect.succeed(laneSwitch), (resource) =>
+    releaseSafely("lane-switch.shutdown", logger, resource.shutdown()),
+  );
 
   return {
     config,
@@ -191,6 +205,7 @@ export const makeAppContext = Effect.gen(function* () {
     eventManager,
     launchFailureBudget,
     downloadManager,
+    laneSwitch,
     compute,
     bridge,
     stores: {
