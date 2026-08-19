@@ -19,7 +19,7 @@ import { downloadProgressText } from "./downloads-tab";
 import { sumGpuMemoryPoolGb } from "./explore-eligibility";
 import { readExplorePoolOverrideGb } from "./explore-pool-storage";
 import { buildHardwareProfile } from "./hardware-profile";
-import { FitVerdict, HubLink, modelBrand } from "./model-catalog-card";
+import { FitVerdict, HubLink, modelBrand } from "./model-brand";
 import { ModelCatalogTable } from "./model-catalog-table";
 import {
   FIT_BUDGET_RATIO,

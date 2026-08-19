@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { AppPage, PageState, RefreshButton, TabbedPage } from "@/ui";
+import { AppPage, Button, ErrorBox, RefreshButton, TabbedPage } from "@/ui";
 import { Activity, AlertTriangle, Server, Sparkles } from "@/ui/icon-registry";
 import { formatNumber } from "@/lib/formatters";
 import type { UsageStats } from "@/lib/types";
@@ -91,14 +91,20 @@ export default function UsagePage() {
 
   if (loading && !stats) return <UsageSkeleton />;
 
-  const pageState = PageState({
-    loading,
-    data: stats,
-    hasData: Boolean(stats),
-    error,
-    onLoad: loadStats,
-  });
-  if (pageState) return <AppPage>{pageState}</AppPage>;
+  // The skeleton above already owns the first-load case, so the only state left
+  // to draw here is "the fetch failed and we have nothing cached".
+  if (error && !stats) {
+    return (
+      <AppPage>
+        <div className="mx-auto flex max-w-md flex-col items-start gap-3 py-16">
+          <ErrorBox>{error}</ErrorBox>
+          <Button variant="secondary" onClick={loadStats}>
+            Retry
+          </Button>
+        </div>
+      </AppPage>
+    );
+  }
   if (!stats) return null;
 
   const heading = TAB_HEADINGS[tab];

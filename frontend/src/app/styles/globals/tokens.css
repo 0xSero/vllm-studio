@@ -19,12 +19,10 @@
      the whole app uniformly. */
   --ui-scale: 1; /* master text-size multiplier — scales the entire type ramp */
   --leading: 1.5; /* base line-height */
-  --leading-tight: 1.25;
   --weight-normal: 400;
   --weight-medium: 500;
   --weight-strong: 600;
   --radius-base: 10px; /* master corner radius — the radius ramp scales from it */
-  --border-width: 1px;
   --space-base: 4px; /* base spacing unit */
 
   /* ──────────────────────────────────────────────────────────────────────
@@ -35,8 +33,6 @@
   --gray-75: #f3f3f3;
   --gray-100: #ededed;
   --gray-300: #afafaf;
-  --gray-500: #5d5d5d;
-  --gray-550: #4f4f4f;
   --gray-600: #414141;
   --gray-700: #303030;
   --gray-750: #282828;
@@ -165,24 +161,19 @@
   --color-syntax-deletion: var(--red-300);
 
   /* Default theme is dark. The `.dark` alias and the `[data-theme="zai-dark"]`
-     attribute both select the default dark system; `.theme-zai-*` class hooks are
-     also wired for parity. */
+     attribute both select the default dark system. */
   color-scheme: dark;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   LIGHT — `.theme-zai-light` / `[data-theme="zai-light"]`
+   LIGHT — `[data-theme="zai-light"]`
    Pure white canvas, near-white rail, hairline foreground-mix borders,
    near-black brand, one blue accent.
    ────────────────────────────────────────────────────────────────────────── */
-.theme-zai-light,
 :root[data-theme="zai-light"],
 :root[data-theme="nordic-light"],
 :root[data-theme="paper"] {
   color-scheme: light;
-
-  --animated-gradient-text-strong: #0d0d0d;
-  --animated-gradient-text-soft: #0d0d0d38;
 
   --color-background: var(--gray-0);
   --color-background-win-alt: var(--gray-50);
@@ -350,18 +341,14 @@
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   DARK — `.theme-zai-dark` / `.dark` / `[data-theme="zai-dark"]`
+   DARK — `.dark` / `[data-theme="zai-dark"]`
    Unified warm-charcoal canvas (one surface for window, rail, and panels),
    elevated grays for cards/popovers, translucent white hairlines and
    overlays, one blue accent. This is the live default.
    ────────────────────────────────────────────────────────────────────────── */
-.theme-zai-dark,
 .dark,
 :root[data-theme="zai-dark"] {
   color-scheme: dark;
-
-  --animated-gradient-text-strong: #fff;
-  --animated-gradient-text-soft: #ffffff38;
 
   --color-background: var(--gray-900);
   --color-background-win-alt: var(--gray-1000);
@@ -536,7 +523,6 @@
    --surface, --rail, --border and friends all resolve to the same values.
    ────────────────────────────────────────────────────────────────────────── */
 :root,
-.theme-zai-dark,
 .dark,
 :root[data-theme="zai-dark"] {
   --bg: var(--color-background);
@@ -571,7 +557,6 @@
   --link: var(--blue-300);
 }
 
-.theme-zai-light,
 :root[data-theme="zai-light"],
 :root[data-theme="nordic-light"],
 :root[data-theme="paper"] {
@@ -618,7 +603,6 @@
      preferred width 275px (clamp 240px), 30px rows, 8px inline padding,
      10px row radius, 1px row gap. */
   --sidebar-w: 275px;
-  --sidebar-w-collapsed: 48px;
   --sidebar-row-height: 30px;
   /* Rows sat at a 30px pitch against a 30px height, i.e. touching, with no gap
      anywhere in the sidebar. That reads as a wall of text rather than a list.
@@ -627,27 +611,19 @@
   --sidebar-row-radius: 10px;
   --sidebar-padding-x: 8px;
   --row-h: 36px;
-  --row-h-sm: 28px;
   --row-radius: var(--rad-md);
   /* Toolbar heights — main bar, small bar, pane header. */
   --h-toolbar: 44px;
-  --h-toolbar-sm: 36px;
   --h-toolbar-pane: 40px;
   --composer-w: clamp(28rem, 42rem, 48vw);
   --thread-w: 900px;
   --composer-radius: 25px;
   --composer-radius-inner: 20px;
-  --composer-radius-single: 28px;
   --composer-elevation: 0 8px 24px rgba(0, 0, 0, 0.11);
   --composer-elevation-inner: 0 8px 24px rgba(0, 0, 0, 0.08);
   --qr-surface: #ffffff;
   --qr-shadow: 0 16px 45px -28px rgba(0, 0, 0, 0.8);
   --qr-placeholder: rgba(0, 0, 0, 0.55);
-
-  /* Typography */
-  --text-nav: var(--fs-base);
-  --text-section: var(--fs-base);
-  --section-tracking: 0.16em;
 
   --app-height: 100vh;
   --app-font-size: 16px;
@@ -664,8 +640,6 @@
   --fs-xl: calc(18px * var(--ui-scale));
   --fs-2xl: calc(20px * var(--ui-scale));
   --fs-3xl: calc(24px * var(--ui-scale));
-  --fs-4xl: calc(28px * var(--ui-scale));
-  --fs-display: calc(36px * var(--ui-scale));
 
   /* Radius ramp — proportional to --radius-base (default resolves to
      2 / 4 / 6 / 8 / 10 / 12 / 16 / 20 / 24 px). */
@@ -678,7 +652,6 @@
   --rad-2xl: calc(var(--radius-base) * 1.6);
   --rad-3xl: calc(var(--radius-base) * 2);
   --rad-4xl: calc(var(--radius-base) * 2.4);
-  --rad-full: 9999px;
 
   /* Elevation ramp — soft, low-alpha drop shadows + a 0.5px hairline ring. */
   --elev-hairline: 0px 0px 0px 0.5px #0000001a;
@@ -689,13 +662,8 @@
   --elev-2xl: 0px 16px 32px -8px #00000030;
   --elev-side-panel: -8px 0px 16px -8px #00000030;
 
-  /* Motion — snappy exponential enter curve + calm basic transitions. */
+  /* Motion — the snappy exponential enter curve. */
   --cubic-enter: cubic-bezier(0.19, 1, 0.22, 1);
-  --ease-enter: var(--cubic-enter);
-  --ease-enter-snappy: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-basic: ease;
-  --duration-basic: 0.15s;
-  --duration-relaxed: 0.3s;
 
   /* UI adapter tokens — shared components under src/ui read through this
      layer. Repointed onto the design tokens so a future library swap needs no per-page
@@ -705,7 +673,6 @@
   --ui-muted: var(--dim);
   --ui-surface: var(--surface);
   --ui-surface-2: var(--surface-2);
-  --ui-surface-3: var(--surface-3);
   --ui-border: var(--border);
   --ui-separator: var(--separator);
   --ui-hover: var(--hover);
@@ -716,29 +683,12 @@
   --ui-warning: var(--color-warning);
   --ui-danger: var(--color-destructive);
   --ui-radius: var(--row-radius);
-  --ui-radius-sm: var(--rad-sm);
-  --ui-radius-lg: var(--rad-lg);
-  --ui-control-h: 28px;
 
-  /* Compatibility names used by common React UI libraries (shadcn/Radix). */
-  --background: var(--ui-bg);
-  --foreground: var(--ui-fg);
-  --card: var(--ui-surface);
-  --card-foreground: var(--ui-fg);
-  --popover: var(--color-popover);
-  --popover-foreground: var(--ui-fg);
-  --primary: var(--ui-accent);
-  --primary-foreground: var(--color-primary-foreground);
-  --secondary: var(--ui-surface-2);
-  --secondary-foreground: var(--ui-fg);
-  --muted: var(--ui-surface);
-  --muted-foreground: var(--ui-muted);
-  --accent-foreground: var(--ui-bg);
-  --destructive: var(--ui-danger);
+  /* The last two survivors of a shadcn/Radix compatibility block: the focus
+     ring every control shares, and the text colour that sits on a danger
+     button. The rest of that block aliased tokens nothing ever read. */
   --destructive-foreground: var(--color-destructive-foreground);
-  --input: var(--ui-separator);
   --ring: color-mix(in srgb, var(--link) 70%, transparent);
-  --radius: var(--ui-radius);
 }
 
 @supports (height: 100dvh) {
@@ -794,33 +744,4 @@
 .dark hr,
 hr {
   border-color: var(--separator);
-}
-
-/* Animated gradient text — startup treatment. */
-@keyframes zai-gradient-pan {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-.zai-gradient-text {
-  background-image: linear-gradient(
-    110deg,
-    var(--animated-gradient-text-strong) 0%,
-    var(--color-sky-400) 30%,
-    var(--animated-gradient-text-soft) 55%,
-    var(--color-sky-300) 80%,
-    var(--animated-gradient-text-strong) 100%
-  );
-  background-size: 250% 250%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: zai-gradient-pan 6s ease infinite;
 }

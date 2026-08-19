@@ -117,7 +117,7 @@ function StatusLine({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 text-[length:var(--fs-sm)]">
-      <StatusDot running={isRunning} loading={isStatusLoading} />
+      <RunStateDot running={isRunning} loading={isStatusLoading} />
       <span className="inline-block w-[5.75rem] font-medium text-(--dim)">
         {isRunning ? "Active" : "Standby"}
       </span>
@@ -302,7 +302,15 @@ function MetricCell({ metric, quiet }: { metric: MetricColumnView; quiet?: boole
   );
 }
 
-function StatusDot({ running, loading }: { running: boolean; loading?: boolean }) {
+/**
+ * The dashboard's run-state dot.
+ *
+ * Deliberately not `ui/status`'s `StatusDot`: this strip is a dense instrument
+ * sheet, so the mark is a 6px square with no radius rather than the rounded
+ * pill dot the rest of the app uses. The distinct name keeps the two from
+ * reading as the same component.
+ */
+function RunStateDot({ running, loading }: { running: boolean; loading?: boolean }) {
   return (
     <span
       className={`inline-flex h-1.5 w-1.5 shrink-0 ${loading ? "animate-pulse bg-(--dim)" : running ? "bg-(--fg)" : "bg-(--dim)/55"}`}

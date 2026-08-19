@@ -6,7 +6,7 @@ import { ModelLogo } from "@/ui/model-logo";
 import type { ModelIndexModel, ModelIndexVariant } from "@/lib/api/studio";
 import type { ModelDownload } from "@/lib/types";
 import { downloadProgressText } from "./downloads-tab";
-import { modelBrand } from "./model-catalog-card";
+import { modelBrand } from "./model-brand";
 import {
   DataRow,
   EndCell,
