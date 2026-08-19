@@ -12,10 +12,24 @@ type SubagentRun = {
   id: string;
   name: string;
   piSessionId: string | null;
-  status: "running" | "done" | "error";
+  status: "running" | "done" | "error" | "cancelled";
   startedAt: string;
   finishedAt: string | null;
   error?: string;
+};
+
+const chipDot: Record<SubagentRun["status"], string> = {
+  running: "bg-(--ok,#40c977)",
+  done: "bg-(--ok,#40c977)",
+  error: "bg-(--err)",
+  cancelled: "bg-(--fg)/30",
+};
+
+const chipHint: Record<SubagentRun["status"], string> = {
+  running: "working",
+  done: "open the subagent session",
+  error: "failed",
+  cancelled: "stopped — open the subagent session",
 };
 
 async function fetchSubagents(parentPiSessionId: string): Promise<SubagentRun[]> {
@@ -67,21 +81,18 @@ export function SubagentChips({ piSessionId }: { piSessionId: string }) {
           title={
             run.status === "error"
               ? `${run.name} — failed: ${run.error ?? "unknown error"}`
-              : `${run.name} — ${run.status === "running" ? "working" : "open the subagent session"}`
+              : `${run.name} — ${chipHint[run.status]}`
           }
           className="flex items-center gap-1.5 rounded-full bg-(--fg)/[0.05] px-2.5 py-1 text-[length:var(--fs-sm)] text-(--fg)/75 transition-colors hover:bg-(--fg)/[0.08] hover:text-(--fg)/90 disabled:cursor-default"
         >
           {run.status === "running" ? (
             <Spinner size="xs" />
           ) : (
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                run.status === "error" ? "bg-(--err)" : "bg-(--ok,#40c977)"
-              }`}
-            />
+            <span className={`h-1.5 w-1.5 rounded-full ${chipDot[run.status]}`} />
           )}
           <span className="max-w-44 truncate">{run.name}</span>
           {run.status === "done" ? <span className="text-(--fg)/40">updated</span> : null}
+          {run.status === "cancelled" ? <span className="text-(--fg)/40">stopped</span> : null}
         </button>
       ))}
     </div>

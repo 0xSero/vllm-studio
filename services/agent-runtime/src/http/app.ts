@@ -36,7 +36,12 @@ import {
   handleGoalGet,
   handleGoalPut,
 } from "./automation-handlers";
-import { handleSubagentRun, handleSubagentsList } from "./subagent-handlers";
+import {
+  handleSubagentGet,
+  handleSubagentRun,
+  handleSubagentsList,
+  handleSubagentStop,
+} from "./subagent-handlers";
 import { handlePrGet, handlePrMerge } from "./pr-handlers";
 import {
   handlePtyClose,
@@ -88,6 +93,10 @@ export function createAgentRuntimeApp() {
   app.post("/api/agent/pr/merge", (c) => handlePrMerge(c.req.raw));
   app.get("/api/agent/subagents", (c) => handleSubagentsList(c.req.raw));
   app.post("/api/agent/subagents", (c) => handleSubagentRun(c.req.raw));
+  app.get("/api/agent/subagents/:runId", (c) => handleSubagentGet(c.req.raw, c.req.param("runId")));
+  app.post("/api/agent/subagents/:runId/stop", (c) =>
+    handleSubagentStop(c.req.raw, c.req.param("runId")),
+  );
   app.get("/api/agent/goal", (c) => handleGoalGet(c.req.raw));
   app.put("/api/agent/goal", (c) => handleGoalPut(c.req.raw));
   app.delete("/api/agent/goal", (c) => handleGoalDelete(c.req.raw));
