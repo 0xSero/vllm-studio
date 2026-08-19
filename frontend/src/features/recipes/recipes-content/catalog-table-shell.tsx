@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { cx } from "@/ui/utils";
 
 /**
@@ -337,6 +337,140 @@ export function TableNotice({
       <div className="text-[length:var(--fs-md)] font-medium text-(--fg)">{title}</div>
       <p className="max-w-lg text-[length:var(--fs-sm)] leading-5 text-(--dim)">{body}</p>
       {action ? <div className="mt-1">{action}</div> : null}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Section summary
+ *
+ * A table answers "which row", but not "how much of this is there at
+ * all". StatStrip is the sentence a section opens with, and it is
+ * deliberately bound to the table directly beneath it rather than
+ * floating at the top of the page as a global dashboard — a number you
+ * cannot trace to rows you can see is a number nobody trusts.
+ * ------------------------------------------------------------------ */
+
+export type StatTone = "default" | "ok" | "warn" | "err";
+
+const STAT_TONE_CLASS: Record<StatTone, string> = {
+  default: "text-(--fg)",
+  ok: "text-(--ok)",
+  warn: "text-(--warn)",
+  err: "text-(--err)",
+};
+
+export type Stat = {
+  label: string;
+  value: ReactNode;
+  sub?: ReactNode;
+  /** What this number is actually counting. Every stat that can be misread carries one. */
+  title?: string;
+  tone?: StatTone;
+};
+
+/** One cell of a StatStrip. Exported so a lone stat can stand outside a grid. */
+export function StatCell({ label, value, sub, title, tone = "default" }: Stat) {
+  return (
+    <div className="min-w-0 px-3 py-2 first:pl-0" title={title}>
+      <div className="truncate text-[length:var(--fs-xs)] text-(--dim)/70">{label}</div>
+      <div
+        className={cx(
+          "mt-0.5 truncate text-[length:var(--fs-md)] font-medium tabular-nums",
+          STAT_TONE_CLASS[tone],
+        )}
+      >
+        {value}
+      </div>
+      {sub ? (
+        <div className="mt-0.5 truncate text-[length:var(--fs-xs)] text-(--dim)/60">{sub}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The stats for one section, driven from an array so each surface states its
+ * numbers as data rather than as another copy of this markup.
+ */
+export function StatStrip({ stats }: { stats: readonly Stat[] }) {
+  return (
+    <div className="grid grid-cols-2 divide-x divide-(--ui-separator) border-b border-(--ui-separator) pb-3 sm:grid-cols-3 lg:grid-cols-6">
+      {stats.map((stat) => (
+        <StatCell key={stat.label} {...stat} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * A NumCell that also ranks.
+ *
+ * The rule is 2px, sits under the number and bleeds to the cell's right edge,
+ * so the column still reads as numbers first and the bar is only a way to see
+ * the shape of the distribution without a second chart. `share` is 0–1.
+ */
+export function BarCell({
+  children,
+  sub,
+  share,
+  title,
+}: {
+  children: ReactNode;
+  sub?: ReactNode;
+  share: number;
+  title?: string;
+}) {
+  const width = Math.min(100, Math.max(share > 0 ? 2 : 0, share * 100));
+  return (
+    <td className="whitespace-nowrap px-3 py-2 text-right" title={title}>
+      <div className="text-[length:var(--fs-sm)] text-(--fg)">{children}</div>
+      <div className="ml-auto mt-1 h-0.5 w-full max-w-[7rem] overflow-hidden rounded-full bg-(--ui-surface-2)">
+        <div className="h-full rounded-full bg-(--accent)/35" style={{ width: `${width}%` }} />
+      </div>
+      {sub ? (
+        <div className="ml-auto mt-1 max-w-[13rem] truncate text-[length:var(--fs-xs)] text-(--dim)/60">
+          {sub}
+        </div>
+      ) : null}
+    </td>
+  );
+}
+
+const EXPAND_AT = 180;
+
+/**
+ * A long error message inside a table cell.
+ *
+ * Clamped to two lines so one stack trace cannot own the whole viewport, with
+ * the full text one click away — truncating an error to an ellipsis and
+ * offering no way back is how a log stops being useful.
+ */
+export function ExpandText({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const expandable = text.length > EXPAND_AT || text.includes("\n");
+  return (
+    <div className="min-w-0">
+      <div
+        className={cx(
+          "whitespace-pre-wrap break-words text-[length:var(--fs-xs)] leading-4 text-(--dim)",
+          open ? "" : "line-clamp-2",
+        )}
+      >
+        {text}
+      </div>
+      {expandable ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpen((current) => !current);
+          }}
+          className="mt-1 text-[length:var(--fs-xs)] text-(--link) hover:underline"
+        >
+          {open ? "Show less" : "Show full message"}
+        </button>
+      ) : null}
     </div>
   );
 }

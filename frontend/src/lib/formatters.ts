@@ -61,4 +61,66 @@ function formatBytes(bytes: number | null): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
-export { toGB, toGBFromMB, formatNumber, formatBytes };
+/**
+ * A duration, in the unit a reader can hold in their head.
+ *
+ * Sub-second latencies are read as integers ("412 ms"); anything longer stops
+ * being a number you compare digit-by-digit and becomes a magnitude ("1.24 s").
+ * Null is "—", never 0 — a metric the controller did not report is not a fast
+ * one.
+ */
+function formatMs(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  if (value < 1000) return `${Math.round(value)} ms`;
+  return `${(value / 1000).toFixed(2)} s`;
+}
+
+/**
+ * Token counts at table density: lowercase suffixes, one decimal, no padding.
+ *
+ * Distinct from formatNumber's "1.2K / 3.40M" on purpose — a column of token
+ * counts is scanned, not read, and the shorter glyphs keep the column narrow
+ * enough to sit beside six other numeric columns.
+ */
+function formatCompactTokens(value: number | null | undefined): string {
+  const n = safeNumber(value, 0);
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}b`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(Math.round(n));
+}
+
+const RELATIVE_UNITS: Array<[seconds: number, label: string]> = [
+  [31_536_000, "y"],
+  [2_592_000, "mo"],
+  [604_800, "w"],
+  [86_400, "d"],
+  [3600, "h"],
+  [60, "min"],
+];
+
+/**
+ * "3 min ago" with a non-breaking space, so a timestamp never wraps onto two
+ * lines inside a table cell and doubles the row height.
+ */
+function formatRelativeTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return "—";
+  const seconds = Math.max(0, Math.round((Date.now() - at) / 1000));
+  if (seconds < 45) return "just now";
+  for (const [size, label] of RELATIVE_UNITS) {
+    if (seconds >= size) return `${Math.floor(seconds / size)} ${label} ago`;
+  }
+  return `${seconds} s ago`;
+}
+
+export {
+  toGB,
+  toGBFromMB,
+  formatNumber,
+  formatBytes,
+  formatMs,
+  formatCompactTokens,
+  formatRelativeTime,
+};
