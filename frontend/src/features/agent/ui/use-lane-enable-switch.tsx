@@ -116,7 +116,9 @@ export const interpretPolledLanes = (status: LaneStatus, target: ExclusiveLane) 
     ? ("fail" as const)
     : status.resident_lane === target && !busy(status.switch.state)
       ? ("commit" as const)
-      : ("poll" as const);
+      : busy(status.switch.state)
+        ? ("poll" as const)
+        : ("fail" as const);
 
 export async function refreshLaneSnapshot(): Promise<"ok" | "fail"> {
   try {
