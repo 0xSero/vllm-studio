@@ -648,6 +648,11 @@
   --fs-xl: calc(18px * var(--ui-scale));
   --fs-2xl: calc(20px * var(--ui-scale));
   --fs-3xl: calc(24px * var(--ui-scale));
+  /* One step above the ramp, for a single headline number (Usage's proxied
+     token count). It had been used without ever being defined, which makes
+     font-size invalid at computed-value time and silently drops the hero to
+     inherited body size. */
+  --fs-display: calc(40px * var(--ui-scale));
 
   /* Radius ramp — proportional to --radius-base (default resolves to
      2 / 4 / 6 / 8 / 10 / 12 / 16 / 20 / 24 px). */

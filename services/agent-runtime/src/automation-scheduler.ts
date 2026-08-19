@@ -50,13 +50,18 @@ export function automationRunError(lastError: string | null, summary: string): s
 async function runnableModelId(configured: string): Promise<string> {
   try {
     const { models } = await refreshPiModels();
-    if (models.some((model) => model.id === configured && model.active)) return configured;
-    const live = models.find((model) => model.active);
-    if (!live) return configured;
-    console.warn(
-      `[automation] ${configured} is not live; running on ${live.id} instead`,
-    );
-    return live.id;
+    // Reachable, not "active". `active` means a controller reports the weights
+    // loaded right now, and it is hardcoded false for every cloud and
+    // pi-provider model (provider-hub.ts, pi-runtime-models.ts) — testing it
+    // would rip a working cloud model out of an automation and replace it with
+    // whatever happened to be loaded locally. A model that appears in the list
+    // at all can be run.
+    if (models.some((model) => model.id === configured)) return configured;
+    // Genuinely gone: prefer something a controller has loaded, else anything.
+    const fallback = models.find((model) => model.active) ?? models[0];
+    if (!fallback) return configured;
+    console.warn(`[automation] ${configured} is unavailable; running on ${fallback.id} instead`);
+    return fallback.id;
   } catch {
     return configured;
   }

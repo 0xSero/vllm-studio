@@ -108,13 +108,13 @@ export function RecipesContentView(props: Props) {
     table,
   } = props;
   const heading = TAB_HEADINGS[tab];
+  // No per-tab heading. The page is already titled "Models" and the active tab
+  // is already named in the tab strip, so a second heading and a second
+  // description restated both — four lines of chrome before any content, on a
+  // page whose whole point is the table.
   const content = (
     <section>
-      <h2 className="text-[length:var(--fs-2xl)] font-medium tracking-[-0.015em] text-(--ui-fg)">
-        {heading.title}
-      </h2>
-      <p className="mt-1 text-[length:var(--fs-sm)] text-(--ui-muted)">{heading.description}</p>
-      <div className="mt-6">
+      <div>
         {tab === "serves" ? (
           <RecipesTab
             loading={loading}
@@ -158,7 +158,7 @@ export function RecipesContentView(props: Props) {
       ) : (
         <TabbedPage
           title="Models"
-          description="Find models that fit this machine, download their weights, and turn them into servers."
+          description={heading.description}
           width="md"
           tabs={MODEL_TABS}
           activeTab={tab}
