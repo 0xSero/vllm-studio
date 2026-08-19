@@ -86,12 +86,6 @@
     min-height: 44px;
     min-width: 44px;
   }
-
-  /* Increase spacing for better readability */
-  .message-content p {
-    font-size: 16px;
-    line-height: 1.6;
-  }
 }
 
 /* The dashboard metric strip now wraps responsively (grid-cols-2/3/6),

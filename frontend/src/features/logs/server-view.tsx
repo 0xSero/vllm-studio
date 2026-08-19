@@ -2,13 +2,14 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { ExternalLink, RefreshCw } from "@/ui/icon-registry";
-import { AppPage, Button, Checkbox, KeyValueRow, StatusPill, Tabs } from "@/ui";
+import { AppPage, Button, Checkbox, StatusPill, Tabs } from "@/ui";
 import { useLogs } from "@/features/logs/use-logs";
 import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
 import type { RealtimeStatusSnapshot } from "@/hooks/realtime-status-types";
 import { getStoredBackendUrl } from "@/lib/api/connection";
 import { CensoredApiUrl } from "@/ui/api-url-censor";
 import { OpenApiPanel } from "./openapi-panel";
+import { StatusKeyValueRow } from "./status-key-value-row";
 
 type Tab = "logs" | "docs";
 type BackendInfo = { installed: boolean; version: string | null };
@@ -189,13 +190,15 @@ function ConnectionGroup({
 }) {
   return (
     <StatusGroup title="Connection">
-      <KeyValueRow
+      <StatusKeyValueRow
         label="URL"
         value={<CensoredApiUrl className="font-mono">{backendUrl}</CensoredApiUrl>}
       />
-      <KeyValueRow label="Reachable" value={realtime.connected ? "yes" : "no"} />
-      <KeyValueRow label="Inference port" value={realtime.status?.inference_port ?? "—"} />
-      {realtime.lease?.holder ? <KeyValueRow label="Lease" value={realtime.lease.holder} /> : null}
+      <StatusKeyValueRow label="Reachable" value={realtime.connected ? "yes" : "no"} />
+      <StatusKeyValueRow label="Inference port" value={realtime.status?.inference_port ?? "—"} />
+      {realtime.lease?.holder ? (
+        <StatusKeyValueRow label="Lease" value={realtime.lease.holder} />
+      ) : null}
     </StatusGroup>
   );
 }
@@ -204,7 +207,7 @@ function RuntimeGroup({ realtime }: { realtime: RealtimeStatusSnapshot }) {
   const summary = realtime.runtimeSummary;
   return (
     <StatusGroup title="Runtime">
-      <KeyValueRow
+      <StatusKeyValueRow
         label="Platform"
         value={
           summary
@@ -212,7 +215,7 @@ function RuntimeGroup({ realtime }: { realtime: RealtimeStatusSnapshot }) {
             : (realtime.platformKind ?? "—")
         }
       />
-      <KeyValueRow
+      <StatusKeyValueRow
         label="GPU monitoring"
         value={
           summary
@@ -220,7 +223,7 @@ function RuntimeGroup({ realtime }: { realtime: RealtimeStatusSnapshot }) {
             : "—"
         }
       />
-      <KeyValueRow label="GPUs detected" value={realtime.gpus.length || "—"} />
+      <StatusKeyValueRow label="GPUs detected" value={realtime.gpus.length || "—"} />
     </StatusGroup>
   );
 }
@@ -246,13 +249,13 @@ function ProcessGroup({ realtime }: { realtime: RealtimeStatusSnapshot }) {
     <StatusGroup title="Active process">
       {process ? (
         <>
-          <KeyValueRow label="Backend" value={process.backend ?? "—"} />
-          <KeyValueRow label="PID" value={process.pid ?? "—"} />
-          <KeyValueRow
+          <StatusKeyValueRow label="Backend" value={process.backend ?? "—"} />
+          <StatusKeyValueRow label="PID" value={process.pid ?? "—"} />
+          <StatusKeyValueRow
             label="Model"
             value={process.served_model_name ?? process.model_path ?? "—"}
           />
-          <KeyValueRow label="Port" value={process.port ?? "—"} />
+          <StatusKeyValueRow label="Port" value={process.port ?? "—"} />
         </>
       ) : (
         <div className="text-[length:var(--fs-sm)] text-(--color-foreground-subtlest)">
@@ -268,15 +271,12 @@ function ServicesGroup({ realtime }: { realtime: RealtimeStatusSnapshot }) {
   return (
     <StatusGroup title="Services">
       {realtime.services.map((svc) => (
-        <div
+        <StatusKeyValueRow
           key={svc.id}
-          className="flex items-center justify-between py-0.5 text-[length:var(--fs-sm)]"
-        >
-          <span className="min-w-0 truncate text-(--color-foreground-subtle)">{svc.id}</span>
-          <span className={`shrink-0 font-mono ${serviceToneClass(svc.status, svc.last_error)}`}>
-            {svc.status}
-          </span>
-        </div>
+          label={svc.id}
+          value={svc.status}
+          tone={serviceTone(svc.status, svc.last_error)}
+        />
       ))}
     </StatusGroup>
   );
@@ -284,14 +284,11 @@ function ServicesGroup({ realtime }: { realtime: RealtimeStatusSnapshot }) {
 
 function BackendRow({ name, info }: { name: string; info: BackendInfo }) {
   return (
-    <div className="flex items-center justify-between py-0.5 text-[length:var(--fs-sm)]">
-      <span className="font-mono text-(--color-foreground-subtle)">{name}</span>
-      {info.installed ? (
-        <span className="font-mono text-(--color-success)">{info.version ?? "installed"}</span>
-      ) : (
-        <span className="text-(--color-foreground-subtlest)">not installed</span>
-      )}
-    </div>
+    <StatusKeyValueRow
+      label={name}
+      value={info.installed ? (info.version ?? "installed") : "not installed"}
+      tone={info.installed ? "ok" : "default"}
+    />
   );
 }
 
@@ -450,8 +447,8 @@ function deriveBackends(
   return entries.filter((e): e is [string, BackendInfo] => e !== null);
 }
 
-function serviceToneClass(status: string, lastError?: string | null): string {
-  if (status === "ok" || status === "healthy") return "text-(--color-success)";
-  if (status === "error" || lastError) return "text-(--color-destructive)";
-  return "text-(--color-foreground-subtle)";
+function serviceTone(status: string, lastError?: string | null): "default" | "ok" | "error" {
+  if (status === "ok" || status === "healthy") return "ok";
+  if (status === "error" || lastError) return "error";
+  return "default";
 }

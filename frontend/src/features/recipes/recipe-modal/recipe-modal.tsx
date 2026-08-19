@@ -36,7 +36,7 @@ export function RecipeModal({
   const engineStyle = engineNodeStyle(backend);
 
   return (
-    <Drawer width={880}>
+    <Drawer width={880} className="h-full">
       <DrawerHeader
         title={recipe.id ? recipe.name || "Edit Serve" : "New Serve"}
         badge={

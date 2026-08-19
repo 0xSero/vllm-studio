@@ -22,6 +22,9 @@ export { SearchInput } from "./search-input";
 export type { SearchInputProps } from "./search-input";
 
 export { UiModal, UiModalHeader, UiModalBody, UiModalFooter } from "./modal";
+
+export { ConfirmDeleteModal } from "./confirm-delete-modal";
+export type { ConfirmDeleteModalProps } from "./confirm-delete-modal";
 export type { UiModalProps, UiModalHeaderProps, UiModalFooterProps } from "./modal";
 
 export { Tabs } from "./tabs";
@@ -32,9 +35,6 @@ export type { CardProps, CardPadding } from "./card";
 
 export { Alert } from "./alert";
 export type { AlertProps, AlertVariant } from "./alert";
-
-export { PageState } from "./page-state";
-export type { PageStateProps } from "./page-state";
 
 export { RefreshButton } from "./refresh-button";
 export type { RefreshButtonProps } from "./refresh-button";
@@ -48,9 +48,6 @@ export {
   TabbedPage,
 } from "./page";
 export type { SectionNavItem, PageWidth } from "./page";
-
-export { ListRow, RowDetailLine, RowFacts, RowValue, EmptySafeNotice, KeyValueRow } from "./list";
-export type { RowFact } from "./list";
 
 export { Slider } from "./slider";
 export { SegmentedControl } from "./segmented-control";

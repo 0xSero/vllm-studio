@@ -91,14 +91,9 @@ export function useComposerMentionRows({
       // Already registry-matched against the query; just wrap for the picker.
       return commandRows.map((row) => ({ kind: "command" as const, row }));
     }
-    const q = mention.query.trim().toLowerCase();
-    const files = fileMentionRows
-      .filter(
-        (row) => !q || row.rel.toLowerCase().includes(q) || row.name.toLowerCase().includes(q),
-      )
-      .slice(0, 5)
-      .map((row) => ({ kind: "file" as const, row }));
-    return files.slice(0, 8);
+    // Already path-matched and ranked server-side against the query; keep that
+    // order and honour the same 8-row budget as the other mention kinds.
+    return fileMentionRows.slice(0, 8).map((row) => ({ kind: "file" as const, row }));
   }, [commandRows, fileMentionRows, mention, skillRows]);
 }
 

@@ -157,6 +157,14 @@ async function resolveModelId(
   return null;
 }
 
+/** Resolve the directory an automation should run in: explicit arg, else the
+ *  current session's cwd (injected by pi-runtime), else the app default. */
+function resolveCwd(explicit: string | undefined): string {
+  const trimmed = explicit?.trim();
+  if (trimmed) return trimmed;
+  return process.env.LOCAL_STUDIO_CWD?.trim() ?? "";
+}
+
 type AutomationRecord = {
   id?: unknown;
   name?: unknown;
@@ -248,7 +256,7 @@ export default function automationsExtension(pi: ExtensionAPI): void {
               name: typeof args.name === "string" ? args.name : "",
               prompt,
               modelId,
-              cwd: typeof args.cwd === "string" ? args.cwd : "",
+              cwd: resolveCwd(args.cwd),
               schedule: scheduleResult.schedule,
             }),
           },

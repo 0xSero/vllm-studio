@@ -4,7 +4,14 @@ import { ExternalLink } from "@/ui/icon-registry";
 import type { ModelIndexModel, ModelIndexVariant } from "@/lib/api/studio";
 import { FORMAT_LABELS, formatGb, type Fit } from "./model-fit";
 
-export type ModelBrand = { owner: string; label: string; color: string; repo: string };
+/**
+ * Publisher identity and Hugging Face affordances for a catalog model.
+ *
+ * This file was named `model-catalog-card` when the Models page rendered cards.
+ * The cards are gone — the page is a table now — and nothing here draws a card,
+ * so the name follows what the module actually is.
+ */
+type ModelBrand = { owner: string; label: string; color: string; repo: string };
 
 const BRANDS: Record<string, { label: string; color: string }> = {
   qwen: { label: "Qwen", color: "#5B7CFA" },
@@ -32,7 +39,7 @@ export function modelBrand(model: ModelIndexModel): ModelBrand {
   };
 }
 
-export function hubUrl(repo: string): string {
+function hubUrl(repo: string): string {
   return `https://huggingface.co/${repo}`;
 }
 
@@ -54,8 +61,8 @@ export function HubLink({ repo, label }: { repo: string; label?: string }) {
   );
 }
 
-/** The Hugging Face mark, inlined so the card never waits on a network image. */
-export function HuggingFaceMark({ className }: { className?: string }) {
+/** The Hugging Face mark, inlined so the row never waits on a network image. */
+function HuggingFaceMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" className={className} aria-hidden focusable="false">
       <circle cx="16" cy="17.5" r="12.5" fill="#FFD21E" />

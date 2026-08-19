@@ -12,6 +12,8 @@ import {
   Button,
   ModelButton,
   SearchInput,
+  StatusPill,
+  type UiTone,
   UiModal,
   UiModalBody,
   UiModalFooter,
@@ -21,16 +23,24 @@ import { Eye, X } from "@/ui/icon-registry";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceLogo } from "@/ui/resource-logo";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { SettingsButton, SettingsGroup, type StatusTone } from "@/features/settings/settings-ui";
+import { SettingsButton, SettingsGroup } from "@/features/settings/settings-ui";
 import {
-  ModelRow,
-  ModelSection,
-  ModelStatus,
-  ModelValue,
-} from "@/features/recipes/recipes-content/model-page";
+  DataRow,
+  EndCell,
+  HeadCell,
+  IdentityCell,
+  RowAction,
+  StatusText,
+  statusToneFor,
+  TableFrame,
+  TableNotice,
+  TableSection,
+  TableSkeleton,
+  TextCell,
+} from "@/features/recipes/recipes-content/catalog-table-shell";
 import { GoogleAccountModal } from "./google-account-modal";
 
-type PluginStatus = { label: string; tone: StatusTone };
+type PluginStatus = { label: string; tone: UiTone };
 
 function responseError(body: unknown, fallback: string): string {
   try {
@@ -89,25 +99,6 @@ function activationAction(plugin: PluginRuntimeView): "account" | "connect" | "d
   return null;
 }
 
-function PluginRowsSkeleton() {
-  return (
-    <>
-      {[0, 1, 2].map((index) => (
-        <div key={index} className="grid animate-pulse gap-3 px-4 py-3 md:grid-cols-2">
-          <div className="space-y-2">
-            <div className="h-3 w-32 rounded bg-(--ui-hover)" />
-            <div className="h-2.5 w-56 max-w-full rounded bg-(--ui-hover)/70" />
-          </div>
-          <div className="flex items-center justify-end gap-3">
-            <div className="h-2.5 w-36 rounded bg-(--ui-hover)/70" />
-            <div className="h-5 w-20 rounded-full bg-(--ui-hover)" />
-          </div>
-        </div>
-      ))}
-    </>
-  );
-}
-
 type PluginRowAction = ReturnType<typeof activationAction>;
 
 function pluginActionLabel(plugin: PluginRuntimeView, action: PluginRowAction): string {
@@ -137,26 +128,26 @@ function PluginRowActions({
   return (
     <>
       {plugin.account?.connected ? (
-        <ModelButton
-          onClick={onAccount}
-          disabled={busy}
-          aria-label={`Manage ${plugin.displayName}`}
-        >
+        <RowAction onClick={onAccount} disabled={busy} title={`Manage ${plugin.displayName}`}>
           Manage
-        </ModelButton>
+        </RowAction>
       ) : null}
       {action ? (
-        <ModelButton
+        <RowAction
           onClick={handleAction}
           disabled={busy}
-          aria-label={`${actionLabel} ${plugin.displayName}`}
+          tone={action === "disconnect" ? "danger" : "accent"}
+          title={`${actionLabel} ${plugin.displayName}`}
         >
           {busy ? "Working" : actionLabel}
-        </ModelButton>
+        </RowAction>
       ) : null}
     </>
   );
 }
+
+const PLUGIN_COLUMNS = ["Plugin", "Capabilities", "State"] as const;
+const PLUGIN_MIN_WIDTH = "min-w-[40rem]";
 
 function PluginRow({
   plugin,
@@ -176,40 +167,38 @@ function PluginRow({
   const status = pluginStatus(plugin);
   const action = activationAction(plugin);
   return (
-    <ModelRow
-      label={plugin.displayName}
-      description={plugin.description || plugin.category}
-      leading={
-        <ResourceLogo
-          identity={plugin.id}
-          label={plugin.displayName}
-          company={plugin.source}
-          brandColor={plugin.brandColor}
-        />
-      }
-      value={<ModelValue>{`${plugin.source} · ${capabilitySummary(plugin)}`}</ModelValue>}
-      status={<ModelStatus tone={status.tone}>{status.label}</ModelStatus>}
-      actions={
-        action || plugin.account?.connected ? (
-          <PluginRowActions
-            plugin={plugin}
-            action={action}
-            busy={busy}
-            onConnect={onConnect}
-            onDisconnect={onDisconnect}
-            onAccount={onAccount}
+    <DataRow onOpen={onOpen} ariaLabel={`Open ${plugin.displayName}`}>
+      <IdentityCell
+        leading={
+          <ResourceLogo
+            identity={plugin.id}
+            label={plugin.displayName}
+            company={plugin.source}
+            brandColor={plugin.brandColor}
           />
-        ) : undefined
-      }
-      onClick={onOpen}
-    >
-      {plugin.tools.reason ? (
-        <div className="text-[length:var(--fs-sm)] text-(--ui-muted)">{plugin.tools.reason}</div>
-      ) : null}
-      {plugin.account?.email ? (
-        <div className="text-[length:var(--fs-sm)] text-(--ui-muted)">{plugin.account.email}</div>
-      ) : null}
-    </ModelRow>
+        }
+        label={plugin.displayName}
+        description={plugin.account?.email || plugin.description || plugin.category}
+      />
+      <TextCell sub={plugin.tools.reason || undefined}>
+        {`${plugin.source} · ${capabilitySummary(plugin)}`}
+      </TextCell>
+      <EndCell>
+        <div className="flex items-center justify-end gap-2">
+          <StatusText tone={statusToneFor(status.tone)}>{status.label}</StatusText>
+          {action || plugin.account?.connected ? (
+            <PluginRowActions
+              plugin={plugin}
+              action={action}
+              busy={busy}
+              onConnect={onConnect}
+              onDisconnect={onDisconnect}
+              onAccount={onAccount}
+            />
+          ) : null}
+        </div>
+      </EndCell>
+    </DataRow>
   );
 }
 
@@ -247,7 +236,7 @@ function PluginDrawer({
           brandColor={plugin.brandColor}
         />
       }
-      badge={<ModelStatus tone={status.tone}>{status.label}</ModelStatus>}
+      badge={<StatusPill tone={status.tone}>{status.label}</StatusPill>}
       status={`${plugin.source} · ${plugin.category} · v${plugin.version}`}
       footer={
         action || plugin.account?.connected ? (
@@ -372,57 +361,66 @@ export function PluginsSection() {
           <Alert variant="error">{error}</Alert>
         </div>
       ) : null}
-      <ModelSection
+      <TableSection
         title="Plugins"
         description="Capability bundles from Local Studio and Codex, with their company, tools, accounts, and skills."
         actions={
-          <ModelStatus tone={error ? "warning" : loaded ? "good" : "default"}>
-            {loaded ? `${visiblePlugins.length} of ${plugins.length}` : "discovering"}
-          </ModelStatus>
-        }
-      >
-        <ModelRow
-          label="Search plugins"
-          description="Name, company, category, capability, or version."
-          control={
+          <div className="flex items-center gap-2">
             <SearchInput
               value={query}
               onChange={setQuery}
               placeholder="Search plugins"
-              className="w-full"
+              className="w-56"
             />
-          }
-          status={<ModelStatus>{visiblePlugins.length}</ModelStatus>}
-        />
-        {!loaded ? (
-          <PluginRowsSkeleton />
-        ) : visiblePlugins.length ? (
-          visiblePlugins.map((plugin) => (
-            <PluginRow
-              key={plugin.id}
-              plugin={plugin}
-              busy={busyId === plugin.id}
-              onOpen={() => setSelectedPlugin(plugin)}
-              onConnect={() => {
-                setSelectedPlugin(null);
-                setPending(plugin);
-              }}
-              onDisconnect={() => {
-                setSelectedPlugin(null);
-                void setEnabled(plugin, false);
-              }}
-              onAccount={() => {
-                setSelectedPlugin(null);
-                setAccountPlugin(plugin);
-              }}
-            />
-          ))
-        ) : (
-          <div className="px-4 py-8 text-center text-[length:var(--fs-md)] text-(--ui-muted)">
-            {plugins.length ? `No plugins match “${query}”.` : "No plugin manifests found."}
+            <StatusText tone={error ? "warn" : loaded ? "ok" : "dim"}>
+              {loaded ? `${visiblePlugins.length} of ${plugins.length}` : "discovering"}
+            </StatusText>
           </div>
+        }
+      >
+        {!loaded ? (
+          <TableSkeleton columns={PLUGIN_COLUMNS} rows={3} minWidthClass={PLUGIN_MIN_WIDTH} />
+        ) : visiblePlugins.length === 0 ? (
+          <TableNotice
+            title={plugins.length ? `No plugin matches “${query}”` : "No plugins found"}
+            body="Plugins are discovered from the manifests Local Studio and Codex install on this machine. Install one, or clear the search."
+          />
+        ) : (
+          <TableFrame minWidthClass={PLUGIN_MIN_WIDTH}>
+            <thead>
+              <tr>
+                {PLUGIN_COLUMNS.map((column, index) => (
+                  <HeadCell key={column} numeric={index === PLUGIN_COLUMNS.length - 1}>
+                    {column}
+                  </HeadCell>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visiblePlugins.map((plugin) => (
+                <PluginRow
+                  key={plugin.id}
+                  plugin={plugin}
+                  busy={busyId === plugin.id}
+                  onOpen={() => setSelectedPlugin(plugin)}
+                  onConnect={() => {
+                    setSelectedPlugin(null);
+                    setPending(plugin);
+                  }}
+                  onDisconnect={() => {
+                    setSelectedPlugin(null);
+                    void setEnabled(plugin, false);
+                  }}
+                  onAccount={() => {
+                    setSelectedPlugin(null);
+                    setAccountPlugin(plugin);
+                  }}
+                />
+              ))}
+            </tbody>
+          </TableFrame>
         )}
-      </ModelSection>
+      </TableSection>
       {selectedPlugin ? (
         <PluginDrawer
           plugin={selectedPlugin}

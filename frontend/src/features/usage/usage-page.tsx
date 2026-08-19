@@ -1,293 +1,161 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { AppPage, Card, PageContainer, PageState, RefreshButton, SegmentedControl } from "@/ui";
-import { TokenActivityHeatmap, type ActivityPeriod } from "@/features/usage/token-activity-heatmap";
-import { useUsage } from "@/features/usage/use-usage";
-import { UsageSkeleton } from "@/features/usage/usage-skeleton";
+import { useState, type ReactNode } from "react";
+import { AppPage, Button, ErrorBox, RefreshButton, TabbedPage } from "@/ui";
+import { Activity, AlertTriangle, Server, Sparkles } from "@/ui/icon-registry";
 import { formatNumber } from "@/lib/formatters";
 import type { UsageStats } from "@/lib/types";
-import { Upload } from "@/ui/icon-registry";
-import {
-  ProfileAvatar,
-  profileImageFromFile,
-  useLocalProfile,
-} from "@/features/shell/local-profile";
+import { useUsage } from "./use-usage";
+import { UsageSkeleton } from "./usage-skeleton";
+import { UsageModelsTab } from "./usage-models-tab";
+import { UsageActivityTab } from "./usage-activity-tab";
+import { UsageControllerTab } from "./usage-controller-tab";
+import { UsageErrorsTab } from "./usage-errors-tab";
 
-const ACTIVITY_PERIODS = [
-  { id: "daily", label: "Daily" },
-  { id: "weekly", label: "Weekly" },
-] satisfies Array<{ id: ActivityPeriod; label: string }>;
+type UsageTab = "models" | "activity" | "routes" | "errors";
 
-const activeDays = (stats: UsageStats): number =>
-  stats.daily.filter((day) => day.total_tokens > 0).length;
+const USAGE_TABS: Array<{ id: UsageTab; label: string; icon: ReactNode }> = [
+  { id: "models", label: "Models", icon: <Sparkles className="h-3.5 w-3.5" /> },
+  { id: "activity", label: "Activity", icon: <Activity className="h-3.5 w-3.5" /> },
+  { id: "routes", label: "Controller", icon: <Server className="h-3.5 w-3.5" /> },
+  { id: "errors", label: "Errors", icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+];
 
-const currentStreak = (stats: UsageStats): number => {
-  const activeDays = new Set(
-    stats.daily.filter((day) => day.total_tokens > 0).map((day) => day.date),
-  );
-  const cursor = new Date();
-  cursor.setUTCHours(0, 0, 0, 0);
-  if (!activeDays.has(cursor.toISOString().slice(0, 10)))
-    cursor.setUTCDate(cursor.getUTCDate() - 1);
-  let streak = 0;
-  while (activeDays.has(cursor.toISOString().slice(0, 10))) {
-    streak += 1;
-    cursor.setUTCDate(cursor.getUTCDate() - 1);
+const TAB_HEADINGS: Record<UsageTab, { title: string; description: string }> = {
+  models: {
+    title: "By model",
+    description:
+      "What each model was asked to do and how fast it did it — prefill, decode, time to first token, and the tail of the latency distribution.",
+  },
+  activity: {
+    title: "Activity",
+    description:
+      "When the traffic arrives: hour of day, day by day, and the busiest days this machine has handled.",
+  },
+  routes: {
+    title: "Controller",
+    description:
+      "The process in front of the models — every route it has served, the status codes it returned, and how reliable the agent's tools are.",
+  },
+  errors: {
+    title: "Errors",
+    description:
+      "Failed requests and failed tool calls, newest first, with the message the controller actually recorded.",
+  },
+};
+
+/** The left half of the context strip: what window the tab's numbers cover. */
+const tabScope = (tab: UsageTab, stats: UsageStats): { scale: string; detail: string } => {
+  if (tab === "models") {
+    return {
+      scale: `${stats.by_model.length} ${stats.by_model.length === 1 ? "model" : "models"}`,
+      detail: `${formatNumber(stats.totals.total_requests)} requests · ${formatNumber(stats.totals.total_tokens)} tokens proxied`,
+    };
   }
-  return streak;
+  if (tab === "activity") {
+    return {
+      scale: `${stats.daily.length} days recorded`,
+      detail: `${formatNumber(stats.recent_activity.last_24h_requests)} requests in the last 24 hours`,
+    };
+  }
+  if (tab === "routes") {
+    const controller = stats.controller;
+    return {
+      scale: controller ? `${controller.by_path.length} routes` : "No controller telemetry",
+      detail: controller
+        ? `${formatNumber(controller.totals.total_requests)} controller requests · ${controller.totals.success_rate.toFixed(1)}% served`
+        : "This controller build does not report request stats.",
+    };
+  }
+  const requests = stats.controller?.recent_errors.length ?? 0;
+  const tools = stats.controller?.function_calls?.recent_errors.length ?? 0;
+  return {
+    scale: `${requests + tools} recorded`,
+    detail: `${requests} request errors · ${tools} tool-call errors`,
+  };
 };
 
-const percentage = (value: number | null): string =>
-  value === null ? "—" : `${value >= 0 ? "+" : ""}${Math.round(value)}%`;
-
-const milliseconds = (value: number | null): string =>
-  value === null ? "—" : `${Math.round(value)} ms`;
-
-const tokenParts = (stats: UsageStats): Array<{ label: string; value: number }> => {
-  const parts = [
-    { label: "Fresh input", value: stats.totals.prompt_tokens },
-    { label: "Cache read", value: stats.cache.hit_tokens },
-    { label: "Cache write", value: stats.cache.miss_tokens },
-    { label: "Output", value: stats.totals.completion_tokens },
-  ];
-  return parts.filter((part) => part.value > 0);
-};
-
+/**
+ * Usage as four tables.
+ *
+ * The page used to open on one number at display size and then show three
+ * proportional-bar cards, while roughly seventy percent of the payload it
+ * already fetched — every throughput field, the whole controller block, the
+ * hour-of-day pattern — was normalised and dropped. It is now the Models page's
+ * sibling: the same tabbed shell, the same table language, and each tab's stat
+ * strip summarising the rows directly beneath it rather than floating free.
+ */
 export default function UsagePage() {
   const { stats, loading, error, loadStats } = useUsage();
-  const [period, setPeriod] = useState<ActivityPeriod>("daily");
-  const [profile, updateProfile] = useLocalProfile();
-  const [imageError, setImageError] = useState("");
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const updateImage = async (file: File | undefined) => {
-    if (!file) return;
-    try {
-      updateProfile({ imageUrl: await profileImageFromFile(file) });
-      setImageError("");
-    } catch (nextError) {
-      setImageError(nextError instanceof Error ? nextError.message : "Image failed to load");
-    }
-  };
+  const [tab, setTab] = useState<UsageTab>("models");
 
   if (loading && !stats) return <UsageSkeleton />;
 
-  const pageState = PageState({
-    loading,
-    data: stats,
-    hasData: Boolean(stats),
-    error,
-    onLoad: loadStats,
-  });
-  if (pageState) return <AppPage>{pageState}</AppPage>;
+  // The skeleton above already owns the first-load case, so the only state left
+  // to draw here is "the fetch failed and we have nothing cached".
+  if (error && !stats) {
+    return (
+      <AppPage>
+        <div className="mx-auto flex max-w-md flex-col items-start gap-3 py-16">
+          <ErrorBox>{error}</ErrorBox>
+          <Button variant="secondary" onClick={loadStats}>
+            Retry
+          </Button>
+        </div>
+      </AppPage>
+    );
+  }
   if (!stats) return null;
 
+  const heading = TAB_HEADINGS[tab];
+  const scope = tabScope(tab, stats);
+
   return (
-    <AppPage>
-      <PageContainer width="sm" className="pt-5 sm:pt-7">
-        <header className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              type="button"
-              onClick={() => imageInputRef.current?.click()}
-              className="group relative shrink-0 rounded-full"
-              title="Update profile image"
-              aria-label="Update profile image"
-            >
-              <ProfileAvatar profile={profile} size={38} />
-              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/55 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                <Upload className="h-4 w-4 text-white" />
-              </span>
-            </button>
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(event) => void updateImage(event.currentTarget.files?.[0])}
-            />
-            <div className="min-w-0">
-              <h1 className="text-[length:var(--fs-sm)] text-(--ui-muted)">Usage</h1>
-              <input
-                value={profile.name}
-                onChange={(event) => updateProfile({ name: event.target.value })}
-                onBlur={() => {
-                  if (!profile.name.trim()) updateProfile({ name: "Studio" });
-                }}
-                aria-label="Profile display name"
-                className="mt-0.5 block h-7 max-w-56 bg-transparent text-[length:var(--fs-lg)] font-medium text-(--ui-fg) outline-none placeholder:text-(--ui-muted)"
-                placeholder="Studio"
-              />
-              {imageError ? (
-                <p className="mt-1 text-[length:var(--fs-xs)] text-(--err)">{imageError}</p>
-              ) : null}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <RefreshButton onRefresh={loadStats} loading={loading} className="h-7 w-7" />
-          </div>
-        </header>
+    <TabbedPage
+      title="Usage"
+      description="Everything this controller has proxied — per model, over time, and where it failed."
+      width="sm"
+      tabs={USAGE_TABS}
+      activeTab={tab}
+      onSelectTab={setTab}
+      actions={
+        <RefreshButton
+          onRefresh={loadStats}
+          loading={loading}
+          label="Refresh usage"
+          className="h-8 w-8"
+        />
+      }
+    >
+      <section>
+        <h2 className="text-[length:var(--fs-2xl)] font-medium tracking-[-0.015em] text-(--ui-fg)">
+          {heading.title}
+        </h2>
+        <p className="mt-1 text-[length:var(--fs-sm)] text-(--ui-muted)">{heading.description}</p>
 
-        {/* Left-aligned, not a centered billboard: this is a reading page, and
-            everything below it starts at the same left edge. */}
-        <section className="mx-auto mt-8 max-w-[55rem]">
-          <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">Proxied tokens</p>
-          <div className="mt-1 text-[length:var(--fs-display)] font-medium leading-none tracking-[-0.03em] tabular-nums text-(--ui-fg)">
-            {formatNumber(stats.totals.total_tokens)}
-          </div>
-          <p className="mt-2 text-[length:var(--fs-sm)] text-(--ui-muted)">
-            Requests proxied through this controller
-          </p>
-        </section>
-
-        <Card
-          bordered={false}
-          padding="sm"
-          className="mx-auto mt-6 max-w-[55rem] bg-(--ui-surface)"
-        >
-          <dl className="grid grid-cols-2 divide-x divide-y divide-(--ui-border) sm:grid-cols-3 lg:grid-cols-6">
-            <ProfileStat label="Requests" value={formatNumber(stats.totals.total_requests)} />
-            <ProfileStat label="Sessions" value={formatNumber(stats.totals.unique_sessions)} />
-            <ProfileStat label="Active days" value={formatNumber(activeDays(stats))} />
-            <ProfileStat label="Active streak" value={`${currentStreak(stats)} days`} />
-            <ProfileStat label="Success rate" value={`${Math.round(stats.totals.success_rate)}%`} />
-            <ProfileStat label="P95 latency" value={milliseconds(stats.latency.p95_ms)} />
-          </dl>
-        </Card>
-
-        <section className="mx-auto mt-6 max-w-[55rem] rounded-[var(--rad-xl)] bg-(--ui-surface)/60 p-4 sm:p-5">
-          <div className="mb-4 flex items-baseline justify-between gap-4">
-            <h2 className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">
-              Token activity
-            </h2>
-            <div className="flex items-center gap-3">
-              <span className="hidden text-[length:var(--fs-xs)] text-(--ui-muted) sm:inline">
-                {period === "daily" ? "Past year" : "Past 53 weeks"}
-              </span>
-              <SegmentedControl
-                items={ACTIVITY_PERIODS}
-                value={period}
-                onChange={setPeriod}
-                size="sm"
-              />
-            </div>
-          </div>
-          <TokenActivityHeatmap key={period} daily={stats.daily} period={period} />
-        </section>
-
-        <section className="mx-auto mt-5 grid max-w-[55rem] gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="rounded-[var(--rad-xl)] bg-(--ui-surface)/60 p-5">
-            <TokenMix stats={stats} />
-          </div>
-          <div className="rounded-[var(--rad-xl)] bg-(--ui-surface)/60 p-5">
-            <ModelUsage stats={stats} />
-          </div>
-          <div className="rounded-[var(--rad-xl)] bg-(--ui-surface)/60 p-5">
-            <ProxyPace stats={stats} />
-          </div>
-        </section>
-      </PageContainer>
-    </AppPage>
-  );
-}
-
-function ProfileStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="px-3 py-2.5 first:border-l-0 sm:px-5">
-      <dd className="text-[length:var(--fs-lg)] font-medium tabular-nums text-(--ui-fg)">
-        {value}
-      </dd>
-      <dt className="mt-0.5 text-[length:var(--fs-sm)] text-(--ui-muted)">{label}</dt>
-    </div>
-  );
-}
-
-function TokenMix({ stats }: { stats: UsageStats }) {
-  const total = stats.totals.total_tokens;
-  return (
-    <div>
-      <h2 className="mb-4 text-[length:var(--fs-md)] font-medium text-(--ui-fg)">Token mix</h2>
-      <div className="space-y-3">
-        {tokenParts(stats).map((part) => (
-          <div key={part.label} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1">
-            <span className="text-[length:var(--fs-sm)] text-(--ui-muted)">{part.label}</span>
-            <span className="text-[length:var(--fs-sm)] tabular-nums text-(--ui-fg)">
-              {formatNumber(part.value)}
+        {/* One quiet line of context, matching the Models page: the window
+            these numbers cover, and how much of it there is. */}
+        <div className="mt-6 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-(--ui-separator) pb-3">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="text-[length:var(--fs-md)] text-(--ui-fg)">{scope.scale}</span>
+            <span className="truncate text-[length:var(--fs-sm)] text-(--ui-muted)">
+              {scope.detail}
             </span>
-            <div className="col-span-2 h-1 overflow-hidden rounded-full bg-(--ui-surface-2)">
-              <div
-                className="h-full rounded-full bg-[color:var(--color-blue-500)]/65"
-                style={{ width: `${total > 0 ? Math.max(1, (part.value / total) * 100) : 0}%` }}
-              />
-            </div>
           </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+        </div>
 
-function ModelUsage({ stats }: { stats: UsageStats }) {
-  const models = stats.by_model.slice(0, 5);
-  const largest = models[0]?.total_tokens ?? 0;
-  return (
-    <div>
-      <div className="mb-4 flex items-baseline justify-between gap-3">
-        <h2 className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">Most used models</h2>
-        <span className="text-[length:var(--fs-xs)] text-(--ui-muted)">
-          {stats.by_model.length} models
-        </span>
-      </div>
-      <div className="space-y-3">
-        {models.map((model) => (
-          <div
-            key={model.model}
-            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1"
-          >
-            <span
-              className="truncate text-[length:var(--fs-sm)] text-(--ui-muted)"
-              title={model.model}
-            >
-              {model.model.split("/").pop()}
-            </span>
-            <span className="text-[length:var(--fs-sm)] tabular-nums text-(--ui-fg)">
-              {formatNumber(model.total_tokens)}
-            </span>
-            <div className="col-span-2 h-1 overflow-hidden rounded-full bg-(--ui-surface-2)">
-              <div
-                className="h-full rounded-full bg-[color:var(--color-blue-500)]/45"
-                style={{ width: `${largest > 0 ? (model.total_tokens / largest) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ProxyPace({ stats }: { stats: UsageStats }) {
-  const metrics = [
-    { label: "Last hour", value: formatNumber(stats.recent_activity.last_hour_requests) },
-    { label: "Last 24 hours", value: formatNumber(stats.recent_activity.last_24h_requests) },
-    { label: "24h change", value: percentage(stats.recent_activity.change_24h_pct) },
-    { label: "Week over week", value: percentage(stats.week_over_week.change_pct.tokens) },
-    { label: "Cache hit rate", value: `${Math.round(stats.cache.hit_rate)}%` },
-    { label: "Average TTFT", value: milliseconds(stats.ttft.avg_ms) },
-  ];
-  return (
-    <div>
-      <h2 className="mb-4 text-[length:var(--fs-md)] font-medium text-(--ui-fg)">Proxy pace</h2>
-      <dl className="grid grid-cols-2 gap-x-5 gap-y-4">
-        {metrics.map((metric) => (
-          <div key={metric.label}>
-            <dd className="text-[length:var(--fs-md)] font-medium tabular-nums text-(--ui-fg)">
-              {metric.value}
-            </dd>
-            <dt className="mt-0.5 text-[length:var(--fs-xs)] text-(--ui-muted)">{metric.label}</dt>
-          </div>
-        ))}
-      </dl>
-    </div>
+        <div className="mt-6">
+          {tab === "models" ? (
+            <UsageModelsTab stats={stats} />
+          ) : tab === "activity" ? (
+            <UsageActivityTab stats={stats} />
+          ) : tab === "routes" ? (
+            <UsageControllerTab stats={stats} />
+          ) : (
+            <UsageErrorsTab stats={stats} />
+          )}
+        </div>
+      </section>
+    </TabbedPage>
   );
 }

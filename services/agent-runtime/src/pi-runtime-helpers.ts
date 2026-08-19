@@ -5,6 +5,7 @@ import path from "node:path";
 import { Effect } from "effect";
 import { listProjectsFromStore, resolveAllowedWorkspace } from "./projects-store";
 import { hasEnabledConnectorsSync } from "./connectors-service";
+import { resolveBundledResource } from "./plugin-resources";
 import type { AgentThinkingLevel, AgentToolAccess } from "../../../shared/agent/agent-turn";
 
 export type RuntimeSkillRef = {
@@ -31,6 +32,8 @@ export type RuntimeStartOptions = {
 
 export type AgentSessionOptionsInput = {
   options: RuntimeStartOptions;
+  /** Resolved session cwd, exported to extensions as LOCAL_STUDIO_CWD. */
+  cwd?: string;
   processEnv?: NodeJS.ProcessEnv;
 };
 
@@ -92,38 +95,11 @@ export function resolveAgentCwdEffect(input?: string): Effect.Effect<string, unk
   });
 }
 
-// Bundled desktop resources live at <repo>/frontend/desktop/resources/<kind>/.
-// Resolution has to work from three different working directories: the repo
-// root (dev), frontend/ (next build), and services/agent-runtime — the deployed
-// systemd unit's WorkingDirectory. The old ladder only ever tried one "..", so
-// on the server EVERY bundled extension, MCP server and skill silently failed
-// to resolve and none of them loaded. Walk up instead of enumerating.
+// One resolver for every bundled resource (see plugin-resources) so the
+// extension/MCP/skill lookup and the plugin lookup cannot drift apart again.
 function resolveBundledResourcePath(kind: string, name: string, override?: string): string | null {
   if (override && existsSync(override)) return override;
-  // The desktop shell forks this runtime as a plain Node child, where
-  // Electron's `process.resourcesPath` does NOT exist — it forwards the same
-  // path via env instead. Missing this meant every bundled extension
-  // (subagent, automations, browser) silently vanished in packaged
-  // builds while working in dev, where the cwd walk below finds the repo.
-  const resourcesRoot = process.env.LOCAL_STUDIO_RESOURCES_PATH?.trim() || process.resourcesPath;
-  if (resourcesRoot) {
-    const packaged = path.join(resourcesRoot, "desktop", "resources", kind, name);
-    if (existsSync(packaged)) return packaged;
-  }
-  let dir = process.cwd();
-  for (let depth = 0; depth < 5; depth += 1) {
-    for (const prefix of [
-      ["frontend", "desktop", "resources"],
-      ["desktop", "resources"],
-    ]) {
-      const candidate = path.join(dir, ...prefix, kind, name);
-      if (existsSync(candidate)) return candidate;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
+  return resolveBundledResource(kind, name);
 }
 
 export function resolveBundledPiExtensionPath(
@@ -299,11 +275,16 @@ function runtimeSkillPaths(options: RuntimeStartOptions): string[] {
 function runtimeEnvInjections(
   options: RuntimeStartOptions,
   env: NodeJS.ProcessEnv,
+  cwd: string,
 ): Record<string, string> {
   const frontendBase = env.LOCAL_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(env);
   const relay = readSitegeistRelayEnv(env);
   return {
     LOCAL_STUDIO_BROWSER_SESSION_ID: options.browserSessionId ?? "",
+    // The project this session runs in. Extensions that spawn later work (the
+    // automations extension) would otherwise store an empty cwd and get the
+    // first registered project when the scheduler resolves the default.
+    LOCAL_STUDIO_CWD: cwd,
     LOCAL_STUDIO_FRONTEND_BASE: frontendBase,
     SITEGEIST_RELAY_URL: env.SITEGEIST_RELAY_URL ?? relay.SITEGEIST_RELAY_URL ?? "",
     SITEGEIST_RELAY_TOKEN: env.SITEGEIST_RELAY_TOKEN ?? relay.SITEGEIST_RELAY_TOKEN ?? "",
@@ -352,6 +333,6 @@ export function buildAgentSessionOptionsSync(input: AgentSessionOptionsInput): A
     extensionPaths: runtimeExtensionPaths(options),
     skills: runtimeSkillPaths(options),
     promptTemplatePaths: selectedPromptTemplatePaths(options.promptTemplates ?? []),
-    envInjections: runtimeEnvInjections(options, input.processEnv ?? process.env),
+    envInjections: runtimeEnvInjections(options, input.processEnv ?? process.env, input.cwd ?? ""),
   };
 }

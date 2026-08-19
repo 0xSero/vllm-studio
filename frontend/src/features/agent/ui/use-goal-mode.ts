@@ -11,11 +11,14 @@ import { useCallback, type Dispatch, type FormEvent, type KeyboardEvent, type Se
  * because the continuation driver only fires on turn-settle. */
 export function useGoalMode({
   goalAction,
+  reportError,
   sendMessage,
   goalMode,
   setGoalMode,
 }: {
   goalAction: (args: string) => Promise<string | null>;
+  /** Surfaces a failed goal write the way the inline `/goal` path does. */
+  reportError: (message: string) => void;
   sendMessage: (event: FormEvent) => Promise<void> | void;
   // State lives in the caller: the command registry needs the setter before
   // the send flow (which this hook depends on) exists.
@@ -39,16 +42,23 @@ export function useGoalMode({
       const objective = input.trim();
       if (!objective) return true;
       void goalAction(objective).then((error) => {
-        if (error) return;
+        // Without this the composer just swallowed the submit and looked dead.
+        if (error) {
+          reportError(error);
+          return;
+        }
         setGoalMode(false);
         // The objective is still the composer text, so the normal send path
         // turns it into the visible opening turn — already goal-steered, since
-        // the goal file was written before the prompt left.
+        // the goal file was written before the prompt left. On a brand-new
+        // session the write is deferred until this turn hands back a
+        // piSessionId, which still beats the first agent_settled the
+        // continuation driver runs on.
         void sendMessage(event);
       });
       return true;
     },
-    [goalAction, goalMode, sendMessage, setGoalMode],
+    [goalAction, goalMode, reportError, sendMessage, setGoalMode],
   );
 
   const interceptKeyDown = useCallback(
