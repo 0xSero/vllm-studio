@@ -23,6 +23,7 @@ import {
   type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "../../../../shared/agent/composer-refs";
+import { ExclusiveLaneNotReadyError, assertExclusiveLaneReady } from "../lane-ready";
 import { piResourceDiagnostics, piRuntimeManager } from "../pi-runtime";
 import { isAgentSettledEvent } from "../pi-runtime-state";
 import type { LoggedPiEvent, PiAgentSession, PiAgentStatus } from "../pi-runtime-types";
@@ -200,6 +201,18 @@ function turnRouteEffect(request: Request): Effect.Effect<Response, unknown> {
     const parsed = parseAgentTurnRequest(body.value);
     if (!parsed.ok) return jsonError(parsed.error);
     const turn = parsed.value;
+    const laneRejected = yield* Effect.tryPromise({
+      try: () => assertExclusiveLaneReady(turn.modelId),
+      catch: (error) => error,
+    }).pipe(
+      Effect.as(null as Response | null),
+      Effect.catch((error) =>
+        error instanceof ExclusiveLaneNotReadyError
+          ? Effect.succeed(jsonError(error.code, 503))
+          : Effect.fail(error),
+      ),
+    );
+    if (laneRejected) return laneRejected;
     const commandImages = turn.images.length ? turn.images : undefined;
 
     return yield* Effect.gen(function* () {

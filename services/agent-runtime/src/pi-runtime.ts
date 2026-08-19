@@ -34,6 +34,7 @@ import { findRuntimeSessionForLookup, piStatusFromEvents } from "./pi-runtime-st
 import { configuredPiSessionDir, findSessionFile } from "./sessions-store";
 import { getGlobalSingleton } from "./instances";
 import { connectorsRevisionSync } from "./connectors-service";
+import { assertExclusiveLaneReady } from "./lane-ready";
 import type {
   LoggedPiEvent,
   PiAgentSession,
@@ -225,6 +226,10 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   ): Effect.Effect<void, unknown> {
     return Effect.gen(
       function* (this: PiSdkSession) {
+        yield* Effect.tryPromise({
+          try: () => assertExclusiveLaneReady(modelId),
+          catch: (error) => error,
+        });
         const resolvedCwd = yield* resolveAgentCwdEffect(cwd);
         const desiredSessionId = piSessionId ?? null;
         const fingerprint = runtimeFingerprint(modelId, resolvedCwd, desiredSessionId, options);
