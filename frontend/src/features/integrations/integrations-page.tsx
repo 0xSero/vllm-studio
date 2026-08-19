@@ -2,8 +2,9 @@
 
 import { useState, type ReactNode } from "react";
 import { RefreshButton, Tabs } from "@/ui";
-import { Brain, GraduationCap, KeyRound, Plug } from "@/ui/icon-registry";
+import { Brain, GraduationCap, KeyRound, Plug, ShieldCheck } from "@/ui/icon-registry";
 import { ConnectorsSection } from "@/features/settings/connectors-section";
+import { ConnectorAccessSection } from "./connector-access-section";
 import { GoogleAccountsSection } from "./google-accounts-section";
 import { ModelProvidersSection } from "./model-providers-section";
 import { SkillsSection } from "./skills-section";
@@ -12,6 +13,7 @@ import { integrationSectionFromHash, type IntegrationSectionId } from "./integra
 const INTEGRATION_TABS = [
   { id: "connectors", label: "Connectors", icon: <Plug className="h-3.5 w-3.5" /> },
   { id: "accounts", label: "Accounts", icon: <KeyRound className="h-3.5 w-3.5" /> },
+  { id: "access", label: "Access", icon: <ShieldCheck className="h-3.5 w-3.5" /> },
   { id: "models", label: "Models", icon: <Brain className="h-3.5 w-3.5" /> },
   { id: "skills", label: "Skills", icon: <GraduationCap className="h-3.5 w-3.5" /> },
 ] satisfies Array<{ id: IntegrationSectionId; label: string; icon: ReactNode }>;
@@ -52,6 +54,7 @@ export function IntegrationsContent() {
       <div key={`${activeSection}-${revision}`}>
         {activeSection === "connectors" ? <ConnectorsSection /> : null}
         {activeSection === "accounts" ? <GoogleAccountsSection /> : null}
+        {activeSection === "access" ? <ConnectorAccessSection /> : null}
         {activeSection === "models" ? <ModelProvidersSection /> : null}
         {activeSection === "skills" ? <SkillsSection /> : null}
       </div>

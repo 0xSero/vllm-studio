@@ -7,10 +7,11 @@ import {
   saveGoogleClient,
 } from "@local-studio/agent-runtime/google-account";
 import { closePooledConnection } from "@local-studio/agent-runtime/connector-pool";
+import { listConnectors } from "@local-studio/agent-runtime/connectors-service";
 import { disableGoogleWorkspaceAdapter } from "@local-studio/agent-runtime/google-workspace-adapter";
 import {
-  GOOGLE_WORKSPACE_BINDINGS,
-  GOOGLE_WORKSPACE_PLUGIN_IDS,
+  GOOGLE_ACCOUNT_KEY_PATTERN,
+  googleWorkspaceConnectorIdentity,
 } from "@local-studio/agent-runtime/google-workspace-binding";
 import { requireApiAccess } from "@/lib/auth/guard";
 
@@ -22,8 +23,9 @@ const GoogleClientInputSchema = Schema.Struct({
   clientSecret: Schema.optional(Schema.String),
 });
 
-const GoogleAccountInputSchema = Schema.Struct({
+const GoogleDisconnectInputSchema = Schema.Struct({
   account: Schema.Union([Schema.Literal("gmail"), Schema.Literal("google-calendar")]),
+  accountKey: Schema.String,
 });
 
 function failure(error: unknown) {
@@ -34,10 +36,15 @@ function failure(error: unknown) {
   );
 }
 
-function closeGoogleConnections(): void {
-  GOOGLE_WORKSPACE_PLUGIN_IDS.forEach((id) =>
-    closePooledConnection(GOOGLE_WORKSPACE_BINDINGS[id].connectorId),
-  );
+/** Pooled sockets outlive a credential change, so every managed row is dropped. */
+async function closeGoogleConnections(): Promise<void> {
+  try {
+    for (const connector of await listConnectors()) {
+      if (googleWorkspaceConnectorIdentity(connector.id)) closePooledConnection(connector.id);
+    }
+  } catch {
+    // A connector file we cannot read has no live pooled connections to close.
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -65,24 +72,28 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     return failure(error);
   } finally {
-    closeGoogleConnections();
+    await closeGoogleConnections();
   }
 }
 
 export async function DELETE(request: NextRequest) {
   const denied = requireApiAccess(request);
   if (denied) return denied;
-  let input: typeof GoogleAccountInputSchema.Type;
+  let input: typeof GoogleDisconnectInputSchema.Type;
   try {
-    input = Schema.decodeUnknownSync(GoogleAccountInputSchema)(await request.json());
+    input = Schema.decodeUnknownSync(GoogleDisconnectInputSchema)(await request.json());
   } catch {
-    return NextResponse.json({ error: "account is required" }, { status: 400 });
+    return NextResponse.json({ error: "account and accountKey are required" }, { status: 400 });
   }
+  if (!GOOGLE_ACCOUNT_KEY_PATTERN.test(input.accountKey)) {
+    return NextResponse.json({ error: "accountKey is not a known account" }, { status: 400 });
+  }
+  const identity = { service: input.account, accountKey: input.accountKey };
   try {
     const account = await Effect.runPromise(
       Effect.gen(function* () {
-        const disconnected = yield* disconnectGoogleAccount(input.account);
-        yield* disableGoogleWorkspaceAdapter(input.account).pipe(
+        const disconnected = yield* disconnectGoogleAccount(identity);
+        yield* disableGoogleWorkspaceAdapter(identity).pipe(
           Effect.mapError((error) => new GoogleAccountError(500, error.message)),
         );
         return disconnected;
@@ -92,6 +103,6 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     return failure(error);
   } finally {
-    closeGoogleConnections();
+    await closeGoogleConnections();
   }
 }

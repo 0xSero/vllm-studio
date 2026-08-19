@@ -18,6 +18,9 @@ type ToolResult = {
 
 const FRONTEND_BASE = process.env.LOCAL_STUDIO_FRONTEND_BASE ?? "http://127.0.0.1:3000";
 const CALL_TIMEOUT_MS = 120_000;
+// The model this session runs on. Connector access is granted per model, so the
+// frontend both filters the inventory by it and re-checks it on every call.
+const MODEL_ID = process.env.LOCAL_STUDIO_MODEL_ID ?? "";
 
 interface InventoryTool {
   name: string;
@@ -39,7 +42,11 @@ const textResult = (text: string, details: Record<string, unknown>): ToolResult 
 
 /** Render an MCP tools/call result (content blocks) as plain text. */
 const renderMcpResult = (result: unknown): string => {
-  if (result && typeof result === "object" && Array.isArray((result as { content?: unknown[] }).content)) {
+  if (
+    result &&
+    typeof result === "object" &&
+    Array.isArray((result as { content?: unknown[] }).content)
+  ) {
     const blocks = (result as { content: Array<{ type?: string; text?: string }> }).content;
     const texts = blocks
       .map((block) => (block.type === "text" && block.text ? block.text : JSON.stringify(block)))
@@ -64,7 +71,7 @@ async function callConnectorTool(
     const response = await fetch(`${FRONTEND_BASE}/api/agent/connectors/call`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ connector_id: connectorId, tool, args }),
+      body: JSON.stringify({ connector_id: connectorId, tool, args, model_id: MODEL_ID }),
       signal: controller.signal,
     });
     const payload = (await response.json()) as { ok?: boolean; result?: unknown; error?: string };
@@ -93,9 +100,8 @@ async function callConnectorTool(
 export default async function connectorsExtension(pi: ExtensionAPI): Promise<void> {
   let inventory: InventoryConnector[] = [];
   try {
-    const response = await fetch(`${FRONTEND_BASE}/api/agent/connectors/call`, {
-      signal: AbortSignal.timeout(30_000),
-    });
+    const inventoryUrl = `${FRONTEND_BASE}/api/agent/connectors/call?model_id=${encodeURIComponent(MODEL_ID)}`;
+    const response = await fetch(inventoryUrl, { signal: AbortSignal.timeout(30_000) });
     const payload = (await response.json()) as { connectors?: InventoryConnector[] };
     inventory = payload.connectors ?? [];
   } catch {

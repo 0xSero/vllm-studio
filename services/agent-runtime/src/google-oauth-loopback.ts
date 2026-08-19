@@ -88,21 +88,27 @@ async function handleCallback(
     return;
   }
   try {
-    const adapterWasEnabled = await Effect.runPromise(googleWorkspaceAdapterEnabled(account));
     const result = await Effect.runPromise(
       completeGoogleAuthorizationWithActivation(
         account,
         { state, code },
         flowId,
-        (signal) =>
-          enableGoogleWorkspaceAdapter(account, signal).pipe(
-            Effect.as(true),
-            Effect.catch(() => Effect.succeed(false)),
-          ),
-        restoreGoogleWorkspaceAdapter(account, adapterWasEnabled),
+        // Which mailbox this grant belongs to is only known once Google has
+        // verified the email, so the adapter's prior state is captured here
+        // rather than before the flow starts.
+        (signal, identity) =>
+          Effect.gen(function* () {
+            const wasEnabled = yield* googleWorkspaceAdapterEnabled(identity);
+            const activated = yield* enableGoogleWorkspaceAdapter(identity, signal).pipe(
+              Effect.as(true),
+              Effect.catch(() => Effect.succeed(false)),
+            );
+            return { activated, wasEnabled };
+          }),
+        (identity, activation) => restoreGoogleWorkspaceAdapter(identity, activation.wasEnabled),
       ),
     );
-    await page(response, true, result.activation);
+    await page(response, true, result.activation.activated);
     closeFlow(account, flowId);
   } catch (error) {
     await page(response, false, false);

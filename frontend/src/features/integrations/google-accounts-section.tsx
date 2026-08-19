@@ -28,7 +28,7 @@ import {
   type StatusTone,
 } from "@/features/recipes/recipes-content/catalog-table-shell";
 import { GoogleAccountModal } from "./google-account-modal";
-import { requestJson } from "./google-account-model";
+import { connectedGoogleAccounts, requestJson } from "./google-account-model";
 
 /**
  * Accounts a session signs into, rather than servers it launches.
@@ -47,9 +47,18 @@ function accountState(
   id: GoogleWorkspacePluginId,
 ): AccountState {
   if (!account?.configured) return { label: "Setup needed", tone: "warn", action: "Set up" };
-  return account.connections[id].connected
-    ? { label: "Connected", tone: "ok", action: "Manage" }
-    : { label: "Signed out", tone: "dim", action: "Sign in" };
+  const connected = connectedGoogleAccounts(account, id).length;
+  if (!connected) return { label: "Signed out", tone: "dim", action: "Sign in" };
+  return {
+    label: connected === 1 ? "1 signed in" : `${connected} signed in`,
+    tone: "ok",
+    action: "Manage",
+  };
+}
+
+function accountSummary(account: GoogleAccountView | null, id: GoogleWorkspacePluginId): string {
+  const emails = connectedGoogleAccounts(account, id).map((entry) => entry.email);
+  return emails.length ? emails.join(", ") : "Google Workspace";
 }
 
 export function GoogleAccountsSection() {
@@ -87,10 +96,10 @@ export function GoogleAccountsSection() {
       ) : null}
       <TableSection
         title="Accounts"
-        description="Signed-in accounts whose read-only tools Workbench sessions can call."
+        description="Google services a session can read from. Each one can hold several signed-in mailboxes."
         actions={
           <StatusText tone={error ? "warn" : loaded ? "ok" : "dim"}>
-            {loaded ? `${GOOGLE_WORKSPACE_PLUGIN_IDS.length} accounts` : "loading"}
+            {loaded ? `${GOOGLE_WORKSPACE_PLUGIN_IDS.length} services` : "loading"}
           </StatusText>
         }
       >
@@ -120,7 +129,7 @@ export function GoogleAccountsSection() {
                     <IdentityCell
                       leading={<ResourceLogo identity={id} label={binding.name} company="Google" />}
                       label={binding.name}
-                      description={account?.connections[id].email || "Google Workspace"}
+                      description={accountSummary(account, id)}
                     />
                     <TextCell>{`${binding.observeTools.length} read-only tools`}</TextCell>
                     <EndCell>

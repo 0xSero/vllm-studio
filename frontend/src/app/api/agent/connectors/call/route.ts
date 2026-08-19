@@ -6,6 +6,11 @@ import {
   listConnectorTools,
 } from "@local-studio/agent-runtime/connector-pool";
 import { enabledConnectors } from "@local-studio/agent-runtime/connectors-service";
+import {
+  isConnectorToolGranted,
+  listConnectorGrants,
+  resolveGrantedTools,
+} from "@local-studio/agent-runtime/connector-grants";
 import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
@@ -15,17 +20,36 @@ const ConnectorToolCallSchema = Schema.Struct({
   connector_id: Schema.String,
   tool: Schema.String,
   args: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  model_id: Schema.optional(Schema.String),
 });
+
+/**
+ * The session's model, as claimed by the caller. It decides which connector
+ * tools are offered and which calls are allowed. An unnamed model matches only
+ * the `*` grants, so an older extension that does not send one keeps whatever
+ * blanket access the user left in place and gains nothing else.
+ */
+const callerModelId = (value: string | null | undefined): string => value?.trim() ?? "";
 
 export async function GET(request: NextRequest) {
   const denied = requireApiAccess(request);
   if (denied) return denied;
-  const connectors = await enabledConnectors();
+  const modelId = callerModelId(request.nextUrl.searchParams.get("model_id"));
+  const grants = await listConnectorGrants();
+  const granted = (await enabledConnectors()).flatMap((connector) => {
+    const tools = resolveGrantedTools(grants, modelId, connector.id);
+    return tools === "all" || tools.length ? [{ connector, tools }] : [];
+  });
   const inventory = await Promise.all(
-    connectors.map(async (connector) => {
+    granted.map(async ({ connector, tools }) => {
       try {
-        const tools = await listConnectorTools(connector.id);
-        return { id: connector.id, name: connector.name, tools };
+        const available = await listConnectorTools(connector.id);
+        return {
+          id: connector.id,
+          name: connector.name,
+          tools:
+            tools === "all" ? available : available.filter((tool) => tools.includes(tool.name)),
+        };
       } catch (error) {
         return {
           id: connector.id,
@@ -52,6 +76,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "connector_id and tool are required" }, { status: 400 });
   }
   try {
+    // Filtering the inventory only decides what the model is told about; the
+    // grant is re-checked here because this route is the actual boundary.
+    const grants = await listConnectorGrants();
+    if (
+      !isConnectorToolGranted(grants, callerModelId(body.model_id), body.connector_id, body.tool)
+    ) {
+      throw new ConnectorToolDeniedError(
+        `Model is not granted "${body.tool}" on connector "${body.connector_id}"`,
+      );
+    }
     const result = await callConnectorTool(body.connector_id, body.tool, body.args ?? {});
     return NextResponse.json({ ok: true, result });
   } catch (error) {

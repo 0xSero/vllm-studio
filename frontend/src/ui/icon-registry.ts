@@ -120,6 +120,7 @@ export {
   Server,
   ServerCog,
   Settings,
+  ShieldCheck,
   Slash,
   Smartphone,
   Sparkles,
