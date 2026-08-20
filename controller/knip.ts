@@ -1,5 +1,5 @@
 export default {
-  entry: ["src/main.ts", "src/**/*.test.ts"],
+  entry: ["src/main.ts"],
   project: ["src/**/*.ts"],
   ignore: [
     "bun.lockb",
