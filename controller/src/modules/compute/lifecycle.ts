@@ -111,9 +111,7 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
     Effect.gen(function* () {
       if (record.ref === null) return true;
       const launcher = launcherOf(record);
-      if (yield* launcher.owns(record.ref, record)) {
-        yield* launcher.stop(record.ref, record, STOP_GRACE_MS);
-      }
+      yield* launcher.stop(record.ref, record, STOP_GRACE_MS);
       return !(yield* launcher.owns(record.ref, record)) && !(yield* launcher.alive(record.ref, record));
     });
 
