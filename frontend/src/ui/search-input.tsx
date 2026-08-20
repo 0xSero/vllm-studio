@@ -37,6 +37,7 @@ function SearchInput({
       />
       {value && (
         <button
+          type="button"
           onClick={handleClear}
           className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 transition-colors hover:bg-(--ui-hover)"
           aria-label="Clear search"

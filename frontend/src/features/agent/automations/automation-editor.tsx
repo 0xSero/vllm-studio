@@ -1,12 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { Button, FormField, Input, Select, Textarea } from "@/ui";
 import { Clock, Pause, Play, Plus, Trash2, X } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import type { Automation, AutomationSchedule } from "@shared/agent/automation";
 import type { AutomationModel } from "./automation-api";
+import { AutomationRunHistory } from "./automation-run-history";
+import { AutomationSessionPicker } from "./automation-session-picker";
 import {
   NEW_AUTOMATION_DRAFT,
   draftFromAutomation,
@@ -16,7 +17,7 @@ import {
   type AutomationDraft,
 } from "./automation-model";
 
-type EditorAction = "save" | "run" | "status" | "delete" | null;
+type EditorAction = "save" | "run" | "status" | "delete" | "clearRuns" | null;
 
 const EXAMPLES: Array<{
   label: string;
@@ -60,6 +61,7 @@ export function AutomationEditor({
   onRun,
   onToggleStatus,
   onDelete,
+  onClearRuns,
 }: {
   automation: Automation | null;
   creating: boolean;
@@ -73,6 +75,7 @@ export function AutomationEditor({
   onRun?: () => void;
   onToggleStatus?: () => void;
   onDelete?: () => void;
+  onClearRuns?: () => void;
 }) {
   const [draft, setDraft] = useState<AutomationDraft>(
     () => (automation ? draftFromAutomation(automation) : initialDraft) ?? NEW_AUTOMATION_DRAFT,
@@ -91,127 +94,161 @@ export function AutomationEditor({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-(--ui-bg)">
-      <EditorHeader
-        automation={automation}
-        creating={creating}
-        action={action}
-        busy={busy}
-        onClose={onClose}
-        onRun={onRun}
-        onToggleStatus={onToggleStatus}
-      />
-
+      {/* The form wraps the header so the primary action can sit up there and
+          still submit it. The header is the flex column's fixed row and the
+          fields scroll under it, which is what keeps Save reachable however
+          long the run history grows. */}
       <form
-        className="min-h-0 flex-1 overflow-y-auto"
+        className="flex min-h-0 flex-1 flex-col"
         onSubmit={(event) => {
           event.preventDefault();
           if (draftIsValid(draft) && !busy) onSave(draft);
         }}
       >
-        <div className="mx-auto w-full max-w-2xl space-y-5 px-5 py-5 sm:px-7">
-          {creating ? (
-            <ExamplePicker onSelect={(example) => setDraft(example)} draft={draft} />
-          ) : null}
+        <EditorHeader
+          automation={automation}
+          creating={creating}
+          action={action}
+          busy={busy}
+          canSave={draftIsValid(draft)}
+          onClose={onClose}
+          onRun={onRun}
+          onToggleStatus={onToggleStatus}
+        />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-2xl space-y-5 px-5 py-5 sm:px-7">
+            {creating ? (
+              <ExamplePicker onSelect={(example) => setDraft(example)} draft={draft} />
+            ) : null}
 
-          <div className="space-y-4">
-            <FormField label="Name" required>
-              <Input
-                value={draft.name}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, name: event.target.value }))
-                }
-                placeholder="Daily brief"
-                autoFocus={creating}
-              />
-            </FormField>
-            <FormField
-              label="Task"
-              required
-              description="Local Studio sends this instruction to the selected model on every run."
-            >
-              <Textarea
-                value={draft.prompt}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, prompt: event.target.value }))
-                }
-                placeholder="What should the agent do?"
-                rows={8}
-                className="resize-y"
-              />
-            </FormField>
-          </div>
-
-          <div className="border-t border-(--ui-separator) pt-5">
-            <div className="mb-3 flex items-center gap-2">
-              <Clock className="h-4 w-4 text-(--ui-muted)" />
-              <div>
-                <h3 className="text-[length:var(--fs-base)] font-medium text-(--ui-fg)">
-                  Schedule
-                </h3>
-                <p className="text-[length:var(--fs-xs)] text-(--ui-muted)">
-                  {scheduleLabel(draft.schedule)}
-                </p>
-              </div>
-            </div>
-            <ScheduleEditor schedule={draft.schedule} onChange={updateSchedule} />
-          </div>
-
-          <div className="grid gap-4 border-t border-(--ui-separator) pt-5 sm:grid-cols-2">
-            <FormField label="Model" required>
-              <Select
-                value={draft.modelId}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, modelId: event.target.value }))
-                }
+            <div className="space-y-4">
+              <FormField label="Name" required>
+                <Input
+                  value={draft.name}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, name: event.target.value }))
+                  }
+                  placeholder="Daily brief"
+                  autoFocus={creating}
+                />
+              </FormField>
+              <FormField
+                label="Task"
+                required
+                description="Local Studio sends this instruction to the selected model on every run."
               >
-                {models.length === 0 ? <option value="">No models available</option> : null}
-                {models.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}
-                  </option>
-                ))}
-              </Select>
-            </FormField>
+                <Textarea
+                  value={draft.prompt}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, prompt: event.target.value }))
+                  }
+                  placeholder="What should the agent do?"
+                  rows={8}
+                  className="resize-y"
+                />
+              </FormField>
+            </div>
+
+            <div className="border-t border-(--ui-separator) pt-5">
+              <div className="mb-3 flex items-center gap-2">
+                <Clock className="h-4 w-4 text-(--ui-muted)" />
+                <div>
+                  <h3 className="text-[length:var(--fs-base)] font-medium text-(--ui-fg)">
+                    Schedule
+                  </h3>
+                  <p className="text-[length:var(--fs-xs)] text-(--ui-muted)">
+                    {scheduleLabel(draft.schedule)}
+                  </p>
+                </div>
+              </div>
+              <ScheduleEditor schedule={draft.schedule} onChange={updateSchedule} />
+            </div>
+
+            <div className="grid gap-4 border-t border-(--ui-separator) pt-5 sm:grid-cols-2">
+              <FormField label="Model" required>
+                <Select
+                  value={draft.modelId}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, modelId: event.target.value }))
+                  }
+                >
+                  {models.length === 0 ? <option value="">No models available</option> : null}
+                  {models.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+              <FormField
+                label="Working directory"
+                description="Optional. Leave empty to use the Local Studio default."
+              >
+                <Input
+                  value={draft.cwd}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, cwd: event.target.value }))
+                  }
+                  placeholder="/path/to/project"
+                />
+              </FormField>
+            </div>
+
             <FormField
-              label="Working directory"
-              description="Optional. Leave empty to use the Local Studio default."
+              label="Run in"
+              asGroup
+              description="A fresh session starts blank every time. Pick an existing chat to run the task inside that thread's context instead."
             >
-              <Input
-                value={draft.cwd}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, cwd: event.target.value }))
+              <AutomationSessionPicker
+                value={draft.targetSessionId}
+                onChange={(targetSessionId) =>
+                  setDraft((current) => ({ ...current, targetSessionId }))
                 }
-                placeholder="/path/to/project"
               />
             </FormField>
+
+            {!creating && automation?.runs.length ? (
+              <AutomationRunHistory
+                automation={automation}
+                clearing={action === "clearRuns"}
+                busy={busy}
+                onClearRuns={onClearRuns}
+              />
+            ) : null}
+
+            {error ? <EditorError error={error} /> : null}
+
+            {!creating && automation ? (
+              <DeleteRow
+                action={action}
+                busy={busy}
+                confirmDelete={confirmDelete}
+                onConfirmDelete={() => setConfirmDelete(true)}
+                onCancelDelete={() => setConfirmDelete(false)}
+                onDelete={onDelete}
+              />
+            ) : null}
           </div>
-
-          {!creating && automation?.runs.length ? <RunHistory automation={automation} /> : null}
-
-          {error ? <EditorError error={error} /> : null}
-
-          <EditorFooter
-            automation={automation}
-            creating={creating}
-            action={action}
-            busy={busy}
-            canSave={draftIsValid(draft)}
-            confirmDelete={confirmDelete}
-            onConfirmDelete={() => setConfirmDelete(true)}
-            onCancelDelete={() => setConfirmDelete(false)}
-            onDelete={onDelete}
-          />
         </div>
       </form>
     </section>
   );
 }
 
+/**
+ * Name, state and every non-destructive action, pinned above the scroll area.
+ *
+ * Saving used to be the last thing on the page, below a run history that grows
+ * to twenty entries — so committing an edit meant scrolling past every run.
+ * Delete deliberately stays down at the bottom of the form: it is the one
+ * action that should not sit a few pixels from Save.
+ */
 function EditorHeader({
   automation,
   creating,
   action,
   busy,
+  canSave,
   onClose,
   onRun,
   onToggleStatus,
@@ -220,6 +257,7 @@ function EditorHeader({
   creating: boolean;
   action: EditorAction;
   busy: boolean;
+  canSave: boolean;
   onClose: () => void;
   onRun?: () => void;
   onToggleStatus?: () => void;
@@ -230,7 +268,7 @@ function EditorHeader({
       ? "Paused"
       : `Next run ${relativeTime(automation?.nextRunAt ?? null)}`;
   return (
-    <header className="flex min-h-14 shrink-0 items-center gap-2 border-b border-(--ui-border) px-4">
+    <header className="flex min-h-14 shrink-0 items-center gap-2 border-b border-(--ui-border) px-4 py-2">
       <div className="min-w-0 flex-1">
         <h2 className="truncate text-[length:var(--fs-lg)] font-medium text-(--ui-fg)">
           {creating ? "New scheduled task" : automation?.name}
@@ -240,16 +278,21 @@ function EditorHeader({
       {!creating && automation ? (
         <>
           <Button
+            type="button"
             variant="secondary"
             size="sm"
             loading={action === "run"}
             disabled={busy}
             onClick={onRun}
             icon={<Play className="h-3.5 w-3.5" />}
+            aria-label="Run now"
           >
-            Run now
+            {/* Labels step aside on a phone; the icons carry the meaning and the
+                primary action keeps its width. */}
+            <span className="hidden sm:inline">Run now</span>
           </Button>
           <Button
+            type="button"
             variant="secondary"
             size="sm"
             loading={action === "status"}
@@ -262,12 +305,25 @@ function EditorHeader({
                 <Pause className="h-3.5 w-3.5" />
               )
             }
+            aria-label={automation.status === "paused" ? "Resume" : "Pause"}
           >
-            {automation.status === "paused" ? "Resume" : "Pause"}
+            <span className="hidden sm:inline">
+              {automation.status === "paused" ? "Resume" : "Pause"}
+            </span>
           </Button>
         </>
       ) : null}
-      <Button variant="icon" size="sm" onClick={onClose} aria-label="Close automation details">
+      <Button type="submit" size="sm" loading={action === "save"} disabled={!canSave || busy}>
+        {creating ? "Create" : "Save"}
+        <span className="hidden sm:inline">{creating ? " automation" : " changes"}</span>
+      </Button>
+      <Button
+        type="button"
+        variant="icon"
+        size="sm"
+        onClick={onClose}
+        aria-label="Close automation details"
+      >
         <X className="h-4 w-4" />
       </Button>
     </header>
@@ -303,75 +359,6 @@ function ExamplePicker({
   );
 }
 
-function RunHistory({ automation }: { automation: Automation }) {
-  return (
-    <div className="border-t border-(--ui-separator) pt-5">
-      <div className="mb-2 flex items-baseline justify-between gap-3">
-        <h3 className="text-[length:var(--fs-base)] font-medium text-(--ui-fg)">Run history</h3>
-        <span className="text-[length:var(--fs-xs)] text-(--ui-muted)">
-          {automation.runs.length} {automation.runs.length === 1 ? "run" : "runs"}
-        </span>
-      </div>
-      <div className="divide-y divide-(--ui-separator) border-y border-(--ui-separator)">
-        {automation.runs.map((run, index) => {
-          // The session id is what opens the thread; the project only preselects
-          // the sidebar. Requiring both hid every run of an automation whose cwd
-          // is not a registered project — the scheduler resolves projectId by
-          // matching cwd against the project list, so that is most of them — and
-          // the UI claimed "Transcript unavailable" for threads that existed.
-          const transcriptHref = run.piSessionId
-            ? `/agent?${run.projectId ? `project=${encodeURIComponent(run.projectId)}&` : ""}session=${encodeURIComponent(run.piSessionId)}&replace=1`
-            : null;
-          return (
-            <div
-              key={`${run.at}-${run.piSessionId ?? index}`}
-              className="px-1 py-3 transition-colors hover:bg-(--ui-hover)/25"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p
-                    className={
-                      run.outcome === "error"
-                        ? "text-[length:var(--fs-sm)] font-medium text-(--ui-danger)"
-                        : "text-[length:var(--fs-sm)] font-medium text-(--ui-fg)"
-                    }
-                  >
-                    {run.outcome === "error" ? "Failed" : "Completed"} {relativeTime(run.at)}
-                  </p>
-                  <p className="mt-0.5 text-[length:var(--fs-xs)] text-(--ui-muted)">
-                    {new Date(run.at).toLocaleString()}
-                  </p>
-                </div>
-                {transcriptHref ? (
-                  <Link
-                    href={transcriptHref}
-                    className="shrink-0 text-[length:var(--fs-sm)] text-(--link) hover:underline"
-                  >
-                    Open run
-                  </Link>
-                ) : (
-                  <span className="shrink-0 text-[length:var(--fs-xs)] text-(--ui-muted)">
-                    Transcript unavailable
-                  </span>
-                )}
-              </div>
-              {run.error ? (
-                <p className="mt-2 whitespace-pre-wrap text-[length:var(--fs-sm)] leading-5 text-(--ui-danger)">
-                  {run.error}
-                </p>
-              ) : run.summary ? (
-                <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-[length:var(--fs-sm)] leading-5 text-(--ui-muted)">
-                  {run.summary}
-                </p>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function EditorError({ error }: { error: string }) {
   return (
     <div
@@ -383,63 +370,62 @@ function EditorError({ error }: { error: string }) {
   );
 }
 
-function EditorFooter({
-  automation,
-  creating,
+/**
+ * Delete, kept at the far end of the form and behind a confirm — deliberately
+ * nowhere near the header where Save now lives.
+ */
+function DeleteRow({
   action,
   busy,
-  canSave,
   confirmDelete,
   onConfirmDelete,
   onCancelDelete,
   onDelete,
 }: {
-  automation: Automation | null;
-  creating: boolean;
   action: EditorAction;
   busy: boolean;
-  canSave: boolean;
   confirmDelete: boolean;
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
   onDelete?: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-t border-(--ui-border) pt-6">
-      {!creating && automation ? (
-        confirmDelete ? (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="danger"
-              size="sm"
-              loading={action === "delete"}
-              disabled={busy}
-              onClick={onDelete}
-            >
-              Confirm delete
-            </Button>
-            <Button variant="ghost" size="sm" disabled={busy} onClick={onCancelDelete}>
-              Cancel
-            </Button>
-          </div>
-        ) : (
+    <div className="flex items-center gap-2 border-t border-(--ui-border) pt-6">
+      {confirmDelete ? (
+        <>
           <Button
+            type="button"
+            variant="danger"
+            size="sm"
+            loading={action === "delete"}
+            disabled={busy}
+            onClick={onDelete}
+          >
+            Delete this automation
+          </Button>
+          <Button
+            type="button"
             variant="ghost"
             size="sm"
             disabled={busy}
-            onClick={onConfirmDelete}
-            icon={<Trash2 className="h-3.5 w-3.5" />}
-            className="text-(--ui-danger)"
+            onClick={onCancelDelete}
           >
-            Delete
+            Cancel
           </Button>
-        )
+        </>
       ) : (
-        <span />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          onClick={onConfirmDelete}
+          icon={<Trash2 className="h-3.5 w-3.5" />}
+          className="text-(--ui-danger)"
+        >
+          Delete automation
+        </Button>
       )}
-      <Button type="submit" loading={action === "save"} disabled={!canSave || busy}>
-        {creating ? "Create automation" : "Save changes"}
-      </Button>
     </div>
   );
 }

@@ -7,6 +7,8 @@ export type AutomationDraft = {
   prompt: string;
   modelId: string;
   cwd: string;
+  /** Session every run continues; null starts a fresh one each time. */
+  targetSessionId: string | null;
   schedule: AutomationSchedule;
 };
 
@@ -15,6 +17,7 @@ export const NEW_AUTOMATION_DRAFT: AutomationDraft = {
   prompt: "",
   modelId: "",
   cwd: "",
+  targetSessionId: null,
   schedule: { kind: "daily", time: "08:00" },
 };
 
@@ -26,6 +29,7 @@ export function draftFromAutomation(automation: Automation): AutomationDraft {
     prompt: automation.prompt,
     modelId: automation.modelId,
     cwd: automation.cwd,
+    targetSessionId: automation.targetSessionId ?? null,
     schedule: automation.schedule,
   };
 }

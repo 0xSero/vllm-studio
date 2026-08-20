@@ -67,6 +67,12 @@ function normalizeRun(value: unknown): AutomationRun | null {
   };
 }
 
+/** A stored session id, or null for "start a fresh session every run". Records
+ *  written before automations could target a session have no field at all. */
+function normalizeTargetSessionId(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 function normalizeAutomation(value: unknown): Automation {
   const record = isRecord(value) ? value : {};
   const now = new Date().toISOString();
@@ -86,6 +92,7 @@ function normalizeAutomation(value: unknown): Automation {
     prompt: typeof record.prompt === "string" ? record.prompt : "",
     modelId: typeof record.modelId === "string" ? record.modelId : "",
     cwd: typeof record.cwd === "string" ? record.cwd : "",
+    targetSessionId: normalizeTargetSessionId(record.targetSessionId),
     schedule: normalizeSchedule(record.schedule),
     status: record.status === "paused" ? "paused" : "active",
     nextRunAt: typeof record.nextRunAt === "string" ? record.nextRunAt : null,
@@ -162,6 +169,7 @@ export async function createAutomation(input: {
   prompt: string;
   modelId: string;
   cwd: string;
+  targetSessionId?: string | null;
   schedule: unknown;
 }): Promise<Automation> {
   const id = `auto-${randomUUID().slice(0, 8)}`;
@@ -174,6 +182,7 @@ export async function createAutomation(input: {
       prompt: input.prompt,
       modelId: input.modelId,
       cwd: input.cwd,
+      targetSessionId: normalizeTargetSessionId(input.targetSessionId),
       schedule,
       status: "active",
       nextRunAt: nextRunAt(schedule, new Date()).toISOString(),
@@ -188,7 +197,12 @@ export async function createAutomation(input: {
 
 export async function patchAutomation(
   id: string,
-  patch: Partial<Pick<Automation, "name" | "prompt" | "modelId" | "cwd" | "status" | "unread">> & {
+  patch: Partial<
+    Pick<
+      Automation,
+      "name" | "prompt" | "modelId" | "cwd" | "status" | "unread" | "targetSessionId"
+    >
+  > & {
     schedule?: unknown;
     nextRunAt?: string | null;
     lastRun?: AutomationRun | null;

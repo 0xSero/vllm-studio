@@ -34,6 +34,12 @@ export const AutomationSchema = Schema.Struct({
   prompt: Schema.String,
   modelId: Schema.String,
   cwd: Schema.String,
+  /**
+   * The pi session every run should continue, so the automation works inside a
+   * thread the user already has instead of a blank one. Null (or absent, on
+   * records written before this field existed) means each run starts fresh.
+   */
+  targetSessionId: Schema.optional(Schema.NullOr(Schema.String)),
   schedule: AutomationScheduleSchema,
   status: Schema.Literals(["active", "paused"]),
   nextRunAt: Schema.NullOr(Schema.String),

@@ -243,11 +243,20 @@ type AutomationRecord = {
   prompt?: unknown;
   modelId?: unknown;
   cwd?: unknown;
+  targetSessionId?: unknown;
   unread?: unknown;
   lastRun?: unknown;
   runs?: unknown;
   createdAt?: unknown;
 };
+
+const SESSION_DOC =
+  "By default every run happens in a brand new session that remembers nothing. Pass sessionId " +
+  "to run inside an existing chat instead: the run continues that thread, sees its history and " +
+  "appends to it. A session id is the id of a pi session — read_automation prints the one each " +
+  "past run used, and the user can read it off a chat in the app. Pass an empty string to go " +
+  "back to a fresh session per run. A target that has been deleted does not fail the run: it " +
+  "falls back to a fresh session and says so in that run's summary.";
 
 function text(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim() ? value : fallback;
@@ -286,12 +295,14 @@ function describeRunOutcome(run: RunRecord | null): string {
 }
 
 function formatAutomationLine(record: AutomationRecord): string {
+  const target = text(record.targetSessionId);
   const parts = [
     describeScheduleLoose(record.schedule),
     statusOf(record),
     text(record.nextRunAt) ? `next ${record.nextRunAt}` : "no next run scheduled",
     describeRunOutcome(asRun(record.lastRun)),
   ];
+  if (target) parts.push(`runs in session ${target}`);
   if (record.unread === true) parts.push("result not yet opened in the app");
   return `- ${text(record.name, "Untitled")} [${text(record.id, "(no id)")}] — ${parts.join(" · ")}`;
 }
@@ -329,6 +340,7 @@ function formatAutomationDetail(record: AutomationRecord, includeRuns: boolean):
     `next run: ${text(record.nextRunAt, "not scheduled")}`,
     `model: ${text(record.modelId, "(app default)")}`,
     `directory: ${text(record.cwd, "(app default)")}`,
+    `runs in: ${text(record.targetSessionId) ? `session ${record.targetSessionId as string}` : "a fresh session each time"}`,
     `created: ${text(record.createdAt, "unknown")}`,
     `prompt:\n${text(record.prompt, "(empty)")}`,
     ...formatLastRunBlock(asRun(record.lastRun)),
@@ -418,8 +430,8 @@ function registerReadTools(pi: ExtensionAPI): void {
     name: "read_automation",
     label: "Read automation",
     description:
-      "Read one automation in full: the exact prompt it runs, its model, working directory, " +
-      "schedule, next run time, and its run history — the last 20 runs with when each ran, " +
+      "Read one automation in full: the exact prompt it runs, its model, working directory, the " +
+      "session it runs in, schedule, next run time, and its run history — the last 20 runs with when each ran, " +
       "whether it succeeded, and what the agent reported. Use this to check whether a scheduled " +
       "job is actually doing its work (a run can succeed on schedule and still report a " +
       "failure), and to read the current prompt before editing it with update_automation.",
@@ -451,11 +463,13 @@ function registerWriteTools(pi: ExtensionAPI): void {
     name: "schedule_automation",
     label: "Schedule automation",
     description:
-      "Create a scheduled automation: a saved prompt the app re-runs on a schedule, each time in " +
-      "its own fresh session that cannot see this conversation — so write a prompt that stands " +
-      "on its own. Use it for recurring work the user wants to keep happening (a morning digest, " +
-      "an hourly check on a service). " +
+      "Create a scheduled automation: a saved prompt the app re-runs on a schedule, by default " +
+      "each time in its own fresh session that cannot see this conversation — so write a prompt " +
+      "that stands on its own. Use it for recurring work the user wants to keep happening (a " +
+      "morning digest, an hourly check on a service). " +
       SCHEDULE_DOC +
+      " " +
+      SESSION_DOC +
       " The automation runs with the current session's model and project directory unless you " +
       "pass others. Returns the new automation's id.",
     parameters: Type.Object({
@@ -468,6 +482,11 @@ function registerWriteTools(pi: ExtensionAPI): void {
       cwd: Type.Optional(
         Type.String({ description: "Working directory; defaults to the current project." }),
       ),
+      sessionId: Type.Optional(
+        Type.String({
+          description: "Existing pi session to run inside; omit for a fresh session each run.",
+        }),
+      ),
     }),
     async execute(_id, params, signal) {
       const args = (params ?? {}) as {
@@ -476,6 +495,7 @@ function registerWriteTools(pi: ExtensionAPI): void {
         name?: string;
         model?: string;
         cwd?: string;
+        sessionId?: string;
       };
       const prompt = typeof args.prompt === "string" ? args.prompt.trim() : "";
       if (!prompt) return failure("schedule_automation needs a non-empty prompt.");
@@ -496,6 +516,7 @@ function registerWriteTools(pi: ExtensionAPI): void {
               prompt,
               modelId,
               cwd: resolveCwd(args.cwd),
+              targetSessionId: typeof args.sessionId === "string" ? args.sessionId.trim() : null,
               schedule: scheduleResult.schedule,
             }),
           },
@@ -504,11 +525,14 @@ function registerWriteTools(pi: ExtensionAPI): void {
         if (!ok) return failure(`Failed to create automation: ${errorText(body, status)}`);
         const automation = patchedAutomation(body);
         const id = text(automation.id, "(unknown)");
+        const target = text(automation.targetSessionId);
         return textResult(
           `Created automation "${text(automation.name, args.name ?? "Untitled")}" [${id}] — ` +
-            `${describeSchedule(scheduleResult.schedule)}. Next run ${text(automation.nextRunAt, "pending")}. ` +
+            `${describeSchedule(scheduleResult.schedule)}. ` +
+            `${target ? `Runs inside session ${target}. ` : "Each run starts a fresh session. "}` +
+            `Next run ${text(automation.nextRunAt, "pending")}. ` +
             `Use run_automation_now to test it without waiting.`,
-          { id, schedule: scheduleResult.schedule, modelId },
+          { id, schedule: scheduleResult.schedule, modelId, targetSessionId: target || null },
         );
       });
     },
@@ -519,11 +543,13 @@ function registerWriteTools(pi: ExtensionAPI): void {
     label: "Update automation",
     description:
       "Change an existing automation in place: rename it, rewrite the prompt it runs, move it to " +
-      "a different schedule, model or working directory. Only the fields you pass change; the " +
-      "rest are left exactly as they are. Always prefer this over deleting and re-creating — a " +
-      "new automation loses the run history the user relies on. Read the current values with " +
-      "read_automation first. " +
-      SCHEDULE_DOC,
+      "a different schedule, model, working directory or session. Only the fields you pass " +
+      "change; the rest are left exactly as they are. Always prefer this over deleting and " +
+      "re-creating — a new automation loses the run history the user relies on. Read the current " +
+      "values with read_automation first. " +
+      SCHEDULE_DOC +
+      " " +
+      SESSION_DOC,
     parameters: Type.Object({
       id: Type.String({ description: "The automation id from list_automations." }),
       name: Type.Optional(Type.String({ description: "New display name." })),
@@ -531,6 +557,12 @@ function registerWriteTools(pi: ExtensionAPI): void {
       schedule: Type.Optional(scheduleParameter),
       model: Type.Optional(Type.String({ description: "New model id." })),
       cwd: Type.Optional(Type.String({ description: "New working directory." })),
+      sessionId: Type.Optional(
+        Type.String({
+          description:
+            "Pi session every run should continue; empty string goes back to a fresh session.",
+        }),
+      ),
     }),
     async execute(_id, params, signal) {
       const parsed = requireId(params, "update_automation");
@@ -541,12 +573,16 @@ function registerWriteTools(pi: ExtensionAPI): void {
         schedule?: ScheduleArg;
         model?: unknown;
         cwd?: unknown;
+        sessionId?: unknown;
       };
       const patch: Record<string, unknown> = {};
       if (typeof args.name === "string") patch.name = args.name;
       if (typeof args.prompt === "string") patch.prompt = args.prompt;
       if (typeof args.model === "string" && args.model.trim()) patch.modelId = args.model.trim();
       if (typeof args.cwd === "string") patch.cwd = args.cwd.trim();
+      // An empty string is a real instruction here — "stop running in that
+      // session" — so it is kept rather than filtered out like a blank cwd.
+      if (typeof args.sessionId === "string") patch.targetSessionId = args.sessionId.trim() || null;
       if (args.schedule !== undefined) {
         // The store falls back to "daily at 08:00" for anything it cannot read,
         // so a malformed schedule must fail here rather than quietly move the
@@ -557,7 +593,7 @@ function registerWriteTools(pi: ExtensionAPI): void {
       }
       if (Object.keys(patch).length === 0) {
         return failure(
-          "update_automation needs at least one field to change (name, prompt, schedule, model or cwd).",
+          "update_automation needs at least one field to change (name, prompt, schedule, model, cwd or sessionId).",
         );
       }
       return guarded("update automation", async () => {
@@ -632,9 +668,10 @@ function registerWriteTools(pi: ExtensionAPI): void {
     label: "Run automation now",
     description:
       "Run an automation immediately instead of waiting for its schedule, and report how it " +
-      "went. The run happens in its own fresh session and this tool waits for it to finish, so " +
-      "it can take minutes. The schedule is kept, but the next scheduled run is re-timed from " +
-      "now. Use it to prove an automation you just created or edited actually works.",
+      "went. The run happens wherever the automation is configured to run — a fresh session, or " +
+      "the session it is attached to — and this tool waits for it to finish, so it can take " +
+      "minutes. The schedule is kept, but the next scheduled run is re-timed from now. Use it to " +
+      "prove an automation you just created or edited actually works.",
     parameters: Type.Object({
       id: Type.String({ description: "The automation id from list_automations." }),
     }),

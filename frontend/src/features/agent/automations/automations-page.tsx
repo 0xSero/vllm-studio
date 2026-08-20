@@ -8,6 +8,7 @@ import { Clock, Plus } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import type { Automation } from "@shared/agent/automation";
 import {
+  clearAutomationRuns,
   createAutomation,
   deleteAutomation,
   listAutomationModels,
@@ -20,7 +21,7 @@ import { AutomationEditor } from "./automation-editor";
 import { AutomationList } from "./automation-list";
 import type { AutomationDraft, AutomationFilter } from "./automation-model";
 
-type EditorAction = "save" | "run" | "status" | "delete" | null;
+type EditorAction = "save" | "run" | "status" | "delete" | "clearRuns" | null;
 
 export default function AutomationsPage() {
   const router = useRouter();
@@ -147,6 +148,16 @@ export default function AutomationsPage() {
     );
   }, [perform, selected]);
 
+  const clearRuns = useCallback(async () => {
+    if (!selected) return;
+    const updated = await perform("clearRuns", clearAutomationRuns(selected.id));
+    if (!updated) return;
+    setAutomations(
+      (current) =>
+        current?.map((automation) => (automation.id === updated.id ? updated : automation)) ?? [],
+    );
+  }, [perform, selected]);
+
   const remove = useCallback(async () => {
     if (!selected) return;
     const removed = await perform("delete", deleteAutomation(selected.id));
@@ -199,6 +210,7 @@ export default function AutomationsPage() {
             onRun={() => void run()}
             onToggleStatus={() => void toggleStatus()}
             onDelete={() => void remove()}
+            onClearRuns={() => void clearRuns()}
           />
         )
       ) : (
