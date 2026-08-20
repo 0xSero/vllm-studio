@@ -28,6 +28,7 @@ import { piResourceDiagnostics, piRuntimeManager } from "../pi-runtime";
 import { isAgentSettledEvent } from "../pi-runtime-state";
 import type { LoggedPiEvent, PiAgentSession, PiAgentStatus } from "../pi-runtime-types";
 import { listSessions } from "../sessions-store";
+import { sessionListChangedStream } from "../session-list-changed";
 import { errorMessage, jsonError } from "./helpers";
 import {
   initialRuntimeStatusPhase,
@@ -536,6 +537,20 @@ export function handleRuntimeEvents(request: Request): Response {
     },
   });
 
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
+// ─── GET /api/agent/session-list-changed ──────────────────────────────────
+
+export function handleSessionListChanged(request: Request): Response {
+  const stream = sessionListChangedStream(request.signal);
   return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",

@@ -1,4 +1,7 @@
-import { consumeAgentSessionNavTitle } from "@/features/agent/ui/projects-nav/helpers";
+import {
+  consumeAgentSessionNavTitle,
+  settleNewChatNavigation,
+} from "@/features/agent/ui/projects-nav/helpers";
 import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
 import type { Project } from "@/features/agent/projects/types";
@@ -131,6 +134,7 @@ function consumeOneShotNavParams(projectId: string | null, sessionId: string | n
   if (typeof window === "undefined") return;
   const href = settledAgentNavigationHref(window.location.href, projectId, sessionId);
   if (href !== window.location.href) window.history.replaceState(window.history.state, "", href);
+  settleNewChatNavigation();
 }
 
 export function useAgentWorkspaceNavigationEffects({

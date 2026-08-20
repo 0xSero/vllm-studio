@@ -48,10 +48,47 @@ declare global {
     | undefined;
 }
 
-async function resolveReaderHost(hostname: string): Promise<ResolvedHostAddress[]> {
+const abortError = (signal: AbortSignal): Error =>
+  new Error("Browser fetch aborted", { cause: signal.reason });
+
+const assertNotAborted = (signal?: AbortSignal): void => {
+  if (signal?.aborted) throw abortError(signal);
+};
+
+// Detach from a pending promise as soon as the caller aborts: the panel or
+// tool call that asked for the page is gone, so stop holding its socket and
+// buffers instead of riding the fetch to completion.
+const awaitWithSignal = <A>(promise: Promise<A>, signal?: AbortSignal): Promise<A> => {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(abortError(signal));
+  return new Promise<A>((resolve, rejectPromise) => {
+    const onAbort = () => rejectPromise(abortError(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) rejectPromise(abortError(signal));
+        else resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        rejectPromise(signal.aborted ? abortError(signal) : error);
+      },
+    );
+  });
+};
+
+async function resolveReaderHost(
+  hostname: string,
+  signal?: AbortSignal,
+): Promise<ResolvedHostAddress[]> {
+  assertNotAborted(signal);
   const testResolver = globalThis.__LOCAL_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST;
-  if (testResolver) return (await testResolver(hostname)).map(normalizeResolvedAddress);
-  const results = await lookup(hostname, { all: true, verbatim: true });
+  if (testResolver) {
+    const inputs = await awaitWithSignal(testResolver(hostname), signal);
+    return inputs.map(normalizeResolvedAddress);
+  }
+  const results = await awaitWithSignal(lookup(hostname, { all: true, verbatim: true }), signal);
   return results.map((result) => ({
     address: result.address,
     family: result.family === 6 ? 6 : 4,
@@ -59,24 +96,45 @@ async function resolveReaderHost(hostname: string): Promise<ResolvedHostAddress[
 }
 
 function decodeEntities(value: string): string {
+  // &amp; decodes LAST: decoding it first turns "&amp;lt;" into "&lt;" and a
+  // second replace then invents a "<" the source never contained.
   return value
-    .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ");
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&");
+}
+
+// Repeat a removal until the input stops changing: one pass can be defeated
+// by nesting the pattern inside itself (<scr<script>ipt>), and this text is
+// what the model reads.
+function replaceUntilStable(input: string, pattern: RegExp, replacement: string): string {
+  let previous = "";
+  let current = input;
+  while (previous !== current) {
+    previous = current;
+    current = current.replace(pattern, replacement);
+  }
+  return current;
+}
+
+function stripTags(input: string): string {
+  return replaceUntilStable(input, /<[^>]*>/g, "");
 }
 
 // Lightweight HTML → readable text. We intentionally avoid pulling in
 // readability/cheerio; the goal is "good enough for the model to read".
 function htmlToReadable(html: string, baseUrl: string): { title: string; text: string } {
-  const noScripts = html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, "")
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
-    .replace(/<svg[\s\S]*?<\/svg>/gi, "");
+  let noScripts = html;
+  for (const tag of ["script", "style", "noscript", "iframe", "svg"]) {
+    noScripts = replaceUntilStable(
+      noScripts,
+      new RegExp(`<${tag}\\b[\\s\\S]*?</${tag}\\s*>`, "gi"),
+      "",
+    );
+  }
   const titleMatch = noScripts.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   const title = decodeEntities((titleMatch?.[1] ?? "").trim()) || baseUrl;
   const bodyMatch = noScripts.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
@@ -84,7 +142,7 @@ function htmlToReadable(html: string, baseUrl: string): { title: string; text: s
   const withLinks = body.replace(
     /<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
     (_match, href: string, label: string) => {
-      const text = decodeEntities(label.replace(/<[^>]+>/g, "").trim());
+      const text = decodeEntities(stripTags(label).trim());
       const resolved = (() => {
         try {
           return new URL(href, baseUrl).toString();
@@ -98,7 +156,7 @@ function htmlToReadable(html: string, baseUrl: string): { title: string; text: s
   const blocks = withLinks
     .replace(/<\/(p|h[1-6]|li|tr|div|article|section|header|footer)>/gi, "\n\n")
     .replace(/<br\s*\/?>(?!\s*<)/gi, "\n");
-  const stripped = blocks.replace(/<[^>]+>/g, "");
+  const stripped = stripTags(blocks);
   const text = decodeEntities(stripped)
     .split(/\n+/)
     .map((line) => line.trim())
@@ -127,16 +185,21 @@ function cleanMarkdown(markdown: string): string {
     .trim();
 }
 
-async function fetchBoundedUrl(url: string, redirects = 0): Promise<BoundedResponse> {
-  const addresses = await publicResolvedAddresses(url);
-  const response = await requestBoundedUrl(url, addresses[0]);
+async function fetchBoundedUrl(
+  url: string,
+  redirects = 0,
+  signal?: AbortSignal,
+): Promise<BoundedResponse> {
+  const addresses = await publicResolvedAddresses(url, signal);
+  const response = await requestBoundedUrl(url, addresses[0], signal);
+  assertNotAborted(signal);
   if (isRedirectStatus(response.status)) {
     if (redirects >= MAX_REDIRECTS) throw new Error("Too many redirects");
     if (!response.location) throw new Error("Redirect missing Location header");
     const nextUrl = new URL(response.location, url).toString();
     const safeRedirect = sanitizePublicBrowserUrl(nextUrl);
     if (!safeRedirect) throw new Error("Redirect rejected (must stay public http/https)");
-    return fetchBoundedUrl(safeRedirect, redirects + 1);
+    return fetchBoundedUrl(safeRedirect, redirects + 1, signal);
   }
   return response;
 }
@@ -145,9 +208,12 @@ function isRedirectStatus(status: number): boolean {
   return status >= 300 && status < 400;
 }
 
-async function publicResolvedAddresses(raw: string): Promise<ResolvedHostAddress[]> {
+async function publicResolvedAddresses(
+  raw: string,
+  signal?: AbortSignal,
+): Promise<ResolvedHostAddress[]> {
   const url = new URL(raw);
-  const addresses = await resolveReaderHost(url.hostname);
+  const addresses = await resolveReaderHost(url.hostname, signal);
   if (!addresses.length) throw new Error("Host resolved to no addresses");
   for (const address of addresses) {
     if (!sanitizePublicBrowserUrl(`${url.protocol}//${hostForAddress(address.address)}/`)) {
@@ -166,13 +232,18 @@ function normalizeResolvedAddress(input: ResolvedHostInput): ResolvedHostAddress
   return { address: input, family: input.includes(":") ? 6 : 4 };
 }
 
-function requestBoundedUrl(url: string, address: ResolvedHostAddress): Promise<BoundedResponse> {
+function requestBoundedUrl(
+  url: string,
+  address: ResolvedHostAddress,
+  signal?: AbortSignal,
+): Promise<BoundedResponse> {
   const testRequest = globalThis.__LOCAL_STUDIO_BROWSER_READER_REQUEST_FOR_TEST;
-  if (testRequest) return testRequest(url, address);
+  if (testRequest) return awaitWithSignal(testRequest(url, address), signal);
   const parsed = new URL(url);
   const request = parsed.protocol === "https:" ? httpsRequest : httpRequest;
   const options: RequestOptions = {
     headers: { Accept: ACCEPT, "User-Agent": USER_AGENT },
+    signal,
     lookup: ((
       _hostname: string,
       lookupOptions: unknown,
@@ -273,10 +344,12 @@ function renderReadable(response: BoundedResponse, fallbackUrl: string): ReaderR
 
 // Fetch a public URL and return reading-mode text. Throws on rejected/invalid
 // URLs or upstream failures; callers map errors to their own response shape.
-export async function fetchReadable(rawUrl: string): Promise<ReaderResult> {
+export async function fetchReadable(rawUrl: string, signal?: AbortSignal): Promise<ReaderResult> {
+  assertNotAborted(signal);
   const safe = sanitizePublicBrowserUrl(rawUrl);
   if (!safe) throw new Error("url rejected (must be public http/https)");
-  const response = await fetchBoundedUrl(safe);
+  const response = await fetchBoundedUrl(safe, 0, signal);
+  assertNotAborted(signal);
   if (!response.ok) throw new Error(`Upstream returned HTTP ${response.status}`);
   return renderReadable(response, safe);
 }

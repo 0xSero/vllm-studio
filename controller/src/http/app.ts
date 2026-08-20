@@ -16,6 +16,7 @@ import { registerStudioRoutes } from "../modules/studio/routes";
 import { documentRoute, mergeRoutes, type ControllerRouteApp } from "./route-registrar";
 import {
   createAuthMiddleware,
+  createKeylessRequestGuardMiddleware,
   createMutatingRateLimitMiddleware,
   createReadRateLimitMiddleware,
 } from "./security-middleware";
@@ -45,13 +46,22 @@ export const createApp = (
   const allowedCorsOrigins = context.config.cors_origins ?? [];
 
   app.use("*", controllerRuntimeMiddleware(runtime));
+  app.use("*", createKeylessRequestGuardMiddleware(context));
 
   app.use(
     "*",
     cors({
       origin: (origin) => (allowedCorsOrigins.includes(origin) ? origin : null),
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Authorization", "Content-Type", "X-API-Key"],
+      allowHeaders: [
+        "Authorization",
+        "Content-Type",
+        "X-API-Key",
+        // Protocol headers for the Responses and Anthropic Messages dialects.
+        "Anthropic-Version",
+        "Anthropic-Beta",
+        "OpenAI-Beta",
+      ],
       exposeHeaders: [
         "X-RateLimit-Limit",
         "X-RateLimit-Remaining",

@@ -88,6 +88,7 @@ export {
   GitFork,
   Globe,
   Globe2,
+  HardDrive,
   GraduationCap,
   Heart,
   Info,

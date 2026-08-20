@@ -22,7 +22,14 @@ export interface CatalogEntry {
   transport: "stdio";
   command: string;
   args: string[];
-  envFields: Array<{ key: string; label: string; placeholder?: string }>;
+  /**
+   * `secret` is declared here, not inferred from the key's name: it decides
+   * whether the stored value is masked on every read, so a credential whose
+   * name matches no heuristic ("GITHUB_PAT") stays protected and a plain
+   * setting whose name happens to ("SSH_HOST" is fine, "AUTH_MODE" was not)
+   * stays readable.
+   */
+  envFields: Array<{ key: string; label: string; placeholder?: string; secret?: boolean }>;
 }
 
 export const CONNECTOR_CATALOG: CatalogEntry[] = [
@@ -33,8 +40,10 @@ export const CONNECTOR_CATALOG: CatalogEntry[] = [
     description: "Repos, issues, pull requests, and code search.",
     transport: "stdio",
     command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-github"],
-    envFields: [{ key: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "Personal access token" }],
+    args: ["-y", "@modelcontextprotocol/server-github@2025.4.8"],
+    envFields: [
+      { key: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "Personal access token", secret: true },
+    ],
   },
   {
     id: "x",
@@ -43,12 +52,12 @@ export const CONNECTOR_CATALOG: CatalogEntry[] = [
     description: "Read and post with X API credentials.",
     transport: "stdio",
     command: "npx",
-    args: ["-y", "@enescinar/twitter-mcp"],
+    args: ["-y", "@enescinar/twitter-mcp@0.2.0"],
     envFields: [
-      { key: "API_KEY", label: "X API key" },
-      { key: "API_SECRET_KEY", label: "X API secret" },
-      { key: "ACCESS_TOKEN", label: "Access token" },
-      { key: "ACCESS_TOKEN_SECRET", label: "Access token secret" },
+      { key: "API_KEY", label: "X API key", secret: true },
+      { key: "API_SECRET_KEY", label: "X API secret", secret: true },
+      { key: "ACCESS_TOKEN", label: "Access token", secret: true },
+      { key: "ACCESS_TOKEN_SECRET", label: "Access token secret", secret: true },
     ],
   },
   {
@@ -59,7 +68,9 @@ export const CONNECTOR_CATALOG: CatalogEntry[] = [
     transport: "stdio",
     command: "node",
     args: [SSH_SERVER_PLACEHOLDER],
-    envFields: [{ key: "SSH_HOST", label: "SSH host", placeholder: "user@machine" }],
+    envFields: [
+      { key: "SSH_HOST", label: "SSH host", placeholder: "user@machine", secret: false },
+    ],
   },
 ];
 

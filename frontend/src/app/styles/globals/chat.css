@@ -204,6 +204,39 @@
   margin: 0.75rem 0;
 }
 
+.chat-markdown .chat-response-media {
+  display: flex;
+  width: min(100%, 44rem);
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.75rem 0;
+}
+
+.chat-markdown .chat-response-media img,
+.chat-markdown .chat-response-media video {
+  display: block;
+  width: 100%;
+  max-height: min(32rem, 70vh);
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--rad-md);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  object-fit: contain;
+}
+
+.chat-markdown .chat-response-media audio {
+  display: block;
+  width: min(100%, 36rem);
+}
+
+.chat-markdown .chat-response-media-caption {
+  display: block;
+  min-width: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  color: var(--dim);
+}
+
 /* Inline code: quiet — a whisper of background, tight padding, no chunky pill. */
 .chat-markdown :not(pre) > code {
   padding: 0.5px 4px;

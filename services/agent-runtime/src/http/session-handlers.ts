@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { AggregatedSession } from "../../../../shared/agent/session-summary";
+import { browserHost } from "../browser-host/browser-host";
 import { listProjectsFromStore, resolveAllowedWorkspace } from "../projects-store";
 import { listArchivedSessionMetadata, setSessionArchived } from "../session-metadata-store";
 import { listSessions, loadSession } from "../sessions-store";
@@ -176,6 +177,9 @@ export async function handleSessionPatch(request: Request, id: string): Promise<
       projectName: optionalString(body, "projectName"),
       sessionUpdatedAt: summary?.updatedAt ?? null,
     });
+    // Archiving is the session's end of life; its isolated browser context —
+    // cookies, storage, open pages — goes with it.
+    if (body.archived) void browserHost.closeSession(id).catch(() => undefined);
     return Response.json({ session: { id, ...archiveState } });
   } catch (error) {
     return jsonError(errorMessage(error, "Failed to update session archive"), 500);

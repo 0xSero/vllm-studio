@@ -22,7 +22,6 @@ const MIGRATED_USER_DATA_PATHS = [
   "WebStorage",
   "agent-session-metadata.json",
   "api-settings.json",
-  "chats.db",
   "computer-use",
   "controllers.json",
   "embedded-frontend.port",

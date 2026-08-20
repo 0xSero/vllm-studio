@@ -1,76 +1,144 @@
-import os from "node:os";
-import path from "node:path";
-import { chromium, type BrowserContext } from "playwright-core";
+import { chromium, type Browser, type BrowserContext } from "playwright-core";
 import { getGlobalSingleton } from "../instances";
 import {
   resolveBrowserEngine,
   tryResolveBrowserEngine,
   type ResolvedBrowserEngine,
 } from "./browser-engines";
+import { startPinningProxy, type PinningProxy } from "./pinning-proxy";
 
 const LAUNCH_TIMEOUT_MS = 15_000;
 
-const browserDataDirectory = (): string => path.join(os.tmpdir(), "local-studio-browser-profile");
-
+// One Chromium process, one BrowserContext per agent session. Contexts are
+// ephemeral (no user-data directory), which is what the browser tool has
+// always promised — "a throwaway profile: no saved logins, no cookies" — and
+// what keeps one session's cookies and storage out of another's.
+//
+// All traffic is forced through the pinning proxy (pinning-proxy.ts): the
+// bypass "<-loopback>" removes Chromium's implicit localhost bypass so even
+// loopback goes through policy, --disable-quic keeps HTTP/3 from skipping the
+// proxy, and the WebRTC policy flag stops pages opening raw UDP paths around
+// it. Service workers are blocked because they can outlive a page and issue
+// fetches with less oversight; nothing in the tool surface needs them.
 class PlaywrightManager {
-  private context: BrowserContext | null = null;
-  private launching: Promise<BrowserContext> | null = null;
+  private browser: Browser | null = null;
+  private launching: Promise<Browser> | null = null;
+  private proxy: PinningProxy | null = null;
+  private contexts = new Map<string, BrowserContext>();
+  private creating = new Map<string, Promise<BrowserContext>>();
   private active: ResolvedBrowserEngine | null = null;
+  // Bumped by stop(); a launch that completes under a stale generation closes
+  // its browser instead of adopting it, so an engine swap or shutdown during
+  // launch cannot leak a live Chromium the manager no longer tracks.
+  private generation = 0;
 
   isAvailable(): boolean {
     return tryResolveBrowserEngine() !== null;
   }
 
-  /** The engine backing the live context, or the one the next launch will use. */
+  /** The engine backing the live browser, or the one the next launch will use. */
   activeEngine(): ResolvedBrowserEngine | null {
     return this.active ?? tryResolveBrowserEngine();
   }
 
-  async ensure(): Promise<BrowserContext> {
-    if (this.context) return this.context;
+  /** The isolated BrowserContext for one session scope, launching on demand. */
+  context(scope: string): Promise<BrowserContext> {
+    const existing = this.contexts.get(scope);
+    if (existing && existing.browser()?.isConnected()) return Promise.resolve(existing);
+    if (existing) this.contexts.delete(scope);
+    // Concurrent verbs on one scope must share the same context, not race two
+    // into existence and leak the loser.
+    const pending = this.creating.get(scope);
+    if (pending) return pending;
+    const creation = this.createContext(scope).finally(() => {
+      if (this.creating.get(scope) === creation) this.creating.delete(scope);
+    });
+    this.creating.set(scope, creation);
+    return creation;
+  }
+
+  private async createContext(scope: string): Promise<BrowserContext> {
+    const generation = this.generation;
+    const browser = await this.ensureBrowser();
+    if (generation !== this.generation) throw new Error("Browser was stopped during launch");
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+      serviceWorkers: "block",
+    });
+    this.contexts.set(scope, context);
+    context.once("close", () => {
+      if (this.contexts.get(scope) === context) this.contexts.delete(scope);
+    });
+    return context;
+  }
+
+  /** Close one scope's context (cookies, storage, and pages go with it). */
+  async releaseContext(scope: string): Promise<void> {
+    const context = this.contexts.get(scope);
+    this.contexts.delete(scope);
+    if (context) await context.close().catch(() => undefined);
+  }
+
+  private ensureBrowser(): Promise<Browser> {
+    if (this.browser?.isConnected()) return Promise.resolve(this.browser);
     if (this.launching) return this.launching;
-    // Throws a message naming the exact problem (missing override path, no
-    // browser installed); browser-handlers surfaces it verbatim.
-    const engine = resolveBrowserEngine();
-    const launch = (userDataDir: string): Promise<BrowserContext> =>
-      chromium.launchPersistentContext(userDataDir, {
+    const generation = this.generation;
+    this.launching = (async () => {
+      // Throws a message naming the exact problem (missing override path, no
+      // browser installed); browser-handlers surfaces it verbatim.
+      const engine = resolveBrowserEngine();
+      const proxy = this.proxy ?? (await startPinningProxy("pane"));
+      if (generation !== this.generation) {
+        await proxy.close().catch(() => undefined);
+        throw new Error("Browser was stopped during launch");
+      }
+      this.proxy = proxy;
+      const browser = await chromium.launch({
         executablePath: engine.path,
         headless: true,
-        viewport: { width: 1280, height: 800 },
         timeout: LAUNCH_TIMEOUT_MS,
-        args: ["--no-first-run", "--no-default-browser-check", "--disable-dev-shm-usage"],
+        proxy: { server: proxy.url, bypass: "<-loopback>" },
+        args: [
+          "--no-first-run",
+          "--no-default-browser-check",
+          "--disable-dev-shm-usage",
+          "--disable-quic",
+          "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+        ],
       });
-    // Per-engine profile: Chrome, Brave, and Chromium do not share a user-data
-    // directory format cleanly, and swapping engines against one profile leaves
-    // the second launch fighting the first one's lock and preferences.
-    const dataDirectory = `${browserDataDirectory()}-${engine.id}`;
-    this.launching = launch(dataDirectory)
-      .catch((error: unknown) => {
-        if (!String(error).includes("ProcessSingleton")) throw error;
-        return launch(`${dataDirectory}-${process.pid}`);
-      })
-      .then((context) => {
-        this.context = context;
-        this.active = engine;
-        context.once("close", () => {
-          if (this.context === context) {
-            this.context = null;
-            this.active = null;
-          }
-        });
-        return context;
-      })
-      .finally(() => {
-        this.launching = null;
+      if (generation !== this.generation) {
+        await browser.close().catch(() => undefined);
+        throw new Error("Browser was stopped during launch");
+      }
+      this.browser = browser;
+      this.active = engine;
+      browser.once("disconnected", () => {
+        if (this.browser === browser) {
+          this.browser = null;
+          this.active = null;
+        }
       });
+      return browser;
+    })().finally(() => {
+      this.launching = null;
+    });
     return this.launching;
   }
 
   stop(): void {
-    const context = this.context;
-    this.context = null;
+    this.generation += 1;
+    const browser = this.browser;
+    const proxy = this.proxy;
+    const contexts = [...this.contexts.values()];
+    this.browser = null;
+    this.proxy = null;
     this.active = null;
-    if (context) void context.close().catch(() => undefined);
+    this.contexts.clear();
+    void (async () => {
+      for (const context of contexts) await context.close().catch(() => undefined);
+      if (browser) await browser.close().catch(() => undefined);
+      if (proxy) await proxy.close().catch(() => undefined);
+    })();
   }
 }
 

@@ -1,11 +1,15 @@
 "use client";
 
-import type {
-  ChangeEventHandler,
-  ClipboardEventHandler,
-  KeyboardEventHandler,
-  RefObject,
+import {
+  useContext,
+  useRef,
+  type ChangeEventHandler,
+  type ClipboardEventHandler,
+  type KeyboardEventHandler,
+  type RefObject,
 } from "react";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { ComposerFocusContext } from "@/features/agent/workspace/pane-context";
 
 export function AgentComposerTextArea({
   inputRef,
@@ -22,6 +26,14 @@ export function AgentComposerTextArea({
   onKeyDown: KeyboardEventHandler<HTMLTextAreaElement>;
   placeholder?: string;
 }) {
+  const { tabId, composerFocusIntent } = useContext(ComposerFocusContext);
+  const lastSeenNonceRef = useRef<number>(0);
+  const nonce = composerFocusIntent?.nonce ?? 0;
+  useMountSubscription(() => {
+    if (nonce === 0 || lastSeenNonceRef.current === nonce) return;
+    lastSeenNonceRef.current = nonce;
+    if (composerFocusIntent?.targetTabId === tabId) inputRef.current?.focus();
+  }, [nonce, composerFocusIntent, tabId, inputRef]);
   return (
     <textarea
       ref={inputRef}

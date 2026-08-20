@@ -4,9 +4,29 @@ import { runCommandAsyncEffect } from "../../../core/command";
 import { Effect } from "effect";
 
 const TORCH_PROBE_TIMEOUT_MS = 3_000;
+// Everything this probe reports lives in torch/version.py, a generated file of
+// plain constants. Reading it via find_spec + exec never runs torch's native
+// init — `import torch` can abort() the interpreter (duplicate libomp on
+// macOS), which no Python except-clause survives.
 const TORCH_PROBE_ARGS = [
   "-c",
-  "import json\ntry:\n import torch\n print(json.dumps({'torch_version': getattr(torch, '__version__', None), 'torch_cuda': getattr(getattr(torch, 'version', None), 'cuda', None), 'torch_hip': getattr(getattr(torch, 'version', None), 'hip', None)}))\nexcept Exception:\n print(json.dumps({'torch_version': None, 'torch_cuda': None, 'torch_hip': None}))",
+  [
+    "import json, os, importlib.util",
+    "info = {'torch_version': None, 'torch_cuda': None, 'torch_hip': None}",
+    "try:",
+    "  spec = importlib.util.find_spec('torch')",
+    "  origin = spec.origin if spec else None",
+    "  if origin:",
+    "    path = os.path.join(os.path.dirname(origin), 'version.py')",
+    "    ns = {}",
+    "    with open(path) as f:",
+    "      exec(compile(f.read(), path, 'exec'), ns)",
+    "    version = ns.get('__version__')",
+    "    info = {'torch_version': str(version) if version is not None else None, 'torch_cuda': ns.get('cuda'), 'torch_hip': ns.get('hip')}",
+    "except Exception:",
+    "  pass",
+    "print(json.dumps(info))",
+  ].join("\n"),
 ];
 
 const EMPTY_TORCH: RuntimeTorchBuildInfo = {

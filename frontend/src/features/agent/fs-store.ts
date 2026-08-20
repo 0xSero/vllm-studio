@@ -1,4 +1,13 @@
-import { existsSync, promises as fs, lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
+import {
+  constants,
+  existsSync,
+  promises as fs,
+  lstatSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
+import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
 import type { FsEntry } from "@/features/agent/filesystem-types";
 import { listProjectsFromStore } from "@local-studio/agent-runtime/projects-store";
@@ -238,26 +247,30 @@ export async function readFileSnippet(
   return { content: buf.toString("utf-8"), truncated: false, size: stats.size };
 }
 
-// Raw bytes for files the text reader refuses (images, PDFs). Same trust
-// boundary as readFileSnippet — resolved inside an allowed workspace root — but
-// returns the buffer unchanged so the caller can serve it with a real content
-// type instead of a "binary, cannot render" dead end.
-export async function readFileBytes(
+export async function openReadableFile(
   rootCwd: string,
   relPath: string,
-  maxBytes = 64 * 1024 * 1024,
-): Promise<{ bytes: Buffer; size: number; modifiedAt: Date }> {
+): Promise<{ file: FileHandle; size: number; modifiedAt: Date }> {
   const root = resolveWorkspaceRoot(rootCwd);
-  const target = ensureInside(root, path.resolve(root, relPath));
-  // Redundant with ensureInside, but stated in a form static analysis can
-  // verify: the realpath'd target sits under the realpath'd root.
-  if (target !== root && !target.startsWith(root + path.sep)) {
+  const resolved = path.resolve(root, relPath);
+  // The containment proof, stated the way static analysis can follow it:
+  // the resolved path relative to the root must not climb out or restart
+  // from an absolute location. ensureInside then applies the shared
+  // realpath-level guard on top.
+  const relative = path.relative(root, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new Error("Path escapes project root");
   }
-  const stats = await fs.stat(target);
-  if (!stats.isFile()) throw new Error("Not a file");
-  if (stats.size > maxBytes) throw new Error("File is too large to serve");
-  return { bytes: await fs.readFile(target), size: stats.size, modifiedAt: stats.mtime };
+  const target = ensureInside(root, resolved);
+  const file = await fs.open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const stats = await file.stat();
+    if (!stats.isFile()) throw new Error("Not a file");
+    return { file, size: stats.size, modifiedAt: stats.mtime };
+  } catch (error) {
+    await file.close();
+    throw error;
+  }
 }
 
 export async function writeFileContent(

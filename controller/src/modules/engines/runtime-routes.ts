@@ -1,3 +1,9 @@
+import {
+  RUNTIME_JOB_BACKENDS,
+  RUNTIME_JOB_TYPES,
+  type RuntimeJobBackend,
+  type RuntimeJobType,
+} from "@local-studio/contracts/system";
 import { Effect, Schema } from "effect";
 import { badRequest, notFound } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
@@ -21,13 +27,10 @@ import {
 } from "./runtimes/runtime-targets";
 import { getVllmConfigHelp, getVllmRuntimeInfo } from "./runtimes/vllm-runtime";
 
-const RUNTIME_JOB_BACKENDS = ["vllm", "sglang", "llamacpp", "mlx", "cuda", "rocm"] as const;
-const RUNTIME_JOB_TYPES = ["install", "update", "download", "inspect"] as const;
-
 type RuntimeJobBody = {
-  backend?: (typeof RUNTIME_JOB_BACKENDS)[number];
+  backend?: RuntimeJobBackend;
   targetId?: string;
-  type?: (typeof RUNTIME_JOB_TYPES)[number];
+  type?: RuntimeJobType;
   version?: string;
   preferBundled?: boolean;
 };
@@ -46,13 +49,15 @@ const parseRuntimeJobBody = (
   ctx: Parameters<typeof decodeJsonBody>[0],
 ): Effect.Effect<RuntimeJobBody, ReturnType<typeof badRequest>> =>
   decodeJsonBody(ctx, RuntimeJobBodySchema).pipe(
-    Effect.map((body): RuntimeJobBody => ({
-      ...(body.backend ? { backend: body.backend } : {}),
-      ...(body.targetId ? { targetId: body.targetId } : {}),
-      ...(body.type ? { type: body.type } : {}),
-      ...(body.version ? { version: body.version } : {}),
-      ...(body.prefer_bundled !== undefined ? { preferBundled: body.prefer_bundled } : {}),
-    })),
+    Effect.map(
+      (body): RuntimeJobBody => ({
+        ...(body.backend ? { backend: body.backend } : {}),
+        ...(body.targetId ? { targetId: body.targetId } : {}),
+        ...(body.type ? { type: body.type } : {}),
+        ...(body.version ? { version: body.version } : {}),
+        ...(body.prefer_bundled !== undefined ? { preferBundled: body.prefer_bundled } : {}),
+      }),
+    ),
   );
 
 export const registerRuntimeRoutes = defineRoutes((app, context) => {

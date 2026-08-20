@@ -99,6 +99,23 @@ function isLoopbackHost(host: string): boolean {
   return normalized === "::1";
 }
 
+export type BrowserHostClass = "public" | "loopback" | "blocked";
+
+/**
+ * Classify a hostname or IP literal under the embedded-browser policy. This is
+ * the single source of truth the sanitizers above are expressed against, and it
+ * is what the agent runtime's DNS-pinning layer re-applies to every RESOLVED
+ * address — so a public-looking name that resolves into a private range is
+ * caught by exactly the same rules that vetted the URL. Note that a mapped
+ * loopback (::ffff:127.0.0.1) classifies as "blocked", not "loopback": only
+ * plain loopback spellings earn the pane's localhost allowance.
+ */
+export function classifyBrowserHost(host: string): BrowserHostClass {
+  const normalized = host.toLowerCase();
+  if (isLoopbackHost(normalized)) return "loopback";
+  return isBlockedPublicHost(normalized) ? "blocked" : "public";
+}
+
 /**
  * The browser pane's navigate rules: public URLs plus loopback — the pane
  * exists to preview the dev servers the agent is running on this machine.

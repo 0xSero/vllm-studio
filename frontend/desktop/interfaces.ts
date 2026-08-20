@@ -69,9 +69,13 @@ export interface ControllerDeployResultPayload {
 }
 
 export interface ControllerDeployBridge {
-  /** Deploy a controller to an ssh host; resolves with url + api key. */
+  /**
+   * Deploy a controller — onto this machine (`mode: "local"`, loopback bind)
+   * or to an ssh host; resolves with url + api key.
+   */
   start(options: {
-    host: string;
+    mode?: "ssh" | "local";
+    host?: string;
     port?: number;
     installDir?: string;
   }): Promise<ControllerDeployResultPayload>;
