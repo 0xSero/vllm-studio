@@ -1,14 +1,19 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
+  chmodSync,
   constants,
+  cpSync,
   fchmodSync,
   fstatSync,
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   renameSync,
+  rmdirSync,
   statSync,
+  unlinkSync,
 } from "node:fs";
 import { chmod, cp, lstat, mkdir, open, opendir, rename, rmdir, unlink } from "node:fs/promises";
 import path from "node:path";
@@ -233,6 +238,22 @@ async function hardenTree(root: string): Promise<void> {
   await visit(root);
 }
 
+function hardenTreeSync(root: string): void {
+  const visit = (entryPath: string): void => {
+    const stats = lstatSync(entryPath);
+    if (stats.isSymbolicLink()) return;
+    if (stats.isDirectory()) {
+      for (const name of readdirSync(entryPath)) visit(path.join(entryPath, name));
+      chmodSync(entryPath, 0o500);
+      return;
+    }
+    if (!stats.isFile())
+      throw new PluginExecutionSnapshotError("Plugin snapshot contains an unsupported entry");
+    chmodSync(entryPath, stats.mode & 0o111 ? 0o500 : 0o400);
+  };
+  visit(root);
+}
+
 async function assertHardened(root: string): Promise<void> {
   const visit = async (entryPath: string): Promise<void> => {
     const stats = await lstat(entryPath);
@@ -302,9 +323,15 @@ async function claimSnapshotDestination(
   validate: () => Promise<void>,
 ): Promise<SnapshotPublicationClaim> {
   await validate();
-  withVerifiedStorageWorkingDirectory(path.dirname(root), () => {
-    mkdirSync(path.basename(root), { mode: 0o700 });
-  });
+  await Effect.runPromise(
+    snapshotPublicationCwd.withPermit(
+      Effect.sync(() => {
+        withVerifiedStorageWorkingDirectory(path.dirname(root), () => {
+          mkdirSync(path.basename(root), { mode: 0o700 });
+        });
+      }),
+    ),
+  );
   await validate();
   let directory: Awaited<ReturnType<typeof open>> | undefined;
   try {
@@ -359,42 +386,116 @@ function withVerifiedStorageWorkingDirectory<A>(root: string, use: () => A): A {
 function publishSnapshotDirectory(
   storage: SnapshotStorageGuard,
   destination: string,
-  temporaryArtifact: string,
+  sourceRoot: string,
+  artifactDigest: string,
+  snapshotDigest: string,
   claim: SnapshotPublicationClaim,
-): Effect.Effect<void> {
+): Effect.Effect<void, PluginExecutionSnapshotError> {
   return snapshotPublicationCwd.withPermit(
-    Effect.sync(() => {
-      const destinationName = path.basename(destination);
-      withVerifiedStorageWorkingDirectory(storage.root, () => {
-        const destinationEntry = lstatSync(destinationName);
-        if (!samePathIdentity(claim.identity, pathIdentity(destinationEntry))) {
-          throw new PluginExecutionSnapshotError("Plugin snapshot claim changed");
-        }
-        process.chdir(destinationName);
-        const destinationHandle = openSync(
-          ".",
-          constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
-        );
+    Effect.tryPromise({
+      try: async () => {
+        await claim.assertCurrent();
+        const destinationName = path.basename(destination);
+        const candidateName = `.candidate-${process.pid}-${randomUUID()}`;
+        const candidatePath = path.join(destination, candidateName);
+        let candidateCreated = false;
+        let committed = false;
         try {
-          if (!samePathIdentity(claim.identity, pathIdentity(fstatSync(destinationHandle)))) {
-            throw new PluginExecutionSnapshotError("Plugin snapshot claim changed");
+          withVerifiedStorageWorkingDirectory(storage.root, () => {
+            const destinationEntry = lstatSync(destinationName);
+            if (!samePathIdentity(claim.identity, pathIdentity(destinationEntry))) {
+              throw new PluginExecutionSnapshotError("Plugin snapshot claim changed");
+            }
+            process.chdir(destinationName);
+            const destinationHandle = openSync(
+              ".",
+              constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+            );
+            try {
+              if (!samePathIdentity(claim.identity, pathIdentity(fstatSync(destinationHandle)))) {
+                throw new PluginExecutionSnapshotError("Plugin snapshot claim changed");
+              }
+              mkdirSync(candidateName, { mode: 0o700 });
+              candidateCreated = true;
+              chmodSync(candidateName, lstatSync(sourceRoot).mode & 0o7777);
+              cpSync(sourceRoot, candidateName, {
+                recursive: true,
+                dereference: false,
+                verbatimSymlinks: true,
+              });
+            } finally {
+              closeSync(destinationHandle);
+            }
+          });
+          await storage.assertRoot();
+          const copiedDigest = await Effect.runPromise(pluginArtifactDigest(candidatePath));
+          if (copiedDigest !== artifactDigest) {
+            throw new PluginExecutionSnapshotError("Plugin artifact changed while snapshotting");
           }
-          const artifactHandle = openSync(
-            temporaryArtifact,
-            constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+          withVerifiedStorageWorkingDirectory(storage.root, () => {
+            const destinationEntry = lstatSync(destinationName);
+            if (!samePathIdentity(claim.identity, pathIdentity(destinationEntry))) {
+              throw new PluginExecutionSnapshotError("Plugin snapshot claim changed");
+            }
+            process.chdir(destinationName);
+            hardenTreeSync(candidateName);
+          });
+          await storage.assertRoot();
+          const copiedSnapshotDigest = await Effect.runPromise(
+            pluginArtifactDigest(candidatePath),
           );
-          try {
-            fchmodSync(artifactHandle, 0o700);
-            renameSync(temporaryArtifact, "artifact");
-            fchmodSync(artifactHandle, 0o500);
-            fchmodSync(destinationHandle, 0o500);
-          } finally {
-            closeSync(artifactHandle);
+          if (copiedSnapshotDigest !== snapshotDigest) {
+            throw new PluginExecutionSnapshotError("Plugin snapshot identity changed");
           }
+          await claim.assertCurrent();
+          withVerifiedStorageWorkingDirectory(storage.root, () => {
+            const destinationEntry = lstatSync(destinationName);
+            if (!samePathIdentity(claim.identity, pathIdentity(destinationEntry))) {
+              throw new PluginExecutionSnapshotError("Plugin snapshot claim changed");
+            }
+            process.chdir(destinationName);
+            const destinationHandle = openSync(
+              ".",
+              constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+            );
+            try {
+              if (!samePathIdentity(claim.identity, pathIdentity(fstatSync(destinationHandle)))) {
+                throw new PluginExecutionSnapshotError("Plugin snapshot claim changed");
+              }
+              const candidateHandle = openSync(
+                candidateName,
+                constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+              );
+              try {
+                fchmodSync(candidateHandle, 0o700);
+                renameSync(candidateName, "artifact");
+                committed = true;
+                fchmodSync(candidateHandle, 0o500);
+                fchmodSync(destinationHandle, 0o500);
+              } finally {
+                closeSync(candidateHandle);
+              }
+            } finally {
+              closeSync(destinationHandle);
+            }
+          });
         } finally {
-          closeSync(destinationHandle);
+          if (candidateCreated && !committed) {
+            withVerifiedStorageWorkingDirectory(storage.root, () => {
+              const destinationEntry = lstatSync(destinationName);
+              if (!samePathIdentity(claim.identity, pathIdentity(destinationEntry))) {
+                throw new PluginExecutionSnapshotError("Plugin snapshot claim changed");
+              }
+              process.chdir(destinationName);
+              removeTreeSync(candidateName);
+            });
+          }
         }
-      });
+      },
+      catch: (error) =>
+        error instanceof PluginExecutionSnapshotError
+          ? error
+          : new PluginExecutionSnapshotError("Plugin snapshot publication failed"),
     }),
   );
 }
@@ -407,6 +508,27 @@ async function assertSnapshotPath(root: string, value: string): Promise<void> {
   const [canonicalRoot, canonical] = await Promise.all([realpath(root), realpath(value)]);
   if (!contained(canonicalRoot, canonical))
     throw new PluginExecutionSnapshotError("Plugin snapshot path changed");
+}
+
+function removeTreeSync(root: string): void {
+  try {
+    const stats = lstatSync(root);
+    if (stats.isSymbolicLink()) {
+      unlinkSync(root);
+      return;
+    }
+    if (!stats.isDirectory()) {
+      chmodSync(root, 0o600);
+      unlinkSync(root);
+      return;
+    }
+    chmodSync(root, 0o700);
+    for (const name of readdirSync(root)) removeTreeSync(path.join(root, name));
+    rmdirSync(root);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return;
+    throw error;
+  }
 }
 
 async function removeTree(root: string): Promise<void> {
@@ -496,29 +618,40 @@ async function snapshotConnector(
     stagingRoot,
     `${bundle.artifactDigest.slice("sha256:".length)}-${process.pid}-${randomUUID()}`,
   );
+  let candidateDigest: string;
+  let runtimeDigest: string | undefined;
+  let retainedDigest: string | undefined;
   try {
-    await storage.assertRoot();
-    await quarantineAndRemove(temp, storage.assertRoot);
-    await mkdir(temp, { mode: 0o700 });
-    await cp(sourceRoot, path.join(temp, "artifact"), {
-      recursive: true,
-      dereference: false,
-      verbatimSymlinks: true,
-    });
-    await storage.assertRoot();
-    const copiedDigest = await Effect.runPromise(pluginArtifactDigest(path.join(temp, "artifact")));
-    if (copiedDigest !== bundle.artifactDigest)
-      throw new PluginExecutionSnapshotError("Plugin artifact changed while snapshotting");
-    let runtimeDigest: string | undefined;
-    if (runtimeCommand) {
-      runtimeDigest = await fileDigest(process.execPath);
+    try {
+      await storage.assertRoot();
+      await quarantineAndRemove(temp, storage.assertRoot);
+      await mkdir(temp, { mode: 0o700 });
+      await cp(sourceRoot, path.join(temp, "artifact"), {
+        recursive: true,
+        dereference: false,
+        verbatimSymlinks: true,
+      });
+      await storage.assertRoot();
+      const copiedDigest = await Effect.runPromise(
+        pluginArtifactDigest(path.join(temp, "artifact")),
+      );
+      if (copiedDigest !== bundle.artifactDigest)
+        throw new PluginExecutionSnapshotError("Plugin artifact changed while snapshotting");
+      if (runtimeCommand) {
+        runtimeDigest = await fileDigest(process.execPath);
+      }
+      await hardenTree(path.join(temp, "artifact"));
+      await storage.assertRoot();
+      candidateDigest = await Effect.runPromise(
+        pluginArtifactDigest(path.join(temp, "artifact")),
+      );
+      retainedDigest = await hardenedSnapshotDigest(destination, storage.assertRoot);
+      if (retainedDigest && retainedDigest !== candidateDigest) {
+        throw new PluginExecutionSnapshotError("Plugin snapshot identity changed");
+      }
+    } finally {
+      await quarantineAndRemove(temp, storage.assertRoot);
     }
-    await hardenTree(path.join(temp, "artifact"));
-    await storage.assertRoot();
-    const candidateDigest = await Effect.runPromise(
-      pluginArtifactDigest(path.join(temp, "artifact")),
-    );
-    const retainedDigest = await hardenedSnapshotDigest(destination, storage.assertRoot);
     if (retainedDigest) {
       if (retainedDigest !== candidateDigest) {
         throw new PluginExecutionSnapshotError("Plugin snapshot identity changed");
@@ -529,7 +662,14 @@ async function snapshotConnector(
         claim = await claimSnapshotDestination(destination, storage.assertRoot);
         await claim.assertCurrent();
         await Effect.runPromise(
-          publishSnapshotDirectory(storage, destination, path.join(temp, "artifact"), claim),
+          publishSnapshotDirectory(
+            storage,
+            destination,
+            sourceRoot,
+            bundle.artifactDigest,
+            candidateDigest,
+            claim,
+          ),
         );
         await storage.assertRoot();
       } catch (error) {
@@ -572,11 +712,7 @@ async function snapshotConnector(
         }
       : prepared;
   } finally {
-    try {
-      await quarantineAndRemove(temp, storage.assertRoot);
-    } finally {
-      await storage.close().catch(() => undefined);
-    }
+    await storage.close().catch(() => undefined);
   }
 }
 

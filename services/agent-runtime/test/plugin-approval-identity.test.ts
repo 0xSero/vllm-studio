@@ -663,8 +663,9 @@ process.exit(2);`;
     };
     try {
       const preparation = prepareConnectorSnapshot(bundle, await approvedConnector(root, source));
+      const outcome = preparation.then(() => undefined, (error) => error);
       await waitForOutput("SWAPPED");
-      await expect(preparation).rejects.toThrow();
+      expect(await outcome).toBeInstanceOf(Error);
       expect(readdirSync(victim)).toEqual([]);
     } finally {
       child.kill();
@@ -745,8 +746,9 @@ process.exit(2);`;
         candidateBundle,
         await approvedConnector(root, source),
       );
+      const outcome = preparation.then(() => undefined, (error) => error);
       await waitForOutput("SWAPPED");
-      await expect(preparation).rejects.toThrow();
+      expect(await outcome).toBeInstanceOf(Error);
       expect(existsSync(retainedPath)).toBe(false);
       expect(readFileSync(path.join(candidatePath, "artifact", "artifact.txt"), "utf8")).toBe(
         "artifact-one",
