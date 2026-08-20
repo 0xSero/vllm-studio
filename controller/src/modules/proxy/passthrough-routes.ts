@@ -23,8 +23,7 @@ import { findRecipeByModel } from "./chat-request";
  * aliases reach the engine under its served model name. Streams pass through
  * byte-for-byte; each dialect frames its own protocol and heartbeats.
  */
-const PASSTHROUGH_PATHS = ["/v1/responses", "/v1/messages"] as const;
-type PassthroughPath = (typeof PASSTHROUGH_PATHS)[number];
+type PassthroughPath = "/v1/responses" | "/v1/messages";
 
 /** Client protocol headers each dialect expects the upstream to see. */
 const FORWARDED_HEADERS = ["anthropic-version", "anthropic-beta", "openai-beta"] as const;
@@ -70,7 +69,7 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
     );
   };
 
-  const forward = (path: PassthroughPath) =>
+  const forward = (path: PassthroughPath): ReturnType<typeof effectHandler> =>
     effectHandler((ctx) =>
       Effect.gen(function* () {
         const parsed = yield* Effect.tryPromise({
