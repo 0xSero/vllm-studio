@@ -22,6 +22,7 @@ import type { PluginBundle, PluginSource } from "../src/plugin-discovery";
 const originalRename = realFsPromises.rename;
 const originalMkdir = realFsPromises.mkdir;
 const originalCp = realFsPromises.cp;
+const originalLstatSync = realFs.lstatSync;
 const originalMkdirSync = realFs.mkdirSync;
 const originalRenameSync = realFs.renameSync;
 const originalCpSync = realFs.cpSync;
@@ -63,6 +64,14 @@ type RetirementSwap = {
 
 let retirementSwap: RetirementSwap | undefined;
 
+type PreMutationSwap = RetirementSwap & {
+  trigger: string;
+};
+
+let claimPreMutationSwap: PreMutationSwap | undefined;
+let retirementPreMutationSwap: PreMutationSwap | undefined;
+let privateDirectoryCreationSwap: PreMutationSwap | undefined;
+
 type CwdProbe = {
   original: string;
   observed?: string;
@@ -70,6 +79,31 @@ type CwdProbe = {
 
 let cwdProbe: CwdProbe | undefined;
 let candidateFailure: { triggered: boolean; mutate?: boolean } | undefined;
+
+function swapPreMutationAncestor(state: PreMutationSwap | undefined, targetPath: string): void {
+  if (!state || state.attempted) return;
+  const resolvedTarget = path.resolve(process.cwd(), targetPath);
+  const resolvedTrigger = path.resolve(state.trigger);
+  const canonicalPath = (value: string): string => {
+    const suffix: string[] = [];
+    let current = value;
+    while (true) {
+      try {
+        return path.join(realpathSync(current), ...suffix.reverse());
+      } catch {
+        const parent = path.dirname(current);
+        if (parent === current) throw new Error(`Unable to resolve ${value}`);
+        suffix.push(path.basename(current));
+        current = parent;
+      }
+    }
+  };
+  if (canonicalPath(resolvedTarget) !== canonicalPath(resolvedTrigger)) return;
+  state.attempted = true;
+  originalRenameSync(state.root, `${state.root}.swapped`);
+  realFs.symlinkSync(state.victim, state.root);
+  state.swapped = true;
+}
 
 function swapStagingPreparationAncestor(targetPath: string): void {
   if (!stagingPreparationSwap || stagingPreparationSwap.attempted) return;
@@ -121,7 +155,8 @@ function swapSourceAncestorBeforeOpen(sourcePath: string): void {
   if (
     !sourceAncestorSwap ||
     sourceAncestorSwap.attempted ||
-    !sourcePath.includes(".plugin-staging")
+    !sourcePath.includes(".plugin-staging") ||
+    path.basename(sourcePath) === ".plugin-staging"
   ) {
     return;
   }
@@ -164,6 +199,7 @@ function swapCleanupAncestorBeforeRename(sourcePath: string, destinationPath: st
 mock.module("node:fs/promises", () => ({
   ...realFsPromises,
   mkdir: async (...args: Parameters<typeof realFsPromises.mkdir>) => {
+    swapPreMutationAncestor(privateDirectoryCreationSwap, String(args[0]));
     swapStagingPreparationAncestor(String(args[0]));
     return originalMkdir(...args);
   },
@@ -189,7 +225,16 @@ mock.module("node:fs/promises", () => ({
 
 mock.module("node:fs", () => ({
   ...realFs,
+  lstatSync: (...args: Parameters<typeof realFs.lstatSync>) => {
+    const targetPath = String(args[0]);
+    if (path.isAbsolute(targetPath)) {
+      swapPreMutationAncestor(claimPreMutationSwap, targetPath);
+      swapPreMutationAncestor(retirementPreMutationSwap, targetPath);
+    }
+    return originalLstatSync(...args);
+  },
   mkdirSync: (...args: Parameters<typeof realFs.mkdirSync>) => {
+    swapPreMutationAncestor(privateDirectoryCreationSwap, String(args[0]));
     swapStagingPreparationAncestor(String(args[0]));
     return originalMkdirSync(...args);
   },
@@ -248,8 +293,14 @@ afterEach(() => {
     restoreAncestorSwap(stagingPreparationSwap, stagingPreparationSwap.stagingRoot);
   }
   if (retirementSwap?.swapped) restoreAncestorSwap(retirementSwap, retirementSwap.root);
+  if (claimPreMutationSwap?.swapped) restoreAncestorSwap(claimPreMutationSwap);
+  if (retirementPreMutationSwap?.swapped) restoreAncestorSwap(retirementPreMutationSwap);
+  if (privateDirectoryCreationSwap?.swapped) restoreAncestorSwap(privateDirectoryCreationSwap);
   stagingPreparationSwap = undefined;
   retirementSwap = undefined;
+  claimPreMutationSwap = undefined;
+  retirementPreMutationSwap = undefined;
+  privateDirectoryCreationSwap = undefined;
   cwdProbe = undefined;
   candidateFailure = undefined;
   if (originalDataDirectory === undefined) delete process.env.LOCAL_STUDIO_DATA_DIR;
@@ -347,6 +398,90 @@ describe("plugin snapshot publication race", () => {
     expect(readdirSync(victim)).toEqual([]);
   });
 
+  test("fails closed when the storage ancestor swaps before claim creation", async () => {
+    const { root, source } = fixture();
+    const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
+    if (!bundle) throw new Error("fixture plugin was not discovered");
+    const connector = connectorForBundle(root, bundle);
+    const runtimeRoot = path.dirname(executionRoot());
+    const storageRoot = executionRoot();
+    const victim = path.join(path.dirname(root), "claim-storage-ancestor-victim");
+    const victimStorageRoot = path.join(victim, "plugin-executables");
+    mkdirSync(victimStorageRoot, { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(victim, "marker"), "preserved");
+    claimPreMutationSwap = {
+      root: runtimeRoot,
+      trigger: storageRoot,
+      victim,
+      attempted: false,
+      swapped: false,
+    };
+
+    await expect(
+      Effect.runPromise(
+        withPluginExecutionSnapshotLifecycle((lifecycle) =>
+          preparePluginExecutionSnapshot(bundle, connector, lifecycle),
+        ),
+      ),
+    ).rejects.toThrow();
+    expect(claimPreMutationSwap?.attempted).toBe(true);
+    expect(readFileSync(path.join(victim, "marker"), "utf8")).toBe("preserved");
+    expect(readdirSync(victimStorageRoot)).toEqual([]);
+
+    restoreAncestorSwap(claimPreMutationSwap);
+    await expect(
+      Effect.runPromise(
+        withPluginExecutionSnapshotLifecycle((lifecycle) =>
+          preparePluginExecutionSnapshot(bundle, connector, lifecycle),
+        ),
+      ),
+    ).resolves.toBeDefined();
+    expect(readFileSync(path.join(victim, "marker"), "utf8")).toBe("preserved");
+    expect(readdirSync(victimStorageRoot)).toEqual([]);
+  });
+
+  test("fails closed when a private storage directory ancestor swaps during creation", async () => {
+    const { root, source } = fixture();
+    const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
+    if (!bundle) throw new Error("fixture plugin was not discovered");
+    const connector = connectorForBundle(root, bundle);
+    const dataRoot = process.env.LOCAL_STUDIO_DATA_DIR;
+    if (!dataRoot) throw new Error("fixture data directory is missing");
+    const runtimeRoot = path.join(dataRoot, "runtime");
+    const victim = path.join(path.dirname(root), "private-directory-creation-victim");
+    mkdirSync(victim, { mode: 0o700 });
+    writeFileSync(path.join(victim, "marker"), "preserved");
+    privateDirectoryCreationSwap = {
+      root: dataRoot,
+      trigger: runtimeRoot,
+      victim,
+      attempted: false,
+      swapped: false,
+    };
+
+    await expect(
+      Effect.runPromise(
+        withPluginExecutionSnapshotLifecycle((lifecycle) =>
+          preparePluginExecutionSnapshot(bundle, connector, lifecycle),
+        ),
+      ),
+    ).rejects.toThrow();
+    expect(privateDirectoryCreationSwap?.attempted).toBe(true);
+    expect(readFileSync(path.join(victim, "marker"), "utf8")).toBe("preserved");
+    expect(readdirSync(victim)).toEqual(["marker"]);
+
+    restoreAncestorSwap(privateDirectoryCreationSwap);
+    await expect(
+      Effect.runPromise(
+        withPluginExecutionSnapshotLifecycle((lifecycle) =>
+          preparePluginExecutionSnapshot(bundle, connector, lifecycle),
+        ),
+      ),
+    ).resolves.toBeDefined();
+    expect(readFileSync(path.join(victim, "marker"), "utf8")).toBe("preserved");
+    expect(readdirSync(victim)).toEqual(["marker"]);
+  });
+
   test("does not read a source through a staging ancestor swapped after claim validation", async () => {
     const { root, source } = fixture();
     const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
@@ -425,6 +560,52 @@ describe("plugin snapshot publication race", () => {
     ).resolves.toBeDefined();
     expect(readFileSync(path.join(victim, "marker"), "utf8")).toBe("preserved");
     expect(readdirSync(victim)).toEqual(["marker"]);
+  });
+
+  test("fails closed when the storage ancestor swaps before retirement quarantine", async () => {
+    const { root } = fixture();
+    const runtimeRoot = path.dirname(executionRoot());
+    const storageRoot = executionRoot();
+    mkdirSync(storageRoot, { recursive: true, mode: 0o700 });
+    const stale = path.join(storageRoot, "stale-pre-retirement");
+    mkdirSync(stale, { mode: 0o700 });
+    writeFileSync(path.join(stale, "marker"), "stale");
+    const victim = path.join(path.dirname(root), "pre-retirement-storage-ancestor-victim");
+    const victimStorageRoot = path.join(victim, "plugin-executables");
+    const victimStale = path.join(victimStorageRoot, "stale-pre-retirement");
+    mkdirSync(victimStale, { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(victim, "marker"), "preserved");
+    writeFileSync(path.join(victimStale, "marker"), "outside");
+    retirementPreMutationSwap = {
+      root: runtimeRoot,
+      trigger: storageRoot,
+      victim,
+      attempted: false,
+      swapped: false,
+    };
+
+    await expect(
+      Effect.runPromise(
+        withPluginExecutionSnapshotLifecycle((lifecycle) =>
+          garbageCollectPluginExecutionSnapshots([], lifecycle),
+        ),
+      ),
+    ).rejects.toThrow(/snapshot cleanup failed/);
+    expect(retirementPreMutationSwap?.attempted).toBe(true);
+    expect(readFileSync(path.join(victim, "marker"), "utf8")).toBe("preserved");
+    expect(readFileSync(path.join(victimStale, "marker"), "utf8")).toBe("outside");
+
+    restoreAncestorSwap(retirementPreMutationSwap);
+    await expect(
+      Effect.runPromise(
+        withPluginExecutionSnapshotLifecycle((lifecycle) =>
+          garbageCollectPluginExecutionSnapshots([], lifecycle),
+        ),
+      ),
+    ).resolves.toBeUndefined();
+    expect(existsSync(stale)).toBe(false);
+    expect(readFileSync(path.join(victim, "marker"), "utf8")).toBe("preserved");
+    expect(readFileSync(path.join(victimStale, "marker"), "utf8")).toBe("outside");
   });
 
   test("fails safely and retries when snapshot retirement swaps its root", async () => {

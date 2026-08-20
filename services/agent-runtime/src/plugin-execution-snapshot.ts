@@ -15,7 +15,7 @@ import {
   statSync,
   unlinkSync,
 } from "node:fs";
-import { lstat, mkdir, open, opendir, rename } from "node:fs/promises";
+import { lstat, open, opendir, rename } from "node:fs/promises";
 import path from "node:path";
 import { Effect, Semaphore } from "effect";
 import type { ConnectorConfig } from "./connector-contract";
@@ -60,10 +60,14 @@ function assertActiveLifecycle(lifecycle: PluginExecutionSnapshotLease): void {
 type PathIdentity = {
   dev: number;
   ino: number;
+  uid: number;
+  mode: number;
 };
 
 type SnapshotStorageGuard = {
   root: string;
+  rootIdentity: PathIdentity;
+  runtimeIdentity: PathIdentity;
   stagingRoot?: string;
   stagingIdentity?: PathIdentity;
   assertRoot: (currentRoot?: string) => Promise<void>;
@@ -76,16 +80,27 @@ type SnapshotPublicationClaim = {
   close: () => Promise<void>;
 };
 
-const pathIdentity = (stats: { dev: number; ino: number }): PathIdentity => ({
+const pathIdentity = (stats: { dev: number; ino: number; uid: number; mode: number }): PathIdentity => ({
   dev: stats.dev,
   ino: stats.ino,
+  uid: stats.uid,
+  mode: stats.mode & 0o7777,
 });
 
 const samePathIdentity = (left: PathIdentity, right: PathIdentity): boolean =>
-  left.dev === right.dev && left.ino === right.ino;
+  left.dev === right.dev &&
+  left.ino === right.ino &&
+  left.uid === right.uid &&
+  left.mode === right.mode;
 
-async function privateDirectoryIdentity(entryPath: string): Promise<PathIdentity> {
-  const stats = await lstat(entryPath);
+function assertPrivateDirectoryStats(stats: {
+  isSymbolicLink: () => boolean;
+  isDirectory: () => boolean;
+  dev: number;
+  ino: number;
+  uid: number;
+  mode: number;
+}): PathIdentity {
   const getuid = process.getuid;
   if (
     stats.isSymbolicLink() ||
@@ -98,15 +113,47 @@ async function privateDirectoryIdentity(entryPath: string): Promise<PathIdentity
   return pathIdentity(stats);
 }
 
-async function ensurePrivateDirectory(entryPath: string): Promise<PathIdentity> {
-  try {
-    await mkdir(entryPath, { mode: 0o700 });
-  } catch (error) {
-    if (!error || typeof error !== "object" || !("code" in error) || error.code !== "EEXIST") {
-      throw error;
+async function privateDirectoryIdentity(entryPath: string): Promise<PathIdentity> {
+  return assertPrivateDirectoryStats(await lstat(entryPath));
+}
+
+function ensurePrivateDirectoryEntrySync(
+  parent: string,
+  parentIdentity: PathIdentity,
+  name: string,
+): PathIdentity {
+  return withVerifiedStorageWorkingDirectory(parent, parentIdentity, () => {
+    try {
+      mkdirSync(name, { mode: 0o700 });
+    } catch (error) {
+      if (!error || typeof error !== "object" || !("code" in error) || error.code !== "EEXIST") {
+        throw error;
+      }
     }
-  }
-  return privateDirectoryIdentity(entryPath);
+    const created = assertPrivateDirectoryStats(lstatSync(name));
+    const handle = openSync(name, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    try {
+      const opened = pathIdentity(fstatSync(handle));
+      if (!samePathIdentity(created, opened)) {
+        throw new PluginExecutionSnapshotError("Plugin snapshot storage changed");
+      }
+      return opened;
+    } finally {
+      closeSync(handle);
+    }
+  });
+}
+
+async function ensurePrivateDirectory(
+  parent: string,
+  parentIdentity: PathIdentity,
+  name: string,
+): Promise<PathIdentity> {
+  return Effect.runPromise(
+    snapshotPublicationCwd.withPermit(
+      Effect.sync(() => ensurePrivateDirectoryEntrySync(parent, parentIdentity, name)),
+    ),
+  );
 }
 
 async function acquireSnapshotStorage(create: boolean): Promise<SnapshotStorageGuard> {
@@ -116,12 +163,14 @@ async function acquireSnapshotStorage(create: boolean): Promise<SnapshotStorageG
   const stagingRoot = create ? path.join(runtimeRoot, ".plugin-staging") : undefined;
   const dataIdentity = await privateDirectoryIdentity(dataRoot);
   const runtimeIdentity = create
-    ? await ensurePrivateDirectory(runtimeRoot)
+    ? await ensurePrivateDirectory(dataRoot, dataIdentity, "runtime")
     : await privateDirectoryIdentity(runtimeRoot);
   const rootIdentity = create
-    ? await ensurePrivateDirectory(root)
+    ? await ensurePrivateDirectory(runtimeRoot, runtimeIdentity, "plugin-executables")
     : await privateDirectoryIdentity(root);
-  const stagingIdentity = stagingRoot ? await ensurePrivateDirectory(stagingRoot) : undefined;
+  const stagingIdentity = stagingRoot
+    ? await ensurePrivateDirectory(runtimeRoot, runtimeIdentity, ".plugin-staging")
+    : undefined;
   if (typeof constants.O_DIRECTORY !== "number" || typeof constants.O_NOFOLLOW !== "number") {
     throw new PluginExecutionSnapshotError("Plugin snapshot storage cannot be verified");
   }
@@ -157,6 +206,8 @@ async function acquireSnapshotStorage(create: boolean): Promise<SnapshotStorageG
   }
   return {
     root,
+    rootIdentity,
+    runtimeIdentity,
     ...(stagingRoot ? { stagingRoot } : {}),
     ...(stagingIdentity ? { stagingIdentity } : {}),
     assertRoot,
@@ -305,13 +356,14 @@ async function hardenedSnapshotDigest(
 
 async function claimSnapshotDestination(
   root: string,
+  parentIdentity: PathIdentity,
   validate: () => Promise<void>,
 ): Promise<SnapshotPublicationClaim> {
   await validate();
   await Effect.runPromise(
     snapshotPublicationCwd.withPermit(
       Effect.sync(() => {
-        withVerifiedStorageWorkingDirectory(path.dirname(root), () => {
+        withVerifiedStorageWorkingDirectory(path.dirname(root), parentIdentity, () => {
           mkdirSync(path.basename(root), { mode: 0o700 });
         });
       }),
@@ -350,31 +402,48 @@ async function claimSnapshotDestination(
   }
 }
 
-function withVerifiedStorageWorkingDirectory<A>(root: string, use: () => A): A {
+function withVerifiedStorageWorkingDirectory<A>(
+  root: string,
+  expected: PathIdentity,
+  use: () => A,
+): A {
   const previous = process.cwd();
   const before = lstatSync(root);
-  if (before.isSymbolicLink() || !before.isDirectory()) {
+  if (
+    before.isSymbolicLink() ||
+    !before.isDirectory() ||
+    !samePathIdentity(expected, pathIdentity(before))
+  ) {
     throw new PluginExecutionSnapshotError("Plugin snapshot storage is invalid");
   }
-  process.chdir(root);
+  const handle = openSync(root, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
   try {
-    const current = statSync(".");
-    if (!samePathIdentity(pathIdentity(before), pathIdentity(current))) {
+    if (!samePathIdentity(expected, pathIdentity(fstatSync(handle)))) {
       throw new PluginExecutionSnapshotError("Plugin snapshot storage changed");
     }
-    return use();
+    process.chdir(root);
+    try {
+      const current = statSync(".");
+      if (!samePathIdentity(expected, pathIdentity(current))) {
+        throw new PluginExecutionSnapshotError("Plugin snapshot storage changed");
+      }
+      return use();
+    } finally {
+      process.chdir(previous);
+    }
   } finally {
-    process.chdir(previous);
+    closeSync(handle);
   }
 }
 
 function withVerifiedDirectoryEntryWorkingDirectory<A>(
   parent: string,
+  parentIdentity: PathIdentity,
   name: string,
   identity: PathIdentity,
   use: () => A,
 ): A {
-  return withVerifiedStorageWorkingDirectory(parent, () => {
+  return withVerifiedStorageWorkingDirectory(parent, parentIdentity, () => {
     const entry = lstatSync(name);
     if (
       entry.isSymbolicLink() ||
@@ -414,7 +483,7 @@ function publishSnapshotDirectory(
         let candidateCreated = false;
         let committed = false;
         try {
-          withVerifiedStorageWorkingDirectory(storage.root, () => {
+          withVerifiedStorageWorkingDirectory(storage.root, storage.rootIdentity, () => {
             const destinationEntry = lstatSync(destinationName);
             if (!samePathIdentity(claim.identity, pathIdentity(destinationEntry))) {
               throw new PluginExecutionSnapshotError("Plugin snapshot claim changed");
@@ -445,7 +514,7 @@ function publishSnapshotDirectory(
           if (copiedDigest !== artifactDigest) {
             throw new PluginExecutionSnapshotError("Plugin artifact changed while snapshotting");
           }
-          withVerifiedStorageWorkingDirectory(storage.root, () => {
+          withVerifiedStorageWorkingDirectory(storage.root, storage.rootIdentity, () => {
             const destinationEntry = lstatSync(destinationName);
             if (!samePathIdentity(claim.identity, pathIdentity(destinationEntry))) {
               throw new PluginExecutionSnapshotError("Plugin snapshot claim changed");
@@ -461,7 +530,7 @@ function publishSnapshotDirectory(
             throw new PluginExecutionSnapshotError("Plugin snapshot identity changed");
           }
           await claim.assertCurrent();
-          withVerifiedStorageWorkingDirectory(storage.root, () => {
+          withVerifiedStorageWorkingDirectory(storage.root, storage.rootIdentity, () => {
             const destinationEntry = lstatSync(destinationName);
             if (!samePathIdentity(claim.identity, pathIdentity(destinationEntry))) {
               throw new PluginExecutionSnapshotError("Plugin snapshot claim changed");
@@ -494,7 +563,7 @@ function publishSnapshotDirectory(
           });
         } finally {
           if (candidateCreated && !committed) {
-            withVerifiedStorageWorkingDirectory(storage.root, () => {
+            withVerifiedStorageWorkingDirectory(storage.root, storage.rootIdentity, () => {
               const destinationEntry = lstatSync(destinationName);
               if (!samePathIdentity(claim.identity, pathIdentity(destinationEntry))) {
                 throw new PluginExecutionSnapshotError("Plugin snapshot claim changed");
@@ -596,6 +665,7 @@ async function withStagingDirectorySync<A>(
       Effect.sync(() =>
         withVerifiedDirectoryEntryWorkingDirectory(
           stagingParent,
+          storage.runtimeIdentity,
           stagingName,
           storage.stagingIdentity!,
           use,
@@ -625,7 +695,7 @@ async function quarantineAndRemoveSnapshot(
   await Effect.runPromise(
     snapshotPublicationCwd.withPermit(
       Effect.sync(() =>
-        withVerifiedStorageWorkingDirectory(storage.root, () =>
+        withVerifiedStorageWorkingDirectory(storage.root, storage.rootIdentity, () =>
           quarantineAndRemoveRelativeSync(entryName),
         ),
       ),
@@ -702,7 +772,7 @@ async function snapshotConnector(
     } else {
       let claim: SnapshotPublicationClaim | undefined;
       try {
-        claim = await claimSnapshotDestination(destination, storage.assertRoot);
+        claim = await claimSnapshotDestination(destination, storage.rootIdentity, storage.assertRoot);
         await claim.assertCurrent();
         await Effect.runPromise(
           publishSnapshotDirectory(
