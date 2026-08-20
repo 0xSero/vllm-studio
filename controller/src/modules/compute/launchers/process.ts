@@ -265,7 +265,17 @@ const ownership = (
 ): "owned" | "gone" | "unknown" => {
   if (reference.kind !== "process" || !sameProcessReference(reference, record)) return "unknown";
   const child = localChildren.get(reference.pid);
-  if (child && childRunning(child)) return "owned";
+  if (child && childRunning(child)) {
+    if (reference.startToken === null) return "owned";
+    const identity = runtime.readIdentity(reference.pid);
+    if (
+      identity?.pid === reference.pid &&
+      identity.processGroupId === reference.processGroupId &&
+      identity.sessionId === reference.sessionId &&
+      identity.startToken === reference.startToken
+    ) return "owned";
+    return "unknown";
+  }
   if (
     reference.processGroupId === null ||
     reference.sessionId === null ||
