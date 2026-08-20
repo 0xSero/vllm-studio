@@ -1,5 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  renameSync,
+  statSync,
+} from "node:fs";
 import { chmod, cp, lstat, mkdir, open, opendir, rename, rmdir, unlink } from "node:fs/promises";
 import path from "node:path";
 import { Effect, Semaphore } from "effect";
@@ -19,6 +29,7 @@ export type PluginExecutionSnapshotLease = {
 };
 
 const snapshotLifecycle = Semaphore.makeUnsafe(1);
+const snapshotPublicationCwd = Semaphore.makeUnsafe(1);
 const activeLifecycles = new WeakSet<PluginExecutionSnapshotLease>();
 
 export function withPluginExecutionSnapshotLifecycle<A, E, R>(
@@ -55,7 +66,7 @@ type SnapshotStorageGuard = {
 
 type SnapshotPublicationClaim = {
   assertCurrent: () => Promise<void>;
-  markerPath: string;
+  identity: PathIdentity;
   close: () => Promise<void>;
 };
 
@@ -291,40 +302,24 @@ async function claimSnapshotDestination(
   validate: () => Promise<void>,
 ): Promise<SnapshotPublicationClaim> {
   await validate();
-  await mkdir(root, { mode: 0o700 });
+  withVerifiedStorageWorkingDirectory(path.dirname(root), () => {
+    mkdirSync(path.basename(root), { mode: 0o700 });
+  });
   await validate();
-  const markerPath = path.join(root, `.claim-${process.pid}-${randomUUID()}`);
-  let marker: Awaited<ReturnType<typeof open>> | undefined;
   let directory: Awaited<ReturnType<typeof open>> | undefined;
   try {
-    marker = await open(
-      markerPath,
-      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
-      0o600,
-    );
     directory = await open(root, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-    const [rootStats, markerStats] = await Promise.all([directory.stat(), marker.stat()]);
+    const rootStats = await directory.stat();
     const rootIdentity = pathIdentity(rootStats);
-    const markerIdentity = pathIdentity(markerStats);
     const assertCurrent = async (): Promise<void> => {
       await validate();
-      const [currentRoot, currentMarker, openedRoot, openedMarker] = await Promise.all([
-        lstat(root),
-        lstat(markerPath),
-        directory?.stat(),
-        marker?.stat(),
-      ]);
+      const [currentRoot, openedRoot] = await Promise.all([lstat(root), directory?.stat()]);
       if (
         !openedRoot ||
-        !openedMarker ||
         currentRoot.isSymbolicLink() ||
         !currentRoot.isDirectory() ||
-        currentMarker.isSymbolicLink() ||
-        !currentMarker.isFile() ||
         !samePathIdentity(rootIdentity, pathIdentity(currentRoot)) ||
-        !samePathIdentity(rootIdentity, pathIdentity(openedRoot)) ||
-        !samePathIdentity(markerIdentity, pathIdentity(currentMarker)) ||
-        !samePathIdentity(markerIdentity, pathIdentity(openedMarker))
+        !samePathIdentity(rootIdentity, pathIdentity(openedRoot))
       ) {
         throw new PluginExecutionSnapshotError("Plugin snapshot claim changed");
       }
@@ -332,17 +327,76 @@ async function claimSnapshotDestination(
     await assertCurrent();
     return {
       assertCurrent,
-      markerPath,
+      identity: rootIdentity,
       close: async () => {
-        await marker?.close().catch(() => undefined);
         await directory?.close().catch(() => undefined);
       },
     };
   } catch (error) {
-    await marker?.close().catch(() => undefined);
     await directory?.close().catch(() => undefined);
     throw error;
   }
+}
+
+function withVerifiedStorageWorkingDirectory<A>(root: string, use: () => A): A {
+  const previous = process.cwd();
+  const before = lstatSync(root);
+  if (before.isSymbolicLink() || !before.isDirectory()) {
+    throw new PluginExecutionSnapshotError("Plugin snapshot storage is invalid");
+  }
+  process.chdir(root);
+  try {
+    const current = statSync(".");
+    if (!samePathIdentity(pathIdentity(before), pathIdentity(current))) {
+      throw new PluginExecutionSnapshotError("Plugin snapshot storage changed");
+    }
+    return use();
+  } finally {
+    process.chdir(previous);
+  }
+}
+
+function publishSnapshotDirectory(
+  storage: SnapshotStorageGuard,
+  destination: string,
+  temporaryArtifact: string,
+  claim: SnapshotPublicationClaim,
+): Effect.Effect<void> {
+  return snapshotPublicationCwd.withPermit(
+    Effect.sync(() => {
+      const destinationName = path.basename(destination);
+      withVerifiedStorageWorkingDirectory(storage.root, () => {
+        const destinationEntry = lstatSync(destinationName);
+        if (!samePathIdentity(claim.identity, pathIdentity(destinationEntry))) {
+          throw new PluginExecutionSnapshotError("Plugin snapshot claim changed");
+        }
+        process.chdir(destinationName);
+        const destinationHandle = openSync(
+          ".",
+          constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+        );
+        try {
+          if (!samePathIdentity(claim.identity, pathIdentity(fstatSync(destinationHandle)))) {
+            throw new PluginExecutionSnapshotError("Plugin snapshot claim changed");
+          }
+          const artifactHandle = openSync(
+            temporaryArtifact,
+            constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+          );
+          try {
+            fchmodSync(artifactHandle, 0o700);
+            renameSync(temporaryArtifact, "artifact");
+            fchmodSync(artifactHandle, 0o500);
+            fchmodSync(destinationHandle, 0o500);
+          } finally {
+            closeSync(artifactHandle);
+          }
+        } finally {
+          closeSync(destinationHandle);
+        }
+      });
+    }),
+  );
 }
 
 async function assertSnapshotPath(root: string, value: string): Promise<void> {
@@ -473,14 +527,10 @@ async function snapshotConnector(
       let claim: SnapshotPublicationClaim | undefined;
       try {
         claim = await claimSnapshotDestination(destination, storage.assertRoot);
-        await chmod(path.join(temp, "artifact"), 0o700);
         await claim.assertCurrent();
-        await rename(path.join(temp, "artifact"), artifactRoot);
-        await claim.assertCurrent();
-        await chmod(artifactRoot, 0o500);
-        await claim.assertCurrent();
-        await unlink(claim.markerPath);
-        await chmod(destination, 0o500);
+        await Effect.runPromise(
+          publishSnapshotDirectory(storage, destination, path.join(temp, "artifact"), claim),
+        );
         await storage.assertRoot();
       } catch (error) {
         if (claim) throw error;
