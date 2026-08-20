@@ -34,6 +34,21 @@ const parsePsIdentity = (line: string): ProcessIdentity | null => {
   return { pid, processGroupId, sessionId, startToken, launchMarker: null };
 };
 
+const readPosixLaunchMarker = (pid: number): string | null => {
+  try {
+    const result = spawnSync(
+      "ps",
+      ["eww", "-p", String(pid), "-o", "command="],
+      { encoding: "utf8" },
+    );
+    if (result.status !== 0) return null;
+    const match = result.stdout.toString().match(new RegExp(`(?:^|\\s)${LAUNCH_MARKER}=([^\\s]+)`));
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+};
+
 const readLinuxIdentity = (pid: number): ProcessIdentity | null => {
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
@@ -79,7 +94,9 @@ const readPosixIdentity = (pid: number): ProcessIdentity | null => {
       { encoding: "utf8" },
     );
     if (result.status !== 0) return null;
-    return parsePsIdentity(result.stdout.toString());
+    const identity = parsePsIdentity(result.stdout.toString());
+    if (!identity) return null;
+    return { ...identity, launchMarker: readPosixLaunchMarker(pid) };
   } catch {
     return null;
   }
@@ -100,7 +117,8 @@ const readPosixGroup = (processGroupId: number): readonly ProcessIdentity[] | nu
       .filter(
         (identity): identity is ProcessIdentity =>
           identity !== null && identity.processGroupId === processGroupId,
-      );
+      )
+      .map((identity) => ({ ...identity, launchMarker: readPosixLaunchMarker(identity.pid) }));
   } catch {
     return null;
   }
@@ -272,7 +290,8 @@ const ownership = (
       identity?.pid === reference.pid &&
       identity.processGroupId === reference.processGroupId &&
       identity.sessionId === reference.sessionId &&
-      identity.startToken === reference.startToken
+      identity.startToken === reference.startToken &&
+      (runtime.platform === "win32" || identity.launchMarker === record.nonce)
     ) return "owned";
     return "unknown";
   }
@@ -287,6 +306,15 @@ const ownership = (
   const roots = members.filter((member) => member.pid === reference.pid);
   const root = roots[0];
   if (roots.length !== 1 || !root) return "unknown";
+  const rootIdentity = runtime.readIdentity(reference.pid);
+  if (
+    !rootIdentity ||
+    rootIdentity.pid !== reference.pid ||
+    rootIdentity.processGroupId !== reference.processGroupId ||
+    rootIdentity.sessionId !== reference.sessionId ||
+    rootIdentity.startToken !== reference.startToken ||
+    (runtime.platform !== "win32" && rootIdentity.launchMarker !== record.nonce)
+  ) return "unknown";
   if (
     root.processGroupId !== reference.processGroupId ||
     root.sessionId !== reference.sessionId ||
@@ -300,7 +328,7 @@ const ownership = (
         member.sessionId !== reference.sessionId,
     )
   ) return "unknown";
-  if (runtime.platform === "linux" && members.some((member) => member.launchMarker !== record.nonce)) {
+  if (runtime.platform !== "win32" && members.some((member) => member.launchMarker !== record.nonce)) {
     return "unknown";
   }
   return "owned";
@@ -352,7 +380,7 @@ export const makeProcessLauncher = (
             identity.sessionId === pid
           ) {
             observed = identity;
-            if (runtime.platform !== "linux" || identity.launchMarker === record.nonce) {
+            if (runtime.platform === "win32" || identity.launchMarker === record.nonce) {
               proved = identity;
             }
           }
