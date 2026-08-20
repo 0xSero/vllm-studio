@@ -70,14 +70,14 @@ test("ambiguous docker run discovers and retains the exact cleanup reference", a
   expect(actions).toEqual(["info", "run", "inspect", "info", "inspect"]);
 });
 
-const pendingReference = (): HandleReference => ({
+const pendingReference = (): Extract<HandleReference, { kind: "docker-pending" }> => ({
   kind: "docker-pending",
   containerName: "local-studio-model",
   nonce: "nonce",
   daemonId: "daemon",
   executablePath: "/docker",
   executableToken: "exec",
-} as unknown as HandleReference);
+});
 
 const exactInspect = (id = containerId, nonce = "nonce", name = "model"): string =>
   `${id}\n${nonce}\n${name}\ntrue`;
@@ -150,12 +150,14 @@ test("bounded docker recovery retries a temporarily unavailable daemon", async (
 
 test("unresolved docker ambiguity persists a label-bound reference for later cleanup", async () => {
   const actions: string[] = [];
+  const commands: string[][] = [];
   let available = false;
   const runtime: DockerLauncherRuntime = {
     resolveExecutable: () => ({ path: "/docker", token: "exec" }),
     run: (_executable, args) => {
       const action = args[0] ?? "";
       actions.push(action);
+      commands.push([...args]);
       if (action === "info") return Effect.succeed(result("daemon"));
       if (action === "run") return Effect.succeed(result("", null, "request timed out"));
       if (action === "inspect") {
@@ -178,6 +180,8 @@ test("unresolved docker ambiguity persists a label-bound reference for later cle
   await Effect.runPromise(launcher.stop(retained, persisted, 0));
   expect(actions).toContain("stop");
   expect(actions).toContain("rm");
+  expect(commands.find(([action]) => action === "stop")?.at(-1)).toBe(containerId);
+  expect(commands.find(([action]) => action === "rm")?.at(-1)).toBe(containerId);
 });
 
 test("foreign same-name docker labels cannot satisfy or trigger pending cleanup", async () => {
