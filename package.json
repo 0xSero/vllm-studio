@@ -23,7 +23,7 @@
     "check:contracts": "node scripts/project.mjs validate-contracts",
     "check:structure": "node scripts/project.mjs validate-structure",
     "check:frontend": "npm --prefix frontend run check:quality",
-    "check:controller": "cd controller && bun run typecheck && bun run lint && bun run check",
+    "check:controller": "cd controller && bun run typecheck && bun run lint && bun run check && bun run test",
     "check:agent-runtime": "cd services/agent-runtime && bun run check",
     "dev:agent-runtime": "npm --prefix services/agent-runtime run build && node services/agent-runtime/dist/server.js",
     "desktop:build": "cd frontend && npm run desktop:build",

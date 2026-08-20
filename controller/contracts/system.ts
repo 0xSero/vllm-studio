@@ -1,3 +1,5 @@
+import { Schema } from "effect";
+
 export interface ServiceInfo {
   name: string;
   port: number;
@@ -38,6 +40,10 @@ export type EngineBackend = "vllm" | "sglang" | "llamacpp" | "mlx";
 
 export type RuntimeKind = "venv" | "docker" | "binary" | "system";
 
+export const RUNTIME_JOB_TYPES = ["install", "update"] as const;
+
+export type RuntimeJobType = (typeof RUNTIME_JOB_TYPES)[number];
+
 export interface RuntimeTarget {
   id: string;
   backend: EngineBackend;
@@ -74,7 +80,7 @@ export interface EngineJob {
   id: string;
   backend: EngineBackend;
   targetId?: string;
-  type: "install" | "update" | "download" | "inspect";
+  type: RuntimeJobType;
   status: "queued" | "running" | "success" | "error" | "cancelled";
   progress?: number;
   message: string;
@@ -84,6 +90,21 @@ export interface EngineJob {
   outputTail?: string;
   error?: string;
 }
+
+export const EngineJobSchema = Schema.Struct({
+  id: Schema.String,
+  backend: Schema.Literals(["vllm", "sglang", "llamacpp", "mlx"]),
+  targetId: Schema.optional(Schema.String),
+  type: Schema.Literals(RUNTIME_JOB_TYPES),
+  status: Schema.Literals(["queued", "running", "success", "error", "cancelled"]),
+  progress: Schema.optional(Schema.Number),
+  message: Schema.String,
+  command: Schema.optional(Schema.String),
+  startedAt: Schema.String,
+  finishedAt: Schema.optional(Schema.String),
+  outputTail: Schema.optional(Schema.String),
+  error: Schema.optional(Schema.String),
+});
 
 export type RuntimePlatformKind = "cuda" | "rocm" | "metal" | "unknown";
 
