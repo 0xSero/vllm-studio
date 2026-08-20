@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
-import { discoverSkills } from "@local-studio/agent-runtime/skill-discovery";
+import { type NextRequest } from "next/server";
+import { proxyToAgentRuntime } from "@/app/api/agent/proxy-to-runtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  return NextResponse.json({ skills: discoverSkills() });
+export async function GET(request: NextRequest): Promise<Response> {
+  return proxyToAgentRuntime(request);
 }
