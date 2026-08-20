@@ -91,6 +91,11 @@ const isRecord = (value: unknown): value is InstanceRecord =>
 type MutationPayload =
   | { readonly operation: "write"; readonly record: InstanceRecord }
   | { readonly operation: "drop"; readonly name: string };
+interface ActiveMutation {
+  readonly id: string;
+  journaled: boolean;
+  needsAbort: boolean;
+}
 const JournalIdentifierSchema = Schema.String.check(
   Schema.isLengthBetween(1, JOURNAL_ID_LIMIT),
   Schema.isUUID(4),
@@ -146,6 +151,7 @@ const JournalEntrySchema = Schema.Union([
     name: JournalFieldSchema,
   }),
   Schema.Struct({ type: Schema.Literal("done"), id: JournalIdentifierSchema }),
+  Schema.Struct({ type: Schema.Literal("abort"), id: JournalIdentifierSchema }),
 ]);
 type JournalEntry = typeof JournalEntrySchema.Type;
 const decodeJournalEntry = Schema.decodeUnknownSync(JournalEntrySchema, {
@@ -154,18 +160,18 @@ const decodeJournalEntry = Schema.decodeUnknownSync(JournalEntrySchema, {
 
 const validateJournalSequence = (entries: readonly JournalEntry[]): void => {
   const mutations = new Set<string>();
-  const completed = new Set<string>();
+  const terminal = new Set<string>();
   for (const entry of entries) {
     if (entry.type === "mutation") {
-      if (mutations.has(entry.id) || completed.has(entry.id)) {
+      if (mutations.has(entry.id) || terminal.has(entry.id)) {
         throw new Error("duplicate mutation journal identifier");
       }
       mutations.add(entry.id);
     } else {
-      if (!mutations.has(entry.id) || completed.has(entry.id)) {
+      if (!mutations.has(entry.id) || terminal.has(entry.id)) {
         throw new Error("unmatched mutation journal completion");
       }
-      completed.add(entry.id);
+      terminal.add(entry.id);
     }
   }
 };
@@ -256,15 +262,11 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
     try {
       database.run("BEGIN IMMEDIATE");
       database.run("UPDATE instance_store_mutex SET generation = generation + 1 WHERE id = 1");
-      const completed = new Set(
-        entries
-          .filter(
-            (entry): entry is Extract<JournalEntry, { type: "done" }> => entry.type === "done",
-          )
-          .map((entry) => entry.id),
+      const terminal = new Set(
+        entries.filter((entry) => entry.type !== "mutation").map((entry) => entry.id),
       );
       for (const entry of entries) {
-        if (entry.type === "done" || completed.has(entry.id)) continue;
+        if (entry.type !== "mutation" || terminal.has(entry.id)) continue;
         if (entry.operation === "write") writeRecordRaw(entry.record);
         else dropRecordRaw(entry.name);
       }
@@ -290,54 +292,88 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
   initialize.run("INSERT OR IGNORE INTO instance_store_mutex (id, generation) VALUES (1, 0)");
   initialize.close();
   chmodSync(mutationPath, 0o600);
-  let activeMutationId: string | null = null;
+  let activeMutation: ActiveMutation | null = null;
   const mutationJournal = (entry: MutationPayload): void => {
-    if (activeMutationId === null) throw new Error("mutation journal is not active");
-    if (entry.operation === "write") {
-      appendJournal({
-        type: "mutation",
-        id: activeMutationId,
-        operation: "write",
-        record: entry.record,
-      });
-    } else {
-      appendJournal({
-        type: "mutation",
-        id: activeMutationId,
-        operation: "drop",
-        name: entry.name,
-      });
+    const mutation = activeMutation;
+    if (mutation === null) throw new Error("mutation journal is not active");
+    try {
+      if (entry.operation === "write") {
+        appendJournal({
+          type: "mutation",
+          id: mutation.id,
+          operation: "write",
+          record: entry.record,
+        });
+      } else {
+        appendJournal({
+          type: "mutation",
+          id: mutation.id,
+          operation: "drop",
+          name: entry.name,
+        });
+      }
+      mutation.journaled = true;
+      mutation.needsAbort = true;
+    } catch (error) {
+      try {
+        mutation.journaled = readJournal().some(
+          (journalEntry) => journalEntry.type === "mutation" && journalEntry.id === mutation.id,
+        );
+        mutation.needsAbort = mutation.journaled;
+      } catch {}
+      throw error;
     }
   };
 
-  const completeMutation = (id: string): void => {
+  const completeMutation = (mutation: ActiveMutation): void => {
+    if (!mutation.journaled) return;
     try {
-      appendJournal({ type: "done", id });
+      appendJournal({ type: "done", id: mutation.id });
     } catch {}
+  };
+
+  const abortMutation = (mutation: ActiveMutation, cause: unknown): void => {
+    if (!mutation.journaled || !mutation.needsAbort) return;
+    try {
+      appendJournal({ type: "abort", id: mutation.id });
+      mutation.needsAbort = false;
+    } catch (abortError) {
+      throw new AggregateError(
+        [cause, abortError],
+        "instance mutation failed and its abort could not be persisted",
+        { cause },
+      );
+    }
   };
 
   const compactJournal = (): void => {
     const entries = readJournal();
     if (entries.length === 0) return;
-    const completed = new Set(
-      entries
-        .filter((entry): entry is Extract<JournalEntry, { type: "done" }> => entry.type === "done")
-        .map((entry) => entry.id),
+    const terminal = new Set(
+      entries.filter((entry) => entry.type !== "mutation").map((entry) => entry.id),
     );
-    writeJournal(entries.filter((entry) => entry.type === "mutation" && !completed.has(entry.id)));
+    writeJournal(entries.filter((entry) => entry.type === "mutation" && !terminal.has(entry.id)));
   };
 
   const mutate = <A>(operation: () => A): A => {
     const database = openMutationDatabase();
+    let mutation: ActiveMutation | null = null;
     try {
       database.run("BEGIN IMMEDIATE");
       database.run("UPDATE instance_store_mutex SET generation = generation + 1 WHERE id = 1");
       compactJournal();
-      activeMutationId = randomUUID();
-      const mutationId = activeMutationId;
-      const result = operation();
+      mutation = { id: randomUUID(), journaled: false, needsAbort: false };
+      activeMutation = mutation;
+      let result: A;
+      try {
+        result = operation();
+        mutation.needsAbort = false;
+      } catch (error) {
+        abortMutation(mutation, error);
+        throw error;
+      }
       database.run("COMMIT");
-      completeMutation(mutationId);
+      completeMutation(mutation);
       return result;
     } catch (error) {
       try {
@@ -345,7 +381,7 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
       } catch {}
       throw error;
     } finally {
-      activeMutationId = null;
+      if (activeMutation === mutation) activeMutation = null;
       database.close();
     }
   };
@@ -369,7 +405,10 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
               "UPDATE instance_store_mutex SET generation = generation + 1 WHERE id = 1",
             );
             compactJournal();
-            return database;
+            return {
+              database,
+              mutation: { id: randomUUID(), journaled: false, needsAbort: false },
+            };
           } catch (error) {
             database.close();
             if (!/busy|locked/u.test(String(error).toLowerCase())) throw error;
@@ -386,24 +425,33 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
           }
         }
       }),
-      (database) =>
+      ({ database, mutation }) =>
         Effect.gen(function* () {
-          activeMutationId = randomUUID();
-          const mutationId = activeMutationId;
+          activeMutation = mutation;
           const result = yield* operation();
+          mutation.needsAbort = false;
           yield* Effect.sync(() => database.run("COMMIT"));
-          completeMutation(mutationId);
+          completeMutation(mutation);
           return result;
         }),
-      (database, exit) =>
+      ({ database, mutation }, exit) =>
         Effect.sync(() => {
+          let abortError: unknown = null;
+          if (!Exit.isSuccess(exit)) {
+            try {
+              abortMutation(mutation, exit.cause);
+            } catch (error) {
+              abortError = error;
+            }
+          }
           if (!Exit.isSuccess(exit)) {
             try {
               database.run("ROLLBACK");
             } catch {}
           }
-          activeMutationId = null;
+          if (activeMutation === mutation) activeMutation = null;
           database.close();
+          if (abortError !== null) throw abortError;
         }),
     );
 
