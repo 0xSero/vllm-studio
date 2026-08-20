@@ -1,7 +1,12 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { sanitizeBrowserPaneUrl } from "../../../../shared/agent/sanitize-embedded-browser-url";
-import { browserHost, type KeyInput, type MouseInput } from "../browser-host/browser-host";
+import {
+  browserHost,
+  normalizeBrowserSessionKey,
+  type KeyInput,
+  type MouseInput,
+} from "../browser-host/browser-host";
 import {
   explicitBinaryOverride,
   isBrowserEngineId,
@@ -48,9 +53,9 @@ export async function handleBrowserVerb(request: Request, verb: string): Promise
   if (!ALLOWED_VERBS.has(verb)) {
     return Response.json({ ok: false, error: `Unknown browser verb: ${verb}` }, { status: 400 });
   }
-  const payload = await readPayload(request);
+  const { payload, session } = await readPayload(request);
   try {
-    const result = await dispatchVerb(verb, payload);
+    const result = await dispatchVerb(verb, payload, session, request.signal);
     return Response.json(result);
   } catch (error) {
     return Response.json({
@@ -60,25 +65,33 @@ export async function handleBrowserVerb(request: Request, verb: string): Promise
   }
 }
 
-async function readPayload(request: Request): Promise<Record<string, unknown>> {
+async function readPayload(
+  request: Request,
+): Promise<{ payload: Record<string, unknown>; session: string | undefined }> {
   try {
     const body = (await request.json()) as Record<string, unknown> | null;
     if (body && typeof body === "object") {
-      // sessionId was a renderer-bridge affinity hint; the host is global now.
-      const { sessionId: _sessionId, ...rest } = body;
-      return rest;
+      // sessionId scopes the verb to its agent session's isolated browser
+      // context; verbs without one (the panel's) follow the active session.
+      const { sessionId, ...rest } = body;
+      return { payload: rest, session: normalizeBrowserSessionKey(sessionId) ?? undefined };
     }
   } catch {
     // empty body is fine
   }
-  return {};
+  return { payload: {}, session: undefined };
 }
 
 // Every verb — model-issued or panel-issued, both arrive here — lands in the
 // history ring before the result goes back out.
-async function dispatchVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
+async function dispatchVerb(
+  verb: string,
+  payload: Record<string, unknown>,
+  session: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<VerbResult> {
   try {
-    const result = await runVerb(verb, payload);
+    const result = await runVerb(verb, payload, session, signal);
     recordHistory(verb, payload, result);
     return result;
   } catch (error) {
@@ -92,14 +105,19 @@ async function dispatchVerb(verb: string, payload: Record<string, unknown>): Pro
   }
 }
 
-async function runVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
-  if (!browserHost.isAvailable()) return fallbackVerb(verb, payload);
+async function runVerb(
+  verb: string,
+  payload: Record<string, unknown>,
+  session: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<VerbResult> {
+  if (!browserHost.isAvailable()) return fallbackVerb(verb, payload, signal);
   try {
-    return await runHostVerb(verb, payload);
+    return await runHostVerb(verb, payload, session);
   } catch (error) {
     // A launch/connection failure for the reading verbs still degrades to
     // reading mode rather than failing the tool call outright.
-    if (verb === "navigate" || verb === "get-text") return fallbackVerb(verb, payload);
+    if (verb === "navigate" || verb === "get-text") return fallbackVerb(verb, payload, signal);
     throw error;
   }
 }
@@ -128,55 +146,73 @@ function historyDetail(verb: string, payload: Record<string, unknown>): string |
   return undefined;
 }
 
-async function runHostVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
+async function runHostVerb(
+  verb: string,
+  payload: Record<string, unknown>,
+  session: string | undefined,
+): Promise<VerbResult> {
   switch (verb) {
     case "navigate":
-      return navigateVerb(payload);
+      return navigateVerb(payload, session);
     case "get-url":
-      return { ok: true, data: await browserHost.getUrl() };
+      return { ok: true, data: await browserHost.getUrl(session) };
     case "get-text":
-      return { ok: true, data: { text: await browserHost.getText() } };
+      return { ok: true, data: { text: await browserHost.getText(session) } };
     case "get-html":
-      return { ok: true, data: { html: await browserHost.getHtml() } };
+      return { ok: true, data: { html: await browserHost.getHtml(session) } };
     case "screenshot":
-      return { ok: true, data: { dataUri: await browserHost.screenshot() } };
+      return { ok: true, data: { dataUri: await browserHost.screenshot(session) } };
     case "click":
-      return selectorVerb(await browserHost.click({ selector: requireSelector(payload) }));
+      return selectorVerb(await browserHost.click({ selector: requireSelector(payload) }, session));
     case "fill":
       return selectorVerb(
-        await browserHost.fill({
-          selector: requireSelector(payload),
-          value: String(payload.value ?? ""),
-        }),
+        await browserHost.fill(
+          {
+            selector: requireSelector(payload),
+            value: String(payload.value ?? ""),
+          },
+          session,
+        ),
       );
     case "scroll":
-      return scrollVerb(payload);
+      return scrollVerb(payload, session);
     case "back":
-      await browserHost.goBack();
-      return { ok: true, data: await browserHost.getState() };
+      await browserHost.goBack(session);
+      return { ok: true, data: await browserHost.getState(session) };
     case "forward":
-      await browserHost.goForward();
-      return { ok: true, data: await browserHost.getState() };
+      await browserHost.goForward(session);
+      return { ok: true, data: await browserHost.getState(session) };
     case "reload":
-      await browserHost.reload();
-      return { ok: true, data: await browserHost.getState() };
+      await browserHost.reload(session);
+      return { ok: true, data: await browserHost.getState(session) };
     default:
       return { ok: false, error: `Unsupported browser verb: ${verb}` };
   }
 }
 
-async function navigateVerb(payload: Record<string, unknown>): Promise<VerbResult> {
+async function navigateVerb(
+  payload: Record<string, unknown>,
+  session: string | undefined,
+): Promise<VerbResult> {
   // Pane rules: public web plus loopback (previewing local dev servers is the
-  // pane's main job); other private ranges stay blocked.
+  // pane's main job); other private ranges stay blocked. The same policy is
+  // re-applied — with DNS pinning — to every request the page then makes; see
+  // browser-host/network-policy.ts.
   const url = sanitizeBrowserPaneUrl(String(payload.url ?? ""));
   if (!url) return { ok: false, error: "valid public or localhost http(s) url required" };
-  const result = await browserHost.navigate(url);
+  const result = await browserHost.navigate(url, session);
   return { ok: true, data: result };
 }
 
-async function scrollVerb(payload: Record<string, unknown>): Promise<VerbResult> {
+async function scrollVerb(
+  payload: Record<string, unknown>,
+  session: string | undefined,
+): Promise<VerbResult> {
   const deltaY = Number(payload.deltaY ?? 0);
-  const result = await browserHost.scroll({ deltaY: Number.isFinite(deltaY) ? deltaY : 0 });
+  const result = await browserHost.scroll(
+    { deltaY: Number.isFinite(deltaY) ? deltaY : 0 },
+    session,
+  );
   return { ok: true, data: { deltaY: result.deltaY, scrollY: result.scrollY } };
 }
 
@@ -199,11 +235,15 @@ function requireSelector(payload: Record<string, unknown>): string {
 // without a url arg); every other verb returns the clear unavailable error. The
 // fallback honors pane rules (public + loopback) so local dev servers stay
 // previewable even when there's no headless Chromium to drive a full surface.
-async function fallbackVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
+async function fallbackVerb(
+  verb: string,
+  payload: Record<string, unknown>,
+  signal: AbortSignal | undefined,
+): Promise<VerbResult> {
   if (verb === "navigate") {
     const url = sanitizeBrowserPaneUrl(String(payload.url ?? ""));
     if (!url) return { ok: false, error: "valid public or localhost http(s) url required" };
-    const reader = await fetchReadable(url);
+    const reader = await fetchReadable(url, signal);
     lastFallbackUrl = reader.url;
     return { ok: true, data: { url: reader.url, title: reader.title, readingMode: true } };
   }
@@ -213,7 +253,7 @@ async function fallbackVerb(verb: string, payload: Record<string, unknown>): Pro
   if (verb === "get-text" || verb === "get-html") {
     const url = sanitizeBrowserPaneUrl(String(payload.url ?? "")) || lastFallbackUrl;
     if (!url) return { ok: false, error: unavailableError() };
-    const reader = await fetchReadable(url);
+    const reader = await fetchReadable(url, signal);
     lastFallbackUrl = reader.url;
     return verb === "get-text"
       ? { ok: true, data: { text: reader.text, readingMode: true } }
@@ -226,7 +266,7 @@ export async function handleBrowserFetch(request: Request): Promise<Response> {
   const raw = new URL(request.url).searchParams.get("url");
   if (!raw) return Response.json({ error: "url is required" }, { status: 400 });
   try {
-    const result = await fetchReadable(raw);
+    const result = await fetchReadable(raw, request.signal);
     return Response.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Fetch failed";
