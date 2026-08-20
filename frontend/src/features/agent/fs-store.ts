@@ -252,10 +252,16 @@ export async function openReadableFile(
   relPath: string,
 ): Promise<{ file: FileHandle; size: number; modifiedAt: Date }> {
   const root = resolveWorkspaceRoot(rootCwd);
-  const target = ensureInside(root, path.resolve(root, relPath));
-  if (target !== root && !target.startsWith(root + path.sep)) {
+  const resolved = path.resolve(root, relPath);
+  // The containment proof, stated the way static analysis can follow it:
+  // the resolved path relative to the root must not climb out or restart
+  // from an absolute location. ensureInside then applies the shared
+  // realpath-level guard on top.
+  const relative = path.relative(root, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new Error("Path escapes project root");
   }
+  const target = ensureInside(root, resolved);
   const file = await fs.open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const stats = await file.stat();
