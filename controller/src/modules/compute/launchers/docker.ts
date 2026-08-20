@@ -1,31 +1,36 @@
 import { realpathSync, statSync } from "node:fs";
 import { Effect } from "effect";
-import type { Accelerator, HandleReference, InstanceRecord, LaunchPlan } from "../contracts";
+import type {
+  Accelerator,
+  HandleReference,
+  InstanceRecord,
+  LaunchFailure,
+  LaunchPlan,
+} from "../contracts";
 import { resolveBinary, runCommandAsyncEffect, type AsyncCommandResult } from "../../../core/command";
 import { dockerFlagsFor } from "../engines/devices";
 import { LOG_TAIL_BYTES, spawnFailed, type Launcher } from "./launcher";
 
-/**
- * Container launcher. Ownership is a label pair written at `docker run` time: the
- * instance name and the record's nonce. `owns` compares the nonce, so a container someone
- * recreated by hand under the same name is never signalled — the exact analogue of the
- * process launcher's start-token check. All state queries are one `docker inspect` by
- * exact name; nothing ever lists all containers and filters, which is what made the old
- * launch path O(running containers).
- */
-
 const NAME_LABEL = "local-studio.instance";
 const NONCE_LABEL = "local-studio.nonce";
 const DOCKER_TIMEOUT_MS = 30_000;
+const INSPECT_FORMAT = `{{.Id}}\n{{index .Config.Labels "${NONCE_LABEL}"}}\n{{index .Config.Labels "${NAME_LABEL}"}}\n{{.State.Running}}`;
 
 const containerName = (instanceName: string): string =>
   `local-studio-${instanceName.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
 
-export interface DockerExecutable { readonly path: string; readonly token: string }
+export interface DockerExecutable {
+  readonly path: string;
+  readonly token: string;
+}
 
 export interface DockerLauncherRuntime {
   readonly resolveExecutable: () => DockerExecutable | null;
-  readonly run: (executable: string, args: readonly string[], timeoutMs: number) => Effect.Effect<AsyncCommandResult>;
+  readonly run: (
+    executable: string,
+    args: readonly string[],
+    timeoutMs: number,
+  ) => Effect.Effect<AsyncCommandResult>;
 }
 
 const realRuntime: DockerLauncherRuntime = {
@@ -57,7 +62,12 @@ const sameExecutable = (reference: HandleReference, executable: DockerExecutable
 
 const sameDockerReference = (reference: HandleReference, record: InstanceRecord): boolean => {
   const stored = record.ref;
-  return reference.kind === "docker" && stored?.kind === "docker" && reference.containerId === stored.containerId && reference.daemonId === stored.daemonId && reference.executablePath === stored.executablePath && reference.executableToken === stored.executableToken;
+  return reference.kind === "docker" &&
+    stored?.kind === "docker" &&
+    reference.containerId === stored.containerId &&
+    reference.daemonId === stored.daemonId &&
+    reference.executablePath === stored.executablePath &&
+    reference.executableToken === stored.executableToken;
 };
 
 const ownership = (
@@ -66,7 +76,11 @@ const ownership = (
   runtime: DockerLauncherRuntime,
 ): Effect.Effect<"owned" | "stopped" | "gone" | "unknown"> =>
   Effect.gen(function* () {
-    if (reference.kind !== "docker" || !sameDockerReference(reference, record) || !/^[a-f0-9]{64}$/.test(reference.containerId)) return "unknown";
+    if (
+      reference.kind !== "docker" ||
+      !sameDockerReference(reference, record) ||
+      !/^[a-f0-9]{64}$/.test(reference.containerId)
+    ) return "unknown";
     const executable = runtime.resolveExecutable();
     if (!sameExecutable(reference, executable) || !executable) return "unknown";
     const daemon = yield* docker(runtime, executable.path, ["info", "--format", "{{.ID}}"]);
@@ -74,11 +88,13 @@ const ownership = (
     const inspected = yield* docker(runtime, executable.path, [
       "inspect",
       "--format",
-      `{{.Id}}\n{{index .Config.Labels "${NONCE_LABEL}"}}\n{{index .Config.Labels "${NAME_LABEL}"}}\n{{.State.Running}}`,
+      INSPECT_FORMAT,
       reference.containerId,
     ]);
     if (inspected.status !== 0) {
-      return inspected.stderr.trim() === `Error: No such object: ${reference.containerId}` ? "gone" : "unknown";
+      return inspected.stderr.trim() === `Error: No such object: ${reference.containerId}`
+        ? "gone"
+        : "unknown";
     }
     const [containerId, nonce, name, running, ...extra] = inspected.stdout.trim().split(/\r?\n/);
     const exact = extra.length === 0 &&
@@ -87,6 +103,61 @@ const ownership = (
       name === record.name;
     return exact && running === "true" ? "owned" : exact && running === "false" ? "stopped" : "unknown";
   });
+
+const discoveredReference = (
+  inspected: AsyncCommandResult,
+  record: InstanceRecord,
+  executable: DockerExecutable,
+  daemonId: string,
+): HandleReference | null => {
+  if (inspected.status !== 0) return null;
+  const [containerId, nonce, name, running, ...extra] = inspected.stdout.trim().split(/\r?\n/);
+  if (
+    extra.length !== 0 ||
+    !containerId ||
+    !/^[a-f0-9]{64}$/.test(containerId) ||
+    nonce !== record.nonce ||
+    name !== record.name ||
+    (running !== "true" && running !== "false")
+  ) return null;
+  return {
+    kind: "docker",
+    containerId,
+    daemonId,
+    executablePath: executable.path,
+    executableToken: executable.token,
+  };
+};
+
+const discoverStartedContainer = (
+  runtime: DockerLauncherRuntime,
+  record: InstanceRecord,
+  executable: DockerExecutable,
+  daemonId: string,
+): Effect.Effect<HandleReference | null> =>
+  Effect.gen(function* () {
+    const inspected = yield* docker(runtime, executable.path, [
+      "inspect",
+      "--format",
+      INSPECT_FORMAT,
+      containerName(record.name),
+    ]);
+    const reference = discoveredReference(inspected, record, executable, daemonId);
+    if (!reference || reference.kind !== "docker") return null;
+    const proof = yield* ownership(reference, { ...record, ref: reference }, runtime);
+    return proof === "owned" || proof === "stopped" ? reference : null;
+  });
+
+const ambiguousRunFailure = (
+  runtime: DockerLauncherRuntime,
+  record: InstanceRecord,
+  executable: DockerExecutable,
+  daemonId: string,
+  detail: string,
+): Effect.Effect<never, LaunchFailure> =>
+  discoverStartedContainer(runtime, record, executable, daemonId).pipe(
+    Effect.flatMap((reference) => spawnFailed(detail, reference ?? undefined)),
+  );
 
 export const makeDockerLauncher = (
   accelerator: Accelerator,
@@ -124,11 +195,23 @@ export const makeDockerLauncher = (
       ];
       const result = yield* docker(runtime, executable.path, arguments_, 120_000);
       if (result.status !== 0) {
-        return yield* spawnFailed("docker run failed");
+        return yield* ambiguousRunFailure(
+          runtime,
+          record,
+          executable,
+          daemonId,
+          "docker run outcome uncertain",
+        );
       }
       const containerId = result.stdout.trim();
       if (!/^[a-f0-9]{64}$/.test(containerId)) {
-        return yield* spawnFailed("docker returned an invalid container identity");
+        return yield* ambiguousRunFailure(
+          runtime,
+          record,
+          executable,
+          daemonId,
+          "docker run outcome uncertain",
+        );
       }
       const reference = {
         kind: "docker",
@@ -137,15 +220,22 @@ export const makeDockerLauncher = (
         executablePath: executable.path,
         executableToken: executable.token,
       } as const;
-      const proof = yield* ownership(reference, { ...record, ref: reference }, runtime); if (proof !== "owned" && proof !== "stopped") return yield* spawnFailed("docker identity changed during launch", reference);
+      const proof = yield* ownership(reference, { ...record, ref: reference }, runtime);
+      if (proof !== "owned" && proof !== "stopped") {
+        return yield* spawnFailed("docker identity changed during launch", reference);
+      }
       return reference;
     }),
 
   alive: (reference, record) =>
-    ownership(reference, record, runtime).pipe(Effect.map((state) => state !== "gone" && state !== "stopped")),
+    ownership(reference, record, runtime).pipe(
+      Effect.map((state) => state !== "gone" && state !== "stopped"),
+    ),
 
   owns: (reference, record) =>
-    ownership(reference, record, runtime).pipe(Effect.map((state) => state === "owned" || state === "stopped")),
+    ownership(reference, record, runtime).pipe(
+      Effect.map((state) => state === "owned" || state === "stopped"),
+    ),
 
   stop: (reference, record, graceMs) =>
     reference.kind !== "docker"
