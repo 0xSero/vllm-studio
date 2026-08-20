@@ -69,20 +69,24 @@ test("failed process proof returns a retryable cleanup handle", async () => {
   expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
 });
 
-const durableIdentity = (pid: number, startToken = "mac-start"): ProcessIdentity => ({
+const durableIdentity = (
+  pid: number,
+  startToken = "mac-start",
+  launchMarker: string | null = "nonce",
+): ProcessIdentity => ({
   pid,
   processGroupId: pid,
   sessionId: pid,
   startToken,
-  launchMarker: null,
+  launchMarker,
 });
 
 test("persisted macOS identity remains owned after launcher recreation", async () => {
   const signals: string[] = [];
   const runtime: ProcessLauncherRuntime = {
     platform: "darwin",
-    readIdentity: (pid) => durableIdentity(pid),
-    readGroup: (group) => [durableIdentity(group)],
+    readIdentity: (pid) => durableIdentity(pid, "same-second"),
+    readGroup: (group) => [durableIdentity(group, "same-second")],
     signalGroup: (group, signal) => {
       signals.push(signal);
       try {
@@ -179,15 +183,16 @@ test("a reused pid cannot bypass durable same-process proof", async () => {
   let phase: "launch" | "reused" = "launch";
   const runtime: ProcessLauncherRuntime = {
     platform: "darwin",
-    readIdentity: (pid) => durableIdentity(pid, phase === "launch" ? "owned-start" : "foreign-start"),
-    readGroup: (group) => [durableIdentity(group, "foreign-start")],
+    readIdentity: (pid) => durableIdentity(pid, "same-second", phase === "launch" ? "nonce" : "foreign"),
+    readGroup: (group) => [durableIdentity(group, "same-second", "foreign")],
     signalGroup: (_group, signal) => signals.push(signal),
   };
   const launcher = makeProcessLauncher(() => join(root, "model.log"), runtime);
   const started = await Effect.runPromise(launcher.start(plan, record));
   phase = "reused";
-  expect(await Effect.runPromise(launcher.owns(started, { ...record, ref: started }))).toBe(false);
-  await Effect.runPromise(launcher.stop(started, { ...record, ref: started }, 0));
+  const restartedLauncher = makeProcessLauncher(() => join(root, "model.log"), runtime);
+  expect(await Effect.runPromise(restartedLauncher.owns(started, { ...record, ref: started }))).toBe(false);
+  await Effect.runPromise(restartedLauncher.stop(started, { ...record, ref: started }, 0));
   expect(signals).toEqual([]);
   if (started.kind === "process") {
     try {

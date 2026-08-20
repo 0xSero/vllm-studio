@@ -14,6 +14,8 @@ import { LOG_TAIL_BYTES, spawnFailed, type Launcher } from "./launcher";
 const NAME_LABEL = "local-studio.instance";
 const NONCE_LABEL = "local-studio.nonce";
 const DOCKER_TIMEOUT_MS = 30_000;
+const RECOVERY_ATTEMPTS = 4;
+const RECOVERY_DELAY_MS = 50;
 const INSPECT_FORMAT = `{{.Id}}\n{{index .Config.Labels "${NONCE_LABEL}"}}\n{{index .Config.Labels "${NAME_LABEL}"}}\n{{.State.Running}}`;
 
 const containerName = (instanceName: string): string =>
@@ -32,6 +34,10 @@ export interface DockerLauncherRuntime {
     timeoutMs: number,
   ) => Effect.Effect<AsyncCommandResult>;
 }
+
+type DockerReference = Extract<HandleReference, { readonly kind: "docker" }>;
+type PendingDockerReference = Extract<HandleReference, { readonly kind: "docker-pending" }>;
+type DockerState = "owned" | "stopped" | "gone" | "unknown";
 
 const realRuntime: DockerLauncherRuntime = {
   resolveExecutable: () => {
@@ -70,11 +76,24 @@ const sameDockerReference = (reference: HandleReference, record: InstanceRecord)
     reference.executableToken === stored.executableToken;
 };
 
-const ownership = (
+const samePendingReference = (reference: HandleReference, record: InstanceRecord): boolean => {
+  const stored = record.ref;
+  return reference.kind === "docker-pending" &&
+    stored?.kind === "docker-pending" &&
+    reference.containerName === stored.containerName &&
+    reference.containerName === containerName(record.name) &&
+    reference.nonce === stored.nonce &&
+    reference.nonce === record.nonce &&
+    reference.daemonId === stored.daemonId &&
+    reference.executablePath === stored.executablePath &&
+    reference.executableToken === stored.executableToken;
+};
+
+const ownershipExact = (
   reference: HandleReference,
   record: InstanceRecord,
   runtime: DockerLauncherRuntime,
-): Effect.Effect<"owned" | "stopped" | "gone" | "unknown"> =>
+): Effect.Effect<DockerState> =>
   Effect.gen(function* () {
     if (
       reference.kind !== "docker" ||
@@ -109,7 +128,7 @@ const discoveredReference = (
   record: InstanceRecord,
   executable: DockerExecutable,
   daemonId: string,
-): HandleReference | null => {
+): DockerReference | null => {
   if (inspected.status !== 0) return null;
   const [containerId, nonce, name, running, ...extra] = inspected.stdout.trim().split(/\r?\n/);
   if (
@@ -129,6 +148,59 @@ const discoveredReference = (
   };
 };
 
+const pendingReference = (
+  record: InstanceRecord,
+  executable: DockerExecutable,
+  daemonId: string,
+): PendingDockerReference => ({
+  kind: "docker-pending",
+  containerName: containerName(record.name),
+  nonce: record.nonce,
+  daemonId,
+  executablePath: executable.path,
+  executableToken: executable.token,
+});
+
+const resolvePending = (
+  reference: PendingDockerReference,
+  record: InstanceRecord,
+  runtime: DockerLauncherRuntime,
+): Effect.Effect<{ readonly reference: DockerReference; readonly state: "owned" | "stopped" } | null> =>
+  Effect.gen(function* () {
+    if (!samePendingReference(reference, record)) return null;
+    const executable = runtime.resolveExecutable();
+    if (
+      !executable ||
+      executable.path !== reference.executablePath ||
+      executable.token !== reference.executableToken
+    ) return null;
+    const daemon = yield* docker(runtime, executable.path, ["info", "--format", "{{.ID}}"]);
+    if (daemon.status !== 0 || daemon.stdout.trim() !== reference.daemonId) return null;
+    const inspected = yield* docker(runtime, executable.path, [
+      "inspect",
+      "--format",
+      INSPECT_FORMAT,
+      reference.containerName,
+    ]);
+    const resolved = discoveredReference(inspected, record, executable, reference.daemonId);
+    if (!resolved) return null;
+    const state = yield* ownershipExact(resolved, { ...record, ref: resolved }, runtime);
+    return state === "owned" || state === "stopped" ? { reference: resolved, state } : null;
+  });
+
+const ownership = (
+  reference: HandleReference,
+  record: InstanceRecord,
+  runtime: DockerLauncherRuntime,
+): Effect.Effect<DockerState> => {
+  if (reference.kind === "docker-pending") {
+    return resolvePending(reference, record, runtime).pipe(
+      Effect.map((resolved) => resolved?.state ?? "unknown"),
+    );
+  }
+  return ownershipExact(reference, record, runtime);
+};
+
 const discoverStartedContainer = (
   runtime: DockerLauncherRuntime,
   record: InstanceRecord,
@@ -144,8 +216,23 @@ const discoverStartedContainer = (
     ]);
     const reference = discoveredReference(inspected, record, executable, daemonId);
     if (!reference || reference.kind !== "docker") return null;
-    const proof = yield* ownership(reference, { ...record, ref: reference }, runtime);
+    const proof = yield* ownershipExact(reference, { ...record, ref: reference }, runtime);
     return proof === "owned" || proof === "stopped" ? reference : null;
+  });
+
+const recoverStartedContainer = (
+  runtime: DockerLauncherRuntime,
+  record: InstanceRecord,
+  executable: DockerExecutable,
+  daemonId: string,
+): Effect.Effect<HandleReference | null> =>
+  Effect.gen(function* () {
+    for (let attempt = 0; attempt < RECOVERY_ATTEMPTS; attempt += 1) {
+      const reference = yield* discoverStartedContainer(runtime, record, executable, daemonId);
+      if (reference) return reference;
+      if (attempt + 1 < RECOVERY_ATTEMPTS) yield* Effect.sleep(RECOVERY_DELAY_MS);
+    }
+    return null;
   });
 
 const ambiguousRunFailure = (
@@ -155,9 +242,32 @@ const ambiguousRunFailure = (
   daemonId: string,
   detail: string,
 ): Effect.Effect<never, LaunchFailure> =>
-  discoverStartedContainer(runtime, record, executable, daemonId).pipe(
-    Effect.flatMap((reference) => spawnFailed(detail, reference ?? undefined)),
+  recoverStartedContainer(runtime, record, executable, daemonId).pipe(
+    Effect.flatMap((reference) =>
+      spawnFailed(detail, reference ?? pendingReference(record, executable, daemonId))),
   );
+
+const stopExact = (
+  runtime: DockerLauncherRuntime,
+  reference: DockerReference,
+  record: InstanceRecord,
+  graceMs: number,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const initial = yield* ownershipExact(reference, record, runtime);
+    if (initial !== "owned" && initial !== "stopped") return;
+    yield* docker(
+      runtime,
+      reference.executablePath,
+      ["stop", "-t", String(Math.ceil(graceMs / 1000)), reference.containerId],
+      graceMs + DOCKER_TIMEOUT_MS,
+    ).pipe(Effect.ignore);
+    const final = yield* ownershipExact(reference, record, runtime);
+    if (final !== "owned" && final !== "stopped") return;
+    yield* docker(runtime, reference.executablePath, ["rm", "-f", reference.containerId]).pipe(
+      Effect.ignore,
+    );
+  });
 
 export const makeDockerLauncher = (
   accelerator: Accelerator,
@@ -237,29 +347,38 @@ export const makeDockerLauncher = (
       Effect.map((state) => state === "owned" || state === "stopped"),
     ),
 
-  stop: (reference, record, graceMs) =>
-    reference.kind !== "docker"
+  stop: (reference, record, graceMs): Effect.Effect<void> => {
+    if (reference.kind === "docker-pending") {
+      return Effect.gen(function* () {
+        const resolved = yield* resolvePending(reference, record, runtime);
+        if (!resolved) return;
+        yield* stopExact(runtime, resolved.reference, { ...record, ref: resolved.reference }, graceMs);
+      });
+    }
+    return reference.kind !== "docker"
       ? Effect.void
-      : Effect.gen(function* () {
-          const initial = yield* ownership(reference, record, runtime);
-          if (initial !== "owned" && initial !== "stopped") return;
-          yield* docker(
-            runtime,
-            reference.executablePath,
-            ["stop", "-t", String(Math.ceil(graceMs / 1000)), reference.containerId],
-            graceMs + DOCKER_TIMEOUT_MS,
-          ).pipe(Effect.ignore);
-          const final = yield* ownership(reference, record, runtime);
-          if (final !== "owned" && final !== "stopped") return;
-          yield* docker(runtime, reference.executablePath, [
-            "rm",
-            "-f",
-            reference.containerId,
-          ]).pipe(Effect.ignore);
-        }),
+      : stopExact(runtime, reference, record, graceMs);
+  },
 
-  logTail: (reference) =>
-    reference.kind !== "docker"
+  logTail: (reference, record): Effect.Effect<string> => {
+    if (reference.kind === "docker-pending") {
+      return resolvePending(reference, record, runtime).pipe(
+        Effect.flatMap((resolved) =>
+          resolved
+            ? docker(runtime, resolved.reference.executablePath, [
+                "logs",
+                "--tail",
+                "60",
+                resolved.reference.containerId,
+              ])
+            : Effect.succeed(null),
+        ),
+        Effect.map((result) =>
+          result ? `${result.stdout}\n${result.stderr}`.trim().slice(-LOG_TAIL_BYTES) : "",
+        ),
+      );
+    }
+    return reference.kind !== "docker"
       ? Effect.succeed("")
       : docker(runtime, reference.executablePath, [
           "logs",
@@ -270,5 +389,6 @@ export const makeDockerLauncher = (
           Effect.map((result) =>
             `${result.stdout}\n${result.stderr}`.trim().slice(-LOG_TAIL_BYTES),
           ),
-        ),
+        );
+  },
 });
