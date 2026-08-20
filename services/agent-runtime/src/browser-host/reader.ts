@@ -96,24 +96,45 @@ async function resolveReaderHost(
 }
 
 function decodeEntities(value: string): string {
+  // &amp; decodes LAST: decoding it first turns "&amp;lt;" into "&lt;" and a
+  // second replace then invents a "<" the source never contained.
   return value
-    .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ");
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&");
+}
+
+// Repeat a removal until the input stops changing: one pass can be defeated
+// by nesting the pattern inside itself (<scr<script>ipt>), and this text is
+// what the model reads.
+function replaceUntilStable(input: string, pattern: RegExp, replacement: string): string {
+  let previous = "";
+  let current = input;
+  while (previous !== current) {
+    previous = current;
+    current = current.replace(pattern, replacement);
+  }
+  return current;
+}
+
+function stripTags(input: string): string {
+  return replaceUntilStable(input, /<[^>]*>/g, "");
 }
 
 // Lightweight HTML → readable text. We intentionally avoid pulling in
 // readability/cheerio; the goal is "good enough for the model to read".
 function htmlToReadable(html: string, baseUrl: string): { title: string; text: string } {
-  const noScripts = html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, "")
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
-    .replace(/<svg[\s\S]*?<\/svg>/gi, "");
+  let noScripts = html;
+  for (const tag of ["script", "style", "noscript", "iframe", "svg"]) {
+    noScripts = replaceUntilStable(
+      noScripts,
+      new RegExp(`<${tag}\\b[\\s\\S]*?</${tag}\\s*>`, "gi"),
+      "",
+    );
+  }
   const titleMatch = noScripts.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   const title = decodeEntities((titleMatch?.[1] ?? "").trim()) || baseUrl;
   const bodyMatch = noScripts.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
@@ -121,7 +142,7 @@ function htmlToReadable(html: string, baseUrl: string): { title: string; text: s
   const withLinks = body.replace(
     /<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
     (_match, href: string, label: string) => {
-      const text = decodeEntities(label.replace(/<[^>]+>/g, "").trim());
+      const text = decodeEntities(stripTags(label).trim());
       const resolved = (() => {
         try {
           return new URL(href, baseUrl).toString();
@@ -135,7 +156,7 @@ function htmlToReadable(html: string, baseUrl: string): { title: string; text: s
   const blocks = withLinks
     .replace(/<\/(p|h[1-6]|li|tr|div|article|section|header|footer)>/gi, "\n\n")
     .replace(/<br\s*\/?>(?!\s*<)/gi, "\n");
-  const stripped = blocks.replace(/<[^>]+>/g, "");
+  const stripped = stripTags(blocks);
   const text = decodeEntities(stripped)
     .split(/\n+/)
     .map((line) => line.trim())

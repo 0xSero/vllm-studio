@@ -395,13 +395,14 @@ function parseCurrentPort(request: Request): number | null {
 
 function titleFromHtml(html: string): string {
   const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim();
+  // &amp; decodes last, or "&amp;lt;" round-trips into a phantom "<".
   return title
     ? title
-        .replace(/&amp;/g, "&")
         .replace(/&lt;/g, "<")
         .replace(/&gt;/g, ">")
         .replace(/&quot;/g, '"')
         .replace(/&#39;/g, "'")
+        .replace(/&amp;/g, "&")
     : "";
 }
 
