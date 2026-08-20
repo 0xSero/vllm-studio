@@ -1,5 +1,5 @@
 import type { Context, Handler, MiddlewareHandler, Next, TypedResponse } from "hono";
-import { Cause, Exit, type Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import type { AppContextService } from "../app-context";
 import type { ControllerRuntime } from "../core/effect-runtime";
 
@@ -27,6 +27,11 @@ export const runControllerEffect = <A, E>(
     if (failure._tag === "Some") throw failure.value;
     throw Cause.squash(exit.cause);
   });
+
+export const runEffectWithCleanup = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  cleanup: Effect.Effect<void, never, never>,
+): Promise<A> => Effect.runPromise(Effect.ensuring(effect, cleanup));
 
 export const effectHandler =
   <Result extends Response | TypedResponse<unknown>>(

@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { AppContextService } from "../../app-context";
 import { createControllerRuntime, type ControllerRuntime } from "../../core/effect-runtime";
 import { createApp } from "../../http/app";
-import { runControllerEffect } from "../../http/effect-handler";
-import { Effect } from "effect";
+import { runControllerEffect, runEffectWithCleanup } from "../../http/effect-handler";
+import { Effect, Exit } from "effect";
 
 const apiKey = "recipe-route-test-key";
 const environmentKeys = [
@@ -39,15 +39,19 @@ beforeAll(() => {
   );
 });
 
-afterAll(() => {
-  for (const key of environmentKeys) {
-    const value = previousEnvironment.get(key);
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
-  }
-  rmSync(temporaryDirectory, { recursive: true, force: true });
-  return runtime.dispose();
-});
+afterAll(() =>
+  runEffectWithCleanup(
+    runtime.disposeEffect,
+    Effect.sync(() => {
+      for (const key of environmentKeys) {
+        const value = previousEnvironment.get(key);
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      rmSync(temporaryDirectory, { recursive: true, force: true });
+    }),
+  ),
+);
 
 const request = (path: string, init?: RequestInit): Effect.Effect<Response, Error> =>
   Effect.sync(() => app.request(path, init)).pipe(
@@ -142,6 +146,44 @@ describe("recipe boolean route validation", () => {
           trust_remote_code: false,
           enable_auto_tool_choice: false,
         });
+      }),
+    ));
+
+  test("runs cleanup after disposal, including when disposal fails", () =>
+    runControllerEffect(
+      runtime,
+      Effect.gen(function* () {
+        const events: string[] = [];
+        const successful = yield* Effect.tryPromise({
+          try: () =>
+            runEffectWithCleanup(
+              Effect.sync(() => {
+                events.push("dispose");
+              }),
+              Effect.sync(() => {
+                events.push("cleanup");
+              }),
+            ),
+          catch: (source) => source,
+        });
+        expect(successful).toBeUndefined();
+        expect(events).toEqual(["dispose", "cleanup"]);
+
+        events.length = 0;
+        const failed = yield* Effect.exit(
+          Effect.tryPromise({
+            try: () =>
+              runEffectWithCleanup(
+                Effect.fail(new Error("dispose failed")),
+                Effect.sync(() => {
+                  events.push("cleanup");
+                }),
+              ),
+            catch: (source) => source,
+          }),
+        );
+        expect(Exit.isFailure(failed)).toBe(true);
+        expect(events).toEqual(["cleanup"]);
       }),
     ));
 });
