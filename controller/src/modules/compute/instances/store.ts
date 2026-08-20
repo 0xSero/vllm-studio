@@ -1,6 +1,9 @@
 import {
   chmodSync,
+  closeSync,
+  fsyncSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -172,7 +175,16 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
     const path = recordPath(record.name);
     const temporaryPath = `${path}.${randomUUID()}.tmp`;
     try {
-      writeFileSync(temporaryPath, JSON.stringify(record, null, 2), { flag: "wx", mode: 0o600 });
+      // wx + rename keeps a crash mid-write from reading as garbage; the
+      // fsync before rename keeps a power loss right after the rename from
+      // resurrecting an empty lease file (rename can outlive its contents).
+      const file = openSync(temporaryPath, "wx", 0o600);
+      try {
+        writeFileSync(file, JSON.stringify(record, null, 2));
+        fsyncSync(file);
+      } finally {
+        closeSync(file);
+      }
       renameSync(temporaryPath, path);
     } finally {
       rmSync(temporaryPath, { force: true });
