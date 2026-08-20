@@ -43,6 +43,18 @@ export interface DockerLauncherOptions {
 type DockerReference = Extract<HandleReference, { readonly kind: "docker" }>;
 type PendingDockerReference = Extract<HandleReference, { readonly kind: "docker-pending" }>;
 type DockerState = "owned" | "stopped" | "gone" | "unknown";
+type DiscoveryState =
+  | { readonly kind: "found"; readonly reference: DockerReference }
+  | { readonly kind: "absent" }
+  | { readonly kind: "unknown" };
+type PendingResolution =
+  | {
+      readonly kind: "found";
+      readonly reference: DockerReference;
+      readonly state: "owned" | "stopped";
+    }
+  | { readonly kind: "absent" }
+  | { readonly kind: "unknown" };
 
 const realRuntime: DockerLauncherRuntime = {
   resolveExecutable: () => {
@@ -133,23 +145,26 @@ const discoveredReference = (
   record: InstanceRecord,
   executable: DockerExecutable,
   daemonId: string,
-): DockerReference | null => {
-  if (inspected.status !== 0) return null;
+): DiscoveryState => {
+  if (inspected.status !== 0) {
+    return inspected.stderr.includes("No such object") ? { kind: "absent" } : { kind: "unknown" };
+  }
   const [containerId, nonce, name, running, ...extra] = inspected.stdout.trim().split(/\r?\n/);
-  if (
-    extra.length !== 0 ||
-    !containerId ||
-    !/^[a-f0-9]{64}$/.test(containerId) ||
-    nonce !== record.nonce ||
-    name !== record.name ||
-    (running !== "true" && running !== "false")
-  ) return null;
+  if (extra.length !== 0 || !containerId || !/^[a-f0-9]{64}$/.test(containerId)) {
+    return { kind: "unknown" };
+  }
+  if (nonce !== record.nonce || name !== record.name || (running !== "true" && running !== "false")) {
+    return { kind: "absent" };
+  }
   return {
-    kind: "docker",
-    containerId,
-    daemonId,
-    executablePath: executable.path,
-    executableToken: executable.token,
+    kind: "found",
+    reference: {
+      kind: "docker",
+      containerId,
+      daemonId,
+      executablePath: executable.path,
+      executableToken: executable.token,
+    },
   };
 };
 
@@ -170,27 +185,37 @@ const resolvePending = (
   reference: PendingDockerReference,
   record: InstanceRecord,
   runtime: DockerLauncherRuntime,
-): Effect.Effect<{ readonly reference: DockerReference; readonly state: "owned" | "stopped" } | null> =>
+): Effect.Effect<PendingResolution> =>
   Effect.gen(function* () {
-    if (!samePendingReference(reference, record)) return null;
+    if (!samePendingReference(reference, record)) return { kind: "unknown" };
     const executable = runtime.resolveExecutable();
     if (
       !executable ||
       executable.path !== reference.executablePath ||
       executable.token !== reference.executableToken
-    ) return null;
+    ) return { kind: "unknown" };
     const daemon = yield* docker(runtime, executable.path, ["info", "--format", "{{.ID}}"]);
-    if (daemon.status !== 0 || daemon.stdout.trim() !== reference.daemonId) return null;
+    if (daemon.status !== 0 || daemon.stdout.trim() !== reference.daemonId) {
+      return { kind: "unknown" };
+    }
     const inspected = yield* docker(runtime, executable.path, [
       "inspect",
       "--format",
       INSPECT_FORMAT,
       reference.containerName,
     ]);
-    const resolved = discoveredReference(inspected, record, executable, reference.daemonId);
-    if (!resolved) return null;
-    const state = yield* ownershipExact(resolved, { ...record, ref: resolved }, runtime);
-    return state === "owned" || state === "stopped" ? { reference: resolved, state } : null;
+    const discovered = discoveredReference(inspected, record, executable, reference.daemonId);
+    if (discovered.kind !== "found") return discovered;
+    const state = yield* ownershipExact(
+      discovered.reference,
+      { ...record, ref: discovered.reference },
+      runtime,
+    );
+    return state === "owned" || state === "stopped"
+      ? { kind: "found", reference: discovered.reference, state }
+      : state === "gone"
+        ? { kind: "absent" }
+        : { kind: "unknown" };
   });
 
 const ownership = (
@@ -200,7 +225,13 @@ const ownership = (
 ): Effect.Effect<DockerState> => {
   if (reference.kind === "docker-pending") {
     return resolvePending(reference, record, runtime).pipe(
-      Effect.map((resolved) => resolved?.state ?? "unknown"),
+      Effect.map((resolved) =>
+        resolved.kind === "found"
+          ? resolved.state
+          : resolved.kind === "absent"
+            ? "gone"
+            : "unknown",
+      ),
     );
   }
   return ownershipExact(reference, record, runtime);
@@ -211,7 +242,7 @@ const discoverStartedContainer = (
   record: InstanceRecord,
   executable: DockerExecutable,
   daemonId: string,
-): Effect.Effect<HandleReference | null> =>
+): Effect.Effect<DiscoveryState> =>
   Effect.gen(function* () {
     const inspected = yield* docker(runtime, executable.path, [
       "inspect",
@@ -219,10 +250,14 @@ const discoverStartedContainer = (
       INSPECT_FORMAT,
       containerName(record.name),
     ]);
-    const reference = discoveredReference(inspected, record, executable, daemonId);
-    if (!reference || reference.kind !== "docker") return null;
-    const proof = yield* ownershipExact(reference, { ...record, ref: reference }, runtime);
-    return proof === "owned" || proof === "stopped" ? reference : null;
+    const discovered = discoveredReference(inspected, record, executable, daemonId);
+    if (discovered.kind !== "found") return discovered;
+    const proof = yield* ownershipExact(
+      discovered.reference,
+      { ...record, ref: discovered.reference },
+      runtime,
+    );
+    return proof === "owned" || proof === "stopped" ? discovered : { kind: "unknown" };
   });
 
 const recoverStartedContainer = (
@@ -231,20 +266,29 @@ const recoverStartedContainer = (
   executable: DockerExecutable,
   daemonId: string,
   recoveryDeadlineMs: number,
-): Effect.Effect<HandleReference | null> =>
+): Effect.Effect<DiscoveryState> =>
   Effect.gen(function* () {
-    for (let attempt = 0; attempt < RECOVERY_ATTEMPTS; attempt += 1) {
-      const reference = yield* discoverStartedContainer(runtime, record, executable, daemonId);
-      if (reference) return reference;
-      if (attempt + 1 < RECOVERY_ATTEMPTS) yield* Effect.sleep(RECOVERY_DELAY_MS);
-    }
-    return null;
-  }).pipe(
-    Effect.timeoutOrElse({
-      duration: recoveryDeadlineMs,
-      orElse: () => Effect.succeed(null),
-    }),
-  );
+    let sawUnknown = false;
+    let timedOut = false;
+    const recovered = yield* Effect.gen(function* () {
+      for (let attempt = 0; attempt < RECOVERY_ATTEMPTS; attempt += 1) {
+        const discovered = yield* discoverStartedContainer(runtime, record, executable, daemonId);
+        if (discovered.kind === "found") return discovered;
+        if (discovered.kind === "unknown") sawUnknown = true;
+        if (attempt + 1 < RECOVERY_ATTEMPTS) yield* Effect.sleep(RECOVERY_DELAY_MS);
+      }
+      return sawUnknown ? ({ kind: "unknown" } as const) : ({ kind: "absent" } as const);
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: recoveryDeadlineMs,
+        orElse: () => {
+          timedOut = true;
+          return Effect.succeed<DiscoveryState>({ kind: "unknown" });
+        },
+      }),
+    );
+    return timedOut ? { kind: "unknown" } : recovered;
+  });
 
 const ambiguousRunFailure = (
   runtime: DockerLauncherRuntime,
@@ -255,8 +299,15 @@ const ambiguousRunFailure = (
   detail: string,
 ): Effect.Effect<never, LaunchFailure> =>
   recoverStartedContainer(runtime, record, executable, daemonId, recoveryDeadlineMs).pipe(
-    Effect.flatMap((reference) =>
-      spawnFailed(detail, reference ?? pendingReference(record, executable, daemonId))),
+    Effect.flatMap((result) =>
+      spawnFailed(
+        detail,
+        result.kind === "found" || result.kind === "unknown"
+          ? result.kind === "found"
+            ? result.reference
+            : pendingReference(record, executable, daemonId)
+          : undefined,
+      )),
   );
 
 const stopExact = (
@@ -369,7 +420,7 @@ export const makeDockerLauncher = (
     if (reference.kind === "docker-pending") {
       return Effect.gen(function* () {
         const resolved = yield* resolvePending(reference, record, runtime);
-        if (!resolved) return;
+        if (resolved.kind !== "found") return;
         yield* stopExact(runtime, resolved.reference, { ...record, ref: resolved.reference }, graceMs);
       });
     }
@@ -382,7 +433,7 @@ export const makeDockerLauncher = (
     if (reference.kind === "docker-pending") {
       return resolvePending(reference, record, runtime).pipe(
         Effect.flatMap((resolved) =>
-          resolved
+          resolved.kind === "found"
             ? docker(runtime, resolved.reference.executablePath, [
                 "logs",
                 "--tail",
