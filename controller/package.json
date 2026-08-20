@@ -9,7 +9,6 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.ts\"",
-    "test": "bun test src",
     "typecheck": "tsc --noEmit",
     "standards": "node ../scripts/project.mjs controller-standards",
     "check": "knip && jscpd src && depcheck --skip-missing && bun run standards",
