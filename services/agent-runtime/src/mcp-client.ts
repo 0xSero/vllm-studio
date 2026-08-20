@@ -35,11 +35,36 @@ export type McpTarget = StdioTarget | HttpTarget;
 
 const CLIENT_INFO = { name: "local-studio", version: "2.0.0" };
 
+// MCP children get a minimal environment, not this process's: the runtime's
+// env carries controller keys, OAuth client secrets, and session tokens that
+// no third-party server package has any business reading. A connector that
+// needs a value declares it in target.env.
+const INHERITED_ENV_KEYS = [
+  "PATH",
+  "HOME",
+  "USER",
+  "SHELL",
+  "TMPDIR",
+  "LANG",
+  "LC_ALL",
+  "TERM",
+  // Windows process bootstrap requires these.
+  "SYSTEMROOT",
+  "SystemRoot",
+  "COMSPEC",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "USERPROFILE",
+  "TEMP",
+  "TMP",
+] as const;
+
 const processEnvironment = (): Record<string, string> =>
   Object.fromEntries(
-    Object.entries(process.env).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
-    ),
+    INHERITED_ENV_KEYS.flatMap((key) => {
+      const value = process.env[key];
+      return value === undefined ? [] : [[key, value] as [string, string]];
+    }),
   );
 
 const combinedSignal = (

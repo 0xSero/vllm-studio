@@ -33,7 +33,7 @@ export const CONNECTOR_CATALOG: CatalogEntry[] = [
     description: "Repos, issues, pull requests, and code search.",
     transport: "stdio",
     command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-github"],
+    args: ["-y", "@modelcontextprotocol/server-github@2025.4.8"],
     envFields: [{ key: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "Personal access token" }],
   },
   {
@@ -43,7 +43,7 @@ export const CONNECTOR_CATALOG: CatalogEntry[] = [
     description: "Read and post with X API credentials.",
     transport: "stdio",
     command: "npx",
-    args: ["-y", "@enescinar/twitter-mcp"],
+    args: ["-y", "@enescinar/twitter-mcp@0.2.0"],
     envFields: [
       { key: "API_KEY", label: "X API key" },
       { key: "API_SECRET_KEY", label: "X API secret" },

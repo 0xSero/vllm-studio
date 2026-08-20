@@ -218,19 +218,27 @@ function mergeControllers(
   settings: ApiSettings,
   requested: PiControllerModelsRequest[] = [],
 ): PiControllerConfig[] {
-  const requestedControllers = requested
-    .map(normalizeControllerInput)
-    .filter((controller): controller is PiControllerConfig => controller !== null);
-  if (requestedControllers.length > 0) {
-    return [
-      ...new Map(requestedControllers.map((controller) => [controller.url, controller])).values(),
-    ];
-  }
   const primary = normalizeControllerInput({
     url: settings.backendUrl,
     apiKey: settings.apiKey,
     name: "primary",
   });
+  const requestedControllers = requested
+    .map(normalizeControllerInput)
+    .filter((controller): controller is PiControllerConfig => controller !== null)
+    // A request that names the primary without its key means "that one", not
+    // "that one, unauthenticated" — backfill the saved credential so a
+    // keyless mention can't silently disconnect a controller that needs auth.
+    .map((controller) =>
+      !controller.apiKey && primary?.apiKey && controller.url === primary.url
+        ? { ...controller, apiKey: primary.apiKey }
+        : controller,
+    );
+  if (requestedControllers.length > 0) {
+    return [
+      ...new Map(requestedControllers.map((controller) => [controller.url, controller])).values(),
+    ];
+  }
   return primary ? [primary] : [];
 }
 
