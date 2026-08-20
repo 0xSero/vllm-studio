@@ -53,3 +53,18 @@ Why desktop and browser don't sync:
 6. Each runtime runs its own automation scheduler — divergent execution, not just divergent lists.
 
 Fix ladder (ranked): D repair pref-sync via controller studio settings (~20 lines, LWW) → A point desktop Next at a remote runtime (env exists: LOCAL_STUDIO_AGENT_RUNTIME_URL; needs bind+auth) → B proxy the in-process routes to the runtime (mechanical for 6 groups) → C serve the browser surface FROM the desktop (Tailscale Serve, documented).
+
+### M0 complete + first measurements
+
+- v2.14.0 released, installed locally (notarized), deployed to pop-os. NOTE:
+  #366's fail-closed posture 503'd the pop-os deploy until
+  LOCAL_STUDIO_FRONTEND_ALLOW_UNAUTHENTICATED=true was declared in a unit
+  drop-in — tailnet membership is the perimeter there. Remember for future
+  deploys.
+- M4-D landed: pref sync repointed at the controller store (verified live
+  round-trip through the deployed proxy), three-way merge on a per-surface
+  sync base. M4-B (route unification onto the runtime) delegated.
+- Bundle: initial JS on / is 1,134 KB / 26 chunks; mermaid (636K), xterm,
+  highlight chunks are lazy ✓. Initial-load diet is a bounded M3 target.
+- Repo caretaker automation (auto-36631e4a) active every 30 min, isolated
+  caretaker/* worktree branches.
