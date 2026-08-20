@@ -63,8 +63,29 @@ import {
   handleSessionsList,
 } from "./session-handlers";
 
+// The runtime binds loopback only, so every legitimate request carries a
+// loopback Host. A browser tricked by DNS rebinding reaches the socket with
+// the attacker's hostname in Host — reject those before any route runs.
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+const isLoopbackHost = (header: string | undefined): boolean => {
+  if (!header) return false;
+  const host = header.trim().toLowerCase();
+  const name = host.startsWith("[")
+    ? host.replace(/\]:\d+$/, "]")
+    : host.replace(/:\d+$/, "");
+  return LOOPBACK_HOSTS.has(name);
+};
+
 export function createAgentRuntimeApp() {
   const app = new Hono();
+
+  app.use("*", (c, next) => {
+    if (!isLoopbackHost(c.req.header("host"))) {
+      return Promise.resolve(c.json({ error: "Forbidden host" }, 403));
+    }
+    return next();
+  });
 
   app.get("/health", (c) =>
     c.json({ ok: true, service: "local-studio-agent-runtime", pid: process.pid }),
