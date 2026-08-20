@@ -244,6 +244,7 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
           basePort: spec.defaultPort,
           ...(input.portOverride !== undefined ? { exactPort: input.portOverride } : {}),
           readyDeadlineMs: readyDeadlineOverrideMs() ?? spec.health.readyDeadlineMs,
+          isCancelled: () => cancelRequested.has(attempt.nonce),
         },
         recordAlive,
       );

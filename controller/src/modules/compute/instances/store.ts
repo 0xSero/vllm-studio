@@ -1,7 +1,10 @@
 import {
   chmodSync,
+  closeSync,
   existsSync,
+  fsyncSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -41,6 +44,8 @@ export interface InstanceStore {
   readonly allocatePort: (basePort: number, attemptNonce?: string) => number;
 }
 
+const PLACEMENT_RETRY_LIMIT = 8;
+
 export interface Reservation {
   readonly name: string;
   readonly nodeId: NodeId;
@@ -59,6 +64,7 @@ export interface Reservation {
    *  upward from basePort; fails when something else already holds it. */
   readonly exactPort?: number;
   readonly readyDeadlineMs: number;
+  readonly isCancelled?: () => boolean;
 }
 
 /** Names come from recipes but stop/drop accept user input — keep them inside the dir. */
@@ -74,13 +80,85 @@ const isRecord = (value: unknown): value is InstanceRecord =>
 
 /* ── store ───────────────────────────────────────────────────────────────── */
 
+type MutationPayload =
+  | { readonly operation: "write"; readonly record: InstanceRecord }
+  | { readonly operation: "drop"; readonly name: string };
+type JournalEntry =
+  | ({ readonly type: "mutation"; readonly id: string } & MutationPayload)
+  | { readonly type: "done"; readonly id: string };
+
 export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
   const directory = join(dataDirectory, "instances");
   const logsDirectory = join(directory, "logs");
   mkdirSync(logsDirectory, { recursive: true, mode: 0o700 });
   chmodSync(directory, 0o700);
   const mutationPath = join(directory, "mutations.sqlite");
+  const journalPath = join(directory, "mutations.journal");
   const recordPath = (name: string): string => join(directory, `${safeName(name)}.json`);
+
+  const appendJournal = (entry: JournalEntry): void => {
+    const file = openSync(journalPath, "a", 0o600);
+    try {
+      writeFileSync(file, `${JSON.stringify(entry)}\n`);
+      fsyncSync(file);
+    } finally {
+      closeSync(file);
+    }
+  };
+
+  const writeJournal = (entries: readonly JournalEntry[]): void => {
+    const temporaryPath = `${journalPath}.tmp`;
+    writeFileSync(
+      temporaryPath,
+      entries.length === 0 ? "" : `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+      { mode: 0o600 },
+    );
+    renameSync(temporaryPath, journalPath);
+  };
+
+  const readJournal = (): JournalEntry[] => {
+    let entries: JournalEntry[] = [];
+    try {
+      entries = readFileSync(journalPath, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as JournalEntry);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    return entries;
+  };
+
+  const replayJournal = (): void => {
+    const entries = readJournal();
+    if (entries.length === 0) return;
+    const database = openMutationDatabase();
+    try {
+      database.run("BEGIN IMMEDIATE");
+      database.run("UPDATE instance_store_mutex SET generation = generation + 1 WHERE id = 1");
+      const completed = new Set(
+        entries
+          .filter(
+            (entry): entry is Extract<JournalEntry, { type: "done" }> => entry.type === "done",
+          )
+          .map((entry) => entry.id),
+      );
+      for (const entry of entries) {
+        if (entry.type === "done" || completed.has(entry.id)) continue;
+        if (entry.operation === "write") writeRecordRaw(entry.record);
+        else dropRecordRaw(entry.name);
+      }
+      writeJournal([]);
+      database.run("COMMIT");
+    } catch (error) {
+      try {
+        database.run("ROLLBACK");
+      } catch {}
+      throw error;
+    } finally {
+      database.close();
+    }
+  };
 
   const openMutationDatabase = (): Database => {
     const database = new Database(mutationPath, { create: true });
@@ -92,14 +170,40 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
   initialize.run("INSERT OR IGNORE INTO instance_store_mutex (id, generation) VALUES (1, 0)");
   initialize.close();
   chmodSync(mutationPath, 0o600);
+  let activeMutationId: string | null = null;
+  const mutationJournal = (entry: MutationPayload): void => {
+    if (activeMutationId === null) throw new Error("mutation journal is not active");
+    appendJournal({ type: "mutation", id: activeMutationId, ...entry } as JournalEntry);
+  };
+
+  const completeMutation = (id: string): void => {
+    try {
+      appendJournal({ type: "done", id });
+    } catch {}
+  };
+
+  const compactJournal = (): void => {
+    const entries = readJournal();
+    if (entries.length === 0) return;
+    const completed = new Set(
+      entries
+        .filter((entry): entry is Extract<JournalEntry, { type: "done" }> => entry.type === "done")
+        .map((entry) => entry.id),
+    );
+    writeJournal(entries.filter((entry) => entry.type === "mutation" && !completed.has(entry.id)));
+  };
 
   const mutate = <A>(operation: () => A): A => {
     const database = openMutationDatabase();
     try {
       database.run("BEGIN IMMEDIATE");
       database.run("UPDATE instance_store_mutex SET generation = generation + 1 WHERE id = 1");
+      compactJournal();
+      activeMutationId = randomUUID();
+      const mutationId = activeMutationId;
       const result = operation();
       database.run("COMMIT");
+      completeMutation(mutationId);
       return result;
     } catch (error) {
       try {
@@ -107,17 +211,22 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
       } catch {}
       throw error;
     } finally {
+      activeMutationId = null;
       database.close();
     }
   };
 
   const mutateEffect = <A, E>(
     operation: () => Effect.Effect<A, E>,
+    isCancelled: () => boolean = () => false,
   ): Effect.Effect<A, E | LaunchFailure> =>
     Effect.acquireUseRelease(
       Effect.gen(function* () {
         const startedAt = Date.now();
         while (true) {
+          if (isCancelled()) {
+            return yield* Effect.fail<LaunchFailure>({ kind: "cancelled" });
+          }
           const database = openMutationDatabase();
           database.run("PRAGMA busy_timeout = 0");
           try {
@@ -125,6 +234,7 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
             database.run(
               "UPDATE instance_store_mutex SET generation = generation + 1 WHERE id = 1",
             );
+            compactJournal();
             return database;
           } catch (error) {
             database.close();
@@ -135,11 +245,22 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
                 detail: "instance placement transaction remained busy",
               });
             }
+            if (isCancelled()) {
+              return yield* Effect.fail<LaunchFailure>({ kind: "cancelled" });
+            }
             yield* Effect.sleep(25);
           }
         }
       }),
-      (database) => operation().pipe(Effect.tap(() => Effect.sync(() => database.run("COMMIT")))),
+      (database) =>
+        Effect.gen(function* () {
+          activeMutationId = randomUUID();
+          const mutationId = activeMutationId;
+          const result = yield* operation();
+          yield* Effect.sync(() => database.run("COMMIT"));
+          completeMutation(mutationId);
+          return result;
+        }),
       (database, exit) =>
         Effect.sync(() => {
           if (!Exit.isSuccess(exit)) {
@@ -147,6 +268,7 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
               database.run("ROLLBACK");
             } catch {}
           }
+          activeMutationId = null;
           database.close();
         }),
     );
@@ -171,13 +293,25 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
     }
   };
 
-  const writeRecord = (record: InstanceRecord): void => {
+  const writeRecordRaw = (record: InstanceRecord): void => {
     const path = recordPath(record.name);
     writeFileSync(`${path}.tmp`, JSON.stringify(record, null, 2));
     renameSync(`${path}.tmp`, path);
   };
 
-  const dropRecord = (name: string): void => rmSync(recordPath(name), { force: true });
+  const dropRecordRaw = (name: string): void => rmSync(recordPath(name), { force: true });
+
+  const writeRecord = (record: InstanceRecord): void => {
+    mutationJournal({ operation: "write", record });
+    writeRecordRaw(record);
+  };
+
+  const dropRecord = (name: string): void => {
+    mutationJournal({ operation: "drop", name });
+    dropRecordRaw(name);
+  };
+
+  replayJournal();
 
   const write = (record: InstanceRecord): void => mutate(() => writeRecord(record));
   const drop = (name: string): void => mutate(() => dropRecord(name));
@@ -261,7 +395,11 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
     alive: (record: InstanceRecord) => Effect.Effect<boolean>,
   ): Effect.Effect<InstanceRecord, LaunchFailure> =>
     Effect.gen(function* () {
+      let placementRetries = 0;
       while (true) {
+        if (reservation.isCancelled?.()) {
+          return yield* Effect.fail<LaunchFailure>({ kind: "cancelled" });
+        }
         const snapshot = all();
         const snapshotId = recordFingerprint(snapshot);
         const attempt = snapshot.find((record) => record.name === reservation.name) ?? null;
@@ -327,8 +465,19 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
             writeRecord(reserved);
             return reserved;
           }),
+          reservation.isCancelled,
         );
         if (!("kind" in outcome)) return outcome;
+        placementRetries += 1;
+        if (reservation.isCancelled?.()) {
+          return yield* Effect.fail<LaunchFailure>({ kind: "cancelled" });
+        }
+        if (placementRetries >= PLACEMENT_RETRY_LIMIT) {
+          return yield* Effect.fail<LaunchFailure>({
+            kind: "spawn-failed",
+            detail: "instance placement changed too often",
+          });
+        }
       }
     });
 
