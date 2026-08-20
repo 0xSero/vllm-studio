@@ -25,14 +25,22 @@ function failure(error: unknown, fallback: string) {
 }
 
 /**
- * The grant editor needs the tool names a connector actually serves. A
- * connector that cannot be reached right now still has to be listable, so a
- * failed probe degrades to an empty tool list rather than failing the request.
+ * The grant targets.
+ *
+ * Probing a connector for its tool names OPENS it, and opening a stdio MCP
+ * connector spawns its child process. Doing that for every enabled connector
+ * just to render a list meant merely viewing this page executed every MCP
+ * server the user had configured — so the probe is scoped to the one connector
+ * being edited, and the list itself launches nothing.
+ *
+ * A connector that cannot be reached still has to be listable, so a failed
+ * probe degrades to an empty tool list rather than failing the request.
  */
-async function grantTargets(): Promise<ConnectorGrantTarget[]> {
+async function grantTargets(probeId: string | null): Promise<ConnectorGrantTarget[]> {
   return Promise.all(
     (await enabledConnectors()).map(async (connector) => {
-      const tools = await listConnectorTools(connector.id).catch(() => []);
+      const tools =
+        probeId === connector.id ? await listConnectorTools(connector.id).catch(() => []) : [];
       return {
         id: connector.id,
         name: connector.name,
@@ -46,7 +54,10 @@ export async function GET(request: NextRequest) {
   const denied = requireApiAccess(request);
   if (denied) return denied;
   try {
-    const [grants, connectors] = await Promise.all([listConnectorGrants(), grantTargets()]);
+    // ?connector=<id> asks for that connector's tool names; without it the
+    // list is metadata only and nothing is executed.
+    const probeId = request.nextUrl.searchParams.get("connector")?.trim() || null;
+    const [grants, connectors] = await Promise.all([listConnectorGrants(), grantTargets(probeId)]);
     return NextResponse.json({ grants, connectors });
   } catch (error) {
     return failure(error, "Connector grants failed");

@@ -102,6 +102,31 @@ export function ConnectorAccessSection() {
     refresh();
   }, [refresh]);
 
+  // Tool names are fetched only for the connector being edited. Listing them
+  // for everything would open every enabled connector, and opening a stdio MCP
+  // connector spawns its child process — viewing this page must not execute
+  // anything.
+  const loadConnectorTools = useCallback((connectorId: string) => {
+    if (!connectorId) return;
+    void requestJson(
+      `${GRANTS_URL}?connector=${encodeURIComponent(connectorId)}`,
+      Schema.decodeUnknownSync(ConnectorGrantsResponseSchema),
+      { cache: "no-store" },
+    )
+      .then((access) => {
+        const probed = access.connectors.find((entry) => entry.id === connectorId);
+        if (!probed) return;
+        setConnectors((current) =>
+          current.map((entry) => (entry.id === connectorId ? probed : entry)),
+        );
+      })
+      .catch(() => {});
+  }, []);
+
+  useMountSubscription(() => {
+    loadConnectorTools(draft.connectorId);
+  }, [draft.connectorId, loadConnectorTools]);
+
   const mutate = async (init: RequestInit) => {
     setBusy(true);
     try {
