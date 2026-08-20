@@ -24,14 +24,18 @@ export interface ProcessLauncherRuntime {
 }
 
 const parsePsIdentity = (line: string): ProcessIdentity | null => {
-  const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/);
+  const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/);
   if (!match) return null;
   const pid = Number(match[1]);
-  const processGroupId = Number(match[2]);
-  const sessionId = Number(match[3]);
-  const startToken = match[4]?.trim() ?? "";
-  if (![pid, processGroupId, sessionId].every(Number.isSafeInteger) || !startToken) return null;
-  return { pid, processGroupId, sessionId, startToken, launchMarker: null };
+  const parentProcessId = Number(match[2]);
+  const processGroupId = Number(match[3]);
+  const sessionId = Number(match[4]);
+  const startToken = match[5]?.trim() ?? "";
+  if (
+    ![pid, parentProcessId, processGroupId, sessionId].every(Number.isSafeInteger) ||
+    !startToken
+  ) return null;
+  return { pid, parentProcessId, processGroupId, sessionId, startToken, launchMarker: null };
 };
 
 const readPosixLaunchMarker = (pid: number): string | null => {
@@ -53,10 +57,14 @@ const readLinuxIdentity = (pid: number): ProcessIdentity | null => {
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
     const afterComm = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+    const parentProcessId = Number(afterComm[1]);
     const processGroupId = Number(afterComm[2]);
     const sessionId = Number(afterComm[3]);
     const startToken = afterComm[19] ?? "";
-    if (![pid, processGroupId, sessionId].every(Number.isSafeInteger) || !startToken) return null;
+    if (
+      ![pid, parentProcessId, processGroupId, sessionId].every(Number.isSafeInteger) ||
+      !startToken
+    ) return null;
     const prefix = `${LAUNCH_MARKER}=`;
     let launchMarker: string | null = null;
     try {
@@ -66,7 +74,7 @@ const readLinuxIdentity = (pid: number): ProcessIdentity | null => {
           .find((entry) => entry.startsWith(prefix))
           ?.slice(prefix.length) ?? null;
     } catch {}
-    return { pid, processGroupId, sessionId, startToken, launchMarker };
+    return { pid, parentProcessId, processGroupId, sessionId, startToken, launchMarker };
   } catch {
     return null;
   }
@@ -90,7 +98,7 @@ const readPosixIdentity = (pid: number): ProcessIdentity | null => {
   try {
     const result = spawnSync(
       "ps",
-      ["-o", "pid=,pgid=,sid=,lstart=", "-p", String(pid)],
+      ["-o", "pid=,ppid=,pgid=,sid=,lstart=", "-p", String(pid)],
       { encoding: "utf8" },
     );
     if (result.status !== 0) return null;
@@ -106,7 +114,7 @@ const readPosixGroup = (processGroupId: number): readonly ProcessIdentity[] | nu
   try {
     const result = spawnSync(
       "ps",
-      ["-axo", "pid=,pgid=,sid=,lstart="],
+      ["-axo", "pid=,ppid=,pgid=,sid=,lstart="],
       { encoding: "utf8" },
     );
     if (result.status !== 0) return null;
@@ -277,6 +285,14 @@ const childRunning = (child: ChildProcess): boolean =>
 
 type ProcessOwnership = "owned" | "gone" | "unknown";
 
+const sameProcessIdentity = (expected: ProcessIdentity, actual: ProcessIdentity): boolean =>
+  expected.pid === actual.pid &&
+  expected.processGroupId === actual.processGroupId &&
+  expected.sessionId === actual.sessionId &&
+  expected.startToken === actual.startToken &&
+  expected.launchMarker === actual.launchMarker &&
+  expected.parentProcessId === actual.parentProcessId;
+
 const groupOwnership = (
   reference: Extract<HandleReference, { readonly kind: "process" }>,
   record: InstanceRecord,
@@ -293,6 +309,15 @@ const groupOwnership = (
   const roots = members.filter((member) => member.pid === reference.pid);
   const root = roots[0];
   if (roots.length !== 1 || !root) return "unknown";
+  const verifiedMembers = members
+    .map((member) => {
+      const identity = runtime.readIdentity(member.pid);
+      return identity && sameProcessIdentity(member, identity) ? identity : null;
+    })
+    .filter((identity): identity is ProcessIdentity => identity !== null);
+  if (verifiedMembers.length !== members.length) return "unknown";
+  const verifiedRoot = verifiedMembers.find((member) => member.pid === reference.pid);
+  if (!verifiedRoot || !sameProcessIdentity(rootIdentity, verifiedRoot)) return "unknown";
   if (
     rootIdentity.pid !== reference.pid ||
     rootIdentity.processGroupId !== reference.processGroupId ||
@@ -301,21 +326,44 @@ const groupOwnership = (
     (runtime.platform !== "win32" && rootIdentity.launchMarker !== record.nonce)
   ) return "unknown";
   if (
-    root.processGroupId !== reference.processGroupId ||
-    root.sessionId !== reference.sessionId ||
-    root.startToken !== rootIdentity.startToken ||
-    (reference.startToken !== null && root.startToken !== reference.startToken)
+    verifiedRoot.processGroupId !== reference.processGroupId ||
+    verifiedRoot.sessionId !== reference.sessionId ||
+    verifiedRoot.startToken !== rootIdentity.startToken ||
+    (reference.startToken !== null && verifiedRoot.startToken !== reference.startToken)
   ) return "unknown";
-  if (new Set(members.map((member) => member.pid)).size !== members.length) return "unknown";
+  if (verifiedMembers.some((member) => member.startToken.length === 0)) return "unknown";
+  if (new Set(verifiedMembers.map((member) => member.pid)).size !== verifiedMembers.length) {
+    return "unknown";
+  }
   if (
-    members.some(
+    verifiedMembers.some(
       (member) =>
         member.processGroupId !== reference.processGroupId ||
         member.sessionId !== reference.sessionId,
     )
   ) return "unknown";
-  if (runtime.platform !== "win32" && members.some((member) => member.launchMarker !== record.nonce)) {
+  if (
+    runtime.platform !== "win32" &&
+    verifiedMembers.some((member) => member.launchMarker !== record.nonce)
+  ) {
     return "unknown";
+  }
+  const byPid = new Map(verifiedMembers.map((member) => [member.pid, member]));
+  for (const member of verifiedMembers) {
+    if (member.pid === reference.pid) continue;
+    const visited = new Set<number>();
+    let currentPid = member.pid;
+    while (currentPid !== reference.pid) {
+      if (visited.has(currentPid)) return "unknown";
+      visited.add(currentPid);
+      const current = byPid.get(currentPid);
+      const parentProcessId = current?.parentProcessId;
+      if (!current || parentProcessId === undefined || !Number.isSafeInteger(parentProcessId)) {
+        return "unknown";
+      }
+      if (!byPid.has(parentProcessId)) return "unknown";
+      currentPid = parentProcessId;
+    }
   }
   return "owned";
 };

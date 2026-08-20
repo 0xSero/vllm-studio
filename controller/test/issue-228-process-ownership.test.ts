@@ -77,20 +77,22 @@ const durableIdentity = (
   pid: number,
   startToken = "mac-start",
   launchMarker: string | null = "nonce",
+  parentProcessId?: number,
 ): ProcessIdentity => ({
   pid,
   processGroupId: pid,
   sessionId: pid,
   startToken,
   launchMarker,
+  ...(parentProcessId === undefined ? {} : { parentProcessId }),
 });
 
 test("persisted macOS identity remains owned after launcher recreation", async () => {
   const signals: string[] = [];
   const runtime: ProcessLauncherRuntime = {
     platform: "darwin",
-    readIdentity: (pid) => durableIdentity(pid, "same-second"),
-    readGroup: (group) => [durableIdentity(group, "same-second")],
+    readIdentity: (pid) => durableIdentity(pid, "same-second", "nonce", 1),
+    readGroup: (group) => [durableIdentity(group, "same-second", "nonce", 1)],
     signalGroup: (group, signal) => {
       signals.push(signal);
       try {
@@ -121,7 +123,7 @@ test("non-Linux cleanup signals the owned process group", async () => {
     startToken: "start",
   } as const;
   const member = (pid: number): ProcessIdentity => ({
-    ...durableIdentity(pid, "start"),
+    ...durableIdentity(pid, "start", "nonce", pid === 100 ? 1 : 100),
     processGroupId: 100,
     sessionId: 100,
   });
@@ -146,7 +148,7 @@ test("Windows cleanup signals only the proven process tree", async () => {
     startToken: "windows-start",
   } as const;
   const member = (pid: number): ProcessIdentity => ({
-    ...durableIdentity(pid, "windows-start"),
+    ...durableIdentity(pid, "windows-start", "nonce", pid === 300 ? 1 : 300),
     processGroupId: 300,
     sessionId: 300,
   });
@@ -172,8 +174,8 @@ test("foreign process generations are never signalled", async () => {
   } as const;
   const runtime: ProcessLauncherRuntime = {
     platform: "darwin",
-    readIdentity: () => durableIdentity(400, "foreign-start"),
-    readGroup: () => [durableIdentity(400, "foreign-start")],
+    readIdentity: () => durableIdentity(400, "foreign-start", "nonce", 1),
+    readGroup: () => [durableIdentity(400, "foreign-start", "nonce", 1)],
     signalGroup: (_group, signal) => signals.push(signal),
   };
   const launcher = makeProcessLauncher(() => join(root, "model.log"), runtime);
@@ -187,8 +189,8 @@ test("a reused pid cannot bypass durable same-process proof", async () => {
   let phase: "launch" | "reused" = "launch";
   const runtime: ProcessLauncherRuntime = {
     platform: "darwin",
-    readIdentity: (pid) => durableIdentity(pid, "same-second", phase === "launch" ? "nonce" : "foreign"),
-    readGroup: (group) => [durableIdentity(group, "same-second", "foreign")],
+    readIdentity: (pid) => durableIdentity(pid, "same-second", phase === "launch" ? "nonce" : "foreign", 1),
+    readGroup: (group) => [durableIdentity(group, "same-second", "foreign", 1)],
     signalGroup: (_group, signal) => signals.push(signal),
   };
   const launcher = makeProcessLauncher(() => join(root, "model.log"), runtime);
@@ -208,15 +210,21 @@ test("a reused pid cannot bypass durable same-process proof", async () => {
 test("live launcher refuses a foreign member in the owned process group", async () => {
   const signals: string[] = [];
   let phase: "owned" | "foreign-member" = "owned";
+  let rootPid = -1;
   const runtime: ProcessLauncherRuntime = {
     platform: "darwin",
-    readIdentity: (pid) => durableIdentity(pid, "live-start", "nonce"),
+    readIdentity: (pid) => {
+      if (rootPid === -1) rootPid = pid;
+      return pid === rootPid
+        ? durableIdentity(pid, "live-start", "nonce", 1)
+        : durableIdentity(pid, "foreign-start", "nonce", 999);
+    },
     readGroup: (group) => phase === "owned"
-      ? [durableIdentity(group, "live-start", "nonce")]
+      ? [durableIdentity(group, "live-start", "nonce", 1)]
       : [
-          durableIdentity(group, "live-start", "nonce"),
+          durableIdentity(group, "live-start", "nonce", 1),
           {
-            ...durableIdentity(group + 1, "foreign-start", "foreign"),
+            ...durableIdentity(group + 1, "foreign-start", "nonce", 999),
             processGroupId: group,
             sessionId: group,
           },
@@ -235,6 +243,44 @@ test("live launcher refuses a foreign member in the owned process group", async 
       process.kill(started.pid, "SIGKILL");
     } catch {}
   }
+});
+
+test("owned cleanup accepts verified multi-generation descendants", async () => {
+  const signals: string[] = [];
+  const reference = {
+    kind: "process",
+    pid: 600,
+    processGroupId: 600,
+    sessionId: 600,
+    startToken: "root-start",
+  } as const;
+  const members: readonly ProcessIdentity[] = [
+    {
+      ...durableIdentity(600, "root-start", "nonce", 1),
+      processGroupId: 600,
+      sessionId: 600,
+    },
+    {
+      ...durableIdentity(601, "child-start", "nonce", 600),
+      processGroupId: 600,
+      sessionId: 600,
+    },
+    {
+      ...durableIdentity(602, "grandchild-start", "nonce", 601),
+      processGroupId: 600,
+      sessionId: 600,
+    },
+  ];
+  const runtime: ProcessLauncherRuntime = {
+    platform: "darwin",
+    readIdentity: (pid) => members.find((member) => member.pid === pid) ?? null,
+    readGroup: () => members,
+    signalGroup: (_group, signal) => signals.push(signal),
+  };
+  const launcher = makeProcessLauncher(() => join(root, "model.log"), runtime);
+
+  await Effect.runPromise(launcher.stop(reference, { ...record, ref: reference }, 0));
+  expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
 });
 
 test("an empty process group remains gone after launcher recreation", async () => {
