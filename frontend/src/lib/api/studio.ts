@@ -57,6 +57,17 @@ export interface RuntimeJobResponse {
   job: EngineJob;
 }
 
+export type RuntimeJobPayload = {
+  backend: "vllm" | "sglang" | "llamacpp" | "mlx";
+  targetId?: string;
+  type?: RuntimeJobType;
+  version?: string;
+  preferBundled?: boolean;
+};
+
+type RuntimeJobPayloadContract = RuntimeJobPayload &
+  (Extract<keyof RuntimeJobPayload, "command" | "args"> extends never ? unknown : never);
+
 const bundledModelIndex = Schema.decodeUnknownSync(ModelIndexSchema)(bundledModelIndexSource);
 
 const hasStatus = (error: unknown, status: number): boolean =>
@@ -218,23 +229,13 @@ export function createStudioApi(core: ApiCore) {
     getRuntimeTargets: (): Promise<{ targets: RuntimeTarget[] }> =>
       core.request("/runtime/targets"),
 
-    createRuntimeJob: (payload: {
-      backend: "vllm" | "sglang" | "llamacpp" | "mlx";
-      targetId?: string;
-      type?: RuntimeJobType;
-      command?: string;
-      args?: string[];
-      version?: string;
-      preferBundled?: boolean;
-    }): Promise<{ job: EngineJob }> =>
+    createRuntimeJob: (payload: RuntimeJobPayloadContract): Promise<{ job: EngineJob }> =>
       core.request("/runtime/jobs", {
         method: "POST",
         body: JSON.stringify({
           backend: payload.backend,
           targetId: payload.targetId,
           type: payload.type,
-          command: payload.command,
-          args: payload.args,
           version: payload.version,
           prefer_bundled: payload.preferBundled,
         }),

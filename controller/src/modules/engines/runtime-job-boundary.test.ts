@@ -179,6 +179,14 @@ afterAll(() =>
 describe("runtime job action boundary", () => {
   const unsupportedTypes = ["inspect", "download"] as const;
   const backends = ["vllm", "sglang", "llamacpp", "mlx", "cuda", "rocm"] as const;
+  const rejectedPayloads = [
+    { label: "command", payload: { backend: "llamacpp", command: "unsafe-command" } },
+    { label: "args", payload: { backend: "llamacpp", args: ["--unsafe"] } },
+    {
+      label: "command and args",
+      payload: { backend: "llamacpp", command: "unsafe-command", args: ["--unsafe"] },
+    },
+  ] as const;
 
   for (const type of unsupportedTypes) {
     for (const backend of backends) {
@@ -208,6 +216,33 @@ describe("runtime job action boundary", () => {
           }),
         ));
     }
+  }
+
+  for (const { label, payload } of rejectedPayloads) {
+    test(`rejects ${label} before queueing or dispatch`, () =>
+      runControllerEffect(
+        runtime,
+        Effect.gen(function* () {
+          const marker = writeMarkerCommand(`llamacpp-${label.replaceAll(" ", "-")}`);
+          process.env["LOCAL_STUDIO_LLAMACPP_UPGRADE_CMD"] = marker.command;
+          const jobsBefore = yield* listJobs();
+
+          const response = yield* request("/runtime/jobs", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          expect(response.status).toBe(400);
+          expect(
+            yield* responseJson(response).pipe(
+              Effect.flatMap(Schema.decodeUnknownEffect(ErrorResponseSchema)),
+            ),
+          ).toEqual({ detail: "Invalid payload" });
+          expect(yield* listJobs()).toEqual(jobsBefore);
+          expect(existsSync(marker.marker)).toBe(false);
+        }),
+      ));
   }
 
   for (const type of ["install", "update"] as const) {
