@@ -106,3 +106,19 @@ Runtime-related environment variables include:
 - `src/modules/system/`: metrics, logs, usage, events, and platform state.
 - `src/stores/`: SQLite helpers and persisted stores.
 - `contracts/`: the `@local-studio/contracts` package — the controller's HTTP API contract, consumed by the frontend via a `file:` dependency.
+
+## Pointing SDKs at the controller
+
+The controller speaks three dialects, all proxied to the engine:
+
+```bash
+# OpenAI SDK (chat completions or the Responses API)
+OPENAI_BASE_URL=http://127.0.0.1:8080/v1
+
+# Anthropic SDK (Messages API; x-api-key auth is accepted)
+ANTHROPIC_BASE_URL=http://127.0.0.1:8080
+```
+
+Model ids resolve the same way on every route: `provider/model` ids go to
+that configured provider with its key; anything else is canonicalized to the
+recipe's served model name.
