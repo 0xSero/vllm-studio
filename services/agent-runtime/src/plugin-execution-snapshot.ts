@@ -48,6 +48,7 @@ type PathIdentity = {
 
 type SnapshotStorageGuard = {
   root: string;
+  stagingRoot?: string;
   assertRoot: (currentRoot?: string) => Promise<void>;
   close: () => Promise<void>;
 };
@@ -95,6 +96,7 @@ async function acquireSnapshotStorage(create: boolean): Promise<SnapshotStorageG
   const dataRoot = resolveDataDir();
   const runtimeRoot = path.join(dataRoot, "runtime");
   const root = path.join(runtimeRoot, "plugin-executables");
+  const stagingRoot = create ? path.join(runtimeRoot, ".plugin-staging") : undefined;
   const dataIdentity = await privateDirectoryIdentity(dataRoot);
   const runtimeIdentity = create
     ? await ensurePrivateDirectory(runtimeRoot)
@@ -102,6 +104,7 @@ async function acquireSnapshotStorage(create: boolean): Promise<SnapshotStorageG
   const rootIdentity = create
     ? await ensurePrivateDirectory(root)
     : await privateDirectoryIdentity(root);
+  const stagingIdentity = stagingRoot ? await ensurePrivateDirectory(stagingRoot) : undefined;
   if (typeof constants.O_DIRECTORY !== "number" || typeof constants.O_NOFOLLOW !== "number") {
     throw new PluginExecutionSnapshotError("Plugin snapshot storage cannot be verified");
   }
@@ -110,17 +113,21 @@ async function acquireSnapshotStorage(create: boolean): Promise<SnapshotStorageG
     constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
   );
   const assertRoot = async (currentRoot = root): Promise<void> => {
-    const [currentData, currentRuntime, currentPath, currentHandle] = await Promise.all([
-      privateDirectoryIdentity(dataRoot),
-      privateDirectoryIdentity(runtimeRoot),
-      privateDirectoryIdentity(currentRoot),
-      handle.stat().then(pathIdentity),
-    ]);
+    const [currentData, currentRuntime, currentPath, currentHandle, currentStaging] =
+      await Promise.all([
+        privateDirectoryIdentity(dataRoot),
+        privateDirectoryIdentity(runtimeRoot),
+        privateDirectoryIdentity(currentRoot),
+        handle.stat().then(pathIdentity),
+        stagingRoot ? privateDirectoryIdentity(stagingRoot) : Promise.resolve(undefined),
+      ]);
     if (
       !samePathIdentity(dataIdentity, currentData) ||
       !samePathIdentity(runtimeIdentity, currentRuntime) ||
       !samePathIdentity(rootIdentity, currentPath) ||
-      !samePathIdentity(rootIdentity, currentHandle)
+      !samePathIdentity(rootIdentity, currentHandle) ||
+      (stagingIdentity !== undefined &&
+        (currentStaging === undefined || !samePathIdentity(stagingIdentity, currentStaging)))
     ) {
       throw new PluginExecutionSnapshotError("Plugin snapshot storage changed");
     }
@@ -133,6 +140,7 @@ async function acquireSnapshotStorage(create: boolean): Promise<SnapshotStorageG
   }
   return {
     root,
+    ...(stagingRoot ? { stagingRoot } : {}),
     assertRoot,
     close: () => handle.close(),
   };
@@ -145,6 +153,23 @@ const contained = (root: string, candidate: string): boolean => {
     (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
   );
 };
+
+const CANONICAL_SHA256 = /^sha256:[0-9a-f]{64}$/;
+
+function canonicalDigestSuffix(value: string): string {
+  if (!CANONICAL_SHA256.test(value)) {
+    throw new PluginExecutionSnapshotError("Plugin snapshot identity is invalid");
+  }
+  return value.slice("sha256:".length);
+}
+
+function snapshotDirectory(root: string, artifactDigest: string): string {
+  const candidate = path.join(root, canonicalDigestSuffix(artifactDigest));
+  if (!contained(root, candidate)) {
+    throw new PluginExecutionSnapshotError("Plugin snapshot path changed");
+  }
+  return candidate;
+}
 
 async function fileDigest(file: string): Promise<string> {
   const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
@@ -265,7 +290,9 @@ async function claimSnapshotDestination(
   root: string,
   validate: () => Promise<void>,
 ): Promise<SnapshotPublicationClaim> {
+  await validate();
   await mkdir(root, { mode: 0o700 });
+  await validate();
   const markerPath = path.join(root, `.claim-${process.pid}-${randomUUID()}`);
   let marker: Awaited<ReturnType<typeof open>> | undefined;
   let directory: Awaited<ReturnType<typeof open>> | undefined;
@@ -400,13 +427,21 @@ async function snapshotConnector(
 ): Promise<ConnectorConfig> {
   if (connector.transport !== "stdio" || !connector.command) return connector;
   const storage = await acquireSnapshotStorage(true);
-  const destination = path.join(storage.root, bundle.artifactDigest.replace("sha256:", ""));
+  const destination = snapshotDirectory(storage.root, bundle.artifactDigest);
   const artifactRoot = path.join(destination, "artifact");
   const sourceRoot = await import("node:fs/promises").then(({ realpath }) =>
     realpath(bundle.rootDir),
   );
   const runtimeCommand = connector.command === process.execPath;
-  const temp = `${destination}.tmp-${process.pid}-${randomUUID()}`;
+  const stagingRoot = storage.stagingRoot;
+  if (!stagingRoot) {
+    await storage.close().catch(() => undefined);
+    throw new PluginExecutionSnapshotError("Plugin snapshot staging is unavailable");
+  }
+  const temp = path.join(
+    stagingRoot,
+    `${bundle.artifactDigest.slice("sha256:".length)}-${process.pid}-${randomUUID()}`,
+  );
   try {
     await storage.assertRoot();
     await quarantineAndRemove(temp, storage.assertRoot);
@@ -438,8 +473,8 @@ async function snapshotConnector(
       let claim: SnapshotPublicationClaim | undefined;
       try {
         claim = await claimSnapshotDestination(destination, storage.assertRoot);
-        await claim.assertCurrent();
         await chmod(path.join(temp, "artifact"), 0o700);
+        await claim.assertCurrent();
         await rename(path.join(temp, "artifact"), artifactRoot);
         await claim.assertCurrent();
         await chmod(artifactRoot, 0o500);
@@ -527,7 +562,20 @@ const referencedSnapshots = (
       origin.snapshotDigest &&
       origin.sourceDigest &&
       approved
-      ? [{ name: origin.artifactDigest.replace("sha256:", ""), digest: origin.snapshotDigest }]
+      ? (() => {
+          try {
+            const snapshotDigest = origin.snapshotDigest;
+            canonicalDigestSuffix(snapshotDigest);
+            return [
+              {
+                name: canonicalDigestSuffix(origin.artifactDigest),
+                digest: snapshotDigest,
+              },
+            ];
+          } catch {
+            return [];
+          }
+        })()
       : [];
   });
   return {
@@ -591,6 +639,9 @@ export function expectedPluginExecutionSnapshot(
       ) {
         throw new PluginExecutionSnapshotError("Plugin execution snapshot identity is missing");
       }
+      const artifactDigest = canonicalDigestSuffix(bundle.artifactDigest);
+      const snapshotDigest = existing.origin.snapshotDigest;
+      canonicalDigestSuffix(snapshotDigest);
       const storage = await acquireSnapshotStorage(false);
       try {
         await storage.assertRoot();
@@ -598,11 +649,8 @@ export function expectedPluginExecutionSnapshot(
         const sourceRoot = await import("node:fs/promises").then(({ realpath }) =>
           realpath(bundle.rootDir),
         );
-        const artifactRoot = path.join(
-          storage.root,
-          bundle.artifactDigest.replace("sha256:", ""),
-          "artifact",
-        );
+        const snapshotRoot = snapshotDirectory(storage.root, `sha256:${artifactDigest}`);
+        const artifactRoot = path.join(snapshotRoot, "artifact");
         const mapped: ConnectorConfig = {
           ...connector,
           command:
@@ -617,7 +665,7 @@ export function expectedPluginExecutionSnapshot(
             : artifactRoot,
           origin: {
             ...connectorOrigin,
-            snapshotDigest: existing.origin.snapshotDigest,
+            snapshotDigest,
             ...(existing.origin.runtimeDigest
               ? { runtimeDigest: existing.origin.runtimeDigest }
               : {}),
@@ -628,7 +676,7 @@ export function expectedPluginExecutionSnapshot(
           ...mapped,
           origin: {
             ...connectorOrigin,
-            snapshotDigest: existing.origin.snapshotDigest,
+            snapshotDigest,
             ...(existing.origin.runtimeDigest
               ? { runtimeDigest: existing.origin.runtimeDigest }
               : {}),
@@ -658,19 +706,17 @@ export function verifyPluginExecutionSnapshot(
         !connector.origin.snapshotDigest
       )
         throw new PluginExecutionSnapshotError("Plugin execution snapshot is missing");
+      const artifactDigest = canonicalDigestSuffix(connector.origin.artifactDigest);
+      const snapshotDigest = connector.origin.snapshotDigest;
+      canonicalDigestSuffix(snapshotDigest);
       const storage = await acquireSnapshotStorage(false);
       try {
         await storage.assertRoot();
-        const root = path.join(
-          storage.root,
-          connector.origin.artifactDigest.replace("sha256:", ""),
-        );
+        const root = snapshotDirectory(storage.root, `sha256:${artifactDigest}`);
         const artifactRoot = path.join(root, "artifact");
+        await assertSnapshotPath(storage.root, root);
         await assertHardened(root);
-        if (
-          (await Effect.runPromise(pluginArtifactDigest(artifactRoot))) !==
-          connector.origin.snapshotDigest
-        )
+        if ((await Effect.runPromise(pluginArtifactDigest(artifactRoot))) !== snapshotDigest)
           throw new PluginExecutionSnapshotError("Plugin execution snapshot changed");
         if (connector.command === process.execPath && !connector.origin.runtimeDigest)
           throw new PluginExecutionSnapshotError("Plugin runtime identity is missing");

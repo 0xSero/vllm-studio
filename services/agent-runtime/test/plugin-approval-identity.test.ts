@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   chmodSync,
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -18,8 +19,10 @@ import { Effect } from "effect";
 import type { ConnectorConfig } from "../src/connector-contract";
 import {
   callConnectorTool,
+  ConnectorProbeDeniedError,
   listConnectorTools,
   probePersistedConnector,
+  probePersistedConnectorWithReconciliation,
 } from "../src/connector-pool";
 import { closePooledConnection, getOrCreatePooledConnection } from "../src/connector-pool-state";
 import {
@@ -278,6 +281,41 @@ describe("plugin approval identity", () => {
     await expect(listConnectorTools(connector.id)).rejects.toThrow(/not approved/);
   });
 
+  test("reconciles HTTP plugin approval before probing a persisted connector", async () => {
+    const { root } = fixture();
+    const dataDir = process.env.LOCAL_STUDIO_DATA_DIR;
+    if (!dataDir) throw new Error("fixture data directory is missing");
+    const bundledRoot = path.join(dataDir, "plugins", "fixture");
+    mkdirSync(path.dirname(bundledRoot), { recursive: true });
+    cpSync(root, bundledRoot, { recursive: true });
+    const source: PluginSource[] = [{ label: "Local Studio", dir: bundledRoot, priority: 5 }];
+    writeFileSync(
+      path.join(bundledRoot, "mcp.json"),
+      JSON.stringify({ mcpServers: { http: { type: "http", url: "https://example.test/mcp" } } }),
+    );
+    const connector = await approvedHttpConnector(source);
+    await saveConnectors([connector]);
+    let probes = 0;
+    await getOrCreatePooledConnection(connector.id, async () => ({
+      listTools: async () => {
+        probes += 1;
+        return [{ name: "read", description: "Read", inputSchema: { type: "object" } }];
+      },
+      callTool: async () => undefined,
+      close: async () => undefined,
+    }));
+    writeFileSync(
+      path.join(bundledRoot, "mcp.json"),
+      JSON.stringify({
+        mcpServers: { http: { type: "http", url: "https://changed.example.test/mcp" } },
+      }),
+    );
+    await expect(
+      probePersistedConnectorWithReconciliation(connector.id, undefined, source),
+    ).rejects.toBeInstanceOf(ConnectorProbeDeniedError);
+    expect(probes).toBe(0);
+  });
+
   test("revokes approval after persisted configuration drift", async () => {
     const { root, source } = fixture();
     const approved = await approvedConnector(root, source);
@@ -524,6 +562,140 @@ describe("plugin approval identity", () => {
     ).rejects.toThrow();
     expect(lstatSync(destination).isSymbolicLink()).toBe(true);
     expect(readFileSync(marker, "utf8")).toBe("outside");
+    expect(readdirSync(victim)).toEqual(["marker"]);
+  });
+
+  test("does not write a snapshot through a storage root swapped during publication", async () => {
+    const { root, source } = fixture();
+    for (let index = 0; index < 128; index += 1) {
+      writeFileSync(path.join(root, `payload-${index}.bin`), Buffer.alloc(512 * 1024, index));
+    }
+    const victim = path.join(path.dirname(root), "snapshot-root-victim");
+    mkdirSync(victim, { mode: 0o700 });
+    const storageRoot = executionRoot();
+    const racer = `const fs = require("node:fs");
+const path = require("node:path");
+const root = process.argv[1];
+const runtimeRoot = process.argv[3];
+const victim = process.argv[2];
+const deadline = Date.now() + 10000;
+while (Date.now() < deadline) {
+  try {
+    const stagingName = fs.readdirSync(runtimeRoot).find((name) => name === ".plugin-staging");
+    if (!stagingName) continue;
+    const staging = path.join(runtimeRoot, stagingName);
+    const tempName = fs.readdirSync(staging).find((name) => name.includes("-"));
+    if (!tempName) continue;
+    const moved = root + ".swapped";
+    fs.renameSync(root, moved);
+    fs.symlinkSync(victim, root);
+    process.stdout.write("SWAPPED\\n");
+    process.exit(0);
+  } catch {}
+}
+process.stdout.write("TIMEOUT\\n");
+process.exit(2);`;
+    const child = Bun.spawn(["node", "-e", racer, storageRoot, victim, path.dirname(storageRoot)], {
+      stdout: "pipe",
+    });
+    const reader = child.stdout.getReader();
+    const decoder = new TextDecoder();
+    let output = "";
+    const waitForOutput = async (expected: string): Promise<void> => {
+      while (!output.includes(expected)) {
+        const chunk = await reader.read();
+        if (chunk.done) throw new Error(`Snapshot racer exited before ${expected}: ${output}`);
+        output += decoder.decode(chunk.value, { stream: true });
+      }
+    };
+    try {
+      const preparation = prepareConnectorSnapshot(
+        (await Effect.runPromise(discoverPluginBundles(source, 0)))[0]!,
+        await approvedConnector(root, source),
+      );
+      await waitForOutput("SWAPPED");
+      await expect(preparation).rejects.toThrow();
+      expect(readdirSync(victim)).toEqual([]);
+    } finally {
+      child.kill();
+      await child.exited;
+      reader.releaseLock();
+    }
+  }, 20_000);
+
+  test("does not write a claim through a snapshot destination swapped during publication", async () => {
+    const { root, source } = fixture();
+    for (let index = 0; index < 64; index += 1) {
+      writeFileSync(path.join(root, `payload-${index}.bin`), Buffer.alloc(512 * 1024, index));
+    }
+    const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
+    if (!bundle) throw new Error("fixture plugin was not discovered");
+    const destination = path.join(executionRoot(), bundle.artifactDigest.replace("sha256:", ""));
+    const victim = path.join(path.dirname(root), "snapshot-destination-victim");
+    mkdirSync(victim, { mode: 0o700 });
+    const racer = `const fs = require("node:fs");
+const destination = process.argv[1];
+const victim = process.argv[2];
+const deadline = Date.now() + 10000;
+while (Date.now() < deadline) {
+  try {
+    const stats = fs.lstatSync(destination);
+    if (!stats.isDirectory() || stats.isSymbolicLink()) continue;
+    fs.renameSync(destination, destination + ".swapped");
+    fs.symlinkSync(victim, destination);
+    process.stdout.write("SWAPPED\\n");
+    process.exit(0);
+  } catch {}
+}
+process.stdout.write("TIMEOUT\\n");
+process.exit(2);`;
+    const child = Bun.spawn(["node", "-e", racer, destination, victim], { stdout: "pipe" });
+    const reader = child.stdout.getReader();
+    const decoder = new TextDecoder();
+    let output = "";
+    const waitForOutput = async (expected: string): Promise<void> => {
+      while (!output.includes(expected)) {
+        const chunk = await reader.read();
+        if (chunk.done)
+          throw new Error(`Snapshot destination racer exited before ${expected}: ${output}`);
+        output += decoder.decode(chunk.value, { stream: true });
+      }
+    };
+    try {
+      const preparation = prepareConnectorSnapshot(bundle, await approvedConnector(root, source));
+      await waitForOutput("SWAPPED");
+      await expect(preparation).rejects.toThrow();
+      expect(readdirSync(victim)).toEqual([]);
+    } finally {
+      child.kill();
+      await child.exited;
+      reader.releaseLock();
+    }
+  }, 20_000);
+
+  test("rejects malformed persisted snapshot digest identities before path resolution", async () => {
+    const { root, source } = fixture();
+    const prepared = await prepareSnapshot(root, source);
+    for (const artifactDigest of ["../outside", "sha256:short", "sha256:" + "g".repeat(64)]) {
+      await expect(
+        Effect.runPromise(
+          verifyPluginExecutionSnapshot({
+            ...prepared,
+            origin: { ...prepared.origin, artifactDigest },
+          }),
+        ),
+      ).rejects.toThrow(/identity is invalid/i);
+    }
+    for (const snapshotDigest of ["../outside", "sha256:short", "sha256:" + "g".repeat(64)]) {
+      await expect(
+        Effect.runPromise(
+          verifyPluginExecutionSnapshot({
+            ...prepared,
+            origin: { ...prepared.origin, snapshotDigest },
+          }),
+        ),
+      ).rejects.toThrow(/identity is invalid/i);
+    }
   });
 
   test("does not delete a retained snapshot swapped into a failing publication", async () => {

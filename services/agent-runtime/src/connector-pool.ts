@@ -16,6 +16,7 @@ import {
 } from "./connector-pool-state";
 import { verifyPluginExecutionSnapshot } from "./plugin-execution-snapshot";
 import { pluginConnectorConfigurationDigest } from "./plugin-connector-identity";
+import type { PluginSource } from "./plugin-discovery";
 
 export { closePooledConnection } from "./connector-pool-state";
 
@@ -301,4 +302,15 @@ export async function probePersistedConnector(
     releasePooledConnectorExecution(execution);
     throw error;
   }
+}
+
+export async function probePersistedConnectorWithReconciliation(
+  connectorId: string,
+  signal?: AbortSignal,
+  sources?: PluginSource[],
+): Promise<{ ok: boolean; tools: McpToolInfo[]; error?: string }> {
+  signal?.throwIfAborted();
+  const { refreshEnabledPluginConnectors } = await import("./plugin-runtime");
+  await Effect.runPromise(refreshEnabledPluginConnectors(sources), signal ? { signal } : undefined);
+  return probePersistedConnector(connectorId, signal);
 }

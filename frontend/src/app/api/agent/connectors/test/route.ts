@@ -3,7 +3,7 @@ import { Schema } from "effect";
 import { ConnectorTestInputSchema } from "@local-studio/agent-runtime/connector-contract";
 import {
   ConnectorProbeDeniedError,
-  probePersistedConnector,
+  probePersistedConnectorWithReconciliation,
   UnknownConnectorError,
 } from "@local-studio/agent-runtime/connector-pool";
 import { requireApiAccess } from "@/lib/auth/guard";
@@ -20,9 +20,9 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
-  let result: Awaited<ReturnType<typeof probePersistedConnector>>;
+  let result: Awaited<ReturnType<typeof probePersistedConnectorWithReconciliation>>;
   try {
-    result = await probePersistedConnector(body.id, request.signal);
+    result = await probePersistedConnectorWithReconciliation(body.id, request.signal);
   } catch (error) {
     if (error instanceof UnknownConnectorError) {
       return NextResponse.json({ error: "unknown connector" }, { status: 404 });
