@@ -5,6 +5,7 @@ import { type ComponentType, type MouseEvent } from "react";
 import {
   AutomationsIcon,
   ConfigureIcon,
+  IntegrationsIcon,
   ModelsIcon,
   StatusIcon,
   UsageIcon,
@@ -13,10 +14,16 @@ import {
 export type IconComponent = ComponentType<{ className?: string; strokeWidth?: number }>;
 
 // Sessions has no nav row: the Search command palette is the session list.
+//
+// Integrations sits between Automations and Configure because the rail reads
+// top to bottom as widening scope: what is running, what it can run, what runs
+// on its own, what it can reach outside this machine, and only then the
+// machine's own settings.
 export const tabs = [
   { href: "/", label: "Status", icon: StatusIcon },
   { href: "/models", label: "Models", icon: ModelsIcon },
   { href: "/agent/automations", label: "Automations", icon: AutomationsIcon },
+  { href: "/integrations", label: "Integrations", icon: IntegrationsIcon },
   { href: "/configure", label: "Configure", icon: ConfigureIcon },
   { href: "/usage", label: "Usage", icon: UsageIcon },
 ];

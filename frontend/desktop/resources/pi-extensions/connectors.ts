@@ -1,7 +1,7 @@
 // Connector bridge extension for Local Studio.
 //
 // At session start it asks the frontend for the tool inventory of every
-// enabled connector (MCP servers configured in Settings → Connectors) and
+// enabled connector (MCP servers configured on the Integrations page) and
 // registers each MCP tool as `<connectorId>_<toolName>`. Tool calls proxy
 // through the frontend's pooled MCP connections, so one stdio server serves
 // every session.

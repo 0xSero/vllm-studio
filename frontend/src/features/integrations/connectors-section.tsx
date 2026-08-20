@@ -15,6 +15,7 @@ import {
   FormField,
   Input,
   ModelButton,
+  RefreshIconButton,
   SearchInput,
   Spinner,
   StatusPill,
@@ -467,15 +468,20 @@ const CONNECTOR_MIN_WIDTH = "min-w-[42rem]";
 export function ConnectorsSection() {
   const [connectors, setConnectors] = useState<readonly ConnectorView[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedConnector, setSelectedConnector] = useState<ConnectorView | null>(null);
   const [selectedCatalog, setSelectedCatalog] = useState<CatalogEntry | null>(null);
 
   const refresh = useCallback(() => {
+    setRefreshing(true);
     void requestJson("/api/agent/connectors", Schema.decodeUnknownSync(ConnectorsResponseSchema))
       .then(({ connectors: list }) => setConnectors(list))
       .catch(() => setConnectors([]))
-      .finally(() => setLoaded(true));
+      .finally(() => {
+        setLoaded(true);
+        setRefreshing(false);
+      });
   }, []);
 
   useMountSubscription(() => {
@@ -517,6 +523,11 @@ export function ConnectorsSection() {
             <StatusText tone={loaded ? "ok" : "dim"}>
               {loaded ? `${visibleConnectors.length} connected` : "discovering"}
             </StatusText>
+            <RefreshIconButton
+              onClick={refresh}
+              loading={refreshing}
+              label="Refresh connectors"
+            />
           </div>
         }
       >

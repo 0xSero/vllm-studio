@@ -31,6 +31,7 @@ export {
   StatusIcon,
   ModelsIcon,
   AutomationsIcon,
+  IntegrationsIcon,
   ConfigureIcon,
   UsageIcon,
   NewTaskIcon,

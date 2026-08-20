@@ -10,7 +10,7 @@ import type {
   ProvidersResponse,
   ProviderLoginStartResponse,
 } from "@local-studio/agent-runtime/provider-hub-contract";
-import { Input, ModelButton, SearchInput, Spinner, StatusPill } from "@/ui";
+import { Input, ModelButton, RefreshIconButton, SearchInput, Spinner, StatusPill } from "@/ui";
 import { ExternalLink, LogOut } from "@/ui/icon-registry";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceLogo } from "@/ui/resource-logo";
@@ -386,9 +386,11 @@ export function ModelProvidersSection() {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState<ActiveLogin | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<ProviderView | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
+    setRefreshing(true);
     void requestJson("/api/agent/providers", decodeProviders)
       .then(({ providers: list }) => {
         setProviders(list);
@@ -399,7 +401,8 @@ export function ModelProvidersSection() {
       .catch((err: unknown) => {
         setProviders([]);
         setError(err instanceof Error ? err.message : "Failed to load providers");
-      });
+      })
+      .finally(() => setRefreshing(false));
   }, []);
 
   useMountSubscription(() => {
@@ -476,6 +479,11 @@ export function ModelProvidersSection() {
                 ? `${connectedCount} connected · ${visibleProviders.length} shown`
                 : "loading"}
             </StatusText>
+            <RefreshIconButton
+              onClick={refresh}
+              loading={refreshing}
+              label="Refresh model accounts"
+            />
           </div>
         }
       >

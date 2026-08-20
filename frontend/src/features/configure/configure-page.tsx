@@ -1,17 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ErrorBox } from "@/ui";
-import { Monitor, Plug, Server, type LucideIcon } from "@/ui/icon-registry";
+import { Monitor, Server, type LucideIcon } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { SettingsLayout, type SettingsSectionDef } from "@/features/settings/settings-ui";
-import { IntegrationsContent } from "@/features/integrations/integrations-page";
 import { ServerContent } from "@/features/logs/server-view";
 import { useConfigure } from "./use-configure";
 import { MachinesSection } from "./machines-section";
 import {
   configureSectionFromHash,
+  configureSectionRedirect,
   DEFAULT_CONFIGURE_SECTION,
   type ConfigureSectionId,
 } from "./configure-navigation";
@@ -25,12 +25,6 @@ const CONFIGURE_SECTIONS: SettingsSectionDef<ConfigureSectionId>[] = [
     description:
       "Every computer whose GPUs and memory this workspace can run a model on. Their combined GPU memory is the pool the Models page checks a model against.",
     icon: sectionIcon(Monitor),
-  },
-  {
-    id: "integrations",
-    label: "Integrations",
-    description: "Plugins, connectors, accounts, and reusable skills.",
-    icon: sectionIcon(Plug),
   },
   {
     id: "server",
@@ -48,18 +42,29 @@ const CONFIGURE_SECTIONS: SettingsSectionDef<ConfigureSectionId>[] = [
  * the sections that are already listed in the rail beside it, and three of its
  * four rows had no data to put in the columns, so they were filled with prose
  * ("Get · serve", "logs · API docs") right-aligned under numeric headers.
- * Integrations is here on borrowed time: connectors and skills are not
- * hardware, and this mount goes away with the route that replaces it.
+ * Integrations was the last of those tenants and now has its own route; all
+ * that is left of it here is the forward on mount.
  */
 export default function ConfigurePage() {
   const state = useConfigure();
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const requestedSection = configureSectionFromHash(searchParams.get("section") ?? "");
+  const requestedParam = searchParams.get("section") ?? "";
+  const requestedSection = configureSectionFromHash(requestedParam);
   const [section, setSection] = useState<ConfigureSectionId>(
     requestedSection ?? DEFAULT_CONFIGURE_SECTION,
   );
 
   useMountSubscription(() => {
+    // A link written while Integrations lived here names a section Configure
+    // no longer has. Forward it rather than falling through to the default,
+    // which would quietly show Machines under an Integrations bookmark.
+    const moved =
+      configureSectionRedirect(requestedParam) ?? configureSectionRedirect(window.location.hash);
+    if (moved) {
+      router.replace(moved);
+      return;
+    }
     // Section lives in both the hash and `?section=`; the hash wins because it
     // is what the in-page nav writes, and the query is what other pages link.
     const syncSection = () =>
@@ -71,7 +76,7 @@ export default function ConfigurePage() {
     syncSection();
     window.addEventListener("hashchange", syncSection);
     return () => window.removeEventListener("hashchange", syncSection);
-  }, [requestedSection]);
+  }, [requestedParam, requestedSection, router]);
 
   const selectSection = (next: ConfigureSectionId) => {
     setSection(next);
@@ -102,7 +107,6 @@ export default function ConfigurePage() {
           <MachinesSection state={state} />
         </>
       ) : null}
-      {section === "integrations" ? <IntegrationsContent /> : null}
       {section === "server" ? <ServerContent embedded /> : null}
     </SettingsLayout>
   );

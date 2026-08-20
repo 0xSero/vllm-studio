@@ -11,7 +11,7 @@ import {
   GOOGLE_WORKSPACE_PLUGIN_IDS,
   type GoogleWorkspacePluginId,
 } from "@local-studio/agent-runtime/google-workspace-binding";
-import { Alert } from "@/ui";
+import { Alert, RefreshIconButton } from "@/ui";
 import { ResourceLogo } from "@/ui/resource-logo";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
@@ -64,10 +64,12 @@ function accountSummary(account: GoogleAccountView | null, id: GoogleWorkspacePl
 export function GoogleAccountsSection() {
   const [account, setAccount] = useState<GoogleAccountView | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [openAccount, setOpenAccount] = useState<GoogleWorkspacePluginId | null>(null);
 
   const refresh = useCallback(() => {
+    setRefreshing(true);
     void requestJson<{ account: GoogleAccountView }>(
       "/api/agent/accounts/google",
       Schema.decodeUnknownSync(GoogleAccountResponseSchema),
@@ -80,7 +82,10 @@ export function GoogleAccountsSection() {
       .catch((loadError: unknown) => {
         setError(loadError instanceof Error ? loadError.message : "Google account failed");
       })
-      .finally(() => setLoaded(true));
+      .finally(() => {
+        setLoaded(true);
+        setRefreshing(false);
+      });
   }, []);
 
   useMountSubscription(() => {
@@ -98,9 +103,12 @@ export function GoogleAccountsSection() {
         title="Accounts"
         description="Google services a session can read from. Each one can hold several signed-in mailboxes."
         actions={
-          <StatusText tone={error ? "warn" : loaded ? "ok" : "dim"}>
-            {loaded ? `${GOOGLE_WORKSPACE_PLUGIN_IDS.length} services` : "loading"}
-          </StatusText>
+          <div className="flex items-center gap-2">
+            <StatusText tone={error ? "warn" : loaded ? "ok" : "dim"}>
+              {loaded ? `${GOOGLE_WORKSPACE_PLUGIN_IDS.length} services` : "loading"}
+            </StatusText>
+            <RefreshIconButton onClick={refresh} loading={refreshing} label="Refresh accounts" />
+          </div>
         }
       >
         {!loaded ? (

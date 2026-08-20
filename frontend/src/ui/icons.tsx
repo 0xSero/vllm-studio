@@ -226,6 +226,21 @@ export function AutomationsIcon(props: IconProps) {
   );
 }
 
+/**
+ * Integrations — a plug: the row is about handing a session a capability it
+ * did not arrive with. Deliberately not lucide's stroked `Plug`, which is a
+ * hairline outline beside five solid silhouettes and reads as a hole in the
+ * rail at 13px.
+ */
+export function IntegrationsIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4.7 1h1.9v3.4H4.7V1Zm4.7 0h1.9v3.4H9.4V1Z" />
+      <path d="M2.6 5.2h10.8v3.2l-2.8 2.8H9.1V15H6.9v-3.8H5.4L2.6 8.4V5.2Z" />
+    </Svg>
+  );
+}
+
 /** Configure — sliders, not a cog: these are settings you tune, not machinery. */
 export function ConfigureIcon(props: IconProps) {
   return (

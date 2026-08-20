@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { Effect, Schema } from "effect";
-import { Button, SearchInput, StatusPill } from "@/ui";
+import { Button, RefreshIconButton, SearchInput, StatusPill } from "@/ui";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceLogo } from "@/ui/resource-logo";
 import {
@@ -120,9 +120,11 @@ export function SkillsSection() {
   const [selected, setSelected] = useState<Skill | null>(null);
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
   const loadSkills = useCallback(() => {
+    setRefreshing(true);
     void Effect.runPromise(requestSkills("/api/agent/skills", SkillsResponseSchema))
       .then((payload) => {
         setSkills(payload.skills);
@@ -132,7 +134,10 @@ export function SkillsSection() {
         setSkills([]);
         setError(loadError instanceof Error ? loadError.message : "Skill discovery failed");
       })
-      .finally(() => setLoaded(true));
+      .finally(() => {
+        setLoaded(true);
+        setRefreshing(false);
+      });
   }, []);
 
   useMountSubscription(() => {
@@ -181,6 +186,11 @@ export function SkillsSection() {
             <StatusText tone={error ? "warn" : loaded ? "ok" : "dim"}>
               {loaded ? `${visibleSkills.length} of ${skills.length}` : "discovering"}
             </StatusText>
+            <RefreshIconButton
+              onClick={loadSkills}
+              loading={refreshing}
+              label="Rediscover skills"
+            />
           </div>
         }
       >

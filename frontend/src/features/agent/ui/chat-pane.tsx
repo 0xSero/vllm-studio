@@ -522,7 +522,9 @@ export function ChatPane({
           compact: () => void compactSession(),
           openStatus: openComputerStatus,
           toggleBrowserTool: onToggleBrowserTool,
-          openIntegrations: () => router.push("/integrations"),
+          // The command is `/connectors`, so it lands on the tab it names
+          // rather than on whichever tab the page happens to open with.
+          openIntegrations: () => router.push("/integrations#connectors"),
           ...(openTerminalAction ? { openTerminal: openTerminalAction } : {}),
           ...(onForkSession ? { forkSession: onForkSession } : {}),
           ...(canExport ? { exportSession } : {}),

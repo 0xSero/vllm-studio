@@ -39,11 +39,18 @@ const APP_DESTINATIONS: AppDestination[] = [
     description: "Token, request, and model usage analytics.",
   },
   {
+    href: "/integrations",
+    label: "Integrations",
+    keywords:
+      "connectors mcp servers accounts google gmail workspace access grants providers cloud models sign in oauth api keys skills plugins",
+    description: "Connectors, accounts, model sign-ins, and skills.",
+  },
+  {
     href: "/configure",
     label: "Configure",
     keywords:
-      "machines hardware models recipes launch downloads integrations mcp connectors plugins skills server logs api docs swagger controller engines runtime",
-    description: "Manage machines, models, integrations, and the controller.",
+      "machines hardware gpu memory pool server logs api docs swagger controller engines runtime",
+    description: "Manage the machines that run models, and the controller.",
   },
   {
     href: "/agent",
@@ -54,8 +61,8 @@ const APP_DESTINATIONS: AppDestination[] = [
   {
     href: "/settings",
     label: "Settings",
-    keywords: "connection system appearance archived chats skills setup configuration",
-    description: "Connection, system, appearance, skills, and setup.",
+    keywords: "connection system appearance theme shortcuts archived chats setup configuration",
+    description: "Connection, system, appearance, and setup.",
   },
 ];
 

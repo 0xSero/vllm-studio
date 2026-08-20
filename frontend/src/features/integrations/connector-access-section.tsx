@@ -8,7 +8,7 @@ import {
   type ConnectorGrant,
   type ConnectorGrantTarget,
 } from "@local-studio/agent-runtime/connector-grants-contract";
-import { Alert } from "@/ui";
+import { Alert, RefreshIconButton } from "@/ui";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
   DataRow,
@@ -64,10 +64,12 @@ export function ConnectorAccessSection() {
   const [models, setModels] = useState<Array<{ id: string; name: string }>>([]);
   const [draft, setDraft] = useState<GrantDraft>(emptyDraft);
   const [loaded, setLoaded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const refresh = useCallback(() => {
+    setRefreshing(true);
     void Promise.all([
       requestJson(GRANTS_URL, Schema.decodeUnknownSync(ConnectorGrantsResponseSchema), {
         cache: "no-store",
@@ -90,7 +92,10 @@ export function ConnectorAccessSection() {
       .catch((loadError: unknown) => {
         setError(loadError instanceof Error ? loadError.message : "Connector access failed");
       })
-      .finally(() => setLoaded(true));
+      .finally(() => {
+        setLoaded(true);
+        setRefreshing(false);
+      });
   }, []);
 
   useMountSubscription(() => {
@@ -133,9 +138,12 @@ export function ConnectorAccessSection() {
         title="Model access"
         description="Connector tools a model may be offered and may call. A model with no row here sees none of that connector's tools."
         actions={
-          <StatusText tone={error ? "warn" : loaded ? "ok" : "dim"}>
-            {loaded ? `${grants.length} grants` : "loading"}
-          </StatusText>
+          <div className="flex items-center gap-2">
+            <StatusText tone={error ? "warn" : loaded ? "ok" : "dim"}>
+              {loaded ? `${grants.length} grants` : "loading"}
+            </StatusText>
+            <RefreshIconButton onClick={refresh} loading={refreshing} label="Refresh grants" />
+          </div>
         }
       >
         {!loaded ? (
