@@ -295,4 +295,37 @@ describe("keyless controller boundary", () => {
         expect(evictCalls - evictionsBefore).toBe(2);
       }),
     ));
+
+  test("leaves API-key protected authority handling unchanged", () =>
+    runControllerEffect(
+      runtime,
+      Effect.gen(function* () {
+        const protectedApp = createApp(
+          {
+            ...guardedContext,
+            config: { ...guardedContext.config, api_key: "controller-contract-key" },
+          },
+          runtime,
+        );
+        const response = yield* Effect.sync(() =>
+          protectedApp.request("/api/spec", {
+            headers: {
+              host: "attacker.example",
+              origin: "https://attacker.example",
+              "x-api-key": "controller-contract-key",
+            },
+          }),
+        ).pipe(
+          Effect.flatMap((result) =>
+            result instanceof Response
+              ? Effect.succeed(result)
+              : Effect.tryPromise({
+                  try: () => result,
+                  catch: (error) => Error(String(error)),
+                }),
+          ),
+        );
+        expect(response.status).toBe(200);
+      }),
+    ));
 });
