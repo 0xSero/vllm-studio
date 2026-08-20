@@ -2,6 +2,7 @@
 
 import { useId, type ReactNode } from "react";
 import { FormFieldContext } from "./form-field-context";
+import { FIELD_LABEL_CLASS } from "./utils";
 
 interface FormFieldProps {
   label: string;
@@ -54,7 +55,7 @@ function FormField({
         aria-describedby={describedBy}
         aria-invalid={error ? true : undefined}
       >
-        <legend className="mb-2 block text-xs font-medium uppercase tracking-wider text-(--ui-muted)">
+        <legend className={FIELD_LABEL_CLASS}>
           {fieldLabel}
         </legend>
         {children}
@@ -70,7 +71,7 @@ function FormField({
       <div className={className}>
         <label
           htmlFor={controlId}
-          className="mb-2 block text-xs font-medium uppercase tracking-wider text-(--ui-muted)"
+          className={FIELD_LABEL_CLASS}
         >
           {fieldLabel}
         </label>

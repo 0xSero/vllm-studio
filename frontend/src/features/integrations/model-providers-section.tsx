@@ -10,18 +10,25 @@ import type {
   ProvidersResponse,
   ProviderLoginStartResponse,
 } from "@local-studio/agent-runtime/provider-hub-contract";
-import { Input, ModelButton, SearchInput, Spinner } from "@/ui";
+import { Input, ModelButton, SearchInput, Spinner, StatusPill } from "@/ui";
 import { ExternalLink, LogOut } from "@/ui/icon-registry";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceLogo } from "@/ui/resource-logo";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { SettingsButton } from "@/features/settings/settings-ui";
 import {
-  ModelRow,
-  ModelSection,
-  ModelStatus,
-  ModelValue,
-} from "@/features/recipes/recipes-content/model-page";
+  DataRow,
+  EndCell,
+  HeadCell,
+  IdentityCell,
+  NumCell,
+  RowAction,
+  StatusText,
+  TableFrame,
+  TableNotice,
+  TableSection,
+  TextCell,
+} from "@/features/recipes/recipes-content/catalog-table-shell";
 import { openExternal, requestJson } from "./google-account-model";
 
 function decodeProviders(input: unknown): ProvidersResponse {
@@ -304,9 +311,9 @@ function ProviderDrawer({
       title={provider.name}
       icon={<ResourceLogo identity={provider.id} label={provider.name} />}
       badge={
-        <ModelStatus tone={provider.configured ? "good" : "default"}>
+        <StatusPill tone={provider.configured ? "good" : "default"} variant="dot">
           {provider.configured ? "connected" : "available"}
-        </ModelStatus>
+        </StatusPill>
       }
       status={`${provider.modelCount} models${badge ? ` · ${badge}` : ""}`}
       footer={
@@ -453,75 +460,85 @@ export function ModelProvidersSection() {
 
   return (
     <>
-      <ModelSection
+      <TableSection
         title="Cloud models"
         description="Model companies available through account sign-in or API credentials."
         actions={
-          <ModelStatus tone={connectedCount ? "good" : providers ? "default" : "info"}>
-            {providers
-              ? `${connectedCount} connected · ${visibleProviders.length} shown`
-              : "loading"}
-          </ModelStatus>
-        }
-      >
-        <ModelRow
-          label="Search model companies"
-          description="Company, provider ID, credential type, or model count."
-          control={
+          <div className="flex items-center gap-2">
             <SearchInput
               value={query}
               onChange={setQuery}
               placeholder="Search model companies"
-              className="w-full"
+              className="w-56"
             />
-          }
-          status={<ModelStatus>{visibleProviders.length}</ModelStatus>}
-        />
+            <StatusText tone={connectedCount ? "ok" : providers ? "dim" : "info"}>
+              {providers
+                ? `${connectedCount} connected · ${visibleProviders.length} shown`
+                : "loading"}
+            </StatusText>
+          </div>
+        }
+      >
         {providers === null ? (
-          <div className="px-4 py-5">
+          <div className="px-3 py-5">
             <Spinner size="xs" />
           </div>
+        ) : visibleProviders.length === 0 ? (
+          <TableNotice
+            title="No model companies match this search"
+            body="Search by company, provider ID, credential type, or model count."
+          />
         ) : (
-          visibleProviders.map((provider) => (
-            <ModelRow
-              key={provider.id}
-              label={provider.name}
-              description={
-                provider.configured
-                  ? credentialBadge(provider) || "Connected provider"
-                  : provider.oauth?.label || provider.apiKey?.label || provider.id
-              }
-              leading={<ResourceLogo identity={provider.id} label={provider.name} />}
-              value={
-                <ModelValue mono>
-                  {`${provider.modelCount} models · ${[
-                    provider.oauth ? "OAuth" : null,
-                    provider.apiKey ? "API key" : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" / ")}`}
-                </ModelValue>
-              }
-              status={
-                <ModelStatus tone={provider.configured ? "good" : "default"}>
-                  {provider.configured ? "connected" : "available"}
-                </ModelStatus>
-              }
-              actions={
-                <ModelButton onClick={() => setSelectedProvider(provider)}>
-                  {provider.configured ? "Manage" : "Connect"}
-                </ModelButton>
-              }
-              onClick={() => setSelectedProvider(provider)}
-            />
-          ))
+          <TableFrame minWidthClass="min-w-[42rem]">
+            <thead>
+              <tr>
+                <HeadCell>Company</HeadCell>
+                <HeadCell>Credentials</HeadCell>
+                <HeadCell numeric>Models</HeadCell>
+                <HeadCell numeric>State</HeadCell>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleProviders.map((provider) => (
+                <DataRow
+                  key={provider.id}
+                  onOpen={() => setSelectedProvider(provider)}
+                  ariaLabel={`${provider.configured ? "Manage" : "Connect"} ${provider.name}`}
+                >
+                  <IdentityCell
+                    leading={<ResourceLogo identity={provider.id} label={provider.name} />}
+                    label={provider.name}
+                    description={
+                      provider.configured
+                        ? credentialBadge(provider) || "Connected provider"
+                        : provider.oauth?.label || provider.apiKey?.label || provider.id
+                    }
+                  />
+                  <TextCell mono>
+                    {[provider.oauth ? "OAuth" : null, provider.apiKey ? "API key" : null]
+                      .filter(Boolean)
+                      .join(" / ") || "—"}
+                  </TextCell>
+                  <NumCell>{provider.modelCount.toLocaleString()}</NumCell>
+                  <EndCell>
+                    <div className="flex items-center justify-end gap-2">
+                      <StatusText tone={provider.configured ? "ok" : "dim"}>
+                        {provider.configured ? "connected" : "available"}
+                      </StatusText>
+                      <RowAction
+                        onClick={() => setSelectedProvider(provider)}
+                        title={`${provider.configured ? "Manage" : "Connect"} ${provider.name}`}
+                      >
+                        {provider.configured ? "Manage" : "Connect"}
+                      </RowAction>
+                    </div>
+                  </EndCell>
+                </DataRow>
+              ))}
+            </tbody>
+          </TableFrame>
         )}
-        {providers !== null && visibleProviders.length === 0 ? (
-          <div className="px-4 py-7 text-center text-[length:var(--fs-md)] text-(--ui-muted)">
-            No model companies match this search.
-          </div>
-        ) : null}
-      </ModelSection>
+      </TableSection>
       {error ? (
         <div className="mt-4 text-[length:var(--fs-sm)] text-(--ui-danger)">{error}</div>
       ) : null}

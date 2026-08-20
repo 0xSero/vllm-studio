@@ -1,6 +1,7 @@
 {
   "ignores": [
     "@hono/node-server",
+    "@lydell/node-pty",
     "@modelcontextprotocol/sdk",
     "brace-expansion",
     "chromium-bidi",

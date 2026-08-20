@@ -1,10 +1,5 @@
-import { Stat, StatusPill } from "@/ui";
-import {
-  SettingsFactRows,
-  SettingsGroup,
-  type SettingsFactRow,
-  type StatusTone,
-} from "./settings-ui";
+import { Stat, StatusPill, type UiTone } from "@/ui";
+import { SettingsFactRows, SettingsGroup, type SettingsFactRow } from "./settings-ui";
 import type { ApiConnectionSettings } from "./types";
 import type { CompatibilityCheck, CompatibilityReport, ConfigData, ServiceInfo } from "@/lib/types";
 
@@ -57,7 +52,7 @@ export function SystemOverview({
   const checks = compatibilityReport?.checks ?? [];
   const actionableChecks = checks.filter((check) => check.severity !== "info");
   const controllerState = data ? "Synced" : loading ? "Checking" : "Fallback";
-  const controllerTone: StatusTone = data ? "good" : error ? "warning" : "info";
+  const controllerTone: UiTone = data ? "good" : error ? "warning" : "info";
   const compatibilityState = !compatibilityReport
     ? "Checking"
     : actionableChecks.length
@@ -124,7 +119,7 @@ function CompatibilitySettings({
 }) {
   const ordered = [...checks].sort((a, b) => severityRank(a.severity) - severityRank(b.severity));
   const actionableChecks = ordered.filter((check) => check.severity !== "info");
-  const tone: StatusTone = !report ? "info" : actionableChecks.length ? "warning" : "good";
+  const tone: UiTone = !report ? "info" : actionableChecks.length ? "warning" : "good";
 
   return (
     <SettingsGroup
@@ -303,7 +298,7 @@ function portFromUrl(value: string): number | null {
   }
 }
 
-function toneForStatus(status: string): StatusTone {
+function toneForStatus(status: string): UiTone {
   const normalized = status.toLowerCase();
   if (normalized.includes("ready") || normalized.includes("running") || normalized.includes("ok")) {
     return "good";
@@ -327,7 +322,7 @@ function severityRank(severity: CompatibilityCheck["severity"]): number {
   return 2;
 }
 
-function severityTone(severity: CompatibilityCheck["severity"]): StatusTone {
+function severityTone(severity: CompatibilityCheck["severity"]): UiTone {
   if (severity === "error") return "danger";
   if (severity === "warn") return "warning";
   return "info";

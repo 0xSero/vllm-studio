@@ -24,7 +24,7 @@ export function resolveStandaloneBaseDir(): string {
     return path.join(process.resourcesPath, "app", "frontend", ".next", "standalone");
   }
 
-  return path.resolve(__dirname, "..", "..", ".next", "standalone");
+  return path.resolve(app.getAppPath(), ".next", "standalone");
 }
 
 export function resolveStaticAssetsSource(): { staticDir: string; publicDir: string } {
@@ -36,7 +36,7 @@ export function resolveStaticAssetsSource(): { staticDir: string; publicDir: str
   }
 
   return {
-    staticDir: path.resolve(__dirname, "..", "..", ".next", "static"),
-    publicDir: path.resolve(__dirname, "..", "..", "public"),
+    staticDir: path.resolve(app.getAppPath(), ".next", "static"),
+    publicDir: path.resolve(app.getAppPath(), "public"),
   };
 }

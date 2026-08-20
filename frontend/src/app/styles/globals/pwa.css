@@ -122,24 +122,24 @@
   .mobile-pwa-drawer {
     padding-top: env(safe-area-inset-top, 0px);
     animation: mobile-drawer-in 200ms cubic-bezier(0.32, 0.72, 0, 1);
-    --fs-xs: 13px;
-    --fs-sm: 15px;
-    --fs-md: 16px;
-    --fs-base: 17px;
-    --sidebar-row-height: 44px;
-    --sidebar-row-radius: 12px;
+    --fs-xs: 12px;
+    --fs-sm: 13px;
+    --fs-md: 14px;
+    --fs-base: 15px;
+    --sidebar-row-height: 40px;
+    --sidebar-row-radius: 10px;
   }
 
   /* Codex reads section headings as real headings, not micro eyebrow labels. */
   .mobile-pwa-drawer nav > div > div > div:first-child > span,
   .mobile-pwa-drawer [class*="pt-5"] > span {
-    font-size: 17px;
+    font-size: 15px;
     font-weight: 600;
     color: var(--fg);
   }
 
   .mobile-pwa-drawer-header {
-    min-height: calc(3.25rem + env(safe-area-inset-top, 0px));
+    min-height: calc(3rem + env(safe-area-inset-top, 0px));
   }
 
   .agent-workspace-header {

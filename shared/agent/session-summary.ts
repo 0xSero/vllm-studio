@@ -7,6 +7,11 @@ export type SessionSummary = {
   modelId: string | null;
   provider: string | null;
   firstUserMessage: string | null;
+  // The most recent user prompt, which is what the recents list sorts and
+  // labels by. Optional: absent for sessions whose transcript tail carries no
+  // timestamped user turn.
+  lastUserPromptText?: string;
+  lastUserPromptAt?: string;
   archived: boolean;
   archivedAt: string | null;
   parentSessionId: string | null;

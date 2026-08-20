@@ -99,9 +99,11 @@ export function areRuntimeSummariesEqual(
 ) {
   if (a === b) return true;
   if (!a || !b) return false;
-  if (a.platform.kind !== b.platform.kind) return false;
-  if (a.gpu_monitoring.available !== b.gpu_monitoring.available) return false;
-  if (a.gpu_monitoring.tool !== b.gpu_monitoring.tool) return false;
+  // Optional chaining throughout: these summaries can be built from a partial
+  // controller payload, and an equality check is never worth throwing over.
+  if (a.platform?.kind !== b.platform?.kind) return false;
+  if (a.gpu_monitoring?.available !== b.gpu_monitoring?.available) return false;
+  if (a.gpu_monitoring?.tool !== b.gpu_monitoring?.tool) return false;
   for (const key of ["vllm", "sglang", "llamacpp", "mlx"] as const) {
     if (!a.backends[key] && !b.backends[key]) continue;
     if (!a.backends[key] || !b.backends[key]) return false;

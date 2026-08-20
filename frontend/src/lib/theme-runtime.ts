@@ -8,14 +8,11 @@ import {
   type FontSizeId,
   type ThemeId,
   type ThemeTokens,
+  type ThemeUiTokens,
 } from "@/lib/themes";
 
 const STORE_KEY = "local-studio-state";
 const DEFAULT_THEME_ID: ThemeId = "zai-dark";
-
-const THEME_TOKENS_BY_ID = Object.fromEntries(
-  Array.from(THEME_BY_ID.entries()).map(([id, theme]) => [id, theme.tokens]),
-) as Record<string, ThemeTokens>;
 
 function lightnessFromColor(value: string): number | null {
   const hsl = value.match(/hsla?\([^,]+,\s*[^,]+,\s*([\d.]+)%/i);
@@ -37,7 +34,10 @@ function lightnessFromColor(value: string): number | null {
   return ((Math.max(r, g, b) + Math.min(r, g, b)) / 2) * 100;
 }
 
-function deriveThemeUiTokens(tokens: ThemeTokens): Record<string, string> {
+function deriveThemeUiTokens(
+  tokens: ThemeTokens,
+  overrides: Partial<ThemeUiTokens> = {},
+): ThemeUiTokens {
   const isLight = (lightnessFromColor(tokens.bg) ?? 0) > 50;
   const ink = isLight ? "26, 28, 31" : "255, 255, 255";
   return {
@@ -54,11 +54,76 @@ function deriveThemeUiTokens(tokens: ThemeTokens): Record<string, string> {
     active: `rgba(${ink}, 0.08)`,
     composer: "var(--sidebar-bg)",
     "composer-footer": "var(--sidebar-bg)",
+    bubble: tokens.surface,
+    ...overrides,
   };
 }
 
-const THEME_UI_TOKENS_BY_ID = Object.fromEntries(
-  Array.from(THEME_BY_ID.entries()).map(([id, theme]) => [id, deriveThemeUiTokens(theme.tokens)]),
+export function resolveThemeCssTokens(
+  tokens: ThemeTokens,
+  overrides: Partial<ThemeUiTokens> = {},
+): Record<string, string> {
+  const ui = deriveThemeUiTokens(tokens, overrides);
+  return {
+    ...tokens,
+    ...ui,
+    "agent-bg": tokens.bg,
+    "sidebar-bg": ui.rail,
+    "color-background": tokens.bg,
+    "color-background-win-alt": tokens.bg,
+    "color-background-alt": tokens.bg,
+    "color-brand": tokens.accent,
+    "color-border": ui.border,
+    "color-border-light": ui.separator,
+    "color-border-heavy": ui.border,
+    "color-border-hover": ui.border,
+    "color-hover": ui.hover,
+    "color-selected": ui.active,
+    "color-header": tokens.bg,
+    "color-panel": tokens.bg,
+    "color-sidebar": ui.rail,
+    "color-surface": tokens.surface,
+    "color-surface-hover": ui.hover,
+    "color-card": tokens.surface,
+    "color-card-selected": ui.active,
+    "color-card-border": ui.border,
+    "color-popover": ui.composer,
+    "color-popover-header": tokens.surface,
+    "color-popover-border": ui.border,
+    "color-input": ui["surface-3"],
+    "color-input-focused": ui["surface-3"],
+    "color-input-border": ui.border,
+    "color-input-border-hover": ui.border,
+    "color-input-border-focused": ui.border,
+    "color-tab": ui.rail,
+    "color-tab-active": tokens.bg,
+    "color-tab-border": ui.border,
+    "color-menu": ui.composer,
+    "color-menu-hover": ui.hover,
+    "color-primary": tokens.accent,
+    "color-primary-foreground": tokens.bg,
+    "color-secondary": ui["surface-2"],
+    "color-foreground": tokens.fg,
+    "color-foreground-subtle": tokens.dim,
+    "color-foreground-subtlest": tokens.hl2,
+    "color-tag": ui["surface-2"],
+    "ui-bg": tokens.bg,
+    "ui-fg": tokens.fg,
+    "ui-muted": tokens.dim,
+    "ui-surface": tokens.surface,
+    "ui-surface-2": ui["surface-2"],
+    "ui-surface-3": ui["surface-3"],
+    "ui-border": ui.border,
+    "ui-separator": ui.separator,
+    "ui-accent": tokens.accent,
+  };
+}
+
+const THEME_TOKENS_BY_ID = Object.fromEntries(
+  Array.from(THEME_BY_ID.entries()).map(([id, theme]) => [
+    id,
+    resolveThemeCssTokens(theme.tokens, theme.ui),
+  ]),
 ) as Record<string, Record<string, string>>;
 
 const FONT_FAMILY_CSS_BY_ID = Object.fromEntries(
@@ -69,9 +134,9 @@ const FONT_SIZE_CSS_BY_ID = Object.fromEntries(
   Array.from(FONT_SIZE_BY_ID.entries()).map(([id, option]) => [id, option.cssValue]),
 ) as Record<string, string>;
 
-function setThemeTokens(tokens: ThemeTokens): void {
+function setThemeTokens(tokens: ThemeTokens, ui: Partial<ThemeUiTokens> = {}): void {
   if (typeof document === "undefined") return;
-  for (const [key, value] of Object.entries({ ...tokens, ...deriveThemeUiTokens(tokens) })) {
+  for (const [key, value] of Object.entries(resolveThemeCssTokens(tokens, ui))) {
     document.documentElement.style.setProperty(`--${key}`, value);
   }
 }
@@ -83,7 +148,7 @@ export function applyThemeToDocument(themeId: ThemeId): ThemeId {
   if (!nextTheme) return themeId;
 
   document.documentElement.setAttribute("data-theme", nextTheme.id);
-  setThemeTokens(nextTheme.tokens);
+  setThemeTokens(nextTheme.tokens, nextTheme.ui);
   return nextTheme.id;
 }
 
@@ -154,7 +219,6 @@ export function getThemeBootstrapScript(): string {
     defaultFontFamilyId: DEFAULT_FONT_FAMILY_ID,
     defaultFontSizeId: DEFAULT_FONT_SIZE_ID,
     themeTokensById: THEME_TOKENS_BY_ID,
-    themeUiTokensById: THEME_UI_TOKENS_BY_ID,
     fontFamilyCssById: FONT_FAMILY_CSS_BY_ID,
     fontSizeCssById: FONT_SIZE_CSS_BY_ID,
   };
@@ -184,13 +248,6 @@ export function getThemeBootstrapScript(): string {
             if (Object.prototype.hasOwnProperty.call(themeTokens, tokenKey)) {
               document.documentElement.style.setProperty("--" + tokenKey, themeTokens[tokenKey]);
             }
-          }
-        }
-
-        var themeUiTokens = data.themeUiTokensById[resolvedThemeId] || {};
-        for (var uiTokenKey in themeUiTokens) {
-          if (Object.prototype.hasOwnProperty.call(themeUiTokens, uiTokenKey)) {
-            document.documentElement.style.setProperty("--" + uiTokenKey, themeUiTokens[uiTokenKey]);
           }
         }
 

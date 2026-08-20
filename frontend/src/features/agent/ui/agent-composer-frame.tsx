@@ -71,7 +71,6 @@ export type AgentComposerFrameProps = {
   onSelectMention: (entry: MentionRow) => void;
   onSteerQueued: (queueId: string) => void;
   onSubmit: FormEventHandler<HTMLFormElement>;
-  onTranscript: (text: string) => void;
   onToggleBrowserBackend: () => void;
   onToggleBrowserTool: () => void;
   placeholder: string;
@@ -128,7 +127,6 @@ export function AgentComposerFrame({
   onSelectMention,
   onSteerQueued,
   onSubmit,
-  onTranscript,
   onToggleBrowserBackend,
   onToggleBrowserTool,
   placeholder,
@@ -240,7 +238,6 @@ export function AgentComposerFrame({
           onToggleBrowserBackend={onToggleBrowserBackend}
           onToggleBrowserTool={onToggleBrowserTool}
           onAbortTurn={onAbortTurn}
-          onTranscript={onTranscript}
           modelSelector={modelSelector}
         />
       </div>

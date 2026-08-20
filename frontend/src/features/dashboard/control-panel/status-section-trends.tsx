@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { getStoredBackendUrl } from "@/lib/api/connection";
 import type { MetricSampleInput } from "./status-section-view";
 
@@ -17,6 +17,15 @@ type MetricPeak = {
   prefill: number;
   requests: number;
   ttft: number;
+};
+
+type TrendSeries = {
+  label: string;
+  values: number[];
+  className: string;
+  digits: number;
+  peak?: number;
+  peakClassName?: string;
 };
 
 const samplesByKey = new Map<string, MetricSample[]>();
@@ -77,32 +86,75 @@ export function useMetricSamples({
   return { samples: samplesRef.current.length > 0 ? samplesRef.current : zeroSamples(), peaks };
 }
 
+/**
+ * Three self-scaled panels, each in one unit.
+ *
+ * TTFT and request count used to share an auto-scaled axis: with TTFT in the
+ * hundreds of milliseconds, the request line was pinned flat against the floor
+ * and told the reader nothing. Two units cannot share one axis, so they no
+ * longer do — and every series now names itself in the header with its current
+ * value, because a two-line chart with no legend is a decoration.
+ */
 export function MetricTrends({ samples, peaks }: { samples: MetricSample[]; peaks: MetricPeak }) {
+  const times = samples.map((sample) => sample.at);
+  const window = describeWindow(samples);
   return (
     <div className="mt-4 border-t border-(--separator) pt-3 sm:mt-6">
-      <div className="grid gap-4 sm:gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+      <div className="grid gap-4 sm:gap-5 lg:grid-cols-3">
         <TrendPanel
-          label="Throughput (tok/s)"
-          meta="Last 30 minutes"
-          lines={[
-            { values: samples.map((sample) => sample.prefill), className: "text-(--fg)/80" },
-            { values: samples.map((sample) => sample.generation), className: "text-(--dim)/35" },
-          ]}
-          overlays={[
-            { value: peaks.prefill, className: "text-(--hl2)/55" },
-            { value: peaks.generation, className: "text-(--accent)/55" },
+          label="Throughput"
+          unit="tok/s"
+          meta={window}
+          times={times}
+          series={[
+            {
+              label: "prefill",
+              values: samples.map((sample) => sample.prefill),
+              className: "text-(--fg)/80",
+              digits: 0,
+              peak: peaks.prefill,
+              peakClassName: "text-(--hl2)/55",
+            },
+            {
+              label: "decode",
+              values: samples.map((sample) => sample.generation),
+              className: "text-(--accent)/75",
+              digits: 1,
+              peak: peaks.generation,
+              peakClassName: "text-(--accent)/45",
+            },
           ]}
         />
         <TrendPanel
-          label="TTFT (ms) & requests"
-          meta="Last 30 minutes"
-          lines={[
-            { values: samples.map((sample) => sample.ttft), className: "text-(--fg)/80" },
-            { values: samples.map((sample) => sample.requests), className: "text-(--dim)/35" },
+          label="TTFT"
+          unit="ms"
+          meta={window}
+          times={times}
+          series={[
+            {
+              label: "ttft",
+              values: samples.map((sample) => sample.ttft),
+              className: "text-(--fg)/80",
+              digits: 0,
+              peak: peaks.ttft,
+              peakClassName: "text-(--hl3)/55",
+            },
           ]}
-          overlays={[
-            { value: peaks.ttft, className: "text-(--hl3)/55" },
-            { value: peaks.requests, className: "text-(--accent)/45" },
+        />
+        <TrendPanel
+          label="Requests"
+          unit="live"
+          meta={window}
+          times={times}
+          series={[
+            {
+              label: "running",
+              values: samples.map((sample) => sample.requests),
+              className: "text-(--fg)/80",
+              digits: 0,
+              peak: peaks.requests,
+              peakClassName: "text-(--accent)/45",
+            },
           ]}
         />
       </div>
@@ -112,58 +164,104 @@ export function MetricTrends({ samples, peaks }: { samples: MetricSample[]; peak
 
 function TrendPanel({
   label,
+  unit,
   meta,
-  lines,
-  overlays = [],
+  times,
+  series,
 }: {
   label: string;
+  unit: string;
   meta: string;
-  lines: Array<{ values: number[]; className: string }>;
-  overlays?: Array<{ value: number; className: string }>;
+  times: number[];
+  series: TrendSeries[];
 }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const count = Math.max(...series.map((line) => line.values.length), 0);
+  const index = hover !== null && hover < count ? hover : null;
+  const at = index !== null ? times[index] : undefined;
+
   return (
     <div className="min-w-0">
       <div className="mb-1.5 flex items-baseline justify-between gap-3">
-        <span className="text-[length:var(--fs-sm)] font-medium text-(--hl2)">{label}</span>
-        <span className="text-[length:var(--fs-xs)] text-(--dim)/45">{meta}</span>
+        <span className="shrink-0 text-[length:var(--fs-sm)] font-medium text-(--hl2)">
+          {label}
+          <span className="ml-1.5 text-[length:var(--fs-xs)] font-normal text-(--dim)/50">
+            {unit}
+          </span>
+        </span>
+        <span className="flex min-w-0 items-baseline gap-3 font-mono text-[length:var(--fs-xs)] tabular-nums">
+          {series.map((line) => (
+            <span key={line.label} className="inline-flex shrink-0 items-baseline gap-1">
+              <span className="text-(--dim)/55">{line.label}</span>
+              <span className={line.className}>{readout(line, index)}</span>
+            </span>
+          ))}
+        </span>
       </div>
       <div className="h-20 sm:h-28">
-        <Sparkline lines={lines} overlays={overlays} />
+        <Sparkline
+          series={series}
+          hoverIndex={index}
+          onHover={setHover}
+          pointCount={Math.max(count, 2)}
+        />
+      </div>
+      <div className="mt-1 truncate text-[length:var(--fs-2xs)] text-(--dim)/45">
+        {at ? formatClock(at) : meta}
       </div>
     </div>
   );
 }
 
+function readout(line: TrendSeries, index: number | null): string {
+  const values = line.values;
+  if (values.length === 0) return "—";
+  const value = index !== null ? values[index] : values[values.length - 1];
+  return Number.isFinite(value) ? value.toFixed(line.digits) : "—";
+}
+
 function Sparkline({
-  lines,
-  overlays,
+  series,
+  hoverIndex,
+  onHover,
+  pointCount,
 }: {
-  lines: Array<{ values: number[]; className: string }>;
-  overlays: Array<{ value: number; className: string }>;
+  series: TrendSeries[];
+  hoverIndex: number | null;
+  onHover: (index: number | null) => void;
+  pointCount: number;
 }) {
-  const series = useMemo(() => {
-    return lines.map((line, index) => {
-      const overlay = overlays[index];
-      const max = Math.max(
-        1,
-        ...line.values.filter((value) => Number.isFinite(value)),
-        Number.isFinite(overlay?.value) ? (overlay?.value ?? 0) : 0,
-      );
-      return {
-        ...line,
-        points: toPolyline(line.values, max),
-        overlay:
-          overlay && overlay.value > 0 ? { ...overlay, y: yForValue(overlay.value, max) } : null,
-      };
-    });
-  }, [lines, overlays]);
+  // One scale per panel, not one per line: two series in the same unit that are
+  // each normalised to their own maximum are not comparable, which is what made
+  // the old throughput chart misleading rather than merely undecorated.
+  const scaled = useMemo(() => {
+    const max = Math.max(
+      1,
+      ...series.flatMap((line) => line.values.filter((value) => Number.isFinite(value))),
+      ...series.map((line) => (Number.isFinite(line.peak) ? (line.peak ?? 0) : 0)),
+    );
+    return series.map((line) => ({
+      ...line,
+      points: toPolyline(line.values, max),
+      peakY: line.peak && line.peak > 0 ? yForValue(line.peak, max) : null,
+    }));
+  }, [series]);
+
+  const hoverX = hoverIndex !== null ? (hoverIndex / Math.max(1, pointCount - 1)) * 320 : null;
 
   return (
     <svg
       className="h-full w-full overflow-visible text-(--border)"
       viewBox="0 0 320 96"
       preserveAspectRatio="none"
-      aria-hidden
+      onMouseMove={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        const ratio = (event.clientX - rect.left) / rect.width;
+        const next = Math.round(ratio * (pointCount - 1));
+        onHover(Math.min(pointCount - 1, Math.max(0, next)));
+      }}
+      onMouseLeave={() => onHover(null)}
     >
       <path
         d="M0 16H320 M0 48H320 M0 80H320"
@@ -179,13 +277,13 @@ function Sparkline({
         strokeWidth="0.7"
         vectorEffect="non-scaling-stroke"
       />
-      {series.map((line, index) =>
-        line.overlay ? (
+      {scaled.map((line) =>
+        line.peakY !== null ? (
           <path
-            key={`peak-${index}`}
-            d={`M0 ${line.overlay.y.toFixed(1)}H320`}
+            key={`peak-${line.label}`}
+            d={`M0 ${line.peakY.toFixed(1)}H320`}
             fill="none"
-            className={line.overlay.className}
+            className={line.peakClassName}
             stroke="currentColor"
             strokeDasharray="4 5"
             strokeLinecap="square"
@@ -194,9 +292,9 @@ function Sparkline({
           />
         ) : null,
       )}
-      {series.map((line, index) => (
+      {scaled.map((line, index) => (
         <polyline
-          key={index}
+          key={line.label}
           points={line.points}
           fill="none"
           className={line.className}
@@ -207,8 +305,43 @@ function Sparkline({
           vectorEffect="non-scaling-stroke"
         />
       ))}
+      {hoverX !== null ? (
+        <path
+          d={`M${hoverX.toFixed(1)} 0V96`}
+          className="text-(--fg)/35"
+          stroke="currentColor"
+          strokeWidth="1"
+          vectorEffect="non-scaling-stroke"
+        />
+      ) : null}
     </svg>
   );
+}
+
+/**
+ * The window the samples actually cover.
+ *
+ * The panels used to be captioned "Last 30 minutes" regardless of poll rate or
+ * how long the tab had been open — a caption that is wrong on a fresh page load
+ * is worse than no caption.
+ */
+function describeWindow(samples: MetricSample[]): string {
+  const first = samples[0];
+  const last = samples[samples.length - 1];
+  if (!first || !last || first.at === 0) return "no samples yet";
+  const span = last.at - first.at;
+  if (span < 30_000) return "just started";
+  const minutes = span / 60_000;
+  if (minutes < 60) return `last ${Math.round(minutes)} min`;
+  return `last ${(minutes / 60).toFixed(1)} h`;
+}
+
+function formatClock(at: number): string {
+  return new Date(at).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 function toPolyline(values: number[], max: number): string {
@@ -232,9 +365,16 @@ function finitePositive(value: number): number {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
+/**
+ * The flat line an idle engine draws.
+ *
+ * `at: 0` is deliberate — these samples were never observed, so they must not
+ * be given plausible timestamps that the window caption and the hover readout
+ * would then report as measurements.
+ */
 function zeroSamples(): MetricSample[] {
-  return Array.from({ length: 34 }, (_, index) => ({
-    at: Date.now() - (34 - index) * 52_000,
+  return Array.from({ length: 34 }, () => ({
+    at: 0,
     generation: 0,
     prefill: 0,
     requests: 0,

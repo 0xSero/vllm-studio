@@ -1,14 +1,13 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Moon, Square, Sun } from "@/ui/icon-registry";
-import { useShallow } from "zustand/react/shallow";
+import { Square } from "@/ui/icon-registry";
 import { ModelStopConfirm } from "@/features/dashboard/model-stop-confirm";
 import { useModelLifecycle } from "@/features/dashboard/use-model-lifecycle";
 import type { ProcessInfo, RecipeWithStatus, RuntimePlatformKind } from "@/lib/types";
-import { useAppStore } from "@/store";
+import { cx } from "@/ui/utils";
 import { ModelsDropdown } from "./status-section-models-dropdown";
-import type { CompactMetricView, MetricColumnView } from "./status-section-view";
+import type { MetricColumnView } from "./status-section-view";
 
 export function StatusHeader({
   backend,
@@ -22,12 +21,14 @@ export function StatusHeader({
   isStatusLoading,
   lifecycleStatus,
   lifecycleError,
+  metricsDetached,
   modelName,
   onBenchmark,
   onLaunch,
   onNavigateLogs,
   onNewRecipe,
   onViewAll,
+  pid,
   recipes,
 }: {
   backend?: ProcessInfo["backend"];
@@ -41,17 +42,19 @@ export function StatusHeader({
   isStatusLoading: boolean;
   lifecycleStatus: "idle" | "starting" | "ready" | "error";
   lifecycleError?: string | null;
+  metricsDetached: boolean;
   modelName: string;
   onBenchmark: () => void;
   onLaunch?: (recipeId: string) => Promise<void>;
   onNavigateLogs: () => void;
   onNewRecipe?: () => void;
   onViewAll?: () => void;
+  pid?: number;
   recipes?: RecipeWithStatus[];
 }) {
   return (
-    // Stacks on phone widths: the five header actions would otherwise crush
-    // the status line and model name into overlapping slivers.
+    // Stacks on phone widths: the header actions would otherwise crush the
+    // status line and model name into overlapping slivers.
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0 flex-1">
         <StatusLine
@@ -61,6 +64,8 @@ export function StatusHeader({
           isConnected={isConnected}
           isRunning={isRunning}
           isStatusLoading={isStatusLoading}
+          metricsDetached={metricsDetached}
+          pid={pid}
         />
         <h1
           className="mt-1.5 truncate text-[length:var(--fs-2xl)] font-semibold leading-tight tracking-[-0.01em] text-(--fg) sm:text-[length:var(--fs-3xl)]"
@@ -98,6 +103,8 @@ function StatusLine({
   isConnected,
   isRunning,
   isStatusLoading,
+  metricsDetached,
+  pid,
 }: {
   backend?: ProcessInfo["backend"];
   displayPlatformKind: RuntimePlatformKind | null;
@@ -105,21 +112,31 @@ function StatusLine({
   isConnected: boolean;
   isRunning: boolean;
   isStatusLoading: boolean;
+  metricsDetached: boolean;
+  pid?: number;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 text-[length:var(--fs-sm)]">
-      <StatusDot running={isRunning} loading={isStatusLoading} />
+      <RunStateDot running={isRunning} loading={isStatusLoading} />
       <span className="inline-block w-[5.75rem] font-medium text-(--dim)">
         {isRunning ? "Active" : "Standby"}
       </span>
       {!isConnected && !isStatusLoading ? <Tag tone="err">offline</Tag> : null}
+      {/* A process with no matching metrics used to render as a wall of zeroes,
+          which reads as "idle" rather than "we cannot attribute these numbers".
+          Naming the state is the whole fix. */}
+      {metricsDetached ? (
+        <Tag title="The controller is reporting metrics that do not match the running process, so the strip below is not attributed to this model.">
+          metrics detached
+        </Tag>
+      ) : null}
       {backend ? <Tag>{backend}</Tag> : null}
       {displayPlatformKind ? <Tag>{displayPlatformKind}</Tag> : null}
-      {displayPort ? (
-        <span className="font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)/70">
-          :{displayPort}
-        </span>
-      ) : null}
+      <span className="font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)/70">
+        {displayPort ? `:${displayPort}` : null}
+        {displayPort && pid ? " · " : null}
+        {pid ? `pid ${pid}` : null}
+      </span>
     </div>
   );
 }
@@ -150,8 +167,10 @@ function StatusHeaderActions({
   recipes?: RecipeWithStatus[];
 }) {
   return (
+    // One grammar: every action here is an h-7 pill. The row used to mix h-8
+    // ghost buttons with h-7 pills, which made Stop and Logs read as controls
+    // from two different apps sitting next to each other.
     <div className="flex flex-wrap items-center gap-1.5">
-      <HeaderThemeToggle />
       <HeaderStopButton running={isRunning} />
       {recipes && onLaunch ? (
         <ModelsDropdown
@@ -178,30 +197,6 @@ export function benchmarkButtonLabel(benchmarking: boolean, result: number | nul
   return result === null ? "Bench" : `Bench · ${result.toFixed(1)} tok/s`;
 }
 
-function HeaderThemeToggle() {
-  const { themeId, setThemeId } = useAppStore(
-    useShallow((s) => ({ themeId: s.themeId, setThemeId: s.setThemeId })),
-  );
-  const isDark =
-    themeId === "zai-dark" ||
-    themeId === "zai-sky" ||
-    themeId === "zai-violet" ||
-    themeId === "zai-emerald" ||
-    themeId === "zai-rose";
-  const Icon = isDark ? Sun : Moon;
-  return (
-    <button
-      type="button"
-      onClick={() => setThemeId(isDark ? "zai-light" : "zai-dark")}
-      className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
-      title={isDark ? "Light mode" : "Dark mode"}
-    >
-      <Icon className="h-3.5 w-3.5" />
-      <span className="hidden sm:inline">{isDark ? "Light" : "Dark"}</span>
-    </button>
-  );
-}
-
 function HeaderStopButton({ running }: { running: boolean }) {
   const { stop } = useModelLifecycle();
   if (!running) return null;
@@ -213,10 +208,10 @@ function HeaderStopButton({ running }: { running: boolean }) {
           type="button"
           onClick={open}
           disabled={stopping}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-(--err) hover:bg-(--err)/10 disabled:opacity-40"
+          className="inline-flex h-7 items-center gap-1.5 rounded-full bg-(--err)/10 px-3 text-[length:var(--fs-sm)] text-(--err) transition-colors hover:bg-(--err)/15 disabled:cursor-not-allowed disabled:opacity-40"
           title="Stop model"
         >
-          <Square className="h-3.5 w-3.5" fill="currentColor" />
+          <Square className="h-3 w-3" fill="currentColor" />
           {stopping ? "Stopping" : "Stop"}
         </button>
       )}
@@ -224,56 +219,77 @@ function HeaderStopButton({ running }: { running: boolean }) {
   );
 }
 
+/**
+ * The metric strip, in two bands.
+ *
+ * Band one is what the engine is doing this second; band two is capacity and
+ * lifetime. They are the same grid at two type sizes rather than two different
+ * components, so the columns line up down the page — and mixing live and
+ * cumulative numbers in one undifferentiated block is exactly the confusion the
+ * split is there to prevent.
+ */
 export function StatusMetricStrip({
-  compactMetrics,
-  metricColumns,
+  live,
+  steady,
+  detached,
 }: {
-  compactMetrics: CompactMetricView[];
-  metricColumns: MetricColumnView[];
+  live: MetricColumnView[];
+  steady: MetricColumnView[];
+  detached?: boolean;
 }) {
   return (
-    <dl className="mt-4 grid w-full grid-cols-3 gap-x-4 gap-y-3 border-b border-(--separator) pb-4 sm:mt-5 sm:gap-x-8 sm:gap-y-4 sm:pb-5 lg:grid-cols-6">
-      {metricColumns.map((metric) => (
-        <MetricCell
-          key={metric.label}
-          label={metric.label}
-          value={metric.value ?? "0"}
-          unit={metric.value ? metric.unit : undefined}
-          detail={metric.detail ?? undefined}
-          detailTitle={metric.detailTitle ?? undefined}
-        />
-      ))}
-      {compactMetrics.map((metric) => (
-        <MetricCell key={metric.label} label={metric.label} value={metric.value ?? "—"} />
-      ))}
-    </dl>
+    <div
+      className={cx(
+        "mt-4 border-b border-(--separator) pb-4 sm:mt-5 sm:pb-5",
+        detached ? "opacity-45" : "",
+      )}
+    >
+      <dl className="grid w-full grid-cols-3 gap-x-4 gap-y-3 sm:gap-x-8 sm:gap-y-4 lg:grid-cols-6">
+        {live.map((metric) => (
+          <MetricCell key={metric.label} metric={metric} />
+        ))}
+      </dl>
+      <dl className="mt-3 grid w-full grid-cols-2 gap-x-4 gap-y-3 border-t border-(--separator)/55 pt-3 sm:grid-cols-3 sm:gap-x-8 lg:grid-cols-6">
+        {steady.map((metric) => (
+          <MetricCell key={metric.label} metric={metric} quiet />
+        ))}
+      </dl>
+    </div>
   );
 }
 
-function MetricCell({
-  label,
-  value,
-  unit,
-  detail,
-  detailTitle,
-}: {
-  label: string;
-  value: string;
-  unit?: string;
-  detail?: string;
-  detailTitle?: string;
-}) {
+function MetricCell({ metric, quiet }: { metric: MetricColumnView; quiet?: boolean }) {
+  const { label, value, unit, detail, detailTitle, fill } = metric;
   return (
     <div className="min-w-0 overflow-hidden">
       <dt className="truncate text-[length:var(--fs-xs)] text-(--dim)">{label}</dt>
-      <dd className="mt-1 flex min-w-0 items-baseline gap-1 text-[length:var(--fs-lg)] font-semibold leading-none tabular-nums text-(--fg) sm:text-[length:var(--fs-2xl)]">
-        <span className="truncate" title={value}>
-          {value}
+      <dd
+        className={cx(
+          "mt-1 flex min-w-0 items-baseline gap-1 font-semibold leading-none tabular-nums text-(--fg)",
+          quiet
+            ? "text-[length:var(--fs-md)] sm:text-[length:var(--fs-lg)]"
+            : "text-[length:var(--fs-lg)] sm:text-[length:var(--fs-2xl)]",
+        )}
+      >
+        <span className="truncate" title={value ?? undefined}>
+          {value ?? "—"}
         </span>
-        {unit ? (
-          <span className="shrink-0 text-[length:var(--fs-xs)] text-(--dim)">{unit}</span>
+        {value && unit ? (
+          <span className="shrink-0 text-[length:var(--fs-xs)] font-normal text-(--dim)">
+            {unit}
+          </span>
         ) : null}
       </dd>
+      {/* The same 3px rule GpuSection draws, so a share of a cap looks the same
+          wherever the page states one. */}
+      {typeof fill === "number" ? (
+        <dd className="mt-1.5 h-[3px] w-full overflow-hidden rounded-[var(--rad-2xs)] bg-(--separator)">
+          <div
+            className="h-full rounded-[var(--rad-2xs)] bg-(--fg)/45 transition-[width] duration-300"
+            style={{ width: `${Math.round(fill * 100)}%` }}
+          />
+        </dd>
+      ) : null}
       {detail ? (
         <dd
           className="mt-1 min-w-0 truncate text-[length:var(--fs-xs)] tabular-nums text-(--dim)/75"
@@ -286,7 +302,15 @@ function MetricCell({
   );
 }
 
-function StatusDot({ running, loading }: { running: boolean; loading?: boolean }) {
+/**
+ * The dashboard's run-state dot.
+ *
+ * Deliberately not `ui/status`'s `StatusDot`: this strip is a dense instrument
+ * sheet, so the mark is a 6px square with no radius rather than the rounded
+ * pill dot the rest of the app uses. The distinct name keeps the two from
+ * reading as the same component.
+ */
+function RunStateDot({ running, loading }: { running: boolean; loading?: boolean }) {
   return (
     <span
       className={`inline-flex h-1.5 w-1.5 shrink-0 ${loading ? "animate-pulse bg-(--dim)" : running ? "bg-(--fg)" : "bg-(--dim)/55"}`}
@@ -294,10 +318,11 @@ function StatusDot({ running, loading }: { running: boolean; loading?: boolean }
   );
 }
 
-function Tag({ tone, children }: { tone?: "err"; children: ReactNode }) {
+function Tag({ tone, title, children }: { tone?: "err"; title?: string; children: ReactNode }) {
   const cls = tone === "err" ? "border-(--err)/60 text-(--err)" : "border-(--border) text-(--dim)";
   return (
     <span
+      title={title}
       className={`rounded-full border px-2 py-[1px] text-[length:var(--fs-2xs)] font-medium ${cls}`}
     >
       {children}

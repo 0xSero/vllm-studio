@@ -204,7 +204,7 @@ function MentionRowItem({
       </span>
       {source ? (
         <span
-          className="hidden truncate font-mono text-[length:var(--fs-2xs)] uppercase tracking-wide text-(--dim) sm:inline"
+          className="hidden truncate font-mono text-[length:var(--fs-sm)] text-(--dim) sm:inline"
           title={source}
         >
           {source}

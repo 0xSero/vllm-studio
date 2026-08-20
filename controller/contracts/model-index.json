@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-07-21",
+  "updated": "2026-08-18",
   "tiers": [
     {
       "id": "nano",
@@ -26,11 +26,45 @@
             "No official FP8 or NVFP4 — RedHatAI (FP8) and community (NVFP4) only"
           ],
           "variants": [
-            { "format": "bf16", "repo": "Qwen/Qwen3.5-9B", "official": true, "size_gb": 19.3, "caveat": null },
-            { "format": "fp8", "repo": "RedHatAI/Qwen3.5-9B-FP8-dynamic", "official": false, "source": "RedHatAI", "size_gb": null, "caveat": null },
-            { "format": "nvfp4", "repo": "kaitchup/Qwen3.5-9B-autoround-NVFP4", "official": false, "source": "kaitchup", "size_gb": null, "caveat": "community quant" },
-            { "format": "q4", "repo": "unsloth/Qwen3.5-9B-GGUF", "official": false, "source": "unsloth", "allow_patterns": ["*Q4_K_M*.gguf"], "size_gb": null, "caveat": null }
-          ]
+            {
+              "format": "bf16",
+              "repo": "Qwen/Qwen3.5-9B",
+              "official": true,
+              "size_gb": 19.3,
+              "caveat": null
+            },
+            {
+              "format": "fp8",
+              "repo": "RedHatAI/Qwen3.5-9B-FP8-dynamic",
+              "official": false,
+              "source": "RedHatAI",
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "nvfp4",
+              "repo": "kaitchup/Qwen3.5-9B-autoround-NVFP4",
+              "official": false,
+              "source": "kaitchup",
+              "size_gb": null,
+              "caveat": "community quant"
+            },
+            {
+              "format": "q4",
+              "repo": "unsloth/Qwen3.5-9B-GGUF",
+              "official": false,
+              "source": "unsloth",
+              "allow_patterns": [
+                "*Q4_K_M*.gguf"
+              ],
+              "size_gb": null,
+              "caveat": null
+            }
+          ],
+          "architecture": "Dense · hybrid Gated DeltaNet + attention",
+          "total_params_b": 9.0,
+          "intelligence_index": 21.8,
+          "agentic_index": 7.0
         },
         {
           "id": "gemma-4-e2b",
@@ -48,12 +82,92 @@
             "No official FP8 — community FP8-dynamic only; official 4-bit path is Google's own QAT GGUFs"
           ],
           "variants": [
-            { "format": "bf16", "repo": "google/gemma-4-E2B-it", "official": true, "size_gb": null, "caveat": null },
-            { "format": "fp8", "repo": "leon-se/gemma-4-E2B-it-FP8-Dynamic", "official": false, "source": "leon-se", "size_gb": null, "caveat": "community quant" },
-            { "format": "nvfp4", "repo": "unsloth/gemma-4-E2B-it-NVFP4", "official": false, "source": "unsloth", "size_gb": null, "caveat": null },
-            { "format": "q4", "repo": "unsloth/gemma-4-E2B-it-GGUF", "official": false, "source": "unsloth", "allow_patterns": ["*Q4_K_M*.gguf"], "size_gb": null, "caveat": null },
-            { "format": "q4", "repo": "google/gemma-4-E2B-it-qat-q4_0-gguf", "official": true, "size_gb": null, "caveat": null }
-          ]
+            {
+              "format": "bf16",
+              "repo": "google/gemma-4-E2B-it",
+              "official": true,
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "fp8",
+              "repo": "leon-se/gemma-4-E2B-it-FP8-Dynamic",
+              "official": false,
+              "source": "leon-se",
+              "size_gb": null,
+              "caveat": "community quant"
+            },
+            {
+              "format": "nvfp4",
+              "repo": "unsloth/gemma-4-E2B-it-NVFP4",
+              "official": false,
+              "source": "unsloth",
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "q4",
+              "repo": "unsloth/gemma-4-E2B-it-GGUF",
+              "official": false,
+              "source": "unsloth",
+              "allow_patterns": [
+                "*Q4_K_M*.gguf"
+              ],
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "q4",
+              "repo": "google/gemma-4-E2B-it-qat-q4_0-gguf",
+              "official": true,
+              "size_gb": null,
+              "caveat": null
+            }
+          ],
+          "architecture": "Dense · Per-Layer Embeddings",
+          "total_params_b": 5.1,
+          "intelligence_index": 9.5,
+          "agentic_index": null
+        },
+        {
+          "id": "lfm2.5-2.6b",
+          "name": "LFM2.5-2.6B",
+          "role": "fast",
+          "description": "Liquid's 2.6B hybrid built for on-device agents — 128K context, tool use, and RAG",
+          "params": "2.69B dense, LFM2 hybrid conv/attention",
+          "architecture": "Dense · LFM2 hybrid (short conv + GQA)",
+          "total_params_b": 2.69,
+          "active_params_b": null,
+          "context_tokens": 131072,
+          "license": "LFM Open License v1.0",
+          "multimodal": false,
+          "notes": [
+            "Built for on-device agentic workloads — tool use, extraction, RAG; not a coding or knowledge model",
+            "Pre-trained on ~34T tokens, mid-trained to a 128K window",
+            "Ships official GGUF, MLX, and ONNX builds alongside the safetensors checkpoint",
+            "No official FP8 or NVFP4 — it is small enough that BF16 fits almost anywhere"
+          ],
+          "variants": [
+            {
+              "format": "bf16",
+              "repo": "LiquidAI/LFM2.5-2.6B",
+              "official": true,
+              "size_gb": 5.4,
+              "caveat": null
+            },
+            {
+              "format": "q4",
+              "repo": "LiquidAI/LFM2.5-2.6B-GGUF",
+              "official": true,
+              "allow_patterns": [
+                "*Q4_K_M*.gguf"
+              ],
+              "size_gb": 1.7,
+              "caveat": null
+            }
+          ],
+          "intelligence_index": null,
+          "agentic_index": null
         }
       ]
     },
@@ -79,11 +193,45 @@
             "GGUF has a known ROCm infinite-loop bug; bartowski publishes alternative imatrix GGUFs"
           ],
           "variants": [
-            { "format": "bf16", "repo": "google/gemma-4-26B-A4B-it", "official": true, "size_gb": 52, "caveat": null },
-            { "format": "fp8", "repo": "RedHatAI/gemma-4-26B-A4B-it-FP8-Dynamic", "official": false, "source": "RedHatAI", "size_gb": null, "caveat": null },
-            { "format": "nvfp4", "repo": "nvidia/Gemma-4-26B-A4B-NVFP4", "official": false, "source": "nvidia", "size_gb": null, "caveat": null },
-            { "format": "q4", "repo": "unsloth/gemma-4-26B-A4B-it-GGUF", "official": false, "source": "unsloth", "allow_patterns": ["*UD-Q4_K_M*.gguf"], "size_gb": null, "caveat": null }
-          ]
+            {
+              "format": "bf16",
+              "repo": "google/gemma-4-26B-A4B-it",
+              "official": true,
+              "size_gb": 52,
+              "caveat": null
+            },
+            {
+              "format": "fp8",
+              "repo": "RedHatAI/gemma-4-26B-A4B-it-FP8-Dynamic",
+              "official": false,
+              "source": "RedHatAI",
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "nvfp4",
+              "repo": "nvidia/Gemma-4-26B-A4B-NVFP4",
+              "official": false,
+              "source": "nvidia",
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "q4",
+              "repo": "unsloth/gemma-4-26B-A4B-it-GGUF",
+              "official": false,
+              "source": "unsloth",
+              "allow_patterns": [
+                "*UD-Q4_K_M*.gguf"
+              ],
+              "size_gb": null,
+              "caveat": null
+            }
+          ],
+          "architecture": "MoE · multimodal",
+          "total_params_b": 25.2,
+          "intelligence_index": 26.1,
+          "agentic_index": 11.0
         },
         {
           "id": "gemma-4-31b",
@@ -101,11 +249,45 @@
             "Unsloth repo includes MTP draft GGUFs for speculative decoding"
           ],
           "variants": [
-            { "format": "bf16", "repo": "google/gemma-4-31B-it", "official": true, "size_gb": 62, "caveat": null },
-            { "format": "fp8", "repo": "RedHatAI/gemma-4-31B-it-FP8-block", "official": false, "source": "RedHatAI", "size_gb": null, "caveat": null },
-            { "format": "nvfp4", "repo": "nvidia/Gemma-4-31B-IT-NVFP4", "official": false, "source": "nvidia", "size_gb": null, "caveat": null },
-            { "format": "q4", "repo": "unsloth/gemma-4-31B-it-GGUF", "official": false, "source": "unsloth", "allow_patterns": ["*Q4_K_M*.gguf"], "size_gb": null, "caveat": null }
-          ]
+            {
+              "format": "bf16",
+              "repo": "google/gemma-4-31B-it",
+              "official": true,
+              "size_gb": 62,
+              "caveat": null
+            },
+            {
+              "format": "fp8",
+              "repo": "RedHatAI/gemma-4-31B-it-FP8-block",
+              "official": false,
+              "source": "RedHatAI",
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "nvfp4",
+              "repo": "nvidia/Gemma-4-31B-IT-NVFP4",
+              "official": false,
+              "source": "nvidia",
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "q4",
+              "repo": "unsloth/gemma-4-31B-it-GGUF",
+              "official": false,
+              "source": "unsloth",
+              "allow_patterns": [
+                "*Q4_K_M*.gguf"
+              ],
+              "size_gb": null,
+              "caveat": null
+            }
+          ],
+          "architecture": "Dense",
+          "total_params_b": 31.0,
+          "intelligence_index": 29.7,
+          "agentic_index": 14.4
         },
         {
           "id": "qwen3.6-35b-a3b",
@@ -124,33 +306,109 @@
             "Q4_K_M ≈ 20 GB"
           ],
           "variants": [
-            { "format": "bf16", "repo": "Qwen/Qwen3.6-35B-A3B", "official": true, "size_gb": null, "caveat": null },
-            { "format": "fp8", "repo": "Qwen/Qwen3.6-35B-A3B-FP8", "official": true, "size_gb": null, "caveat": null },
-            { "format": "nvfp4", "repo": "unsloth/Qwen3.6-35B-A3B-NVFP4", "official": false, "source": "unsloth", "size_gb": null, "caveat": null },
-            { "format": "q4", "repo": "unsloth/Qwen3.6-35B-A3B-GGUF", "official": false, "source": "unsloth", "allow_patterns": ["*UD-Q4_K_M*.gguf"], "size_gb": 20, "caveat": null }
-          ]
+            {
+              "format": "bf16",
+              "repo": "Qwen/Qwen3.6-35B-A3B",
+              "official": true,
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "fp8",
+              "repo": "Qwen/Qwen3.6-35B-A3B-FP8",
+              "official": true,
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "nvfp4",
+              "repo": "unsloth/Qwen3.6-35B-A3B-NVFP4",
+              "official": false,
+              "source": "unsloth",
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "q4",
+              "repo": "unsloth/Qwen3.6-35B-A3B-GGUF",
+              "official": false,
+              "source": "unsloth",
+              "allow_patterns": [
+                "*UD-Q4_K_M*.gguf"
+              ],
+              "size_gb": 20,
+              "caveat": null
+            }
+          ],
+          "architecture": "MoE · 256 experts + MTP",
+          "total_params_b": 35.0,
+          "intelligence_index": 32.1,
+          "agentic_index": 21.6
         },
         {
-          "id": "qwen3.6-27b",
-          "name": "Qwen3.6-27B",
+          "id": "qwen3.8-27b",
+          "name": "Qwen3.8-27B",
           "role": "smart",
-          "description": "Dense hybrid-arch 27B with 262K context — fits a 24 GB GPU at Q4_K_M",
-          "params": "27B dense, hybrid arch",
+          "description": "Dense 27B vision-language model with 262K context — the strongest model that still fits one 24 GB GPU at Q4",
+          "params": "27.8B dense + vision encoder",
+          "architecture": "Dense · Gated DeltaNet + Gated Attention, native VLM",
+          "total_params_b": 27.8,
           "active_params_b": null,
           "context_tokens": 262144,
           "license": "Apache-2.0",
-          "multimodal": false,
+          "multimodal": true,
           "notes": [
-            "Thinking is on by default; disable via chat_template_kwargs: {enable_thinking: false} (the /think soft-switch does not work on 3.6)",
-            "Avoid CUDA 13.2 (gibberish reports); use 13.1/12.x",
-            "~17 GB at Q4_K_M (24 GB GPU floor)"
+            "Native vision-language: images and hour-scale video, not just text",
+            "Thinking is on by default; disable per request and tune depth with reasoning_effort",
+            "Text-only serving: --language-model-only frees the vision encoder's memory",
+            "Q4_K_M ≈ 17 GB, so a 24 GB GPU is the realistic floor",
+            "Official BF16 and FP8 from Qwen; NVFP4 and AWQ are community builds"
           ],
           "variants": [
-            { "format": "bf16", "repo": "Qwen/Qwen3.6-27B", "official": true, "size_gb": null, "caveat": null },
-            { "format": "fp8", "repo": "Qwen/Qwen3.6-27B-FP8", "official": true, "size_gb": null, "caveat": null },
-            { "format": "nvfp4", "repo": "nvidia/Qwen3.6-27B-NVFP4", "official": false, "source": "nvidia", "size_gb": null, "caveat": null },
-            { "format": "q4", "repo": "unsloth/Qwen3.6-27B-GGUF", "official": false, "source": "unsloth", "allow_patterns": ["*Q4_K_M*.gguf"], "size_gb": 17, "caveat": null }
-          ]
+            {
+              "format": "bf16",
+              "repo": "Qwen/Qwen3.8-27B",
+              "official": true,
+              "size_gb": 55.6,
+              "caveat": null
+            },
+            {
+              "format": "fp8",
+              "repo": "Qwen/Qwen3.8-27B-FP8",
+              "official": true,
+              "size_gb": 30.9,
+              "caveat": null
+            },
+            {
+              "format": "nvfp4",
+              "repo": "unsloth/Qwen3.8-27B-NVFP4",
+              "official": false,
+              "source": "unsloth",
+              "size_gb": 23.4,
+              "caveat": null
+            },
+            {
+              "format": "q4",
+              "repo": "unsloth/Qwen3.8-27B-GGUF",
+              "official": false,
+              "source": "unsloth",
+              "allow_patterns": [
+                "*Q4_K_M*.gguf"
+              ],
+              "size_gb": 17.1,
+              "caveat": null
+            },
+            {
+              "format": "q4",
+              "repo": "cyankiwi/Qwen3.8-27B-AWQ-INT4",
+              "official": false,
+              "source": "cyankiwi",
+              "size_gb": 21.0,
+              "caveat": "AWQ INT4 for vLLM, not GGUF"
+            }
+          ],
+          "intelligence_index": 52.0,
+          "agentic_index": 50.9
         }
       ]
     },
@@ -176,61 +434,168 @@
             "Rare: StepFun ships its own NVFP4"
           ],
           "variants": [
-            { "format": "bf16", "repo": "stepfun-ai/Step-3.7-Flash", "official": true, "size_gb": null, "caveat": null },
-            { "format": "fp8", "repo": "stepfun-ai/Step-3.7-Flash-FP8", "official": true, "size_gb": null, "caveat": null },
-            { "format": "nvfp4", "repo": "stepfun-ai/Step-3.7-Flash-NVFP4", "official": true, "size_gb": null, "caveat": null },
-            { "format": "q4", "repo": "unsloth/Step-3.7-Flash-GGUF", "official": false, "source": "unsloth", "allow_patterns": ["*UD-Q4_K_XL*.gguf"], "size_gb": null, "caveat": null },
-            { "format": "q4", "repo": "stepfun-ai/Step-3.7-Flash-GGUF", "official": true, "allow_patterns": ["*Q4_K_S*.gguf"], "size_gb": null, "caveat": null }
-          ]
+            {
+              "format": "bf16",
+              "repo": "stepfun-ai/Step-3.7-Flash",
+              "official": true,
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "fp8",
+              "repo": "stepfun-ai/Step-3.7-Flash-FP8",
+              "official": true,
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "nvfp4",
+              "repo": "stepfun-ai/Step-3.7-Flash-NVFP4",
+              "official": true,
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "q4",
+              "repo": "unsloth/Step-3.7-Flash-GGUF",
+              "official": false,
+              "source": "unsloth",
+              "allow_patterns": [
+                "*UD-Q4_K_XL*.gguf"
+              ],
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "q4",
+              "repo": "stepfun-ai/Step-3.7-Flash-GGUF",
+              "official": true,
+              "allow_patterns": [
+                "*Q4_K_S*.gguf"
+              ],
+              "size_gb": null,
+              "caveat": null
+            }
+          ],
+          "architecture": "MoE",
+          "total_params_b": 198.0,
+          "intelligence_index": 30.9,
+          "agentic_index": 21.7
         },
         {
-          "id": "deepseek-v4-flash",
-          "name": "DeepSeek V4 Flash",
+          "id": "deepseek-v4-flash-0731",
+          "name": "DeepSeek V4 Flash 0731",
           "role": null,
-          "description": "284B MoE with 13B active and 1M context — natively FP4+FP8, no BF16 by design",
-          "params": "284B MoE",
-          "active_params_b": 13,
-          "context_tokens": 1000000,
+          "description": "304B MoE with 1M context and a built-in speculative decoding module — the official release, superseding the preview",
+          "params": "304B MoE, 256 routed experts (top-6)",
+          "architecture": "MoE · 256 experts, top-6, + speculative decoder",
+          "total_params_b": 304.0,
+          "active_params_b": 13.0,
+          "context_tokens": 1048576,
           "license": "MIT",
           "multimodal": false,
           "notes": [
+            "Official 0731 release — supersedes the DeepSeek-V4-Flash preview",
+            "Ships with a speculative decoding module attached (same structure as the DSpark build)",
             "No BF16 checkpoint exists — natively FP4-experts + FP8 mixed by design",
-            "FP8 (sgl-project) is the only Hopper path; NVFP4 is true-NVFP4 for Blackwell",
-            "GGUF needs latest llama.cpp + Unsloth's corrected chat template (official repo ships none)",
-            "MLX support still experimental",
-            "GGUF ships as 5 shards, ~155 GB total"
+            "GGUF needs recent llama.cpp; Unsloth ships the corrected chat template",
+            "GGUF UD-Q4_K_XL is 5 shards, ~155 GB total"
           ],
           "variants": [
-            { "format": "fp8", "repo": "deepseek-ai/DeepSeek-V4-Flash", "official": true, "size_gb": 160, "caveat": "native FP4-experts + FP8 mixed checkpoint" },
-            { "format": "fp8", "repo": "sgl-project/DeepSeek-V4-Flash-FP8", "official": false, "source": "sgl-project", "size_gb": null, "caveat": "SGLang team repack" },
-            { "format": "nvfp4", "repo": "nvidia/DeepSeek-V4-Flash-NVFP4", "official": false, "source": "nvidia", "size_gb": null, "caveat": null },
-            { "format": "q4", "repo": "unsloth/DeepSeek-V4-Flash-GGUF", "official": false, "source": "unsloth", "allow_patterns": ["*UD-Q4_K_XL*.gguf"], "size_gb": 155, "caveat": null }
-          ]
+            {
+              "format": "fp8",
+              "repo": "deepseek-ai/DeepSeek-V4-Flash-0731",
+              "official": true,
+              "size_gb": 166.9,
+              "caveat": "native FP4-experts + FP8 mixed checkpoint"
+            },
+            {
+              "format": "fp8",
+              "repo": "AtlasCloud/DeepSeek-V4-Flash-0731-FP8-DSpark",
+              "official": false,
+              "source": "AtlasCloud",
+              "size_gb": 307.4,
+              "caveat": "full W8A8 repack"
+            },
+            {
+              "format": "nvfp4",
+              "repo": "MJPansa/DeepSeek-V4-Flash-0731-NVFP4",
+              "official": false,
+              "source": "MJPansa",
+              "size_gb": 175.6,
+              "caveat": "community quant"
+            },
+            {
+              "format": "q4",
+              "repo": "unsloth/DeepSeek-V4-Flash-0731-GGUF",
+              "official": false,
+              "source": "unsloth",
+              "allow_patterns": [
+                "*UD-Q4_K_XL*.gguf"
+              ],
+              "size_gb": 155.1,
+              "caveat": null
+            }
+          ],
+          "intelligence_index": 51.8,
+          "agentic_index": 48.4
         },
         {
-          "id": "hy3",
-          "name": "Hy3",
+          "id": "motif-3",
+          "name": "Motif 3",
           "role": null,
-          "description": "Tencent Hunyuan 3 — 295B MoE with 21B active, MTP layer, and switchable reasoning effort",
-          "params": "295B MoE + MTP layer",
-          "active_params_b": 21,
+          "description": "314B MoE with only 13.2B active — fine-grained 384-expert routing, 256K context, and a built-in MTP head",
+          "params": "314B MoE, 384 routed experts (top-8) + 1 shared",
+          "architecture": "MoE · GDLA attention, 384 experts top-8, MTP head",
+          "total_params_b": 314.0,
+          "active_params_b": 13.2,
           "context_tokens": 262144,
-          "license": "Apache-2.0",
+          "license": "MIT",
           "multimodal": false,
           "notes": [
-            "BF16 ≈ 598 GB, FP8 ≈ 300 GB — Tencent's recipe targets 8× H20 TP=8",
-            "Custom arch hy_v3 needs source-built vLLM; TP must divide 8 KV heads",
-            "Reasoning effort switchable (reasoning_effort: no_think/low/high)",
-            "Full release 2026-07-06",
-            "No official NVFP4 and no Unsloth GGUF — community/Tencent-toolkit alternatives only"
+            "Grouped Differential Latent Attention (GDLA) with a compressed KV representation",
+            "MTP head enables self-speculative decoding out of the box",
+            "53 layers (2 dense + 51 MoE), 220,160-token vocabulary, native 256K context",
+            "BF16 ≈ 630 GB — the NVFP4 build from Motif is the practical multi-GPU path",
+            "Custom arch (model_type Motif) needs --trust-remote-code and a recent runtime"
           ],
           "variants": [
-            { "format": "bf16", "repo": "tencent/Hy3", "official": true, "size_gb": 598, "caveat": null },
-            { "format": "fp8", "repo": "tencent/Hy3-FP8", "official": true, "size_gb": 300, "caveat": null },
-            { "format": "nvfp4", "repo": "LibertAIDAI/Hy3-NVFP4", "official": false, "source": "LibertAIDAI", "size_gb": null, "caveat": "community quant" },
-            { "format": "q4", "repo": "AngelSlim/Hy3-GGUF", "official": false, "source": "AngelSlim", "allow_patterns": ["*Q4_K_M*.gguf"], "size_gb": null, "caveat": null },
-            { "format": "q4", "repo": "bartowski/Hy3-GGUF", "official": false, "source": "bartowski", "size_gb": null, "caveat": "community quant" }
-          ]
+            {
+              "format": "bf16",
+              "repo": "Motif-Technologies/Motif-3",
+              "official": true,
+              "size_gb": 629.7,
+              "caveat": null
+            },
+            {
+              "format": "fp8",
+              "repo": "0ppxnhximxr/Motif-3-FP8",
+              "official": false,
+              "source": "0ppxnhximxr",
+              "size_gb": 321.7,
+              "caveat": "community quant"
+            },
+            {
+              "format": "nvfp4",
+              "repo": "Motif-Technologies/Motif-3-NVFP4",
+              "official": true,
+              "size_gb": 186.9,
+              "caveat": null
+            },
+            {
+              "format": "q4",
+              "repo": "AesSedai/Motif-3-GGUF",
+              "official": false,
+              "source": "AesSedai",
+              "allow_patterns": [
+                "*Q4_K_M*.gguf"
+              ],
+              "size_gb": 197.0,
+              "caveat": "5 shards"
+            }
+          ],
+          "intelligence_index": 47.4,
+          "agentic_index": 37.6
         }
       ]
     },
@@ -256,11 +621,44 @@
             "GGUF ships as 7 shards, ~240 GB total"
           ],
           "variants": [
-            { "format": "bf16", "repo": "MiniMaxAI/MiniMax-M3", "official": true, "size_gb": null, "caveat": null },
-            { "format": "fp8", "repo": "MiniMaxAI/MiniMax-M3-MXFP8", "official": true, "size_gb": null, "caveat": "MXFP8 microscaling, not W8A8" },
-            { "format": "nvfp4", "repo": "nvidia/MiniMax-M3-NVFP4", "official": false, "source": "nvidia", "size_gb": null, "caveat": null },
-            { "format": "q4", "repo": "unsloth/MiniMax-M3-GGUF", "official": false, "source": "unsloth", "allow_patterns": ["*UD-Q4_K_M*.gguf"], "size_gb": 240, "caveat": null }
-          ]
+            {
+              "format": "bf16",
+              "repo": "MiniMaxAI/MiniMax-M3",
+              "official": true,
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "fp8",
+              "repo": "MiniMaxAI/MiniMax-M3-MXFP8",
+              "official": true,
+              "size_gb": null,
+              "caveat": "MXFP8 microscaling, not W8A8"
+            },
+            {
+              "format": "nvfp4",
+              "repo": "nvidia/MiniMax-M3-NVFP4",
+              "official": false,
+              "source": "nvidia",
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "q4",
+              "repo": "unsloth/MiniMax-M3-GGUF",
+              "official": false,
+              "source": "unsloth",
+              "allow_patterns": [
+                "*UD-Q4_K_M*.gguf"
+              ],
+              "size_gb": 240,
+              "caveat": null
+            }
+          ],
+          "architecture": "MoE",
+          "total_params_b": 428.0,
+          "intelligence_index": 45.4,
+          "agentic_index": 36.1
         },
         {
           "id": "glm-5.2",
@@ -279,13 +677,47 @@
             "Base repo is the chat model (no -Instruct suffix)"
           ],
           "variants": [
-            { "format": "bf16", "repo": "zai-org/GLM-5.2", "official": true, "size_gb": 1500, "caveat": null },
-            { "format": "fp8", "repo": "zai-org/GLM-5.2-FP8", "official": true, "size_gb": null, "caveat": null },
-            { "format": "nvfp4", "repo": "nvidia/GLM-5.2-NVFP4", "official": false, "source": "nvidia", "size_gb": null, "caveat": null },
-            { "format": "q4", "repo": "unsloth/GLM-5.2-GGUF", "official": false, "source": "unsloth", "allow_patterns": ["*UD-Q4_K_M*.gguf"], "size_gb": null, "caveat": null }
-          ]
+            {
+              "format": "bf16",
+              "repo": "zai-org/GLM-5.2",
+              "official": true,
+              "size_gb": 1500,
+              "caveat": null
+            },
+            {
+              "format": "fp8",
+              "repo": "zai-org/GLM-5.2-FP8",
+              "official": true,
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "nvfp4",
+              "repo": "nvidia/GLM-5.2-NVFP4",
+              "official": false,
+              "source": "nvidia",
+              "size_gb": null,
+              "caveat": null
+            },
+            {
+              "format": "q4",
+              "repo": "unsloth/GLM-5.2-GGUF",
+              "official": false,
+              "source": "unsloth",
+              "allow_patterns": [
+                "*UD-Q4_K_M*.gguf"
+              ],
+              "size_gb": null,
+              "caveat": null
+            }
+          ],
+          "architecture": "MoE",
+          "total_params_b": 753.0,
+          "intelligence_index": 52.6,
+          "agentic_index": 45.7
         }
       ]
     }
-  ]
+  ],
+  "intelligence_source": "Artificial Analysis Intelligence Index, retrieved 2026-08-18"
 }

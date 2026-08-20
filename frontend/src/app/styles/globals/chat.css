@@ -1,51 +1,6 @@
-/* Message content */
-.message-content {
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  hyphens: auto;
-  color: var(--fg) !important;
-}
-
-.message-content p,
-.message-content li,
-.message-content ul,
-.message-content ol,
-.message-content h1,
-.message-content h2,
-.message-content h3,
-.message-content h4,
-.message-content h5,
-.message-content h6,
-.message-content span:not([class*="hljs"]),
-.message-content strong,
-.message-content em,
-.message-content blockquote,
-.message-content td,
-.message-content th,
-.message-content div:not([class]) {
-  color: var(--fg) !important;
-}
-
-.message-content pre {
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.message-content code {
-  word-break: break-word;
-}
-
-.message-content pre code {
-  word-break: normal;
-}
-
 /* Chat markdown */
 :root {
-  /* Codex desktop v26.7, exact: the ChatGPT text-md ladder — 16px system UI
-     with 24px leading (1.5) for chat prose AND the composer (one shared chat
-     size token, `text-size-chat` upstream); 13px monospace for code.
-     Weight 400 — calm, document-like. */
-  --codex-chat-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --codex-chat-font-family: var(--font-sans);
   --codex-chat-mono-font-family:
     ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --codex-chat-font-size: 16px;
@@ -398,48 +353,6 @@
   color: color-mix(in srgb, var(--fg) 48%, transparent);
 }
 
-.agent-activity-preview {
-  position: relative;
-}
-
-.agent-activity-preview-running::after {
-  content: attr(data-preview);
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  pointer-events: none;
-  color: transparent;
-  background-image: linear-gradient(
-    90deg,
-    transparent 0%,
-    transparent 48%,
-    color-mix(in srgb, var(--fg) 82%, transparent) 50%,
-    transparent 52%,
-    transparent 100%
-  );
-  background-size: 500% 100%;
-  background-position: 100% 0;
-  background-clip: text;
-  -webkit-background-clip: text;
-  animation: agent-activity-preview-sweep 1.5s linear infinite;
-}
-
-@keyframes agent-activity-preview-sweep {
-  from {
-    background-position: 100% 0;
-  }
-  to {
-    background-position: 0% 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .agent-activity-preview-running::after {
-    animation: none;
-  }
-}
-
 .chat-markdown .assistant-code-block code {
   background: transparent;
   border: 0;
@@ -556,45 +469,6 @@
     animation: none;
     background: none;
     color: var(--dim);
-  }
-}
-
-/* Typing dots */
-.typing-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 20px;
-}
-
-.typing-dots span {
-  width: 4px;
-  height: 4px;
-  background: var(--dim);
-  border-radius: 50%;
-  animation: typing-bounce 1.4s infinite ease-in-out both;
-}
-
-.typing-dots span:nth-child(1) {
-  animation-delay: -0.32s;
-}
-.typing-dots span:nth-child(2) {
-  animation-delay: -0.16s;
-}
-.typing-dots span:nth-child(3) {
-  animation-delay: 0s;
-}
-
-@keyframes typing-bounce {
-  0%,
-  80%,
-  100% {
-    transform: scale(0.5);
-    opacity: 0.35;
-  }
-  40% {
-    transform: scale(1);
-    opacity: 0.85;
   }
 }
 

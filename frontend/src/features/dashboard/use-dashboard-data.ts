@@ -9,10 +9,11 @@ export function useDashboardData() {
   const router = useRouter();
   const realtime = useRealtimeStatusStore();
   const currentProcess = realtime.status?.process || null;
-  const metrics = scopedMetrics(
-    metricsWithProcessIdentity(realtime.metrics, currentProcess),
-    currentProcess,
-  );
+  const identified = metricsWithProcessIdentity(realtime.metrics, currentProcess);
+  const metrics = scopedMetrics(identified, currentProcess);
+  // Metrics arrived but could not be attributed to the running process. Without
+  // surfacing this the strip renders a wall of zeroes and reads as "idle".
+  const metricsDetached = Boolean(currentProcess && identified && !metrics);
   const gpus = realtime.gpus.length > 0 ? realtime.gpus : [];
   const recipesState = useDashboardRecipes(currentProcess);
   const lifecycle = useModelLifecycle(recipesState.recipes);
@@ -26,6 +27,7 @@ export function useDashboardData() {
     currentProcess,
     currentRecipe: recipesState.currentRecipe,
     metrics,
+    metricsDetached,
     gpus,
     recipes: recipesState.recipes,
     logs: recipesState.logs,
@@ -46,7 +48,7 @@ export function useDashboardData() {
     onLaunch: lifecycle.start,
     onBenchmark: actions.onBenchmark,
     onNavigateLogs: navigate("/logs"),
-    onNewRecipe: navigate("/configure?new=1&tab=serves#models"),
-    onViewAll: navigate("/configure#models"),
+    onNewRecipe: navigate("/models?new=1&tab=serves"),
+    onViewAll: navigate("/models"),
   };
 }

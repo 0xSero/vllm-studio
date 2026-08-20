@@ -49,7 +49,7 @@ export function SetupShell({
 
       <div className="relative mx-auto flex min-h-full w-full max-w-[640px] flex-col px-6 pb-16 pt-[14vh]">
         <div className="mb-2 flex items-center gap-3">
-          <span className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.22em] text-(--ui-muted)">
+          <span className="text-[length:var(--fs-sm)] text-(--ui-muted)">
             {surface.eyebrow}
           </span>
           <span className="flex items-center gap-1.5" aria-hidden>

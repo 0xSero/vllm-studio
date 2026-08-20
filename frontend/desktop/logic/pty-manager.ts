@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import os from "node:os";
+import path from "node:path";
 import { existsSync, statSync } from "node:fs";
-import type { WebContents } from "electron";
+import { app, type WebContents } from "electron";
 import { log } from "../helpers/logger";
 
 type PtyHandle = {
@@ -53,7 +55,10 @@ function loadFactory(): PtyFactory | null {
         opts: { cwd: string; cols: number; rows: number; env: NodeJS.ProcessEnv; name?: string },
       ) => PtyHandle;
     };
-    const required = require("@lydell/node-pty") as Mod | { default: Mod }; // eslint-disable-line @typescript-eslint/no-require-imports
+    const packageRequire = app.isPackaged
+      ? createRequire(path.join(process.resourcesPath, "desktop-runtime", "package.json"))
+      : createRequire(path.join(app.getAppPath(), "package.json"));
+    const required = packageRequire("@lydell/node-pty") as Mod | { default: Mod };
     const mod = (
       required && "spawn" in required ? required : (required as { default: Mod }).default
     ) as Mod;

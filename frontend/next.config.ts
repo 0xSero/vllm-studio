@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const nextConfig: NextConfig = {
+  // `npm run build` starts with `project.mjs prepare-next`, which rm -rf's the
+  // whole output directory. Run that while a dev server is up — another agent
+  // session, a packaging run — and dev's manifests vanish underneath it, so
+  // every route 500s with ENOENT until dev is restarted. Point dev at its own
+  // directory (NEXT_DIST_DIR=.next-dev) and the two stop colliding.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   // Workaround for Next.js 16 bug: when unset, config.generateBuildId becomes
   // undefined, but generateBuildId() calls it as a function without a guard.
   generateBuildId: () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
@@ -43,6 +49,9 @@ const nextConfig: NextConfig = {
   },
   outputFileTracingExcludes: {
     "/*": [
+      // Dev-server output (NEXT_DIST_DIR=.next-dev) is not part of a build and
+      // must not be traced into the standalone bundle.
+      "./.next-dev/**/*",
       "./data/**/*",
       "./desktop/**/*",
       // Every channel's output dir, not just stable's. When dist-desktop-dev
@@ -50,16 +59,12 @@ const nextConfig: NextConfig = {
       // .next/standalone and the repair step crashed stat'ing framework
       // symlinks — a dev-channel build breaking every subsequent stable build.
       "./dist-desktop*/**/*",
-      "./e2e/**/*",
-      "./playwright-report/**/*",
-      "./test-results/**/*",
       "./public/**/*",
       "./src/**/*",
       "./README.md",
       "./eslint.config.mjs",
       "./knip.ts",
       "./next.config.ts",
-      "./playwright.config.ts",
       "./package-lock.json",
       "./postcss.config.mjs",
       "./tsconfig*.json",
@@ -70,7 +75,6 @@ const nextConfig: NextConfig = {
       "../services/**/*",
       "../shared/**/*",
       "../site/**/*",
-      "../tests/**/*",
       "../*.md",
       "../package-lock.json",
       "../release.config.cjs",
@@ -115,15 +119,6 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname, ".."),
   },
-  async redirects() {
-    return [
-      {
-        source: "/models",
-        destination: "/configure#models",
-        permanent: true,
-      },
-    ];
-  },
   async rewrites() {
     return [
       {
@@ -143,7 +138,7 @@ const nextConfig: NextConfig = {
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
-      "font-src 'self' data:",
+      "font-src 'self' data: https://cdn.openai.com",
       "connect-src 'self' https: http: ws: wss:",
       "frame-src 'self' https: http:",
       "media-src 'self' blob: data:",

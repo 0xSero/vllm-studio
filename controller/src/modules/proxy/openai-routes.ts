@@ -46,6 +46,60 @@ export const modelNotRunningError = (
   };
 };
 
+const stripDeepSeekControlTokens = (text: string): string =>
+  text
+    .replaceAll("<｜begin▁of▁sentence｜>", "")
+    .replaceAll("<｜end▁of▁sentence｜>", "");
+
+const isDeepSeekV4ControllerRecipe = (recipe: Recipe | null): boolean => {
+  if (!recipe) return false;
+  return `${recipe.id} ${recipe.name} ${recipe.served_model_name ?? ""}`
+    .toLowerCase()
+    .includes("deepseek-v4");
+};
+
+/**
+ * DeepSeek's hosted API has a different reasoning protocol from our local
+ * DeepSeek V4 vLLM endpoint. A stale desktop client may send its hosted-only
+ * `thinking` field and inject blank `reasoning_content` fields when replaying
+ * tool turns. Remove only that incompatible transport residue at the
+ * controller boundary, while preserving actual reasoning and reasoning_effort.
+ */
+export const sanitizeDeepSeekV4ControllerRequest = (
+  body: Record<string, unknown>,
+  recipe: Recipe | null,
+): boolean => {
+  if (!isDeepSeekV4ControllerRecipe(recipe)) return false;
+
+  let changed = false;
+  if ("thinking" in body) {
+    delete body["thinking"];
+    changed = true;
+  }
+
+  const messages = body["messages"];
+  if (!Array.isArray(messages)) return changed;
+  for (const message of messages) {
+    if (!message || typeof message !== "object" || Array.isArray(message)) continue;
+    const record = message as Record<string, unknown>;
+    if (
+      typeof record["reasoning_content"] === "string" &&
+      record["reasoning_content"].trim().length === 0
+    ) {
+      delete record["reasoning_content"];
+      changed = true;
+    }
+    if (typeof record["content"] === "string") {
+      const cleaned = stripDeepSeekControlTokens(record["content"]);
+      if (cleaned !== record["content"]) {
+        record["content"] = cleaned;
+        changed = true;
+      }
+    }
+  }
+  return changed;
+};
+
 export const registerOpenAIRoutes = defineRoutes((app, context) => {
   const warnNonRunningModel = createNonRunningModelWarner(context.logger);
 
@@ -91,6 +145,9 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
             bodyChanged = true;
           }
         }
+      }
+      if (sanitizeDeepSeekV4ControllerRequest(parsed, matchedRecipe)) {
+        bodyChanged = true;
       }
       if (parsed["functions"] || parsed["tools"] !== undefined) {
         bodyChanged = true;

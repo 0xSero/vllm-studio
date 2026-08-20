@@ -13,14 +13,13 @@ export type { ProjectEntry };
 
 const PROJECTS_RELATIVE = path.join("data", "agentfs", "projects.json");
 
-// The projects store is canonical for both the frontend (which proxies
-// /api/agent/projects here) and the Litter bridge. It must resolve to the same
+// The projects store is canonical for the frontend, which proxies
+// /api/agent/projects here. It must resolve to the same
 // <repo>/data/agentfs/projects.json regardless of which subdirectory the
 // process runs from — the frontend standalone server, `bun run src/…`, and the
 // agent-runtime systemd unit (cwd services/agent-runtime) all differ. Anchoring
 // on process.cwd()/.. only worked for the frontend and silently gave the
-// runtime an empty store (services/data/…), which broke bridge session_list
-// and session_create. Walk up to the repo root instead.
+// runtime an empty store (services/data/…). Walk up to the repo root instead.
 function projectsFilePath(): string {
   if (process.env.LOCAL_STUDIO_PROJECTS_FILE) return process.env.LOCAL_STUDIO_PROJECTS_FILE;
   let dir = process.cwd();

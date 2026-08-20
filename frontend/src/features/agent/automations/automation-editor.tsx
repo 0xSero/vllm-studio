@@ -51,6 +51,7 @@ const EXAMPLES: Array<{
 export function AutomationEditor({
   automation,
   creating,
+  initialDraft,
   models,
   action,
   error,
@@ -62,17 +63,19 @@ export function AutomationEditor({
 }: {
   automation: Automation | null;
   creating: boolean;
+  /** Seed for a new automation, so a caller can prefill it from its context. */
+  initialDraft?: AutomationDraft;
   models: readonly AutomationModel[];
   action: EditorAction;
   error: string;
   onClose: () => void;
   onSave: (draft: AutomationDraft) => void;
-  onRun: () => void;
-  onToggleStatus: () => void;
-  onDelete: () => void;
+  onRun?: () => void;
+  onToggleStatus?: () => void;
+  onDelete?: () => void;
 }) {
-  const [draft, setDraft] = useState<AutomationDraft>(() =>
-    automation ? draftFromAutomation(automation) : NEW_AUTOMATION_DRAFT,
+  const [draft, setDraft] = useState<AutomationDraft>(
+    () => (automation ? draftFromAutomation(automation) : initialDraft) ?? NEW_AUTOMATION_DRAFT,
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -218,8 +221,8 @@ function EditorHeader({
   action: EditorAction;
   busy: boolean;
   onClose: () => void;
-  onRun: () => void;
-  onToggleStatus: () => void;
+  onRun?: () => void;
+  onToggleStatus?: () => void;
 }) {
   const statusText = creating
     ? "Set up the work once, then let Local Studio run it."
@@ -280,7 +283,7 @@ function ExamplePicker({
 }) {
   return (
     <div>
-      <div className="mb-2 text-[length:var(--fs-xs)] font-medium uppercase tracking-[0.12em] text-(--ui-muted)">
+      <div className="mb-2 text-[length:var(--fs-sm)] font-medium text-(--ui-muted)">
         Start from
       </div>
       <div className="flex flex-wrap gap-2">
@@ -395,7 +398,7 @@ function EditorFooter({
   confirmDelete: boolean;
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 border-t border-(--ui-border) pt-6">

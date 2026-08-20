@@ -1,22 +1,24 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { useSearchParams } from "next/navigation";
-import { ErrorBox, StatusPill } from "@/ui";
-import {
-  Boxes,
-  ChevronRight,
-  Gauge,
-  Monitor,
-  Plug,
-  Server,
-  type LucideIcon,
-} from "@/ui/icon-registry";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ErrorBox } from "@/ui";
+import { Boxes, Gauge, Monitor, Plug, Server, type LucideIcon } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { SettingsLayout, type SettingsSectionDef } from "@/features/settings/settings-ui";
-import { RecipesContent } from "@/features/recipes/recipes-content/recipes-content";
 import { IntegrationsContent } from "@/features/integrations/integrations-page";
 import { ServerContent } from "@/features/logs/server-view";
+import {
+  DataRow,
+  EndCell,
+  GroupRow,
+  HeadCell,
+  LeadCell,
+  NumCell,
+  RowAction,
+  StatusText,
+  TableFrame,
+} from "@/features/recipes/recipes-content/catalog-table-shell";
 import { useConfigure } from "./use-configure";
 import { RigsSection } from "./rigs-section";
 import { configureSectionFromHash, type ConfigureSectionId } from "./configure-navigation";
@@ -37,12 +39,6 @@ const CONFIGURE_SECTIONS: SettingsSectionDef<ConfigureSectionId>[] = [
     icon: sectionIcon(Monitor),
   },
   {
-    id: "models",
-    label: "Models",
-    description: "Find weights, manage serves, and monitor downloads.",
-    icon: sectionIcon(Boxes),
-  },
-  {
     id: "integrations",
     label: "Integrations",
     description: "Plugins, connectors, accounts, and reusable skills.",
@@ -56,11 +52,20 @@ const CONFIGURE_SECTIONS: SettingsSectionDef<ConfigureSectionId>[] = [
   },
 ];
 
+/**
+ * One area of the workspace, as a table row.
+ *
+ * These were four cards with icon tiles and a chevron — a third dialect on a
+ * page that already had two. As rows they read the same way the Models catalog
+ * does: identity on the left, the one number that says how much of it exists on
+ * the right, and the action only when the pointer is on the row.
+ */
 function OverviewRow({
   icon,
   title,
   description,
   detail,
+  state,
   ready,
   onOpen,
 }: {
@@ -68,42 +73,46 @@ function OverviewRow({
   title: string;
   description: string;
   detail: string;
+  state: string;
   ready?: boolean;
   onOpen: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group flex w-full items-center gap-4 px-5 py-5 text-left transition-colors hover:bg-(--ui-hover)/40"
-    >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-(--ui-border) bg-(--surface-3) text-(--ui-muted)">
-        {icon}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-2">
-          <span className="text-[length:var(--fs-lg)] font-medium text-(--ui-fg)">{title}</span>
+    <DataRow onOpen={onOpen} ariaLabel={`Open ${title}`}>
+      <LeadCell>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-(--border) bg-(--surface-3) text-(--dim)">
+            {icon}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-[length:var(--fs-md)] font-medium text-(--fg)">
+              {title}
+            </span>
+            <span className="block truncate text-[length:var(--fs-xs)] text-(--dim)/70">
+              {description}
+            </span>
+          </span>
+        </div>
+      </LeadCell>
+      <NumCell strong>{detail}</NumCell>
+      <NumCell>{state}</NumCell>
+      <EndCell>
+        <div className="flex items-center justify-end gap-2">
           {ready === undefined ? null : (
-            <StatusPill tone={ready ? "good" : "default"}>{ready ? "Ready" : "Not set"}</StatusPill>
+            <StatusText tone={ready ? "ok" : "dim"}>{ready ? "ready" : "not set"}</StatusText>
           )}
-        </span>
-        <span className="mt-1 block text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
-          {description}
-        </span>
-      </span>
-      <span className="hidden shrink-0 text-right sm:block">
-        <span className="block text-[length:var(--fs-sm)] font-medium text-(--ui-fg)">
-          {detail}
-        </span>
-        <span className="mt-0.5 block text-[length:var(--fs-xs)] text-(--ui-muted)">Manage</span>
-      </span>
-      <ChevronRight className="h-4 w-4 shrink-0 text-(--ui-muted) transition-transform group-hover:translate-x-0.5 group-hover:text-(--ui-fg)" />
-    </button>
+          <RowAction onClick={onOpen} title={`Open ${title}`}>
+            Manage
+          </RowAction>
+        </div>
+      </EndCell>
+    </DataRow>
   );
 }
 
 export default function ConfigurePage() {
   const state = useConfigure();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const requestedSection = configureSectionFromHash(searchParams.get("section") ?? "");
   const [section, setSection] = useState<ConfigureSectionId>(requestedSection);
@@ -145,71 +154,71 @@ export default function ConfigurePage() {
       sections={CONFIGURE_SECTIONS}
       activeSection={section}
       title="Configure"
-      eyebrow="Workspace"
       width="wide"
       loading={state.refreshing || state.loading}
-      showRefresh={machineSection}
+      // Machines carries its own refresh in the table header; two reload
+      // controls on one screen is one control too many.
+      showRefresh={section === "overview"}
       onReload={state.reload}
       onSelectSection={selectSection}
     >
       {machineSection && state.error ? <ErrorBox>{state.error}</ErrorBox> : null}
 
       {section === "overview" ? (
-        <div className="space-y-7">
-          <section>
-            <h2 className="text-[length:var(--fs-xl)] font-medium text-(--ui-fg)">Configuration</h2>
-            <p className="mt-1 text-[length:var(--fs-sm)] text-(--ui-muted)">
-              Everything Local Studio needs to run models, in one place.
-            </p>
-            <div className="mt-4 divide-y divide-(--ui-separator) overflow-hidden rounded-xl border border-(--ui-border) bg-(--ui-surface)">
-              <OverviewRow
-                icon={<Monitor className="h-5 w-5" />}
-                title="Machines"
-                description="Computers that provide CPU, memory, and GPUs for inference."
-                detail={`${machines.length} machine${machines.length === 1 ? "" : "s"}${gpuMemory ? ` · ${gpuMemory} GB GPU` : ""}`}
-                ready={machines.length > 0}
-                onOpen={() => selectSection("rig")}
-              />
-              <OverviewRow
-                icon={<Boxes className="h-5 w-5" />}
-                title="Models"
-                description="Find weights, create serving profiles, and manage downloads."
-                detail="Get · serve · download"
-                onOpen={() => selectSection("models")}
-              />
-              <OverviewRow
-                icon={<Plug className="h-5 w-5" />}
-                title="Integrations"
-                description="Connect capability bundles, tools, services, accounts, and skills."
-                detail="Plugins · connectors · skills"
-                onOpen={() => selectSection("integrations")}
-              />
-              <OverviewRow
-                icon={<Server className="h-5 w-5" />}
-                title="Server"
-                description="Inspect the controller, inference runtime, logs, and API reference."
-                detail="Health · logs · API docs"
-                onOpen={() => selectSection("server")}
-              />
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-(--ui-border) bg-(--ui-surface) px-5 py-4">
-            <h3 className="text-[length:var(--fs-base)] font-medium text-(--ui-fg)">
-              Automatic by default
-            </h3>
-            <p className="mt-1 max-w-[42rem] text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted)">
-              Local hardware stays synchronized automatically. You only need to add a machine when
-              another computer contributes GPUs, or edit a model profile when its launch behavior
-              needs to change.
-            </p>
-          </section>
-        </div>
+        <TableFrame minWidthClass="min-w-[44rem]">
+          <thead>
+            <tr>
+              <HeadCell>Area</HeadCell>
+              <HeadCell numeric>Detail</HeadCell>
+              <HeadCell numeric>What it holds</HeadCell>
+              <HeadCell numeric>Status</HeadCell>
+            </tr>
+          </thead>
+          <tbody>
+            <GroupRow
+              colSpan={4}
+              label="Configuration"
+              blurb="Local hardware stays synchronized automatically — add a machine only when another computer contributes GPUs."
+              right="4 areas"
+            />
+            <OverviewRow
+              icon={<Monitor className="h-3.5 w-3.5" />}
+              title="Machines"
+              description="Computers that provide CPU, memory, and GPUs for inference."
+              detail={`${machines.length} machine${machines.length === 1 ? "" : "s"}`}
+              state={gpuMemory ? `${gpuMemory} GB GPU` : "no GPUs"}
+              ready={machines.length > 0}
+              onOpen={() => selectSection("rig")}
+            />
+            <OverviewRow
+              icon={<Boxes className="h-3.5 w-3.5" />}
+              title="Models"
+              description="Find weights, create serving profiles, and manage downloads."
+              detail="Get · serve"
+              state="downloads"
+              onOpen={() => router.push("/models")}
+            />
+            <OverviewRow
+              icon={<Plug className="h-3.5 w-3.5" />}
+              title="Integrations"
+              description="Connect capability bundles, tools, services, accounts, and skills."
+              detail="Plugins"
+              state="connectors · skills"
+              onOpen={() => selectSection("integrations")}
+            />
+            <OverviewRow
+              icon={<Server className="h-3.5 w-3.5" />}
+              title="Server"
+              description="Inspect the controller, inference runtime, logs, and API reference."
+              detail="Health"
+              state="logs · API docs"
+              onOpen={() => selectSection("server")}
+            />
+          </tbody>
+        </TableFrame>
       ) : null}
 
       {section === "rig" ? <RigsSection state={state} /> : null}
-
-      {section === "models" ? <RecipesContent embedded /> : null}
       {section === "integrations" ? <IntegrationsContent /> : null}
       {section === "server" ? <ServerContent embedded /> : null}
     </SettingsLayout>
