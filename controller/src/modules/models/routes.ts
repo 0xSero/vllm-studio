@@ -43,6 +43,7 @@ import { isRecipeRunning } from "./recipes/recipe-matching";
 import { notFound } from "../../core/errors";
 import { findObservedInferenceProcess } from "../../core/function-observability";
 import { fetchInference } from "../../http/local-fetch";
+import { listProviderModelsCached } from "../../services/provider-routing";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -127,6 +128,26 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
                 vision: resolveModelVision({ identifiers: [inferredId] }),
               },
             });
+          }
+
+          const providerCatalogs = yield* listProviderModelsCached(context.config.providers);
+          for (const catalog of providerCatalogs) {
+            for (const model of catalog.models) {
+              const modelId = `${catalog.provider}/${model.id}`;
+              models.push({
+                id: modelId,
+                object: "model",
+                created: now,
+                owned_by: catalog.provider,
+                active: false,
+                max_model_len: null,
+                metadata: {
+                  external: true,
+                  provider: catalog.provider,
+                  vision: resolveModelVision({ identifiers: [model.id, modelId] }),
+                },
+              });
+            }
           }
 
           const payload: OpenAIModelList = { object: "list", data: models };

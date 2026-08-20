@@ -1,3 +1,4 @@
+import { Effect, Schema } from "effect";
 import type { ProviderConfig } from "../config/persisted-config";
 
 export const DEFAULT_CHAT_PROVIDER = "openai";
@@ -49,3 +50,80 @@ export const resolveProviderConfig = (
 ): ProviderRouteConfig | null => {
   return resolveConfiguredProviderConfig(provider, config.providers);
 };
+
+interface ProviderModelCatalog {
+  provider: string;
+  models: Array<{ id: string }>;
+}
+
+const ProviderModelsSchema = Schema.Struct({
+  data: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String) }))),
+});
+
+export const enabledProvidersWithApiKey = (providers: ProviderConfig[] = []): ProviderConfig[] =>
+  providers.filter((provider) => provider.enabled && provider.api_key);
+
+export const discoverProviderModels = (
+  provider: ProviderConfig,
+  timeoutMs = 10_000,
+): Effect.Effect<ProviderModelCatalog, unknown> =>
+  Effect.gen(function* () {
+    const url = `${provider.base_url.replace(/\/+$/, "")}/v1/models`;
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(url, {
+          headers: { Authorization: `Bearer ${provider.api_key}` },
+          signal: AbortSignal.timeout(timeoutMs),
+        }),
+      catch: (source) => source,
+    });
+    if (!response.ok) return yield* Effect.fail(response.status);
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: (source) => source,
+    });
+    const decoded = yield* Schema.decodeUnknownEffect(ProviderModelsSchema)(payload);
+    const models = (decoded.data ?? []).flatMap((model) => {
+      const id = model.id?.trim();
+      return id ? [{ id }] : [];
+    });
+    return { provider: provider.id, models };
+  });
+
+/** /v1/models sits on the model picker's hot path, so provider discovery there
+ *  runs behind a short per-provider deadline and a small in-memory cache: a
+ *  healthy provider is re-queried at most once per SUCCESS_TTL_MS, and a dead
+ *  or slow one costs at most DISCOVERY_TIMEOUT_MS once per FAILURE_TTL_MS
+ *  before degrading to an empty catalog (i.e. just the local models). */
+const DISCOVERY_TIMEOUT_MS = 3_000;
+const SUCCESS_TTL_MS = 60_000;
+const FAILURE_TTL_MS = 15_000;
+
+const catalogCache = new Map<string, { expiresAt: number; catalog: ProviderModelCatalog }>();
+
+export const listProviderModelsCached = (
+  providers: ProviderConfig[] = [],
+): Effect.Effect<ProviderModelCatalog[]> =>
+  Effect.forEach(
+    enabledProvidersWithApiKey(providers),
+    (provider) => {
+      const key = `${provider.id}\n${provider.base_url}\n${provider.api_key}`;
+      const cached = catalogCache.get(key);
+      if (cached && cached.expiresAt > Date.now()) return Effect.succeed(cached.catalog);
+      return discoverProviderModels(provider, DISCOVERY_TIMEOUT_MS).pipe(
+        Effect.tap((catalog) =>
+          Effect.sync(() =>
+            catalogCache.set(key, { expiresAt: Date.now() + SUCCESS_TTL_MS, catalog }),
+          ),
+        ),
+        Effect.catch(() =>
+          Effect.sync(() => {
+            const catalog: ProviderModelCatalog = { provider: provider.id, models: [] };
+            catalogCache.set(key, { expiresAt: Date.now() + FAILURE_TTL_MS, catalog });
+            return catalog;
+          }),
+        ),
+      );
+    },
+    { concurrency: "unbounded" },
+  );
