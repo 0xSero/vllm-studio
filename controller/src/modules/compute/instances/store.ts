@@ -11,7 +11,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
-import { Effect } from "effect";
+import { Effect, Exit } from "effect";
 import type {
   DeviceId,
   EngineId,
@@ -20,17 +20,6 @@ import type {
   NodeId,
   EngineRuntimeKind,
 } from "../contracts";
-
-/**
- * The instance store: one JSON file per running deployment, written write-then-rename so
- * a crash mid-write reads as "not running" rather than as garbage.
- *
- * The records ARE the GPU lease. There is no registry, no lock-file-per-device, and no
- * in-memory cache of who holds what — `heldDevices` derives capacity by unioning the
- * devices of every record whose handle is still alive. The only mutual exclusion in the
- * whole design is `withPlacementLock`, held for the few milliseconds of a reservation,
- * never across a spawn.
- */
 
 export interface InstanceStore {
   readonly directory: string;
@@ -83,71 +72,6 @@ const isRecord = (value: unknown): value is InstanceRecord =>
   typeof (value as InstanceRecord).port === "number" &&
   Array.isArray((value as InstanceRecord).devices);
 
-const pidAlive = (pid: number): boolean => {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-/* ── placement lock ──────────────────────────────────────────────────────── */
-
-// Reservation is a read-modify-write over the record set, so two concurrent launches
-// could otherwise both see the same free devices. exo's build-lock recipe: create with
-// "wx" (atomic on every OS), holder pid inside, stale iff the holder is dead — SIGKILL
-// skips finally blocks, and without the staleness rule a crashed reservation would block
-// every launch until someone deletes the file by hand.
-const LOCK_RETRY_MS = 25;
-const LOCK_TIMEOUT_MS = 5_000;
-
-const tryAcquire = (lockPath: string): boolean => {
-  try {
-    writeFileSync(lockPath, String(process.pid), { flag: "wx" });
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const lockIsStale = (lockPath: string): boolean => {
-  try {
-    const holder = Number.parseInt(readFileSync(lockPath, "utf8").trim(), 10);
-    return !pidAlive(holder);
-  } catch {
-    // Unreadable or already gone — the next acquire attempt settles it.
-    return false;
-  }
-};
-
-const releaseLock = (lockPath: string): void => {
-  try {
-    rmSync(lockPath);
-  } catch {
-    /* already gone */
-  }
-};
-
-const acquirePlacementLock = (lockPath: string): Effect.Effect<void, LaunchFailure> =>
-  Effect.gen(function* () {
-    const startedAt = Date.now();
-    while (!tryAcquire(lockPath)) {
-      if (lockIsStale(lockPath)) {
-        releaseLock(lockPath);
-        continue;
-      }
-      if (Date.now() - startedAt > LOCK_TIMEOUT_MS) {
-        return yield* Effect.fail<LaunchFailure>({
-          kind: "spawn-failed",
-          detail: `placement lock still held after ${LOCK_TIMEOUT_MS}ms: ${lockPath}`,
-        });
-      }
-      yield* Effect.sleep(LOCK_RETRY_MS);
-    }
-  });
-
 /* ── store ───────────────────────────────────────────────────────────────── */
 
 export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
@@ -155,7 +79,6 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
   const logsDirectory = join(directory, "logs");
   mkdirSync(logsDirectory, { recursive: true, mode: 0o700 });
   chmodSync(directory, 0o700);
-  const lockPath = join(directory, "placement.lock");
   const mutationPath = join(directory, "mutations.sqlite");
   const recordPath = (name: string): string => join(directory, `${safeName(name)}.json`);
 
@@ -187,6 +110,46 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
       database.close();
     }
   };
+
+  const mutateEffect = <A, E>(
+    operation: () => Effect.Effect<A, E>,
+  ): Effect.Effect<A, E | LaunchFailure> =>
+    Effect.acquireUseRelease(
+      Effect.gen(function* () {
+        const startedAt = Date.now();
+        while (true) {
+          const database = openMutationDatabase();
+          database.run("PRAGMA busy_timeout = 0");
+          try {
+            database.run("BEGIN IMMEDIATE");
+            database.run(
+              "UPDATE instance_store_mutex SET generation = generation + 1 WHERE id = 1",
+            );
+            return database;
+          } catch (error) {
+            database.close();
+            if (!/busy|locked/u.test(String(error).toLowerCase())) throw error;
+            if (Date.now() - startedAt > 5_000) {
+              return yield* Effect.fail<LaunchFailure>({
+                kind: "spawn-failed",
+                detail: "instance placement transaction remained busy",
+              });
+            }
+            yield* Effect.sleep(25);
+          }
+        }
+      }),
+      (database) => operation().pipe(Effect.tap(() => Effect.sync(() => database.run("COMMIT")))),
+      (database, exit) =>
+        Effect.sync(() => {
+          if (!Exit.isSuccess(exit)) {
+            try {
+              database.run("ROLLBACK");
+            } catch {}
+          }
+          database.close();
+        }),
+    );
 
   const read = (name: string): InstanceRecord | null => {
     try {
@@ -241,12 +204,13 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
       return true;
     });
 
-  const heldDevices = (
+  const heldDevicesFrom = (
+    records: readonly InstanceRecord[],
     alive: (record: InstanceRecord) => Effect.Effect<boolean>,
   ): Effect.Effect<ReadonlySet<DeviceId>> =>
     Effect.gen(function* () {
       const held = new Set<DeviceId>();
-      for (const record of all()) {
+      for (const record of records) {
         // A reservation with no handle yet still holds its devices — that is the point
         // of reserving before spawning.
         const holds = record.ref === null ? true : yield* alive(record);
@@ -254,6 +218,13 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
       }
       return held;
     });
+
+  const heldDevices = (
+    alive: (record: InstanceRecord) => Effect.Effect<boolean>,
+  ): Effect.Effect<ReadonlySet<DeviceId>> => heldDevicesFrom(all(), alive);
+
+  const recordFingerprint = (records: readonly InstanceRecord[]): string =>
+    JSON.stringify([...records].sort((left, right) => left.name.localeCompare(right.name)));
 
   // Record-held ports are not enough: an unrelated process (an orphaned dev server, a
   // hand-started engine) can squat a port and answer 200 on /health, and a launch that
@@ -290,16 +261,19 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
     alive: (record: InstanceRecord) => Effect.Effect<boolean>,
   ): Effect.Effect<InstanceRecord, LaunchFailure> =>
     Effect.gen(function* () {
-      yield* acquirePlacementLock(lockPath);
-      const record = yield* Effect.gen(function* () {
-        const attempt = read(reservation.name);
+      while (true) {
+        const snapshot = all();
+        const snapshotId = recordFingerprint(snapshot);
+        const attempt = snapshot.find((record) => record.name === reservation.name) ?? null;
         if (attempt?.nonce !== reservation.attemptNonce) {
           return yield* Effect.fail<LaunchFailure>({
             kind: "already-running",
             name: reservation.name,
           });
         }
-        const held = reservation.shareable ? new Set<DeviceId>() : yield* heldDevices(alive);
+        const held = reservation.shareable
+          ? new Set<DeviceId>()
+          : yield* heldDevicesFrom(snapshot, alive);
         const free = reservation.candidates.filter((device) => !held.has(device));
         if (free.length < reservation.need) {
           return yield* Effect.fail<LaunchFailure>({
@@ -308,45 +282,54 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
             free: free.length,
           });
         }
-        let port: number;
-        if (reservation.exactPort !== undefined) {
-          const takenByRecord = all().some(
-            (record) =>
-              record.nonce !== reservation.attemptNonce && record.port === reservation.exactPort,
-          );
-          if (takenByRecord || !portIsBindable(reservation.exactPort)) {
-            return yield* Effect.fail<LaunchFailure>({
-              kind: "spawn-failed",
-              detail: `port ${reservation.exactPort} is already in use`,
-            });
-          }
-          port = reservation.exactPort;
-        } else {
-          port = allocatePort(reservation.basePort, reservation.attemptNonce);
-        }
-        const now = Date.now();
-        const reserved: InstanceRecord = {
-          name: reservation.name,
-          nodeId: reservation.nodeId,
-          engine: reservation.engine,
-          recipeId: reservation.recipeId,
-          runtime: reservation.runtime,
-          ref: null,
-          port,
-          devices: free.slice(0, reservation.need),
-          nonce: reservation.attemptNonce,
-          startedAt: attempt.startedAt,
-          readyDeadlineAt: new Date(now + reservation.readyDeadlineMs).toISOString(),
-        };
-        if (!replace(reserved, reservation.attemptNonce)) {
-          return yield* Effect.fail<LaunchFailure>({
-            kind: "already-running",
-            name: reservation.name,
-          });
-        }
-        return reserved;
-      }).pipe(Effect.ensuring(Effect.sync(() => releaseLock(lockPath))));
-      return record;
+        const outcome = yield* mutateEffect(() =>
+          Effect.gen(function* () {
+            if (recordFingerprint(all()) !== snapshotId) {
+              return { kind: "placement-retry" as const };
+            }
+            const current = read(reservation.name);
+            if (current?.nonce !== reservation.attemptNonce) {
+              return yield* Effect.fail<LaunchFailure>({
+                kind: "already-running",
+                name: reservation.name,
+              });
+            }
+            let port: number;
+            if (reservation.exactPort !== undefined) {
+              const takenByRecord = all().some(
+                (record) =>
+                  record.nonce !== reservation.attemptNonce && record.port === reservation.exactPort,
+              );
+              if (takenByRecord || !portIsBindable(reservation.exactPort)) {
+                return yield* Effect.fail<LaunchFailure>({
+                  kind: "spawn-failed",
+                  detail: `port ${reservation.exactPort} is already in use`,
+                });
+              }
+              port = reservation.exactPort;
+            } else {
+              port = allocatePort(reservation.basePort, reservation.attemptNonce);
+            }
+            const now = Date.now();
+            const reserved: InstanceRecord = {
+              name: reservation.name,
+              nodeId: reservation.nodeId,
+              engine: reservation.engine,
+              recipeId: reservation.recipeId,
+              runtime: reservation.runtime,
+              ref: null,
+              port,
+              devices: free.slice(0, reservation.need),
+              nonce: reservation.attemptNonce,
+              startedAt: current.startedAt,
+              readyDeadlineAt: new Date(now + reservation.readyDeadlineMs).toISOString(),
+            };
+            writeRecord(reserved);
+            return reserved;
+          }),
+        );
+        if (!("kind" in outcome)) return outcome;
+      }
     });
 
   return {
