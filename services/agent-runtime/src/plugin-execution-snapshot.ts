@@ -15,7 +15,7 @@ import {
   statSync,
   unlinkSync,
 } from "node:fs";
-import { chmod, cp, lstat, mkdir, open, opendir, rename, rmdir, unlink } from "node:fs/promises";
+import { lstat, mkdir, open, opendir, rename } from "node:fs/promises";
 import path from "node:path";
 import { Effect, Semaphore } from "effect";
 import type { ConnectorConfig } from "./connector-contract";
@@ -65,6 +65,7 @@ type PathIdentity = {
 type SnapshotStorageGuard = {
   root: string;
   stagingRoot?: string;
+  stagingIdentity?: PathIdentity;
   assertRoot: (currentRoot?: string) => Promise<void>;
   close: () => Promise<void>;
 };
@@ -157,6 +158,7 @@ async function acquireSnapshotStorage(create: boolean): Promise<SnapshotStorageG
   return {
     root,
     ...(stagingRoot ? { stagingRoot } : {}),
+    ...(stagingIdentity ? { stagingIdentity } : {}),
     assertRoot,
     close: () => handle.close(),
   };
@@ -219,23 +221,6 @@ async function fileDigest(file: string): Promise<string> {
   } finally {
     await handle.close().catch(() => undefined);
   }
-}
-
-async function hardenTree(root: string): Promise<void> {
-  const visit = async (entryPath: string): Promise<void> => {
-    const stats = await lstat(entryPath);
-    if (stats.isSymbolicLink()) return;
-    if (stats.isDirectory()) {
-      const directory = await opendir(entryPath);
-      for await (const entry of directory) await visit(path.join(entryPath, entry.name));
-      await chmod(entryPath, 0o500);
-      return;
-    }
-    if (!stats.isFile())
-      throw new PluginExecutionSnapshotError("Plugin snapshot contains an unsupported entry");
-    await chmod(entryPath, stats.mode & 0o111 ? 0o500 : 0o400);
-  };
-  await visit(root);
 }
 
 function hardenTreeSync(root: string): void {
@@ -381,6 +366,34 @@ function withVerifiedStorageWorkingDirectory<A>(root: string, use: () => A): A {
   } finally {
     process.chdir(previous);
   }
+}
+
+function withVerifiedDirectoryEntryWorkingDirectory<A>(
+  parent: string,
+  name: string,
+  identity: PathIdentity,
+  use: () => A,
+): A {
+  return withVerifiedStorageWorkingDirectory(parent, () => {
+    const entry = lstatSync(name);
+    if (
+      entry.isSymbolicLink() ||
+      !entry.isDirectory() ||
+      !samePathIdentity(identity, pathIdentity(entry))
+    ) {
+      throw new PluginExecutionSnapshotError("Plugin snapshot storage changed");
+    }
+    process.chdir(name);
+    const handle = openSync(".", constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    try {
+      if (!samePathIdentity(identity, pathIdentity(fstatSync(handle)))) {
+        throw new PluginExecutionSnapshotError("Plugin snapshot storage changed");
+      }
+      return use();
+    } finally {
+      closeSync(handle);
+    }
+  });
 }
 
 function publishSnapshotDirectory(
@@ -531,28 +544,6 @@ function removeTreeSync(root: string): void {
   }
 }
 
-async function removeTree(root: string): Promise<void> {
-  try {
-    const stats = await lstat(root);
-    if (stats.isSymbolicLink()) {
-      await unlink(root);
-      return;
-    }
-    if (!stats.isDirectory()) {
-      await chmod(root, 0o600);
-      await unlink(root);
-      return;
-    }
-    await chmod(root, 0o700);
-    const directory = await opendir(root);
-    for await (const entry of directory) await removeTree(path.join(root, entry.name));
-    await rmdir(root);
-  } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return;
-    throw error;
-  }
-}
-
 export async function quarantinePluginExecutionSnapshot(
   entryPath: string,
 ): Promise<string | undefined> {
@@ -569,26 +560,78 @@ export async function quarantinePluginExecutionSnapshot(
   return quarantined;
 }
 
-async function quarantineAndRemove(
-  entryPath: string,
-  validate: () => Promise<void> = () => Promise.resolve(),
-): Promise<void> {
-  await validate();
+function quarantineAndRemoveRelativeSync(entryName: string): void {
+  const quarantinedName = `.garbage-${process.pid}-${randomUUID()}`;
   let identity: PathIdentity;
   try {
-    identity = pathIdentity(await lstat(entryPath));
+    identity = pathIdentity(lstatSync(entryName));
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return;
     throw error;
   }
-  const quarantined = await quarantinePluginExecutionSnapshot(entryPath);
-  if (!quarantined) return;
-  await validate();
-  if (!samePathIdentity(identity, pathIdentity(await lstat(quarantined)))) {
+  try {
+    renameSync(entryName, quarantinedName);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return;
+    throw error;
+  }
+  if (!samePathIdentity(identity, pathIdentity(lstatSync(quarantinedName)))) {
     throw new PluginExecutionSnapshotError("Plugin snapshot entry changed");
   }
-  await removeTree(quarantined);
-  await validate();
+  removeTreeSync(quarantinedName);
+}
+
+async function withStagingDirectorySync<A>(
+  storage: SnapshotStorageGuard,
+  use: () => A,
+): Promise<A> {
+  if (!storage.stagingRoot || !storage.stagingIdentity) {
+    throw new PluginExecutionSnapshotError("Plugin snapshot staging is unavailable");
+  }
+  const stagingRoot = storage.stagingRoot;
+  const stagingParent = path.dirname(stagingRoot);
+  const stagingName = path.basename(stagingRoot);
+  return Effect.runPromise(
+    snapshotPublicationCwd.withPermit(
+      Effect.sync(() =>
+        withVerifiedDirectoryEntryWorkingDirectory(
+          stagingParent,
+          stagingName,
+          storage.stagingIdentity!,
+          use,
+        ),
+      ),
+    ),
+  );
+}
+
+async function quarantineAndRemoveStaging(
+  storage: SnapshotStorageGuard,
+  tempName: string,
+): Promise<void> {
+  await storage.assertRoot();
+  await withStagingDirectorySync(storage, () => quarantineAndRemoveRelativeSync(tempName));
+  await storage.assertRoot();
+}
+
+async function quarantineAndRemoveSnapshot(
+  storage: SnapshotStorageGuard,
+  entryName: string,
+): Promise<void> {
+  await storage.assertRoot();
+  if (path.basename(entryName) !== entryName) {
+    throw new PluginExecutionSnapshotError("Plugin snapshot path changed");
+  }
+  await Effect.runPromise(
+    snapshotPublicationCwd.withPermit(
+      Effect.sync(() =>
+        withVerifiedStorageWorkingDirectory(storage.root, () =>
+          quarantineAndRemoveRelativeSync(entryName),
+        ),
+      ),
+    ),
+  );
+  await storage.assertRoot();
 }
 
 const mapIntoSnapshot = (sourceRoot: string, artifactRoot: string, value: string): string => {
@@ -614,43 +657,43 @@ async function snapshotConnector(
     await storage.close().catch(() => undefined);
     throw new PluginExecutionSnapshotError("Plugin snapshot staging is unavailable");
   }
-  const temp = path.join(
-    stagingRoot,
-    `${bundle.artifactDigest.slice("sha256:".length)}-${process.pid}-${randomUUID()}`,
-  );
+  const tempName = `${bundle.artifactDigest.slice("sha256:".length)}-${process.pid}-${randomUUID()}`;
+  const stagingArtifact = path.join(stagingRoot, tempName, "artifact");
   let candidateDigest: string;
   let runtimeDigest: string | undefined;
   let retainedDigest: string | undefined;
   try {
     try {
       await storage.assertRoot();
-      await quarantineAndRemove(temp, storage.assertRoot);
-      await mkdir(temp, { mode: 0o700 });
-      await cp(sourceRoot, path.join(temp, "artifact"), {
-        recursive: true,
-        dereference: false,
-        verbatimSymlinks: true,
+      await quarantineAndRemoveStaging(storage, tempName);
+      await withStagingDirectorySync(storage, () => {
+        mkdirSync(tempName, { mode: 0o700 });
+        cpSync(sourceRoot, path.join(tempName, "artifact"), {
+          recursive: true,
+          dereference: false,
+          verbatimSymlinks: true,
+        });
       });
+      await new Promise<void>((resolve) => setImmediate(resolve));
       await storage.assertRoot();
-      const copiedDigest = await Effect.runPromise(
-        pluginArtifactDigest(path.join(temp, "artifact")),
-      );
+      const copiedDigest = await Effect.runPromise(pluginArtifactDigest(stagingArtifact));
       if (copiedDigest !== bundle.artifactDigest)
         throw new PluginExecutionSnapshotError("Plugin artifact changed while snapshotting");
       if (runtimeCommand) {
         runtimeDigest = await fileDigest(process.execPath);
       }
-      await hardenTree(path.join(temp, "artifact"));
       await storage.assertRoot();
-      candidateDigest = await Effect.runPromise(
-        pluginArtifactDigest(path.join(temp, "artifact")),
-      );
+      await withStagingDirectorySync(storage, () => {
+        hardenTreeSync(path.join(tempName, "artifact"));
+      });
+      await storage.assertRoot();
+      candidateDigest = await Effect.runPromise(pluginArtifactDigest(stagingArtifact));
       retainedDigest = await hardenedSnapshotDigest(destination, storage.assertRoot);
       if (retainedDigest && retainedDigest !== candidateDigest) {
         throw new PluginExecutionSnapshotError("Plugin snapshot identity changed");
       }
     } finally {
-      await quarantineAndRemove(temp, storage.assertRoot);
+      await quarantineAndRemoveStaging(storage, tempName);
     }
     if (retainedDigest) {
       if (retainedDigest !== candidateDigest) {
@@ -786,7 +829,7 @@ async function collectSnapshots(connectors: ConnectorConfig[]): Promise<void> {
         () => undefined,
       );
       if (digest && retained.digests.has(digest)) continue;
-      await quarantineAndRemove(entryPath, storage.assertRoot);
+      await quarantineAndRemoveSnapshot(storage, entry.name);
     }
     await storage.assertRoot();
   } catch (error) {

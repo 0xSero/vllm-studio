@@ -20,7 +20,9 @@ import type { ConnectorConfig } from "../src/connector-contract";
 import type { PluginBundle, PluginSource } from "../src/plugin-discovery";
 
 const originalRename = realFsPromises.rename;
+const originalMkdir = realFsPromises.mkdir;
 const originalCp = realFsPromises.cp;
+const originalMkdirSync = realFs.mkdirSync;
 const originalRenameSync = realFs.renameSync;
 const originalCpSync = realFs.cpSync;
 const originalOpenSync = realFs.openSync;
@@ -43,6 +45,24 @@ type AncestorSwap = {
 let sourceAncestorSwap: AncestorSwap | undefined;
 let cleanupAncestorSwap: AncestorSwap | undefined;
 
+type StagingPreparationSwap = {
+  victim: string;
+  attempted: boolean;
+  swapped: boolean;
+  stagingRoot?: string;
+};
+
+let stagingPreparationSwap: StagingPreparationSwap | undefined;
+
+type RetirementSwap = {
+  root: string;
+  victim: string;
+  attempted: boolean;
+  swapped: boolean;
+};
+
+let retirementSwap: RetirementSwap | undefined;
+
 type CwdProbe = {
   original: string;
   observed?: string;
@@ -50,6 +70,45 @@ type CwdProbe = {
 
 let cwdProbe: CwdProbe | undefined;
 let candidateFailure: { triggered: boolean; mutate?: boolean } | undefined;
+
+function swapStagingPreparationAncestor(targetPath: string): void {
+  if (!stagingPreparationSwap || stagingPreparationSwap.attempted) return;
+  const resolvedTarget = path.resolve(process.cwd(), targetPath);
+  const stagingRoot = path.dirname(resolvedTarget);
+  if (path.basename(stagingRoot) !== ".plugin-staging") return;
+  stagingPreparationSwap.attempted = true;
+  stagingPreparationSwap.stagingRoot = stagingRoot;
+  originalRenameSync(stagingRoot, `${stagingRoot}.swapped`);
+  realFs.symlinkSync(stagingPreparationSwap.victim, stagingRoot);
+  stagingPreparationSwap.swapped = true;
+}
+
+function swapRetirementAncestor(sourcePath: string, destinationPath: string): void {
+  if (!retirementSwap || retirementSwap.attempted) return;
+  const source = path.resolve(process.cwd(), sourcePath);
+  const destination = path.resolve(process.cwd(), destinationPath);
+  const root = realpathSync(retirementSwap.root);
+  if (
+    !source.startsWith(`${root}${path.sep}`) ||
+    !path.basename(destination).startsWith(".garbage-")
+  ) {
+    return;
+  }
+  retirementSwap.attempted = true;
+  originalRenameSync(retirementSwap.root, `${retirementSwap.root}.swapped`);
+  realFs.symlinkSync(retirementSwap.victim, retirementSwap.root);
+  retirementSwap.swapped = true;
+}
+
+function restoreAncestorSwap(
+  state: { swapped: boolean; root?: string },
+  root: string | undefined = state.root,
+): void {
+  if (!state.swapped || !root) return;
+  realFs.unlinkSync(root);
+  originalRenameSync(`${root}.swapped`, root);
+  state.swapped = false;
+}
 
 function swapBeforePublicationMutation(): void {
   if (!lateSwap || lateSwap.swapped) return;
@@ -104,6 +163,10 @@ function swapCleanupAncestorBeforeRename(sourcePath: string, destinationPath: st
 
 mock.module("node:fs/promises", () => ({
   ...realFsPromises,
+  mkdir: async (...args: Parameters<typeof realFsPromises.mkdir>) => {
+    swapStagingPreparationAncestor(String(args[0]));
+    return originalMkdir(...args);
+  },
   cp: async (...args: Parameters<typeof realFsPromises.cp>) => {
     const destination = String(args[1]);
     if (cwdProbe && destination.startsWith(".candidate-")) {
@@ -117,6 +180,7 @@ mock.module("node:fs/promises", () => ({
     return originalCp(...args);
   },
   rename: async (...args: Parameters<typeof realFsPromises.rename>) => {
+    swapRetirementAncestor(String(args[0]), String(args[1]));
     swapCleanupAncestorBeforeRename(String(args[0]), String(args[1]));
     swapBeforePublicationMutation();
     return originalRename(...args);
@@ -125,6 +189,10 @@ mock.module("node:fs/promises", () => ({
 
 mock.module("node:fs", () => ({
   ...realFs,
+  mkdirSync: (...args: Parameters<typeof realFs.mkdirSync>) => {
+    swapStagingPreparationAncestor(String(args[0]));
+    return originalMkdirSync(...args);
+  },
   cpSync: (...args: Parameters<typeof realFs.cpSync>) => {
     const destination = String(args[1]);
     if (candidateFailure && destination.startsWith(".candidate-")) {
@@ -143,6 +211,7 @@ mock.module("node:fs", () => ({
     return originalOpenSync(...args);
   },
   renameSync: (...args: Parameters<typeof realFs.renameSync>) => {
+    swapRetirementAncestor(String(args[0]), String(args[1]));
     swapBeforePublicationMutation();
     return originalRenameSync(...args);
   },
@@ -150,8 +219,11 @@ mock.module("node:fs", () => ({
 
 const { Effect } = await import("effect");
 const { discoverPluginBundles } = await import("../src/plugin-discovery");
-const { preparePluginExecutionSnapshot, withPluginExecutionSnapshotLifecycle } =
-  await import("../src/plugin-execution-snapshot");
+const {
+  garbageCollectPluginExecutionSnapshots,
+  preparePluginExecutionSnapshot,
+  withPluginExecutionSnapshotLifecycle,
+} = await import("../src/plugin-execution-snapshot");
 const { pluginConnectorConfigurationDigest } = await import("../src/plugin-connector-identity");
 const roots: string[] = [];
 const originalDataDirectory = process.env.LOCAL_STUDIO_DATA_DIR;
@@ -172,6 +244,12 @@ afterEach(() => {
   lateSwap = undefined;
   sourceAncestorSwap = undefined;
   cleanupAncestorSwap = undefined;
+  if (stagingPreparationSwap?.swapped) {
+    restoreAncestorSwap(stagingPreparationSwap, stagingPreparationSwap.stagingRoot);
+  }
+  if (retirementSwap?.swapped) restoreAncestorSwap(retirementSwap, retirementSwap.root);
+  stagingPreparationSwap = undefined;
+  retirementSwap = undefined;
   cwdProbe = undefined;
   candidateFailure = undefined;
   if (originalDataDirectory === undefined) delete process.env.LOCAL_STUDIO_DATA_DIR;
@@ -314,6 +392,80 @@ describe("plugin snapshot publication race", () => {
     expect(cleanupAncestorSwap?.attempted).toBe(false);
     expect(cleanupAncestorSwap?.swapped).toBe(false);
     expect(readFileSync(path.join(victim, "marker"), "utf8")).toBe("preserved");
+  });
+
+  test("fails safely and retries when staging swaps before its first mutation", async () => {
+    const { root, source } = fixture();
+    const [bundle] = await Effect.runPromise(discoverPluginBundles(source, 0));
+    if (!bundle) throw new Error("fixture plugin was not discovered");
+    const connector = connectorForBundle(root, bundle);
+    const victim = path.join(path.dirname(root), "staging-preparation-race-victim");
+    mkdirSync(victim, { mode: 0o700 });
+    writeFileSync(path.join(victim, "marker"), "preserved");
+    stagingPreparationSwap = { victim, attempted: false, swapped: false };
+
+    await expect(
+      Effect.runPromise(
+        withPluginExecutionSnapshotLifecycle((lifecycle) =>
+          preparePluginExecutionSnapshot(bundle, connector, lifecycle),
+        ),
+      ),
+    ).rejects.toThrow();
+    expect(stagingPreparationSwap?.attempted).toBe(true);
+    expect(readFileSync(path.join(victim, "marker"), "utf8")).toBe("preserved");
+    expect(readdirSync(victim)).toEqual(["marker"]);
+
+    restoreAncestorSwap(stagingPreparationSwap, stagingPreparationSwap.stagingRoot);
+    await expect(
+      Effect.runPromise(
+        withPluginExecutionSnapshotLifecycle((lifecycle) =>
+          preparePluginExecutionSnapshot(bundle, connector, lifecycle),
+        ),
+      ),
+    ).resolves.toBeDefined();
+    expect(readFileSync(path.join(victim, "marker"), "utf8")).toBe("preserved");
+    expect(readdirSync(victim)).toEqual(["marker"]);
+  });
+
+  test("fails safely and retries when snapshot retirement swaps its root", async () => {
+    const { root, source } = fixture();
+    const storageRoot = executionRoot();
+    mkdirSync(storageRoot, { recursive: true, mode: 0o700 });
+    const stale = path.join(storageRoot, "stale-retirement");
+    mkdirSync(stale, { mode: 0o700 });
+    writeFileSync(path.join(stale, "marker"), "stale");
+    const victim = path.join(path.dirname(root), "retirement-race-victim");
+    mkdirSync(path.join(victim, "stale-retirement"), { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(victim, "marker"), "preserved");
+    writeFileSync(path.join(victim, "stale-retirement", "marker"), "outside");
+    retirementSwap = { root: storageRoot, victim, attempted: false, swapped: false };
+
+    await expect(
+      Effect.runPromise(
+        withPluginExecutionSnapshotLifecycle((lifecycle) =>
+          garbageCollectPluginExecutionSnapshots([], lifecycle),
+        ),
+      ),
+    ).rejects.toThrow(/snapshot cleanup failed/);
+    expect(retirementSwap?.attempted).toBe(true);
+    expect(readFileSync(path.join(victim, "marker"), "utf8")).toBe("preserved");
+    expect(readFileSync(path.join(victim, "stale-retirement", "marker"), "utf8")).toBe(
+      "outside",
+    );
+
+    restoreAncestorSwap(retirementSwap, retirementSwap.root);
+    await expect(
+      Effect.runPromise(
+        withPluginExecutionSnapshotLifecycle((lifecycle) =>
+          garbageCollectPluginExecutionSnapshots([], lifecycle),
+        ),
+      ),
+    ).resolves.toBeUndefined();
+    expect(existsSync(stale)).toBe(false);
+    expect(readFileSync(path.join(victim, "marker"), "utf8")).toBe("preserved");
+    expect(readFileSync(path.join(victim, "stale-retirement", "marker"), "utf8")).toBe(
+      "outside",
+    );
   });
 
   test("keeps unrelated cwd-relative work rooted during publication", async () => {

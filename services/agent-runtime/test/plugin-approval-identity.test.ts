@@ -578,6 +578,7 @@ const path = require("node:path");
 const root = process.argv[1];
 const runtimeRoot = process.argv[3];
 const victim = process.argv[2];
+const signal = process.argv[4];
 const deadline = Date.now() + 10000;
 while (Date.now() < deadline) {
   try {
@@ -589,37 +590,34 @@ while (Date.now() < deadline) {
     const moved = root + ".swapped";
     fs.renameSync(root, moved);
     fs.symlinkSync(victim, root);
-    process.stdout.write("SWAPPED\\n");
+    fs.writeFileSync(signal, "SWAPPED");
     process.exit(0);
   } catch {}
 }
-process.stdout.write("TIMEOUT\\n");
+fs.writeFileSync(signal, "TIMEOUT");
 process.exit(2);`;
-    const child = Bun.spawn(["node", "-e", racer, storageRoot, victim, path.dirname(storageRoot)], {
-      stdout: "pipe",
-    });
-    const reader = child.stdout.getReader();
-    const decoder = new TextDecoder();
-    let output = "";
-    const waitForOutput = async (expected: string): Promise<void> => {
-      while (!output.includes(expected)) {
-        const chunk = await reader.read();
-        if (chunk.done) throw new Error(`Snapshot racer exited before ${expected}: ${output}`);
-        output += decoder.decode(chunk.value, { stream: true });
-      }
-    };
+    const signal = path.join(path.dirname(root), "snapshot-root-racer-signal");
+    const child = Bun.spawn(
+      ["node", "-e", racer, storageRoot, victim, path.dirname(storageRoot), signal],
+      { stdout: "ignore", stderr: "ignore" },
+    );
     try {
+      await new Promise((resolve) => setTimeout(resolve, 50));
       const preparation = prepareConnectorSnapshot(
         (await Effect.runPromise(discoverPluginBundles(source, 0)))[0]!,
         await approvedConnector(root, source),
       );
-      await waitForOutput("SWAPPED");
-      await expect(preparation).rejects.toThrow();
+      const preparationOutcome = preparation.then(
+        () => undefined,
+        (error) => error,
+      );
+      await waitFor(() => existsSync(signal), 10_000);
+      expect(readFileSync(signal, "utf8")).toBe("SWAPPED");
+      expect(await preparationOutcome).toBeInstanceOf(Error);
       expect(readdirSync(victim)).toEqual([]);
     } finally {
       child.kill();
       await child.exited;
-      reader.releaseLock();
     }
   }, 20_000);
 
