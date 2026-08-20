@@ -14,7 +14,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Schema } from "effect";
 import type {
   DeviceId,
   EngineId,
@@ -45,6 +45,14 @@ export interface InstanceStore {
 }
 
 const PLACEMENT_RETRY_LIMIT = 8;
+const JOURNAL_ID_LIMIT = 64;
+const JOURNAL_FIELD_LIMIT = 4_096;
+const JOURNAL_TIME_LIMIT = 128;
+const JOURNAL_DEVICE_LIMIT = 256;
+const JOURNAL_LINE_LIMIT = 2 * 1_024 * 1_024;
+const JOURNAL_FILE_LIMIT = 16 * 1_024 * 1_024;
+const JOURNAL_ENTRY_LIMIT = 4_096;
+const journalDecoder = new TextDecoder("utf-8", { fatal: true });
 
 export interface Reservation {
   readonly name: string;
@@ -83,9 +91,84 @@ const isRecord = (value: unknown): value is InstanceRecord =>
 type MutationPayload =
   | { readonly operation: "write"; readonly record: InstanceRecord }
   | { readonly operation: "drop"; readonly name: string };
-type JournalEntry =
-  | ({ readonly type: "mutation"; readonly id: string } & MutationPayload)
-  | { readonly type: "done"; readonly id: string };
+const JournalIdentifierSchema = Schema.String.check(
+  Schema.isLengthBetween(1, JOURNAL_ID_LIMIT),
+  Schema.isUUID(4),
+);
+const JournalFieldSchema = Schema.String.check(
+  Schema.isLengthBetween(1, JOURNAL_FIELD_LIMIT),
+);
+const JournalTimeSchema = Schema.String.check(Schema.isLengthBetween(1, JOURNAL_TIME_LIMIT));
+const HandleReferenceSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("process"),
+    pid: Schema.Number.check(
+      Schema.isInt(),
+      Schema.isBetween({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+    ),
+    startToken: Schema.NullOr(JournalFieldSchema),
+  }),
+  Schema.Struct({ kind: Schema.Literal("docker"), container: JournalFieldSchema }),
+  Schema.Struct({
+    kind: Schema.Literal("remote"),
+    nodeId: JournalFieldSchema,
+    name: JournalFieldSchema,
+  }),
+  Schema.Struct({ kind: Schema.Literal("pinned"), holder: JournalFieldSchema }),
+]);
+const JournalRecordSchema = Schema.Struct({
+  name: JournalFieldSchema,
+  nodeId: JournalFieldSchema,
+  engine: Schema.Literals(["vllm", "sglang", "llamacpp", "mlx", "exllamav3"]),
+  recipeId: JournalFieldSchema,
+  runtime: Schema.Literals(["process", "docker"]),
+  ref: Schema.NullOr(HandleReferenceSchema),
+  port: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isBetween({ minimum: 1, maximum: 65_535 }),
+  ),
+  devices: Schema.Array(JournalFieldSchema).check(Schema.isMaxLength(JOURNAL_DEVICE_LIMIT)),
+  nonce: JournalIdentifierSchema,
+  startedAt: JournalTimeSchema,
+  readyDeadlineAt: JournalTimeSchema,
+});
+const JournalEntrySchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("mutation"),
+    id: JournalIdentifierSchema,
+    operation: Schema.Literal("write"),
+    record: JournalRecordSchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("mutation"),
+    id: JournalIdentifierSchema,
+    operation: Schema.Literal("drop"),
+    name: JournalFieldSchema,
+  }),
+  Schema.Struct({ type: Schema.Literal("done"), id: JournalIdentifierSchema }),
+]);
+type JournalEntry = typeof JournalEntrySchema.Type;
+const decodeJournalEntry = Schema.decodeUnknownSync(JournalEntrySchema, {
+  onExcessProperty: "error",
+});
+
+const validateJournalSequence = (entries: readonly JournalEntry[]): void => {
+  const mutations = new Set<string>();
+  const completed = new Set<string>();
+  for (const entry of entries) {
+    if (entry.type === "mutation") {
+      if (mutations.has(entry.id) || completed.has(entry.id)) {
+        throw new Error("duplicate mutation journal identifier");
+      }
+      mutations.add(entry.id);
+    } else {
+      if (!mutations.has(entry.id) || completed.has(entry.id)) {
+        throw new Error("unmatched mutation journal completion");
+      }
+      completed.add(entry.id);
+    }
+  }
+};
 
 export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
   const directory = join(dataDirectory, "instances");
@@ -96,33 +179,70 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
   const journalPath = join(directory, "mutations.journal");
   const recordPath = (name: string): string => join(directory, `${safeName(name)}.json`);
 
-  const appendJournal = (entry: JournalEntry): void => {
-    const file = openSync(journalPath, "a", 0o600);
+  const syncDirectory = (): void => {
+    const file = openSync(directory, "r");
     try {
-      writeFileSync(file, `${JSON.stringify(entry)}\n`);
       fsyncSync(file);
     } finally {
       closeSync(file);
     }
   };
 
+  const writeDurableFile = (path: string, contents: string): void => {
+    const file = openSync(path, "w", 0o600);
+    try {
+      chmodSync(path, 0o600);
+      writeFileSync(file, contents);
+      fsyncSync(file);
+    } finally {
+      closeSync(file);
+    }
+  };
+
+  const appendJournal = (entry: JournalEntry): void => {
+    const encoded = `${JSON.stringify(decodeJournalEntry(entry))}\n`;
+    const file = openSync(journalPath, "a", 0o600);
+    try {
+      chmodSync(journalPath, 0o600);
+      writeFileSync(file, encoded);
+      fsyncSync(file);
+    } finally {
+      closeSync(file);
+    }
+    syncDirectory();
+  };
+
   const writeJournal = (entries: readonly JournalEntry[]): void => {
     const temporaryPath = `${journalPath}.tmp`;
-    writeFileSync(
+    writeDurableFile(
       temporaryPath,
       entries.length === 0 ? "" : `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
-      { mode: 0o600 },
     );
     renameSync(temporaryPath, journalPath);
+    syncDirectory();
   };
 
   const readJournal = (): JournalEntry[] => {
     let entries: JournalEntry[] = [];
     try {
-      entries = readFileSync(journalPath, "utf8")
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => JSON.parse(line) as JournalEntry);
+      const encoded = readFileSync(journalPath);
+      if (encoded.byteLength > JOURNAL_FILE_LIMIT) {
+        throw new Error("mutation journal exceeds size limit");
+      }
+      const contents = journalDecoder.decode(encoded);
+      if (contents.length === 0) return entries;
+      const lines = contents.split("\n");
+      if (lines.at(-1) === "") lines.pop();
+      if (lines.length > JOURNAL_ENTRY_LIMIT) {
+        throw new Error("mutation journal exceeds entry limit");
+      }
+      entries = lines.map((line) => {
+        if (line.length === 0 || line.length > JOURNAL_LINE_LIMIT) {
+          throw new Error("invalid mutation journal entry length");
+        }
+        return decodeJournalEntry(JSON.parse(line));
+      });
+      validateJournalSequence(entries);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
@@ -173,7 +293,21 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
   let activeMutationId: string | null = null;
   const mutationJournal = (entry: MutationPayload): void => {
     if (activeMutationId === null) throw new Error("mutation journal is not active");
-    appendJournal({ type: "mutation", id: activeMutationId, ...entry } as JournalEntry);
+    if (entry.operation === "write") {
+      appendJournal({
+        type: "mutation",
+        id: activeMutationId,
+        operation: "write",
+        record: entry.record,
+      });
+    } else {
+      appendJournal({
+        type: "mutation",
+        id: activeMutationId,
+        operation: "drop",
+        name: entry.name,
+      });
+    }
   };
 
   const completeMutation = (id: string): void => {
@@ -295,11 +429,15 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
 
   const writeRecordRaw = (record: InstanceRecord): void => {
     const path = recordPath(record.name);
-    writeFileSync(`${path}.tmp`, JSON.stringify(record, null, 2));
+    writeDurableFile(`${path}.tmp`, JSON.stringify(record, null, 2));
     renameSync(`${path}.tmp`, path);
+    syncDirectory();
   };
 
-  const dropRecordRaw = (name: string): void => rmSync(recordPath(name), { force: true });
+  const dropRecordRaw = (name: string): void => {
+    rmSync(recordPath(name), { force: true });
+    syncDirectory();
+  };
 
   const writeRecord = (record: InstanceRecord): void => {
     mutationJournal({ operation: "write", record });
