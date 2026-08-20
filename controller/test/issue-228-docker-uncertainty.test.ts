@@ -211,3 +211,30 @@ test("foreign same-name docker labels cannot satisfy or trigger pending cleanup"
   expect(actions).not.toContain("stop");
   expect(actions).not.toContain("rm");
 });
+
+test("docker recovery returns a pending reference when its total budget expires", async () => {
+  const actions: string[] = [];
+  const startedAt = Date.now();
+  const runtime: DockerLauncherRuntime = {
+    resolveExecutable: () => ({ path: "/docker", token: "exec" }),
+    run: (_executable, args) => {
+      const action = args[0] ?? "";
+      actions.push(action);
+      if (action === "info") return Effect.succeed(result("daemon"));
+      if (action === "run") return Effect.succeed(result("", null, "request timed out"));
+      if (action === "inspect") {
+        return Effect.sleep(250).pipe(Effect.map(() => result("", 1, "daemon busy")));
+      }
+      return Effect.succeed(result());
+    },
+  };
+  const launcher = makeDockerLauncher("cuda", runtime, { recoveryDeadlineMs: 25 });
+  const failure = await Effect.runPromise(Effect.flip(launcher.start(plan, record)));
+
+  expect(Date.now() - startedAt).toBeLessThan(500);
+  expect(failure.kind).toBe("spawn-failed");
+  expect(failure.kind === "spawn-failed" ? failure.startedReference : null).toEqual(
+    pendingReference(),
+  );
+  expect(actions).toEqual(["info", "run", "inspect"]);
+});

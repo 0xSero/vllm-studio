@@ -16,6 +16,7 @@ const NONCE_LABEL = "local-studio.nonce";
 const DOCKER_TIMEOUT_MS = 30_000;
 const RECOVERY_ATTEMPTS = 4;
 const RECOVERY_DELAY_MS = 50;
+const RECOVERY_DEADLINE_MS = 30_000;
 const INSPECT_FORMAT = `{{.Id}}\n{{index .Config.Labels "${NONCE_LABEL}"}}\n{{index .Config.Labels "${NAME_LABEL}"}}\n{{.State.Running}}`;
 
 const containerName = (instanceName: string): string =>
@@ -33,6 +34,10 @@ export interface DockerLauncherRuntime {
     args: readonly string[],
     timeoutMs: number,
   ) => Effect.Effect<AsyncCommandResult>;
+}
+
+export interface DockerLauncherOptions {
+  readonly recoveryDeadlineMs?: number;
 }
 
 type DockerReference = Extract<HandleReference, { readonly kind: "docker" }>;
@@ -225,6 +230,7 @@ const recoverStartedContainer = (
   record: InstanceRecord,
   executable: DockerExecutable,
   daemonId: string,
+  recoveryDeadlineMs: number,
 ): Effect.Effect<HandleReference | null> =>
   Effect.gen(function* () {
     for (let attempt = 0; attempt < RECOVERY_ATTEMPTS; attempt += 1) {
@@ -233,16 +239,22 @@ const recoverStartedContainer = (
       if (attempt + 1 < RECOVERY_ATTEMPTS) yield* Effect.sleep(RECOVERY_DELAY_MS);
     }
     return null;
-  });
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: recoveryDeadlineMs,
+      orElse: () => Effect.succeed(null),
+    }),
+  );
 
 const ambiguousRunFailure = (
   runtime: DockerLauncherRuntime,
   record: InstanceRecord,
   executable: DockerExecutable,
   daemonId: string,
+  recoveryDeadlineMs: number,
   detail: string,
 ): Effect.Effect<never, LaunchFailure> =>
-  recoverStartedContainer(runtime, record, executable, daemonId).pipe(
+  recoverStartedContainer(runtime, record, executable, daemonId, recoveryDeadlineMs).pipe(
     Effect.flatMap((reference) =>
       spawnFailed(detail, reference ?? pendingReference(record, executable, daemonId))),
   );
@@ -272,7 +284,11 @@ const stopExact = (
 export const makeDockerLauncher = (
   accelerator: Accelerator,
   runtime: DockerLauncherRuntime = realRuntime,
-): Launcher => ({
+  options: DockerLauncherOptions = {},
+): Launcher => {
+  const recoveryDeadlineMs = options.recoveryDeadlineMs ?? RECOVERY_DEADLINE_MS;
+
+  return {
   start: (plan: LaunchPlan, record: InstanceRecord) =>
     Effect.gen(function* () {
       if (!plan.image) return yield* spawnFailed(`no image for ${record.engine} on this host`);
@@ -310,6 +326,7 @@ export const makeDockerLauncher = (
           record,
           executable,
           daemonId,
+          recoveryDeadlineMs,
           "docker run outcome uncertain",
         );
       }
@@ -320,6 +337,7 @@ export const makeDockerLauncher = (
           record,
           executable,
           daemonId,
+          recoveryDeadlineMs,
           "docker run outcome uncertain",
         );
       }
@@ -391,4 +409,5 @@ export const makeDockerLauncher = (
           ),
         );
   },
-});
+  };
+};
