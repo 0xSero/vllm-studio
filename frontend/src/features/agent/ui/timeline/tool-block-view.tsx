@@ -398,6 +398,8 @@ function fileWritePreviewData(block: ToolBlock): FileWritePreviewData | null {
     "filePath",
     "file",
     "target_file",
+    // The obsidian tools address a note, not a path on disk — same role here.
+    "note",
   ]);
   const patchContent = patchPreviewFromArgs(block);
   const fileContent = patchContent

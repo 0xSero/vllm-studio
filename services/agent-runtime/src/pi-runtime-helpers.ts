@@ -6,6 +6,7 @@ import { Effect } from "effect";
 import { listProjectsFromStore, resolveAllowedWorkspace } from "./projects-store";
 import { hasEnabledConnectorsSync } from "./connectors-service";
 import { githubCliPathSync, hasGithubCliSync } from "./github-cli";
+import { hasObsidianVaultSync, listObsidianVaultsSync } from "./obsidian-vault";
 import { resolveBundledResource } from "./plugin-resources";
 import type {
   AgentBrowserBackend as BrowserBackend,
@@ -136,6 +137,17 @@ export function resolveGithubExtensionPath(): string | null {
   return resolveBundledPiExtensionPath("github.ts", process.env.LOCAL_STUDIO_GITHUB_EXTENSION_PATH);
 }
 
+// obsidian reads and writes a folder of markdown files, so it needs no Obsidian
+// process — but it does need a vault. Gated on Obsidian having registered one,
+// on the same principle as the gh binary above: seven note tools on a machine
+// that has never opened Obsidian are seven tools that can only apologise.
+export function resolveObsidianExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath(
+    "obsidian.ts",
+    process.env.LOCAL_STUDIO_OBSIDIAN_EXTENSION_PATH,
+  );
+}
+
 /** Bundled stdio MCP servers (desktop/resources/mcp) — same ladder as extensions. */
 export function resolveBundledMcpServerPath(fileName: string): string | null {
   return resolveBundledResourcePath("mcp", fileName);
@@ -193,6 +205,10 @@ export function resolveChromeSkillPath(): string | null {
 
 export function resolveGithubSkillPath(): string | null {
   return resolveBundledSkillPath("github", process.env.LOCAL_STUDIO_GITHUB_SKILL_PATH);
+}
+
+export function resolveObsidianSkillPath(): string | null {
+  return resolveBundledSkillPath("obsidian", process.env.LOCAL_STUDIO_OBSIDIAN_SKILL_PATH);
 }
 
 export function resolveAutomationsSkillPath(): string | null {
@@ -267,6 +283,7 @@ function runtimeExtensionPaths(options: RuntimeStartOptions): string[] {
     cuaExtensionPath,
     chromeExtensionPath,
     hasGithubCliSync() ? resolveGithubExtensionPath() : null,
+    hasObsidianVaultSync() ? resolveObsidianExtensionPath() : null,
     hasEnabledConnectorsSync() ? resolveConnectorsExtensionPath() : null,
     resolveSubagentsExtensionPath(),
     // Lets the agent create/list/delete scheduled automations.
@@ -285,6 +302,7 @@ function runtimeSkillPaths(options: RuntimeStartOptions): string[] {
     // Same rule as the automations skill below: the tools are registered, so
     // the guidance that says when to reach for them has to be there too.
     hasGithubCliSync() ? resolveGithubSkillPath() : null,
+    hasObsidianVaultSync() ? resolveObsidianSkillPath() : null,
     // Unconditional, because the automations extension is: the tools are always
     // registered, so the guidance that says when to reach for them has to be
     // there too. Skills are progressively disclosed — this costs one line in
@@ -301,6 +319,11 @@ function runtimeEnvInjections(
   const frontendBase = env.LOCAL_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(env);
   const relay = readChromeRelayEnv(env);
   const githubCliPath = githubCliPathSync();
+  // The vaults this runtime resolved, so the extension answers about the same
+  // ones the load gate above saw. Skipped when empty: the extension then falls
+  // back to reading obsidian.json itself and reports "no vault found" rather
+  // than trusting an empty list it cannot explain.
+  const obsidianVaults = listObsidianVaultsSync();
   return {
     // Which browsers this session armed. Nothing reads it to choose a transport
     // any more — that is decided by which extension got loaded — but the
@@ -321,6 +344,9 @@ function runtimeEnvInjections(
     // Resolved here so the extension runs the binary this process found, rather
     // than whatever a packaged app's stripped-down PATH resolves `gh` to.
     ...(githubCliPath ? { LOCAL_STUDIO_GH_PATH: githubCliPath } : {}),
+    ...(obsidianVaults.length > 0
+      ? { LOCAL_STUDIO_OBSIDIAN_VAULTS: JSON.stringify(obsidianVaults) }
+      : {}),
   };
 }
 
