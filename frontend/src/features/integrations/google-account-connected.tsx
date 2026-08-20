@@ -1,63 +1,96 @@
 "use client";
 
+import type { GoogleAccountEntryView } from "@local-studio/agent-runtime/google-account-contract";
+import type { GoogleWorkspacePluginId } from "@local-studio/agent-runtime/google-workspace-binding";
 import { Alert, Button, StatusPill } from "@/ui";
 
-export function ConnectedGoogleAccount({
+function DisconnectRow({
   email,
-  displayName,
+  busy,
   confirming,
+  onConfirm,
+  onKeep,
+  onDisconnect,
+}: {
+  email: string;
+  busy: boolean;
+  confirming: boolean;
+  onConfirm: () => void;
+  onKeep: () => void;
+  onDisconnect: () => void;
+}) {
+  if (!confirming) {
+    return (
+      <Button variant="ghost" size="sm" onClick={onConfirm} disabled={busy}>
+        Disconnect
+      </Button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <Button variant="ghost" size="sm" onClick={onKeep} disabled={busy}>
+        Keep
+      </Button>
+      <Button variant="danger" size="sm" onClick={onDisconnect} loading={busy}>
+        Confirm {email}
+      </Button>
+    </div>
+  );
+}
+
+export function ConnectedGoogleAccounts({
+  service,
+  displayName,
+  accounts,
+  confirmingKey,
   busy,
   onConfirm,
   onKeep,
   onDisconnect,
-  onClose,
 }: {
-  email: string | null;
+  service: GoogleWorkspacePluginId;
   displayName: string;
-  confirming: boolean;
+  accounts: GoogleAccountEntryView[];
+  confirmingKey: string | null;
   busy: boolean;
-  onConfirm: () => void;
+  onConfirm: (key: string) => void;
   onKeep: () => void;
-  onDisconnect: () => void;
-  onClose: () => void;
+  onDisconnect: (key: string) => void;
 }) {
+  if (!accounts.length) {
+    return (
+      <Alert variant="info">
+        No {displayName} account is signed in yet. Add one to expose its read-only tools.
+      </Alert>
+    );
+  }
   return (
-    <div className="space-y-4">
-      <div
-        role="status"
-        aria-live="polite"
-        className="flex items-center justify-between rounded-lg border border-(--ui-border) px-4 py-3"
-      >
-        <div>
-          <div className="text-sm font-medium text-(--ui-fg)">{email}</div>
-          <div className="mt-1 text-xs text-(--ui-muted)">Read-only · {displayName}</div>
-        </div>
-        <StatusPill tone="good">Connected</StatusPill>
-      </div>
-      {confirming ? (
-        <>
-          <Alert variant="warning">
-            Revoking access removes every Google OAuth scope granted to this Cloud project and
-            disconnects both Gmail and Calendar. A dedicated project keeps other Google clients
-            isolated.
-          </Alert>
-          <div className="flex items-center justify-end gap-2">
-            <Button variant="secondary" onClick={onKeep} disabled={busy}>
-              Keep connected
-            </Button>
-            <Button variant="danger" onClick={onDisconnect} loading={busy}>
-              Revoke access
-            </Button>
+    <div className="space-y-2" role="list">
+      {accounts.map((entry) => (
+        <div
+          key={entry.key}
+          role="listitem"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-(--ui-border) px-4 py-3"
+        >
+          <div className="min-w-0">
+            <div className="truncate text-sm font-medium text-(--ui-fg)">{entry.email}</div>
+            <div className="mt-1 text-xs text-(--ui-muted)">
+              Read-only · {entry.connections[service].scopes.length} scopes
+            </div>
           </div>
-        </>
-      ) : (
-        <div className="flex items-center justify-between gap-3">
-          <Button variant="danger" onClick={onConfirm}>
-            Disconnect Google
-          </Button>
-          <Button onClick={onClose}>Done</Button>
+          <div className="flex items-center gap-2">
+            <StatusPill tone="good">Connected</StatusPill>
+            <DisconnectRow
+              email={entry.email}
+              busy={busy}
+              confirming={confirmingKey === entry.key}
+              onConfirm={() => onConfirm(entry.key)}
+              onKeep={onKeep}
+              onDisconnect={() => onDisconnect(entry.key)}
+            />
+          </div>
         </div>
-      )}
+      ))}
     </div>
   );
 }

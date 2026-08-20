@@ -1,6 +1,8 @@
 import { connectMcp, type McpConnection, type McpToolInfo } from "./mcp-client";
-import { connectorAuthorizationHeaders } from "./connector-auth";
+import { connectorAuthorizationHeaders, googleWorkspaceConnectorAuth } from "./connector-auth";
 import { listConnectors, type ConnectorConfig } from "./connectors-service";
+import { googleWorkspaceConnection } from "./google-account";
+import { googleWorkspaceEndpointTransport } from "./google-workspace-binding";
 
 const pool = new Map<string, McpConnection>();
 
@@ -30,6 +32,25 @@ const toTarget = (connector: ConnectorConfig, signal?: AbortSignal) => {
   };
 };
 
+/**
+ * A signed-in Google account is served by an in-process REST adapter or by
+ * Google's MCP preview, depending on how the row was written. Both satisfy the
+ * same connection interface, so the pool, the tool allow list, and the callers
+ * above are identical either way.
+ */
+function openConnection(connector: ConnectorConfig, signal?: AbortSignal): McpConnection {
+  const identity = googleWorkspaceConnectorAuth(connector);
+  if (identity) {
+    return googleWorkspaceConnection({
+      service: identity.service,
+      transport: googleWorkspaceEndpointTransport(identity.service, connector.url ?? ""),
+      authorize: (forceRefresh: boolean) => connectorAuthorizationHeaders(connector, forceRefresh),
+      ...(signal ? { signal } : {}),
+    });
+  }
+  return connectMcp(toTarget(connector, signal));
+}
+
 async function enabledConnector(connectorId: string): Promise<ConnectorConfig> {
   const connector = (await listConnectors()).find((entry) => entry.id === connectorId);
   if (!connector) throw new Error(`Unknown connector "${connectorId}"`);
@@ -54,7 +75,7 @@ export async function getPooledConnection(connectorId: string): Promise<McpConne
   const existing = pool.get(connectorId);
   if (existing) return existing;
   const connector = await enabledConnector(connectorId);
-  const connection = connectMcp(toTarget(connector));
+  const connection = openConnection(connector);
   pool.set(connectorId, connection);
   return connection;
 }
@@ -98,7 +119,7 @@ export async function probeConnector(
 ): Promise<{ ok: boolean; tools: McpToolInfo[]; error?: string }> {
   let connection: McpConnection | null = null;
   try {
-    connection = connectMcp(toTarget(connector, signal));
+    connection = openConnection(connector, signal);
     const tools = await connection.listTools();
     return { ok: true, tools };
   } catch (error) {

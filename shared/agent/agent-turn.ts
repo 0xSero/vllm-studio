@@ -46,7 +46,10 @@ export function boolField(record: Record<string, unknown>, key: string): boolean
   return record[key] === true;
 }
 
-export type AgentBrowserBackend = "embedded" | "sitegeist";
+// Which browsers a session arms. "embedded" is the headless sandbox alone;
+// "chrome" adds the user's own browser on top of it, so the model can pick
+// per task instead of the composer picking for it.
+export type AgentBrowserBackend = "embedded" | "chrome";
 export type AgentToolAccess = "read_only" | "full";
 
 export type AgentTurnMode = "prompt" | "steer" | "follow_up";
@@ -132,7 +135,7 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
   if (!piSessionId.ok) return piSessionId;
   const browserSessionId = stringField(body, "browserSessionId");
   if (!browserSessionId.ok) return browserSessionId;
-  const browserBackend = body.browserBackend === "sitegeist" ? "sitegeist" : "embedded";
+  const browserBackend = body.browserBackend === "chrome" ? "chrome" : "embedded";
   const mode = body.mode === "steer" || body.mode === "follow_up" ? body.mode : "prompt";
   const queueAction =
     body.queueAction === "promote" ||

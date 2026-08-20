@@ -5,8 +5,14 @@ import path from "node:path";
 import { Effect } from "effect";
 import { listProjectsFromStore, resolveAllowedWorkspace } from "./projects-store";
 import { hasEnabledConnectorsSync } from "./connectors-service";
+import { githubCliPathSync, hasGithubCliSync } from "./github-cli";
+import { hasObsidianVaultSync, listObsidianVaultsSync } from "./obsidian-vault";
 import { resolveBundledResource } from "./plugin-resources";
-import type { AgentThinkingLevel, AgentToolAccess } from "../../../shared/agent/agent-turn";
+import type {
+  AgentBrowserBackend as BrowserBackend,
+  AgentThinkingLevel,
+  AgentToolAccess,
+} from "../../../shared/agent/agent-turn";
 
 export type RuntimeSkillRef = {
   id?: string;
@@ -25,7 +31,7 @@ export type RuntimeStartOptions = {
   toolAccess?: AgentToolAccess;
   browserToolEnabled?: boolean;
   browserSessionId?: string;
-  browserBackend?: "embedded" | "sitegeist";
+  browserBackend?: BrowserBackend;
   skills?: RuntimeSkillRef[];
   promptTemplates?: RuntimePromptTemplateRef[];
 };
@@ -109,17 +115,36 @@ export function resolveBundledPiExtensionPath(
   return resolveBundledResourcePath("pi-extensions", fileName, envOverride);
 }
 
-export function resolveBrowserExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath(
-    "browser.ts",
-    process.env.LOCAL_STUDIO_BROWSER_EXTENSION_PATH,
-  );
+// cua = computer use: the headless throwaway browser this app launches and
+// renders in the Browser panel. Armed whenever the browser tool is on, because
+// it is the safe default and the only backend the panel can show.
+export function resolveCuaExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath("cua.ts", process.env.LOCAL_STUDIO_CUA_EXTENSION_PATH);
 }
 
-export function resolveSitegeistBrowserExtensionPath(): string | null {
+// chrome = the user's OWN browser, reached through the local extension relay.
+// It is registered ALONGSIDE cua rather than instead of it: the two drive
+// different browsers under different names (`chrome_*` vs `browser_*`), and a
+// model that can see both picks per task — the user's session for signed-in
+// work, the sandbox for anonymous fetching. Replacing one with the other would
+// force the choice at composer time, before anyone knows what the task needs.
+export function resolveChromeExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath("chrome.ts", process.env.LOCAL_STUDIO_CHROME_EXTENSION_PATH);
+}
+
+// github wraps the `gh` CLI, so it only loads where a gh binary exists.
+export function resolveGithubExtensionPath(): string | null {
+  return resolveBundledPiExtensionPath("github.ts", process.env.LOCAL_STUDIO_GITHUB_EXTENSION_PATH);
+}
+
+// obsidian reads and writes a folder of markdown files, so it needs no Obsidian
+// process — but it does need a vault. Gated on Obsidian having registered one,
+// on the same principle as the gh binary above: seven note tools on a machine
+// that has never opened Obsidian are seven tools that can only apologise.
+export function resolveObsidianExtensionPath(): string | null {
   return resolveBundledPiExtensionPath(
-    "sitegeist-browser.ts",
-    process.env.LOCAL_STUDIO_SITEGEIST_BROWSER_EXTENSION_PATH,
+    "obsidian.ts",
+    process.env.LOCAL_STUDIO_OBSIDIAN_EXTENSION_PATH,
   );
 }
 
@@ -170,15 +195,24 @@ function resolveBundledSkillPath(name: string, override?: string): string | null
   return resolveBundledResourcePath("skills", name, override);
 }
 
-export function resolveBrowserSkillPath(): string | null {
-  return resolveBundledSkillPath("browser", process.env.LOCAL_STUDIO_BROWSER_SKILL_PATH);
+export function resolveCuaSkillPath(): string | null {
+  return resolveBundledSkillPath("cua", process.env.LOCAL_STUDIO_CUA_SKILL_PATH);
 }
 
-export function resolveSitegeistBrowserSkillPath(): string | null {
-  return resolveBundledSkillPath(
-    "sitegeist-browser",
-    process.env.LOCAL_STUDIO_SITEGEIST_BROWSER_SKILL_PATH,
-  );
+export function resolveChromeSkillPath(): string | null {
+  return resolveBundledSkillPath("chrome", process.env.LOCAL_STUDIO_CHROME_SKILL_PATH);
+}
+
+export function resolveGithubSkillPath(): string | null {
+  return resolveBundledSkillPath("github", process.env.LOCAL_STUDIO_GITHUB_SKILL_PATH);
+}
+
+export function resolveObsidianSkillPath(): string | null {
+  return resolveBundledSkillPath("obsidian", process.env.LOCAL_STUDIO_OBSIDIAN_SKILL_PATH);
+}
+
+export function resolveAutomationsSkillPath(): string | null {
+  return resolveBundledSkillPath("automations", process.env.LOCAL_STUDIO_AUTOMATIONS_SKILL_PATH);
 }
 
 export function runtimeOptionsFingerprint(options: RuntimeStartOptions): string {
@@ -227,32 +261,29 @@ function shouldLoadBrowserTool(options: RuntimeStartOptions): boolean {
   return options.browserToolEnabled === true;
 }
 
-function browserBackend(options: RuntimeStartOptions): "embedded" | "sitegeist" {
+function browserBackend(options: RuntimeStartOptions): BrowserBackend {
   const backend = options.browserBackend ?? process.env.LOCAL_STUDIO_BROWSER_BACKEND;
-  if (backend === "sitegeist") return "sitegeist";
+  if (backend === "chrome") return "chrome";
   return "embedded";
 }
 
-function browserExtensionPathFor(backend: "embedded" | "sitegeist"): string | null {
-  if (backend === "sitegeist") return resolveSitegeistBrowserExtensionPath();
-  return resolveBrowserExtensionPath();
-}
-
-function browserSkillPathFor(backend: "embedded" | "sitegeist"): string | null {
-  if (backend === "sitegeist") return resolveSitegeistBrowserSkillPath();
-  return resolveBrowserSkillPath();
+/** The user's own browser is armed on top of the sandbox, never instead of it. */
+function shouldLoadChromeTool(options: RuntimeStartOptions): boolean {
+  return shouldLoadBrowserTool(options) && browserBackend(options) === "chrome";
 }
 
 function runtimeExtensionPaths(options: RuntimeStartOptions): string[] {
   const timeoutExtensionPath = resolveTimeoutExtensionPath();
   const agentPolicyExtensionPath = resolveAgentPolicyExtensionPath();
-  const browserExtensionPath = shouldLoadBrowserTool(options)
-    ? browserExtensionPathFor(browserBackend(options))
-    : null;
+  const cuaExtensionPath = shouldLoadBrowserTool(options) ? resolveCuaExtensionPath() : null;
+  const chromeExtensionPath = shouldLoadChromeTool(options) ? resolveChromeExtensionPath() : null;
   return uniqueExistingPaths([
     timeoutExtensionPath,
     agentPolicyExtensionPath,
-    browserExtensionPath,
+    cuaExtensionPath,
+    chromeExtensionPath,
+    hasGithubCliSync() ? resolveGithubExtensionPath() : null,
+    hasObsidianVaultSync() ? resolveObsidianExtensionPath() : null,
     hasEnabledConnectorsSync() ? resolveConnectorsExtensionPath() : null,
     resolveSubagentsExtensionPath(),
     // Lets the agent create/list/delete scheduled automations.
@@ -264,11 +295,19 @@ function runtimeExtensionPaths(options: RuntimeStartOptions): string[] {
 }
 
 function runtimeSkillPaths(options: RuntimeStartOptions): string[] {
-  const loadBrowser = shouldLoadBrowserTool(options);
-  const backend = browserBackend(options);
   return uniqueExistingPaths([
     ...selectedSkillPaths(options.skills ?? []),
-    loadBrowser ? browserSkillPathFor(backend) : null,
+    shouldLoadBrowserTool(options) ? resolveCuaSkillPath() : null,
+    shouldLoadChromeTool(options) ? resolveChromeSkillPath() : null,
+    // Same rule as the automations skill below: the tools are registered, so
+    // the guidance that says when to reach for them has to be there too.
+    hasGithubCliSync() ? resolveGithubSkillPath() : null,
+    hasObsidianVaultSync() ? resolveObsidianSkillPath() : null,
+    // Unconditional, because the automations extension is: the tools are always
+    // registered, so the guidance that says when to reach for them has to be
+    // there too. Skills are progressively disclosed — this costs one line in
+    // the prompt until the model opens it.
+    resolveAutomationsSkillPath(),
   ]);
 }
 
@@ -278,21 +317,41 @@ function runtimeEnvInjections(
   cwd: string,
 ): Record<string, string> {
   const frontendBase = env.LOCAL_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(env);
-  const relay = readSitegeistRelayEnv(env);
+  const relay = readChromeRelayEnv(env);
+  const githubCliPath = githubCliPathSync();
+  // The vaults this runtime resolved, so the extension answers about the same
+  // ones the load gate above saw. Skipped when empty: the extension then falls
+  // back to reading obsidian.json itself and reports "no vault found" rather
+  // than trusting an empty list it cannot explain.
+  const obsidianVaults = listObsidianVaultsSync();
   return {
+    // Which browsers this session armed. Nothing reads it to choose a transport
+    // any more — that is decided by which extension got loaded — but the
+    // composer's browser context prompt names the same value, so keep it honest.
+    LOCAL_STUDIO_BROWSER_BACKEND: browserBackend(options),
     LOCAL_STUDIO_BROWSER_SESSION_ID: options.browserSessionId ?? "",
     // The project this session runs in. Extensions that spawn later work (the
     // automations extension) would otherwise store an empty cwd and get the
     // first registered project when the scheduler resolves the default.
     LOCAL_STUDIO_CWD: cwd,
     LOCAL_STUDIO_FRONTEND_BASE: frontendBase,
-    SITEGEIST_RELAY_URL: env.SITEGEIST_RELAY_URL ?? relay.SITEGEIST_RELAY_URL ?? "",
-    SITEGEIST_RELAY_TOKEN: env.SITEGEIST_RELAY_TOKEN ?? relay.SITEGEIST_RELAY_TOKEN ?? "",
-    SITEGEIST_RELAY_SESSION_ID: options.browserSessionId ?? "",
+    // The chrome extension's address for the browser-extension relay. The relay
+    // is the user's own process and keeps its own env names (below); these are
+    // what the extension reads, so the two can be renamed independently.
+    LOCAL_STUDIO_CHROME_RELAY_URL: env.SITEGEIST_RELAY_URL ?? relay.SITEGEIST_RELAY_URL ?? "",
+    LOCAL_STUDIO_CHROME_RELAY_TOKEN: env.SITEGEIST_RELAY_TOKEN ?? relay.SITEGEIST_RELAY_TOKEN ?? "",
+    LOCAL_STUDIO_CHROME_RELAY_SESSION: options.browserSessionId ?? "",
+    // Resolved here so the extension runs the binary this process found, rather
+    // than whatever a packaged app's stripped-down PATH resolves `gh` to.
+    ...(githubCliPath ? { LOCAL_STUDIO_GH_PATH: githubCliPath } : {}),
+    ...(obsidianVaults.length > 0
+      ? { LOCAL_STUDIO_OBSIDIAN_VAULTS: JSON.stringify(obsidianVaults) }
+      : {}),
   };
 }
 
-function readSitegeistRelayEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+/** The relay's own env contract, unchanged: `~/.config/sitegeist-relay/env`. */
+function readChromeRelayEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   const filePath = expandHome(
     env.LOCAL_STUDIO_SITEGEIST_RELAY_ENV_PATH ?? "~/.config/sitegeist-relay/env",
   );

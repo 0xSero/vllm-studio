@@ -13,6 +13,7 @@ import {
   useLocalhostSitesEffects,
   type LocalhostSite,
 } from "@/features/agent/ui/agent-browser-effects";
+import { BrowserEnginePicker } from "@/features/agent/ui/agent-browser-engine-picker";
 import { LocalhostStartPage } from "@/features/agent/ui/agent-browser-start-page";
 import { ReadingView, type ReadablePage } from "@/features/agent/ui/agent-browser-reading-view";
 
@@ -175,6 +176,7 @@ export function AgentBrowser({
           className="min-w-0 flex-1 rounded border border-(--border) bg-(--surface) px-2 py-1 font-mono text-[length:var(--fs-sm)] text-(--fg) outline-none placeholder:text-(--dim)"
           aria-label="Browser address"
         />
+        <BrowserEnginePicker enabled={visible} />
         <button
           type="button"
           onClick={() => {
@@ -211,7 +213,7 @@ export function AgentBrowser({
       </form>
       {liveUnavailable ? (
         <div className="shrink-0 border-b border-(--err)/40 bg-(--err)/10 px-3 py-2 text-[length:var(--fs-xs)] text-(--err)">
-          {liveUnavailable}. Set LOCAL_STUDIO_CHROME_PATH to a Chromium-based browser binary to
+          {liveUnavailable}. Pick an installed browser above — Chrome, Brave, or Chromium — to
           enable the live view and screenshots; reading mode is active meanwhile.
         </div>
       ) : null}

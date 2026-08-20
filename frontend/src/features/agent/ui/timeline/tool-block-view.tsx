@@ -110,7 +110,7 @@ function browserToolLabel(block: ToolBlock): string {
   const normalized = block.name
     .toLowerCase()
     .replace(/^browser_/, "")
-    .replace(/^sitegeist_/, "");
+    .replace(/^chrome_/, "");
   if (normalized.includes("navigate")) return running ? "Navigating" : "Navigated";
   if (normalized.includes("get_text")) return running ? "Reading page" : "Read page";
   if (normalized.includes("get_html")) return running ? "Reading page" : "Read page";
@@ -119,6 +119,7 @@ function browserToolLabel(block: ToolBlock): string {
   if (normalized.includes("fill")) return running ? "Filling field" : "Filled field";
   if (normalized.includes("scroll")) return running ? "Scrolling" : "Scrolled";
   if (normalized.includes("get_url")) return running ? "Checking URL" : "Checked URL";
+  if (normalized.includes("history")) return running ? "Checking history" : "Checked history";
   return running ? "Using browser" : "Used browser";
 }
 
@@ -397,6 +398,8 @@ function fileWritePreviewData(block: ToolBlock): FileWritePreviewData | null {
     "filePath",
     "file",
     "target_file",
+    // The obsidian tools address a note, not a path on disk — same role here.
+    "note",
   ]);
   const patchContent = patchPreviewFromArgs(block);
   const fileContent = patchContent

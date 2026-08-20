@@ -23,6 +23,7 @@ import {
   type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "../../../../shared/agent/composer-refs";
+import { markGoalTurnAborted } from "../goal-driver";
 import { piResourceDiagnostics, piRuntimeManager } from "../pi-runtime";
 import { isAgentSettledEvent } from "../pi-runtime-state";
 import type { LoggedPiEvent, PiAgentSession, PiAgentStatus } from "../pi-runtime-types";
@@ -268,9 +269,16 @@ export async function handleAgentAbort(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => ({}))) as { sessionId?: string };
   const sessionId =
     typeof body.sessionId === "string" && body.sessionId.trim() ? body.sessionId.trim() : "default";
+  const session = piRuntimeManager.getSession(sessionId);
+  // Tell the goal driver this settle is a Stop BEFORE the abort starts. The SDK
+  // emits agent_settled from a `finally`, so an aborted turn is indistinguishable
+  // from a completed one at the event level and the driver would re-prompt two
+  // seconds later — Stop restarting the agent. Flagging first means the marker is
+  // in place whichever side of the race the settle lands on.
+  markGoalTurnAborted(session);
   // Surface what the stop cleared so the client can put those messages back in
   // front of the user instead of dropping them on the floor.
-  const cleared = await piRuntimeManager.getSession(sessionId).abort();
+  const cleared = await session.abort();
   return Response.json({ ok: true, cleared });
 }
 
@@ -309,7 +317,7 @@ type CompactRequest = {
   customInstructions?: string;
   browserToolEnabled?: boolean;
   browserSessionId?: string;
-  browserBackend?: "embedded" | "sitegeist";
+  browserBackend?: "embedded" | "chrome";
   skills?: ComposerSkillRef[];
   promptTemplates?: ComposerPromptTemplateRef[];
 };
@@ -358,7 +366,7 @@ function compactRouteEffect(request: Request): Effect.Effect<Response, unknown> 
             browserToolEnabled: body.browserToolEnabled === true,
             browserSessionId:
               typeof body.browserSessionId === "string" ? body.browserSessionId.trim() : undefined,
-            browserBackend: body.browserBackend === "sitegeist" ? "sitegeist" : "embedded",
+            browserBackend: body.browserBackend === "chrome" ? "chrome" : "embedded",
             skills,
             promptTemplates,
           }),

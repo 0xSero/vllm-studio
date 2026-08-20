@@ -1,7 +1,7 @@
 // Connector bridge extension for Local Studio.
 //
 // At session start it asks the frontend for the tool inventory of every
-// enabled connector (MCP servers configured in Settings → Connectors) and
+// enabled connector (MCP servers configured on the Integrations page) and
 // registers each MCP tool as `<connectorId>_<toolName>`. Tool calls proxy
 // through the frontend's pooled MCP connections, so one stdio server serves
 // every session.
@@ -18,6 +18,17 @@ type ToolResult = {
 
 const FRONTEND_BASE = process.env.LOCAL_STUDIO_FRONTEND_BASE ?? "http://127.0.0.1:3000";
 const CALL_TIMEOUT_MS = 120_000;
+// The model this session runs on. Connector access is granted per model, so the
+// frontend both filters the inventory by it and re-checks it on every call.
+//
+// Read per call, never at module scope: pi evaluates an extension module once
+// per project directory and caches it, then registers it per session, and
+// pi-runtime re-injects LOCAL_STUDIO_MODEL_ID for each session. A module-scope
+// const would freeze the first session's model and silently apply its grants to
+// every later session in that project.
+function modelId(): string {
+  return process.env.LOCAL_STUDIO_MODEL_ID ?? "";
+}
 
 interface InventoryTool {
   name: string;
@@ -39,7 +50,11 @@ const textResult = (text: string, details: Record<string, unknown>): ToolResult 
 
 /** Render an MCP tools/call result (content blocks) as plain text. */
 const renderMcpResult = (result: unknown): string => {
-  if (result && typeof result === "object" && Array.isArray((result as { content?: unknown[] }).content)) {
+  if (
+    result &&
+    typeof result === "object" &&
+    Array.isArray((result as { content?: unknown[] }).content)
+  ) {
     const blocks = (result as { content: Array<{ type?: string; text?: string }> }).content;
     const texts = blocks
       .map((block) => (block.type === "text" && block.text ? block.text : JSON.stringify(block)))
@@ -64,7 +79,7 @@ async function callConnectorTool(
     const response = await fetch(`${FRONTEND_BASE}/api/agent/connectors/call`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ connector_id: connectorId, tool, args }),
+      body: JSON.stringify({ connector_id: connectorId, tool, args, model_id: modelId() }),
       signal: controller.signal,
     });
     const payload = (await response.json()) as { ok?: boolean; result?: unknown; error?: string };
@@ -93,9 +108,8 @@ async function callConnectorTool(
 export default async function connectorsExtension(pi: ExtensionAPI): Promise<void> {
   let inventory: InventoryConnector[] = [];
   try {
-    const response = await fetch(`${FRONTEND_BASE}/api/agent/connectors/call`, {
-      signal: AbortSignal.timeout(30_000),
-    });
+    const inventoryUrl = `${FRONTEND_BASE}/api/agent/connectors/call?model_id=${encodeURIComponent(modelId())}`;
+    const response = await fetch(inventoryUrl, { signal: AbortSignal.timeout(30_000) });
     const payload = (await response.json()) as { connectors?: InventoryConnector[] };
     inventory = payload.connectors ?? [];
   } catch {

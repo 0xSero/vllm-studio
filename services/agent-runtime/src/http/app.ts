@@ -10,8 +10,11 @@ import {
   handleSetupChecks,
 } from "./handlers";
 import {
+  handleBrowserEngineSelect,
+  handleBrowserEngines,
   handleBrowserFetch,
   handleBrowserFrame,
+  handleBrowserHistory,
   handleBrowserInput,
   handleBrowserLocalhosts,
   handleBrowserState,
@@ -36,7 +39,12 @@ import {
   handleGoalGet,
   handleGoalPut,
 } from "./automation-handlers";
-import { handleSubagentRun, handleSubagentsList } from "./subagent-handlers";
+import {
+  handleSubagentGet,
+  handleSubagentRun,
+  handleSubagentsList,
+  handleSubagentStop,
+} from "./subagent-handlers";
 import { handlePrGet, handlePrMerge } from "./pr-handlers";
 import {
   handlePtyClose,
@@ -88,6 +96,10 @@ export function createAgentRuntimeApp() {
   app.post("/api/agent/pr/merge", (c) => handlePrMerge(c.req.raw));
   app.get("/api/agent/subagents", (c) => handleSubagentsList(c.req.raw));
   app.post("/api/agent/subagents", (c) => handleSubagentRun(c.req.raw));
+  app.get("/api/agent/subagents/:runId", (c) => handleSubagentGet(c.req.raw, c.req.param("runId")));
+  app.post("/api/agent/subagents/:runId/stop", (c) =>
+    handleSubagentStop(c.req.raw, c.req.param("runId")),
+  );
   app.get("/api/agent/goal", (c) => handleGoalGet(c.req.raw));
   app.put("/api/agent/goal", (c) => handleGoalPut(c.req.raw));
   app.delete("/api/agent/goal", (c) => handleGoalDelete(c.req.raw));
@@ -117,7 +129,11 @@ export function createAgentRuntimeApp() {
   app.post("/api/agent/browser/input", (c) => handleBrowserInput(c.req.raw));
   app.get("/api/agent/browser/localhosts", (c) => handleBrowserLocalhosts(c.req.raw));
   app.get("/api/agent/browser/state", () => handleBrowserState());
+  app.get("/api/agent/browser/history", (c) => handleBrowserHistory(c.req.raw));
+  app.get("/api/agent/browser/engines", () => handleBrowserEngines());
   app.post("/api/agent/browser/viewport", (c) => handleBrowserViewport(c.req.raw));
+  // Registered ahead of the :verb catch-all, which would otherwise reject it.
+  app.post("/api/agent/browser/engine", (c) => handleBrowserEngineSelect(c.req.raw));
   app.post("/api/agent/browser/:verb", (c) => handleBrowserVerb(c.req.raw, c.req.param("verb")));
 
   return { app };

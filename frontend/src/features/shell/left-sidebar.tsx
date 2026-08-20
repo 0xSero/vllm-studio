@@ -25,9 +25,9 @@ import {
 } from "@/features/shell/left-sidebar-lazy";
 import { MobileNavigationDrawer } from "@/features/shell/left-sidebar-mobile-drawer";
 import {
-  isRouteActive,
   mobilePageTitle,
   routeHidesAppSidebar,
+  routeOwnsMobileHeader,
 } from "@/features/shell/left-sidebar-nav";
 
 // Search and recents are the same palette in two modes: one lazy chunk, one
@@ -66,16 +66,19 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   );
   const isExpanded = desktopSidebarPinnedOpen;
   const clampedSidebarWidth = clampSidebarWidth(sidebarWidth);
-  // The chat session carries its own header (hamburger + right-panel toggle),
-  // so the app topbar would be a second stacked row there.
-  const chatSessionRoute = isRouteActive(pathname, "/agent");
+  // Agent routes carry their own header (hamburger + surface title), so the app
+  // topbar would be a second stacked row there.
+  const ownsMobileHeader = routeOwnsMobileHeader(pathname);
   const [paletteMode, setPaletteMode] = useState<PaletteMode>(null);
   // The bell swaps the nav body rather than opening a panel; projects is the
   // resting view, so the toggle always has somewhere to fall back to.
   const [navView, setNavView] = useState<NavView>("projects");
   const sessionActivity = useSessionActivity();
-  const notificationsIndicator =
-    sessionActivity.active.size > 0 || sessionActivity.unseen.size > 0;
+  // The bell used to carry a bare "something happened" dot, which said nothing
+  // about what. What the nav can usefully show is session state: how many runs
+  // are live right now, and how many finished while you were elsewhere.
+  const runningSessions = sessionActivity.active.size;
+  const finishedSessions = sessionActivity.finished.size;
   const activeSessions = useOpenSessions();
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [projectsNavReady, setProjectsNavReady] = useState(projectsNavImmediate);
@@ -205,11 +208,12 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
         onToggleNavView={() =>
           setNavView((view) => (view === "notifications" ? "projects" : "notifications"))
         }
-        notificationsIndicator={notificationsIndicator}
+        runningSessions={runningSessions}
+        finishedSessions={finishedSessions}
         onNewTask={openNewTask}
       />
 
-      {chatSessionRoute ? null : (
+      {ownsMobileHeader ? null : (
         <div className="mobile-pwa-topbar md:hidden fixed left-0 right-0 top-0 z-40 border-b border-(--border)/70 bg-(--bg) px-4">
           <Link href="/" className="flex min-w-0 items-center gap-2.5">
             <span className="truncate text-[length:var(--fs-base)] font-semibold tracking-tight text-(--fg)">
@@ -250,7 +254,7 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
       ) : null}
 
       <main
-        data-no-topbar={chatSessionRoute ? "true" : undefined}
+        data-no-topbar={ownsMobileHeader ? "true" : undefined}
         className="mobile-pwa-main flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden bg-(--agent-bg) md:pt-0"
       >
         {children}

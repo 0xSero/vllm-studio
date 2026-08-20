@@ -102,6 +102,24 @@ export function updateAutomation(
   );
 }
 
+/** Forget every recorded run of an automation, keeping the automation itself.
+ *  Same PATCH the tab and the agent tools write through, so the cleared history
+ *  is gone everywhere at once. */
+export function clearAutomationRuns(id: string): Effect.Effect<Automation, Error> {
+  return Effect.map(
+    requestJson(
+      `/api/agent/automations/${encodeURIComponent(id)}`,
+      Schema.decodeUnknownSync(AutomationResponseSchema),
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clearRuns: true }),
+      },
+    ),
+    ({ automation }) => automation,
+  );
+}
+
 export function deleteAutomation(id: string): Effect.Effect<boolean, Error> {
   return Effect.map(
     requestJson(

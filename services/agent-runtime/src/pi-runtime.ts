@@ -34,6 +34,7 @@ import { findRuntimeSessionForLookup, piStatusFromEvents } from "./pi-runtime-st
 import { configuredPiSessionDir, findSessionFile } from "./sessions-store";
 import { getGlobalSingleton } from "./instances";
 import { connectorsRevisionSync } from "./connectors-service";
+import { userPluginsRevisionSync } from "./user-plugins";
 import type {
   LoggedPiEvent,
   PiAgentSession,
@@ -155,6 +156,13 @@ function runtimeFingerprint(
     piSessionId: piSessionId ?? "",
     options: runtimeOptionsFingerprint(options),
     connectors: connectorsRevisionSync(),
+    // pi snapshots its extension inventory once, when the session starts, so a
+    // plugin the user just wrote is invisible to a session that is already
+    // running. Folding the extensions directory's revision in here rebuilds the
+    // session on the next turn — the same deal connectors get, and the reason
+    // the Plugins tab can promise "save, then send your next message" instead
+    // of "restart the app".
+    plugins: userPluginsRevisionSync(),
   });
 }
 

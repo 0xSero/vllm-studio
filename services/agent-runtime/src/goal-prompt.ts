@@ -29,10 +29,12 @@ import { resolveDataDir } from "./data-dir";
 
 const MARKER = "Local Studio session goal:";
 
-/** Statuses where the goal should steer the turn. A paused/complete/blocked
- *  goal stays in the store (so the UI can show and resume it) but must not keep
- *  pushing the model. */
-const STEERING_STATUSES = new Set(["active", "budget_limited"]);
+/** The one status where the goal steers the turn. Every other status stays in
+ *  the store (so the UI can show and resume it) but must not keep pushing the
+ *  model — including `budget_limited`, which used to keep injecting "the budget
+ *  is spent, do not start new work" into every later turn the USER typed, long
+ *  after the automatic pursuit had stopped. */
+const STEERING_STATUSES = new Set(["active"]);
 
 /** Loose shape: the on-disk goal is normalized elsewhere, but the pure builder
  *  must tolerate partial/legacy documents so a bad field never crashes a turn. */
@@ -46,8 +48,9 @@ export type GoalPromptInput = {
 /** Codex wraps the objective in tags and states plainly that it is instruction,
  *  not data, then reports budget so the model can pace itself.
  *
- *  Kept format-identical to the bundled goal.ts builder so the two stay in
- *  sync. */
+ *  This is the only copy. A second, byte-identical builder used to sit in
+ *  frontend/desktop/resources/pi-extensions/goal.ts from when injection was a
+ *  bundled extension; it was registered nowhere and could only drift. */
 export function goalSystemPromptSection(goal: GoalPromptInput): string | null {
   const objective = typeof goal.objective === "string" ? goal.objective.trim() : "";
   if (!objective) return null;
@@ -67,9 +70,6 @@ export function goalSystemPromptSection(goal: GoalPromptInput): string | null {
   const turnBudget = typeof goal.turnBudget === "number" ? goal.turnBudget : null;
   if (turnBudget !== null) {
     lines.push("", `Turn budget: ${turnsUsed} of ${turnBudget} used.`);
-    if (status === "budget_limited") {
-      lines.push("The budget is spent. Summarise progress and what remains; do not start new work.");
-    }
   } else if (turnsUsed > 0) {
     lines.push("", `Turns spent on this goal so far: ${turnsUsed}.`);
   }

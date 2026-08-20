@@ -1,153 +1,91 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ErrorBox } from "@/ui";
-import { Boxes, Gauge, Monitor, Plug, Server, type LucideIcon } from "@/ui/icon-registry";
+import { Monitor, Server, type LucideIcon } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { SettingsLayout, type SettingsSectionDef } from "@/features/settings/settings-ui";
-import { IntegrationsContent } from "@/features/integrations/integrations-page";
 import { ServerContent } from "@/features/logs/server-view";
-import {
-  DataRow,
-  EndCell,
-  GroupRow,
-  HeadCell,
-  LeadCell,
-  NumCell,
-  RowAction,
-  StatusText,
-  TableFrame,
-} from "@/features/recipes/recipes-content/catalog-table-shell";
 import { useConfigure } from "./use-configure";
-import { RigsSection } from "./rigs-section";
-import { configureSectionFromHash, type ConfigureSectionId } from "./configure-navigation";
+import { MachinesSection } from "./machines-section";
+import {
+  configureSectionFromHash,
+  configureSectionRedirect,
+  DEFAULT_CONFIGURE_SECTION,
+  type ConfigureSectionId,
+} from "./configure-navigation";
 
 const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
 
 const CONFIGURE_SECTIONS: SettingsSectionDef<ConfigureSectionId>[] = [
   {
-    id: "overview",
-    label: "Overview",
-    description: "Workspace hardware, models, integrations, and controller tools.",
-    icon: sectionIcon(Gauge),
-  },
-  {
-    id: "rig",
+    id: "machines",
     label: "Machines",
-    description: "Hardware available for running local and remote models.",
+    description:
+      "Every computer whose GPUs and memory this workspace can run a model on. Their combined GPU memory is the pool the Models page checks a model against.",
     icon: sectionIcon(Monitor),
-  },
-  {
-    id: "integrations",
-    label: "Integrations",
-    description: "Plugins, connectors, accounts, and reusable skills.",
-    icon: sectionIcon(Plug),
   },
   {
     id: "server",
     label: "Server",
-    description: "Controller health, runtime details, logs, and API docs.",
+    description: "The controller that launches models here: health, logs, and API reference.",
     icon: sectionIcon(Server),
   },
 ];
 
 /**
- * One area of the workspace, as a table row.
+ * Configure answers two questions, in this order: what hardware can this
+ * workspace run a model on, and is the thing that launches models healthy.
  *
- * These were four cards with icon tiles and a chevron — a third dialect on a
- * page that already had two. As rows they read the same way the Models catalog
- * does: identity on the left, the one number that says how much of it exists on
- * the right, and the action only when the pointer is on the row.
+ * Everything else that lived here answered neither. The Overview table listed
+ * the sections that are already listed in the rail beside it, and three of its
+ * four rows had no data to put in the columns, so they were filled with prose
+ * ("Get · serve", "logs · API docs") right-aligned under numeric headers.
+ * Integrations was the last of those tenants and now has its own route; all
+ * that is left of it here is the forward on mount.
  */
-function OverviewRow({
-  icon,
-  title,
-  description,
-  detail,
-  state,
-  ready,
-  onOpen,
-}: {
-  icon: ReactNode;
-  title: string;
-  description: string;
-  detail: string;
-  state: string;
-  ready?: boolean;
-  onOpen: () => void;
-}) {
-  return (
-    <DataRow onOpen={onOpen} ariaLabel={`Open ${title}`}>
-      <LeadCell>
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-(--border) bg-(--surface-3) text-(--dim)">
-            {icon}
-          </span>
-          <span className="min-w-0">
-            <span className="block truncate text-[length:var(--fs-md)] font-medium text-(--fg)">
-              {title}
-            </span>
-            <span className="block truncate text-[length:var(--fs-xs)] text-(--dim)/70">
-              {description}
-            </span>
-          </span>
-        </div>
-      </LeadCell>
-      <NumCell strong>{detail}</NumCell>
-      <NumCell>{state}</NumCell>
-      <EndCell>
-        <div className="flex items-center justify-end gap-2">
-          {ready === undefined ? null : (
-            <StatusText tone={ready ? "ok" : "dim"}>{ready ? "ready" : "not set"}</StatusText>
-          )}
-          <RowAction onClick={onOpen} title={`Open ${title}`}>
-            Manage
-          </RowAction>
-        </div>
-      </EndCell>
-    </DataRow>
-  );
-}
-
 export default function ConfigurePage() {
   const state = useConfigure();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const requestedSection = configureSectionFromHash(searchParams.get("section") ?? "");
-  const [section, setSection] = useState<ConfigureSectionId>(requestedSection);
+  const requestedParam = searchParams.get("section") ?? "";
+  const requestedSection = configureSectionFromHash(requestedParam);
+  const [section, setSection] = useState<ConfigureSectionId>(
+    requestedSection ?? DEFAULT_CONFIGURE_SECTION,
+  );
 
   useMountSubscription(() => {
-    const syncSection = () => {
-      const hashSection = configureSectionFromHash(window.location.hash);
-      setSection(hashSection === "overview" ? requestedSection : hashSection);
-    };
+    // A link written while Integrations lived here names a section Configure
+    // no longer has. Forward it rather than falling through to the default,
+    // which would quietly show Machines under an Integrations bookmark.
+    const moved =
+      configureSectionRedirect(requestedParam) ?? configureSectionRedirect(window.location.hash);
+    if (moved) {
+      router.replace(moved);
+      return;
+    }
+    // Section lives in both the hash and `?section=`; the hash wins because it
+    // is what the in-page nav writes, and the query is what other pages link.
+    const syncSection = () =>
+      setSection(
+        configureSectionFromHash(window.location.hash) ??
+          requestedSection ??
+          DEFAULT_CONFIGURE_SECTION,
+      );
     syncSection();
-    const onHashChange = () => syncSection();
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
-  }, [requestedSection]);
+    window.addEventListener("hashchange", syncSection);
+    return () => window.removeEventListener("hashchange", syncSection);
+  }, [requestedParam, requestedSection, router]);
 
   const selectSection = (next: ConfigureSectionId) => {
     setSection(next);
     const params = new URLSearchParams(window.location.search);
-    if (next === "overview") params.delete("section");
+    if (next === DEFAULT_CONFIGURE_SECTION) params.delete("section");
     else params.set("section", next);
     const query = params.size ? `?${params.toString()}` : "";
     window.history.replaceState(null, "", `${window.location.pathname}${query}#${next}`);
   };
-
-  const machines = state.rigs.flatMap((rig) => rig.nodes);
-  const gpuMemory = machines.reduce(
-    (sum, node) =>
-      sum +
-      node.accelerators.reduce(
-        (nodeSum, accelerator) => nodeSum + (accelerator.memory_gb ?? 0) * accelerator.count,
-        0,
-      ),
-    0,
-  );
-  const machineSection = section === "overview" || section === "rig";
 
   return (
     <SettingsLayout
@@ -156,70 +94,19 @@ export default function ConfigurePage() {
       title="Configure"
       width="wide"
       loading={state.refreshing || state.loading}
-      // Machines carries its own refresh in the table header; two reload
-      // controls on one screen is one control too many.
-      showRefresh={section === "overview"}
+      // Every section owns its own reload control, sitting next to the data it
+      // refreshes. A second one in the page chrome only raises the question of
+      // which one you are supposed to press.
+      showRefresh={false}
       onReload={state.reload}
       onSelectSection={selectSection}
     >
-      {machineSection && state.error ? <ErrorBox>{state.error}</ErrorBox> : null}
-
-      {section === "overview" ? (
-        <TableFrame minWidthClass="min-w-[44rem]">
-          <thead>
-            <tr>
-              <HeadCell>Area</HeadCell>
-              <HeadCell numeric>Detail</HeadCell>
-              <HeadCell numeric>What it holds</HeadCell>
-              <HeadCell numeric>Status</HeadCell>
-            </tr>
-          </thead>
-          <tbody>
-            <GroupRow
-              colSpan={4}
-              label="Configuration"
-              blurb="Local hardware stays synchronized automatically — add a machine only when another computer contributes GPUs."
-              right="4 areas"
-            />
-            <OverviewRow
-              icon={<Monitor className="h-3.5 w-3.5" />}
-              title="Machines"
-              description="Computers that provide CPU, memory, and GPUs for inference."
-              detail={`${machines.length} machine${machines.length === 1 ? "" : "s"}`}
-              state={gpuMemory ? `${gpuMemory} GB GPU` : "no GPUs"}
-              ready={machines.length > 0}
-              onOpen={() => selectSection("rig")}
-            />
-            <OverviewRow
-              icon={<Boxes className="h-3.5 w-3.5" />}
-              title="Models"
-              description="Find weights, create serving profiles, and manage downloads."
-              detail="Get · serve"
-              state="downloads"
-              onOpen={() => router.push("/models")}
-            />
-            <OverviewRow
-              icon={<Plug className="h-3.5 w-3.5" />}
-              title="Integrations"
-              description="Connect capability bundles, tools, services, accounts, and skills."
-              detail="Plugins"
-              state="connectors · skills"
-              onOpen={() => selectSection("integrations")}
-            />
-            <OverviewRow
-              icon={<Server className="h-3.5 w-3.5" />}
-              title="Server"
-              description="Inspect the controller, inference runtime, logs, and API reference."
-              detail="Health"
-              state="logs · API docs"
-              onOpen={() => selectSection("server")}
-            />
-          </tbody>
-        </TableFrame>
+      {section === "machines" ? (
+        <>
+          {state.error ? <ErrorBox>{state.error}</ErrorBox> : null}
+          <MachinesSection state={state} />
+        </>
       ) : null}
-
-      {section === "rig" ? <RigsSection state={state} /> : null}
-      {section === "integrations" ? <IntegrationsContent /> : null}
       {section === "server" ? <ServerContent embedded /> : null}
     </SettingsLayout>
   );

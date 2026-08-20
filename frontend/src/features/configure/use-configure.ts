@@ -16,9 +16,7 @@ export interface ConfigureState {
   refreshing: boolean;
   error: string | null;
   reload: () => Promise<void>;
-  createRig: (name: string) => Promise<void>;
-  renameRig: (rigId: string, name: string) => Promise<void>;
-  describeRig: (rigId: string, description: string) => Promise<void>;
+  createRig: (name: string) => Promise<Rig>;
   deleteRig: (rigId: string) => Promise<void>;
   addNode: (rigId: string, payload: RigNodePayload & { name: string }) => Promise<void>;
   updateNode: (rigId: string, nodeId: string, payload: RigNodePayload) => Promise<void>;
@@ -68,22 +66,7 @@ export function useConfigure(): ConfigureState {
     async (name: string) => {
       const result = await api.createRig({ name });
       applyRig(result.rig);
-    },
-    [applyRig],
-  );
-
-  const renameRig = useCallback(
-    async (rigId: string, name: string) => {
-      const result = await api.updateRig(rigId, { name });
-      applyRig(result.rig);
-    },
-    [applyRig],
-  );
-
-  const describeRig = useCallback(
-    async (rigId: string, description: string) => {
-      const result = await api.updateRig(rigId, { description: description || null });
-      applyRig(result.rig);
+      return result.rig;
     },
     [applyRig],
   );
@@ -128,8 +111,6 @@ export function useConfigure(): ConfigureState {
     error,
     reload,
     createRig,
-    renameRig,
-    describeRig,
     deleteRig,
     addNode,
     updateNode,
