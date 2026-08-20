@@ -8,6 +8,7 @@ import type {
   LaunchPlan,
 } from "../contracts";
 import { resolveBinary, runCommandAsyncEffect, type AsyncCommandResult } from "../../../core/command";
+import { redactLogText } from "../../../core/log-redaction";
 import { dockerFlagsFor } from "../engines/devices";
 import { LOG_TAIL_BYTES, spawnFailed, type Launcher } from "./launcher";
 
@@ -429,7 +430,14 @@ export const makeDockerLauncher = (
       : stopExact(runtime, reference, record, graceMs);
   },
 
+  // Container logs echo the engine's configuration — vLLM prints its serve
+  // command, env assignments and all — and this tail lands verbatim in
+  // launch-failure HTTP responses and SSE events, so it is redacted before it
+  // leaves the launcher. Redact before the byte-slice so a token the cut would
+  // bisect cannot slip past the anchored patterns.
   logTail: (reference, record): Effect.Effect<string> => {
+    const tailOf = (result: AsyncCommandResult): string =>
+      redactLogText(`${result.stdout}\n${result.stderr}`.trim()).slice(-LOG_TAIL_BYTES);
     if (reference.kind === "docker-pending") {
       return resolvePending(reference, record, runtime).pipe(
         Effect.flatMap((resolved) =>
@@ -442,9 +450,7 @@ export const makeDockerLauncher = (
               ])
             : Effect.succeed(null),
         ),
-        Effect.map((result) =>
-          result ? `${result.stdout}\n${result.stderr}`.trim().slice(-LOG_TAIL_BYTES) : "",
-        ),
+        Effect.map((result) => (result ? tailOf(result) : "")),
       );
     }
     return reference.kind !== "docker"
@@ -454,11 +460,7 @@ export const makeDockerLauncher = (
           "--tail",
           "60",
           reference.containerId,
-        ]).pipe(
-          Effect.map((result) =>
-            `${result.stdout}\n${result.stderr}`.trim().slice(-LOG_TAIL_BYTES),
-          ),
-        );
+        ]).pipe(Effect.map(tailOf));
   },
   };
 };

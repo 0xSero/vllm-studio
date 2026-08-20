@@ -2,6 +2,14 @@ import { Schema } from "effect";
 
 const StringRecordSchema = Schema.Record(Schema.String, Schema.String);
 
+/**
+ * Explicit secretness, keyed by env/header name: `true` masks the value in
+ * every read surface, `false` never masks it. A key absent from the record —
+ * including every entry written before this field existed — falls back to the
+ * name heuristic the store used historically, so old files keep their meaning.
+ */
+const SecretFlagsSchema = Schema.Record(Schema.String, Schema.Boolean);
+
 const ConnectorOriginSchema = Schema.Struct({
   kind: Schema.String,
   id: Schema.String,
@@ -22,9 +30,11 @@ const ConnectorFields = {
   command: Schema.optional(Schema.String),
   args: Schema.optional(Schema.Array(Schema.String)),
   env: Schema.optional(StringRecordSchema),
+  envSecret: Schema.optional(SecretFlagsSchema),
   cwd: Schema.optional(Schema.String),
   url: Schema.optional(Schema.String),
   headers: Schema.optional(StringRecordSchema),
+  headerSecret: Schema.optional(SecretFlagsSchema),
   auth: Schema.optional(ConnectorAuthReferenceSchema),
   allowTools: Schema.optional(Schema.Array(Schema.String)),
   origin: Schema.optional(ConnectorOriginSchema),
@@ -49,9 +59,11 @@ export const ConnectorUpsertInputSchema = Schema.Struct({
   command: Schema.optional(Schema.String),
   args: Schema.optional(Schema.Array(Schema.String)),
   env: Schema.optional(StringRecordSchema),
+  envSecret: Schema.optional(SecretFlagsSchema),
   cwd: Schema.optional(Schema.String),
   url: Schema.optional(Schema.String),
   headers: Schema.optional(StringRecordSchema),
+  headerSecret: Schema.optional(SecretFlagsSchema),
   allowTools: Schema.optional(Schema.Array(Schema.String)),
   enabled: Schema.optional(Schema.Boolean),
 });

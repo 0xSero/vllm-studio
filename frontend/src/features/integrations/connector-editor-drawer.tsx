@@ -9,7 +9,7 @@ import {
   type ConnectorView,
 } from "@local-studio/agent-runtime/connector-contract";
 import { Alert, Button, Checkbox, FormField, Input, SegmentedControl, Spinner } from "@/ui";
-import { Plus, Trash2, TriangleAlert } from "@/ui/icon-registry";
+import { Eye, EyeOff, Plus, Trash2, TriangleAlert } from "@/ui/icon-registry";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceLogo } from "@/ui/resource-logo";
 import { StatusText } from "@/features/recipes/recipes-content/catalog-table-shell";
@@ -46,9 +46,24 @@ import {
 
 const MASK = "••••••••";
 
+/**
+ * Default only: a credential-looking name starts out marked secret so the
+ * common case needs no extra click. What is *stored and enforced* is the
+ * explicit per-key flag the author can flip either way — the server masks by
+ * that flag, never by re-running this pattern over the key name.
+ */
+const SECRET_NAME_DEFAULT = /token|key|secret|password|auth/i;
+
 type Transport = "stdio" | "http";
 
-type Pair = { key: string; value: string };
+type Pair = {
+  key: string;
+  value: string;
+  /** Masked on every read once saved. */
+  secret: boolean;
+  /** True once the author chose explicitly, so key edits stop re-deriving it. */
+  secretTouched: boolean;
+};
 
 export interface ConnectorDraft {
   id: string;
@@ -64,13 +79,30 @@ export interface ConnectorDraft {
   enabled: boolean;
 }
 
-const pairsFrom = (record: Readonly<Record<string, string>> | undefined): Pair[] =>
-  Object.entries(record ?? {}).map(([key, value]) => ({ key, value }));
+const pairsFrom = (
+  record: Readonly<Record<string, string>> | undefined,
+  secretKeys: readonly string[],
+): Pair[] =>
+  Object.entries(record ?? {}).map(([key, value]) => ({
+    key,
+    value,
+    // The server already resolved each stored key's secretness (explicit flag,
+    // or the legacy name fallback) when it masked this view; mirror its answer.
+    secret: secretKeys.includes(key),
+    secretTouched: true,
+  }));
 
 const recordFrom = (pairs: Pair[]): Record<string, string> =>
   Object.fromEntries(
     pairs
       .map(({ key, value }) => [key.trim(), value] as const)
+      .filter(([key]) => key.length > 0),
+  );
+
+const secretFlagsFrom = (pairs: Pair[]): Record<string, boolean> =>
+  Object.fromEntries(
+    pairs
+      .map(({ key, secret }) => [key.trim(), secret] as const)
       .filter(([key]) => key.length > 0),
   );
 
@@ -89,8 +121,8 @@ export function draftFromConnector(connector: ConnectorView): ConnectorDraft {
     args: (connector.args ?? []).join("\n"),
     cwd: connector.cwd ?? "",
     url: connector.url ?? "",
-    env: pairsFrom(connector.env),
-    headers: pairsFrom(connector.headers),
+    env: pairsFrom(connector.env, connector.secret_keys),
+    headers: pairsFrom(connector.headers, connector.secret_keys),
     allowTools: (connector.allowTools ?? []).join("\n"),
     enabled: connector.enabled,
   };
@@ -123,7 +155,14 @@ export function draftFromCatalog(entry: CatalogEntry, sshServerPath: string | nu
     args: entry.args
       .map((arg) => (arg === SSH_SERVER_PLACEHOLDER ? (sshServerPath ?? arg) : arg))
       .join("\n"),
-    env: entry.envFields.map((field) => ({ key: field.key, value: "" })),
+    env: entry.envFields.map((field) => ({
+      key: field.key,
+      value: "",
+      secret: field.secret ?? SECRET_NAME_DEFAULT.test(field.key),
+      // A catalog entry that declared secretness made the choice for the user;
+      // one that did not leaves the key free to re-derive if it is edited.
+      secretTouched: field.secret !== undefined,
+    })),
   };
 }
 
@@ -153,26 +192,32 @@ function PairEditor({
   addLabel,
   keyPlaceholder,
   valuePlaceholder,
-  secret,
 }: {
   pairs: Pair[];
   onChange: (next: Pair[]) => void;
   addLabel: string;
   keyPlaceholder: string;
   valuePlaceholder: string;
-  secret?: boolean;
 }) {
   const update = (index: number, patch: Partial<Pair>) =>
     onChange(pairs.map((pair, position) => (position === index ? { ...pair, ...patch } : pair)));
+
+  // Renaming a key re-derives its default secretness until the author has
+  // flipped the toggle themselves — the heuristic is a starting point, the
+  // toggle is the decision.
+  const updateKey = (index: number, key: string) => {
+    const pair = pairs[index];
+    update(index, {
+      key,
+      ...(pair && !pair.secretTouched ? { secret: SECRET_NAME_DEFAULT.test(key) } : {}),
+    });
+  };
 
   // Hide a value the user typed, reveal one the server masked. The bullets are
   // the token that means "keep the stored secret", so they have to stay legible
   // — a row of dots behind a password field reads as a bug and invites a retype
   // that would overwrite the very value it was protecting.
-  const inputType = (pair: Pair) =>
-    secret && pair.value !== MASK && /token|key|secret|password/i.test(pair.key)
-      ? "password"
-      : "text";
+  const inputType = (pair: Pair) => (pair.secret && pair.value !== MASK ? "password" : "text");
 
   return (
     <div className="space-y-2">
@@ -180,7 +225,7 @@ function PairEditor({
         <div key={index} className="flex items-center gap-2">
           <Input
             value={pair.key}
-            onChange={(event) => update(index, { key: event.target.value })}
+            onChange={(event) => updateKey(index, event.target.value)}
             placeholder={keyPlaceholder}
             className="w-2/5 font-mono"
             aria-label={`${addLabel} name`}
@@ -195,6 +240,22 @@ function PairEditor({
           />
           <button
             type="button"
+            onClick={() => update(index, { secret: !pair.secret, secretTouched: true })}
+            title={
+              pair.secret
+                ? `${pair.key || "This value"} is stored as a secret and masked after saving. Click to store it as a plain setting.`
+                : `${pair.key || "This value"} is stored as a plain setting and stays readable. Click to store it as a secret.`
+            }
+            aria-pressed={pair.secret}
+            aria-label={`Store ${pair.key || "entry"} as a secret`}
+            className={`shrink-0 rounded-md p-1.5 transition-colors ${
+              pair.secret ? "text-(--fg)" : "text-(--dim)/60 hover:text-(--dim)"
+            }`}
+          >
+            {pair.secret ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </button>
+          <button
+            type="button"
             onClick={() => onChange(pairs.filter((_, position) => position !== index))}
             title={`Remove ${pair.key || "entry"}`}
             className="shrink-0 rounded-md p-1.5 text-(--dim) transition-colors hover:text-(--err)"
@@ -205,7 +266,9 @@ function PairEditor({
       ))}
       <button
         type="button"
-        onClick={() => onChange([...pairs, { key: "", value: "" }])}
+        onClick={() =>
+          onChange([...pairs, { key: "", value: "", secret: false, secretTouched: false }])
+        }
         className="inline-flex items-center gap-1.5 rounded-md text-[length:var(--fs-sm)] text-(--link) hover:underline"
       >
         <Plus className="h-3 w-3" />
@@ -254,7 +317,7 @@ function StdioFields({ draft, patch }: { draft: ConnectorDraft; patch: Patch }) 
       </FormField>
       <FormField
         label="Environment variables"
-        description="Added on top of the environment this app already passes down."
+        description="Added on top of the environment this app already passes down. The eye toggle marks a value as a secret: secrets are masked whenever this server is shown again."
       >
         <PairEditor
           pairs={draft.env}
@@ -262,7 +325,6 @@ function StdioFields({ draft, patch }: { draft: ConnectorDraft; patch: Patch }) 
           addLabel="Add variable"
           keyPlaceholder="API_TOKEN"
           valuePlaceholder="value"
-          secret
         />
       </FormField>
     </>
@@ -292,14 +354,16 @@ function HttpFields({
           className="font-mono"
         />
       </FormField>
-      <FormField label="Headers" description="Sent with every request to that endpoint.">
+      <FormField
+        label="Headers"
+        description="Sent with every request to that endpoint. The eye toggle marks a value as a secret: secrets are masked whenever this server is shown again."
+      >
         <PairEditor
           pairs={draft.headers}
           onChange={(headers) => patch({ headers })}
           addLabel="Add header"
           keyPlaceholder="Authorization"
           valuePlaceholder="Bearer …"
-          secret
         />
       </FormField>
     </>
@@ -513,8 +577,13 @@ export function ConnectorEditorDrawer({
                 args: lines(draft.args),
                 cwd: draft.cwd.trim() || undefined,
                 env: recordFrom(draft.env),
+                envSecret: secretFlagsFrom(draft.env),
               }
-            : { url: draft.url.trim(), headers: recordFrom(draft.headers) }),
+            : {
+                url: draft.url.trim(),
+                headers: recordFrom(draft.headers),
+                headerSecret: secretFlagsFrom(draft.headers),
+              }),
           allowTools: lines(draft.allowTools),
           enabled: draft.enabled,
         }),

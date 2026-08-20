@@ -78,3 +78,13 @@ export function redactLogLine(line: string): string {
 
   return redacted;
 }
+
+/**
+ * Line-wise redaction for a multi-line block — engine log tails that get
+ * embedded into launch-failure messages and SSE events. Same rules, same
+ * conservatism, applied per line so the anchored patterns still see the
+ * line starts they expect.
+ */
+export function redactLogText(text: string): string {
+  return text.split(/\r?\n/).map(redactLogLine).join("\n");
+}

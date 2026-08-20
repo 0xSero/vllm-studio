@@ -2,6 +2,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { closeSync, openSync, readFileSync, readdirSync, readSync, statSync } from "node:fs";
 import { Effect } from "effect";
 import type { HandleReference, InstanceRecord, LaunchPlan } from "../contracts";
+import { redactLogText } from "../../../core/log-redaction";
 import { LOG_TAIL_BYTES, spawnFailed, type Launcher } from "./launcher";
 
 const STOP_POLL_MS = 250;
@@ -535,7 +536,11 @@ export const makeProcessLauncher = (
         });
       }),
 
+    // Engines echo their configuration — vLLM prints its full serve command,
+    // env assignments and all — and this tail lands verbatim in launch-failure
+    // HTTP responses and SSE events, so it is redacted at the boundary. The
+    // on-disk log file stays raw.
     logTail: (reference: HandleReference, record: InstanceRecord) =>
-      Effect.sync(() => readTailBytes(logPathFor(record.name), LOG_TAIL_BYTES)),
+      Effect.sync(() => redactLogText(readTailBytes(logPathFor(record.name), LOG_TAIL_BYTES))),
   };
 };

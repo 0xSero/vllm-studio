@@ -31,6 +31,20 @@ export {
 
 const MASK = "••••••••";
 const SECRET_KEY_PATTERN = /token|key|secret|password|auth/i;
+
+/**
+ * Whether an env/header value is a secret.
+ *
+ * Explicit flags win: a key present in the connector's `envSecret` /
+ * `headerSecret` record is exactly as secret as the author said, so
+ * "GITHUB_PAT" can be masked and "AUTH_MODE" can stay readable. Keys without a
+ * flag — every entry stored before the flag existed — fall back to the name
+ * heuristic that used to be the whole mechanism, so old files keep behaving.
+ */
+export const isSecretConnectorKey = (
+  key: string,
+  flags: Readonly<Record<string, boolean>> | undefined,
+): boolean => flags?.[key] ?? SECRET_KEY_PATTERN.test(key);
 let connectorAccess = Promise.resolve();
 
 function withConnectorAccess<A>(operation: () => Promise<A>): Promise<A> {
@@ -194,8 +208,10 @@ export function upsertConnectors(incoming: ConnectorConfig[]): Promise<Connector
       const existing = index === -1 ? null : connectors[index];
       const merged: ConnectorConfig = {
         ...connector,
-        env: mergeSecrets(connector.env, existing?.env),
-        headers: mergeSecrets(connector.headers, existing?.headers),
+        env: mergeSecrets(connector.env, existing?.env, existing?.envSecret),
+        headers: mergeSecrets(connector.headers, existing?.headers, existing?.headerSecret),
+        envSecret: connector.envSecret ?? existing?.envSecret,
+        headerSecret: connector.headerSecret ?? existing?.headerSecret,
         cwd: connector.cwd ?? existing?.cwd,
         // Presence, not truthiness: an incoming connector that carries the key
         // with an undefined value is deliberately clearing the allow list, and
@@ -228,26 +244,37 @@ export function removeConnector(id: string): Promise<ConnectorConfig[]> {
   });
 }
 
+/**
+ * Restores stored values behind the mask sentinel. Only keys the *stored*
+ * connector masked on read can round-trip: those are the only keys a client
+ * ever saw as bullets, so bullets typed against an unmasked key are a literal
+ * value, not a reference to the store.
+ */
 function mergeSecrets(
   incoming: Record<string, string> | undefined,
   stored: Record<string, string> | undefined,
+  storedFlags: Readonly<Record<string, boolean>> | undefined,
 ): Record<string, string> | undefined {
   if (!incoming) return incoming;
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(incoming)) {
-    result[key] = value === MASK && stored?.[key] ? stored[key] : value;
+    result[key] =
+      value === MASK && stored?.[key] && isSecretConnectorKey(key, storedFlags)
+        ? stored[key]
+        : value;
   }
   return result;
 }
 
 const maskRecord = (
   record: Record<string, string> | undefined,
+  flags: Readonly<Record<string, boolean>> | undefined,
 ): Record<string, string> | undefined => {
   if (!record) return record;
   return Object.fromEntries(
     Object.entries(record).map(([key, value]) => [
       key,
-      SECRET_KEY_PATTERN.test(key) && value ? MASK : value,
+      isSecretConnectorKey(key, flags) && value ? MASK : value,
     ]),
   );
 };
@@ -255,12 +282,16 @@ const maskRecord = (
 export function toConnectorView(connector: ConnectorConfig): ConnectorView {
   return {
     ...connector,
-    env: maskRecord(connector.env),
-    headers: maskRecord(connector.headers),
+    env: maskRecord(connector.env, connector.envSecret),
+    headers: maskRecord(connector.headers, connector.headerSecret),
     secret_keys: [
-      ...Object.keys(connector.env ?? {}),
-      ...Object.keys(connector.headers ?? {}),
-    ].filter((key) => SECRET_KEY_PATTERN.test(key)),
+      ...Object.keys(connector.env ?? {}).filter((key) =>
+        isSecretConnectorKey(key, connector.envSecret),
+      ),
+      ...Object.keys(connector.headers ?? {}).filter((key) =>
+        isSecretConnectorKey(key, connector.headerSecret),
+      ),
+    ],
   };
 }
 

@@ -80,9 +80,11 @@ export async function POST(request: NextRequest) {
     ...(body.command ? { command: body.command } : {}),
     ...(body.args ? { args: body.args } : {}),
     ...(body.env ? { env: body.env } : {}),
+    ...(body.envSecret ? { envSecret: body.envSecret } : {}),
     ...(body.cwd ? { cwd: body.cwd } : {}),
     ...(body.url ? { url: body.url } : {}),
     ...(body.headers ? { headers: body.headers } : {}),
+    ...(body.headerSecret ? { headerSecret: body.headerSecret } : {}),
     // Three states, not two. Absent means "leave the allow list alone" — what
     // every caller that only meant to flip `enabled` sends. An empty list means
     // "clear it, allow every tool this server declares", which is the widening
