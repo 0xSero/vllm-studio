@@ -166,10 +166,25 @@ export type HandleReference =
   | {
       readonly kind: "process";
       readonly pid: number;
-      /** Linux /proc/<pid>/stat field 22. Closes pid reuse across reboots. */
+      readonly processGroupId: number | null;
+      readonly sessionId: number | null;
       readonly startToken: string | null;
     }
-  | { readonly kind: "docker"; readonly container: string }
+  | {
+      readonly kind: "docker";
+      readonly containerId: string;
+      readonly daemonId: string;
+      readonly executablePath: string;
+      readonly executableToken: string;
+    }
+  | {
+      readonly kind: "docker-pending";
+      readonly containerName: string;
+      readonly nonce: string;
+      readonly daemonId: string;
+      readonly executablePath: string;
+      readonly executableToken: string;
+    }
   | { readonly kind: "remote"; readonly nodeId: NodeId; readonly name: string }
   /** A device hold with no supervised process — e.g. the speech worker claims its GPU
    *  through the lease shim. Always "alive"; freed only by explicit release. */
@@ -275,7 +290,7 @@ export type LaunchFailure =
   | { readonly kind: "already-running"; readonly name: string }
   | { readonly kind: "no-capacity"; readonly need: number; readonly free: number }
   | { readonly kind: "install-failed"; readonly engine: EngineId; readonly detail: string }
-  | { readonly kind: "spawn-failed"; readonly detail: string }
+  | { readonly kind: "spawn-failed"; readonly detail: string; readonly startedReference?: HandleReference }
   | {
       readonly kind: "exited-early";
       readonly exitCode: number | null;
