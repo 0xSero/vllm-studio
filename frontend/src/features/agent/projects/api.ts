@@ -1,31 +1,42 @@
-import { Schema } from "effect";
 import { safeJson } from "@/features/agent/safe-json";
 import type { GitAction, GitBranch, GitState, GitWorktree } from "@/features/agent/contracts";
-import { ProjectSchema, type GitSummary, type Project } from "@/features/agent/projects/types";
+import type { GitSummary, Project } from "@/features/agent/projects/types";
 
-const ProjectsResponseSchema = Schema.Struct({ projects: Schema.Array(ProjectSchema) });
-const ProjectResponseSchema = Schema.Struct({ project: ProjectSchema });
-const ErrorResponseSchema = Schema.Struct({ error: Schema.optional(Schema.String) });
+type DesktopBridge = {
+  openDirectory?: () => Promise<Project | null>;
+  listProjects?: () => Promise<Project[]>;
+  removeProject?: (id: string) => Promise<{ ok: true }>;
+};
 
-function responseError(body: unknown, fallback: string): string {
-  try {
-    return Schema.decodeUnknownSync(ErrorResponseSchema)(body).error ?? fallback;
-  } catch {
-    return fallback;
-  }
+function getDesktopBridge(): DesktopBridge | null {
+  if (typeof window === "undefined") return null;
+  const candidate = (window as unknown as { localStudioDesktop?: Partial<DesktopBridge> })
+    .localStudioDesktop;
+  if (!candidate) return null;
+  const hasBridgeMethod =
+    typeof candidate.openDirectory === "function" ||
+    typeof candidate.listProjects === "function" ||
+    typeof candidate.removeProject === "function";
+  return hasBridgeMethod ? (candidate as DesktopBridge) : null;
 }
 
 export async function loadProjects(): Promise<Project[]> {
+  const bridge = getDesktopBridge();
+  if (bridge?.listProjects) return bridge.listProjects();
   const response = await fetch("/api/agent/projects", { cache: "no-store" });
-  const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(responseError(body, "Failed to load projects"));
-  return [...Schema.decodeUnknownSync(ProjectsResponseSchema)(body).projects];
+  const payload = (await response.json()) as { projects?: Project[]; error?: string };
+  if (!response.ok) throw new Error(payload.error || "Failed to load projects");
+  return payload.projects ?? [];
 }
 
-export async function openProjectDirectory(): Promise<string | null> {
-  if (typeof window === "undefined") return null;
-  const picker = window.localStudioDesktop?.openDirectory;
-  return typeof picker === "function" ? picker() : null;
+export type OpenProjectDirectoryResult =
+  | { source: "desktop"; project: Project | null }
+  | { source: "fallback" };
+
+export async function openProjectDirectory(): Promise<OpenProjectDirectoryResult> {
+  const bridge = getDesktopBridge();
+  if (!bridge?.openDirectory) return { source: "fallback" };
+  return { source: "desktop", project: await bridge.openDirectory() };
 }
 
 export async function addProjectFromPath(path: string): Promise<Project> {
@@ -34,18 +45,25 @@ export async function addProjectFromPath(path: string): Promise<Project> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),
   });
-  const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(responseError(body, "Failed to add project"));
-  return Schema.decodeUnknownSync(ProjectResponseSchema)(body).project;
+  const payload = (await response.json()) as { project?: Project; error?: string };
+  if (!response.ok || !payload.project) {
+    throw new Error(payload.error || "Failed to add project");
+  }
+  return payload.project;
 }
 
 export async function removeProject(id: string): Promise<void> {
+  const bridge = getDesktopBridge();
+  if (bridge?.removeProject) {
+    await bridge.removeProject(id);
+    return;
+  }
   const response = await fetch(`/api/agent/projects?id=${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
   if (!response.ok) {
-    const body: unknown = await response.json().catch(() => null);
-    throw new Error(responseError(body, "Failed to remove project"));
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(payload.error || "Failed to remove project");
   }
 }
 

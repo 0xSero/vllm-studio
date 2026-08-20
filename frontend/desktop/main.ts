@@ -23,6 +23,7 @@ import {
   shouldReloadAfterFrontendRestart,
 } from "./logic/frontend-restart";
 import { getUpdateState, initializeAutoUpdates, startUpdate } from "./logic/update-manager";
+import { addProject, listProjectsWithMeta, removeProject } from "./logic/projects-store";
 import { deployController } from "./logic/controller-deploy";
 import {
   getKittylitterPairingJson,
@@ -248,9 +249,10 @@ function resolveHomeConfinedPath(target: unknown): string | null {
   if (typeof target !== "string" || !target.trim()) return null;
   const raw = target.trim();
   const candidates = [raw];
-  const agentCwd = process.env.LOCAL_STUDIO_AGENT_CWD?.trim();
-  if (agentCwd && !path.isAbsolute(raw) && !raw.startsWith("~")) {
-    candidates.push(path.join(agentCwd, raw));
+  if (!path.isAbsolute(raw) && !raw.startsWith("~")) {
+    for (const project of listProjectsWithMeta()) {
+      if (project.path) candidates.push(path.join(project.path, raw));
+    }
   }
   const home = realpathSync.native(app.getPath("home"));
   for (const candidate of candidates) {
@@ -323,7 +325,14 @@ function registerIpcHandlers(): void {
       ? await dialog.showOpenDialog(owner, { properties: ["openDirectory", "createDirectory"] })
       : await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });
     if (result.canceled) return null;
-    return result.filePaths[0] ?? null;
+    const selected = result.filePaths[0];
+    if (!selected) return null;
+    try {
+      return addProject(selected);
+    } catch (error) {
+      log.error(`Failed to add project from dialog: ${String(error)}`);
+      throw error;
+    }
   });
 
   ipcMain.handle(
@@ -339,6 +348,23 @@ function registerIpcHandlers(): void {
       });
     },
   );
+
+  ipcMain.handle("desktop:list-projects", async () => listProjectsWithMeta());
+
+  ipcMain.handle("desktop:add-project", async (_, directoryPath: string) => {
+    if (typeof directoryPath !== "string") {
+      throw new Error("directoryPath must be a string");
+    }
+    return addProject(directoryPath);
+  });
+
+  ipcMain.handle("desktop:remove-project", async (_, id: string) => {
+    if (typeof id !== "string") {
+      throw new Error("id must be a string");
+    }
+    removeProject(id);
+    return { ok: true } as const;
+  });
 
   ipcMain.handle("desktop:load-session-prefs", async () => {
     return readSessionPrefsFile();
