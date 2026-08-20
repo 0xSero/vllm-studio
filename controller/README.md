@@ -70,6 +70,8 @@ bun run check
 - `GET /api/docs`
 - `GET /v1/models`
 - `POST /v1/chat/completions`
+- `POST /v1/responses` — OpenAI Responses API, passed through to the engine
+- `POST /v1/messages` — Anthropic Messages API, passed through to the engine (point `ANTHROPIC_BASE_URL` at the controller)
 - `GET /v1/studio/models`
 - `GET /studio/downloads`
 - `GET /runtime/targets`

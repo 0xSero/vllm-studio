@@ -51,7 +51,15 @@ export const createApp = (
     cors({
       origin: (origin) => (allowedCorsOrigins.includes(origin) ? origin : null),
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Authorization", "Content-Type", "X-API-Key"],
+      allowHeaders: [
+        "Authorization",
+        "Content-Type",
+        "X-API-Key",
+        // Protocol headers for the Responses and Anthropic Messages dialects.
+        "Anthropic-Version",
+        "Anthropic-Beta",
+        "OpenAI-Beta",
+      ],
       exposeHeaders: [
         "X-RateLimit-Limit",
         "X-RateLimit-Remaining",
