@@ -141,6 +141,19 @@ const CONNECTOR_ID_PATTERN = /^[a-z0-9][a-z0-9-_]{0,63}$/;
 
 export const isValidConnectorId = (id: string): boolean => CONNECTOR_ID_PATTERN.test(id);
 
+/**
+ * The namespace a connector's tools are registered under.
+ *
+ * Mirrors what the connectors extension does when it builds `<prefix>_<tool>`
+ * (desktop/resources/pi-extensions/connectors.ts). It is restated here rather
+ * than shared because that file is loaded by pi from outside this package, but
+ * the mapping is not free of consequence: hyphens fold to underscores, so two
+ * ids that differ only in that separator produce the same prefix and the second
+ * connector's tools would silently overwrite the first's. The upsert route
+ * compares on this, not on the id.
+ */
+export const connectorToolPrefix = (id: string): string => id.replace(/-/g, "_");
+
 export async function listConnectors(): Promise<ConnectorConfig[]> {
   const file = resolveConnectorsFilePath();
   if (!existsSync(file)) return [];
@@ -184,7 +197,11 @@ export function upsertConnectors(incoming: ConnectorConfig[]): Promise<Connector
         env: mergeSecrets(connector.env, existing?.env),
         headers: mergeSecrets(connector.headers, existing?.headers),
         cwd: connector.cwd ?? existing?.cwd,
-        allowTools: connector.allowTools ?? existing?.allowTools,
+        // Presence, not truthiness: an incoming connector that carries the key
+        // with an undefined value is deliberately clearing the allow list, and
+        // `??` would have handed the old restriction straight back. Callers
+        // that mean "unchanged" omit the key entirely.
+        allowTools: "allowTools" in connector ? connector.allowTools : existing?.allowTools,
         origin: connector.origin ?? existing?.origin,
         auth: connector.auth ?? existing?.auth,
       };

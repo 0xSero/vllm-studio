@@ -2,9 +2,10 @@
 
 import { useState, type ReactNode } from "react";
 import { TabbedPage } from "@/ui";
-import { Brain, GraduationCap, KeyRound, Plug, ShieldCheck } from "@/ui/icon-registry";
+import { Brain, GraduationCap, KeyRound, Plug, Puzzle, ShieldCheck } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { ConnectorsSection } from "./connectors-section";
+import { PluginsSection } from "./plugins-section";
 import { ConnectorAccessSection } from "./connector-access-section";
 import { GoogleAccountsSection } from "./google-accounts-section";
 import { ModelProvidersSection } from "./model-providers-section";
@@ -33,7 +34,8 @@ import {
  * written against the old tab still resolve.
  */
 const INTEGRATION_TABS = [
-  { id: "connectors", label: "Connectors", icon: <Plug className="h-3.5 w-3.5" /> },
+  { id: "connectors", label: "MCP servers", icon: <Plug className="h-3.5 w-3.5" /> },
+  { id: "plugins", label: "Plugins", icon: <Puzzle className="h-3.5 w-3.5" /> },
   { id: "accounts", label: "Accounts", icon: <KeyRound className="h-3.5 w-3.5" /> },
   { id: "access", label: "Access", icon: <ShieldCheck className="h-3.5 w-3.5" /> },
   { id: "models", label: "Model accounts", icon: <Brain className="h-3.5 w-3.5" /> },
@@ -75,6 +77,7 @@ export function IntegrationsPage() {
           which button refreshes what — and no blunt remount key throwing away
           an open drawer to refetch a list. */}
       {section === "connectors" ? <ConnectorsSection /> : null}
+      {section === "plugins" ? <PluginsSection /> : null}
       {section === "accounts" ? <GoogleAccountsSection /> : null}
       {section === "access" ? <ConnectorAccessSection /> : null}
       {section === "models" ? <ModelProvidersSection /> : null}

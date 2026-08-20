@@ -140,4 +140,5 @@ export {
   XCircle,
   Zap,
   Plug,
+  Puzzle,
 } from "lucide-react";

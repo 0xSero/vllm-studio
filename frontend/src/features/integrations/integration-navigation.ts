@@ -1,5 +1,6 @@
 export const INTEGRATION_SECTION_IDS = [
   "connectors",
+  "plugins",
   "accounts",
   "access",
   "models",

@@ -1,10 +1,16 @@
+import { INTEGRATION_SECTION_IDS } from "./integration-navigation";
+
 /**
  * The waiting state, shaped like the page it stands in for.
  *
- * The blocks land where the title, the description, the five tabs and the
- * first table's header row land, so nothing moves when the real page arrives.
- * A centred "Loading…" would put a layout on screen that appears nowhere else
+ * The blocks land where the title, the description, the tabs and the first
+ * table's header row land, so nothing moves when the real page arrives. A
+ * centred "Loading…" would put a layout on screen that appears nowhere else
  * and then throw the whole frame away.
+ *
+ * The tab count is read from the section list rather than written out, because
+ * it was written out once and a sixth tab immediately made the skeleton a
+ * different width from the page it was standing in for.
  */
 export function IntegrationsPageSkeleton() {
   return (
@@ -14,7 +20,7 @@ export function IntegrationsPageSkeleton() {
         <div className="mt-2 h-3.5 w-80 max-w-full animate-pulse rounded bg-(--ui-hover)/60" />
       </div>
       <div className="mt-7 flex gap-1 border-b border-(--ui-separator) pb-2">
-        {[0, 1, 2, 3, 4].map((tab) => (
+        {INTEGRATION_SECTION_IDS.map((tab) => (
           <div key={tab} className="h-5 w-24 shrink-0 animate-pulse rounded bg-(--ui-hover)/60" />
         ))}
       </div>
