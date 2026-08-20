@@ -267,6 +267,7 @@ const { discoverPluginBundles } = await import("../src/plugin-discovery");
 const {
   garbageCollectPluginExecutionSnapshots,
   preparePluginExecutionSnapshot,
+  quarantinePluginExecutionSnapshot,
   withPluginExecutionSnapshotLifecycle,
 } = await import("../src/plugin-execution-snapshot");
 const { pluginConnectorConfigurationDigest } = await import("../src/plugin-connector-identity");
@@ -647,6 +648,30 @@ describe("plugin snapshot publication race", () => {
     expect(readFileSync(path.join(victim, "stale-retirement", "marker"), "utf8")).toBe(
       "outside",
     );
+  });
+
+  test("fails closed when standalone quarantine swaps its parent before rename", async () => {
+    const { root } = fixture();
+    const storageRoot = executionRoot();
+    mkdirSync(storageRoot, { recursive: true, mode: 0o700 });
+    const stale = path.join(storageRoot, "stale-quarantine");
+    mkdirSync(stale, { mode: 0o700 });
+    writeFileSync(path.join(stale, "marker"), "stale");
+    const victim = path.join(path.dirname(root), "quarantine-race-victim");
+    mkdirSync(path.join(victim, "stale-quarantine"), { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(victim, "marker"), "preserved");
+    writeFileSync(path.join(victim, "stale-quarantine", "marker"), "outside");
+    retirementSwap = { root: storageRoot, victim, attempted: false, swapped: false };
+
+    await expect(quarantinePluginExecutionSnapshot(stale)).rejects.toThrow();
+    expect(retirementSwap?.attempted).toBe(true);
+    expect(readFileSync(path.join(victim, "marker"), "utf8")).toBe("preserved");
+    expect(readFileSync(path.join(victim, "stale-quarantine", "marker"), "utf8")).toBe(
+      "outside",
+    );
+
+    restoreAncestorSwap(retirementSwap, retirementSwap.root);
+    await expect(quarantinePluginExecutionSnapshot(stale)).resolves.toBeUndefined();
   });
 
   test("keeps unrelated cwd-relative work rooted during publication", async () => {

@@ -15,7 +15,7 @@ import {
   statSync,
   unlinkSync,
 } from "node:fs";
-import { lstat, open, opendir, rename } from "node:fs/promises";
+import { lstat, open, opendir } from "node:fs/promises";
 import path from "node:path";
 import { Effect, Semaphore } from "effect";
 import type { ConnectorConfig } from "./connector-contract";
@@ -616,37 +616,65 @@ function removeTreeSync(root: string): void {
 export async function quarantinePluginExecutionSnapshot(
   entryPath: string,
 ): Promise<string | undefined> {
-  const parent = path.dirname(entryPath);
-  const quarantined = path.join(parent, `.garbage-${process.pid}-${randomUUID()}`);
+  let storage: SnapshotStorageGuard | undefined;
   try {
-    await rename(entryPath, quarantined);
+    storage = await acquireSnapshotStorage(false);
+    await storage.assertRoot();
+    const root = path.resolve(storage.root);
+    const resolvedEntry = path.resolve(entryPath);
+    if (!contained(root, resolvedEntry) || path.dirname(resolvedEntry) !== root) {
+      throw new PluginExecutionSnapshotError("Plugin snapshot path changed");
+    }
+    const entryName = path.basename(resolvedEntry);
+    const quarantinedName = await Effect.runPromise(
+      snapshotPublicationCwd.withPermit(
+        Effect.sync(() =>
+          withVerifiedStorageWorkingDirectory(storage!.root, storage!.rootIdentity, () =>
+            quarantineRelativeSync(entryName),
+          ),
+        ),
+      ),
+    );
+    await storage.assertRoot();
+    return quarantinedName ? path.join(storage.root, quarantinedName) : undefined;
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  } finally {
+    await storage?.close().catch(() => undefined);
+  }
+}
+
+function quarantineRelativeSync(entryName: string): string | undefined {
+  const quarantinedName = `.garbage-${process.pid}-${randomUUID()}`;
+  let identity: PathIdentity;
+  try {
+    identity = pathIdentity(lstatSync(entryName));
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
       return undefined;
     }
     throw error;
   }
-  return quarantined;
-}
-
-function quarantineAndRemoveRelativeSync(entryName: string): void {
-  const quarantinedName = `.garbage-${process.pid}-${randomUUID()}`;
-  let identity: PathIdentity;
-  try {
-    identity = pathIdentity(lstatSync(entryName));
-  } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return;
-    throw error;
-  }
   try {
     renameSync(entryName, quarantinedName);
   } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return;
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
     throw error;
   }
   if (!samePathIdentity(identity, pathIdentity(lstatSync(quarantinedName)))) {
     throw new PluginExecutionSnapshotError("Plugin snapshot entry changed");
   }
+  return quarantinedName;
+}
+
+function quarantineAndRemoveRelativeSync(entryName: string): void {
+  const quarantinedName = quarantineRelativeSync(entryName);
+  if (!quarantinedName) return;
   removeTreeSync(quarantinedName);
 }
 
