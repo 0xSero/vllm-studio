@@ -256,12 +256,11 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
   };
 
   const replayJournal = (): void => {
-    const entries = readJournal();
-    if (entries.length === 0) return;
     const database = openMutationDatabase();
     try {
       database.run("BEGIN IMMEDIATE");
       database.run("UPDATE instance_store_mutex SET generation = generation + 1 WHERE id = 1");
+      const entries = readJournal();
       const terminal = new Set(
         entries.filter((entry) => entry.type !== "mutation").map((entry) => entry.id),
       );
@@ -270,7 +269,7 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
         if (entry.operation === "write") writeRecordRaw(entry.record);
         else dropRecordRaw(entry.name);
       }
-      writeJournal([]);
+      if (entries.length > 0) writeJournal([]);
       database.run("COMMIT");
     } catch (error) {
       try {
@@ -372,8 +371,8 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
         abortMutation(mutation, error);
         throw error;
       }
-      database.run("COMMIT");
       completeMutation(mutation);
+      database.run("COMMIT");
       return result;
     } catch (error) {
       try {
@@ -430,8 +429,8 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
           activeMutation = mutation;
           const result = yield* operation();
           mutation.needsAbort = false;
-          yield* Effect.sync(() => database.run("COMMIT"));
           completeMutation(mutation);
+          yield* Effect.sync(() => database.run("COMMIT"));
           return result;
         }),
       ({ database, mutation }, exit) =>
