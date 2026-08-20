@@ -39,10 +39,14 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 test("failed process proof returns a retryable cleanup handle", async () => {
   const signals: string[] = [];
+  let identityReads = 0;
   const runtime: ProcessLauncherRuntime = {
     platform: "linux",
-    readIdentity: () => null,
-    readGroup: () => [],
+    readIdentity: (pid) => {
+      identityReads += 1;
+      return identityReads <= 20 ? null : durableIdentity(pid, "retry", "nonce");
+    },
+    readGroup: (group) => [durableIdentity(group, "retry", "nonce")],
     signalGroup: (group, signal) => {
       signals.push(signal);
       try {
@@ -199,4 +203,55 @@ test("a reused pid cannot bypass durable same-process proof", async () => {
       process.kill(started.pid, "SIGKILL");
     } catch {}
   }
+});
+
+test("live launcher refuses a foreign member in the owned process group", async () => {
+  const signals: string[] = [];
+  let phase: "owned" | "foreign-member" = "owned";
+  const runtime: ProcessLauncherRuntime = {
+    platform: "darwin",
+    readIdentity: (pid) => durableIdentity(pid, "live-start", "nonce"),
+    readGroup: (group) => phase === "owned"
+      ? [durableIdentity(group, "live-start", "nonce")]
+      : [
+          durableIdentity(group, "live-start", "nonce"),
+          {
+            ...durableIdentity(group + 1, "foreign-start", "foreign"),
+            processGroupId: group,
+            sessionId: group,
+          },
+        ],
+    signalGroup: (_group, signal) => signals.push(signal),
+  };
+  const launcher = makeProcessLauncher(() => join(root, "model.log"), runtime);
+  const started = await Effect.runPromise(launcher.start(plan, record));
+  phase = "foreign-member";
+
+  expect(await Effect.runPromise(launcher.owns(started, { ...record, ref: started }))).toBe(false);
+  await Effect.runPromise(launcher.stop(started, { ...record, ref: started }, 0));
+  expect(signals).toEqual([]);
+  if (started.kind === "process") {
+    try {
+      process.kill(started.pid, "SIGKILL");
+    } catch {}
+  }
+});
+
+test("an empty process group remains gone after launcher recreation", async () => {
+  const reference = {
+    kind: "process",
+    pid: 500,
+    processGroupId: 500,
+    sessionId: 500,
+    startToken: "gone-start",
+  } as const;
+  const runtime: ProcessLauncherRuntime = {
+    platform: "darwin",
+    readIdentity: () => null,
+    readGroup: () => [],
+    signalGroup: () => undefined,
+  };
+  const launcher = makeProcessLauncher(() => join(root, "model.log"), runtime);
+
+  expect(await Effect.runPromise(launcher.alive(reference, { ...record, ref: reference }))).toBe(false);
 });

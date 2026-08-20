@@ -275,50 +275,36 @@ const sameProcessReference = (reference: HandleReference, record: InstanceRecord
 const childRunning = (child: ChildProcess): boolean =>
   child.exitCode === null && child.signalCode === null;
 
-const ownership = (
-  reference: HandleReference,
+type ProcessOwnership = "owned" | "gone" | "unknown";
+
+const groupOwnership = (
+  reference: Extract<HandleReference, { readonly kind: "process" }>,
   record: InstanceRecord,
   runtime: ProcessLauncherRuntime,
-  localChildren: ReadonlyMap<number, ChildProcess>,
-): "owned" | "gone" | "unknown" => {
-  if (reference.kind !== "process" || !sameProcessReference(reference, record)) return "unknown";
-  const child = localChildren.get(reference.pid);
-  if (child && childRunning(child)) {
-    if (reference.startToken === null) return "owned";
-    const identity = runtime.readIdentity(reference.pid);
-    if (
-      identity?.pid === reference.pid &&
-      identity.processGroupId === reference.processGroupId &&
-      identity.sessionId === reference.sessionId &&
-      identity.startToken === reference.startToken &&
-      (runtime.platform === "win32" || identity.launchMarker === record.nonce)
-    ) return "owned";
-    return "unknown";
-  }
+  members: readonly ProcessIdentity[] | null,
+  rootIdentity: ProcessIdentity,
+): ProcessOwnership => {
   if (
     reference.processGroupId === null ||
     reference.sessionId === null ||
-    reference.startToken === null
+    members === null
   ) return "unknown";
-  const members = runtime.readGroup(reference.processGroupId);
-  if (members === null) return "unknown";
   if (members.length === 0) return "gone";
   const roots = members.filter((member) => member.pid === reference.pid);
   const root = roots[0];
   if (roots.length !== 1 || !root) return "unknown";
-  const rootIdentity = runtime.readIdentity(reference.pid);
   if (
-    !rootIdentity ||
     rootIdentity.pid !== reference.pid ||
     rootIdentity.processGroupId !== reference.processGroupId ||
     rootIdentity.sessionId !== reference.sessionId ||
-    rootIdentity.startToken !== reference.startToken ||
+    (reference.startToken !== null && rootIdentity.startToken !== reference.startToken) ||
     (runtime.platform !== "win32" && rootIdentity.launchMarker !== record.nonce)
   ) return "unknown";
   if (
     root.processGroupId !== reference.processGroupId ||
     root.sessionId !== reference.sessionId ||
-    root.startToken !== reference.startToken
+    root.startToken !== rootIdentity.startToken ||
+    (reference.startToken !== null && root.startToken !== reference.startToken)
   ) return "unknown";
   if (new Set(members.map((member) => member.pid)).size !== members.length) return "unknown";
   if (
@@ -332,6 +318,43 @@ const ownership = (
     return "unknown";
   }
   return "owned";
+};
+
+const ownership = (
+  reference: HandleReference,
+  record: InstanceRecord,
+  runtime: ProcessLauncherRuntime,
+  localChildren: ReadonlyMap<number, ChildProcess>,
+): ProcessOwnership => {
+  if (reference.kind !== "process" || !sameProcessReference(reference, record)) return "unknown";
+  const child = localChildren.get(reference.pid);
+  if (child && childRunning(child)) {
+    const identity = runtime.readIdentity(reference.pid);
+    if (
+      !identity ||
+      identity.pid !== reference.pid ||
+      identity.processGroupId !== reference.processGroupId ||
+      identity.sessionId !== reference.sessionId ||
+      (reference.startToken !== null && identity.startToken !== reference.startToken) ||
+      (runtime.platform !== "win32" && identity.launchMarker !== record.nonce)
+    ) return "unknown";
+    return groupOwnership(
+      reference,
+      record,
+      runtime,
+      runtime.readGroup(reference.processGroupId ?? identity.processGroupId),
+      identity,
+    );
+  }
+  if (
+    reference.processGroupId === null ||
+    reference.sessionId === null ||
+    reference.startToken === null
+  ) return "unknown";
+  const members = runtime.readGroup(reference.processGroupId);
+  if (members?.length === 0) return "gone";
+  const rootIdentity = runtime.readIdentity(reference.pid);
+  return rootIdentity ? groupOwnership(reference, record, runtime, members, rootIdentity) : "unknown";
 };
 
 export const makeProcessLauncher = (
