@@ -1,14 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
-import { createServer, request } from "node:http";
+import { createServer, request, type ClientRequest, type IncomingMessage, type RequestOptions } from "node:http";
 import { connect, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Deferred, Effect } from "effect";
-import { chromium, type BrowserContext } from "playwright-core";
+import { chromium, type BrowserContext, type Page } from "playwright-core";
+import { browserHost } from "../src/browser-host/browser-host";
 import { createBrowserNetworkPolicy, type BrowserDestination, type BrowserNetworkPolicy } from "../src/browser-host/network-policy";
 import { createBrowserProxy, type BrowserProxy } from "../src/browser-host/pinning-proxy";
-import { findBrowserBinary, PlaywrightManager } from "../src/browser-host/playwright";
+import { findBrowserBinary, PlaywrightManager, playwrightManager } from "../src/browser-host/playwright";
+import { fetchReadable } from "../src/browser-host/reader";
 
 const publicAddress = { address: "93.184.216.34", family: 4 } as const;
 const loopbackAddress = { address: "127.0.0.1", family: 4 } as const;
@@ -33,6 +35,25 @@ function rawThrough(proxy: BrowserProxy, message: string): Promise<string> {
     socket.once("error", reject);
   });
 }
+function rawHeaders(proxy: BrowserProxy, message: string): Promise<string> {
+  const endpoint = new URL(proxy.url);
+  return new Promise((resolve, reject) => {
+    let response = "";
+    const socket = connect(Number(endpoint.port), endpoint.hostname, () => socket.write(message));
+    socket.setEncoding("utf8");
+    socket.on("data", (chunk) => {
+      response += chunk;
+      if (response.includes("\r\n\r\n")) {
+        socket.destroy();
+        resolve(response);
+      }
+    });
+    socket.once("close", () => {
+      if (!response.includes("\r\n\r\n")) reject(new Error("proxy closed"));
+    });
+    socket.once("error", reject);
+  });
+}
 function fakeProxy(mode: string, events: string[]): BrowserProxy {
   return { url: "http://127.0.0.1:1", close: async () => void events.push(`close:${mode}`) };
 }
@@ -40,6 +61,40 @@ function fakeContext(mode: string, events: string[], route = async (): Promise<v
   return {
     close: async () => void events.push(`close:${mode}`), once: () => undefined,
     route, routeWebSocket: async () => undefined,
+  } as unknown as BrowserContext;
+}
+function browserPage(): Page {
+  let currentUrl = "about:blank";
+  let closed = false;
+  const page = {
+    close: async () => {
+      closed = true;
+    },
+    evaluate: async () => 1,
+    goto: async (url: string) => {
+      if (closed) throw new Error("page closed");
+      currentUrl = url;
+    },
+    isClosed: () => closed,
+    mainFrame: () => page,
+    on: () => page,
+    title: async () => currentUrl,
+    url: () => currentUrl,
+  } as unknown as Page;
+  return page;
+}
+function browserContext(page: Page): BrowserContext {
+  let closed = false;
+  return {
+    close: async () => {
+      closed = true;
+      await page.close();
+    },
+    newPage: async () => {
+      if (closed) throw new Error("context closed");
+      return page;
+    },
+    pages: () => (closed ? [] : [page]),
   } as unknown as BrowserContext;
 }
 function listen(server: ReturnType<typeof createServer>, port: number, host: string): Promise<void> {
@@ -55,6 +110,33 @@ function close(server: ReturnType<typeof createServer>): Promise<void> {
   });
 }
 describe("browser network policy", () => {
+  test("rejects non-http(s) reader redirects before making another request", async () => {
+    const requests: string[] = [];
+    const previousResolver = globalThis.__LOCAL_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST;
+    const previousRequest = globalThis.__LOCAL_STUDIO_BROWSER_READER_REQUEST_FOR_TEST;
+    globalThis.__LOCAL_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST = async () => [publicAddress];
+    globalThis.__LOCAL_STUDIO_BROWSER_READER_REQUEST_FOR_TEST = async (url) => {
+      requests.push(url);
+      return {
+        status: 302,
+        ok: false,
+        url,
+        contentType: "text/plain",
+        body: "",
+        location: "ws://example.test/socket",
+      };
+    };
+    try {
+      await expect(fetchReadable("https://example.test/start")).rejects.toThrow(
+        "url rejected by browser network policy",
+      );
+      expect(requests).toEqual(["https://example.test/start"]);
+    } finally {
+      globalThis.__LOCAL_STUDIO_BROWSER_READER_HOST_RESOLVER_FOR_TEST = previousResolver;
+      globalThis.__LOCAL_STUDIO_BROWSER_READER_REQUEST_FOR_TEST = previousRequest;
+    }
+  });
+
   test("classifies navigation and pins only uniformly allowed DNS answers", async () => {
     const policy = createBrowserNetworkPolicy(async () => [publicAddress]);
     expect(policy.navigation("https://example.test/path")?.mode).toBe("public");
@@ -125,6 +207,82 @@ describe("browser network policy", () => {
     await loopbackProxy.close();
     await new Promise<void>((resolve) => origin.close(() => resolve()));
   });
+
+  test("rejects absolute HTTPS proxy requests without opening plaintext transport", async () => {
+    let hits = 0;
+    const origin = createServer((_request, response) => {
+      hits += 1;
+      response.end();
+    });
+    await new Promise<void>((resolve) => origin.listen(0, "127.0.0.1", resolve));
+    const port = (origin.address() as AddressInfo).port;
+    const policy: BrowserNetworkPolicy = {
+      navigation: () => null,
+      resolve: async (raw) => ({
+        address: loopbackAddress,
+        port,
+        url: raw,
+      }),
+    };
+    const proxy = await createBrowserProxy("public", policy);
+    try {
+      const response = await rawHeaders(
+        proxy,
+        `GET https://example.test:${port}/resource HTTP/1.1\r\nHost: example.test:${port}\r\nConnection: close\r\n\r\n`,
+      );
+      expect(response.startsWith("HTTP/1.1 403")).toBe(true);
+      expect(hits).toBe(0);
+    } finally {
+      await proxy.close();
+      await new Promise<void>((resolve) => origin.close(() => resolve()));
+    }
+  });
+
+  test("destroys HTTP client requests created before proxy shutdown", async () => {
+    let hits = 0;
+    const origin = createServer((_request, response) => {
+      hits += 1;
+      response.end();
+    });
+    await new Promise<void>((resolve) => origin.listen(0, "127.0.0.1", resolve));
+    const port = (origin.address() as AddressInfo).port;
+    const policy: BrowserNetworkPolicy = {
+      navigation: () => null,
+      resolve: async (raw) => ({
+        address: loopbackAddress,
+        port,
+        url: raw,
+      }),
+    };
+    let proxy: BrowserProxy | undefined;
+    const createProxyWithRequestFactory = createBrowserProxy as unknown as (
+      mode: "public" | "loopback",
+      networkPolicy: BrowserNetworkPolicy,
+      options: {
+        request: (options: RequestOptions, callback: (response: IncomingMessage) => void) => ClientRequest;
+      },
+    ) => Promise<BrowserProxy>;
+    const requestFactory = (options: RequestOptions, callback: (response: IncomingMessage) => void): ClientRequest => {
+      const outgoing = request(options, callback);
+      queueMicrotask(() => void proxy?.close());
+      return outgoing;
+    };
+    proxy = await createProxyWithRequestFactory("public", policy, { request: requestFactory });
+    try {
+      await expect(
+        rawHeaders(
+          proxy,
+          `GET http://example.test:${port}/resource HTTP/1.1\r\nHost: example.test:${port}\r\nConnection: close\r\n\r\n`,
+        ),
+      ).rejects.toThrow("proxy closed");
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(hits).toBe(0);
+    } finally {
+      await proxy.close();
+      await new Promise<void>((resolve) => origin.close(() => resolve()));
+    }
+  });
+
   test("does not open HTTP, CONNECT, or upgrade transports after close starts", async () => {
     let hits = 0;
     const origin = createServer();
@@ -202,6 +360,32 @@ describe("browser network policy", () => {
     await expect(routeManager.ensure()).rejects.toThrow("route failed");
     await expect(routeManager.ensure()).rejects.toThrow("route failed");
     expect(routeEvents.join()).toBe("launch,route,close:context,close:public,close:loopback");
+  });
+  test("serializes browser mode transitions across concurrent navigations", async () => {
+    const publicPage = browserPage();
+    const loopbackPage = browserPage();
+    const publicContext = browserContext(publicPage);
+    const loopbackContext = browserContext(loopbackPage);
+    let releasePublic!: () => void;
+    const publicReady = new Promise<BrowserContext>((resolve) => {
+      releasePublic = () => resolve(publicContext);
+    });
+    const previousEnsure = playwrightManager.ensure;
+    playwrightManager.ensure = (mode = "public") =>
+      mode === "public"
+        ? publicReady
+        : publicContext.close().then(() => loopbackContext);
+    try {
+      const publicNavigation = browserHost.navigate("https://example.test/public");
+      await Promise.resolve();
+      const loopbackNavigation = browserHost.navigate("http://localhost:3000/loopback");
+      await Promise.resolve();
+      releasePublic();
+      await expect(publicNavigation).resolves.toMatchObject({ url: "https://example.test/public" });
+      await expect(loopbackNavigation).resolves.toMatchObject({ url: "http://localhost:3000/loopback" });
+    } finally {
+      playwrightManager.ensure = previousEnsure;
+    }
   });
   test.skipIf(findBrowserBinary() === null)(
     "keeps real Chromium redirects and subresources from reaching a rebound loopback target",

@@ -1,8 +1,18 @@
-import { createServer, request as httpRequest, type IncomingHttpHeaders, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer,
+  request as httpRequest,
+  type ClientRequest,
+  type IncomingHttpHeaders,
+  type IncomingMessage,
+  type RequestOptions,
+  type ServerResponse,
+} from "node:http";
 import { connect, type Socket } from "node:net";
 import type { Duplex } from "node:stream";
 import { browserNetworkPolicy, type BrowserDestination, type BrowserNetworkMode, type BrowserNetworkPolicy } from "./network-policy";
 export type BrowserProxy = { close: () => Promise<void>; url: string };
+type BrowserHttpRequest = (options: RequestOptions, callback: (response: IncomingMessage) => void) => ClientRequest;
+export type BrowserProxyOptions = { request?: BrowserHttpRequest };
 function tracked(socket: Socket, sockets: Set<Socket>): Socket {
   sockets.add(socket);
   socket.on("error", () => undefined);
@@ -27,9 +37,27 @@ function headers(input: IncomingHttpHeaders, host: string): IncomingHttpHeaders 
   delete output["proxy-connection"];
   return output;
 }
-function forwardHttp(request: IncomingMessage, response: ServerResponse, destination: BrowserDestination, sockets: Set<Socket>): void {
+function trackedRequest(request: ClientRequest, requests: Set<ClientRequest>): ClientRequest {
+  requests.add(request);
+  const release = () => requests.delete(request);
+  request.once("close", release);
+  request.once("error", release);
+  return request;
+}
+function forwardHttp(
+  request: IncomingMessage,
+  response: ServerResponse,
+  destination: BrowserDestination,
+  sockets: Set<Socket>,
+  requests: Set<ClientRequest>,
+  requestFactory: BrowserHttpRequest,
+): void {
   const url = new URL(destination.url);
-  const outgoing = httpRequest(
+  if (url.protocol === "https:") {
+    reject(response);
+    return;
+  }
+  const outgoing = trackedRequest(requestFactory(
     {
       family: destination.address.family, headers: headers(request.headers, url.host),
       hostname: destination.address.address, method: request.method,
@@ -39,7 +67,7 @@ function forwardHttp(request: IncomingMessage, response: ServerResponse, destina
       response.writeHead(origin.statusCode ?? 502, origin.headers);
       origin.pipe(response);
     },
-  );
+  ), requests);
   outgoing.once("socket", (socket) => tracked(socket, sockets));
   outgoing.once("error", () => response.destroy());
   request.pipe(outgoing);
@@ -63,8 +91,14 @@ function tunnel(client: Duplex, head: Buffer, destination: BrowserDestination, s
     client.pipe(upstream).pipe(client);
   });
 }
-export async function createBrowserProxy(mode: BrowserNetworkMode, policy: BrowserNetworkPolicy = browserNetworkPolicy): Promise<BrowserProxy> {
+export async function createBrowserProxy(
+  mode: BrowserNetworkMode,
+  policy: BrowserNetworkPolicy = browserNetworkPolicy,
+  options: BrowserProxyOptions = {},
+): Promise<BrowserProxy> {
   const sockets = new Set<Socket>();
+  const requests = new Set<ClientRequest>();
+  const requestFactory = options.request ?? (httpRequest as BrowserHttpRequest);
   let closed = false;
   let closing: Promise<void> | null = null;
   const resolve = (raw: string, client: Duplex | ServerResponse, start: (destination: BrowserDestination) => void): void => {
@@ -77,7 +111,9 @@ export async function createBrowserProxy(mode: BrowserNetworkMode, policy: Brows
       .catch(() => reject(client));
   };
   const server = createServer((request, response) => {
-    resolve(request.url ?? "", response, (destination) => forwardHttp(request, response, destination, sockets));
+    resolve(request.url ?? "", response, (destination) =>
+      forwardHttp(request, response, destination, sockets, requests, requestFactory),
+    );
   });
   server.on("connection", (socket) => tracked(socket, sockets));
   server.on("connect", (request, client, head) => {
@@ -106,6 +142,7 @@ export async function createBrowserProxy(mode: BrowserNetworkMode, policy: Brows
     close: () => {
       closed = true;
       return (closing ??= new Promise<void>((resolve, rejectClose) => {
+        for (const request of requests) request.destroy();
         for (const socket of sockets) socket.destroy();
         server.close((error) => (error ? rejectClose(error) : resolve()));
       }));

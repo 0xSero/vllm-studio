@@ -138,6 +138,9 @@ async function fetchBoundedUrl(
   mode: BrowserNetworkMode,
   redirects = 0,
 ): Promise<BoundedResponse> {
+  if (!/^https?:$/u.test(new URL(url).protocol)) {
+    throw new Error("url rejected by browser network policy");
+  }
   const addresses = await publicResolvedAddresses(url, mode);
   const response = await requestBoundedUrl(url, addresses[0]);
   if (isRedirectStatus(response.status)) {

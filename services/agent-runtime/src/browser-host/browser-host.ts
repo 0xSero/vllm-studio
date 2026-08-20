@@ -1,4 +1,5 @@
 import { getGlobalSingleton } from "../instances";
+import { Effect, Semaphore } from "effect";
 import { HostedPage, type PageState, type ScreencastFrame } from "./hosted-page";
 import { browserNetworkPolicy, type BrowserNetworkMode } from "./network-policy";
 import { playwrightManager } from "./playwright";
@@ -19,12 +20,20 @@ class BrowserHost {
   private pages = new Map<string, HostedPage>();
   private activeId: string | null = null;
   private activeMode: BrowserNetworkMode | null = null;
+  private readonly lock = Semaphore.makeUnsafe(1);
 
   isAvailable(): boolean {
     return playwrightManager.isAvailable();
   }
 
-  async page(
+  page(
+    pageId?: string,
+    mode: BrowserNetworkMode = this.activeMode ?? "public",
+  ): Promise<HostedPage> {
+    return this.serial(() => this.pageUnlocked(pageId, mode));
+  }
+
+  private async pageUnlocked(
     pageId?: string,
     mode: BrowserNetworkMode = this.activeMode ?? "public",
   ): Promise<HostedPage> {
@@ -57,58 +66,62 @@ class BrowserHost {
   async navigate(url: string, pageId?: string): Promise<{ url: string; title: string }> {
     const navigation = browserNetworkPolicy.navigation(normalizeUrl(url));
     if (!navigation) throw new Error("Browser network policy blocked navigation URL");
-    const page = await this.page(pageId, navigation.mode);
-    await page.navigate(navigation.url, NAVIGATION_TIMEOUT_MS);
-    const state = await page.readState();
-    return { url: state.url, title: state.title };
+    return this.serial(async () => {
+      const page = await this.pageUnlocked(pageId, navigation.mode);
+      await page.navigate(navigation.url, NAVIGATION_TIMEOUT_MS);
+      const state = await page.readState();
+      return { url: state.url, title: state.title };
+    });
   }
 
   async getUrl(pageId?: string): Promise<{ url: string; title: string }> {
-    const state = await (await this.page(pageId)).readState();
-    return { url: state.url, title: state.title };
+    return this.withPage(pageId, async (page) => {
+      const state = await page.readState();
+      return { url: state.url, title: state.title };
+    });
   }
 
   async getState(pageId?: string): Promise<PageState> {
-    return (await this.page(pageId)).readState();
+    return this.withPage(pageId, (page) => page.readState());
   }
 
   async peekState(): Promise<PageState | null> {
-    const page = this.activeId ? this.pages.get(this.activeId) : undefined;
-    if (!page || page.closed) return null;
-    return page.readState();
+    return this.serial(async () => {
+      const page = this.activeId ? this.pages.get(this.activeId) : undefined;
+      if (!page || page.closed) return null;
+      return page.readState();
+    });
   }
 
   async goBack(pageId?: string): Promise<void> {
-    await (await this.page(pageId)).goBack(NAVIGATION_TIMEOUT_MS);
+    await this.withPage(pageId, (page) => page.goBack(NAVIGATION_TIMEOUT_MS));
   }
 
   async goForward(pageId?: string): Promise<void> {
-    await (await this.page(pageId)).goForward(NAVIGATION_TIMEOUT_MS);
+    await this.withPage(pageId, (page) => page.goForward(NAVIGATION_TIMEOUT_MS));
   }
 
   async reload(pageId?: string): Promise<void> {
-    await (await this.page(pageId)).reload(NAVIGATION_TIMEOUT_MS);
+    await this.withPage(pageId, (page) => page.reload(NAVIGATION_TIMEOUT_MS));
   }
 
   async getText(pageId?: string): Promise<string> {
-    return capString(await (await this.page(pageId)).text(), TEXT_CAP_BYTES);
+    return this.withPage(pageId, async (page) => capString(await page.text(), TEXT_CAP_BYTES));
   }
 
   async getHtml(pageId?: string): Promise<string> {
-    return capString(await (await this.page(pageId)).html(), HTML_CAP_BYTES);
+    return this.withPage(pageId, async (page) => capString(await page.html(), HTML_CAP_BYTES));
   }
 
   async click(args: { selector: string }, pageId?: string): Promise<{ found: boolean }> {
-    const page = await this.page(pageId);
-    return { found: await page.click(args.selector) };
+    return this.withPage(pageId, async (page) => ({ found: await page.click(args.selector) }));
   }
 
   async fill(
     args: { selector: string; value: string },
     pageId?: string,
   ): Promise<{ found: boolean }> {
-    const page = await this.page(pageId);
-    return { found: await page.fill(args.selector, args.value) };
+    return this.withPage(pageId, async (page) => ({ found: await page.fill(args.selector, args.value) }));
   }
 
   async scroll(
@@ -117,31 +130,47 @@ class BrowserHost {
   ): Promise<{ deltaX: number; deltaY: number; scrollY: number }> {
     const deltaY = clampDelta(args.deltaY);
     const deltaX = clampDelta(args.deltaX ?? 0);
-    const scrollY = await (await this.page(pageId)).scroll(deltaX, deltaY);
-    return { deltaX, deltaY, scrollY };
+    return this.withPage(pageId, async (page) => ({
+      deltaX,
+      deltaY,
+      scrollY: await page.scroll(deltaX, deltaY),
+    }));
   }
 
   async screenshot(pageId?: string): Promise<string> {
-    const data = await (await this.page(pageId)).screenshot("png");
-    return `data:image/png;base64,${data}`;
+    return this.withPage(pageId, async (page) => {
+      const data = await page.screenshot("png");
+      return `data:image/png;base64,${data}`;
+    });
   }
 
   async setViewport(width: number, height: number, pageId?: string): Promise<void> {
-    await (await this.page(pageId)).setViewport(width, height);
+    await this.withPage(pageId, (page) => page.setViewport(width, height));
   }
 
   async pollFrame(pageId?: string): Promise<{ frame: ScreencastFrame | null; state: PageState }> {
-    const page = await this.page(pageId);
-    const [frame, state] = await Promise.all([page.captureFrame(), page.readState()]);
-    return { frame, state };
+    return this.withPage(pageId, async (page) => {
+      const [frame, state] = await Promise.all([page.captureFrame(), page.readState()]);
+      return { frame, state };
+    });
   }
 
   async dispatchMouse(args: MouseInput, pageId?: string): Promise<void> {
-    await (await this.page(pageId)).dispatchMouse(args);
+    await this.withPage(pageId, (page) => page.dispatchMouse(args));
   }
 
   async dispatchKey(args: KeyInput, pageId?: string): Promise<void> {
-    await (await this.page(pageId)).dispatchKey(args);
+    await this.withPage(pageId, (page) => page.dispatchKey(args));
+  }
+
+  private withPage<A>(pageId: string | undefined, task: (page: HostedPage) => Promise<A>): Promise<A> {
+    return this.serial(async () => task(await this.pageUnlocked(pageId)));
+  }
+
+  private serial<A>(task: () => Promise<A>): Promise<A> {
+    return Effect.runPromise(
+      this.lock.withPermit(Effect.tryPromise({ try: task, catch: (error) => error })),
+    );
   }
 
   stop(): void {
