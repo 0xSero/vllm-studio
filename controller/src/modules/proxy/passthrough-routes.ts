@@ -1,8 +1,9 @@
 import { Effect } from "effect";
+import type { Context } from "hono";
 import { HttpStatus } from "../../core/errors";
 import { buildSseHeaders } from "../../http/sse";
-import { defineRoutes, documentRoute, mergeRoutes } from "../../http/route-registrar";
-import { effectHandler } from "../../http/effect-handler";
+import { defineRoutes, effectRoute, mergeRoutes } from "../../http/route-registrar";
+import type { ControllerEffect, ControllerEnvironment } from "../../http/effect-handler";
 import { findRecipeByModel, resolveUpstreamForModel } from "./chat-request";
 
 /**
@@ -46,8 +47,9 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
     );
   };
 
-  const forward = (path: PassthroughPath): ReturnType<typeof effectHandler> =>
-    effectHandler((ctx) =>
+  const forward =
+    (path: PassthroughPath) =>
+    (ctx: Context<ControllerEnvironment>): ControllerEffect<Response, unknown> =>
       Effect.gen(function* () {
         const parsed = yield* Effect.tryPromise({
           try: () => ctx.req.json<Record<string, unknown>>(),
@@ -94,11 +96,10 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
           status: fetched.status,
           headers: { "Content-Type": contentType || "application/json" },
         });
-      }),
-    );
+      });
 
   return mergeRoutes(
-    app.post("/v1/responses", documentRoute, forward("/v1/responses")),
-    app.post("/v1/messages", documentRoute, forward("/v1/messages")),
+    effectRoute(app.post, "/v1/responses", forward("/v1/responses")),
+    effectRoute(app.post, "/v1/messages", forward("/v1/messages")),
   );
 });
