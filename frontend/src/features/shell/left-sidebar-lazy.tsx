@@ -1,7 +1,7 @@
 "use client";
 
 import { type ComponentType } from "react";
-import type { ActiveSession } from "@/features/agent/session-contracts";
+import type { ActiveSession } from "@/features/agent/session-index";
 
 export type NavView = "projects" | "notifications";
 

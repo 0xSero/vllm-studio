@@ -8,7 +8,7 @@ import { ChatIcon, Folder } from "@/ui/icons";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
-import { type ActiveSession, indexOpenByThreadId } from "@/features/agent/session-contracts";
+import { type ActiveSession, indexOpenByThreadId } from "@/features/agent/session-index";
 import { formatRelative } from "@/features/agent/ui/session-recency";
 import type { AggregatedSession } from "@shared/agent/session-summary";
 

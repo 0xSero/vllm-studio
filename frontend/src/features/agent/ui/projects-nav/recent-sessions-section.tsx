@@ -7,8 +7,9 @@ import {
   getSessionActivity,
   sessionActivity,
   subscribeSessionActivity,
+  useOpenSessions,
+  useSessionActivity,
 } from "@/features/agent/session-index";
-import { useOpenSessions, useSessionActivity } from "@/features/agent/ui/use-open-sessions";
 import { SessionStatusMark } from "@/features/agent/ui/projects-nav/nav-chrome";
 import { orderByRecency, recentsTimestamp } from "@/features/agent/ui/session-recency";
 import { useProjectsNavSessionPrefs } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";

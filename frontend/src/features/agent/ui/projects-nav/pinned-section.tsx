@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { sessionActivity } from "@/features/agent/session-index";
-import { useSessionActivity } from "@/features/agent/ui/use-open-sessions";
+import { sessionActivity, useSessionActivity } from "@/features/agent/session-index";
 import type { SessionPrefs } from "@/features/agent/messages/prefs";
 import type { Project as ProjectEntry } from "@/features/agent/projects/types";
 import { mergeActiveSessionPref } from "./helpers";

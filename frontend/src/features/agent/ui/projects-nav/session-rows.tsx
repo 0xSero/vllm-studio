@@ -7,9 +7,9 @@ import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import {
   markSessionActivitySeen,
   sessionRows,
+  useSessionActivity,
   type SessionActivity,
 } from "@/features/agent/session-index";
-import { useSessionActivity } from "@/features/agent/ui/use-open-sessions";
 import {
   patchSessionPref,
   type SessionPref,
