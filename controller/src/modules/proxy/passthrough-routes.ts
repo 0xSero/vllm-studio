@@ -1,15 +1,9 @@
 import { Effect } from "effect";
 import { HttpStatus } from "../../core/errors";
-import { buildInferenceUrl } from "../../http/local-fetch";
 import { buildSseHeaders } from "../../http/sse";
 import { defineRoutes, documentRoute, mergeRoutes } from "../../http/route-registrar";
 import { effectHandler } from "../../http/effect-handler";
-import {
-  DEFAULT_CHAT_PROVIDER,
-  parseProviderModel,
-  resolveProviderConfig,
-} from "../../services/provider-routing";
-import { findRecipeByModel } from "./chat-request";
+import { findRecipeByModel, resolveUpstreamForModel } from "./chat-request";
 
 /**
  * Pass-through for the OpenAI Responses API and the Anthropic Messages API.
@@ -34,37 +28,20 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
     requestedModel: string | null,
     parsed: Record<string, unknown>,
   ): Effect.Effect<{ upstreamUrl: string; auth: Record<string, string> }, unknown> => {
-    const providerModel = requestedModel
-      ? parseProviderModel(requestedModel)
-      : { provider: DEFAULT_CHAT_PROVIDER, modelId: "" };
-    if (providerModel.provider !== DEFAULT_CHAT_PROVIDER) {
-      const providerRouting = resolveProviderConfig(providerModel.provider, {
-        providers: context.config.providers,
-      });
-      if (providerRouting) {
-        parsed["model"] = providerModel.modelId;
-        return Effect.succeed({
-          upstreamUrl: `${providerRouting.baseUrl.replace(/\/+$/, "")}${path}`,
-          auth: {
-            Authorization: `Bearer ${providerRouting.apiKey}`,
-            // The Anthropic dialect authenticates with x-api-key; sending both
-            // lets one configured key reach either kind of upstream.
-            "x-api-key": providerRouting.apiKey,
-          },
-        });
-      }
-    }
-    const inferenceKey = process.env["INFERENCE_API_KEY"] ?? "";
-    const auth: Record<string, string> = inferenceKey
-      ? { Authorization: `Bearer ${inferenceKey}` }
-      : {};
-    if (!requestedModel) {
-      return Effect.succeed({ upstreamUrl: buildInferenceUrl(context, path), auth });
+    const { upstreamUrl, auth, providerRouting } = resolveUpstreamForModel(
+      requestedModel,
+      parsed,
+      path,
+      context,
+      { includeXApiKey: true },
+    );
+    if (providerRouting || !requestedModel) {
+      return Effect.succeed({ upstreamUrl, auth });
     }
     return findRecipeByModel(requestedModel, context).pipe(
       Effect.map((recipe) => {
         if (recipe?.served_model_name) parsed["model"] = recipe.served_model_name;
-        return { upstreamUrl: buildInferenceUrl(context, path), auth };
+        return { upstreamUrl, auth };
       }),
     );
   };

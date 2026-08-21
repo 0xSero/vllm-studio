@@ -13,10 +13,6 @@ export interface ProviderRouteConfig {
   apiKey: string;
 }
 
-export interface ControllerProviderRoutingConfig {
-  providers?: ProviderConfig[];
-}
-
 export const parseProviderModel = (rawModel: string): ParsedProviderModel => {
   const trimmed = rawModel.trim();
   if (!trimmed) {
@@ -42,13 +38,6 @@ export const resolveConfiguredProviderConfig = (
   const match = providers.find((p) => p.id.toLowerCase() === providerId.toLowerCase() && p.enabled);
   if (!match || !match.api_key) return null;
   return { baseUrl: match.base_url, apiKey: match.api_key };
-};
-
-export const resolveProviderConfig = (
-  provider: string,
-  config: ControllerProviderRoutingConfig = {},
-): ProviderRouteConfig | null => {
-  return resolveConfiguredProviderConfig(provider, config.providers);
 };
 
 interface ProviderModelCatalog {

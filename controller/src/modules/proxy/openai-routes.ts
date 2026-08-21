@@ -5,12 +5,7 @@ import { effectHandler } from "../../http/effect-handler";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
 import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import type { Recipe } from "../models/types";
-import { buildInferenceUrl } from "../../http/local-fetch";
-import {
-  DEFAULT_CHAT_PROVIDER,
-  parseProviderModel,
-  resolveProviderConfig,
-} from "../../services/provider-routing";
+import { DEFAULT_CHAT_PROVIDER } from "../../services/provider-routing";
 import { normalizeChatMessageContentParts, normalizeToolRequest } from "./content-normalizer";
 import {
   normalizeReasoningAndContentInMessage,
@@ -28,6 +23,7 @@ import {
   ensureStreamingUsageIncluded,
   extractSessionId,
   findRecipeByModel,
+  resolveUpstreamForModel,
 } from "./chat-request";
 import { buildChatCompletionsStreamResponse } from "./chat-completions-stream";
 
@@ -157,47 +153,6 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
       return { parsed, requestedModel, matchedRecipe, isStreaming, bodyChanged, sessionId };
     });
 
-  const resolveChatUpstream = (
-    requestedModel: string | null,
-    parsed: Record<string, unknown>,
-  ): {
-    upstreamUrl: string;
-    headers: Record<string, string>;
-    requestProvider: string;
-    providerRouting: ReturnType<typeof resolveProviderConfig>;
-    rewroteModel: boolean;
-  } => {
-    const providerModel = requestedModel
-      ? parseProviderModel(requestedModel)
-      : { provider: DEFAULT_CHAT_PROVIDER, modelId: "" };
-    const requestProvider = providerModel.provider;
-    const providerRouting =
-      requestProvider !== DEFAULT_CHAT_PROVIDER
-        ? resolveProviderConfig(requestProvider, {
-            providers: context.config.providers,
-          })
-        : null;
-    let rewroteModel = false;
-    if (providerRouting && requestedModel) {
-      parsed["model"] = providerModel.modelId;
-      rewroteModel = true;
-    }
-    const upstreamUrl =
-      providerRouting && requestedModel
-        ? `${providerRouting.baseUrl.replace(/\/+$/, "")}/v1/chat/completions`
-        : buildInferenceUrl(context, "/v1/chat/completions");
-    const inferenceKey = process.env["INFERENCE_API_KEY"] ?? "";
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(providerRouting
-        ? { Authorization: `Bearer ${providerRouting.apiKey}` }
-        : inferenceKey
-          ? { Authorization: `Bearer ${inferenceKey}` }
-          : {}),
-    };
-    return { upstreamUrl, headers, requestProvider, providerRouting, rewroteModel };
-  };
-
   const gateOnRunningModel = (
     matchedRecipe: Recipe,
     requestedModel: string | null,
@@ -267,8 +222,12 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
           const bodyBuffer = bodyRead.value;
           const { parsed, requestedModel, matchedRecipe, isStreaming, bodyChanged, sessionId } =
             yield* parseChatBody(bodyBuffer, (name) => ctx.req.header(name));
-          const { upstreamUrl, headers, requestProvider, providerRouting, rewroteModel } =
-            resolveChatUpstream(requestedModel, parsed);
+          const { upstreamUrl, auth, requestProvider, providerRouting, rewroteModel } =
+            resolveUpstreamForModel(requestedModel, parsed, "/v1/chat/completions", context);
+          const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+            ...auth,
+          };
           const sourceHeader =
             ctx.req.header("x-vllm-source") ??
             ctx.req.header("x-source") ??
