@@ -88,3 +88,24 @@ invalid tokens repaired), caretaker harvest, click-to-connect OAuth (GitHub
 device flow; X honestly excluded — OAuth1.0a-only MCP package), pi 0.84.2
 with the supply chain hardened three ways (shrinkwrap-beats-overrides,
 integrity pinning on replayed entries, ESM-safe standalone assert).
+
+### Architecture deepening campaign SHIPPED (PR #433 → main 21cfd03ec, 2026-08-21)
+
+Owner directive: "go hard, everything must be cleaned, everything
+functionalised" + the improve-codebase-architecture methodology (churn-heat
+scoping, shallow-module hunt, deletion test). 6-explorer fan-out → 27
+adversarially-verified candidates → 4 execution waves in isolated worktrees
+→ 26 commits, 71 files, net −710 lines, zero gate failures. Highlights:
+SessionTab mirror type deleted (drift was live), effectRoute adoption
+finished (63 conversions, AST-proven identical 83-route table), one SSE
+lifecycle (first-byte fix now on all three streams), one upstream resolver,
+one usage normalizer, messages/helpers clusters dissolved into their
+callers. Deferred: sidebar fold (waits for feat/drawer-git-and-steer-pending),
+two Speculative items. Report artifact: Deepening Ledger
+(claude.ai/code/artifact/fa7fb775-16e7-4a84-8fab-720dc62ae6c5).
+
+Standing machinery: in-app "Architecture deepener" automation
+(auto-90a3b357, 45-min interval, arch/* branches, caretaker guardrails)
+with an active goal on thread 01a0257d-2666-798c-a827-c0e432183867; its
+first autonomous run contributed the ConnectorPool commit. Harvest arch/*
+branches like caretaker/*.
