@@ -254,7 +254,11 @@ async function readSessionSummary(
   if (header && firstUserMessage) {
     const lastTurn = await readLastUserTurn(filepath);
     if (lastTurn) {
-      lastUserPromptText = lastTurn.text;
+      // The raw turn text can open with injected context (<browser_context>…)
+      // that is not what the user typed; the title helper already knows how
+      // to peel it. An all-context turn yields no preview rather than noise.
+      const visible = sessionTitleFromUserPrompt(lastTurn.text);
+      if (visible) lastUserPromptText = visible;
       lastUserPromptAt = lastTurn.at;
     }
   }

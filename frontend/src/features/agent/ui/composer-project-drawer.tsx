@@ -152,13 +152,28 @@ export function ComposerProjectDrawer({
         data-testid="composer-drawer"
         className="relative z-0 mx-auto -mb-3 w-[calc(100%_-_26px)] max-w-[calc(var(--composer-w)*0.9_-_26px)] overflow-hidden rounded-[var(--composer-radius-inner)] border border-(--border) bg-(--fg)/[0.022] pb-2 text-[length:var(--fs-xs)] shadow-[var(--composer-elevation-inner)] md:pb-3 md:text-[length:var(--fs-sm)] backdrop-blur-sm [corner-shape:superellipse(1.5)] sm:w-[calc(90%_-_26px)]"
       >
-        <DrawerSummaryButton
-          open={open}
-          onToggle={() => setOpen((value) => !value)}
-          label={label}
-          queueCount={queueItems.length}
-          hasGoal={goal !== null}
-        />
+        <div className="px-1.5 pt-1">
+          <DrawerSummaryButton
+            open={open}
+            onToggle={() => setOpen((value) => !value)}
+            label={label}
+            queueCount={queueItems.length}
+            hasGoal={goal !== null}
+          />
+        </div>
+        {/* Collapsed is a summary, not a void: the branch and its diffstat
+            are the thing you check between prompts, so they stay visible
+            without opening the drawer. */}
+        {!open ? (
+          <div className="px-1.5 pt-0.5">
+            <GitRow
+              gitSummary={gitSummary}
+              gitBranch={gitBranch}
+              onInitGit={onInitGit}
+              onOpenDiff={onOpenDiff}
+            />
+          </div>
+        ) : null}
         {hasQueue ? (
           <div className="px-1.5 pb-0.5">
             <QueuedMessageStack
@@ -829,18 +844,15 @@ function DrawerSummaryButton({
       type="button"
       onClick={onToggle}
       aria-expanded={open}
-      className="flex h-7 w-full items-center gap-2 px-2.5 text-left text-(--fg)/78 transition-colors hover:bg-(--fg)/[0.03] md:h-8 md:gap-2.5 md:px-3"
+      // Same metrics as every list row below it — the collapsed summary and
+      // the expanded rows share one left edge and one height, so toggling
+      // the drawer doesn't make the text jump.
+      className={cx(listRowClass, "text-(--fg)/78 hover:bg-(--hover)")}
     >
       {hasQueue ? (
-        <ListChecks
-          className="h-3.5 w-3.5 shrink-0 text-(--fg)/56 md:h-4 md:w-4"
-          strokeWidth={1.7}
-        />
+        <ListChecks className="h-3.5 w-3.5 shrink-0 text-(--fg)/56" strokeWidth={1.7} />
       ) : (
-        <FolderOpen
-          className="h-3.5 w-3.5 shrink-0 text-(--fg)/56 md:h-4 md:w-4"
-          strokeWidth={1.7}
-        />
+        <FolderOpen className="h-3.5 w-3.5 shrink-0 text-(--fg)/56" strokeWidth={1.7} />
       )}
       <span className="min-w-0 flex-1 truncate">
         {hasQueue ? `${queueCount} queued message${queueCount === 1 ? "" : "s"}` : label}
