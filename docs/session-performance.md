@@ -3,7 +3,7 @@
 Working ledger for the session-performance pass: load, sync, reload, and
 holding many sessions at once. **Measure first** — nothing lands here without a
 before/after number, because the last three passes over this code (see
-`docs/quality-waves.md`, the perf-slowdown commits) all found that the obvious
+the perf-slowdown commits, e.g. `53f864d91`) all found that the obvious
 suspect was not the expensive one.
 
 ## How to measure
@@ -50,9 +50,9 @@ Threaded the existing `ctx.replay` flag into the patch so replay writes in
 place. The superlinear tail flattens too (1.25x → ~1.1x per doubling) — the
 array copy was the part that grew with transcript length.
 
-Guarded by three tests in `pi-event-applier.test.ts`: the live reducer must
-still allocate a new array, replay must produce the settled log, and folding
-the same log twice must not bleed state between folds.
+Three invariants the change must preserve: the live reducer must still
+allocate a new array, replay must produce the settled log, and folding the
+same log twice must not bleed state between folds.
 
 **Caveat found afterwards:** the initial open is capped at `tail=500` events
 (`api.ts` `DEFAULT_SESSION_TAIL`), so a normal session open folds ~500 events —
@@ -416,8 +416,7 @@ lands. The cache keeps doing its job — the reloaded session still paints in
 |---|---:|---|---:|
 | reload, cache present, after fix | 250 | present | 1 |
 
-Two tests pin it in `persistence.test.ts`, on the marking rather than on the
-symptom.
+The invariant pins the marking rather than the symptom.
 
 ### 11. Where the "load earlier" second actually goes
 

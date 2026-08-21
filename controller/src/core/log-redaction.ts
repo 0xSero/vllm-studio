@@ -21,10 +21,10 @@ const TOKEN = String.raw`[^\s;,"']+`;
  * Covered:
  * - Authorization: Bearer <token>
  * - X-Api-Key: <token>
- * - Env assignments: HF_TOKEN=..., OPENAI_API_KEY=..., *_API_KEY=..., *_TOKEN=...
+ * - Env assignments: HF_TOKEN=..., OPENAI_API_KEY=..., *_API_KEY=..., *_TOKEN=..., *_SECRET=..., *_PASSWORD=...
  * - JSON-ish pairs: "api_key": "...", 'token': '...'
  * - CLI flags: --api-key <value>, --hf-token <value>, --token <value>, etc.
- * - URL query params: ?api_key=...&token=...
+ * - URL query params: ?api_key=...&token=...&refresh_token=...&client_secret=...
  */
 export function redactLogLine(line: string): string {
   let redacted = line;
@@ -42,10 +42,10 @@ export function redactLogLine(line: string): string {
   );
 
   // Env-style assignments: KEY=VALUE or export KEY=VALUE.
-  // Covers explicit keys plus generic *_API_KEY / *_TOKEN patterns.
+  // Covers explicit keys plus generic *_API_KEY / *_TOKEN / *_SECRET / *_PASSWORD / *_SECRET_KEY / *_SECRET_ACCESS_KEY patterns.
   redacted = redacted.replace(
     new RegExp(
-      String.raw`((?:^|[\s;{"'|&]|export\s+)(?:HF_TOKEN|HUGGING_FACE_HUB_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|[A-Za-z_][A-Za-z0-9_]*_API_KEY|[A-Za-z_][A-Za-z0-9_]*_TOKEN)\s*=\s*)(?:"[^"]*"|'[^']*'|` +
+      String.raw`((?:^|[\s;{"'|&]|export\s+)(?:HF_TOKEN|HUGGING_FACE_HUB_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|[A-Za-z_][A-Za-z0-9_]*_API_KEY|[A-Za-z_][A-Za-z0-9_]*_TOKEN|[A-Za-z_][A-Za-z0-9_]*_SECRET_ACCESS_KEY|[A-Za-z_][A-Za-z0-9_]*_SECRET_KEY|[A-Za-z_][A-Za-z0-9_]*_SECRET|[A-Za-z_][A-Za-z0-9_]*_PASSWORD)\s*=\s*)(?:"[^"]*"|'[^']*'|` +
         TOKEN +
         ")",
       "g",
@@ -70,9 +70,9 @@ export function redactLogLine(line: string): string {
     `$1$2 ${REDACTED}`,
   );
 
-  // URL query parameters: api_key=..., token=..., etc.
+  // URL query parameters: api_key=..., token=..., password=..., refresh_token=..., client_secret=..., etc.
   redacted = redacted.replace(
-    /([?&])(api_key|api-key|apikey|token|access_token|auth_token|key|secret|hf_token|openai_api_key|anthropic_api_key)=([^&\s]*)/gi,
+    /([?&])(api_key|api-key|apikey|token|access_token|auth_token|key|secret|hf_token|openai_api_key|anthropic_api_key|password|passwd|client_secret|refresh_token|id_token|session_token|secret_access_key)=([^&\s]*)/gi,
     `$1$2=${REDACTED}`,
   );
 

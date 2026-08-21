@@ -78,7 +78,6 @@ flowchart TB
         Proxy["src/modules/proxy"]
         Studio["src/modules/studio"]
         System["src/modules/system"]
-        Audio["src/modules/audio"]
         Stores["src/stores"]
     end
 
@@ -88,7 +87,6 @@ flowchart TB
     HttpApp --> Proxy
     HttpApp --> Studio
     HttpApp --> System
-    HttpApp --> Audio
     System --> Stores
 ```
 

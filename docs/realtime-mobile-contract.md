@@ -4,7 +4,7 @@ Status: contract version 1, not yet exposed by the agent-runtime gateway.
 
 The realtime contract extends `litter-bridge/v1`; it does not create another endpoint or authentication model. Local Studio owns provider credentials, capability discovery, session creation, and teardown. Alleycat forwards authenticated control messages. Litter keeps native WebRTC peer connections and platform audio processing. Media does not traverse Alleycat in version 1.
 
-The canonical Effect schemas and TypeScript types live in `shared/agent/litter-bridge.ts`. `shared/agent/litter-bridge-realtime-v1.fixture.json` is the language-neutral conformance vector for TypeScript and Rust consumers.
+The TypeScript schema module that held the canonical Effect types (`shared/agent/litter-bridge.ts`) was removed with the litter-bridge gateway in #412; the contract is currently specified only by this document and the conformance fixture. `shared/agent/litter-bridge-realtime-v1.fixture.json` is the language-neutral conformance vector for TypeScript and Rust consumers.
 
 ## Version negotiation
 
