@@ -3,7 +3,6 @@ import {
   type ChatMessageAttachment,
   newId,
   nowLabel,
-  runtimeStatusLooksActive,
   sessionTitleFromPrompt,
 } from "@/features/agent/messages";
 import type {
@@ -279,7 +278,7 @@ function runtimeIsActiveForPiSession(
 ): boolean {
   return Boolean(
     runtimeStatus &&
-    runtimeStatusLooksActive(runtimeStatus) &&
+    runtimeStatus.active === true &&
     (!runtimeStatus.piSessionId || !piSessionId || runtimeStatus.piSessionId === piSessionId),
   );
 }

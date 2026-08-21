@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Effect } from "effect";
 import type { ComposerMention } from "@/features/agent/composer-context";
-import { newId, visibleQueuedMessages, type ChatPaneHandle } from "@/features/agent/messages";
+import { newId, type ChatPaneHandle } from "@/features/agent/messages";
 import type { SessionEngine } from "@/features/agent/runtime/engine";
 import type { Session } from "@/features/agent/runtime/types";
 import type { ContextAttachRequest } from "@/features/agent/tools/types";
@@ -40,7 +40,12 @@ export function useChatPaneDerivedState({
     effectiveContextWindow,
     running,
     showEmptyPrompt,
-    visibleQueueItems: visibleQueuedMessages(queue),
+    // Every item still in the queue is pending delivery, so all of them show.
+    // This used to hide `sent` items, which meant EVERY follow-up — they are
+    // marked sent the moment pi accepts them — so the drawer stack was always
+    // empty and queueing looked broken. Items leave the queue when pi actually
+    // delivers them (the user echo) or contradicts us (`queue_update`).
+    visibleQueueItems: queue,
   };
 }
 
