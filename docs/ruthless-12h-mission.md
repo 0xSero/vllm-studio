@@ -79,3 +79,12 @@ previews clean, pref-sync live against the controller store, 14 routes
 unified onto the runtime. Caretaker automation survived the app update,
 attached to a persistent thread; 16 branches harvested (11 picks, deduped,
 13/13 redaction assertions).
+
+### Waves 2+3 SHIPPED (v2.15.0, 2026-08-21)
+
+Desktop installed, pop-os at BUILD_ID parity, model never touched. Contents:
+theme light-dark() collapse (tokens 760→585, zero-diff proof, 504 latent
+invalid tokens repaired), caretaker harvest, click-to-connect OAuth (GitHub
+device flow; X honestly excluded — OAuth1.0a-only MCP package), pi 0.84.2
+with the supply chain hardened three ways (shrinkwrap-beats-overrides,
+integrity pinning on replayed entries, ESM-safe standalone assert).
