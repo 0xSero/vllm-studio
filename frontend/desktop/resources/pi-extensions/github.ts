@@ -22,7 +22,7 @@
 
 import { execFile } from "node:child_process";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type, type Static, type TSchema } from "typebox";
+import { Type, type Static, type TSchema } from "./schema.ts";
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;

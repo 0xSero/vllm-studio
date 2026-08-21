@@ -9,7 +9,7 @@
 // Loaded by pi-runtime only when at least one connector is enabled.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import { Type } from "./schema.ts";
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;

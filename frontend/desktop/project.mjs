@@ -387,7 +387,16 @@ var init_bundle = __esm(() => {
     "devtools-protocol",
     "@silvia-odwyer/photon-node",
     "undici",
-    "@lydell/node-pty"
+    "@lydell/node-pty",
+    // Pi's extension loader (jiti alias mode) eagerly require.resolve()s
+    // typebox and import.meta.resolve()s the pi packages from the bundle's
+    // own directory BEFORE loading any extension file. Without these four on
+    // disk next to standalone.mjs, every bundled extension fails with
+    // "Cannot find module 'typebox'" in the packaged app.
+    "typebox",
+    "@earendil-works/pi-agent-core",
+    "@earendil-works/pi-tui",
+    "@earendil-works/pi-ai"
   ];
   rmSync2(distDir, { recursive: !0, force: !0 });
   mkdirSync(distDir, { recursive: !0 });

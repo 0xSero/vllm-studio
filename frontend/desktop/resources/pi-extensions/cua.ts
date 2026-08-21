@@ -19,7 +19,7 @@
 // scope caching would pin the first session's answers onto every later one.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type, type Static, type TSchema } from "typebox";
+import { Type, type Static, type TSchema } from "./schema.ts";
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;

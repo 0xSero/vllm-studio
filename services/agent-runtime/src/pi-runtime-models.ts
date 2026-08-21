@@ -288,8 +288,32 @@ async function savePersistedControllers(
 }
 
 /** How long a single controller gets to answer /v1/models before it is
- *  treated as down. */
-const CONTROLLER_MODELS_TIMEOUT_MS = 4_000;
+ *  treated as down. A healthy tailnet peer answers in well under 150ms
+ *  (measured 21-82ms), so 2.5s is already generous headroom for a slow LAN or
+ *  a controller busy loading a model. */
+const CONTROLLER_MODELS_TIMEOUT_MS = 2_500;
+
+/** How long a controller that timed out or refused a connection is skipped
+ *  before it is probed again. Within this window it is served as an empty
+ *  model list immediately, so one dead saved controller cannot make every
+ *  /api/agent/models call pay the full connect timeout (measured: a 4s flat
+ *  median on the desktop app while a saved peer was off). */
+const CONTROLLER_UNREACHABLE_BACKOFF_MS = 60_000;
+
+/** In-memory negative cache of unreachable controllers, keyed by normalized
+ *  controller URL identity. A successful fetch (or any HTTP response at all —
+ *  even an error status proves the host is reachable) clears the entry. */
+const unreachableControllers = new Map<string, { failedAt: number }>();
+
+function isControllerBackedOff(identity: string): boolean {
+  const entry = unreachableControllers.get(identity);
+  if (!entry) return false;
+  if (Date.now() - entry.failedAt >= CONTROLLER_UNREACHABLE_BACKOFF_MS) {
+    unreachableControllers.delete(identity);
+    return false;
+  }
+  return true;
+}
 
 async function fetchModelsFromController(
   controller: PiControllerConfig,
@@ -297,20 +321,38 @@ async function fetchModelsFromController(
   multipleControllers: boolean,
 ): Promise<ControllerModels> {
   const backendUrl = normalizeBackendUrl(controller.url);
+  const identity = controllerUrlIdentity(backendUrl);
+  if (isControllerBackedOff(identity)) {
+    // Recently unreachable: answer instantly with no models rather than
+    // paying the connect timeout again. The entry expires after the backoff
+    // window, so a controller that comes back is picked up within a minute.
+    return {
+      controller: { ...controller, url: backendUrl },
+      models: [],
+      providerId: providerIdForController(controller, index),
+    };
+  }
   const headers: HeadersInit = { Accept: "application/json" };
   if (controller.apiKey) headers.Authorization = `Bearer ${controller.apiKey}`;
-  const response = await fetch(`${backendUrl}/v1/models`, {
-    headers,
-    cache: "no-store",
-    // Every saved controller is listed before the composer can show a single
-    // model, and Promise.allSettled below waits for all of them. Without a
-    // deadline one unreachable host holds the whole model picker hostage for
-    // however long its network stack takes to give up — measured at 10.5s for
-    // a tailnet peer that is simply off. Healthy peers answer in 0.02-1.2s, so
-    // a few seconds is generous; a controller slower than this is reported as
-    // failed and the rest of the list still loads.
-    signal: AbortSignal.timeout(CONTROLLER_MODELS_TIMEOUT_MS),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${backendUrl}/v1/models`, {
+      headers,
+      cache: "no-store",
+      // Every saved controller is listed before the composer can show a single
+      // model, and Promise.allSettled below waits for all of them. Without a
+      // deadline one unreachable host holds the whole model picker hostage for
+      // however long its network stack takes to give up — measured at 10.5s for
+      // a tailnet peer that is simply off. A controller slower than the
+      // deadline is reported as failed and the rest of the list still loads.
+      signal: AbortSignal.timeout(CONTROLLER_MODELS_TIMEOUT_MS),
+    });
+  } catch (error) {
+    // Timed out or refused: remember it so the next calls skip this host.
+    unreachableControllers.set(identity, { failedAt: Date.now() });
+    throw error;
+  }
+  unreachableControllers.delete(identity);
   if (!response.ok) {
     throw new Error(`${backendUrl}/v1/models failed with HTTP ${response.status}`);
   }
@@ -333,7 +375,9 @@ async function fetchModelsFromController(
   return { controller: { ...controller, url: backendUrl }, models, providerId };
 }
 
-async function fetchModelsFromControllers(controllers: PiControllerConfig[]): Promise<{
+/** Exported for direct testing of the fan-out + unreachable-controller
+ *  backoff without going through settings/persistence. */
+export async function fetchModelsFromControllers(controllers: PiControllerConfig[]): Promise<{
   models: AgentModel[];
   controllerModels: ControllerModels[];
 }> {
