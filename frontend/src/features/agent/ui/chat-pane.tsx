@@ -53,10 +53,10 @@ function subagentChipsFor(piSessionId: string | null | undefined) {
 }
 
 import {
+  useComposerAutosize,
   useComposerLoadedContext,
   useComposerMentionRows,
   useComposerTextareaBehavior,
-  useComposerTextareaHeightSync,
   type UpdateTab,
 } from "@/features/agent/ui/chat-pane-composer";
 import { useComposerAttachments } from "@/features/agent/ui/chat-pane-composer-attachments";
@@ -296,8 +296,6 @@ export function ChatPane({
   const router = useRouter();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const lastAppliedComposerHeightRef = useRef(0);
-  const lastComposerValueLengthRef = useRef(0);
   const [stickToBottom, setStickToBottom] = useState(true);
   const [mention, setMention] = useState<ComposerMention | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -388,17 +386,7 @@ export function ChatPane({
     textareaRef,
   });
   const composerInput = activeTab?.input ?? "";
-  const resetComposerHeight = useCallback(() => {
-    if (textareaRef.current) textareaRef.current.style.height = "";
-    lastAppliedComposerHeightRef.current = 0;
-    lastComposerValueLengthRef.current = 0;
-  }, []);
-  useComposerTextareaHeightSync({
-    value: composerInput,
-    textareaRef,
-    lastAppliedComposerHeightRef,
-    lastComposerValueLengthRef,
-  });
+  const composerAutosize = useComposerAutosize({ textareaRef, value: composerInput });
   const { selectedSkills, selectedPromptTemplates, removeLoadedContext } = useComposerLoadedContext(
     { activeTab, tools },
   );
@@ -571,7 +559,7 @@ export function ChatPane({
     commandContext,
     mention,
     setMention,
-    resetComposerHeight,
+    resetComposerHeight: composerAutosize.reset,
     textareaRef,
     updateTab,
     selectMentionRow,
@@ -587,7 +575,7 @@ export function ChatPane({
       modelId,
       modelSupportsVision,
       readingAttachments,
-      resetComposerHeight,
+      resetComposerHeight: composerAutosize.reset,
       running: Boolean(running),
       setMention,
       setStickToBottom,
@@ -601,10 +589,7 @@ export function ChatPane({
       mentionRows,
       mentionIndex,
       running: Boolean(running),
-      textareaRef,
-      lastAppliedComposerHeightRef,
-      lastComposerValueLengthRef,
-      resetComposerHeight,
+      autosize: composerAutosize,
       updateTab,
       setMention,
       setMentionIndex,
