@@ -71,6 +71,13 @@ function resolveDefaultAgentCwd(): string {
   return cwd;
 }
 
+/**
+ * Expand a leading tilde to the user's home directory: `~` alone, or a
+ * `~` + `path.sep` prefix (so `~/` on POSIX). Every other value — including
+ * `~user` forms and mid-string tildes — passes through unchanged. The single
+ * tilde-expansion rule for this service; new path inputs that accept `~`
+ * should call this rather than restate it.
+ */
 export function expandHome(value: string): string {
   if (value === "~") return homedir();
   if (value.startsWith(`~${path.sep}`)) return path.join(homedir(), value.slice(2));

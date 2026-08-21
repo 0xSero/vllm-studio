@@ -8,7 +8,6 @@ import {
   readdirSync,
   statSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import {
@@ -17,6 +16,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { resolveDataDir } from "./data-dir";
+import { expandHome } from "./pi-runtime-helpers";
 import { rolloutCache, statRollout } from "./rollout-cache";
 import { transcriptSource } from "./transcript-sidecar";
 import {
@@ -72,12 +72,7 @@ export function encodeCwdForPi(cwd: string): string {
 export function configuredPiSessionDir(cwd: string): string | undefined {
   const envSessionDir = process.env.PI_CODING_AGENT_SESSION_DIR?.trim();
   if (envSessionDir) {
-    const expanded = envSessionDir === "~"
-      ? homedir()
-      : envSessionDir.startsWith(`~${path.sep}`)
-        ? path.join(homedir(), envSessionDir.slice(2))
-        : envSessionDir;
-    return path.resolve(expanded);
+    return path.resolve(expandHome(envSessionDir));
   }
   return SettingsManager.create(cwd, getAgentDir()).getSessionDir();
 }
