@@ -68,3 +68,14 @@ Fix ladder (ranked): D repair pref-sync via controller studio settings (~20 line
   highlight chunks are lazy ✓. Initial-load diet is a bounded M3 target.
 - Repo caretaker automation (auto-36631e4a) active every 30 min, isolated
   caretaker/* worktree branches.
+
+### Wave 1 SHIPPED (v2.14.1, 2026-08-21)
+
+Deployed pop-os + desktop + GitHub release. Verified in production: SSE first
+byte instant (was 45s), extensions load in the packaged app (0 errors, was
+100% broken), models call no longer pays the dead-controller tax, exactly one
+active model, notifications view highlights the open session, drawer aligned,
+previews clean, pref-sync live against the controller store, 14 routes
+unified onto the runtime. Caretaker automation survived the app update,
+attached to a persistent thread; 16 branches harvested (11 picks, deduped,
+13/13 redaction assertions).
