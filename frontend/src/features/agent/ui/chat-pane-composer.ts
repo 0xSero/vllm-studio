@@ -23,7 +23,7 @@ import {
   type ComposerSkillRef,
 } from "@/features/agent/composer-context";
 import type { ComposerCommand } from "@/features/agent/composer/command-types";
-import { type SessionTab } from "@/features/agent/messages";
+import type { Session } from "@/features/agent/runtime/types";
 import type { ToolsContextValue } from "@/features/agent/tools/context";
 import {
   filesFromDataTransfer,
@@ -36,13 +36,13 @@ import {
   type ComposerHistoryCursor,
 } from "@/features/agent/ui/composer-history";
 
-export type UpdateTab = (tabId: string, patch: (tab: SessionTab) => SessionTab) => void;
+export type UpdateTab = (tabId: string, patch: (tab: Session) => Session) => void;
 
 export function useComposerLoadedContext({
   activeTab,
   tools,
 }: {
-  activeTab: SessionTab | null;
+  activeTab: Session | null;
   tools: ToolsContextValue;
 }) {
   const activeSelection = tools.selectionFor(activeTab?.id);
@@ -146,7 +146,7 @@ export function useComposerTextareaBehavior({
   abortTurn,
   attachFiles,
 }: {
-  activeTab: SessionTab | null;
+  activeTab: Session | null;
   mention: ComposerMention | null;
   mentionRows: MentionRow[];
   mentionIndex: number;

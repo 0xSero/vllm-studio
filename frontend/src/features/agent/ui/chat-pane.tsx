@@ -82,9 +82,9 @@ import { useGoalMode } from "@/features/agent/ui/use-goal-mode";
 import { useChatPaneComposerActions } from "@/features/agent/ui/use-chat-pane-composer-actions";
 import { useComposerCommandHandlers } from "@/features/agent/ui/use-composer-command-handlers";
 import { useChatPaneSendFlow } from "@/features/agent/ui/chat-pane-send-flow";
-import { ChatPaneHandle, SessionTab } from "@/features/agent/messages";
+import { ChatPaneHandle } from "@/features/agent/messages";
 import { useSessionEngine } from "@/features/agent/runtime/engine";
-import type { UpdateSession } from "@/features/agent/runtime/types";
+import type { Session, UpdateSession } from "@/features/agent/runtime/types";
 import { useTools } from "@/features/agent/tools/context";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import type { BrowserBackend } from "@/features/agent/tools/types";
@@ -112,7 +112,7 @@ import {
 import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
 import { cx } from "@/ui/utils";
 import { ExtensionUiDialog } from "@/features/agent/ui/extension-ui-dialog";
-export type { ChatPaneHandle, SessionTab };
+export type { ChatPaneHandle };
 
 const Timeline = dynamic(
   () => import("@/features/agent/ui/timeline/timeline").then((mod) => mod.Timeline),
@@ -175,7 +175,7 @@ function ChatTranscript({
   composerOnly: boolean;
   terminalView: boolean;
   showEmptyPrompt: boolean;
-  activeTab: SessionTab | undefined;
+  activeTab: Session | undefined;
   stickToBottom: boolean;
   setStickToBottom: (value: boolean) => void;
   running: boolean;
@@ -230,7 +230,7 @@ type Props = {
   isFocused: boolean;
   onFocus: () => void;
   onPiSessionIdChange?: (sessionId: string) => void;
-  tabs: SessionTab[];
+  tabs: Session[];
   activeTabId: string;
   onUpdateSession: UpdateSession;
   onRenameSession: (tabId: string, title: string) => void;
@@ -795,7 +795,7 @@ function ChatPaneChrome({
   terminalSnapshot,
   header,
 }: {
-  extensionUiRequest: SessionTab["extensionUiRequest"];
+  extensionUiRequest: Session["extensionUiRequest"];
   onExtensionUiRespond: (response: {
     value?: string;
     confirmed?: boolean;

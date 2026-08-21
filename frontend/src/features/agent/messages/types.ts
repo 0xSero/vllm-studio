@@ -1,4 +1,5 @@
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
+import type { Session } from "@/features/agent/runtime/types";
 
 // Imperative handle exposed by ChatPane so the workspace can replay a past
 // pi session into the focused pane without prop-plumbing indirection. The
@@ -89,40 +90,9 @@ export type QueuedMessage = {
   sent?: boolean;
 };
 
-export type SessionTab = {
-  // Pane/client identity AND the opaque runtime key sent to the server. One
-  // per tab so tabs run independent agent sessions.
-  id: string;
-  // Pi session UUID (null = unstarted, will be assigned by pi when the first
-  // turn runs).
-  piSessionId: string | null;
-  projectId?: string;
-  cwd?: string;
-  modelId?: string;
-  thinkingLevel?: import("@/features/agent/contracts").AgentThinkingLevel;
-  title: string;
-  messages: ChatMessage[];
-  status: import("@/features/agent/runtime/types").SessionStatus;
-  error: string;
-  startedAt?: string;
-  input: string;
-  tokenStats?: TokenStats;
-  contextUsage?: import("@/features/agent/runtime/runtime-schema").RuntimeContextUsage | null;
-  activeAssistantId?: string;
-  lastEventSeq?: number;
-  // Byte-offset cursor into the canonical log for paging older history into
-  // view ("load earlier"); null/undefined once the whole log is loaded.
-  historyCursor?: number | null;
-  /** See `Session.hydratedFromCache` — these messages are the lossy snapshot,
-   *  not the transcript, and the replay still has to run. */
-  hydratedFromCache?: boolean;
-  skills?: ComposerSkillRef[];
-  // Outgoing pending follow-up messages. Drawn as chips above the input until
-  // Pi `queue_update` reconciles the canonical queue. Steering messages are
-  // sent as immediate control messages and are not surfaced in this queue UI.
-  queue?: QueuedMessage[];
-  extensionUiRequest?: import("@/features/agent/runtime/types").ExtensionUiRequest;
-};
+// A tab holds a plain `Session` — `runtime/types` is the single definition of
+// what fields a session record has.
+export type SessionTab = Session;
 
 export type RuntimeLoggedEvent = {
   readonly seq?: number;

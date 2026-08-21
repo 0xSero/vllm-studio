@@ -3,13 +3,9 @@ import { Effect } from "effect";
 import { type UpdateTab } from "@/features/agent/ui/chat-pane-composer";
 import { browserContextPrompt } from "@/features/agent/browser/context";
 import { selectedContextPrompt, type ComposerMention } from "@/features/agent/composer-context";
-import {
-  isPlaceholderSessionTitle,
-  newId,
-  nowLabel,
-  type SessionTab,
-} from "@/features/agent/messages";
+import { isPlaceholderSessionTitle, newId, nowLabel } from "@/features/agent/messages";
 import { type SessionEngine } from "@/features/agent/runtime/engine";
+import type { Session } from "@/features/agent/runtime/types";
 import {
   beginSessionSubmit,
   endSessionSubmit,
@@ -27,7 +23,7 @@ import {
 } from "@/features/agent/ui/chat-pane-send-flow-model";
 
 type UseChatPaneSendFlowOptions = {
-  activeTab: SessionTab | null;
+  activeTab: Session | null;
   attachments: ChatAttachment[];
   browserToolEnabled: boolean;
   clearAttachments: () => void;
@@ -156,7 +152,7 @@ export function useChatPaneSendFlow({
     (
       mode: "steer" | "follow_up",
       text: string,
-      tab: SessionTab,
+      tab: Session,
       runtime: string,
       cwdHint?: string,
     ) => {

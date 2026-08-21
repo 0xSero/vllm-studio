@@ -11,9 +11,9 @@ import type {
   ChatMessage,
   QueuedMessage,
   RuntimeLoggedEvent,
-  SessionTab,
   TokenStats,
 } from "@/features/agent/messages/types";
+import type { Session } from "@/features/agent/runtime/types";
 
 export function randomIdSegment(length: number): string {
   const cryptoApi = globalThis.crypto;
@@ -369,7 +369,7 @@ export function reconcileReplayMessages(
   return current;
 }
 
-export function makeFreshTab(): SessionTab {
+export function makeFreshTab(): Session {
   return {
     // The session id doubles as the opaque runtime key the client sends to the
     // server (ids are opaque server-side). Sessions persisted under a legacy
