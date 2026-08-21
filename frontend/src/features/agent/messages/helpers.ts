@@ -152,25 +152,6 @@ export function messageText(
     .join(separator);
 }
 
-/** Whether a runtime status snapshot says the session can take a steer or a
- *  follow-up right now.
- *
- *  A MISSING status means "we could not tell", not "no". The probe reads
- *  `/api/agent/runtime/status`, and its loader collapses every timeout, 404,
- *  decode miss and network blip into null; treating that as a refusal drops the
- *  message into the fresh-prompt path mid-turn, which the server then converts
- *  back into a steer anyway — so the user sees their queued message vanish into
- *  the transcript instead. The turn API is the real authority and rejects with
- *  409 if the session is not actually controllable, so fail open here. */
-export function runtimeStatusAcceptsControl(
-  status: { active?: boolean; piSessionId?: string | null } | null,
-  piSessionId?: string | null,
-): boolean {
-  if (!status) return true;
-  if (!status.active) return false;
-  return !status.piSessionId || !piSessionId || status.piSessionId === piSessionId;
-}
-
 export function replayCursorAfterRuntimeHydration(
   runtimeStatus: { active?: boolean; piSessionId?: string | null; eventSeq?: number } | null,
   piSessionId: string,

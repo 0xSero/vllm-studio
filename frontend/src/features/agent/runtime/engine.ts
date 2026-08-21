@@ -4,12 +4,15 @@ import {
   asRecord,
   finalizeRunningToolBlocks,
   replayCursorAfterRuntimeHydration,
-  runtimeStatusAcceptsControl,
   type ChatMessage,
   type RuntimeLoggedEvent,
 } from "@/features/agent/messages";
 import { foldSessionEvents } from "@/features/agent/runtime/pi-event-applier";
-import { settleTurnFinalizingTools } from "@/features/agent/runtime/session-status";
+import {
+  runtimeCanHydrateCanonicalSession,
+  runtimeStatusAcceptsControl,
+  settleTurnFinalizingTools,
+} from "@/features/agent/runtime/session-status";
 import {
   selectedContextPrompt,
   type ComposerPromptTemplateRef,
@@ -23,11 +26,7 @@ import type {
   AgentToolAccess,
 } from "@/features/agent/contracts";
 import * as api from "@/features/agent/runtime/api";
-import {
-  runtimeCanHydrateCanonicalSession,
-  submitPromptTurn,
-  type SubmitArgs,
-} from "@/features/agent/runtime/prompt-stream";
+import { submitPromptTurn, type SubmitArgs } from "@/features/agent/runtime/prompt-stream";
 import { readTranscriptSnapshot } from "@/features/agent/workspace/transcript-cache";
 
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
