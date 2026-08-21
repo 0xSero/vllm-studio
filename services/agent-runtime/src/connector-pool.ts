@@ -1,20 +1,38 @@
-import { connectMcp, type McpConnection, type McpToolInfo } from "./mcp-client";
+import { connectMcp, type McpConnection, type McpTarget, type McpToolInfo } from "./mcp-client";
 import { connectorAuthorizationHeaders, googleWorkspaceConnectorAuth } from "./connector-auth";
 import { listConnectors, type ConnectorConfig } from "./connectors-service";
 import { googleWorkspaceConnection } from "./google-account";
 import { googleWorkspaceEndpointTransport } from "./google-workspace-binding";
+import { oauthConnectorSpawnEnv, type OAuthConnectorDependencies } from "./oauth-connectors";
 
 const pool = new Map<string, McpConnection>();
 
 export class ConnectorToolDeniedError extends Error {}
 
-const toTarget = (connector: ConnectorConfig, signal?: AbortSignal) => {
+/**
+ * The spawn/connect target a connector row resolves to, with OAuth applied.
+ *
+ * For a stdio row connected via a provider's OAuth flow, the child receives a
+ * FRESH access token in the env var its package documents — minted (and
+ * refreshed, when close to expiry) at this moment, not read from a stored env
+ * secret. The refresh token stays in the token store; it is never part of the
+ * child's environment. Exported so the injection can be asserted without
+ * spawning anything.
+ */
+export const resolveConnectorTarget = async (
+  connector: ConnectorConfig,
+  signal?: AbortSignal,
+  oauthDependencies?: OAuthConnectorDependencies,
+): Promise<McpTarget> => {
   if (connector.transport === "stdio") {
     return {
       transport: "stdio" as const,
       command: connector.command ?? "",
       args: [...(connector.args ?? [])],
-      env: connector.env ?? {},
+      env: {
+        ...(connector.env ?? {}),
+        ...(await oauthConnectorSpawnEnv(connector, oauthDependencies)),
+      },
       ...(connector.cwd ? { cwd: connector.cwd } : {}),
     };
   }
@@ -38,7 +56,10 @@ const toTarget = (connector: ConnectorConfig, signal?: AbortSignal) => {
  * same connection interface, so the pool, the tool allow list, and the callers
  * above are identical either way.
  */
-function openConnection(connector: ConnectorConfig, signal?: AbortSignal): McpConnection {
+async function openConnection(
+  connector: ConnectorConfig,
+  signal?: AbortSignal,
+): Promise<McpConnection> {
   const identity = googleWorkspaceConnectorAuth(connector);
   if (identity) {
     return googleWorkspaceConnection({
@@ -48,7 +69,7 @@ function openConnection(connector: ConnectorConfig, signal?: AbortSignal): McpCo
       ...(signal ? { signal } : {}),
     });
   }
-  return connectMcp(toTarget(connector, signal));
+  return connectMcp(await resolveConnectorTarget(connector, signal));
 }
 
 async function enabledConnector(connectorId: string): Promise<ConnectorConfig> {
@@ -75,7 +96,7 @@ export async function getPooledConnection(connectorId: string): Promise<McpConne
   const existing = pool.get(connectorId);
   if (existing) return existing;
   const connector = await enabledConnector(connectorId);
-  const connection = openConnection(connector);
+  const connection = await openConnection(connector);
   pool.set(connectorId, connection);
   return connection;
 }
@@ -119,7 +140,7 @@ export async function probeConnector(
 ): Promise<{ ok: boolean; tools: McpToolInfo[]; error?: string }> {
   let connection: McpConnection | null = null;
   try {
-    connection = openConnection(connector, signal);
+    connection = await openConnection(connector, signal);
     const tools = await connection.listTools();
     return { ok: true, tools };
   } catch (error) {

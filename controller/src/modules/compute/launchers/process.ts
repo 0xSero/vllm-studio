@@ -265,7 +265,12 @@ const readTailBytes = (path: string, bytes: number): string => {
     } finally {
       closeSync(fd);
     }
-    return buffer.toString("utf8");
+    const text = buffer.toString("utf8");
+    if (start > 0) {
+      const newline = text.indexOf("\n");
+      return newline === -1 ? "" : text.slice(newline + 1);
+    }
+    return text;
   } catch {
     return "";
   }

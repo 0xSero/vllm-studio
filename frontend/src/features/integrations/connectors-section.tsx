@@ -33,6 +33,7 @@ import {
   resolveSshServerPath,
   type ConnectorDraft,
 } from "./connector-editor-drawer";
+import { ConnectorOAuthDrawer } from "./connector-oauth-drawer";
 
 /**
  * MCP servers, as a thing the user owns rather than a thing that arrives.
@@ -215,6 +216,7 @@ export function ConnectorsSection() {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Editing | null>(null);
   const [managed, setManaged] = useState<ConnectorView | null>(null);
+  const [oauthEntry, setOauthEntry] = useState<CatalogEntry | null>(null);
 
   const refresh = useCallback(() => {
     setRefreshing(true);
@@ -236,6 +238,17 @@ export function ConnectorsSection() {
       setManaged(connector);
       return;
     }
+    // An OAuth-capable catalog id always opens the Connect surface, even when
+    // a row already exists: the row is an artifact of connecting, and the only
+    // credential decision it holds — the grant — is managed there, never in
+    // the env-field editor.
+    const oauthCatalog = CONNECTOR_CATALOG.find(
+      (entry) => entry.auth && entry.id === connector.id,
+    );
+    if (oauthCatalog) {
+      setOauthEntry(oauthCatalog);
+      return;
+    }
     setEditing({
       draft: draftFromConnector(connector),
       mode: "edit",
@@ -244,6 +257,10 @@ export function ConnectorsSection() {
   };
 
   const openCatalogEntry = (entry: CatalogEntry) => {
+    if (entry.auth) {
+      setOauthEntry(entry);
+      return;
+    }
     const installed = connectors.find((connector) => connector.id === entry.id);
     if (installed) {
       open(installed);
@@ -388,12 +405,16 @@ export function ConnectorsSection() {
                           alwaysVisible
                           onClick={() => openCatalogEntry(entry)}
                           title={
-                            installed
-                              ? `Open ${entry.name}`
-                              : `Review ${entry.name} before adding it`
+                            entry.auth
+                              ? `Connect ${entry.name} with ${entry.company} sign-in`
+                              : installed
+                                ? `Open ${entry.name}`
+                                : `Review ${entry.name} before adding it`
                           }
                         >
-                          {installed ? (
+                          {entry.auth ? (
+                            installed ? "Open" : "Connect"
+                          ) : installed ? (
                             "Open"
                           ) : (
                             <>
@@ -424,6 +445,14 @@ export function ConnectorsSection() {
       ) : null}
       {managed ? (
         <ManagedConnectorDrawer connector={managed} onClose={() => setManaged(null)} />
+      ) : null}
+      {oauthEntry ? (
+        <ConnectorOAuthDrawer
+          entry={oauthEntry}
+          connector={connectors.find((connector) => connector.id === oauthEntry.id) ?? null}
+          onClose={() => setOauthEntry(null)}
+          onChanged={setConnectors}
+        />
       ) : null}
     </div>
   );

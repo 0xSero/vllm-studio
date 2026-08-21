@@ -112,8 +112,26 @@ var init_assert_standalone_build = __esm(() => {
       throw Error(`Standalone Pi runtime entrypoint is not importable: ${importCheck.stderr || importCheck.stdout}`);
   }
   piAiManifestPath = resolve(realpathSync(piAiRoot), "package.json"), piAiManifest = JSON.parse(readFileSync2(piAiManifestPath, "utf8")), requireFromPiAi = createRequire(piAiManifestPath);
+  // Locate each dependency's package directory the way Node's resolver walks
+  // node_modules, without resolving an entry point: require.resolve() fails on
+  // ESM-only packages (pi-telemetry ships exports with no CJS condition) even
+  // when the package sits exactly where it belongs. The escape check only
+  // needs the directory.
   for (let dependency of Object.keys(piAiManifest.dependencies ?? {})) {
-    let resolvedDependency = realpathSync(requireFromPiAi.resolve(dependency)), runtimeRelativePath = relative(runtimeRoot, resolvedDependency);
+    let searchRoot = realpathSync(piAiRoot), packageDirectory = null;
+    while (searchRoot) {
+      let candidate = resolve(searchRoot, "node_modules", dependency);
+      if (existsSync2(resolve(candidate, "package.json"))) {
+        packageDirectory = candidate;
+        break;
+      }
+      let parent = resolve(searchRoot, "..");
+      if (parent === searchRoot) break;
+      searchRoot = parent;
+    }
+    if (!packageDirectory)
+      throw Error(`Pi AI dependency missing from standalone runtime: ${dependency}`);
+    let resolvedDependency = realpathSync(packageDirectory), runtimeRelativePath = relative(runtimeRoot, resolvedDependency);
     if (runtimeRelativePath === ".." || runtimeRelativePath.startsWith(`..${sep}`) || isAbsolute(runtimeRelativePath))
       throw Error(`Pi AI dependency escaped standalone runtime: ${dependency}`);
   }
