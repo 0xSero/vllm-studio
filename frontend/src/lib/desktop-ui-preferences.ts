@@ -199,7 +199,7 @@ function preferencesByUrl(preferences: ControllerPreference[]): Map<string, Cont
   return byUrl;
 }
 
-export function mergeControllersPreference(
+function mergeControllersPreference(
   currentValue: string | null,
   incomingValue: string,
 ): string | null {

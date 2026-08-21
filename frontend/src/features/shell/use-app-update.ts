@@ -24,7 +24,7 @@ export type AppUpdate = {
   startUpdate: () => void;
 };
 
-export function isNewerVersion(candidate: string, current: string): boolean {
+function isNewerVersion(candidate: string, current: string): boolean {
   const a = candidate.split(".").map((part) => Number.parseInt(part, 10) || 0);
   const b = current.split(".").map((part) => Number.parseInt(part, 10) || 0);
   for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
@@ -32,21 +32,6 @@ export function isNewerVersion(candidate: string, current: string): boolean {
     if (diff !== 0) return diff > 0;
   }
   return false;
-}
-
-export function isAppUpdateAvailable(
-  latestVersion: string | null,
-  currentVersion: string | null,
-): boolean {
-  return Boolean(latestVersion && currentVersion && isNewerVersion(latestVersion, currentVersion));
-}
-
-export function isReleaseUpdateAvailable(
-  latestVersion: string | null,
-  currentVersion: string | null,
-  releaseChannel: "dev" | "stable" | null,
-): boolean {
-  return releaseChannel === "stable" && isAppUpdateAvailable(latestVersion, currentVersion);
 }
 
 const bridge = () => window.localStudioDesktop ?? {};
@@ -138,7 +123,9 @@ export function useAppUpdate(): AppUpdate {
     };
   }, [syncDesktopPhase]);
 
-  const updateAvailable = isReleaseUpdateAvailable(latestVersion, currentVersion, releaseChannel);
+  const updateAvailable =
+    releaseChannel === "stable" &&
+    Boolean(latestVersion && currentVersion && isNewerVersion(latestVersion, currentVersion));
 
   const startUpdate = useCallback(() => {
     const desktop = bridge();
