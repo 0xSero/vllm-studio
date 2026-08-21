@@ -8,7 +8,7 @@ import { useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { Archive, MoreIcon, PinIcon, PinOffIcon, SquarePen, X } from "@/ui/icon-registry";
 import type { SessionPref } from "@/features/agent/messages/prefs";
-import { hrefWithOpenNonce, navigateToSessionHref, visibleSessionAge } from "./helpers";
+import { hrefWithOpenNonce, visibleSessionAge } from "./helpers";
 import { PinButton } from "./nav-chrome";
 
 const SESSION_MENU_CLASS = `absolute right-0 top-6 isolate z-[999] min-w-[180px] ${POPOVER_MENU_CLASS}`;
@@ -275,7 +275,7 @@ function SessionOpenTarget({
           event.preventDefault();
           const targetHref = hrefWithOpenNonce(href);
           onOpen?.(targetHref);
-          navigateToSessionHref(router, targetHref);
+          router.push(targetHref);
         }}
         onDragStart={onDragStart}
         className={targetClass}

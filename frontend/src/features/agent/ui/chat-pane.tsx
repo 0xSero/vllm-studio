@@ -29,29 +29,6 @@ import {
   type SlashInvocation,
 } from "@/features/agent/composer/command-registry";
 import { deriveComposerVisual } from "@/features/agent/composer/composer-visual-state";
-
-function diffDrawerFor(
-  open: boolean,
-  props: {
-    cwd: string | null;
-    gitBranch?: string | null;
-    gitSummary?: GitSummary | null;
-    onClose: () => void;
-  },
-) {
-  if (!open) return null;
-  return <GitDiffDrawer {...props} />;
-}
-
-function piSessionIdOf(tab: { piSessionId?: string | null } | null | undefined): string | null {
-  return tab?.piSessionId ?? null;
-}
-
-function subagentChipsFor(piSessionId: string | null | undefined) {
-  if (!piSessionId) return null;
-  return <SubagentChips piSessionId={piSessionId} />;
-}
-
 import {
   useComposerAutosize,
   useComposerLoadedContext,
@@ -79,10 +56,10 @@ import {
 import { useChatPaneSessionTitle } from "@/features/agent/ui/chat-pane-session-title";
 import { useGoalCommand } from "@/features/agent/ui/use-goal-command";
 import { useGoalMode } from "@/features/agent/ui/use-goal-mode";
-import { useChatPaneComposerActions } from "@/features/agent/ui/use-chat-pane-composer-actions";
 import { useComposerCommandHandlers } from "@/features/agent/ui/use-composer-command-handlers";
 import { useChatPaneSendFlow } from "@/features/agent/ui/chat-pane-send-flow";
 import { ChatPaneHandle } from "@/features/agent/messages";
+import { respondExtensionUi } from "@/features/agent/runtime/api";
 import { useSessionEngine } from "@/features/agent/runtime/engine";
 import type { Session, UpdateSession } from "@/features/agent/runtime/types";
 import { useTools } from "@/features/agent/tools/context";
@@ -415,7 +392,7 @@ export function ChatPane({
     onSelectReasoning: selectThinkingLevel,
   });
 
-  const activePiSessionId = piSessionIdOf(activeTab);
+  const activePiSessionId = activeTab?.piSessionId ?? null;
   const { goalRevision, goalAction, flushPendingGoal } = useGoalCommand(
     activePiSessionId,
     activeTabId,
@@ -628,10 +605,22 @@ export function ChatPane({
     () => (activeTabId ? engine.loadEarlier(activeTabId) : Promise.resolve()),
     [activeTabId, engine],
   );
-  const { handleExtensionUiResponse } = useChatPaneComposerActions({
-    activeTab,
-    updateTab,
-  });
+  // Clear the prompt optimistically; a failed round-trip surfaces as the
+  // session error rather than leaving a dead dialog on screen.
+  const handleExtensionUiResponse = useCallback(
+    (response: { value?: string; confirmed?: boolean; cancelled?: boolean }) => {
+      const request = activeTab?.extensionUiRequest;
+      if (!activeTab || !request) return;
+      updateTab(activeTab.id, (session) => ({ ...session, extensionUiRequest: undefined }));
+      void respondExtensionUi(activeTab.id, request.requestId, response).catch((error) => {
+        updateTab(activeTab.id, (session) => ({
+          ...session,
+          error: error instanceof Error ? error.message : "Extension response failed",
+        }));
+      });
+    },
+    [activeTab, updateTab],
+  );
   const composerVisual = deriveComposerVisual({
     compacting,
     hasMessages: (activeTab?.messages.length ?? 0) > 0,
@@ -678,12 +667,14 @@ export function ChatPane({
         loadEarlierHistory={loadEarlierHistory}
       />
       <div className={terminalView ? "hidden" : "contents"}>
-        {diffDrawerFor(diffDrawerOpen, {
-          cwd: cwd || null,
-          gitBranch,
-          gitSummary,
-          onClose: closeDiffDrawer,
-        })}
+        {diffDrawerOpen ? (
+          <GitDiffDrawer
+            cwd={cwd || null}
+            gitBranch={gitBranch}
+            gitSummary={gitSummary}
+            onClose={closeDiffDrawer}
+          />
+        ) : null}
         {automationDrawerOpen ? (
           <AutomationDrawer
             modelId={modelId}
@@ -692,7 +683,7 @@ export function ChatPane({
             onClose={() => setAutomationDrawerOpen(false)}
           />
         ) : null}
-        {subagentChipsFor(activePiSessionId)}
+        {activePiSessionId ? <SubagentChips piSessionId={activePiSessionId} /> : null}
         <AgentComposerFrame
           attachments={attachments}
           banner={composerVisual.banner}
