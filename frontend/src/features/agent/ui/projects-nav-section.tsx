@@ -23,13 +23,7 @@ import { RecentSessionsSection } from "./projects-nav/recent-sessions-section";
 import { NewChatPlusButton, ProjectRow, ProjectSessions } from "./projects-nav/session-rows";
 import { TerminalRow } from "./projects-nav/terminal-rows";
 
-export function ProjectsNavSection({
-  expanded,
-  view,
-}: {
-  expanded: boolean;
-  view: NavView;
-}) {
+export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view: NavView }) {
   const projectsContext = useProjects();
   const projects = projectsContext.projects;
   const { moveProjectBefore, refresh: refreshProjects, upsertProject } = projectsContext;

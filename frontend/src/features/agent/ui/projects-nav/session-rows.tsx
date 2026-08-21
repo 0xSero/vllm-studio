@@ -122,11 +122,7 @@ export function ProjectRow({
         </button>
         <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
           {onTogglePin ? (
-            <PinButton
-              pinned={pinned}
-              onToggle={onTogglePin}
-              target={project.name}
-            />
+            <PinButton pinned={pinned} onToggle={onTogglePin} target={project.name} />
           ) : null}
           {onRemove ? (
             <button
