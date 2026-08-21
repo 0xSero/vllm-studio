@@ -461,20 +461,5 @@ export function useChatPaneSendFlow({
     });
   }, [activeTab, cwd, engine, queueAndSendControl, runGuardedSubmit, submitPrompt, updateTab]);
 
-  // Re-run the last user turn after a failure (a 503, a network blip). On a
-  // *send* failure the text is restored to the composer, but a turn that errors
-  // mid-stream leaves the prompt only in the transcript with an empty composer —
-  // so retry resends the last user message directly.
-  const retryLast = useCallback(() => {
-    if (!activeTab || !modelId) return Promise.resolve();
-    const lastUserText = [...activeTab.messages].reverse().find((m) => m.role === "user")?.text;
-    const text = (lastUserText ?? activeTab.input).trim();
-    if (!text) return Promise.resolve();
-    return runGuardedSubmit(composerSubmitInFlightRef.current, activeTab.id, () => {
-      updateTab(activeTab.id, (t) => ({ ...t, error: "", input: "" }));
-      return submitPrompt(text, activeTab.id);
-    });
-  }, [activeTab, modelId, runGuardedSubmit, submitPrompt, updateTab]);
-
-  return { sendMessage, queueMessage, removeQueued, editQueued, steerQueued, abortTurn, retryLast };
+  return { sendMessage, queueMessage, removeQueued, editQueued, steerQueued, abortTurn };
 }

@@ -112,11 +112,6 @@ import {
 import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
 import { cx } from "@/ui/utils";
 import { ExtensionUiDialog } from "@/features/agent/ui/extension-ui-dialog";
-import {
-  clearSessionGoal,
-  respondExtensionUi,
-  updateSessionGoal,
-} from "@/features/agent/runtime/api";
 export type { ChatPaneHandle, SessionTab };
 
 const Timeline = dynamic(
@@ -304,7 +299,6 @@ export function ChatPane({
   const lastAppliedComposerHeightRef = useRef(0);
   const lastComposerValueLengthRef = useRef(0);
   const [stickToBottom, setStickToBottom] = useState(true);
-  const [queueExpanded, setQueueExpanded] = useState(false);
   const [mention, setMention] = useState<ComposerMention | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [fileMentionRows, setFileMentionRows] = useState<FileMentionRow[]>([]);
@@ -743,16 +737,12 @@ export function ChatPane({
             handleComposerKeyDown(event);
           }}
           onComposerPaste={handleComposerPaste}
-          onEditQueued={editQueued}
           onInitGit={onInitGit}
           onOpenStatus={openComputerStatus}
           onOpenDiff={openDiffDrawer}
-          onQueueExpandedChange={setQueueExpanded}
           onRemoveAttachment={removeAttachment}
           onRemoveLoadedContext={removeLoadedContext}
-          onRemoveQueued={removeQueued}
           onSelectMention={(entry) => void handleSelectMention(entry)}
-          onSteerQueued={(queueId) => void steerQueued(queueId)}
           onSubmit={handleComposerSubmit}
           onToggleBrowserBackend={onToggleBrowserBackend}
           onToggleBrowserTool={onToggleBrowserTool}
@@ -779,8 +769,6 @@ export function ChatPane({
           }
           showStatusBar={!composerVisual.showProjectRow}
           promptTemplates={selectedPromptTemplates}
-          queueExpanded={queueExpanded}
-          queueItems={visibleQueueItems}
           readingAttachments={readingAttachments}
           running={Boolean(running)}
           selectedSkills={selectedSkills}
