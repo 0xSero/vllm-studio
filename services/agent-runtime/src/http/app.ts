@@ -75,6 +75,13 @@ import {
   handleGoogleClientPut,
 } from "./google-account-handlers";
 import {
+  handleOAuthAuthorizeBegin,
+  handleOAuthAuthorizeCancel,
+  handleOAuthClientPut,
+  handleOAuthDisconnect,
+  handleOAuthStatus,
+} from "./oauth-handlers";
+import {
   handleProjectAdd,
   handleProjectRemove,
   handleProjectsList,
@@ -161,6 +168,11 @@ export function createAgentRuntimeApp() {
   app.delete("/api/agent/connectors/grants", (c) => handleConnectorGrantDelete(c.req.raw));
   app.post("/api/agent/connectors/test", (c) => handleConnectorTest(c.req.raw));
   app.get("/api/agent/connectors/ssh-server-path", () => handleSshServerPath());
+  app.post("/api/agent/oauth/authorize", (c) => handleOAuthAuthorizeBegin(c.req.raw));
+  app.delete("/api/agent/oauth/authorize", (c) => handleOAuthAuthorizeCancel(c.req.raw));
+  app.get("/api/agent/oauth/status", (c) => handleOAuthStatus(c.req.raw));
+  app.put("/api/agent/oauth/client", (c) => handleOAuthClientPut(c.req.raw));
+  app.delete("/api/agent/oauth", (c) => handleOAuthDisconnect(c.req.raw));
   app.get("/api/agent/accounts/google", () => handleGoogleAccountGet());
   app.put("/api/agent/accounts/google", (c) => handleGoogleClientPut(c.req.raw));
   app.delete("/api/agent/accounts/google", (c) => handleGoogleAccountDisconnect(c.req.raw));

@@ -12,6 +12,11 @@
  * are literal": it is resolved against the MCP server bundled inside this app,
  * because the absolute path differs between a dev checkout and a signed build.
  */
+import {
+  OAUTH_CONNECTOR_PROVIDERS,
+  type OAuthConnectorAuthDefinition,
+} from "@local-studio/agent-runtime/oauth-connector-contract";
+
 export const SSH_SERVER_PLACEHOLDER = "{{SSH_REMOTE_SERVER}}";
 
 export interface CatalogEntry {
@@ -30,6 +35,14 @@ export interface CatalogEntry {
    * stays readable.
    */
   envFields: Array<{ key: string; label: string; placeholder?: string; secret?: boolean }>;
+  /**
+   * Present when the provider supports OAuth: this entry connects with a
+   * click, never with a pasted token. The runtime runs the flow (device code
+   * or loopback PKCE), stores the grant, and injects a fresh access token into
+   * `auth.tokenEnv` each time the MCP child is spawned — so an entry with
+   * `auth` must declare no token-shaped env fields at all.
+   */
+  auth?: OAuthConnectorAuthDefinition;
 }
 
 export const CONNECTOR_CATALOG: CatalogEntry[] = [
@@ -37,15 +50,20 @@ export const CONNECTOR_CATALOG: CatalogEntry[] = [
     id: "github",
     name: "GitHub",
     company: "GitHub",
-    description: "Repos, issues, pull requests, and code search.",
+    description: "Repos, issues, pull requests, and code search. Connects with GitHub sign-in.",
     transport: "stdio",
-    command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-github@2025.4.8"],
-    envFields: [
-      { key: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "Personal access token", secret: true },
-    ],
+    command: OAUTH_CONNECTOR_PROVIDERS.github.connector.command,
+    args: [...OAUTH_CONNECTOR_PROVIDERS.github.connector.args],
+    envFields: [],
+    auth: OAUTH_CONNECTOR_PROVIDERS.github.auth,
   },
   {
+    // X stays on pasted keys, honestly: the bundled MCP package
+    // (@enescinar/twitter-mcp) constructs an OAuth 1.0a user-context client
+    // from API_KEY/API_SECRET_KEY/ACCESS_TOKEN/ACCESS_TOKEN_SECRET and has no
+    // code path that accepts an OAuth 2.0 bearer token, so an X "Connect"
+    // button would mint a token the server cannot use. If the package grows
+    // bearer support, this entry becomes an `auth` entry like GitHub's.
     id: "x",
     name: "X / Twitter",
     company: "X",
