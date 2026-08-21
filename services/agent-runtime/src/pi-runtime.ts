@@ -30,7 +30,6 @@ import {
 import { getProviderHub } from "./provider-hub";
 import { attachGoalDriver } from "./goal-driver";
 import { createGoalPromptExtension } from "./goal-prompt";
-import { findRuntimeSessionForLookup, piStatusFromEvents } from "./pi-runtime-state";
 import { configuredPiSessionDir, findSessionFile } from "./sessions-store";
 import { getGlobalSingleton } from "./instances";
 import { connectorsRevisionSync } from "./connectors-service";
@@ -613,24 +612,23 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     }).pipe(Effect.catch(() => Effect.void));
   }
 
-  get status() {
+  get status(): PiAgentStatus {
     const sdkSession = this.runtime?.session;
-    return piStatusFromEvents({
+    const sdkActive =
+      Boolean(sdkSession?.isStreaming) ||
+      Boolean(sdkSession?.isCompacting) ||
+      (sdkSession?.pendingMessageCount ?? 0) > 0;
+    return {
       running: Boolean(this.runtime),
-      activePromptCount: this.activePromptCount,
-      sdkActive:
-        Boolean(sdkSession?.isStreaming) ||
-        Boolean(sdkSession?.isCompacting) ||
-        (sdkSession?.pendingMessageCount ?? 0) > 0,
+      active: this.activePromptCount > 0 || sdkActive,
       modelId: this.currentModelId,
       cwd: this.currentCwd,
       piSessionId: this.currentPiSessionId,
       agentDir: this.agentDir,
       eventSeq: this.eventSeq,
       lastError: this.lastError,
-      eventLog: this.eventLog,
       contextUsage: this.computeContextUsage(),
-    });
+    };
   }
 
   private computeContextUsage() {
@@ -762,6 +760,59 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
 function piEventsAfter(eventLog: LoggedPiEvent[], seq: number): LoggedPiEvent[] {
   const floor = Number.isFinite(seq) ? Math.max(0, Math.trunc(seq)) : 0;
   return eventLog.filter((entry) => entry.seq > floor);
+}
+
+type RuntimeLookupEntry = {
+  sessionId: string;
+  session: PiAgentSession;
+};
+
+function findRuntimeSessionForLookup(
+  entries: Iterable<RuntimeLookupEntry>,
+  sessionId: string,
+  piSessionId?: string | null,
+): RuntimeLookupEntry | null {
+  const snapshot = [...entries];
+  const exact = snapshot.find((entry) => entry.sessionId === sessionId);
+  const target = piSessionId?.trim();
+  if (!target) return exact ?? null;
+  const matches = snapshot.filter(
+    (entry) =>
+      entry.session.status.piSessionId === target ||
+      (entry.sessionId === sessionId && !entry.session.status.piSessionId),
+  );
+  return matches.reduce<RuntimeLookupEntry | null>(
+    (best, candidate) =>
+      !best || runtimeLookupOutranks(candidate, best, sessionId) ? candidate : best,
+    null,
+  );
+}
+
+function runtimeLookupOutranks(
+  candidate: RuntimeLookupEntry,
+  current: RuntimeLookupEntry,
+  requestedSessionId: string,
+): boolean {
+  const candidateRank = runtimeLookupRank(candidate, requestedSessionId);
+  const currentRank = runtimeLookupRank(current, requestedSessionId);
+  for (let index = 0; index < candidateRank.length; index += 1) {
+    if (candidateRank[index] !== currentRank[index]) {
+      return candidateRank[index] > currentRank[index];
+    }
+  }
+  return false;
+}
+
+function runtimeLookupRank(
+  entry: RuntimeLookupEntry,
+  requestedSessionId: string,
+): [number, number, number, number] {
+  return [
+    entry.session.status.active === true ? 1 : 0,
+    entry.session.status.running === true ? 1 : 0,
+    entry.sessionId === requestedSessionId ? 1 : 0,
+    entry.session.status.eventSeq ?? 0,
+  ];
 }
 
 const DEFAULT_SESSION_ID = "default";
