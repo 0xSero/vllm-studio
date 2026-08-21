@@ -126,7 +126,9 @@ function clampReport(text: string): string {
 export function subagentReport(run: SubagentRun): LastAssistantResult {
   if (!run.piSessionId) return { text: "", error: null };
   const result = lastAssistantResult(run.cwd, run.piSessionId);
-  return { text: clampReport(result.text), error: result.error };
+  // Aborting the child writes "Request was aborted" into its transcript as an
+  // assistant error; adopting it would paint a deliberate stop as a failure.
+  return { text: clampReport(result.text), error: run.status === "cancelled" ? null : result.error };
 }
 
 /** True while this runtime still has the child streaming. */
