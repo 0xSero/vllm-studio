@@ -220,7 +220,7 @@ function startPromptCommand(
  * turn owns the intent state and clobbering it would strand the in-flight turn
  * with no live-target bubble. Mirrors the success path's non-clobbering guard.
  */
-export function settleFailedTurn(session: Session, assistantId: string, message: string): Session {
+function settleFailedTurn(session: Session, assistantId: string, message: string): Session {
   if (session.activeAssistantId && session.activeAssistantId !== assistantId) return session;
   return { ...settleTurn(session), error: message };
 }
@@ -273,7 +273,7 @@ function mergeSkills(
   return [...byId.values()];
 }
 
-export function runtimeIsActiveForPiSession(
+function runtimeIsActiveForPiSession(
   runtimeStatus: RuntimeStatus | null | undefined,
   piSessionId: string | null | undefined,
 ): boolean {
