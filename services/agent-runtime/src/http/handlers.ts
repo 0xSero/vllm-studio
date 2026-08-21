@@ -28,8 +28,12 @@ import { markGoalTurnAborted } from "../goal-driver";
 import { piResourceDiagnostics, piRuntimeManager } from "../pi-runtime";
 import type { LoggedPiEvent, PiAgentSession, PiAgentStatus } from "../pi-runtime-types";
 import { listSessions } from "../sessions-store";
-import { sessionListChangedStream } from "../session-list-changed";
+import {
+  sessionListChangedVersion,
+  subscribeSessionListChanged,
+} from "../session-list-changed";
 import { errorMessage, jsonError } from "./helpers";
+import { sseResponse } from "./sse";
 
 // ─── POST /api/agent/turn ─────────────────────────────────────────────────
 
@@ -444,9 +448,9 @@ function parseSeq(value: string | null): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0;
 }
 
-function encode(payload: unknown, id?: number): Uint8Array {
+function encode(payload: unknown, id?: number): string {
   const prefix = id === undefined ? "" : `id: ${id}\n`;
-  return new TextEncoder().encode(`${prefix}data: ${JSON.stringify(payload)}\n\n`);
+  return `${prefix}data: ${JSON.stringify(payload)}\n\n`;
 }
 
 export function handleRuntimeEvents(request: Request): Response {
@@ -463,9 +467,9 @@ export function handleRuntimeEvents(request: Request): Response {
   }
   const session = resolved.session;
 
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      let closed = false;
+  return sseResponse({
+    signal: request.signal,
+    start(send, close) {
       let off = () => {};
       let ping: ReturnType<typeof setInterval> | null = null;
       let replaying = true;
@@ -473,23 +477,7 @@ export function handleRuntimeEvents(request: Request): Response {
       const sentSeqs = new Set<number>();
       let after = replayAfterCursor(requestedAfter, session.status.eventSeq);
       const safeSend = (payload: unknown, id?: number) => {
-        if (closed) return;
-        try {
-          controller.enqueue(encode(payload, id));
-        } catch {
-          close();
-        }
-      };
-      const close = () => {
-        if (closed) return;
-        closed = true;
-        off();
-        if (ping) clearInterval(ping);
-        try {
-          controller.close();
-        } catch {
-          // client already closed
-        }
+        send(encode(payload, id));
       };
 
       const sendLogged = (logged: LoggedPiEvent) => {
@@ -549,33 +537,30 @@ export function handleRuntimeEvents(request: Request): Response {
         safeSend({ type: "status", phase: "running", session: session.status });
       }, 20_000);
 
-      request.signal.addEventListener("abort", close);
       if (!session.status.active) {
         setTimeout(close, 25);
       }
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
+      return () => {
+        off();
+        if (ping) clearInterval(ping);
+      };
     },
   });
 }
 
 // ─── GET /api/agent/session-list-changed ──────────────────────────────────
 
+const SESSION_LIST_HEARTBEAT_MS = 45_000;
+
 export function handleSessionListChanged(request: Request): Response {
-  const stream = sessionListChangedStream(request.signal);
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
+  return sseResponse({
+    signal: request.signal,
+    connectComment: `connected v${sessionListChangedVersion()}`,
+    heartbeat: { intervalMs: SESSION_LIST_HEARTBEAT_MS, comment: "keep-alive" },
+    start(send) {
+      return subscribeSessionListChanged((event) => {
+        send(`data: ${JSON.stringify(event)}\n\n`);
+      });
     },
   });
 }

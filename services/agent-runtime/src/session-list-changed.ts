@@ -1,7 +1,5 @@
 import type { SessionListChangedEvent } from "../../../shared/agent/session-list-changed";
 
-const HEARTBEAT_INTERVAL_MS = 45_000;
-
 type Listener = (event: SessionListChangedEvent) => void;
 
 const listeners = new Set<Listener>();
@@ -20,71 +18,6 @@ export function subscribeSessionListChanged(listener: Listener): () => void {
   };
 }
 
-export function sessionListChangedStream(signal?: AbortSignal): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-  let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
-  let unsubscribe: (() => void) | null = null;
-  let onAbort: (() => void) | null = null;
-  let heartbeat: ReturnType<typeof setInterval> | null = null;
-  let closed = false;
-  const teardown = (): void => {
-    if (closed) return;
-    closed = true;
-    if (heartbeat) {
-      clearInterval(heartbeat);
-      heartbeat = null;
-    }
-    if (unsubscribe) {
-      unsubscribe();
-      unsubscribe = null;
-    }
-    if (onAbort && signal) {
-      signal.removeEventListener("abort", onAbort);
-      onAbort = null;
-    }
-    if (streamController) {
-      try {
-        streamController.close();
-      } catch {
-        return;
-      }
-    }
-  };
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      streamController = controller;
-      // First byte immediately: the Next standalone proxy withholds even the
-      // HTTP headers until the first body chunk, so without this an idle
-      // stream left EventSource stuck in "connecting" for up to a heartbeat
-      // interval (measured 45s on both surfaces).
-      controller.enqueue(encoder.encode(`: connected v${version}\n\n`));
-      unsubscribe = subscribeSessionListChanged((event) => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
-        } catch {
-          teardown();
-        }
-      });
-      if (signal) {
-        if (signal.aborted) {
-          teardown();
-          return;
-        }
-        onAbort = () => teardown();
-        signal.addEventListener("abort", onAbort, { once: true });
-      }
-      heartbeat = setInterval(() => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(": keep-alive\n\n"));
-        } catch {
-          teardown();
-        }
-      }, HEARTBEAT_INTERVAL_MS);
-    },
-    cancel() {
-      teardown();
-    },
-  });
+export function sessionListChangedVersion(): number {
+  return version;
 }
