@@ -152,28 +152,29 @@ export function ComposerProjectDrawer({
         data-testid="composer-drawer"
         className="relative z-0 mx-auto -mb-3 w-[calc(100%_-_26px)] max-w-[calc(var(--composer-w)*0.9_-_26px)] overflow-hidden rounded-[var(--composer-radius-inner)] border border-(--border) bg-(--fg)/[0.022] pb-2 text-[length:var(--fs-xs)] shadow-[var(--composer-elevation-inner)] md:pb-3 md:text-[length:var(--fs-sm)] backdrop-blur-sm [corner-shape:superellipse(1.5)] sm:w-[calc(90%_-_26px)]"
       >
-        <div className="px-1.5 pt-1">
-          <DrawerSummaryButton
-            open={open}
-            onToggle={() => setOpen((value) => !value)}
-            label={label}
-            queueCount={queueItems.length}
-            hasGoal={goal !== null}
-          />
-        </div>
         {/* Collapsed is a summary, not a void: the branch and its diffstat
-            are the thing you check between prompts, so they stay visible
-            without opening the drawer. */}
-        {!open ? (
-          <div className="px-1.5 pt-0.5">
+            are the thing you check between prompts, so they share the single
+            row with the project label instead of stacking under it. */}
+        <div className="flex items-center gap-1 px-1.5 pt-1">
+          <div className="min-w-0 flex-1">
+            <DrawerSummaryButton
+              open={open}
+              onToggle={() => setOpen((value) => !value)}
+              label={label}
+              queueCount={queueItems.length}
+              hasGoal={goal !== null}
+            />
+          </div>
+          {!open ? (
             <GitRow
+              compact
               gitSummary={gitSummary}
               gitBranch={gitBranch}
               onInitGit={onInitGit}
               onOpenDiff={onOpenDiff}
             />
-          </div>
-        ) : null}
+          ) : null}
+        </div>
         {hasQueue ? (
           <div className="px-1.5 pb-0.5">
             <QueuedMessageStack
@@ -688,22 +689,29 @@ function GitRow({
   gitBranch,
   onInitGit,
   onOpenDiff,
+  compact = false,
 }: {
   gitSummary?: GitSummary | null;
   gitBranch?: string | null;
   onInitGit?: () => void;
   onOpenDiff: () => void;
+  compact?: boolean;
 }) {
+  // Compact rows sit beside the summary button on one shared line, so they
+  // keep the row metrics but give up w-full and let the summary take the slack.
+  const rowClass = compact
+    ? "flex h-8 shrink-0 items-center gap-2 rounded-[10px] px-2 text-left transition-colors"
+    : listRowClass;
   if (gitSummary?.isRepo) {
     return (
       <button
         type="button"
         onClick={onOpenDiff}
-        className={cx(listRowClass, "hover:bg-(--hover)")}
+        className={cx(rowClass, "hover:bg-(--hover)")}
         title="View changes"
       >
         <GitBranchIcon className="h-3.5 w-3.5 shrink-0 text-(--fg)/56" />
-        <span className="min-w-0 flex-1 truncate text-(--fg)/72">
+        <span className={cx("min-w-0 truncate text-(--fg)/72", compact ? "max-w-28" : "flex-1")}>
           {gitBranch ?? gitSummary.branch ?? "git"}
         </span>
         <span className="flex shrink-0 items-center gap-1 font-mono text-[length:var(--fs-xs)] tabular-nums">
@@ -721,7 +729,7 @@ function GitRow({
       <button
         type="button"
         onClick={onInitGit}
-        className={cx(listRowClass, "text-(--fg)/56 hover:bg-(--hover) hover:text-(--fg)/82")}
+        className={cx(rowClass, "text-(--fg)/56 hover:bg-(--hover) hover:text-(--fg)/82")}
       >
         <GitBranchIcon className="h-3.5 w-3.5 shrink-0" />
         Initialize git
