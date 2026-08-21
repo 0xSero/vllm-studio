@@ -53,6 +53,11 @@ export function sessionListChangedStream(signal?: AbortSignal): ReadableStream<U
   return new ReadableStream<Uint8Array>({
     start(controller) {
       streamController = controller;
+      // First byte immediately: the Next standalone proxy withholds even the
+      // HTTP headers until the first body chunk, so without this an idle
+      // stream left EventSource stuck in "connecting" for up to a heartbeat
+      // interval (measured 45s on both surfaces).
+      controller.enqueue(encoder.encode(`: connected v${version}\n\n`));
       unsubscribe = subscribeSessionListChanged((event) => {
         if (closed) return;
         try {
