@@ -56,7 +56,15 @@ type ScheduleArg = {
   weekdaysOnly?: unknown;
 };
 
-const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WEEKDAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
 
 const SCHEDULE_DOC =
   "Schedule format — one of: " +
@@ -111,7 +119,10 @@ export function normalizeScheduleArg(
     }
     return { ok: true, schedule: { kind: "weekly", day, time: (input.time as string).trim() } };
   }
-  return { ok: false, error: `schedule.kind must be 'interval', 'daily' or 'weekly'. ${SCHEDULE_DOC}` };
+  return {
+    ok: false,
+    error: `schedule.kind must be 'interval', 'daily' or 'weekly'. ${SCHEDULE_DOC}`,
+  };
 }
 
 /** One-line human description of a schedule, for list output. */
@@ -125,10 +136,9 @@ export function describeSchedule(schedule: NormalizedSchedule): string {
 
 const scheduleParameter = Type.Object(
   {
-    kind: Type.Union(
-      [Type.Literal("interval"), Type.Literal("daily"), Type.Literal("weekly")],
-      { description: "interval = every N minutes; daily/weekly = at a clock time" },
-    ),
+    kind: Type.Union([Type.Literal("interval"), Type.Literal("daily"), Type.Literal("weekly")], {
+      description: "interval = every N minutes; daily/weekly = at a clock time",
+    }),
     minutes: Type.Optional(Type.Number({ description: "interval only: minutes, >= 1" })),
     time: Type.Optional(Type.String({ description: "daily/weekly only: 'HH:MM' 24h local time" })),
     day: Type.Optional(Type.Number({ description: "weekly only: 0-6, 0 = Sunday" })),
@@ -354,9 +364,7 @@ function formatAutomationDetail(record: AutomationRecord, includeRuns: boolean):
 
 // ─── Store reads ────────────────────────────────────────────────────────────
 
-type ListResult =
-  | { ok: true; automations: AutomationRecord[] }
-  | { ok: false; error: string };
+type ListResult = { ok: true; automations: AutomationRecord[] } | { ok: false; error: string };
 
 /** The list endpoint is the only read path — there is no GET /automations/:id —
  *  and it already returns each automation in full, run history included. */
@@ -364,7 +372,10 @@ async function fetchAutomations(signal: AbortSignal | undefined): Promise<ListRe
   const { ok, status, body } = await httpJson("/api/agent/automations", { method: "GET" }, signal);
   if (!ok) return { ok: false, error: errorText(body, status) };
   const automations = (body as { automations?: unknown }).automations;
-  return { ok: true, automations: Array.isArray(automations) ? (automations as AutomationRecord[]) : [] };
+  return {
+    ok: true,
+    automations: Array.isArray(automations) ? (automations as AutomationRecord[]) : [],
+  };
 }
 
 async function fetchAutomation(
@@ -383,7 +394,10 @@ async function fetchAutomation(
   return { ok: true, automation: match };
 }
 
-function requireId(params: unknown, tool: string): { ok: true; id: string } | { ok: false; error: string } {
+function requireId(
+  params: unknown,
+  tool: string,
+): { ok: true; id: string } | { ok: false; error: string } {
   const raw = (params as { id?: unknown } | undefined)?.id;
   const id = typeof raw === "string" ? raw.trim() : "";
   if (!id) return { ok: false, error: `${tool} needs an automation id (see list_automations).` };
@@ -436,7 +450,9 @@ function registerReadTools(pi: ExtensionAPI): void {
       "job is actually doing its work (a run can succeed on schedule and still report a " +
       "failure), and to read the current prompt before editing it with update_automation.",
     parameters: Type.Object({
-      id: Type.String({ description: "The automation id from list_automations, e.g. 'auto-1a2b3c4d'." }),
+      id: Type.String({
+        description: "The automation id from list_automations, e.g. 'auto-1a2b3c4d'.",
+      }),
       includeRuns: Type.Optional(
         Type.Boolean({ description: "Include the run history. Default true." }),
       ),
@@ -473,7 +489,9 @@ function registerWriteTools(pi: ExtensionAPI): void {
       " The automation runs with the current session's model and project directory unless you " +
       "pass others. Returns the new automation's id.",
     parameters: Type.Object({
-      prompt: Type.String({ description: "The standalone instruction the automation runs each time." }),
+      prompt: Type.String({
+        description: "The standalone instruction the automation runs each time.",
+      }),
       schedule: scheduleParameter,
       name: Type.Optional(Type.String({ description: "Short display name shown in the app." })),
       model: Type.Optional(
@@ -649,7 +667,9 @@ function registerWriteTools(pi: ExtensionAPI): void {
           signal,
         );
         if (!reply.ok) {
-          return failure(`Failed to change automation status: ${errorText(reply.body, reply.status)}`);
+          return failure(
+            `Failed to change automation status: ${errorText(reply.body, reply.status)}`,
+          );
         }
         const automation = patchedAutomation(reply.body);
         const name = text(automation.name, parsed.id);
@@ -715,7 +735,9 @@ function registerWriteTools(pi: ExtensionAPI): void {
       "undone. If the user only wants it to stop firing, use set_automation_status with " +
       "'paused' instead.",
     parameters: Type.Object({
-      id: Type.String({ description: "The automation id from list_automations, e.g. 'auto-1a2b3c4d'." }),
+      id: Type.String({
+        description: "The automation id from list_automations, e.g. 'auto-1a2b3c4d'.",
+      }),
     }),
     async execute(_id, params, signal) {
       const parsed = requireId(params, "delete_automation");

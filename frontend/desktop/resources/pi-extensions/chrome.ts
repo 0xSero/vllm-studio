@@ -310,11 +310,15 @@ export default async function registerChromeExtension(pi: ExtensionAPI) {
       async execute(_id, params, signal) {
         const args = (params ?? {}) as Record<string, unknown>;
         const detailBase: Record<string, unknown> = { browser: "chrome", tool: tool.name, params };
-        const detail = typeof args.url === "string" ? args.url : (args.selector as string | undefined);
+        const detail =
+          typeof args.url === "string" ? args.url : (args.selector as string | undefined);
         try {
           const data = await callRelay(env, tool.method, tool.params(params as never), signal);
           record(log, tool.name, detail, true);
-          return { content: [{ type: "text", text: asText(data) }], details: { ...detailBase, data } };
+          return {
+            content: [{ type: "text", text: asText(data) }],
+            details: { ...detailBase, data },
+          };
         } catch (error) {
           record(log, tool.name, detail, false);
           return failed(tool.name, detailBase, error);
