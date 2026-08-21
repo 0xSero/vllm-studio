@@ -2,14 +2,13 @@ import type { Logger } from "../../core/logger";
 import type { AppContext } from "../../app-context";
 import { Effect } from "effect";
 import type { Recipe } from "../models/types";
+import type { InferenceUsageTotals } from "./inference-accounting";
 const PROXY_SESSION_HEADER_NAMES = [
   "x-vllm-session-id",
   "x-session-id",
   "x-chat-session-id",
   "openai-conversation-id",
 ];
-
-export type OpenAIUsage = Record<string, number>;
 
 const NON_RUNNING_MODEL_WARN_INTERVAL_MS = 10 * 60_000;
 
@@ -79,17 +78,12 @@ export const extractSessionId = (
 export const attachSessionUsage = (
   result: Record<string, unknown>,
   sessionId: string | null,
-  usage: OpenAIUsage | undefined,
+  totals: InferenceUsageTotals | null,
 ): void => {
   if (!sessionId) return;
 
-  const promptTokens = usage?.["prompt_tokens"] ?? 0;
-  const completionTokens = usage?.["completion_tokens"] ?? 0;
-  const completionDetails = usage?.["completion_tokens_details"] as
-    | Record<string, number>
-    | undefined;
-  const reasoningTokens =
-    usage?.["reasoning_tokens"] ?? completionDetails?.["reasoning_tokens"] ?? 0;
+  const promptTokens = totals?.promptTokens ?? 0;
+  const completionTokens = totals?.completionTokens ?? 0;
 
   result["session_id"] = sessionId;
   result["session_usage"] = {
@@ -98,7 +92,7 @@ export const attachSessionUsage = (
     total_tokens: promptTokens + completionTokens,
     current_prompt_tokens: promptTokens,
     current_completion_tokens: completionTokens,
-    current_reasoning_tokens: typeof reasoningTokens === "number" ? reasoningTokens : 0,
+    current_reasoning_tokens: totals?.reasoningTokens ?? 0,
   };
 };
 

@@ -18,14 +18,16 @@ import {
   exposeReasoningAsContentWhenEmpty,
   stripDeepSeekControlTokens,
 } from "./reasoning";
-import { recordNonStreamingInferenceUsage } from "./inference-accounting";
+import {
+  recordNonStreamingInferenceUsage,
+  type InferenceUsageInput,
+} from "./inference-accounting";
 import {
   attachSessionUsage,
   createNonRunningModelWarner,
   ensureStreamingUsageIncluded,
   extractSessionId,
   findRecipeByModel,
-  type OpenAIUsage,
 } from "./chat-request";
 import { buildChatCompletionsStreamResponse } from "./chat-completions-stream";
 
@@ -340,8 +342,8 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
             }
             const result = { ...decoded.value };
 
-            const usage = result["usage"] as OpenAIUsage | undefined;
-            yield* recordNonStreamingInferenceUsage(
+            const usage = result["usage"] as InferenceUsageInput | undefined;
+            const usageTotals = yield* recordNonStreamingInferenceUsage(
               { logger: context.logger, stores: context.stores },
               {
                 usage,
@@ -356,7 +358,7 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
               },
             );
 
-            attachSessionUsage(result, sessionId, usage);
+            attachSessionUsage(result, sessionId, usageTotals);
             normalizeCompletionChoices(result, recordedModel, sourceHeader);
 
             return Response.json(result, { status: response.status });

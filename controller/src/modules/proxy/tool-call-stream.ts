@@ -11,14 +11,7 @@ import {
   stripDeepSeekControlTokens,
   thinkingTagPrefixIsPartial,
 } from "./reasoning";
-
-export interface StreamUsage {
-  prompt_tokens: number;
-  completion_tokens: number;
-  reasoning_tokens?: number;
-  cache_read_tokens?: number;
-  cache_write_tokens?: number;
-}
+import type { InferenceUsageInput } from "./inference-accounting";
 
 export interface ToolCallStreamOptions {
   bufferImplicitReasoningContent?: boolean;
@@ -26,7 +19,7 @@ export interface ToolCallStreamOptions {
 
 export const createToolCallStream = (
   source: ReadableStream<Uint8Array>,
-  onUsage?: (usage: StreamUsage) => void,
+  onUsage?: (usage: InferenceUsageInput) => void,
   onFirstToken?: () => void,
   options: ToolCallStreamOptions = {},
 ): ReadableStream<Uint8Array> => {
@@ -164,23 +157,9 @@ export const createToolCallStream = (
 
   const parseUsage = (data: Record<string, unknown>): void => {
     if (usageTracked || !onUsage) return;
-    const usage = data["usage"] as Record<string, number> | undefined;
-    if (usage && (usage["prompt_tokens"] || usage["completion_tokens"])) {
-      onUsage({
-        prompt_tokens: usage["prompt_tokens"] ?? 0,
-        completion_tokens: usage["completion_tokens"] ?? 0,
-        reasoning_tokens:
-          (usage["reasoning_tokens"] as number | undefined) ??
-          (usage["completion_tokens_details"] as Record<string, number> | undefined)?.[
-            "reasoning_tokens"
-          ] ??
-          0,
-        cache_read_tokens:
-          (usage["prompt_tokens_details"] as Record<string, number> | undefined)?.[
-            "cached_tokens"
-          ] ?? 0,
-        cache_write_tokens: 0,
-      });
+    const usage = data["usage"] as InferenceUsageInput | undefined;
+    if (usage && (usage.prompt_tokens || usage.completion_tokens)) {
+      onUsage(usage);
       usageTracked = true;
     }
   };

@@ -5,8 +5,8 @@ import { buildSseHeaders } from "../../http/sse";
 import type { ProviderRouteConfig } from "../../services/provider-routing";
 import type { Recipe } from "../models/types";
 import { getDefaultReasoningParser } from "../compute/recipe-defaults";
-import { recordStreamingInferenceUsage } from "./inference-accounting";
-import { createToolCallStream, type StreamUsage } from "./tool-call-stream";
+import { recordStreamingInferenceUsage, type InferenceUsageInput } from "./inference-accounting";
+import { createToolCallStream } from "./tool-call-stream";
 
 const KEEPALIVE_INTERVAL_MS = 15_000;
 
@@ -99,7 +99,7 @@ const responseBodyStream = (
     );
   }
   let ttftMs: number | null = null;
-  let observedUsage: StreamUsage | null = null;
+  let observedUsage: InferenceUsageInput | null = null;
   const transformed = createToolCallStream(
     source,
     (usage) => {
