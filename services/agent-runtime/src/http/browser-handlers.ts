@@ -18,6 +18,7 @@ import {
 import { browserHistory } from "../browser-host/browser-history";
 import { playwrightManager } from "../browser-host/playwright";
 import { fetchReadable } from "../browser-host/reader";
+import { errorMessage } from "./helpers";
 
 const ALLOWED_VERBS = new Set([
   "navigate",
@@ -41,7 +42,7 @@ function unavailableError(): string {
     resolveBrowserEngine();
     return "Browser unavailable";
   } catch (error) {
-    return error instanceof Error ? error.message : "Browser unavailable";
+    return errorMessage(error, "Browser unavailable");
   }
 }
 
@@ -60,7 +61,7 @@ export async function handleBrowserVerb(request: Request, verb: string): Promise
   } catch (error) {
     return Response.json({
       ok: false,
-      error: error instanceof Error ? error.message : "Browser command failed",
+      error: errorMessage(error, "Browser command failed"),
     });
   }
 }
@@ -99,7 +100,7 @@ async function dispatchVerb(
       action: verb,
       detail: historyDetail(verb, payload),
       ok: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error, String(error)),
     });
     throw error;
   }
@@ -269,7 +270,7 @@ export async function handleBrowserFetch(request: Request): Promise<Response> {
     const result = await fetchReadable(raw, request.signal);
     return Response.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Fetch failed";
+    const message = errorMessage(error, "Fetch failed");
     // Only the initial url-rejection is a client error (400); resolved-host,
     // redirect, and upstream failures are bad-gateway (502) like before.
     const status = message.startsWith("url rejected") ? 400 : 502;
@@ -302,7 +303,7 @@ export async function handleBrowserFrame(): Promise<Response> {
   } catch (error) {
     return Response.json({
       ok: false,
-      error: error instanceof Error ? error.message : "frame poll failed",
+      error: errorMessage(error, "frame poll failed"),
     });
   }
 }
@@ -328,7 +329,7 @@ export async function handleBrowserInput(request: Request): Promise<Response> {
   } catch (error) {
     return Response.json({
       ok: false,
-      error: error instanceof Error ? error.message : "input dispatch failed",
+      error: errorMessage(error, "input dispatch failed"),
     });
   }
 }
@@ -493,7 +494,7 @@ export async function handleBrowserState(): Promise<Response> {
   } catch (error) {
     return Response.json({
       ok: false,
-      error: error instanceof Error ? error.message : "getState failed",
+      error: errorMessage(error, "getState failed"),
     });
   }
 }
@@ -527,7 +528,7 @@ export async function handleBrowserViewport(request: Request): Promise<Response>
   } catch (error) {
     return Response.json({
       ok: false,
-      error: error instanceof Error ? error.message : "setViewport failed",
+      error: errorMessage(error, "setViewport failed"),
     });
   }
 }
@@ -594,7 +595,7 @@ export async function handleBrowserEngineSelect(request: Request): Promise<Respo
   } catch (error) {
     return Response.json({
       ok: false,
-      error: error instanceof Error ? error.message : "failed to save browser engine",
+      error: errorMessage(error, "failed to save browser engine"),
     });
   }
   // The running context is bound to the old binary; the next verb relaunches.

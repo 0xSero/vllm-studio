@@ -16,25 +16,10 @@ import {
   subscribePtySession,
   writePtySession,
 } from "../pty-service";
+import { errorMessage, jsonError, readJsonBody } from "./helpers";
 
 const PING_INTERVAL_MS = 15_000;
 const MAX_BODY_CHARS = MAX_PTY_INPUT_CHARS + 4_096;
-
-function jsonError(message: string, status = 400): Response {
-  return Response.json({ error: message }, { status });
-}
-
-async function readJsonBody(request: Request): Promise<Record<string, unknown> | null> {
-  try {
-    const text = await request.text();
-    if (text.length > MAX_BODY_CHARS) return null;
-    const parsed = JSON.parse(text) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    return parsed as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
@@ -48,7 +33,7 @@ export async function handlePtyOpen(request: Request): Promise<Response> {
   if (!isPtyAvailable()) {
     return jsonError(`PTY unavailable: ${ptyUnavailableReason() ?? "unknown"}`, 503);
   }
-  const body = await readJsonBody(request);
+  const body = await readJsonBody(request, { maxChars: MAX_BODY_CHARS });
   if (!body) return jsonError("Invalid JSON body");
   try {
     const result = openPtySession({
@@ -59,7 +44,7 @@ export async function handlePtyOpen(request: Request): Promise<Response> {
     });
     return Response.json(result);
   } catch (error) {
-    return jsonError(error instanceof Error ? error.message : "PTY open failed", 500);
+    return jsonError(errorMessage(error, "PTY open failed"), 500);
   }
 }
 
@@ -134,7 +119,7 @@ export function handlePtyStream(request: Request): Response {
 }
 
 export async function handlePtyInput(request: Request): Promise<Response> {
-  const body = await readJsonBody(request);
+  const body = await readJsonBody(request, { maxChars: MAX_BODY_CHARS });
   const id = asString(body?.id)?.trim();
   const data = asString(body?.data);
   if (!body || !id || typeof data !== "string") return jsonError("id and data are required");
@@ -143,14 +128,14 @@ export async function handlePtyInput(request: Request): Promise<Response> {
 }
 
 export async function handlePtyResize(request: Request): Promise<Response> {
-  const body = await readJsonBody(request);
+  const body = await readJsonBody(request, { maxChars: MAX_BODY_CHARS });
   const id = asString(body?.id)?.trim();
   if (!body || !id) return jsonError("id is required");
   return Response.json({ ok: resizePtySession(id, Number(body.cols), Number(body.rows)) });
 }
 
 export async function handlePtyClose(request: Request): Promise<Response> {
-  const body = await readJsonBody(request);
+  const body = await readJsonBody(request, { maxChars: MAX_BODY_CHARS });
   const id = asString(body?.id)?.trim();
   if (!body || !id) return jsonError("id is required");
   closePtySession(id);
