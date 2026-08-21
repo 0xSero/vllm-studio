@@ -16,6 +16,7 @@ import {
   normalizeReasoningAndContentInMessage,
   normalizeToolCallsInMessage,
   exposeReasoningAsContentWhenEmpty,
+  stripDeepSeekControlTokens,
 } from "./reasoning";
 import { recordNonStreamingInferenceUsage } from "./inference-accounting";
 import {
@@ -45,11 +46,6 @@ export const modelNotRunningError = (
     detail: message,
   };
 };
-
-const stripDeepSeekControlTokens = (text: string): string =>
-  text
-    .replaceAll("<｜begin▁of▁sentence｜>", "")
-    .replaceAll("<｜end▁of▁sentence｜>", "");
 
 const isDeepSeekV4ControllerRecipe = (recipe: Recipe | null): boolean => {
   if (!recipe) return false;

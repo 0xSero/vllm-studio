@@ -8,6 +8,7 @@ import {
   REASONING_FIELDS,
   firstReasoningField,
   createThinkRewriter,
+  stripDeepSeekControlTokens,
   thinkingTagPrefixIsPartial,
 } from "./reasoning";
 
@@ -22,16 +23,6 @@ export interface StreamUsage {
 export interface ToolCallStreamOptions {
   bufferImplicitReasoningContent?: boolean;
 }
-
-// DeepSeek V4 occasionally emits these control tokens as visible text around
-// long, tool-heavy conversations. They are prompt delimiters, never intended
-// for the client, and replaying them in the next assistant message amplifies
-// the leak. The tokenizer normally hides them, but strip the literal fallback
-// here as well so every controller client gets a clean stream.
-const stripLeakedDeepSeekControlTokens = (text: string): string =>
-  text
-    .replaceAll("<｜begin▁of▁sentence｜>", "")
-    .replaceAll("<｜end▁of▁sentence｜>", "");
 
 export const createToolCallStream = (
   source: ReadableStream<Uint8Array>,
@@ -51,7 +42,7 @@ export const createToolCallStream = (
   const reasoningHistory = new Map<string, { text: string; snapshot: boolean }>();
   const replayCursors = new Map<string, number>();
   const stripToolXmlDelta = (text: string): string => {
-    return stripToolCallsFromContent(stripLeakedDeepSeekControlTokens(text));
+    return stripToolCallsFromContent(stripDeepSeekControlTokens(text));
   };
 
   const normalizeTextDelta = (
@@ -152,7 +143,7 @@ export const createToolCallStream = (
     content: string,
   ): void => {
     if (!content) return;
-    const controlTokensStripped = stripLeakedDeepSeekControlTokens(content);
+    const controlTokensStripped = stripDeepSeekControlTokens(content);
     visibleContentBuffer += controlTokensStripped;
     const cleaned = stripToolXmlDelta(controlTokensStripped);
     const chunk = buildFlushChunk({ content: cleaned });
@@ -297,7 +288,7 @@ export const createToolCallStream = (
         let reasoningFromContent = "";
         if (content) {
           const rewritten = contentThink.rewrite(content, false);
-          const controlTokensStripped = stripLeakedDeepSeekControlTokens(rewritten.content);
+          const controlTokensStripped = stripDeepSeekControlTokens(rewritten.content);
           if (controlTokensStripped) {
             visibleContentBuffer += controlTokensStripped;
           }
