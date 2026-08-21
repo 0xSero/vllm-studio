@@ -14,7 +14,6 @@ import type {
   ComposerPromptTemplateRef,
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
-import type { QueuedMessage } from "@/features/agent/messages";
 import type { BrowserBackend } from "@/features/agent/tools/types";
 import type { ComposerBanner } from "@/features/agent/composer/composer-visual-state";
 import { Spinner } from "@/ui";
@@ -60,16 +59,12 @@ export type AgentComposerFrameProps = {
   onComposerDrop: DragEventHandler<HTMLDivElement>;
   onComposerKeyDown: KeyboardEventHandler<HTMLTextAreaElement>;
   onComposerPaste: ClipboardEventHandler<HTMLTextAreaElement>;
-  onEditQueued: (queueId: string, text: string) => void;
   onInitGit?: () => void;
   onOpenStatus: () => void;
   onOpenDiff: () => void;
-  onQueueExpandedChange: (expanded: boolean) => void;
   onRemoveAttachment: (id: string) => void;
   onRemoveLoadedContext: (kind: LoadedContextKind, id: string) => void;
-  onRemoveQueued: (queueId: string) => void;
   onSelectMention: (entry: MentionRow) => void;
-  onSteerQueued: (queueId: string) => void;
   onSubmit: FormEventHandler<HTMLFormElement>;
   onToggleBrowserBackend: () => void;
   onToggleBrowserTool: () => void;
@@ -79,8 +74,6 @@ export type AgentComposerFrameProps = {
   drawer?: ReactNode;
   showStatusBar: boolean;
   promptTemplates: ComposerPromptTemplateRef[];
-  queueExpanded: boolean;
-  queueItems: QueuedMessage[];
   readingAttachments: boolean;
   running: boolean;
   selectedSkills: ComposerSkillRef[];
@@ -116,16 +109,12 @@ export function AgentComposerFrame({
   onComposerDrop,
   onComposerKeyDown,
   onComposerPaste,
-  onEditQueued,
   onInitGit,
   onOpenStatus,
   onOpenDiff,
-  onQueueExpandedChange,
   onRemoveAttachment,
   onRemoveLoadedContext,
-  onRemoveQueued,
   onSelectMention,
-  onSteerQueued,
   onSubmit,
   onToggleBrowserBackend,
   onToggleBrowserTool,
@@ -135,8 +124,6 @@ export function AgentComposerFrame({
   drawer,
   showStatusBar,
   promptTemplates,
-  queueExpanded,
-  queueItems,
   readingAttachments,
   running,
   selectedSkills,

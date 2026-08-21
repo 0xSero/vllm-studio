@@ -4,8 +4,7 @@ import { basename, resolve, sep } from "node:path";
 import { Effect, Schema } from "effect";
 import { badRequest, notFound } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
-import { effectHandler } from "../../http/effect-handler";
-import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
+import { effectRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import { registerStudioModelIndexRoutes } from "./model-index";
 import { registerStudioProviderRoutes } from "./provider-routes";
 import { registerStudioRigRoutes } from "./rig-routes";
@@ -123,233 +122,204 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
   });
 
   return mergeRoutes(
-    app.get(
-      "/studio/settings",
-      documentRoute,
-      effectHandler((ctx) => buildSettingsPayload.pipe(Effect.map((payload) => ctx.json(payload)))),
+    effectRoute(app.get, "/studio/settings", (ctx) =>
+      buildSettingsPayload.pipe(Effect.map((payload) => ctx.json(payload))),
     ),
 
-    app.post(
-      "/studio/settings",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const body = yield* decodeJsonBody(ctx, SettingsUpdateSchema);
-          const modelsDirectory = normalizedOptionalString(body.models_dir);
-          const uiPreferences = body.ui_preferences;
-          if (modelsDirectory === undefined && uiPreferences === undefined) {
-            return yield* Effect.fail(badRequest("No supported settings provided"));
-          }
-          const saved = yield* Effect.try({
-            try: () =>
-              modelsDirectory !== undefined
-                ? savePersistedConfig(context.config.data_dir, { models_dir: modelsDirectory })
-                : loadPersistedConfig(context.config.data_dir),
-            catch: (source) =>
-              new StudioOperationError({
-                operation: "settings",
-                message: "Could not save settings",
-                source,
-              }),
-          });
-          if (uiPreferences !== undefined) {
-            yield* context.stores.controllerSettingsStore.saveUiPreferencesEffect(
-              uiPreferences ?? {},
-            );
-          }
-          if (saved.models_dir) context.config.models_dir = resolve(saved.models_dir);
-          const payload = yield* buildSettingsPayload;
-          return ctx.json({ success: true, ...payload });
-        }),
-      ),
-    ),
-
-    app.get(
-      "/studio/diagnostics",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const cpuList = cpus();
-          const [gpus, runtime, disks] = yield* Effect.all([
-            getGpuInfo(),
-            getVllmRuntimeInfo(),
-            Effect.all([diskInfo(context.config.data_dir), diskInfo(context.config.models_dir)]),
-          ]);
-          return ctx.json({
-            app_version: process.env["LOCAL_STUDIO_VERSION"] ?? "dev",
-            timestamp: new Date().toISOString(),
-            platform: platform(),
-            arch: arch(),
-            release: release(),
-            cpu_model: cpuList[0]?.model ?? null,
-            cpu_cores: cpuList.length,
-            memory_total: totalmem(),
-            memory_free: freemem(),
-            gpus,
-            runtime: {
-              vllm_installed: runtime.installed,
-              vllm_version: runtime.version,
-              python_path: runtime.python_path,
-              vllm_bin: runtime.vllm_bin,
-            },
-            disks,
-            config: {
-              host: context.config.host,
-              port: context.config.port,
-              inference_port: context.config.inference_port,
-              api_key_configured: Boolean(context.config.api_key),
-              models_dir: context.config.models_dir,
-              data_dir: context.config.data_dir,
-              db_path: context.config.db_path,
-              sglang_python: context.config.sglang_python ?? null,
-              llama_bin: context.config.llama_bin ?? null,
-              mlx_python: context.config.mlx_python ?? null,
-            },
-          });
-        }),
-      ),
-    ),
-
-    app.get(
-      "/studio/storage",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const directories = yield* discoverModelDirectories([context.config.models_dir], 2, 200);
-          const sizes = yield* Effect.forEach(
-            directories,
-            (directory) =>
-              estimateWeightsSizeBytes(directory, false).pipe(
-                Effect.map((size) => size ?? 0),
-                Effect.orElseSucceed(() => 0),
-              ),
-            { concurrency: "unbounded" },
+    effectRoute(app.post, "/studio/settings", (ctx) =>
+      Effect.gen(function* () {
+        const body = yield* decodeJsonBody(ctx, SettingsUpdateSchema);
+        const modelsDirectory = normalizedOptionalString(body.models_dir);
+        const uiPreferences = body.ui_preferences;
+        if (modelsDirectory === undefined && uiPreferences === undefined) {
+          return yield* Effect.fail(badRequest("No supported settings provided"));
+        }
+        const saved = yield* Effect.try({
+          try: () =>
+            modelsDirectory !== undefined
+              ? savePersistedConfig(context.config.data_dir, { models_dir: modelsDirectory })
+              : loadPersistedConfig(context.config.data_dir),
+          catch: (source) =>
+            new StudioOperationError({
+              operation: "settings",
+              message: "Could not save settings",
+              source,
+            }),
+        });
+        if (uiPreferences !== undefined) {
+          yield* context.stores.controllerSettingsStore.saveUiPreferencesEffect(
+            uiPreferences ?? {},
           );
-          return ctx.json({
+        }
+        if (saved.models_dir) context.config.models_dir = resolve(saved.models_dir);
+        const payload = yield* buildSettingsPayload;
+        return ctx.json({ success: true, ...payload });
+      }),
+    ),
+
+    effectRoute(app.get, "/studio/diagnostics", (ctx) =>
+      Effect.gen(function* () {
+        const cpuList = cpus();
+        const [gpus, runtime, disks] = yield* Effect.all([
+          getGpuInfo(),
+          getVllmRuntimeInfo(),
+          Effect.all([diskInfo(context.config.data_dir), diskInfo(context.config.models_dir)]),
+        ]);
+        return ctx.json({
+          app_version: process.env["LOCAL_STUDIO_VERSION"] ?? "dev",
+          timestamp: new Date().toISOString(),
+          platform: platform(),
+          arch: arch(),
+          release: release(),
+          cpu_model: cpuList[0]?.model ?? null,
+          cpu_cores: cpuList.length,
+          memory_total: totalmem(),
+          memory_free: freemem(),
+          gpus,
+          runtime: {
+            vllm_installed: runtime.installed,
+            vllm_version: runtime.version,
+            python_path: runtime.python_path,
+            vllm_bin: runtime.vllm_bin,
+          },
+          disks,
+          config: {
+            host: context.config.host,
+            port: context.config.port,
+            inference_port: context.config.inference_port,
+            api_key_configured: Boolean(context.config.api_key),
             models_dir: context.config.models_dir,
-            model_count: directories.length,
-            model_bytes: sizes.reduce((total, value) => total + value, 0),
-            disk: yield* diskInfo(context.config.models_dir),
-          });
+            data_dir: context.config.data_dir,
+            db_path: context.config.db_path,
+            sglang_python: context.config.sglang_python ?? null,
+            llama_bin: context.config.llama_bin ?? null,
+            mlx_python: context.config.mlx_python ?? null,
+          },
+        });
+      }),
+    ),
+
+    effectRoute(app.get, "/studio/storage", (ctx) =>
+      Effect.gen(function* () {
+        const directories = yield* discoverModelDirectories([context.config.models_dir], 2, 200);
+        const sizes = yield* Effect.forEach(
+          directories,
+          (directory) =>
+            estimateWeightsSizeBytes(directory, false).pipe(
+              Effect.map((size) => size ?? 0),
+              Effect.orElseSucceed(() => 0),
+            ),
+          { concurrency: "unbounded" },
+        );
+        return ctx.json({
+          models_dir: context.config.models_dir,
+          model_count: directories.length,
+          model_bytes: sizes.reduce((total, value) => total + value, 0),
+          disk: yield* diskInfo(context.config.models_dir),
+        });
+      }),
+    ),
+
+    effectRoute(app.get, "/studio/presets", (ctx) =>
+      getGpuInfo().pipe(
+        Effect.map((gpus) => {
+          const maxVramGb = deriveRecommendationVramGb(gpus);
+          const appleSilicon = platform() === "darwin" && arch() === "arm64";
+          const presets = STUDIO_STARTER_PRESETS.filter(
+            (preset) => !appleSilicon || preset.backend !== "vllm",
+          ).map((preset) => ({
+            ...preset,
+            fits: preset.min_vram_gb === null || maxVramGb === 0 || preset.min_vram_gb <= maxVramGb,
+          }));
+          return ctx.json({ presets, max_vram_gb: maxVramGb });
         }),
       ),
     ),
 
-    app.get(
-      "/studio/presets",
-      documentRoute,
-      effectHandler((ctx) =>
-        getGpuInfo().pipe(
-          Effect.map((gpus) => {
-            const maxVramGb = deriveRecommendationVramGb(gpus);
-            const appleSilicon = platform() === "darwin" && arch() === "arm64";
-            const presets = STUDIO_STARTER_PRESETS.filter(
-              (preset) => !appleSilicon || preset.backend !== "vllm",
-            ).map((preset) => ({
-              ...preset,
-              fits:
-                preset.min_vram_gb === null ||
-                maxVramGb === 0 ||
-                preset.min_vram_gb <= maxVramGb,
-            }));
-            return ctx.json({ presets, max_vram_gb: maxVramGb });
-          }),
-        ),
-      ),
+    effectRoute(app.post, "/studio/models/delete", (ctx) =>
+      Effect.gen(function* () {
+        const body = yield* decodeJsonBody(ctx, ModelDeleteSchema);
+        if (!body.path.trim()) return yield* Effect.fail(badRequest("path is required"));
+        const target = yield* insideModelsRoot(context.config.models_dir, body.path, "path");
+        if (!(yield* pathExists(target)))
+          return yield* Effect.fail(notFound("Model path not found"));
+        yield* Effect.tryPromise({
+          try: () => rm(target, { recursive: true, force: true }),
+          catch: (source) =>
+            new StudioOperationError({
+              operation: "delete",
+              message: "Could not delete model",
+              source,
+            }),
+        });
+        return ctx.json({ success: true });
+      }),
     ),
 
-    app.post(
-      "/studio/models/delete",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const body = yield* decodeJsonBody(ctx, ModelDeleteSchema);
-          if (!body.path.trim()) return yield* Effect.fail(badRequest("path is required"));
-          const target = yield* insideModelsRoot(context.config.models_dir, body.path, "path");
-          if (!(yield* pathExists(target)))
-            return yield* Effect.fail(notFound("Model path not found"));
+    effectRoute(app.post, "/studio/models/move", (ctx) =>
+      Effect.gen(function* () {
+        const body = yield* decodeJsonBody(ctx, ModelMoveSchema);
+        if (!body.source_path.trim() || !body.target_root.trim()) {
+          return yield* Effect.fail(badRequest("source_path and target_root are required"));
+        }
+        const source = yield* insideModelsRoot(
+          context.config.models_dir,
+          body.source_path,
+          "source_path",
+        );
+        const targetRoot = yield* insideModelsRoot(
+          context.config.models_dir,
+          body.target_root,
+          "target_root",
+          true,
+        );
+        if (!(yield* pathExists(source)))
+          return yield* Effect.fail(notFound("source_path not found"));
+        yield* Effect.tryPromise({
+          try: () => mkdir(targetRoot, { recursive: true }),
+          catch: (sourceError) =>
+            new StudioOperationError({
+              operation: "move",
+              message: "Could not create target",
+              source: sourceError,
+            }),
+        });
+        const target = resolve(targetRoot, basename(source));
+        if (yield* pathExists(target))
+          return yield* Effect.fail(badRequest("Target path already exists"));
+        if (source !== target) {
           yield* Effect.tryPromise({
-            try: () => rm(target, { recursive: true, force: true }),
-            catch: (source) =>
-              new StudioOperationError({
-                operation: "delete",
-                message: "Could not delete model",
-                source,
-              }),
-          });
-          return ctx.json({ success: true });
-        }),
-      ),
-    ),
-
-    app.post(
-      "/studio/models/move",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const body = yield* decodeJsonBody(ctx, ModelMoveSchema);
-          if (!body.source_path.trim() || !body.target_root.trim()) {
-            return yield* Effect.fail(badRequest("source_path and target_root are required"));
-          }
-          const source = yield* insideModelsRoot(
-            context.config.models_dir,
-            body.source_path,
-            "source_path",
+            try: () => rename(source, target),
+            catch: (sourceError) => sourceError,
+          }).pipe(
+            Effect.catch((sourceError) =>
+              (sourceError as NodeJS.ErrnoException).code === "EXDEV"
+                ? Effect.tryPromise({
+                    try: () =>
+                      cp(source, target, { recursive: true, force: false, errorOnExist: true }),
+                    catch: (copyError) => copyError,
+                  }).pipe(
+                    Effect.andThen(
+                      Effect.tryPromise({
+                        try: () => rm(source, { recursive: true, force: true }),
+                        catch: (removeError) => removeError,
+                      }),
+                    ),
+                  )
+                : Effect.fail(sourceError),
+            ),
+            Effect.mapError(
+              (sourceError) =>
+                new StudioOperationError({
+                  operation: "move",
+                  message: "Could not move model",
+                  source: sourceError,
+                }),
+            ),
           );
-          const targetRoot = yield* insideModelsRoot(
-            context.config.models_dir,
-            body.target_root,
-            "target_root",
-            true,
-          );
-          if (!(yield* pathExists(source)))
-            return yield* Effect.fail(notFound("source_path not found"));
-          yield* Effect.tryPromise({
-            try: () => mkdir(targetRoot, { recursive: true }),
-            catch: (sourceError) =>
-              new StudioOperationError({
-                operation: "move",
-                message: "Could not create target",
-                source: sourceError,
-              }),
-          });
-          const target = resolve(targetRoot, basename(source));
-          if (yield* pathExists(target))
-            return yield* Effect.fail(badRequest("Target path already exists"));
-          if (source !== target) {
-            yield* Effect.tryPromise({
-              try: () => rename(source, target),
-              catch: (sourceError) => sourceError,
-            }).pipe(
-              Effect.catch((sourceError) =>
-                (sourceError as NodeJS.ErrnoException).code === "EXDEV"
-                  ? Effect.tryPromise({
-                      try: () =>
-                        cp(source, target, { recursive: true, force: false, errorOnExist: true }),
-                      catch: (copyError) => copyError,
-                    }).pipe(
-                      Effect.andThen(
-                        Effect.tryPromise({
-                          try: () => rm(source, { recursive: true, force: true }),
-                          catch: (removeError) => removeError,
-                        }),
-                      ),
-                    )
-                  : Effect.fail(sourceError),
-              ),
-              Effect.mapError(
-                (sourceError) =>
-                  new StudioOperationError({
-                    operation: "move",
-                    message: "Could not move model",
-                    source: sourceError,
-                  }),
-              ),
-            );
-          }
-          return ctx.json({ success: true, target });
-        }),
-      ),
+        }
+        return ctx.json({ success: true, target });
+      }),
     ),
 
     registerStudioModelIndexRoutes(app, context),

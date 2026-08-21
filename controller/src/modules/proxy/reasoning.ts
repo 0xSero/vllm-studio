@@ -309,18 +309,12 @@ export const exposeReasoningAsContentWhenEmpty = (
   return true;
 };
 
-export const shouldBufferImplicitReasoningContent = (
-  model: string,
-  reasoningParser: string | null | undefined,
-): boolean => {
-  const parser = (reasoningParser ?? "").toLowerCase();
-  const modelLower = model.toLowerCase();
-  return (
-    parser === "deepseek_r1" ||
-    parser === "minimax_m2_append_think" ||
-    modelLower.includes("deepseek") ||
-    modelLower.includes("r1") ||
-    modelLower.includes("reasoning") ||
-    modelLower.includes("thinking")
-  );
-};
+// DeepSeek V4 occasionally emits these control tokens as visible text around
+// long, tool-heavy conversations. They are prompt delimiters, never intended
+// for the client, and replaying them in the next assistant message amplifies
+// the leak. The tokenizer normally hides them, but strip the literal fallback
+// here as well so every controller client gets a clean stream.
+export const stripDeepSeekControlTokens = (text: string): string =>
+  text
+    .replaceAll("<｜begin▁of▁sentence｜>", "")
+    .replaceAll("<｜end▁of▁sentence｜>", "");

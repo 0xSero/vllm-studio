@@ -375,9 +375,7 @@ async function fetchModelsFromController(
   return { controller: { ...controller, url: backendUrl }, models, providerId };
 }
 
-/** Exported for direct testing of the fan-out + unreachable-controller
- *  backoff without going through settings/persistence. */
-export async function fetchModelsFromControllers(controllers: PiControllerConfig[]): Promise<{
+async function fetchModelsFromControllers(controllers: PiControllerConfig[]): Promise<{
   models: AgentModel[];
   controllerModels: ControllerModels[];
 }> {

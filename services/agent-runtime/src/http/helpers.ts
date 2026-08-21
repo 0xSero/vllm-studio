@@ -8,9 +8,14 @@ export function jsonError(message: string, status = 400): Response {
   return Response.json({ error: message }, { status });
 }
 
-export async function readJsonBody(request: Request): Promise<Record<string, unknown> | null> {
+export async function readJsonBody(
+  request: Request,
+  options?: { maxChars?: number },
+): Promise<Record<string, unknown> | null> {
   try {
-    const parsed = (await request.json()) as unknown;
+    const text = await request.text();
+    if (options?.maxChars !== undefined && text.length > options.maxChars) return null;
+    const parsed = JSON.parse(text) as unknown;
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>)
       : null;

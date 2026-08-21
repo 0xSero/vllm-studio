@@ -40,7 +40,7 @@ import {
   ConnectorGrantRemovalSchema,
   type ConnectorGrantTarget,
 } from "../connector-grants-contract";
-import { resolveBundledMcpServerPath } from "../pi-runtime-helpers";
+import { resolveBundledResource } from "../plugin-resources";
 
 export async function handleConnectorsList(): Promise<Response> {
   const connectors = await listConnectors();
@@ -321,5 +321,6 @@ export async function handleConnectorTest(request: Request): Promise<Response> {
 }
 
 export async function handleSshServerPath(): Promise<Response> {
-  return Response.json({ path: resolveBundledMcpServerPath("ssh-remote.mjs") });
+  // Bundled stdio MCP servers live at desktop/resources/mcp — same ladder as extensions.
+  return Response.json({ path: resolveBundledResource("mcp", "ssh-remote.mjs") });
 }

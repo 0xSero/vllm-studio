@@ -13,7 +13,7 @@ import { Menu } from "@/ui/icon-registry";
 import { useShallow } from "zustand/react/shallow";
 import { DEFAULT_SIDEBAR_WIDTH, useAppStore } from "@/store";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { useOpenSessions, useSessionActivity } from "@/features/agent/ui/use-open-sessions";
+import { useOpenSessions, useSessionActivity } from "@/features/agent/session-index";
 import { hrefWithOpenNonce } from "@/features/agent/ui/projects-nav/helpers";
 import { DesktopSidebar } from "@/features/shell/left-sidebar-desktop";
 import {

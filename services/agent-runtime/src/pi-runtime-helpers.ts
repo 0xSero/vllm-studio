@@ -14,13 +14,13 @@ import type {
   AgentToolAccess,
 } from "../../../shared/agent/agent-turn";
 
-export type RuntimeSkillRef = {
+type RuntimeSkillRef = {
   id?: string;
   name?: string;
   path?: string;
 };
 
-export type RuntimePromptTemplateRef = {
+type RuntimePromptTemplateRef = {
   id?: string;
   name?: string;
   path?: string;
@@ -36,14 +36,14 @@ export type RuntimeStartOptions = {
   promptTemplates?: RuntimePromptTemplateRef[];
 };
 
-export type AgentSessionOptionsInput = {
+type AgentSessionOptionsInput = {
   options: RuntimeStartOptions;
   /** Resolved session cwd, exported to extensions as LOCAL_STUDIO_CWD. */
   cwd?: string;
   processEnv?: NodeJS.ProcessEnv;
 };
 
-export type AgentSessionOptions = {
+type AgentSessionOptions = {
   // Absolute filesystem paths to .ts/.js extension modules. The SDK's
   // resource-loader uses jiti to load these; we hand paths instead of
   // pre-imported factories so we never trigger webpack's static analyser on a
@@ -71,6 +71,13 @@ function resolveDefaultAgentCwd(): string {
   return cwd;
 }
 
+/**
+ * Expand a leading tilde to the user's home directory: `~` alone, or a
+ * `~` + `path.sep` prefix (so `~/` on POSIX). Every other value — including
+ * `~user` forms and mid-string tildes — passes through unchanged. The single
+ * tilde-expansion rule for this service; new path inputs that accept `~`
+ * should call this rather than restate it.
+ */
 export function expandHome(value: string): string {
   if (value === "~") return homedir();
   if (value.startsWith(`~${path.sep}`)) return path.join(homedir(), value.slice(2));
@@ -102,117 +109,10 @@ export function resolveAgentCwdEffect(input?: string): Effect.Effect<string, unk
 }
 
 // One resolver for every bundled resource (see plugin-resources) so the
-// extension/MCP/skill lookup and the plugin lookup cannot drift apart again.
+// extension/skill lookup and the plugin lookup cannot drift apart again.
 function resolveBundledResourcePath(kind: string, name: string, override?: string): string | null {
   if (override && existsSync(override)) return override;
   return resolveBundledResource(kind, name);
-}
-
-export function resolveBundledPiExtensionPath(
-  fileName: string,
-  envOverride?: string,
-): string | null {
-  return resolveBundledResourcePath("pi-extensions", fileName, envOverride);
-}
-
-// cua = computer use: the headless throwaway browser this app launches and
-// renders in the Browser panel. Armed whenever the browser tool is on, because
-// it is the safe default and the only backend the panel can show.
-export function resolveCuaExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath("cua.ts", process.env.LOCAL_STUDIO_CUA_EXTENSION_PATH);
-}
-
-// chrome = the user's OWN browser, reached through the local extension relay.
-// It is registered ALONGSIDE cua rather than instead of it: the two drive
-// different browsers under different names (`chrome_*` vs `browser_*`), and a
-// model that can see both picks per task — the user's session for signed-in
-// work, the sandbox for anonymous fetching. Replacing one with the other would
-// force the choice at composer time, before anyone knows what the task needs.
-export function resolveChromeExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath("chrome.ts", process.env.LOCAL_STUDIO_CHROME_EXTENSION_PATH);
-}
-
-// github wraps the `gh` CLI, so it only loads where a gh binary exists.
-export function resolveGithubExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath("github.ts", process.env.LOCAL_STUDIO_GITHUB_EXTENSION_PATH);
-}
-
-// obsidian reads and writes a folder of markdown files, so it needs no Obsidian
-// process — but it does need a vault. Gated on Obsidian having registered one,
-// on the same principle as the gh binary above: seven note tools on a machine
-// that has never opened Obsidian are seven tools that can only apologise.
-export function resolveObsidianExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath(
-    "obsidian.ts",
-    process.env.LOCAL_STUDIO_OBSIDIAN_EXTENSION_PATH,
-  );
-}
-
-/** Bundled stdio MCP servers (desktop/resources/mcp) — same ladder as extensions. */
-export function resolveBundledMcpServerPath(fileName: string): string | null {
-  return resolveBundledResourcePath("mcp", fileName);
-}
-
-export function resolveConnectorsExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath(
-    "connectors.ts",
-    process.env.LOCAL_STUDIO_CONNECTORS_EXTENSION_PATH,
-  );
-}
-
-export function resolveSubagentsExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath(
-    "subagents.ts",
-    process.env.LOCAL_STUDIO_SUBAGENTS_EXTENSION_PATH,
-  );
-}
-
-export function resolveAutomationsExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath(
-    "automations.ts",
-    process.env.LOCAL_STUDIO_AUTOMATIONS_EXTENSION_PATH,
-  );
-}
-
-export function resolveTimeoutExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath(
-    "local-studio-timeouts.ts",
-    process.env.LOCAL_STUDIO_TIMEOUT_EXTENSION_PATH,
-  );
-}
-
-export function resolveAgentPolicyExtensionPath(): string | null {
-  return resolveBundledPiExtensionPath(
-    "local-studio-agent-policy.ts",
-    process.env.LOCAL_STUDIO_AGENT_POLICY_EXTENSION_PATH,
-  );
-}
-
-// Locate a bundled skill directory (contains SKILL.md). Searched only when the
-// matching tool surface is ON so it can be appended to the SDK skill list and
-// teach the model how/when to use those tools.
-function resolveBundledSkillPath(name: string, override?: string): string | null {
-  return resolveBundledResourcePath("skills", name, override);
-}
-
-export function resolveCuaSkillPath(): string | null {
-  return resolveBundledSkillPath("cua", process.env.LOCAL_STUDIO_CUA_SKILL_PATH);
-}
-
-export function resolveChromeSkillPath(): string | null {
-  return resolveBundledSkillPath("chrome", process.env.LOCAL_STUDIO_CHROME_SKILL_PATH);
-}
-
-export function resolveGithubSkillPath(): string | null {
-  return resolveBundledSkillPath("github", process.env.LOCAL_STUDIO_GITHUB_SKILL_PATH);
-}
-
-export function resolveObsidianSkillPath(): string | null {
-  return resolveBundledSkillPath("obsidian", process.env.LOCAL_STUDIO_OBSIDIAN_SKILL_PATH);
-}
-
-export function resolveAutomationsSkillPath(): string | null {
-  return resolveBundledSkillPath("automations", process.env.LOCAL_STUDIO_AUTOMATIONS_SKILL_PATH);
 }
 
 export function runtimeOptionsFingerprint(options: RuntimeStartOptions): string {
@@ -233,15 +133,15 @@ export function runtimeOptionsFingerprint(options: RuntimeStartOptions): string 
   });
 }
 
-export function selectedSkillPaths(skills: RuntimeSkillRef[]): string[] {
+function selectedSkillPaths(skills: RuntimeSkillRef[]): string[] {
   return uniqueExistingPaths(skills.map((skill) => skill.path));
 }
 
-export function selectedPromptTemplatePaths(templates: RuntimePromptTemplateRef[]): string[] {
+function selectedPromptTemplatePaths(templates: RuntimePromptTemplateRef[]): string[] {
   return uniqueExistingPaths(templates.map((template) => template.path));
 }
 
-export function uniqueExistingPaths(values: Array<string | null | undefined>): string[] {
+function uniqueExistingPaths(values: Array<string | null | undefined>): string[] {
   const seen = new Set<string>();
   return values.filter((value): value is string => {
     if (!value || !existsSync(value)) return false;
@@ -252,7 +152,7 @@ export function uniqueExistingPaths(values: Array<string | null | undefined>): s
   });
 }
 
-export function deriveFrontendBase(env: NodeJS.ProcessEnv = process.env): string {
+function deriveFrontendBase(env: NodeJS.ProcessEnv = process.env): string {
   const port = env.PORT || "3000";
   return `http://127.0.0.1:${port}`;
 }
@@ -273,21 +173,79 @@ function shouldLoadChromeTool(options: RuntimeStartOptions): boolean {
 }
 
 function runtimeExtensionPaths(options: RuntimeStartOptions): string[] {
-  const timeoutExtensionPath = resolveTimeoutExtensionPath();
-  const agentPolicyExtensionPath = resolveAgentPolicyExtensionPath();
-  const cuaExtensionPath = shouldLoadBrowserTool(options) ? resolveCuaExtensionPath() : null;
-  const chromeExtensionPath = shouldLoadChromeTool(options) ? resolveChromeExtensionPath() : null;
   return uniqueExistingPaths([
-    timeoutExtensionPath,
-    agentPolicyExtensionPath,
-    cuaExtensionPath,
-    chromeExtensionPath,
-    hasGithubCliSync() ? resolveGithubExtensionPath() : null,
-    hasObsidianVaultSync() ? resolveObsidianExtensionPath() : null,
-    hasEnabledConnectorsSync() ? resolveConnectorsExtensionPath() : null,
-    resolveSubagentsExtensionPath(),
+    resolveBundledResourcePath(
+      "pi-extensions",
+      "local-studio-timeouts.ts",
+      process.env.LOCAL_STUDIO_TIMEOUT_EXTENSION_PATH,
+    ),
+    resolveBundledResourcePath(
+      "pi-extensions",
+      "local-studio-agent-policy.ts",
+      process.env.LOCAL_STUDIO_AGENT_POLICY_EXTENSION_PATH,
+    ),
+    // cua = computer use: the headless throwaway browser this app launches and
+    // renders in the Browser panel. Armed whenever the browser tool is on,
+    // because it is the safe default and the only backend the panel can show.
+    shouldLoadBrowserTool(options)
+      ? resolveBundledResourcePath(
+          "pi-extensions",
+          "cua.ts",
+          process.env.LOCAL_STUDIO_CUA_EXTENSION_PATH,
+        )
+      : null,
+    // chrome = the user's OWN browser, reached through the local extension
+    // relay. It is registered ALONGSIDE cua rather than instead of it: the two
+    // drive different browsers under different names (`chrome_*` vs
+    // `browser_*`), and a model that can see both picks per task — the user's
+    // session for signed-in work, the sandbox for anonymous fetching. Replacing
+    // one with the other would force the choice at composer time, before anyone
+    // knows what the task needs.
+    shouldLoadChromeTool(options)
+      ? resolveBundledResourcePath(
+          "pi-extensions",
+          "chrome.ts",
+          process.env.LOCAL_STUDIO_CHROME_EXTENSION_PATH,
+        )
+      : null,
+    // github wraps the `gh` CLI, so it only loads where a gh binary exists.
+    hasGithubCliSync()
+      ? resolveBundledResourcePath(
+          "pi-extensions",
+          "github.ts",
+          process.env.LOCAL_STUDIO_GITHUB_EXTENSION_PATH,
+        )
+      : null,
+    // obsidian reads and writes a folder of markdown files, so it needs no
+    // Obsidian process — but it does need a vault. Gated on Obsidian having
+    // registered one, on the same principle as the gh binary above: seven note
+    // tools on a machine that has never opened Obsidian are seven tools that
+    // can only apologise.
+    hasObsidianVaultSync()
+      ? resolveBundledResourcePath(
+          "pi-extensions",
+          "obsidian.ts",
+          process.env.LOCAL_STUDIO_OBSIDIAN_EXTENSION_PATH,
+        )
+      : null,
+    hasEnabledConnectorsSync()
+      ? resolveBundledResourcePath(
+          "pi-extensions",
+          "connectors.ts",
+          process.env.LOCAL_STUDIO_CONNECTORS_EXTENSION_PATH,
+        )
+      : null,
+    resolveBundledResourcePath(
+      "pi-extensions",
+      "subagents.ts",
+      process.env.LOCAL_STUDIO_SUBAGENTS_EXTENSION_PATH,
+    ),
     // Lets the agent create/list/delete scheduled automations.
-    resolveAutomationsExtensionPath(),
+    resolveBundledResourcePath(
+      "pi-extensions",
+      "automations.ts",
+      process.env.LOCAL_STUDIO_AUTOMATIONS_EXTENSION_PATH,
+    ),
     // NOTE: session-goal injection is no longer a bundled extension — it runs
     // in-process via createGoalPromptExtension (see pi-runtime.ts), keyed by the
     // canonical piSessionId. A bundled extension read the wrong id over RPC.
@@ -297,17 +255,36 @@ function runtimeExtensionPaths(options: RuntimeStartOptions): string[] {
 function runtimeSkillPaths(options: RuntimeStartOptions): string[] {
   return uniqueExistingPaths([
     ...selectedSkillPaths(options.skills ?? []),
-    shouldLoadBrowserTool(options) ? resolveCuaSkillPath() : null,
-    shouldLoadChromeTool(options) ? resolveChromeSkillPath() : null,
+    // Bundled skill directories (each contains SKILL.md), searched only when
+    // the matching tool surface is ON so they can be appended to the SDK skill
+    // list and teach the model how/when to use those tools.
+    shouldLoadBrowserTool(options)
+      ? resolveBundledResourcePath("skills", "cua", process.env.LOCAL_STUDIO_CUA_SKILL_PATH)
+      : null,
+    shouldLoadChromeTool(options)
+      ? resolveBundledResourcePath("skills", "chrome", process.env.LOCAL_STUDIO_CHROME_SKILL_PATH)
+      : null,
     // Same rule as the automations skill below: the tools are registered, so
     // the guidance that says when to reach for them has to be there too.
-    hasGithubCliSync() ? resolveGithubSkillPath() : null,
-    hasObsidianVaultSync() ? resolveObsidianSkillPath() : null,
+    hasGithubCliSync()
+      ? resolveBundledResourcePath("skills", "github", process.env.LOCAL_STUDIO_GITHUB_SKILL_PATH)
+      : null,
+    hasObsidianVaultSync()
+      ? resolveBundledResourcePath(
+          "skills",
+          "obsidian",
+          process.env.LOCAL_STUDIO_OBSIDIAN_SKILL_PATH,
+        )
+      : null,
     // Unconditional, because the automations extension is: the tools are always
     // registered, so the guidance that says when to reach for them has to be
     // there too. Skills are progressively disclosed — this costs one line in
     // the prompt until the model opens it.
-    resolveAutomationsSkillPath(),
+    resolveBundledResourcePath(
+      "skills",
+      "automations",
+      process.env.LOCAL_STUDIO_AUTOMATIONS_SKILL_PATH,
+    ),
   ]);
 }
 

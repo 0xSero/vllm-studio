@@ -7,9 +7,9 @@ import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import {
   markSessionActivitySeen,
   sessionRows,
+  useSessionActivity,
   type SessionActivity,
 } from "@/features/agent/session-index";
-import { useSessionActivity } from "@/features/agent/ui/use-open-sessions";
 import {
   patchSessionPref,
   type SessionPref,
@@ -122,11 +122,7 @@ export function ProjectRow({
         </button>
         <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
           {onTogglePin ? (
-            <PinButton
-              pinned={pinned}
-              onToggle={onTogglePin}
-              target={project.name}
-            />
+            <PinButton pinned={pinned} onToggle={onTogglePin} target={project.name} />
           ) : null}
           {onRemove ? (
             <button
@@ -273,9 +269,7 @@ export function ProjectSessions({
                   project={project}
                   session={row.session}
                   pref={prefs[row.session.id] ?? {}}
-                  isRunning={row.activity === "running"}
-                  unseen={row.activity === "unseen"}
-                  finished={row.activity === "finished"}
+                  activity={row.activity}
                 />
               )}
               {subagents?.length ? (
@@ -423,9 +417,9 @@ export function ActiveSessionRow({
       onDragEnd={onReorderDragEnd}
       onDragOver={onReorderDragOver}
       onDrop={onReorderDrop}
-      isRunning={activity === "running"}
-      unseen={activity === "unseen" && !isFocused}
-      finished={activity === "finished" && !isFocused}
+      // The focused row is the one being read, so its unseen/finished marks
+      // have already served their purpose; only the live spinner survives focus.
+      activity={isFocused && activity !== "running" ? "idle" : activity}
       timestamp={session.updatedAt || session.startedAt}
       canDoubleClickRename
       renameInputClass="text-[length:var(--fs-xs)]"
@@ -437,9 +431,7 @@ export function SessionRow({
   project,
   session,
   pref,
-  isRunning = false,
-  unseen = false,
-  finished = false,
+  activity = "idle",
   dragging = false,
   onReorderDragStart,
   onReorderDragEnd,
@@ -449,9 +441,7 @@ export function SessionRow({
   project: ProjectEntry;
   session: SessionSummary;
   pref: SessionPref;
-  isRunning?: boolean;
-  unseen?: boolean;
-  finished?: boolean;
+  activity?: SessionActivity;
   dragging?: boolean;
   onReorderDragStart?: () => void;
   onReorderDragEnd?: () => void;
@@ -468,9 +458,7 @@ export function SessionRow({
       pref={pref}
       label={label}
       initialDraft={cleanSessionTitle(pref.title) || cleanSessionTitle(session.firstUserMessage)}
-      isRunning={isRunning}
-      unseen={unseen}
-      finished={finished}
+      activity={activity}
       timestamp={session.updatedAt || session.startedAt}
       rowClass={`group relative flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-2 pr-0 transition-[color,background-color,opacity] hover:bg-(--hover) ${dragging ? "opacity-45" : ""}`}
       renameRowClass="flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] bg-(--surface)/40 pl-2 pr-1"

@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { MenuItem, Spinner } from "@/ui";
+import { MenuItem } from "@/ui";
 import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { Archive, MoreIcon, PinIcon, PinOffIcon, SquarePen, X } from "@/ui/icon-registry";
+import type { SessionActivity } from "@/features/agent/session-index";
 import type { SessionPref } from "@/features/agent/messages/prefs";
-import { hrefWithOpenNonce, navigateToSessionHref, visibleSessionAge } from "./helpers";
-import { PinButton } from "./nav-chrome";
+import { hrefWithOpenNonce, visibleSessionAge } from "./helpers";
+import { PinButton, SessionStatusMark } from "./nav-chrome";
 
 const SESSION_MENU_CLASS = `absolute right-0 top-6 isolate z-[999] min-w-[180px] ${POPOVER_MENU_CLASS}`;
 
@@ -30,9 +31,7 @@ type SessionNavRowProps = {
   onDragOver?: (event: DragEvent) => void;
   onDrop?: (event: DragEvent) => void;
   onContextMenu?: boolean;
-  isRunning?: boolean;
-  unseen?: boolean;
-  finished?: boolean;
+  activity?: SessionActivity;
   timestamp?: string | null;
   canDoubleClickRename?: boolean;
   showClearAction?: boolean;
@@ -56,9 +55,7 @@ export function SessionNavRow({
   onDragOver,
   onDrop,
   onContextMenu = false,
-  isRunning = false,
-  unseen = false,
-  finished = false,
+  activity = "idle",
   timestamp,
   canDoubleClickRename = false,
   showClearAction = false,
@@ -114,9 +111,7 @@ export function SessionNavRow({
       <SessionOpenTarget
         canDoubleClickRename={canDoubleClickRename}
         href={href}
-        isRunning={isRunning}
-        unseen={unseen}
-        finished={finished}
+        activity={activity}
         pinned={Boolean(pref.pinned)}
         timestamp={timestamp}
         label={label}
@@ -214,9 +209,7 @@ function RenameInput({
 function SessionOpenTarget({
   canDoubleClickRename,
   href,
-  isRunning,
-  unseen,
-  finished,
+  activity,
   pinned,
   timestamp,
   label,
@@ -227,9 +220,7 @@ function SessionOpenTarget({
 }: {
   canDoubleClickRename: boolean;
   href?: string;
-  isRunning: boolean;
-  unseen: boolean;
-  finished: boolean;
+  activity: SessionActivity;
   pinned: boolean;
   timestamp?: string | null;
   label: string;
@@ -253,15 +244,7 @@ function SessionOpenTarget({
     // dates to a different column than task rows.
     "pr-2"
   } group-hover:pr-[52px] group-has-[:focus-visible]:pr-[52px]`;
-  const content = (
-    <SessionRowContent
-      isRunning={isRunning}
-      unseen={unseen}
-      finished={finished}
-      timestamp={timestamp}
-      label={label}
-    />
-  );
+  const content = <SessionRowContent activity={activity} timestamp={timestamp} label={label} />;
 
   if (href) {
     return (
@@ -275,7 +258,7 @@ function SessionOpenTarget({
           event.preventDefault();
           const targetHref = hrefWithOpenNonce(href);
           onOpen?.(targetHref);
-          navigateToSessionHref(router, targetHref);
+          router.push(targetHref);
         }}
         onDragStart={onDragStart}
         className={targetClass}
@@ -305,41 +288,25 @@ function SessionOpenTarget({
 }
 
 function SessionRowContent({
-  isRunning,
-  unseen,
-  finished,
+  activity,
   timestamp,
   label,
 }: {
-  isRunning: boolean;
-  unseen: boolean;
-  finished: boolean;
+  activity: SessionActivity;
   timestamp?: string | null;
   label: string;
 }) {
-  const age = visibleSessionAge(isRunning, timestamp, finished);
+  const age = visibleSessionAge(activity === "running", timestamp, activity === "finished");
   return (
     <>
       <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[length:var(--fs-md)] font-normal leading-5 [mask-image:linear-gradient(to_right,black_calc(100%-20px),transparent)]">
         {label}
       </span>
-      {isRunning ? (
-        <span className="ml-auto flex w-8 shrink-0 justify-end" aria-label="Session running">
-          <Spinner size="xs" className="text-(--link)" />
-        </span>
-      ) : finished ? (
-        <span
-          className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--ok)"
-          aria-label="Run finished"
-          title="Run finished"
-        />
-      ) : unseen ? (
-        <span
-          className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--link)"
-          aria-label="Unseen activity"
-          title="Unseen activity"
-        />
-      ) : null}
+      <SessionStatusMark
+        activity={activity}
+        runningClass="ml-auto flex w-8 shrink-0 justify-end"
+        dotClass="h-1.5 w-1.5 shrink-0 rounded-full"
+      />
       {age ? (
         <span className="shrink-0 pl-3 text-[length:var(--fs-sm)] tabular-nums text-(--hl2) transition-opacity duration-150 group-hover:opacity-0">
           {age}

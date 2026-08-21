@@ -8,8 +8,7 @@ import {
   type ModelIndexResponse,
 } from "../../../contracts/model-index";
 import { HttpStatus } from "../../core/errors";
-import { effectHandler } from "../../http/effect-handler";
-import { defineRoutes, documentRoute } from "../../http/route-registrar";
+import { defineRoutes, effectRoute } from "../../http/route-registrar";
 import type { AppContext } from "../../app-context";
 
 class ModelIndexError extends Schema.TaggedErrorClass<ModelIndexError>()("ModelIndexError", {
@@ -77,14 +76,10 @@ export const loadModelIndex = (
   });
 
 export const registerStudioModelIndexRoutes = defineRoutes((app, context) =>
-  app.get(
-    "/studio/model-index",
-    documentRoute,
-    effectHandler((ctx) =>
-      loadModelIndex(context).pipe(
-        Effect.map((index) => ctx.json(index)),
-        Effect.mapError((error) => new HttpStatus({ status: 500, detail: error.message })),
-      ),
+  effectRoute(app.get, "/studio/model-index", (ctx) =>
+    loadModelIndex(context).pipe(
+      Effect.map((index) => ctx.json(index)),
+      Effect.mapError((error) => new HttpStatus({ status: 500, detail: error.message })),
     ),
   ),
 );

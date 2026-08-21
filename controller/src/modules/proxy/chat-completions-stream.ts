@@ -5,9 +5,8 @@ import { buildSseHeaders } from "../../http/sse";
 import type { ProviderRouteConfig } from "../../services/provider-routing";
 import type { Recipe } from "../models/types";
 import { getDefaultReasoningParser } from "../compute/recipe-defaults";
-import { shouldBufferImplicitReasoningContent } from "./reasoning";
-import { recordStreamingInferenceUsage } from "./inference-accounting";
-import { createToolCallStream, type StreamUsage } from "./tool-call-stream";
+import { recordStreamingInferenceUsage, type InferenceUsageInput } from "./inference-accounting";
+import { createToolCallStream } from "./tool-call-stream";
 
 const KEEPALIVE_INTERVAL_MS = 15_000;
 
@@ -47,7 +46,7 @@ const responseErrorFrame = (status: number, body: string): Uint8Array =>
     `data: ${body || JSON.stringify({ error: { message: `Upstream returned ${status}`, type: "upstream_error" } })}\n\n`,
   );
 
-export const shouldBufferImplicitReasoning = (input: {
+const shouldBufferImplicitReasoning = (input: {
   matchedRecipe: Recipe | null;
   recordedModel: string;
 }): boolean => {
@@ -61,9 +60,16 @@ export const shouldBufferImplicitReasoning = (input: {
   const upstreamParsesReasoning =
     (matchedRecipe?.backend === "vllm" || matchedRecipe?.backend === "sglang") &&
     Boolean(reasoningParser);
+  if (upstreamParsesReasoning) return false;
+  const parser = (reasoningParser ?? "").toLowerCase();
+  const modelLower = input.recordedModel.toLowerCase();
   return (
-    !upstreamParsesReasoning &&
-    shouldBufferImplicitReasoningContent(input.recordedModel, reasoningParser)
+    parser === "deepseek_r1" ||
+    parser === "minimax_m2_append_think" ||
+    modelLower.includes("deepseek") ||
+    modelLower.includes("r1") ||
+    modelLower.includes("reasoning") ||
+    modelLower.includes("thinking")
   );
 };
 
@@ -93,7 +99,7 @@ const responseBodyStream = (
     );
   }
   let ttftMs: number | null = null;
-  let observedUsage: StreamUsage | null = null;
+  let observedUsage: InferenceUsageInput | null = null;
   const transformed = createToolCallStream(
     source,
     (usage) => {

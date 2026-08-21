@@ -7,7 +7,7 @@ import { effectHandler, type ControllerEffect, type ControllerEnvironment } from
 
 export type ControllerRouteApp = Hono<ControllerEnvironment, Schema, string>;
 
-export const documentRoute = describeRoute({
+const documentRoute = describeRoute({
   responses: { 200: { description: "Successful response" } },
 });
 

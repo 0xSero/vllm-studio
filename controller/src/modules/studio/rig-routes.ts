@@ -14,8 +14,7 @@ import { Effect } from "effect";
 import type { Schema } from "effect";
 import { badRequest, notFound } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
-import { effectHandler } from "../../http/effect-handler";
-import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
+import { effectRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import { Event } from "../system/event-manager";
 import {
   buildDetectedNode,
@@ -119,157 +118,129 @@ export const registerStudioRigRoutes = defineRoutes((app, context) => {
   };
 
   return mergeRoutes(
-    app.get(
-      "/studio/rigs",
-      documentRoute,
-      effectHandler((ctx) =>
-        loadRigsWithLocalNode.pipe(
-          Effect.map((rigs) => {
-            const payload: RigsPayload = { rigs, local_node_id: LOCAL_RIG_NODE_ID };
-            return ctx.json(payload);
-          }),
-        ),
-      ),
-    ),
-
-    app.post(
-      "/studio/rigs",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const body = yield* decodeJsonBody(ctx, RigCreateSchema);
-          const now = new Date().toISOString();
-          const rig: Rig = {
-            id: randomUUID(),
-            name: yield* requiredName(body.name),
-            description: optionalString(body.description, null),
-            nodes: [],
-            created_at: now,
-            updated_at: now,
-          };
-          yield* saveRig(rig);
-          yield* publishRigUpdate();
-          return ctx.json({ success: true, rig });
+    effectRoute(app.get, "/studio/rigs", (ctx) =>
+      loadRigsWithLocalNode.pipe(
+        Effect.map((rigs) => {
+          const payload: RigsPayload = { rigs, local_node_id: LOCAL_RIG_NODE_ID };
+          return ctx.json(payload);
         }),
       ),
     ),
 
-    app.put(
-      "/studio/rigs/:rigId",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const rig = yield* requireRig(ctx.req.param("rigId") ?? "");
-          const body = yield* decodeJsonBody(ctx, RigUpdateSchema);
-          const updated = yield* saveRigTouched({
-            ...rig,
-            name: body.name === undefined ? rig.name : yield* requiredName(body.name),
-            description: optionalString(body.description, rig.description),
-          });
-          yield* publishRigUpdate();
-          return ctx.json({ success: true, rig: updated });
-        }),
-      ),
+    effectRoute(app.post, "/studio/rigs", (ctx) =>
+      Effect.gen(function* () {
+        const body = yield* decodeJsonBody(ctx, RigCreateSchema);
+        const now = new Date().toISOString();
+        const rig: Rig = {
+          id: randomUUID(),
+          name: yield* requiredName(body.name),
+          description: optionalString(body.description, null),
+          nodes: [],
+          created_at: now,
+          updated_at: now,
+        };
+        yield* saveRig(rig);
+        yield* publishRigUpdate();
+        return ctx.json({ success: true, rig });
+      }),
     ),
 
-    app.delete(
-      "/studio/rigs/:rigId",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const rigId = ctx.req.param("rigId") ?? "";
-          if (!(yield* deleteRig(rigId))) {
-            return yield* Effect.fail(notFound(`Rig "${rigId}" not found`));
-          }
-          yield* publishRigUpdate();
-          return ctx.json({ success: true });
-        }),
-      ),
+    effectRoute(app.put, "/studio/rigs/:rigId", (ctx) =>
+      Effect.gen(function* () {
+        const rig = yield* requireRig(ctx.req.param("rigId") ?? "");
+        const body = yield* decodeJsonBody(ctx, RigUpdateSchema);
+        const updated = yield* saveRigTouched({
+          ...rig,
+          name: body.name === undefined ? rig.name : yield* requiredName(body.name),
+          description: optionalString(body.description, rig.description),
+        });
+        yield* publishRigUpdate();
+        return ctx.json({ success: true, rig: updated });
+      }),
     ),
 
-    app.post(
-      "/studio/rigs/:rigId/nodes",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const rig = yield* requireRig(ctx.req.param("rigId") ?? "");
-          const body = yield* decodeJsonBody(ctx, RigNodeCreateSchema);
-          const node: RigNode = {
-            id: randomUUID(),
-            name: yield* requiredName(body.name),
-            hardware_type: body.hardware_type ?? "custom",
-            role: body.role ?? "standalone",
-            source: "manual",
-            hostname: optionalString(body.hostname, null),
-            address: optionalString(body.address, null),
-            os: optionalString(body.os, null),
-            cpu_model: optionalString(body.cpu_model, null),
-            cpu_cores: null,
-            memory_gb: yield* positiveOrNull(body.memory_gb, null, "memory_gb"),
-            accelerators: yield* accelerators(body.accelerators, []),
-            notes: optionalString(body.notes, null),
-          };
-          const updated = yield* saveRigTouched({ ...rig, nodes: [...rig.nodes, node] });
-          yield* publishRigUpdate();
-          return ctx.json({ success: true, rig: updated, node });
-        }),
-      ),
+    effectRoute(app.delete, "/studio/rigs/:rigId", (ctx) =>
+      Effect.gen(function* () {
+        const rigId = ctx.req.param("rigId") ?? "";
+        if (!(yield* deleteRig(rigId))) {
+          return yield* Effect.fail(notFound(`Rig "${rigId}" not found`));
+        }
+        yield* publishRigUpdate();
+        return ctx.json({ success: true });
+      }),
     ),
 
-    app.put(
-      "/studio/rigs/:rigId/nodes/:nodeId",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const rig = yield* requireRig(ctx.req.param("rigId") ?? "");
-          const nodeId = ctx.req.param("nodeId") ?? "";
-          const index = rig.nodes.findIndex((node) => node.id === nodeId);
-          const current = index >= 0 ? rig.nodes[index] : undefined;
-          if (!current) return yield* Effect.fail(notFound(`Node "${nodeId}" not found`));
-          const body = yield* decodeJsonBody(ctx, RigNodeUpdateSchema);
-          const updatedNode: RigNode = {
-            ...current,
-            name: body.name === undefined ? current.name : yield* requiredName(body.name),
-            hardware_type: body.hardware_type ?? current.hardware_type,
-            role: body.role ?? current.role,
-            hostname: optionalString(body.hostname, current.hostname),
-            address: optionalString(body.address, current.address),
-            os: optionalString(body.os, current.os),
-            cpu_model: optionalString(body.cpu_model, current.cpu_model),
-            memory_gb: yield* positiveOrNull(body.memory_gb, current.memory_gb, "memory_gb"),
-            accelerators: yield* accelerators(body.accelerators, current.accelerators),
-            notes: optionalString(body.notes, current.notes),
-          };
-          const nodes = [...rig.nodes];
-          nodes[index] = updatedNode;
-          const updated = yield* saveRigTouched({ ...rig, nodes });
-          yield* publishRigUpdate();
-          return ctx.json({ success: true, rig: updated, node: updatedNode });
-        }),
-      ),
+    effectRoute(app.post, "/studio/rigs/:rigId/nodes", (ctx) =>
+      Effect.gen(function* () {
+        const rig = yield* requireRig(ctx.req.param("rigId") ?? "");
+        const body = yield* decodeJsonBody(ctx, RigNodeCreateSchema);
+        const node: RigNode = {
+          id: randomUUID(),
+          name: yield* requiredName(body.name),
+          hardware_type: body.hardware_type ?? "custom",
+          role: body.role ?? "standalone",
+          source: "manual",
+          hostname: optionalString(body.hostname, null),
+          address: optionalString(body.address, null),
+          os: optionalString(body.os, null),
+          cpu_model: optionalString(body.cpu_model, null),
+          cpu_cores: null,
+          memory_gb: yield* positiveOrNull(body.memory_gb, null, "memory_gb"),
+          accelerators: yield* accelerators(body.accelerators, []),
+          notes: optionalString(body.notes, null),
+        };
+        const updated = yield* saveRigTouched({ ...rig, nodes: [...rig.nodes, node] });
+        yield* publishRigUpdate();
+        return ctx.json({ success: true, rig: updated, node });
+      }),
     ),
 
-    app.delete(
-      "/studio/rigs/:rigId/nodes/:nodeId",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const rig = yield* requireRig(ctx.req.param("rigId") ?? "");
-          const nodeId = ctx.req.param("nodeId") ?? "";
-          if (nodeId === LOCAL_RIG_NODE_ID) {
-            return yield* Effect.fail(badRequest("The detected local node cannot be removed"));
-          }
-          if (!rig.nodes.some((node) => node.id === nodeId)) {
-            return yield* Effect.fail(notFound(`Node "${nodeId}" not found`));
-          }
-          const updated = yield* saveRigTouched({
-            ...rig,
-            nodes: rig.nodes.filter((node) => node.id !== nodeId),
-          });
-          yield* publishRigUpdate();
-          return ctx.json({ success: true, rig: updated });
-        }),
-      ),
+    effectRoute(app.put, "/studio/rigs/:rigId/nodes/:nodeId", (ctx) =>
+      Effect.gen(function* () {
+        const rig = yield* requireRig(ctx.req.param("rigId") ?? "");
+        const nodeId = ctx.req.param("nodeId") ?? "";
+        const index = rig.nodes.findIndex((node) => node.id === nodeId);
+        const current = index >= 0 ? rig.nodes[index] : undefined;
+        if (!current) return yield* Effect.fail(notFound(`Node "${nodeId}" not found`));
+        const body = yield* decodeJsonBody(ctx, RigNodeUpdateSchema);
+        const updatedNode: RigNode = {
+          ...current,
+          name: body.name === undefined ? current.name : yield* requiredName(body.name),
+          hardware_type: body.hardware_type ?? current.hardware_type,
+          role: body.role ?? current.role,
+          hostname: optionalString(body.hostname, current.hostname),
+          address: optionalString(body.address, current.address),
+          os: optionalString(body.os, current.os),
+          cpu_model: optionalString(body.cpu_model, current.cpu_model),
+          memory_gb: yield* positiveOrNull(body.memory_gb, current.memory_gb, "memory_gb"),
+          accelerators: yield* accelerators(body.accelerators, current.accelerators),
+          notes: optionalString(body.notes, current.notes),
+        };
+        const nodes = [...rig.nodes];
+        nodes[index] = updatedNode;
+        const updated = yield* saveRigTouched({ ...rig, nodes });
+        yield* publishRigUpdate();
+        return ctx.json({ success: true, rig: updated, node: updatedNode });
+      }),
+    ),
+
+    effectRoute(app.delete, "/studio/rigs/:rigId/nodes/:nodeId", (ctx) =>
+      Effect.gen(function* () {
+        const rig = yield* requireRig(ctx.req.param("rigId") ?? "");
+        const nodeId = ctx.req.param("nodeId") ?? "";
+        if (nodeId === LOCAL_RIG_NODE_ID) {
+          return yield* Effect.fail(badRequest("The detected local node cannot be removed"));
+        }
+        if (!rig.nodes.some((node) => node.id === nodeId)) {
+          return yield* Effect.fail(notFound(`Node "${nodeId}" not found`));
+        }
+        const updated = yield* saveRigTouched({
+          ...rig,
+          nodes: rig.nodes.filter((node) => node.id !== nodeId),
+        });
+        yield* publishRigUpdate();
+        return ctx.json({ success: true, rig: updated });
+      }),
     ),
   );
 });

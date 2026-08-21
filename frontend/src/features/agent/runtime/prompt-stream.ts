@@ -3,7 +3,6 @@ import {
   type ChatMessageAttachment,
   newId,
   nowLabel,
-  runtimeStatusLooksActive,
   sessionTitleFromPrompt,
 } from "@/features/agent/messages";
 import type {
@@ -17,10 +16,12 @@ import type {
 } from "@/features/agent/contracts";
 import type { BrowserBackend, ToolSelection } from "@/features/agent/tools/types";
 import * as api from "@/features/agent/runtime/api";
-import type { RuntimeStatus } from "@/features/agent/runtime/api";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 import type { Session, SessionId, UpdateSession } from "@/features/agent/runtime/types";
-import { settleTurn } from "@/features/agent/runtime/session-status";
+import {
+  runtimeCanHydrateCanonicalSession,
+  settleTurn,
+} from "@/features/agent/runtime/session-status";
 
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
@@ -185,7 +186,7 @@ function startPromptCommand(
           try: () => api.loadRuntimeStatus(context.runtime, currentPiSessionId),
           catch: () => null,
         });
-        if (runtimeIsActiveForPiSession(status, currentPiSessionId)) {
+        if (runtimeCanHydrateCanonicalSession(status, currentPiSessionId)) {
           deps.updateSession(context.sessionId, (session) => ({
             ...session,
             piSessionId: status?.piSessionId || session.piSessionId,
@@ -220,7 +221,7 @@ function startPromptCommand(
  * turn owns the intent state and clobbering it would strand the in-flight turn
  * with no live-target bubble. Mirrors the success path's non-clobbering guard.
  */
-export function settleFailedTurn(session: Session, assistantId: string, message: string): Session {
+function settleFailedTurn(session: Session, assistantId: string, message: string): Session {
   if (session.activeAssistantId && session.activeAssistantId !== assistantId) return session;
   return { ...settleTurn(session), error: message };
 }
@@ -271,25 +272,4 @@ function mergeSkills(
   for (const skill of existing ?? []) byId.set(skill.id || skill.path || skill.name, skill);
   for (const skill of next) byId.set(skill.id || skill.path || skill.name, skill);
   return [...byId.values()];
-}
-
-export function runtimeIsActiveForPiSession(
-  runtimeStatus: RuntimeStatus | null | undefined,
-  piSessionId: string | null | undefined,
-): boolean {
-  return Boolean(
-    runtimeStatus &&
-    runtimeStatusLooksActive(runtimeStatus) &&
-    (!runtimeStatus.piSessionId || !piSessionId || runtimeStatus.piSessionId === piSessionId),
-  );
-}
-
-export function runtimeCanHydrateCanonicalSession(
-  runtimeStatus: RuntimeStatus | null | undefined,
-  piSessionId: string,
-): boolean {
-  return Boolean(
-    runtimeStatus?.active === true &&
-    (!runtimeStatus.piSessionId || runtimeStatus.piSessionId === piSessionId),
-  );
 }

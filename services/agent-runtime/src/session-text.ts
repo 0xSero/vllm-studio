@@ -72,7 +72,3 @@ export function lastAssistantResult(cwd: string, piSessionId: string): LastAssis
     return { text: "", error: null };
   }
 }
-
-export function lastAssistantText(cwd: string, piSessionId: string): string {
-  return lastAssistantResult(cwd, piSessionId).text;
-}

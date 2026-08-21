@@ -7,7 +7,6 @@ import {
   type ClipboardEvent,
   type Dispatch,
   type KeyboardEvent,
-  type MutableRefObject,
   type RefObject,
   type SetStateAction,
 } from "react";
@@ -23,7 +22,7 @@ import {
   type ComposerSkillRef,
 } from "@/features/agent/composer-context";
 import type { ComposerCommand } from "@/features/agent/composer/command-types";
-import { type SessionTab } from "@/features/agent/messages";
+import type { Session } from "@/features/agent/runtime/types";
 import type { ToolsContextValue } from "@/features/agent/tools/context";
 import {
   filesFromDataTransfer,
@@ -36,13 +35,13 @@ import {
   type ComposerHistoryCursor,
 } from "@/features/agent/ui/composer-history";
 
-export type UpdateTab = (tabId: string, patch: (tab: SessionTab) => SessionTab) => void;
+export type UpdateTab = (tabId: string, patch: (tab: Session) => Session) => void;
 
 export function useComposerLoadedContext({
   activeTab,
   tools,
 }: {
-  activeTab: SessionTab | null;
+  activeTab: Session | null;
   tools: ToolsContextValue;
 }) {
   const activeSelection = tools.selectionFor(activeTab?.id);
@@ -97,17 +96,24 @@ export function useComposerMentionRows({
   }, [commandRows, fileMentionRows, mention, skillRows]);
 }
 
-export function useComposerTextareaHeightSync({
-  value,
+export type ComposerAutosizeHandle = {
+  reset: () => void;
+  resizeAfterCommit: (nextValue: string, nextCaret: number) => void;
+  resizeOnChange: (element: HTMLTextAreaElement, nextValue: string) => void;
+};
+
+/** Owns the composer textarea's autosize state: the last applied height and value
+ *  length let growth skip redundant style writes while shrinking re-measures. */
+export function useComposerAutosize({
   textareaRef,
-  lastAppliedComposerHeightRef,
-  lastComposerValueLengthRef,
+  value,
 }: {
-  value: string;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
-  lastAppliedComposerHeightRef: MutableRefObject<number>;
-  lastComposerValueLengthRef: MutableRefObject<number>;
-}) {
+  value: string;
+}): ComposerAutosizeHandle {
+  const lastAppliedHeightRef = useRef(0);
+  const lastValueLengthRef = useRef(0);
+
   useMountSubscription(() => {
     const node = textareaRef.current;
     if (!node) return;
@@ -115,17 +121,62 @@ export function useComposerTextareaHeightSync({
     if (!value) {
       node.style.height = "";
       node.scrollTop = 0;
-      lastAppliedComposerHeightRef.current = 0;
-      lastComposerValueLengthRef.current = 0;
+      lastAppliedHeightRef.current = 0;
+      lastValueLengthRef.current = 0;
       return;
     }
 
     node.style.height = "auto";
     const next = node.scrollHeight;
     node.style.height = `${next}px`;
-    lastAppliedComposerHeightRef.current = next;
-    lastComposerValueLengthRef.current = value.length;
-  }, [lastAppliedComposerHeightRef, lastComposerValueLengthRef, textareaRef, value]);
+    lastAppliedHeightRef.current = next;
+    lastValueLengthRef.current = value.length;
+  }, [textareaRef, value]);
+
+  const reset = useCallback(() => {
+    if (textareaRef.current) textareaRef.current.style.height = "";
+    lastAppliedHeightRef.current = 0;
+    lastValueLengthRef.current = 0;
+  }, [textareaRef]);
+
+  const resizeAfterCommit = useCallback(
+    (nextValue: string, nextCaret: number) => {
+      requestAnimationFrame(() => {
+        const node = textareaRef.current;
+        if (!node) return;
+        node.setSelectionRange(nextCaret, nextCaret);
+        node.style.height = "auto";
+        const next = node.scrollHeight;
+        node.style.height = `${next}px`;
+        lastAppliedHeightRef.current = next;
+        lastValueLengthRef.current = nextValue.length;
+      });
+    },
+    [textareaRef],
+  );
+
+  const resizeOnChange = useCallback(
+    (element: HTMLTextAreaElement, nextValue: string) => {
+      if (!nextValue) {
+        reset();
+        return;
+      }
+      const prevLength = lastValueLengthRef.current;
+      lastValueLengthRef.current = nextValue.length;
+      const shrinking = nextValue.length < prevLength;
+      if (shrinking) element.style.height = "auto";
+      const next = element.scrollHeight;
+      if (!shrinking && next === lastAppliedHeightRef.current) return;
+      element.style.height = `${next}px`;
+      lastAppliedHeightRef.current = next;
+    },
+    [reset],
+  );
+
+  return useMemo(
+    () => ({ reset, resizeAfterCommit, resizeOnChange }),
+    [reset, resizeAfterCommit, resizeOnChange],
+  );
 }
 
 export function useComposerTextareaBehavior({
@@ -134,10 +185,7 @@ export function useComposerTextareaBehavior({
   mentionRows,
   mentionIndex,
   running,
-  textareaRef,
-  lastAppliedComposerHeightRef,
-  lastComposerValueLengthRef,
-  resetComposerHeight,
+  autosize,
   updateTab,
   setMention,
   setMentionIndex,
@@ -146,15 +194,12 @@ export function useComposerTextareaBehavior({
   abortTurn,
   attachFiles,
 }: {
-  activeTab: SessionTab | null;
+  activeTab: Session | null;
   mention: ComposerMention | null;
   mentionRows: MentionRow[];
   mentionIndex: number;
   running: boolean;
-  textareaRef: RefObject<HTMLTextAreaElement | null>;
-  lastAppliedComposerHeightRef: MutableRefObject<number>;
-  lastComposerValueLengthRef: MutableRefObject<number>;
-  resetComposerHeight: () => void;
+  autosize: ComposerAutosizeHandle;
   updateTab: UpdateTab;
   setMention: Dispatch<SetStateAction<ComposerMention | null>>;
   setMentionIndex: Dispatch<SetStateAction<number>>;
@@ -167,22 +212,6 @@ export function useComposerTextareaBehavior({
     sessionId: string;
     cursor: ComposerHistoryCursor;
   }>({ sessionId: "", cursor: { index: -1, draft: "" } });
-
-  const resizeAfterCommit = useCallback(
-    (nextValue: string, nextCaret: number) => {
-      requestAnimationFrame(() => {
-        const node = textareaRef.current;
-        if (!node) return;
-        node.setSelectionRange(nextCaret, nextCaret);
-        node.style.height = "auto";
-        const next = node.scrollHeight;
-        node.style.height = `${next}px`;
-        lastAppliedComposerHeightRef.current = next;
-        lastComposerValueLengthRef.current = nextValue.length;
-      });
-    },
-    [lastAppliedComposerHeightRef, lastComposerValueLengthRef, textareaRef],
-  );
 
   const handleComposerPaste = useCallback(
     (event: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -206,13 +235,13 @@ export function useComposerTextareaBehavior({
         const nextCaret = start + text.length;
         updateTab(activeTab.id, (tab) => ({ ...tab, input: nextValue }));
         setMention(null);
-        resizeAfterCommit(nextValue, nextCaret);
+        autosize.resizeAfterCommit(nextValue, nextCaret);
         return;
       }
       event.preventDefault();
       void attachFiles(files);
     },
-    [activeTab, attachFiles, resizeAfterCommit, setMention, updateTab],
+    [activeTab, attachFiles, autosize, setMention, updateTab],
   );
 
   const handleComposerChange = useCallback(
@@ -225,28 +254,9 @@ export function useComposerTextareaBehavior({
       };
       updateTab(activeTab.id, (tab) => ({ ...tab, input: value }));
       setMention(value ? detectComposerMention(value, event.currentTarget.selectionStart) : null);
-      const element = event.currentTarget;
-      if (!value) {
-        resetComposerHeight();
-        return;
-      }
-      const prevLength = lastComposerValueLengthRef.current;
-      lastComposerValueLengthRef.current = value.length;
-      const shrinking = value.length < prevLength;
-      if (shrinking) element.style.height = "auto";
-      const next = element.scrollHeight;
-      if (!shrinking && next === lastAppliedComposerHeightRef.current) return;
-      element.style.height = `${next}px`;
-      lastAppliedComposerHeightRef.current = next;
+      autosize.resizeOnChange(event.currentTarget, value);
     },
-    [
-      activeTab,
-      lastAppliedComposerHeightRef,
-      lastComposerValueLengthRef,
-      resetComposerHeight,
-      setMention,
-      updateTab,
-    ],
+    [activeTab, autosize, setMention, updateTab],
   );
 
   /** Arrow/Escape/accept keys while the @-mention or /-command popup is open.
@@ -310,10 +320,10 @@ export function useComposerTextareaBehavior({
       historyNavigationRef.current = { sessionId: activeTab.id, cursor: step.cursor };
       updateTab(activeTab.id, (tab) => ({ ...tab, input: step.value }));
       setMention(null);
-      resizeAfterCommit(step.value, step.value.length);
+      autosize.resizeAfterCommit(step.value, step.value.length);
       return true;
     },
-    [activeTab, resizeAfterCommit, setMention, updateTab],
+    [activeTab, autosize, setMention, updateTab],
   );
 
   const handleComposerKeyDown = useCallback(

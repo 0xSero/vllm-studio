@@ -1,3 +1,6 @@
+"use client";
+
+import { useSyncExternalStore } from "react";
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import { isWorkingStatus } from "@/features/agent/runtime/session-status";
 import type { RuntimeSessionSummary } from "@/features/agent/runtime/api";
@@ -18,6 +21,11 @@ export type OpenAgentSession = {
   skills?: ComposerSkillRef[];
   usedSkills?: ComposerSkillRef[];
 };
+
+export type ActiveSession = Pick<
+  OpenAgentSession,
+  "projectId" | "cwd" | "paneId" | "id" | "threadId" | "title" | "status" | "focused" | "updatedAt"
+>;
 
 export type SessionIndexRow =
   | {
@@ -90,6 +98,16 @@ export function uniqueOpenSessions(sessions: readonly OpenAgentSession[]): OpenA
   return [...byKey.values()];
 }
 
+export function indexOpenByThreadId(
+  activeSessions: readonly ActiveSession[],
+): Map<string, ActiveSession> {
+  const map = new Map<string, ActiveSession>();
+  for (const session of activeSessions) {
+    if (session.threadId) map.set(session.threadId, session);
+  }
+  return map;
+}
+
 export function sessionRows(
   openSessions: readonly OpenAgentSession[],
   historySessions: readonly SessionSummary[],
@@ -150,6 +168,10 @@ export function publishOpenSessions(incoming: readonly OpenAgentSession[]): void
   for (const listener of listeners) listener();
 }
 
+export function useOpenSessions(): readonly OpenAgentSession[] {
+  return useSyncExternalStore(subscribeOpenSessions, getOpenSessions, getOpenSessions);
+}
+
 export function getSessionActivity(): SessionActivitySnapshot {
   return activitySnapshot;
 }
@@ -207,4 +229,8 @@ export function markSessionActivitySeen(...ids: readonly (string | null | undefi
     return;
   activitySnapshot = { ...activitySnapshot, unseen, finished };
   for (const listener of activityListeners) listener();
+}
+
+export function useSessionActivity() {
+  return useSyncExternalStore(subscribeSessionActivity, getSessionActivity, getSessionActivity);
 }

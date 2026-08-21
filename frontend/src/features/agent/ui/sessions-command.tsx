@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "@/ui/icon-registry";
 import { POPOVER_PANEL_CLASS } from "@/ui/popover";
@@ -8,7 +8,7 @@ import { ChatIcon, Folder } from "@/ui/icons";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
-import { type ActiveSession, indexOpenByThreadId } from "@/features/agent/session-contracts";
+import { type ActiveSession, indexOpenByThreadId } from "@/features/agent/session-index";
 import { formatRelative } from "@/features/agent/ui/session-recency";
 import type { AggregatedSession } from "@shared/agent/session-summary";
 
@@ -65,6 +65,17 @@ const APP_DESTINATIONS: AppDestination[] = [
     description: "Connection, system, appearance, and setup.",
   },
 ];
+
+type PaletteRow = { key: string; section: string; href: string } & (
+  | { kind: "destination"; destination: AppDestination }
+  | { kind: "live"; session: ActiveSession }
+  | { kind: "recent"; session: AggregatedSession }
+);
+
+function agentSessionHref(projectId: string, sessionId: string | null): string {
+  const sessionParam = sessionId ? `&session=${encodeURIComponent(sessionId)}` : "";
+  return `/agent?project=${encodeURIComponent(projectId)}${sessionParam}&replace=1`;
+}
 
 function isRunning(status: string): boolean {
   return Boolean(status) && status !== "idle" && status !== "done";
@@ -156,36 +167,48 @@ function SearchPalette({
     );
   }, [liveOnlyActives, query]);
 
-  const totalRows = destinationFiltered.length + liveFiltered.length + filtered.length;
+  const rows = useMemo<PaletteRow[]>(
+    () => [
+      ...destinationFiltered.map(
+        (destination): PaletteRow => ({
+          kind: "destination",
+          key: destination.href,
+          section: "App destinations",
+          href: destination.href,
+          destination,
+        }),
+      ),
+      ...liveFiltered.map(
+        (session): PaletteRow => ({
+          kind: "live",
+          key: `live:${session.id}`,
+          section: "Running now",
+          href: agentSessionHref(session.projectId, session.threadId),
+          session,
+        }),
+      ),
+      ...filtered.map(
+        (session): PaletteRow => ({
+          kind: "recent",
+          key: session.id,
+          section: "Recent sessions",
+          href: agentSessionHref(session.projectId, session.id),
+          session,
+        }),
+      ),
+    ],
+    [destinationFiltered, liveFiltered, filtered],
+  );
+
+  const totalRows = rows.length;
   const selectedIndex = totalRows > 0 ? Math.min(highlight, totalRows - 1) : 0;
 
   if (!open) return null;
 
   function commit(index: number) {
-    if (index < 0) return;
-    if (index < destinationFiltered.length) {
-      const destination = destinationFiltered[index];
-      if (!destination) return;
-      router.push(destination.href);
-      onClose();
-      return;
-    }
-    const liveIndex = index - destinationFiltered.length;
-    if (liveIndex < liveFiltered.length) {
-      const session = liveFiltered[liveIndex];
-      router.push(
-        `/agent?project=${encodeURIComponent(session.projectId)}${
-          session.threadId ? `&session=${encodeURIComponent(session.threadId)}` : ""
-        }&replace=1`,
-      );
-      onClose();
-      return;
-    }
-    const session = filtered[index - destinationFiltered.length - liveFiltered.length];
-    if (!session) return;
-    router.push(
-      `/agent?project=${encodeURIComponent(session.projectId)}&session=${encodeURIComponent(session.id)}&replace=1`,
-    );
+    const row = rows[index];
+    if (!row) return;
+    router.push(row.href);
     onClose();
   }
 
@@ -242,15 +265,14 @@ function SearchPalette({
               No destinations or sessions match “{query}”.
             </div>
           ) : (
-            <>
-              {destinationFiltered.length > 0 ? (
-                <SectionLabel>App destinations</SectionLabel>
-              ) : null}
-              {destinationFiltered.map((destination, index) => {
-                const active = selectedIndex === index;
-                return (
+            rows.map((row, index) => {
+              const active = selectedIndex === index;
+              return (
+                <Fragment key={row.key}>
+                  {row.section !== rows[index - 1]?.section ? (
+                    <SectionLabel>{row.section}</SectionLabel>
+                  ) : null}
                   <button
-                    key={destination.href}
                     type="button"
                     onMouseEnter={() => setHighlight(index)}
                     onClick={() => commit(index)}
@@ -258,84 +280,20 @@ function SearchPalette({
                       active ? "bg-(--bg)" : "hover:bg-(--bg)/70"
                     }`}
                   >
-                    <Search className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-(--fg)">{destination.label}</span>
-                      <span className="mt-0.5 block truncate text-[length:var(--fs-sm)] text-(--dim)">
-                        {destination.description}
-                      </span>
-                    </span>
-                    <span className="shrink-0 font-mono text-[length:var(--fs-sm)] text-(--dim)">
-                      {destination.href}
-                    </span>
-                  </button>
-                );
-              })}
-              {liveFiltered.length > 0 ? <SectionLabel>Running now</SectionLabel> : null}
-              {liveFiltered.map((session, index) => {
-                const i = destinationFiltered.length + index;
-                const active = selectedIndex === i;
-                return (
-                  <button
-                    key={`live:${session.id}`}
-                    type="button"
-                    onMouseEnter={() => setHighlight(i)}
-                    onClick={() => commit(i)}
-                    className={`flex w-full items-center gap-3 px-4 py-2 text-left text-[length:var(--fs-base)] transition-colors ${
-                      active ? "bg-(--bg)" : "hover:bg-(--bg)/70"
-                    }`}
-                  >
-                    <span
-                      className="inline-block h-2 w-2 shrink-0 rounded-full bg-(--hl2) animate-pulse"
-                      aria-hidden
-                    />
-                    <span className="min-w-0 flex-1 truncate text-(--fg)">
-                      {cleanSessionTitle(session.title) || "Current session"}
-                    </span>
-                    <span className="shrink-0 truncate text-[length:var(--fs-sm)] text-(--dim)">
-                      {session.status}
-                    </span>
-                  </button>
-                );
-              })}
-              {filtered.length > 0 ? <SectionLabel>Recent sessions</SectionLabel> : null}
-              {filtered.map((session, index) => {
-                const i = destinationFiltered.length + liveFiltered.length + index;
-                const active = selectedIndex === i;
-                const running = openByThreadId.has(session.id);
-                const label =
-                  cleanSessionTitle(session.firstUserMessage) ||
-                  `Session ${session.id.slice(0, 8)}`;
-                return (
-                  <button
-                    key={session.id}
-                    type="button"
-                    onMouseEnter={() => setHighlight(i)}
-                    onClick={() => commit(i)}
-                    className={`flex w-full items-center gap-3 px-4 py-2 text-left text-[length:var(--fs-base)] transition-colors ${
-                      active ? "bg-(--bg)" : "hover:bg-(--bg)/70"
-                    }`}
-                  >
-                    {running ? (
-                      <span
-                        className="inline-block h-2 w-2 shrink-0 rounded-full bg-(--hl2) animate-pulse"
-                        aria-hidden
-                      />
+                    {row.kind === "destination" ? (
+                      <DestinationRowBody destination={row.destination} />
+                    ) : row.kind === "live" ? (
+                      <LiveRowBody session={row.session} />
                     ) : (
-                      <ChatIcon className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
+                      <RecentRowBody
+                        session={row.session}
+                        running={openByThreadId.has(row.session.id)}
+                      />
                     )}
-                    <span className="min-w-0 flex-1 truncate text-(--fg)">{label}</span>
-                    <span className="inline-flex items-center gap-1 shrink-0 truncate text-[length:var(--fs-sm)] text-(--dim)">
-                      <Folder className="h-3 w-3" />
-                      {session.projectName}
-                    </span>
-                    <span className="w-12 shrink-0 text-right text-[length:var(--fs-sm)] text-(--dim)">
-                      {formatRelative(session.updatedAt)}
-                    </span>
                   </button>
-                );
-              })}
-            </>
+                </Fragment>
+              );
+            })
           )}
         </div>
         <div className="flex items-center justify-between border-t border-(--separator) px-4 py-2 text-[length:var(--fs-sm)] text-(--dim)">
@@ -352,6 +310,64 @@ function SearchPalette({
         </div>
       </div>
     </div>
+  );
+}
+
+function DestinationRowBody({ destination }: { destination: AppDestination }) {
+  return (
+    <>
+      <Search className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-(--fg)">{destination.label}</span>
+        <span className="mt-0.5 block truncate text-[length:var(--fs-sm)] text-(--dim)">
+          {destination.description}
+        </span>
+      </span>
+      <span className="shrink-0 font-mono text-[length:var(--fs-sm)] text-(--dim)">
+        {destination.href}
+      </span>
+    </>
+  );
+}
+
+function LiveRowBody({ session }: { session: ActiveSession }) {
+  return (
+    <>
+      <span
+        className="inline-block h-2 w-2 shrink-0 rounded-full bg-(--hl2) animate-pulse"
+        aria-hidden
+      />
+      <span className="min-w-0 flex-1 truncate text-(--fg)">
+        {cleanSessionTitle(session.title) || "Current session"}
+      </span>
+      <span className="shrink-0 truncate text-[length:var(--fs-sm)] text-(--dim)">
+        {session.status}
+      </span>
+    </>
+  );
+}
+
+function RecentRowBody({ session, running }: { session: AggregatedSession; running: boolean }) {
+  const label = cleanSessionTitle(session.firstUserMessage) || `Session ${session.id.slice(0, 8)}`;
+  return (
+    <>
+      {running ? (
+        <span
+          className="inline-block h-2 w-2 shrink-0 rounded-full bg-(--hl2) animate-pulse"
+          aria-hidden
+        />
+      ) : (
+        <ChatIcon className="h-3.5 w-3.5 shrink-0 text-(--dim)" />
+      )}
+      <span className="min-w-0 flex-1 truncate text-(--fg)">{label}</span>
+      <span className="inline-flex items-center gap-1 shrink-0 truncate text-[length:var(--fs-sm)] text-(--dim)">
+        <Folder className="h-3 w-3" />
+        {session.projectName}
+      </span>
+      <span className="w-12 shrink-0 text-right text-[length:var(--fs-sm)] text-(--dim)">
+        {formatRelative(session.updatedAt)}
+      </span>
+    </>
   );
 }
 

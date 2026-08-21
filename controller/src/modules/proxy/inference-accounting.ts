@@ -19,7 +19,7 @@ interface InferenceAccountingOptions {
   stores: InferenceAccountingStores;
 }
 
-interface InferenceUsageInput {
+export interface InferenceUsageInput {
   prompt_tokens?: number;
   completion_tokens?: number;
   reasoning_tokens?: number;
@@ -29,7 +29,7 @@ interface InferenceUsageInput {
   completion_tokens_details?: Record<string, number>;
 }
 
-interface InferenceUsageTotals {
+export interface InferenceUsageTotals {
   promptTokens: number;
   completionTokens: number;
   reasoningTokens: number;

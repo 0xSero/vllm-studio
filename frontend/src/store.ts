@@ -26,17 +26,7 @@ import type {
 
 // --- App slice ---
 
-export interface SidebarState {
-  collapsed: boolean;
-  mobileOpen: boolean;
-}
-
 export interface AppSlice {
-  sidebar: SidebarState;
-  setSidebarCollapsed: (collapsed: boolean) => void;
-  toggleSidebarCollapsed: () => void;
-  setSidebarMobileOpen: (open: boolean) => void;
-  toggleSidebarMobileOpen: () => void;
   sidebarWidth: number;
   setSidebarWidth: (width: number) => void;
   fileViewerFontSize: number;
@@ -59,21 +49,6 @@ function restoredSidebarWidth(value: unknown, fallback: number): number {
 }
 
 const createAppSlice: StateCreator<AppSlice, [], [], AppSlice> = (set) => ({
-  sidebar: { collapsed: false, mobileOpen: false },
-  setSidebarCollapsed: (collapsed) =>
-    set((state) => {
-      if (state.sidebar.collapsed === collapsed) return state;
-      return { sidebar: { ...state.sidebar, collapsed } };
-    }),
-  toggleSidebarCollapsed: () =>
-    set((state) => ({ sidebar: { ...state.sidebar, collapsed: !state.sidebar.collapsed } })),
-  setSidebarMobileOpen: (mobileOpen) =>
-    set((state) => {
-      if (state.sidebar.mobileOpen === mobileOpen) return state;
-      return { sidebar: { ...state.sidebar, mobileOpen } };
-    }),
-  toggleSidebarMobileOpen: () =>
-    set((state) => ({ sidebar: { ...state.sidebar, mobileOpen: !state.sidebar.mobileOpen } })),
   sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
   setSidebarWidth: (sidebarWidth) => set({ sidebarWidth }),
   fileViewerFontSize: 12,
@@ -179,7 +154,6 @@ export const useAppStore = create<AppStore>()(
         fontFamilyId: state.fontFamilyId,
         fontSizeId: state.fontSizeId,
         desktopSidebarPinnedOpen: state.desktopSidebarPinnedOpen,
-        sidebarCollapsed: state.sidebar.collapsed,
         sidebarWidth: state.sidebarWidth,
         fileViewerFontSize: state.fileViewerFontSize,
         toolPreviewHeight: state.toolPreviewHeight,
@@ -193,10 +167,6 @@ export const useAppStore = create<AppStore>()(
           ...current,
           ...persistedStore,
           sidebarWidth: restoredSidebarWidth(persistedRecord.sidebarWidth, current.sidebarWidth),
-          sidebar: {
-            ...current.sidebar,
-            collapsed: persistedRecord.sidebarCollapsed === true,
-          },
         };
       },
       onRehydrateStorage: () => (state) => {
@@ -221,28 +191,4 @@ if (typeof window !== "undefined") {
       useAppStore.subscribe(() => scheduleDurableUiPreferencesSave());
     }
   })();
-}
-
-let appStoreListenersInitialized = false;
-
-export function initAppStoreListeners() {
-  if (appStoreListenersInitialized || typeof window === "undefined") return;
-  appStoreListenersInitialized = true;
-
-  const onResize = () => {
-    if (window.innerWidth < 768 && !useAppStore.getState().sidebar.collapsed) {
-      useAppStore.getState().setSidebarCollapsed(true);
-    }
-  };
-  window.addEventListener("resize", onResize);
-  onResize();
-
-  window.addEventListener("vllm:toggle-sidebar", ((event: CustomEvent<{ open?: boolean }>) => {
-    const requested = event?.detail?.open;
-    if (typeof requested === "boolean") {
-      useAppStore.getState().setSidebarMobileOpen(requested);
-    } else {
-      useAppStore.getState().toggleSidebarMobileOpen();
-    }
-  }) as EventListener);
 }

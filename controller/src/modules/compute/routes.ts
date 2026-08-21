@@ -1,8 +1,7 @@
 import { Effect, Schema } from "effect";
 import { badRequest } from "../../core/errors";
 import { readBoundedRequestBody } from "../../http/bounded-body";
-import { effectHandler } from "../../http/effect-handler";
-import { defineRoutes, documentRoute, mergeRoutes } from "../../http/route-registrar";
+import { defineRoutes, effectRoute, mergeRoutes } from "../../http/route-registrar";
 import { ENGINE_IDS, type EngineId, type ServingOptions } from "./contracts";
 import { availableEngines } from "./engines/registry";
 import { toHttp } from "./failures";
@@ -66,82 +65,62 @@ const defaultOptions: ServingOptions = {
 
 export const registerComputeRoutes = defineRoutes((app, context) =>
   mergeRoutes(
-    app.get(
-      "/compute/devices",
-      documentRoute,
-      effectHandler((ctx) =>
-        context.compute.telemetry.snapshot().pipe(Effect.map((snapshot) => ctx.json(snapshot))),
-      ),
+    effectRoute(app.get, "/compute/devices", (ctx) =>
+      context.compute.telemetry.snapshot().pipe(Effect.map((snapshot) => ctx.json(snapshot))),
     ),
 
-    app.get(
-      "/compute/engines",
-      documentRoute,
-      effectHandler((ctx) =>
-        context.compute
-          .host()
-          .pipe(Effect.map((host) => ctx.json({ host, engines: availableEngines(host) }))),
-      ),
+    effectRoute(app.get, "/compute/engines", (ctx) =>
+      context.compute
+        .host()
+        .pipe(Effect.map((host) => ctx.json({ host, engines: availableEngines(host) }))),
     ),
 
-    app.get(
-      "/compute/instances",
-      documentRoute,
-      effectHandler((ctx) =>
-        context.compute.service.instances().pipe(Effect.map((views) => ctx.json({ instances: views }))),
-      ),
+    effectRoute(app.get, "/compute/instances", (ctx) =>
+      context.compute.service
+        .instances()
+        .pipe(Effect.map((views) => ctx.json({ instances: views }))),
     ),
 
-    app.post(
-      "/compute/launch",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const bytes = yield* readBoundedRequestBody(ctx.req.raw, LAUNCH_REQUEST_LIMIT).pipe(
-            Effect.mapError(() => badRequest("unreadable launch request")),
-          );
-          const parsed = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(LaunchRequestSchema))(
-            new TextDecoder().decode(bytes),
-          ).pipe(Effect.mapError((error) => badRequest(`invalid launch request: ${String(error)}`)));
-          const record = yield* context.compute.service
-            .launch({
-              name: parsed.name,
-              engine: parsed.engine,
-              recipeId: parsed.recipeId ?? parsed.name,
-              runtime: parsed.runtime ?? "process",
-              deviceCount: parsed.deviceCount ?? 1,
-              modelPath: parsed.modelPath,
-              servedModelName: parsed.servedModelName ?? parsed.name,
-              options: mergeOptions(parsed.options ?? {}),
-              extraArgs: parsed.extraArgs ?? [],
-              env: parsed.env ?? {},
-              dockerImage: parsed.dockerImage ?? null,
-              binary: parsed.binary ?? null,
-            })
-            .pipe(Effect.mapError(toHttp));
-          return ctx.json({ instance: record });
-        }),
-      ),
+    effectRoute(app.post, "/compute/launch", (ctx) =>
+      Effect.gen(function* () {
+        const bytes = yield* readBoundedRequestBody(ctx.req.raw, LAUNCH_REQUEST_LIMIT).pipe(
+          Effect.mapError(() => badRequest("unreadable launch request")),
+        );
+        const parsed = yield* Schema.decodeUnknownEffect(
+          Schema.fromJsonString(LaunchRequestSchema),
+        )(new TextDecoder().decode(bytes)).pipe(
+          Effect.mapError((error) => badRequest(`invalid launch request: ${String(error)}`)),
+        );
+        const record = yield* context.compute.service
+          .launch({
+            name: parsed.name,
+            engine: parsed.engine,
+            recipeId: parsed.recipeId ?? parsed.name,
+            runtime: parsed.runtime ?? "process",
+            deviceCount: parsed.deviceCount ?? 1,
+            modelPath: parsed.modelPath,
+            servedModelName: parsed.servedModelName ?? parsed.name,
+            options: mergeOptions(parsed.options ?? {}),
+            extraArgs: parsed.extraArgs ?? [],
+            env: parsed.env ?? {},
+            dockerImage: parsed.dockerImage ?? null,
+            binary: parsed.binary ?? null,
+          })
+          .pipe(Effect.mapError(toHttp));
+        return ctx.json({ instance: record });
+      }),
     ),
 
-    app.post(
-      "/compute/instances/:name/stop",
-      documentRoute,
-      effectHandler((ctx) =>
-        context.compute.service
-          .stop(ctx.req.param("name") ?? "")
-          .pipe(Effect.map((stopped) => ctx.json({ stopped }))),
-      ),
+    effectRoute(app.post, "/compute/instances/:name/stop", (ctx) =>
+      context.compute.service
+        .stop(ctx.req.param("name") ?? "")
+        .pipe(Effect.map((stopped) => ctx.json({ stopped }))),
     ),
 
-    app.post(
-      "/compute/instances/:name/cancel",
-      documentRoute,
-      effectHandler((ctx) =>
-        context.compute.service
-          .cancel(ctx.req.param("name") ?? "")
-          .pipe(Effect.map((cancelled) => ctx.json({ cancelled }))),
-      ),
+    effectRoute(app.post, "/compute/instances/:name/cancel", (ctx) =>
+      context.compute.service
+        .cancel(ctx.req.param("name") ?? "")
+        .pipe(Effect.map((cancelled) => ctx.json({ cancelled }))),
     ),
   ),
 );

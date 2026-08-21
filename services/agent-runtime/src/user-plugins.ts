@@ -2,6 +2,7 @@ import { chmod, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { expandHome } from "./pi-runtime-helpers";
 import { isValidPluginId, type PluginRow } from "./plugin-contract";
 
 export { PLUGIN_TEMPLATE, isValidPluginId, type PluginRow } from "./plugin-contract";
@@ -26,12 +27,6 @@ const DISABLED_SUFFIX = ".off";
 const EXTENSION_SUFFIXES = [".ts", ".js"] as const;
 /** Generous for a plugin, small enough that a paste accident cannot fill a disk. */
 const MAX_SOURCE_BYTES = 256 * 1024;
-
-function expandHome(target: string): string {
-  if (target === "~") return homedir();
-  if (target.startsWith("~/")) return path.join(homedir(), target.slice(2));
-  return target;
-}
 
 /**
  * The same directory `getAgentDir()` inside pi resolves.

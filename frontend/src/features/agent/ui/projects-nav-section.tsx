@@ -8,8 +8,11 @@ import {
   useProjectsNavAddProjectEffect,
   useProjectsNavSessionPrefs,
 } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
-import { useOpenSessions, useSessionActivity } from "@/features/agent/ui/use-open-sessions";
-import { sessionActivity } from "@/features/agent/session-index";
+import {
+  sessionActivity,
+  useOpenSessions,
+  useSessionActivity,
+} from "@/features/agent/session-index";
 import { useProjects } from "@/features/agent/projects/context";
 import { addProjectFromPath, openProjectDirectory } from "@/features/agent/projects/api";
 import { isChatsProject, type Project as ProjectEntry } from "@/features/agent/projects/types";
@@ -23,13 +26,7 @@ import { RecentSessionsSection } from "./projects-nav/recent-sessions-section";
 import { NewChatPlusButton, ProjectRow, ProjectSessions } from "./projects-nav/session-rows";
 import { TerminalRow } from "./projects-nav/terminal-rows";
 
-export function ProjectsNavSection({
-  expanded,
-  view,
-}: {
-  expanded: boolean;
-  view: NavView;
-}) {
+export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view: NavView }) {
   const projectsContext = useProjects();
   const projects = projectsContext.projects;
   const { moveProjectBefore, refresh: refreshProjects, upsertProject } = projectsContext;
