@@ -7,6 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { notifySessionListChanged } from "./session-list-changed";
 import lockfile from "proper-lockfile";
 import { resolveDataDir } from "./data-dir";
 import { isRecord } from "../../../shared/agent/guards";
@@ -120,6 +121,10 @@ function writeStore(store: SessionMetadataStore): void {
     chmodSync(tempPath, 0o600);
   } catch {}
   renameSync(tempPath, filepath);
+  // Archive/rename/pin live in this overlay, not in the session .jsonl the
+  // list watcher sees — without this, archiving a session never told any
+  // surface the list changed (verified empirically against the deployed app).
+  notifySessionListChanged();
 }
 
 async function withStoreLock<T>(callback: () => T): Promise<T> {

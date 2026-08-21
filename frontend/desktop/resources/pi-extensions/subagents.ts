@@ -16,7 +16,7 @@
 // stays a plain pi extension with no runtime imports.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import { Type } from "./schema.ts";
 
 const FRONTEND_BASE = process.env.LOCAL_STUDIO_FRONTEND_BASE ?? "http://127.0.0.1:3000";
 const RUN_TIMEOUT_MS = 15 * 60_000;

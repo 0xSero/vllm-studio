@@ -39,7 +39,7 @@ import { appendFile, mkdir, readFile, readdir, realpath, stat, writeFile } from 
 import { homedir } from "node:os";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type, type Static, type TSchema } from "typebox";
+import { Type, type Static, type TSchema } from "./schema.ts";
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -138,7 +138,9 @@ function selectVault(vaults: Vault[], requested: string | undefined): Vault {
   if (byName.length === 1) return byName[0]!;
   const known = vaults.map((vault) => `${vault.name} (${vault.path})`).join(", ");
   if (byName.length > 1) {
-    throw new Refusal(`More than one vault is named "${wanted}". Pass its full path instead: ${known}.`);
+    throw new Refusal(
+      `More than one vault is named "${wanted}". Pass its full path instead: ${known}.`,
+    );
   }
   throw new Refusal(`No vault called "${wanted}". Known vaults: ${known}.`);
 }
@@ -184,7 +186,9 @@ async function notePath(root: string, input: string): Promise<string> {
   const withExt = raw.toLowerCase().endsWith(NOTE_EXT) ? raw : `${raw}${NOTE_EXT}`;
   const target = path.resolve(root, withExt);
   if (!isInside(root, target)) {
-    throw new Refusal(`"${raw}" resolves outside the vault. These tools only touch files inside it.`);
+    throw new Refusal(
+      `"${raw}" resolves outside the vault. These tools only touch files inside it.`,
+    );
   }
   const hidden = path
     .relative(root, target)
@@ -289,7 +293,10 @@ function splitFrontmatter(text: string): Frontmatter {
 }
 
 function unquote(value: string): string {
-  return value.trim().replace(/^["']|["']$/g, "").trim();
+  return value
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .trim();
 }
 
 /**
@@ -323,11 +330,7 @@ function parseFields(lines: string[]): Record<string, string | string[]> {
     }
     fields[key] =
       raw.startsWith("[") && raw.endsWith("]")
-        ? raw
-            .slice(1, -1)
-            .split(",")
-            .map(unquote)
-            .filter(Boolean)
+        ? raw.slice(1, -1).split(",").map(unquote).filter(Boolean)
         : unquote(raw);
   }
   return fields;
@@ -360,11 +363,18 @@ function isTag(value: string): boolean {
 /** A note's tags are the union of its frontmatter tags and its inline ones. */
 function tagsOf(fields: Record<string, string | string[]>, body: string): string[] {
   const tags = new Set(fieldList(fields, "tags", "tag").filter(isTag));
-  for (const match of body.matchAll(INLINE_TAG)) if (match[1] && isTag(match[1])) tags.add(match[1]);
+  for (const match of body.matchAll(INLINE_TAG))
+    if (match[1] && isTag(match[1])) tags.add(match[1]);
   return [...tags].sort((a, b) => a.localeCompare(b));
 }
 
-type Wikilink = { text: string; target: string; heading: string | null; alias: string | null; embed: boolean };
+type Wikilink = {
+  text: string;
+  target: string;
+  heading: string | null;
+  alias: string | null;
+  embed: boolean;
+};
 
 const WIKILINK = /(!?)\[\[([^\]\n]+)\]\]/g;
 
@@ -490,7 +500,7 @@ const vaultParam = Type.Optional(
 );
 const noteParam = Type.String({
   description:
-    "Vault-relative path (\"Projects/Roadmap.md\") or just the note name (\"Roadmap\"), resolved by name across the vault the way a [[wikilink]] is.",
+    'Vault-relative path ("Projects/Roadmap.md") or just the note name ("Roadmap"), resolved by name across the vault the way a [[wikilink]] is.',
 });
 
 const TOOLS = [
@@ -533,7 +543,7 @@ const TOOLS = [
         }),
       ),
       folder: Type.Optional(
-        Type.String({ description: "Restrict to a vault-relative folder, e.g. \"Daily Notes\"" }),
+        Type.String({ description: 'Restrict to a vault-relative folder, e.g. "Daily Notes"' }),
       ),
       limit: Type.Optional(Type.Number({ description: "Maximum notes to return (default 20)" })),
     }),
@@ -548,7 +558,9 @@ const TOOLS = [
       const needle = query.toLowerCase();
       const tagQuery = query.startsWith("#") ? query.slice(1).toLowerCase() : null;
       const scoped = folder
-        ? notes.filter((note) => note.rel.split(path.sep).join("/").toLowerCase().startsWith(`${folder.toLowerCase()}/`))
+        ? notes.filter((note) =>
+            note.rel.split(path.sep).join("/").toLowerCase().startsWith(`${folder.toLowerCase()}/`),
+          )
         : notes;
 
       const matches: Array<Record<string, unknown>> = [];
@@ -556,7 +568,13 @@ const TOOLS = [
         const titleHit = scope !== "content" && note.name.toLowerCase().includes(needle);
         const text = scope === "title" && !titleHit ? null : await readNote(note);
         if (text === null) {
-          if (titleHit) matches.push({ path: note.rel, title: note.name, modified: note.modified, matched: ["title"] });
+          if (titleHit)
+            matches.push({
+              path: note.rel,
+              title: note.name,
+              modified: note.modified,
+              matched: ["title"],
+            });
           continue;
         }
         const { fields, body } = splitFrontmatter(text);
@@ -564,9 +582,11 @@ const TOOLS = [
         const aliases = fieldList(fields, "aliases", "alias");
         const title = titleOf(note.name, fields);
         const matched: string[] = [];
-        if (scope !== "content" && (titleHit || title.toLowerCase().includes(needle))) matched.push("title");
+        if (scope !== "content" && (titleHit || title.toLowerCase().includes(needle)))
+          matched.push("title");
         if (aliases.some((alias) => alias.toLowerCase().includes(needle))) matched.push("alias");
-        if (tagQuery && tags.some((tag) => tag.toLowerCase().includes(tagQuery))) matched.push("tag");
+        if (tagQuery && tags.some((tag) => tag.toLowerCase().includes(tagQuery)))
+          matched.push("tag");
         const excerpts = scope === "title" ? [] : excerptsFor(body, query);
         if (excerpts.length > 0) matched.push("body");
         if (matched.length === 0) continue;
@@ -585,9 +605,12 @@ const TOOLS = [
       // then the notes with the most passages, then the most recent.
       matches.sort((a, b) => {
         const titleDelta =
-          Number((b.matched as string[]).includes("title")) - Number((a.matched as string[]).includes("title"));
+          Number((b.matched as string[]).includes("title")) -
+          Number((a.matched as string[]).includes("title"));
         if (titleDelta !== 0) return titleDelta;
-        const excerptDelta = ((b.excerpts as string[] | undefined)?.length ?? 0) - ((a.excerpts as string[] | undefined)?.length ?? 0);
+        const excerptDelta =
+          ((b.excerpts as string[] | undefined)?.length ?? 0) -
+          ((a.excerpts as string[] | undefined)?.length ?? 0);
         if (excerptDelta !== 0) return excerptDelta;
         return String(b.modified).localeCompare(String(a.modified));
       });
@@ -664,7 +687,7 @@ const TOOLS = [
     name: "obsidian_recent",
     label: "Obsidian: Recent Notes",
     description:
-      "List the notes modified most recently, newest first, with their paths, titles, tags and a first line of preview. The right first call when the user talks about their notes without naming one — it shows what they have actually been working on, which is usually what they mean by \"my notes\".",
+      'List the notes modified most recently, newest first, with their paths, titles, tags and a first line of preview. The right first call when the user talks about their notes without naming one — it shows what they have actually been working on, which is usually what they mean by "my notes".',
     parameters: Type.Object({
       vault: vaultParam,
       limit: Type.Optional(Type.Number({ description: "Maximum notes to return (default 20)" })),
@@ -676,15 +699,24 @@ const TOOLS = [
       const folder = params.folder?.trim().replace(/^\/+|\/+$/g, "");
       const { notes, truncated } = await listNotes(root);
       const scoped = folder
-        ? notes.filter((note) => note.rel.split(path.sep).join("/").toLowerCase().startsWith(`${folder.toLowerCase()}/`))
+        ? notes.filter((note) =>
+            note.rel.split(path.sep).join("/").toLowerCase().startsWith(`${folder.toLowerCase()}/`),
+          )
         : notes;
-      const recent = [...scoped].sort((a, b) => b.modified.localeCompare(a.modified)).slice(0, limit);
+      const recent = [...scoped]
+        .sort((a, b) => b.modified.localeCompare(a.modified))
+        .slice(0, limit);
       const detailed = await Promise.all(
         recent.map(async (note) => {
           const text = await readNote(note);
-          if (text === null) return { path: note.rel, title: note.name, modified: note.modified, bytes: note.bytes };
+          if (text === null)
+            return { path: note.rel, title: note.name, modified: note.modified, bytes: note.bytes };
           const { fields, body } = splitFrontmatter(text);
-          const preview = body.split(/\r?\n/).map((line) => line.trim()).find((line) => line.length > 0) ?? "";
+          const preview =
+            body
+              .split(/\r?\n/)
+              .map((line) => line.trim())
+              .find((line) => line.length > 0) ?? "";
           const tags = tagsOf(fields, body);
           return {
             path: note.rel,
@@ -728,7 +760,9 @@ const TOOLS = [
         const lines = body.split(/\r?\n/);
         const contexts: string[] = [];
         for (const line of lines) {
-          const hit = linksOf(line).some((link) => resolveLink(index, link.target).path === targetRel);
+          const hit = linksOf(line).some(
+            (link) => resolveLink(index, link.target).path === targetRel,
+          );
           if (hit) contexts.push(line.trim().slice(0, 240));
           if (contexts.length >= EXCERPTS_PER_NOTE) break;
         }
@@ -745,12 +779,18 @@ const TOOLS = [
     parameters: Type.Object({
       note: Type.String({
         description:
-          "Vault-relative path for the new note, e.g. \"Projects/Roadmap\" or \"Roadmap.md\". Folders are created as needed.",
+          'Vault-relative path for the new note, e.g. "Projects/Roadmap" or "Roadmap.md". Folders are created as needed.',
       }),
       content: Type.String({ description: "Markdown body of the note" }),
       vault: vaultParam,
-      tags: Type.Optional(Type.Array(Type.String(), { description: "Frontmatter tags, without the leading #" })),
-      aliases: Type.Optional(Type.Array(Type.String(), { description: "Frontmatter aliases — other names this note answers to" })),
+      tags: Type.Optional(
+        Type.Array(Type.String(), { description: "Frontmatter tags, without the leading #" }),
+      ),
+      aliases: Type.Optional(
+        Type.Array(Type.String(), {
+          description: "Frontmatter aliases — other names this note answers to",
+        }),
+      ),
     }),
     run: async (params, vaults) => {
       const { vault, root } = await openVault(vaults, params.vault);
@@ -832,7 +872,10 @@ export default async function registerObsidianExtension(pi: ExtensionAPI) {
         const detailBase = { tool: tool.name, params: (params ?? {}) as Record<string, unknown> };
         try {
           const data = await tool.run(params as never, vaults);
-          return { content: [{ type: "text", text: truncate(asText(data)) }], details: { ...detailBase, data } };
+          return {
+            content: [{ type: "text", text: truncate(asText(data)) }],
+            details: { ...detailBase, data },
+          };
         } catch (error) {
           if (error instanceof Refusal) {
             return {

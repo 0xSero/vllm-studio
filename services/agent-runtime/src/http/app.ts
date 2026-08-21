@@ -56,6 +56,42 @@ import {
 } from "./pty-handlers";
 import { handleAgentModels } from "./model-handlers";
 import {
+  handleConnectorCall,
+  handleConnectorDelete,
+  handleConnectorGrantDelete,
+  handleConnectorGrantPut,
+  handleConnectorGrantsGet,
+  handleConnectorInventory,
+  handleConnectorsList,
+  handleConnectorTest,
+  handleConnectorUpsert,
+  handleSshServerPath,
+} from "./connector-handlers";
+import {
+  handleGoogleAccountDisconnect,
+  handleGoogleAccountGet,
+  handleGoogleAuthorizeBegin,
+  handleGoogleAuthorizeCancel,
+  handleGoogleClientPut,
+} from "./google-account-handlers";
+import {
+  handleProjectAdd,
+  handleProjectRemove,
+  handleProjectsList,
+} from "./project-handlers";
+import {
+  handlePluginDelete,
+  handlePluginSource,
+  handlePluginsList,
+  handlePluginUpsert,
+} from "./plugin-handlers";
+import {
+  handlePromptTemplateLoad,
+  handlePromptTemplatesList,
+  handleSkillLoad,
+  handleSkillsList,
+} from "./discovery-handlers";
+import {
   handleAllSessions,
   handleSessionGet,
   handleSessionPatch,
@@ -115,6 +151,32 @@ export function createAgentRuntimeApp() {
     handleAutomationDelete(c.req.param("id")),
   );
   app.post("/api/agent/automations/:id/run", (c) => handleAutomationRun(c.req.param("id")));
+  app.get("/api/agent/connectors", () => handleConnectorsList());
+  app.post("/api/agent/connectors", (c) => handleConnectorUpsert(c.req.raw));
+  app.delete("/api/agent/connectors", (c) => handleConnectorDelete(c.req.raw));
+  app.get("/api/agent/connectors/call", (c) => handleConnectorInventory(c.req.raw));
+  app.post("/api/agent/connectors/call", (c) => handleConnectorCall(c.req.raw));
+  app.get("/api/agent/connectors/grants", (c) => handleConnectorGrantsGet(c.req.raw));
+  app.put("/api/agent/connectors/grants", (c) => handleConnectorGrantPut(c.req.raw));
+  app.delete("/api/agent/connectors/grants", (c) => handleConnectorGrantDelete(c.req.raw));
+  app.post("/api/agent/connectors/test", (c) => handleConnectorTest(c.req.raw));
+  app.get("/api/agent/connectors/ssh-server-path", () => handleSshServerPath());
+  app.get("/api/agent/accounts/google", () => handleGoogleAccountGet());
+  app.put("/api/agent/accounts/google", (c) => handleGoogleClientPut(c.req.raw));
+  app.delete("/api/agent/accounts/google", (c) => handleGoogleAccountDisconnect(c.req.raw));
+  app.post("/api/agent/accounts/google/authorize", (c) => handleGoogleAuthorizeBegin(c.req.raw));
+  app.delete("/api/agent/accounts/google/authorize", (c) => handleGoogleAuthorizeCancel(c.req.raw));
+  app.get("/api/agent/projects", () => handleProjectsList());
+  app.post("/api/agent/projects", (c) => handleProjectAdd(c.req.raw));
+  app.delete("/api/agent/projects", (c) => handleProjectRemove(c.req.raw));
+  app.get("/api/agent/plugins", () => handlePluginsList());
+  app.post("/api/agent/plugins", (c) => handlePluginUpsert(c.req.raw));
+  app.delete("/api/agent/plugins", (c) => handlePluginDelete(c.req.raw));
+  app.get("/api/agent/plugins/source", (c) => handlePluginSource(c.req.raw));
+  app.get("/api/agent/skills", () => handleSkillsList());
+  app.get("/api/agent/skills/load", (c) => handleSkillLoad(c.req.raw));
+  app.get("/api/agent/prompt-templates", () => handlePromptTemplatesList());
+  app.get("/api/agent/prompt-templates/load", (c) => handlePromptTemplateLoad(c.req.raw));
   app.get("/api/agent/pr", (c) => handlePrGet(c.req.raw));
   app.post("/api/agent/pr/merge", (c) => handlePrMerge(c.req.raw));
   app.get("/api/agent/subagents", (c) => handleSubagentsList(c.req.raw));

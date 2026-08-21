@@ -22,7 +22,7 @@
 
 import { execFile } from "node:child_process";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type, type Static, type TSchema } from "typebox";
+import { Type, type Static, type TSchema } from "./schema.ts";
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -324,7 +324,10 @@ const TOOLS = [
     name: "github_pr_checks",
     label: "GitHub: Pull Request Checks",
     description: `Return the CI check runs for a pull request with their state and links. A non-zero exit here means checks are failing or pending — that is the answer, not an error. Follow a failure into github_run_view with \`failedLogs\` to see why. ${REPO_DEFAULT}`,
-    parameters: Type.Object({ number: Type.Number({ description: "Pull request number" }), repo: repoParam }),
+    parameters: Type.Object({
+      number: Type.Number({ description: "Pull request number" }),
+      repo: repoParam,
+    }),
     argv: (p) => ["pr", "checks", String(Math.trunc(p.number)), ...repoArgs(p.repo)],
   }),
   define({
@@ -419,7 +422,7 @@ const BLOCKED_COMMANDS = new Set([
 
 function blockedReason(args: string[]): string | null {
   const command = args[0] ?? "";
-  if (!command) return "github_cli needs at least one argument, e.g. [\"pr\", \"create\", \"--fill\"].";
+  if (!command) return 'github_cli needs at least one argument, e.g. ["pr", "create", "--fill"].';
   if (command.startsWith("-")) {
     return "github_cli takes a gh subcommand first, not a flag.";
   }
@@ -488,7 +491,7 @@ export default async function registerGithubExtension(pi: ExtensionAPI) {
     name: "github_cli",
     label: "GitHub: Run gh",
     description:
-      "Run any other `gh` subcommand as an argv array — `[\"pr\", \"create\", \"--fill\"]`, `[\"issue\", \"comment\", \"42\", \"--body\", \"...\"]`, `[\"release\", \"list\"]`. This is the write path: it acts on GitHub as the signed-in user and its effects are public and often permanent, so only run a mutating command the user actually asked for, and say what you ran. Prefer the named github_* tools where one exists — they return structured JSON, this returns whatever gh prints. There is no shell here, so pipes, redirects and globs do not work; pass each argument as its own array element. Credential and delete subcommands are refused.",
+      'Run any other `gh` subcommand as an argv array — `["pr", "create", "--fill"]`, `["issue", "comment", "42", "--body", "..."]`, `["release", "list"]`. This is the write path: it acts on GitHub as the signed-in user and its effects are public and often permanent, so only run a mutating command the user actually asked for, and say what you ran. Prefer the named github_* tools where one exists — they return structured JSON, this returns whatever gh prints. There is no shell here, so pipes, redirects and globs do not work; pass each argument as its own array element. Credential and delete subcommands are refused.',
     parameters: Type.Object({
       args: Type.Array(Type.String(), {
         description: "Arguments after `gh`, one per element",
