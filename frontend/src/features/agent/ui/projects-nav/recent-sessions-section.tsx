@@ -7,10 +7,9 @@ import {
   getSessionActivity,
   sessionActivity,
   subscribeSessionActivity,
-  type SessionActivity,
 } from "@/features/agent/session-index";
 import { useOpenSessions, useSessionActivity } from "@/features/agent/ui/use-open-sessions";
-import { Spinner } from "@/ui";
+import { SessionStatusMark } from "@/features/agent/ui/projects-nav/nav-chrome";
 import { orderByRecency, recentsTimestamp } from "@/features/agent/ui/session-recency";
 import { useProjectsNavSessionPrefs } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -131,37 +130,6 @@ export function RecentSessionsSection() {
   );
 }
 
-/** The same status marks the project tree uses — a session you are being
- *  notified about is exactly the one whose state you want to read. */
-function RowStatus({ activity }: { activity: SessionActivity }) {
-  if (activity === "running") {
-    return (
-      <span className="ml-auto flex shrink-0 justify-end" aria-label="Session running">
-        <Spinner size="xs" className="text-(--link)" />
-      </span>
-    );
-  }
-  if (activity === "finished") {
-    return (
-      <span
-        className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-(--ok)"
-        aria-label="Run finished"
-        title="Run finished"
-      />
-    );
-  }
-  if (activity === "unseen") {
-    return (
-      <span
-        className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-(--link)"
-        aria-label="Unseen activity"
-        title="Unseen activity"
-      />
-    );
-  }
-  return null;
-}
-
 function RecentSessionRow({ session, prefs }: { session: AggregatedSession; prefs: SessionPrefs }) {
   const activitySnapshot = useSessionActivity();
   const openSessions = useOpenSessions();
@@ -188,7 +156,13 @@ function RecentSessionRow({ session, prefs }: { session: AggregatedSession; pref
     >
       <span className="flex min-w-0 items-center gap-2">
         <span className="min-w-0 truncate text-[length:var(--fs-md)] text-(--fg)">{title}</span>
-        <RowStatus activity={activity} />
+        {/* The same status marks the project tree uses — a session you are being
+            notified about is exactly the one whose state you want to read. */}
+        <SessionStatusMark
+          activity={activity}
+          runningClass="ml-auto flex shrink-0 justify-end"
+          dotClass="ml-auto h-1.5 w-1.5 shrink-0 rounded-full"
+        />
       </span>
       {preview ? (
         <span className="line-clamp-2 text-[length:var(--fs-sm)] leading-snug text-(--dim)">

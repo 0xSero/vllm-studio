@@ -1,8 +1,48 @@
 "use client";
 
 import type { ReactNode } from "react";
+import type { SessionActivity } from "@/features/agent/session-index";
+import { Spinner } from "@/ui";
 import { PinIcon } from "@/ui/icon-registry";
 import { ChevronDownIcon } from "@/ui/icons";
+
+/** The trailing status mark every session row shows: spinner while running,
+ *  green dot when a run finished, accent dot for unseen activity. Layout
+ *  differs per host — the project tree reserves a w-8 spinner column and lets
+ *  its flex-1 label push the dots right, the recents list right-aligns each
+ *  mark itself — so the wrapper classes come from the caller. */
+export function SessionStatusMark({
+  activity,
+  runningClass,
+  dotClass,
+}: {
+  activity: SessionActivity;
+  runningClass: string;
+  dotClass: string;
+}) {
+  if (activity === "running") {
+    return (
+      <span className={runningClass} aria-label="Session running">
+        <Spinner size="xs" className="text-(--link)" />
+      </span>
+    );
+  }
+  if (activity === "finished") {
+    return (
+      <span className={`${dotClass} bg-(--ok)`} aria-label="Run finished" title="Run finished" />
+    );
+  }
+  if (activity === "unseen") {
+    return (
+      <span
+        className={`${dotClass} bg-(--link)`}
+        aria-label="Unseen activity"
+        title="Unseen activity"
+      />
+    );
+  }
+  return null;
+}
 
 /** The one pin control for every sidebar row (sessions and projects). It sits in
  *  the row's hover action cluster and, once pinned, stays lit as the pinned
