@@ -30,11 +30,6 @@ import type { LoggedPiEvent, PiAgentSession, PiAgentStatus } from "../pi-runtime
 import { listSessions } from "../sessions-store";
 import { sessionListChangedStream } from "../session-list-changed";
 import { errorMessage, jsonError } from "./helpers";
-import {
-  initialRuntimeStatusPhase,
-  replayAfterCursor,
-  shouldSendTrailingIdleStatus,
-} from "./stream-order";
 
 // ─── POST /api/agent/turn ─────────────────────────────────────────────────
 
@@ -394,6 +389,30 @@ export function handleRuntimeSessions(): Response {
       .listSessions()
       .map(({ sessionId, session }) => ({ sessionId, status: session.status })),
   });
+}
+
+function initialRuntimeStatusPhase(
+  active: boolean,
+  replayBacklogCount: number,
+): "running" | "idle" | null {
+  if (active) return "running";
+  return replayBacklogCount === 0 ? "idle" : null;
+}
+
+function replayAfterCursor(requestedAfter: number, runtimeEventSeq: number): number {
+  return requestedAfter > runtimeEventSeq ? 0 : requestedAfter;
+}
+
+function shouldSendTrailingIdleStatus({
+  active,
+  replayBacklogCount,
+  sentTerminalStatus,
+}: {
+  active: boolean;
+  replayBacklogCount: number;
+  sentTerminalStatus: boolean;
+}): boolean {
+  return !active && replayBacklogCount > 0 && !sentTerminalStatus;
 }
 
 // ─── GET /api/agent/runtime/status ────────────────────────────────────────
