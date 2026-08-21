@@ -50,7 +50,7 @@ function comparableQueuedText(text: string): string {
   return (index === -1 ? text : text.slice(index + marker.length)).trim();
 }
 
-export function takeQueuedFollowUp(
+function takeQueuedFollowUp(
   followUp: readonly string[],
   message: string,
 ): { selected: string; before: string[]; after: string[] } | null {
@@ -68,7 +68,7 @@ export function takeQueuedFollowUp(
   };
 }
 
-export function planQueuedFollowUpMutation(
+function planQueuedFollowUpMutation(
   followUp: readonly string[],
   message: string,
   action: AgentQueueAction,
@@ -93,7 +93,7 @@ type QueueTransport = {
   followUp: (message: string, images?: AgentImageInput[]) => Promise<void>;
 };
 
-export async function restoreQueuedMessages(
+async function restoreQueuedMessages(
   session: QueueTransport,
   cleared: { steering: readonly string[]; followUp: readonly string[] },
   mutation: { promoted: string | null; followUp: readonly string[] } | null,
@@ -111,7 +111,7 @@ const VISION_GUIDANCE =
   "When an image is attached, inspect it carefully before answering. State only details visible in the image. Never invent labels, UI elements, text, or facts. Say when details are too small or uncertain. Give a concise answer. Use available tools to inspect supplied files when helpful.";
 
 
-export function selectPiRuntimeModel(
+function selectPiRuntimeModel(
   models: Awaited<ReturnType<typeof refreshPiModels>>["models"],
   requestedModelId: string,
 ) {
@@ -133,14 +133,6 @@ export function selectPiRuntimeModel(
   if (unqualified.length === 1) return unqualified[0];
   if (unqualified.length > 1) throw new Error(`Model '${requestedModelId}' is ambiguous.`);
   return null;
-}
-
-export function resolvePiRuntimeStartOptions(
-  current: RuntimeStartOptions,
-  running: boolean,
-  requested?: RuntimeStartOptions,
-): RuntimeStartOptions {
-  return structuredClone(requested ?? (running ? current : {}));
 }
 
 function runtimeFingerprint(
@@ -165,7 +157,7 @@ function runtimeFingerprint(
   });
 }
 
-export function shouldRestartAfterPromptError(error: unknown): boolean {
+function shouldRestartAfterPromptError(error: unknown): boolean {
   return (
     error instanceof Error && /Cannot continue from message role: assistant/i.test(error.message)
   );
@@ -216,10 +208,8 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     piSessionId?: string | null,
     options?: RuntimeStartOptions,
   ): Promise<void> {
-    const effectiveOptions = resolvePiRuntimeStartOptions(
-      this.currentStartOptions,
-      Boolean(this.runtime),
-      options,
+    const effectiveOptions = structuredClone(
+      options ?? (this.runtime ? this.currentStartOptions : {}),
     );
     return Effect.runPromise(this.ensureStartedEffect(modelId, cwd, piSessionId, effectiveOptions));
   }
