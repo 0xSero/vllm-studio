@@ -20,14 +20,10 @@ import {
   createMutatingRateLimitMiddleware,
   createReadRateLimitMiddleware,
 } from "./security-middleware";
-import {
-  createControllerRequestObservabilityMiddleware,
-  TELEMETRY_SKIP_PATHS,
-} from "./observability-middleware";
+import { createControllerRequestObservabilityMiddleware } from "./observability-middleware";
 import {
   controllerRuntimeMiddleware,
   effectHandler,
-  effectMiddleware,
   type ControllerEnvironment,
 } from "./effect-handler";
 
@@ -70,24 +66,6 @@ export const createApp = (
       ],
       maxAge: 600,
     }),
-  );
-
-  app.use(
-    "*",
-    effectMiddleware((ctx, next) =>
-      Effect.sync(() => {
-        if (!TELEMETRY_SKIP_PATHS.has(ctx.req.path)) {
-          context.logger.debug(`${ctx.req.method} ${ctx.req.path}`);
-        }
-      }).pipe(
-        Effect.andThen(
-          Effect.tryPromise({
-            try: () => next(),
-            catch: (error) => error,
-          }),
-        ),
-      ),
-    ),
   );
 
   app.use("*", createControllerRequestObservabilityMiddleware(context));
