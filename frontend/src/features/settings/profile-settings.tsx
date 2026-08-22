@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Effect } from "effect";
 import { Check, Copy, ExternalLink, Smartphone, Upload } from "@/ui/icon-registry";
 import { Input } from "@/ui";
 import {
@@ -145,24 +144,17 @@ function PhonePairingSettings() {
     setPairingError("");
     return payload.pairingJson;
   };
-  const refreshPairing = (): Promise<void> =>
-    Effect.runPromise(
-      Effect.sync(() => {
-        setPairingBusy(true);
-        setPairingError("");
-      }).pipe(
-        Effect.andThen(Effect.tryPromise({ try: loadPairingJson, catch: (error) => error })),
-        Effect.asVoid,
-        Effect.catch((error) =>
-          Effect.sync(() =>
-            setPairingError(
-              error instanceof Error ? error.message : "Connection JSON is unavailable.",
-            ),
-          ),
-        ),
-        Effect.ensuring(Effect.sync(() => setPairingBusy(false))),
-      ),
-    );
+  const refreshPairing = async (): Promise<void> => {
+    setPairingBusy(true);
+    setPairingError("");
+    try {
+      await loadPairingJson();
+    } catch (error) {
+      setPairingError(error instanceof Error ? error.message : "Connection JSON is unavailable.");
+    } finally {
+      setPairingBusy(false);
+    }
+  };
   useMountSubscription(() => {
     void refreshPairing();
   }, []);

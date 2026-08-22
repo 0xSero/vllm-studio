@@ -116,93 +116,70 @@ export function ManagedRuntimeInstallRows({
   onInstall: (backend: ManagedRuntimeInstallBackend) => void | Promise<void>;
   onUpdateTarget?: (target: RuntimeTarget) => void | Promise<void>;
 }) {
-  return backends.map((backend) => (
-    <ManagedRuntimeInstallRow
-      key={backend}
-      backend={backend}
-      jobs={jobs}
-      targets={targets}
-      onInstall={onInstall}
-      onUpdateTarget={onUpdateTarget}
-    />
-  ));
+  return backends.map((backend) => {
+    const meta = ENGINE_META[backend];
+    // Everything this row needs, resolved in one place: which target (if any) the
+    // controller created for this backend, which job is touching it, and whether
+    // the button installs or updates.
+    const target = targets.find((row) => row.backend === backend && isManagedRuntimeTarget(row));
+    const installedTarget = target?.installed ? target : undefined;
+    const job = installedTarget
+      ? jobForRuntimeTarget(jobs, installedTarget)
+      : managedInstallJob(jobs, backend);
+    const running = isRunningEngineJob(job);
+    const updateTarget = installedTarget?.capabilities.canUpdate ? installedTarget : undefined;
+    const actionLabel = installedTarget ? "Update" : "Install";
+    const location = target?.pythonPath ?? `$DATA_DIR/runtime/venvs/${backend}-latest`;
+    const canAct = Boolean(updateTarget ? onUpdateTarget : onInstall);
+    return (
+      <Fragment key={backend}>
+        <DataRow>
+          <IdentityCell
+            label={`${meta.label} latest venv`}
+            description={`Controller-managed Python environment for ${meta.label}.`}
+          />
+          <TextCell mono>{installedVersionLabel(target)}</TextCell>
+          <TextCell mono title={location}>
+            {location}
+          </TextCell>
+          <EndCell>
+            <div className="flex items-center justify-end gap-2">
+              {target ? (
+                <RuntimeTargetStatus
+                  installed={target.installed}
+                  active={target.active}
+                  health={target.health.status}
+                />
+              ) : (
+                <StatusText tone={job?.status === "success" ? "ok" : "dim"}>venv</StatusText>
+              )}
+              <RowAction
+                alwaysVisible
+                onClick={() =>
+                  void (updateTarget ? onUpdateTarget?.(updateTarget) : onInstall(backend))
+                }
+                disabled={running || !canAct}
+                title={`${actionLabel} the managed ${meta.label} venv`}
+              >
+                {running ? <Spinner size="xs" /> : null}
+                {running ? job?.status : installedTarget ? actionLabel : "Create venv"}
+              </RowAction>
+            </div>
+          </EndCell>
+        </DataRow>
+        {job ? (
+          <DetailRow colSpan={ENGINE_TABLE_COLSPAN}>
+            <RuntimeJobMessage job={job} />
+          </DetailRow>
+        ) : null}
+      </Fragment>
+    );
+  });
 }
 
 /** What is on disk for this target, said the same way everywhere. */
 const installedVersionLabel = (target: RuntimeTarget | undefined): string =>
   target?.installed ? (target.version ?? "installed") : "not installed";
-
-function ManagedRuntimeInstallRow({
-  backend,
-  jobs,
-  targets,
-  onInstall,
-  onUpdateTarget,
-}: {
-  backend: ManagedRuntimeInstallBackend;
-  jobs: EngineJob[];
-  targets: RuntimeTarget[];
-  onInstall: (backend: ManagedRuntimeInstallBackend) => void | Promise<void>;
-  onUpdateTarget?: (target: RuntimeTarget) => void | Promise<void>;
-}) {
-  const meta = ENGINE_META[backend];
-  // Everything this row needs, resolved in one place: which target (if any) the
-  // controller created for this backend, which job is touching it, and whether
-  // the button installs or updates.
-  const target = targets.find((row) => row.backend === backend && isManagedRuntimeTarget(row));
-  const installedTarget = target?.installed ? target : undefined;
-  const job = installedTarget
-    ? jobForRuntimeTarget(jobs, installedTarget)
-    : managedInstallJob(jobs, backend);
-  const running = isRunningEngineJob(job);
-  const updateTarget = installedTarget?.capabilities.canUpdate ? installedTarget : undefined;
-  const actionLabel = installedTarget ? "Update" : "Install";
-  const location = target?.pythonPath ?? `$DATA_DIR/runtime/venvs/${backend}-latest`;
-  const canAct = Boolean(updateTarget ? onUpdateTarget : onInstall);
-  return (
-    <>
-      <DataRow>
-        <IdentityCell
-          label={`${meta.label} latest venv`}
-          description={`Controller-managed Python environment for ${meta.label}.`}
-        />
-        <TextCell mono>{installedVersionLabel(target)}</TextCell>
-        <TextCell mono title={location}>
-          {location}
-        </TextCell>
-        <EndCell>
-          <div className="flex items-center justify-end gap-2">
-            {target ? (
-              <RuntimeTargetStatus
-                installed={target.installed}
-                active={target.active}
-                health={target.health.status}
-              />
-            ) : (
-              <StatusText tone={job?.status === "success" ? "ok" : "dim"}>venv</StatusText>
-            )}
-            <RowAction
-              alwaysVisible
-              onClick={() =>
-                void (updateTarget ? onUpdateTarget?.(updateTarget) : onInstall(backend))
-              }
-              disabled={running || !canAct}
-              title={`${actionLabel} the managed ${meta.label} venv`}
-            >
-              {running ? <Spinner size="xs" /> : null}
-              {running ? job?.status : installedTarget ? actionLabel : "Create venv"}
-            </RowAction>
-          </div>
-        </EndCell>
-      </DataRow>
-      {job ? (
-        <DetailRow colSpan={ENGINE_TABLE_COLSPAN}>
-          <RuntimeJobMessage job={job} />
-        </DetailRow>
-      ) : null}
-    </>
-  );
-}
 
 export function RuntimeTargetRows({
   targets,
@@ -213,88 +190,69 @@ export function RuntimeTargetRows({
   jobs?: EngineJob[];
   onAction?: (target: RuntimeTarget) => void | Promise<void>;
 }) {
-  return targets.map((target) => (
-    <RuntimeTargetRow
-      key={target.id}
-      target={target}
-      job={jobForRuntimeTarget(jobs, target)}
-      onAction={onAction}
-    />
-  ));
-}
-
-function RuntimeTargetRow({
-  target,
-  job,
-  onAction,
-}: {
-  target: RuntimeTarget;
-  job?: EngineJob;
-  onAction?: (target: RuntimeTarget) => void | Promise<void>;
-}) {
-  const meta = ENGINE_META[target.backend];
-  const unsupportedReason = target.health.message ?? "Updates are unsupported for this target.";
-  const healthMessage =
-    target.capabilities.canUpdate &&
-    (target.health.status === "warning" || target.health.status === "error")
-      ? target.health.message
-      : undefined;
-  const location = target.pythonPath ?? target.binaryPath ?? target.dockerImage ?? "";
-  const hasDetail = Boolean(
-    job ||
-    (target.capabilities.canUpdate && target.update) ||
-    !target.capabilities.canUpdate ||
-    healthMessage,
-  );
-
-  return (
-    <>
-      <DataRow>
-        <IdentityCell
-          label={target.label || meta?.label || target.backend}
-          description={`${target.kind} · ${target.source}${target.active ? " · running" : ""}`}
-        />
-        <TextCell
-          mono
-          sub={
-            target.update && target.capabilities.canUpdate
-              ? `latest ${target.update.targetVersion}`
-              : undefined
-          }
-        >
-          {installedVersionLabel(target)}
-        </TextCell>
-        <TextCell mono title={location || undefined}>
-          {location || "—"}
-        </TextCell>
-        <EndCell>
-          <div className="flex items-center justify-end gap-2">
-            <RuntimeTargetStatus
-              installed={target.installed}
-              active={target.active}
-              health={target.health.status}
-            />
-            <RuntimeTargetAction
-              target={target}
-              job={job}
-              onAction={onAction}
-              unsupportedReason={unsupportedReason}
-            />
-          </div>
-        </EndCell>
-      </DataRow>
-      {hasDetail ? (
-        <DetailRow colSpan={ENGINE_TABLE_COLSPAN}>
-          {job ? <RuntimeJobMessage job={job} /> : null}
-          {target.capabilities.canUpdate && target.update ? (
-            <RuntimeUpdateDetails update={target.update} />
-          ) : null}
-          {!target.capabilities.canUpdate ? <span>{unsupportedReason}</span> : null}
-          {healthMessage ? <span className="text-(--warn)">{healthMessage}</span> : null}
-        </DetailRow>
-      ) : null}
-    </>
-  );
+  return targets.map((target) => {
+    const meta = ENGINE_META[target.backend];
+    const job = jobForRuntimeTarget(jobs, target);
+    const unsupportedReason = target.health.message ?? "Updates are unsupported for this target.";
+    const degraded = target.health.status === "warning" || target.health.status === "error";
+    const healthMessage =
+      target.capabilities.canUpdate && degraded ? target.health.message : undefined;
+    const location = target.pythonPath ?? target.binaryPath ?? target.dockerImage ?? "";
+    const hasDetail = Boolean(
+      job ||
+      (target.capabilities.canUpdate && target.update) ||
+      !target.capabilities.canUpdate ||
+      healthMessage,
+    );
+    return (
+      <Fragment key={target.id}>
+        <DataRow>
+          <IdentityCell
+            label={target.label || meta?.label || target.backend}
+            description={`${target.kind} · ${target.source}${target.active ? " · running" : ""}`}
+          />
+          <TextCell
+            mono
+            sub={
+              target.update && target.capabilities.canUpdate
+                ? `latest ${target.update.targetVersion}`
+                : undefined
+            }
+          >
+            {installedVersionLabel(target)}
+          </TextCell>
+          <TextCell mono title={location || undefined}>
+            {location || "—"}
+          </TextCell>
+          <EndCell>
+            <div className="flex items-center justify-end gap-2">
+              <RuntimeTargetStatus
+                installed={target.installed}
+                active={target.active}
+                health={target.health.status}
+              />
+              <RuntimeTargetAction
+                target={target}
+                job={job}
+                onAction={onAction}
+                unsupportedReason={unsupportedReason}
+              />
+            </div>
+          </EndCell>
+        </DataRow>
+        {hasDetail ? (
+          <DetailRow colSpan={ENGINE_TABLE_COLSPAN}>
+            {job ? <RuntimeJobMessage job={job} /> : null}
+            {target.capabilities.canUpdate && target.update ? (
+              <RuntimeUpdateDetails update={target.update} />
+            ) : null}
+            {!target.capabilities.canUpdate ? <span>{unsupportedReason}</span> : null}
+            {healthMessage ? <span className="text-(--warn)">{healthMessage}</span> : null}
+          </DetailRow>
+        ) : null}
+      </Fragment>
+    );
+  });
 }
 
 function RuntimeTargetAction({

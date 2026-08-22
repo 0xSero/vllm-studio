@@ -25,15 +25,24 @@ export async function pathExists(target: string): Promise<boolean> {
   }
 }
 
+/** A missing file is not an error here — it just means there is nothing to merge into. */
+async function readTextFile(file: string): Promise<string | null> {
+  try {
+    return await readFile(file, "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+const parseFailure = (file: string, syntax: string, error: unknown) =>
+  `${file} is not valid ${syntax} (${error instanceof Error ? error.message : String(error)}); ` +
+  "refusing to modify it";
+
 export async function readJsonFile(
   file: string,
 ): Promise<{ exists: boolean; config?: JsonRecord; error?: string }> {
-  let raw: string;
-  try {
-    raw = await readFile(file, "utf-8");
-  } catch {
-    return { exists: false };
-  }
+  const raw = await readTextFile(file);
+  if (raw === null) return { exists: false };
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!isRecord(parsed)) {
@@ -41,26 +50,19 @@ export async function readJsonFile(
     }
     return { exists: true, config: parsed };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { exists: true, error: `${file} is not valid JSON (${message}); refusing to modify it` };
+    return { exists: true, error: parseFailure(file, "JSON", error) };
   }
 }
 
 export async function readYamlFile(
   file: string,
 ): Promise<{ exists: boolean; document?: YAML.Document; error?: string }> {
-  let raw: string;
+  const raw = await readTextFile(file);
+  if (raw === null) return { exists: false };
   try {
-    raw = await readFile(file, "utf-8");
-  } catch {
-    return { exists: false };
-  }
-  try {
-    const document = YAML.parseDocument(raw);
-    return { exists: true, document };
+    return { exists: true, document: YAML.parseDocument(raw) };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { exists: true, error: `${file} is not valid YAML (${message}); refusing to modify it` };
+    return { exists: true, error: parseFailure(file, "YAML", error) };
   }
 }
 
@@ -84,31 +86,20 @@ export async function backupExistingFile(file: string): Promise<string> {
   return backupPath;
 }
 
-export async function writeJsonAtomic(
-  file: string,
-  config: JsonRecord,
-  mode: number,
-): Promise<void> {
+async function writeAtomic(file: string, text: string, mode: number): Promise<void> {
   await mkdir(path.dirname(file), { recursive: true });
   const tmp = `${file}.tmp-${randomBytes(6).toString("hex")}`;
-  await writeFile(tmp, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf-8", mode });
+  await writeFile(tmp, text, { encoding: "utf-8", mode });
   // writeFile's mode is subject to the process umask; chmod makes it exact.
   await chmod(tmp, mode);
   await rename(tmp, file);
 }
 
-export async function writeYamlAtomic(
-  file: string,
-  config: JsonRecord,
-  mode: number,
-): Promise<void> {
-  await mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${randomBytes(6).toString("hex")}`;
-  const yamlText = YAML.stringify(config, { indent: 2, lineWidth: 0 });
-  await writeFile(tmp, yamlText, { encoding: "utf-8", mode });
-  await chmod(tmp, mode);
-  await rename(tmp, file);
-}
+export const writeJsonAtomic = (file: string, config: JsonRecord, mode: number): Promise<void> =>
+  writeAtomic(file, `${JSON.stringify(config, null, 2)}\n`, mode);
+
+export const writeYamlAtomic = (file: string, config: JsonRecord, mode: number): Promise<void> =>
+  writeAtomic(file, YAML.stringify(config, { indent: 2, lineWidth: 0 }), mode);
 
 export async function existingFileMode(file: string): Promise<number | null> {
   try {

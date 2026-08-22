@@ -35,13 +35,38 @@ import {
   isRunningEngineJob,
   type ManagedRuntimeInstallBackend,
 } from "./runtime-targets";
-import {
-  hasHydratedEngineRows,
-  resolveEngineRowsView,
-  type EngineRowsView,
-} from "./engines-section-model";
 
 type UpgradeState = { status: "idle" | "upgrading" | "success" | "error"; message?: string };
+
+const FALLBACK_ENGINES = ["vllm", "sglang", "llamacpp", "mlx"] as const;
+
+type EngineRowsView =
+  | { kind: "backends"; rows: Array<{ id: string; info: RuntimeBackendInfo }> }
+  | { kind: "pending"; engineIds: readonly string[] }
+  | { kind: "targets"; targets: RuntimeTarget[] };
+
+/** Which engine rows the settings page should render, given what has hydrated. */
+function resolveEngineRowsView(
+  targets: RuntimeTarget[],
+  backends: SystemRuntimeInfo["backends"] | undefined,
+): EngineRowsView {
+  const inferenceTargets = targets.filter((target) =>
+    FALLBACK_ENGINES.includes(target.backend as (typeof FALLBACK_ENGINES)[number]),
+  );
+  if (inferenceTargets.length > 0) {
+    return { kind: "targets", targets: inferenceTargets };
+  }
+  if (backends) {
+    return {
+      kind: "backends",
+      rows: FALLBACK_ENGINES.flatMap((id) => {
+        const info = backends[id];
+        return info ? [{ id, info }] : [];
+      }),
+    };
+  }
+  return { kind: "pending", engineIds: FALLBACK_ENGINES };
+}
 
 const UPGRADE_ICONS: Record<UpgradeState["status"], ReactNode> = {
   idle: <ArrowUpCircle className="h-3 w-3" />,
@@ -97,7 +122,7 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
   }, [refreshRuntimeJobs]);
 
   const engineRows = useMemo(() => resolveEngineRowsView(targets, backends), [backends, targets]);
-  const hasRows = hasHydratedEngineRows(engineRows);
+  const hasRows = engineRows.kind !== "pending";
 
   return (
     <div>

@@ -40,8 +40,7 @@ interface SettingsViewProps {
   onSaveSettings: () => void;
   onSystemSectionActive: () => void;
 }
-const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
-const SECTIONS: SettingsSectionDef[] = [
+const SECTION_TABLE: Array<[SettingsSectionId, string, string, LucideIcon]> = [
   ["profile", "Profile & phone", "Your identity and phone pairing.", Smartphone],
   ["connection", "General", "Controller connections and API access.", Cable],
   ["system", "System", "Engines, services, storage, and hardware.", Cpu],
@@ -49,39 +48,34 @@ const SECTIONS: SettingsSectionDef[] = [
   ["terminal", "Shortcuts", "Terminal key bindings.", Keyboard],
   ["archive", "Archived chats", "Sessions hidden from the task list.", Archive],
   ["setup", "Setup", "Local prerequisites and first-run checks.", ServerCog],
-].map(([id, label, description, Icon]) => ({
-  id: id as SettingsSectionId,
-  label: label as string,
-  description: description as string,
-  icon: sectionIcon(Icon as LucideIcon),
+];
+const SECTIONS: SettingsSectionDef[] = SECTION_TABLE.map(([id, label, description, Icon]) => ({
+  id,
+  label,
+  description,
+  icon: <Icon className="h-3.5 w-3.5" />,
 }));
-const isSectionId = (value: string): value is SettingsSectionId =>
-  SECTIONS.some((section) => section.id === value);
-const normalizeSectionId = (value: string): SettingsSectionId | null => {
-  if (isSectionId(value)) return value;
-  if (value === "desktop") return "terminal";
-  if (value === "engines" || value === "services") return "system";
-  return null;
+/** Old hashes that used to name their own section. */
+const SECTION_ALIASES: Record<string, SettingsSectionId> = {
+  desktop: "terminal",
+  engines: "system",
+  services: "system",
 };
-export function SettingsView({
-  data,
-  compatibilityReport,
-  loading,
-  error,
-  apiSettings,
-  apiSettingsLoading,
-  saving,
-  testing,
-  connectionStatus,
-  statusMessage,
-  hasConfigData,
-  isInitialLoading,
-  onReload,
-  onApiSettingsChange,
-  onTestConnection,
-  onSaveSettings,
-  onSystemSectionActive,
-}: SettingsViewProps) {
+const normalizeSectionId = (value: string): SettingsSectionId | null =>
+  SECTIONS.some((section) => section.id === value) ? value : (SECTION_ALIASES[value] ?? null);
+export function SettingsView(props: SettingsViewProps) {
+  const {
+    data,
+    compatibilityReport,
+    loading,
+    error,
+    apiSettings,
+    hasConfigData,
+    isInitialLoading,
+    onReload,
+    onSaveSettings,
+    onSystemSectionActive,
+  } = props;
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("connection");
   useMountSubscription(() => {
     const onHashChange = () => {
@@ -120,17 +114,7 @@ export function SettingsView({
       onSelectSection={selectSection}
     >
       {activeSection === "connection" ? (
-        <ApiConnectionSection
-          apiSettingsLoading={apiSettingsLoading}
-          apiSettings={apiSettings}
-          testing={testing}
-          saving={saving}
-          connectionStatus={connectionStatus}
-          statusMessage={statusMessage}
-          onApiSettingsChange={onApiSettingsChange}
-          onTestConnection={onTestConnection}
-          onSave={onSaveSettings}
-        />
+        <ApiConnectionSection {...props} onSave={onSaveSettings} />
       ) : null}
       {activeSection === "profile" ? <ProfileSettings /> : null}
       {activeSection === "system" ? (

@@ -21,8 +21,8 @@ import type { ApiConnectionSettings, ConnectionStatus } from "./types";
 
 const FAST_STATUS_REQUEST = { timeout: 5_000, retries: 0 } as const;
 const CONNECTION_TEST_REQUEST = { timeout: 10_000, retries: 0 } as const;
-const FAST_COMPAT_REQUEST = { timeout: 20_000, retries: 0 } as const;
-const FAST_CONFIG_REQUEST = { timeout: 20_000, retries: 0 } as const;
+/** /config and /compat are the two heavy controller round-trips. */
+const HEAVY_REQUEST = { timeout: 20_000, retries: 0 } as const;
 
 const DEFAULT_BACKEND_URL = resolveSettingsDefaultBackendUrl();
 
@@ -33,14 +33,19 @@ const DEFAULT_API_SETTINGS: ApiConnectionSettings = {
 };
 
 const mergeApiSettings = (server?: Partial<ApiConnectionSettings>): ApiConnectionSettings => {
-  const localBackendUrl = getStoredBackendUrl();
   const localApiKey = getApiKey();
-
   return {
-    backendUrl: localBackendUrl || server?.backendUrl || DEFAULT_API_SETTINGS.backendUrl,
+    backendUrl: getStoredBackendUrl() || server?.backendUrl || DEFAULT_BACKEND_URL,
     apiKey: localApiKey || server?.apiKey || "",
     hasApiKey: Boolean(localApiKey) || Boolean(server?.hasApiKey),
   };
+};
+
+/** A reachable controller means first-run setup is effectively done. */
+const markSetupComplete = () => {
+  if (typeof window !== "undefined" && !localStorage.getItem("local-studio-setup-complete")) {
+    localStorage.setItem("local-studio-setup-complete", "true");
+  }
 };
 
 export function useSettings() {
@@ -136,11 +141,8 @@ export function useSettings() {
     try {
       await api.getStatus(FAST_STATUS_REQUEST);
       setBackendOnline(true);
-      // A reachable controller means first-run setup is effectively done. This
-      // flag used to be set by the config fetch, which now loads lazily.
-      if (typeof window !== "undefined" && !localStorage.getItem("local-studio-setup-complete")) {
-        localStorage.setItem("local-studio-setup-complete", "true");
-      }
+      // This flag used to be set by the config fetch, which now loads lazily.
+      markSetupComplete();
       return true;
     } catch {
       setBackendOnline(false);
@@ -153,14 +155,12 @@ export function useSettings() {
       setLoading(true);
       setError(null);
       const [configResult, compatibilityResult] = await Promise.allSettled([
-        api.getSystemConfig(FAST_CONFIG_REQUEST),
-        api.getCompatibility(FAST_COMPAT_REQUEST),
+        api.getSystemConfig(HEAVY_REQUEST),
+        api.getCompatibility(HEAVY_REQUEST),
       ]);
-
       if (configResult.status !== "fulfilled") {
         throw configResult.reason;
       }
-
       const configData = configResult.value;
       const compatibility =
         compatibilityResult.status === "fulfilled" ? compatibilityResult.value : null;
@@ -169,9 +169,7 @@ export function useSettings() {
       setData(configData);
       setCompatibilityReport(compatibility);
       setBackendOnline(true);
-      if (typeof window !== "undefined" && !localStorage.getItem("local-studio-setup-complete")) {
-        localStorage.setItem("local-studio-setup-complete", "true");
-      }
+      markSetupComplete();
     } catch (e) {
       setError((e as Error).message);
       await checkBackendHealth();

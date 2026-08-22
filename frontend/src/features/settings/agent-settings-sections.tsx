@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { StatusPill } from "@/ui";
 import {
   SettingsButton,
@@ -8,7 +8,8 @@ import {
 } from "./settings-ui";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
-import { useSidebarStatus } from "@/features/settings/use-sidebar-status";
+import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
+import { sidebarStatusFromSnapshot } from "@/hooks/realtime-status-types";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 export function ArchivedChatsSettings() {
@@ -127,7 +128,12 @@ export function ArchivedChatsSettings() {
 export function SetupChecksSettings() {
   type Check = { id: string; label: string; ok: boolean; value: string; guidance: string };
   const [checks, setChecks] = useState<Check[]>([]);
-  const controllerStatus = useSidebarStatus();
+  const { connected, status, launchProgress } = useRealtimeStatusStore();
+  // A pure derivation over the realtime store: no listener or poll of its own.
+  const controllerStatus = useMemo(
+    () => sidebarStatusFromSnapshot({ connected, status, launchProgress }),
+    [connected, status, launchProgress],
+  );
 
   useMountSubscription(() => {
     void fetch("/api/agent/setup-checks", { cache: "no-store" })
