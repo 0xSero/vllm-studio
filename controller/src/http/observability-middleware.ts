@@ -10,7 +10,6 @@ const TELEMETRY_SKIP_PATHS = new Set([
   "/metrics",
   "/events",
   "/status",
-  "/api/docs",
   "/api/spec",
 ]);
 
