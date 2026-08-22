@@ -62,24 +62,23 @@ const tryAcquireInstallLock = (
 ): EngineInstallLock | null => {
   const path = installLockPath(config, backend);
   mkdirSync(installLockDirectory(config), { recursive: true });
-  try {
+  // "wx" is the atomic claim: it throws EEXIST when somebody else already holds the lock.
+  const claim = (): EngineInstallLock => {
     writeFileSync(
       path,
       JSON.stringify({ backend, pid: process.pid, startedAt: new Date().toISOString() }),
       { flag: "wx" },
     );
     return { path, release: () => releaseInstallLock(path) };
+  };
+  try {
+    return claim();
   } catch (error) {
     if (nodeErrorCode(error) !== "EEXIST") throw error;
     if (isStaleLock(path)) {
       releaseInstallLock(path);
       try {
-        writeFileSync(
-          path,
-          JSON.stringify({ backend, pid: process.pid, startedAt: new Date().toISOString() }),
-          { flag: "wx" },
-        );
-        return { path, release: () => releaseInstallLock(path) };
+        return claim();
       } catch (retryError) {
         if (nodeErrorCode(retryError) !== "EEXIST") throw retryError;
       }
@@ -88,13 +87,13 @@ const tryAcquireInstallLock = (
   }
 };
 
-const acquireEngineInstallLockEffect = (
+export const acquireEngineInstallLock = (
   config: Pick<Config, "data_dir">,
   backend: EngineBackend,
-  options: AcquireEngineInstallLockOptions,
-  startedAt: number,
-): Effect.Effect<EngineInstallLock | null> =>
-  Effect.gen(function* () {
+  options: AcquireEngineInstallLockOptions = {},
+): Effect.Effect<EngineInstallLock | null> => {
+  const startedAt = Date.now();
+  return Effect.gen(function* () {
     const timeoutMs = options.timeoutMs ?? ENGINE_INSTALL_TIMEOUT_MS;
     const pollMs = options.pollMs ?? 3_000;
     let reportedWait = false;
@@ -110,13 +109,7 @@ const acquireEngineInstallLockEffect = (
     }
     return null;
   });
-
-export const acquireEngineInstallLock = (
-  config: Pick<Config, "data_dir">,
-  backend: EngineBackend,
-  options: AcquireEngineInstallLockOptions = {},
-): Effect.Effect<EngineInstallLock | null> =>
-  acquireEngineInstallLockEffect(config, backend, options, Date.now());
+};
 
 export const installLockTimeoutMessage = (
   backend: EngineBackend,

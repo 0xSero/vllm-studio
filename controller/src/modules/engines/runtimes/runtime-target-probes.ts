@@ -15,11 +15,14 @@ export const normalizePackageSpec = (packageName: string, version?: string | nul
     : `${packageName}==${normalized}`;
 };
 
+/** `import <module>` and report `<versionExpression>`, or the import error, as one JSON line. */
+const pythonProbeScript = (module: string, versionExpression: string): string =>
+  `import json, sys\ntry:\n import ${module}\n print(json.dumps({'version': ${versionExpression}, 'python': sys.executable}))\nexcept Exception as e:\n print(json.dumps({'version': None, 'python': sys.executable, 'error': str(e)}))`;
+
 const PYTHON_VERSION_PROBES: Record<PythonProbeBackend, string> = {
-  vllm: "import json, sys\ntry:\n import vllm\n print(json.dumps({'version': vllm.__version__, 'python': sys.executable}))\nexcept Exception as e:\n print(json.dumps({'version': None, 'python': sys.executable, 'error': str(e)}))",
-  sglang:
-    "import json, sys\ntry:\n import sglang\n print(json.dumps({'version': getattr(sglang, '__version__', None), 'python': sys.executable}))\nexcept Exception as e:\n print(json.dumps({'version': None, 'python': sys.executable, 'error': str(e)}))",
-  mlx: "import json, sys\ntry:\n import mlx_lm\n print(json.dumps({'version': getattr(mlx_lm, '__version__', None) or 'installed', 'python': sys.executable}))\nexcept Exception as e:\n print(json.dumps({'version': None, 'python': sys.executable, 'error': str(e)}))",
+  vllm: pythonProbeScript("vllm", "vllm.__version__"),
+  sglang: pythonProbeScript("sglang", "getattr(sglang, '__version__', None)"),
+  mlx: pythonProbeScript("mlx_lm", "getattr(mlx_lm, '__version__', None) or 'installed'"),
 };
 
 const PythonVersionProbeSchema = Schema.Struct({
@@ -78,6 +81,12 @@ export interface PythonRuntimeProbe {
   message?: string | undefined;
 }
 
+const notInstalled = (
+  pythonPath: string | null,
+  runnable: boolean,
+  message: string,
+): PythonRuntimeProbe => ({ installed: false, version: null, pythonPath, runnable, message });
+
 export const probePythonRuntime = (
   backend: PythonProbeBackend,
   python: string,
@@ -85,25 +94,17 @@ export const probePythonRuntime = (
   Effect.gen(function* () {
     const check = yield* runCommandAsyncEffect(python, ["--version"], { timeoutMs: 2_000 });
     if (check.status !== 0) {
-      return {
-        installed: false,
-        version: null,
-        pythonPath: pathExists(python) ? resolve(python) : python,
-        runnable: false,
-        message: "Python executable is not runnable",
-      };
+      return notInstalled(
+        pathExists(python) ? resolve(python) : python,
+        false,
+        "Python executable is not runnable",
+      );
     }
     const result = yield* runCommandAsyncEffect(python, ["-c", PYTHON_VERSION_PROBES[backend]], {
       timeoutMs: VLLM_RUNTIME_COMMAND_TIMEOUT_MS,
     });
     if (result.status !== 0) {
-      return {
-        installed: false,
-        version: null,
-        pythonPath: python,
-        runnable: true,
-        message: result.stderr || `${backend} import probe failed`,
-      };
+      return notInstalled(python, true, result.stderr || `${backend} import probe failed`);
     }
     try {
       const parsed = Schema.decodeUnknownSync(PythonVersionProbeSchema)(JSON.parse(result.stdout));
@@ -117,13 +118,7 @@ export const probePythonRuntime = (
           : (parsed.error ?? `${backend} is not installed in this Python`),
       };
     } catch {
-      return {
-        installed: false,
-        version: null,
-        pythonPath: python,
-        runnable: true,
-        message: "Unable to parse runtime probe output",
-      };
+      return notInstalled(python, true, "Unable to parse runtime probe output");
     }
   });
 
@@ -142,15 +137,7 @@ export const probeBackendRuntime = (
       if (probe.installed) return probe;
       if (!fallback && probe.runnable) fallback = probe;
     }
-    return (
-      fallback ?? {
-        installed: false,
-        version: null,
-        pythonPath: null,
-        runnable: false,
-        message: `No runnable Python found for ${backend}`,
-      }
-    );
+    return fallback ?? notInstalled(null, false, `No runnable Python found for ${backend}`);
   });
 
 export const probeRunningProcessPython = (pid: number): Effect.Effect<string | null> =>
@@ -202,72 +189,73 @@ export const resolvePythonFromScript = (scriptPath: string | null | undefined): 
   }
 };
 
-export const probeBinaryRuntime = (
-  binary: string,
-): Effect.Effect<{
-  installed: boolean;
-  version: string | null;
-  binaryPath: string | null;
-  message?: string;
-}> =>
-  Effect.gen(function* () {
-    const resolved = resolvePathOrBinary(binary);
-    const command = resolved ?? binary;
-    const version = yield* runCommandAsyncEffect(command, ["--version"], { timeoutMs: 3_000 });
-    if (version.status === 0) {
-      return {
-        installed: true,
-        version: parseLlamaVersion(version.stdout) ?? parseLlamaVersion(version.stderr),
-        binaryPath: resolved ?? command,
-      };
-    }
-    const help = yield* runCommandAsyncEffect(command, ["--help"], { timeoutMs: 3_000 });
-    if (help.status === 0) {
-      return {
-        installed: true,
-        version: parseLlamaVersion(help.stdout) ?? parseLlamaVersion(help.stderr),
-        binaryPath: resolved ?? command,
-      };
-    }
-    return {
-      installed: false,
-      version: null,
-      binaryPath: resolved,
-      message: version.stderr || "Binary is not runnable",
-    };
-  });
-
-export const probeVllmBinaryRuntime = (
-  binary: string,
-): Effect.Effect<{
+export interface BinaryRuntimeProbe {
   installed: boolean;
   version: string | null;
   binaryPath: string | null;
   pythonPath: string | null;
   message?: string;
-}> =>
+}
+
+/** One `--version` (optionally `--help`) probe; the knobs are the per-engine differences. */
+const probeCommandRuntime = (
+  binary: string,
+  options: {
+    readVersion: (stdout: string, stderr: string) => string | null;
+    helpFallback: boolean;
+    readPythonFromShebang: boolean;
+    failureMessage: string;
+  },
+): Effect.Effect<BinaryRuntimeProbe> =>
   Effect.gen(function* () {
     const resolved = resolvePathOrBinary(binary);
     const command = resolved ?? binary;
+    const pythonPath = options.readPythonFromShebang ? resolvePythonFromScript(command) : null;
     const version = yield* runCommandAsyncEffect(command, ["--version"], { timeoutMs: 3_000 });
-    const pythonPath = resolvePythonFromScript(resolved ?? command);
     if (version.status === 0) {
       return {
         installed: true,
-        version:
-          parsePackageVersion(version.stdout) ??
-          parsePackageVersion(version.stderr) ??
-          parseLlamaVersion(version.stdout) ??
-          parseLlamaVersion(version.stderr),
-        binaryPath: resolved ?? command,
+        version: options.readVersion(version.stdout, version.stderr),
+        binaryPath: command,
         pythonPath,
       };
+    }
+    if (options.helpFallback) {
+      const help = yield* runCommandAsyncEffect(command, ["--help"], { timeoutMs: 3_000 });
+      if (help.status === 0) {
+        return {
+          installed: true,
+          version: options.readVersion(help.stdout, help.stderr),
+          binaryPath: command,
+          pythonPath,
+        };
+      }
     }
     return {
       installed: false,
       version: null,
       binaryPath: resolved,
       pythonPath,
-      message: version.stderr || "vLLM binary is not runnable",
+      message: version.stderr || options.failureMessage,
     };
+  });
+
+export const probeBinaryRuntime = (binary: string): Effect.Effect<BinaryRuntimeProbe> =>
+  probeCommandRuntime(binary, {
+    readVersion: (stdout, stderr) => parseLlamaVersion(stdout) ?? parseLlamaVersion(stderr),
+    helpFallback: true,
+    readPythonFromShebang: false,
+    failureMessage: "Binary is not runnable",
+  });
+
+export const probeVllmBinaryRuntime = (binary: string): Effect.Effect<BinaryRuntimeProbe> =>
+  probeCommandRuntime(binary, {
+    readVersion: (stdout, stderr) =>
+      parsePackageVersion(stdout) ??
+      parsePackageVersion(stderr) ??
+      parseLlamaVersion(stdout) ??
+      parseLlamaVersion(stderr),
+    helpFallback: false,
+    readPythonFromShebang: true,
+    failureMessage: "vLLM binary is not runnable",
   });

@@ -60,17 +60,9 @@ interface Candidate {
   readonly dockerImage?: string | null;
 }
 
-const unique = (values: Array<string | null | undefined>): string[] => {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const value of values) {
-    const normalized = value?.trim();
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    result.push(normalized);
-  }
-  return result;
-};
+const unique = (values: Array<string | null | undefined>): string[] => [
+  ...new Set(values.map((value) => value?.trim()).filter((value): value is string => !!value)),
+];
 
 /* ── candidate stages ────────────────────────────────────────────────────── */
 
@@ -101,21 +93,21 @@ const runningCandidates = (
   return candidates;
 };
 
-const configuredPythons = (backend: PythonProbeBackend, config: Config): string[] =>
-  backend === "vllm"
-    ? [
-        process.env["LOCAL_STUDIO_RUNTIME_PYTHON"],
-        ...splitEnvironmentList(process.env["LOCAL_STUDIO_VLLM_PYTHONS"]),
-        ...splitEnvironmentList(process.env["LOCAL_STUDIO_RUNTIME_PYTHONS"]),
-      ].filter((value): value is string => Boolean(value))
-    : backend === "sglang"
-      ? [
-          config.sglang_python,
-          ...splitEnvironmentList(process.env["LOCAL_STUDIO_SGLANG_PYTHONS"]),
-        ].filter((value): value is string => Boolean(value))
-      : [config.mlx_python, ...splitEnvironmentList(process.env["LOCAL_STUDIO_MLX_PYTHONS"])].filter(
-          (value): value is string => Boolean(value),
-        );
+const configuredPythons = (backend: PythonProbeBackend, config: Config): string[] => {
+  const sources: Record<PythonProbeBackend, Array<string | null | undefined>> = {
+    vllm: [
+      process.env["LOCAL_STUDIO_RUNTIME_PYTHON"],
+      ...splitEnvironmentList(process.env["LOCAL_STUDIO_VLLM_PYTHONS"]),
+      ...splitEnvironmentList(process.env["LOCAL_STUDIO_RUNTIME_PYTHONS"]),
+    ],
+    sglang: [
+      config.sglang_python,
+      ...splitEnvironmentList(process.env["LOCAL_STUDIO_SGLANG_PYTHONS"]),
+    ],
+    mlx: [config.mlx_python, ...splitEnvironmentList(process.env["LOCAL_STUDIO_MLX_PYTHONS"])],
+  };
+  return sources[backend].filter((value): value is string => Boolean(value));
+};
 
 const venvPythonsOnDisk = (config: Config): string[] => {
   const roots = unique([
@@ -146,65 +138,67 @@ const venvPythonsOnDisk = (config: Config): string[] => {
 };
 
 const pythonCandidates = (backend: PythonProbeBackend, config: Config): Candidate[] => {
-  const managedPython = getEngineSpec(backend).resolvePythonPath?.(config) ?? null;
-  const discovered =
+  const spec = getEngineSpec(backend);
+  const managedPython = spec.resolvePythonPath?.(config) ?? null;
+  const discovered = unique(
     backend === "vllm"
-      ? unique([managedPython, ...venvPythonsOnDisk(config)])
-      : unique([
+      ? [managedPython, ...venvPythonsOnDisk(config)]
+      : [
           backend === "sglang" ? config.sglang_python : config.mlx_python,
           managedPython,
           ...venvPythonsOnDisk(config),
-        ]);
-  const configured: Candidate[] = unique(configuredPythons(backend, config)).map((candidate) => ({
-    backend,
-    kind: "venv",
-    source: "configured",
-    probe: "python",
-    candidate,
-    label: (path) => `${backend} configured (${basename(path)})`,
-  }));
-  const venvs: Candidate[] = discovered.map((candidate) => ({
-    backend,
-    kind: "venv",
-    source: "discovered",
-    probe: "python",
-    candidate,
-    label: (path) => `${backend} venv (${basename(dirname(dirname(path)))})`,
-  }));
+        ],
+  );
+  const candidates: Candidate[] = [
+    ...unique(configuredPythons(backend, config)).map(
+      (candidate): Candidate => ({
+        backend,
+        kind: "venv",
+        source: "configured",
+        probe: "python",
+        candidate,
+        label: (path) => `${backend} configured (${basename(path)})`,
+      }),
+    ),
+    ...discovered.map(
+      (candidate): Candidate => ({
+        backend,
+        kind: "venv",
+        source: "discovered",
+        probe: "python",
+        candidate,
+        label: (path) => `${backend} venv (${basename(dirname(dirname(path)))})`,
+      }),
+    ),
+  ];
   const systemPython = skipSystem() ? null : (resolveBinary("python3") ?? resolveBinary("python"));
-  const system: Candidate[] = systemPython
-    ? [
-        {
-          backend,
-          kind: "system",
-          source: "discovered",
-          probe: "python",
-          candidate: systemPython,
-          label: () => `${backend} system Python`,
-        },
-      ]
-    : [];
-  const spec = getEngineSpec(backend);
+  if (systemPython) {
+    candidates.push({
+      backend,
+      kind: "system",
+      source: "discovered",
+      probe: "python",
+      candidate: systemPython,
+      label: () => `${backend} system Python`,
+    });
+  }
   const specBinary = spec.cliBinary && !skipSystem() ? resolveBinary(spec.cliBinary) : null;
-  const binary: Candidate[] =
-    specBinary && spec.probeBinary
-      ? [
-          {
-            backend,
-            kind: "system",
-            source: "discovered",
-            probe: "spec-binary",
-            candidate: specBinary,
-            label: () => `${ENGINE_LABEL[backend]} system binary`,
-          },
-        ]
-      : [];
-  return [...configured, ...venvs, ...system, ...binary];
+  if (specBinary && spec.probeBinary) {
+    candidates.push({
+      backend,
+      kind: "system",
+      source: "discovered",
+      probe: "spec-binary",
+      candidate: specBinary,
+      label: () => `${ENGINE_LABEL[backend]} system binary`,
+    });
+  }
+  return candidates;
 };
 
 const llamacppCandidates = (config: Config): Candidate[] => {
   const managedBinary = managedLlamaServerPath(config);
-  const configured: Candidate[] = unique([
+  const candidates: Candidate[] = unique([
     config.llama_bin,
     existsSync(managedBinary) ? managedBinary : undefined,
   ]).map((candidate) => ({
@@ -216,19 +210,17 @@ const llamacppCandidates = (config: Config): Candidate[] => {
     label: (path) => `llama.cpp configured (${basename(path)})`,
   }));
   const systemBinary = skipSystem() ? null : resolveBinary("llama-server");
-  const system: Candidate[] = systemBinary
-    ? [
-        {
-          backend: "llamacpp",
-          kind: "system",
-          source: "discovered",
-          probe: "binary",
-          candidate: systemBinary,
-          label: () => "llama.cpp system binary",
-        },
-      ]
-    : [];
-  return [...configured, ...system];
+  if (systemBinary) {
+    candidates.push({
+      backend: "llamacpp",
+      kind: "system",
+      source: "discovered",
+      probe: "binary",
+      candidate: systemBinary,
+      label: () => "llama.cpp system binary",
+    });
+  }
+  return candidates;
 };
 
 const DOCKER_IMAGE_PATTERN: Record<EngineBackend, RegExp> = {
@@ -307,76 +299,74 @@ const bundledCandidates = (): Candidate[] => {
 
 /* ── materialize + merge ─────────────────────────────────────────────────── */
 
-const materialize = (
-  candidate: Candidate,
-): Effect.Effect<RuntimeTarget, EngineOperationError> =>
+/** What a probe (or the candidate itself, when `probe === "none"`) contributes to a target. */
+type ProbedFacts = Omit<
+  Parameters<typeof makeRuntimeTarget>[0],
+  "backend" | "kind" | "source" | "label"
+>;
+
+/** Union-safe readers: the binary probes only sometimes carry these fields. */
+const probedPython = (probe: { installed: boolean; pythonPath?: string | null }): string | null =>
+  probe.pythonPath ?? null;
+const probedMessage = (probe: { installed: boolean; message?: string }): string | undefined =>
+  probe.message;
+
+const probeFacts = (candidate: Candidate): Effect.Effect<ProbedFacts, EngineOperationError> =>
   Effect.gen(function* () {
     if (candidate.probe === "none") {
-      return makeRuntimeTarget({
-        backend: candidate.backend,
-        kind: candidate.kind,
-        source: candidate.source,
+      return {
         key: candidate.candidate,
-        label: candidate.label(candidate.candidate),
         installed: candidate.installed ?? false,
         version: candidate.version ?? null,
         active: candidate.active ?? false,
         pythonPath: candidate.pythonPath ?? null,
         binaryPath: candidate.binaryPath ?? null,
         dockerImage: candidate.dockerImage ?? null,
-      });
+      };
     }
-    if (candidate.probe === "binary") {
-      const probe = yield* probeBinaryRuntime(candidate.candidate);
-      const path = probe.binaryPath ?? candidate.candidate;
-      return makeRuntimeTarget({
-        backend: candidate.backend,
-        kind: candidate.kind,
-        source: candidate.source,
-        key: path,
-        label: candidate.label(path),
+    if (candidate.probe === "python") {
+      const probe = yield* probePythonRuntime(
+        candidate.backend as PythonProbeBackend,
+        candidate.candidate,
+      );
+      const key = probe.pythonPath ?? candidate.candidate;
+      return {
+        key,
         installed: probe.installed,
         version: probe.version,
-        binaryPath: probe.binaryPath,
+        pythonPath: key,
         healthMessage: probe.message,
-      });
+      };
     }
-    if (candidate.probe === "spec-binary") {
-      const probeBinary = getEngineSpec(candidate.backend).probeBinary;
-      const probe = probeBinary
-        ? yield* probeBinary(candidate.candidate)
-        : { installed: false, version: null, binaryPath: candidate.candidate };
-      const path = probe.binaryPath ?? candidate.candidate;
-      return makeRuntimeTarget({
-        backend: candidate.backend,
-        kind: candidate.kind,
-        source: candidate.source,
-        key: path,
-        label: candidate.label(path),
-        installed: probe.installed,
-        version: probe.version,
-        pythonPath: "pythonPath" in probe ? (probe.pythonPath ?? null) : null,
-        binaryPath: probe.binaryPath,
-        healthMessage: "message" in probe ? probe.message : undefined,
-      });
-    }
-    const probe = yield* probePythonRuntime(
-      candidate.backend as PythonProbeBackend,
-      candidate.candidate,
-    );
-    const path = probe.pythonPath ?? candidate.candidate;
-    return makeRuntimeTarget({
-      backend: candidate.backend,
-      kind: candidate.kind,
-      source: candidate.source,
-      key: path,
-      label: candidate.label(path),
+    const specProbe = getEngineSpec(candidate.backend).probeBinary;
+    const probe =
+      candidate.probe === "binary"
+        ? yield* probeBinaryRuntime(candidate.candidate)
+        : specProbe
+          ? yield* specProbe(candidate.candidate)
+          : { installed: false, version: null, binaryPath: candidate.candidate };
+    return {
+      key: probe.binaryPath ?? candidate.candidate,
       installed: probe.installed,
       version: probe.version,
-      pythonPath: path,
-      healthMessage: probe.message,
-    });
+      pythonPath: probedPython(probe),
+      binaryPath: probe.binaryPath,
+      healthMessage: probedMessage(probe),
+    };
   });
+
+const materialize = (candidate: Candidate): Effect.Effect<RuntimeTarget, EngineOperationError> =>
+  probeFacts(candidate).pipe(
+    Effect.map((facts) =>
+      makeRuntimeTarget({
+        backend: candidate.backend,
+        kind: candidate.kind,
+        source: candidate.source,
+        label: candidate.label(facts.key),
+        ...facts,
+      }),
+    ),
+  );
 
 const sourcePriority = (source: RuntimeTarget["source"]): number =>
   source === "running" ? 4 : source === "configured" ? 3 : source === "bundled" ? 2 : 1;
@@ -451,21 +441,16 @@ export const getRuntimeTargets = (
       return targetsCache.value;
     }
 
-    const candidateGroups = yield* Effect.forEach(
-      BACKENDS,
-      (backend) =>
-        Effect.sync(() =>
-          backend === "llamacpp"
-            ? [...runningCandidates(backend, runningProcess), ...llamacppCandidates(config)]
-            : [
-                ...runningCandidates(backend, runningProcess),
-                ...pythonCandidates(backend as PythonProbeBackend, config),
-              ],
-        ),
-      { concurrency: "unbounded" },
-    );
-    const docker = yield* dockerCandidates();
-    const all = [...candidateGroups.flat(), ...docker, ...bundledCandidates()];
+    const all = [
+      ...BACKENDS.flatMap((backend) => [
+        ...runningCandidates(backend, runningProcess),
+        ...(backend === "llamacpp"
+          ? llamacppCandidates(config)
+          : pythonCandidates(backend as PythonProbeBackend, config)),
+      ]),
+      ...(yield* dockerCandidates()),
+      ...bundledCandidates(),
+    ];
 
     const materialized = yield* Effect.forEach(all, materialize, { concurrency: "unbounded" });
     const targets: RuntimeTarget[] = [];

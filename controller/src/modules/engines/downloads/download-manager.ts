@@ -17,7 +17,11 @@ import { Event, type EventManager } from "../../system/event-manager";
 import { DOWNLOAD_DEFAULT_IGNORE_FILENAMES, DOWNLOAD_PROGRESS_THROTTLE_MS } from "../configs";
 import { type EngineOperationError } from "../engine-spec";
 import { attempt, operationError } from "../engine-operation";
-import type { DownloadFileInfo, DownloadStatus, ModelDownload } from "@local-studio/contracts/recipes";
+import type {
+  DownloadFileInfo,
+  DownloadStatus,
+  ModelDownload,
+} from "@local-studio/contracts/recipes";
 import type { DownloadStore } from "./download-store";
 import {
   DownloadTargetConflict,
@@ -73,13 +77,10 @@ export const findReusableDownload = (
       download.target_dir === targetDirectory &&
       sameFileSet(download.files, files),
   );
+  const withStatus = (...statuses: DownloadStatus[]): ModelDownload | undefined =>
+    matching.find((download) => statuses.includes(download.status));
   return (
-    matching.find((download) => download.status === "completed") ??
-    matching.find(
-      (download) => download.status === "downloading" || download.status === "queued",
-    ) ??
-    matching.find((download) => download.status === "paused") ??
-    null
+    withStatus("completed") ?? withStatus("downloading", "queued") ?? withStatus("paused") ?? null
   );
 };
 
@@ -270,13 +271,7 @@ export class DownloadManager {
         yield* manager.store.save(download);
         yield* manager.launchRun(download.id, hfToken, lease);
         return download;
-      }).pipe(
-        Effect.ensuring(
-          Effect.sync(() => {
-            if (!lease.transferred) manager.targetReservations.release(lease.reservation);
-          }),
-        ),
-      );
+      }).pipe(Effect.ensuring(Effect.sync(() => manager.releaseLease(lease))));
     });
   }
 
@@ -296,14 +291,22 @@ export class DownloadManager {
   }
 
   public pause(id: string): Effect.Effect<ModelDownload, EngineOperationError> {
+    return this.stop(id, "paused");
+  }
+
+  /** Flip a download to a terminal-ish status, abort its fiber, and announce it. */
+  private stop(
+    id: string,
+    status: "paused" | "canceled",
+  ): Effect.Effect<ModelDownload, EngineOperationError> {
     const manager = this;
     return Effect.gen(function* () {
       const download = yield* manager.requireDownload(id);
-      download.status = "paused";
+      download.status = status;
       download.updated_at = toTimestamp();
       yield* manager.store.save(download);
       yield* manager.abortActive(id);
-      yield* manager.publishState(download, "paused");
+      yield* manager.publishState(download, status);
       return download;
     });
   }
@@ -325,27 +328,17 @@ export class DownloadManager {
         yield* manager.publishState(download, "queued");
         yield* manager.launchRun(download.id, hfToken, lease);
         return download;
-      }).pipe(
-        Effect.ensuring(
-          Effect.sync(() => {
-            if (!lease.transferred) manager.targetReservations.release(lease.reservation);
-          }),
-        ),
-      );
+      }).pipe(Effect.ensuring(Effect.sync(() => manager.releaseLease(lease))));
     });
   }
 
   public cancel(id: string): Effect.Effect<ModelDownload, EngineOperationError> {
-    const manager = this;
-    return Effect.gen(function* () {
-      const download = yield* manager.requireDownload(id);
-      download.status = "canceled";
-      download.updated_at = toTimestamp();
-      yield* manager.store.save(download);
-      yield* manager.abortActive(id);
-      yield* manager.publishState(download, "canceled");
-      return download;
-    });
+    return this.stop(id, "canceled");
+  }
+
+  /** Release the target reservation unless `launchRun` took ownership of it. */
+  private releaseLease(lease: DownloadTargetLease): void {
+    if (!lease.transferred) this.targetReservations.release(lease.reservation);
   }
 
   public shutdown(): Effect.Effect<void> {
@@ -450,7 +443,7 @@ export class DownloadManager {
         status: "downloading" as DownloadStatus,
         updated_at: toTimestamp(),
       };
-      const operation = Effect.gen(function* () {
+      yield* Effect.gen(function* () {
         yield* manager.store.save(current);
         yield* manager.publishState(current, "downloading");
         yield* attempt("create-download-directory", () =>
@@ -496,7 +489,6 @@ export class DownloadManager {
           }).pipe(Effect.catch(() => Effect.void));
         }),
       );
-      yield* operation;
     }).pipe(
       Effect.catch((error) =>
         Effect.sync(() => manager.logger.error("Download failed", { error: error.message, id })),
@@ -617,15 +609,7 @@ export class DownloadManager {
             catch: () => undefined,
           }).pipe(
             Effect.catch(() => Effect.void),
-            Effect.ensuring(
-              Effect.sync(() => {
-                try {
-                  streamReader.releaseLock();
-                } catch {
-                  return;
-                }
-              }),
-            ),
+            Effect.ensuring(Effect.ignore(Effect.try(() => streamReader.releaseLock()))),
           ),
       );
       yield* consume.pipe(
@@ -688,14 +672,14 @@ export class DownloadManager {
         status: file.status,
       },
     };
-    return this.publishEvent(new Event(CONTROLLER_EVENTS.DOWNLOAD_PROGRESS, payload));
+    return this.eventManager.publish(new Event(CONTROLLER_EVENTS.DOWNLOAD_PROGRESS, payload));
   }
 
   private publishState(
     download: ModelDownload,
     status: DownloadStatus,
   ): Effect.Effect<void, never> {
-    return this.publishEvent(
+    return this.eventManager.publish(
       new Event(CONTROLLER_EVENTS.DOWNLOAD_STATE, {
         id: download.id,
         model_id: download.model_id,
@@ -705,9 +689,5 @@ export class DownloadManager {
         error: download.error,
       }),
     );
-  }
-
-  private publishEvent(event: Event): Effect.Effect<void, never> {
-    return this.eventManager.publish(event);
   }
 }

@@ -27,13 +27,10 @@ const createCapabilities = (target: {
 }): RuntimeTarget["capabilities"] => ({
   canLaunch: target.installed || target.source === "running",
   canUpdate:
-    (target.backend === "vllm" &&
-      target.installed &&
-      target.kind === "venv") ||
+    (target.backend === "vllm" && target.installed && target.kind === "venv") ||
     (target.backend === "sglang" &&
       target.installed &&
-      (target.kind === "venv" ||
-        isUpgradeCommandConfigured(SGLANG_UPGRADE_ENV))) ||
+      (target.kind === "venv" || isUpgradeCommandConfigured(SGLANG_UPGRADE_ENV))) ||
     (target.backend === "mlx" && target.installed && target.kind === "venv") ||
     (target.backend === "llamacpp" && isUpgradeCommandConfigured(LLAMACPP_UPGRADE_ENV)),
   canInspectOptions:
@@ -48,9 +45,8 @@ const createHealth = (
   source: RuntimeTargetSource,
   message?: string,
 ): RuntimeTarget["health"] => {
-  let status: RuntimeHealthStatus = installed ? "ok" : "warning";
-  if (source === "running") status = "ok";
-  if (message && !installed && source !== "running") status = "warning";
+  // The third arm of the old chain was a no-op: !installed && !running is already "warning".
+  const status: RuntimeHealthStatus = installed || source === "running" ? "ok" : "warning";
   return message ? { status, message } : { status };
 };
 

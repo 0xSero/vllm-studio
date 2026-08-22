@@ -47,20 +47,18 @@ const resolvePythonBinary = (): Effect.Effect<string | null> =>
 const resolveBundledWheel = (): { path: string; version: string | null } | null => {
   const runtimeDirectory = resolve(process.cwd(), "runtime", "wheels");
   if (!existsSync(runtimeDirectory)) return null;
-  const candidates = readdirSync(runtimeDirectory).filter(
-    (file) => file.startsWith("vllm-") && file.endsWith(".whl"),
-  );
-  if (candidates.length === 0) return null;
-  const withStats = candidates
+  const latest = readdirSync(runtimeDirectory)
+    .filter((file) => file.startsWith("vllm-") && file.endsWith(".whl"))
     .map((file) => {
       const fullPath = join(runtimeDirectory, file);
       return { file, fullPath, mtime: statSync(fullPath).mtimeMs };
     })
-    .sort((a, b) => b.mtime - a.mtime);
-  const latest = withStats[0];
+    .sort((first, second) => second.mtime - first.mtime)[0];
   if (!latest) return null;
-  const versionMatch = latest.file.match(/^vllm-([0-9A-Za-z.+-]+)-/);
-  return { path: latest.fullPath, version: versionMatch?.[1] ?? null };
+  return {
+    path: latest.fullPath,
+    version: latest.file.match(/^vllm-([0-9A-Za-z.+-]+)-/)?.[1] ?? null,
+  };
 };
 
 const resolveVllmBinary = (pythonPath: string | null): string | null => {
@@ -105,13 +103,10 @@ export const getVllmConfigHelp = (): Effect.Effect<{
       ? ["serve", "--help"]
       : ["-m", "vllm.entrypoints.openai.api_server", "--help"];
     const result = yield* runCommandAsyncEffect(command, args, { timeoutMs: 5_000 });
-    if (result.status !== 0) {
-      return {
-        config: result.stdout || null,
-        error: result.stderr || "Failed to fetch vLLM config",
-      };
-    }
-    return { config: result.stdout || null, error: null };
+    return {
+      config: result.stdout || null,
+      error: result.status === 0 ? null : result.stderr || "Failed to fetch vLLM config",
+    };
   });
 
 export const installVllmRuntime = (

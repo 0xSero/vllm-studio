@@ -96,21 +96,15 @@ export const managedPackageSpec = (
   version?: string | null,
 ): string => getEngineSpec(backend).managedPackageSpec(version);
 
-const cancelledResult: RuntimeUpgradeResult = {
+const failedResult = (error: string): RuntimeUpgradeResult => ({
   success: false,
   version: null,
   output: null,
-  error: "cancelled by user",
-  used_command: null,
-};
-
-const installLockFailure = (backend: EngineBackend): RuntimeUpgradeResult => ({
-  success: false,
-  version: null,
-  output: null,
-  error: installLockTimeoutMessage(backend),
+  error,
   used_command: null,
 });
+
+const cancelledResult = failedResult("cancelled by user");
 
 const runEngineInstall = (
   config: Config,
@@ -128,7 +122,7 @@ const runEngineInstall = (
     if (!lock) {
       return jobs.get(job.id)?.status === "cancelled"
         ? cancelledResult
-        : installLockFailure(backend);
+        : failedResult(installLockTimeoutMessage(backend));
     }
     return yield* Effect.acquireUseRelease(
       Effect.succeed(lock),
@@ -154,30 +148,17 @@ const runEngineInstall = (
     );
   });
 
-const unsupportedPlatformInstall = (backend: "cuda" | "rocm"): RuntimeUpgradeResult => ({
-  success: false,
-  version: null,
-  output: null,
-  error: `${backend.toUpperCase()} supports update jobs only.`,
-  used_command: null,
-});
-
 const runJobOperation = (
   config: Config,
   job: EngineJob,
   options: CreateEngineJobOptions,
   target: RuntimeTarget | null,
 ): Effect.Effect<RuntimeUpgradeResult, EngineOperationError> => {
-  switch (options.type) {
-    case "install":
-      return isPlatformBackend(options.backend)
-        ? Effect.succeed(unsupportedPlatformInstall(options.backend))
-        : runEngineInstall(config, job, options, options.backend, target);
-    case "update":
-      return isPlatformBackend(options.backend)
-        ? runPlatformUpgrade(options.backend, {})
-        : runEngineInstall(config, job, options, options.backend, target);
-  }
+  const backend = options.backend;
+  if (!isPlatformBackend(backend)) return runEngineInstall(config, job, options, backend, target);
+  return options.type === "update"
+    ? runPlatformUpgrade(backend, {})
+    : Effect.succeed(failedResult(`${backend.toUpperCase()} supports update jobs only.`));
 };
 
 const runJob = (
@@ -223,27 +204,17 @@ const runJob = (
     clearRuntimeTargetsCache();
     const outputTail = tailOutput(result.output ?? result.error);
     const command = result.used_command ?? job.command;
-    if (!result.success) {
-      updateRunningJob(job.id, {
-        status: "error",
-        progress: 1,
-        message: result.error ?? `${options.type} failed`,
-        ...(command ? { command } : {}),
-        ...(outputTail ? { outputTail } : {}),
-        ...(result.error ? { error: result.error } : {}),
-        finishedAt: nowIso(),
-      });
-      return;
-    }
-
     updateRunningJob(job.id, {
-      status: "success",
+      status: result.success ? "success" : "error",
       progress: 1,
-      message: result.version
-        ? `${options.type} complete (${result.version})`
-        : `${options.type} complete`,
+      message: result.success
+        ? result.version
+          ? `${options.type} complete (${result.version})`
+          : `${options.type} complete`
+        : (result.error ?? `${options.type} failed`),
       ...(command ? { command } : {}),
       ...(outputTail ? { outputTail } : {}),
+      ...(!result.success && result.error ? { error: result.error } : {}),
       finishedAt: nowIso(),
     });
   }).pipe(
@@ -264,11 +235,12 @@ const runJob = (
 
 const MAX_FINISHED_JOBS = 50;
 
+const isFinished = (job: EngineJob): boolean =>
+  job.status === "success" || job.status === "error" || job.status === "cancelled";
+
 const pruneFinishedJobs = (): void => {
   const finished = [...jobs.values()]
-    .filter(
-      (job) => job.status === "success" || job.status === "error" || job.status === "cancelled",
-    )
+    .filter(isFinished)
     .sort((first, second) => first.startedAt.localeCompare(second.startedAt));
   const excess = finished.length - MAX_FINISHED_JOBS;
   for (let index = 0; index < excess; index += 1) {
@@ -314,35 +286,21 @@ const terminateJobChild = (id: string): Effect.Effect<void> =>
     if (!child) return;
     const exited = (): boolean =>
       child.exitCode !== null || Boolean(child.pid && !pidExists(child.pid));
-    yield* Effect.sync(() => {
-      try {
-        return child.kill("SIGTERM");
-      } catch {
-        return false;
-      }
-    });
-    const termDeadline = Date.now() + 2_000;
-    while (!exited() && Date.now() < termDeadline) yield* Effect.sleep(100);
-    if (!exited()) {
-      yield* Effect.sync(() => {
-        try {
-          return child.kill("SIGKILL");
-        } catch {
-          return false;
-        }
+    const signalAndWait = (signal: "SIGTERM" | "SIGKILL"): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        yield* Effect.ignore(Effect.try(() => child.kill(signal)));
+        const deadline = Date.now() + 2_000;
+        while (!exited() && Date.now() < deadline) yield* Effect.sleep(100);
       });
-      const killDeadline = Date.now() + 2_000;
-      while (!exited() && Date.now() < killDeadline) yield* Effect.sleep(100);
-    }
+    yield* signalAndWait("SIGTERM");
+    if (!exited()) yield* signalAndWait("SIGKILL");
   }).pipe(Effect.catch(() => Effect.void));
 
 export const cancelEngineJob = (id: string): Effect.Effect<EngineJob | null> =>
   Effect.gen(function* () {
     const job = jobs.get(id);
     if (!job) return null;
-    if (job.status === "success" || job.status === "error" || job.status === "cancelled") {
-      return job;
-    }
+    if (isFinished(job)) return job;
     const cancelled = updateJob(id, {
       status: "cancelled",
       progress: 1,

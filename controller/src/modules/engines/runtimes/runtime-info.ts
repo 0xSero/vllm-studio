@@ -130,8 +130,8 @@ const computeSystemRuntimeInfo = (
         kind === "metal"
           ? Effect.succeed({ available: false, tool: "apple-metal" as const })
           : kind === "cuda" && nvidiaSnapshot
-          ? Effect.succeed({ available: nvidiaSnapshot.available, tool: "nvidia-smi" as const })
-          : probeGpuMonitoring(kind, rocmSmiTool),
+            ? Effect.succeed({ available: nvidiaSnapshot.available, tool: "nvidia-smi" as const })
+            : probeGpuMonitoring(kind, rocmSmiTool),
         kind === "cuda"
           ? getCudaInfo(nvidiaSnapshot?.driverVersion ?? null)
           : Effect.succeed({
@@ -184,8 +184,7 @@ const parseLlamaVersion = (output: string): string | null => {
   if (!output) return null;
   const match = output.match(/version\s*[:=]\s*(\d+\s*\([^)]+\)|\S+)/i);
   if (match) return match[1]?.trim() ?? null;
-  const fallback = output.split("\n")[0]?.trim();
-  return fallback || null;
+  return output.split("\n")[0]?.trim() || null;
 };
 
 export const getLlamacppRuntimeInfo = (config: Config): Effect.Effect<RuntimeBackendInfo> =>
@@ -195,26 +194,12 @@ export const getLlamacppRuntimeInfo = (config: Config): Effect.Effect<RuntimeBac
       resolveBinary(configured) ?? (existsSync(configured) ? resolve(configured) : null);
     const binary = resolved ?? configured;
     const versionResult = yield* runCommandEffect(binary, ["--version"]);
-    if (versionResult.status !== 0) {
-      const helpResult = yield* runCommandEffect(binary, ["--help"]);
-      if (helpResult.status !== 0) {
-        return {
-          installed: false,
-          version: null,
-          binary_path: resolved,
-          upgrade_command_available: isUpgradeCommandConfigured(LLAMACPP_UPGRADE_ENV),
-        };
-      }
-      const version = parseLlamaVersion(helpResult.stdout) ?? parseLlamaVersion(helpResult.stderr);
-      return {
-        installed: Boolean(version),
-        version,
-        binary_path: resolved,
-        upgrade_command_available: isUpgradeCommandConfigured(LLAMACPP_UPGRADE_ENV),
-      };
-    }
+    const probe =
+      versionResult.status === 0 ? versionResult : yield* runCommandEffect(binary, ["--help"]);
     const version =
-      parseLlamaVersion(versionResult.stdout) ?? parseLlamaVersion(versionResult.stderr);
+      probe.status === 0
+        ? (parseLlamaVersion(probe.stdout) ?? parseLlamaVersion(probe.stderr))
+        : null;
     return {
       installed: Boolean(version),
       version,
@@ -223,11 +208,8 @@ export const getLlamacppRuntimeInfo = (config: Config): Effect.Effect<RuntimeBac
     };
   });
 
-const extractNvccVersion = (output: string): string | null => {
-  const match = output.match(/release\s+([0-9.]+)/i);
-  if (match) return match[1] ?? null;
-  return null;
-};
+const extractNvccVersion = (output: string): string | null =>
+  output.match(/release\s+([0-9.]+)/i)?.[1] ?? null;
 
 export const getCudaInfo = (
   knownDriverVersion: string | null = null,

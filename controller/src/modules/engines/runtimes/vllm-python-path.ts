@@ -1,34 +1,12 @@
 import { existsSync } from "node:fs";
 import { DEFAULT_CANONICAL_PYTHON_PATH } from "../configs";
-import { managedVenvPython, type ManagedPythonBackend } from "./managed-venv";
-
-const getExplicitPythonOverride = (): string | null => {
-  const explicit = process.env["LOCAL_STUDIO_RUNTIME_PYTHON"]?.trim();
-  if (!explicit) {
-    return null;
-  }
-  return explicit;
-};
-
-const managedVenvCandidate = (
-  dataDirectory: string | null | undefined,
-  backend: ManagedPythonBackend,
-): string | null => {
-  if (!dataDirectory) return null;
-  const python = managedVenvPython({ data_dir: dataDirectory }, backend);
-  return existsSync(python) ? python : null;
-};
+import { managedVenvPython } from "./managed-venv";
 
 export const resolveVllmPythonPath = (dataDirectory?: string | null): string | null => {
   const candidates = [
-    getExplicitPythonOverride(),
+    process.env["LOCAL_STUDIO_RUNTIME_PYTHON"]?.trim() || null,
     DEFAULT_CANONICAL_PYTHON_PATH,
-    managedVenvCandidate(dataDirectory, "vllm"),
+    dataDirectory ? managedVenvPython({ data_dir: dataDirectory }, "vllm") : null,
   ];
-  for (const candidate of candidates) {
-    if (candidate && existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
+  return candidates.find((candidate) => candidate && existsSync(candidate)) ?? null;
 };

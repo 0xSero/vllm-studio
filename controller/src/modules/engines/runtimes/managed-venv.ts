@@ -54,6 +54,18 @@ const tailOutput = (value: string): string =>
 
 const timeoutMinutes = (timeoutMs: number): number => Math.round(timeoutMs / 60_000);
 
+const failedInstall = (
+  error: string,
+  output: string | null = null,
+  usedCommand: string | null = null,
+): RuntimeUpgradeResult => ({
+  success: false,
+  version: null,
+  output,
+  error,
+  used_command: usedCommand,
+});
+
 const createVenvEffect = (
   basePython: string,
   venvDirectory: string,
@@ -69,15 +81,13 @@ const createVenvEffect = (
       onSpawn: options.onSpawn,
     });
     if (create.status !== 0) {
-      return {
-        success: false,
-        version: null,
-        output: create.stdout || null,
-        error: create.timedOut
+      return failedInstall(
+        create.timedOut
           ? `Creating the ${options.backend} virtual environment timed out after ${timeoutMinutes(RUNTIME_UPGRADE_TIMEOUT_MS)} minutes`
           : create.stderr || `Failed to create managed ${options.backend} virtual environment`,
-        used_command: `${basePython} -m venv ${venvDirectory}`,
-      };
+        create.stdout || null,
+        `${basePython} -m venv ${venvDirectory}`,
+      );
     }
     return null;
   });
@@ -95,13 +105,11 @@ const resolveInstallerEffect = (
         onSpawn: options.onSpawn,
       });
       if (pipCheck.status !== 0) {
-        return {
-          success: false,
-          version: null,
-          output: pipCheck.stdout || null,
-          error: `Neither uv nor a working pip is available to install ${packageSpec}. Install uv with: ${UV_INSTALL_HINT}`,
-          used_command: `${venvPython} -m pip --version`,
-        };
+        return failedInstall(
+          `Neither uv nor a working pip is available to install ${packageSpec}. Install uv with: ${UV_INSTALL_HINT}`,
+          pipCheck.stdout || null,
+          `${venvPython} -m pip --version`,
+        );
       }
     }
     const installer = uv ? "uv" : "pip";
@@ -112,20 +120,12 @@ const resolveInstallerEffect = (
     return { command, args, installer };
   });
 
-const installIntoManagedVenvEffect = (
+export const installIntoManagedVenv = (
   options: ManagedInstallOptions,
 ): Effect.Effect<RuntimeUpgradeResult> =>
   Effect.gen(function* () {
     const basePython = resolveBinary("python3") ?? resolveBinary("python");
-    if (!basePython) {
-      return {
-        success: false,
-        version: null,
-        output: null,
-        error: "Python 3 was not found on PATH",
-        used_command: null,
-      };
-    }
+    if (!basePython) return failedInstall("Python 3 was not found on PATH");
 
     const venvDirectory = managedVenvPath(options.config, options.backend);
     const venvPython = join(venvDirectory, "bin", "python");
@@ -164,15 +164,13 @@ const installIntoManagedVenvEffect = (
       },
     });
     if (install.status !== 0) {
-      return {
-        success: false,
-        version: null,
-        output: install.stdout || null,
-        error: install.timedOut
+      return failedInstall(
+        install.timedOut
           ? `Install of ${packageSpec} timed out after ${timeoutMinutes(installTimeout)} minutes. Retry the install; large torch/CUDA wheels are the usual cause.`
           : install.stderr || `Failed to install ${packageSpec}`,
-        used_command: usedCommand,
-      };
+        install.stdout || null,
+        usedCommand,
+      );
     }
 
     const probe = yield* probePythonRuntime(options.backend, targetPython);
@@ -184,7 +182,3 @@ const installIntoManagedVenvEffect = (
       used_command: usedCommand,
     };
   });
-
-export const installIntoManagedVenv = (
-  options: ManagedInstallOptions,
-): Effect.Effect<RuntimeUpgradeResult> => installIntoManagedVenvEffect(options);
