@@ -80,10 +80,7 @@ export function resolveAllowedWorkspace(rawPath: string): string {
   const candidate = canonicalDirectory(trimmed);
   const allowed = allowedWorkspaceRoots().some((root) => {
     const relative = path.relative(root, candidate);
-    return (
-      relative === "" ||
-      (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
-    );
+    return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
   });
   if (!allowed) throw new Error("Path is outside WORKSPACE_ROOTS");
   return candidate;

@@ -497,7 +497,9 @@ export async function getOAuthConnectorStatus(
   };
 }
 
-export async function disconnectOAuthConnector(connectorId: string): Promise<OAuthStatusResponse> {
+export async function disconnectOAuthConnector(
+  connectorId: string,
+): Promise<OAuthStatusResponse> {
   const provider = requireProvider(connectorId);
   closeFlow(provider.id);
   lastFlowErrors.delete(provider.id);

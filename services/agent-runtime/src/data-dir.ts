@@ -36,9 +36,27 @@ function legacySettingsFileCandidates(): string[] {
     path.join(homedir(), LEGACY_DOT_DIR, SETTINGS_FILENAME),
     path.join(tmpdir(), "local-studio", SETTINGS_FILENAME),
     // Past Electron userData siblings.
-    path.join(homedir(), "Library", "Application Support", "local-studio-app", SETTINGS_FILENAME),
-    path.join(homedir(), "Library", "Application Support", LEGACY_APP_DATA_SLUG, SETTINGS_FILENAME),
-    path.join(homedir(), "Library", "Application Support", LEGACY_APP_DATA_DIR, SETTINGS_FILENAME),
+    path.join(
+      homedir(),
+      "Library",
+      "Application Support",
+      "local-studio-app",
+      SETTINGS_FILENAME,
+    ),
+    path.join(
+      homedir(),
+      "Library",
+      "Application Support",
+      LEGACY_APP_DATA_SLUG,
+      SETTINGS_FILENAME,
+    ),
+    path.join(
+      homedir(),
+      "Library",
+      "Application Support",
+      LEGACY_APP_DATA_DIR,
+      SETTINGS_FILENAME,
+    ),
     path.join(homedir(), "Library", "Application Support", "Electron", SETTINGS_FILENAME),
     path.join(homedir(), "Library", "Application Support", "frontend", SETTINGS_FILENAME),
   ];
@@ -83,10 +101,7 @@ export async function atomicWriteJson(
   { mode, compact }: AtomicWriteJsonOptions = {},
 ): Promise<void> {
   const [temporary, payload] = atomicJsonParts(file, value, compact);
-  await writeFile(temporary, payload, {
-    encoding: "utf-8",
-    ...(mode === undefined ? {} : { mode }),
-  });
+  await writeFile(temporary, payload, { encoding: "utf-8", ...(mode === undefined ? {} : { mode }) });
   if (mode !== undefined) await chmod(temporary, mode);
   await rename(temporary, file);
   if (mode !== undefined) await chmod(file, mode);

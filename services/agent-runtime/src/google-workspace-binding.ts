@@ -43,9 +43,8 @@ const LEGACY_MCP_ENDPOINTS: Record<GoogleWorkspacePluginId, string> = {
 };
 
 export function isGoogleWorkspaceEndpoint(service: GoogleWorkspacePluginId, url: string): boolean {
-  return (
-    url === GOOGLE_WORKSPACE_BINDINGS[service].restEndpoint || url === LEGACY_MCP_ENDPOINTS[service]
-  );
+  return url === GOOGLE_WORKSPACE_BINDINGS[service].restEndpoint ||
+    url === LEGACY_MCP_ENDPOINTS[service];
 }
 
 function isGoogleWorkspacePlugin(id: string): id is GoogleWorkspacePluginId {
