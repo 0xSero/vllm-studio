@@ -1,4 +1,5 @@
 import type {
+  ComputeEngineSpec,
   EngineSupport,
   HealthCheck,
   LaunchPlan,
@@ -19,7 +20,10 @@ export const health = (path: string, readyDeadlineMs: number, intervalMs = 2_000
 });
 
 export const unsupported = (reason: string): EngineSupport => ({ ok: false, reason });
-export const supported = (...runtimes: EngineRuntimeKind[]): EngineSupport => ({ ok: true, runtimes });
+export const supported = (...runtimes: EngineRuntimeKind[]): EngineSupport => ({
+  ok: true,
+  runtimes,
+});
 
 export const noMetrics: MetricMap = {
   requestsRunning: [],
@@ -106,9 +110,7 @@ const flagKey = (token: string): string | null =>
  * left to argparse.
  */
 const mergeArguments = (base: readonly string[], extra: readonly string[]): string[] => {
-  const overridden = new Set(
-    extra.map(flagKey).filter((key): key is string => key !== null),
-  );
+  const overridden = new Set(extra.map(flagKey).filter((key): key is string => key !== null));
   const merged: string[] = [];
   for (let index = 0; index < base.length; index += 1) {
     const token = base[index] ?? "";
@@ -126,71 +128,68 @@ const mergeArguments = (base: readonly string[], extra: readonly string[]): stri
 
 /* ── plan assembly ───────────────────────────────────────────────────────── */
 
-const modelReference = (request: LaunchRequest): string =>
-  request.runtime === "docker" ? CONTAINER_MODEL_DIR : request.modelPath;
-
-const modelMounts = (request: LaunchRequest): LaunchPlan["mounts"] =>
-  request.runtime === "docker"
-    ? [{ from: request.modelPath, to: CONTAINER_MODEL_DIR, readOnly: true }]
-    : [];
-
-/** Containers listen on all interfaces so the published port reaches them; processes bind
- *  loopback, because the controller proxies them and nothing else should connect. */
-const serveAddress = (request: LaunchRequest, listenPort: number): string[] => [
-  "--host",
-  request.runtime === "docker" ? "0.0.0.0" : "127.0.0.1",
-  "--port",
-  String(listenPort),
-];
-
 /**
  * The shape every OpenAI-compatible server shares. `modelFlag: null` passes the model
  * positionally (vLLM's `serve <path>` form).
  */
-export const serverArguments = (
-  request: LaunchRequest,
-  spec: {
-    readonly subcommand?: readonly string[];
-    readonly modelFlag: string | null;
-    readonly servedNameFlag: string | null;
-    readonly spelling: Spelling;
-    readonly defaults?: readonly string[];
-  },
-  listenPort: number,
-): string[] => {
-  const model = modelReference(request);
-  const base = [
-    ...(spec.subcommand ?? []),
-    ...(spec.modelFlag === null ? [model] : [spec.modelFlag, model]),
-    ...(spec.servedNameFlag ? [spec.servedNameFlag, request.servedModelName] : []),
-    ...serveAddress(request, listenPort),
-    ...tuningArguments(request.options, spec.spelling),
-    ...(spec.defaults ?? []),
-  ];
-  return mergeArguments(base, request.extraArgs);
+interface ServerSpec {
+  /** vLLM's `serve` disappears in its container image, so the form can depend on runtime. */
+  readonly subcommand?: readonly string[] | ((request: LaunchRequest) => readonly string[]);
+  readonly modelFlag: string | null;
+  readonly servedNameFlag: string | null;
+  readonly spelling: Spelling;
+  readonly defaults?: readonly string[];
+}
+
+const serverArguments = (request: LaunchRequest, spec: ServerSpec): string[] => {
+  const container = request.runtime === "docker";
+  const model = container ? CONTAINER_MODEL_DIR : request.modelPath;
+  const subcommand =
+    typeof spec.subcommand === "function" ? spec.subcommand(request) : spec.subcommand;
+  return mergeArguments(
+    [
+      ...(subcommand ?? []),
+      ...(spec.modelFlag === null ? [model] : [spec.modelFlag, model]),
+      ...(spec.servedNameFlag ? [spec.servedNameFlag, request.servedModelName] : []),
+      // Containers listen on all interfaces so the published port reaches them; processes
+      // bind loopback, because the controller proxies them and nothing else should connect.
+      "--host",
+      container ? "0.0.0.0" : "127.0.0.1",
+      "--port",
+      String(request.port),
+      ...tuningArguments(request.options, spec.spelling),
+      ...(spec.defaults ?? []),
+    ],
+    request.extraArgs,
+  );
 };
 
-export const plan = (
-  request: LaunchRequest,
-  parts: {
-    readonly args: readonly string[];
-    readonly health: HealthCheck;
-    readonly listenPort: number;
-    readonly image?: string | null;
-    readonly env?: Readonly<Record<string, string>>;
+/**
+ * Every engine we launch is an OpenAI-compatible server differing only in how it spells
+ * its flags, so a spec is a data declaration rather than a hand-written plan builder.
+ */
+export const openAiServerSpec = (
+  engine: Omit<ComputeEngineSpec, "plan">,
+  server: ServerSpec,
+): ComputeEngineSpec => ({
+  ...engine,
+  plan: (request): LaunchPlan => {
+    const args = serverArguments(request, server);
+    const container = request.runtime === "docker";
+    const image = request.dockerImage ?? engine.image?.(request.host);
+    return {
+      kind: request.runtime,
+      // A container image supplies its own executable; a process launch needs the binary.
+      argv: container ? args : [request.binary, ...args],
+      // An engine may always offer an image; only a container plan carries one.
+      ...(container && image ? { image } : {}),
+      env: { ...request.env },
+      ports: [{ container: request.port, host: request.port }],
+      mounts: container
+        ? [{ from: request.modelPath, to: CONTAINER_MODEL_DIR, readOnly: true }]
+        : [],
+      devices: request.devices,
+      health: engine.health,
+    };
   },
-): LaunchPlan => {
-  const image = request.dockerImage ?? parts.image;
-  return {
-    kind: request.runtime,
-    // A container image supplies its own executable; a process launch needs the binary.
-    argv: request.runtime === "docker" ? [...parts.args] : [request.binary, ...parts.args],
-    // An engine may always offer an image; only a container plan carries one.
-    ...(request.runtime === "docker" && image ? { image } : {}),
-    env: { ...request.env, ...(parts.env ?? {}) },
-    ports: [{ container: parts.listenPort, host: request.port }],
-    mounts: modelMounts(request),
-    devices: request.devices,
-    health: parts.health,
-  };
-};
+});
