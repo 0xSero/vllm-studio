@@ -59,13 +59,9 @@ const pruneRateLimitStore = (store: Map<string, RateLimitEntry>, now: number): v
 };
 
 const extractAuthToken = (header: (name: string) => string | undefined): string | null => {
-  const bearer = header("authorization");
-  if (bearer) {
-    const match = bearer.match(/^Bearer\s+(.+)$/i);
-    if (match?.[1]) return match[1].trim();
-  }
-  const apiKeyHeader = header("x-api-key");
-  return apiKeyHeader?.trim() || null;
+  const bearer = header("authorization")?.match(/^Bearer\s+(.+)$/i);
+  if (bearer?.[1]) return bearer[1].trim();
+  return header("x-api-key")?.trim() || null;
 };
 
 const safeTokenEquals = (expected: string, provided: string): boolean => {

@@ -40,12 +40,10 @@ export const createLogger = (level: LogLevel, options: LoggerOptions = {}): Logg
 
   const shouldLog = (target: LogLevel): boolean => priority[target] >= priority[level];
 
-  const format = (message: string, details?: Record<string, unknown>): string => {
-    if (!details || Object.keys(details).length === 0) {
-      return message;
-    }
-    return `${message} ${JSON.stringify(details)}`;
-  };
+  const format = (message: string, details?: Record<string, unknown>): string =>
+    !details || Object.keys(details).length === 0
+      ? message
+      : `${message} ${JSON.stringify(details)}`;
 
   const toFileLine = (
     target: LogLevel,
