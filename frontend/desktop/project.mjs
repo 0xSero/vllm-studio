@@ -951,27 +951,6 @@ var init_release_statement = __esm(() => {
     console.log("- No conventional release changes found for the selected range.");
 });
 
-function value(env, name) {
-  let candidate = env[name];
-  return typeof candidate === "string" ? candidate.trim() : "";
-}
-function resolveNotarytoolCredentials(env, apiKeyPath) {
-  let apiKey = value(env, "APPLE_API_KEY_BASE64"), apiKeyId = value(env, "APPLE_API_KEY_ID"), apiIssuer = value(env, "APPLE_API_ISSUER");
-  if (apiKey && apiKeyId && apiIssuer)
-    return {
-      kind: "api-key",
-      apiKey,
-      args: ["--key", apiKeyPath, "--key-id", apiKeyId, "--issuer", apiIssuer]
-    };
-  let appleId = value(env, "APPLE_ID"), password = value(env, "APPLE_APP_SPECIFIC_PASSWORD"), teamId = value(env, "APPLE_TEAM_ID");
-  if (appleId && password && teamId)
-    return {
-      kind: "apple-id",
-      args: ["--apple-id", appleId, "--password", password, "--team-id", teamId]
-    };
-  throw Error("Apple notarization requires either the API key secret trio or the Apple ID secret trio");
-}
-
 var releasePackageArguments = ({ app, version, commit }) => [
   "--prepackaged",
   app,
@@ -1040,23 +1019,6 @@ function writeCertificate(link, destination) {
   let encoded = value2.replace(/^data:[^;]+;base64,/, "");
   writeFileSync6(destination, Buffer.from(encoded, "base64"), { mode: 384, flag: "wx" });
 }
-function notarizeApplication(app, archive, credentials, execute = run2) {
-  execute("ditto", ["-c", "-k", "--keepParent", app, archive]), execute("xcrun", [
-    "notarytool",
-    "submit",
-    archive,
-    ...credentials,
-    "--wait",
-    "--output-format",
-    "json"
-  ]), execute("xcrun", ["stapler", "staple", app]), execute("xcrun", ["stapler", "validate", app]), execute("spctl", [
-    "--assess",
-    "--type",
-    "execute",
-    "--verbose=4",
-    app
-  ]);
-}
 async function refreshUpdateMetadata(output3, version) {
   let { buildBlockMap } = require4(path9.join(frontend, "node_modules", "app-builder-lib", "out", "targets", "blockmap", "blockmap.js")), YAML = require4(path9.join(frontend, "node_modules", "yaml")), zipName = `Local Studio-${version}-arm64-mac.zip`, dmgName = `Local Studio-${version}-arm64.dmg`, zipInfo = await buildBlockMap(path9.join(output3, zipName), "gzip", path9.join(output3, `${zipName}.blockmap`)), dmgInfo = await buildBlockMap(path9.join(output3, dmgName), "gzip", path9.join(output3, `${dmgName}.blockmap`)), updatePath = path9.join(output3, "latest-mac.yml"), current = YAML.parse(readFileSync12(updatePath, "utf8"));
   writeFileSync6(updatePath, YAML.stringify({
@@ -1080,19 +1042,15 @@ async function refreshUpdateMetadata(output3, version) {
 }
 async function signDesktopRelease(args3 = process.argv.slice(2)) {
   let version = valueAfter3(args3, "--version")?.trim(), commit = valueAfter3(args3, "--commit")?.trim().toLowerCase(), prepackaged = valueAfter3(args3, "--prepackaged")?.trim();
-  if (!version || !/^\d+\.\d+\.\d+$/.test(version))
+  if (!version || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version))
     throw Error("--version must be a semantic version");
   if (!commit || !/^[0-9a-f]{40}$/.test(commit))
     throw Error("--commit must be a full Git commit SHA");
   if (!prepackaged || !existsSync10(prepackaged))
     throw Error("--prepackaged must point to an unsigned app bundle");
-  let certificate = requireValue("CSC_LINK"), certificatePassword = requireValue("CSC_KEY_PASSWORD"), temporary = path9.join(os3.tmpdir(), `local-studio-release-${process.pid}`), apiKeyPath = path9.join(temporary, "AuthKey_notary.p8"), notaryCredentials = resolveNotarytoolCredentials(process.env, apiKeyPath), certificatePath = path9.join(temporary, "developer-id.p12"), keychainPath = path9.join(temporary, "release-signing.keychain-db"), keychainPassword = randomBytes(32).toString("hex"), originalKeychains = keychainList(), output3 = path9.join(frontend, "dist-desktop"), dmg = path9.join(output3, `Local Studio-${version}-arm64.dmg`), resolvedApp = path9.resolve(prepackaged), appNotaryArchive = path9.join(temporary, "Local Studio.app.zip"), entitlements = path9.join(frontend, "desktop", "resources", "entitlements.mac.plist");
+  let certificate = requireValue("CSC_LINK"), certificatePassword = process.env.CSC_KEY_PASSWORD ?? "", temporary = path9.join(os3.tmpdir(), `local-studio-release-${process.pid}`), certificatePath = path9.join(temporary, "developer-id.p12"), keychainPath = path9.join(temporary, "release-signing.keychain-db"), keychainPassword = randomBytes(32).toString("hex"), originalKeychains = keychainList(), output3 = path9.join(frontend, "dist-desktop"), dmg = path9.join(output3, `Local Studio-${version}-arm64.dmg`), resolvedApp = path9.resolve(prepackaged), entitlements = path9.join(frontend, "desktop", "resources", "entitlements.mac.plist");
   try {
-    if (rmSync8(temporary, { recursive: !0, force: !0 }), mkdirSync5(temporary, { recursive: !0, mode: 448 }), notaryCredentials.kind === "api-key")
-      writeFileSync6(apiKeyPath, Buffer.from(notaryCredentials.apiKey, "base64"), {
-        mode: 384,
-        flag: "wx"
-      });
+    rmSync8(temporary, { recursive: !0, force: !0 }), mkdirSync5(temporary, { recursive: !0, mode: 448 });
     writeCertificate(certificate, certificatePath), run2("security", ["create-keychain", "-p", keychainPassword, keychainPath]), run2("security", ["set-keychain-settings", "-lut", "21600", keychainPath]), run2("security", ["unlock-keychain", "-p", keychainPassword, keychainPath]), run2("security", [
       "import",
       certificatePath,
@@ -1143,7 +1101,7 @@ async function signDesktopRelease(args3 = process.argv.slice(2)) {
       "--keychain",
       keychainPath,
       resolvedApp
-    ]), run2("codesign", ["--verify", "--deep", "--strict", "--verbose=4", resolvedApp]), notarizeApplication(resolvedApp, appNotaryArchive, notaryCredentials.args), process.env.LOCAL_STUDIO_RELEASE_VERSION = version, process.env.LOCAL_STUDIO_RELEASE_COMMIT = commit, process.env.CSC_IDENTITY_AUTO_DISCOVERY = "false", run2(path9.join(frontend, "node_modules", ".bin", "electron-builder"), releasePackageArguments({ app: resolvedApp, version, commit }), { cwd: frontend }), run2("codesign", [
+    ]), run2("codesign", ["--verify", "--deep", "--strict", "--verbose=4", resolvedApp]), process.env.LOCAL_STUDIO_RELEASE_VERSION = version, process.env.LOCAL_STUDIO_RELEASE_COMMIT = commit, process.env.CSC_IDENTITY_AUTO_DISCOVERY = "false", run2(path9.join(frontend, "node_modules", ".bin", "electron-builder"), releasePackageArguments({ app: resolvedApp, version, commit }), { cwd: frontend }), run2("codesign", [
       "--force",
       "--timestamp",
       "--sign",
@@ -1151,25 +1109,11 @@ async function signDesktopRelease(args3 = process.argv.slice(2)) {
       "--keychain",
       keychainPath,
       dmg
-    ]), run2("xcrun", [
-      "notarytool",
-      "submit",
-      dmg,
-      ...notaryCredentials.args,
-      "--wait",
-      "--output-format",
-      "json"
-    ]), run2("xcrun", ["stapler", "staple", dmg]), await refreshUpdateMetadata(output3, version), run2("xcrun", ["stapler", "validate", dmg]), run2("codesign", ["--verify", "--verbose=4", dmg]), run2("spctl", [
-      "--assess",
-      "--type",
-      "open",
-      "--context",
-      "context:primary-signature",
-      "--verbose=4",
-      dmg
-    ]);
+    ]), await refreshUpdateMetadata(output3, version), run2("codesign", ["--verify", "--verbose=4", dmg]);
     let packagedApp = path9.join(output3, "mac-arm64", "Local Studio.app");
-    mkdirSync5(path9.dirname(packagedApp), { recursive: !0 }), rmSync8(packagedApp, { recursive: !0, force: !0 }), symlinkSync3(resolvedApp, packagedApp, "dir"), console.log(`Signed and notarized Local Studio ${version} from ${commit}`);
+    if (packagedApp !== resolvedApp)
+      mkdirSync5(path9.dirname(packagedApp), { recursive: !0 }), rmSync8(packagedApp, { recursive: !0, force: !0 }), symlinkSync3(resolvedApp, packagedApp, "dir");
+    console.log(`Signed Local Studio ${version} from ${commit}`);
   } finally {
     if (originalKeychains.length > 0)
       run2("security", ["list-keychains", "-d", "user", "-s", ...originalKeychains]);

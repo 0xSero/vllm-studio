@@ -24,14 +24,12 @@ desktop artifact. Required CI checks must pass before a pull request is merged.
 ## Nightly releases
 
 Every push to `main` publishes a rolling `nightly` prerelease. The workflow
-builds unsigned DMG, ZIP and updater metadata assets from the exact `main`
-commit, moves the `nightly` tag to that commit, and replaces the prior nightly
-assets.
+builds Developer ID signed DMG, ZIP and updater metadata assets from the exact
+`main` commit, moves the `nightly` tag to that commit, and replaces the prior
+nightly assets.
 
-Install the nightly DMG manually. Because the app is unsigned, macOS requires
-approval in System Settings under Privacy & Security. Electron's macOS updater
-cannot install unsigned updates, so automatic in-app updates remain unavailable
-for nightly builds until signing is enabled.
+Nightly builds are not notarized, so macOS may require approval in System
+Settings under Privacy & Security after the first download.
 
 ## Stable releases
 
@@ -47,13 +45,12 @@ git push origin v2.16.0
 
 The release workflow rejects malformed tags and tags that do not point to the
 current `origin/main`. It builds the app, signs it with the fork's Developer ID,
-notarizes it with Apple, publishes the GitHub release assets, and updates the
-stable download alias used by the app.
+publishes the GitHub release assets, and updates the stable download alias used
+by the app.
 
-The `release-signing` GitHub environment must provide
-`MACOS_CERTIFICATE_P12`, `MACOS_CERTIFICATE_PASSWORD`, and either the Apple API
-key credential trio or the Apple ID notarization credential trio expected by
-the release workflow.
+The repository must provide `MACOS_CERTIFICATE_P12` as a GitHub Actions secret.
+Set `MACOS_CERTIFICATE_PASSWORD` only when the exported certificate has a
+password; an empty-password certificate needs no password secret.
 
 The first fork-signed build must be installed manually over the upstream-signed
 application. Later fork releases update in place from

@@ -49,19 +49,27 @@ jobs:
       - name: Install repository dependencies
         run: npm run setup
 
-      - name: Build unsigned nightly assets
+      - name: Build unsigned nightly app
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           NIGHTLY_VERSION: ${{ steps.nightly-version.outputs.version }}
         run: >-
-          npm --prefix frontend run desktop:dist --
+          npm --prefix frontend run desktop:pack --
           --config.mac.identity=null
           --config.mac.hardenedRuntime=false
-          --config.mac.notarize=false
-          --config.dmg.sign=false
           --config.extraMetadata.version="$NIGHTLY_VERSION"
           --config.extraMetadata.localStudioCommit=${{ github.sha }}
-          --publish never
+
+      - name: Sign nightly assets
+        env:
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          NIGHTLY_VERSION: ${{ steps.nightly-version.outputs.version }}
+        run: >-
+          node scripts/project.mjs sign-release
+          --version "$NIGHTLY_VERSION"
+          --commit "${{ github.sha }}"
+          --prepackaged "frontend/dist-desktop/mac-arm64/Local Studio.app"
 
       - name: Stage nightly assets
         env:
@@ -85,9 +93,9 @@ jobs:
         run: |
           notes="$RUNNER_TEMP/nightly-notes.md"
           printf '%s\n\n%s\n\n%s\n' \
-            "Unsigned rolling build of main at $GITHUB_SHA." \
+            "Developer ID signed rolling build of main at $GITHUB_SHA." \
             "Version: $NIGHTLY_VERSION" \
-            "macOS will require manual approval in System Settings → Privacy & Security. In-app auto-update is unavailable until nightly builds are signed." \
+            "This build is signed but not notarized. macOS may require manual approval in System Settings → Privacy & Security." \
             > "$notes"
 
           if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/nightly" >/dev/null 2>&1; then
