@@ -22,28 +22,11 @@ import { piRuntimeManager } from "./pi-runtime";
 import { lastAssistantResult, type LastAssistantResult } from "./session-text";
 import { sessionSubagentLink, setSubagentLink } from "./session-metadata-store";
 
-const NICKNAMES = [
-  "Euclid",
-  "Archimedes",
-  "Hypatia",
-  "Ptolemy",
-  "Leibniz",
-  "Lovelace",
-  "Boole",
-  "Turing",
-  "Hopper",
-  "Noether",
-  "Curie",
-  "Gauss",
-  "Euler",
-  "Ramanujan",
-  "Erdos",
-  "Franklin",
-  "Kepler",
-  "Darwin",
-  "Fermi",
-  "Bohr",
-];
+/** Default names, handed out in order so a parent's children are tellable apart. */
+const NICKNAMES =
+  "Euclid Archimedes Hypatia Ptolemy Leibniz Lovelace Boole Turing Hopper Noether Curie Gauss Euler Ramanujan Erdos Franklin Kepler Darwin Fermi Bohr".split(
+    " ",
+  );
 
 export const MAX_CONCURRENT_PER_PARENT = 4;
 const MAX_RESULT_CHARS = 8000;

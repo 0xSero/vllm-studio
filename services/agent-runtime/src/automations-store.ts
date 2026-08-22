@@ -27,29 +27,25 @@ export function prependAutomationRun(
   return [run, ...runs].slice(0, automationRunHistoryLimit);
 }
 
+/** Anything unrecognized falls back to a daily 08:00 run. */
 function normalizeSchedule(value: unknown): AutomationSchedule {
-  if (isRecord(value)) {
-    if (value.kind === "interval" && typeof value.minutes === "number" && value.minutes >= 1) {
-      return { kind: "interval", minutes: Math.round(value.minutes) };
-    }
-    if (value.kind === "daily" && typeof value.time === "string") {
-      return {
-        kind: "daily",
-        time: value.time,
-        ...(value.weekdaysOnly === true ? { weekdaysOnly: true } : {}),
-      };
-    }
-    if (
-      value.kind === "weekly" &&
-      typeof value.day === "number" &&
-      typeof value.time === "string"
-    ) {
-      return {
-        kind: "weekly",
-        day: Math.min(6, Math.max(0, Math.round(value.day))),
-        time: value.time,
-      };
-    }
+  if (!isRecord(value)) return { kind: "daily", time: "08:00" };
+  if (value.kind === "interval" && typeof value.minutes === "number" && value.minutes >= 1) {
+    return { kind: "interval", minutes: Math.round(value.minutes) };
+  }
+  if (value.kind === "daily" && typeof value.time === "string") {
+    return {
+      kind: "daily",
+      time: value.time,
+      ...(value.weekdaysOnly === true ? { weekdaysOnly: true } : {}),
+    };
+  }
+  if (value.kind === "weekly" && typeof value.day === "number" && typeof value.time === "string") {
+    return {
+      kind: "weekly",
+      day: Math.min(6, Math.max(0, Math.round(value.day))),
+      time: value.time,
+    };
   }
   return { kind: "daily", time: "08:00" };
 }
@@ -123,23 +119,15 @@ export function nextRunAt(schedule: AutomationSchedule, from: Date): Date {
     return new Date(from.getTime() + schedule.minutes * 60_000);
   }
   const { hours, minutes } = parseTime(schedule.time);
-  const candidate = new Date(from);
-  candidate.setHours(hours, minutes, 0, 0);
-  const advanceDays = (date: Date, days: number) => {
-    const next = new Date(date);
-    next.setDate(next.getDate() + days);
-    return next;
-  };
-  if (schedule.kind === "daily") {
-    let next = candidate <= from ? advanceDays(candidate, 1) : candidate;
-    if (schedule.weekdaysOnly) {
-      while (next.getDay() === 0 || next.getDay() === 6) next = advanceDays(next, 1);
-    }
-    return next;
-  }
-  let next = candidate;
-  const targetDay = schedule.day;
-  while (next.getDay() !== targetDay || next <= from) next = advanceDays(next, 1);
+  const next = new Date(from);
+  next.setHours(hours, minutes, 0, 0);
+  const dayBlocked = (day: number) =>
+    schedule.kind === "weekly"
+      ? day !== schedule.day
+      : schedule.weekdaysOnly === true && (day === 0 || day === 6);
+  // Roll forward whole days until the slot is in the future and lands on an
+  // allowed weekday; setDate carries month and year ends for us.
+  while (next <= from || dayBlocked(next.getDay())) next.setDate(next.getDate() + 1);
   return next;
 }
 

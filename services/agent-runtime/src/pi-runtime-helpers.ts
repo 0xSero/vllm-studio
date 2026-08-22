@@ -13,13 +13,8 @@ import type {
   AgentToolAccess,
 } from "../../../shared/agent/agent-turn";
 
-type RuntimeSkillRef = {
-  id?: string;
-  name?: string;
-  path?: string;
-};
-
-type RuntimePromptTemplateRef = {
+/** A skill or prompt template the composer selected, by id/name/path. */
+type RuntimeResourceRef = {
   id?: string;
   name?: string;
   path?: string;
@@ -31,8 +26,8 @@ export type RuntimeStartOptions = {
   browserToolEnabled?: boolean;
   browserSessionId?: string;
   browserBackend?: BrowserBackend;
-  skills?: RuntimeSkillRef[];
-  promptTemplates?: RuntimePromptTemplateRef[];
+  skills?: RuntimeResourceRef[];
+  promptTemplates?: RuntimeResourceRef[];
 };
 
 type AgentSessionOptionsInput = {
@@ -107,20 +102,16 @@ function resolveBundledResourcePath(kind: string, name: string, override?: strin
 }
 
 export function runtimeOptionsFingerprint(options: RuntimeStartOptions): string {
-  const skills = (options.skills ?? [])
-    .map((skill) => `${skill.name ?? ""}:${skill.path ?? ""}`)
-    .sort();
-  const promptTemplates = (options.promptTemplates ?? [])
-    .map((template) => `${template.name ?? ""}:${template.path ?? ""}`)
-    .sort();
+  const refs = (values: RuntimeResourceRef[] = []) =>
+    values.map((ref) => `${ref.name ?? ""}:${ref.path ?? ""}`).sort();
   return JSON.stringify({
     thinkingLevel: options.thinkingLevel ?? "high",
     toolAccess: options.toolAccess ?? "full",
     browser: options.browserToolEnabled === true,
     browserBackend: browserBackend(options),
     browserSessionId: options.browserSessionId ?? "",
-    skills,
-    promptTemplates,
+    skills: refs(options.skills),
+    promptTemplates: refs(options.promptTemplates),
   });
 }
 

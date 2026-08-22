@@ -463,7 +463,14 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
       pending.resolve(pending.method === "confirm" ? false : undefined);
     }
     this.extensionUiPending.clear();
-    await runtime?.dispose().catch(() => undefined);
+    if (!runtime) return;
+    try {
+      // Swallows a synchronous throw as well as a rejection: a runtime we
+      // cannot dispose is already detached from this session either way.
+      await runtime.dispose();
+    } catch {
+      return;
+    }
   }
 
   get status(): PiAgentStatus {
