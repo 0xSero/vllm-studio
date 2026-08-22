@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { AssistantBlock, ChatMessage } from "@/features/agent/messages";
 import { SessionPaneBlockRouter } from "@/features/agent/ui/timeline/session-pane-block-router";
 import { ChevronDownIcon } from "@/ui/icons";
@@ -26,38 +26,6 @@ type TimelineProps = {
   hasEarlier?: boolean;
   onLoadEarlier?: () => Promise<void> | void;
 };
-
-const MemoMessage = memo(
-  function MemoMessage({
-    message,
-    live,
-    running,
-    cwd,
-    onForkSession,
-  }: {
-    message: ChatMessage;
-    live: boolean;
-    running: boolean;
-    cwd: string | null;
-    onForkSession?: () => void;
-  }) {
-    return (
-      <MessageView
-        message={message}
-        live={live}
-        running={running}
-        cwd={cwd}
-        onForkSession={onForkSession}
-      />
-    );
-  },
-  (prev, next) =>
-    prev.message === next.message &&
-    prev.live === next.live &&
-    prev.running === next.running &&
-    prev.cwd === next.cwd &&
-    prev.onForkSession === next.onForkSession,
-);
 
 export function Timeline({
   messages,
@@ -112,7 +80,7 @@ export function Timeline({
                   data-timeline-message-id={message.id}
                   className={`${isGrouped ? "pt-2" : "pt-4 sm:pt-6"} ${isLast ? "pb-4" : ""}`}
                 >
-                  <MemoMessage
+                  <SessionPaneBlockRouter
                     message={message}
                     live={isLast && running}
                     running={running}
@@ -582,28 +550,4 @@ function useTimelineScrollEffects({
       scroller.scrollTop = scroller.scrollHeight;
     }
   }, [stickToBottom, scroller]);
-}
-
-function MessageView({
-  message,
-  live = false,
-  running = false,
-  cwd = null,
-  onForkSession,
-}: {
-  message: ChatMessage;
-  live?: boolean;
-  running?: boolean;
-  cwd?: string | null;
-  onForkSession?: () => void;
-}) {
-  return (
-    <SessionPaneBlockRouter
-      message={message}
-      live={live}
-      running={running}
-      cwd={cwd}
-      onForkSession={onForkSession}
-    />
-  );
 }
