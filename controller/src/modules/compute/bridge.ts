@@ -241,71 +241,65 @@ const RUNNING_STATES = new Set(["starting", "ready", "unhealthy"]);
 export const createComputeBridge = (deps: ComputeBridgeDependencies): ComputeBridge => {
   const llmRecord = (): InstanceRecord | null => deps.store.read(LLM_INSTANCE);
 
-  const findInferenceProcess = (): Effect.Effect<ProcessInfo | null> =>
-    Effect.gen(function* () {
-      const record = llmRecord();
-      if (!record || record.ref === null) return null;
-      const state = yield* deps.compute.stateOf(record);
-      if (!RUNNING_STATES.has(state)) return null;
-      const recipe = yield* deps
-        .getRecipe(record.recipeId)
-        .pipe(Effect.catch(() => Effect.succeed(null)));
-      const backend = record.engine === "exllamav3" ? "unknown" : record.engine;
-      return {
-        pid: record.ref.kind === "process" ? record.ref.pid : 0,
-        backend,
-        model_path: recipe?.model_path ?? null,
-        port: record.port,
-        served_model_name: recipe?.served_model_name ?? null,
-      } satisfies ProcessInfo;
-    });
-
-  const getCurrentRecipe = (): Effect.Effect<Recipe | null, unknown> =>
-    Effect.gen(function* () {
-      const record = llmRecord();
-      if (!record) return null;
-      return yield* deps.getRecipe(record.recipeId);
-    });
-
-  const launchingRecipeId = (): string | null => {
-    const record = llmRecord();
-    if (!record) return null;
-    // A record without a handle is reserving; with a handle it may still be starting,
-    // but "launching" for status surfaces means "not yet confirmed running".
-    return record.ref === null ? record.recipeId : null;
-  };
-
-  const launchRecipe = (recipe: Recipe): Effect.Effect<InstanceRecord, LaunchFailure> =>
-    Effect.gen(function* () {
-      const gpus = yield* getGpuInfo().pipe(Effect.catch(() => Effect.succeed([] as GpuInfo[])));
-      const resolution = resolveRecipeGpuUuids(recipe, gpus);
-      if (resolution.unresolvedTokens.length > 0) {
-        return yield* Effect.fail<LaunchFailure>({
-          kind: "spawn-failed",
-          detail: `GPU selectors could not be resolved: ${resolution.unresolvedTokens.join(", ")}`,
-        });
-      }
-      return yield* deps.compute.launch(recipeToLaunchInput(recipe, deps.config, resolution.uuids));
-    });
-
-  const waitForHealthy = (timeoutMs: number): Effect.Effect<boolean> =>
-    Effect.gen(function* () {
-      const deadline = Date.now() + timeoutMs;
-      while (Date.now() < deadline) {
-        const record = llmRecord();
-        if (record && (yield* deps.compute.stateOf(record)) === "ready") return true;
-        yield* Effect.sleep(2_000);
-      }
-      return false;
-    });
-
   return {
-    findInferenceProcess,
-    getCurrentRecipe,
-    launchingRecipeId,
-    launchRecipe,
+    findInferenceProcess: () =>
+      Effect.gen(function* () {
+        const record = llmRecord();
+        if (!record || record.ref === null) return null;
+        const state = yield* deps.compute.stateOf(record);
+        if (!RUNNING_STATES.has(state)) return null;
+        const recipe = yield* deps
+          .getRecipe(record.recipeId)
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+        return {
+          pid: record.ref.kind === "process" ? record.ref.pid : 0,
+          backend: record.engine === "exllamav3" ? "unknown" : record.engine,
+          model_path: recipe?.model_path ?? null,
+          port: record.port,
+          served_model_name: recipe?.served_model_name ?? null,
+        } satisfies ProcessInfo;
+      }),
+
+    getCurrentRecipe: () =>
+      Effect.suspend(() => {
+        const record = llmRecord();
+        return record ? deps.getRecipe(record.recipeId) : Effect.succeed(null);
+      }),
+
+    // A record without a handle is reserving; with a handle it may still be starting, but
+    // "launching" for status surfaces means "not yet confirmed running".
+    launchingRecipeId: (): string | null => {
+      const record = llmRecord();
+      return record?.ref === null ? record.recipeId : null;
+    },
+
+    launchRecipe: (recipe) =>
+      Effect.gen(function* () {
+        const gpus = yield* getGpuInfo().pipe(Effect.catch(() => Effect.succeed([] as GpuInfo[])));
+        const resolution = resolveRecipeGpuUuids(recipe, gpus);
+        if (resolution.unresolvedTokens.length > 0) {
+          return yield* Effect.fail<LaunchFailure>({
+            kind: "spawn-failed",
+            detail: `GPU selectors could not be resolved: ${resolution.unresolvedTokens.join(", ")}`,
+          });
+        }
+        return yield* deps.compute.launch(
+          recipeToLaunchInput(recipe, deps.config, resolution.uuids),
+        );
+      }),
+
     evict: () => deps.compute.stop(LLM_INSTANCE),
     cancelLaunch: () => deps.compute.cancel(LLM_INSTANCE),
-    waitForHealthy,
+
+    waitForHealthy: (timeoutMs) =>
+      Effect.gen(function* () {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          const record = llmRecord();
+          if (record && (yield* deps.compute.stateOf(record)) === "ready") return true;
+          yield* Effect.sleep(2_000);
+        }
+        return false;
+      }),
   };
 };

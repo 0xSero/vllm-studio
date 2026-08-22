@@ -187,11 +187,9 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
       const existing = deps.store.read(input.name);
       if (existing) {
         const state = yield* stateOf(existing);
-        if (state === "ready" || state === "starting" || state === "reserving") {
-          return yield* Effect.fail<LaunchFailure>({ kind: "already-running", name: input.name });
-        }
-        // exited / unhealthy: reclaim the name.
-        if (!(yield* stopRecord(existing))) {
+        const running = state === "ready" || state === "starting" || state === "reserving";
+        // exited / unhealthy: reclaim the name — unless it refuses to stop.
+        if (running || !(yield* stopRecord(existing))) {
           return yield* Effect.fail<LaunchFailure>({ kind: "already-running", name: input.name });
         }
         deps.store.drop(existing.name);
