@@ -74,7 +74,6 @@ export function useWorkspaceRuntimeSync({ dispatch, sessions }: UseWorkspaceRunt
       commit: (sessionId: SessionId, patch: (session: Session) => Session) => {
         dispatch({ type: "patchSession", sessionId, patch });
       },
-      getSession: (sessionId) => sessionsRef.current.find((session) => session.id === sessionId),
       getSessions: () => sessionsRef.current,
     });
     return openSessionListChangedSubscription(() => {

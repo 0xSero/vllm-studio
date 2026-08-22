@@ -17,7 +17,7 @@ export type TextDeltaCoalescer = {
   enqueuePiEvent: (
     sessionId: SessionId,
     event: Record<string, unknown>,
-    options?: { flushNow?: boolean; seq?: number },
+    options?: { seq?: number },
   ) => boolean;
   flushNow: (sessionId: SessionId) => void;
   /** Drop a session's pending merge without applying it (cursor epoch reset). */
@@ -134,11 +134,7 @@ export function createTextDeltaCoalescer({
       sessionId,
       type: normalizedEvent.type,
     });
-    if (options.flushNow) {
-      flushNow(sessionId);
-    } else {
-      scheduleFlush(sessionId);
-    }
+    scheduleFlush(sessionId);
     return true;
   };
 
