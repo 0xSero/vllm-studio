@@ -35,10 +35,7 @@ const toolCallRecordFromParsed = (parsed: unknown): { name: string; args: unknow
   const record = parsed as Record<string, unknown>;
   const name = String(record["tool"] ?? record["name"] ?? "").trim();
   if (!name) return null;
-  return {
-    name,
-    args: record["args"] ?? record["arguments"] ?? record["parameters"] ?? {},
-  };
+  return { name, args: record["args"] ?? record["arguments"] ?? record["parameters"] ?? {} };
 };
 
 const parseParameterBlocks = (block: string): Record<string, unknown> | null => {

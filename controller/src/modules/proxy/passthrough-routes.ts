@@ -70,10 +70,7 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
 
         const contentType = fetched.headers.get("content-type") ?? "";
         if (contentType.includes("text/event-stream") && fetched.body) {
-          return new Response(fetched.body, {
-            status: fetched.status,
-            headers: buildSseHeaders(),
-          });
+          return new Response(fetched.body, { status: fetched.status, headers: buildSseHeaders() });
         }
         const body = yield* Effect.tryPromise({
           try: () => fetched.arrayBuffer(),

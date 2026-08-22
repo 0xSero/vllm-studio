@@ -108,9 +108,8 @@ export const createThinkRewriter = (
       let reasoningOut = "";
 
       while (index < carryIndex) {
-        const remainingLower = combinedLower.slice(index);
-
         if (combined[index] === "<") {
+          const remainingLower = combinedLower.slice(index);
           const thinkTag = getThinkingTagLength(remainingLower);
           if (thinkTag?.kind === "open") {
             if (pendingImplicitContent) {
@@ -146,15 +145,15 @@ export const createThinkRewriter = (
           }
         }
 
-        const ch = combined[index] ?? "";
-        if (inThink || defaultToReasoning) {
-          reasoningOut += ch;
-        } else if (bufferingImplicitPrefix()) {
-          pendingImplicitContent += ch;
-        } else {
-          contentOut += ch;
-        }
-        index += 1;
+        // Everything up to the next "<" takes the same branch: the three flags
+        // below only change when a thinking tag is consumed above.
+        const nextTag = combined.indexOf("<", index + 1);
+        const runEnd = nextTag < 0 || nextTag > carryIndex ? carryIndex : nextTag;
+        const run = combined.slice(index, runEnd);
+        if (inThink || defaultToReasoning) reasoningOut += run;
+        else if (bufferingImplicitPrefix()) pendingImplicitContent += run;
+        else contentOut += run;
+        index = runEnd;
       }
 
       thinkCarry = carryIndex < combined.length ? combined.slice(carryIndex) : "";

@@ -69,8 +69,9 @@ const sanitizeDeepSeekV4ControllerRequest = (
       changed = true;
     }
     const content = record["content"];
-    if (typeof content === "string" && stripDeepSeekControlTokens(content) !== content) {
-      record["content"] = stripDeepSeekControlTokens(content);
+    const cleaned = typeof content === "string" ? stripDeepSeekControlTokens(content) : content;
+    if (cleaned !== content) {
+      record["content"] = cleaned;
       changed = true;
     }
   }
@@ -114,13 +115,11 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
       if (typeof parsed["model"] === "string") {
         requestedModel = parsed["model"];
         matchedRecipe = yield* findRecipeByModel(requestedModel, context);
-        if (matchedRecipe) {
-          const canonical = matchedRecipe.served_model_name ?? matchedRecipe.id;
-          if (canonical && canonical !== requestedModel) {
-            parsed["model"] = canonical;
-            requestedModel = canonical;
-            bodyChanged = true;
-          }
+        const canonical = matchedRecipe?.served_model_name ?? matchedRecipe?.id;
+        if (canonical && canonical !== requestedModel) {
+          parsed["model"] = canonical;
+          requestedModel = canonical;
+          bodyChanged = true;
         }
       }
       if (sanitizeDeepSeekV4ControllerRequest(parsed, matchedRecipe)) bodyChanged = true;
@@ -137,9 +136,9 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
   ) =>
     context.bridge.findInferenceProcess().pipe(
       Effect.map((current) => {
-        const matches =
-          current && isRecipeRunning(matchedRecipe, current, { allowEitherPathContains: true });
-        if (matches) return null;
+        if (current && isRecipeRunning(matchedRecipe, current, { allowEitherPathContains: true })) {
+          return null;
+        }
         const activeModel = current?.served_model_name ?? current?.model_path ?? null;
         warnNonRunningModel({
           requestedModel,

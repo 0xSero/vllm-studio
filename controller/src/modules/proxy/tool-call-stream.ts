@@ -18,6 +18,7 @@ export interface ToolCallStreamOptions {
 }
 
 type TextHistory = Map<string, { text: string; snapshot: boolean }>;
+type StreamController = TransformStreamDefaultController<Uint8Array>;
 
 export const createToolCallStream = (
   source: ReadableStream<Uint8Array>,
@@ -91,22 +92,13 @@ export const createToolCallStream = (
   });
   const reasoningThink = createThinkRewriter();
 
-  const enqueueLine = (
-    controller: TransformStreamDefaultController<Uint8Array>,
-    line: string,
-  ): void => {
+  const enqueueLine = (controller: StreamController, line: string): void => {
     controller.enqueue(encoder.encode(`${line}\n`));
   };
-  const enqueueLines = (
-    controller: TransformStreamDefaultController<Uint8Array>,
-    lines: string[],
-  ): void => {
+  const enqueueLines = (controller: StreamController, lines: string[]): void => {
     for (const line of lines) enqueueLine(controller, line);
   };
-  const enqueueDataEvent = (
-    controller: TransformStreamDefaultController<Uint8Array>,
-    dataLine: string,
-  ): void => {
+  const enqueueDataEvent = (controller: StreamController, dataLine: string): void => {
     enqueueLine(controller, dataLine);
     enqueueLine(controller, "");
   };
@@ -132,19 +124,20 @@ export const createToolCallStream = (
     return `data: ${JSON.stringify({ id: chunkId(), choices: [{ index: 0, delta }] })}`;
   };
 
-  const emitVisibleContent = (
-    controller: TransformStreamDefaultController<Uint8Array>,
-    content: string,
-  ): void => {
-    if (!content) return;
-    const controlTokensStripped = stripDeepSeekControlTokens(content);
+  /** Record visible text in the tool-call scan buffer, return it client-ready. */
+  const trackVisibleContent = (text: string): string => {
+    const controlTokensStripped = stripDeepSeekControlTokens(text);
     visibleContentBuffer += controlTokensStripped;
-    const cleaned = stripToolXmlDelta(controlTokensStripped);
-    const chunk = buildFlushChunk({ content: cleaned });
+    return stripToolXmlDelta(controlTokensStripped);
+  };
+
+  const emitVisibleContent = (controller: StreamController, content: string): void => {
+    if (!content) return;
+    const chunk = buildFlushChunk({ content: trackVisibleContent(content) });
     if (chunk) enqueueDataEvent(controller, chunk);
   };
 
-  const flushThinkCarry = (controller: TransformStreamDefaultController<Uint8Array>): void => {
+  const flushThinkCarry = (controller: StreamController): void => {
     emitVisibleContent(controller, contentThink.drainPendingContent());
     const tail = contentThink.drainCarry();
     if (!tail) return;
@@ -172,7 +165,7 @@ export const createToolCallStream = (
     onFirstToken?.();
   };
 
-  const maybeInjectToolCalls = (controller: TransformStreamDefaultController<Uint8Array>): void => {
+  const maybeInjectToolCalls = (controller: StreamController): void => {
     if (toolCallsFound || !visibleContentBuffer) return;
     const parsed = parseToolCallsFromContent(visibleContentBuffer);
     if (parsed.length > 0) {
@@ -181,10 +174,7 @@ export const createToolCallStream = (
     }
   };
 
-  const flushEvent = (
-    controller: TransformStreamDefaultController<Uint8Array>,
-    lines: string[],
-  ): void => {
+  const flushEvent = (controller: StreamController, lines: string[]): void => {
     if (lines.length === 0) return;
 
     const dataLines: string[] = [];
@@ -252,9 +242,7 @@ export const createToolCallStream = (
         let reasoningFromContent = "";
         if (content) {
           const rewritten = contentThink.rewrite(content, false);
-          const controlTokensStripped = stripDeepSeekControlTokens(rewritten.content);
-          visibleContentBuffer += controlTokensStripped;
-          const cleanedContent = stripToolXmlDelta(controlTokensStripped);
+          const cleanedContent = trackVisibleContent(rewritten.content);
           if (cleanedContent) {
             delta["content"] = cleanedContent;
           } else if ("content" in delta) {

@@ -18,7 +18,6 @@ interface InferenceAccountingOptions {
   logger: Pick<Logger, "warn">;
   stores: InferenceAccountingStores;
 }
-
 export interface InferenceUsageInput {
   prompt_tokens?: number;
   completion_tokens?: number;
@@ -37,34 +36,31 @@ export interface InferenceUsageTotals {
   cacheWriteTokens: number;
 }
 
+/** The token columns this module fills in from the upstream usage block. */
+type AccountedColumns =
+  | "cache_read_tokens"
+  | "cache_write_tokens"
+  | "completion_tokens"
+  | "prompt_tokens"
+  | "reasoning_tokens";
+
 interface InferenceRecordInput {
   usage: InferenceUsageInput | undefined;
-  record: Omit<
-    InferenceRequestRecord,
-    | "cache_read_tokens"
-    | "cache_write_tokens"
-    | "completion_tokens"
-    | "prompt_tokens"
-    | "reasoning_tokens"
-    | "streamed"
-  >;
+  record: Omit<InferenceRequestRecord, AccountedColumns | "streamed">;
   streamed: boolean;
 }
 
 const hasBillableTokens = (totals: InferenceUsageTotals): boolean =>
   totals.promptTokens > 0 || totals.completionTokens > 0;
 
-const readUsageTotals = (usage: InferenceUsageInput): InferenceUsageTotals => {
-  const promptDetails = usage.prompt_tokens_details;
-  const completionDetails = usage.completion_tokens_details;
-  return {
-    promptTokens: usage.prompt_tokens ?? 0,
-    completionTokens: usage.completion_tokens ?? 0,
-    reasoningTokens: usage.reasoning_tokens ?? completionDetails?.["reasoning_tokens"] ?? 0,
-    cacheReadTokens: promptDetails?.["cached_tokens"] ?? usage.cache_read_tokens ?? 0,
-    cacheWriteTokens: usage.cache_write_tokens ?? 0,
-  };
-};
+const readUsageTotals = (usage: InferenceUsageInput): InferenceUsageTotals => ({
+  promptTokens: usage.prompt_tokens ?? 0,
+  completionTokens: usage.completion_tokens ?? 0,
+  reasoningTokens:
+    usage.reasoning_tokens ?? usage.completion_tokens_details?.["reasoning_tokens"] ?? 0,
+  cacheReadTokens: usage.prompt_tokens_details?.["cached_tokens"] ?? usage.cache_read_tokens ?? 0,
+  cacheWriteTokens: usage.cache_write_tokens ?? 0,
+});
 
 const addLifetimeUsage = (
   stores: InferenceAccountingStores,

@@ -87,15 +87,10 @@ export const registerTokenizationRoutes = defineRoutes((app, context) =>
         const messages = body.messages ?? [];
         const tools = body.tools ?? [];
         const model = body.model ?? current.served_model_name ?? "default";
-        const messagesTokens = yield* tokenize(context, model, messageText(messages)).pipe(
-          Effect.orElseSucceed(() => 0),
-        );
-        const toolsTokens =
-          tools.length > 0
-            ? yield* tokenize(context, model, JSON.stringify(tools)).pipe(
-                Effect.orElseSucceed(() => 0),
-              )
-            : 0;
+        const countTokens = (text: string): Effect.Effect<number> =>
+          tokenize(context, model, text).pipe(Effect.orElseSucceed(() => 0));
+        const messagesTokens = yield* countTokens(messageText(messages));
+        const toolsTokens = tools.length > 0 ? yield* countTokens(JSON.stringify(tools)) : 0;
         const overhead = messages.length * 4;
         return ctx.json({
           input_tokens: messagesTokens + toolsTokens + overhead,
