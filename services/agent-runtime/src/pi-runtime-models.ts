@@ -82,13 +82,11 @@ function userPiModelToAgentModel(
   providerCompat?: Record<string, unknown>,
 ): AgentModel {
   const rawId = model.id;
-  const name = model.name ?? rawId;
-  const inputs = model.input ?? ["text"];
   const reasoning = model.reasoning ?? inferReasoningSupport(rawId);
   return {
     id: `${qualifiedProviderId}/${rawId}`,
     rawId,
-    name: `${name} · ${providerName}`,
+    name: `${model.name ?? rawId} · ${providerName}`,
     provider: "local-studio",
     providerId: qualifiedProviderId,
     controllerName: providerName,
@@ -96,7 +94,7 @@ function userPiModelToAgentModel(
     maxTokens: model.maxTokens ?? 65_536,
     reasoning,
     thinkingLevels: supportedPiThinkingLevels(model, reasoning, providerCompat),
-    vision: resolveModelVision({ identifiers: [rawId], modalities: [inputs] }),
+    vision: resolveModelVision({ identifiers: [rawId], modalities: [model.input ?? ["text"]] }),
     active: false,
   };
 }
@@ -252,22 +250,17 @@ async function loadPersistedControllers(agentDir: string): Promise<PiControllerM
   try {
     const parsed = JSON.parse(await readFile(file, "utf-8")) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((entry): entry is PiControllerModelsRequest =>
-        Boolean(entry && typeof entry === "object" && !Array.isArray(entry)),
-      )
-      .flatMap((entry) => {
-        const record = entry as Record<string, unknown>;
-        return typeof record.url === "string"
-          ? [
-              {
-                url: record.url,
-                ...(typeof record.apiKey === "string" ? { apiKey: record.apiKey } : {}),
-                ...(typeof record.name === "string" ? { name: record.name } : {}),
-              },
-            ]
-          : [];
-      });
+    return parsed.flatMap((entry): PiControllerModelsRequest[] => {
+      const { url, apiKey, name } = (entry ?? {}) as Record<string, unknown>;
+      if (typeof url !== "string") return [];
+      return [
+        {
+          url,
+          ...(typeof apiKey === "string" ? { apiKey } : {}),
+          ...(typeof name === "string" ? { name } : {}),
+        },
+      ];
+    });
   } catch {
     return [];
   }
@@ -384,39 +377,37 @@ async function fetchModelsFromControllers(controllers: PiControllerConfig[]): Pr
       fetchModelsFromController(controller, index, controllers.length > 1),
     ),
   );
-  const controllerModels = settled
-    .filter(
-      (result): result is PromiseFulfilledResult<ControllerModels> => result.status === "fulfilled",
-    )
-    .map((result) => result.value);
+  const controllerModels = settled.flatMap((result) =>
+    result.status === "fulfilled" ? [result.value] : [],
+  );
   if (controllerModels.length === 0) {
-    const firstError = settled.find(
-      (result): result is PromiseRejectedResult => result.status === "rejected",
+    const [firstError] = settled.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
     );
-    throw firstError?.reason instanceof Error
-      ? firstError.reason
-      : new Error("No controllers returned models.");
+    throw firstError instanceof Error ? firstError : new Error("No controllers returned models.");
   }
-  const seen = new Set<string>();
-  const models: AgentModel[] = [];
-  for (const result of controllerModels) {
-    for (const model of result.models) {
-      if (seen.has(model.id)) continue;
-      seen.add(model.id);
-      models.push(model);
-    }
+  // First controller to claim an id wins, so the primary's naming survives.
+  const byId = new Map<string, AgentModel>();
+  for (const model of controllerModels.flatMap((result) => result.models)) {
+    if (!byId.has(model.id)) byId.set(model.id, model);
   }
-  return { models: models.sort((a, b) => a.name.localeCompare(b.name)), controllerModels };
+  const models = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+  return { models, controllerModels };
+}
+
+/** The pi agent directory, created private-by-default. */
+async function ensurePiAgentDir(): Promise<string> {
+  const agentDir = path.join(resolveDataDir(), "pi-agent");
+  await mkdir(agentDir, { recursive: true });
+  await chmod(agentDir, 0o700).catch(() => undefined);
+  return agentDir;
 }
 
 async function writePiModelsConfig(
   controllerModels: ControllerModels[],
   userPiProviders: UserPiProviders,
 ): Promise<string> {
-  const dataDir = resolveDataDir();
-  const agentDir = path.join(dataDir, "pi-agent");
-  await mkdir(agentDir, { recursive: true });
-  await chmod(agentDir, 0o700).catch(() => undefined);
+  const agentDir = await ensurePiAgentDir();
 
   const vllmProviders = Object.fromEntries(
     controllerModels.map(({ controller, models, providerId }) => [
@@ -468,10 +459,7 @@ export async function refreshPiModels(
   requestedControllers?: PiControllerModelsRequest[],
 ): Promise<{ models: AgentModel[]; agentDir: string }> {
   const settings = await getApiSettings();
-  const dataDir = resolveDataDir();
-  const agentDir = path.join(dataDir, "pi-agent");
-  await mkdir(agentDir, { recursive: true });
-  await chmod(agentDir, 0o700).catch(() => undefined);
+  const agentDir = await ensurePiAgentDir();
   const persisted =
     requestedControllers && requestedControllers.length > 0
       ? requestedControllers
@@ -495,9 +483,9 @@ export async function refreshPiModels(
     );
   });
   const writtenAgentDir = await writePiModelsConfig(controllerModels, userPiProviders);
-  const providerModels = await collectProviderAgentModels();
+  await refreshProviderHub().catch(() => undefined);
 
-  const allModels = [...models, ...userPiModels, ...providerModels];
+  const allModels = [...models, ...userPiModels, ...(await listProviderAgentModels())];
   if (allModels.length === 0 && controllerError) {
     throw controllerError instanceof Error
       ? controllerError
@@ -505,23 +493,10 @@ export async function refreshPiModels(
   }
   return { models: allModels, agentDir: writtenAgentDir };
 }
-async function collectProviderAgentModels(): Promise<AgentModel[]> {
-  await refreshProviderHub().catch(() => undefined);
-  return listProviderAgentModels();
-}
 
-function isDeepSeekReasoningModel(model: AgentModel): boolean {
+function isReasoningModelFamily(model: AgentModel, family: string): boolean {
   const id = `${model.id} ${model.rawId ?? ""} ${model.name}`.toLowerCase();
-  return model.reasoning && id.includes("deepseek");
-}
-
-function isControllerBackedModel(model: AgentModel): boolean {
-  return typeof model.controllerUrl === "string" && model.controllerUrl.length > 0;
-}
-
-function isInklingReasoningModel(model: AgentModel): boolean {
-  const id = `${model.id} ${model.rawId ?? ""} ${model.name}`.toLowerCase();
-  return model.reasoning && id.includes("inkling");
+  return model.reasoning && id.includes(family);
 }
 
 const VLLM_OPENAI_COMPAT: OpenAICompletionsCompat = {
@@ -543,10 +518,39 @@ const CONTROLLER_THINKING_LEVEL_MAP = {
   max: "max",
 } as const;
 
+const DEEPSEEK_THINKING_LEVEL_MAP = {
+  off: null,
+  minimal: null,
+  low: "low",
+  medium: "medium",
+  high: "high",
+  xhigh: "max",
+  max: "max",
+} as const;
+
+const INKLING_THINKING_LEVEL_MAP = {
+  off: "none",
+  minimal: "minimal",
+  low: "low",
+  medium: "medium",
+  high: "high",
+  xhigh: null,
+  max: "max",
+} as const;
+
 export function modelsToPiModels(models: AgentModel[]) {
   return models.map((model) => {
-    const deepSeekReasoning = isDeepSeekReasoningModel(model) && !isControllerBackedModel(model);
-    const inklingReasoning = isInklingReasoningModel(model);
+    const controllerBacked =
+      typeof model.controllerUrl === "string" && model.controllerUrl.length > 0;
+    const deepSeekReasoning = isReasoningModelFamily(model, "deepseek") && !controllerBacked;
+    const thinkingLevelMap =
+      model.controllerUrl && model.reasoning
+        ? CONTROLLER_THINKING_LEVEL_MAP
+        : deepSeekReasoning
+          ? DEEPSEEK_THINKING_LEVEL_MAP
+          : isReasoningModelFamily(model, "inkling")
+            ? INKLING_THINKING_LEVEL_MAP
+            : null;
     return {
       id: model.rawId ?? model.id,
       name: model.name,
@@ -556,40 +560,11 @@ export function modelsToPiModels(models: AgentModel[]) {
       contextWindow: model.contextWindow,
       maxTokens: model.maxTokens,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      ...(model.controllerUrl && model.reasoning
-        ? { thinkingLevelMap: CONTROLLER_THINKING_LEVEL_MAP }
-        : deepSeekReasoning
-          ? {
-              thinkingLevelMap: {
-                off: null,
-                minimal: null,
-                low: "low",
-                medium: "medium",
-                high: "high",
-                xhigh: "max",
-                max: "max",
-              },
-            }
-          : inklingReasoning
-            ? {
-                thinkingLevelMap: {
-                  off: "none",
-                  minimal: "minimal",
-                  low: "low",
-                  medium: "medium",
-                  high: "high",
-                  xhigh: null,
-                  max: "max",
-                },
-              }
-            : {}),
+      ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
       compat: {
         ...VLLM_OPENAI_COMPAT,
         ...(deepSeekReasoning
-          ? {
-              thinkingFormat: "deepseek",
-              requiresReasoningContentOnAssistantMessages: true,
-            }
+          ? { thinkingFormat: "deepseek", requiresReasoningContentOnAssistantMessages: true }
           : {}),
       },
     };

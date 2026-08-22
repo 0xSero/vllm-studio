@@ -1,6 +1,5 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
-import { closeSync, constants, fsyncSync, openSync, readSync, statSync } from "node:fs";
 import {
   createAgentSessionFromServices,
   createAgentSessionRuntime,
@@ -8,7 +7,6 @@ import {
   getAgentDir,
   SessionManager,
   shouldCompact,
-  type AgentSessionEvent,
   type AgentSessionRuntime,
   type ExtensionUIContext,
 } from "@earendil-works/pi-coding-agent";
@@ -22,11 +20,7 @@ import {
   resolveAgentCwdEffect,
   type RuntimeStartOptions,
 } from "./pi-runtime-helpers";
-import {
-  refreshPiModels,
-  resolvePiModelSelection,
-  toPiThinkingLevel,
-} from "./pi-runtime-models";
+import { refreshPiModels, resolvePiModelSelection, toPiThinkingLevel } from "./pi-runtime-models";
 import { getProviderHub } from "./provider-hub";
 import { attachGoalDriver } from "./goal-driver";
 import { createGoalPromptExtension } from "./goal-prompt";
@@ -38,7 +32,6 @@ import type {
   LoggedPiEvent,
   PiAgentSession,
   PiAgentStatus,
-  PiContextUsage,
   PiPromptOptions,
 } from "./pi-runtime-types";
 
@@ -50,10 +43,14 @@ function comparableQueuedText(text: string): string {
   return (index === -1 ? text : text.slice(index + marker.length)).trim();
 }
 
-function takeQueuedFollowUp(
+function planQueuedFollowUpMutation(
   followUp: readonly string[],
   message: string,
-): { selected: string; before: string[]; after: string[] } | null {
+  action: AgentQueueAction,
+  replacement?: string,
+): { promoted: string | null; followUp: string[] } | null {
+  // Exact text first; fall back to the trimmed user-prompt tail so a queued
+  // message that was decorated on its way in still matches.
   const exactIndex = followUp.indexOf(message);
   const target = comparableQueuedText(message);
   const index =
@@ -61,30 +58,14 @@ function takeQueuedFollowUp(
       ? exactIndex
       : followUp.findIndex((candidate) => comparableQueuedText(candidate) === target);
   if (index < 0) return null;
-  return {
-    selected: followUp[index]!,
-    before: followUp.slice(0, index),
-    after: followUp.slice(index + 1),
-  };
-}
-
-function planQueuedFollowUpMutation(
-  followUp: readonly string[],
-  message: string,
-  action: AgentQueueAction,
-  replacement?: string,
-): { promoted: string | null; followUp: string[] } | null {
-  const selected = takeQueuedFollowUp(followUp, message);
-  if (!selected) return null;
   if (action === "replace" && !replacement) {
     throw new Error("Replacement text is required.");
   }
+  const before = followUp.slice(0, index);
+  const after = followUp.slice(index + 1);
   return {
-    promoted: action === "promote" ? selected.selected : null,
-    followUp:
-      action === "replace"
-        ? [...selected.before, replacement!, ...selected.after]
-        : [...selected.before, ...selected.after],
+    promoted: action === "promote" ? followUp[index]! : null,
+    followUp: action === "replace" ? [...before, replacement!, ...after] : [...before, ...after],
   };
 }
 
@@ -104,12 +85,10 @@ async function restoreQueuedMessages(
   for (const queued of mutation?.followUp ?? cleared.followUp) await session.followUp(queued);
 }
 
-
 /** Appended to the system prompt for vision-capable models. Kept as an extra
  *  section rather than a replacement so first-party extensions still apply. */
 const VISION_GUIDANCE =
   "When an image is attached, inspect it carefully before answering. State only details visible in the image. Never invent labels, UI elements, text, or facts. Say when details are too small or uncertain. Give a concise answer. Use available tools to inspect supplied files when helpful.";
-
 
 function selectPiRuntimeModel(
   models: Awaited<ReturnType<typeof refreshPiModels>>["models"],
@@ -178,8 +157,7 @@ function diagnosticsMap(): Map<string, PiResourceDiagnostic[]> {
 
 export function piResourceDiagnostics(agentDir?: string): PiResourceDiagnostic[] {
   const map = diagnosticsMap();
-  if (agentDir) return map.get(agentDir) ?? [];
-  return [...map.values()].flat();
+  return agentDir ? (map.get(agentDir) ?? []) : [...map.values()].flat();
 }
 
 class PiSdkSession extends EventEmitter implements PiAgentSession {
@@ -445,13 +423,9 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   }
 
   private promptSession(message: string, options: PiPromptOptions): Promise<void> {
-    return this.requireSession().prompt(message, {
-      streamingBehavior: options.streamingBehavior,
-      images: options.images,
-      expandPromptTemplates: options.expandPromptTemplates,
-      source: options.source,
-      preflightResult: options.preflightResult,
-    });
+    // restartOnContinuationError is ours, not the SDK's — everything else forwards.
+    const { restartOnContinuationError: _restart, ...sdkOptions } = options;
+    return this.requireSession().prompt(message, sdkOptions);
   }
 
   private restartPromptEffect(
@@ -608,7 +582,8 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   }
 
   getEventsAfter(seq: number): LoggedPiEvent[] {
-    return piEventsAfter(this.eventLog, seq);
+    const floor = Number.isFinite(seq) ? Math.max(0, Math.trunc(seq)) : 0;
+    return this.eventLog.filter((entry) => entry.seq > floor);
   }
 
   onLoggedEvent(listener: (event: LoggedPiEvent) => void) {
@@ -715,35 +690,22 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   }
 }
 
-function piEventsAfter(eventLog: LoggedPiEvent[], seq: number): LoggedPiEvent[] {
-  const floor = Number.isFinite(seq) ? Math.max(0, Math.trunc(seq)) : 0;
-  return eventLog.filter((entry) => entry.seq > floor);
-}
-
 type RuntimeLookupEntry = {
   sessionId: string;
   session: PiAgentSession;
 };
 
-function findRuntimeSessionForLookup(
-  entries: Iterable<RuntimeLookupEntry>,
-  sessionId: string,
-  piSessionId?: string | null,
-): RuntimeLookupEntry | null {
-  const snapshot = [...entries];
-  const exact = snapshot.find((entry) => entry.sessionId === sessionId);
-  const target = piSessionId?.trim();
-  if (!target) return exact ?? null;
-  const matches = snapshot.filter(
-    (entry) =>
-      entry.session.status.piSessionId === target ||
-      (entry.sessionId === sessionId && !entry.session.status.piSessionId),
-  );
-  return matches.reduce<RuntimeLookupEntry | null>(
-    (best, candidate) =>
-      !best || runtimeLookupOutranks(candidate, best, sessionId) ? candidate : best,
-    null,
-  );
+/** Ranked most significant first: a streaming runtime beats a merely started
+ *  one, the exact requested key breaks that tie, and the longest event log
+ *  breaks the rest. Compared lexicographically, so no field can be traded away
+ *  against a bigger number in a lower one. */
+function runtimeLookupRank(entry: RuntimeLookupEntry, requestedSessionId: string): number[] {
+  return [
+    entry.session.status.active === true ? 1 : 0,
+    entry.session.status.running === true ? 1 : 0,
+    entry.sessionId === requestedSessionId ? 1 : 0,
+    entry.session.status.eventSeq ?? 0,
+  ];
 }
 
 function runtimeLookupOutranks(
@@ -753,24 +715,29 @@ function runtimeLookupOutranks(
 ): boolean {
   const candidateRank = runtimeLookupRank(candidate, requestedSessionId);
   const currentRank = runtimeLookupRank(current, requestedSessionId);
-  for (let index = 0; index < candidateRank.length; index += 1) {
-    if (candidateRank[index] !== currentRank[index]) {
-      return candidateRank[index] > currentRank[index];
-    }
-  }
-  return false;
+  const first = candidateRank.findIndex((value, index) => value !== currentRank[index]);
+  return first !== -1 && candidateRank[first]! > currentRank[first]!;
 }
 
-function runtimeLookupRank(
-  entry: RuntimeLookupEntry,
-  requestedSessionId: string,
-): [number, number, number, number] {
-  return [
-    entry.session.status.active === true ? 1 : 0,
-    entry.session.status.running === true ? 1 : 0,
-    entry.sessionId === requestedSessionId ? 1 : 0,
-    entry.session.status.eventSeq ?? 0,
-  ];
+function findRuntimeSessionForLookup(
+  entries: Iterable<RuntimeLookupEntry>,
+  sessionId: string,
+  piSessionId?: string | null,
+): RuntimeLookupEntry | null {
+  const snapshot = [...entries];
+  const target = piSessionId?.trim();
+  if (!target) return snapshot.find((entry) => entry.sessionId === sessionId) ?? null;
+  return snapshot
+    .filter(
+      (entry) =>
+        entry.session.status.piSessionId === target ||
+        (entry.sessionId === sessionId && !entry.session.status.piSessionId),
+    )
+    .reduce<RuntimeLookupEntry | null>(
+      (best, candidate) =>
+        !best || runtimeLookupOutranks(candidate, best, sessionId) ? candidate : best,
+      null,
+    );
 }
 
 const DEFAULT_SESSION_ID = "default";
