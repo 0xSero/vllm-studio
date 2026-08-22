@@ -30,14 +30,6 @@ type AgentWorkspaceShellProps = {
   handles: WorkspaceHandles;
 };
 
-function workspaceSessionIdentity(session: ReturnType<typeof focusedSession>) {
-  if (!session) return { viewKey: null, viewAlias: null };
-  if (!session.piSessionId) {
-    return { viewKey: session.id, viewAlias: null };
-  }
-  return { viewKey: session.piSessionId, viewAlias: session.id };
-}
-
 export function shouldShowProjectEmptyState(
   projects: ProjectsContextValue,
   projectParam: string | null,
@@ -64,12 +56,17 @@ export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspace
   });
 
   const focusedTab = focusedSession(state);
-  const activeSessionIdentity = workspaceSessionIdentity(focusedTab);
   const activeProject = projects.resolveProject(focusedTab) ?? projects.selectedProject;
-  useActiveSessionEffects({
-    ...activeSessionIdentity,
-    setActiveComputerSession: tools.setActiveComputerSession,
-  });
+  // A pi-backed session is addressed by its runtime id, with the tab id kept as
+  // an alias; a tab that has not started one yet is addressed by its own id.
+  const viewKey = focusedTab ? focusedTab.piSessionId || focusedTab.id : null;
+  const viewAlias = focusedTab?.piSessionId ? focusedTab.id : null;
+  const { setActiveComputerSession } = tools;
+  useMountSubscription(() => {
+    setActiveComputerSession(
+      viewKey ? { key: viewKey, aliases: viewAlias ? [viewAlias] : [] } : null,
+    );
+  }, [viewKey, viewAlias, setActiveComputerSession]);
   const focusedModel =
     state.models.find((model) => model.id === (focusedTab?.modelId ?? state.selectedModel)) ?? null;
   const focusedGitSummary = projects.gitSummary(activeProject?.path ?? focusedTab?.cwd);
@@ -86,99 +83,36 @@ export function AgentWorkspaceShell({ state, dispatch, handles }: AgentWorkspace
             setupWarning={state.setupWarning}
             onClearError={() => dispatch({ type: "setError", error: "" })}
           />
-          <WorkspacePaneContent
-            showEmptyState={showProjectEmptyState}
-            state={state}
-            projects={projects}
-            tools={tools}
-            dispatch={dispatch}
-            handles={handles}
-          />
+          {showProjectEmptyState ? (
+            <ProjectEmptyState />
+          ) : (
+            <div className="min-h-0 flex-1">
+              <PaneGrid
+                layout={state.layout}
+                renderPane={(paneId) =>
+                  renderWorkspacePane({ paneId, state, projects, tools, dispatch, handles })
+                }
+                onSplit={handles.splitPaneWithPayload}
+                onOpenTab={handles.openSessionPayloadInPane}
+                onResize={handles.setSplitRatio}
+              />
+            </div>
+          )}
         </section>
-        <WorkspaceComputerPanel
-          open={tools.computer.open}
-          handles={handles}
-          activeProject={activeProject}
-          focusedTab={focusedTab}
-          sessions={state.sessions}
-          selectedModel={state.selectedModel}
-          models={state.models}
-          modelsLoading={state.modelsLoading}
-          focusedModel={focusedModel}
-          focusedGitSummary={focusedGitSummary}
-        />
+        <Suspense fallback={tools.computer.open ? <ComputerPanelFallback /> : null}>
+          <LazyAgentBrowserPanel
+            handles={handles}
+            activeProject={activeProject}
+            focusedSession={focusedTab}
+            sessions={[...state.sessions.values()]}
+            activeModelId={focusedTab?.modelId ?? state.selectedModel}
+            activeModel={focusedModel}
+            gitSummary={focusedGitSummary}
+            models={state.models}
+            modelsLoading={state.modelsLoading}
+          />
+        </Suspense>
       </div>
-    </div>
-  );
-}
-
-function WorkspaceComputerPanel({
-  open,
-  handles,
-  activeProject,
-  focusedTab,
-  sessions,
-  selectedModel,
-  models,
-  modelsLoading,
-  focusedModel,
-  focusedGitSummary,
-}: {
-  open: boolean;
-  handles: WorkspaceHandles;
-  activeProject: Project | null;
-  focusedTab: ReturnType<typeof focusedSession>;
-  sessions: WorkspaceState["sessions"];
-  selectedModel: string;
-  models: AgentModel[];
-  modelsLoading: boolean;
-  focusedModel: AgentModel | null;
-  focusedGitSummary: ReturnType<ProjectsContextValue["gitSummary"]>;
-}) {
-  return (
-    <Suspense fallback={open ? <ComputerPanelFallback /> : null}>
-      <LazyAgentBrowserPanel
-        handles={handles}
-        activeProject={activeProject}
-        focusedSession={focusedTab}
-        sessions={[...sessions.values()]}
-        activeModelId={focusedTab?.modelId ?? selectedModel}
-        activeModel={focusedModel}
-        gitSummary={focusedGitSummary}
-        models={models}
-        modelsLoading={modelsLoading}
-      />
-    </Suspense>
-  );
-}
-
-function WorkspacePaneContent({
-  showEmptyState,
-  state,
-  projects,
-  tools,
-  dispatch,
-  handles,
-}: {
-  showEmptyState: boolean;
-  state: WorkspaceState;
-  projects: ProjectsContextValue;
-  tools: ReturnType<typeof useTools>;
-  dispatch: WorkspaceDispatch;
-  handles: WorkspaceHandles;
-}) {
-  if (showEmptyState) return <ProjectEmptyState />;
-  return (
-    <div className="min-h-0 flex-1">
-      <PaneGrid
-        layout={state.layout}
-        renderPane={(paneId) =>
-          renderWorkspacePane({ paneId, state, projects, tools, dispatch, handles })
-        }
-        onSplit={handles.splitPaneWithPayload}
-        onOpenTab={handles.openSessionPayloadInPane}
-        onResize={handles.setSplitRatio}
-      />
     </div>
   );
 }
@@ -287,22 +221,6 @@ function ProjectEmptyState() {
       </div>
     </div>
   );
-}
-
-function useActiveSessionEffects({
-  viewKey,
-  viewAlias,
-  setActiveComputerSession,
-}: {
-  viewKey: string | null;
-  viewAlias: string | null;
-  setActiveComputerSession: ReturnType<typeof useTools>["setActiveComputerSession"];
-}): void {
-  useMountSubscription(() => {
-    setActiveComputerSession(
-      viewKey ? { key: viewKey, aliases: viewAlias ? [viewAlias] : [] } : null,
-    );
-  }, [viewKey, viewAlias, setActiveComputerSession]);
 }
 
 export function AgentWorkspace() {

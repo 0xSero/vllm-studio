@@ -43,13 +43,6 @@ export type WorkspacePaneView = {
   isFocused: boolean;
 };
 
-function paneGitBranch(
-  summary: ReturnType<ProjectsContextValue["gitSummary"]>,
-  project: Project | null,
-): string | null {
-  return summary?.isRepo === false ? null : (summary?.branch ?? project?.branch ?? null);
-}
-
 function resolvePaneModelId(
   sessionModelId: string | undefined,
   selectedModelId: string,
@@ -96,7 +89,8 @@ function selectWorkspacePaneView(
     modelId,
     model: state.models.find((model) => model.id === modelId) ?? null,
     gitSummary,
-    gitBranch: paneGitBranch(gitSummary, project),
+    gitBranch:
+      gitSummary?.isRepo === false ? null : (gitSummary?.branch ?? project?.branch ?? null),
     isNewSession: Boolean(session && !session.piSessionId && session.messages.length === 0),
     canClose: collectLeaves(state.layout).length > 1,
     isFocused: state.focusedPaneId === paneId,

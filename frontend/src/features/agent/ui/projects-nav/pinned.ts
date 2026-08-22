@@ -130,13 +130,44 @@ export function usePinnedNav({
     [pinnedProjectIdsKey],
   );
 
-  usePinnedHistorySessions({
-    enabled: expanded,
-    hiddenKeysKey,
-    pinnedSessionIdsKey,
-    projects,
-    setHistorySessions,
-  });
+  /** Pinned sessions can live outside the 7d window a project row loads, so they
+   *  are fetched by id from the cross-project index. */
+  useMountSubscription(() => {
+    if (!expanded || projects.length === 0 || !pinnedSessionIdsKey) {
+      queueMicrotask(() => setHistorySessions([]));
+      return;
+    }
+    let cancelled = false;
+    const pinnedIdsList = pinnedSessionIdsKey.split(KEY_SEPARATOR).filter(Boolean);
+    const pinnedIds = new Set(pinnedIdsList);
+    const hiddenIds = new Set(hiddenKeysKey.split(KEY_SEPARATOR).filter(Boolean));
+    const projectsById = new Map(projects.map((project) => [project.id, project]));
+    (async () => {
+      try {
+        const response = await fetch(
+          `/api/agent/sessions/all?since=30d&ids=${encodeURIComponent(pinnedIdsList.join(","))}`,
+          { cache: "no-store" },
+        );
+        const payload = await safeJson<{ sessions?: AggregatedSession[] }>(response);
+        const rows = (payload.sessions ?? []).flatMap((session) => {
+          const project = projectsById.get(session.projectId);
+          return project && pinnedIds.has(session.id) && !hiddenIds.has(session.id)
+            ? [{ ...session, project }]
+            : [];
+        });
+        if (cancelled) return;
+        const unique = [...new Map(rows.map((session) => [session.id, session])).values()];
+        setHistorySessions(
+          unique.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()),
+        );
+      } catch {
+        if (!cancelled) setHistorySessions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, hiddenKeysKey, pinnedSessionIdsKey, projects]);
 
   const projectsById = useMemo(
     () => new Map(projects.map((project) => [project.id, project] as const)),
@@ -246,57 +277,4 @@ export function usePinnedNav({
       },
     },
   };
-}
-
-/** Pinned sessions can live outside the 7d window a project row loads, so they
- *  are fetched by id from the cross-project index. */
-function usePinnedHistorySessions({
-  enabled,
-  hiddenKeysKey,
-  pinnedSessionIdsKey,
-  projects,
-  setHistorySessions,
-}: {
-  enabled: boolean;
-  hiddenKeysKey: string;
-  pinnedSessionIdsKey: string;
-  projects: ProjectEntry[];
-  setHistorySessions: (sessions: PinnedSession[]) => void;
-}): void {
-  useMountSubscription(() => {
-    if (!enabled || projects.length === 0 || !pinnedSessionIdsKey) {
-      queueMicrotask(() => setHistorySessions([]));
-      return;
-    }
-    let cancelled = false;
-    const pinnedIdsList = pinnedSessionIdsKey.split(KEY_SEPARATOR).filter(Boolean);
-    const pinnedIds = new Set(pinnedIdsList);
-    const hiddenIds = new Set(hiddenKeysKey.split(KEY_SEPARATOR).filter(Boolean));
-    const projectsById = new Map(projects.map((project) => [project.id, project]));
-    (async () => {
-      try {
-        const response = await fetch(
-          `/api/agent/sessions/all?since=30d&ids=${encodeURIComponent(pinnedIdsList.join(","))}`,
-          { cache: "no-store" },
-        );
-        const payload = await safeJson<{ sessions?: AggregatedSession[] }>(response);
-        const rows = (payload.sessions ?? []).flatMap((session) => {
-          const project = projectsById.get(session.projectId);
-          return project && pinnedIds.has(session.id) && !hiddenIds.has(session.id)
-            ? [{ ...session, project }]
-            : [];
-        });
-        if (cancelled) return;
-        const unique = [...new Map(rows.map((session) => [session.id, session])).values()];
-        setHistorySessions(
-          unique.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()),
-        );
-      } catch {
-        if (!cancelled) setHistorySessions([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, hiddenKeysKey, pinnedSessionIdsKey, projects, setHistorySessions]);
 }
