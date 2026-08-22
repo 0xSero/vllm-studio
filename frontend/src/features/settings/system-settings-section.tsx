@@ -87,11 +87,17 @@ export function SystemOverview({
 
 export function SystemDetails({
   data,
-  compatibilityReport,
+  compatibilityReport: report,
 }: {
   data: ConfigData | null;
   compatibilityReport: CompatibilityReport | null;
 }) {
+  const ordered = [...(report?.checks ?? [])].sort(
+    (a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity],
+  );
+  const actionableChecks = ordered.filter((check) => check.severity !== "info");
+  const tone: UiTone = !report ? "info" : actionableChecks.length ? "warning" : "good";
+
   return (
     <div>
       <SettingsGroup
@@ -102,47 +108,28 @@ export function SystemDetails({
       >
         <SettingsFactRows rows={[...configFactRows(data), ...runtimeFactRows(data)]} />
       </SettingsGroup>
-      <CompatibilitySettings
-        checks={compatibilityReport?.checks ?? []}
-        report={compatibilityReport}
-      />
-    </div>
-  );
-}
-
-function CompatibilitySettings({
-  checks,
-  report,
-}: {
-  checks: CompatibilityCheck[];
-  report: CompatibilityReport | null;
-}) {
-  const ordered = [...checks].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
-  const actionableChecks = ordered.filter((check) => check.severity !== "info");
-  const tone: UiTone = !report ? "info" : actionableChecks.length ? "warning" : "good";
-
-  return (
-    <SettingsGroup
-      title="Compatibility"
-      description="Diagnostics and suggested fixes from the controller probe."
-      actions={
-        <StatusPill tone={tone}>
-          {!report ? "pending" : actionableChecks.length ? "review" : "clear"}
-        </StatusPill>
-      }
-      collapsible
-      defaultOpen={actionableChecks.length > 0}
-    >
-      <SettingsFactRows
-        rows={
-          !report
-            ? [{ label: "Report", value: "Waiting for the compatibility probe", dim: true }]
-            : ordered.length === 0
-              ? [{ label: "Report", value: "No issues detected" }]
-              : ordered.map(compatibilityFactRow)
+      <SettingsGroup
+        title="Compatibility"
+        description="Diagnostics and suggested fixes from the controller probe."
+        actions={
+          <StatusPill tone={tone}>
+            {!report ? "pending" : actionableChecks.length ? "review" : "clear"}
+          </StatusPill>
         }
-      />
-    </SettingsGroup>
+        collapsible
+        defaultOpen={actionableChecks.length > 0}
+      >
+        <SettingsFactRows
+          rows={
+            !report
+              ? [{ label: "Report", value: "Waiting for the compatibility probe", dim: true }]
+              : ordered.length === 0
+                ? [{ label: "Report", value: "No issues detected" }]
+                : ordered.map(compatibilityFactRow)
+          }
+        />
+      </SettingsGroup>
+    </div>
   );
 }
 

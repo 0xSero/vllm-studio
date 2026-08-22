@@ -53,12 +53,7 @@ function readEntries(): ControllerEntry[] {
     if (!url) continue;
     byUrl.set(url, { ...entry, url });
   }
-  const next = [...byUrl.entries()].map(([url, value]) => ({
-    id: url,
-    url,
-    apiKey: value.apiKey,
-    name: value.name,
-  }));
+  const next = [...byUrl.values()].map((value) => ({ ...value, id: value.url }));
   // useSyncExternalStore needs a stable snapshot: return the previous array
   // identity whenever the stored controllers are value-identical.
   const key = JSON.stringify(
