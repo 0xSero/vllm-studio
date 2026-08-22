@@ -138,7 +138,6 @@ const installSglang = (options: InstallOptions): Effect.Effect<RuntimeUpgradeRes
 
 export const sglangSpec: EngineSpec = {
   id: "sglang",
-  healthPath: "/health",
   cliBinary: "sglang",
   managedPackageSpec,
   install: installSglang,
