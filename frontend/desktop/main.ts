@@ -7,11 +7,11 @@ import {
   shell,
   type BrowserWindow,
 } from "electron";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import type { DesktopAppState } from "./types";
 import { DESKTOP_CONFIG } from "./configs";
-import { writeJsonAtomic } from "./helpers/fs-json";
+import { readJsonObject, writeJsonAtomic } from "./helpers/fs-json";
 import { log } from "./helpers/logger";
 import { isHttpUrl } from "./helpers/url";
 import { createMainWindow } from "./logic/window-manager";
@@ -369,13 +369,7 @@ function registerIpcHandlers(): void {
     if (!prefs || typeof prefs !== "object" || Array.isArray(prefs)) {
       throw new Error("prefs must be a plain object");
     }
-    const stringPrefs = Object.fromEntries(
-      Object.entries(prefs as Record<string, unknown>).filter(
-        (entry): entry is [string, string] =>
-          typeof entry[0] === "string" && typeof entry[1] === "string",
-      ),
-    );
-    writeUiPreferencesFile(stringPrefs);
+    writeUiPreferencesFile(onlyStringValues(prefs as Record<string, unknown>));
   });
 
   ipcMain.handle("desktop:pty-status", async () => ({
@@ -525,17 +519,7 @@ function uiPreferencesFilePath(): string {
 }
 
 function readSessionPrefsFile(): Record<string, unknown> {
-  const filePath = sessionPrefsFilePath();
-  try {
-    if (!existsSync(filePath)) return {};
-    const raw = readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
+  return readJsonObject(sessionPrefsFilePath());
 }
 
 function writeSessionPrefsFile(prefs: Record<string, unknown>): void {
@@ -543,21 +527,17 @@ function writeSessionPrefsFile(prefs: Record<string, unknown>): void {
 }
 
 function readUiPreferencesFile(): Record<string, string> {
-  const filePath = uiPreferencesFilePath();
-  try {
-    if (!existsSync(filePath)) return {};
-    const raw = readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>).filter(
-        (entry): entry is [string, string] =>
-          typeof entry[0] === "string" && typeof entry[1] === "string",
-      ),
-    );
-  } catch {
-    return {};
-  }
+  return onlyStringValues(readJsonObject(uiPreferencesFilePath()));
+}
+
+/** UI prefs are a flat string map; drop anything the renderer sent that isn't. */
+function onlyStringValues(prefs: Record<string, unknown>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(prefs).filter(
+      (entry): entry is [string, string] =>
+        typeof entry[0] === "string" && typeof entry[1] === "string",
+    ),
+  );
 }
 
 function writeUiPreferencesFile(prefs: Record<string, string>): void {
