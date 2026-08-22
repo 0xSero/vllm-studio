@@ -11,7 +11,6 @@ const bridge: DesktopBridge = {
   openDirectory: () => ipcRenderer.invoke("desktop:open-directory"),
   getPathForFile: (file) => webUtils.getPathForFile(file),
   listProjects: () => ipcRenderer.invoke("desktop:list-projects"),
-  addProject: (directoryPath) => ipcRenderer.invoke("desktop:add-project", directoryPath),
   removeProject: (id) => ipcRenderer.invoke("desktop:remove-project", id),
   loadSessionPrefs: () => ipcRenderer.invoke("desktop:load-session-prefs"),
   saveSessionPrefs: (prefs) => ipcRenderer.invoke("desktop:save-session-prefs", prefs),

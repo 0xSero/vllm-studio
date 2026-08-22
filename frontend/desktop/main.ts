@@ -342,13 +342,6 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle("desktop:list-projects", async () => listProjectsWithMeta());
 
-  ipcMain.handle("desktop:add-project", async (_, directoryPath: string) => {
-    if (typeof directoryPath !== "string") {
-      throw new Error("directoryPath must be a string");
-    }
-    return addProject(directoryPath);
-  });
-
   ipcMain.handle("desktop:remove-project", async (_, id: string) => {
     if (typeof id !== "string") {
       throw new Error("id must be a string");

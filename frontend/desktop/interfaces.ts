@@ -94,7 +94,6 @@ export interface DesktopBridge {
   openDirectory(): Promise<ProjectEntry | null>;
   getPathForFile(file: File): string;
   listProjects(): Promise<ProjectEntry[]>;
-  addProject(directoryPath: string): Promise<ProjectEntry>;
   removeProject(id: string): Promise<{ ok: true }>;
   /** Durable file-backed session prefs that survive process kill. */
   loadSessionPrefs(): Promise<SessionPrefsPayload>;
