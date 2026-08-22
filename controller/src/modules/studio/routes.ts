@@ -110,14 +110,14 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
       persisted as PersistedConfig & { ui_preferences?: Record<string, string> }
     ).ui_preferences;
     const dbUiPreferences = yield* context.stores.controllerSettingsStore.getUiPreferencesEffect();
-    const hasDbPreferences = Object.keys(dbUiPreferences).length > 0;
-    const uiPreferences = hasDbPreferences
+    const hasDatabasePreferences = Object.keys(dbUiPreferences).length > 0;
+    const uiPreferences = hasDatabasePreferences
       ? dbUiPreferences
       : legacyUiPreferences && typeof legacyUiPreferences === "object"
         ? legacyUiPreferences
         : {};
     // Migrate the file-era preferences into the DB the first time they are read.
-    if (!hasDbPreferences && Object.keys(uiPreferences).length > 0) {
+    if (!hasDatabasePreferences && Object.keys(uiPreferences).length > 0) {
       yield* context.stores.controllerSettingsStore.saveUiPreferencesEffect(uiPreferences);
     }
     return {

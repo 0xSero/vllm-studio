@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { CONTROLLER_EVENTS } from "@local-studio/contracts/controller-events";
 import {
-  RigAcceleratorInputSchema,
   RigCreateSchema,
   RigNodeCreateSchema,
   RigNodeUpdateSchema,
   RigUpdateSchema,
   type Rig,
+  type RigAcceleratorInputSchema,
   type RigAccelerator,
   type RigNode,
   type RigsPayload,
@@ -82,13 +82,9 @@ export const registerStudioRigRoutes = defineRoutes((app, context) => {
     return [...rigs, seeded];
   });
   const requireRig = (rigId: string): Effect.Effect<Rig, unknown> =>
-    store
-      .getEffect(rigId)
-      .pipe(
-        Effect.flatMap((rig) =>
-          rig ? Effect.succeed(rig) : Effect.fail(notFound(`Rig "${rigId}" not found`)),
-        ),
-      );
+    Effect.flatMap(store.getEffect(rigId), (rig) =>
+      rig ? Effect.succeed(rig) : Effect.fail(notFound(`Rig "${rigId}" not found`)),
+    );
   const saveRigTouched = (rig: Rig): Effect.Effect<Rig, unknown> => {
     const touched = { ...rig, updated_at: new Date().toISOString() };
     return store.saveEffect(touched).pipe(Effect.as(touched));
