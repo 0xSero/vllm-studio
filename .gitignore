@@ -88,3 +88,9 @@ frontend/dist-desktop-dev/
 frontend/dist-installers/
 .vercel
 .env*
+
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+.direnv

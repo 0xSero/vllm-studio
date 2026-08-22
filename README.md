@@ -128,6 +128,35 @@ directory, installing an engine, downloading a model, launching it, and
 benchmarking. Engine installs (vLLM/SGLang/MLX) land below the data directory at
 `runtime/venvs/<backend>-latest`.
 
+### Devenv
+
+The repository includes a locked [devenv](https://devenv.sh/) environment with
+Node.js, npm, Bun, Python, uv, Git, and curl. Enter the development shell with:
+
+```bash
+devenv shell
+```
+
+Workspace dependencies are installed from their native lockfiles on first use
+and again whenever a package manifest or lockfile changes. On macOS, start the
+controller head node and Electron desktop app together with:
+
+```bash
+devenv up
+```
+
+The head node is available independently on every supported platform, and the
+desktop process includes its head-node dependency:
+
+```bash
+devenv up head-node
+devenv up desktop
+```
+
+Each process checks its fixed port before launch so an existing process fails
+visibly instead of silently moving either half of the stack to an incompatible
+port.
+
 ## Agent runtime
 
 The agent surface lives at `/agent` in the frontend. It uses
