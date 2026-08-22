@@ -1,4 +1,9 @@
+import { Schema } from "effect";
+
 export type DesktopAppState = "starting" | "ready" | "stopping";
+
+export const DesktopUpdateChannelSchema = Schema.Literals(["stable", "nightly"]);
+export type DesktopUpdateChannel = typeof DesktopUpdateChannelSchema.Type;
 
 export interface DesktopServerRuntime {
   port: number;
@@ -7,6 +12,7 @@ export interface DesktopServerRuntime {
 }
 
 export interface DesktopUpdateSnapshot {
+  channel: DesktopUpdateChannel;
   status:
     | "idle"
     | "checking"

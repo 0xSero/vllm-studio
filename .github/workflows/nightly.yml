@@ -22,6 +22,10 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.sha }}
 
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.19.0
+
       - id: nightly-version
         name: Resolve nightly version
         run: |
@@ -32,15 +36,13 @@ jobs:
               break
             fi
           done < <(git tag --list "v*" --sort=-v:refname)
-          latest_tag="${latest_tag:-v0.0.0}"
-          stable_version="${latest_tag#v}"
+          stable_version="$(node -p "require('./frontend/package.json').version")"
+          if [[ -n "$latest_tag" ]]; then
+            stable_version="${latest_tag#v}"
+          fi
           IFS=. read -r major minor patch <<< "$stable_version"
           version="${major}.${minor}.$((patch + 1))-nightly.${GITHUB_RUN_NUMBER}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: 22.19.0
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
@@ -78,13 +80,16 @@ jobs:
           output="frontend/dist-desktop"
           staging="release-nightly"
           base="Local Studio-${NIGHTLY_VERSION}-arm64"
+          published_base="Local-Studio-${NIGHTLY_VERSION}-arm64"
           mkdir -p "$staging"
-          cp "$output/${base}.dmg" "$staging/${base}.dmg"
-          cp "$output/${base}.dmg.blockmap" "$staging/${base}.dmg.blockmap"
-          cp "$output/${base}-mac.zip" "$staging/${base}-mac.zip"
-          cp "$output/${base}-mac.zip.blockmap" "$staging/${base}-mac.zip.blockmap"
+          cp "$output/${base}.dmg" "$staging/${published_base}.dmg"
+          cp "$output/${base}.dmg.blockmap" "$staging/${published_base}.dmg.blockmap"
+          cp "$output/${base}-mac.zip" "$staging/${published_base}-mac.zip"
+          cp "$output/${base}-mac.zip.blockmap" "$staging/${published_base}-mac.zip.blockmap"
           cp "$output/latest-mac.yml" "$staging/latest-mac.yml"
           cp "$output/${base}.dmg" "$staging/Local-Studio-Nightly-arm64.dmg"
+          grep -F "url: ${published_base}-mac.zip" "$staging/latest-mac.yml"
+          grep -F "url: ${published_base}.dmg" "$staging/latest-mac.yml"
 
       - name: Publish rolling nightly release
         env:

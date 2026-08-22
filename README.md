@@ -14,9 +14,9 @@ and server surfaces.
 [releases page](https://github.com/jake-molnia/local-studio/releases).
 
 **[Download the rolling nightly build](https://github.com/jake-molnia/local-studio/releases/tag/nightly)**
-— built unsigned from every push to `main`. Nightly installs require manual
-approval in macOS Privacy & Security and cannot use in-app auto-update until the
-build is signed.
+— signed on every push to `main`. Choose Nightly under Settings → Application →
+Update channel to follow the rolling build in place. Nightlies are not notarized,
+so the first manual install may require approval in macOS Privacy & Security.
 
 It is built from two modules that share one controller API:
 
@@ -243,7 +243,7 @@ symlinks to `scripts/project.mjs`; they do not contain separate automation logic
 ## Releases
 
 Every pull request into `main` must pass CI. Every push to `main` refreshes the
-unsigned rolling `nightly` prerelease and its manually installable DMG. A stable
+signed rolling `nightly` prerelease and its manually installable DMG. A stable
 release starts when a version tag matching `vX.Y.Z` is pushed for the current
 `main` commit; the tag supplies the packaged app version.
 

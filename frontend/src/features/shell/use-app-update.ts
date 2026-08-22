@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import type { DesktopUpdateChannel, DesktopUpdateSnapshot } from "../../../desktop/types";
 
 export type AppUpdatePhase = "idle" | "working" | "ready" | "failed";
 export type AppUpdateStatus =
@@ -16,23 +17,16 @@ export type AppUpdateStatus =
 export type AppUpdate = {
   currentVersion: string | null;
   releaseChannel: "dev" | "stable" | null;
+  updateChannel: DesktopUpdateChannel | null;
   latestVersion: string | null;
   updateAvailable: boolean;
   phase: AppUpdatePhase;
   status: AppUpdateStatus;
   progress: number | null;
+  checkForUpdates: () => void;
   startUpdate: () => void;
+  setUpdateChannel: (channel: DesktopUpdateChannel) => void;
 };
-
-function isNewerVersion(candidate: string, current: string): boolean {
-  const a = candidate.split(".").map((part) => Number.parseInt(part, 10) || 0);
-  const b = current.split(".").map((part) => Number.parseInt(part, 10) || 0);
-  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
-    const diff = (a[i] ?? 0) - (b[i] ?? 0);
-    if (diff !== 0) return diff > 0;
-  }
-  return false;
-}
 
 const bridge = () => window.localStudioDesktop ?? {};
 
@@ -69,53 +63,64 @@ function snapshotProgress(snapshot: { progress?: number; message?: string }): nu
 export function useAppUpdate(): AppUpdate {
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
   const [releaseChannel, setReleaseChannel] = useState<"dev" | "stable" | null>(null);
+  const [updateChannel, setUpdateChannelState] = useState<DesktopUpdateChannel | null>(null);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [phase, setPhase] = useState<AppUpdatePhase>("idle");
   const [status, setStatus] = useState<AppUpdateStatus>("idle");
   const [progress, setProgress] = useState<number | null>(null);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const applySnapshot = useCallback((snapshot: DesktopUpdateSnapshot) => {
+    const nextStatus = normalizedStatus(snapshot.status);
+    setStatus(nextStatus);
+    setPhase(phaseForStatus(nextStatus));
+    setProgress(nextStatus === "downloading" ? snapshotProgress(snapshot) : null);
+    setUpdateChannelState(snapshot.channel);
+    if (snapshot.version) setLatestVersion(snapshot.version);
+  }, []);
+
   const syncDesktopPhase = useCallback(() => {
     const getStatus = bridge().getUpdateStatus;
     if (!getStatus) return;
     void getStatus().then(
       (snapshot) => {
-        const nextStatus = normalizedStatus(snapshot.status);
-        const next = phaseForStatus(nextStatus);
-        setStatus(nextStatus);
-        setPhase(next);
-        setProgress(nextStatus === "downloading" ? snapshotProgress(snapshot) : null);
-        if (snapshot.version) setLatestVersion(snapshot.version);
-        if (next === "working") {
-          if (pollTimer.current) clearTimeout(pollTimer.current);
-          pollTimer.current = setTimeout(syncDesktopPhase, 2_000);
-        }
+        applySnapshot(snapshot);
+        if (pollTimer.current) clearTimeout(pollTimer.current);
+        pollTimer.current = setTimeout(syncDesktopPhase, 2_000);
       },
       () => {
         setStatus("error");
         setPhase("failed");
         setProgress(null);
+        if (pollTimer.current) clearTimeout(pollTimer.current);
+        pollTimer.current = setTimeout(syncDesktopPhase, 2_000);
       },
     );
-  }, []);
+  }, [applySnapshot]);
 
   useMountSubscription(() => {
     let cancelled = false;
-    void fetch("/api/app-update", { cache: "no-store" })
-      .then((response) => response.json() as Promise<{ latest?: string }>)
-      .then((body) => {
-        if (!cancelled) setLatestVersion(body.latest ?? null);
-      })
-      .catch(() => undefined);
-    void bridge()
-      .getRuntime?.()
-      .then((runtime) => {
-        if (!cancelled && runtime.packaged) {
-          setCurrentVersion(runtime.appVersion);
-          setReleaseChannel(runtime.releaseChannel);
-        }
-      })
-      .catch(() => undefined);
+    const desktop = bridge();
+    const loadPublishedVersion = () =>
+      fetch("/api/app-update", { cache: "no-store" })
+        .then((response) => response.json() as Promise<{ latest?: string }>)
+        .then((body) => {
+          if (!cancelled) setLatestVersion(body.latest ?? null);
+        })
+        .catch(() => undefined);
+    const runtime = desktop.getRuntime?.();
+    if (runtime) {
+      void runtime
+        .then((value) => {
+          if (cancelled) return;
+          if (!value.packaged) return loadPublishedVersion();
+          setCurrentVersion(value.appVersion);
+          setReleaseChannel(value.releaseChannel);
+        })
+        .catch(loadPublishedVersion);
+    } else {
+      void loadPublishedVersion();
+    }
     syncDesktopPhase();
     return () => {
       cancelled = true;
@@ -125,7 +130,7 @@ export function useAppUpdate(): AppUpdate {
 
   const updateAvailable =
     releaseChannel === "stable" &&
-    Boolean(latestVersion && currentVersion && isNewerVersion(latestVersion, currentVersion));
+    (status === "available" || status === "downloading" || status === "downloaded");
 
   const startUpdate = useCallback(() => {
     const desktop = bridge();
@@ -144,14 +149,56 @@ export function useAppUpdate(): AppUpdate {
     });
   }, [syncDesktopPhase]);
 
+  const checkForUpdates = useCallback(() => {
+    const desktop = bridge();
+    if (!desktop.checkForUpdates) {
+      setStatus("error");
+      setPhase("failed");
+      return;
+    }
+    setStatus("checking");
+    setPhase("working");
+    setProgress(null);
+    void desktop.checkForUpdates().then(applySnapshot, () => {
+      setStatus("error");
+      setPhase("failed");
+      setProgress(null);
+    });
+  }, [applySnapshot]);
+
+  const setUpdateChannel = useCallback(
+    (channel: DesktopUpdateChannel) => {
+      const desktop = bridge();
+      if (!desktop.setUpdateChannel) {
+        setStatus("error");
+        setPhase("failed");
+        return;
+      }
+      setUpdateChannelState(channel);
+      setLatestVersion(null);
+      setStatus("checking");
+      setPhase("working");
+      setProgress(null);
+      void desktop.setUpdateChannel(channel).then(applySnapshot, () => {
+        setStatus("error");
+        setPhase("failed");
+        setProgress(null);
+      });
+    },
+    [applySnapshot],
+  );
+
   return {
     currentVersion,
     releaseChannel,
+    updateChannel,
     latestVersion,
     updateAvailable,
     phase,
     status,
     progress,
+    checkForUpdates,
     startUpdate,
+    setUpdateChannel,
   };
 }

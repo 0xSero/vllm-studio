@@ -1,4 +1,4 @@
-import type { DesktopUpdateSnapshot } from "./types";
+import type { DesktopUpdateChannel, DesktopUpdateSnapshot } from "./types";
 
 export interface ProjectEntry {
   id: string;
@@ -109,7 +109,9 @@ export interface DesktopBridge {
   /** Open a file with its default application. False when outside the home tree. */
   openPath(target: string): Promise<boolean>;
   getUpdateStatus(): Promise<DesktopUpdateSnapshot>;
+  checkForUpdates(): Promise<DesktopUpdateSnapshot>;
   startUpdate(): Promise<DesktopUpdateSnapshot>;
+  setUpdateChannel(channel: DesktopUpdateChannel): Promise<DesktopUpdateSnapshot>;
   openDirectory(): Promise<ProjectEntry | null>;
   getPathForFile(file: File): string;
   listProjects(): Promise<ProjectEntry[]>;

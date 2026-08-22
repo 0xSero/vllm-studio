@@ -2,16 +2,27 @@ import { app } from "electron";
 import { isDevChannelBuild } from "../app-identity";
 import { autoUpdater } from "electron-updater";
 import { DESKTOP_CONFIG } from "../configs";
-import type { DesktopUpdateSnapshot } from "../types";
+import {
+  DesktopUpdateChannelSchema,
+  type DesktopUpdateChannel,
+  type DesktopUpdateSnapshot,
+} from "../types";
 import { log } from "../helpers/logger";
 import { isLoopbackHttpUrl } from "../helpers/url";
+import { getStoredUpdateChannel, setStoredUpdateChannel } from "./desktop-settings";
 import { UpdateInstallIntent } from "./update-install-intent";
+import { Schema } from "effect";
 
-let latestUpdateState: DesktopUpdateSnapshot = { status: "idle" };
+const NIGHTLY_UPDATE_URL = "https://github.com/jake-molnia/local-studio/releases/download/nightly";
+
+let latestUpdateState: DesktopUpdateSnapshot = {
+  channel: getStoredUpdateChannel(),
+  status: "idle",
+};
 const installIntent = new UpdateInstallIntent();
 
-function setUpdateState(nextState: DesktopUpdateSnapshot): void {
-  latestUpdateState = nextState;
+function setUpdateState(nextState: Omit<DesktopUpdateSnapshot, "channel">): void {
+  latestUpdateState = { channel: getStoredUpdateChannel(), ...nextState };
 }
 
 function setUpdateError(error: unknown): void {
@@ -40,15 +51,24 @@ function resolveFeedUrl(): string | null {
   return raw.replace(/\/+$/, "");
 }
 
-function ensureFeedConfigured(): { ok: true; url: string } {
+function ensureFeedConfigured(channel: DesktopUpdateChannel): { ok: true; url: string } {
   const feedUrl = resolveFeedUrl();
   if (feedUrl) {
     autoUpdater.setFeedURL({
       provider: "generic",
       url: feedUrl,
-      channel: "stable",
+      channel: "latest",
     });
     return { ok: true, url: feedUrl };
+  }
+
+  if (channel === "nightly") {
+    autoUpdater.setFeedURL({
+      provider: "generic",
+      url: NIGHTLY_UPDATE_URL,
+      channel: "latest",
+    });
+    return { ok: true, url: NIGHTLY_UPDATE_URL };
   }
 
   // Default feed: the public GitHub releases, which ship latest-mac.yml plus
@@ -62,6 +82,12 @@ function ensureFeedConfigured(): { ok: true; url: string } {
   return { ok: true, url: "github:jake-molnia/local-studio" };
 }
 
+function configureUpdater(channel: DesktopUpdateChannel): { ok: true; url: string } {
+  autoUpdater.allowPrerelease = channel === "nightly";
+  autoUpdater.allowDowngrade = false;
+  return ensureFeedConfigured(channel);
+}
+
 export function getUpdateState(): DesktopUpdateSnapshot {
   return latestUpdateState;
 }
@@ -72,40 +98,36 @@ function installDownloadedUpdate(): void {
 
 export async function checkForUpdates(force = false): Promise<DesktopUpdateSnapshot> {
   if (DESKTOP_CONFIG.disableAutoUpdate) {
-    const disabledState = {
+    setUpdateState({
       status: "error",
       message: "Auto update disabled by LOCAL_STUDIO_DESKTOP_DISABLE_AUTO_UPDATE",
-    } satisfies DesktopUpdateSnapshot;
-    setUpdateState(disabledState);
-    return disabledState;
+    });
+    return latestUpdateState;
   }
 
   // Dev-channel builds install via the dev mirror, never the stable releases —
   // the default GitHub feed would happily "update" them onto stable. An
   // explicit LOCAL_STUDIO_UPDATE_URL override still wins for feed testing.
   if (isDevChannelBuild && !resolveFeedUrl()) {
-    const devChannelState = {
+    setUpdateState({
       status: "idle",
       message: "Dev-channel builds do not auto-update from stable releases",
-    } satisfies DesktopUpdateSnapshot;
-    setUpdateState(devChannelState);
-    return devChannelState;
+    });
+    return latestUpdateState;
   }
 
-  ensureFeedConfigured();
+  configureUpdater(getStoredUpdateChannel());
 
   if (!app.isPackaged && !force) {
-    const devState = {
+    setUpdateState({
       status: "idle",
       message: "Auto updates are only available in packaged builds",
-    } satisfies DesktopUpdateSnapshot;
-    setUpdateState(devState);
-    return devState;
+    });
+    return latestUpdateState;
   }
 
   try {
     setUpdateState({ status: "checking" });
-    autoUpdater.allowPrerelease = false;
     const result = await autoUpdater.checkForUpdates();
     if (result?.downloadPromise) void result.downloadPromise.catch(setUpdateError);
     // An unpackaged app resolves null without emitting any status event; leave
@@ -115,12 +137,11 @@ export async function checkForUpdates(force = false): Promise<DesktopUpdateSnaps
     }
     return latestUpdateState;
   } catch (error) {
-    const errorState = {
+    setUpdateState({
       status: "error",
       message: String(error),
-    } satisfies DesktopUpdateSnapshot;
-    setUpdateState(errorState);
-    return errorState;
+    });
+    return latestUpdateState;
   }
 }
 
@@ -143,6 +164,34 @@ export async function startUpdate(): Promise<DesktopUpdateSnapshot> {
   return snapshot;
 }
 
+export async function setUpdateChannel(channel: unknown): Promise<DesktopUpdateSnapshot> {
+  if (!Schema.is(DesktopUpdateChannelSchema)(channel)) {
+    setUpdateError("Invalid desktop update channel");
+    return latestUpdateState;
+  }
+
+  if (
+    latestUpdateState.status === "checking" ||
+    latestUpdateState.status === "available" ||
+    latestUpdateState.status === "downloading" ||
+    latestUpdateState.status === "downloaded"
+  ) {
+    return {
+      ...latestUpdateState,
+      message: "Finish the current update before changing channels",
+    };
+  }
+
+  if (channel === getStoredUpdateChannel()) return latestUpdateState;
+
+  setStoredUpdateChannel(channel);
+  installIntent.clear();
+  setUpdateState({ status: "idle" });
+  const feed = configureUpdater(channel);
+  log.info(`[update] Channel: ${channel}; feed: ${feed.url}`);
+  return checkForUpdates();
+}
+
 export function initializeAutoUpdates(): void {
   if (DESKTOP_CONFIG.disableAutoUpdate) {
     log.warn("Auto update disabled by environment flag");
@@ -155,8 +204,9 @@ export function initializeAutoUpdates(): void {
     return;
   }
 
-  const feed = ensureFeedConfigured();
-  log.info(`[update] Feed: ${feed.url}`);
+  const channel = getStoredUpdateChannel();
+  const feed = configureUpdater(channel);
+  log.info(`[update] Channel: ${channel}; feed: ${feed.url}`);
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;

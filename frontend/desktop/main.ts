@@ -22,7 +22,13 @@ import {
   resolveFrontendRestartUrl,
   shouldReloadAfterFrontendRestart,
 } from "./logic/frontend-restart";
-import { getUpdateState, initializeAutoUpdates, startUpdate } from "./logic/update-manager";
+import {
+  checkForUpdates,
+  getUpdateState,
+  initializeAutoUpdates,
+  setUpdateChannel,
+  startUpdate,
+} from "./logic/update-manager";
 import { addProject, listProjectsWithMeta, removeProject } from "./logic/projects-store";
 import { deployController } from "./logic/controller-deploy";
 import {
@@ -307,7 +313,11 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle("desktop:get-update-status", async () => getUpdateState());
+  ipcMain.handle("desktop:check-for-updates", async () => checkForUpdates(true));
   ipcMain.handle("desktop:start-update", async () => startUpdate());
+  ipcMain.handle("desktop:set-update-channel", async (_, channel: unknown) =>
+    setUpdateChannel(channel),
+  );
   ipcMain.handle("desktop:get-kittylitter-pairing-json", async () => getKittylitterPairingJson());
   ipcMain.handle("desktop:copy-kittylitter-pairing-json", async (_, pairingJson: unknown) => {
     try {

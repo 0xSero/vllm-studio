@@ -2,6 +2,7 @@ import { app } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { writeJsonAtomic } from "../helpers/fs-json";
+import type { DesktopUpdateChannel } from "../types";
 
 /** Main-process-owned settings (hotkeys, window sizes) — separate from the
  * renderer-owned ui-preferences.json, which the renderer rewrites wholesale. */
@@ -14,6 +15,7 @@ export interface QuickPanelSize {
 interface DesktopSettings {
   quickPanelHotkey?: string;
   quickPanelThreadSize?: QuickPanelSize;
+  updateChannel?: DesktopUpdateChannel;
 }
 
 const MIN_THREAD_SIZE: QuickPanelSize = { width: 320, height: 280 };
@@ -62,6 +64,14 @@ export function getStoredQuickPanelThreadSize(): QuickPanelSize | null {
 
 export function setStoredQuickPanelThreadSize(size: QuickPanelSize): void {
   writeSettings({ quickPanelThreadSize: size });
+}
+
+export function getStoredUpdateChannel(): DesktopUpdateChannel {
+  return readSettings().updateChannel === "nightly" ? "nightly" : "stable";
+}
+
+export function setStoredUpdateChannel(channel: DesktopUpdateChannel): void {
+  writeSettings({ updateChannel: channel });
 }
 
 export { MIN_THREAD_SIZE as QUICK_PANEL_MIN_THREAD_SIZE };

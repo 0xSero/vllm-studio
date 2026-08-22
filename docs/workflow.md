@@ -26,7 +26,9 @@ desktop artifact. Required CI checks must pass before a pull request is merged.
 Every push to `main` publishes a rolling `nightly` prerelease. The workflow
 builds Developer ID signed DMG, ZIP and updater metadata assets from the exact
 `main` commit, moves the `nightly` tag to that commit, and replaces the prior
-nightly assets.
+nightly assets. Packaged desktop users can select Stable or Nightly under
+Settings → Application → Update channel; Nightly reads updater metadata directly
+from the rolling release while Stable follows the newest versioned release.
 
 Nightly builds are not notarized, so macOS may require approval in System
 Settings under Privacy & Security after the first download.
