@@ -54,19 +54,6 @@ const defaultDependencies: OAuthConnectorDependencies = {
   now: Date.now,
 };
 
-let activeDefaults: OAuthConnectorDependencies = defaultDependencies;
-
-/**
- * Replaces the defaults used when a caller passes no dependencies — the HTTP
- * handlers, notably. Exists so a harness can drive the real routes against a
- * fake provider; nothing in production calls it.
- */
-export function setDefaultOAuthConnectorDependencies(
-  overrides: Partial<OAuthConnectorDependencies> | null,
-): void {
-  activeDefaults = overrides ? { ...defaultDependencies, ...overrides } : defaultDependencies;
-}
-
 const TokenRecordSchema = Schema.Struct({
   accessToken: Schema.String,
   refreshToken: Schema.optional(Schema.String),
@@ -440,7 +427,7 @@ async function beginDeviceAuthorization(
 
 export async function beginOAuthConnectorAuthorization(
   connectorId: string,
-  dependencies: OAuthConnectorDependencies = activeDefaults,
+  dependencies: OAuthConnectorDependencies = defaultDependencies,
 ): Promise<OAuthAuthorizeResponse> {
   const provider = requireProvider(connectorId);
   const definition = definitionFor(provider, dependencies);
@@ -488,7 +475,7 @@ export async function saveOAuthConnectorClient(
 
 export async function getOAuthConnectorStatus(
   connectorId: string,
-  dependencies: OAuthConnectorDependencies = activeDefaults,
+  dependencies: OAuthConnectorDependencies = defaultDependencies,
 ): Promise<OAuthStatusResponse> {
   const provider = requireProvider(connectorId);
   const definition = definitionFor(provider, dependencies);
@@ -550,7 +537,7 @@ export async function disconnectOAuthConnector(
  */
 export function freshOAuthConnectorAccessToken(
   connectorId: string,
-  dependencies: OAuthConnectorDependencies = activeDefaults,
+  dependencies: OAuthConnectorDependencies = defaultDependencies,
 ): Promise<string> {
   const provider = requireProvider(connectorId);
   const definition = definitionFor(provider, dependencies);
@@ -610,7 +597,7 @@ export function freshOAuthConnectorAccessToken(
  */
 export async function oauthConnectorSpawnEnv(
   connector: ConnectorConfig,
-  dependencies: OAuthConnectorDependencies = activeDefaults,
+  dependencies: OAuthConnectorDependencies = defaultDependencies,
 ): Promise<Record<string, string>> {
   const provider = oauthConnectorProvider(connector.id);
   if (!provider) return {};
