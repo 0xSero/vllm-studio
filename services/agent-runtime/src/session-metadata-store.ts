@@ -33,23 +33,15 @@ type SessionMetadataStore = {
   sessions: Record<string, StoredSessionMetadata>;
 };
 
-export type ArchivedSessionMetadata = SessionArchiveState & {
-  id: string;
-  updatedAt: string | null;
-  cwd: string | null;
-  title: string | null;
-  projectId: string | null;
-  projectName: string | null;
-  sessionUpdatedAt: string | null;
-};
+/** The descriptive fields an archive call may supply, single-homed so the type,
+ *  the reader, and the writer below cannot drift apart. */
+const ARCHIVE_FIELDS = ["cwd", "title", "projectId", "projectName", "sessionUpdatedAt"] as const;
+type ArchiveField = (typeof ARCHIVE_FIELDS)[number];
 
-type SessionArchiveMetadataInput = {
-  cwd?: string | null;
-  title?: string | null;
-  projectId?: string | null;
-  projectName?: string | null;
-  sessionUpdatedAt?: string | null;
-};
+export type ArchivedSessionMetadata = SessionArchiveState &
+  Record<ArchiveField | "updatedAt", string | null> & { id: string };
+
+type SessionArchiveMetadataInput = Partial<Record<ArchiveField, string | null>>;
 
 function defaultStore(): SessionMetadataStore {
   return { version: 1, sessions: {} };
@@ -150,7 +142,7 @@ function applyMetadataInput(
   if (!metadata) return current;
   const next = { ...current };
   // Blank and whitespace-only values leave whatever is already stored alone.
-  for (const field of ["cwd", "title", "projectId", "projectName", "sessionUpdatedAt"] as const) {
+  for (const field of ARCHIVE_FIELDS) {
     const value = metadata[field]?.trim();
     if (value) next[field] = value;
   }
