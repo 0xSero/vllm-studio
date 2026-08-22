@@ -86,13 +86,8 @@ export function useProjects(): ProjectsContextValue {
       findById,
       findByPath,
       resolveProject,
-      selectProject: store.selectProject,
-      upsertProject: store.upsertProject,
-      removeProject: store.removeProject,
-      moveProjectBefore: store.moveProjectBefore,
-      refresh: store.refresh,
-      loadGitSummary: store.loadGitSummary,
-      initGitForActiveProject: store.initGitForActiveProject,
+      // The store's action methods are stable and already match this contract.
+      ...store,
     }),
     [
       projects,

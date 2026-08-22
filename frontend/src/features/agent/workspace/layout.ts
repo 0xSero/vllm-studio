@@ -19,11 +19,6 @@ export type LayoutSplit = {
 
 export type Layout = LayoutLeaf | LayoutSplit;
 
-export function findLeaf(layout: Layout, paneId: PaneId): boolean {
-  if (layout.kind === "leaf") return layout.paneId === paneId;
-  return findLeaf(layout.a, paneId) || findLeaf(layout.b, paneId);
-}
-
 export function collectLeaves(layout: Layout): PaneId[] {
   if (layout.kind === "leaf") return [layout.paneId];
   return [...collectLeaves(layout.a), ...collectLeaves(layout.b)];
@@ -55,24 +50,6 @@ export function removeLeaf(layout: Layout, paneId: PaneId): Layout | null {
   return { ...layout, a, b };
 }
 
-// Split a leaf along an edge. side === "a" puts the new pane on the
-// top/left; side === "b" on the bottom/right.
-export function splitLeaf(
-  layout: Layout,
-  paneId: PaneId,
-  newPaneId: PaneId,
-  direction: "vertical" | "horizontal",
-  side: "a" | "b",
-): Layout {
-  return replaceLeaf(layout, paneId, {
-    kind: "split",
-    direction,
-    ratio: 0.5,
-    a: side === "a" ? { kind: "leaf", paneId: newPaneId } : { kind: "leaf", paneId },
-    b: side === "a" ? { kind: "leaf", paneId } : { kind: "leaf", paneId: newPaneId },
-  });
-}
-
 export const MAX_LAYOUT_COLS = 3;
 export const MAX_LAYOUT_ROWS = 2;
 
@@ -85,6 +62,9 @@ export function layoutGridSize(layout: Layout): { cols: number; rows: number } {
     : { cols: Math.max(a.cols, b.cols), rows: a.rows + b.rows };
 }
 
+// Split a leaf along an edge, refusing splits that would exceed the grid caps.
+// side === "a" puts the new pane on the top/left; side === "b" on the
+// bottom/right.
 export function splitLeafWithinLimits(
   layout: Layout,
   paneId: PaneId,
@@ -92,7 +72,15 @@ export function splitLeafWithinLimits(
   direction: "vertical" | "horizontal",
   side: "a" | "b",
 ): Layout | null {
-  const next = splitLeaf(layout, paneId, newPaneId, direction, side);
+  const created: Layout = { kind: "leaf", paneId: newPaneId };
+  const existing: Layout = { kind: "leaf", paneId };
+  const next = replaceLeaf(layout, paneId, {
+    kind: "split",
+    direction,
+    ratio: 0.5,
+    a: side === "a" ? created : existing,
+    b: side === "a" ? existing : created,
+  });
   const { cols, rows } = layoutGridSize(next);
   return cols <= MAX_LAYOUT_COLS && rows <= MAX_LAYOUT_ROWS ? next : null;
 }

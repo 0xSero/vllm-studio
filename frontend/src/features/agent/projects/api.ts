@@ -12,12 +12,11 @@ function getDesktopBridge(): DesktopBridge | null {
   if (typeof window === "undefined") return null;
   const candidate = (window as unknown as { localStudioDesktop?: Partial<DesktopBridge> })
     .localStudioDesktop;
-  if (!candidate) return null;
-  const hasBridgeMethod =
-    typeof candidate.openDirectory === "function" ||
-    typeof candidate.listProjects === "function" ||
-    typeof candidate.removeProject === "function";
-  return hasBridgeMethod ? (candidate as DesktopBridge) : null;
+  const usable =
+    typeof candidate?.openDirectory === "function" ||
+    typeof candidate?.listProjects === "function" ||
+    typeof candidate?.removeProject === "function";
+  return usable ? (candidate as DesktopBridge) : null;
 }
 
 export async function loadProjects(): Promise<Project[]> {

@@ -151,12 +151,6 @@ function restorePersistedPane(pane: PersistedPaneRecord): {
   };
 }
 
-function focusedPersistedPaneId(focusedPaneId: unknown, leaves: PaneId[]): PaneId {
-  return typeof focusedPaneId === "string" && leaves.includes(focusedPaneId)
-    ? focusedPaneId
-    : leaves[0];
-}
-
 function removeLegacyTerminalPanes(
   layout: WorkspaceLayout,
   panes: Record<string, PersistedPaneRecord>,
@@ -200,7 +194,10 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
     sessions,
     selections,
     legacyRuntimeKeys,
-    focusedPaneId: focusedPersistedPaneId(parsed.focusedPaneId, leaves),
+    focusedPaneId:
+      typeof parsed.focusedPaneId === "string" && leaves.includes(parsed.focusedPaneId)
+        ? parsed.focusedPaneId
+        : leaves[0],
   };
 }
 

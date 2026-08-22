@@ -363,7 +363,13 @@ export function openSessionPayloadInPane(
 
 export function splitPaneWithPayload(
   state: WorkspaceState,
-  payload: SplitPaneWithPayloadPayload,
+  payload: SessionPayload & {
+    paneId: PaneId;
+    newPaneId?: PaneId;
+    direction: "vertical" | "horizontal";
+    side: "a" | "b";
+    payload: WorkspaceSessionPayload;
+  },
 ): WorkspaceState {
   if (!collectLeaves(state.layout).includes(payload.paneId)) return state;
   const split = (session: Session) =>
@@ -475,9 +481,7 @@ export function applyUrlNavigation(
 ): WorkspaceState {
   if (state.lastHandledNavKey === payload.key) return state;
   if (supersededNavigationIntent(payload.intent, state.lastHandledNavIntent)) return state;
-  if (!payload.project && !payload.sessionId && !payload.newSession) {
-    return state;
-  }
+  if (!payload.project && !payload.sessionId && !payload.newSession) return state;
   const marked: WorkspaceState = {
     ...state,
     lastHandledNavKey: payload.key,
@@ -493,22 +497,15 @@ export function applyUrlNavigation(
       replaceWorkspace: payload.replaceWorkspace,
     });
   }
-  if (payload.sessionId && payload.split) {
-    return replaySessionInSplitPane(marked, {
-      piSessionId: payload.sessionId,
-      sessionTitle,
-      tab,
-      paneId,
-    });
-  }
   if (payload.sessionId) {
-    return replaySessionInFocusedPane(marked, {
-      piSessionId: payload.sessionId,
-      sessionTitle,
-      tab,
-      newPaneId: paneId,
-      replaceWorkspace: payload.replaceWorkspace,
-    });
+    const replay = { piSessionId: payload.sessionId, sessionTitle, tab };
+    return payload.split
+      ? replaySessionInSplitPane(marked, { ...replay, paneId })
+      : replaySessionInFocusedPane(marked, {
+          ...replay,
+          newPaneId: paneId,
+          replaceWorkspace: payload.replaceWorkspace,
+        });
   }
   return marked;
 }
@@ -520,13 +517,6 @@ type ReplaySessionPayload = SessionPayload & {
   sessionTitle?: string;
   newPaneId?: PaneId;
   replaceWorkspace?: boolean;
-};
-type SplitPaneWithPayloadPayload = SessionPayload & {
-  paneId: PaneId;
-  newPaneId?: PaneId;
-  direction: "vertical" | "horizontal";
-  side: "a" | "b";
-  payload: WorkspaceSessionPayload;
 };
 
 function navigationIntentParts(intent: string): [number, number] | null {

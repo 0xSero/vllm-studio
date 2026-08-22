@@ -18,58 +18,55 @@ export type BuiltinComposerActions = {
   openAutomation?: () => void;
 };
 
+/** One plain builtin: a name, its menu copy, the action it fires (absent when
+ * the pane cannot do it), and an optional availability predicate. */
+type BuiltinSpec = [
+  name: string,
+  title: string,
+  description: string,
+  run: (() => void) | undefined,
+  when?: ComposerCommand["when"],
+];
+
 export function builtinCommandProvider(actions: BuiltinComposerActions): ComposerCommandProvider {
-  const command = (
-    name: string,
-    title: string,
-    description: string,
-    run: (() => void) | undefined,
-    when?: ComposerCommand["when"],
-  ): ComposerCommand[] =>
-    run
-      ? [
-          {
-            id: `builtin:${name}`,
-            name,
-            title,
-            description,
-            source: "core",
-            icon: "command",
-            when,
-            run: () => {
-              run();
-              return { kind: "handled" as const };
-            },
-          },
-        ]
-      : [];
+  const specs: BuiltinSpec[] = [
+    [
+      "compact",
+      "Compact",
+      "Compact this chat's context",
+      actions.compact,
+      (context) => !context.running && !context.compacting,
+    ],
+    ["status", "Status", "Open the status panel", actions.openStatus],
+    ["browser", "Browser", "Toggle the browser tool", actions.toggleBrowserTool],
+    ["connectors", "Connectors", "Manage connectors and accounts", actions.openIntegrations],
+    ["terminal", "Terminal", "Open the terminal", actions.openTerminal],
+    ["fork", "Fork", "Fork this session into a new pane", actions.forkSession],
+    ["export", "Export", "Export this session as Markdown", actions.exportSession],
+    ["automation", "Automation", "Schedule this work to run on a timer", actions.openAutomation],
+  ];
 
   return {
     id: "builtin",
     commands: () => [
-      ...command(
-        "compact",
-        "Compact",
-        "Compact this chat's context",
-        actions.compact,
-        (context) => !context.running && !context.compacting,
-      ),
-      ...command("status", "Status", "Open the status panel", actions.openStatus),
-      ...command("browser", "Browser", "Toggle the browser tool", actions.toggleBrowserTool),
-      ...command(
-        "connectors",
-        "Connectors",
-        "Manage connectors and accounts",
-        actions.openIntegrations,
-      ),
-      ...command("terminal", "Terminal", "Open the terminal", actions.openTerminal),
-      ...command("fork", "Fork", "Fork this session into a new pane", actions.forkSession),
-      ...command("export", "Export", "Export this session as Markdown", actions.exportSession),
-      ...command(
-        "automation",
-        "Automation",
-        "Schedule this work to run on a timer",
-        actions.openAutomation,
+      ...specs.flatMap(([name, title, description, run, when]): ComposerCommand[] =>
+        run
+          ? [
+              {
+                id: `builtin:${name}`,
+                name,
+                title,
+                description,
+                source: "core",
+                icon: "command",
+                when,
+                run: () => {
+                  run();
+                  return { kind: "handled" };
+                },
+              },
+            ]
+          : [],
       ),
       ...(actions.goal
         ? [

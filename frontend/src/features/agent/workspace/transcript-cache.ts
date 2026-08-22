@@ -35,15 +35,13 @@ function truncateText(text: string | undefined): string | undefined {
 }
 
 function sanitizeBlock(block: AssistantBlock): AssistantBlock {
-  if (block.kind === "tool") {
-    return {
-      ...block,
-      text: truncateText(block.text) ?? "",
-      ...(block.argsText !== undefined ? { argsText: truncateText(block.argsText) } : {}),
-      ...(block.resultText !== undefined ? { resultText: truncateText(block.resultText) } : {}),
-    };
-  }
-  return { ...block, text: truncateText(block.text) ?? "" };
+  if (block.kind !== "tool") return { ...block, text: truncateText(block.text) ?? "" };
+  return {
+    ...block,
+    text: truncateText(block.text) ?? "",
+    ...(block.argsText !== undefined ? { argsText: truncateText(block.argsText) } : {}),
+    ...(block.resultText !== undefined ? { resultText: truncateText(block.resultText) } : {}),
+  };
 }
 
 function stripAttachmentBody(attachment: ChatMessageAttachment): ChatMessageAttachment {
