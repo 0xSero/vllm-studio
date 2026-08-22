@@ -39,13 +39,13 @@ export function ComputerStatusPanel({
   const [compacting, setCompacting] = useState(false);
   const totals = useMemo(() => summarizeSessions(sessions), [sessions]);
   const sessionSkills = useMemo(() => usedSkillsForSession(focusedSession), [focusedSession]);
-  const compactDisabled = isCompactDisabled(
-    activeModel,
-    focusedSession,
-    compacting,
-    Boolean(onCompactSession),
-  );
-  const compactHighlighted = shouldCompactSession(focusedSession);
+  const compactDisabled =
+    compacting ||
+    isSessionRunning(focusedSession) ||
+    !focusedSession?.piSessionId ||
+    !activeModel ||
+    !onCompactSession;
+  const compactHighlighted = Boolean(focusedSession?.contextUsage?.shouldCompact);
   const compactFocusedSession = async () => {
     if (compactDisabled) return;
     setCompacting(true);
@@ -58,12 +58,19 @@ export function ComputerStatusPanel({
   const usageRows = sessionUsageRows(focusedSession);
   return (
     <section className="min-h-0 flex-1 overflow-y-auto px-4 py-3 text-xs text-(--dim)">
-      <SessionSummary
-        title={sessionTitle(focusedSession)}
-        sessionTokens={sessionTokenCount(focusedSession)}
-        allTokens={totals.current}
-        messageCount={totals.messages}
-      />
+      <div className="border-b border-(--border) pb-3">
+        <div className="truncate text-sm font-medium text-(--fg)">
+          {focusedSession?.title ?? "New session"}
+        </div>
+        <div className="mt-2 grid grid-cols-3 gap-3 font-mono">
+          <MiniStat
+            label="session"
+            value={formatTokenCount(focusedSession?.tokenStats?.current ?? 0)}
+          />
+          <MiniStat label="max" value={formatTokenCount(totals.current)} />
+          <MiniStat label="msgs" value={String(totals.messages)} />
+        </div>
+      </div>
 
       <StatusSection title="Session">
         <StatusRows rows={sessionTopRows(activeModel, focusedSession)} />
@@ -77,13 +84,25 @@ export function ComputerStatusPanel({
                 ? "text-(--accent) ring-1 ring-(--accent)/40"
                 : "text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
             } disabled:pointer-events-none disabled:opacity-30`}
-            title={compactTitle(compactHighlighted)}
+            title={
+              compactHighlighted
+                ? "Context near limit - compact this session"
+                : "Compact this session context"
+            }
           >
             {compacting ? <Spinner size="xs" /> : null}
             {compacting ? "Compacting" : "Compact"}
           </button>
         </StatusActionRow>
-        <StatusRows rows={sessionBottomRows(totals)} />
+        <StatusRows
+          rows={[
+            {
+              label: "Read / write",
+              value: `${formatTokenCount(totals.read)} / ${formatTokenCount(totals.write)}`,
+            },
+            { label: "Queue", value: `${totals.queued} queued · ${totals.running} running` },
+          ]}
+        />
       </StatusSection>
 
       {usageRows.length > 0 ? (
@@ -96,13 +115,15 @@ export function ComputerStatusPanel({
 
       <StatusSection title="Workspace">
         <StatusRows
-          rows={workspaceRows(
-            activeProject,
-            focusedSession,
-            gitSummary ?? null,
-            browser.enabled,
-            browser.url,
-          )}
+          rows={[
+            { label: "Project", value: activeProject?.name ?? "No project" },
+            {
+              label: "Directory",
+              value: activeProject?.path ?? focusedSession?.cwd ?? "No directory",
+            },
+            { label: "Git", value: formatGitSummary(gitSummary ?? null) },
+            { label: "Browser", value: browser.enabled ? browser.url : "Tool off" },
+          ]}
         />
       </StatusSection>
     </section>
@@ -111,38 +132,29 @@ export function ComputerStatusPanel({
 
 function summarizeSessions(sessions: Session[]): StatusTotals {
   const seen = new Set<string>();
-  return sessions.reduce((acc, session) => {
-    const key = session.piSessionId ? `pi:${session.piSessionId}` : `tab:${session.id}`;
-    if (seen.has(key)) return acc;
-    seen.add(key);
-    return {
-      read: acc.read + (session.tokenStats?.read ?? 0),
-      write: acc.write + (session.tokenStats?.write ?? 0),
-      current: Math.max(acc.current, session.tokenStats?.current ?? 0),
-      messages: acc.messages + session.messages.length,
-      queued: acc.queued + (session.queue?.length ?? 0),
-      running: acc.running + (isSessionRunning(session) ? 1 : 0),
-    };
-  }, initialStatusTotals());
-}
-
-function initialStatusTotals(): StatusTotals {
-  return { read: 0, write: 0, current: 0, messages: 0, queued: 0, running: 0 };
-}
-
-function sessionTitle(session: Session | null): string {
-  return session?.title ?? "New session";
-}
-
-function sessionTokenCount(session: Session | null): number {
-  return session?.tokenStats?.current ?? 0;
+  return sessions.reduce<StatusTotals>(
+    (acc, session) => {
+      const key = session.piSessionId ? `pi:${session.piSessionId}` : `tab:${session.id}`;
+      if (seen.has(key)) return acc;
+      seen.add(key);
+      return {
+        read: acc.read + (session.tokenStats?.read ?? 0),
+        write: acc.write + (session.tokenStats?.write ?? 0),
+        current: Math.max(acc.current, session.tokenStats?.current ?? 0),
+        messages: acc.messages + session.messages.length,
+        queued: acc.queued + (session.queue?.length ?? 0),
+        running: acc.running + (isSessionRunning(session) ? 1 : 0),
+      };
+    },
+    { read: 0, write: 0, current: 0, messages: 0, queued: 0, running: 0 },
+  );
 }
 
 function sessionTopRows(activeModel: AgentModel | null, session: Session | null): StatusRowData[] {
   const contextWindow = activeModel?.contextWindow ?? 0;
   // Prefer the runtime's own context reading: tokenStats is only the last
   // model call, so it reads far too low on a session mid-turn.
-  const contextTokens = session?.contextUsage?.tokens ?? sessionTokenCount(session);
+  const contextTokens = session?.contextUsage?.tokens ?? session?.tokenStats?.current ?? 0;
   const percent = session?.contextUsage?.percent;
   return [
     { label: "State", value: session?.status ?? "idle" },
@@ -191,54 +203,6 @@ function sessionUsageRows(session: Session | null): StatusRowData[] {
   return rows;
 }
 
-function sessionBottomRows(totals: StatusTotals): StatusRowData[] {
-  return [
-    {
-      label: "Read / write",
-      value: `${formatTokenCount(totals.read)} / ${formatTokenCount(totals.write)}`,
-    },
-    { label: "Queue", value: `${totals.queued} queued · ${totals.running} running` },
-  ];
-}
-
-function workspaceRows(
-  activeProject: Project | null,
-  session: Session | null,
-  gitSummary: GitSummary | null,
-  browserEnabled: boolean,
-  browserUrl: string,
-): StatusRowData[] {
-  return [
-    { label: "Project", value: activeProject?.name ?? "No project" },
-    { label: "Directory", value: activeProject?.path ?? session?.cwd ?? "No directory" },
-    { label: "Git", value: formatGitSummary(gitSummary) },
-    { label: "Browser", value: browserEnabled ? browserUrl : "Tool off" },
-  ];
-}
-
-function isCompactDisabled(
-  activeModel: AgentModel | null,
-  session: Session | null,
-  compacting: boolean,
-  hasCompactAction: boolean,
-): boolean {
-  return (
-    compacting ||
-    isSessionRunning(session) ||
-    !session?.piSessionId ||
-    !activeModel ||
-    !hasCompactAction
-  );
-}
-
-function shouldCompactSession(session: Session | null): boolean {
-  return Boolean(session?.contextUsage?.shouldCompact);
-}
-
-function compactTitle(highlighted: boolean): string {
-  return highlighted ? "Context near limit - compact this session" : "Compact this session context";
-}
-
 function isSessionRunning(session: Session | null): boolean {
   return (
     session?.status === "running" ||
@@ -253,15 +217,13 @@ function StatusRows({ rows }: { rows: StatusRowData[] }) {
 
 function usedSkillsForSession(session: Session | null): ComposerSkillRef[] {
   const byId = new Map<string, ComposerSkillRef>();
-  for (const skill of session?.usedSkills ?? []) {
+  const all = [
+    ...(session?.usedSkills ?? []),
+    ...(session?.messages ?? []).flatMap((message) => message.skills ?? []),
+  ];
+  for (const skill of all) {
     const key = skill.id || skill.path || skill.name;
     if (!byId.has(key)) byId.set(key, skill);
-  }
-  for (const message of session?.messages ?? []) {
-    for (const skill of message.skills ?? []) {
-      const key = skill.id || skill.path || skill.name;
-      if (!byId.has(key)) byId.set(key, skill);
-    }
   }
   return [...byId.values()];
 }
@@ -303,35 +265,10 @@ function formatGitSummary(gitSummary: GitSummary | null): string {
   return `${gitSummary.branch ?? "detached"} · +${gitSummary.additions} -${gitSummary.deletions} · ${gitSummary.statusCount} files`;
 }
 
-function SessionSummary({
-  title,
-  sessionTokens,
-  allTokens,
-  messageCount,
-}: {
-  title: string;
-  sessionTokens: number;
-  allTokens: number;
-  messageCount: number;
-}) {
-  return (
-    <div className="border-b border-(--border) pb-3">
-      <div className="truncate text-sm font-medium text-(--fg)">{title}</div>
-      <div className="mt-2 grid grid-cols-3 gap-3 font-mono">
-        <MiniStat label="session" value={formatTokenCount(sessionTokens)} />
-        <MiniStat label="max" value={formatTokenCount(allTokens)} />
-        <MiniStat label="msgs" value={String(messageCount)} />
-      </div>
-    </div>
-  );
-}
-
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <div className="truncate text-[length:var(--fs-sm)] text-(--dim)">
-        {label}
-      </div>
+      <div className="truncate text-[length:var(--fs-sm)] text-(--dim)">{label}</div>
       <div className="mt-1 truncate text-[length:var(--fs-base)] text-(--fg)">{value}</div>
     </div>
   );
@@ -340,9 +277,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 function StatusSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="mt-4 border-t border-(--border) pt-3">
-      <div className="mb-2 text-[length:var(--fs-sm)] text-(--dim)">
-        {title}
-      </div>
+      <div className="mb-2 text-[length:var(--fs-sm)] text-(--dim)">{title}</div>
       <div className="grid gap-1">{children}</div>
     </div>
   );

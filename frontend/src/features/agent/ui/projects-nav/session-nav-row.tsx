@@ -12,6 +12,12 @@ import type { SessionPref } from "@/features/agent/messages/session-prefs";
 import { hrefWithOpenNonce, visibleSessionAge } from "./helpers";
 import { PinButton, SessionStatusMark } from "./nav-chrome";
 
+// One padding for every section — pinned rows used to reserve pr-8 for an
+// always-visible pin that no longer renders at rest, which pushed their dates
+// to a different column than task rows.
+const OPEN_TARGET_CLASS =
+  "flex min-w-0 flex-1 items-center gap-1 pr-2 group-hover:pr-[52px] group-has-[:focus-visible]:pr-[52px]";
+
 const SESSION_MENU_CLASS = `absolute right-0 top-6 isolate z-[999] min-w-[180px] ${POPOVER_MENU_CLASS}`;
 
 type SessionNavRowProps = {
@@ -61,6 +67,7 @@ export function SessionNavRow({
   showClearAction = false,
   renameInputClass = "text-[length:var(--fs-md)]",
 }: SessionNavRowProps) {
+  const router = useRouter();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(initialDraft);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -76,6 +83,32 @@ export function SessionNavRow({
     onRenameCommit?.(trimmed);
     setRenaming(false);
   };
+  const openProps = canDoubleClickRename
+    ? {
+        onDoubleClick: (event: MouseEvent) => {
+          event.preventDefault();
+          startRename();
+        },
+      }
+    : {};
+  const age = visibleSessionAge(activity === "running", timestamp, activity === "finished");
+  const rowContent = (
+    <>
+      <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[length:var(--fs-md)] font-normal leading-5 [mask-image:linear-gradient(to_right,black_calc(100%-20px),transparent)]">
+        {label}
+      </span>
+      <SessionStatusMark
+        activity={activity}
+        runningClass="ml-auto flex w-8 shrink-0 justify-end"
+        dotClass="h-1.5 w-1.5 shrink-0 rounded-full"
+      />
+      {age ? (
+        <span className="shrink-0 pl-3 text-[length:var(--fs-sm)] tabular-nums text-(--hl2) transition-opacity duration-150 group-hover:opacity-0">
+          {age}
+        </span>
+      ) : null}
+    </>
+  );
   const handleContextMenu = onContextMenu
     ? (event: MouseEvent) => {
         event.preventDefault();
@@ -85,18 +118,22 @@ export function SessionNavRow({
 
   if (renaming) {
     return (
-      <RenameInput
-        className={renameRowClass}
-        draft={draft}
-        inputClassName={renameInputClass}
-        initialDraft={initialDraft}
-        onCancel={() => {
-          setDraft(initialDraft);
-          setRenaming(false);
-        }}
-        onChange={setDraft}
-        onCommit={finishRename}
-      />
+      <div className={renameRowClass}>
+        <input
+          autoFocus
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={finishRename}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") finishRename();
+            if (event.key === "Escape") {
+              setDraft(initialDraft);
+              setRenaming(false);
+            }
+          }}
+          className={`min-w-0 flex-1 bg-transparent ${renameInputClass} text-(--fg) outline-none`}
+        />
+      </div>
     );
   }
 
@@ -108,18 +145,41 @@ export function SessionNavRow({
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      <SessionOpenTarget
-        canDoubleClickRename={canDoubleClickRename}
-        href={href}
-        activity={activity}
-        pinned={Boolean(pref.pinned)}
-        timestamp={timestamp}
-        label={label}
-        onDragStart={onDragStart}
-        onOpen={onOpen}
-        onRememberTitle={onRememberTitle}
-        onStartRename={startRename}
-      />
+      {href ? (
+        <Link
+          href={href}
+          aria-label={label}
+          draggable
+          onClick={(event) => {
+            onRememberTitle?.();
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+            const targetHref = hrefWithOpenNonce(href);
+            onOpen?.(targetHref);
+            router.push(targetHref);
+          }}
+          onDragStart={onDragStart}
+          className={OPEN_TARGET_CLASS}
+          {...openProps}
+        >
+          {rowContent}
+        </Link>
+      ) : (
+        <button
+          type="button"
+          draggable
+          onDragStart={onDragStart}
+          onClick={() => {
+            onRememberTitle?.();
+            onOpen?.("");
+          }}
+          aria-label={label}
+          className={`${OPEN_TARGET_CLASS} text-left`}
+          {...openProps}
+        >
+          {rowContent}
+        </button>
+      )}
       <div
         ref={menuRef}
         // Hidden as a WHOLE at rest: with per-button hiding only, the empty
@@ -166,153 +226,6 @@ export function SessionNavRow({
         ) : null}
       </div>
     </div>
-  );
-}
-
-function RenameInput({
-  className,
-  draft,
-  inputClassName,
-  initialDraft,
-  onCancel,
-  onChange,
-  onCommit,
-}: {
-  className: string;
-  draft: string;
-  inputClassName: string;
-  initialDraft: string;
-  onCancel: () => void;
-  onChange: (value: string) => void;
-  onCommit: () => void;
-}) {
-  return (
-    <div className={className}>
-      <input
-        autoFocus
-        value={draft}
-        onChange={(event) => onChange(event.target.value)}
-        onBlur={onCommit}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") onCommit();
-          if (event.key === "Escape") {
-            onChange(initialDraft);
-            onCancel();
-          }
-        }}
-        className={`min-w-0 flex-1 bg-transparent ${inputClassName} text-(--fg) outline-none`}
-      />
-    </div>
-  );
-}
-
-function SessionOpenTarget({
-  canDoubleClickRename,
-  href,
-  activity,
-  pinned,
-  timestamp,
-  label,
-  onDragStart,
-  onOpen,
-  onRememberTitle,
-  onStartRename,
-}: {
-  canDoubleClickRename: boolean;
-  href?: string;
-  activity: SessionActivity;
-  pinned: boolean;
-  timestamp?: string | null;
-  label: string;
-  onDragStart: (event: DragEvent) => void;
-  onOpen?: (href: string) => void;
-  onRememberTitle?: () => void;
-  onStartRename: () => void;
-}) {
-  const router = useRouter();
-  const openProps = canDoubleClickRename
-    ? {
-        onDoubleClick: (event: MouseEvent) => {
-          event.preventDefault();
-          onStartRename();
-        },
-      }
-    : {};
-  const targetClass = `flex min-w-0 flex-1 items-center gap-1 ${
-    // One padding for every section — pinned rows used to reserve pr-8 for an
-    // always-visible pin that no longer renders at rest, which pushed their
-    // dates to a different column than task rows.
-    "pr-2"
-  } group-hover:pr-[52px] group-has-[:focus-visible]:pr-[52px]`;
-  const content = <SessionRowContent activity={activity} timestamp={timestamp} label={label} />;
-
-  if (href) {
-    return (
-      <Link
-        href={href}
-        aria-label={label}
-        draggable
-        onClick={(event) => {
-          onRememberTitle?.();
-          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-          event.preventDefault();
-          const targetHref = hrefWithOpenNonce(href);
-          onOpen?.(targetHref);
-          router.push(targetHref);
-        }}
-        onDragStart={onDragStart}
-        className={targetClass}
-        {...openProps}
-      >
-        {content}
-      </Link>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      draggable
-      onDragStart={onDragStart}
-      onClick={() => {
-        onRememberTitle?.();
-        onOpen?.("");
-      }}
-      aria-label={label}
-      className={`${targetClass} text-left`}
-      {...openProps}
-    >
-      {content}
-    </button>
-  );
-}
-
-function SessionRowContent({
-  activity,
-  timestamp,
-  label,
-}: {
-  activity: SessionActivity;
-  timestamp?: string | null;
-  label: string;
-}) {
-  const age = visibleSessionAge(activity === "running", timestamp, activity === "finished");
-  return (
-    <>
-      <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[length:var(--fs-md)] font-normal leading-5 [mask-image:linear-gradient(to_right,black_calc(100%-20px),transparent)]">
-        {label}
-      </span>
-      <SessionStatusMark
-        activity={activity}
-        runningClass="ml-auto flex w-8 shrink-0 justify-end"
-        dotClass="h-1.5 w-1.5 shrink-0 rounded-full"
-      />
-      {age ? (
-        <span className="shrink-0 pl-3 text-[length:var(--fs-sm)] tabular-nums text-(--hl2) transition-opacity duration-150 group-hover:opacity-0">
-          {age}
-        </span>
-      ) : null}
-    </>
   );
 }
 
