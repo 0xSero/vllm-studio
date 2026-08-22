@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { chmod, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { Schema } from "effect";
-import { resolveDataDir } from "./data-dir";
+import { atomicWriteJson, resolveDataDir } from "./data-dir";
 import {
   listConnectors,
   saveConnectors,
@@ -89,13 +89,8 @@ async function readStore(): Promise<Store> {
   }
 }
 
-async function writeStore(store: Store): Promise<void> {
-  const file = resolveOAuthTokensFilePath();
-  const temporary = `${file}.tmp-${process.pid}-${randomUUID()}`;
-  await writeFile(temporary, JSON.stringify(store, null, 2), { mode: 0o600 });
-  await chmod(temporary, 0o600);
-  await rename(temporary, file);
-  await chmod(file, 0o600);
+function writeStore(store: Store): Promise<void> {
+  return atomicWriteJson(resolveOAuthTokensFilePath(), store, { mode: 0o600 });
 }
 
 // One writer at a time. A device poll finishing while a disconnect runs must

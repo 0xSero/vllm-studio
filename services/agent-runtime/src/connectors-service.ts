@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
-import { chmod, readFile, rename, writeFile } from "fs/promises";
+import { readFile } from "fs/promises";
 import { existsSync, readFileSync, statSync } from "fs";
 import { join } from "path";
-import { resolveDataDir } from "./data-dir";
+import { atomicWriteJson, resolveDataDir } from "./data-dir";
 import { Schema } from "effect";
 import {
   ConnectorsFileSchema,
@@ -177,14 +176,12 @@ export async function listConnectors(): Promise<ConnectorConfig[]> {
   }
 }
 
-async function writeConnectors(connectors: ConnectorConfig[]): Promise<void> {
-  resolveDataDir();
-  const file = resolveConnectorsFilePath();
-  const payload = JSON.stringify({ connectors: connectors.map(protectManagedConnector) }, null, 2);
-  const tempFile = `${file}.tmp-${process.pid}-${randomUUID()}`;
-  await writeFile(tempFile, payload, "utf-8");
-  await chmod(tempFile, 0o600).catch(() => undefined);
-  await rename(tempFile, file);
+function writeConnectors(connectors: ConnectorConfig[]): Promise<void> {
+  return atomicWriteJson(
+    resolveConnectorsFilePath(),
+    { connectors: connectors.map(protectManagedConnector) },
+    { mode: 0o600 },
+  );
 }
 
 export function saveConnectors(connectors: ConnectorConfig[]): Promise<void> {

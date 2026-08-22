@@ -21,13 +21,11 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  renameSync,
   statSync,
   unlinkSync,
-  writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { resolveDataDir } from "./data-dir";
+import { atomicWriteJsonSync, resolveDataDir } from "./data-dir";
 
 /**
  * Bump when the shape of any cached payload changes. Entries written by an
@@ -136,12 +134,10 @@ function writeEnvelope<T>(file: string, envelope: Envelope<T>): void {
   try {
     const directory = path.dirname(file);
     mkdirSync(directory, { recursive: true });
-    // Write-then-rename: a reader must never see a half-written entry, and two
+    // Atomic replace: a reader must never see a half-written entry, and two
     // agent-runtime processes opening the same session would otherwise
     // interleave into one corrupt file.
-    const temporary = `${file}.${process.pid}.tmp`;
-    writeFileSync(temporary, JSON.stringify(envelope), "utf-8");
-    renameSync(temporary, file);
+    atomicWriteJsonSync(file, envelope, { compact: true });
     evictIfCrowded(directory);
   } catch {
     // A cache that cannot be written is still a correct cache.

@@ -1,11 +1,11 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { chmod, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { Effect, Schema, Semaphore } from "effect";
 import type { McpConnection } from "./mcp-client";
 import { listConnectors, upsertConnectors } from "./connectors-service";
-import { resolveDataDir } from "./data-dir";
+import { atomicWriteJson, resolveDataDir } from "./data-dir";
 import { createGoogleRestConnection } from "./google-rest-adapter";
 import {
   GOOGLE_WORKSPACE_BINDINGS,
@@ -281,13 +281,8 @@ async function readMetadata(): Promise<Metadata | null> {
   }
 }
 
-async function writeMetadata(metadata: Metadata): Promise<void> {
-  const file = resolveGoogleAccountFilePath();
-  const temporary = `${file}.tmp-${process.pid}-${randomUUID()}`;
-  await writeFile(temporary, JSON.stringify(metadata, null, 2), { mode: 0o600 });
-  await chmod(temporary, 0o600);
-  await rename(temporary, file);
-  await chmod(file, 0o600);
+function writeMetadata(metadata: Metadata): Promise<void> {
+  return atomicWriteJson(resolveGoogleAccountFilePath(), metadata, { mode: 0o600 });
 }
 
 function metadataEffect(): Effect.Effect<Metadata | null, GoogleAccountError> {
