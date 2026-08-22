@@ -14,7 +14,7 @@ import { DESKTOP_CONFIG } from "./configs";
 import { readJsonObject, writeJsonAtomic } from "./helpers/fs-json";
 import { log } from "./helpers/logger";
 import { isHttpUrl } from "./helpers/url";
-import { createMainWindow } from "./logic/window-manager";
+import { createMainWindow, logRenderProcessGone } from "./logic/window-manager";
 import { registerNavigationPolicy } from "./logic/security";
 import { startFrontendServer, stopFrontendServer, type ServerHandle } from "./logic/app-server";
 import {
@@ -67,12 +67,13 @@ function isAppStopping(): boolean {
   return appState === "stopping";
 }
 
-async function processMemorySummary(): Promise<string> {
-  try {
-    return `memory=${JSON.stringify(await process.getProcessMemoryInfo())}`;
-  } catch {
-    return "memory=unavailable";
-  }
+// Open the app window and keep `mainWindow` honest: the reference must drop on
+// close so `activate` and the restart path know to build a fresh one.
+function openMainWindow(url: string): void {
+  mainWindow = createMainWindow(url);
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
 }
 
 async function bootstrap(): Promise<void> {
@@ -81,12 +82,7 @@ async function bootstrap(): Promise<void> {
     registerNavigationPolicy(new URL(frontendServer.runtime.url).origin);
     startFrontendHealthMonitor();
   }
-  if (!mainWindow) {
-    mainWindow = createMainWindow(frontendServer.runtime.url);
-    mainWindow.on("closed", () => {
-      mainWindow = null;
-    });
-  }
+  if (!mainWindow) openMainWindow(frontendServer.runtime.url);
 
   appState = "ready";
   log.info(
@@ -215,10 +211,7 @@ async function restartFrontendServer(
         await mainWindow.loadURL(resolveFrontendRestartUrl(nextUrl, rendererUrl));
       }
     } else {
-      mainWindow = createMainWindow(nextUrl);
-      mainWindow.on("closed", () => {
-        mainWindow = null;
-      });
+      openMainWindow(nextUrl);
     }
     appState = "ready";
     log.info(`Embedded frontend restarted (mode=${frontendServer.runtime.mode}, url=${nextUrl})`);
@@ -462,18 +455,7 @@ async function run(): Promise<void> {
   });
 
   app.on("render-process-gone", (_event, webContents, details) => {
-    void processMemorySummary().then((memory) => {
-      log.error(
-        [
-          "App render-process-gone",
-          `reason=${details.reason}`,
-          `exitCode=${details.exitCode}`,
-          `url=${webContents.getURL()}`,
-          `appVersion=${app.getVersion()}`,
-          memory,
-        ].join(" "),
-      );
-    });
+    void logRenderProcessGone("App render-process-gone", details, webContents.getURL());
   });
 
   process.on("uncaughtException", (error) => {
