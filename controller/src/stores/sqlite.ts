@@ -7,6 +7,12 @@ export const toFiniteNumber = (value: unknown): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+export const toNullableNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 export class RepositoryError extends Error {
   readonly _tag = "RepositoryError";
 
@@ -41,13 +47,10 @@ export const makeDatabaseCloser = (
     });
 };
 
-export const toNullableNumber = (value: unknown): number | null => {
-  if (value === null || value === undefined) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-export const openSqliteDatabase = (dbPath: string): Database => {
+export const openInitializedDatabase = (
+  dbPath: string,
+  initialize: (db: Database) => void = () => {},
+): Database => {
   const db = new Database(dbPath);
   try {
     db.run("PRAGMA busy_timeout = 5000");
@@ -56,21 +59,6 @@ export const openSqliteDatabase = (dbPath: string): Database => {
         chmodSync(dbPath, 0o600);
       } catch {}
     }
-    return db;
-  } catch (cause) {
-    try {
-      db.close();
-    } catch {}
-    throw cause;
-  }
-};
-
-export const openInitializedDatabase = (
-  dbPath: string,
-  initialize: (db: Database) => void,
-): Database => {
-  const db = openSqliteDatabase(dbPath);
-  try {
     initialize(db);
     return db;
   } catch (cause) {
@@ -80,3 +68,24 @@ export const openInitializedDatabase = (
     throw cause;
   }
 };
+
+export const openSqliteDatabase = (dbPath: string): Database => openInitializedDatabase(dbPath);
+
+/**
+ * Shared open/close plumbing for the sqlite-backed stores. `initialize` must be
+ * a free function: it runs from inside the base constructor, before the derived
+ * instance exists, so it cannot reach for `this`.
+ */
+export abstract class SqliteStore {
+  protected readonly db: Database;
+  private readonly closeDatabase: () => Effect.Effect<void, RepositoryError>;
+
+  protected constructor(dbPath: string, name: string, initialize?: (db: Database) => void) {
+    this.db = openInitializedDatabase(dbPath, initialize);
+    this.closeDatabase = makeDatabaseCloser(this.db, `${name}.close`);
+  }
+
+  public close(): Effect.Effect<void, RepositoryError> {
+    return this.closeDatabase();
+  }
+}

@@ -1,11 +1,5 @@
-import type { Database } from "bun:sqlite";
 import { Schema, type Effect } from "effect";
-import {
-  makeDatabaseCloser,
-  openInitializedDatabase,
-  repositoryEffect,
-  type RepositoryError,
-} from "./sqlite";
+import { repositoryEffect, SqliteStore, type RepositoryError } from "./sqlite";
 
 const UI_PREFERENCES_KEY = "ui_preferences";
 
@@ -15,23 +9,17 @@ type SettingRow = {
 
 const UiPreferencesSchema = Schema.Record(Schema.String, Schema.String);
 
-export class ControllerSettingsStore {
-  private readonly db: Database;
-  private readonly closeDatabase: () => Effect.Effect<void, RepositoryError>;
-
+export class ControllerSettingsStore extends SqliteStore {
   public constructor(dbPath: string) {
-    this.db = openInitializedDatabase(dbPath, (db) => this.ensureSchema(db));
-    this.closeDatabase = makeDatabaseCloser(this.db, "controller-settings.close");
-  }
-
-  private ensureSchema(db: Database): void {
-    db.run(`
+    super(dbPath, "controller-settings", (db) =>
+      db.run(`
       CREATE TABLE IF NOT EXISTS controller_settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
-    `);
+    `),
+    );
   }
 
   public getUiPreferencesEffect(): Effect.Effect<Record<string, string>, RepositoryError> {
@@ -67,9 +55,5 @@ export class ControllerSettingsStore {
         .run(UI_PREFERENCES_KEY, JSON.stringify(clean));
       return clean;
     });
-  }
-
-  public close(): Effect.Effect<void, RepositoryError> {
-    return this.closeDatabase();
   }
 }

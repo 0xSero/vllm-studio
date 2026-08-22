@@ -7,12 +7,11 @@ import {
 } from "@local-studio/contracts/usage";
 import type { Effect } from "effect";
 import {
-  openInitializedDatabase,
-  makeDatabaseCloser,
   repositoryEffect,
-  type RepositoryError,
+  SqliteStore,
   toFiniteNumber,
   toNullableNumber,
+  type RepositoryError,
 } from "./sqlite";
 
 export interface InferenceRequestRecord {
@@ -37,26 +36,10 @@ interface NumberRow {
   [key: string]: number;
 }
 
-const buildModelFilter = (
-  knownModels?: ReadonlySet<string>,
-): { clause: string; params: string[] } => {
-  if (!knownModels || knownModels.size === 0) return { clause: "", params: [] };
-  const params = [...knownModels];
-  const placeholders = params.map(() => "?").join(",");
-  return { clause: ` AND model IN (${placeholders})`, params };
-};
+type Row = Record<string, unknown>;
 
-export class InferenceRequestStore {
-  private readonly db: Database;
-  private readonly closeDatabase: () => Effect.Effect<void, RepositoryError>;
-
-  public constructor(dbPath: string) {
-    this.db = openInitializedDatabase(dbPath, (db) => this.migrate(db));
-    this.closeDatabase = makeDatabaseCloser(this.db, "inference-requests.close");
-  }
-
-  private migrate(db: Database): void {
-    db.run(`
+const migrate = (db: Database): void => {
+  db.run(`
       CREATE TABLE IF NOT EXISTS inference_requests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -76,51 +59,63 @@ export class InferenceRequestStore {
         streamed INTEGER NOT NULL DEFAULT 0
       )
     `);
-    db.run(
-      `CREATE INDEX IF NOT EXISTS idx_inference_requests_created_at ON inference_requests(created_at)`,
-    );
-    db.run(
-      `CREATE INDEX IF NOT EXISTS idx_inference_requests_model_created ON inference_requests(model, created_at)`,
-    );
+  for (const index of [
+    "idx_inference_requests_created_at ON inference_requests(created_at)",
+    "idx_inference_requests_model_created ON inference_requests(model, created_at)",
+  ]) {
+    db.run(`CREATE INDEX IF NOT EXISTS ${index}`);
+  }
+};
+
+const buildModelFilter = (
+  knownModels?: ReadonlySet<string>,
+): { clause: string; params: string[] } => {
+  if (!knownModels || knownModels.size === 0) return { clause: "", params: [] };
+  const params = [...knownModels];
+  const placeholders = params.map(() => "?").join(",");
+  return { clause: ` AND model IN (${placeholders})`, params };
+};
+
+const changePct = (current: number, previous: number): number | null => {
+  if (previous === 0) return current === 0 ? 0 : null;
+  return ((current - previous) / previous) * 100;
+};
+
+export class InferenceRequestStore extends SqliteStore {
+  public constructor(dbPath: string) {
+    super(dbPath, "inference-requests", migrate);
   }
 
-  private recordSync(record: InferenceRequestRecord): void {
-    const promptTokens = Math.max(0, Math.round(record.prompt_tokens));
-    const completionTokens = Math.max(0, Math.round(record.completion_tokens));
-    const reasoningTokens = Math.max(0, Math.round(record.reasoning_tokens ?? 0));
-    const cacheRead = Math.max(0, Math.round(record.cache_read_tokens ?? 0));
-    const cacheWrite = Math.max(0, Math.round(record.cache_write_tokens ?? 0));
-    const totalTokens = promptTokens + completionTokens;
-
-    this.db
-      .query(
-        `INSERT INTO inference_requests (
+  public record(record: InferenceRequestRecord): Effect.Effect<void, RepositoryError> {
+    return repositoryEffect("inference-requests.record", () => {
+      const promptTokens = Math.max(0, Math.round(record.prompt_tokens));
+      const completionTokens = Math.max(0, Math.round(record.completion_tokens));
+      this.db
+        .query(
+          `INSERT INTO inference_requests (
            model, source, session_id, provider,
            prompt_tokens, completion_tokens, reasoning_tokens,
            cache_read_tokens, cache_write_tokens, total_tokens,
            ttft_ms, duration_ms, status, streamed
          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        record.model,
-        record.source ?? null,
-        record.session_id ?? null,
-        record.provider ?? null,
-        promptTokens,
-        completionTokens,
-        reasoningTokens,
-        cacheRead,
-        cacheWrite,
-        totalTokens,
-        record.ttft_ms ?? null,
-        record.duration_ms ?? null,
-        record.status ?? 200,
-        record.streamed ? 1 : 0,
-      );
-  }
-
-  public record(record: InferenceRequestRecord): Effect.Effect<void, RepositoryError> {
-    return repositoryEffect("inference-requests.record", () => this.recordSync(record));
+        )
+        .run(
+          record.model,
+          record.source ?? null,
+          record.session_id ?? null,
+          record.provider ?? null,
+          promptTokens,
+          completionTokens,
+          Math.max(0, Math.round(record.reasoning_tokens ?? 0)),
+          Math.max(0, Math.round(record.cache_read_tokens ?? 0)),
+          Math.max(0, Math.round(record.cache_write_tokens ?? 0)),
+          promptTokens + completionTokens,
+          record.ttft_ms ?? null,
+          record.duration_ms ?? null,
+          record.status ?? 200,
+          record.streamed ? 1 : 0,
+        );
+    });
   }
 
   public aggregateEffect(
@@ -129,6 +124,8 @@ export class InferenceRequestStore {
     return repositoryEffect("inference-requests.aggregate", () => {
       const filter = buildModelFilter(knownModels);
       const params = filter.params;
+      const rows = (sql: string): Row[] =>
+        this.db.query<Row, string[]>(sql).all(...params) as Row[];
 
       const summary = this.db
         .query<NumberRow, string[]>(
@@ -158,19 +155,19 @@ export class InferenceRequestStore {
         )
         .get(...params) as NumberRow | null;
 
-      const totalRequests = toFiniteNumber(summary?.["total_requests"]);
+      const total = (key: string): number => toFiniteNumber(summary?.[key]);
+      const totalRequests = total("total_requests");
       if (totalRequests === 0) return null;
 
-      const promptTokens = toFiniteNumber(summary?.["prompt_tokens"]);
-      const completionTokens = toFiniteNumber(summary?.["completion_tokens"]);
+      const promptTokens = total("prompt_tokens");
+      const completionTokens = total("completion_tokens");
       const totalTokens = promptTokens + completionTokens;
-      const cacheHits = toFiniteNumber(summary?.["cache_read"]);
-      const cacheMisses = toFiniteNumber(summary?.["cache_write"]);
-      const successful = toFiniteNumber(summary?.["ok"]);
+      const cacheHits = total("cache_read");
+      const cacheMisses = total("cache_write");
+      const successful = total("ok");
 
-      const byModel = this.db
-        .query<Record<string, unknown>, string[]>(
-          `SELECT
+      const byModel = rows(
+        `SELECT
              model,
              COUNT(*) as requests,
              SUM(CASE WHEN status >= 200 AND status < 300 THEN 1 ELSE 0 END) as successful,
@@ -184,12 +181,10 @@ export class InferenceRequestStore {
            GROUP BY model
            ORDER BY total_tokens DESC
            LIMIT 25`,
-        )
-        .all(...params) as Array<Record<string, unknown>>;
+      );
 
-      const daily = this.db
-        .query<Record<string, unknown>, string[]>(
-          `SELECT
+      const daily = rows(
+        `SELECT
              DATE(created_at) as date,
              COUNT(*) as requests,
              SUM(CASE WHEN status >= 200 AND status < 300 THEN 1 ELSE 0 END) as successful,
@@ -202,12 +197,10 @@ export class InferenceRequestStore {
            GROUP BY DATE(created_at)
            ORDER BY date DESC
            LIMIT 400`,
-        )
-        .all(...params) as Array<Record<string, unknown>>;
+      );
 
-      const dailyByModel = this.db
-        .query<Record<string, unknown>, string[]>(
-          `SELECT
+      const dailyByModel = rows(
+        `SELECT
              DATE(created_at) as date,
              model,
              COUNT(*) as requests,
@@ -220,12 +213,10 @@ export class InferenceRequestStore {
            GROUP BY DATE(created_at), model
            ORDER BY date DESC
            LIMIT 10000`,
-        )
-        .all(...params) as Array<Record<string, unknown>>;
+      );
 
-      const hourly = this.db
-        .query<Record<string, unknown>, string[]>(
-          `SELECT
+      const hourly = rows(
+        `SELECT
              CAST(strftime('%H', created_at) AS INTEGER) as hour,
              COUNT(*) as requests,
              SUM(CASE WHEN status >= 200 AND status < 300 THEN 1 ELSE 0 END) as successful,
@@ -234,12 +225,10 @@ export class InferenceRequestStore {
            WHERE 1=1${filter.clause}
            GROUP BY strftime('%H', created_at)
            ORDER BY hour`,
-        )
-        .all(...params) as Array<Record<string, unknown>>;
+      );
 
-      const peakDays = this.db
-        .query<Record<string, unknown>, string[]>(
-          `SELECT
+      const peakDays = rows(
+        `SELECT
              DATE(created_at) as date,
              COUNT(*) as requests,
              COALESCE(SUM(prompt_tokens + completion_tokens), 0) as tokens
@@ -248,12 +237,10 @@ export class InferenceRequestStore {
            GROUP BY DATE(created_at)
            ORDER BY requests DESC
            LIMIT 5`,
-        )
-        .all(...params) as Array<Record<string, unknown>>;
+      );
 
-      const peakHours = this.db
-        .query<Record<string, unknown>, string[]>(
-          `SELECT
+      const peakHours = rows(
+        `SELECT
              CAST(strftime('%H', created_at) AS INTEGER) as hour,
              COUNT(*) as requests
            FROM inference_requests
@@ -261,13 +248,12 @@ export class InferenceRequestStore {
            GROUP BY strftime('%H', created_at)
            ORDER BY requests DESC
            LIMIT 5`,
-        )
-        .all(...params) as Array<Record<string, unknown>>;
+      );
 
-      const calcChangePct = (current: number, previous: number): number | null => {
-        if (previous === 0) return current === 0 ? 0 : null;
-        return ((current - previous) / previous) * 100;
-      };
+      const withSuccessRate = (row: Row): Row => ({
+        ...row,
+        success_rate: usageRate(row["successful"], row["requests"]),
+      });
 
       return normalizeUsageStats({
         totals: {
@@ -278,7 +264,7 @@ export class InferenceRequestStore {
           successful_requests: successful,
           failed_requests: totalRequests - successful,
           success_rate: usageRate(successful, totalRequests),
-          unique_sessions: toFiniteNumber(summary?.["unique_sessions"]),
+          unique_sessions: total("unique_sessions"),
           unique_users: 0,
         },
         latency: {
@@ -315,59 +301,39 @@ export class InferenceRequestStore {
         },
         week_over_week: {
           this_week: {
-            requests: toFiniteNumber(summary?.["this_week_requests"]),
-            tokens: toFiniteNumber(summary?.["this_week_tokens"]),
-            successful: toFiniteNumber(summary?.["this_week_ok"]),
+            requests: total("this_week_requests"),
+            tokens: total("this_week_tokens"),
+            successful: total("this_week_ok"),
           },
           last_week: {
-            requests: toFiniteNumber(summary?.["last_week_requests"]),
-            tokens: toFiniteNumber(summary?.["last_week_tokens"]),
-            successful: toFiniteNumber(summary?.["last_week_ok"]),
+            requests: total("last_week_requests"),
+            tokens: total("last_week_tokens"),
+            successful: total("last_week_ok"),
           },
           change_pct: {
-            requests: calcChangePct(
-              toFiniteNumber(summary?.["this_week_requests"]),
-              toFiniteNumber(summary?.["last_week_requests"]),
-            ),
-            tokens: calcChangePct(
-              toFiniteNumber(summary?.["this_week_tokens"]),
-              toFiniteNumber(summary?.["last_week_tokens"]),
-            ),
+            requests: changePct(total("this_week_requests"), total("last_week_requests")),
+            tokens: changePct(total("this_week_tokens"), total("last_week_tokens")),
           },
         },
         recent_activity: {
-          last_hour_requests: toFiniteNumber(summary?.["last_hour"]),
-          last_24h_requests: toFiniteNumber(summary?.["last_24h"]),
-          prev_24h_requests: toFiniteNumber(summary?.["prev_24h"]),
-          last_24h_tokens: toFiniteNumber(summary?.["last_24h_tokens"]),
-          change_24h_pct: calcChangePct(
-            toFiniteNumber(summary?.["last_24h"]),
-            toFiniteNumber(summary?.["prev_24h"]),
-          ),
+          last_hour_requests: total("last_hour"),
+          last_24h_requests: total("last_24h"),
+          prev_24h_requests: total("prev_24h"),
+          last_24h_tokens: total("last_24h_tokens"),
+          change_24h_pct: changePct(total("last_24h"), total("prev_24h")),
         },
         peak_days: peakDays,
         peak_hours: peakHours,
         by_model: byModel.map((row) => ({
-          ...row,
-          success_rate: usageRate(row["successful"], row["requests"]),
+          ...withSuccessRate(row),
           avg_tokens: usageAverage(row["total_tokens"], row["requests"]),
           avg_latency_ms: toNullableNumber(row["avg_latency_ms"]),
           avg_ttft_ms: toNullableNumber(row["avg_ttft_ms"]),
         })),
-        daily: daily.map((row) => ({
-          ...row,
-          success_rate: usageRate(row["successful"], row["requests"]),
-        })),
-        daily_by_model: dailyByModel.map((row) => ({
-          ...row,
-          success_rate: usageRate(row["successful"], row["requests"]),
-        })),
+        daily: daily.map(withSuccessRate),
+        daily_by_model: dailyByModel.map(withSuccessRate),
         hourly_pattern: hourly,
       });
     });
-  }
-
-  public close(): Effect.Effect<void, RepositoryError> {
-    return this.closeDatabase();
   }
 }

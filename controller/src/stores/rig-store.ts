@@ -1,23 +1,23 @@
-import type { Database } from "bun:sqlite";
 import type { Rig } from "@local-studio/contracts/rigs";
 import type { Effect } from "effect";
-import {
-  makeDatabaseCloser,
-  openInitializedDatabase,
-  repositoryEffect,
-  type RepositoryError,
-} from "./sqlite";
+import { repositoryEffect, SqliteStore, type RepositoryError } from "./sqlite";
 
 type RigRow = {
   data: string;
 };
 
-export class RigStore {
-  private readonly db: Database;
-  private readonly closeDatabase: () => Effect.Effect<void, RepositoryError>;
+const parseRig = (row: RigRow | null): Rig | null => {
+  if (!row) return null;
+  try {
+    return JSON.parse(row.data) as Rig;
+  } catch {
+    return null;
+  }
+};
 
+export class RigStore extends SqliteStore {
   public constructor(dbPath: string) {
-    this.db = openInitializedDatabase(dbPath, (db) =>
+    super(dbPath, "rigs", (db) =>
       db.run(`
         CREATE TABLE IF NOT EXISTS rigs (
           id TEXT PRIMARY KEY,
@@ -27,34 +27,22 @@ export class RigStore {
         )
       `),
     );
-    this.closeDatabase = makeDatabaseCloser(this.db, "rigs.close");
   }
 
   public listEffect(): Effect.Effect<Rig[], RepositoryError> {
     return repositoryEffect("rigs.list", () => {
       const rows = this.db.query("SELECT data FROM rigs ORDER BY created_at").all() as RigRow[];
-      const rigs: Rig[] = [];
-      for (const row of rows) {
-        try {
-          rigs.push(JSON.parse(row.data) as Rig);
-        } catch {
-          continue;
-        }
-      }
-      return rigs;
+      return rows.flatMap((row) => {
+        const rig = parseRig(row);
+        return rig ? [rig] : [];
+      });
     });
   }
 
   public getEffect(rigId: string): Effect.Effect<Rig | null, RepositoryError> {
-    return repositoryEffect("rigs.get", () => {
-      const row = this.db.query("SELECT data FROM rigs WHERE id = ?").get(rigId) as RigRow | null;
-      if (!row) return null;
-      try {
-        return JSON.parse(row.data) as Rig;
-      } catch {
-        return null;
-      }
-    });
+    return repositoryEffect("rigs.get", () =>
+      parseRig(this.db.query("SELECT data FROM rigs WHERE id = ?").get(rigId) as RigRow | null),
+    );
   }
 
   public saveEffect(rig: Rig): Effect.Effect<void, RepositoryError> {
@@ -69,13 +57,9 @@ export class RigStore {
   }
 
   public deleteEffect(rigId: string): Effect.Effect<boolean, RepositoryError> {
-    return repositoryEffect("rigs.delete", () => {
-      const result = this.db.query("DELETE FROM rigs WHERE id = ?").run(rigId);
-      return result.changes > 0;
-    });
-  }
-
-  public close(): Effect.Effect<void, RepositoryError> {
-    return this.closeDatabase();
+    return repositoryEffect(
+      "rigs.delete",
+      () => this.db.query("DELETE FROM rigs WHERE id = ?").run(rigId).changes > 0,
+    );
   }
 }

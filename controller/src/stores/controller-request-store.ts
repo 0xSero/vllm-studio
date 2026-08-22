@@ -1,16 +1,11 @@
-import type { Database } from "bun:sqlite";
+import type { Database, SQLQueryBindings } from "bun:sqlite";
 import {
   normalizeControllerUsage,
   usageRate,
   type ControllerUsageStats,
 } from "@local-studio/contracts/usage";
 import type { Effect } from "effect";
-import {
-  openInitializedDatabase,
-  makeDatabaseCloser,
-  repositoryEffect,
-  type RepositoryError,
-} from "./sqlite";
+import { repositoryEffect, SqliteStore, type RepositoryError } from "./sqlite";
 
 export interface ControllerRequestRecord {
   method: string;
@@ -35,22 +30,16 @@ type NumberRow = Record<string, number | string | null>;
 
 const RETENTION_DAYS = 14;
 const PRUNE_EVERY_N_RECORDS = 1000;
+const TABLES = ["controller_requests", "controller_function_calls"] as const;
 
-export class ControllerRequestStore {
-  private readonly db: Database;
-  private readonly closeDatabase: () => Effect.Effect<void, RepositoryError>;
-  private recordsSincePrune = 0;
-
-  public constructor(dbPath: string) {
-    this.db = openInitializedDatabase(dbPath, (db) => {
-      this.migrate(db);
-      this.prune(db);
-    });
-    this.closeDatabase = makeDatabaseCloser(this.db, "controller-requests.close");
+const prune = (db: Database): void => {
+  for (const table of TABLES) {
+    db.run(`DELETE FROM ${table} WHERE created_at < datetime('now', '-${RETENTION_DAYS} days')`);
   }
+};
 
-  private migrate(db: Database): void {
-    db.run(`
+const migrate = (db: Database): void => {
+  db.run(`
       CREATE TABLE IF NOT EXISTS controller_requests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -64,16 +53,7 @@ export class ControllerRequestStore {
         user_agent TEXT
       )
     `);
-    db.run(
-      `CREATE INDEX IF NOT EXISTS idx_controller_requests_created_at ON controller_requests(created_at)`,
-    );
-    db.run(
-      `CREATE INDEX IF NOT EXISTS idx_controller_requests_path_created ON controller_requests(path, created_at)`,
-    );
-    db.run(
-      `CREATE INDEX IF NOT EXISTS idx_controller_requests_status_created ON controller_requests(status, created_at)`,
-    );
-    db.run(`
+  db.run(`
       CREATE TABLE IF NOT EXISTS controller_function_calls (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -84,89 +64,98 @@ export class ControllerRequestStore {
         error_message TEXT
       )
     `);
-    db.run(
-      `CREATE INDEX IF NOT EXISTS idx_controller_function_calls_created_at ON controller_function_calls(created_at)`,
-    );
-    db.run(
-      `CREATE INDEX IF NOT EXISTS idx_controller_function_calls_name_created ON controller_function_calls(function_name, created_at)`,
-    );
+  for (const index of [
+    "idx_controller_requests_created_at ON controller_requests(created_at)",
+    "idx_controller_requests_path_created ON controller_requests(path, created_at)",
+    "idx_controller_requests_status_created ON controller_requests(status, created_at)",
+    "idx_controller_function_calls_created_at ON controller_function_calls(created_at)",
+    "idx_controller_function_calls_name_created ON controller_function_calls(function_name, created_at)",
+  ]) {
+    db.run(`CREATE INDEX IF NOT EXISTS ${index}`);
+  }
+};
+
+const initialize = (db: Database): void => {
+  migrate(db);
+  prune(db);
+};
+
+export class ControllerRequestStore extends SqliteStore {
+  private recordsSincePrune = 0;
+
+  public constructor(dbPath: string) {
+    super(dbPath, "controller-requests", initialize);
   }
 
-  private prune(db: Database = this.db): void {
-    for (const table of ["controller_requests", "controller_function_calls"]) {
-      db.run(`DELETE FROM ${table} WHERE created_at < datetime('now', '-${RETENTION_DAYS} days')`);
-    }
-  }
-
-  private maybePrune(): void {
-    this.recordsSincePrune += 1;
-    if (this.recordsSincePrune < PRUNE_EVERY_N_RECORDS) return;
-    this.recordsSincePrune = 0;
-    this.prune();
+  private insert(
+    operation: string,
+    sql: string,
+    values: SQLQueryBindings[],
+  ): Effect.Effect<void, RepositoryError> {
+    return repositoryEffect(operation, () => {
+      this.db.query(sql).run(...values);
+      this.recordsSincePrune += 1;
+      if (this.recordsSincePrune < PRUNE_EVERY_N_RECORDS) return;
+      this.recordsSincePrune = 0;
+      prune(this.db);
+    });
   }
 
   public recordEffect(record: ControllerRequestRecord): Effect.Effect<void, RepositoryError> {
-    return repositoryEffect("controller-requests.record", () => {
-      const durationMs = Math.max(0, Math.round(record.duration_ms));
-      this.db
-        .query(
-          `INSERT INTO controller_requests (
+    return this.insert(
+      "controller-requests.record",
+      `INSERT INTO controller_requests (
              method, path, status, duration_ms, success, error_class, error_message, user_agent
            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          record.method.toUpperCase(),
-          record.path,
-          Math.round(record.status),
-          durationMs,
-          record.success ? 1 : 0,
-          record.error_class ?? null,
-          record.error_message ?? null,
-          record.user_agent ?? null,
-        );
-      this.maybePrune();
-    });
+      [
+        record.method.toUpperCase(),
+        record.path,
+        Math.round(record.status),
+        Math.max(0, Math.round(record.duration_ms)),
+        record.success ? 1 : 0,
+        record.error_class ?? null,
+        record.error_message ?? null,
+        record.user_agent ?? null,
+      ],
+    );
   }
 
   public recordFunctionCallEffect(
     record: ControllerFunctionCallRecord,
   ): Effect.Effect<void, RepositoryError> {
-    return repositoryEffect("controller-function-calls.record", () => {
-      const durationMs = Math.max(0, Math.round(record.duration_ms));
-      this.db
-        .query(
-          `INSERT INTO controller_function_calls (
+    return this.insert(
+      "controller-function-calls.record",
+      `INSERT INTO controller_function_calls (
              function_name, duration_ms, success, error_class, error_message
            ) VALUES (?, ?, ?, ?, ?)`,
-        )
-        .run(
-          record.function_name,
-          durationMs,
-          record.success ? 1 : 0,
-          record.error_class ?? null,
-          record.error_message ?? null,
-        );
-      this.maybePrune();
-    });
+      [
+        record.function_name,
+        Math.max(0, Math.round(record.duration_ms)),
+        record.success ? 1 : 0,
+        record.error_class ?? null,
+        record.error_message ?? null,
+      ],
+    );
   }
 
   public aggregateEffect(): Effect.Effect<ControllerUsageStats, RepositoryError> {
     return repositoryEffect("controller-requests.aggregate", () => {
-      const totals = this.db
-        .query<NumberRow, []>(
-          `SELECT
+      const one = (sql: string): NumberRow | null =>
+        this.db.query<NumberRow, []>(sql).get() as NumberRow | null;
+      const all = (sql: string): NumberRow[] => this.db.query<NumberRow, []>(sql).all();
+
+      const totals = one(
+        `SELECT
              COUNT(*) as total_requests,
              COALESCE(SUM(success), 0) as successful_requests,
              COALESCE(SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END), 0) as failed_requests,
              AVG(duration_ms) as avg_duration_ms,
              MAX(duration_ms) as max_duration_ms
            FROM controller_requests`,
-        )
-        .get() as NumberRow | null;
+      );
 
-      const byPath = this.db
-        .query<NumberRow, []>(
-          `SELECT
+      const byPath = all(
+        `SELECT
              method,
              path,
              COUNT(*) as requests,
@@ -178,23 +167,19 @@ export class ControllerRequestStore {
            GROUP BY method, path
            ORDER BY requests DESC, path ASC
            LIMIT 50`,
-        )
-        .all() as NumberRow[];
+      );
 
-      const byStatus = this.db
-        .query<NumberRow, []>(
-          `SELECT
+      const byStatus = all(
+        `SELECT
              status,
              COUNT(*) as requests
            FROM controller_requests
            GROUP BY status
            ORDER BY requests DESC, status ASC`,
-        )
-        .all() as NumberRow[];
+      );
 
-      const errors = this.db
-        .query<NumberRow, []>(
-          `SELECT
+      const errors = all(
+        `SELECT
              method,
              path,
              status,
@@ -205,34 +190,28 @@ export class ControllerRequestStore {
            WHERE success = 0
            ORDER BY created_at DESC
            LIMIT 25`,
-        )
-        .all() as NumberRow[];
+      );
 
-      const recent = this.db
-        .query<NumberRow, []>(
-          `SELECT
+      const recent = one(
+        `SELECT
              SUM(CASE WHEN datetime(created_at) >= datetime('now', '-1 hour') THEN 1 ELSE 0 END) as last_hour,
              SUM(CASE WHEN datetime(created_at) >= datetime('now', '-24 hours') THEN 1 ELSE 0 END) as last_24h,
              SUM(CASE WHEN datetime(created_at) >= datetime('now', '-24 hours') AND success = 0 THEN 1 ELSE 0 END) as last_24h_failed
            FROM controller_requests`,
-        )
-        .get() as NumberRow | null;
+      );
 
-      const functionTotals = this.db
-        .query<NumberRow, []>(
-          `SELECT
+      const functionTotals = one(
+        `SELECT
              COUNT(*) as total_calls,
              COALESCE(SUM(success), 0) as successful_calls,
              COALESCE(SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END), 0) as failed_calls,
              AVG(duration_ms) as avg_duration_ms,
              MAX(duration_ms) as max_duration_ms
            FROM controller_function_calls`,
-        )
-        .get() as NumberRow | null;
+      );
 
-      const byFunction = this.db
-        .query<NumberRow, []>(
-          `SELECT
+      const byFunction = all(
+        `SELECT
              function_name,
              COUNT(*) as calls,
              COALESCE(SUM(success), 0) as successful,
@@ -243,12 +222,10 @@ export class ControllerRequestStore {
            GROUP BY function_name
            ORDER BY calls DESC, function_name ASC
            LIMIT 50`,
-        )
-        .all() as NumberRow[];
+      );
 
-      const functionErrors = this.db
-        .query<NumberRow, []>(
-          `SELECT
+      const functionErrors = all(
+        `SELECT
              function_name,
              error_class,
              error_message,
@@ -257,8 +234,7 @@ export class ControllerRequestStore {
            WHERE success = 0
            ORDER BY created_at DESC
            LIMIT 25`,
-        )
-        .all() as NumberRow[];
+      );
 
       return normalizeControllerUsage({
         totals: {
@@ -300,9 +276,5 @@ export class ControllerRequestStore {
         },
       }) as ControllerUsageStats;
     });
-  }
-
-  public close(): Effect.Effect<void, RepositoryError> {
-    return this.closeDatabase();
   }
 }
