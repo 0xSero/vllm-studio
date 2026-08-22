@@ -91,21 +91,8 @@ export type { ChatPaneHandle };
 
 const Timeline = dynamic(
   () => import("@/features/agent/ui/timeline/timeline").then((mod) => mod.Timeline),
-  { ssr: false, loading: () => <TimelineFallback /> },
+  { ssr: false, loading: () => <div className="flex min-h-0 flex-1 bg-(--agent-bg)" /> },
 );
-
-function downloadTextFile(filename: string, content: string): void {
-  if (typeof document === "undefined") return;
-  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
 
 function EmptyPromptTimeline() {
   return (
@@ -118,56 +105,6 @@ function EmptyPromptTimeline() {
           <p className="text-[length:var(--fs-xl)] text-(--dim)">Just talk to it.</p>
         </div>
       </div>
-    </div>
-  );
-}
-
-function TimelineFallback() {
-  return <div className="flex min-h-0 flex-1 bg-(--agent-bg)" />;
-}
-
-function ChatTranscript({
-  terminalView,
-  showEmptyPrompt,
-  activeTab,
-  stickToBottom,
-  setStickToBottom,
-  running,
-  cwd,
-  onForkSession,
-  loadEarlierHistory,
-}: {
-  terminalView: boolean;
-  showEmptyPrompt: boolean;
-  activeTab: Session | undefined;
-  stickToBottom: boolean;
-  setStickToBottom: (value: boolean) => void;
-  running: boolean;
-  cwd: string;
-  onForkSession?: () => void;
-  loadEarlierHistory: () => Promise<void>;
-}) {
-  const viewKey = activeTab?.piSessionId ?? activeTab?.id ?? null;
-  const viewAlias = activeTab?.piSessionId ? activeTab.id : null;
-  return (
-    <div className={terminalView ? "hidden" : "flex min-h-0 min-w-0 flex-1"}>
-      {showEmptyPrompt ? (
-        <EmptyPromptTimeline />
-      ) : (
-        <Timeline
-          key={activeTab?.id ?? "empty"}
-          stickToBottom={stickToBottom}
-          onStickToBottomChange={setStickToBottom}
-          messages={activeTab?.messages ?? []}
-          running={running}
-          cwd={cwd || null}
-          viewKey={viewKey}
-          viewAlias={viewAlias}
-          onForkSession={onForkSession}
-          hasEarlier={activeTab?.historyCursor != null}
-          onLoadEarlier={loadEarlierHistory}
-        />
-      )}
     </div>
   );
 }
@@ -214,12 +151,6 @@ export type ComposerModelSelectorProps = {
   onSelectReasoning: (level: AgentThinkingLevel) => void;
 };
 
-function renderComposerModelSelector(
-  renderer: Props["modelSelector"],
-  props: ComposerModelSelectorProps,
-): ReactNode {
-  return renderer ? renderer(props) : null;
-}
 export function ChatPane({
   paneId,
   modelId,
@@ -369,7 +300,7 @@ export function ChatPane({
     },
     [activeTab, running, updateTab],
   );
-  const composerModelSelector = renderComposerModelSelector(modelSelector, {
+  const composerModelSelector = modelSelector?.({
     reasoningLevel: thinkingLevel,
     reasoningLevels: modelThinkingLevels,
     reasoningDisabled: Boolean(running),
@@ -377,16 +308,12 @@ export function ChatPane({
   });
 
   const activePiSessionId = activeTab?.piSessionId ?? null;
-  const reportGoalError = useCallback(
-    (message: string) => {
-      if (activeTab) updateTab(activeTab.id, (tab) => ({ ...tab, error: message }));
-    },
-    [activeTab, updateTab],
-  );
   const goalApi = useGoal({
     piSessionId: activePiSessionId,
     tabId: activeTabId,
-    reportError: reportGoalError,
+    reportError: (message) => {
+      if (activeTab) updateTab(activeTab.id, (tab) => ({ ...tab, error: message }));
+    },
   });
   const { goalRevision, goalAction, flushPendingGoal } = goalApi;
   const handlePiSessionIdAssigned = useCallback(
@@ -428,26 +355,22 @@ export function ChatPane({
   }, [tools]);
   const [diffDrawerOpen, setDiffDrawerOpen] = useState(false);
   const openDiffDrawer = useCallback(() => setDiffDrawerOpen(true), []);
-  const closeDiffDrawer = useCallback(() => setDiffDrawerOpen(false), []);
   const exportSession = useCallback(() => {
-    if (!activeTab) return;
+    if (!activeTab || typeof document === "undefined") return;
     const markdown = sessionToMarkdown(activeTab.messages, displayedSessionTitle);
-    downloadTextFile(exportFilenameFromTitle(displayedSessionTitle), markdown);
+    const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = exportFilenameFromTitle(displayedSessionTitle);
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
   }, [activeTab, displayedSessionTitle]);
   const canExport = Boolean(
     activeTab?.messages.some((message) => message.role !== "system" && message.text.trim()),
   );
   const openTerminalAction = terminalOwner ? toggleTerminalView : onOpenTerminal;
-  const applyTemplate = useCallback(
-    (row: ComposerPromptTemplateRef) =>
-      activeTab ? applyContextRow(activeTab.id, "promptTemplate", row, tools) : Promise.resolve(),
-    [activeTab, tools],
-  );
-  const applySkill = useCallback(
-    (row: ComposerSkillRef) =>
-      activeTab ? applyContextRow(activeTab.id, "skill", row, tools) : Promise.resolve(),
-    [activeTab, tools],
-  );
   const [automationDrawerOpen, setAutomationDrawerOpen] = useState(false);
   // Seed the automation with the last thing the user asked for: the common case
   // is "keep doing what I just asked, on a schedule".
@@ -487,13 +410,19 @@ export function ChatPane({
         }),
         promptTemplateCommandProvider({
           templates: tools.promptTemplateCatalogue,
-          applyTemplate,
+          applyTemplate: (row) =>
+            activeTab
+              ? applyContextRow(activeTab.id, "promptTemplate", row, tools)
+              : Promise.resolve(),
         }),
-        skillCommandProvider({ skills: tools.skillCatalogue, applySkill }),
+        skillCommandProvider({
+          skills: tools.skillCatalogue,
+          applySkill: (row) =>
+            activeTab ? applyContextRow(activeTab.id, "skill", row, tools) : Promise.resolve(),
+        }),
       ]),
     [
-      applySkill,
-      applyTemplate,
+      activeTab,
       canExport,
       compactSession,
       goalAction,
@@ -504,8 +433,7 @@ export function ChatPane({
       openComputerStatus,
       openTerminalAction,
       router,
-      tools.promptTemplateCatalogue,
-      tools.skillCatalogue,
+      tools,
     ],
   );
   const commandContext = useMemo(
@@ -632,24 +560,32 @@ export function ChatPane({
           onToggleRightPanel,
         }}
       />
-      <ChatTranscript
-        terminalView={terminalView}
-        showEmptyPrompt={showEmptyPrompt}
-        activeTab={activeTab}
-        stickToBottom={stickToBottom}
-        setStickToBottom={setStickToBottom}
-        running={Boolean(running)}
-        cwd={cwd}
-        onForkSession={onForkSession}
-        loadEarlierHistory={loadEarlierHistory}
-      />
+      <div className={terminalView ? "hidden" : "flex min-h-0 min-w-0 flex-1"}>
+        {showEmptyPrompt ? (
+          <EmptyPromptTimeline />
+        ) : (
+          <Timeline
+            key={activeTab?.id ?? "empty"}
+            stickToBottom={stickToBottom}
+            onStickToBottomChange={setStickToBottom}
+            messages={activeTab?.messages ?? []}
+            running={Boolean(running)}
+            cwd={cwd || null}
+            viewKey={activeTab?.piSessionId ?? activeTab?.id ?? null}
+            viewAlias={activeTab?.piSessionId ? activeTab.id : null}
+            onForkSession={onForkSession}
+            hasEarlier={activeTab?.historyCursor != null}
+            onLoadEarlier={loadEarlierHistory}
+          />
+        )}
+      </div>
       <div className={terminalView ? "hidden" : "contents"}>
         {diffDrawerOpen ? (
           <GitDiffDrawer
             cwd={cwd || null}
             gitBranch={gitBranch}
             gitSummary={gitSummary}
-            onClose={closeDiffDrawer}
+            onClose={() => setDiffDrawerOpen(false)}
           />
         ) : null}
         {automationDrawerOpen ? (
@@ -701,8 +637,11 @@ export function ChatPane({
           onToggleBrowserTool={onToggleBrowserTool}
           placeholder={goalApi.goalPlaceholder ?? composerVisual.placeholder}
           drawer={
-            <SessionProjectDrawer
-              tabId={activeTabId}
+            /* Remounts per session so the goal poll and project selection never
+               carry across tabs, and hides project switching while a turn is in
+               flight. */
+            <ComposerProjectDrawer
+              key={`${activeTabId}:${activePiSessionId ?? "new"}`}
               piSessionId={activePiSessionId}
               revision={goalRevision}
               projectName={projectName}
@@ -711,7 +650,7 @@ export function ChatPane({
               gitSummary={gitSummary}
               onInitGit={onInitGit}
               onOpenDiff={openDiffDrawer}
-              showProjectRow={composerVisual.showProjectRow}
+              canPickProject={composerVisual.showProjectRow && !running}
               running={Boolean(running)}
               onProjectPicked={handleProjectPicked}
               queueItems={visibleQueueItems}
@@ -772,33 +711,5 @@ function ChatPaneChrome({
         />
       </div>
     </>
-  );
-}
-
-/** Remounts per session so the goal poll and project selection never carry
- *  across tabs, and hides project switching while a turn is in flight. */
-// The drawer's Interrupt button has no form event of its own, and sendMessage
-// only ever uses the event to cancel the browser's native submit.
-
-function SessionProjectDrawer({
-  tabId,
-  piSessionId,
-  showProjectRow,
-  running,
-  ...rest
-}: Omit<ComponentProps<typeof ComposerProjectDrawer>, "canPickProject" | "piSessionId"> & {
-  tabId: string | null;
-  piSessionId: string | null;
-  showProjectRow: boolean;
-  running: boolean;
-}) {
-  return (
-    <ComposerProjectDrawer
-      key={`${tabId}:${piSessionId ?? "new"}`}
-      piSessionId={piSessionId}
-      canPickProject={showProjectRow && !running}
-      running={running}
-      {...rest}
-    />
   );
 }

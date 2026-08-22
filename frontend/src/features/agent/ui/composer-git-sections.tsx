@@ -231,9 +231,11 @@ function GitResourceSection<T>({
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [drafts, setDrafts] = useState<string[]>(() => config.createFields.map(() => ""));
-  const items = config.items ?? [];
+  const { noun, items: loaded } = config;
   const q = query.trim().toLowerCase();
-  const filtered = q ? items.filter((item) => config.nameOf(item).toLowerCase().includes(q)) : items;
+  const filtered = (loaded ?? []).filter(
+    (item) => !q || config.nameOf(item).toLowerCase().includes(q),
+  );
 
   const submitCreate = () => {
     const values = drafts.map((draft) => draft.trim());
@@ -247,7 +249,6 @@ function GitResourceSection<T>({
   // beside it); a multi-field form stacks its inputs and gets explicit
   // cancel/confirm buttons.
   const single = config.createFields.length === 1;
-  const { noun } = config;
   const submitButton = (
     <button
       type="button"
@@ -262,162 +263,20 @@ function GitResourceSection<T>({
   );
 
   return (
-    <SectionShell
-      icon={config.icon}
-      label={`${noun[0]!.toUpperCase()}${noun.slice(1)}s`}
-      count={config.items?.length ?? 0}
-      addLabel={`New ${noun}`}
-      addDisabled={!enabled}
-      onAdd={() => setCreating((value) => !value)}
-      query={query}
-      onQueryChange={setQuery}
-      placeholder={`Search ${noun}s…`}
-      loading={loading}
-      itemsLoaded={config.items !== null}
-      emptyLabel={`No ${noun}s`}
-      empty={config.items !== null && filtered.length === 0}
-      create={
-        creating ? (
-          <div className={cx(single ? "flex items-center" : "flex flex-col", "gap-1 px-2 pb-0.5")}>
-            {config.createFields.map((field, index) => (
-              <input
-                key={field.ariaLabel}
-                autoFocus={index === 0}
-                value={drafts[index] ?? ""}
-                onChange={(event) => {
-                  const next = event.target.value;
-                  setDrafts((prev) => prev.map((value, i) => (i === index ? next : value)));
-                }}
-                onKeyDown={
-                  single
-                    ? (event) => {
-                        if (event.key === "Enter") submitCreate();
-                        if (event.key === "Escape") setCreating(false);
-                      }
-                    : undefined
-                }
-                placeholder={
-                  typeof field.placeholder === "function"
-                    ? field.placeholder(drafts)
-                    : field.placeholder
-                }
-                className={searchInputClass}
-                aria-label={field.ariaLabel}
-              />
-            ))}
-            {single ? (
-              submitButton
-            ) : (
-              <div className="flex justify-end gap-1">
-                <button
-                  type="button"
-                  onClick={() => setCreating(false)}
-                  className={iconButtonClass}
-                  aria-label={`Cancel creating ${noun}`}
-                  title="Cancel"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-                {submitButton}
-              </div>
-            )}
-          </div>
-        ) : null
-      }
-    >
-      {filtered.map((item) => {
-        const current = config.isCurrent(item);
-        const key = config.keyOf(item);
-        const remove = config.onRemove;
-        const row = (
-          <button
-            key={remove ? undefined : key}
-            type="button"
-            disabled={busy || current || !enabled}
-            onClick={() => config.onSwitch(item)}
-            className={cx(
-              listRowClass,
-              remove ? "min-w-0 flex-1" : null,
-              current ? "bg-(--hover)/50 text-(--fg)/90" : "hover:bg-(--hover)",
-              "disabled:opacity-60",
-            )}
-            title={config.rowTitle(item)}
-          >
-            {current ? <Check className="h-3.5 w-3.5 shrink-0 text-(--accent)" /> : config.rowIcon}
-            {config.rowBody(item)}
-            {config.chevron && !current && enabled ? (
-              <ChevronRight className="h-3 w-3 shrink-0 text-(--fg)/30" />
-            ) : null}
-          </button>
-        );
-        if (!remove) return row;
-        return (
-          <div key={key} className="group flex min-w-0 items-center">
-            {row}
-            {!current && enabled ? (
-              <button
-                type="button"
-                onClick={() => remove.run(item)}
-                className="mr-1 shrink-0 rounded-md p-1 text-(--fg)/40 opacity-0 transition-opacity hover:bg-(--fg)/[0.06] hover:text-(--err) group-hover:opacity-100"
-                aria-label={remove.label}
-                title={remove.label}
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
-            ) : null}
-          </div>
-        );
-      })}
-    </SectionShell>
-  );
-}
-
-function SectionShell({
-  icon,
-  label,
-  count,
-  addLabel,
-  addDisabled,
-  onAdd,
-  query,
-  onQueryChange,
-  placeholder,
-  loading,
-  itemsLoaded,
-  emptyLabel,
-  empty,
-  create,
-  children,
-}: {
-  icon: ReactNode;
-  label: string;
-  count: number;
-  addLabel: string;
-  addDisabled: boolean;
-  onAdd: () => void;
-  query: string;
-  onQueryChange: (value: string) => void;
-  placeholder: string;
-  loading: boolean;
-  itemsLoaded: boolean;
-  emptyLabel: string;
-  empty: boolean;
-  create?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
     <div>
       <div className="flex h-7 w-full items-center gap-1.5 rounded-[10px] px-2 text-[length:var(--fs-sm)] font-medium text-(--fg)/52">
-        {icon}
-        <span className="min-w-0 flex-1 truncate">{label}</span>
-        {count > 0 ? <span className="text-(--fg)/34">{count}</span> : null}
-        {!addDisabled ? (
+        {config.icon}
+        <span className="min-w-0 flex-1 truncate">{`${noun[0]!.toUpperCase()}${noun.slice(1)}s`}</span>
+        {loaded && loaded.length > 0 ? (
+          <span className="text-(--fg)/34">{loaded.length}</span>
+        ) : null}
+        {enabled ? (
           <button
             type="button"
-            onClick={onAdd}
+            onClick={() => setCreating((value) => !value)}
             className={iconButtonClass}
-            aria-label={addLabel}
-            title={addLabel}
+            aria-label={`New ${noun}`}
+            title={`New ${noun}`}
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
           </button>
@@ -426,21 +285,114 @@ function SectionShell({
       <div className="px-2 pb-0.5">
         <input
           value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          placeholder={placeholder}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={`Search ${noun}s…`}
           className={searchInputClass}
         />
       </div>
-      {create}
-      {loading && !itemsLoaded ? (
+      {creating ? (
+        <div className={cx(single ? "flex items-center" : "flex flex-col", "gap-1 px-2 pb-0.5")}>
+          {config.createFields.map((field, index) => (
+            <input
+              key={field.ariaLabel}
+              autoFocus={index === 0}
+              value={drafts[index] ?? ""}
+              onChange={(event) => {
+                const next = event.target.value;
+                setDrafts((prev) => prev.map((value, i) => (i === index ? next : value)));
+              }}
+              onKeyDown={
+                single
+                  ? (event) => {
+                      if (event.key === "Enter") submitCreate();
+                      if (event.key === "Escape") setCreating(false);
+                    }
+                  : undefined
+              }
+              placeholder={
+                typeof field.placeholder === "function"
+                  ? field.placeholder(drafts)
+                  : field.placeholder
+              }
+              className={searchInputClass}
+              aria-label={field.ariaLabel}
+            />
+          ))}
+          {single ? (
+            submitButton
+          ) : (
+            <div className="flex justify-end gap-1">
+              <button
+                type="button"
+                onClick={() => setCreating(false)}
+                className={iconButtonClass}
+                aria-label={`Cancel creating ${noun}`}
+                title="Cancel"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+              {submitButton}
+            </div>
+          )}
+        </div>
+      ) : null}
+      {loading && loaded === null ? (
         <div className={cx(listRowClass, "text-(--fg)/40")}>
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           <span>Loading…</span>
         </div>
-      ) : itemsLoaded && empty ? (
-        <div className={cx(listRowClass, "text-(--fg)/40")}>{emptyLabel}</div>
+      ) : loaded !== null && filtered.length === 0 ? (
+        <div className={cx(listRowClass, "text-(--fg)/40")}>{`No ${noun}s`}</div>
       ) : (
-        <div className="max-h-44 overflow-y-auto">{children}</div>
+        <div className="max-h-44 overflow-y-auto">
+          {filtered.map((item) => {
+            const current = config.isCurrent(item);
+            const key = config.keyOf(item);
+            const remove = config.onRemove;
+            const row = (
+              <button
+                key={remove ? undefined : key}
+                type="button"
+                disabled={busy || current || !enabled}
+                onClick={() => config.onSwitch(item)}
+                className={cx(
+                  listRowClass,
+                  remove ? "min-w-0 flex-1" : null,
+                  current ? "bg-(--hover)/50 text-(--fg)/90" : "hover:bg-(--hover)",
+                  "disabled:opacity-60",
+                )}
+                title={config.rowTitle(item)}
+              >
+                {current ? (
+                  <Check className="h-3.5 w-3.5 shrink-0 text-(--accent)" />
+                ) : (
+                  config.rowIcon
+                )}
+                {config.rowBody(item)}
+                {config.chevron && !current && enabled ? (
+                  <ChevronRight className="h-3 w-3 shrink-0 text-(--fg)/30" />
+                ) : null}
+              </button>
+            );
+            if (!remove) return row;
+            return (
+              <div key={key} className="group flex min-w-0 items-center">
+                {row}
+                {!current && enabled ? (
+                  <button
+                    type="button"
+                    onClick={() => remove.run(item)}
+                    className="mr-1 shrink-0 rounded-md p-1 text-(--fg)/40 opacity-0 transition-opacity hover:bg-(--fg)/[0.06] hover:text-(--err) group-hover:opacity-100"
+                    aria-label={remove.label}
+                    title={remove.label}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

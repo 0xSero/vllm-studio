@@ -64,6 +64,8 @@ export function ComposerProjectDrawer({
 
   const isRepo = gitSummary?.isRepo === true;
   const gitEnabled = !running && isRepo;
+  const togglePause = () =>
+    void patchGoal({ status: goal?.status === "paused" ? "active" : "paused" });
 
   const submitGoal = useCallback(
     (draft: GoalDraft) => {
@@ -116,9 +118,7 @@ export function ComposerProjectDrawer({
       {goal ? (
         <GoalStrip
           goal={goal}
-          onTogglePause={() =>
-            void patchGoal({ status: goal.status === "paused" ? "active" : "paused" })
-          }
+          onTogglePause={togglePause}
           onClear={() => void clearGoal()}
           onOpen={() => setOpen(true)}
         />
@@ -132,13 +132,38 @@ export function ComposerProjectDrawer({
             row with the project label instead of stacking under it. */}
         <div className="flex items-center gap-1 px-1.5 pt-1">
           <div className="min-w-0 flex-1">
-            <DrawerSummaryButton
-              open={open}
-              onToggle={() => setOpen((value) => !value)}
-              label={label}
-              queueCount={queueItems.length}
-              hasGoal={goal !== null}
-            />
+            <button
+              type="button"
+              onClick={() => setOpen((value) => !value)}
+              aria-expanded={open}
+              // Same metrics as every list row below it — the collapsed summary and
+              // the expanded rows share one left edge and one height, so toggling
+              // the drawer doesn't make the text jump.
+              className={cx(listRowClass, "text-(--fg)/78 hover:bg-(--hover)")}
+            >
+              {hasQueue ? (
+                <ListChecks className="h-3.5 w-3.5 shrink-0 text-(--fg)/56" strokeWidth={1.7} />
+              ) : (
+                <FolderOpen className="h-3.5 w-3.5 shrink-0 text-(--fg)/56" strokeWidth={1.7} />
+              )}
+              <span className="min-w-0 flex-1 truncate">
+                {hasQueue
+                  ? `${queueItems.length} queued message${queueItems.length === 1 ? "" : "s"}`
+                  : label}
+              </span>
+              {/* The objective is NOT repeated here. It lives one row up in the goal
+                  strip, which is always mounted; printing it twice, a row apart, was
+                  the same fact competing with itself. */}
+              {goal !== null || hasQueue ? (
+                <ChevronDown
+                  className={cx(
+                    "h-3.5 w-3.5 shrink-0 text-(--fg)/36 transition-transform",
+                    open && "rotate-180",
+                  )}
+                  strokeWidth={1.75}
+                />
+              ) : null}
+            </button>
           </div>
           {!open ? (
             <GitRow
@@ -168,9 +193,7 @@ export function ComposerProjectDrawer({
               running={running}
               error={goalError}
               onSubmit={submitGoal}
-              onTogglePause={() =>
-                void patchGoal({ status: goal?.status === "paused" ? "active" : "paused" })
-              }
+              onTogglePause={togglePause}
               onRestart={() => void patchGoal({ status: "active", resetTurns: true })}
               onClear={() => void clearGoal()}
             />
@@ -308,53 +331,5 @@ function ProjectList({
         </button>
       </div>
     </div>
-  );
-}
-
-function DrawerSummaryButton({
-  open,
-  onToggle,
-  label,
-  queueCount,
-  hasGoal,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  label: string;
-  queueCount: number;
-  hasGoal: boolean;
-}) {
-  const hasQueue = queueCount > 0;
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={open}
-      // Same metrics as every list row below it — the collapsed summary and
-      // the expanded rows share one left edge and one height, so toggling
-      // the drawer doesn't make the text jump.
-      className={cx(listRowClass, "text-(--fg)/78 hover:bg-(--hover)")}
-    >
-      {hasQueue ? (
-        <ListChecks className="h-3.5 w-3.5 shrink-0 text-(--fg)/56" strokeWidth={1.7} />
-      ) : (
-        <FolderOpen className="h-3.5 w-3.5 shrink-0 text-(--fg)/56" strokeWidth={1.7} />
-      )}
-      <span className="min-w-0 flex-1 truncate">
-        {hasQueue ? `${queueCount} queued message${queueCount === 1 ? "" : "s"}` : label}
-      </span>
-      {/* The objective is NOT repeated here. It lives one row up in the goal
-          strip, which is always mounted; printing it twice, a row apart, was
-          the same fact competing with itself. */}
-      {hasGoal || hasQueue ? (
-        <ChevronDown
-          className={cx(
-            "h-3.5 w-3.5 shrink-0 text-(--fg)/36 transition-transform",
-            open && "rotate-180",
-          )}
-          strokeWidth={1.75}
-        />
-      ) : null}
-    </button>
   );
 }

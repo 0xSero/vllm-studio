@@ -1,7 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { FilePenLine, Pause, Play, RotateCcw, Save, Target, Trash2, X } from "@/ui/icon-registry";
+import {
+  FilePenLine,
+  Pause,
+  Play,
+  RotateCcw,
+  Save,
+  Target,
+  Trash2,
+  X,
+  type LucideIcon,
+} from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
   goalElapsedSeconds,
@@ -33,11 +43,10 @@ const GOAL_STATUS_COLOR: Record<GoalStatus, string> = {
 
 /** Blocked and out-of-budget both demand a decision from the user, so the strip
  *  spells them out inline instead of trusting the icon colour alone. */
-function goalStatusPrefix(status: GoalStatus): string {
-  if (status === "blocked") return "Blocked";
-  if (status === "budget_limited") return "Out of budget";
-  return "";
-}
+const GOAL_STATUS_PREFIX: Partial<Record<GoalStatus, string>> = {
+  blocked: "Blocked",
+  budget_limited: "Out of budget",
+};
 
 /** Coarse-to-fine duration. The old minutes-only format read "0m" for the whole
  *  first minute of every goal, which is exactly when someone is watching. */
@@ -59,6 +68,40 @@ function goalBudgetTone(turnsUsed: number, turnBudget: number, spent: boolean): 
 
 const stripActionClass =
   "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-(--fg)/45 transition-colors hover:bg-(--hover) hover:text-(--fg)/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--fg)/25";
+
+const iconButtonClass =
+  "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-(--fg)/42 transition-colors hover:bg-(--hover) hover:text-(--fg)/82 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--fg)/25";
+
+/** Every goal control is the same round icon button; only the glyph, the
+ *  accessible name and (for the strip) the tone differ. */
+function IconAction({
+  icon: Icon,
+  label,
+  title = label,
+  onClick,
+  className = iconButtonClass,
+  disabled,
+}: {
+  icon: LucideIcon;
+  label: string;
+  title?: string;
+  onClick: () => void;
+  className?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={className}
+      aria-label={label}
+      title={title}
+    >
+      <Icon className="h-3.5 w-3.5" />
+    </button>
+  );
+}
 
 /** The one always-mounted surface for a goal.
  *
@@ -83,9 +126,8 @@ export function GoalStrip({
   onClear: () => void;
   onOpen: () => void;
 }) {
-  const terminal = goalIsTerminal(goal.status);
   const paused = goal.status === "paused";
-  const prefix = goalStatusPrefix(goal.status);
+  const prefix = GOAL_STATUS_PREFIX[goal.status];
   // Turn N is in flight while the goal is active; once it settles, N is done.
   const iteration = goal.status === "active" ? goal.turnsUsed + 1 : Math.max(1, goal.turnsUsed);
   return (
@@ -121,26 +163,20 @@ export function GoalStrip({
         ) : null}
         <GoalElapsed goal={goal} />
       </button>
-      {terminal ? (
-        <button
-          type="button"
+      {goalIsTerminal(goal.status) ? (
+        <IconAction
+          icon={Trash2}
+          label="Clear goal"
           onClick={onClear}
           className={stripActionClass}
-          aria-label="Clear goal"
-          title="Clear goal"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        />
       ) : (
-        <button
-          type="button"
+        <IconAction
+          icon={paused ? Play : Pause}
+          label={paused ? "Resume goal" : "Pause goal"}
           onClick={onTogglePause}
           className={stripActionClass}
-          aria-label={paused ? "Resume goal" : "Pause goal"}
-          title={paused ? "Resume goal" : "Pause goal"}
-        >
-          {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
-        </button>
+        />
       )}
     </div>
   );
@@ -167,9 +203,6 @@ function GoalElapsed({ goal }: { goal: SessionGoal }) {
     </span>
   );
 }
-
-const iconButtonClass =
-  "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-(--fg)/42 transition-colors hover:bg-(--hover) hover:text-(--fg)/82 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--fg)/25";
 
 export type GoalDraft = { objective: string; turnBudget: number | null; resetProgress: boolean };
 
@@ -202,6 +235,7 @@ export function GoalCard({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const paused = goal?.status === "paused";
   const [budgetDraft, setBudgetDraft] = useState("");
 
   const startEditing = () => {
@@ -245,177 +279,97 @@ export function GoalCard({
   return (
     <div className="rounded-[14px] bg-(--fg)/[0.03] px-2.5 py-2">
       {goal ? (
-        <GoalCardHeader
-          goal={goal}
-          onStartEditing={startEditing}
-          onTogglePause={onTogglePause}
-          onRestart={onRestart}
-          onClear={onClear}
-        />
+        <div className="flex items-center gap-2">
+          <Target
+            className={cx("h-4 w-4 shrink-0", GOAL_STATUS_COLOR[goal.status])}
+            strokeWidth={1.75}
+          />
+          <span className="shrink-0 font-medium text-(--fg)/82">
+            {GOAL_STATUS_LABEL[goal.status]}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-(--fg)/48" title={goal.objective}>
+            {goal.objective}
+          </span>
+          <span
+            className={cx(
+              "shrink-0 tabular-nums",
+              goal.turnBudget === null
+                ? "text-(--fg)/40"
+                : goalBudgetTone(goal.turnsUsed, goal.turnBudget, goal.status === "budget_limited"),
+            )}
+          >
+            {goal.turnsUsed}
+            {goal.turnBudget === null ? "" : `/${goal.turnBudget}`} turns
+          </span>
+          <IconAction
+            icon={FilePenLine}
+            label="Edit goal"
+            title="Edit objective or turn budget"
+            onClick={startEditing}
+          />
+          {goalIsTerminal(goal.status) ? (
+            <IconAction icon={RotateCcw} label="Restart goal" onClick={onRestart} />
+          ) : (
+            <IconAction
+              icon={paused ? Play : Pause}
+              label={paused ? "Resume goal" : "Pause goal"}
+              onClick={onTogglePause}
+            />
+          )}
+          <IconAction icon={Trash2} label="Clear goal" onClick={onClear} />
+        </div>
       ) : null}
       {editing ? (
-        <GoalEditor
-          draft={draft}
-          budgetDraft={budgetDraft}
-          onDraftChange={setDraft}
-          onBudgetChange={setBudgetDraft}
-          onCancel={() => setEditing(false)}
-          onSave={submit}
-        />
+        <div className="pt-1.5">
+          <textarea
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setEditing(false);
+              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault();
+                submit();
+              }
+            }}
+            rows={2}
+            autoFocus
+            placeholder="Describe the objective — measurable outcomes work best"
+            className="max-h-28 min-h-14 w-full resize-none rounded-xl border border-(--border) bg-transparent px-2.5 py-2 leading-relaxed text-(--fg)/72 outline-none placeholder:text-(--fg)/30"
+            aria-label="Goal objective"
+          />
+          <div className="flex items-center gap-2 pt-1">
+            <label className="flex items-center gap-1.5 text-(--fg)/48" htmlFor="goal-turn-budget">
+              Turn budget
+            </label>
+            <input
+              id="goal-turn-budget"
+              type="number"
+              min={1}
+              value={budgetDraft}
+              onChange={(event) => setBudgetDraft(event.target.value)}
+              placeholder="none"
+              className="h-7 w-20 rounded-md bg-(--fg)/[0.04] px-2 tabular-nums text-(--fg) outline-none placeholder:text-(--fg)/30 focus:bg-(--fg)/[0.06]"
+            />
+            <span className="min-w-0 flex-1 truncate text-(--fg)/34">
+              Auto-continues stop once spent
+            </span>
+            <IconAction
+              icon={X}
+              label="Cancel editing goal"
+              title="Cancel"
+              onClick={() => setEditing(false)}
+            />
+            <IconAction
+              icon={Save}
+              label="Save goal"
+              onClick={submit}
+              disabled={!draft.trim()}
+              className={`${iconButtonClass} bg-(--fg)/90 text-(--bg) hover:bg-(--fg) hover:text-(--bg) disabled:opacity-35`}
+            />
+          </div>
+        </div>
       ) : null}
       {error ? <div className="pt-1.5 text-(--err)">{error}</div> : null}
-    </div>
-  );
-}
-
-function GoalCardHeader({
-  goal,
-  onStartEditing,
-  onTogglePause,
-  onRestart,
-  onClear,
-}: {
-  goal: SessionGoal;
-  onStartEditing: () => void;
-  onTogglePause: () => void;
-  onRestart: () => void;
-  onClear: () => void;
-}) {
-  const terminal = goalIsTerminal(goal.status);
-  const paused = goal.status === "paused";
-  return (
-    <div className="flex items-center gap-2">
-      <Target
-        className={cx("h-4 w-4 shrink-0", GOAL_STATUS_COLOR[goal.status])}
-        strokeWidth={1.75}
-      />
-      <span className="shrink-0 font-medium text-(--fg)/82">{GOAL_STATUS_LABEL[goal.status]}</span>
-      <span className="min-w-0 flex-1 truncate text-(--fg)/48" title={goal.objective}>
-        {goal.objective}
-      </span>
-      <span
-        className={cx(
-          "shrink-0 tabular-nums",
-          goal.turnBudget === null
-            ? "text-(--fg)/40"
-            : goalBudgetTone(goal.turnsUsed, goal.turnBudget, goal.status === "budget_limited"),
-        )}
-      >
-        {goal.turnsUsed}
-        {goal.turnBudget === null ? "" : `/${goal.turnBudget}`} turns
-      </span>
-      <button
-        type="button"
-        onClick={onStartEditing}
-        className={iconButtonClass}
-        aria-label="Edit goal"
-        title="Edit objective or turn budget"
-      >
-        <FilePenLine className="h-3.5 w-3.5" />
-      </button>
-      {terminal ? (
-        <button
-          type="button"
-          onClick={onRestart}
-          className={iconButtonClass}
-          aria-label="Restart goal"
-          title="Restart goal"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={onTogglePause}
-          className={iconButtonClass}
-          aria-label={paused ? "Resume goal" : "Pause goal"}
-          title={paused ? "Resume goal" : "Pause goal"}
-        >
-          {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
-        </button>
-      )}
-      <button
-        type="button"
-        onClick={onClear}
-        className={iconButtonClass}
-        aria-label="Clear goal"
-        title="Clear goal"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
-    </div>
-  );
-}
-
-function GoalEditor({
-  draft,
-  budgetDraft,
-  onDraftChange,
-  onBudgetChange,
-  onCancel,
-  onSave,
-}: {
-  draft: string;
-  budgetDraft: string;
-  onDraftChange: (value: string) => void;
-  onBudgetChange: (value: string) => void;
-  onCancel: () => void;
-  onSave: () => void;
-}) {
-  return (
-    <div className="pt-1.5">
-      <textarea
-        value={draft}
-        onChange={(event) => onDraftChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onCancel();
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            onSave();
-          }
-        }}
-        rows={2}
-        autoFocus
-        placeholder="Describe the objective — measurable outcomes work best"
-        className="max-h-28 min-h-14 w-full resize-none rounded-xl border border-(--border) bg-transparent px-2.5 py-2 leading-relaxed text-(--fg)/72 outline-none placeholder:text-(--fg)/30"
-        aria-label="Goal objective"
-      />
-      <div className="flex items-center gap-2 pt-1">
-        <label className="flex items-center gap-1.5 text-(--fg)/48" htmlFor="goal-turn-budget">
-          Turn budget
-        </label>
-        <input
-          id="goal-turn-budget"
-          type="number"
-          min={1}
-          value={budgetDraft}
-          onChange={(event) => onBudgetChange(event.target.value)}
-          placeholder="none"
-          className="h-7 w-20 rounded-md bg-(--fg)/[0.04] px-2 tabular-nums text-(--fg) outline-none placeholder:text-(--fg)/30 focus:bg-(--fg)/[0.06]"
-        />
-        <span className="min-w-0 flex-1 truncate text-(--fg)/34">
-          Auto-continues stop once spent
-        </span>
-        <button
-          type="button"
-          onClick={onCancel}
-          className={iconButtonClass}
-          aria-label="Cancel editing goal"
-          title="Cancel"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={!draft.trim()}
-          className={`${iconButtonClass} bg-(--fg)/90 text-(--bg) hover:bg-(--fg) hover:text-(--bg) disabled:opacity-35`}
-          aria-label="Save goal"
-          title="Save goal"
-        >
-          <Save className="h-3.5 w-3.5" />
-        </button>
-      </div>
     </div>
   );
 }
