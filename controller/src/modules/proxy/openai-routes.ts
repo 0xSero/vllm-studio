@@ -23,10 +23,15 @@ import {
 } from "./chat-request";
 import { buildChatCompletionsStreamResponse } from "./chat-completions-stream";
 
+interface ModelNotRunningError {
+  error: { message: string; type: "model_not_running"; code: "model_not_running" };
+  detail: string;
+}
+
 const modelNotRunningError = (
   activeModel: string | null,
   requestedModel: string | null | undefined,
-) => {
+): ModelNotRunningError => {
   const message = activeModel
     ? `Model ${activeModel} is running; ${requestedModel} is not. Launch it from the frontend before sending requests.`
     : `No model is running. Launch ${requestedModel} from the frontend before sending requests.`;
@@ -94,10 +99,19 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
 
   const ChatRequestSchema = Schema.Record(Schema.String, Schema.Unknown);
 
+  interface ParsedChatBody {
+    parsed: Record<string, unknown>;
+    requestedModel: string | null;
+    matchedRecipe: Recipe | null;
+    isStreaming: boolean;
+    bodyChanged: boolean;
+    sessionId: string | null;
+  }
+
   const parseChatBody = (
     bodyBuffer: ArrayBuffer,
     getHeader: (name: string) => string | undefined,
-  ) =>
+  ): Effect.Effect<ParsedChatBody, HttpStatus | unknown> =>
     Effect.gen(function* () {
       const decoded = yield* Effect.try({
         try: () =>
@@ -133,7 +147,7 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
     matchedRecipe: Recipe,
     requestedModel: string | null,
     sourceHeader: string | null,
-  ) =>
+  ): Effect.Effect<ModelNotRunningError | null, unknown> =>
     context.bridge.findInferenceProcess().pipe(
       Effect.map((current) => {
         if (current && isRecipeRunning(matchedRecipe, current, { allowEitherPathContains: true })) {

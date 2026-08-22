@@ -36,6 +36,11 @@ export interface ChatCompletionsStreamParameters {
   keepaliveIntervalMs?: number;
 }
 
+const streamError =
+  (stage: "connect" | "response" | "stream", message: string) =>
+  (source: unknown): ChatCompletionsStreamError =>
+    new ChatCompletionsStreamError({ stage, message, source });
+
 const frame = (payload: string): Uint8Array => new TextEncoder().encode(`data: ${payload}\n\n`);
 
 const errorFrame = (message: string): Uint8Array =>
@@ -50,11 +55,7 @@ const responseErrorFrame = (status: number, body: string): Uint8Array =>
 const IMPLICIT_REASONING_PARSERS = ["deepseek_r1", "minimax_m2_append_think"];
 const IMPLICIT_REASONING_MODEL_HINTS = ["deepseek", "r1", "reasoning", "thinking"];
 
-const shouldBufferImplicitReasoning = (input: {
-  matchedRecipe: Recipe | null;
-  recordedModel: string;
-}): boolean => {
-  const { matchedRecipe } = input;
+const shouldBufferImplicitReasoning = (matchedRecipe: Recipe | null, model: string): boolean => {
   const reasoningParser = matchedRecipe
     ? (matchedRecipe.reasoning_parser ?? getDefaultReasoningParser(matchedRecipe) ?? null)
     : null;
@@ -62,7 +63,7 @@ const shouldBufferImplicitReasoning = (input: {
     (matchedRecipe?.backend === "vllm" || matchedRecipe?.backend === "sglang") &&
     Boolean(reasoningParser);
   if (upstreamParsesReasoning) return false;
-  const modelLower = input.recordedModel.toLowerCase();
+  const modelLower = model.toLowerCase();
   return (
     IMPLICIT_REASONING_PARSERS.includes((reasoningParser ?? "").toLowerCase()) ||
     IMPLICIT_REASONING_MODEL_HINTS.some((hint) => modelLower.includes(hint))
@@ -104,21 +105,11 @@ const responseBodyStream = (
     () => {
       ttftMs ??= Math.max(0, Math.round(performance.now() - requestStart));
     },
-    {
-      bufferImplicitReasoningContent: shouldBufferImplicitReasoning({
-        matchedRecipe,
-        recordedModel,
-      }),
-    },
+    { bufferImplicitReasoningContent: shouldBufferImplicitReasoning(matchedRecipe, recordedModel) },
   );
   return Stream.fromReadableStream({
     evaluate: () => transformed,
-    onError: (source) =>
-      new ChatCompletionsStreamError({
-        stage: "stream",
-        message: "Chat completions stream failed",
-        source,
-      }),
+    onError: streamError("stream", "Chat completions stream failed"),
   }).pipe(
     Stream.catchCause((cause) => {
       if (!parameters.clientSignal.aborted) {
@@ -169,23 +160,13 @@ const upstreamStream = (
           body: parameters.body,
           signal: AbortSignal.any([parameters.clientSignal, signal]),
         }),
-      catch: (source) =>
-        new ChatCompletionsStreamError({
-          stage: "connect",
-          message: "Chat completions connection failed",
-          source,
-        }),
+      catch: streamError("connect", "Chat completions connection failed"),
     }).pipe(
       Effect.flatMap((response) => {
         if (response.ok) return Effect.succeed(responseBodyStream(response, parameters));
         return Effect.tryPromise({
           try: () => response.text(),
-          catch: (source) =>
-            new ChatCompletionsStreamError({
-              stage: "response",
-              message: "Chat completions response failed",
-              source,
-            }),
+          catch: streamError("response", "Chat completions response failed"),
         }).pipe(
           Effect.map((body) => Stream.succeed(responseErrorFrame(response.status, body))),
           Effect.catch(() =>

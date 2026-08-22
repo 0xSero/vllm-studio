@@ -66,9 +66,7 @@ export const thinkingTagPrefixIsPartial = (suffix: string): boolean => {
 };
 
 export const createThinkRewriter = (
-  settings: {
-    bufferImplicitReasoningContent?: boolean;
-  } = {},
+  settings: { bufferImplicitReasoningContent?: boolean } = {},
 ): ThinkRewriter => {
   let inThink = false;
   let thinkCarry = "";
