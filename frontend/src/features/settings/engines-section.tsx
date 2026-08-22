@@ -2,7 +2,7 @@
 
 import { effectInterval, effectTimeout } from "@/lib/effect-timers";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { ArrowUpCircle, Check, XCircle } from "@/ui/icon-registry";
 import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -42,6 +42,13 @@ import {
 } from "./engines-section-model";
 
 type UpgradeState = { status: "idle" | "upgrading" | "success" | "error"; message?: string };
+
+const UPGRADE_ICONS: Record<UpgradeState["status"], ReactNode> = {
+  idle: <ArrowUpCircle className="h-3 w-3" />,
+  upgrading: <Spinner size="xs" />,
+  success: <Check className="h-3 w-3 text-(--ok)" />,
+  error: <XCircle className="h-3 w-3 text-(--err)" />,
+};
 
 export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null }) {
   const { runtimeSummary, status, lease } = useRealtimeStatusStore();
@@ -128,8 +135,20 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
               label="Host"
               blurb="What the controller can see of this machine's GPUs."
             />
-            <GpuMonitoringRow gpuMon={gpuMon} />
-            <GpuLeaseRow holder={lease?.holder} />
+            <HostRow
+              label="GPU monitoring"
+              description="nvidia-smi, amd-smi, rocm-smi, or Intel sysfs discovery from the controller."
+              value={gpuMon?.available ? (gpuMon.tool ?? "available") : "not available yet"}
+              tone={gpuMon?.available ? "ok" : "warn"}
+              state={gpuMon?.available ? "online" : "fallback"}
+            />
+            <HostRow
+              label="GPU lease"
+              description="Current runtime lock holder when a launch or engine job owns the GPU lane."
+              value={lease?.holder ?? "No active lease"}
+              tone={lease?.holder ? "info" : "dim"}
+              state={lease?.holder ? "held" : "free"}
+            />
           </tbody>
         </TableFrame>
       </SettingsGroup>
@@ -145,45 +164,30 @@ function HydrationStatus({ hasRows }: { hasRows: boolean }) {
   return <StatusPill tone="info">Loading…</StatusPill>;
 }
 
-function GpuMonitoringRow({ gpuMon }: { gpuMon?: SystemRuntimeInfo["gpu_monitoring"] }) {
+/** A host fact: one value and one verdict, with no location column to fill. */
+function HostRow({
+  label,
+  description,
+  value,
+  tone,
+  state,
+}: {
+  label: string;
+  description: string;
+  value: string;
+  tone: ComponentProps<typeof StatusText>["tone"];
+  state: string;
+}) {
   return (
     <DataRow>
-      <IdentityCell
-        label="GPU monitoring"
-        description="nvidia-smi, amd-smi, rocm-smi, or Intel sysfs discovery from the controller."
-      />
-      <TextCell mono>{gpuMonitorValue(gpuMon)}</TextCell>
+      <IdentityCell label={label} description={description} />
+      <TextCell mono>{value}</TextCell>
       <TextCell>—</TextCell>
       <EndCell>
-        <StatusText tone={gpuMon?.available ? "ok" : "warn"}>
-          {gpuMon?.available ? "online" : "fallback"}
-        </StatusText>
+        <StatusText tone={tone}>{state}</StatusText>
       </EndCell>
     </DataRow>
   );
-}
-
-function GpuLeaseRow({ holder }: { holder?: string | null }) {
-  return (
-    <DataRow>
-      <IdentityCell
-        label="GPU lease"
-        description="Current runtime lock holder when a launch or engine job owns the GPU lane."
-      />
-      <TextCell mono>{holder ?? "No active lease"}</TextCell>
-      <TextCell>—</TextCell>
-      <EndCell>
-        <StatusText tone={holder ? "info" : "dim"}>{holder ? "held" : "free"}</StatusText>
-      </EndCell>
-    </DataRow>
-  );
-}
-
-function gpuMonitorValue(gpuMon: SystemRuntimeInfo["gpu_monitoring"] | undefined): string {
-  if (!gpuMon?.available) {
-    return "not available yet";
-  }
-  return gpuMon.tool ?? "available";
 }
 
 function EngineRows({
@@ -323,7 +327,7 @@ function BackendRow({
         </TextCell>
         <EndCell>
           <div className="flex items-center justify-end gap-2">
-            <EngineStatus installed={info.installed} active={active} />
+            <RuntimeTargetStatus installed={info.installed} active={active} />
             {onUpgrade && info.upgrade_command_available ? (
               <RowAction
                 alwaysVisible
@@ -331,15 +335,7 @@ function BackendRow({
                 disabled={state.status === "upgrading"}
                 title={`${info.installed ? "Update" : "Install"} ${meta.label}`}
               >
-                {state.status === "upgrading" ? (
-                  <Spinner size="xs" />
-                ) : state.status === "success" ? (
-                  <Check className="h-3 w-3 text-(--ok)" />
-                ) : state.status === "error" ? (
-                  <XCircle className="h-3 w-3 text-(--err)" />
-                ) : (
-                  <ArrowUpCircle className="h-3 w-3" />
-                )}
+                {UPGRADE_ICONS[state.status]}
                 {state.status === "idle" ? (info.installed ? "Update" : "Install") : state.status}
               </RowAction>
             ) : null}
@@ -353,10 +349,6 @@ function BackendRow({
       ) : null}
     </>
   );
-}
-
-function EngineStatus({ installed, active }: { installed: boolean; active?: boolean }) {
-  return <RuntimeTargetStatus installed={installed} active={active} />;
 }
 
 function upgradeHandler(id: string) {

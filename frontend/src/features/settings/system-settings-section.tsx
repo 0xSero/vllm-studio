@@ -117,7 +117,7 @@ function CompatibilitySettings({
   checks: CompatibilityCheck[];
   report: CompatibilityReport | null;
 }) {
-  const ordered = [...checks].sort((a, b) => severityRank(a.severity) - severityRank(b.severity));
+  const ordered = [...checks].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
   const actionableChecks = ordered.filter((check) => check.severity !== "info");
   const tone: UiTone = !report ? "info" : actionableChecks.length ? "warning" : "good";
 
@@ -133,21 +133,15 @@ function CompatibilitySettings({
       collapsible
       defaultOpen={actionableChecks.length > 0}
     >
-      {!report ? (
-        <SettingsFactRows
-          rows={[
-            {
-              label: "Report",
-              value: "Waiting for the compatibility probe",
-              dim: true,
-            },
-          ]}
-        />
-      ) : ordered.length === 0 ? (
-        <SettingsFactRows rows={[{ label: "Report", value: "No issues detected" }]} />
-      ) : (
-        <SettingsFactRows rows={ordered.map(compatibilityFactRow)} />
-      )}
+      <SettingsFactRows
+        rows={
+          !report
+            ? [{ label: "Report", value: "Waiting for the compatibility probe", dim: true }]
+            : ordered.length === 0
+              ? [{ label: "Report", value: "No issues detected" }]
+              : ordered.map(compatibilityFactRow)
+        }
+      />
     </SettingsGroup>
   );
 }
@@ -176,24 +170,16 @@ function endpointFactRows(
   ];
 }
 
+/** Network, storage, then runtime — the machine as the controller reports it. */
 function machineFactRows(data: ConfigData | null): SettingsFactRow[] {
-  return [...networkFactRows(data), ...storageFactRows(data), ...runtimeFactRows(data)];
-}
-
-function networkFactRows(data: ConfigData | null): SettingsFactRow[] {
   const config = data?.config;
+  const runtime = data?.runtime;
+  const gpuCount = runtime?.gpus.count ?? 0;
 
   return [
     { label: "Host", value: config?.host ?? "127.0.0.1", mono: true },
     { label: "Controller port", value: config?.port ?? 8080, mono: true },
     { label: "Inference port", value: config?.inference_port ?? 8000, mono: true },
-  ];
-}
-
-function storageFactRows(data: ConfigData | null): SettingsFactRow[] {
-  const config = data?.config;
-
-  return [
     {
       label: "Models directory",
       value: config?.models_dir ?? "~/models",
@@ -202,14 +188,6 @@ function storageFactRows(data: ConfigData | null): SettingsFactRow[] {
     },
     { label: "Data directory", value: config?.data_dir ?? "data/", mono: true, truncate: true },
     { label: "Database", value: config?.db_path ?? "data/studio.db", mono: true, truncate: true },
-  ];
-}
-
-function runtimeFactRows(data: ConfigData | null): SettingsFactRow[] {
-  const runtime = data?.runtime;
-  const gpuCount = runtime?.gpus.count ?? 0;
-
-  return [
     { label: "Platform", value: runtime?.platform.kind ?? "unknown" },
     {
       label: "GPU types",
@@ -284,7 +262,7 @@ function compatibilityFactRow(check: CompatibilityCheck): SettingsFactRow {
     description: check.message,
     value: check.evidence ?? check.suggested_fix ?? "No extra evidence",
     dim: true,
-    status: { label: check.severity, tone: severityTone(check.severity) },
+    status: { label: check.severity, tone: SEVERITY_TONE[check.severity] },
   };
 }
 
@@ -298,32 +276,26 @@ function portFromUrl(value: string): number | null {
   }
 }
 
+/** First matching word wins, so "ready" beats "check" in "ready, checking". */
+const STATUS_TONE_WORDS: Array<[UiTone, string[]]> = [
+  ["good", ["ready", "running", "ok"]],
+  ["danger", ["error", "down", "fail"]],
+  ["warning", ["fallback", "check", "warn"]],
+];
+
 function toneForStatus(status: string): UiTone {
   const normalized = status.toLowerCase();
-  if (normalized.includes("ready") || normalized.includes("running") || normalized.includes("ok")) {
-    return "good";
-  }
-  if (normalized.includes("error") || normalized.includes("down") || normalized.includes("fail")) {
-    return "danger";
-  }
-  if (
-    normalized.includes("fallback") ||
-    normalized.includes("check") ||
-    normalized.includes("warn")
-  ) {
-    return "warning";
-  }
-  return "default";
+  const match = STATUS_TONE_WORDS.find(([, words]) => words.some((w) => normalized.includes(w)));
+  return match?.[0] ?? "default";
 }
 
-function severityRank(severity: CompatibilityCheck["severity"]): number {
-  if (severity === "error") return 0;
-  if (severity === "warn") return 1;
-  return 2;
-}
-
-function severityTone(severity: CompatibilityCheck["severity"]): UiTone {
-  if (severity === "error") return "danger";
-  if (severity === "warn") return "warning";
-  return "info";
-}
+const SEVERITY_RANK: Record<CompatibilityCheck["severity"], number> = {
+  error: 0,
+  warn: 1,
+  info: 2,
+};
+const SEVERITY_TONE: Record<CompatibilityCheck["severity"], UiTone> = {
+  error: "danger",
+  warn: "warning",
+  info: "info",
+};

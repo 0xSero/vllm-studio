@@ -56,41 +56,36 @@ interface AgentAttachPlan {
   merge: (config: JsonRecord, model: LocalAgentModel) => AttachAction;
 }
 
-async function planFor(
-  agent: LocalAgentId,
-  home: string,
-  model: LocalAgentModel,
-): Promise<AgentAttachPlan> {
-  if (agent === "pi") {
-    return {
-      configPath: piConfigPath(home),
-      detected: await pathExists(path.join(home, ".pi")),
-      format: "json",
-      emptyConfig: () => ({ providers: {} }),
-      merge: mergePiConfig,
-    };
-  }
-  if (agent === "opencode") {
+/** How to reach and update each agent's own config file. */
+const PLAN_BY_AGENT: Record<
+  LocalAgentId,
+  (home: string, model: LocalAgentModel) => Promise<AgentAttachPlan>
+> = {
+  pi: async (home) => ({
+    configPath: piConfigPath(home),
+    detected: await pathExists(path.join(home, ".pi")),
+    format: "json",
+    emptyConfig: () => ({ providers: {} }),
+    merge: mergePiConfig,
+  }),
+  opencode: async (home, model) => {
     const { xdg, dot } = opencodeCandidatePaths(home);
-    const detected = (await pathExists(path.dirname(xdg))) || (await pathExists(path.dirname(dot)));
     return {
       configPath: await resolveOpencodeConfigPath(home, model.baseUrl),
-      detected,
+      detected: (await pathExists(path.dirname(xdg))) || (await pathExists(path.dirname(dot))),
       format: "json",
       emptyConfig: () => ({ $schema: "https://opencode.ai/config.json" }),
       merge: mergeOpencodeConfig,
     };
-  }
-  if (agent === "hermes") {
-    return {
-      configPath: hermesConfigPath(home),
-      detected: await pathExists(path.join(home, ".hermes")),
-      format: "yaml",
-      emptyConfig: () => ({ custom_models: [] }),
-      merge: mergeHermesConfig,
-    };
-  }
-  if (agent === "omp") {
+  },
+  hermes: async (home) => ({
+    configPath: hermesConfigPath(home),
+    detected: await pathExists(path.join(home, ".hermes")),
+    format: "yaml",
+    emptyConfig: () => ({ custom_models: [] }),
+    merge: mergeHermesConfig,
+  }),
+  omp: async (home) => {
     const configPath = await resolveOmpConfigPath(home);
     return {
       configPath,
@@ -99,15 +94,18 @@ async function planFor(
       emptyConfig: () => ({ providers: {} }),
       merge: mergePiConfig,
     };
-  }
-  return {
+  },
+  droid: async (home) => ({
     configPath: droidConfigPath(home),
     detected: await pathExists(path.join(home, ".factory")),
     format: "json",
     emptyConfig: () => ({ customModels: [] }),
     merge: mergeDroidConfig,
-  };
-}
+  }),
+};
+
+const planFor = (agent: LocalAgentId, home: string, model: LocalAgentModel) =>
+  PLAN_BY_AGENT[agent](home, model);
 
 async function attachToAgent(
   agent: LocalAgentId,

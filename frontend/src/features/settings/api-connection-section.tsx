@@ -1,4 +1,4 @@
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   Check,
   CircleDot,
@@ -17,24 +17,13 @@ import {
   saveSavedControllers,
   type SavedController,
 } from "@/lib/api/controllers";
-import {
-  clearApiKey,
-  getStoredBackendUrl,
-  setApiKey,
-  setStoredBackendUrl,
-} from "@/lib/api/connection";
+import { clearApiKey, setApiKey, setStoredBackendUrl } from "@/lib/api/connection";
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import { DeployControllerPanel } from "./deploy-controller-panel";
 import { AppVersionSection } from "./app-version-section";
 import { StatusPill, Spinner, type UiTone } from "@/ui";
 import { ApiUrlCensorToggle, useApiUrlCensored } from "@/ui/api-url-censor";
-import {
-  SettingsButton,
-  SettingsGroup,
-  SettingsInput,
-  SettingsRow,
-  SettingsValue,
-} from "./settings-ui";
+import { SettingsButton, SettingsGroup, SettingsInput, SettingsRow } from "./settings-ui";
 
 type ControllerEntry = SavedController & { id: string };
 
@@ -55,12 +44,6 @@ let cachedEntriesKey = "";
 let cachedEntries: ControllerEntry[] = [];
 const serverEntries: ControllerEntry[] = [];
 
-function controllerEntriesKey(entries: ControllerEntry[]): string {
-  return JSON.stringify(
-    entries.map((entry) => [entry.id, entry.url, entry.name ?? "", entry.apiKey ?? ""]),
-  );
-}
-
 function readEntries(): ControllerEntry[] {
   const saved = loadSavedControllers();
   const byUrl = new Map<string, SavedController>();
@@ -75,7 +58,11 @@ function readEntries(): ControllerEntry[] {
     apiKey: value.apiKey,
     name: value.name,
   }));
-  const key = controllerEntriesKey(next);
+  // useSyncExternalStore needs a stable snapshot: return the previous array
+  // identity whenever the stored controllers are value-identical.
+  const key = JSON.stringify(
+    next.map((entry) => [entry.id, entry.url, entry.name ?? "", entry.apiKey ?? ""]),
+  );
   if (key === cachedEntriesKey) return cachedEntries;
   cachedEntriesKey = key;
   cachedEntries = next;
@@ -105,7 +92,7 @@ export function ApiConnectionSection({
 }) {
   const activeUrl = apiSettings.backendUrl;
   const entries = useSyncExternalStore(subscribeToStorage, readEntries, () => serverEntries);
-  const setEntries = (next: ControllerEntry[]) => {
+  const persist = (next: ControllerEntry[]) => {
     saveSavedControllers(next);
     scheduleDurableUiPreferencesSave();
     if (typeof window !== "undefined") window.dispatchEvent(new Event("storage"));
@@ -115,7 +102,6 @@ export function ApiConnectionSection({
   const censorUrls = useApiUrlCensored();
 
   const activeId = useMemo(() => normalizeControllerUrl(activeUrl), [activeUrl]);
-  const persist = setEntries;
   const toggleReveal = (id: string) =>
     setRevealed((current) => ({ ...current, [id]: !current[id] }));
 
@@ -408,6 +394,7 @@ function ControllerSecretInput({
   onBlur?: () => void;
   className: string;
 }) {
+  const RevealIcon = revealed ? EyeOff : Eye;
   return (
     <div className={`relative ${className}`}>
       <SettingsInput
@@ -424,15 +411,23 @@ function ControllerSecretInput({
         className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
         aria-label={revealed ? "Hide API key" : "Reveal API key"}
       >
-        {revealed ? (
-          <EyeOff className="pointer-events-none h-3.5 w-3.5" />
-        ) : (
-          <Eye className="pointer-events-none h-3.5 w-3.5" />
-        )}
+        <RevealIcon className="pointer-events-none h-3.5 w-3.5" />
       </button>
     </div>
   );
 }
+
+const STATUS_TONES: Record<ConnectionStatus, UiTone> = {
+  connected: "good",
+  error: "danger",
+  unknown: "default",
+};
+
+const STATUS_ICONS: Record<ConnectionStatus, ReactNode> = {
+  connected: <Check className="h-3 w-3 text-(--hl2)" />,
+  error: <X className="h-3 w-3 text-(--err)" />,
+  unknown: null,
+};
 
 function ApiStatus({
   status,
@@ -446,14 +441,11 @@ function ApiStatus({
   if (loading) {
     return <StatusPill tone="info">loading</StatusPill>;
   }
-  const tone: UiTone =
-    status === "connected" ? "good" : status === "error" ? "danger" : "default";
   const label = message || (status === "unknown" ? "not tested" : status);
   return (
     <span className="inline-flex items-center gap-1.5">
-      {status === "connected" ? <Check className="h-3 w-3 text-(--hl2)" /> : null}
-      {status === "error" ? <X className="h-3 w-3 text-(--err)" /> : null}
-      <StatusPill tone={tone}>{label}</StatusPill>
+      {STATUS_ICONS[status]}
+      <StatusPill tone={STATUS_TONES[status]}>{label}</StatusPill>
     </span>
   );
 }

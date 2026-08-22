@@ -103,12 +103,6 @@ export const isManagedRuntimeTarget = (target: RuntimeTarget): boolean => {
   return normalizedPythonPath.endsWith(`/runtime/venvs/${target.backend}-latest/bin/python`);
 };
 
-const managedTargetForBackend = (
-  targets: RuntimeTarget[],
-  backend: ManagedRuntimeInstallBackend,
-): RuntimeTarget | undefined =>
-  targets.find((target) => target.backend === backend && isManagedRuntimeTarget(target));
-
 export function ManagedRuntimeInstallRows({
   backends = MANAGED_RUNTIME_BACKENDS,
   jobs = [],
@@ -135,36 +129,8 @@ export function ManagedRuntimeInstallRows({
 }
 
 /** What is on disk for this target, said the same way everywhere. */
-function installedVersionLabel(target: RuntimeTarget | undefined): string {
-  if (!target?.installed) return "not installed";
-  return target.version ?? "installed";
-}
-
-/**
- * Everything the managed-venv row needs to know, resolved in one place: which
- * target (if any) the controller created for this backend, which job is
- * touching it, and whether the button installs or updates.
- */
-function describeManagedInstall(
-  backend: ManagedRuntimeInstallBackend,
-  jobs: EngineJob[],
-  targets: RuntimeTarget[],
-) {
-  const target = managedTargetForBackend(targets, backend);
-  const installedTarget = target?.installed ? target : undefined;
-  const job = installedTarget
-    ? jobForRuntimeTarget(jobs, installedTarget)
-    : managedInstallJob(jobs, backend);
-  return {
-    target,
-    installedTarget,
-    job,
-    running: isRunningEngineJob(job),
-    updateTarget: installedTarget?.capabilities.canUpdate ? installedTarget : undefined,
-    actionLabel: installedTarget ? "Update" : "Install",
-    location: target?.pythonPath ?? `$DATA_DIR/runtime/venvs/${backend}-latest`,
-  };
-}
+const installedVersionLabel = (target: RuntimeTarget | undefined): string =>
+  target?.installed ? (target.version ?? "installed") : "not installed";
 
 function ManagedRuntimeInstallRow({
   backend,
@@ -180,8 +146,18 @@ function ManagedRuntimeInstallRow({
   onUpdateTarget?: (target: RuntimeTarget) => void | Promise<void>;
 }) {
   const meta = ENGINE_META[backend];
-  const { target, installedTarget, job, running, updateTarget, actionLabel, location } =
-    describeManagedInstall(backend, jobs, targets);
+  // Everything this row needs, resolved in one place: which target (if any) the
+  // controller created for this backend, which job is touching it, and whether
+  // the button installs or updates.
+  const target = targets.find((row) => row.backend === backend && isManagedRuntimeTarget(row));
+  const installedTarget = target?.installed ? target : undefined;
+  const job = installedTarget
+    ? jobForRuntimeTarget(jobs, installedTarget)
+    : managedInstallJob(jobs, backend);
+  const running = isRunningEngineJob(job);
+  const updateTarget = installedTarget?.capabilities.canUpdate ? installedTarget : undefined;
+  const actionLabel = installedTarget ? "Update" : "Install";
+  const location = target?.pythonPath ?? `$DATA_DIR/runtime/venvs/${backend}-latest`;
   const canAct = Boolean(updateTarget ? onUpdateTarget : onInstall);
   return (
     <>
@@ -258,13 +234,17 @@ function RuntimeTargetRow({
 }) {
   const meta = ENGINE_META[target.backend];
   const unsupportedReason = target.health.message ?? "Updates are unsupported for this target.";
-  const healthMessage = runtimeTargetHealthMessage(target);
-  const location = pathForTarget(target);
+  const healthMessage =
+    target.capabilities.canUpdate &&
+    (target.health.status === "warning" || target.health.status === "error")
+      ? target.health.message
+      : undefined;
+  const location = target.pythonPath ?? target.binaryPath ?? target.dockerImage ?? "";
   const hasDetail = Boolean(
     job ||
-      (target.capabilities.canUpdate && target.update) ||
-      !target.capabilities.canUpdate ||
-      healthMessage,
+    (target.capabilities.canUpdate && target.update) ||
+    !target.capabilities.canUpdate ||
+    healthMessage,
   );
 
   return (
@@ -305,37 +285,14 @@ function RuntimeTargetRow({
       </DataRow>
       {hasDetail ? (
         <DetailRow colSpan={ENGINE_TABLE_COLSPAN}>
-          <RuntimeTargetDetail
-            target={target}
-            job={job}
-            unsupportedReason={unsupportedReason}
-            healthMessage={healthMessage}
-          />
+          {job ? <RuntimeJobMessage job={job} /> : null}
+          {target.capabilities.canUpdate && target.update ? (
+            <RuntimeUpdateDetails update={target.update} />
+          ) : null}
+          {!target.capabilities.canUpdate ? <span>{unsupportedReason}</span> : null}
+          {healthMessage ? <span className="text-(--warn)">{healthMessage}</span> : null}
         </DetailRow>
       ) : null}
-    </>
-  );
-}
-
-function RuntimeTargetDetail({
-  target,
-  job,
-  unsupportedReason,
-  healthMessage,
-}: {
-  target: RuntimeTarget;
-  job?: EngineJob;
-  unsupportedReason: string;
-  healthMessage?: string;
-}) {
-  return (
-    <>
-      {job ? <RuntimeJobMessage job={job} /> : null}
-      {target.capabilities.canUpdate && target.update ? (
-        <RuntimeUpdateDetails update={target.update} />
-      ) : null}
-      {!target.capabilities.canUpdate ? <span>{unsupportedReason}</span> : null}
-      {healthMessage ? <span className="text-(--warn)">{healthMessage}</span> : null}
     </>
   );
 }
@@ -370,29 +327,23 @@ function RuntimeTargetAction({
   );
 }
 
-function runtimeTargetHealthMessage(target: RuntimeTarget): string | undefined {
-  if (!target.capabilities.canUpdate) return undefined;
-  if (target.health.status !== "warning" && target.health.status !== "error") return undefined;
-  return target.health.message;
-}
+const RUNTIME_STATUS_TONES: Record<string, UiTone> = {
+  active: "good",
+  error: "danger",
+  installed: "info",
+  available: "default",
+};
 
-type RuntimeTargetStatusProps = {
+/** The install's verdict, drawn the way a table row states it. */
+export function RuntimeTargetStatus({
+  installed,
+  active,
+  health,
+}: {
   installed: boolean;
   active?: boolean;
   health?: RuntimeTarget["health"]["status"];
-};
-
-function runtimeTargetStatus({ installed, active, health }: RuntimeTargetStatusProps): {
-  tone: UiTone;
-  label: string;
-} {
-  const tone: UiTone = active
-    ? "good"
-    : health === "error"
-      ? "danger"
-      : installed
-        ? "info"
-        : "default";
+}) {
   const label = active
     ? "active"
     : health === "error"
@@ -400,13 +351,7 @@ function runtimeTargetStatus({ installed, active, health }: RuntimeTargetStatusP
       : installed
         ? "installed"
         : "available";
-  return { tone, label };
-}
-
-/** The install's verdict, drawn the way a table row states it. */
-export function RuntimeTargetStatus(props: RuntimeTargetStatusProps) {
-  const { tone, label } = runtimeTargetStatus(props);
-  return <StatusText tone={statusToneFor(tone)}>{label}</StatusText>;
+  return <StatusText tone={statusToneFor(RUNTIME_STATUS_TONES[label])}>{label}</StatusText>;
 }
 
 function RuntimeJobMessage({ job }: { job: EngineJob }) {
@@ -466,8 +411,4 @@ function RuntimeUpdateDetails({ update }: { update: NonNullable<RuntimeTarget["u
       {pinHint ? <span className="text-(--dim)/70">{pinHint}</span> : null}
     </>
   );
-}
-
-function pathForTarget(target: RuntimeTarget) {
-  return target.pythonPath ?? target.binaryPath ?? target.dockerImage ?? "";
 }

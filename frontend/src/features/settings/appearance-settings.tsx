@@ -19,7 +19,6 @@ import {
   TOOL_PREVIEW_HEIGHT_OPTIONS,
   TOOL_PREVIEW_KIND_LABELS,
   type ToolKind,
-  type ToolPreviewHeightOverrides,
 } from "@/features/agent/ui/timeline/tool-metadata";
 import { SettingsButton, SettingsGroup, SettingsRow } from "./settings-ui";
 
@@ -89,18 +88,31 @@ function isLightTheme(theme: ThemeMeta): boolean {
   return false;
 }
 
-function readVarString(name: string, fallback: string): string {
+function readVar<T extends number | string>(name: string, fallback: T): T {
   if (typeof document === "undefined") return fallback;
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  return value.startsWith("#") ? value : fallback;
+  if (typeof fallback !== "number") return (value.startsWith("#") ? value : fallback) as T;
+  const parsed = Number.parseFloat(value);
+  return (Number.isFinite(parsed) ? parsed : fallback) as T;
 }
 
-function readVar(name: string, fallback: number): number {
-  if (typeof document === "undefined") return fallback;
-  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+/** A live CSS custom property: React state that writes straight back to the document. */
+type Widen<T> = T extends number ? number : string;
+
+function useCssVar<T extends number | string>(
+  name: string,
+  fallback: T,
+  format: (value: Widen<T>) => string = String,
+) {
+  const [value, setValue] = useState(() => readVar(name, fallback) as Widen<T>);
+  const apply = (next: Widen<T>) => {
+    setValue(next);
+    applyUiControl(name, format(next));
+  };
+  return [value, apply] as const;
 }
+
+const px = (value: number) => `${value}px`;
 
 type SliderRowProps = {
   label: string;
@@ -131,7 +143,14 @@ function SliderRow({
       description={description}
       control={
         <div className="flex w-full items-center gap-3">
-          <Slider value={value} min={min} max={max} step={step} onChange={onChange} aria-label={label} />
+          <Slider
+            value={value}
+            min={min}
+            max={max}
+            step={step}
+            onChange={onChange}
+            aria-label={label}
+          />
           <span
             className={`${width} shrink-0 text-right font-mono text-[length:var(--fs-md)] tabular-nums text-(--ui-muted)`}
           >
@@ -177,39 +196,12 @@ export function AppearanceSettings() {
   const sizeMap: Record<string, number> = { sm: 14, md: 16, lg: 17, xl: 18, "2xl": 20 };
   const [uiFontSize, setUiFontSize] = useState(sizeMap[fontSizeId] ?? 16);
 
-  const [uiScale, setUiScale] = useState(() => readVar("--ui-scale", 1));
-  const [radiusBase, setRadiusBase] = useState(() => readVar("--radius-base", 8));
-  const setScale = (value: number) => {
-    setUiScale(value);
-    applyUiControl("--ui-scale", String(value));
-  };
-  const setRadius = (value: number) => {
-    setRadiusBase(value);
-    applyUiControl("--radius-base", `${value}px`);
-  };
-
-  const [chatFontSize, setChatFontSize] = useState(() => readVar("--codex-chat-font-size", 16));
-  const [chatLineHeight, setChatLineHeight] = useState(() =>
-    readVar("--codex-chat-line-height", 1.5),
-  );
-  const [chatWidth, setChatWidth] = useState(() => readVar("--composer-w", 48));
-  const [bubbleTone, setBubbleTone] = useState(() => readVarString("--bubble", "#282828"));
-  const setChatFont = (value: number) => {
-    setChatFontSize(value);
-    applyUiControl("--codex-chat-font-size", `${value}px`);
-  };
-  const setChatLeading = (value: number) => {
-    setChatLineHeight(value);
-    applyUiControl("--codex-chat-line-height", String(value));
-  };
-  const setChatColumn = (value: number) => {
-    setChatWidth(value);
-    applyUiControl("--composer-w", `${value}rem`);
-  };
-  const setBubble = (value: string) => {
-    setBubbleTone(value);
-    applyUiControl("--bubble", value);
-  };
+  const [uiScale, setScale] = useCssVar("--ui-scale", 1);
+  const [radiusBase, setRadius] = useCssVar("--radius-base", 8, px);
+  const [chatFontSize, setChatFont] = useCssVar("--codex-chat-font-size", 16, px);
+  const [chatLineHeight, setChatLeading] = useCssVar("--codex-chat-line-height", 1.5);
+  const [chatWidth, setChatColumn] = useCssVar("--composer-w", 48, (v) => `${v}rem`);
+  const [bubbleTone, setBubble] = useCssVar("--bubble", "#282828");
 
   const currentTheme = THEME_BY_ID.get(themeId) ?? THEMES[0];
 
@@ -298,6 +290,21 @@ export function AppearanceSettings() {
   ];
 
   const advancedTokens: Array<keyof ThemeTokens> = ["dim", "border", "hl1", "hl2", "hl3", "err"];
+
+  const tokenRow = (key: keyof ThemeTokens, label: string, description?: string) => (
+    <SettingsRow
+      key={key}
+      label={label}
+      description={description}
+      control={
+        <ColorField
+          value={customTokens[key]}
+          label={`${label} color`}
+          onChange={(v) => patchToken(key, v)}
+        />
+      }
+    />
+  );
 
   const sliderRows: Record<"typography" | "sizing" | "chat", SliderRowProps[]> = {
     typography: [
@@ -454,36 +461,11 @@ export function AppearanceSettings() {
           ) : undefined
         }
       >
-        {editorTokens.map((row) => (
-          <SettingsRow
-            key={row.key}
-            label={row.label}
-            description={row.description}
-            control={
-              <ColorField
-                value={customTokens[row.key]}
-                label={`${row.label} color`}
-                onChange={(v) => patchToken(row.key, v)}
-              />
-            }
-          />
-        ))}
+        {editorTokens.map((row) => tokenRow(row.key, row.label, row.description))}
       </SettingsGroup>
 
       <SettingsGroup title="Advanced tokens" collapsible defaultOpen={false}>
-        {advancedTokens.map((key) => (
-          <SettingsRow
-            key={key}
-            label={`--${key}`}
-            control={
-              <ColorField
-                value={customTokens[key]}
-                label={`--${key} color`}
-                onChange={(v) => patchToken(key, v)}
-              />
-            }
-          />
-        ))}
+        {advancedTokens.map((key) => tokenRow(key, `--${key}`))}
       </SettingsGroup>
 
       <SettingsGroup title="Typography">
@@ -553,41 +535,29 @@ export function AppearanceSettings() {
             />
           }
         />
-        {TOOL_PREVIEW_KINDS.map((kind) => (
-          <ToolPreviewHeightRow
-            key={kind}
-            kind={kind}
-            overrides={toolPreviewHeightOverrides}
-            onChange={setToolPreviewHeightOverride}
-          />
-        ))}
+        {TOOL_PREVIEW_KINDS.map((kind) => {
+          const value = toolPreviewHeightOverrides[kind] ?? "default";
+          return (
+            <SettingsRow
+              key={kind}
+              label={TOOL_PREVIEW_KIND_LABELS[kind]}
+              description={
+                value === "default" ? "Uses the all-tools setting" : "Custom preview height"
+              }
+              control={
+                <SegmentedControl
+                  items={TOOL_PREVIEW_OVERRIDE_OPTIONS}
+                  value={value}
+                  onChange={(height) =>
+                    setToolPreviewHeightOverride(kind, height === "default" ? undefined : height)
+                  }
+                  size="sm"
+                />
+              }
+            />
+          );
+        })}
       </SettingsGroup>
     </div>
-  );
-}
-
-function ToolPreviewHeightRow({
-  kind,
-  overrides,
-  onChange,
-}: {
-  kind: ToolKind;
-  overrides: ToolPreviewHeightOverrides;
-  onChange: (kind: ToolKind, height: PreviewHeight | undefined) => void;
-}) {
-  const value = overrides[kind] ?? "default";
-  return (
-    <SettingsRow
-      label={TOOL_PREVIEW_KIND_LABELS[kind]}
-      description={value === "default" ? "Uses the all-tools setting" : "Custom preview height"}
-      control={
-        <SegmentedControl
-          items={TOOL_PREVIEW_OVERRIDE_OPTIONS}
-          value={value}
-          onChange={(height) => onChange(kind, height === "default" ? undefined : height)}
-          size="sm"
-        />
-      }
-    />
   );
 }

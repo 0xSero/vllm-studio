@@ -34,6 +34,9 @@ type LayoutProps<Id extends SettingsSectionId = SettingsSectionId> = {
   children: ReactNode;
 };
 
+const TONE_VARIANT = { default: "ghost", primary: "primary", danger: "danger" } as const;
+type SettingsTone = keyof typeof TONE_VARIANT;
+
 type RowProps = {
   label: string;
   description?: ReactNode;
@@ -59,6 +62,9 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
   children,
 }: LayoutProps<Id>) {
   const active = sections.find((section) => section.id === activeSection);
+  const refresh = showRefresh ? (
+    <RefreshIconButton onClick={onReload} loading={loading} label={refreshLabel} />
+  ) : null;
   const layoutWidth =
     width === "wide"
       ? "max-w-[92rem] lg:grid-cols-[168px_minmax(0,68rem)]"
@@ -77,9 +83,7 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
             <h1 className="text-[length:var(--fs-lg)] font-medium tracking-[-0.01em] text-(--ui-fg)">
               {title}
             </h1>
-            {showRefresh ? (
-              <RefreshIconButton onClick={onReload} loading={loading} label={refreshLabel} />
-            ) : null}
+            {refresh}
           </div>
           <SectionNav
             label={`${title} sections`}
@@ -106,11 +110,7 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
             {status || showRefresh ? (
               <div className="flex shrink-0 items-center gap-2 text-[length:var(--fs-xs)] text-(--ui-muted)">
                 {status}
-                {showRefresh ? (
-                  <span className="lg:hidden">
-                    <RefreshIconButton onClick={onReload} loading={loading} label={refreshLabel} />
-                  </span>
-                ) : null}
+                {refresh ? <span className="lg:hidden">{refresh}</span> : null}
               </div>
             ) : null}
           </header>
@@ -183,6 +183,8 @@ export function SettingsGroup({
   );
 }
 
+const ROW_GRID = "grid grid-cols-1 md:grid-cols-[minmax(168px,0.3fr)_minmax(0,1fr)] md:gap-4";
+
 /**
  * The settings label/value row.
  *
@@ -202,10 +204,9 @@ export function SettingsRow({
   children,
 }: RowProps) {
   const primaryValue = control ?? value;
-
   return (
     <div className="rounded-md px-2 py-2 transition-colors hover:bg-(--ui-hover)/30">
-      <div className="grid min-h-7 grid-cols-1 gap-1.5 md:grid-cols-[minmax(168px,0.3fr)_minmax(0,1fr)] md:items-center md:gap-4">
+      <div className={cx(ROW_GRID, "min-h-7 gap-1.5 md:items-center")}>
         <div className="min-w-0">
           <div
             className="truncate text-[length:var(--fs-base)] font-medium text-(--ui-fg)"
@@ -220,13 +221,13 @@ export function SettingsRow({
           ) : null}
         </div>
         <div className="flex min-w-0 items-center justify-end gap-2">
-          {primaryValue ? <div className="min-w-0 flex-1">{primaryValue}</div> : null}
+          {(control ?? value) ? <div className="min-w-0 flex-1">{control ?? value}</div> : null}
           {status ? <div className="shrink-0">{status}</div> : null}
           {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
         </div>
       </div>
       {children ? (
-        <div className="mt-2 grid grid-cols-1 gap-1.5 md:grid-cols-[minmax(168px,0.3fr)_minmax(0,1fr)] md:gap-4">
+        <div className={cx(ROW_GRID, "mt-2 gap-1.5")}>
           <div className="hidden md:block" />
           <div className="min-w-0">{children}</div>
         </div>
@@ -320,7 +321,7 @@ export function SettingsButton({
   onClick?: () => void;
   disabled?: boolean;
   title?: string;
-  tone?: "default" | "primary" | "danger";
+  tone?: SettingsTone;
   type?: "button" | "submit";
   "aria-label"?: string;
 }) {
@@ -332,12 +333,18 @@ export function SettingsButton({
       title={title}
       aria-label={ariaLabel}
       size="sm"
-      variant={tone === "primary" ? "primary" : tone === "danger" ? "danger" : "ghost"}
+      variant={TONE_VARIANT[tone]}
     >
       {children}
     </Button>
   );
 }
+
+const LINK_TONE_COLORS: Record<SettingsTone, string | undefined> = {
+  default: undefined,
+  primary: "var(--color-primary-foreground)",
+  danger: "var(--destructive-foreground)",
+};
 
 export function SettingsLink({
   href,
@@ -347,26 +354,18 @@ export function SettingsLink({
 }: {
   href: string;
   children: ReactNode;
-  tone?: "default" | "primary" | "danger";
+  tone?: SettingsTone;
   "aria-label"?: string;
 }) {
+  const color = LINK_TONE_COLORS[tone];
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
       aria-label={ariaLabel}
-      style={
-        tone === "primary"
-          ? { color: "var(--color-primary-foreground)" }
-          : tone === "danger"
-            ? { color: "var(--destructive-foreground)" }
-            : undefined
-      }
-      className={buttonClasses(
-        tone === "primary" ? "primary" : tone === "danger" ? "danger" : "ghost",
-        "sm",
-      )}
+      style={color ? { color } : undefined}
+      className={buttonClasses(TONE_VARIANT[tone], "sm")}
     >
       {children}
     </a>
