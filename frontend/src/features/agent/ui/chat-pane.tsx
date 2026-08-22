@@ -69,7 +69,7 @@ import {
   loadThinkingLevelDefault,
   pickThinkingLevel,
   setThinkingLevelDefault,
-} from "@/features/agent/messages/thinking-level-pref";
+} from "@/features/agent/messages/session-prefs";
 import {
   exportFilenameFromTitle,
   sessionToMarkdown,

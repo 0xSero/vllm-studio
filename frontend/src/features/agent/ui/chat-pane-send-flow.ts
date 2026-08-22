@@ -1,7 +1,7 @@
 import { useCallback, useRef, type FormEvent } from "react";
 import { Effect } from "effect";
 import { type UpdateTab } from "@/features/agent/ui/chat-pane-composer";
-import { browserContextPrompt } from "@/features/agent/browser/context";
+import { browserContextPrompt } from "@/features/agent/tools/browser-context";
 import { selectedContextPrompt, type ComposerMention } from "@/features/agent/composer-context";
 import { isPlaceholderSessionTitle, newId, nowLabel } from "@/features/agent/messages";
 import { type SessionEngine } from "@/features/agent/runtime/engine";
