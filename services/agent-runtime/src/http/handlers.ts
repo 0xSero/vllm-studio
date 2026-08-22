@@ -37,20 +37,6 @@ import { sseResponse } from "./sse";
 
 // ─── POST /api/agent/turn ─────────────────────────────────────────────────
 
-function adoptRuntimePiSessionId(session: unknown, piSessionId: string | null | undefined) {
-  const next = piSessionId?.trim();
-  if (!next || !session || typeof session !== "object") return;
-  const runtime = session as {
-    adoptPiSessionId?: (value: string) => void;
-    currentPiSessionId?: string | null;
-  };
-  if (typeof runtime.adoptPiSessionId === "function") {
-    runtime.adoptPiSessionId(next);
-  } else if (!runtime.currentPiSessionId) {
-    runtime.currentPiSessionId = next;
-  }
-}
-
 type ResolvedTurnSession = {
   effectivePiSessionId: string | null;
   effectiveStreamingBehavior: AgentTurnRequest["streamingBehavior"];
@@ -225,7 +211,7 @@ function turnRouteEffect(request: Request): Effect.Effect<Response, unknown> {
           resolved.session,
           turnStartedAt,
         );
-        adoptRuntimePiSessionId(resolved.session, resolvedPiSessionId);
+        resolved.session.adoptPiSessionId(resolvedPiSessionId);
         return Response.json(
           commandResult(resolved.effectiveStreamingBehavior ? "queued" : "accepted", resolved, {
             piSessionId: resolvedPiSessionId,
