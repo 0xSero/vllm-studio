@@ -545,7 +545,6 @@ export function ChatPane({
       modelSupportsVision,
       readingAttachments,
       resetComposerHeight: composerAutosize.reset,
-      running: Boolean(running),
       setMention,
       setStickToBottom,
       tools,

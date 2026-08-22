@@ -1,5 +1,4 @@
 import { useCallback, useRef, type FormEvent } from "react";
-import { Effect } from "effect";
 import { type UpdateTab } from "@/features/agent/ui/chat-pane-composer";
 import { browserContextPrompt } from "@/features/agent/tools/browser-context";
 import { selectedContextPrompt, type ComposerMention } from "@/features/agent/composer-context";
@@ -33,7 +32,6 @@ type UseChatPaneSendFlowOptions = {
   modelSupportsVision: boolean;
   readingAttachments: boolean;
   resetComposerHeight: () => void;
-  running: boolean;
   setMention: (mention: ComposerMention | null) => void;
   setStickToBottom: (stickToBottom: boolean) => void;
   tools: ToolsContextValue;
@@ -51,7 +49,6 @@ export function useChatPaneSendFlow({
   modelSupportsVision,
   readingAttachments,
   resetComposerHeight,
-  running,
   setMention,
   setStickToBottom,
   tools,
@@ -185,19 +182,15 @@ export function useChatPaneSendFlow({
           : t.messages,
       }));
       resetComposerHeight();
-      return Effect.runPromise(
-        Effect.gen(function* () {
-          const result = yield* Effect.tryPromise({
-            try: () =>
-              engine.sendControl({
-                mode,
-                text,
-                runtime,
-                sessionId: tab.id,
-                piSessionId: tab.piSessionId,
-              }),
-            catch: (error) => error,
-          });
+      return engine
+        .sendControl({
+          mode,
+          text,
+          runtime,
+          sessionId: tab.id,
+          piSessionId: tab.piSessionId,
+        })
+        .then((result) => {
           updateTab(tab.id, (t) => ({
             ...t,
             queue: result.ok ? t.queue : (t.queue ?? []).filter((item) => item.id !== queuedId),
@@ -207,8 +200,7 @@ export function useChatPaneSendFlow({
                 : t.messages,
             ...(result.ok ? {} : { input: text, error: result.error || "Message failed" }),
           }));
-        }),
-      );
+        });
     },
     [engine, resetComposerHeight, updateTab],
   );
@@ -217,14 +209,14 @@ export function useChatPaneSendFlow({
   // session already has a submit pending, clear any open @mention, then run and
   // always release the guard. Shared by composer send, queue, and retry.
   const runGuardedSubmit = useCallback(
-    (guard: SessionSubmitGuard, sessionId: string, run: () => Promise<void>) => {
-      if (!beginSessionSubmit(guard, sessionId)) return Promise.resolve();
+    async (guard: SessionSubmitGuard, sessionId: string, run: () => Promise<void>) => {
+      if (!beginSessionSubmit(guard, sessionId)) return;
       setMention(null);
-      return Effect.runPromise(
-        Effect.tryPromise({ try: run, catch: (error) => error }).pipe(
-          Effect.ensuring(Effect.sync(() => endSessionSubmit(guard, sessionId))),
-        ),
-      );
+      try {
+        await run();
+      } finally {
+        endSessionSubmit(guard, sessionId);
+      }
     },
     [setMention],
   );
@@ -233,37 +225,19 @@ export function useChatPaneSendFlow({
   // accepts control messages, then either steer/queue into the running turn or
   // start a fresh prompt, each behind its own single-flight guard.
   const dispatchComposerText = useCallback(
-    (mode: "steer" | "follow_up", text: string, tab: Session, cwdHint?: string) => {
+    async (mode: "steer" | "follow_up", text: string, tab: Session, cwdHint?: string) => {
       // The session id is the opaque runtime key.
       const runtime = tab.id;
-      return Effect.runPromise(
-        Effect.gen(function* () {
-          // Fail open, same reasoning as runtimeStatusAcceptsControl: a probe
-          // that throws tells us nothing, and guessing "not running" mid-turn
-          // silently reroutes the message into a fresh prompt.
-          const acceptsControl = yield* Effect.tryPromise({
-            try: () => engine.acceptsControl(tab, runtime),
-            catch: () => running,
-          });
-          if (acceptsControl) {
-            if (!text) return;
-            yield* Effect.tryPromise({
-              try: () =>
-                runGuardedSubmit(controlSubmitInFlightRef.current, tab.id, () =>
-                  queueAndSendControl(mode, text, tab, runtime, cwdHint),
-                ),
-              catch: (error) => error,
-            });
-            return;
-          }
-          yield* Effect.tryPromise({
-            try: () =>
-              runGuardedSubmit(composerSubmitInFlightRef.current, tab.id, () =>
-                submitPrompt(text, tab.id),
-              ),
-            catch: (error) => error,
-          });
-        }),
+      const acceptsControl = await engine.acceptsControl(tab, runtime);
+      if (acceptsControl) {
+        if (!text) return;
+        await runGuardedSubmit(controlSubmitInFlightRef.current, tab.id, () =>
+          queueAndSendControl(mode, text, tab, runtime, cwdHint),
+        );
+        return;
+      }
+      await runGuardedSubmit(composerSubmitInFlightRef.current, tab.id, () =>
+        submitPrompt(text, tab.id),
       );
     },
     [engine, queueAndSendControl, runGuardedSubmit, submitPrompt],
@@ -367,29 +341,23 @@ export function useChatPaneSendFlow({
           },
         ],
       }));
-      return Effect.runPromise(
-        Effect.gen(function* () {
-          const result = yield* Effect.tryPromise({
-            try: () =>
-              engine.sendControl({
-                mode: "steer",
-                text: item.text,
-                runtime,
-                sessionId: activeTab.id,
-                piSessionId: activeTab.piSessionId,
-                queueAction: "promote",
-              }),
-            catch: (error) => error,
-          });
-          if (!result.ok) {
-            updateTab(activeTab.id, (t) => ({
-              ...t,
-              messages: t.messages.filter((message) => message.id !== pendingSteerId),
-              error: result.error || "Steer failed",
-            }));
-          }
-        }),
-      );
+      return engine
+        .sendControl({
+          mode: "steer",
+          text: item.text,
+          runtime,
+          sessionId: activeTab.id,
+          piSessionId: activeTab.piSessionId,
+          queueAction: "promote",
+        })
+        .then((result) => {
+          if (result.ok) return;
+          updateTab(activeTab.id, (t) => ({
+            ...t,
+            messages: t.messages.filter((message) => message.id !== pendingSteerId),
+            error: result.error || "Steer failed",
+          }));
+        });
     },
     [activeTab, engine, updateTab],
   );
