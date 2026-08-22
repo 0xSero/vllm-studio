@@ -57,6 +57,11 @@ export function restoreSessionDrafts(
   return next ?? new Map(sessions);
 }
 
+function forgetSessionKeys(drafts: Map<string, string>, session: Session): void {
+  drafts.delete(session.id);
+  if (session.piSessionId) drafts.delete(session.piSessionId);
+}
+
 export function sessionDraftsWithSessions(
   drafts: SessionDrafts,
   sessions: SessionsMap,
@@ -65,8 +70,7 @@ export function sessionDraftsWithSessions(
   for (const session of sessions.values()) {
     if (!session.input.length) continue;
     next ??= new Map(drafts);
-    next.delete(session.id);
-    if (session.piSessionId) next.delete(session.piSessionId);
+    forgetSessionKeys(next, session);
     next.set(sessionDraftKey(session), session.input);
   }
   return next ?? drafts;
@@ -81,10 +85,8 @@ export function updateSessionDrafts(
   const afterKey = sessionDraftKey(after);
   if (before.input === after.input && beforeKey === afterKey) return drafts;
   const next = new Map(drafts);
-  next.delete(before.id);
-  if (before.piSessionId) next.delete(before.piSessionId);
-  next.delete(after.id);
-  if (after.piSessionId) next.delete(after.piSessionId);
+  forgetSessionKeys(next, before);
+  forgetSessionKeys(next, after);
   if (after.input.length > 0) next.set(afterKey, after.input);
   return next;
 }

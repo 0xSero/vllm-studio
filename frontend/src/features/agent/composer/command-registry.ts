@@ -32,17 +32,14 @@ export function createComposerCommandRegistry(
 ): ComposerCommandRegistry {
   const list = (context: ComposerCommandContext): ComposerCommand[] => {
     const seen = new Set<string>();
-    const commands: ComposerCommand[] = [];
-    for (const provider of providers) {
-      for (const command of provider.commands()) {
+    return providers.flatMap((provider) =>
+      provider.commands().filter((command) => {
         const key = command.name.toLowerCase();
-        if (seen.has(key)) continue;
-        if (command.when && !command.when(context)) continue;
+        if (seen.has(key) || (command.when && !command.when(context))) return false;
         seen.add(key);
-        commands.push(command);
-      }
-    }
-    return commands;
+        return true;
+      }),
+    );
   };
 
   const find = (name: string, context: ComposerCommandContext): ComposerCommand | null => {

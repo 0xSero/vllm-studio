@@ -54,10 +54,7 @@ function normalizeComputerState(
   const tab = computerTab(value.tab);
   if (!tab) return undefined;
   const tabs = uniqueComputerTabs(
-    value.tabs.flatMap((item) => {
-      const resolved = computerTab(item);
-      return resolved ? [resolved] : [];
-    }),
+    value.tabs.map(computerTab).filter((item): item is ComputerTab => Boolean(item)),
   );
   return {
     open: value.open,
@@ -137,10 +134,6 @@ export function patchSessionView(
 }
 
 export function computerSessionView(computer: ComputerState): SessionComputerState {
-  return {
-    open: computer.open,
-    tab: computer.tab,
-    tabs: computer.tabs,
-    width: computer.width,
-  };
+  const { open, tab, tabs, width } = computer;
+  return { open, tab, tabs, width };
 }

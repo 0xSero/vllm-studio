@@ -48,11 +48,8 @@ export function createSessionReplayQueue(deps: SessionReplayQueueDeps): SessionR
     if (!handle) return;
     const sessionId = paneSessionId(deps.getState().panesById.get(paneId));
     const current = sessionId ? deps.getState().sessions.get(sessionId) : undefined;
-    if (!current || isFreshStarter(current) || current.messages.length > 0) {
-      pending.delete(paneId);
-      return;
-    }
-    if (current.piSessionId && current.piSessionId !== pendingSessionId) {
+    const stale = current?.piSessionId && current.piSessionId !== pendingSessionId;
+    if (!current || isFreshStarter(current) || current.messages.length > 0 || stale) {
       pending.delete(paneId);
       return;
     }

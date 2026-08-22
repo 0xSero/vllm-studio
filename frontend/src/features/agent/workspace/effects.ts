@@ -91,14 +91,6 @@ function scheduleSessionsRefresh(deps: WorkspaceEffectDeps): void {
   deps.window.setTimeout?.(fire, 1_500);
 }
 
-function normalizeModelsPayload(
-  payload: { models?: AgentModel[]; error?: string } | AgentModel[],
-): { models: AgentModel[]; error?: string } {
-  return Array.isArray(payload)
-    ? { models: payload }
-    : { models: payload.models ?? [], error: payload.error };
-}
-
 function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps): void {
   const loadSetupChecksEffect = deps.api.loadSetupChecks
     ? Effect.tryPromise({
@@ -124,7 +116,9 @@ function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps):
             try: () => deps.api.loadModels?.() ?? Promise.resolve([]),
             catch: (error) => error,
           });
-          const normalized = normalizeModelsPayload(payload);
+          const normalized = Array.isArray(payload)
+            ? { models: payload, error: undefined }
+            : { models: payload.models ?? [], error: payload.error };
           if (normalized.error) return yield* Effect.fail(new Error(normalized.error));
           deps.dispatch?.({ type: "setError", error: "" });
           deps.dispatch?.({
@@ -213,12 +207,11 @@ function openSessionsFromWorkspace(
 }
 
 function usedSkillsForSession(tab: Pick<Session, "messages" | "usedSkills">): ComposerSkillRef[] {
-  const byId = new Map<string, ComposerSkillRef>();
-  for (const skill of tab.usedSkills ?? []) byId.set(skill.id || skill.path || skill.name, skill);
-  for (const message of tab.messages) {
-    for (const skill of message.skills ?? []) byId.set(skill.id || skill.path || skill.name, skill);
-  }
-  return [...byId.values()];
+  const all = [
+    ...(tab.usedSkills ?? []),
+    ...tab.messages.flatMap((message) => message.skills ?? []),
+  ];
+  return [...new Map(all.map((skill) => [skill.id || skill.path || skill.name, skill])).values()];
 }
 
 function storedSessionsKey(state: WorkspaceState): string {

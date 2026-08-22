@@ -35,14 +35,13 @@ export type ProjectsStore = {
   initGitForActiveProject: () => Promise<void>;
 };
 
-const getBrowserWindow = (): BrowserWindowLike | null =>
-  typeof window === "undefined" ? null : window;
-
 export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}): ProjectsStore {
   const api = dependencies.api ?? defaultApi;
   const readSelection = dependencies.readSelectedProjectId ?? readSelectedProjectId;
   const writeSelection = dependencies.writeSelectedProjectId ?? writeSelectedProjectId;
-  const getWindow = dependencies.getWindow ?? getBrowserWindow;
+  const getWindow =
+    dependencies.getWindow ??
+    ((): BrowserWindowLike | null => (typeof window === "undefined" ? null : window));
   const listeners = new Set<() => void>();
   let started = false;
   let lastGitFetch: string | null = null;
@@ -53,22 +52,9 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
     gitSummaries: new Map(),
   };
 
-  const emit = (): void => {
-    for (const listener of listeners) listener();
-  };
-
   const update = (next: ProjectsSnapshot): void => {
     snapshot = next;
-    emit();
-  };
-
-  const setSelectedId = (selectedId: ProjectId | null): void => {
-    if (selectedId !== snapshot.selectedId) writeSelection(selectedId);
-    update({ ...snapshot, selectedId });
-  };
-
-  const replaceProjects = (projects: Project[]): void => {
-    update({ ...snapshot, projects });
+    for (const listener of listeners) listener();
   };
 
   const loadGitSummary = async (cwd: string): Promise<GitSummary | null> => {
@@ -108,34 +94,29 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
     void loadGitSummary(projectPathById(projects, selectedId));
   };
 
-  const start = (): void => {
-    if (started) return;
-    started = true;
-    void refresh();
-  };
-
-  const stop = (): void => {
-    if (!started || listeners.size > 0) return;
-    started = false;
-  };
-
   return {
     getSnapshot: () => snapshot,
     subscribe: (listener) => {
       listeners.add(listener);
-      start();
+      if (!started) {
+        started = true;
+        void refresh();
+      }
       return () => {
         listeners.delete(listener);
-        stop();
+        if (listeners.size === 0) started = false;
       };
     },
     refresh,
     selectProject: (project) => {
-      setSelectedId(project?.id ?? null);
+      const selectedId = project?.id ?? null;
+      if (selectedId !== snapshot.selectedId) writeSelection(selectedId);
+      update({ ...snapshot, selectedId });
       loadGitSummaryOnce(project?.path ?? "");
     },
     upsertProject: (project) => {
-      replaceProjects([project, ...snapshot.projects.filter((entry) => entry.id !== project.id)]);
+      const kept = snapshot.projects.filter((entry) => entry.id !== project.id);
+      update({ ...snapshot, projects: [project, ...kept] });
       void refresh();
     },
     removeProject: async (id) => {
@@ -158,7 +139,7 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
       else projects.splice(toIndex, 0, moved);
       writeStored(PROJECTS_ORDER_KEY, JSON.stringify(projects.map((entry) => entry.id)));
       writeCachedProjects(projects);
-      replaceProjects(projects);
+      update({ ...snapshot, projects });
     },
     loadGitSummary,
     initGitForActiveProject: async () => {

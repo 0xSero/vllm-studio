@@ -113,23 +113,13 @@ export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromSto
 
   const rawLayout = readStorage(storage, PANE_LAYOUT_KEY);
   const restoredLayout = rawLayout ? restoreLegacyLayout(rawLayout) : null;
+  const empty = { selections: new Map(), legacyRuntimeKeys: new Map() };
   if (!restoredLayout) {
-    return {
-      workspace: storedDrafts.size > 0 ? { sessionDrafts: storedDrafts } : {},
-      selections: new Map(),
-      legacyRuntimeKeys: new Map(),
-    };
+    return { workspace: storedDrafts.size > 0 ? { sessionDrafts: storedDrafts } : {}, ...empty };
   }
   const sessions = restoreSessionDrafts(restoredLayout.sessions, storedDrafts);
-  return {
-    workspace: {
-      ...restoredLayout,
-      sessions,
-      sessionDrafts: sessionDraftsWithSessions(storedDrafts, sessions),
-    },
-    selections: new Map(),
-    legacyRuntimeKeys: new Map(),
-  };
+  const sessionDrafts = sessionDraftsWithSessions(storedDrafts, sessions);
+  return { workspace: { ...restoredLayout, sessions, sessionDrafts }, ...empty };
 }
 
 function seedCachedTranscripts(
