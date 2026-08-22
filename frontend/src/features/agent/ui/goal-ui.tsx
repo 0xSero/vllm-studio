@@ -13,6 +13,7 @@ import {
   type LucideIcon,
 } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { iconButtonClass } from "@/features/agent/ui/composer-git-sections";
 import {
   goalElapsedSeconds,
   goalIsTerminal,
@@ -68,9 +69,6 @@ function goalBudgetTone(turnsUsed: number, turnBudget: number, spent: boolean): 
 
 const stripActionClass =
   "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-(--fg)/45 transition-colors hover:bg-(--hover) hover:text-(--fg)/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--fg)/25";
-
-const iconButtonClass =
-  "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-(--fg)/42 transition-colors hover:bg-(--hover) hover:text-(--fg)/82 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--fg)/25";
 
 /** Every goal control is the same round icon button; only the glyph, the
  *  accessible name and (for the strip) the tone differ. */
