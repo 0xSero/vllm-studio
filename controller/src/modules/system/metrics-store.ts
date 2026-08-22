@@ -106,30 +106,18 @@ export class PeakMetricsStore extends MetricsDatabase {
       }
 
       if (Object.keys(updates).length > 0) {
-        if (current) {
-          const setClause = Object.keys(updates)
-            .map((key) => `${key} = ?`)
-            .join(", ");
-          this.db
-            .query(
-              `UPDATE peak_metrics SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE model_id = ?`,
-            )
-            .run(...Object.values(updates), modelId);
-        } else {
-          this.db
-            .query(
-              `
-            INSERT INTO peak_metrics (model_id, prefill_tps, generation_tps, ttft_ms)
-            VALUES (?, ?, ?, ?)
-          `,
-            )
-            .run(
-              modelId,
-              updates["prefill_tps"] ?? null,
-              updates["generation_tps"] ?? null,
-              updates["ttft_ms"] ?? null,
-            );
+        // A first sighting needs the row to exist before the same SET list can land on it.
+        if (!current) {
+          this.db.query("INSERT OR IGNORE INTO peak_metrics (model_id) VALUES (?)").run(modelId);
         }
+        const setClause = Object.keys(updates)
+          .map((key) => `${key} = ?`)
+          .join(", ");
+        this.db
+          .query(
+            `UPDATE peak_metrics SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE model_id = ?`,
+          )
+          .run(...Object.values(updates), modelId);
       }
 
       return this.get(modelId) ?? {};

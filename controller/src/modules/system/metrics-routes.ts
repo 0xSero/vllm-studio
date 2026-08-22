@@ -18,6 +18,7 @@ import {
   lifetimeFields,
   peakFields,
   positiveOrUndefined,
+  processModelName,
   rollupGpus,
   round1,
   tokenTotalFields,
@@ -79,11 +80,7 @@ const buildCurrentMetrics = (
     }
 
     const isSglang = current?.backend === "sglang" || (!current && scrape.hasSglang);
-    const modelId =
-      current?.served_model_name ??
-      current?.model_path?.split("/").pop() ??
-      scrape.modelName ??
-      "active";
+    const modelId = processModelName(current) ?? scrape.modelName ?? "active";
     const prometheus = scrape.metrics;
     const names = isSglang ? SGLANG_METRIC_NAMES : VLLM_METRIC_NAMES;
     const usageAggregate: UsageAggregate | null =
@@ -196,8 +193,7 @@ export const registerMonitoringRoutes = defineRoutes((app, context) => {
         if (!current) {
           return ctx.json({ error: "No model running" });
         }
-        const modelId =
-          current.served_model_name ?? current.model_path?.split("/").pop() ?? "unknown";
+        const modelId = processModelName(current) ?? "unknown";
         const prompt = `Please count: ${Array.from({ length: Math.floor(promptTokens / 2) })
           .map((_, index) => index.toString())
           .join(" ")}`;

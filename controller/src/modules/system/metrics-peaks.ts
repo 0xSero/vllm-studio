@@ -44,6 +44,12 @@ export const bumpBestLower = (
   if (peaks[key] === 0 || value < peaks[key]) peaks[key] = value;
 };
 
+/** The served name a running process answers to, else its weights folder, else null. */
+export const processModelName = (
+  process: { served_model_name?: string | null; model_path?: string | null } | null | undefined,
+): string | null =>
+  process ? (process.served_model_name ?? process.model_path?.split("/").pop() ?? null) : null;
+
 /**
  * Return the first finite Prometheus metric value for a list of compatible metric names.
  * @param metrics - Scraped Prometheus metrics keyed by metric name.

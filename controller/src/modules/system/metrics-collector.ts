@@ -13,6 +13,7 @@ import {
   lifetimeFields,
   peakFields,
   positiveOrUndefined,
+  processModelName,
   rollupGpus,
   round1,
   tokenTotalFields,
@@ -67,9 +68,7 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
     if (Date.now() - lastRuntimeSummaryAt > METRICS_RUNTIME_SUMMARY_INTERVAL_MS) {
       yield* Effect.gen(function* () {
         const runtime = yield* getSystemRuntimeInfo(context.config);
-        const leaseHolder = current
-          ? (current.served_model_name ?? current.model_path?.split("/").pop() ?? "inference")
-          : null;
+        const leaseHolder = current ? (processModelName(current) ?? "inference") : null;
         yield* context.eventManager.publishRuntimeSummary({
           platform: runtime.platform,
           gpu_monitoring: runtime.gpu_monitoring,
@@ -98,8 +97,7 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
     };
 
     if (current) {
-      const modelId =
-        current.served_model_name ?? current.model_path?.split("/").pop() ?? "unknown";
+      const modelId = processModelName(current) ?? "unknown";
 
       if (sessionModelId !== modelId) {
         sessionModelId = modelId;
