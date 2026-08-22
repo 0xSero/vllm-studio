@@ -72,12 +72,12 @@ export function useFilesystemPanelEffects({
 
   useMountSubscription(() => {
     rootRef.current = root;
-  }, [root, rootRef]);
+  }, [root]);
 
   // Switching session/project drops any external root the panel had adopted.
   useMountSubscription(() => {
     setRootOverride(null);
-  }, [cwd, setRootOverride]);
+  }, [cwd]);
 
   useMountSubscription(() => {
     const pending = pendingOpen.current;
@@ -96,21 +96,7 @@ export function useFilesystemPanelEffects({
     setExpandedDirs(new Set());
     setDirChildren(new Map());
     setDirLoading(new Set());
-  }, [
-    root,
-    setComments,
-    setDirChildren,
-    setDirLoading,
-    setDraftContent,
-    setExpandedDirs,
-    setFileContent,
-    setFileSize,
-    setFileTruncated,
-    setSaveError,
-    setOpenFile,
-    setRelPath,
-    setSearchQuery,
-  ]);
+  }, [root]);
 
   useMountSubscription(() => {
     if (!root) {
@@ -133,13 +119,13 @@ export function useFilesystemPanelEffects({
     return () => {
       cancelled = true;
     };
-  }, [root, relPath, refreshRevision, setEntries]);
+  }, [root, relPath, refreshRevision]);
 
   useMountSubscription(() => {
     if (!root || pendingApplied.current === root) return;
     const remembered = lastOpenFileByProject[root];
     if (remembered) setOpenFile(remembered);
-  }, [root, lastOpenFileByProject, setOpenFile]);
+  }, [root, lastOpenFileByProject]);
 
   useMountSubscription(() => {
     if (!fileOpenRequest || handledFileOpenRequest.current === fileOpenRequest.id) {
@@ -167,15 +153,7 @@ export function useFilesystemPanelEffects({
     }
     setOpenFile(target.rel);
     if (root) setLastOpenFileByProject(root, target.rel);
-  }, [
-    cwd,
-    root,
-    fileOpenRequest,
-    setLastOpenFileByProject,
-    setOpenFile,
-    setRelPath,
-    setRootOverride,
-  ]);
+  }, [cwd, root, fileOpenRequest, setLastOpenFileByProject]);
 
   useMountSubscription(() => {
     if (!root || !openFile || skipTextRead) {
@@ -234,20 +212,7 @@ export function useFilesystemPanelEffects({
     return () => {
       cancelled = true;
     };
-  }, [
-    root,
-    openFile,
-    skipTextRead,
-    refreshRevision,
-    preserveDraft,
-    setComments,
-    setDraftContent,
-    setFileContent,
-    setFileSize,
-    setFileTruncated,
-    setLoadingFile,
-    setSaveError,
-  ]);
+  }, [root, openFile, skipTextRead, refreshRevision, preserveDraft]);
 }
 
 type FileOpenTarget = { root: string; rel: string; kind: "file" | "directory" };

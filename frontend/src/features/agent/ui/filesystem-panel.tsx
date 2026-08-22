@@ -30,6 +30,26 @@ import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { FILESYSTEM_CHANGED_EVENT } from "@/lib/workspace-events";
 
 type Props = { cwd: string | null };
+
+const VIEW_MODE_TOGGLES = [
+  ["preview", Monitor],
+  ["code", Code],
+] as const;
+
+function FontSizeStep({ delta, size }: { delta: -1 | 1; size: number }) {
+  const setFontSize = useAppStore((s) => s.setFileViewerFontSize);
+  const Icon = delta < 0 ? Minus : Plus;
+  return (
+    <button
+      type="button"
+      onClick={() => setFontSize(delta < 0 ? Math.max(8, size - 1) : Math.min(20, size + 1))}
+      className="inline-flex h-5 w-5 items-center justify-center rounded text-(--dim) hover:text-(--fg)"
+      title={`${delta < 0 ? "Decrease" : "Increase"} font size`}
+    >
+      <Icon className="h-3 w-3" />
+    </button>
+  );
+}
 // eslint-disable-next-line complexity
 export function FilesystemPanel({ cwd }: Props) {
   // A file reference can point outside the session project (a PDF on the
@@ -62,7 +82,6 @@ export function FilesystemPanel({ cwd }: Props) {
   const { fileOpenRequest } = useToolSelections();
   const { requestContextAttach } = useToolsActions();
   const fontSize = useAppStore((s) => s.fileViewerFontSize);
-  const setFontSize = useAppStore((s) => s.setFileViewerFontSize);
   const lastOpenFileByProject = useAppStore((s) => s.lastOpenFileByProject);
   const setLastOpenFileByProject = useAppStore((s) => s.setLastOpenFileByProject);
   const rootRef = useRef(root);
@@ -70,6 +89,7 @@ export function FilesystemPanel({ cwd }: Props) {
   const previewKind = useMemo(() => previewKindForOpenFile(openFile), [openFile]);
   const binaryPreview = isBinaryPreviewKind(previewKind);
   const dirty = draftContent !== fileContent;
+  const fileName = openFile ? (openFile.split("/").pop() ?? openFile) : "";
   useMountSubscription(() => {
     const refresh = () => setRefreshRevision((revision) => revision + 1);
     window.addEventListener(FILESYSTEM_CHANGED_EVENT, refresh);
@@ -228,12 +248,12 @@ export function FilesystemPanel({ cwd }: Props) {
         if (payload.comment) setComments((current) => [...current, payload.comment!]);
       } catch {}
       requestContextAttach({
-        label: `${openFile.split("/").pop() ?? openFile} · L${line}`,
+        label: `${fileName} · L${line}`,
         path: openFile,
         content: `Comment on ${openFile} line ${line}: ${body.trim()}`,
       });
     },
-    [root, openFile, requestContextAttach],
+    [root, openFile, fileName, requestContextAttach],
   );
   const removeComment = useCallback(
     async (id: string) => {
@@ -253,11 +273,11 @@ export function FilesystemPanel({ cwd }: Props) {
     const ordered = [...comments].sort((a, b) => a.line - b.line);
     const body = ordered.map((comment) => `- Line ${comment.line}: ${comment.body}`).join("\n");
     requestContextAttach({
-      label: `${openFile.split("/").pop() ?? openFile} · comments`,
+      label: `${fileName} · comments`,
       path: openFile,
       content: `Comments on ${openFile}:\n${body}`,
     });
-  }, [comments, openFile, requestContextAttach]);
+  }, [comments, openFile, fileName, requestContextAttach]);
   if (!root) {
     return (
       <div className="flex h-full items-center justify-center text-center text-[length:var(--fs-sm)] text-(--dim)">
@@ -362,9 +382,7 @@ export function FilesystemPanel({ cwd }: Props) {
                   title={openFile}
                 >
                   <File className={`h-3.5 w-3.5 shrink-0 ${fileTone(openFile)}`} />
-                  <span className="truncate font-mono">
-                    {openFile.split("/").pop() ?? openFile}
-                  </span>
+                  <span className="truncate font-mono">{fileName}</span>
                 </div>
                 <FileOpenActions root={root} relPath={openFile} compact />
               </div>
@@ -372,9 +390,7 @@ export function FilesystemPanel({ cwd }: Props) {
             </>
           ) : binaryPreview || fileTruncated ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-[length:var(--fs-sm)] text-(--dim)">
-              <span className="max-w-full truncate font-mono text-(--fg)">
-                {openFile.split("/").pop() ?? openFile}
-              </span>
+              <span className="max-w-full truncate font-mono text-(--fg)">{fileName}</span>
               <span>
                 {binaryPreview
                   ? "PDFs open in your reader, not in this panel."
@@ -395,9 +411,7 @@ export function FilesystemPanel({ cwd }: Props) {
                   title={openFile}
                 >
                   <File className={`h-3.5 w-3.5 shrink-0 ${fileTone(openFile)}`} />
-                  <span className="truncate font-mono">
-                    {openFile.split("/").pop() ?? openFile}
-                  </span>
+                  <span className="truncate font-mono">{fileName}</span>
                 </div>
                 <div className="flex shrink-0 items-center gap-0.5">
                   {comments.length > 0 && (
@@ -431,42 +445,24 @@ export function FilesystemPanel({ cwd }: Props) {
                   </button>
                   {previewKind && (
                     <div className="mr-1 flex items-center gap-0.5 rounded-md border border-(--border) bg-(--color-input) p-0.5">
-                      <button
-                        type="button"
-                        onClick={() => setViewMode("preview")}
-                        className={`inline-flex h-5 items-center gap-1 rounded px-1.5 text-[length:var(--fs-xs)] ${viewMode === "preview" ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:text-(--fg)"}`}
-                      >
-                        <Monitor className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setViewMode("code")}
-                        className={`inline-flex h-5 items-center gap-1 rounded px-1.5 text-[length:var(--fs-xs)] ${viewMode === "code" ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:text-(--fg)"}`}
-                      >
-                        <Code className="h-3 w-3" />
-                      </button>
+                      {VIEW_MODE_TOGGLES.map(([mode, Icon]) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setViewMode(mode)}
+                          className={`inline-flex h-5 items-center gap-1 rounded px-1.5 text-[length:var(--fs-xs)] ${viewMode === mode ? "bg-(--hover) text-(--fg)" : "text-(--dim) hover:text-(--fg)"}`}
+                        >
+                          <Icon className="h-3 w-3" />
+                        </button>
+                      ))}
                     </div>
                   )}
                   <div className="flex items-center gap-0.5 rounded-md border border-(--border) bg-(--color-input) p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setFontSize(Math.max(8, fontSize - 1))}
-                      className="inline-flex h-5 w-5 items-center justify-center rounded text-(--dim) hover:text-(--fg)"
-                      title="Decrease font size"
-                    >
-                      <Minus className="h-3 w-3" />
-                    </button>
+                    <FontSizeStep delta={-1} size={fontSize} />
                     <span className="w-5 text-center text-[length:var(--fs-2xs)] text-(--dim)">
                       {fontSize}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setFontSize(Math.min(20, fontSize + 1))}
-                      className="inline-flex h-5 w-5 items-center justify-center rounded text-(--dim) hover:text-(--fg)"
-                      title="Increase font size"
-                    >
-                      <Plus className="h-3 w-3" />
-                    </button>
+                    <FontSizeStep delta={1} size={fontSize} />
                   </div>
                   {!fileListOpen ? (
                     <button

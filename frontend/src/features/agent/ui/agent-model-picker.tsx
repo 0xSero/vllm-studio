@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent,
-  type PointerEvent,
-} from "react";
+import { useCallback, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Pin } from "@/ui/icon-registry";
@@ -83,20 +75,19 @@ export function AgentModelPicker({
     () => groupModelsByController(visible.visibleModels),
     [visible.visibleModels],
   );
-  const disabled = loading;
-  const modelLabel = modelTriggerLabel(
-    active,
-    selectedModel,
-    loading,
-    visible.controllerModels.length,
-  );
+  const modelLabel =
+    active?.rawId ||
+    active?.name ||
+    selectedModel ||
+    (visible.controllerModels.length === 0 ? "No models" : "model");
   const supportsReasoning = Boolean(reasoningLevel && onSelectReasoning);
   const effectiveReasoning = reasoningLevels.includes(reasoningLevel ?? "off")
     ? (reasoningLevel ?? "off")
     : (reasoningLevels.at(-1) ?? "off");
   const reasoningLabel = REASONING_LABELS[effectiveReasoning];
   const triggerLabel = supportsReasoning ? `${modelLabel} ${reasoningLabel}` : modelLabel;
-  const selectedModelNotRunning = !loading && Boolean(active && active.active === false);
+  const triggerTitle = active?.name || triggerLabel;
+  const notRunning = !loading && Boolean(active && active.active === false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const close = useCallback(() => {
@@ -130,13 +121,6 @@ export function AgentModelPicker({
       panelRef.current = null;
     };
   }, []);
-  const select = useCallback(
-    (modelId: string) => {
-      onSelect(modelId);
-      close();
-    },
-    [close, onSelect],
-  );
 
   return (
     <div
@@ -153,21 +137,38 @@ export function AgentModelPicker({
       onPointerDown={stopToolbarEvent}
       onMouseDown={stopToolbarEvent}
     >
-      <ModelPickerTrigger
-        label={triggerLabel}
-        title={active?.name || triggerLabel}
-        disabled={disabled}
-        open={open}
-        notRunning={selectedModelNotRunning}
-        onToggle={() => {
-          if (disabled) return;
+      <button
+        type="button"
+        onPointerDown={stopToolbarEvent}
+        onMouseDown={stopToolbarEvent}
+        onClick={() => {
+          if (loading) return;
           if (open) close();
           else {
             setView(supportsReasoning ? "root" : "models");
             setOpen(true);
           }
         }}
-      />
+        disabled={loading}
+        className={cx(
+          // Codex: the model control sits at the shared chat size (16px) with
+          // primary-strength text; only the chevron reads dim.
+          "group/model inline-flex !h-[30px] !min-h-[30px] !min-w-0 max-w-full items-center justify-between gap-1 rounded-lg bg-transparent pl-2 pr-1.5 text-[length:var(--fs-base)] whitespace-nowrap text-(--fg)/85 transition-colors hover:bg-(--hover) hover:text-(--fg) active:translate-y-px disabled:opacity-60",
+          open && "bg-(--hover) text-(--fg)",
+        )}
+        title={
+          notRunning
+            ? `${triggerTitle} is not running — launch it or pick a running model`
+            : triggerTitle
+        }
+        aria-label={`Model: ${triggerTitle}${notRunning ? " (not running)" : ""}`}
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        <span className="min-w-0 max-w-[180px] truncate text-left">{triggerLabel}</span>
+        {notRunning ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--warn)" /> : null}
+        <ChevronDown className="pointer-events-none h-3.5 w-3.5 shrink-0 text-(--dim)" />
+      </button>
       {open
         ? createPortal(
             <div
@@ -175,18 +176,29 @@ export function AgentModelPicker({
               className={`fixed z-[300] w-[22rem] max-w-[calc(100vw-1rem)] ${POPOVER_MENU_CLASS}`}
               role="menu"
               aria-label="Model and reasoning"
-              onKeyDown={(event) => handleMenuKeyDown(event, view, setView, close)}
+              onKeyDown={(event) => {
+                if (event.key !== "Escape") return;
+                event.preventDefault();
+                if (view === "reasoning") setView("root");
+                else close();
+              }}
               onPointerDown={stopToolbarEvent}
               onMouseDown={stopToolbarEvent}
             >
               {view === "root" ? (
-                <PickerRoot
-                  modelLabel={modelLabel}
-                  reasoningLabel={reasoningLabel}
-                  reasoningFixed={reasoningLevels.length <= 1}
-                  onOpenModels={() => setView("models")}
-                  onOpenReasoning={() => setView("reasoning")}
-                />
+                <div className="grid gap-0.5">
+                  <PickerRootRow
+                    label="Model"
+                    value={modelLabel}
+                    onClick={() => setView("models")}
+                  />
+                  <PickerRootRow
+                    label="Reasoning"
+                    value={reasoningLabel}
+                    disabled={reasoningLevels.length <= 1}
+                    onClick={() => setView("reasoning")}
+                  />
+                </div>
               ) : null}
               {view === "models" ? (
                 <ModelList
@@ -196,7 +208,10 @@ export function AgentModelPicker({
                   showOtherModels={showOtherModels}
                   otherModelCount={visible.otherModels.length}
                   onBack={supportsReasoning ? () => setView("root") : undefined}
-                  onSelect={select}
+                  onSelect={(modelId) => {
+                    onSelect(modelId);
+                    close();
+                  }}
                   onSetDefault={onSetDefault}
                   onToggleOtherModels={() => setShowOtherModels((current) => !current)}
                   onClose={close}
@@ -218,32 +233,6 @@ export function AgentModelPicker({
             document.body,
           )
         : null}
-    </div>
-  );
-}
-
-function PickerRoot({
-  modelLabel,
-  reasoningLabel,
-  reasoningFixed,
-  onOpenModels,
-  onOpenReasoning,
-}: {
-  modelLabel: string;
-  reasoningLabel: string;
-  reasoningFixed: boolean;
-  onOpenModels: () => void;
-  onOpenReasoning: () => void;
-}) {
-  return (
-    <div className="grid gap-0.5">
-      <PickerRootRow label="Model" value={modelLabel} onClick={onOpenModels} />
-      <PickerRootRow
-        label="Reasoning"
-        value={reasoningLabel}
-        disabled={reasoningFixed}
-        onClick={onOpenReasoning}
-      />
     </div>
   );
 }
@@ -379,13 +368,16 @@ function ModelList({
                   </span>
                 </div>
               ) : null}
-              <ModelOptions
-                models={group.models}
-                selectedModel={selectedModel}
-                defaultModel={defaultModel}
-                onSelect={onSelect}
-                onSetDefault={onSetDefault}
-              />
+              {group.models.map((model) => (
+                <ModelOption
+                  key={model.id}
+                  model={model}
+                  selected={model.id === selectedModel}
+                  isDefault={model.id === defaultModel}
+                  onSelect={onSelect}
+                  onSetDefault={onSetDefault}
+                />
+              ))}
             </div>
           ))
         )}
@@ -431,71 +423,6 @@ function ReasoningList({
       </div>
     </div>
   );
-}
-
-function ModelPickerTrigger({
-  label,
-  title,
-  disabled,
-  open,
-  notRunning,
-  onToggle,
-}: {
-  label: string;
-  title: string;
-  disabled: boolean;
-  open: boolean;
-  notRunning: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onPointerDown={stopToolbarEvent}
-      onMouseDown={stopToolbarEvent}
-      onClick={onToggle}
-      disabled={disabled}
-      className={cx(
-        // Codex: the model control sits at the shared chat size (16px) with
-        // primary-strength text; only the chevron reads dim.
-        "group/model inline-flex !h-[30px] !min-h-[30px] !min-w-0 max-w-full items-center justify-between gap-1 rounded-lg bg-transparent pl-2 pr-1.5 text-[length:var(--fs-base)] whitespace-nowrap text-(--fg)/85 transition-colors hover:bg-(--hover) hover:text-(--fg) active:translate-y-px disabled:opacity-60",
-        open && "bg-(--hover) text-(--fg)",
-      )}
-      title={notRunning ? `${title} is not running — launch it or pick a running model` : title}
-      aria-label={`Model: ${title}${notRunning ? " (not running)" : ""}`}
-      aria-expanded={open}
-      aria-haspopup="menu"
-    >
-      <span className="min-w-0 max-w-[180px] truncate text-left">{label}</span>
-      {notRunning ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--warn)" /> : null}
-      <ChevronDown className="pointer-events-none h-3.5 w-3.5 shrink-0 text-(--dim)" />
-    </button>
-  );
-}
-
-function ModelOptions({
-  models,
-  selectedModel,
-  defaultModel,
-  onSelect,
-  onSetDefault,
-}: {
-  models: AgentModel[];
-  selectedModel: string;
-  defaultModel?: string;
-  onSelect: (modelId: string) => void;
-  onSetDefault?: (modelId: string) => void;
-}) {
-  return models.map((model) => (
-    <ModelOption
-      key={model.id}
-      model={model}
-      selected={model.id === selectedModel}
-      isDefault={model.id === defaultModel}
-      onSelect={onSelect}
-      onSetDefault={onSetDefault}
-    />
-  ));
 }
 
 function ModelOption({
@@ -549,37 +476,10 @@ function ModelOption({
   );
 }
 
-function handleMenuKeyDown(
-  event: ReactKeyboardEvent<HTMLDivElement>,
-  view: PickerView,
-  setView: (view: PickerView) => void,
-  close: () => void,
-) {
-  if (event.key !== "Escape") return;
-  event.preventDefault();
-  if (view === "root" || view === "models") close();
-  else setView("root");
-}
-
-function modelTriggerLabel(
-  active: AgentModel | null,
-  selectedModel: string,
-  loading: boolean,
-  modelCount: number,
-): string {
-  const fallbackLabel = selectedModel || (modelCount === 0 ? "No models" : "model");
-  if (loading) return active?.rawId || active?.name || fallbackLabel || "Loading…";
-  return active?.rawId || active?.name || fallbackLabel;
-}
-
-function controllerGroupKey(model: AgentModel): string {
-  return model.controllerUrl ?? model.controllerName ?? "primary";
-}
-
 function groupModelsByController(models: AgentModel[]): ModelGroup[] {
   const groups = new Map<string, ModelGroup>();
   for (const model of models) {
-    const key = controllerGroupKey(model);
+    const key = model.controllerUrl ?? model.controllerName ?? "primary";
     const existing = groups.get(key);
     if (existing) existing.models.push(model);
     else groups.set(key, { key, name: model.controllerName ?? "local", models: [model] });

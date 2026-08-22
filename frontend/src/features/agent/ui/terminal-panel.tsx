@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type RefObject } from "react";
+import { useRef } from "react";
 import type { Terminal as XTerm } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { TerminalRunResult } from "@/features/agent/contracts";
@@ -27,12 +27,51 @@ export function TerminalPanel({ cwd, ownerKey }: { cwd: string | null; ownerKey:
   const containerRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef<TerminalRefs>(createTerminalRefs());
 
-  useTerminalPanelEffects({
-    containerRef,
-    cwd,
-    ownerKey,
-    stateRef,
-  });
+  useMountSubscription(() => {
+    const container = containerRef.current;
+    if (!container) return () => {};
+    const entry = acquireCachedTerminal(ownerKey);
+    container.appendChild(entry.holder);
+    stateRef.current = entry.refs;
+
+    if (entry.booted) {
+      // Re-parented an already-live terminal: refresh theme/font (they may
+      // have changed while detached), fit to the new box, and focus.
+      const term = entry.refs.term;
+      if (term) {
+        const styles = getComputedStyle(container);
+        term.options.theme = buildTerminalTheme((name) => styles.getPropertyValue(name).trim());
+        term.options.fontSize = getTerminalFontSize();
+      }
+      effectTimeout(() => {
+        if (!entry.refs.disposed) {
+          entry.refs.applyResize?.();
+          entry.refs.term?.focus();
+        }
+      }, 0);
+    } else {
+      entry.booted = true;
+      void bootTerminal(entry, container, cwd, ownerKey);
+    }
+
+    return () => {
+      entry.lastUsed = Date.now();
+      entry.holder.remove();
+      // No dispose: the instance stays warm in the registry for the next
+      // mount; evictStaleTerminals bounds how many stay alive.
+    };
+  }, [cwd, ownerKey]);
+
+  useMountSubscription(
+    () =>
+      subscribeTerminalStore(() => {
+        const term = stateRef.current.term;
+        if (!term) return;
+        term.options.fontSize = getTerminalFontSize();
+        stateRef.current.applyResize?.();
+      }),
+    [],
+  );
 
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-(--color-terminal-bg)">
@@ -112,18 +151,18 @@ function acquireCachedTerminal(ownerKey: string): CachedTerminal {
   const existing = terminalCache.get(ownerKey);
   // A dead entry (shell exited) or one already mounted elsewhere (two panes
   // showing the same terminal) can't be re-parented — rebuild fresh.
-  if (existing && !existing.dead && !existing.holder.isConnected) {
-    existing.lastUsed = Date.now();
-    return existing;
-  }
-  if (existing && (existing.dead || !existing.holder.isConnected)) {
-    disposeCached(existing);
-    terminalCache.delete(ownerKey);
-  } else if (existing) {
+  if (existing && !existing.dead) {
+    if (!existing.holder.isConnected) {
+      existing.lastUsed = Date.now();
+      return existing;
+    }
     // Holder still mounted in another pane: give this mount an ephemeral
     // instance keyed uniquely so both render independently.
-    const entry = createCacheEntry();
-    return entry;
+    return createCacheEntry();
+  }
+  if (existing) {
+    disposeCached(existing);
+    terminalCache.delete(ownerKey);
   }
   const entry = createCacheEntry();
   terminalCache.set(ownerKey, entry);
@@ -153,24 +192,6 @@ type FallbackSession = {
   previousCwd: string | null;
 };
 
-type PtyBootOptions = {
-  term: XTerm;
-  fit: FitAddon;
-  refs: TerminalRefs;
-  element: HTMLDivElement;
-  cwd: string | null;
-  ownerKey: string;
-  entry: CachedTerminal;
-};
-
-function resolveTerminalFont(cssVar: (name: string) => string): string {
-  const resolved = cssVar("--font-geist-mono") || "";
-  return (
-    (resolved ? `${resolved}, ` : "") +
-    '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace'
-  );
-}
-
 function buildTerminalTheme(cssVar: (name: string) => string): Record<string, string> {
   const v = (name: string, fallback: string) => cssVar(name) || fallback;
   return {
@@ -198,112 +219,12 @@ function buildTerminalTheme(cssVar: (name: string) => string): Record<string, st
   };
 }
 
-type ITerminalLoadable = { loadAddon(addon: unknown): void };
-
-function loadWebLinksAddon(
-  term: ITerminalLoadable,
-  webLinksModule: {
-    WebLinksAddon: new (handler: (e: MouseEvent, uri: string) => void) => unknown;
-  } | null,
-): void {
-  if (!webLinksModule) return;
-  try {
-    term.loadAddon(
-      new webLinksModule.WebLinksAddon((event, uri) => {
-        event.preventDefault();
-        const opener = (
-          window as unknown as { localStudioDesktop?: { openExternal?: (u: string) => void } }
-        ).localStudioDesktop?.openExternal;
-        if (opener) opener(uri);
-        else window.open(uri, "_blank", "noopener");
-      }),
-    );
-  } catch {}
-}
-
-function runTerminalAction(action: TerminalAction, refs: TerminalRefs): void {
-  const dispatch: Record<TerminalAction, () => void> = {
-    clearTerminal: () => refs.term?.clear(),
-    fontSizeUp: () => bumpTerminalFontSize(1),
-    fontSizeDown: () => bumpTerminalFontSize(-1),
-    fontSizeReset: () => resetTerminalFontSize(),
-  };
-  dispatch[action]();
-}
-
-function terminalKeyHandler(refs: TerminalRefs): (event: KeyboardEvent) => boolean {
-  return (event) => {
-    if (event.type !== "keydown") return true;
-    const action = matchTerminalAction(event, getTerminalKeybinds());
-    if (!action) return true;
-    event.preventDefault();
-    event.stopPropagation();
-    runTerminalAction(action, refs);
-    return false;
-  };
-}
-
-function refreshTerminalPresentation(entry: CachedTerminal, container: HTMLDivElement): void {
-  const term = entry.refs.term;
-  if (!term) return;
-  const styles = getComputedStyle(container);
-  const cssVar = (name: string): string => styles.getPropertyValue(name).trim();
-  term.options.theme = buildTerminalTheme(cssVar);
-  term.options.fontSize = getTerminalFontSize();
-}
-
-function useTerminalPanelEffects({
-  containerRef,
-  cwd,
-  ownerKey,
-  stateRef,
-}: {
-  containerRef: RefObject<HTMLDivElement | null>;
-  cwd: string | null;
-  ownerKey: string;
-  stateRef: RefObject<TerminalRefs>;
-}): void {
-  useMountSubscription(() => {
-    const container = containerRef.current;
-    if (!container) return () => {};
-    const entry = acquireCachedTerminal(ownerKey);
-    container.appendChild(entry.holder);
-    stateRef.current = entry.refs;
-
-    if (entry.booted) {
-      // Re-parented an already-live terminal: refresh theme/font (they may
-      // have changed while detached), fit to the new box, and focus.
-      refreshTerminalPresentation(entry, container);
-      effectTimeout(() => {
-        if (!entry.refs.disposed) {
-          entry.refs.applyResize?.();
-          entry.refs.term?.focus();
-        }
-      }, 0);
-    } else {
-      entry.booted = true;
-      void bootTerminal(entry, container, cwd, ownerKey);
-    }
-
-    return () => {
-      entry.lastUsed = Date.now();
-      entry.holder.remove();
-      // No dispose: the instance stays warm in the registry for the next
-      // mount; evictStaleTerminals bounds how many stay alive.
-    };
-  }, [containerRef, cwd, ownerKey, stateRef]);
-
-  useMountSubscription(
-    () =>
-      subscribeTerminalStore(() => {
-        const term = stateRef.current.term;
-        if (!term) return;
-        term.options.fontSize = getTerminalFontSize();
-        stateRef.current.applyResize?.();
-      }),
-    [stateRef],
-  );
-}
+const TERMINAL_ACTIONS: Record<TerminalAction, (refs: TerminalRefs) => void> = {
+  clearTerminal: (refs) => refs.term?.clear(),
+  fontSizeUp: () => bumpTerminalFontSize(1),
+  fontSizeDown: () => bumpTerminalFontSize(-1),
+  fontSizeReset: () => resetTerminalFontSize(),
+};
 
 async function bootTerminal(
   entry: CachedTerminal,
@@ -321,7 +242,7 @@ async function bootTerminal(
   if (refs.disposed) return;
   const styles = getComputedStyle(container);
   const cssVar = (name: string): string => styles.getPropertyValue(name).trim();
-  const fontFamily = resolveTerminalFont(cssVar);
+  const resolvedFont = cssVar("--font-geist-mono") || "";
   const term = new Terminal({
     cursorBlink: true,
     cursorStyle: "block",
@@ -334,7 +255,9 @@ async function bootTerminal(
     rightClickSelectsWord: true,
     smoothScrollDuration: 80,
     minimumContrastRatio: 3,
-    fontFamily,
+    fontFamily:
+      (resolvedFont ? `${resolvedFont}, ` : "") +
+      '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
     fontSize: getTerminalFontSize(),
     fontWeightBold: "600",
     lineHeight: 1.2,
@@ -343,8 +266,29 @@ async function bootTerminal(
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
-  loadWebLinksAddon(term, webLinksModule);
-  term.attachCustomKeyEventHandler(terminalKeyHandler(refs));
+  if (webLinksModule) {
+    try {
+      term.loadAddon(
+        new webLinksModule.WebLinksAddon((event, uri) => {
+          event.preventDefault();
+          const opener = (
+            window as unknown as { localStudioDesktop?: { openExternal?: (u: string) => void } }
+          ).localStudioDesktop?.openExternal;
+          if (opener) opener(uri);
+          else window.open(uri, "_blank", "noopener");
+        }),
+      );
+    } catch {}
+  }
+  term.attachCustomKeyEventHandler((event) => {
+    if (event.type !== "keydown") return true;
+    const action = matchTerminalAction(event, getTerminalKeybinds());
+    if (!action) return true;
+    event.preventDefault();
+    event.stopPropagation();
+    TERMINAL_ACTIONS[action](refs);
+    return false;
+  });
   term.open(element);
   fit.fit();
   refs.term = term;
@@ -372,7 +316,15 @@ async function bootPty({
   cwd,
   ownerKey,
   entry,
-}: PtyBootOptions): Promise<() => void> {
+}: {
+  term: XTerm;
+  fit: FitAddon;
+  refs: TerminalRefs;
+  element: HTMLDivElement;
+  cwd: string | null;
+  ownerKey: string;
+  entry: CachedTerminal;
+}): Promise<() => void> {
   const { cols, rows } = term;
   let currentId: string | null = null;
   const queuedData: Array<{ sessionId: string; chunk: string }> = [];
@@ -455,7 +407,9 @@ function bootFallback(
   cwd: string | null,
 ): () => void {
   const session: FallbackSession = { input: "", running: false, cwd, previousCwd: null };
-  writeIntro(term, session.cwd);
+  term.writeln("\x1b[90mLocal Studio terminal (fallback mode — no TUI)\x1b[0m");
+  if (!cwd) term.writeln("\x1b[31mNo working directory.\x1b[0m");
+  writePrompt(term, cwd);
   const dataSub = term.onData((data) => handleTerminalData(data, refs, term, session));
   refs.applyResize = () => fit.fit();
   const resizeObserver = new ResizeObserver(() => refs.applyResize?.());
@@ -471,34 +425,26 @@ function handleTerminalData(
   refs: TerminalRefs,
   term: XTerm,
   session: FallbackSession,
-): boolean {
-  if (session.running || term.element?.isConnected === false) return false;
+): void {
+  if (session.running || term.element?.isConnected === false) return;
   if (data === "\r") {
     const command = session.input.trim();
     term.write("\r\n");
     session.input = "";
     if (command) void runFallbackCommand(command, refs, session, term);
     else writePrompt(term, session.cwd);
-    return true;
+    return;
   }
   if (data === "\u007f") {
-    if (session.input.length === 0) return true;
+    if (!session.input) return;
     session.input = session.input.slice(0, -1);
     term.write("\b \b");
-    return true;
+    return;
   }
-  if (data >= " " && data !== "\u007f") {
+  if (data >= " ") {
     session.input += data;
     term.write(data);
-    return true;
   }
-  return false;
-}
-
-function writeIntro(term: XTerm, cwd: string | null) {
-  term.writeln("\x1b[90mLocal Studio terminal (fallback mode — no TUI)\x1b[0m");
-  if (!cwd) term.writeln("\x1b[31mNo working directory.\x1b[0m");
-  writePrompt(term, cwd);
 }
 
 function writePrompt(term: XTerm, cwd: string | null) {
@@ -507,10 +453,9 @@ function writePrompt(term: XTerm, cwd: string | null) {
 
 function parseCdTarget(command: string): string | null {
   const trimmed = command.trim();
-  if (trimmed !== "cd" && !/^cd(\s|$)/.test(trimmed)) return null;
+  if (!/^cd(\s|$)/.test(trimmed)) return null;
   const rest = trimmed.slice(2).trim();
-  if (!rest) return "~";
-  return rest.replace(/^["']|["']$/g, "");
+  return rest ? rest.replace(/^["']|["']$/g, "") : "~";
 }
 
 async function handleCd(target: string, refs: TerminalRefs, session: FallbackSession, term: XTerm) {
