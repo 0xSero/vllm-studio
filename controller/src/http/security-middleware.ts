@@ -36,16 +36,13 @@ const isPublicRequest = (method: string, path: string): boolean =>
   method.toUpperCase() === "OPTIONS" || PUBLIC_PATHS.has(path);
 
 const getClientIpFromRequestHeaders = (header: (name: string) => string | undefined): string => {
-  const cf = header("cf-connecting-ip")?.trim();
-  if (cf) return cf;
-  const real = header("x-real-ip")?.trim();
-  if (real) return real;
-  const forwarded = header("x-forwarded-for")
-    ?.split(",")
+  const direct = header("cf-connecting-ip")?.trim() || header("x-real-ip")?.trim();
+  if (direct) return direct;
+  const forwarded = (header("x-forwarded-for") ?? "")
+    .split(",")
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
-  if (forwarded && forwarded.length > 0) return forwarded[forwarded.length - 1]!;
-  return "unknown";
+  return forwarded[forwarded.length - 1] ?? "unknown";
 };
 
 const pruneRateLimitStore = (store: Map<string, RateLimitEntry>, now: number): void => {

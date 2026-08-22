@@ -144,30 +144,52 @@ export class ControllerRequestStore extends SqliteStore {
         this.db.query<NumberRow, []>(sql).get() as NumberRow | null;
       const all = (sql: string): NumberRow[] => this.db.query<NumberRow, []>(sql).all();
 
-      const totals = one(
+      // The request and function-call tables carry the same shape, so the three
+      // aggregate query forms are written once and pointed at either table.
+      const totalsQuery = (table: string, noun: "requests" | "calls"): string =>
         `SELECT
-             COUNT(*) as total_requests,
-             COALESCE(SUM(success), 0) as successful_requests,
-             COALESCE(SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END), 0) as failed_requests,
+             COUNT(*) as total_${noun},
+             COALESCE(SUM(success), 0) as successful_${noun},
+             COALESCE(SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END), 0) as failed_${noun},
              AVG(duration_ms) as avg_duration_ms,
              MAX(duration_ms) as max_duration_ms
-           FROM controller_requests`,
-      );
-
-      const byPath = all(
+           FROM ${table}`;
+      const breakdownQuery = (
+        table: string,
+        groupBy: string,
+        noun: "requests" | "calls",
+        tieBreaker: string,
+      ): string =>
         `SELECT
-             method,
-             path,
-             COUNT(*) as requests,
+             ${groupBy},
+             COUNT(*) as ${noun},
              COALESCE(SUM(success), 0) as successful,
              COALESCE(SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END), 0) as failed,
              AVG(duration_ms) as avg_duration_ms,
              MAX(duration_ms) as max_duration_ms
-           FROM controller_requests
-           GROUP BY method, path
-           ORDER BY requests DESC, path ASC
-           LIMIT 50`,
+           FROM ${table}
+           GROUP BY ${groupBy}
+           ORDER BY ${noun} DESC, ${tieBreaker} ASC
+           LIMIT 50`;
+      const recentErrorsQuery = (table: string, identity: string): string =>
+        `SELECT
+             ${identity},
+             error_class,
+             error_message,
+             created_at
+           FROM ${table}
+           WHERE success = 0
+           ORDER BY created_at DESC
+           LIMIT 25`;
+
+      const totals = one(totalsQuery("controller_requests", "requests"));
+      const byPath = all(breakdownQuery("controller_requests", "method, path", "requests", "path"));
+      const errors = all(recentErrorsQuery("controller_requests", "method, path, status"));
+      const functionTotals = one(totalsQuery("controller_function_calls", "calls"));
+      const byFunction = all(
+        breakdownQuery("controller_function_calls", "function_name", "calls", "function_name"),
       );
+      const functionErrors = all(recentErrorsQuery("controller_function_calls", "function_name"));
 
       const byStatus = all(
         `SELECT
@@ -178,62 +200,12 @@ export class ControllerRequestStore extends SqliteStore {
            ORDER BY requests DESC, status ASC`,
       );
 
-      const errors = all(
-        `SELECT
-             method,
-             path,
-             status,
-             error_class,
-             error_message,
-             created_at
-           FROM controller_requests
-           WHERE success = 0
-           ORDER BY created_at DESC
-           LIMIT 25`,
-      );
-
       const recent = one(
         `SELECT
              SUM(CASE WHEN datetime(created_at) >= datetime('now', '-1 hour') THEN 1 ELSE 0 END) as last_hour,
              SUM(CASE WHEN datetime(created_at) >= datetime('now', '-24 hours') THEN 1 ELSE 0 END) as last_24h,
              SUM(CASE WHEN datetime(created_at) >= datetime('now', '-24 hours') AND success = 0 THEN 1 ELSE 0 END) as last_24h_failed
            FROM controller_requests`,
-      );
-
-      const functionTotals = one(
-        `SELECT
-             COUNT(*) as total_calls,
-             COALESCE(SUM(success), 0) as successful_calls,
-             COALESCE(SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END), 0) as failed_calls,
-             AVG(duration_ms) as avg_duration_ms,
-             MAX(duration_ms) as max_duration_ms
-           FROM controller_function_calls`,
-      );
-
-      const byFunction = all(
-        `SELECT
-             function_name,
-             COUNT(*) as calls,
-             COALESCE(SUM(success), 0) as successful,
-             COALESCE(SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END), 0) as failed,
-             AVG(duration_ms) as avg_duration_ms,
-             MAX(duration_ms) as max_duration_ms
-           FROM controller_function_calls
-           GROUP BY function_name
-           ORDER BY calls DESC, function_name ASC
-           LIMIT 50`,
-      );
-
-      const functionErrors = all(
-        `SELECT
-             function_name,
-             error_class,
-             error_message,
-             created_at
-           FROM controller_function_calls
-           WHERE success = 0
-           ORDER BY created_at DESC
-           LIMIT 25`,
       );
 
       return normalizeControllerUsage({

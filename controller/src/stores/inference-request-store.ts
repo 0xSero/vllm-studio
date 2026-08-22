@@ -255,6 +255,8 @@ export class InferenceRequestStore extends SqliteStore {
         success_rate: usageRate(row["successful"], row["requests"]),
       });
 
+      // Fields normalizeUsageStats fills on its own are left out here: percentile
+      // slots decode to null and uncomputed counters to 0.
       return normalizeUsageStats({
         totals: {
           total_tokens: totalTokens,
@@ -265,22 +267,9 @@ export class InferenceRequestStore extends SqliteStore {
           failed_requests: totalRequests - successful,
           success_rate: usageRate(successful, totalRequests),
           unique_sessions: total("unique_sessions"),
-          unique_users: 0,
         },
-        latency: {
-          avg_ms: toNullableNumber(summary?.["avg_dur"]),
-          p50_ms: null,
-          p95_ms: null,
-          p99_ms: null,
-          min_ms: null,
-          max_ms: null,
-        },
-        ttft: {
-          avg_ms: toNullableNumber(summary?.["avg_ttft"]),
-          p50_ms: null,
-          p95_ms: null,
-          p99_ms: null,
-        },
+        latency: { avg_ms: toNullableNumber(summary?.["avg_dur"]) },
+        ttft: { avg_ms: toNullableNumber(summary?.["avg_ttft"]) },
         tokens_per_request: {
           avg: usageAverage(totalTokens, totalRequests),
           avg_prompt: usageAverage(promptTokens, totalRequests),
@@ -289,8 +278,6 @@ export class InferenceRequestStore extends SqliteStore {
             (max, row) => Math.max(max, usageAverage(row["total_tokens"], row["requests"])),
             0,
           ),
-          p50: 0,
-          p95: 0,
         },
         cache: {
           hits: cacheHits,

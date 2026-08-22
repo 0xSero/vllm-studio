@@ -3,7 +3,8 @@ import { isIP } from "node:net";
 
 const hostnamePattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const numericIpv4Pattern = /^(?:0x[0-9a-f]+|[0-9]+)(?:\.(?:0x[0-9a-f]+|[0-9]+))*$/;
-const loopbackHosts = ["localhost", "127.0.0.1", "::1", "host.docker.internal"];
+const loopbackHosts = ["localhost", "127.0.0.1", "::1"];
+const wildcardHosts = ["0.0.0.0", "::"];
 
 const normalizeIp = (value: string): string | null => {
   const version = isIP(value);
@@ -45,15 +46,11 @@ export const normalizeControllerHost = (value: string): string | null => {
   return candidate.split(".").every((label) => hostnamePattern.test(label)) ? candidate : null;
 };
 
-export const isLoopbackHost = (value: string): boolean => {
-  const normalized = normalizeControllerHost(value);
-  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1";
-};
+export const isLoopbackHost = (value: string): boolean =>
+  loopbackHosts.includes(normalizeControllerHost(value) ?? "");
 
-export const isWildcardHost = (value: string): boolean => {
-  const normalized = normalizeControllerHost(value);
-  return normalized === "0.0.0.0" || normalized === "::";
-};
+export const isWildcardHost = (value: string): boolean =>
+  wildcardHosts.includes(normalizeControllerHost(value) ?? "");
 
 export const normalizeHttpOrigin = (value: string): string | null => {
   try {
@@ -107,7 +104,9 @@ export const decodeAllowedHosts = (value: string): string[] => {
 export const defaultAllowedHosts = (host: string): string[] => {
   const normalized = normalizeControllerHost(host);
   if (!normalized) throw new Error("LOCAL_STUDIO_HOST must be a hostname or IP address");
-  if (isLoopbackHost(normalized)) return [...new Set([normalized, ...loopbackHosts])];
+  if (isLoopbackHost(normalized)) {
+    return [...new Set([normalized, ...loopbackHosts, "host.docker.internal"])];
+  }
   if (isWildcardHost(normalized)) return [];
   return [normalized];
 };
