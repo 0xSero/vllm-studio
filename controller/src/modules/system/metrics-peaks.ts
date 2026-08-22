@@ -3,6 +3,9 @@ import type { UsageAggregate } from "../../stores/inference-request-store";
 
 export type GpuRollup = ReturnType<typeof rollupGpus>;
 
+/** Round to one decimal place; the shape every rate and VRAM figure is reported in. */
+export const round1 = (value: number): number => Math.round(value * 10) / 10;
+
 export const positiveOrUndefined = (value: unknown): number | undefined => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
@@ -84,8 +87,8 @@ export const lifetimeFields = (
 
 /** The rounded GPU pool fields every metrics snapshot carries. */
 export const gpuFields = (gpus: GpuRollup): Record<string, number> => ({
-  vram_used_gb: Math.round(gpus.vramUsedGb * 10) / 10,
-  vram_capacity_gb: Math.round(gpus.vramCapacityGb * 10) / 10,
+  vram_used_gb: round1(gpus.vramUsedGb),
+  vram_capacity_gb: round1(gpus.vramCapacityGb),
   power_limit_watts: Math.round(gpus.powerLimitWatts),
 });
 

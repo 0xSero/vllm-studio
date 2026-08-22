@@ -19,6 +19,7 @@ import {
   peakFields,
   positiveOrUndefined,
   rollupGpus,
+  round1,
   tokenTotalFields,
   type SessionPeaks,
 } from "./metrics-peaks";
@@ -228,7 +229,7 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
       const usageTotals = usageAggregate?.totals;
       const usageLatencyAvg = positiveOrUndefined(usageAggregate?.latency?.avg_ms);
       const usageTtftAvg = positiveOrUndefined(usageAggregate?.ttft?.avg_ms);
-      const avgTtftDisplay = avgTtftMs > 0 ? Math.round(avgTtftMs * 10) / 10 : (usageTtftAvg ?? 0);
+      const avgTtftDisplay = avgTtftMs > 0 ? round1(avgTtftMs) : (usageTtftAvg ?? 0);
 
       yield* context.eventManager.publishMetrics({
         ...baseMetrics,
@@ -239,19 +240,18 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
         pending_requests: pendingRequests,
         kv_cache_usage: kvCacheUsage,
         ...tokenTotalFields(usageTotals, promptTokensTotal, generationTokensTotal),
-        prompt_throughput: Math.round(promptThroughput * 10) / 10,
-        generation_throughput: Math.round(generationThroughput * 10) / 10,
+        prompt_throughput: round1(promptThroughput),
+        generation_throughput: round1(generationThroughput),
         avg_ttft_ms: avgTtftDisplay,
         latency_avg: usageLatencyAvg,
         ...gpuFields(gpuTotals),
-        session_peak_prompt_throughput: Math.round(sessionPeaks.prompt_throughput * 10) / 10,
-        session_peak_generation_throughput:
-          Math.round(sessionPeaks.generation_throughput * 10) / 10,
-        session_peak_ttft_ms: Math.round(sessionPeaks.ttft_ms * 10) / 10,
+        session_peak_prompt_throughput: round1(sessionPeaks.prompt_throughput),
+        session_peak_generation_throughput: round1(sessionPeaks.generation_throughput),
+        session_peak_ttft_ms: round1(sessionPeaks.ttft_ms),
         session_peak_kv_cache_usage: sessionPeaks.kv_cache_usage,
         session_peak_running_requests: sessionPeaks.running_requests,
         session_peak_power_watts: Math.round(sessionPeaks.power_watts),
-        session_peak_vram_used_gb: Math.round(sessionPeaks.vram_used_gb * 10) / 10,
+        session_peak_vram_used_gb: round1(sessionPeaks.vram_used_gb),
         session_peak_id: sessionPeakId,
         session_peak_prefill_tps: sessionPeakData?.["peak_prefill_tps"] ?? null,
         session_peak_generation_tps: sessionPeakData?.["peak_generation_tps"] ?? null,
@@ -271,7 +271,7 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
         served_model_name: null,
         ...gpuFields(gpuTotals),
         session_peak_power_watts: Math.round(sessionPeaks.power_watts),
-        session_peak_vram_used_gb: Math.round(sessionPeaks.vram_used_gb * 10) / 10,
+        session_peak_vram_used_gb: round1(sessionPeaks.vram_used_gb),
       });
     }
   }).pipe(

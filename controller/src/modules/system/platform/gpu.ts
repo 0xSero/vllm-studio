@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { arch, cpus, freemem, platform, totalmem } from "node:os";
 import { Effect } from "effect";
-import type { GpuInfo, RuntimeGpuMonitoringTool } from "../../models/types";
+import type { GpuInfo, RuntimeGpuMonitoringTool, RuntimeRocmSmiTool } from "../../models/types";
 import { runCommandAsyncEffect } from "../../../core/command";
 import { getGpuInfoFromAmdSmi, getGpuInfoFromRocmSmi } from "./amd-gpu";
 import { getGpuInfoFromIntelSysfs } from "./intel-gpu";
@@ -11,6 +11,7 @@ import {
   resolveForcedGpuMonitoringTool,
   resolveNvidiaSmiBinary,
   resolveRocmSmiBinary,
+  type ForcedGpuMonitoringTool,
 } from "./smi-tools";
 
 const NVIDIA_SMI_GPU_FIELDS = [
@@ -154,43 +155,31 @@ const warnNoGpuToolingOnce = (): void => {
   console.warn(`No GPUs reported by any monitoring tool; attempted: ${attempted}`);
 };
 
+const GPU_COLLECTORS: Record<ForcedGpuMonitoringTool, () => Effect.Effect<GpuInfo[]>> = {
+  "nvidia-smi": getGpuInfoFromNvidiaSmi,
+  "amd-smi": getGpuInfoFromAmdSmi,
+  "rocm-smi": getGpuInfoFromRocmSmi,
+  "intel-sysfs": getGpuInfoFromIntelSysfs,
+};
+
 const collectGpuInfo = (): Effect.Effect<GpuInfo[]> =>
   Effect.gen(function* () {
     const forced = resolveForcedGpuMonitoringTool();
-    if (forced === "nvidia-smi") {
-      return yield* getGpuInfoFromNvidiaSmi();
-    }
-    if (forced === "amd-smi") {
-      return yield* getGpuInfoFromAmdSmi();
-    }
-    if (forced === "rocm-smi") {
-      return yield* getGpuInfoFromRocmSmi();
-    }
-    if (forced === "intel-sysfs") {
-      return yield* getGpuInfoFromIntelSysfs();
-    }
+    if (forced) return yield* GPU_COLLECTORS[forced]();
 
     const nvidia = yield* getGpuInfoFromNvidiaSmi();
-    if (nvidia.length > 0) {
-      return nvidia;
-    }
+    if (nvidia.length > 0) return nvidia;
 
+    // Try the ROCm tool the platform prefers first, then the other one as a fallback.
     const rocmTool = resolveRocmSmiTool();
-    if (rocmTool === "amd-smi") {
-      const amd = yield* getGpuInfoFromAmdSmi();
-      if (amd.length > 0) return amd;
-      return yield* getGpuInfoFromRocmSmi();
-    }
-    if (rocmTool === "rocm-smi") {
-      const rocm = yield* getGpuInfoFromRocmSmi();
-      if (rocm.length > 0) return rocm;
-      return yield* getGpuInfoFromAmdSmi();
+    if (rocmTool) {
+      const fallback: RuntimeRocmSmiTool = rocmTool === "amd-smi" ? "rocm-smi" : "amd-smi";
+      const preferred = yield* GPU_COLLECTORS[rocmTool]();
+      return preferred.length > 0 ? preferred : yield* GPU_COLLECTORS[fallback]();
     }
 
     const intel = yield* getGpuInfoFromIntelSysfs();
-    if (intel.length > 0) {
-      return intel;
-    }
+    if (intel.length > 0) return intel;
 
     if (platform() === "darwin" && arch() === "arm64") {
       const cpuName = cpus()[0]?.model?.trim() || "Apple Silicon";
@@ -220,10 +209,6 @@ const collectGpuInfo = (): Effect.Effect<GpuInfo[]> =>
   });
 
 export const getGpuInfo = (): Effect.Effect<GpuInfo[]> =>
-  Effect.gen(function* () {
-    const gpus = yield* collectGpuInfo();
-    if (gpus.length === 0) {
-      yield* Effect.sync(warnNoGpuToolingOnce);
-    }
-    return gpus;
-  });
+  collectGpuInfo().pipe(
+    Effect.tap((gpus) => (gpus.length === 0 ? Effect.sync(warnNoGpuToolingOnce) : Effect.void)),
+  );

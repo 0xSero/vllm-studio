@@ -73,17 +73,14 @@ const findDrmDevicePaths = (pciPath: string): string[] => {
   try {
     return readdirSync(DRM_DIR, { withFileTypes: true })
       .filter((entry) => entry.name.startsWith("card"))
-      .map((entry) => {
-        const devicePath = join(DRM_DIR, entry.name, "device");
+      .map((entry) => join(DRM_DIR, entry.name, "device"))
+      .filter((devicePath) => {
         try {
-          return realpathSync(devicePath) === realpathSync(pciPath)
-            ? join(DRM_DIR, entry.name, "device")
-            : null;
+          return realpathSync(devicePath) === realpathSync(pciPath);
         } catch {
-          return null;
+          return false;
         }
-      })
-      .filter((entry): entry is string => Boolean(entry));
+      });
   } catch {
     return [];
   }
@@ -111,23 +108,16 @@ const readHwmonMetric = (hwmonPaths: string[], fileName: string): number | null 
   readFirstNumber(hwmonPaths.map((path) => join(path, fileName)));
 
 const readIntelName = (gpu: IntelPciGpu): Effect.Effect<string> => {
+  const fallback = gpu.deviceId.toLowerCase() === "0xe223" ? "Intel Arc Pro B70" : "Intel Arc GPU";
   const lspci = resolveBinary("lspci");
-  if (lspci) {
-    return runCommandAsyncEffect(lspci, ["-s", gpu.address.replace(/^0000:/, "")], {
-      timeoutMs: 2_000,
-    }).pipe(
-      Effect.map((result) => {
-        if (result.status === 0 && result.stdout) {
-          const name = result.stdout.replace(/^[0-9a-f:.]+\s+/i, "").trim();
-          if (name) return name;
-        }
-        return gpu.deviceId.toLowerCase() === "0xe223" ? "Intel Arc Pro B70" : "Intel Arc GPU";
-      }),
-    );
-  }
-
-  return Effect.succeed(
-    gpu.deviceId.toLowerCase() === "0xe223" ? "Intel Arc Pro B70" : "Intel Arc GPU",
+  if (!lspci) return Effect.succeed(fallback);
+  return runCommandAsyncEffect(lspci, ["-s", gpu.address.replace(/^0000:/, "")], {
+    timeoutMs: 2_000,
+  }).pipe(
+    Effect.map((result) => {
+      if (result.status !== 0 || !result.stdout) return fallback;
+      return result.stdout.replace(/^[0-9a-f:.]+\s+/i, "").trim() || fallback;
+    }),
   );
 };
 
@@ -137,19 +127,14 @@ export const getGpuInfoFromIntelSysfs = (): Effect.Effect<GpuInfo[]> =>
       Effect.forEach(gpus, (gpu, index) =>
         Effect.gen(function* () {
           const drmDevicePaths = findDrmDevicePaths(gpu.path);
-          const memoryTotal =
-            readFirstNumber(drmDevicePaths.map((path) => join(path, "mem_info_vram_total"))) ?? 0;
-          const memoryUsed =
-            readFirstNumber(drmDevicePaths.map((path) => join(path, "mem_info_vram_used"))) ?? 0;
-          const memoryFree = Math.max(0, memoryTotal - memoryUsed);
+          const readDrm = (fileName: string): number =>
+            readFirstNumber(drmDevicePaths.map((path) => join(path, fileName))) ?? 0;
           const hwmonPaths = findHwmonPaths(gpu.path);
-          const temperature = Math.round((readHwmonMetric(hwmonPaths, "temp1_input") ?? 0) / 1000);
-          const powerDraw = Number(
-            ((readHwmonMetric(hwmonPaths, "power1_input") ?? 0) / 1_000_000).toFixed(1),
-          );
-          const powerLimit = Number(
-            ((readHwmonMetric(hwmonPaths, "power1_cap") ?? 0) / 1_000_000).toFixed(1),
-          );
+          // hwmon reports millidegrees and microwatts.
+          const watts = (fileName: string): number =>
+            Number(((readHwmonMetric(hwmonPaths, fileName) ?? 0) / 1_000_000).toFixed(1));
+          const memoryTotal = readDrm("mem_info_vram_total");
+          const memoryUsed = readDrm("mem_info_vram_used");
           const toMb = (bytes: number): number => Math.max(0, Math.round(bytes / 1024 / 1024));
 
           return {
@@ -157,11 +142,11 @@ export const getGpuInfoFromIntelSysfs = (): Effect.Effect<GpuInfo[]> =>
             name: yield* readIntelName(gpu),
             memory_total_mb: toMb(memoryTotal),
             memory_used_mb: toMb(memoryUsed),
-            memory_free_mb: toMb(memoryFree),
+            memory_free_mb: toMb(Math.max(0, memoryTotal - memoryUsed)),
             utilization_pct: 0,
-            temp_c: temperature,
-            power_draw: powerDraw,
-            power_limit: powerLimit,
+            temp_c: Math.round((readHwmonMetric(hwmonPaths, "temp1_input") ?? 0) / 1000),
+            power_draw: watts("power1_input"),
+            power_limit: watts("power1_cap"),
           };
         }),
       ),

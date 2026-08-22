@@ -9,11 +9,8 @@ import {
   isUpgradeCommandConfigured,
 } from "../../engines/runtimes/upgrade-config";
 
-const parseHipccVersion = (output: string): string | null => {
-  const match = output.match(/HIP version\s*:\s*([0-9.]+)/i);
-  if (match) return match[1] ?? null;
-  return null;
-};
+const parseHipccVersion = (output: string): string | null =>
+  output.match(/HIP version\s*:\s*([0-9.]+)/i)?.[1] ?? null;
 
 export const resolveRocmSmiTool = (): RuntimeRocmSmiTool | null => {
   const forced = resolveForcedRocmTool();
@@ -32,9 +29,7 @@ const readRocmVersion = (): string | null => {
   const overridden = (process.env["LOCAL_STUDIO_ROCM_VERSION_FILE"] ?? "").trim();
   if (overridden) {
     try {
-      if (existsSync(overridden)) {
-        return readFileSync(overridden, "utf-8").trim() || null;
-      }
+      if (existsSync(overridden)) return readFileSync(overridden, "utf-8").trim() || null;
     } catch {}
   }
 
@@ -42,22 +37,17 @@ const readRocmVersion = (): string | null => {
   const candidates: string[] = [resolve(rocmInfoDirectory, "version")];
 
   try {
-    if (existsSync(rocmInfoDirectory)) {
-      const entries = readdirSync(rocmInfoDirectory);
-      for (const entry of entries) {
-        if (entry.toLowerCase().startsWith("version")) {
-          candidates.push(resolve(rocmInfoDirectory, entry));
-        }
+    for (const entry of readdirSync(rocmInfoDirectory)) {
+      if (entry.toLowerCase().startsWith("version")) {
+        candidates.push(resolve(rocmInfoDirectory, entry));
       }
     }
   } catch {}
 
   for (const filePath of candidates) {
     try {
-      if (existsSync(filePath)) {
-        const content = readFileSync(filePath, "utf-8").trim();
-        if (content) return content;
-      }
+      const content = readFileSync(filePath, "utf-8").trim();
+      if (content) return content;
     } catch {}
   }
 
@@ -68,23 +58,18 @@ export const getRocmInfo = (smiTool: RuntimeRocmSmiTool | null): Effect.Effect<R
   Effect.gen(function* () {
     const rocmVersion = yield* Effect.sync(readRocmVersion);
 
-    let hipVersion: string | null = null;
-    const hipccResult = yield* runCommandAsyncEffect("hipcc", ["--version"], {
-      timeoutMs: 3_000,
-    });
-    if (hipccResult.status === 0) {
-      hipVersion =
-        parseHipccVersion(hipccResult.stdout) ?? parseHipccVersion(hipccResult.stderr) ?? null;
-    }
+    const hipcc = yield* runCommandAsyncEffect("hipcc", ["--version"], { timeoutMs: 3_000 });
+    const hipVersion =
+      hipcc.status === 0
+        ? (parseHipccVersion(hipcc.stdout) ?? parseHipccVersion(hipcc.stderr))
+        : null;
 
-    const gpuArch = new Set<string>();
-    const rocminfoResult = yield* runCommandAsyncEffect("rocminfo", [], { timeoutMs: 3_000 });
-    if (rocminfoResult.status === 0 && rocminfoResult.stdout) {
-      const matches = rocminfoResult.stdout.match(/gfx[0-9a-f]+/gi) ?? [];
-      for (const value of matches) {
-        gpuArch.add(value.toLowerCase());
-      }
-    }
+    const rocminfo = yield* runCommandAsyncEffect("rocminfo", [], { timeoutMs: 3_000 });
+    const architectures =
+      rocminfo.status === 0 && rocminfo.stdout
+        ? (rocminfo.stdout.match(/gfx[0-9a-f]+/gi) ?? [])
+        : [];
+    const gpuArch = new Set(architectures.map((value) => value.toLowerCase()));
 
     return {
       rocm_version: rocmVersion,

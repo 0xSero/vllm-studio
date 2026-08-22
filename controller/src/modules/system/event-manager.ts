@@ -3,17 +3,13 @@ import { CONTROLLER_EVENTS } from "@local-studio/contracts/controller-events";
 import { abortEffect } from "../../http/sse";
 
 export class Event {
-  public readonly type: string;
-  public readonly data: Record<string, unknown>;
-  public readonly timestamp: string;
-  public readonly id: string;
+  public readonly timestamp = new Date().toISOString();
+  public readonly id = `${Date.now()}`;
 
-  public constructor(type: string, data: Record<string, unknown>) {
-    this.type = type;
-    this.data = data;
-    this.timestamp = new Date().toISOString();
-    this.id = `${Date.now()}`;
-  }
+  public constructor(
+    public readonly type: string,
+    public readonly data: Record<string, unknown>,
+  ) {}
 
   public toSse(): string {
     const payload = { data: this.data, timestamp: this.timestamp };
@@ -21,17 +17,14 @@ export class Event {
   }
 }
 
+type Channel = { readonly pubsub: PubSub.PubSub<Event>; subscribers: number };
+
 export class EventManager {
-  private readonly channels = new Map<
-    string,
-    { readonly pubsub: PubSub.PubSub<Event>; subscribers: number }
-  >();
+  private readonly channels = new Map<string, Channel>();
   private readonly channelsLock = Semaphore.makeUnsafe(1);
   private latestMetrics: Record<string, unknown> = {};
 
-  private acquireChannel(
-    channel: string,
-  ): Effect.Effect<{ readonly pubsub: PubSub.PubSub<Event>; subscribers: number }> {
+  private acquireChannel(channel: string): Effect.Effect<Channel> {
     const channels = this.channels;
     return this.channelsLock.withPermit(
       Effect.gen(function* () {
@@ -48,10 +41,7 @@ export class EventManager {
     );
   }
 
-  private releaseChannel(
-    channel: string,
-    entry: { readonly pubsub: PubSub.PubSub<Event>; subscribers: number },
-  ): Effect.Effect<void> {
+  private releaseChannel(channel: string, entry: Channel): Effect.Effect<void> {
     const channels = this.channels;
     return this.channelsLock.withPermit(
       Effect.gen(function* () {

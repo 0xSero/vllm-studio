@@ -19,6 +19,7 @@ import {
   peakFields,
   positiveOrUndefined,
   rollupGpus,
+  round1,
   tokenTotalFields,
 } from "./metrics-peaks";
 
@@ -98,33 +99,28 @@ const buildCurrentMetrics = (
     if (!isSglang) {
       const nowMs = Date.now();
       const previous = throughputSamples.get(modelId);
-      if (previous && nowMs - previous.ts >= MIN_RATE_INTERVAL_MS) {
-        const elapsedSeconds = (nowMs - previous.ts) / 1000;
-        promptThroughput = Math.max(
-          0,
-          (promptTokensTotal - previous.promptTokens) / elapsedSeconds,
-        );
-        generationThroughput = Math.max(
-          0,
-          (generationTokensTotal - previous.genTokens) / elapsedSeconds,
-        );
+      if (previous && nowMs - previous.ts < MIN_RATE_INTERVAL_MS) {
+        // Too soon to re-derive a rate; replay the last one so the reading stays stable.
+        promptThroughput = previous.promptTps;
+        generationThroughput = previous.genTps;
+      } else {
+        if (previous) {
+          const elapsedSeconds = (nowMs - previous.ts) / 1000;
+          promptThroughput = Math.max(
+            0,
+            (promptTokensTotal - previous.promptTokens) / elapsedSeconds,
+          );
+          generationThroughput = Math.max(
+            0,
+            (generationTokensTotal - previous.genTokens) / elapsedSeconds,
+          );
+        }
         throughputSamples.set(modelId, {
           promptTokens: promptTokensTotal,
           genTokens: generationTokensTotal,
           ts: nowMs,
           promptTps: promptThroughput,
           genTps: generationThroughput,
-        });
-      } else if (previous) {
-        promptThroughput = previous.promptTps;
-        generationThroughput = previous.genTps;
-      } else {
-        throughputSamples.set(modelId, {
-          promptTokens: promptTokensTotal,
-          genTokens: generationTokensTotal,
-          ts: nowMs,
-          promptTps: 0,
-          genTps: 0,
         });
       }
     }
@@ -145,7 +141,7 @@ const buildCurrentMetrics = (
       ...tokenTotalFields(usageTotals, promptTokensTotal, generationTokensTotal),
       prompt_throughput: promptThroughput,
       generation_throughput: generationThroughput,
-      avg_ttft_ms: avgTtftMs > 0 ? Math.round(avgTtftMs * 10) / 10 : usageAggregate?.ttft?.avg_ms,
+      avg_ttft_ms: avgTtftMs > 0 ? round1(avgTtftMs) : usageAggregate?.ttft?.avg_ms,
       latency_avg: positiveOrUndefined(usageAggregate?.latency?.avg_ms),
       ...peakFields(peakData, bestSessionPeakData),
     };
@@ -252,7 +248,7 @@ export const registerMonitoringRoutes = defineRoutes((app, context) => {
               prompt_tokens: promptTokensActual,
               completion_tokens: completionTokens,
               total_time_s: Math.round(totalTime * 100) / 100,
-              generation_tps: Math.round(generationTps * 10) / 10,
+              generation_tps: round1(generationTps),
             },
             peak_metrics: result,
           });

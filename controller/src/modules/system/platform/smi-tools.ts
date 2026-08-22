@@ -17,17 +17,19 @@ export const resolveAmdSmiBinary = (): string | null =>
 export const resolveRocmSmiBinary = (): string | null =>
   resolveConfiguredBinary("ROCM_SMI_PATH", "rocm-smi");
 
-export const resolveForcedGpuMonitoringTool = (): RuntimeGpuMonitoringTool | null => {
+/** The tools LOCAL_STUDIO_GPU_SMI_TOOL may pin; `apple-metal` is detected, never forced. */
+const FORCED_GPU_MONITORING_TOOLS = [
+  "nvidia-smi",
+  "amd-smi",
+  "rocm-smi",
+  "intel-sysfs",
+] as const satisfies readonly RuntimeGpuMonitoringTool[];
+
+export type ForcedGpuMonitoringTool = (typeof FORCED_GPU_MONITORING_TOOLS)[number];
+
+export const resolveForcedGpuMonitoringTool = (): ForcedGpuMonitoringTool | null => {
   const forced = process.env["LOCAL_STUDIO_GPU_SMI_TOOL"]?.trim();
-  if (
-    forced === "nvidia-smi" ||
-    forced === "amd-smi" ||
-    forced === "rocm-smi" ||
-    forced === "intel-sysfs"
-  ) {
-    return forced;
-  }
-  return null;
+  return FORCED_GPU_MONITORING_TOOLS.find((tool) => tool === forced) ?? null;
 };
 
 export const resolveForcedRocmTool = (): RuntimeRocmSmiTool | null => {

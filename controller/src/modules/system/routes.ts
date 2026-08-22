@@ -137,10 +137,7 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
         if (!resolved.startsWith(rootPrefix)) {
           return yield* Effect.fail(badRequest("model must be inside models_dir"));
         }
-        const modelExists = yield* Effect.tryPromise({
-          try: () => access(resolved),
-          catch: (error) => error,
-        }).pipe(
+        const modelExists = yield* Effect.tryPromise(() => access(resolved)).pipe(
           Effect.as(true),
           Effect.catch(() => Effect.succeed(false)),
         );
@@ -151,18 +148,11 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
           return yield* Effect.fail(notFound("Model weights not found"));
         }
 
-        const configPath = join(resolved, "config.json");
-        const config = yield* Effect.tryPromise({
-          try: () => readFile(configPath, "utf-8"),
-          catch: (error) => error,
-        }).pipe(
-          Effect.flatMap((raw) =>
-            Effect.try({
-              try: () => JSON.parse(raw) as unknown,
-              catch: (error) => error,
-            }),
-          ),
-          Effect.flatMap((value) => Schema.decodeUnknownEffect(ModelConfigSchema)(value)),
+        const config = yield* Effect.tryPromise(() =>
+          readFile(join(resolved, "config.json"), "utf-8"),
+        ).pipe(
+          Effect.flatMap((raw) => Effect.try(() => JSON.parse(raw) as unknown)),
+          Effect.flatMap(Schema.decodeUnknownEffect(ModelConfigSchema)),
           Effect.catch(() => Schema.decodeUnknownEffect(ModelConfigSchema)({})),
         );
         const layerCount = config.num_hidden_layers ?? config.n_layer ?? config.num_layers;
@@ -218,46 +208,22 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
 
     effectRoute(app.get, "/config", (ctx) =>
       Effect.gen(function* () {
-        const services: Array<{
-          name: string;
-          port: number;
-          internal_port: number;
-          protocol: string;
-          status: string;
-          description?: string | null;
-        }> = [];
-        services.push({
-          name: "Controller",
-          port: context.config.port,
-          internal_port: context.config.port,
-          protocol: "http",
-          status: "running",
-          description: "Controller service (Bun/Hono)",
-        });
-
         const current = yield* findObservedInferenceProcess(context, "config");
-        const inferenceStatus = current ? "running" : "stopped";
-
-        services.push({
-          name: "Inference runtime",
-          port: context.config.inference_port,
-          internal_port: context.config.inference_port,
-          protocol: "http",
-          status: inferenceStatus,
-          description: "Inference backend (vLLM, SGLang, llama.cpp, or MLX)",
-        });
-
         const frontendReachable = yield* checkService("localhost", 3000);
-        services.push({
-          name: "Frontend",
-          port: 3000,
-          internal_port: 3000,
-          protocol: "http",
-          status: frontendReachable ? "running" : "stopped",
-          description: "Next.js web UI",
-        });
-
         const runtime = yield* getSystemRuntimeInfo(context.config, current);
+        const service = (
+          name: string,
+          port: number,
+          status: string,
+          description: string,
+        ): SystemConfigResponse["services"][number] => ({
+          name,
+          port,
+          internal_port: port,
+          protocol: "http",
+          status,
+          description,
+        });
 
         const payload: SystemConfigResponse = {
           config: {
@@ -272,7 +238,16 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
             llama_bin: context.config.llama_bin ?? null,
             mlx_python: context.config.mlx_python ?? null,
           },
-          services,
+          services: [
+            service("Controller", context.config.port, "running", "Controller service (Bun/Hono)"),
+            service(
+              "Inference runtime",
+              context.config.inference_port,
+              current ? "running" : "stopped",
+              "Inference backend (vLLM, SGLang, llama.cpp, or MLX)",
+            ),
+            service("Frontend", 3000, frontendReachable ? "running" : "stopped", "Next.js web UI"),
+          ],
           environment: {
             controller_url: `http://${hostname()}:${context.config.port}`,
             inference_url: `http://${hostname()}:${context.config.inference_port}`,

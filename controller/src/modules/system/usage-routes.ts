@@ -1,12 +1,23 @@
-import type { UsageStats } from "@local-studio/contracts/usage";
+import { normalizeUsageStats, type UsageStats } from "@local-studio/contracts/usage";
 import { validateUsageStats } from "@local-studio/contracts/usage-schema";
 import { Effect } from "effect";
 import { observeControllerFunction } from "../../core/function-observability";
 import { effectRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import type { AppContext } from "../../app-context";
-import { emptyResponse } from "./usage/usage-utilities";
 
 const USAGE_CACHE_TTL_MS = 15_000;
+
+/**
+ * The body served when there is nothing to aggregate. The normalizer already
+ * fills every counter, ratio and list from an empty input, so only latency and
+ * TTFT are spelled out: the normalizer reports an absent duration as null, and
+ * the empty response has always reported it as a zero.
+ */
+const emptyResponse = (): Omit<UsageStats, "controller"> => ({
+  ...normalizeUsageStats({}),
+  latency: { avg_ms: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0, min_ms: 0, max_ms: 0 },
+  ttft: { avg_ms: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0 },
+});
 
 const withControllerUsage = (
   context: AppContext,
@@ -20,10 +31,7 @@ const withControllerUsage = (
     : Effect.succeed(body);
 
 const validateResponse = (body: UsageStats): Effect.Effect<UsageStats, unknown> =>
-  Effect.try({
-    try: () => validateUsageStats(body),
-    catch: (error) => error,
-  });
+  Effect.try({ try: () => validateUsageStats(body), catch: (error) => error });
 
 export const registerUsageRoutes = defineRoutes((app, context) => {
   let usageCache: { at: number; body: UsageStats } | null = null;

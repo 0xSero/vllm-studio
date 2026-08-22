@@ -28,20 +28,22 @@ import {
 import { redactLogLine } from "../../core/log-redaction";
 import { runCommandAsyncEffect } from "../../core/command";
 
-const LogLimitQuerySchema = Schema.Struct({
-  limit: Schema.optionalKey(
-    Schema.FiniteFromString.pipe(
-      Schema.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 20_000 })),
-    ),
-  ),
-});
-const LogTailQuerySchema = Schema.Struct({
-  tail: Schema.optionalKey(
-    Schema.FiniteFromString.pipe(
-      Schema.check(Schema.isInt(), Schema.isBetween({ minimum: 0, maximum: 20_000 })),
-    ),
-  ),
-});
+const boundedLineCount = (minimum: number): Schema.Codec<number, string> =>
+  Schema.FiniteFromString.pipe(
+    Schema.check(Schema.isInt(), Schema.isBetween({ minimum, maximum: 20_000 })),
+  );
+const LogLimitSchema = boundedLineCount(1);
+const LogTailSchema = boundedLineCount(0);
+
+/** Decode an optional numeric query parameter, keeping `undefined` when it is absent. */
+const decodeLineCount = (
+  schema: Schema.Codec<number, string>,
+  raw: string | undefined,
+  message: string,
+): Effect.Effect<number | undefined, ReturnType<typeof badRequest>> =>
+  raw === undefined
+    ? Effect.succeed(undefined)
+    : Schema.decodeUnknownEffect(schema)(raw).pipe(Effect.mapError(() => badRequest(message)));
 
 const waitForChildExit = (child: ReturnType<typeof spawn>): Effect.Effect<void> =>
   Effect.callback<void>((resume) => {
@@ -54,22 +56,25 @@ const waitForChildExit = (child: ReturnType<typeof spawn>): Effect.Effect<void> 
     return Effect.sync(() => child.removeListener("close", exited));
   });
 
+/** Run a throwing thunk, surfacing whatever it threw on the error channel. */
+const attempt = <A>(thunk: () => A): Effect.Effect<A, unknown> =>
+  Effect.try({ try: thunk, catch: (error) => error });
+
+const signalChild = (
+  child: ReturnType<typeof spawn>,
+  signal: "SIGTERM" | "SIGKILL",
+): Effect.Effect<void> => attempt(() => child.kill(signal)).pipe(Effect.catch(() => Effect.void));
+
 const terminateChild = (child: ReturnType<typeof spawn>): Effect.Effect<void> =>
   Effect.gen(function* () {
     if (child.exitCode !== null || child.signalCode !== null) return;
-    yield* Effect.try({
-      try: () => child.kill("SIGTERM"),
-      catch: (error) => error,
-    }).pipe(Effect.catch(() => Effect.void));
+    yield* signalChild(child, "SIGTERM");
     const exited = yield* Effect.raceFirst(
       waitForChildExit(child).pipe(Effect.as(true)),
       Effect.sleep(1_000).pipe(Effect.as(false)),
     );
     if (exited || child.exitCode !== null || child.signalCode !== null) return;
-    yield* Effect.try({
-      try: () => child.kill("SIGKILL"),
-      catch: (error) => error,
-    }).pipe(Effect.catch(() => Effect.void));
+    yield* signalChild(child, "SIGKILL");
     yield* Effect.raceFirst(waitForChildExit(child), Effect.sleep(1_000));
   });
 
@@ -196,87 +201,55 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
       Effect.gen(function* () {
         yield* Effect.sync(maybeCleanup);
         const current = yield* findObservedInferenceProcess(context, "logs");
-        const entries = yield* Effect.try({
-          try: () => listLogFiles(context.config.data_dir),
-          catch: (error) => error,
+        const entries = yield* attempt(() => listLogFiles(context.config.data_dir));
+        const rows = yield* Effect.forEach(entries, (entry) =>
+          context.stores.recipeStore.get(entry.sessionId).pipe(
+            Effect.map((recipe) => ({
+              id: entry.sessionId,
+              recipe_id: recipe?.id ?? entry.sessionId,
+              recipe_name: recipe?.name ?? null,
+              model_path: recipe?.model_path ?? null,
+              model: recipe ? (recipe.served_model_name ?? recipe.name) : entry.sessionId,
+              backend: recipe?.backend ?? null,
+              created_at: new Date(entry.mtimeMs).toISOString(),
+              status:
+                current &&
+                recipe &&
+                isRecipeRunning(recipe, current, { allowCurrentContainsRecipePath: true })
+                  ? "running"
+                  : "stopped",
+            })),
+          ),
+        );
+        // The controller's own log always sorts last.
+        const isController = (row: { id: string }): boolean => row.id === "controller";
+        return ctx.json({
+          sessions: [...rows.filter((row) => !isController(row)), ...rows.filter(isController)],
         });
-        type LogSessionRow = {
-          id: string;
-          recipe_id: string;
-          recipe_name: string | null;
-          model_path: string | null;
-          model: string;
-          backend: string | null;
-          created_at: string;
-          status: string;
-        };
-        const sessions: LogSessionRow[] = [];
-        let controllerSession: LogSessionRow | null = null;
-        for (const entry of entries) {
-          const sessionId = entry.sessionId;
-          const recipe = yield* context.stores.recipeStore.get(sessionId);
-          const modifiedAt = new Date(entry.mtimeMs).toISOString();
-          let status = "stopped";
-          if (
-            current &&
-            recipe &&
-            isRecipeRunning(recipe, current, { allowCurrentContainsRecipePath: true })
-          ) {
-            status = "running";
-          }
-          const row = {
-            id: sessionId,
-            recipe_id: recipe?.id ?? sessionId,
-            recipe_name: recipe?.name ?? null,
-            model_path: recipe?.model_path ?? null,
-            model: recipe ? (recipe.served_model_name ?? recipe.name) : sessionId,
-            backend: recipe?.backend ?? null,
-            created_at: modifiedAt,
-            status,
-          };
-          if (sessionId === "controller") {
-            controllerSession = row;
-          } else {
-            sessions.push(row);
-          }
-        }
-        if (controllerSession) sessions.push(controllerSession);
-        return ctx.json({ sessions });
       }),
     ),
 
     effectRoute(app.get, "/logs/:sessionId", (ctx) =>
       Effect.gen(function* () {
         const sessionId = yield* decodeSessionId(ctx.req.param("sessionId") ?? "");
-        const limitRaw = ctx.req.query("limit");
-        const query = yield* Schema.decodeUnknownEffect(LogLimitQuerySchema)(
-          limitRaw === undefined ? {} : { limit: limitRaw },
-        ).pipe(Effect.mapError(() => badRequest("Invalid log limit")));
-        const limit = query.limit ?? 2000;
+        const limit =
+          (yield* decodeLineCount(LogLimitSchema, ctx.req.query("limit"), "Invalid log limit")) ??
+          2000;
+        const body = (logs: string[]): Response =>
+          ctx.json({ id: sessionId, logs, content: logs.join("\n") });
         const dockerContainer = yield* getDockerContainerForSession(sessionId);
         if (dockerContainer) {
           const dockerLines = (yield* readDockerLogLines(dockerContainer, limit)).map(
             redactLogLine,
           );
-          if (dockerLines.length > 0) {
-            return ctx.json({
-              id: sessionId,
-              logs: dockerLines,
-              content: dockerLines.join("\n"),
-            });
-          }
+          if (dockerLines.length > 0) return body(dockerLines);
         }
-        const path = yield* Effect.sync(() =>
-          resolveExistingLogPath(context.config.data_dir, sessionId),
-        );
+        const path = resolveExistingLogPath(context.config.data_dir, sessionId);
         if (!path) return yield* Effect.fail(notFound("Log not found"));
-        const lines = (yield* Effect.try({
-          try: () => tailFileLines(path, limit),
-          catch: (error) => error,
-        }))
+        const lines = (yield* attempt(() => tailFileLines(path, limit)))
           .map((line) => line.replace(/\n$/, ""))
           .map(redactLogLine);
-        return ctx.json({ id: sessionId, logs: lines, content: lines.join("\n") });
+        return body(lines);
       }),
     ),
 
@@ -315,14 +288,10 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
     effectRoute(app.get, "/logs/:sessionId/stream", (ctx) =>
       Effect.gen(function* () {
         const sessionId = yield* decodeSessionId(ctx.req.param("sessionId") ?? "");
-        const tailRaw = ctx.req.query("tail");
-        const query = yield* Schema.decodeUnknownEffect(LogTailQuerySchema)(
-          tailRaw === undefined ? {} : { tail: tailRaw },
-        ).pipe(Effect.mapError(() => badRequest("Invalid log tail")));
-        const replayLimit = query.tail ?? 2000;
-        const path = yield* Effect.sync(() =>
-          resolveExistingLogPath(context.config.data_dir, sessionId),
-        );
+        const replayLimit =
+          (yield* decodeLineCount(LogTailSchema, ctx.req.query("tail"), "Invalid log tail")) ??
+          2000;
+        const path = resolveExistingLogPath(context.config.data_dir, sessionId);
         const configuredDockerContainer = yield* getDockerContainerForSession(sessionId);
         const dockerContainer =
           configuredDockerContainer && (yield* dockerContainerExists(configuredDockerContainer))
@@ -339,12 +308,7 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
               Stream.map(frameForLine),
             )
           : path && replayLimit > 0
-            ? Stream.fromEffect(
-                Effect.try({
-                  try: () => tailFileLines(path, replayLimit),
-                  catch: (error) => error,
-                }),
-              ).pipe(
+            ? Stream.fromEffect(attempt(() => tailFileLines(path, replayLimit))).pipe(
                 Stream.flatMap(Stream.fromIterable),
                 Stream.filter((line) => line.length > 0),
                 Stream.map(frameForLine),
@@ -369,12 +333,7 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
         const frames = replay.pipe(
           Stream.concat(live),
           Stream.catch((error) =>
-            Stream.succeed(
-              new Event(CONTROLLER_EVENTS.LOG, {
-                session_id: sessionId,
-                line: redactLogLine(`Log stream failed: ${String(error)}`),
-              }).toSse(),
-            ),
+            Stream.succeed(frameForLine(`Log stream failed: ${String(error)}`)),
           ),
         );
         return new Response(toReadableByteStream(withSseHeartbeat(frames, 15_000, signal)), {
