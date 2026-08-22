@@ -22,9 +22,7 @@ const config = {
     "playwright-core",
     "chromium-bidi",
     "proper-lockfile",
-    "semver",
     "@types/proper-lockfile",
-    "@types/semver",
   ],
   ignoreExportsUsedInFile: true,
 };
