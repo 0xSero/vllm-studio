@@ -64,31 +64,6 @@ function resolveTurnSession(turn: AgentTurnRequest): ResolvedTurnSession | null 
   };
 }
 
-function ensurePromptRuntime(turn: AgentTurnRequest, resolved: ResolvedTurnSession): Promise<void> {
-  return resolved.session.ensureStarted(turn.modelId, turn.cwd, resolved.effectivePiSessionId, {
-    thinkingLevel: turn.thinkingLevel,
-    toolAccess: turn.toolAccess,
-    browserToolEnabled: turn.browserToolEnabled,
-    browserSessionId: turn.browserSessionId,
-    browserBackend: turn.browserBackend,
-    skills: turn.skills,
-    promptTemplates: turn.promptTemplates,
-  });
-}
-
-function launchPrompt(
-  turn: AgentTurnRequest,
-  resolved: ResolvedTurnSession,
-  commandImages: AgentImageInput[] | undefined,
-) {
-  void resolved.session
-    .prompt(turn.message, () => undefined, {
-      streamingBehavior: resolved.effectiveStreamingBehavior,
-      ...(commandImages ? { images: commandImages } : {}),
-    })
-    .catch(() => undefined);
-}
-
 async function dispatchControl(
   turn: AgentTurnRequest,
   resolved: ResolvedTurnSession,
@@ -170,8 +145,22 @@ export async function handleAgentTurn(request: Request): Promise<Response> {
     }
 
     if (turn.mode === "prompt") {
-      await ensurePromptRuntime(turn, resolved);
-      launchPrompt(turn, resolved, commandImages);
+      await resolved.session.ensureStarted(turn.modelId, turn.cwd, resolved.effectivePiSessionId, {
+        thinkingLevel: turn.thinkingLevel,
+        toolAccess: turn.toolAccess,
+        browserToolEnabled: turn.browserToolEnabled,
+        browserSessionId: turn.browserSessionId,
+        browserBackend: turn.browserBackend,
+        skills: turn.skills,
+        promptTemplates: turn.promptTemplates,
+      });
+      // The turn streams over SSE; this POST only acknowledges that it started.
+      void resolved.session
+        .prompt(turn.message, () => undefined, {
+          streamingBehavior: resolved.effectiveStreamingBehavior,
+          ...(commandImages ? { images: commandImages } : {}),
+        })
+        .catch(() => undefined);
       const resolvedPiSessionId = await resolvePiSessionId(resolved.session, turnStartedAt);
       resolved.session.adoptPiSessionId(resolvedPiSessionId);
       return Response.json(
@@ -181,14 +170,9 @@ export async function handleAgentTurn(request: Request): Promise<Response> {
       );
     }
 
-    const controlOutcome = await dispatchControl(turn, resolved, commandImages);
-    if (controlOutcome === "rejected") {
-      return Response.json(
-        commandResult("rejected", resolved, {
-          error: "Runtime session is no longer active.",
-        }),
-        { status: 409 },
-      );
+    if ((await dispatchControl(turn, resolved, commandImages)) === "rejected") {
+      const error = "Runtime session is no longer active.";
+      return Response.json(commandResult("rejected", resolved, { error }), { status: 409 });
     }
     return Response.json(commandResult("queued", resolved));
   } catch (error) {

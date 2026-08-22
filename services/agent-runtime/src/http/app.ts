@@ -3,9 +3,7 @@ import * as agent from "./handlers";
 import * as automations from "./automation-handlers";
 import * as browser from "./browser-handlers";
 import * as connectors from "./connector-handlers";
-import * as discovery from "./discovery-handlers";
 import * as google from "./google-account-handlers";
-import * as models from "./model-handlers";
 import * as oauth from "./oauth-handlers";
 import * as plugins from "./plugin-handlers";
 import * as projects from "./project-handlers";
@@ -45,8 +43,8 @@ const ROUTES: ReadonlyArray<readonly [string, string, RouteHandler]> = [
   ["GET", "/api/agent/runtime/events", agent.handleRuntimeEvents],
   ["GET", "/api/agent/session-list-changed", agent.handleSessionListChanged],
   ["GET", "/api/agent/setup-checks", agent.handleSetupChecks],
-  ["GET", "/api/agent/models", () => models.handleAgentModels()],
-  ["POST", "/api/agent/models", models.handleAgentModels],
+  ["GET", "/api/agent/models", () => providers.handleAgentModels()],
+  ["POST", "/api/agent/models", providers.handleAgentModels],
   ["GET", "/api/agent/sessions", sessions.handleSessionsList],
   ["DELETE", "/api/agent/sessions", sessions.handleSessionsDelete],
   ["GET", "/api/agent/sessions/all", sessions.handleAllSessions],
@@ -84,10 +82,10 @@ const ROUTES: ReadonlyArray<readonly [string, string, RouteHandler]> = [
   ["POST", "/api/agent/plugins", plugins.handlePluginUpsert],
   ["DELETE", "/api/agent/plugins", plugins.handlePluginDelete],
   ["GET", "/api/agent/plugins/source", plugins.handlePluginSource],
-  ["GET", "/api/agent/skills", discovery.handleSkillsList],
-  ["GET", "/api/agent/skills/load", discovery.handleSkillLoad],
-  ["GET", "/api/agent/prompt-templates", discovery.handlePromptTemplatesList],
-  ["GET", "/api/agent/prompt-templates/load", discovery.handlePromptTemplateLoad],
+  ["GET", "/api/agent/skills", plugins.handleSkillsList],
+  ["GET", "/api/agent/skills/load", plugins.handleSkillLoad],
+  ["GET", "/api/agent/prompt-templates", plugins.handlePromptTemplatesList],
+  ["GET", "/api/agent/prompt-templates/load", plugins.handlePromptTemplateLoad],
   ["GET", "/api/agent/pr", pullRequests.handlePrGet],
   ["POST", "/api/agent/pr/merge", pullRequests.handlePrMerge],
   ["GET", "/api/agent/subagents", subagents.handleSubagentsList],

@@ -14,6 +14,8 @@ import {
   setUserPluginEnabled,
   writeUserPlugin,
 } from "../user-plugins";
+import { discoverSkills, loadSkillInstructions } from "../skill-discovery";
+import { discoverPromptTemplates, loadPromptTemplateInstructions } from "../prompt-templates-store";
 import { decodeBody, errorMessage, jsonError } from "./helpers";
 
 /** The listing every write answers with, so the tab never re-fetches. */
@@ -68,4 +70,26 @@ export async function handlePluginSource(request: Request): Promise<Response> {
   } catch (error) {
     return jsonError(errorMessage(error, "Plugin could not be read"), 404);
   }
+}
+
+// ─── Skills and prompt templates ──────────────────────────────────────────
+//
+// Both walk directories on the machine the agent runs on, so a remote runtime
+// must be the one answering.
+
+export const handleSkillsList = (): Response => Response.json({ skills: discoverSkills() });
+
+export function handleSkillLoad(request: Request): Response {
+  const skillPath = new URL(request.url).searchParams.get("path") ?? "";
+  const skill = skillPath ? loadSkillInstructions(skillPath) : null;
+  return skill ? Response.json({ skill }) : jsonError("Skill not found", 404);
+}
+
+export const handlePromptTemplatesList = (): Response =>
+  Response.json({ templates: discoverPromptTemplates() });
+
+export function handlePromptTemplateLoad(request: Request): Response {
+  const templatePath = new URL(request.url).searchParams.get("path") ?? "";
+  const template = templatePath ? loadPromptTemplateInstructions(templatePath) : null;
+  return template ? Response.json({ template }) : jsonError("Template not found", 404);
 }

@@ -46,20 +46,6 @@ const PR_LIST_FIELDS = ["number", "title", "headRefName", "updatedAt", "isDraft"
 
 export type CheckBucket = "pending" | "passing" | "failing";
 
-export type PrCheck = {
-  name: string;
-  status: string;
-  conclusion: string | null;
-  bucket: CheckBucket;
-};
-
-export type PrChecksSummary = {
-  pending: number;
-  passing: number;
-  failing: number;
-  total: number;
-};
-
 const PASSING_CONCLUSIONS = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
 const PASSING_STATES = new Set(["SUCCESS"]);
 const PENDING_STATES = new Set(["PENDING", "EXPECTED"]);
@@ -90,54 +76,27 @@ function classifyCheck(entry: Record<string, unknown>): CheckBucket {
 }
 
 /** statusCheckRollup → normalized checks plus pending/passing/failing counts. */
-export function normalizeChecks(rollup: unknown): {
-  checks: PrCheck[];
-  summary: PrChecksSummary;
-} {
-  const entries = Array.isArray(rollup) ? rollup : [];
-  const summary: PrChecksSummary = { pending: 0, passing: 0, failing: 0, total: 0 };
-  const checks: PrCheck[] = [];
-  for (const raw of entries) {
+export function normalizeChecks(rollup: unknown) {
+  const checks = asArray(rollup).map((raw) => {
     const entry = asRecord(raw);
-    const name = asString(entry.name) ?? asString(entry.context) ?? "check";
-    const status = asString(entry.status) ?? asString(entry.state) ?? "UNKNOWN";
-    const conclusion = asString(entry.conclusion);
-    const bucket = classifyCheck(entry);
-    summary[bucket] += 1;
-    summary.total += 1;
-    checks.push({ name, status, conclusion, bucket });
-  }
+    return {
+      name: asString(entry.name) ?? asString(entry.context) ?? "check",
+      status: asString(entry.status) ?? asString(entry.state) ?? "UNKNOWN",
+      conclusion: asString(entry.conclusion),
+      bucket: classifyCheck(entry),
+    };
+  });
+  const summary = { pending: 0, passing: 0, failing: 0, total: checks.length };
+  for (const check of checks) summary[check.bucket] += 1;
   return { checks, summary };
 }
 
 function normalizeReviewers(reviewRequests: unknown): string[] {
-  const entries = Array.isArray(reviewRequests) ? reviewRequests : [];
-  const names: string[] = [];
-  for (const raw of entries) {
+  return asArray(reviewRequests).flatMap((raw) => {
     const entry = asRecord(raw);
-    const name = asString(entry.login) ?? asString(entry.name) ?? asString(entry.slug);
-    if (name) names.push(name);
-  }
-  return names;
+    return asString(entry.login) ?? asString(entry.name) ?? asString(entry.slug) ?? [];
+  });
 }
-
-export type NormalizedPr = {
-  number: number;
-  title: string;
-  url: string;
-  state: string;
-  isDraft: boolean;
-  headRefName: string;
-  baseRefName: string;
-  additions: number;
-  deletions: number;
-  reviewers: string[];
-  commentsCount: number;
-  body: string;
-  mergeable: string;
-  checks: PrCheck[];
-  checksSummary: PrChecksSummary;
-};
 
 function asInt(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : 0;
@@ -148,7 +107,7 @@ function asArray(value: unknown): unknown[] {
 }
 
 /** `gh pr view --json …` payload → the shape the panel consumes. */
-export function normalizePrView(raw: unknown): NormalizedPr {
+export function normalizePrView(raw: unknown) {
   const pr = asRecord(raw);
   const { checks, summary } = normalizeChecks(pr.statusCheckRollup);
   return {
@@ -170,15 +129,7 @@ export function normalizePrView(raw: unknown): NormalizedPr {
   };
 }
 
-export type PrListItem = {
-  number: number;
-  title: string;
-  headRefName: string;
-  updatedAt: string;
-  isDraft: boolean;
-};
-
-export function normalizePrList(raw: unknown): PrListItem[] {
+export function normalizePrList(raw: unknown) {
   return asArray(raw).map((item) => {
     const entry = asRecord(item);
     return {
@@ -225,10 +176,6 @@ function friendlyGhError(failure: GhFailure): string {
   return failure.message;
 }
 
-function isNoPullRequest(stderr: string): boolean {
-  return /no pull requests? found/i.test(stderr) || /no open pull requests/i.test(stderr);
-}
-
 function validateCwd(rawCwd: string | null): string | Response {
   const trimmed = rawCwd?.trim() ?? "";
   if (!trimmed) return jsonError("cwd is required");
@@ -248,14 +195,14 @@ export async function handlePrGet(request: Request): Promise<Response> {
 
   try {
     const { stdout } = await runGh(["pr", "view", "--json", PR_VIEW_FIELDS], cwd);
-    const parsed = JSON.parse(stdout) as unknown;
-    return Response.json({ pr: normalizePrView(parsed) });
+    return Response.json({ pr: normalizePrView(JSON.parse(stdout) as unknown) });
   } catch (error) {
     const failure = ghFailure(error);
-    if (failure.code === "ENOENT") {
-      return Response.json({ error: friendlyGhError(failure) });
-    }
-    if (isNoPullRequest(failure.stderr)) {
+    // No PR for the current branch is not an error: fall back to the repo list.
+    if (
+      /no pull requests? found/i.test(failure.stderr) ||
+      /no open pull requests/i.test(failure.stderr)
+    ) {
       return listPullRequests(cwd);
     }
     return Response.json({ error: friendlyGhError(failure) });
@@ -264,12 +211,8 @@ export async function handlePrGet(request: Request): Promise<Response> {
 
 async function listPullRequests(cwd: string): Promise<Response> {
   try {
-    const { stdout } = await runGh(
-      ["pr", "list", "--json", PR_LIST_FIELDS, "--limit", "20"],
-      cwd,
-    );
-    const parsed = JSON.parse(stdout) as unknown;
-    return Response.json({ prs: normalizePrList(parsed) });
+    const { stdout } = await runGh(["pr", "list", "--json", PR_LIST_FIELDS, "--limit", "20"], cwd);
+    return Response.json({ prs: normalizePrList(JSON.parse(stdout) as unknown) });
   } catch (error) {
     return Response.json({ error: friendlyGhError(ghFailure(error)) });
   }
