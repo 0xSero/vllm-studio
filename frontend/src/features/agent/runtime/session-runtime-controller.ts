@@ -33,7 +33,7 @@ import {
   shouldSubscribeRuntimeEvents,
   type RuntimeCursor,
 } from "@/features/agent/runtime/runtime-cursor";
-import { createEffectTextDeltaCoalescer } from "@/features/agent/runtime/effect-coalescer";
+import { createTextDeltaCoalescer } from "@/features/agent/runtime/text-delta-coalescer";
 import { Effect, Fiber, Schedule } from "effect";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import { publishRuntimeActivity } from "@/features/agent/session-index";
@@ -199,10 +199,9 @@ export function createSessionRuntimeController(): SessionRuntimeController {
     );
   };
 
-  // Text-delta coalescer is now an Effect program (effect-coalescer.ts): a
-  // per-session pending snapshot drained on the animation-frame clock. The
-  // imperative facade is unchanged so the controller's contract holds.
-  const coalescer = createEffectTextDeltaCoalescer({
+  // Text-delta coalescer (text-delta-coalescer.ts): a per-session pending
+  // snapshot drained on the animation-frame clock.
+  const coalescer = createTextDeltaCoalescer({
     applyPiEvent: applyEvent,
   });
 

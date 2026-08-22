@@ -1,15 +1,13 @@
-// Effect-TS text-delta coalescer.
+// Text-delta coalescer: a plain requestAnimationFrame batcher.
 //
-// The per-session pending state is a plain mutable container (the enqueue path
-// is synchronous and needs immediate read/write — wrapping it in Ref<Effect>
-// would just add ceremony for no gain), while the animation-frame flush runs
-// as a forked Effect fiber.
+// Per-session pending state is a plain mutable container (the enqueue path is
+// synchronous and needs immediate read/write), drained on the animation-frame
+// clock.
 //
 // Merge semantics: same-kind text deltas concatenate so no incremental token
 // is dropped; a kind switch or a non-delta `message_update` flushes first to
 // preserve ordering.
 
-import { Effect, Fiber } from "effect";
 import type { SessionId } from "@/features/agent/runtime/types";
 import { traceAgentReasoning } from "@/features/agent/trace-reasoning";
 
@@ -38,19 +36,28 @@ type PendingSnapshot = {
 /** A cancellable animation-frame handle. */
 type FlushHandle = { cancel: () => void };
 
-type ScheduleFrame = (callback: () => void) => FlushHandle;
-
 type SessionSlot = {
   pending: PendingSnapshot | null;
   // Non-null while a frame-driven flush is in flight, so we don't stack flushes.
   flushHandle: FlushHandle | null;
 };
 
+// A single-frame wait. Uses requestAnimationFrame on the DOM; falls back to a
+// zero-delay timeout otherwise (matches the legacy defaultScheduleFrame).
+function scheduleFrame(callback: () => void): FlushHandle {
+  if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+    const handle = window.requestAnimationFrame(callback);
+    return { cancel: () => window.cancelAnimationFrame(handle) };
+  }
+  const handle = setTimeout(callback, 0);
+  return { cancel: () => clearTimeout(handle) };
+}
+
 /**
  * Build a coalescer. `applyPiEvent` is the commit callback the controller wires
  * to the React dispatch, so every flush ultimately calls it.
  */
-export function createEffectTextDeltaCoalescer({
+export function createTextDeltaCoalescer({
   applyPiEvent,
 }: {
   applyPiEvent: ApplyPiEvent;
@@ -76,15 +83,6 @@ export function createEffectTextDeltaCoalescer({
     }
   };
 
-  const frameClock: ScheduleFrame = (callback) => {
-    const fiber = Effect.runFork(
-      Effect.gen(function* () {
-        yield* waitForAnimationFrame;
-        callback();
-      }),
-    );
-    return { cancel: () => void Effect.runPromise(Fiber.interrupt(fiber)) };
-  };
   const flushNow = (sessionId: SessionId): void => {
     const slot = slots.get(sessionId);
     if (!slot || !slot.pending) return;
@@ -100,7 +98,7 @@ export function createEffectTextDeltaCoalescer({
     // Yield to the frame clock, then apply whatever accumulated for this session.
     // A handle that was cancelled (discard/flushNow) but whose callback still
     // fires is harmless: `pending` is already null, so it applies nothing.
-    slot.flushHandle = frameClock(() => {
+    slot.flushHandle = scheduleFrame(() => {
       const slotNow = slots.get(sessionId);
       if (!slotNow) return;
       slotNow.flushHandle = null;
@@ -166,29 +164,6 @@ export function createEffectTextDeltaCoalescer({
 
   return { enqueuePiEvent, flushNow, discard, clear };
 }
-
-// A single-frame wait. Uses requestAnimationFrame on the DOM; falls back to a
-// zero-delay timeout otherwise (matches the legacy defaultScheduleFrame).
-const waitForAnimationFrame: Effect.Effect<void> = Effect.callback<void>((resume) => {
-  let cancelled = false;
-  let handle: number | ReturnType<typeof setTimeout>;
-  const finish = () => {
-    if (cancelled) return;
-    resume(Effect.void);
-  };
-  if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
-    handle = window.requestAnimationFrame(finish);
-    return Effect.sync(() => {
-      cancelled = true;
-      if (typeof handle === "number") window.cancelAnimationFrame(handle);
-    });
-  }
-  handle = setTimeout(finish, 0);
-  return Effect.sync(() => {
-    cancelled = true;
-    clearTimeout(handle);
-  });
-});
 
 function textDeltaFromPiEvent(event: Record<string, unknown>): TextDeltaSnapshot | null {
   if (event.type !== "message_update") return null;
