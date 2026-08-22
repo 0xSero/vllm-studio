@@ -66,8 +66,9 @@ export function setStoredQuickPanelThreadSize(size: QuickPanelSize): void {
   writeSettings({ quickPanelThreadSize: size });
 }
 
-export function getStoredUpdateChannel(): DesktopUpdateChannel {
-  return readSettings().updateChannel === "nightly" ? "nightly" : "stable";
+export function getStoredUpdateChannel(fallback: DesktopUpdateChannel): DesktopUpdateChannel {
+  const channel = readSettings().updateChannel;
+  return channel === "stable" || channel === "nightly" ? channel : fallback;
 }
 
 export function setStoredUpdateChannel(channel: DesktopUpdateChannel): void {

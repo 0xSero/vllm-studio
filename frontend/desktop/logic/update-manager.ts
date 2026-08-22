@@ -15,14 +15,19 @@ import { Schema } from "effect";
 
 const NIGHTLY_UPDATE_URL = "https://github.com/jake-molnia/local-studio/releases/download/nightly";
 
+function selectedUpdateChannel(): DesktopUpdateChannel {
+  const fallback = /-nightly(?:\.|$)/.test(app.getVersion()) ? "nightly" : "stable";
+  return getStoredUpdateChannel(fallback);
+}
+
 let latestUpdateState: DesktopUpdateSnapshot = {
-  channel: getStoredUpdateChannel(),
+  channel: selectedUpdateChannel(),
   status: "idle",
 };
 const installIntent = new UpdateInstallIntent();
 
 function setUpdateState(nextState: Omit<DesktopUpdateSnapshot, "channel">): void {
-  latestUpdateState = { channel: getStoredUpdateChannel(), ...nextState };
+  latestUpdateState = { channel: selectedUpdateChannel(), ...nextState };
 }
 
 function setUpdateError(error: unknown): void {
@@ -116,7 +121,7 @@ export async function checkForUpdates(force = false): Promise<DesktopUpdateSnaps
     return latestUpdateState;
   }
 
-  configureUpdater(getStoredUpdateChannel());
+  configureUpdater(selectedUpdateChannel());
 
   if (!app.isPackaged && !force) {
     setUpdateState({
@@ -182,7 +187,7 @@ export async function setUpdateChannel(channel: unknown): Promise<DesktopUpdateS
     };
   }
 
-  if (channel === getStoredUpdateChannel()) return latestUpdateState;
+  if (channel === selectedUpdateChannel()) return latestUpdateState;
 
   setStoredUpdateChannel(channel);
   installIntent.clear();
@@ -204,7 +209,7 @@ export function initializeAutoUpdates(): void {
     return;
   }
 
-  const channel = getStoredUpdateChannel();
+  const channel = selectedUpdateChannel();
   const feed = configureUpdater(channel);
   log.info(`[update] Channel: ${channel}; feed: ${feed.url}`);
 
