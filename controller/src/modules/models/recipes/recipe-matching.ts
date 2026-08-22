@@ -69,7 +69,6 @@ export const isRecipeRunning = (
  * active. This ranks the candidates (served_model_name equality, then exact
  * path equality, then the path-contains fallback, then basename) and returns
  * only the best; on a rank tie the first recipe in list order wins.
- * @returns The best-matching recipe, or null when nothing matches.
  */
 export const selectRunningRecipe = <R extends Recipe>(
   recipes: readonly R[],

@@ -75,9 +75,7 @@ const booleanSetting = (
   }
 };
 
-/**
- * Effect v4 schema for validated recipe input.
- */
+/** Effect v4 schema for validated recipe input. */
 export const recipeSchema = Schema.Struct({
   // An empty id would create a ghost recipe that can't be fetched, updated,
   // deleted, or launched (routes address recipes by /recipes/:recipeId).
@@ -115,11 +113,7 @@ export const recipeSchema = Schema.Struct({
 
 const knownRecipeKeys = new Set([...Object.keys(recipeSchema.fields), "tp", "pp"]);
 
-/**
- * Normalize raw recipe input before validation.
- * @param raw - Unknown recipe payload.
- * @returns Normalized record.
- */
+/** Normalize raw recipe input before validation. */
 export const normalizeRecipeInput = (raw: unknown): Record<string, unknown> => {
   if (!raw || typeof raw !== "object") {
     throw new Error("Invalid recipe payload");
@@ -145,12 +139,8 @@ export const normalizeRecipeInput = (raw: unknown): Record<string, unknown> => {
   delete extraArguments["docker_image"];
   delete extraArguments["docker-image"];
 
-  if (data["tensor_parallel_size"] === undefined && data["tp"] !== undefined) {
-    data["tensor_parallel_size"] = data["tp"];
-  }
-  if (data["pipeline_parallel_size"] === undefined && data["pp"] !== undefined) {
-    data["pipeline_parallel_size"] = data["pp"];
-  }
+  data["tensor_parallel_size"] ??= data["tp"];
+  data["pipeline_parallel_size"] ??= data["pp"];
 
   for (const key of ["status", "crash_loop"]) {
     delete data[key];
@@ -185,11 +175,7 @@ export const normalizeRecipeInput = (raw: unknown): Record<string, unknown> => {
   return data;
 };
 
-/**
- * Parse and normalize a recipe payload.
- * @param raw - Raw recipe payload.
- * @returns Parsed recipe.
- */
+/** Parse and normalize a recipe payload. */
 export const parseRecipe = (raw: unknown): Recipe => {
   const normalized = normalizeRecipeInput(raw);
   const parsed = Schema.decodeUnknownSync(recipeSchema, {
