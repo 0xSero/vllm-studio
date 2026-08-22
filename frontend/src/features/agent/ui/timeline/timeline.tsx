@@ -18,7 +18,6 @@ type TimelineProps = {
   running: boolean;
   cwd: string | null;
   onForkSession?: () => void;
-  emptyPrompt?: boolean;
   stickToBottom?: boolean;
   onStickToBottomChange?: (value: boolean) => void;
   viewKey: string | null;
@@ -65,7 +64,6 @@ export function Timeline({
   running,
   cwd,
   onForkSession,
-  emptyPrompt = false,
   stickToBottom = true,
   onStickToBottomChange,
   viewKey,
@@ -90,21 +88,6 @@ export function Timeline({
     viewKey,
     viewAlias,
   });
-
-  if (emptyPrompt) {
-    return (
-      <div className="flex min-h-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-10 pt-2">
-        <div className="agent-thread-shell mx-auto flex flex-1">
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-            <p className="max-w-[24ch] text-[clamp(1.45rem,2.6vw,2.1rem)] font-semibold leading-[1.22] tracking-[-0.02em] text-(--fg)/90">
-              A dream is something you build for yourself.
-            </p>
-            <p className="text-[length:var(--fs-xl)] text-(--dim)">Just talk to it.</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="agent-timeline-frame relative flex min-h-0 min-w-0 flex-1">
