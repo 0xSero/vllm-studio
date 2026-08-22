@@ -126,35 +126,25 @@ type SliderRowProps = {
   onChange: (value: number) => void;
 };
 
-function SliderRow({
-  label,
-  description,
-  value,
-  min,
-  max,
-  step,
-  format,
-  width,
-  onChange,
-}: SliderRowProps) {
+function SliderRow(props: SliderRowProps) {
   return (
     <SettingsRow
-      label={label}
-      description={description}
+      label={props.label}
+      description={props.description}
       control={
         <div className="flex w-full items-center gap-3">
           <Slider
-            value={value}
-            min={min}
-            max={max}
-            step={step}
-            onChange={onChange}
-            aria-label={label}
+            value={props.value}
+            min={props.min}
+            max={props.max}
+            step={props.step}
+            onChange={props.onChange}
+            aria-label={props.label}
           />
           <span
-            className={`${width} shrink-0 text-right font-mono text-[length:var(--fs-md)] tabular-nums text-(--ui-muted)`}
+            className={`${props.width} shrink-0 text-right font-mono text-[length:var(--fs-md)] tabular-nums text-(--ui-muted)`}
           >
-            {format(value)}
+            {props.format(props.value)}
           </span>
         </div>
       }

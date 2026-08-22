@@ -181,6 +181,24 @@ export function ManagedRuntimeInstallRows({
 const installedVersionLabel = (target: RuntimeTarget | undefined): string =>
   target?.installed ? (target.version ?? "installed") : "not installed";
 
+/** The four derived facts a discovered-runtime row needs, resolved once. */
+function describeRuntimeRow(target: RuntimeTarget, job: EngineJob | undefined) {
+  const degraded = target.health.status === "warning" || target.health.status === "error";
+  const healthMessage =
+    target.capabilities.canUpdate && degraded ? target.health.message : undefined;
+  return {
+    unsupportedReason: target.health.message ?? "Updates are unsupported for this target.",
+    healthMessage,
+    location: target.pythonPath ?? target.binaryPath ?? target.dockerImage ?? "",
+    hasDetail: Boolean(
+      job ||
+      (target.capabilities.canUpdate && target.update) ||
+      !target.capabilities.canUpdate ||
+      healthMessage,
+    ),
+  };
+}
+
 export function RuntimeTargetRows({
   targets,
   jobs = [],
@@ -193,16 +211,9 @@ export function RuntimeTargetRows({
   return targets.map((target) => {
     const meta = ENGINE_META[target.backend];
     const job = jobForRuntimeTarget(jobs, target);
-    const unsupportedReason = target.health.message ?? "Updates are unsupported for this target.";
-    const degraded = target.health.status === "warning" || target.health.status === "error";
-    const healthMessage =
-      target.capabilities.canUpdate && degraded ? target.health.message : undefined;
-    const location = target.pythonPath ?? target.binaryPath ?? target.dockerImage ?? "";
-    const hasDetail = Boolean(
-      job ||
-      (target.capabilities.canUpdate && target.update) ||
-      !target.capabilities.canUpdate ||
-      healthMessage,
+    const { unsupportedReason, healthMessage, location, hasDetail } = describeRuntimeRow(
+      target,
+      job,
     );
     return (
       <Fragment key={target.id}>

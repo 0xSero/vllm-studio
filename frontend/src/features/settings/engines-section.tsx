@@ -160,20 +160,9 @@ export function EnginesSection({ runtime }: { runtime?: SystemRuntimeInfo | null
               label="Host"
               blurb="What the controller can see of this machine's GPUs."
             />
-            <HostRow
-              label="GPU monitoring"
-              description="nvidia-smi, amd-smi, rocm-smi, or Intel sysfs discovery from the controller."
-              value={gpuMon?.available ? (gpuMon.tool ?? "available") : "not available yet"}
-              tone={gpuMon?.available ? "ok" : "warn"}
-              state={gpuMon?.available ? "online" : "fallback"}
-            />
-            <HostRow
-              label="GPU lease"
-              description="Current runtime lock holder when a launch or engine job owns the GPU lane."
-              value={lease?.holder ?? "No active lease"}
-              tone={lease?.holder ? "info" : "dim"}
-              state={lease?.holder ? "held" : "free"}
-            />
+            {hostRows(gpuMon, lease?.holder).map((row) => (
+              <HostRow key={row.label} {...row} />
+            ))}
           </tbody>
         </TableFrame>
       </SettingsGroup>
@@ -190,19 +179,38 @@ function HydrationStatus({ hasRows }: { hasRows: boolean }) {
 }
 
 /** A host fact: one value and one verdict, with no location column to fill. */
-function HostRow({
-  label,
-  description,
-  value,
-  tone,
-  state,
-}: {
+type HostRowProps = {
   label: string;
   description: string;
   value: string;
   tone: ComponentProps<typeof StatusText>["tone"];
   state: string;
-}) {
+};
+
+function hostRows(
+  gpuMon: SystemRuntimeInfo["gpu_monitoring"] | undefined,
+  holder: string | null | undefined,
+): HostRowProps[] {
+  const monitoring = Boolean(gpuMon?.available);
+  return [
+    {
+      label: "GPU monitoring",
+      description: "nvidia-smi, amd-smi, rocm-smi, or Intel sysfs discovery from the controller.",
+      value: monitoring ? (gpuMon?.tool ?? "available") : "not available yet",
+      tone: monitoring ? "ok" : "warn",
+      state: monitoring ? "online" : "fallback",
+    },
+    {
+      label: "GPU lease",
+      description: "Current runtime lock holder when a launch or engine job owns the GPU lane.",
+      value: holder ?? "No active lease",
+      tone: holder ? "info" : "dim",
+      state: holder ? "held" : "free",
+    },
+  ];
+}
+
+function HostRow({ label, description, value, tone, state }: HostRowProps) {
   return (
     <DataRow>
       <IdentityCell label={label} description={description} />

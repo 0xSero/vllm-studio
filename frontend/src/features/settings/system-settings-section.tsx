@@ -100,7 +100,7 @@ export function SystemDetails({
         collapsible
         defaultOpen={false}
       >
-        <SettingsFactRows rows={machineFactRows(data)} />
+        <SettingsFactRows rows={[...configFactRows(data), ...runtimeFactRows(data)]} />
       </SettingsGroup>
       <CompatibilitySettings
         checks={compatibilityReport?.checks ?? []}
@@ -170,12 +170,9 @@ function endpointFactRows(
   ];
 }
 
-/** Network, storage, then runtime — the machine as the controller reports it. */
-function machineFactRows(data: ConfigData | null): SettingsFactRow[] {
+/** Network and storage, as the controller reports them. */
+function configFactRows(data: ConfigData | null): SettingsFactRow[] {
   const config = data?.config;
-  const runtime = data?.runtime;
-  const gpuCount = runtime?.gpus.count ?? 0;
-
   return [
     { label: "Host", value: config?.host ?? "127.0.0.1", mono: true },
     { label: "Controller port", value: config?.port ?? 8080, mono: true },
@@ -188,6 +185,13 @@ function machineFactRows(data: ConfigData | null): SettingsFactRow[] {
     },
     { label: "Data directory", value: config?.data_dir ?? "data/", mono: true, truncate: true },
     { label: "Database", value: config?.db_path ?? "data/studio.db", mono: true, truncate: true },
+  ];
+}
+
+function runtimeFactRows(data: ConfigData | null): SettingsFactRow[] {
+  const runtime = data?.runtime;
+  const gpuCount = runtime?.gpus.count ?? 0;
+  return [
     { label: "Platform", value: runtime?.platform.kind ?? "unknown" },
     {
       label: "GPU types",
