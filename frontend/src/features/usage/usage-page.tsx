@@ -79,7 +79,7 @@ const milliseconds = (value: number | null): string =>
  * above the tab strip rather than inside any one tab.
  */
 export default function UsagePage() {
-  const { stats, loading, error, loadStats } = useUsage();
+  const { stats, loading, error, loadStats, head } = useUsage();
   const [tab, setTab] = useState<UsageTab>("models");
   const [profile, updateProfile] = useLocalProfile();
   const [imageError, setImageError] = useState("");
@@ -162,12 +162,16 @@ export default function UsagePage() {
         </header>
 
         <section className="mt-8">
-          <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">Proxied tokens</p>
+          <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">
+            {head ? "Global proxied tokens" : "Proxied tokens"}
+          </p>
           <div className="mt-1 text-[length:var(--fs-display)] font-medium leading-none tracking-[-0.03em] tabular-nums text-(--ui-fg)">
             {formatNumber(stats.totals.total_tokens)}
           </div>
           <p className="mt-2 text-[length:var(--fs-sm)] text-(--ui-muted)">
-            Requests proxied through this controller
+            {head
+              ? `Requests recorded across ${head.name || "Studio Head"}`
+              : "Requests proxied through this controller"}
           </p>
         </section>
 
