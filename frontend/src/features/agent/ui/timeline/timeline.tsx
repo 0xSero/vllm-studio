@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { AssistantBlock, ChatMessage } from "@/features/agent/messages";
+import type { ChatMessage } from "@/features/agent/messages";
 import { SessionPaneBlockRouter } from "@/features/agent/ui/timeline/session-pane-block-router";
 import { ChevronDownIcon } from "@/ui/icons";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -157,12 +157,6 @@ const PROMPT_MARKER_HEIGHT_PX = 16;
 const PROMPT_MARKER_GAP_PX = 10;
 const PROMPT_MARKER_MAX_RATIO = 0.6;
 
-type PromptMarkerEntry = {
-  id: string;
-  label: string;
-  time: string;
-};
-
 function PromptMarkers({
   scroller,
   messages,
@@ -203,42 +197,38 @@ function PromptMarkers({
   const visible =
     prompts.length > maxCount ? prompts.slice(windowStart, windowStart + maxCount) : prompts;
   const scrollToPrompt = (id: string) => {
-    const node = Array.from(
-      scroller.querySelectorAll<HTMLElement>("[data-timeline-message-id]"),
-    ).find((element) => element.dataset.timelineMessageId === id);
-    node?.scrollIntoView({ block: "center", behavior: "smooth" });
+    scroller
+      .querySelector<HTMLElement>(`[data-timeline-message-id="${CSS.escape(id)}"]`)
+      ?.scrollIntoView({ block: "center", behavior: "smooth" });
   };
   return (
     <nav className="prompt-minimap" aria-label="Session prompts">
-      {visible.map((marker) => {
-        const active = hoveredId === marker.id;
-        return (
-          <button
-            key={marker.id}
-            type="button"
-            className="prompt-minimap-marker"
-            data-current={marker.id === activeId ? "true" : undefined}
-            aria-label={`Scroll to prompt: ${marker.label}`}
-            onMouseEnter={() => setHoveredId(marker.id)}
-            onMouseLeave={() => setHoveredId((value) => (value === marker.id ? null : value))}
-            onFocus={() => setHoveredId(marker.id)}
-            onBlur={() => setHoveredId((value) => (value === marker.id ? null : value))}
-            onClick={(event) => {
-              scrollToPrompt(marker.id);
-              setHoveredId(null);
-              event.currentTarget.blur();
-            }}
-          >
-            <span className="prompt-minimap-line" />
-            {active ? (
-              <span className="prompt-minimap-card" role="tooltip">
-                <span className="prompt-minimap-card-text">{marker.label}</span>
-                <span className="prompt-minimap-card-time">{marker.time || "Prompt"}</span>
-              </span>
-            ) : null}
-          </button>
-        );
-      })}
+      {visible.map((marker) => (
+        <button
+          key={marker.id}
+          type="button"
+          className="prompt-minimap-marker"
+          data-current={marker.id === activeId ? "true" : undefined}
+          aria-label={`Scroll to prompt: ${marker.label}`}
+          onMouseEnter={() => setHoveredId(marker.id)}
+          onMouseLeave={() => setHoveredId((value) => (value === marker.id ? null : value))}
+          onFocus={() => setHoveredId(marker.id)}
+          onBlur={() => setHoveredId((value) => (value === marker.id ? null : value))}
+          onClick={(event) => {
+            scrollToPrompt(marker.id);
+            setHoveredId(null);
+            event.currentTarget.blur();
+          }}
+        >
+          <span className="prompt-minimap-line" />
+          {hoveredId === marker.id ? (
+            <span className="prompt-minimap-card" role="tooltip">
+              <span className="prompt-minimap-card-text">{marker.label}</span>
+              <span className="prompt-minimap-card-time">{marker.time || "Prompt"}</span>
+            </span>
+          ) : null}
+        </button>
+      ))}
     </nav>
   );
 }
@@ -381,10 +371,8 @@ function useTimelineScrollEffects({
   // Mirror prop + callback into refs in the commit phase (never during render).
   useMountSubscription(() => {
     stickRef.current = stickToBottom;
-  }, [stickToBottom]);
-  useMountSubscription(() => {
     onChangeRef.current = onStickToBottomChange;
-  }, [onStickToBottomChange]);
+  }, [stickToBottom, onStickToBottomChange]);
 
   useMountSubscription(() => {
     const el = scroller;
@@ -437,15 +425,11 @@ function useTimelineScrollEffects({
         restoreScrollTop();
         if (pendingRestoreTop !== null) return;
       }
-      if (atBottom()) {
-        // Briefly respect a deliberate scroll-up near the bottom instead of
-        // immediately re-locking and fighting the user.
-        if (Date.now() < userHoldUntilRef.current) return;
-        setStick(true);
-        persist();
-        return;
-      }
-      setStick(false);
+      const bottom = atBottom();
+      // Briefly respect a deliberate scroll-up near the bottom instead of
+      // immediately re-locking and fighting the user.
+      if (bottom && Date.now() < userHoldUntilRef.current) return;
+      setStick(bottom);
       persist();
     };
 

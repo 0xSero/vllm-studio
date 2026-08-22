@@ -18,6 +18,14 @@ function hunkLabel(line: string): string {
   return synthetic[1] ? `Edit ${synthetic[1]}` : "Edit";
 }
 
+// Checked only after the "+++ "/"--- " file headers above, so a bare +/- here
+// really is an added/removed line.
+const PREFIXED_LINES: Record<string, { kind: DiffPreviewLineKind; marker: string }> = {
+  "+": { kind: "addition", marker: "+" },
+  "-": { kind: "deletion", marker: "−" },
+  " ": { kind: "context", marker: "" },
+};
+
 function parseLine(line: string): DiffPreviewLine {
   if (line.startsWith("diff --git") || line.startsWith("index ")) {
     return { content: line, kind: "meta", marker: "" };
@@ -25,18 +33,9 @@ function parseLine(line: string): DiffPreviewLine {
   if (line.startsWith("--- ") || line.startsWith("+++ ")) {
     return { content: line.slice(4), kind: "meta", marker: line.slice(0, 3) };
   }
-  if (line.startsWith("@@")) {
-    return { content: hunkLabel(line), kind: "hunk", marker: "" };
-  }
-  if (line.startsWith("+")) {
-    return { content: line.slice(1), kind: "addition", marker: "+" };
-  }
-  if (line.startsWith("-")) {
-    return { content: line.slice(1), kind: "deletion", marker: "−" };
-  }
-  if (line.startsWith(" ")) {
-    return { content: line.slice(1), kind: "context", marker: "" };
-  }
+  if (line.startsWith("@@")) return { content: hunkLabel(line), kind: "hunk", marker: "" };
+  const prefixed = PREFIXED_LINES[line.slice(0, 1)];
+  if (prefixed) return { content: line.slice(1), ...prefixed };
   return { content: line, kind: "context", marker: "" };
 }
 

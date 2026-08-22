@@ -256,20 +256,15 @@ function HighlightedToolSource({ body, lang }: { body: string; lang: string }) {
   );
 }
 
-const DIFF_ROW_STYLES: Record<DiffPreviewLine["kind"], string> = {
-  addition: "bg-(--ok)/[0.07]",
-  context: "bg-transparent",
-  deletion: "bg-(--err)/[0.065]",
-  hunk: "border-y border-(--separator)/70 bg-(--fg)/[0.035] text-(--dim)",
-  meta: "bg-(--fg)/[0.025] text-(--dim)/80",
-};
-
-const DIFF_MARKER_STYLES: Record<DiffPreviewLine["kind"], string> = {
-  addition: "bg-(--ok)/[0.055] text-(--ok)",
-  context: "text-(--dim)/35",
-  deletion: "bg-(--err)/[0.05] text-(--err)",
-  hunk: "text-(--dim)/45",
-  meta: "text-(--dim)/45",
+const DIFF_LINE_STYLES: Record<DiffPreviewLine["kind"], { row: string; marker: string }> = {
+  addition: { row: "bg-(--ok)/[0.07]", marker: "bg-(--ok)/[0.055] text-(--ok)" },
+  context: { row: "bg-transparent", marker: "text-(--dim)/35" },
+  deletion: { row: "bg-(--err)/[0.065]", marker: "bg-(--err)/[0.05] text-(--err)" },
+  hunk: {
+    row: "border-y border-(--separator)/70 bg-(--fg)/[0.035] text-(--dim)",
+    marker: "text-(--dim)/45",
+  },
+  meta: { row: "bg-(--fg)/[0.025] text-(--dim)/80", marker: "text-(--dim)/45" },
 };
 
 function DiffPreviewSource({ body, filePath }: { body: string; filePath?: string | null }) {
@@ -304,10 +299,10 @@ function DiffPreviewSource({ body, filePath }: { body: string; filePath?: string
           return (
             <div
               key={`${index}:${line.kind}`}
-              className={`grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] font-mono text-[length:var(--fs-sm)] leading-5 ${DIFF_ROW_STYLES[line.kind]} ${line.content ? "min-h-5" : "h-3"}`}
+              className={`grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] font-mono text-[length:var(--fs-sm)] leading-5 ${DIFF_LINE_STYLES[line.kind].row} ${line.content ? "min-h-5" : "h-3"}`}
             >
               <span
-                className={`flex select-none items-start justify-center border-r border-(--separator)/45 ${DIFF_MARKER_STYLES[line.kind]}`}
+                className={`flex select-none items-start justify-center border-r border-(--separator)/45 ${DIFF_LINE_STYLES[line.kind].marker}`}
               >
                 {line.marker}
               </span>
@@ -518,29 +513,22 @@ function BrowserPreview({ block }: { block: ToolBlock }) {
 }
 
 function browserToolArgs(block: ToolBlock): string | null {
-  if (!block.args || Object.keys(block.args).length === 0) return null;
-  const pairs = Object.entries(block.args).flatMap(([key, value]) => {
-    if (value === undefined || value === null || value === "") return [];
+  const pairs = Object.entries(block.args ?? {}).flatMap(([key, value]) => {
     const text = typeof value === "string" || typeof value === "number" ? String(value) : "";
     return text ? [`${key}: ${text}`] : [];
   });
   return pairs.length ? pairs.join("  ") : null;
 }
 
-function ToolPreviewHeightProvider({ kind, children }: { kind: ToolKind; children: ReactNode }) {
-  const defaultHeight = useAppStore((state) => state.toolPreviewHeight);
-  const overrides = useAppStore((state) => state.toolPreviewHeightOverrides);
-  const height = toolPreviewHeightFor(kind, defaultHeight, overrides);
-  return (
-    <ToolPreviewHeightContext.Provider value={height}>{children}</ToolPreviewHeightContext.Provider>
-  );
-}
-
 export function ToolBlockView({ block }: { block: ToolBlock }) {
   useFilesystemRefresh(block);
   const kind = classifyTool(block);
+  const defaultHeight = useAppStore((state) => state.toolPreviewHeight);
+  const overrides = useAppStore((state) => state.toolPreviewHeightOverrides);
   return (
-    <ToolPreviewHeightProvider kind={kind}>{toolBlockBody(block, kind)}</ToolPreviewHeightProvider>
+    <ToolPreviewHeightContext.Provider value={toolPreviewHeightFor(kind, defaultHeight, overrides)}>
+      {toolBlockBody(block, kind)}
+    </ToolPreviewHeightContext.Provider>
   );
 }
 

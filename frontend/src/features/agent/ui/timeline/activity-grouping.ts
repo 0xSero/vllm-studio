@@ -47,31 +47,19 @@ export function groupAssistantBlocks(inputBlocks: AssistantBlock[]): RoutedBlock
 
   const flushReasoning = () => {
     if (reasoning.length === 0) return;
-    segments.push({
-      kind: "reasoning",
-      id: `reasoning-seg-${reasoning[0]?.id ?? segments.length}`,
-      blocks: reasoning,
-    });
+    segments.push({ kind: "reasoning", id: `reasoning-seg-${reasoning[0].id}`, blocks: reasoning });
     reasoning = [];
   };
   const flushTools = () => {
     if (tools.length === 0) return;
-    segments.push({
-      kind: "tools",
-      id: `tools-seg-${tools[0]?.id ?? segments.length}`,
-      blocks: tools,
-    });
+    segments.push({ kind: "tools", id: `tools-seg-${tools[0].id}`, blocks: tools });
     tools = [];
   };
   const flushActivity = () => {
     flushReasoning();
     flushTools();
     if (segments.length === 0) return;
-    routed.push({
-      kind: "activity-group",
-      id: `activity-${segments[0]?.id ?? routed.length}`,
-      segments,
-    });
+    routed.push({ kind: "activity-group", id: `activity-${segments[0].id}`, segments });
     segments = [];
   };
 
@@ -91,11 +79,7 @@ export function groupAssistantBlocks(inputBlocks: AssistantBlock[]): RoutedBlock
       continue;
     }
     flushActivity();
-    if (block.kind === "text") {
-      routed.push({ kind: "content", block });
-    } else {
-      routed.push({ kind: "event", block });
-    }
+    routed.push(block.kind === "text" ? { kind: "content", block } : { kind: "event", block });
   }
   flushActivity();
 
@@ -223,16 +207,14 @@ export function activityPreview(segments: ActivitySegment[]): ActivityPreview | 
 }
 
 export function exploreCounts(blocks: ToolBlock[]): string {
-  let files = 0;
-  let searches = 0;
-  for (const block of blocks) {
-    if (classifyTool(block) === "search") searches += 1;
-    else files += 1;
-  }
-  const pieces: string[] = [];
-  if (files > 0) pieces.push(`${files} ${files === 1 ? "file" : "files"}`);
-  if (searches > 0) pieces.push(`${searches} ${searches === 1 ? "search" : "searches"}`);
-  return pieces.join(", ");
+  const searches = blocks.filter((block) => classifyTool(block) === "search").length;
+  const files = blocks.length - searches;
+  return [
+    files > 0 ? `${files} ${files === 1 ? "file" : "files"}` : "",
+    searches > 0 ? `${searches} ${searches === 1 ? "search" : "searches"}` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
 
 export function assistantContentCopyText(blocks: AssistantBlock[]): string {

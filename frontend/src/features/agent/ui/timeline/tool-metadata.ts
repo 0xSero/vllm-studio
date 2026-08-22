@@ -31,6 +31,8 @@ export function detectLang(filePath: string | null | undefined): string {
 // Try to extract a streaming-friendly preview of "what file is being written"
 // from the partially-parsed tool args. We accept partial JSON: greedy extract
 // the value of the most likely "content" / "text" / "patch" key.
+const JSON_ESCAPES: Record<string, string> = { n: "\n", t: "\t", r: "\r", '"': '"', "\\": "\\" };
+
 export function extractPartialField(argsText: string, keys: string[]): string | null {
   if (!argsText) return null;
   for (const key of keys) {
@@ -49,13 +51,8 @@ export function extractPartialField(argsText: string, keys: string[]): string | 
       const ch = argsText[j];
       if (ch === "\\") {
         const next = argsText[j + 1];
-        if (next === "n") out += "\n";
-        else if (next === "t") out += "\t";
-        else if (next === "r") out += "\r";
-        else if (next === '"') out += '"';
-        else if (next === "\\") out += "\\";
-        else if (next === undefined) break;
-        else out += next;
+        if (next === undefined) break;
+        out += JSON_ESCAPES[next] ?? next;
         j += 2;
         continue;
       }
@@ -151,20 +148,17 @@ export function toolPreviewHeightFor(
  * timeline reads like ZCode's node taxonomy (command/file/session/skill nodes).
  * Returns the foreground class used for the verb label when the tool is idle.
  */
+const TOOL_KIND_NODE_COLORS: Record<ToolKind, string> = {
+  exec: "text-(--color-command-node-foreground)",
+  edit: "text-(--color-file-node-foreground)",
+  read: "text-(--color-file-node-foreground)",
+  search: "text-(--color-file-node-foreground)",
+  browser: "text-(--color-session-node-foreground)",
+  generic: "text-(--color-skill-node-foreground)",
+};
+
 export function toolKindNodeColor(kind: ToolKind): string {
-  switch (kind) {
-    case "exec":
-      return "text-(--color-command-node-foreground)";
-    case "edit":
-    case "read":
-    case "search":
-      return "text-(--color-file-node-foreground)";
-    case "browser":
-      return "text-(--color-session-node-foreground)";
-    case "generic":
-    default:
-      return "text-(--color-skill-node-foreground)";
-  }
+  return TOOL_KIND_NODE_COLORS[kind];
 }
 
 export function classifyTool(block: ToolBlock): ToolKind {
