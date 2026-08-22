@@ -18,14 +18,6 @@ export interface ControllerDeployBridge {
   onLog(listener: (line: string) => void): () => void;
 }
 
-const getDeployBridge = (): ControllerDeployBridge | null => {
-  if (typeof window === "undefined") return null;
-  return (
-    (window as unknown as { localStudioDesktop?: { controllerDeploy?: ControllerDeployBridge } })
-      .localStudioDesktop?.controllerDeploy ?? null
-  );
-};
-
 /**
  * Save an installed controller and make it the active one, the same writes the
  * settings page performs: the saved list, the stored backend URL, the runtime
@@ -58,7 +50,14 @@ export const adoptDeployedController = async (controller: SavedController): Prom
  * controller handed to the caller.
  */
 export function useControllerDeploy() {
-  const bridge = getDeployBridge();
+  const bridge =
+    typeof window === "undefined"
+      ? null
+      : ((
+          window as unknown as {
+            localStudioDesktop?: { controllerDeploy?: ControllerDeployBridge };
+          }
+        ).localStudioDesktop?.controllerDeploy ?? null);
   const [running, setRunning] = useState(false);
   const [lines, setLines] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);

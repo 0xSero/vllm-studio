@@ -258,17 +258,15 @@ function EngineRows({
     [runJob],
   );
 
-  const errorNotice = actionError ? (
-    <DetailRow colSpan={ENGINE_TABLE_COLSPAN}>
-      <span className="text-(--err)">{actionError}</span>
-    </DetailRow>
-  ) : null;
-
   if (view.kind === "targets") {
     const discoveredTargets = view.targets.filter((target) => !isManagedRuntimeTarget(target));
     return (
       <>
-        {errorNotice}
+        {actionError ? (
+          <DetailRow colSpan={ENGINE_TABLE_COLSPAN}>
+            <span className="text-(--err)">{actionError}</span>
+          </DetailRow>
+        ) : null}
         <GroupRow
           colSpan={ENGINE_TABLE_COLSPAN}
           label="Managed environments"

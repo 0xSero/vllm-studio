@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Check, Copy, ExternalLink, Smartphone, Upload } from "@/ui/icon-registry";
-import { Input } from "@/ui";
+import { buttonClasses, Input } from "@/ui";
 import {
   PROFILE_HUES,
   profileAvatarColor,
@@ -13,7 +13,7 @@ import {
 import { QrCode } from "@/features/shell/qr-code";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { writeClipboardText } from "@/lib/clipboard";
-import { SettingsButton, SettingsGroup, SettingsLink } from "./settings-ui";
+import { SettingsButton, SettingsGroup } from "./settings-ui";
 
 export function ProfileSettings() {
   const [profile, updateProfile] = useLocalProfile();
@@ -206,14 +206,17 @@ function PhonePairingSettings() {
             Local Studio. Share them only with devices you trust.
           </p>
           <div className="mt-5 flex min-w-0 flex-wrap items-center gap-2">
-            <SettingsLink
+            <a
               href="https://kittylitter.app/"
-              tone="primary"
+              target="_blank"
+              rel="noopener noreferrer"
               aria-label="Download the KittyLitter beta"
+              style={{ color: "var(--color-primary-foreground)" }}
+              className={buttonClasses("primary", "sm")}
             >
               Download KittyLitter beta
               <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-            </SettingsLink>
+            </a>
             <SettingsButton
               onClick={() => void copy()}
               disabled={pairingBusy}

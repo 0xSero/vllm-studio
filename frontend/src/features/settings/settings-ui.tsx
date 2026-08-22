@@ -4,8 +4,6 @@ import { useState, type ReactNode } from "react";
 import {
   AppPage,
   Button,
-  buttonClasses,
-  Input,
   RefreshIconButton,
   SectionNav,
   StatusPill,
@@ -340,38 +338,6 @@ export function SettingsButton({
   );
 }
 
-const LINK_TONE_COLORS: Record<SettingsTone, string | undefined> = {
-  default: undefined,
-  primary: "var(--color-primary-foreground)",
-  danger: "var(--destructive-foreground)",
-};
-
-export function SettingsLink({
-  href,
-  children,
-  tone = "default",
-  "aria-label": ariaLabel,
-}: {
-  href: string;
-  children: ReactNode;
-  tone?: SettingsTone;
-  "aria-label"?: string;
-}) {
-  const color = LINK_TONE_COLORS[tone];
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label={ariaLabel}
-      style={color ? { color } : undefined}
-      className={buttonClasses(TONE_VARIANT[tone], "sm")}
-    >
-      {children}
-    </a>
-  );
-}
-
 const noticeClasses: Record<UiTone, string> = {
   default: "border-(--ui-border) bg-(--ui-hover)/40 text-(--ui-muted)",
   good: "border-(--ui-success)/30 bg-(--ui-success)/10 text-(--ui-success)",
@@ -399,39 +365,6 @@ export function SettingsNotice({
     >
       {children}
     </div>
-  );
-}
-
-export function SettingsInput({
-  id,
-  value,
-  onChange,
-  onBlur,
-  placeholder,
-  type = "text",
-  className = "",
-  "aria-label": ariaLabel,
-}: {
-  id?: string;
-  value: string;
-  onChange: (value: string) => void;
-  onBlur?: () => void;
-  placeholder?: string;
-  type?: "text" | "password";
-  className?: string;
-  "aria-label"?: string;
-}) {
-  return (
-    <Input
-      id={id}
-      type={type}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      onBlur={onBlur}
-      placeholder={placeholder}
-      aria-label={ariaLabel}
-      className={cx("h-8", className)}
-    />
   );
 }
 

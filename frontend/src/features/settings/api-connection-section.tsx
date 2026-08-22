@@ -21,9 +21,10 @@ import { clearApiKey, setApiKey, setStoredBackendUrl } from "@/lib/api/connectio
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import { DeployControllerPanel } from "./deploy-controller-panel";
 import { AppVersionSection } from "./app-version-section";
-import { StatusPill, Spinner, type UiTone } from "@/ui";
+import { Input, StatusPill, Spinner, type UiTone } from "@/ui";
 import { ApiUrlCensorToggle, useApiUrlCensored } from "@/ui/api-url-censor";
-import { SettingsButton, SettingsGroup, SettingsInput, SettingsRow } from "./settings-ui";
+import { SettingsButton, SettingsGroup, SettingsRow } from "./settings-ui";
+import { cx } from "@/ui/utils";
 
 type ControllerEntry = SavedController & { id: string };
 
@@ -367,12 +368,13 @@ function ControllerTextInput({
 }) {
   return (
     <div className={className}>
-      <SettingsInput
+      <Input
+        type="text"
         value={value}
         placeholder={placeholder}
-        onChange={onChange}
+        onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur}
-        className={censored ? "blur-[6px]" : undefined}
+        className={cx("h-8", censored ? "blur-[6px]" : "")}
         aria-label={censored ? "API URL censored" : undefined}
       />
     </div>
@@ -397,13 +399,13 @@ function ControllerSecretInput({
   const RevealIcon = revealed ? EyeOff : Eye;
   return (
     <div className={`relative ${className}`}>
-      <SettingsInput
+      <Input
         type={revealed ? "text" : "password"}
         value={value}
         placeholder="API key optional"
-        onChange={onChange}
+        onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur}
-        className="pr-7"
+        className="h-8 pr-7"
       />
       <button
         type="button"

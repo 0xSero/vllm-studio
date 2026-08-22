@@ -19,7 +19,6 @@ import {
   useTerminalFontSize,
   useTerminalKeybinds,
   type TerminalAction,
-  type TerminalKeybinds,
 } from "@/lib/terminal-keybinds";
 import { SettingsButton, SettingsGroup, SettingsNotice, SettingsRow } from "./settings-ui";
 
@@ -38,18 +37,14 @@ function Keycaps({ binding }: { binding: string }) {
   );
 }
 
-function conflictCounts(keybinds: TerminalKeybinds): Record<string, number> {
-  const counts: Record<string, number> = {};
-  for (const action of TERMINAL_ACTIONS)
-    counts[keybinds[action]] = (counts[keybinds[action]] ?? 0) + 1;
-  return counts;
-}
-
 export function ShortcutsSettings() {
   const keybinds = useTerminalKeybinds();
   const fontSize = useTerminalFontSize();
   const [capturing, setCapturing] = useState<TerminalAction | null>(null);
-  const counts = conflictCounts(keybinds);
+  const bindingUseCount = new Map<string, number>();
+  for (const action of TERMINAL_ACTIONS) {
+    bindingUseCount.set(keybinds[action], (bindingUseCount.get(keybinds[action]) ?? 0) + 1);
+  }
 
   useMountSubscription(() => {
     if (!capturing) return;
@@ -79,7 +74,7 @@ export function ShortcutsSettings() {
         {TERMINAL_ACTIONS.map((action) => {
           const binding = keybinds[action];
           const isDefault = binding === DEFAULT_TERMINAL_KEYBINDS[action];
-          const isConflict = counts[binding] > 1;
+          const isConflict = (bindingUseCount.get(binding) ?? 0) > 1;
           return (
             <SettingsRow
               key={action}
