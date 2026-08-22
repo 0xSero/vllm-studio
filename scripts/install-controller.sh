@@ -21,6 +21,7 @@ HOST_WAS_SET="${LOCAL_STUDIO_HOST+x}"
 PORT_WAS_SET="${LOCAL_STUDIO_PORT+x}"
 DATA_DIR_WAS_SET="${LOCAL_STUDIO_DATA_DIR+x}"
 MODELS_DIR_WAS_SET="${LOCAL_STUDIO_MODELS_DIR+x}"
+CONTROLLER_MODE_WAS_SET="${LOCAL_STUDIO_CONTROLLER_MODE+x}"
 if [ "$OS_NAME" = "Darwin" ]; then
   DEFAULT_DIR="$HOME/Library/Application Support/Local Studio/controller-source"
   DEFAULT_DATA_DIR="$HOME/Library/Application Support/Local Studio/controller-data"
@@ -33,6 +34,7 @@ DATA_DIR="${LOCAL_STUDIO_DATA_DIR:-$DEFAULT_DATA_DIR}"
 MODELS_DIR="${LOCAL_STUDIO_MODELS_DIR:-$DATA_DIR/models}"
 HOST="${LOCAL_STUDIO_HOST:-0.0.0.0}"
 PORT="${LOCAL_STUDIO_PORT:-8080}"
+CONTROLLER_MODE="${LOCAL_STUDIO_CONTROLLER_MODE:-standalone}"
 REPO="${LOCAL_STUDIO_REPO:-https://github.com/jake-molnia/local-studio.git}"
 BUN="$HOME/.bun/bin/bun"
 
@@ -92,6 +94,7 @@ else
 fi
 if [ -z "$HOST_WAS_SET" ] && grep -q '^LOCAL_STUDIO_HOST=' "$ENV_FILE"; then HOST="$(read_env_value LOCAL_STUDIO_HOST)"; fi
 if [ -z "$PORT_WAS_SET" ] && grep -q '^LOCAL_STUDIO_PORT=' "$ENV_FILE"; then PORT="$(read_env_value LOCAL_STUDIO_PORT)"; fi
+if [ -z "$CONTROLLER_MODE_WAS_SET" ] && grep -q '^LOCAL_STUDIO_CONTROLLER_MODE=' "$ENV_FILE"; then CONTROLLER_MODE="$(read_env_value LOCAL_STUDIO_CONTROLLER_MODE)"; fi
 if [ -z "$DATA_DIR_WAS_SET" ]; then
   if grep -q '^LOCAL_STUDIO_DATA_DIR=' "$ENV_FILE"; then
     DATA_DIR="$(read_env_value LOCAL_STUDIO_DATA_DIR)"
@@ -108,6 +111,7 @@ if [ -z "$MODELS_DIR_WAS_SET" ]; then
 fi
 write_env_value LOCAL_STUDIO_HOST "$HOST"
 write_env_value LOCAL_STUDIO_PORT "$PORT"
+write_env_value LOCAL_STUDIO_CONTROLLER_MODE "$CONTROLLER_MODE"
 write_env_value LOCAL_STUDIO_DATA_DIR "$DATA_DIR"
 write_env_value LOCAL_STUDIO_MODELS_DIR "$MODELS_DIR"
 mkdir -p "$DATA_DIR" "$MODELS_DIR"
@@ -143,6 +147,7 @@ if [ "$OS_NAME" = "Darwin" ]; then
   <dict>
     <key>LOCAL_STUDIO_HOST</key><string>$(xml_escape "$HOST")</string>
     <key>LOCAL_STUDIO_PORT</key><string>$PORT</string>
+    <key>LOCAL_STUDIO_CONTROLLER_MODE</key><string>$(xml_escape "$CONTROLLER_MODE")</string>
     <key>LOCAL_STUDIO_API_KEY</key><string>$API_KEY_XML</string>
     <key>LOCAL_STUDIO_DATA_DIR</key><string>$DATA_XML</string>
     <key>LOCAL_STUDIO_MODELS_DIR</key><string>$MODELS_XML</string>
