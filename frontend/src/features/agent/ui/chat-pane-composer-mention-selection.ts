@@ -113,20 +113,14 @@ function loadContextRowEffect(
 ): Effect.Effect<ContextRow> {
   if (!row.path) return Effect.succeed(row);
   const rowPath = row.path;
+  const segment = kind === "skill" ? "skills" : "prompt-templates";
   return Effect.gen(function* () {
-    const loaded = yield* jsonOrNullEffect<LoadedContextRow>(loadEndpoint(kind, rowPath));
-    return loaded?.skill
-      ? { ...row, ...loaded.skill, id: row.id }
-      : loaded?.template
-        ? { ...row, ...loaded.template, id: row.id }
-        : row;
+    const loaded = yield* jsonOrNullEffect<LoadedContextRow>(
+      `/api/agent/${segment}/load?path=${encodeURIComponent(rowPath)}`,
+    );
+    const body = loaded?.skill ?? loaded?.template;
+    return body ? { ...row, ...body, id: row.id } : row;
   });
-}
-
-function loadEndpoint(kind: "skill" | "promptTemplate", path: string): string {
-  const encoded = encodeURIComponent(path);
-  if (kind === "skill") return `/api/agent/skills/load?path=${encoded}`;
-  return `/api/agent/prompt-templates/load?path=${encoded}`;
 }
 
 function applySelectedContext(
@@ -136,21 +130,10 @@ function applySelectedContext(
   tools: SelectionTools,
 ) {
   const current = tools.selectionFor(sessionId);
-  if (kind === "skill" && !current.skills.some((skill) => skill.id === selectedRow.id)) {
-    return tools.setSelection(sessionId, {
-      ...current,
-      skills: [...current.skills, selectedRow as ComposerSkillRef],
-    });
-  }
-  if (
-    kind === "promptTemplate" &&
-    !current.promptTemplates.some((template) => template.id === selectedRow.id)
-  ) {
-    return tools.setSelection(sessionId, {
-      ...current,
-      promptTemplates: [...current.promptTemplates, selectedRow as ComposerPromptTemplateRef],
-    });
-  }
+  const key = kind === "skill" ? "skills" : "promptTemplates";
+  const rows: ContextRow[] = current[key];
+  if (rows.some((row) => row.id === selectedRow.id)) return;
+  tools.setSelection(sessionId, { ...current, [key]: [...rows, selectedRow] });
 }
 
 function addUniqueAttachment(

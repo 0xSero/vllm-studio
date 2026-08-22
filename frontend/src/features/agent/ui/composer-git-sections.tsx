@@ -119,10 +119,10 @@ export function GitResourceSections({
           items: branches,
           createFields: [{ ariaLabel: "New branch name", placeholder: "Branch name" }],
           onCreate: ([name]) =>
-            void run(async () => {
-              await createBranch(cwd, name);
-              await onBranchSwitched();
-            }, "Failed to create branch"),
+            void run(
+              () => createBranch(cwd, name).then(onBranchSwitched),
+              "Failed to create branch",
+            ),
           keyOf: (branch) => branch.name,
           nameOf: (branch) => branch.name,
           isCurrent: (branch) => branch.current,
@@ -137,10 +137,10 @@ export function GitResourceSections({
           ),
           chevron: true,
           onSwitch: (branch) =>
-            void run(async () => {
-              await switchBranch(cwd, branch.name);
-              await onBranchSwitched();
-            }, "Failed to switch branch"),
+            void run(
+              () => switchBranch(cwd, branch.name).then(onBranchSwitched),
+              "Failed to switch branch",
+            ),
         }}
       />
       <GitResourceSection
@@ -159,10 +159,10 @@ export function GitResourceSections({
             },
           ],
           onCreate: ([branch, path]) =>
-            void run(async () => {
-              await addWorktree(cwd, branch, path);
-              await onWorktreePicked(path);
-            }, "Failed to create worktree"),
+            void run(
+              () => addWorktree(cwd, branch, path).then(() => onWorktreePicked(path)),
+              "Failed to create worktree",
+            ),
           keyOf: (worktree) => worktree.path,
           nameOf: (worktree) => worktree.path,
           isCurrent: (worktree) => worktree.current,
@@ -184,9 +184,7 @@ export function GitResourceSections({
           onRemove: {
             label: "Remove worktree",
             run: (worktree) =>
-              void run(async () => {
-                await removeWorktree(cwd, worktree.path);
-              }, "Failed to remove worktree"),
+              void run(() => removeWorktree(cwd, worktree.path), "Failed to remove worktree"),
           },
         }}
       />

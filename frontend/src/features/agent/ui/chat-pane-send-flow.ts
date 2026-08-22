@@ -21,22 +21,19 @@ import {
   removePendingSteersClearedByAbort,
 } from "@/features/agent/ui/chat-pane-send-flow-model";
 
-type UseChatPaneSendFlowOptions = {
-  activeTab: Session | null;
-  attachments: ChatAttachment[];
-  browserToolEnabled: boolean;
-  clearAttachments: () => void;
-  cwd: string;
-  engine: SessionEngine;
-  modelId: string;
-  modelSupportsVision: boolean;
-  readingAttachments: boolean;
-  resetComposerHeight: () => void;
-  setMention: (mention: ComposerMention | null) => void;
-  setStickToBottom: (stickToBottom: boolean) => void;
-  tools: ToolsContextValue;
-  updateTab: UpdateTab;
-};
+/** A steer lands in the transcript immediately, dimmed, so the user sees it the
+ *  moment they send it; the runtime echo clears `pending` once Pi shows it to
+ *  the model. */
+function pendingSteerMessage(id: string, text: string) {
+  return {
+    id,
+    role: "user" as const,
+    text,
+    pending: true,
+    awaitingEcho: true,
+    timestamp: nowLabel(),
+  };
+}
 
 export function useChatPaneSendFlow({
   activeTab,
@@ -53,7 +50,22 @@ export function useChatPaneSendFlow({
   setStickToBottom,
   tools,
   updateTab,
-}: UseChatPaneSendFlowOptions) {
+}: {
+  activeTab: Session | null;
+  attachments: ChatAttachment[];
+  browserToolEnabled: boolean;
+  clearAttachments: () => void;
+  cwd: string;
+  engine: SessionEngine;
+  modelId: string;
+  modelSupportsVision: boolean;
+  readingAttachments: boolean;
+  resetComposerHeight: () => void;
+  setMention: (mention: ComposerMention | null) => void;
+  setStickToBottom: (stickToBottom: boolean) => void;
+  tools: ToolsContextValue;
+  updateTab: UpdateTab;
+}) {
   const composerSubmitInFlightRef = useRef<SessionSubmitGuard>(new Set());
   const controlSubmitInFlightRef = useRef<SessionSubmitGuard>(new Set());
   const abortSubmitInFlightRef = useRef<SessionSubmitGuard>(new Set());
@@ -78,26 +90,16 @@ export function useChatPaneSendFlow({
       });
       const prompt = [browserContextText, contextText, attachedText].filter(Boolean).join("\n\n");
       const images = modelSupportsVision ? imageInputsFromAttachments(attachments) : [];
-      const messageAttachments = attachments.map((file) => {
-        // Prefer the durable inline data URL over the ephemeral blob: URL when
-        // available; blob URLs are tied to the composer document and can go stale
-        // after a session is persisted and replayed.
-        const durablePreviewUrl =
+      // Prefer the durable inline data URL over the ephemeral blob: URL when
+      // available; blob URLs are tied to the composer document and can go stale
+      // after a session is persisted and replayed.
+      const messageAttachments = attachments.map((file) => ({
+        ...file,
+        previewUrl:
           file.mode === "data-url" && file.content.startsWith("data:")
             ? file.content
-            : file.previewUrl;
-        return {
-          id: file.id,
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          path: file.path,
-          mode: file.mode,
-          content: file.content,
-          previewKind: file.previewKind,
-          previewUrl: durablePreviewUrl,
-        };
-      });
+            : file.previewUrl,
+      }));
       return {
         text,
         prompt,
@@ -154,9 +156,7 @@ export function useChatPaneSendFlow({
       cwdHint?: string,
     ) => {
       const queuedId = newId("queue");
-      // A steer lands in the transcript immediately, dimmed, so the user sees it
-      // the moment they send it; the runtime echo clears `pending` once Pi shows
-      // it to the model. (Follow-ups keep their own queue-chip affordance.)
+      // (Follow-ups keep their own queue-chip affordance.)
       const pendingSteerId = mode === "steer" ? newId("user") : null;
       updateTab(tab.id, (t) => ({
         ...t,
@@ -168,17 +168,7 @@ export function useChatPaneSendFlow({
             ? [...(t.queue ?? []), { id: queuedId, mode, text, sent: true }]
             : t.queue,
         messages: pendingSteerId
-          ? [
-              ...t.messages,
-              {
-                id: pendingSteerId,
-                role: "user",
-                text,
-                pending: true,
-                awaitingEcho: true,
-                timestamp: nowLabel(),
-              },
-            ]
+          ? [...t.messages, pendingSteerMessage(pendingSteerId, text)]
           : t.messages,
       }));
       resetComposerHeight();
@@ -329,17 +319,7 @@ export function useChatPaneSendFlow({
       const pendingSteerId = newId("user");
       updateTab(activeTab.id, (t) => ({
         ...t,
-        messages: [
-          ...t.messages,
-          {
-            id: pendingSteerId,
-            role: "user",
-            text: item.text,
-            pending: true,
-            awaitingEcho: true,
-            timestamp: nowLabel(),
-          },
-        ],
+        messages: [...t.messages, pendingSteerMessage(pendingSteerId, item.text)],
       }));
       return engine
         .sendControl({

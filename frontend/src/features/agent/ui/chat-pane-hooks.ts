@@ -187,27 +187,23 @@ export function useChatPaneContextAttachEffect({
 }): void {
   const handledContextAttachRef = useRef(0);
   useMountSubscription(() => {
-    if (
-      contextAttachRequest &&
-      isFocused &&
-      handledContextAttachRef.current !== contextAttachRequest.id
-    ) {
-      handledContextAttachRef.current = contextAttachRequest.id;
-      const attachment: ChatAttachment = {
-        id: newId("ctx"),
-        name: contextAttachRequest.label,
-        type: "text/plain",
-        size: contextAttachRequest.content.length,
-        ...(contextAttachRequest.path ? { path: contextAttachRequest.path } : {}),
-        mode: "text",
-        content: contextAttachRequest.content,
-        previewKind: "file",
-      };
-      setAttachments((current) => {
-        const nextKey = attachmentDedupKey(attachment);
-        if (current.some((file) => attachmentDedupKey(file) === nextKey)) return current;
-        return [...current, attachment];
-      });
-    }
+    if (!contextAttachRequest || !isFocused) return;
+    if (handledContextAttachRef.current === contextAttachRequest.id) return;
+    handledContextAttachRef.current = contextAttachRequest.id;
+    const attachment: ChatAttachment = {
+      id: newId("ctx"),
+      name: contextAttachRequest.label,
+      type: "text/plain",
+      size: contextAttachRequest.content.length,
+      ...(contextAttachRequest.path ? { path: contextAttachRequest.path } : {}),
+      mode: "text",
+      content: contextAttachRequest.content,
+      previewKind: "file",
+    };
+    setAttachments((current) => {
+      const nextKey = attachmentDedupKey(attachment);
+      if (current.some((file) => attachmentDedupKey(file) === nextKey)) return current;
+      return [...current, attachment];
+    });
   }, [contextAttachRequest, isFocused, setAttachments]);
 }

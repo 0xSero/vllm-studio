@@ -68,19 +68,17 @@ export function useComposerLoadedContext({
   };
 }
 
-type UseComposerMentionRowsOptions = {
-  commandRows: ComposerCommand[];
-  fileMentionRows: FileMentionRow[];
-  mention: ComposerMention | null;
-  skillRows: ComposerSkillRef[];
-};
-
 export function useComposerMentionRows({
   commandRows,
   fileMentionRows,
   mention,
   skillRows,
-}: UseComposerMentionRowsOptions): MentionRow[] {
+}: {
+  commandRows: ComposerCommand[];
+  fileMentionRows: FileMentionRow[];
+  mention: ComposerMention | null;
+  skillRows: ComposerSkillRef[];
+}): MentionRow[] {
   return useMemo<MentionRow[]>(() => {
     if (!mention) return [];
     if (mention.kind === "skill") {
@@ -114,6 +112,15 @@ export function useComposerAutosize({
   const lastAppliedHeightRef = useRef(0);
   const lastValueLengthRef = useRef(0);
 
+  /** Re-measure from scratch and record what was applied. */
+  const remeasure = (node: HTMLTextAreaElement, valueLength: number) => {
+    node.style.height = "auto";
+    const next = node.scrollHeight;
+    node.style.height = `${next}px`;
+    lastAppliedHeightRef.current = next;
+    lastValueLengthRef.current = valueLength;
+  };
+
   useMountSubscription(() => {
     const node = textareaRef.current;
     if (!node) return;
@@ -126,11 +133,7 @@ export function useComposerAutosize({
       return;
     }
 
-    node.style.height = "auto";
-    const next = node.scrollHeight;
-    node.style.height = `${next}px`;
-    lastAppliedHeightRef.current = next;
-    lastValueLengthRef.current = value.length;
+    remeasure(node, value.length);
   }, [textareaRef, value]);
 
   const reset = useCallback(() => {
@@ -145,11 +148,7 @@ export function useComposerAutosize({
         const node = textareaRef.current;
         if (!node) return;
         node.setSelectionRange(nextCaret, nextCaret);
-        node.style.height = "auto";
-        const next = node.scrollHeight;
-        node.style.height = `${next}px`;
-        lastAppliedHeightRef.current = next;
-        lastValueLengthRef.current = nextValue.length;
+        remeasure(node, nextValue.length);
       });
     },
     [textareaRef],

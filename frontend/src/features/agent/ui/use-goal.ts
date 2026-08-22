@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from "react";
+import { useCallback, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { clearSessionGoal, loadSessionGoal, updateSessionGoal } from "@/features/agent/runtime/api";
 import type { SessionGoal, SessionGoalPatch } from "@shared/agent/session-goal";
@@ -97,13 +91,10 @@ type GoalVerb =
   | { kind: "objective" };
 
 function parseGoalVerb(args: string): GoalVerb {
-  const trimmed = args.trim();
-  if (GOAL_STATE_VERBS.has(trimmed.toLowerCase())) {
-    return { kind: "state", verb: trimmed.toLowerCase() };
-  }
-  const budget = BUDGET_VERB.exec(trimmed);
-  if (!budget) return { kind: "objective" };
-  const operand = budget[1].toLowerCase();
+  const verb = args.trim().toLowerCase();
+  if (GOAL_STATE_VERBS.has(verb)) return { kind: "state", verb };
+  const operand = BUDGET_VERB.exec(verb)?.[1];
+  if (!operand) return { kind: "objective" };
   return {
     kind: "budget",
     turnBudget: operand === "off" || operand === "none" ? null : Number.parseInt(operand, 10),
@@ -185,20 +176,20 @@ export function useGoal({
         return null;
       }
       try {
-        if (parsed.kind === "state" && parsed.verb === "clear") {
+        if (parsed.kind === "objective") {
+          await writeObjective(piSessionId, args);
+          return null;
+        }
+        if (parsed.kind === "budget") {
+          await updateSessionGoal(piSessionId, { turnBudget: parsed.turnBudget });
+        } else if (parsed.verb === "clear") {
           await clearSessionGoal(piSessionId);
-          setGoalRevision((value) => value + 1);
-        } else if (parsed.kind === "state") {
+        } else {
           await updateSessionGoal(piSessionId, {
             status: parsed.verb === "pause" ? "paused" : "active",
           });
-          setGoalRevision((value) => value + 1);
-        } else if (parsed.kind === "budget") {
-          await updateSessionGoal(piSessionId, { turnBudget: parsed.turnBudget });
-          setGoalRevision((value) => value + 1);
-        } else {
-          await writeObjective(piSessionId, args);
         }
+        setGoalRevision((value) => value + 1);
         return null;
       } catch {
         return "Failed to update the goal.";

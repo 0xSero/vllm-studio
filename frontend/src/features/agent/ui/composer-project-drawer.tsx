@@ -20,6 +20,8 @@ import { cx } from "@/ui/utils";
 import { QueuedMessageStack } from "@/features/agent/ui/queued-message-stack";
 import type { QueuedMessage } from "@/features/agent/messages";
 
+const queuedSummary = (count: number) => `${count} queued message${count === 1 ? "" : "s"}`;
+
 export function ComposerProjectDrawer({
   piSessionId,
   revision,
@@ -147,9 +149,7 @@ export function ComposerProjectDrawer({
                 <FolderOpen className="h-3.5 w-3.5 shrink-0 text-(--fg)/56" strokeWidth={1.7} />
               )}
               <span className="min-w-0 flex-1 truncate">
-                {hasQueue
-                  ? `${queueItems.length} queued message${queueItems.length === 1 ? "" : "s"}`
-                  : label}
+                {hasQueue ? queuedSummary(queueItems.length) : label}
               </span>
               {/* The objective is NOT repeated here. It lives one row up in the goal
                   strip, which is always mounted; printing it twice, a row apart, was

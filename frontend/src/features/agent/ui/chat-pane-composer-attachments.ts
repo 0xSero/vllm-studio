@@ -20,35 +20,25 @@ import {
 } from "@/features/agent/ui/chat-attachments";
 import type { UpdateTab } from "@/features/agent/ui/chat-pane-composer";
 
-type UseComposerAttachmentsOptions = {
-  activeTab: SessionTab | null;
-  running: boolean;
-  updateTab: UpdateTab;
-  fileInputRef: RefObject<HTMLInputElement | null>;
-};
-
-function resolveAttachments(current: ChatAttachment[], update: SetStateAction<ChatAttachment[]>) {
-  return typeof update === "function" ? update(current) : update;
-}
-
-export function createAttachmentQueue() {
-  return Semaphore.makeUnsafe(1);
-}
-
 export function useComposerAttachments({
   activeTab,
   running,
   updateTab,
   fileInputRef,
-}: UseComposerAttachmentsOptions) {
+}: {
+  activeTab: SessionTab | null;
+  running: boolean;
+  updateTab: UpdateTab;
+  fileInputRef: RefObject<HTMLInputElement | null>;
+}) {
   const [attachments, setAttachmentState] = useState<ChatAttachment[]>([]);
   const attachmentsRef = useRef<ChatAttachment[]>([]);
   const pendingAttachmentBatchesRef = useRef(0);
-  const [attachmentQueue] = useState(createAttachmentQueue);
+  const [attachmentQueue] = useState(() => Semaphore.makeUnsafe(1));
   const [readingAttachments, setReadingAttachments] = useState(false);
   const [composerDragActive, setComposerDragActive] = useState(false);
   const setAttachments = useCallback<Dispatch<SetStateAction<ChatAttachment[]>>>((update) => {
-    const next = resolveAttachments(attachmentsRef.current, update);
+    const next = typeof update === "function" ? update(attachmentsRef.current) : update;
     attachmentsRef.current = next;
     setAttachmentState(next);
   }, []);

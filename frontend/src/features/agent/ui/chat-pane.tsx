@@ -13,7 +13,7 @@ import {
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { AgentChatPaneHeader } from "@/features/agent/ui/agent-chat-pane-header";
 import { AgentComposerFrame } from "@/features/agent/ui/agent-composer-frame";
-import { type FileMentionRow, type MentionRow } from "@/features/agent/ui/agent-composer-context";
+import { type FileMentionRow } from "@/features/agent/ui/agent-composer-context";
 import { builtinCommandProvider } from "@/features/agent/composer/builtin-commands";
 import { AutomationDrawer } from "@/features/agent/ui/automation-drawer";
 import { ComposerProjectDrawer } from "@/features/agent/ui/composer-project-drawer";
@@ -26,7 +26,6 @@ import {
 import {
   createComposerCommandRegistry,
   parseSlashInvocation,
-  type SlashInvocation,
 } from "@/features/agent/composer/command-registry";
 import { deriveComposerVisual } from "@/features/agent/composer/composer-visual-state";
 import {
@@ -34,19 +33,13 @@ import {
   useComposerLoadedContext,
   useComposerMentionRows,
   useComposerTextareaBehavior,
-  type UpdateTab,
 } from "@/features/agent/ui/chat-pane-composer";
 import { useComposerAttachments } from "@/features/agent/ui/chat-pane-composer-attachments";
 import {
   applyContextRow,
   useComposerMentionSelection,
 } from "@/features/agent/ui/chat-pane-composer-mention-selection";
-import {
-  consumeComposerMention,
-  type ComposerMention,
-  type ComposerPromptTemplateRef,
-  type ComposerSkillRef,
-} from "@/features/agent/composer-context";
+import { type ComposerMention } from "@/features/agent/composer-context";
 import {
   useChatPaneContextAttachEffect,
   useChatPaneDerivedState,
@@ -154,10 +147,8 @@ export type ComposerModelSelectorProps = {
 export function ChatPane({
   paneId,
   modelId,
-  modelName,
   modelSupportsVision,
   modelThinkingLevels,
-  modelsLoading,
   contextWindow,
   cwd,
   projectName,
@@ -687,11 +678,7 @@ function ChatPaneChrome({
   header,
 }: {
   extensionUiRequest: Session["extensionUiRequest"];
-  onExtensionUiRespond: (response: {
-    value?: string;
-    confirmed?: boolean;
-    cancelled?: boolean;
-  }) => void;
+  onExtensionUiRespond: ComponentProps<typeof ExtensionUiDialog>["onRespond"];
   showHeader: boolean;
   terminalView: boolean;
   terminalSnapshot: TerminalOwnersSnapshot;
