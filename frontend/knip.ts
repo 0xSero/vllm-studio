@@ -16,13 +16,7 @@ const config = {
     "postcss",
     "@local-studio/contracts",
     "@local-studio/agent-runtime",
-    "@hono/node-server",
-    "@modelcontextprotocol/sdk",
     "@lydell/node-pty",
-    "playwright-core",
-    "chromium-bidi",
-    "proper-lockfile",
-    "@types/proper-lockfile",
   ],
   ignoreExportsUsedInFile: true,
 };
