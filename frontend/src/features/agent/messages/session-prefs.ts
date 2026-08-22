@@ -1,5 +1,8 @@
 import { SESSION_PREFS_KEY } from "@/features/agent/workspace/store";
-import { REASONING_VISIBILITY_CHANGED_EVENT, SESSION_PREFS_CHANGED_EVENT } from "@/lib/workspace-events";
+import {
+  REASONING_VISIBILITY_CHANGED_EVENT,
+  SESSION_PREFS_CHANGED_EVENT,
+} from "@/lib/workspace-events";
 import { isAgentThinkingLevel, type AgentThinkingLevel } from "@/features/agent/contracts";
 import { useCallback, useSyncExternalStore } from "react";
 
@@ -11,32 +14,45 @@ export type SessionPref = {
 
 export type SessionPrefs = Record<string, SessionPref>;
 
-function getDesktopBridge(): {
+type DesktopPrefsBridge = {
   loadSessionPrefs(): Promise<SessionPrefs>;
   saveSessionPrefs(prefs: SessionPrefs): Promise<void>;
-} | null {
+};
+
+function getDesktopBridge(): DesktopPrefsBridge | null {
   if (typeof window === "undefined") return null;
-  const bridge = (
-    window as {
-      localStudioDesktop?: {
-        loadSessionPrefs?: () => Promise<SessionPrefs>;
-        saveSessionPrefs?: (prefs: SessionPrefs) => Promise<void>;
-      };
-    }
-  ).localStudioDesktop;
+  const bridge = (window as { localStudioDesktop?: Partial<DesktopPrefsBridge> })
+    .localStudioDesktop;
   if (!bridge?.loadSessionPrefs || !bridge?.saveSessionPrefs) return null;
-  return bridge as {
-    loadSessionPrefs(): Promise<SessionPrefs>;
-    saveSessionPrefs(prefs: SessionPrefs): Promise<void>;
-  };
+  return bridge as DesktopPrefsBridge;
+}
+
+/** Synchronous localStorage read, safe on the server and when storage throws. */
+function readLocal(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/** Best-effort localStorage write: failures are swallowed so the caller's live
+ *  side effects (state update, event dispatch) still run. */
+function writeLocal(key: string, value: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    /* ignore storage failures */
+  }
 }
 
 /** Fast synchronous read from localStorage. Use this during renders. */
 export function loadSessionPrefs(): SessionPrefs {
-  if (typeof window === "undefined") return {};
+  const raw = readLocal(SESSION_PREFS_KEY);
+  if (!raw) return {};
   try {
-    const raw = window.localStorage.getItem(SESSION_PREFS_KEY);
-    if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     return parsed && typeof parsed === "object" ? (parsed as SessionPrefs) : {};
   } catch {
@@ -119,23 +135,14 @@ const REASONING_VISIBLE_KEY = "local-studio.agent.reasoningVisible";
 /** Synchronous localStorage read — safe to call during render. Defaults to
  *  `true` when unset, off the server, or if storage is unavailable. */
 export function loadReasoningVisible(): boolean {
-  if (typeof window === "undefined") return true;
-  try {
-    // Only the explicit "0" sentinel hides reasoning; anything else stays on.
-    return window.localStorage.getItem(REASONING_VISIBLE_KEY) !== "0";
-  } catch {
-    return true;
-  }
+  // Only the explicit "0" sentinel hides reasoning; anything else stays on.
+  return readLocal(REASONING_VISIBLE_KEY) !== "0";
 }
 
 /** Persist the preference and notify open panes so they re-render at once. */
 export function setReasoningVisible(visible: boolean): void {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(REASONING_VISIBLE_KEY, visible ? "1" : "0");
-  } catch {
-    /* ignore storage failures — the dispatch below still updates live state */
-  }
+  writeLocal(REASONING_VISIBLE_KEY, visible ? "1" : "0");
   window.dispatchEvent(new Event(REASONING_VISIBILITY_CHANGED_EVENT));
 }
 
@@ -151,24 +158,14 @@ const THINKING_LEVEL_DEFAULT_KEY = "local-studio.agent.thinkingLevelDefault";
  *  undefined when unset, off the server, or if storage is unavailable or holds
  *  a value that is no longer a valid level. */
 export function loadThinkingLevelDefault(): AgentThinkingLevel | undefined {
-  if (typeof window === "undefined") return undefined;
-  try {
-    const raw = window.localStorage.getItem(THINKING_LEVEL_DEFAULT_KEY);
-    return isAgentThinkingLevel(raw) ? raw : undefined;
-  } catch {
-    return undefined;
-  }
+  const raw = readLocal(THINKING_LEVEL_DEFAULT_KEY);
+  return isAgentThinkingLevel(raw) ? raw : undefined;
 }
 
 /** Remember the level the user just picked so the next fresh session adopts it.
- *  Best-effort — storage failures are swallowed like every other client pref. */
+ *  Best-effort — persistence here is a convenience, not load-bearing. */
 export function setThinkingLevelDefault(level: AgentThinkingLevel): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(THINKING_LEVEL_DEFAULT_KEY, level);
-  } catch {
-    /* ignore storage failures — persistence here is a convenience, not load-bearing */
-  }
+  writeLocal(THINKING_LEVEL_DEFAULT_KEY, level);
 }
 
 /** Resolve the level a session should use: its own saved choice wins, otherwise

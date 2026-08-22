@@ -3,6 +3,8 @@ import {
   compactionTextFromEvent,
   extractToolText,
   newId,
+  parseToolArgs,
+  toolArgsText,
 } from "@/features/agent/messages/helpers";
 import { traceAgentReasoning } from "@/features/agent/trace-reasoning";
 import type { AssistantBlock, ToolBlock } from "@/features/agent/messages/types";
@@ -15,17 +17,12 @@ export function appendDelta(
   delta: string,
   makeId: MakeBlockId = newId,
 ): AssistantBlock[] {
-  const idx = trailingBlockIndex(blocks, kind);
+  const idx = blocks.length - 1;
   const next =
-    idx === -1
-      ? [...blocks, { kind, id: makeId(kind), text: delta }]
-      : appendToTextLikeBlock(blocks, idx, delta);
+    blocks[idx]?.kind === kind
+      ? appendToTextLikeBlock(blocks, idx, delta)
+      : [...blocks, { kind, id: makeId(kind), text: delta }];
   return normalizeReasoningBeforeVisibleText(next);
-}
-
-function trailingBlockIndex(blocks: AssistantBlock[], kind: "text" | "thinking"): number {
-  const index = blocks.length - 1;
-  return blocks[index]?.kind === kind ? index : -1;
 }
 
 function appendToTextLikeBlock(
@@ -158,18 +155,6 @@ export type StreamingToolCallSnapshot = {
   args?: Record<string, unknown>;
 };
 
-function parseToolArgs(value: unknown): Record<string, unknown> | undefined {
-  const record = asRecord(value);
-  if (record) return record;
-  if (typeof value !== "string" || !value.trim()) return undefined;
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return asRecord(parsed) ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function contentPartAt(
   messageLike: unknown,
   contentIndex: unknown,
@@ -185,19 +170,22 @@ function contentPartAt(
   return null;
 }
 
+const DELTA_KIND_BY_EVENT_TYPE: Record<string, "text" | "thinking"> = {
+  text_delta: "text",
+  thinking_delta: "thinking",
+  reasoning_delta: "thinking",
+  reasoning_text_delta: "thinking",
+};
+
 function deltaKindFromMessageUpdate(
   assistantMessageEvent: Record<string, unknown> | undefined,
 ): "text" | "thinking" | null {
-  if (!assistantMessageEvent || typeof assistantMessageEvent.delta !== "string") return null;
-  if (
-    assistantMessageEvent.type === "thinking_delta" ||
-    assistantMessageEvent.type === "reasoning_delta" ||
-    assistantMessageEvent.type === "reasoning_text_delta"
-  ) {
-    return "thinking";
-  }
-  if (assistantMessageEvent.type !== "text_delta") return null;
-  return "text";
+  if (typeof assistantMessageEvent?.delta !== "string") return null;
+  return DELTA_KIND_BY_EVENT_TYPE[String(assistantMessageEvent.type)] ?? null;
+}
+
+function trimmedString(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
 export function toolCallSnapshotFromUpdate(
@@ -210,13 +198,10 @@ export function toolCallSnapshotFromUpdate(
     explicit ??
     contentPartAt(assistantMessageEvent.partial, assistantMessageEvent.contentIndex) ??
     contentPartAt(message, assistantMessageEvent.contentIndex);
-  const idValue = part?.id ?? assistantMessageEvent.toolCallId;
-  const id = typeof idValue === "string" && idValue.trim() ? idValue.trim() : "";
+  const id = trimmedString(part?.id ?? assistantMessageEvent.toolCallId, "");
   if (!id) return null;
-  const nameValue = part?.name ?? assistantMessageEvent.toolName;
-  const name = typeof nameValue === "string" && nameValue.trim() ? nameValue.trim() : "tool";
-  const args = parseToolArgs(part?.arguments);
-  return { id, name, args };
+  const name = trimmedString(part?.name ?? assistantMessageEvent.toolName, "tool");
+  return { id, name, args: parseToolArgs(part?.arguments) };
 }
 
 export function toolCallDeltaFromUpdate(
@@ -230,13 +215,16 @@ export function stringifyToolArgs(args: Record<string, unknown> | undefined): st
   return args && Object.keys(args).length > 0 ? JSON.stringify(args, null, 2) : undefined;
 }
 
+const BLOCK_AFFECTING_EVENT_TYPES = new Set([
+  "message_update",
+  "tool_execution_start",
+  "tool_execution_update",
+  "tool_execution_end",
+]);
+
 export function assistantPiEventAffectsBlocks(event: Record<string, unknown>): boolean {
-  if (compactionTextFromEvent(event)) return true;
   return (
-    event.type === "message_update" ||
-    event.type === "tool_execution_start" ||
-    event.type === "tool_execution_update" ||
-    event.type === "tool_execution_end"
+    Boolean(compactionTextFromEvent(event)) || BLOCK_AFFECTING_EVENT_TYPES.has(String(event.type))
   );
 }
 
@@ -353,11 +341,7 @@ function applyToolCallEnd(
   const id = toolCall.id || makeId("tool");
   const name = toolCall.name || "tool";
   const argsObj = parseToolArgs(toolCall.arguments);
-  const argsText = argsObj
-    ? JSON.stringify(argsObj, null, 2)
-    : typeof toolCall.arguments === "string" && toolCall.arguments.trim()
-      ? toolCall.arguments
-      : "{}";
+  const argsText = toolArgsText(argsObj, toolCall.arguments);
   return upsertToolForActivity(
     blocks,
     id,

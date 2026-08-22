@@ -1,70 +1,54 @@
 import type { TextContent, ThinkingContent, ToolCall } from "@earendil-works/pi-ai";
-import { newId } from "@/features/agent/messages/helpers";
-import type { AssistantBlock, TextBlock } from "@/features/agent/messages/types";
+import { newId, parseToolArgs, toolArgsText } from "@/features/agent/messages/helpers";
+import type { AssistantBlock, TextBlock, ToolBlock } from "@/features/agent/messages/types";
 
 const isRecordArray = (value: unknown): value is Array<Record<string, unknown>> =>
   Array.isArray(value);
 
-const toolArgs = (part: { arguments?: unknown }): Record<string, unknown> | undefined => {
-  if (part.arguments && typeof part.arguments === "object" && !Array.isArray(part.arguments)) {
-    return part.arguments as Record<string, unknown>;
-  }
-  if (typeof part.arguments !== "string" || !part.arguments.trim()) return undefined;
-  try {
-    const parsed = JSON.parse(part.arguments) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : undefined;
-  } catch {
-    return undefined;
-  }
-};
+/** A freshly-seen tool call, before any execution result has arrived. */
+function toolCallBlock(id: string, name: string, rawArgs: unknown): ToolBlock {
+  const args = parseToolArgs(rawArgs);
+  const argsText = toolArgsText(args, rawArgs);
+  return { kind: "tool", id, name, status: "running", argsText, args, text: argsText };
+}
 
 export function blockFromContentPart(
   part: Record<string, unknown>,
   options: { textAsThinking?: boolean } = {},
 ): AssistantBlock[] {
+  const thinkingBlock = (text: string) => ({
+    kind: "thinking" as const,
+    id: newId("thinking"),
+    text,
+  });
   if (part.type === "text") {
     const reasoningText = typeof part.reasoning_content === "string" ? part.reasoning_content : "";
     const text = typeof part.text === "string" ? part.text : "";
     if (options.textAsThinking) {
       const combined = [reasoningText, text].filter(Boolean).join("\n");
-      return combined ? [{ kind: "thinking", id: newId("thinking"), text: combined }] : [];
+      return combined ? [thinkingBlock(combined)] : [];
     }
     return [
-      ...(reasoningText
-        ? [{ kind: "thinking" as const, id: newId("thinking"), text: reasoningText }]
-        : []),
+      ...(reasoningText ? [thinkingBlock(reasoningText)] : []),
       ...(text ? [{ kind: "text" as const, id: newId("text"), text }] : []),
     ];
   }
   if (part.type === "thinking" && typeof part.thinking === "string") {
-    return [{ kind: "thinking", id: newId("thinking"), text: part.thinking }];
+    return [thinkingBlock(part.thinking)];
   }
   if (part.type === "reasoning") {
     const text = [part.reasoning, part.thinking, part.text].find(
       (value): value is string => typeof value === "string",
     );
-    return text ? [{ kind: "thinking", id: newId("thinking"), text }] : [];
+    return text ? [thinkingBlock(text)] : [];
   }
   if (part.type !== "toolCall") return [];
-
-  const args = toolArgs(part);
-  const argsText = args
-    ? JSON.stringify(args, null, 2)
-    : typeof part.arguments === "string" && part.arguments.trim()
-      ? part.arguments
-      : "{}";
   return [
-    {
-      kind: "tool",
-      id: typeof part.id === "string" ? part.id : newId("tool"),
-      name: typeof part.name === "string" ? part.name : "tool",
-      status: "running",
-      argsText,
-      args,
-      text: argsText,
-    },
+    toolCallBlock(
+      typeof part.id === "string" ? part.id : newId("tool"),
+      typeof part.name === "string" ? part.name : "tool",
+      part.arguments,
+    ),
   ];
 }
 
@@ -148,30 +132,11 @@ type PiContentPart =
 function partToBlocks(part: PiContentPart, callOrdinal: number, index: number): AssistantBlock[] {
   const idBase = `${callOrdinal}:${index}`;
   if (part.type === "toolCall") {
-    const args = toolArgs(part);
-    const argsText = args
-      ? JSON.stringify(args, null, 2)
-      : typeof part.arguments === "string" && part.arguments.trim()
-        ? part.arguments
-        : "{}";
-    return [
-      {
-        kind: "tool",
-        id: part.id || `${idBase}:tool`,
-        name: part.name || "tool",
-        status: "running",
-        argsText,
-        args,
-        text: argsText,
-      },
-    ];
+    return [toolCallBlock(part.id || `${idBase}:tool`, part.name || "tool", part.arguments)];
   }
-  if (part.type === "thinking") {
-    const text = part.thinking ?? "";
-    return text ? [{ kind: "thinking", id: `${idBase}:thinking`, text }] : [];
-  }
-  if (part.type === "reasoning") {
-    const text = part.reasoning || part.thinking || "";
+  if (part.type === "thinking" || part.type === "reasoning") {
+    const text =
+      part.type === "thinking" ? (part.thinking ?? "") : part.reasoning || part.thinking || "";
     return text ? [{ kind: "thinking", id: `${idBase}:thinking`, text }] : [];
   }
   if (part.type === "text") {

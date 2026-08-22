@@ -64,6 +64,27 @@ export function extractToolText(value: unknown): string {
     .join("\n");
 }
 
+/** Tool-call `arguments` as an object: already-parsed records pass through, a
+ *  JSON string is parsed, and anything else (including partial JSON mid-stream)
+ *  yields undefined. */
+export function parseToolArgs(value: unknown): Record<string, unknown> | undefined {
+  const record = asRecord(value);
+  if (record) return record;
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  try {
+    return asRecord(JSON.parse(value)) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The argument text rendered for a tool call: pretty-printed parsed args when
+ *  available, else the raw (possibly partial) JSON string, else `{}`. */
+export function toolArgsText(args: Record<string, unknown> | undefined, raw: unknown): string {
+  if (args) return JSON.stringify(args, null, 2);
+  return typeof raw === "string" && raw.trim() ? raw : "{}";
+}
+
 export function piSessionIdFromEvent(event: Record<string, unknown>): string | null {
   if (event.type !== "session") return null;
   for (const key of ["id", "sessionId", "session_id"]) {
@@ -77,10 +98,7 @@ export function usageFromEvent(event: Record<string, unknown>): TokenStats | nul
   if (event.type !== "message" && event.type !== "message_end") return null;
   const message = asRecord(event.message);
   if (!message || message.role !== "assistant") return null;
-  const usage =
-    message.usage && typeof message.usage === "object" && !Array.isArray(message.usage)
-      ? (message.usage as Record<string, unknown>)
-      : null;
+  const usage = asRecord(message.usage);
   if (!usage) return null;
   const read = numberFromRecord(usage, ["input", "prompt_tokens", "input_tokens"]);
   const write = numberFromRecord(usage, ["output", "completion_tokens", "output_tokens"]);
@@ -144,10 +162,7 @@ export function messageText(
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
-    .map((part) => {
-      if (part?.type === "text" && typeof part.text === "string") return part.text;
-      return "";
-    })
+    .map((part) => (part?.type === "text" && typeof part.text === "string" ? part.text : ""))
     .filter(Boolean)
     .join(separator);
 }

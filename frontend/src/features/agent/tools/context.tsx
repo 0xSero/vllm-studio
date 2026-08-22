@@ -19,6 +19,10 @@ import type {
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
 import type { SessionId } from "@/features/agent/runtime/types";
+import type {
+  ToolsCatalogue,
+  ToolsEffectsBridgeProps,
+} from "@/features/agent/tools/effects-bridge";
 import {
   EMPTY_SELECTION,
   type BrowserBackend,
@@ -102,70 +106,38 @@ const ToolSelectionsContext = createContext<ToolSelectionsValue | null>(null);
 // must not re-render on tools churn — see `useToolsRef`.
 const ToolsRefContext = createContext<{ current: ToolsContextValue } | null>(null);
 
-type ToolsEffectsBridgeProps = {
-  catalogueEnabled: boolean;
-  onCatalogueLoaded: (payload: {
-    skills: ComposerSkillRef[];
-    promptTemplates: ComposerPromptTemplateRef[];
-  }) => void;
-};
-
-type ToolsEffectsBridgeComponent = ComponentType<ToolsEffectsBridgeProps>;
-
-let toolsEffectsBridgePromise: Promise<ToolsEffectsBridgeComponent> | null = null;
-
-function loadToolsEffectsBridge(): Promise<ToolsEffectsBridgeComponent> {
-  toolsEffectsBridgePromise ??= import("@/features/agent/tools/effects-bridge").then(
-    (mod) => mod.ToolsEffectsBridge,
-  );
-  return toolsEffectsBridgePromise;
-}
-
 function LazyToolsEffectsBridge(props: ToolsEffectsBridgeProps) {
   const enabled = props.catalogueEnabled;
-  const [ToolsEffectsBridge, setToolsEffectsBridge] = useState<ToolsEffectsBridgeComponent | null>(
-    null,
-  );
+  const [Bridge, setBridge] = useState<ComponentType<ToolsEffectsBridgeProps> | null>(null);
 
   useMountSubscription(() => {
-    if (!enabled || ToolsEffectsBridge) return;
+    if (!enabled || Bridge) return;
     let cancelled = false;
-    void loadToolsEffectsBridge().then((Component) => {
-      if (!cancelled) setToolsEffectsBridge(() => Component);
+    void import("@/features/agent/tools/effects-bridge").then((mod) => {
+      if (!cancelled) setBridge(() => mod.ToolsEffectsBridge);
     });
     return () => {
       cancelled = true;
     };
-  }, [ToolsEffectsBridge, enabled]);
+  }, [Bridge, enabled]);
 
-  return enabled && ToolsEffectsBridge ? <ToolsEffectsBridge {...props} /> : null;
-}
-
-function buildInitialBrowser(): BrowserState {
-  if (typeof window === "undefined") {
-    return { enabled: false, backend: "embedded", url: "", input: "" };
-  }
-  migrateToolStorage();
-  return loadBrowserState();
-}
-
-function buildInitialComputer(): ComputerState {
-  if (typeof window === "undefined") {
-    return {
-      open: false,
-      tab: "status",
-      tabs: ["status"],
-      width: 0,
-    };
-  }
-  return loadComputerState();
+  return enabled && Bridge ? <Bridge {...props} /> : null;
 }
 
 export function ToolsProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const catalogueEnabled = pathname === "/agent";
-  const [browser, setBrowser] = useState<BrowserState>(() => buildInitialBrowser());
-  const [computer, setComputer] = useState<ComputerState>(() => buildInitialComputer());
+  const [browser, setBrowser] = useState<BrowserState>(() => {
+    if (typeof window === "undefined")
+      return { enabled: false, backend: "embedded", url: "", input: "" };
+    migrateToolStorage();
+    return loadBrowserState();
+  });
+  const [computer, setComputer] = useState<ComputerState>(() =>
+    typeof window === "undefined"
+      ? { open: false, tab: "status", tabs: ["status"], width: 0 }
+      : loadComputerState(),
+  );
   const activeComputerSessionRef = useRef<SessionViewIdentity | null>(null);
   const [fileOpenRequest, setFileOpenRequest] = useState<FileOpenRequest | null>(null);
   const [contextAttachRequest, setContextAttachRequest] = useState<ContextAttachRequest | null>(
@@ -188,188 +160,10 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, []);
-  const handleCatalogueLoaded = useCallback(
-    ({
-      skills,
-      promptTemplates,
-    }: {
-      skills: ComposerSkillRef[];
-      promptTemplates: ComposerPromptTemplateRef[];
-    }) => {
-      setSkillCatalogue(skills);
-      setPromptTemplateCatalogue(promptTemplates);
-    },
-    [],
-  );
-
-  const setBrowserEnabled = useCallback((enabled: boolean) => {
-    setBrowser((current) => (current.enabled === enabled ? current : { ...current, enabled }));
-    writeBrowserEnabled(enabled);
+  const handleCatalogueLoaded = useCallback(({ skills, promptTemplates }: ToolsCatalogue) => {
+    setSkillCatalogue(skills);
+    setPromptTemplateCatalogue(promptTemplates);
   }, []);
-
-  const setBrowserBackend = useCallback((backend: BrowserBackend) => {
-    setBrowser((current) => (current.backend === backend ? current : { ...current, backend }));
-    writeBrowserBackend(backend);
-  }, []);
-
-  const toggleBrowserBackend = useCallback(() => {
-    setBrowser((current) => {
-      const backend = current.backend === "chrome" ? "embedded" : "chrome";
-      writeBrowserBackend(backend);
-      return { ...current, backend };
-    });
-  }, []);
-
-  const toggleBrowser = useCallback(() => {
-    setBrowser((current) => {
-      const next = !current.enabled;
-      writeBrowserEnabled(next);
-      return { ...current, enabled: next };
-    });
-  }, []);
-
-  const setBrowserUrl = useCallback((url: string, input?: string) => {
-    if (typeof url !== "string" || !url.trim()) return;
-    setBrowser((current) => ({
-      ...current,
-      url,
-      input: input ?? current.input,
-    }));
-  }, []);
-
-  const setBrowserInput = useCallback((input: string) => {
-    if (typeof input !== "string") return;
-    setBrowser((current) => ({ ...current, input }));
-  }, []);
-
-  const setComputerOpen = useCallback(
-    (open: boolean) => {
-      updateComputer((current) => computerPanelVisibility(current, open));
-    },
-    [updateComputer],
-  );
-
-  const toggleComputerOpen = useCallback(() => {
-    updateComputer((current) => computerPanelVisibility(current, !current.open));
-  }, [updateComputer]);
-
-  const setComputerTab = useCallback(
-    (tab: ComputerTab) => {
-      updateComputer((current) => {
-        const tabs = uniqueComputerTabs([...current.tabs, tab]);
-        writeComputerTabs(tabs);
-        return current.tab === tab && current.tabs === tabs
-          ? current
-          : { ...current, open: true, tab, tabs };
-      });
-      writeComputerTab(tab);
-      if (tab === "browser") {
-        setBrowser((current) => {
-          if (current.enabled) return current;
-          writeBrowserEnabled(true);
-          return { ...current, enabled: true };
-        });
-      }
-    },
-    [updateComputer],
-  );
-
-  // Register + select a tab WITHOUT force-opening the computer panel. Used when
-  // the model drives a background tool (e.g. the browser): it should route to the
-  // right tab and pre-select it, but must not pop the panel open on every prompt
-  // — the user controls whether the panel is visible.
-  const selectComputerTabWithoutOpening = useCallback(
-    (tab: ComputerTab) => {
-      updateComputer((current) => {
-        const tabs = uniqueComputerTabs([...current.tabs, tab]);
-        writeComputerTabs(tabs);
-        writeComputerTab(tab);
-        return current.tab === tab && current.tabs === tabs ? current : { ...current, tab, tabs };
-      });
-      if (tab === "browser") {
-        setBrowser((current) => {
-          if (current.enabled) return current;
-          writeBrowserEnabled(true);
-          return { ...current, enabled: true };
-        });
-      }
-    },
-    [updateComputer],
-  );
-
-  const closeComputerTab = useCallback(
-    (tab: ComputerTab) => {
-      if (tab === "status" || tab === "tools") return;
-      if (tab === "browser") {
-        setBrowser((current) => {
-          if (!current.enabled) return current;
-          writeBrowserEnabled(false);
-          return { ...current, enabled: false };
-        });
-      }
-      updateComputer((current) => {
-        const tabs = uniqueComputerTabs(current.tabs.filter((item) => item !== tab));
-        const activeTab = current.tab === tab ? (tabs[tabs.length - 1] ?? "status") : current.tab;
-        writeComputerTabs(tabs);
-        writeComputerTab(activeTab);
-        return { ...current, tab: activeTab, tabs };
-      });
-    },
-    [updateComputer],
-  );
-
-  const setComputerWidth = useCallback(
-    (width: number) => {
-      if (!Number.isFinite(width)) return;
-      const clamped = clampComputerWidth(width);
-      updateComputer((current) =>
-        current.width === clamped ? current : { ...current, width: clamped },
-      );
-      writeComputerWidth(clamped);
-    },
-    [updateComputer],
-  );
-
-  const setActiveComputerSession = useCallback((identity: SessionViewIdentity | null) => {
-    const previous = activeComputerSessionRef.current;
-    if (previous?.key === identity?.key) return;
-    setComputer((current) => {
-      if (previous) {
-        patchSessionView(window.localStorage, previous, { computer: computerSessionView(current) });
-      }
-      activeComputerSessionRef.current = identity;
-      const restored = identity ? readSessionView(window.localStorage, identity)?.computer : null;
-      return restored ? { ...current, ...restored } : { ...current, open: false };
-    });
-  }, []);
-
-  const requestFileOpen = useCallback(
-    (path: string) => {
-      const clean = path.trim();
-      if (!clean) return;
-      updateComputer((current) => ({ ...current, open: true, tab: "files" }));
-      writeComputerTab("files");
-      setFileOpenRequest((current) => ({
-        id: (current?.id ?? 0) + 1,
-        path: clean,
-      }));
-    },
-    [updateComputer],
-  );
-
-  const requestContextAttach = useCallback(
-    (request: { label: string; path?: string; content: string }) => {
-      const content = request.content.trim();
-      if (!content) return;
-      setContextAttachRequest((current) => ({
-        id: (current?.id ?? 0) + 1,
-        label: request.label.trim() || "context",
-        ...(request.path ? { path: request.path } : {}),
-        content,
-      }));
-    },
-    [],
-  );
 
   const selectionFor = useCallback(
     (sessionId: SessionId | null | undefined): ToolSelection => {
@@ -381,86 +175,148 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     [selectionVersion],
   );
 
-  const setSelection = useCallback((sessionId: SessionId, selection: ToolSelection | null) => {
-    const map = selectionsRef.current;
-    if (!selection) {
-      if (!map.delete(sessionId)) return;
-    } else {
-      const current = map.get(sessionId);
-      if (
-        current &&
-        current.skills === selection.skills &&
-        current.promptTemplates === selection.promptTemplates
-      ) {
-        return;
-      }
-      map.set(sessionId, selection);
-    }
-    setSelectionVersion((v) => v + 1);
-  }, []);
+  // One memo for the whole action surface: every callback closes over stable
+  // setters only, so this value never changes identity — action-only consumers
+  // stay untouched by tools state churn.
+  const actions = useMemo<ToolsActions>(() => {
+    const enableBrowser = (enabled: boolean) => {
+      setBrowser((current) => {
+        if (current.enabled === enabled) return current;
+        writeBrowserEnabled(enabled);
+        return { ...current, enabled };
+      });
+    };
+    // Register + select a tab. `open` false keeps the computer panel closed:
+    // used when the model drives a background tool (e.g. the browser), which
+    // should route to the right tab and pre-select it, but must not pop the
+    // panel open on every prompt — the user controls whether it is visible.
+    const openTab = (tab: ComputerTab, open: boolean) => {
+      updateComputer((current) => {
+        const tabs = uniqueComputerTabs([...current.tabs, tab]);
+        writeComputerTabs(tabs);
+        writeComputerTab(tab);
+        return current.tab === tab && current.tabs === tabs
+          ? current
+          : { ...current, ...(open ? { open: true } : null), tab, tabs };
+      });
+      if (tab === "browser") enableBrowser(true);
+    };
+    const sameSelection = (a: ToolSelection | undefined, b: ToolSelection) =>
+      Boolean(a && a.skills === b.skills && a.promptTemplates === b.promptTemplates);
 
-  const hydrateSelections = useCallback((entries: Iterable<[SessionId, ToolSelection]>) => {
-    const map = selectionsRef.current;
-    let changed = false;
-    for (const [id, selection] of entries) {
-      if (!selection) continue;
-      const existing = map.get(id);
-      if (
-        existing &&
-        existing.skills === selection.skills &&
-        existing.promptTemplates === selection.promptTemplates
-      ) {
-        continue;
-      }
-      map.set(id, selection);
-      changed = true;
-    }
-    if (changed) setSelectionVersion((v) => v + 1);
-  }, []);
-
-  // Every callback above is useCallback-stable except toggleComputerOpen
-  // (depends on computer.open), so this value only changes identity when the
-  // panel opens/closes — action-only consumers stay untouched by state churn.
-  const actions = useMemo<ToolsActions>(
-    () => ({
-      setBrowserEnabled,
-      setBrowserBackend,
-      toggleBrowserBackend,
-      toggleBrowser,
-      setBrowserUrl,
-      setBrowserInput,
-      setComputerOpen,
-      toggleComputerOpen,
-      setComputerTab,
-      selectComputerTabWithoutOpening,
-      closeComputerTab,
-      setComputerWidth,
-      setActiveComputerSession,
-      requestFileOpen,
-      requestContextAttach,
-      setSelection,
-      hydrateSelections,
-    }),
-    [
-      setBrowserEnabled,
-      setBrowserBackend,
-      toggleBrowserBackend,
-      toggleBrowser,
-      setBrowserUrl,
-      setBrowserInput,
-      setComputerOpen,
-      toggleComputerOpen,
-      setComputerTab,
-      selectComputerTabWithoutOpening,
-      closeComputerTab,
-      setComputerWidth,
-      setActiveComputerSession,
-      requestFileOpen,
-      requestContextAttach,
-      setSelection,
-      hydrateSelections,
-    ],
-  );
+    return {
+      setBrowserEnabled: (enabled) => {
+        setBrowser((current) => (current.enabled === enabled ? current : { ...current, enabled }));
+        writeBrowserEnabled(enabled);
+      },
+      setBrowserBackend: (backend) => {
+        setBrowser((current) => (current.backend === backend ? current : { ...current, backend }));
+        writeBrowserBackend(backend);
+      },
+      toggleBrowserBackend: () => {
+        setBrowser((current) => {
+          const backend = current.backend === "chrome" ? "embedded" : "chrome";
+          writeBrowserBackend(backend);
+          return { ...current, backend };
+        });
+      },
+      toggleBrowser: () => {
+        setBrowser((current) => {
+          const next = !current.enabled;
+          writeBrowserEnabled(next);
+          return { ...current, enabled: next };
+        });
+      },
+      setBrowserUrl: (url, input) => {
+        if (typeof url !== "string" || !url.trim()) return;
+        setBrowser((current) => ({ ...current, url, input: input ?? current.input }));
+      },
+      setBrowserInput: (input) => {
+        if (typeof input !== "string") return;
+        setBrowser((current) => ({ ...current, input }));
+      },
+      setComputerOpen: (open) => {
+        updateComputer((current) => computerPanelVisibility(current, open));
+      },
+      toggleComputerOpen: () => {
+        updateComputer((current) => computerPanelVisibility(current, !current.open));
+      },
+      setComputerTab: (tab) => openTab(tab, true),
+      selectComputerTabWithoutOpening: (tab) => openTab(tab, false),
+      closeComputerTab: (tab) => {
+        if (tab === "status" || tab === "tools") return;
+        if (tab === "browser") enableBrowser(false);
+        updateComputer((current) => {
+          const tabs = uniqueComputerTabs(current.tabs.filter((item) => item !== tab));
+          const activeTab = current.tab === tab ? (tabs[tabs.length - 1] ?? "status") : current.tab;
+          writeComputerTabs(tabs);
+          writeComputerTab(activeTab);
+          return { ...current, tab: activeTab, tabs };
+        });
+      },
+      setComputerWidth: (width) => {
+        if (!Number.isFinite(width)) return;
+        const clamped = clampComputerWidth(width);
+        updateComputer((current) =>
+          current.width === clamped ? current : { ...current, width: clamped },
+        );
+        writeComputerWidth(clamped);
+      },
+      setActiveComputerSession: (identity) => {
+        const previous = activeComputerSessionRef.current;
+        if (previous?.key === identity?.key) return;
+        setComputer((current) => {
+          if (previous) {
+            patchSessionView(window.localStorage, previous, {
+              computer: computerSessionView(current),
+            });
+          }
+          activeComputerSessionRef.current = identity;
+          const restored = identity
+            ? readSessionView(window.localStorage, identity)?.computer
+            : null;
+          return restored ? { ...current, ...restored } : { ...current, open: false };
+        });
+      },
+      requestFileOpen: (path) => {
+        const clean = path.trim();
+        if (!clean) return;
+        updateComputer((current) => ({ ...current, open: true, tab: "files" }));
+        writeComputerTab("files");
+        setFileOpenRequest((current) => ({ id: (current?.id ?? 0) + 1, path: clean }));
+      },
+      requestContextAttach: (request) => {
+        const content = request.content.trim();
+        if (!content) return;
+        setContextAttachRequest((current) => ({
+          id: (current?.id ?? 0) + 1,
+          label: request.label.trim() || "context",
+          ...(request.path ? { path: request.path } : {}),
+          content,
+        }));
+      },
+      setSelection: (sessionId, selection) => {
+        const map = selectionsRef.current;
+        if (!selection) {
+          if (!map.delete(sessionId)) return;
+        } else {
+          if (sameSelection(map.get(sessionId), selection)) return;
+          map.set(sessionId, selection);
+        }
+        setSelectionVersion((v) => v + 1);
+      },
+      hydrateSelections: (entries) => {
+        const map = selectionsRef.current;
+        let changed = false;
+        for (const [id, selection] of entries) {
+          if (!selection || sameSelection(map.get(id), selection)) continue;
+          map.set(id, selection);
+          changed = true;
+        }
+        if (changed) setSelectionVersion((v) => v + 1);
+      },
+    };
+  }, [updateComputer]);
 
   const selections = useMemo<ToolSelectionsValue>(
     () => ({
