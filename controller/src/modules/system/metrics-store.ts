@@ -32,8 +32,8 @@ abstract class MetricsDatabase {
 }
 
 /**
- * All-time peaks are stored per column with the direction that counts as "better":
- * throughput peaks climb, time-to-first-token improves downwards.
+ * All-time peaks, in the order `updateIfBetterEffect` takes them, each with the direction
+ * that counts as "better": throughput peaks climb, time-to-first-token improves downwards.
  */
 const PEAK_COLUMNS = [
   { column: "prefill_tps", isBetter: (next: number, best: number): boolean => next > best },
@@ -90,14 +90,10 @@ export class PeakMetricsStore extends MetricsDatabase {
   ): Effect.Effect<Row, RepositoryError> {
     return repositoryEffect("peak-metrics.update-if-better", () => {
       const current = this.get(modelId);
-      const candidates: Record<string, number | undefined> = {
-        prefill_tps: prefillTps,
-        generation_tps: generationTps,
-        ttft_ms: ttftMs,
-      };
+      const candidates = [prefillTps, generationTps, ttftMs];
       const updates: Record<string, number> = {};
-      for (const { column, isBetter } of PEAK_COLUMNS) {
-        const candidate = candidates[column];
+      for (const [index, { column, isBetter }] of PEAK_COLUMNS.entries()) {
+        const candidate = candidates[index];
         if (candidate === undefined) continue;
         const best = current?.[column];
         if (!current || best === null || isBetter(Number(candidate), Number(best))) {

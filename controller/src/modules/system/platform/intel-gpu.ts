@@ -23,13 +23,6 @@ const readText = (path: string): string | null => {
   }
 };
 
-const readNumber = (path: string): number | null => {
-  const text = readText(path);
-  if (!text) return null;
-  const value = Number(text);
-  return Number.isFinite(value) ? value : null;
-};
-
 const readDeviceDriver = (devicePath: string): string | null => {
   try {
     return basename(realpathSync(join(devicePath, "driver")));
@@ -88,8 +81,10 @@ const findDrmDevicePaths = (pciPath: string): string[] => {
 
 const readFirstNumber = (paths: string[]): number | null => {
   for (const path of paths) {
-    const value = readNumber(path);
-    if (value !== null) return value;
+    const text = readText(path);
+    if (!text) continue;
+    const value = Number(text);
+    if (Number.isFinite(value)) return value;
   }
   return null;
 };
