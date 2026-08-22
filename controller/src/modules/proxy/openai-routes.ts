@@ -12,10 +12,7 @@ import {
   exposeReasoningAsContentWhenEmpty,
   stripDeepSeekControlTokens,
 } from "./reasoning";
-import {
-  recordInferenceUsage,
-  type InferenceUsageInput,
-} from "./inference-accounting";
+import { recordInferenceUsage, type InferenceUsageInput } from "./inference-accounting";
 import {
   attachSessionUsage,
   createNonRunningModelWarner,
@@ -26,15 +23,10 @@ import {
 } from "./chat-request";
 import { buildChatCompletionsStreamResponse } from "./chat-completions-stream";
 
-export interface ModelNotRunningError {
-  error: { message: string; type: "model_not_running"; code: "model_not_running" };
-  detail: string;
-}
-
-export const modelNotRunningError = (
+const modelNotRunningError = (
   activeModel: string | null,
   requestedModel: string | null | undefined,
-): ModelNotRunningError => {
+) => {
   const message = activeModel
     ? `Model ${activeModel} is running; ${requestedModel} is not. Launch it from the frontend before sending requests.`
     : `No model is running. Launch ${requestedModel} from the frontend before sending requests.`;
@@ -44,13 +36,6 @@ export const modelNotRunningError = (
   };
 };
 
-const isDeepSeekV4ControllerRecipe = (recipe: Recipe | null): boolean => {
-  if (!recipe) return false;
-  return `${recipe.id} ${recipe.name} ${recipe.served_model_name ?? ""}`
-    .toLowerCase()
-    .includes("deepseek-v4");
-};
-
 /**
  * DeepSeek's hosted API has a different reasoning protocol from our local
  * DeepSeek V4 vLLM endpoint. A stale desktop client may send its hosted-only
@@ -58,11 +43,14 @@ const isDeepSeekV4ControllerRecipe = (recipe: Recipe | null): boolean => {
  * tool turns. Remove only that incompatible transport residue at the
  * controller boundary, while preserving actual reasoning and reasoning_effort.
  */
-export const sanitizeDeepSeekV4ControllerRequest = (
+const sanitizeDeepSeekV4ControllerRequest = (
   body: Record<string, unknown>,
   recipe: Recipe | null,
 ): boolean => {
-  if (!isDeepSeekV4ControllerRecipe(recipe)) return false;
+  const recipeIdentity = recipe
+    ? `${recipe.id} ${recipe.name} ${recipe.served_model_name ?? ""}`.toLowerCase()
+    : "";
+  if (!recipeIdentity.includes("deepseek-v4")) return false;
 
   let changed = false;
   if ("thinking" in body) {
@@ -75,19 +63,15 @@ export const sanitizeDeepSeekV4ControllerRequest = (
   for (const message of messages) {
     if (!message || typeof message !== "object" || Array.isArray(message)) continue;
     const record = message as Record<string, unknown>;
-    if (
-      typeof record["reasoning_content"] === "string" &&
-      record["reasoning_content"].trim().length === 0
-    ) {
+    const reasoning = record["reasoning_content"];
+    if (typeof reasoning === "string" && reasoning.trim().length === 0) {
       delete record["reasoning_content"];
       changed = true;
     }
-    if (typeof record["content"] === "string") {
-      const cleaned = stripDeepSeekControlTokens(record["content"]);
-      if (cleaned !== record["content"]) {
-        record["content"] = cleaned;
-        changed = true;
-      }
+    const content = record["content"];
+    if (typeof content === "string" && stripDeepSeekControlTokens(content) !== content) {
+      record["content"] = stripDeepSeekControlTokens(content);
+      changed = true;
     }
   }
   return changed;
@@ -107,20 +91,12 @@ const abortAware = <A, E>(
 export const registerOpenAIRoutes = defineRoutes((app, context) => {
   const warnNonRunningModel = createNonRunningModelWarner(context.logger);
 
-  interface ParsedChatBody {
-    parsed: Record<string, unknown>;
-    requestedModel: string | null;
-    matchedRecipe: Recipe | null;
-    isStreaming: boolean;
-    bodyChanged: boolean;
-    sessionId: string | null;
-  }
   const ChatRequestSchema = Schema.Record(Schema.String, Schema.Unknown);
 
   const parseChatBody = (
     bodyBuffer: ArrayBuffer,
     getHeader: (name: string) => string | undefined,
-  ): Effect.Effect<ParsedChatBody, HttpStatus | unknown> =>
+  ) =>
     Effect.gen(function* () {
       const decoded = yield* Effect.try({
         try: () =>
@@ -133,11 +109,8 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
       const sessionId = extractSessionId(parsed, getHeader);
       let requestedModel: string | null = null;
       let matchedRecipe: Recipe | null = null;
-      let bodyChanged = false;
       normalizeToolRequest(parsed);
-      if (normalizeChatMessageContentParts(parsed)) {
-        bodyChanged = true;
-      }
+      let bodyChanged = normalizeChatMessageContentParts(parsed);
       if (typeof parsed["model"] === "string") {
         requestedModel = parsed["model"];
         matchedRecipe = yield* findRecipeByModel(requestedModel, context);
@@ -150,16 +123,10 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
           }
         }
       }
-      if (sanitizeDeepSeekV4ControllerRequest(parsed, matchedRecipe)) {
-        bodyChanged = true;
-      }
-      if (parsed["functions"] || parsed["tools"] !== undefined) {
-        bodyChanged = true;
-      }
+      if (sanitizeDeepSeekV4ControllerRequest(parsed, matchedRecipe)) bodyChanged = true;
+      if (parsed["functions"] || parsed["tools"] !== undefined) bodyChanged = true;
       const isStreaming = Boolean(parsed["stream"]);
-      if (ensureStreamingUsageIncluded(parsed)) {
-        bodyChanged = true;
-      }
+      if (ensureStreamingUsageIncluded(parsed)) bodyChanged = true;
       return { parsed, requestedModel, matchedRecipe, isStreaming, bodyChanged, sessionId };
     });
 
@@ -167,7 +134,7 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
     matchedRecipe: Recipe,
     requestedModel: string | null,
     sourceHeader: string | null,
-  ): Effect.Effect<ModelNotRunningError | null, unknown> =>
+  ) =>
     context.bridge.findInferenceProcess().pipe(
       Effect.map((current) => {
         const matches =
@@ -200,10 +167,7 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
       if (exposeReasoningAsContentWhenEmpty(message, recordedModel)) {
         context.logger.warn(
           "Exposed Trinity reasoning as content because visible content was empty",
-          {
-            model: recordedModel,
-            source: sourceHeader,
-          },
+          { model: recordedModel, source: sourceHeader },
         );
       }
     }
@@ -225,10 +189,7 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
           yield* parseChatBody(bodyBuffer, (name) => ctx.req.header(name));
         const { upstreamUrl, auth, requestProvider, providerRouting, rewroteModel } =
           resolveUpstreamForModel(requestedModel, parsed, "/v1/chat/completions", context);
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-          ...auth,
-        };
+        const headers: Record<string, string> = { "Content-Type": "application/json", ...auth };
         const sourceHeader =
           ctx.req.header("x-vllm-source") ??
           ctx.req.header("x-source") ??
@@ -286,11 +247,10 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
           if (decoded.aborted) return new Response(null, { status: 499 });
           const result = { ...decoded.value };
 
-          const usage = result["usage"] as InferenceUsageInput | undefined;
           const usageTotals = yield* recordInferenceUsage(
             { logger: context.logger, stores: context.stores },
             {
-              usage,
+              usage: result["usage"] as InferenceUsageInput | undefined,
               streamed: false,
               record: {
                 model: recordedModel,

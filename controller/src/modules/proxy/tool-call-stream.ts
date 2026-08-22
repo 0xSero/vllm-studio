@@ -17,6 +17,8 @@ export interface ToolCallStreamOptions {
   bufferImplicitReasoningContent?: boolean;
 }
 
+type TextHistory = Map<string, { text: string; snapshot: boolean }>;
+
 export const createToolCallStream = (
   source: ReadableStream<Uint8Array>,
   onUsage?: (usage: InferenceUsageInput) => void,
@@ -31,15 +33,14 @@ export const createToolCallStream = (
   let toolCallsFound = false;
   let usageTracked = false;
   let firstTokenTracked = false;
-  const contentHistory = new Map<string, { text: string; snapshot: boolean }>();
-  const reasoningHistory = new Map<string, { text: string; snapshot: boolean }>();
+  const contentHistory: TextHistory = new Map();
+  const reasoningHistory: TextHistory = new Map();
   const replayCursors = new Map<string, number>();
-  const stripToolXmlDelta = (text: string): string => {
-    return stripToolCallsFromContent(stripDeepSeekControlTokens(text));
-  };
+  const stripToolXmlDelta = (text: string): string =>
+    stripToolCallsFromContent(stripDeepSeekControlTokens(text));
 
   const normalizeTextDelta = (
-    history: Map<string, { text: string; snapshot: boolean }>,
+    history: TextHistory,
     key: string,
     text: string,
     forceSnapshot = false,
@@ -96,6 +97,12 @@ export const createToolCallStream = (
   ): void => {
     controller.enqueue(encoder.encode(`${line}\n`));
   };
+  const enqueueLines = (
+    controller: TransformStreamDefaultController<Uint8Array>,
+    lines: string[],
+  ): void => {
+    for (const line of lines) enqueueLine(controller, line);
+  };
   const enqueueDataEvent = (
     controller: TransformStreamDefaultController<Uint8Array>,
     dataLine: string,
@@ -104,19 +111,13 @@ export const createToolCallStream = (
     enqueueLine(controller, "");
   };
 
-  const buildToolCallChunk = (toolCalls: ToolCall[]): string => {
-    const payload = {
-      id: `chatcmpl-${randomUUID().slice(0, 8)}`,
-      choices: [
-        {
-          index: 0,
-          delta: { tool_calls: toolCalls },
-          finish_reason: "tool_calls",
-        },
-      ],
-    };
-    return `data: ${JSON.stringify(payload)}`;
-  };
+  const chunkId = (): string => `chatcmpl-${randomUUID().slice(0, 8)}`;
+
+  const buildToolCallChunk = (toolCalls: ToolCall[]): string =>
+    `data: ${JSON.stringify({
+      id: chunkId(),
+      choices: [{ index: 0, delta: { tool_calls: toolCalls }, finish_reason: "tool_calls" }],
+    })}`;
 
   const buildFlushChunk = (payload: {
     content?: string;
@@ -128,7 +129,7 @@ export const createToolCallStream = (
     const delta: Record<string, string> = {};
     if (content) delta["content"] = content;
     if (reasoning) delta["reasoning_content"] = reasoning;
-    return `data: ${JSON.stringify({ id: `chatcmpl-${randomUUID().slice(0, 8)}`, choices: [{ index: 0, delta }] })}`;
+    return `data: ${JSON.stringify({ id: chunkId(), choices: [{ index: 0, delta }] })}`;
   };
 
   const emitVisibleContent = (
@@ -147,11 +148,12 @@ export const createToolCallStream = (
     emitVisibleContent(controller, contentThink.drainPendingContent());
     const tail = contentThink.drainCarry();
     if (!tail) return;
-    const carryLooksLikeThink = thinkingTagPrefixIsPartial(tail.trim());
-    const chunk =
-      contentThink.inThink() || carryLooksLikeThink
-        ? buildFlushChunk({ reasoning_content: stripToolXmlDelta(tail) })
-        : buildFlushChunk({ content: stripToolXmlDelta(tail) });
+    const cleaned = stripToolXmlDelta(tail);
+    const chunk = buildFlushChunk(
+      contentThink.inThink() || thinkingTagPrefixIsPartial(tail.trim())
+        ? { reasoning_content: cleaned }
+        : { content: cleaned },
+    );
     if (chunk) enqueueDataEvent(controller, chunk);
   };
 
@@ -197,9 +199,7 @@ export const createToolCallStream = (
     }
 
     if (dataLines.length === 0) {
-      for (const outLine of lines) {
-        enqueueLine(controller, outLine);
-      }
+      enqueueLines(controller, lines);
       return;
     }
 
@@ -207,9 +207,7 @@ export const createToolCallStream = (
     if (data === "[DONE]") {
       flushThinkCarry(controller);
       maybeInjectToolCalls(controller);
-      for (const outLine of otherLines) {
-        enqueueLine(controller, outLine);
-      }
+      enqueueLines(controller, otherLines);
       enqueueDataEvent(controller, "data: [DONE]");
       return;
     }
@@ -221,9 +219,7 @@ export const createToolCallStream = (
       parsed = null;
     }
     if (!parsed) {
-      for (const outLine of lines) {
-        enqueueLine(controller, outLine);
-      }
+      enqueueLines(controller, lines);
       return;
     }
 
@@ -238,39 +234,26 @@ export const createToolCallStream = (
           | undefined;
         if (!delta) continue;
         const toolCalls = delta["tool_calls"];
-        const hasActiveToolCalls = Array.isArray(toolCalls) && toolCalls.length > 0;
-        if (hasActiveToolCalls) {
+        if (Array.isArray(toolCalls) && toolCalls.length > 0) {
           toolCallsFound = true;
           trackFirstToken();
         }
+        const normalize = (history: TextHistory, field: string, text: string): string =>
+          normalizeTextDelta(history, `${choiceIndex}:${field}`, text, !hasDelta);
         const rawContent = typeof delta["content"] === "string" ? String(delta["content"]) : "";
-        const content = normalizeTextDelta(
-          contentHistory,
-          `${choiceIndex}:content`,
-          rawContent,
-          !hasDelta,
-        );
+        const content = normalize(contentHistory, "content", rawContent);
         const rawReasoning = firstReasoningField(delta);
         const reasoningRaw = rawReasoning
-          ? normalizeTextDelta(
-              reasoningHistory,
-              `${choiceIndex}:reasoning`,
-              rawReasoning,
-              !hasDelta,
-            )
+          ? normalize(reasoningHistory, "reasoning", rawReasoning)
           : "";
-        if (rawReasoning) {
+        if (rawReasoning)
           emitVisibleContent(controller, contentThink.resolveImplicitPrefixAsContent());
-        }
         if (content || reasoningRaw) trackFirstToken();
-        let reasoning = "";
         let reasoningFromContent = "";
         if (content) {
           const rewritten = contentThink.rewrite(content, false);
           const controlTokensStripped = stripDeepSeekControlTokens(rewritten.content);
-          if (controlTokensStripped) {
-            visibleContentBuffer += controlTokensStripped;
-          }
+          visibleContentBuffer += controlTokensStripped;
           const cleanedContent = stripToolXmlDelta(controlTokensStripped);
           if (cleanedContent) {
             delta["content"] = cleanedContent;
@@ -282,14 +265,9 @@ export const createToolCallStream = (
           delete delta["content"];
         }
 
-        if (reasoningRaw) {
-          const rewrittenReasoning = reasoningThink.rewrite(reasoningRaw, true);
-          reasoning = `${reasoning}${rewrittenReasoning.reasoningAppend}`;
-        }
-
-        if (reasoningFromContent) {
-          reasoning = `${reasoning}${reasoningFromContent}`;
-        }
+        const reasoning =
+          (reasoningRaw ? reasoningThink.rewrite(reasoningRaw, true).reasoningAppend : "") +
+          reasoningFromContent;
 
         if (reasoning) {
           delta["reasoning_content"] = stripToolXmlDelta(reasoning);
@@ -301,9 +279,7 @@ export const createToolCallStream = (
       }
     }
 
-    for (const outLine of otherLines) {
-      enqueueLine(controller, outLine);
-    }
+    enqueueLines(controller, otherLines);
     enqueueDataEvent(controller, `data: ${JSON.stringify(parsed)}`);
   };
 

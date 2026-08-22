@@ -8,7 +8,7 @@ export interface ToolCall {
   function: { name: string; arguments: string };
 }
 
-export const createToolCallId = (): string => `call_${randomUUID().replace(/-/g, "").slice(0, 9)}`;
+const createToolCallId = (): string => `call_${randomUUID().replace(/-/g, "").slice(0, 9)}`;
 
 const parseJsonCandidate = (value: string): unknown | null => {
   const trimmed = value.trim();
@@ -21,12 +21,8 @@ const parseJsonCandidate = (value: string): unknown | null => {
 };
 
 const coerceArguments = (value: unknown): string => {
-  if (typeof value === "string") {
-    return value.trim();
-  }
-  if (value === undefined || value === null) {
-    return "{}";
-  }
+  if (typeof value === "string") return value.trim();
+  if (value === undefined || value === null) return "{}";
   try {
     return JSON.stringify(value);
   } catch {
@@ -77,6 +73,12 @@ const parseInvokeToolCalls = (content: string, startIndex: number): ToolCall[] =
   return toolCalls;
 };
 
+/**
+ * Return the JSON string/object/array literal that starts at `start` (after any
+ * leading whitespace), scanning for its true end: brace/bracket depth outside
+ * strings, and backslash escapes inside them. Returns null when the value never
+ * closes — a truncated or split tool-call fragment.
+ */
 const extractBalancedValue = (input: string, start: number): string | null => {
   let index = start;
   while (index < input.length && /\s/.test(input[index] ?? "")) {
@@ -86,33 +88,12 @@ const extractBalancedValue = (input: string, start: number): string | null => {
 
   const open = input[index];
   if (open !== "{" && open !== "[" && open !== '"') return null;
-
-  const close = open === "{" ? "}" : open === "[" ? "]" : null;
-  if (!close) {
-    let cursor = index + 1;
-    let escaping = false;
-    for (; cursor < input.length; cursor += 1) {
-      const char = input[cursor];
-      if (escaping) {
-        escaping = false;
-        continue;
-      }
-      if (char === "\\") {
-        escaping = true;
-        continue;
-      }
-      if (char === '"') {
-        return input.slice(index, cursor + 1);
-      }
-    }
-    return null;
-  }
+  const close = open === "{" ? "}" : open === "[" ? "]" : "";
 
   let depth = 0;
-  let cursor = index;
-  let inString = false;
+  let inString = !close;
   let escaping = false;
-  for (; cursor < input.length; cursor += 1) {
+  for (let cursor = inString ? index + 1 : index; cursor < input.length; cursor += 1) {
     const char = input[cursor];
     if (inString) {
       if (escaping) {
@@ -123,9 +104,9 @@ const extractBalancedValue = (input: string, start: number): string | null => {
         escaping = true;
         continue;
       }
-      if (char === '"') {
-        inString = false;
-      }
+      if (char !== '"') continue;
+      if (!close) return input.slice(index, cursor + 1);
+      inString = false;
       continue;
     }
 
@@ -139,9 +120,7 @@ const extractBalancedValue = (input: string, start: number): string | null => {
     }
     if (char === close) {
       depth -= 1;
-      if (depth === 0) {
-        return input.slice(index, cursor + 1);
-      }
+      if (depth === 0) return input.slice(index, cursor + 1);
     }
   }
   return null;
@@ -222,23 +201,15 @@ export const parseToolCallsFromContent = (content: string): ToolCall[] => {
       const jsonCandidate = block.match(/\{[\s\S]*\}/);
       const parsed = jsonCandidate ? parseJsonCandidate(jsonCandidate[0]) : null;
       const record = toolCallRecordFromParsed(parsed);
-      if (record) {
-        toolCalls.push(buildToolCall(record.name, record.args, toolCalls.length));
-        continue;
-      }
+      if (record) toolCalls.push(buildToolCall(record.name, record.args, toolCalls.length));
       continue;
     }
 
     toolCalls.push(buildToolCall(toolName, args ?? {}, toolCalls.length));
   }
 
-  if (toolCalls.length === 0) {
-    toolCalls.push(...parseInvokeToolCalls(content, 0));
-  }
-
-  if (toolCalls.length === 0) {
-    toolCalls.push(...parseJsonToolCalls(content, 0));
-  }
+  if (toolCalls.length === 0) toolCalls.push(...parseInvokeToolCalls(content, 0));
+  if (toolCalls.length === 0) toolCalls.push(...parseJsonToolCalls(content, 0));
 
   if (toolCalls.length === 0) {
     const jsonPattern = /"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*/g;
@@ -247,9 +218,7 @@ export const parseToolCallsFromContent = (content: string): ToolCall[] => {
       const argsStart = (match.index ?? 0) + match[0].length;
       const argsRaw = extractBalancedValue(content.slice(argsStart), 0) ?? "";
       const parsedArguments = argsRaw ? (parseJsonCandidate(argsRaw) ?? argsRaw) : {};
-      if (name) {
-        toolCalls.push(buildToolCall(name, parsedArguments, toolCalls.length));
-      }
+      if (name) toolCalls.push(buildToolCall(name, parsedArguments, toolCalls.length));
     }
   }
 

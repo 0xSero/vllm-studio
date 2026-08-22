@@ -16,9 +16,14 @@ export const firstReasoningField = (record: Record<string, unknown>): string => 
   return "";
 };
 
-const thinkingOpenPrefixes = ["<thinking", "<analysis", "<think"];
-const thinkingClosePrefixes = ["</thinking", "</analysis", "</think"];
-const thinkingAllPrefixes = [...thinkingOpenPrefixes, ...thinkingClosePrefixes];
+const thinkingAllPrefixes = [
+  "<thinking",
+  "<analysis",
+  "<think",
+  "</thinking",
+  "</analysis",
+  "</think",
+];
 
 export type ThinkRewriter = {
   inThink: () => boolean;
@@ -31,18 +36,17 @@ export type ThinkRewriter = {
   ) => { content: string; reasoningAppend: string };
 };
 
+const THINKING_TAG = /^<(\/)?(?:think|thinking|analysis)(?:\s+[^>]*)?>$/i;
+
 const getThinkingTagLength = (
   suffix: string,
 ): { kind: "open" | "close"; length: number } | null => {
   if (!suffix.startsWith("<")) return null;
   const closeIndex = suffix.indexOf(">");
   if (closeIndex < 0) return null;
-  const tag = suffix.slice(0, closeIndex + 1);
-  if (/^<(think|thinking|analysis)(?:\s+[^>]*)?>$/i.test(tag))
-    return { kind: "open", length: closeIndex + 1 };
-  if (/^<\/(think|thinking|analysis)(?:\s+[^>]*)?>$/i.test(tag))
-    return { kind: "close", length: closeIndex + 1 };
-  return null;
+  const tag = THINKING_TAG.exec(suffix.slice(0, closeIndex + 1));
+  if (!tag) return null;
+  return { kind: tag[1] ? "close" : "open", length: closeIndex + 1 };
 };
 
 export const thinkingTagPrefixIsPartial = (suffix: string): boolean => {
@@ -50,22 +54,12 @@ export const thinkingTagPrefixIsPartial = (suffix: string): boolean => {
   if (!lower.startsWith("<")) return false;
 
   for (const prefix of thinkingAllPrefixes) {
-    if (prefix.startsWith(lower)) {
-      return true;
-    }
-    if (lower.startsWith(prefix)) {
-      const next = lower[prefix.length];
-      if (!next) return true;
-      if (
-        next === ">" ||
-        next === " " ||
-        next === "/" ||
-        next === "\t" ||
-        next === "\n" ||
-        next === "\r"
-      )
-        return true;
-    }
+    if (prefix.startsWith(lower)) return true;
+    if (!lower.startsWith(prefix)) continue;
+    // Still partial while the delta stops at the tag name or at any character
+    // that could legally follow it inside the tag.
+    const next = lower[prefix.length];
+    if (!next || "> /\t\n\r".includes(next)) return true;
   }
 
   return false;
@@ -82,25 +76,25 @@ export const createThinkRewriter = (
   let seenOpen = false;
   let resolvedImplicitPrefix = false;
 
+  const drainPending = (): string => {
+    const pending = pendingImplicitContent;
+    pendingImplicitContent = "";
+    return pending;
+  };
+  const bufferingImplicitPrefix = (): boolean =>
+    Boolean(settings.bufferImplicitReasoningContent) && !seenOpen && !resolvedImplicitPrefix;
+
   return {
-    inThink(): boolean {
-      return inThink;
-    },
+    inThink: () => inThink,
     drainCarry(): string {
       const tail = thinkCarry;
       thinkCarry = "";
       return tail;
     },
-    drainPendingContent(): string {
-      const pending = pendingImplicitContent;
-      pendingImplicitContent = "";
-      return pending;
-    },
+    drainPendingContent: drainPending,
     resolveImplicitPrefixAsContent(): string {
       resolvedImplicitPrefix = true;
-      const pending = pendingImplicitContent;
-      pendingImplicitContent = "";
-      return pending;
+      return drainPending();
     },
     rewrite(
       deltaText: string,
@@ -132,9 +126,8 @@ export const createThinkRewriter = (
             if (!inThink) {
               // Close tag without an opening tag: model uses implicit
               // thinking (e.g. DeepSeek sends `...` with no `...`).
-              if (settings.bufferImplicitReasoningContent && !seenOpen && !resolvedImplicitPrefix) {
-                reasoningOut += pendingImplicitContent;
-                pendingImplicitContent = "";
+              if (bufferingImplicitPrefix()) {
+                reasoningOut += drainPending();
                 resolvedImplicitPrefix = true;
               }
               const before = contentOut.trim();
@@ -156,11 +149,7 @@ export const createThinkRewriter = (
         const ch = combined[index] ?? "";
         if (inThink || defaultToReasoning) {
           reasoningOut += ch;
-        } else if (
-          settings.bufferImplicitReasoningContent &&
-          !seenOpen &&
-          !resolvedImplicitPrefix
-        ) {
+        } else if (bufferingImplicitPrefix()) {
           pendingImplicitContent += ch;
         } else {
           contentOut += ch;
@@ -170,20 +159,17 @@ export const createThinkRewriter = (
 
       thinkCarry = carryIndex < combined.length ? combined.slice(carryIndex) : "";
 
-      return {
-        content: contentOut,
-        reasoningAppend: reasoningOut,
-      };
+      return { content: contentOut, reasoningAppend: reasoningOut };
     },
   };
 };
 
-const stripToolCallXmlBlocks = (text: string): string => {
-  if (!text) return "";
-  let cleaned = stripToolCallsFromContent(text);
-  cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
-  return cleaned.trim();
-};
+const stripToolCallXmlBlocks = (text: string): string =>
+  text
+    ? stripToolCallsFromContent(text)
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+    : "";
 
 const collapseRepeatedVisibleContent = (text: string): string => {
   const trimmed = text.trim();
@@ -226,11 +212,7 @@ export const normalizeReasoningAndContentInMessage = (message: Record<string, un
   // content (<think>…</think>) and in the dedicated reasoning field, the
   // content-extracted and reasoning-field text are the same string — joining
   // them verbatim doubled the reasoning.
-  const nextReasoning = [
-    reasoningThink.cleaned,
-    contentThink.extracted,
-    reasoningThink.extracted,
-  ]
+  const nextReasoning = [reasoningThink.cleaned, contentThink.extracted, reasoningThink.extracted]
     .map((v) => v.trim())
     .filter((v, index, all) => v.length > 0 && all.indexOf(v) === index)
     .join("\n");
@@ -257,17 +239,12 @@ export const normalizeReasoningAndContentInMessage = (message: Record<string, un
 
 export const normalizeToolCallsInMessage = (message: Record<string, unknown>): boolean => {
   const existing = message["tool_calls"];
-  const hasToolCalls = Array.isArray(existing) && existing.length > 0;
-  if (hasToolCalls) {
-    return false;
-  }
+  if (Array.isArray(existing) && existing.length > 0) return false;
   const content = typeof message["content"] === "string" ? String(message["content"]) : "";
   const parsed = parseToolCallsFromContent(content);
-  if (parsed.length > 0) {
-    message["tool_calls"] = parsed;
-    return true;
-  }
-  return false;
+  if (parsed.length === 0) return false;
+  message["tool_calls"] = parsed;
+  return true;
 };
 
 /**
@@ -294,18 +271,13 @@ export const exposeReasoningAsContentWhenEmpty = (
   const content = typeof message["content"] === "string" ? message["content"].trim() : "";
   if (content) return false;
 
-  const reasoning =
-    typeof message["reasoning"] === "string"
-      ? message["reasoning"].trim()
-      : typeof message["reasoning_content"] === "string"
-        ? message["reasoning_content"].trim()
-        : "";
+  const raw =
+    typeof message["reasoning"] === "string" ? message["reasoning"] : message["reasoning_content"];
+  const reasoning = typeof raw === "string" ? raw.trim() : "";
   if (!reasoning) return false;
 
   message["content"] = reasoning;
-  if (!message["reasoning_content"]) {
-    message["reasoning_content"] = reasoning;
-  }
+  if (!message["reasoning_content"]) message["reasoning_content"] = reasoning;
   return true;
 };
 
@@ -315,6 +287,4 @@ export const exposeReasoningAsContentWhenEmpty = (
 // the leak. The tokenizer normally hides them, but strip the literal fallback
 // here as well so every controller client gets a clean stream.
 export const stripDeepSeekControlTokens = (text: string): string =>
-  text
-    .replaceAll("<｜begin▁of▁sentence｜>", "")
-    .replaceAll("<｜end▁of▁sentence｜>", "");
+  text.replaceAll("<｜begin▁of▁sentence｜>", "").replaceAll("<｜end▁of▁sentence｜>", "");
