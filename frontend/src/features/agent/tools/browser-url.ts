@@ -26,12 +26,6 @@ function resolveRelativeFilePath(cwd: string, value: string): string {
   return `/${resolved.join("/")}`;
 }
 
-function expandHomeFilePath(cwd: string, value: string): string | null {
-  const homeMatch = cwd.match(/^(\/Users\/[^/]+|\/home\/[^/]+)(?:\/|$)/);
-  if (!homeMatch) return null;
-  return `${homeMatch[1]}${value.slice(1)}`;
-}
-
 export function normalizeBrowserInput(raw: string, cwd: string): string {
   const value = raw.trim();
   if (!value) return DEFAULT_BROWSER_URL;
@@ -39,18 +33,19 @@ export function normalizeBrowserInput(raw: string, cwd: string): string {
     return sanitizeLocalFileUrl(value) ?? "";
   }
   if (value.startsWith("~/") && cwd) {
-    const expanded = expandHomeFilePath(cwd, value);
-    if (expanded) return encodeFilePath(expanded);
+    const home = cwd.match(/^(\/Users\/[^/]+|\/home\/[^/]+)(?:\/|$)/);
+    if (home) return encodeFilePath(`${home[1]}${value.slice(1)}`);
   }
   if (value.startsWith("/")) return encodeFilePath(value);
   if ((value.startsWith("./") || value.startsWith("../")) && cwd) {
     return encodeFilePath(resolveRelativeFilePath(cwd, value));
   }
   if (/^https?:\/\//i.test(value)) return value;
-  if (/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?([/?#].*)?$/i.test(value)) {
-    return `http://${value}`;
-  }
-  if (/^[\w.-]+:\d+([/?#].*)?$/.test(value)) {
+  // bare host:port, and localhost in any of its spellings, are local servers
+  if (
+    /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?([/?#].*)?$/i.test(value) ||
+    /^[\w.-]+:\d+([/?#].*)?$/.test(value)
+  ) {
     return `http://${value}`;
   }
   if (/^[\w-]+(\.[\w-]+)+([/:?#].*)?$/.test(value)) {

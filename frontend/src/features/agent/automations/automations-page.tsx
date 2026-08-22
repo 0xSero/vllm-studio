@@ -116,8 +116,7 @@ export default function AutomationsPage() {
       if (!result) return;
       setAutomations((current) => {
         const existing = current ?? [];
-        const found = existing.some((automation) => automation.id === result.id);
-        return found
+        return existing.some((automation) => automation.id === result.id)
           ? existing.map((automation) => (automation.id === result.id ? result : automation))
           : [...existing, result].sort((a, b) => a.name.localeCompare(b.name));
       });

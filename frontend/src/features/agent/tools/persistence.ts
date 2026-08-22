@@ -25,8 +25,6 @@ export const MAX_COMPUTER_WIDTH = 1200;
 export const MIN_CHAT_WIDTH_WHEN_COMPUTER_OPEN = 360;
 export const COMPUTER_SNAP_WIDTHS = [360, 440, 520, 720, 960] as const;
 
-const COMPUTER_TABS: readonly ComputerTab[] = COMPUTER_TAB_IDS;
-
 function viewportWidth(): number | undefined {
   return typeof window === "undefined" ? undefined : window.innerWidth;
 }
@@ -125,10 +123,7 @@ export function loadComputerState(): ComputerState {
   const storedTab = read(COMPUTER_TAB_KEY);
   const tab: ComputerTab = isComputerTab(storedTab) ? storedTab : "status";
   const storedTabs = readComputerTabs();
-  const persistedTabs = uniqueComputerTabs([
-    "status",
-    ...(storedTabs.length ? storedTabs : [tab]),
-  ]);
+  const persistedTabs = uniqueComputerTabs(["status", ...(storedTabs.length ? storedTabs : [tab])]);
   const tabs = persistedTabs.includes(tab)
     ? persistedTabs
     : uniqueComputerTabs([...persistedTabs, tab]);
@@ -141,7 +136,7 @@ export function loadComputerState(): ComputerState {
 }
 
 function isComputerTab(value: unknown): value is ComputerTab {
-  return typeof value === "string" && COMPUTER_TABS.includes(value as ComputerTab);
+  return typeof value === "string" && COMPUTER_TAB_IDS.includes(value as ComputerTab);
 }
 
 function readComputerTabs(): ComputerTab[] {
@@ -156,13 +151,7 @@ function readComputerTabs(): ComputerTab[] {
 }
 
 export function uniqueComputerTabs(tabs: ComputerTab[]): ComputerTab[] {
-  const seen = new Set<ComputerTab>();
-  const out: ComputerTab[] = [];
-  for (const tab of tabs) {
-    if (seen.has(tab)) continue;
-    seen.add(tab);
-    out.push(tab);
-  }
+  const out = [...new Set(tabs)];
   return out.includes("status") ? out : ["status", ...out];
 }
 

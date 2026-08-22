@@ -97,9 +97,7 @@ export function AutomationEditor(props: AutomationEditorProps) {
         <EditorHeader {...props} busy={busy} canSave={draftIsValid(draft)} />
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-2xl space-y-5 px-5 py-5 sm:px-7">
-            {creating ? (
-              <ExamplePicker onSelect={(example) => setDraft(example)} draft={draft} />
-            ) : null}
+            {creating ? <ExamplePicker onSelect={setDraft} draft={draft} /> : null}
 
             <div className="space-y-4">
               <FormField label="Name" required>
@@ -189,7 +187,14 @@ export function AutomationEditor(props: AutomationEditorProps) {
               />
             ) : null}
 
-            {error ? <EditorError error={error} /> : null}
+            {error ? (
+              <div
+                role="alert"
+                className="rounded-[10px] bg-(--ui-danger)/10 px-3 py-2 text-[length:var(--fs-sm)] text-(--ui-danger)"
+              >
+                {error}
+              </div>
+            ) : null}
 
             {/* Delete stays at the far end of the form and behind a confirm —
                 deliberately nowhere near the header where Save now lives. */}
@@ -316,17 +321,6 @@ function ExamplePicker({
           </button>
         ))}
       </div>
-    </div>
-  );
-}
-
-function EditorError({ error }: { error: string }) {
-  return (
-    <div
-      role="alert"
-      className="rounded-[10px] bg-(--ui-danger)/10 px-3 py-2 text-[length:var(--fs-sm)] text-(--ui-danger)"
-    >
-      {error}
     </div>
   );
 }

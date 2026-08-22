@@ -88,30 +88,26 @@ export function AutomationList({
         ) : (
           <div role="list" className="divide-y divide-(--ui-separator)/70">
             {visible.map((automation) => {
-              const selected = automation.id === selectedId;
               const paused = automation.status === "paused";
+              const surface =
+                automation.id === selectedId
+                  ? "bg-(--ui-active) text-(--ui-fg)"
+                  : "text-(--ui-fg) hover:bg-(--ui-hover)/60";
+              const dot = paused
+                ? "bg-(--ui-muted)/45"
+                : automation.lastRun?.outcome === "error"
+                  ? "bg-(--ui-danger)"
+                  : "bg-(--ui-accent)";
               return (
                 <button
                   key={automation.id}
                   type="button"
                   role="listitem"
                   onClick={() => onSelect(automation)}
-                  className={`group w-full rounded-[var(--ui-radius)] px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 ${
-                    selected
-                      ? "bg-(--ui-active) text-(--ui-fg)"
-                      : "text-(--ui-fg) hover:bg-(--ui-hover)/60"
-                  }`}
+                  className={`group w-full rounded-[var(--ui-radius)] px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 ${surface}`}
                 >
                   <div className="flex items-start gap-3">
-                    <span
-                      className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                        paused
-                          ? "bg-(--ui-muted)/45"
-                          : automation.lastRun?.outcome === "error"
-                            ? "bg-(--ui-danger)"
-                            : "bg-(--ui-accent)"
-                      }`}
-                    />
+                    <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="min-w-0 flex-1 truncate text-[length:var(--fs-base)] font-medium">

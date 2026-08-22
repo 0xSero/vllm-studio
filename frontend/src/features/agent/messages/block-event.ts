@@ -109,14 +109,11 @@ function convertTrailingTextToThinking(blocks: AssistantBlock[]): AssistantBlock
     start -= 1;
   }
   if (start === blocks.length) return blocks;
-
-  const next = blocks.slice();
-  for (let index = start; index < next.length; index += 1) {
-    const block = next[index];
-    if (block?.kind === "text") {
-      next[index] = { kind: "thinking", id: block.id, text: block.text };
-    }
-  }
+  const next = blocks.map((block, index) =>
+    index >= start && block.kind === "text"
+      ? { kind: "thinking" as const, id: block.id, text: block.text }
+      : block,
+  );
   return normalizeReasoningBeforeVisibleText(next);
 }
 

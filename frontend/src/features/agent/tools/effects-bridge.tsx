@@ -18,31 +18,23 @@ export type ToolsEffectsBridgeProps = {
   onCatalogueLoaded: (payload: ToolsCatalogue) => void;
 };
 
+/** One catalogue list; any failure (network, non-JSON, missing key) is empty. */
 function loadCatalogueListEffect<TItem>(url: string, key: string): Effect.Effect<TItem[]> {
-  return Effect.gen(function* () {
-    const response = yield* Effect.tryPromise({
-      try: () => fetch(url, { cache: "no-store" }),
-      catch: (error) => error,
-    });
-    const payload = yield* Effect.tryPromise({
-      try: () => response.json() as Promise<Record<string, TItem[] | undefined>>,
-      catch: (error) => error,
-    });
-    return payload[key] ?? [];
+  return Effect.tryPromise({
+    try: async () => {
+      const response = await fetch(url, { cache: "no-store" });
+      const payload = (await response.json()) as Record<string, TItem[] | undefined>;
+      return payload[key] ?? [];
+    },
+    catch: (error) => error,
   }).pipe(Effect.catch(() => Effect.succeed([])));
 }
 
 function loadToolsCatalogueEffect(): Effect.Effect<ToolsCatalogue> {
-  return Effect.gen(function* () {
-    const [skills, promptTemplates] = yield* Effect.all([
-      loadCatalogueListEffect<ComposerSkillRef>("/api/agent/skills", "skills"),
-      loadCatalogueListEffect<ComposerPromptTemplateRef>(
-        "/api/agent/prompt-templates",
-        "templates",
-      ),
-    ] as const);
-    return { skills, promptTemplates };
-  });
+  return Effect.all([
+    loadCatalogueListEffect<ComposerSkillRef>("/api/agent/skills", "skills"),
+    loadCatalogueListEffect<ComposerPromptTemplateRef>("/api/agent/prompt-templates", "templates"),
+  ] as const).pipe(Effect.map(([skills, promptTemplates]) => ({ skills, promptTemplates })));
 }
 
 /** Loads the skill / prompt-template catalogues once, off the render path. */
