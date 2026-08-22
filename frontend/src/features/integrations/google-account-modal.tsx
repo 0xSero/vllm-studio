@@ -18,7 +18,6 @@ import {
   connectionSignature,
   openExternal,
   requestJson,
-  transportNotice,
 } from "./google-account-model";
 import { GoogleAccountLoadState } from "./google-account-load-state";
 import { ConnectedGoogleAccounts } from "./google-account-connected";
@@ -218,7 +217,10 @@ export function GoogleAccountModal({
         closeIcon={<X className="h-4 w-4" />}
       />
       <UiModalBody className="space-y-4 pb-5">
-        <Alert variant="info">{transportNotice(account)}</Alert>
+        <Alert variant="info">
+          Tools are served in-process from Google&apos;s public REST APIs, using only the read-only
+          scopes granted below.
+        </Alert>
         {!account ? (
           <GoogleAccountLoadState error={error} onRetry={() => void refresh()} />
         ) : (

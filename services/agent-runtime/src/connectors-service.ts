@@ -10,13 +10,10 @@ import {
   type ConnectorView,
 } from "./connector-contract";
 import {
-  GOOGLE_MCP_PREVIEW_ENV,
   GOOGLE_WORKSPACE_BINDINGS,
   googleWorkspaceAuthAccount,
   googleWorkspaceConnectorId,
   googleWorkspaceConnectorIdentity,
-  googleWorkspaceEndpoint,
-  googleWorkspaceTransport,
   isGoogleWorkspaceEndpoint,
   legacyGoogleWorkspaceService,
   type GoogleWorkspaceIdentity,
@@ -71,12 +68,11 @@ export function googleWorkspaceConnector(
   enabled: boolean,
 ): ConnectorConfig {
   const binding = GOOGLE_WORKSPACE_BINDINGS[identity.service];
-  const transport = googleWorkspaceTransport(process.env[GOOGLE_MCP_PREVIEW_ENV]);
   return {
     id: googleWorkspaceConnectorId(identity.service, identity.accountKey),
     name: email ? `${binding.name} · ${email}` : binding.name,
     transport: "http",
-    url: googleWorkspaceEndpoint(identity.service, transport),
+    url: binding.restEndpoint,
     auth: {
       type: "oauth",
       provider: "google-workspace",
@@ -112,7 +108,7 @@ export function protectManagedConnector(connector: ConnectorConfig): ConnectorCo
       id: connector.id,
       name: `${GOOGLE_WORKSPACE_BINDINGS[legacyService].name} (sign in again)`,
       transport: "http",
-      url: GOOGLE_WORKSPACE_BINDINGS[legacyService].mcpEndpoint,
+      url: GOOGLE_WORKSPACE_BINDINGS[legacyService].restEndpoint,
       allowTools: [],
       origin: { kind: "account-adapter", id: legacyService, binding: "google-workspace" },
       enabled: false,

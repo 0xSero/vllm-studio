@@ -66,9 +66,3 @@ export function clientReplacementWarning(
   const plural = connected === 1 ? "account" : "accounts";
   return `Replacing this client revokes Google access for all ${connected} connected ${plural}, across Gmail and Calendar. Each one has to sign in again.`;
 }
-
-export function transportNotice(account: GoogleAccountView | null): string {
-  return account?.transport === "remote-mcp"
-    ? "Tools are served by Google's Workspace MCP preview. That preview may not accept a self-registered Desktop client; unset LOCAL_STUDIO_GOOGLE_MCP_PREVIEW to use the REST adapter instead."
-    : "Tools are served in-process from Google's public REST APIs, using only the read-only scopes granted below.";
-}
