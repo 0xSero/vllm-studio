@@ -42,25 +42,6 @@ export interface PtyBridge {
   ): () => void;
 }
 
-export interface QuickPanelHotkeyState {
-  hotkey: string;
-  defaultHotkey: string;
-}
-
-export interface QuickPanelHotkeyResult {
-  ok: boolean;
-  hotkey: string;
-  error?: string;
-}
-
-export interface QuickPanelBridge {
-  expand(): Promise<void>;
-  dismiss(): Promise<void>;
-  focusMainAndNavigate(projectId: string, sessionId?: string): Promise<void>;
-  getHotkey(): Promise<QuickPanelHotkeyState>;
-  setHotkey(hotkey: string): Promise<QuickPanelHotkeyResult>;
-}
-
 export interface ControllerDeployResultPayload {
   ok: boolean;
   url?: string;
@@ -124,6 +105,5 @@ export interface DesktopBridge {
   getKittylitterPairingJson(): Promise<KittylitterPairingResult>;
   copyKittylitterPairingJson(pairingJson: string): Promise<KittylitterCopyResult>;
   terminal: PtyBridge;
-  quickPanel: QuickPanelBridge;
   controllerDeploy: ControllerDeployBridge;
 }

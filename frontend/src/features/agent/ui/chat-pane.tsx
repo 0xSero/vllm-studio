@@ -86,7 +86,6 @@ import {
   type TerminalOwnersSnapshot,
 } from "@/features/agent/ui/use-persistent-terminal-owners";
 import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
-import { cx } from "@/ui/utils";
 import { ExtensionUiDialog } from "@/features/agent/ui/extension-ui-dialog";
 export type { ChatPaneHandle };
 
@@ -127,17 +126,7 @@ function TimelineFallback() {
   return <div className="flex min-h-0 flex-1 bg-(--agent-bg)" />;
 }
 
-function chatPaneClassName(composerOnly: boolean): string {
-  return cx(
-    "relative flex min-h-0 min-w-0 flex-1 flex-col",
-    composerOnly
-      ? "bg-transparent"
-      : "bg-(--agent-bg) shadow-[inset_1px_0_rgba(255,255,255,0.015)]",
-  );
-}
-
 function ChatTranscript({
-  composerOnly,
   terminalView,
   showEmptyPrompt,
   activeTab,
@@ -148,7 +137,6 @@ function ChatTranscript({
   onForkSession,
   loadEarlierHistory,
 }: {
-  composerOnly: boolean;
   terminalView: boolean;
   showEmptyPrompt: boolean;
   activeTab: Session | undefined;
@@ -161,7 +149,6 @@ function ChatTranscript({
 }) {
   const viewKey = activeTab?.piSessionId ?? activeTab?.id ?? null;
   const viewAlias = activeTab?.piSessionId ? activeTab.id : null;
-  if (composerOnly) return null;
   return (
     <div className={terminalView ? "hidden" : "flex min-h-0 min-w-0 flex-1"}>
       {showEmptyPrompt ? (
@@ -218,7 +205,6 @@ type Props = {
   onToggleRightPanel: () => void;
   onRegisterHandle?: (handle: ChatPaneHandle | null) => void;
   showHeader?: boolean;
-  composerOnly?: boolean;
 };
 
 export type ComposerModelSelectorProps = {
@@ -267,7 +253,6 @@ export function ChatPane({
   onToggleRightPanel,
   onRegisterHandle,
   showHeader = true,
-  composerOnly = false,
 }: Props) {
   const router = useRouter();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -623,7 +608,7 @@ export function ChatPane({
     <section
       onMouseDownCapture={onFocus}
       data-pane-id={paneId}
-      className={chatPaneClassName(composerOnly)}
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-(--agent-bg) shadow-[inset_1px_0_rgba(255,255,255,0.015)]"
     >
       <ChatPaneChrome
         extensionUiRequest={activeTab?.extensionUiRequest}
@@ -649,7 +634,6 @@ export function ChatPane({
         }}
       />
       <ChatTranscript
-        composerOnly={composerOnly}
         terminalView={terminalView}
         showEmptyPrompt={showEmptyPrompt}
         activeTab={activeTab}
@@ -746,8 +730,7 @@ export function ChatPane({
           textareaRef={textareaRef}
           goalMode={goalApi.goalMode}
           onExitGoalMode={goalApi.exitGoalMode}
-          floating={composerOnly}
-          dense={!showHeader && !composerOnly}
+          dense={!showHeader}
         />
       </div>
     </section>

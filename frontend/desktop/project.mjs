@@ -197,13 +197,11 @@ var init_perf_routes = __esm(() => {
     "/usage",
     "/configure",
     "/discover",
-    "/quick",
     "/setup"
   ], httpBudgetOverrides = new Map([
     ["/", { assetKiB: 1050 }],
     ["/agent", { assetKiB: 1250 }],
     ["/agent/sessions", { assetKiB: 1250 }],
-    ["/quick", { assetKiB: 1250 }],
     ["/logs", { assetKiB: 1000 }],
     ["/server", { assetKiB: 1000 }],
     ["/usage", { assetKiB: 1025 }],
