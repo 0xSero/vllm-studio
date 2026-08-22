@@ -203,6 +203,8 @@ export function initializeAutoUpdates(): void {
     return;
   }
 
+  autoUpdater.logger = log;
+
   if (isDevChannelBuild && !resolveFeedUrl()) {
     setUpdateState({ status: "idle", message: "Dev channel: auto-update disabled" });
     log.info("[update] Dev-channel build; skipping stable release feed");

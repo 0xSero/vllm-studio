@@ -41,7 +41,9 @@ jobs:
             stable_version="${latest_tag#v}"
           fi
           IFS=. read -r major minor patch <<< "$stable_version"
-          version="${major}.${minor}.$((patch + 1))-nightly.${GITHUB_RUN_NUMBER}"
+          timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          short_sha="${GITHUB_SHA:0:8}"
+          version="${major}.${minor}.$((patch + 1))-nightly.${timestamp}.g${short_sha}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
@@ -112,7 +114,8 @@ jobs:
           fi
 
           if gh release view nightly --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh api "repos/$GITHUB_REPOSITORY/releases/tags/nightly" --jq '.assets[].id' |
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/nightly" \
+              --jq '.assets[] | select(.name | endswith("-arm64-mac.zip.blockmap") | not) | .id' |
               while IFS= read -r asset_id; do
                 gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
               done
