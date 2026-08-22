@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { Button } from "@/ui";
 import { Trash2 } from "@/ui/icon-registry";
 import type { Automation } from "@shared/agent/automation";
 import { relativeTime } from "./automation-model";
+import { ConfirmAction } from "./confirm-action";
 
 /**
  * The recorded runs of one automation, and the only way to forget them.
@@ -25,7 +24,6 @@ export function AutomationRunHistory({
   busy: boolean;
   onClearRuns?: () => void;
 }) {
-  const [confirming, setConfirming] = useState(false);
   const count = automation.runs.length;
   const runWord = count === 1 ? "run" : "runs";
 
@@ -34,40 +32,14 @@ export function AutomationRunHistory({
       <div className="mb-2 flex items-center justify-between gap-3">
         <h3 className="text-[length:var(--fs-base)] font-medium text-(--ui-fg)">Run history</h3>
         {onClearRuns ? (
-          confirming ? (
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                loading={clearing}
-                disabled={busy}
-                onClick={onClearRuns}
-              >
-                Delete {count} {runWord}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={busy}
-                onClick={() => setConfirming(false)}
-              >
-                Cancel
-              </Button>
-            </div>
-          ) : (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={() => setConfirming(true)}
-              icon={<Trash2 className="h-3.5 w-3.5" />}
-            >
-              Clear {count} {runWord}
-            </Button>
-          )
+          <ConfirmAction
+            label={`Clear ${count} ${runWord}`}
+            confirmLabel={`Delete ${count} ${runWord}`}
+            icon={<Trash2 className="h-3.5 w-3.5" />}
+            loading={clearing}
+            busy={busy}
+            onConfirm={onClearRuns}
+          />
         ) : (
           <span className="text-[length:var(--fs-xs)] text-(--ui-muted)">
             {count} {runWord}
@@ -97,11 +69,9 @@ function RunRow({ run }: { run: Automation["runs"][number] }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p
-            className={
-              run.outcome === "error"
-                ? "text-[length:var(--fs-sm)] font-medium text-(--ui-danger)"
-                : "text-[length:var(--fs-sm)] font-medium text-(--ui-fg)"
-            }
+            className={`text-[length:var(--fs-sm)] font-medium ${
+              run.outcome === "error" ? "text-(--ui-danger)" : "text-(--ui-fg)"
+            }`}
           >
             {run.outcome === "error" ? "Failed" : "Completed"} {relativeTime(run.at)}
           </p>

@@ -21,7 +21,15 @@ export const NEW_AUTOMATION_DRAFT: AutomationDraft = {
   schedule: { kind: "daily", time: "08:00" },
 };
 
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+export const WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
 
 export function draftFromAutomation(automation: Automation): AutomationDraft {
   return {

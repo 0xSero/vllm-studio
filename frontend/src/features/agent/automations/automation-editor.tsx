@@ -7,9 +7,11 @@ import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import type { Automation, AutomationSchedule } from "@shared/agent/automation";
 import type { AutomationModel } from "./automation-api";
 import { AutomationRunHistory } from "./automation-run-history";
+import { ConfirmAction } from "./confirm-action";
 import { AutomationSessionPicker } from "./automation-session-picker";
 import {
   NEW_AUTOMATION_DRAFT,
+  WEEKDAYS,
   draftFromAutomation,
   draftIsValid,
   relativeTime,
@@ -19,50 +21,26 @@ import {
 
 type EditorAction = "save" | "run" | "status" | "delete" | "clearRuns" | null;
 
-const EXAMPLES: Array<{
-  label: string;
-  draft: Pick<AutomationDraft, "name" | "prompt" | "schedule">;
-}> = [
+// The name doubles as the chip label.
+const EXAMPLES: Array<Pick<AutomationDraft, "name" | "prompt" | "schedule">> = [
   {
-    label: "Daily brief",
-    draft: {
-      name: "Daily brief",
-      prompt: "Review my recent work and summarize priorities, blockers, and next actions.",
-      schedule: { kind: "daily", time: "08:00", weekdaysOnly: true },
-    },
+    name: "Daily brief",
+    prompt: "Review my recent work and summarize priorities, blockers, and next actions.",
+    schedule: { kind: "daily", time: "08:00", weekdaysOnly: true },
   },
   {
-    label: "Weekly review",
-    draft: {
-      name: "Weekly review",
-      prompt: "Review what I worked on this week and draft a concise status update.",
-      schedule: { kind: "weekly", day: 5, time: "16:00" },
-    },
+    name: "Weekly review",
+    prompt: "Review what I worked on this week and draft a concise status update.",
+    schedule: { kind: "weekly", day: 5, time: "16:00" },
   },
   {
-    label: "Follow-up monitor",
-    draft: {
-      name: "Follow-up monitor",
-      prompt: "Review recent activity and flag anything that needs my attention.",
-      schedule: { kind: "interval", minutes: 60 },
-    },
+    name: "Follow-up monitor",
+    prompt: "Review recent activity and flag anything that needs my attention.",
+    schedule: { kind: "interval", minutes: 60 },
   },
 ];
 
-export function AutomationEditor({
-  automation,
-  creating,
-  initialDraft,
-  models,
-  action,
-  error,
-  onClose,
-  onSave,
-  onRun,
-  onToggleStatus,
-  onDelete,
-  onClearRuns,
-}: {
+type AutomationEditorProps = {
   automation: Automation | null;
   creating: boolean;
   /** Seed for a new automation, so a caller can prefill it from its context. */
@@ -76,20 +54,31 @@ export function AutomationEditor({
   onToggleStatus?: () => void;
   onDelete?: () => void;
   onClearRuns?: () => void;
-}) {
+};
+
+export function AutomationEditor(props: AutomationEditorProps) {
+  const {
+    automation,
+    creating,
+    initialDraft,
+    models,
+    action,
+    error,
+    onSave,
+    onDelete,
+    onClearRuns,
+  } = props;
   const [draft, setDraft] = useState<AutomationDraft>(
     () => (automation ? draftFromAutomation(automation) : initialDraft) ?? NEW_AUTOMATION_DRAFT,
   );
-  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useMountSubscription(() => {
     if (draft.modelId || models.length === 0) return;
     setDraft((current) => ({ ...current, modelId: models[0]?.id ?? "" }));
   }, [draft.modelId, models]);
 
-  const updateSchedule = (schedule: AutomationSchedule) => {
-    setDraft((current) => ({ ...current, schedule }));
-  };
+  const patchDraft = (fields: Partial<AutomationDraft>) =>
+    setDraft((current) => ({ ...current, ...fields }));
   const busy = action !== null;
 
   return (
@@ -105,16 +94,7 @@ export function AutomationEditor({
           if (draftIsValid(draft) && !busy) onSave(draft);
         }}
       >
-        <EditorHeader
-          automation={automation}
-          creating={creating}
-          action={action}
-          busy={busy}
-          canSave={draftIsValid(draft)}
-          onClose={onClose}
-          onRun={onRun}
-          onToggleStatus={onToggleStatus}
-        />
+        <EditorHeader {...props} busy={busy} canSave={draftIsValid(draft)} />
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-2xl space-y-5 px-5 py-5 sm:px-7">
             {creating ? (
@@ -125,9 +105,7 @@ export function AutomationEditor({
               <FormField label="Name" required>
                 <Input
                   value={draft.name}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, name: event.target.value }))
-                  }
+                  onChange={(event) => patchDraft({ name: event.target.value })}
                   placeholder="Daily brief"
                   autoFocus={creating}
                 />
@@ -139,9 +117,7 @@ export function AutomationEditor({
               >
                 <Textarea
                   value={draft.prompt}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, prompt: event.target.value }))
-                  }
+                  onChange={(event) => patchDraft({ prompt: event.target.value })}
                   placeholder="What should the agent do?"
                   rows={8}
                   className="resize-y"
@@ -161,16 +137,17 @@ export function AutomationEditor({
                   </p>
                 </div>
               </div>
-              <ScheduleEditor schedule={draft.schedule} onChange={updateSchedule} />
+              <ScheduleEditor
+                schedule={draft.schedule}
+                onChange={(schedule) => patchDraft({ schedule })}
+              />
             </div>
 
             <div className="grid gap-4 border-t border-(--ui-separator) pt-5 sm:grid-cols-2">
               <FormField label="Model" required>
                 <Select
                   value={draft.modelId}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, modelId: event.target.value }))
-                  }
+                  onChange={(event) => patchDraft({ modelId: event.target.value })}
                 >
                   {models.length === 0 ? <option value="">No models available</option> : null}
                   {models.map((model) => (
@@ -186,9 +163,7 @@ export function AutomationEditor({
               >
                 <Input
                   value={draft.cwd}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, cwd: event.target.value }))
-                  }
+                  onChange={(event) => patchDraft({ cwd: event.target.value })}
                   placeholder="/path/to/project"
                 />
               </FormField>
@@ -201,9 +176,7 @@ export function AutomationEditor({
             >
               <AutomationSessionPicker
                 value={draft.targetSessionId}
-                onChange={(targetSessionId) =>
-                  setDraft((current) => ({ ...current, targetSessionId }))
-                }
+                onChange={(targetSessionId) => patchDraft({ targetSessionId })}
               />
             </FormField>
 
@@ -218,14 +191,18 @@ export function AutomationEditor({
 
             {error ? <EditorError error={error} /> : null}
 
+            {/* Delete stays at the far end of the form and behind a confirm —
+                deliberately nowhere near the header where Save now lives. */}
             {!creating && automation ? (
-              <DeleteRow
-                action={action}
+              <ConfirmAction
+                label="Delete automation"
+                confirmLabel="Delete this automation"
+                icon={<Trash2 className="h-3.5 w-3.5" />}
+                loading={action === "delete"}
                 busy={busy}
-                confirmDelete={confirmDelete}
-                onConfirmDelete={() => setConfirmDelete(true)}
-                onCancelDelete={() => setConfirmDelete(false)}
-                onDelete={onDelete}
+                className="border-t border-(--ui-border) pt-6"
+                labelClassName="text-(--ui-danger)"
+                onConfirm={onDelete}
               />
             ) : null}
           </div>
@@ -252,16 +229,7 @@ function EditorHeader({
   onClose,
   onRun,
   onToggleStatus,
-}: {
-  automation: Automation | null;
-  creating: boolean;
-  action: EditorAction;
-  busy: boolean;
-  canSave: boolean;
-  onClose: () => void;
-  onRun?: () => void;
-  onToggleStatus?: () => void;
-}) {
+}: AutomationEditorProps & { busy: boolean; canSave: boolean }) {
   const statusText = creating
     ? "Set up the work once, then let Local Studio run it."
     : automation?.status === "paused"
@@ -275,44 +243,25 @@ function EditorHeader({
         </h2>
         <p className="truncate text-[length:var(--fs-xs)] text-(--ui-muted)">{statusText}</p>
       </div>
-      {!creating && automation ? (
-        <>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            loading={action === "run"}
-            disabled={busy}
-            onClick={onRun}
-            icon={<Play className="h-3.5 w-3.5" />}
-            aria-label="Run now"
-          >
-            {/* Labels step aside on a phone; the icons carry the meaning and the
-                primary action keeps its width. */}
-            <span className="hidden sm:inline">Run now</span>
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            loading={action === "status"}
-            disabled={busy}
-            onClick={onToggleStatus}
-            icon={
-              automation.status === "paused" ? (
-                <Play className="h-3.5 w-3.5" />
-              ) : (
-                <Pause className="h-3.5 w-3.5" />
-              )
-            }
-            aria-label={automation.status === "paused" ? "Resume" : "Pause"}
-          >
-            <span className="hidden sm:inline">
-              {automation.status === "paused" ? "Resume" : "Pause"}
-            </span>
-          </Button>
-        </>
-      ) : null}
+      {!creating && automation
+        ? headerActions(automation.status === "paused", onRun, onToggleStatus).map((entry) => (
+            <Button
+              key={entry.action}
+              type="button"
+              variant="secondary"
+              size="sm"
+              loading={action === entry.action}
+              disabled={busy}
+              onClick={entry.onClick}
+              icon={<entry.Icon className="h-3.5 w-3.5" />}
+              aria-label={entry.label}
+            >
+              {/* Labels step aside on a phone; the icons carry the meaning and the
+                  primary action keeps its width. */}
+              <span className="hidden sm:inline">{entry.label}</span>
+            </Button>
+          ))
+        : null}
       <Button type="submit" size="sm" loading={action === "save"} disabled={!canSave || busy}>
         {creating ? "Create" : "Save"}
         <span className="hidden sm:inline">{creating ? " automation" : " changes"}</span>
@@ -330,6 +279,18 @@ function EditorHeader({
   );
 }
 
+function headerActions(paused: boolean, onRun?: () => void, onToggleStatus?: () => void) {
+  return [
+    { action: "run" as const, label: "Run now", Icon: Play, onClick: onRun },
+    {
+      action: "status" as const,
+      label: paused ? "Resume" : "Pause",
+      Icon: paused ? Play : Pause,
+      onClick: onToggleStatus,
+    },
+  ];
+}
+
 function ExamplePicker({
   draft,
   onSelect,
@@ -345,13 +306,13 @@ function ExamplePicker({
       <div className="flex flex-wrap gap-2">
         {EXAMPLES.map((example) => (
           <button
-            key={example.label}
+            key={example.name}
             type="button"
-            onClick={() => onSelect({ ...draft, ...example.draft })}
+            onClick={() => onSelect({ ...draft, ...example })}
             className="inline-flex h-8 items-center gap-1.5 rounded-full bg-(--ui-fg)/5 px-3 text-[length:var(--fs-sm)] text-(--ui-muted) transition-colors hover:bg-(--ui-fg)/10 hover:text-(--ui-fg)"
           >
             <Plus className="h-3 w-3" />
-            {example.label}
+            {example.name}
           </button>
         ))}
       </div>
@@ -370,65 +331,14 @@ function EditorError({ error }: { error: string }) {
   );
 }
 
-/**
- * Delete, kept at the far end of the form and behind a confirm — deliberately
- * nowhere near the header where Save now lives.
- */
-function DeleteRow({
-  action,
-  busy,
-  confirmDelete,
-  onConfirmDelete,
-  onCancelDelete,
-  onDelete,
-}: {
-  action: EditorAction;
-  busy: boolean;
-  confirmDelete: boolean;
-  onConfirmDelete: () => void;
-  onCancelDelete: () => void;
-  onDelete?: () => void;
-}) {
-  return (
-    <div className="flex items-center gap-2 border-t border-(--ui-border) pt-6">
-      {confirmDelete ? (
-        <>
-          <Button
-            type="button"
-            variant="danger"
-            size="sm"
-            loading={action === "delete"}
-            disabled={busy}
-            onClick={onDelete}
-          >
-            Delete this automation
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={busy}
-            onClick={onCancelDelete}
-          >
-            Cancel
-          </Button>
-        </>
-      ) : (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={busy}
-          onClick={onConfirmDelete}
-          icon={<Trash2 className="h-3.5 w-3.5" />}
-          className="text-(--ui-danger)"
-        >
-          Delete automation
-        </Button>
-      )}
-    </div>
-  );
-}
+// What each "Repeat" option resets the schedule to; unknown values fall back to
+// plain daily, which is also the default a new draft starts from.
+const REPEAT_PRESETS: Record<string, AutomationSchedule> = {
+  interval: { kind: "interval", minutes: 60 },
+  weekly: { kind: "weekly", day: 1, time: "08:00" },
+  weekdays: { kind: "daily", time: "08:00", weekdaysOnly: true },
+  daily: { kind: "daily", time: "08:00" },
+};
 
 function ScheduleEditor({
   schedule,
@@ -443,17 +353,7 @@ function ScheduleEditor({
       <FormField label="Repeat">
         <Select
           value={mode}
-          onChange={(event) => {
-            const next = event.target.value;
-            if (next === "interval") onChange({ kind: "interval", minutes: 60 });
-            else if (next === "weekly") onChange({ kind: "weekly", day: 1, time: "08:00" });
-            else
-              onChange({
-                kind: "daily",
-                time: "08:00",
-                ...(next === "weekdays" ? { weekdaysOnly: true } : {}),
-              });
-          }}
+          onChange={(event) => onChange(REPEAT_PRESETS[event.target.value] ?? REPEAT_PRESETS.daily)}
         >
           <option value="interval">Every few minutes or hours</option>
           <option value="daily">Daily</option>
@@ -495,13 +395,11 @@ function ScheduleEditor({
               onChange({ ...schedule, day: Number.parseInt(event.target.value, 10) })
             }
           >
-            {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map(
-              (day, index) => (
-                <option key={day} value={index}>
-                  {day}
-                </option>
-              ),
-            )}
+            {WEEKDAYS.map((day, index) => (
+              <option key={day} value={index}>
+                {day}
+              </option>
+            ))}
           </Select>
         </FormField>
       ) : null}

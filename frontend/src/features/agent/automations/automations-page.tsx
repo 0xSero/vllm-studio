@@ -63,30 +63,29 @@ export default function AutomationsPage() {
       });
   }, []);
 
+  const replaceAutomation = useCallback((updated: Automation) => {
+    setAutomations(
+      (current) =>
+        current?.map((automation) => (automation.id === updated.id ? updated : automation)) ?? [],
+    );
+  }, []);
+
   useMountSubscription(() => {
     if (!selected?.unread) return;
     void Effect.runPromise(updateAutomation(selected.id, { unread: false }))
-      .then((updated) => {
-        setAutomations(
-          (current) =>
-            current?.map((automation) => (automation.id === updated.id ? updated : automation)) ??
-            [],
-        );
-      })
+      .then(replaceAutomation)
       .catch(() => undefined);
-  }, [selected?.id, selected?.unread]);
+  }, [selected?.id, selected?.unread, replaceAutomation]);
 
   const navigate = useCallback(
     (target: "index" | "new" | Automation) => {
-      if (target === "index") {
-        router.push("/agent/automations");
-        return;
-      }
-      if (target === "new") {
-        router.push("/agent/automations?new=1");
-        return;
-      }
-      router.push(`/agent/automations?automation=${encodeURIComponent(target.id)}`);
+      const query =
+        target === "index"
+          ? ""
+          : target === "new"
+            ? "?new=1"
+            : `?automation=${encodeURIComponent(target.id)}`;
+      router.push(`/agent/automations${query}`);
     },
     [router],
   );
@@ -141,22 +140,14 @@ export default function AutomationsPage() {
         status: selected.status === "paused" ? "active" : "paused",
       }),
     );
-    if (!updated) return;
-    setAutomations(
-      (current) =>
-        current?.map((automation) => (automation.id === updated.id ? updated : automation)) ?? [],
-    );
-  }, [perform, selected]);
+    if (updated) replaceAutomation(updated);
+  }, [perform, replaceAutomation, selected]);
 
   const clearRuns = useCallback(async () => {
     if (!selected) return;
     const updated = await perform("clearRuns", clearAutomationRuns(selected.id));
-    if (!updated) return;
-    setAutomations(
-      (current) =>
-        current?.map((automation) => (automation.id === updated.id ? updated : automation)) ?? [],
-    );
-  }, [perform, selected]);
+    if (updated) replaceAutomation(updated);
+  }, [perform, replaceAutomation, selected]);
 
   const remove = useCallback(async () => {
     if (!selected) return;
