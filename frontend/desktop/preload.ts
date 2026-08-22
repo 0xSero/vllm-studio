@@ -19,28 +19,6 @@ const bridge: DesktopBridge = {
   getKittylitterPairingJson: () => ipcRenderer.invoke("desktop:get-kittylitter-pairing-json"),
   copyKittylitterPairingJson: (pairingJson) =>
     ipcRenderer.invoke("desktop:copy-kittylitter-pairing-json", pairingJson),
-  terminal: {
-    status: () => ipcRenderer.invoke("desktop:pty-status"),
-    open: (opts) => ipcRenderer.invoke("desktop:pty-open", opts),
-    write: (id, data) => ipcRenderer.invoke("desktop:pty-write", id, data),
-    resize: (id, cols, rows) => ipcRenderer.invoke("desktop:pty-resize", id, cols, rows),
-    close: (id) => ipcRenderer.invoke("desktop:pty-close", id),
-    closeOwner: (ownerKey) => ipcRenderer.invoke("desktop:pty-close-owner", ownerKey),
-    onData: (listener) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: { id: string; chunk: string }) =>
-        listener(payload.id, payload.chunk);
-      ipcRenderer.on("desktop:pty-data", handler);
-      return () => ipcRenderer.removeListener("desktop:pty-data", handler);
-    },
-    onExit: (listener) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        payload: { id: string; exitCode: number; signal: number | null },
-      ) => listener(payload.id, { exitCode: payload.exitCode, signal: payload.signal });
-      ipcRenderer.on("desktop:pty-exit", handler);
-      return () => ipcRenderer.removeListener("desktop:pty-exit", handler);
-    },
-  },
   controllerDeploy: {
     start: (options) => ipcRenderer.invoke("desktop:controller-deploy", options),
     onLog: (listener) => {

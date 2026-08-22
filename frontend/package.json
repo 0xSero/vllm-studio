@@ -25,7 +25,7 @@
     "check:cleanup": "npm run check:deadcode && npm run check:dupes && npm run depcheck",
     "check:ui-structure": "node ../scripts/project.mjs validate-ui",
     "check:fix": "knip --fix",
-    "desktop:build:main": "tsc -p desktop/tsconfig.json --noEmit && bun build desktop/main.ts desktop/preload.ts --outdir desktop/dist --target=node --format=cjs --minify --external electron --external @lydell/node-pty",
+    "desktop:build:main": "tsc -p desktop/tsconfig.json --noEmit && bun build desktop/main.ts desktop/preload.ts --outdir desktop/dist --target=node --format=cjs --minify --external electron",
     "desktop:start": "electron desktop/dist/main.js",
     "desktop:start:dev": "LOCAL_STUDIO_DESKTOP_DEV_SERVER_URL=http://127.0.0.1:3000 electron desktop/dist/main.js",
     "desktop:build": "npm run build && npm run desktop:build:main",

@@ -1777,12 +1777,6 @@ async function afterPack(context) {
   ].find((file) => !existsSync(file));
   if (missingAgentRuntimeFile)
     throw Error(`Packaged app is missing an agent runtime dependency: ${missingAgentRuntimeFile}`);
-  let desktopRuntimeRoot = path.join(resourcesDir, "desktop-runtime", "node_modules", "@lydell"), missingDesktopRuntimeFile = [
-    path.join(desktopRuntimeRoot, "node-pty", "package.json"),
-    path.join(desktopRuntimeRoot, `node-pty-${process.platform}-${process.arch}`, "package.json")
-  ].find((file) => !existsSync(file));
-  if (missingDesktopRuntimeFile)
-    throw Error(`Packaged app is missing a desktop runtime dependency: ${missingDesktopRuntimeFile}`);
   let unwantedRuntimeFile = [standaloneBase, agentRuntimeRoot].flatMap((directory) => readdirSync10(directory, { recursive: !0, withFileTypes: !0 }).filter((entry) => entry.isFile() && /\.(?:map|[cm]?ts)$/.test(entry.name)).map((entry) => path.join(entry.parentPath, entry.name)))[0];
   if (unwantedRuntimeFile)
     throw Error(`Packaged app contains a non-runtime source artifact: ${unwantedRuntimeFile}`);
