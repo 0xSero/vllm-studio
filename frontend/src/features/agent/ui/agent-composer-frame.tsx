@@ -82,87 +82,41 @@ export type AgentComposerFrameProps = {
   dense?: boolean;
 };
 
-export function AgentComposerFrame({
-  attachments,
-  banner,
-  browserToolEnabled,
-  browserBackend,
-  composerDragActive,
-  contextWindow,
-  currentContextTokens,
-  cwd,
-  fileInputRef,
-  gitBranch,
-  gitSummary,
-  input,
-  mention,
-  mentionIndex,
-  mentionRows,
-  modelSupportsVision,
-  modelSelector,
-  onAbortTurn,
-  onAttachFiles,
-  onComposerChange,
-  onComposerDragLeave,
-  onComposerDragOver,
-  onComposerDrop,
-  onComposerKeyDown,
-  onComposerPaste,
-  onInitGit,
-  onOpenStatus,
-  onOpenDiff,
-  onRemoveAttachment,
-  onRemoveLoadedContext,
-  onSelectMention,
-  onSubmit,
-  onToggleBrowserBackend,
-  onToggleBrowserTool,
-  placeholder,
-  goalMode = false,
-  onExitGoalMode,
-  drawer,
-  showStatusBar,
-  promptTemplates,
-  readingAttachments,
-  running,
-  selectedSkills,
-  status,
-  textareaRef,
-  dense = false,
-}: AgentComposerFrameProps) {
+export function AgentComposerFrame(props: AgentComposerFrameProps) {
+  const { dense = false, goalMode = false } = props;
   return (
     <form
-      onSubmit={onSubmit}
+      onSubmit={props.onSubmit}
       className={cx(
         "relative z-[100] shrink-0",
         dense ? "bg-(--agent-bg) px-3 pb-1 pt-1.5" : "bg-transparent px-3 pb-2 pt-0 sm:px-5",
       )}
     >
-      {banner ? (
+      {props.banner ? (
         <div className="mx-auto flex w-full max-w-[calc(var(--composer-w)*0.9)] items-center gap-2 pb-3 pl-1 text-[length:var(--codex-chat-font-size)] text-(--fg)/35 sm:w-[90%]">
           <Spinner size="xs" />
-          {banner.label}
+          {props.banner.label}
         </div>
       ) : null}
-      {drawer}
+      {props.drawer}
       <div
-        onDragOver={onComposerDragOver}
-        onDragLeave={onComposerDragLeave}
-        onDrop={onComposerDrop}
+        onDragOver={props.onComposerDragOver}
+        onDragLeave={props.onComposerDragLeave}
+        onDrop={props.onComposerDrop}
         className={cx(
           "agent-composer-box relative z-10 mx-auto w-full max-w-[calc(var(--composer-w)*0.9)] overflow-visible rounded-[var(--composer-radius)] border border-(--border) bg-(--composer) shadow-[var(--composer-elevation)] backdrop-blur-lg transition-colors [corner-shape:superellipse(1.5)] sm:w-[90%]",
-          composerDragActive && "outline outline-1 outline-(--link)/50",
+          props.composerDragActive && "outline outline-1 outline-(--link)/50",
         )}
       >
-        {composerDragActive ? (
+        {props.composerDragActive ? (
           <div className="px-4 pt-2 text-[length:var(--fs-sm)] text-(--link)">
             Drop files to attach to the next message.
           </div>
         ) : null}
         <AgentLoadedContextTabs
-          skills={selectedSkills}
-          promptTemplates={promptTemplates}
-          onRemove={onRemoveLoadedContext}
+          skills={props.selectedSkills}
+          promptTemplates={props.promptTemplates}
+          onRemove={props.onRemoveLoadedContext}
         />
         {goalMode ? (
           <div className="flex items-center gap-1.5 px-3 pt-2.5">
@@ -174,7 +128,7 @@ export function AgentComposerFrame({
               Goal
               <button
                 type="button"
-                onClick={onExitGoalMode}
+                onClick={props.onExitGoalMode}
                 aria-label="Exit goal mode"
                 className="rounded-full p-0.5 text-(--accent)/70 transition-colors hover:bg-(--accent)/15 hover:text-(--accent)"
               >
@@ -186,55 +140,55 @@ export function AgentComposerFrame({
             </span>
           </div>
         ) : null}
-        {mention ? (
+        {props.mention ? (
           <div className={`absolute inset-x-0 bottom-full z-20 mb-2 ${POPOVER_MENU_CLASS}`}>
             <AgentMentionPicker
-              mention={mention}
-              rows={mentionRows}
-              activeIndex={mentionIndex}
-              onSelect={onSelectMention}
+              mention={props.mention}
+              rows={props.mentionRows}
+              activeIndex={props.mentionIndex}
+              onSelect={props.onSelectMention}
             />
           </div>
         ) : null}
         <AgentAttachmentTray
-          attachments={attachments}
-          modelSupportsVision={modelSupportsVision}
-          onRemove={onRemoveAttachment}
+          attachments={props.attachments}
+          modelSupportsVision={props.modelSupportsVision}
+          onRemove={props.onRemoveAttachment}
         />
         <AgentComposerTextArea
-          inputRef={textareaRef}
-          value={input}
-          onPaste={onComposerPaste}
-          onChange={onComposerChange}
-          onKeyDown={onComposerKeyDown}
-          placeholder={placeholder}
+          inputRef={props.textareaRef}
+          value={props.input}
+          onPaste={props.onComposerPaste}
+          onChange={props.onComposerChange}
+          onKeyDown={props.onComposerKeyDown}
+          placeholder={props.placeholder}
         />
         <AgentComposerActions
-          fileInputRef={fileInputRef}
-          onAttachFiles={onAttachFiles}
-          readingAttachments={readingAttachments}
-          running={running}
-          status={status}
-          input={input}
-          attachmentsCount={attachments.length}
-          browserToolEnabled={browserToolEnabled}
-          browserBackend={browserBackend}
-          onToggleBrowserBackend={onToggleBrowserBackend}
-          onToggleBrowserTool={onToggleBrowserTool}
-          onAbortTurn={onAbortTurn}
-          modelSelector={modelSelector}
+          fileInputRef={props.fileInputRef}
+          onAttachFiles={props.onAttachFiles}
+          readingAttachments={props.readingAttachments}
+          running={props.running}
+          status={props.status}
+          input={props.input}
+          attachmentsCount={props.attachments.length}
+          browserToolEnabled={props.browserToolEnabled}
+          browserBackend={props.browserBackend}
+          onToggleBrowserBackend={props.onToggleBrowserBackend}
+          onToggleBrowserTool={props.onToggleBrowserTool}
+          onAbortTurn={props.onAbortTurn}
+          modelSelector={props.modelSelector}
         />
       </div>
-      {showStatusBar ? (
+      {props.showStatusBar ? (
         <AgentComposerStatusBar
-          cwd={cwd}
-          gitBranch={gitBranch}
-          gitSummary={gitSummary}
-          onInitGit={onInitGit}
-          currentContextTokens={currentContextTokens}
-          contextWindow={contextWindow}
-          onOpenStatus={onOpenStatus}
-          onOpenDiff={onOpenDiff}
+          cwd={props.cwd}
+          gitBranch={props.gitBranch}
+          gitSummary={props.gitSummary}
+          onInitGit={props.onInitGit}
+          currentContextTokens={props.currentContextTokens}
+          contextWindow={props.contextWindow}
+          onOpenStatus={props.onOpenStatus}
+          onOpenDiff={props.onOpenDiff}
         />
       ) : (
         <div
