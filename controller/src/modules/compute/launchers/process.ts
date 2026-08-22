@@ -32,27 +32,24 @@ const parsePsIdentity = (line: string): ProcessIdentity | null => {
   const processGroupId = Number(match[3]);
   const sessionId = Number(match[4]);
   const startToken = match[5]?.trim() ?? "";
-  if (
-    ![pid, parentProcessId, processGroupId, sessionId].every(Number.isSafeInteger) ||
-    !startToken
-  ) return null;
+  if (![pid, parentProcessId, processGroupId, sessionId].every(Number.isSafeInteger) || !startToken)
+    return null;
   return { pid, parentProcessId, processGroupId, sessionId, startToken, launchMarker: null };
 };
 
-const readPosixLaunchMarker = (pid: number): string | null => {
+const ps = (args: readonly string[]): string | null => {
   try {
-    const result = spawnSync(
-      "ps",
-      ["eww", "-p", String(pid), "-o", "command="],
-      { encoding: "utf8" },
-    );
-    if (result.status !== 0) return null;
-    const match = result.stdout.toString().match(new RegExp(`(?:^|\\s)${LAUNCH_MARKER}=([^\\s]+)`));
-    return match?.[1] ?? null;
+    const result = spawnSync("ps", [...args], { encoding: "utf8" });
+    return result.status === 0 ? result.stdout.toString() : null;
   } catch {
     return null;
   }
 };
+
+const readPosixLaunchMarker = (pid: number): string | null =>
+  ps(["eww", "-p", String(pid), "-o", "command="])?.match(
+    new RegExp(`(?:^|\\s)${LAUNCH_MARKER}=([^\\s]+)`),
+  )?.[1] ?? null;
 
 const readLinuxIdentity = (pid: number): ProcessIdentity | null => {
   try {
@@ -65,7 +62,8 @@ const readLinuxIdentity = (pid: number): ProcessIdentity | null => {
     if (
       ![pid, parentProcessId, processGroupId, sessionId].every(Number.isSafeInteger) ||
       !startToken
-    ) return null;
+    )
+      return null;
     const prefix = `${LAUNCH_MARKER}=`;
     let launchMarker: string | null = null;
     try {
@@ -96,41 +94,22 @@ const readLinuxGroup = (processGroupId: number): readonly ProcessIdentity[] | nu
 };
 
 const readPosixIdentity = (pid: number): ProcessIdentity | null => {
-  try {
-    const result = spawnSync(
-      "ps",
-      ["-o", "pid=,ppid=,pgid=,sid=,lstart=", "-p", String(pid)],
-      { encoding: "utf8" },
-    );
-    if (result.status !== 0) return null;
-    const identity = parsePsIdentity(result.stdout.toString());
-    if (!identity) return null;
-    return { ...identity, launchMarker: readPosixLaunchMarker(pid) };
-  } catch {
-    return null;
-  }
+  const listing = ps(["-o", "pid=,ppid=,pgid=,sid=,lstart=", "-p", String(pid)]);
+  const identity = listing === null ? null : parsePsIdentity(listing);
+  return identity && { ...identity, launchMarker: readPosixLaunchMarker(pid) };
 };
 
 const readPosixGroup = (processGroupId: number): readonly ProcessIdentity[] | null => {
-  try {
-    const result = spawnSync(
-      "ps",
-      ["-axo", "pid=,ppid=,pgid=,sid=,lstart="],
-      { encoding: "utf8" },
-    );
-    if (result.status !== 0) return null;
-    return result.stdout
-      .toString()
-      .split(/\r?\n/)
-      .map((line) => parsePsIdentity(line))
-      .filter(
-        (identity): identity is ProcessIdentity =>
-          identity !== null && identity.processGroupId === processGroupId,
-      )
-      .map((identity) => ({ ...identity, launchMarker: readPosixLaunchMarker(identity.pid) }));
-  } catch {
-    return null;
-  }
+  const listing = ps(["-axo", "pid=,ppid=,pgid=,sid=,lstart="]);
+  if (listing === null) return null;
+  return listing
+    .split(/\r?\n/)
+    .map((line) => parsePsIdentity(line))
+    .filter(
+      (identity): identity is ProcessIdentity =>
+        identity !== null && identity.processGroupId === processGroupId,
+    )
+    .map((identity) => ({ ...identity, launchMarker: readPosixLaunchMarker(identity.pid) }));
 };
 
 interface WindowsProcessEntry {
@@ -162,9 +141,7 @@ const readWindowsEntries = (): readonly WindowsProcessEntry[] | null => {
       const pid = Number(value["ProcessId"]);
       const parentProcessId = Number(value["ParentProcessId"]);
       const startToken = String(value["CreationDate"] ?? "");
-      return Number.isSafeInteger(pid) &&
-        Number.isSafeInteger(parentProcessId) &&
-        startToken
+      return Number.isSafeInteger(pid) && Number.isSafeInteger(parentProcessId) && startToken
         ? [{ pid, parentProcessId, startToken }]
         : [];
     });
@@ -173,19 +150,19 @@ const readWindowsEntries = (): readonly WindowsProcessEntry[] | null => {
   }
 };
 
+/** Windows has no process groups; the root pid stands in for both group and session. */
+const windowsIdentity = (entry: WindowsProcessEntry, processGroupId: number): ProcessIdentity => ({
+  pid: entry.pid,
+  processGroupId,
+  sessionId: processGroupId,
+  startToken: entry.startToken,
+  launchMarker: null,
+  parentProcessId: entry.parentProcessId,
+});
+
 const readWindowsIdentity = (pid: number): ProcessIdentity | null => {
-  const entries = readWindowsEntries();
-  const entry = entries?.find((candidate) => candidate.pid === pid);
-  return entry
-    ? {
-        pid,
-        processGroupId: pid,
-        sessionId: pid,
-        startToken: entry.startToken,
-        launchMarker: null,
-        parentProcessId: entry.parentProcessId,
-      }
-    : null;
+  const entry = readWindowsEntries()?.find((candidate) => candidate.pid === pid);
+  return entry ? windowsIdentity(entry, pid) : null;
 };
 
 const readWindowsGroup = (processGroupId: number): readonly ProcessIdentity[] | null => {
@@ -210,14 +187,7 @@ const readWindowsGroup = (processGroupId: number): readonly ProcessIdentity[] | 
     seen.add(pid);
     const entry = entries.find((candidate) => candidate.pid === pid);
     if (!entry) return null;
-    members.push({
-      pid: entry.pid,
-      processGroupId,
-      sessionId: processGroupId,
-      startToken: entry.startToken,
-      launchMarker: null,
-      parentProcessId: entry.parentProcessId,
-    });
+    members.push(windowsIdentity(entry, processGroupId));
     for (const child of byParent.get(pid) ?? []) pending.push(child.pid);
   }
   return members;
@@ -231,7 +201,12 @@ const signalPosixGroup = (processGroupId: number, signal: NodeJS.Signals): void 
 
 const signalWindowsTree = (processId: number, signal: NodeJS.Signals): void => {
   try {
-    spawnSync("taskkill.exe", ["/PID", String(processId), "/T", ...(signal === "SIGKILL" ? ["/F"] : [])]);
+    spawnSync("taskkill.exe", [
+      "/PID",
+      String(processId),
+      "/T",
+      ...(signal === "SIGKILL" ? ["/F"] : []),
+    ]);
   } catch {}
 };
 
@@ -278,18 +253,34 @@ const readTailBytes = (path: string, bytes: number): string => {
 
 const sameProcessReference = (reference: HandleReference, record: InstanceRecord): boolean => {
   const stored = record.ref;
-  return reference.kind === "process" &&
+  return (
+    reference.kind === "process" &&
     stored?.kind === "process" &&
     reference.pid === stored.pid &&
     reference.processGroupId === stored.processGroupId &&
     reference.sessionId === stored.sessionId &&
-    reference.startToken === stored.startToken;
+    reference.startToken === stored.startToken
+  );
 };
 
 const childRunning = (child: ChildProcess): boolean =>
   child.exitCode === null && child.signalCode === null;
 
 type ProcessOwnership = "owned" | "local" | "gone" | "unknown";
+
+/** Does a freshly read root identity still match the handle we recorded? Applied both to
+ *  the identity we read directly and to the one the group listing reported. */
+const rootMatches = (
+  identity: ProcessIdentity,
+  reference: Extract<HandleReference, { readonly kind: "process" }>,
+  record: InstanceRecord,
+  platform: NodeJS.Platform,
+): boolean =>
+  identity.pid === reference.pid &&
+  identity.processGroupId === reference.processGroupId &&
+  identity.sessionId === reference.sessionId &&
+  (reference.startToken === null || identity.startToken === reference.startToken) &&
+  (platform === "win32" || identity.launchMarker === record.nonce);
 
 const sameProcessIdentity = (expected: ProcessIdentity, actual: ProcessIdentity): boolean =>
   expected.pid === actual.pid &&
@@ -306,11 +297,9 @@ const groupOwnership = (
   members: readonly ProcessIdentity[] | null,
   rootIdentity: ProcessIdentity | null,
 ): ProcessOwnership => {
-  if (
-    reference.processGroupId === null ||
-    reference.sessionId === null ||
-    members === null
-  ) return "unknown";
+  if (reference.processGroupId === null || reference.sessionId === null || members === null) {
+    return "unknown";
+  }
   if (members.length === 0) return "gone";
   const roots = members.filter((member) => member.pid === reference.pid);
   const root = roots[0];
@@ -333,37 +322,31 @@ const groupOwnership = (
   if (verifiedMembers.length !== members.length) return "unknown";
   const verifiedRoot = verifiedMembers.find((member) => member.pid === reference.pid);
   if (rootIdentity) {
-    if (!verifiedRoot || !sameProcessIdentity(rootIdentity, verifiedRoot)) return "unknown";
     if (
-      rootIdentity.pid !== reference.pid ||
-      rootIdentity.processGroupId !== reference.processGroupId ||
-      rootIdentity.sessionId !== reference.sessionId ||
-      (reference.startToken !== null && rootIdentity.startToken !== reference.startToken) ||
-      (runtime.platform !== "win32" && rootIdentity.launchMarker !== record.nonce)
-    ) return "unknown";
-    if (
+      !verifiedRoot ||
+      !sameProcessIdentity(rootIdentity, verifiedRoot) ||
+      !rootMatches(rootIdentity, reference, record, runtime.platform) ||
       verifiedRoot.processGroupId !== reference.processGroupId ||
       verifiedRoot.sessionId !== reference.sessionId ||
       verifiedRoot.startToken !== rootIdentity.startToken ||
       (reference.startToken !== null && verifiedRoot.startToken !== reference.startToken)
-    ) return "unknown";
+    ) {
+      return "unknown";
+    }
   } else if (verifiedRoot) {
     return "unknown";
   }
-  if (verifiedMembers.some((member) => member.startToken.length === 0)) return "unknown";
   if (new Set(verifiedMembers.map((member) => member.pid)).size !== verifiedMembers.length) {
     return "unknown";
   }
   if (
     verifiedMembers.some(
       (member) =>
+        member.startToken.length === 0 ||
         member.processGroupId !== reference.processGroupId ||
-        member.sessionId !== reference.sessionId,
+        member.sessionId !== reference.sessionId ||
+        (runtime.platform !== "win32" && member.launchMarker !== record.nonce),
     )
-  ) return "unknown";
-  if (
-    runtime.platform !== "win32" &&
-    verifiedMembers.some((member) => member.launchMarker !== record.nonce)
   ) {
     return "unknown";
   }
@@ -400,14 +383,7 @@ const ownership = (
   if (child && childRunning(child)) {
     if (runtime.platform === "win32" && reference.startToken === null) return "local";
     const identity = runtime.readIdentity(reference.pid);
-    if (
-      !identity ||
-      identity.pid !== reference.pid ||
-      identity.processGroupId !== reference.processGroupId ||
-      identity.sessionId !== reference.sessionId ||
-      (reference.startToken !== null && identity.startToken !== reference.startToken) ||
-      (runtime.platform !== "win32" && identity.launchMarker !== record.nonce)
-    ) return "unknown";
+    if (!identity || !rootMatches(identity, reference, record, runtime.platform)) return "unknown";
     return groupOwnership(
       reference,
       record,
@@ -416,13 +392,10 @@ const ownership = (
       identity,
     );
   }
-  if (
-    reference.processGroupId === null ||
-    reference.sessionId === null
-  ) return "unknown";
+  if (reference.processGroupId === null || reference.sessionId === null) return "unknown";
   const members = runtime.readGroup(reference.processGroupId);
   if (members === null) return "unknown";
-  if (members?.length === 0) return "gone";
+  if (members.length === 0) return "gone";
   if (reference.startToken === null) return "unknown";
   const rootIdentity = runtime.readIdentity(reference.pid);
   return groupOwnership(reference, record, runtime, members, rootIdentity);
@@ -433,6 +406,8 @@ export const makeProcessLauncher = (
   runtime: ProcessLauncherRuntime = realRuntime,
 ): Launcher => {
   const localChildren = new Map<number, ChildProcess>();
+  const ownershipOf = (reference: HandleReference, record: InstanceRecord): ProcessOwnership =>
+    ownership(reference, record, runtime, localChildren);
 
   return {
     start: (plan: LaunchPlan, record: InstanceRecord) =>
@@ -495,14 +470,10 @@ export const makeProcessLauncher = (
       }),
 
     alive: (reference, record) =>
-      Effect.sync(() =>
-        reference.kind === "process" && ownership(reference, record, runtime, localChildren) !== "gone",
-      ),
+      Effect.sync(() => reference.kind === "process" && ownershipOf(reference, record) !== "gone"),
 
     owns: (reference, record) =>
-      Effect.sync(() =>
-        reference.kind === "process" && ownership(reference, record, runtime, localChildren) === "owned",
-      ),
+      Effect.sync(() => reference.kind === "process" && ownershipOf(reference, record) === "owned"),
 
     stop: (reference, record, graceMs) =>
       Effect.gen(function* () {
@@ -524,18 +495,18 @@ export const makeProcessLauncher = (
         }
         const processGroupId = reference.processGroupId;
         const term = yield* Effect.sync(() => {
-          if (ownership(reference, record, runtime, localChildren) !== "owned") return false;
+          if (ownershipOf(reference, record) !== "owned") return false;
           runtime.signalGroup(processGroupId, "SIGTERM");
           return true;
         });
         if (!term) return;
         const deadline = Date.now() + graceMs;
         while (Date.now() < deadline) {
-          if (ownership(reference, record, runtime, localChildren) !== "owned") return;
+          if (ownershipOf(reference, record) !== "owned") return;
           yield* Effect.sleep(STOP_POLL_MS);
         }
         yield* Effect.sync(() => {
-          if (ownership(reference, record, runtime, localChildren) === "owned") {
+          if (ownershipOf(reference, record) === "owned") {
             runtime.signalGroup(processGroupId, "SIGKILL");
           }
         });
