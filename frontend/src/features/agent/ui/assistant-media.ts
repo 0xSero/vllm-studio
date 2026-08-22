@@ -1,4 +1,4 @@
-import { resolveFileOpenTarget } from "@/features/agent/ui/filesystem-panel-effects";
+import { resolveFileOpenTarget } from "@/features/agent/ui/file-open-target";
 
 export type AssistantMediaKind = "image" | "video" | "audio";
 

@@ -25,7 +25,7 @@ import {
 } from "@/features/agent/ui/filesystem-preview";
 import { FileOpenActions } from "@/features/agent/ui/file-open-actions";
 import { Breadcrumb, fileTone, TreeFileList } from "@/features/agent/ui/filesystem-tree";
-import { useFilesystemPanelEffects } from "@/features/agent/ui/filesystem-panel-effects";
+import { resolveFileOpenTarget } from "@/features/agent/ui/file-open-target";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { FILESYSTEM_CHANGED_EVENT } from "@/lib/workspace-events";
 
@@ -95,34 +95,159 @@ export function FilesystemPanel({ cwd }: Props) {
     window.addEventListener(FILESYSTEM_CHANGED_EVENT, refresh);
     return () => window.removeEventListener(FILESYSTEM_CHANGED_EVENT, refresh);
   }, []);
-  useFilesystemPanelEffects({
-    cwd: projectRoot,
-    root,
-    relPath,
-    openFile,
-    skipTextRead: binaryPreview,
-    refreshRevision,
-    preserveDraft: dirty,
-    fileOpenRequest,
-    lastOpenFileByProject,
-    rootRef,
-    setRootOverride,
-    setRelPath,
-    setEntries,
-    setOpenFile,
-    setFileContent,
-    setDraftContent,
-    setFileTruncated,
-    setFileSize,
-    setLoadingFile,
-    setSaveError,
-    setComments,
-    setSearchQuery,
-    setExpandedDirs,
-    setDirChildren,
-    setDirLoading,
-    setLastOpenFileByProject,
-  });
+  const handledFileOpenRequest = useRef(0);
+  // A file-open request can land on a root the panel is not showing yet (an
+  // absolute path outside the session project). Switching roots re-runs the
+  // reset effect below, which would wipe the file we were asked to open, so the
+  // request parks its target here and the reset effect adopts it.
+  const pendingOpen = useRef<{ root: string; rel: string; relPath: string } | null>(null);
+  // Root whose open file came from a request, so the "restore last file"
+  // effect does not immediately replace it with a remembered one.
+  const pendingApplied = useRef<string | null>(null);
+
+  useMountSubscription(() => {
+    rootRef.current = root;
+  }, [root]);
+
+  // Switching session/project drops any external root the panel had adopted.
+  useMountSubscription(() => {
+    setRootOverride(null);
+  }, [projectRoot]);
+
+  useMountSubscription(() => {
+    const pending = pendingOpen.current;
+    const adopted = pending && pending.root === root ? pending : null;
+    pendingOpen.current = null;
+    pendingApplied.current = adopted ? root : null;
+    setRelPath(adopted?.relPath ?? "");
+    setOpenFile(adopted?.rel ?? null);
+    setFileContent("");
+    setDraftContent("");
+    setFileTruncated(false);
+    setFileSize(0);
+    setSaveError(null);
+    setComments([]);
+    setSearchQuery("");
+    setExpandedDirs(new Set());
+    setDirChildren(new Map());
+    setDirLoading(new Set());
+  }, [root]);
+
+  useMountSubscription(() => {
+    if (!root) {
+      setEntries([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(
+          `/api/agent/fs?cwd=${encodeURIComponent(root)}&path=${encodeURIComponent(relPath)}`,
+          { cache: "no-store" },
+        );
+        const payload = (await response.json()) as { entries?: FsEntry[]; error?: string };
+        if (!cancelled) setEntries(payload.entries ?? []);
+      } catch {
+        if (!cancelled) setEntries([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [root, relPath, refreshRevision]);
+
+  useMountSubscription(() => {
+    if (!root || pendingApplied.current === root) return;
+    const remembered = lastOpenFileByProject[root];
+    if (remembered) setOpenFile(remembered);
+  }, [root, lastOpenFileByProject]);
+
+  useMountSubscription(() => {
+    if (!fileOpenRequest || handledFileOpenRequest.current === fileOpenRequest.id) {
+      return;
+    }
+    handledFileOpenRequest.current = fileOpenRequest.id;
+    const target = resolveFileOpenTarget(fileOpenRequest.path, projectRoot);
+    if (!target) return;
+    // Returning to the session project clears the override rather than pinning
+    // an identical root, so the "external root" bar stays off.
+    const nextOverride = target.root === projectRoot ? null : target.root;
+    if ((nextOverride ?? projectRoot) !== root) {
+      // Park the target for the reset effect that the root change triggers.
+      pendingOpen.current = {
+        root: target.root,
+        rel: target.kind === "directory" ? "" : target.rel,
+        relPath: target.kind === "directory" ? target.rel : "",
+      };
+      setRootOverride(nextOverride);
+      return;
+    }
+    if (target.kind === "directory") {
+      setRelPath(target.rel);
+      return;
+    }
+    setOpenFile(target.rel);
+    if (root) setLastOpenFileByProject(root, target.rel);
+  }, [projectRoot, root, fileOpenRequest, setLastOpenFileByProject]);
+
+  useMountSubscription(() => {
+    if (!root || !openFile || binaryPreview) {
+      setFileContent("");
+      setDraftContent("");
+      setFileTruncated(false);
+      setFileSize(0);
+      setSaveError(null);
+      setComments([]);
+      return;
+    }
+    if (dirty) return;
+    let cancelled = false;
+    setLoadingFile(true);
+    setSaveError(null);
+    (async () => {
+      try {
+        const [fileResponse, commentsResponse] = await Promise.all([
+          fetch(
+            `/api/agent/fs/file?cwd=${encodeURIComponent(root)}&path=${encodeURIComponent(openFile)}`,
+            { cache: "no-store" },
+          ),
+          fetch(
+            `/api/agent/comments?cwd=${encodeURIComponent(root)}&path=${encodeURIComponent(openFile)}`,
+            { cache: "no-store" },
+          ),
+        ]);
+        const fileBody = (await fileResponse.json()) as {
+          content?: string;
+          truncated?: boolean;
+          size?: number;
+          error?: string;
+        };
+        const commentsBody = (await commentsResponse.json()) as { comments?: FileComment[] };
+        if (cancelled) return;
+        const nextContent = fileBody.content ?? "";
+        setFileContent(nextContent);
+        setDraftContent(nextContent);
+        setFileTruncated(fileBody.truncated ?? false);
+        setFileSize(fileBody.size ?? 0);
+        setComments(commentsBody.comments ?? []);
+        // A read that fails server-side (missing file, path outside an allowed
+        // root) used to leave an empty pane with no explanation.
+        if (!fileResponse.ok || fileBody.error) setSaveError(fileBody.error || "Read failed.");
+      } catch {
+        if (!cancelled) {
+          setFileContent("");
+          setDraftContent("");
+          setComments([]);
+          setSaveError("Read failed.");
+        }
+      } finally {
+        if (!cancelled) setLoadingFile(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [root, openFile, binaryPreview, refreshRevision, dirty]);
   const fetchDirChildren = useCallback(
     async (dirRel: string) => {
       const requestRoot = root;
