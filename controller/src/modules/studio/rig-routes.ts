@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { CONTROLLER_EVENTS } from "@local-studio/contracts/controller-events";
 import {
+  RigAcceleratorInputSchema,
   RigCreateSchema,
   RigNodeCreateSchema,
   RigNodeUpdateSchema,
@@ -35,13 +36,8 @@ const positiveOrNull = (
     : Effect.fail(badRequest(`${label} must be a positive number`));
 };
 
-type AcceleratorInput = Schema.Schema.Type<typeof RigNodeCreateSchema>["accelerators"] extends
-  ReadonlyArray<infer A> | undefined
-  ? A
-  : never;
-
 const accelerators = (
-  value: ReadonlyArray<AcceleratorInput> | undefined,
+  value: ReadonlyArray<Schema.Schema.Type<typeof RigAcceleratorInputSchema>> | undefined,
   current: RigAccelerator[],
 ): Effect.Effect<RigAccelerator[], ReturnType<typeof badRequest>> =>
   value === undefined
@@ -53,18 +49,16 @@ const accelerators = (
           if (!Number.isInteger(count) || count < 1) {
             return yield* Effect.fail(badRequest("accelerator count must be a positive integer"));
           }
-          const memoryGb = yield* positiveOrNull(entry.memory_gb, null, "accelerator memory_gb");
-          const bandwidth = yield* positiveOrNull(
-            entry.memory_bandwidth_gbs,
-            null,
-            "accelerator memory_bandwidth_gbs",
-          );
           return {
             name,
             count,
-            memory_gb: memoryGb,
+            memory_gb: yield* positiveOrNull(entry.memory_gb, null, "accelerator memory_gb"),
             memory_type: optionalTrimmed(entry.memory_type, null),
-            memory_bandwidth_gbs: bandwidth,
+            memory_bandwidth_gbs: yield* positiveOrNull(
+              entry.memory_bandwidth_gbs,
+              null,
+              "accelerator memory_bandwidth_gbs",
+            ),
             unified_memory: entry.unified_memory ?? false,
           };
         }),
@@ -73,33 +67,31 @@ const accelerators = (
 export const registerStudioRigRoutes = defineRoutes((app, context) => {
   const store = context.stores.rigStore;
 
-  const listRigs = store.listEffect();
-  const getRig = (rigId: string): Effect.Effect<Rig | null, unknown> => store.getEffect(rigId);
-  const saveRig = (rig: Rig): Effect.Effect<void, unknown> => store.saveEffect(rig);
-  const deleteRig = (rigId: string): Effect.Effect<boolean, unknown> => store.deleteEffect(rigId);
   const publishRigUpdate = (): Effect.Effect<void, unknown> =>
     context.eventManager.publish(new Event(CONTROLLER_EVENTS.RIG_UPDATED, {}));
   const loadRigsWithLocalNode = Effect.gen(function* () {
-    const rigs = yield* listRigs;
+    const rigs = yield* store.listEffect();
     const detected = yield* buildDetectedNode();
     const refreshed = refreshLocalNode(rigs, detected);
     if (refreshed) {
-      yield* saveRig(refreshed);
+      yield* store.saveEffect(refreshed);
       return rigs;
     }
     const seeded = seedDefaultRig(detected);
-    yield* saveRig(seeded);
+    yield* store.saveEffect(seeded);
     return [...rigs, seeded];
   });
   const requireRig = (rigId: string): Effect.Effect<Rig, unknown> =>
-    getRig(rigId).pipe(
-      Effect.flatMap((rig) =>
-        rig ? Effect.succeed(rig) : Effect.fail(notFound(`Rig "${rigId}" not found`)),
-      ),
-    );
+    store
+      .getEffect(rigId)
+      .pipe(
+        Effect.flatMap((rig) =>
+          rig ? Effect.succeed(rig) : Effect.fail(notFound(`Rig "${rigId}" not found`)),
+        ),
+      );
   const saveRigTouched = (rig: Rig): Effect.Effect<Rig, unknown> => {
     const touched = { ...rig, updated_at: new Date().toISOString() };
-    return saveRig(touched).pipe(Effect.as(touched));
+    return store.saveEffect(touched).pipe(Effect.as(touched));
   };
 
   return mergeRoutes(
@@ -124,7 +116,7 @@ export const registerStudioRigRoutes = defineRoutes((app, context) => {
           created_at: now,
           updated_at: now,
         };
-        yield* saveRig(rig);
+        yield* store.saveEffect(rig);
         yield* publishRigUpdate();
         return ctx.json({ success: true, rig });
       }),
@@ -147,7 +139,7 @@ export const registerStudioRigRoutes = defineRoutes((app, context) => {
     effectRoute(app.delete, "/studio/rigs/:rigId", (ctx) =>
       Effect.gen(function* () {
         const rigId = ctx.req.param("rigId") ?? "";
-        if (!(yield* deleteRig(rigId))) {
+        if (!(yield* store.deleteEffect(rigId))) {
           return yield* Effect.fail(notFound(`Rig "${rigId}" not found`));
         }
         yield* publishRigUpdate();

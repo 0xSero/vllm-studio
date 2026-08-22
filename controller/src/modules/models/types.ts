@@ -4,9 +4,6 @@ import type { ConfigData } from "@local-studio/contracts/system";
 
 export type { ModelInfo } from "@local-studio/contracts/recipes";
 export type {
-  ServiceInfo,
-  SystemConfig,
-  EnvironmentInfo,
   RuntimeBackendInfo,
   EngineBackend,
   RuntimeKind,
@@ -18,13 +15,10 @@ export type {
   RuntimeRocmInfo,
   RuntimeTorchBuildInfo,
   RuntimePlatformInfo,
-  RuntimeGpuMonitoringInfo,
-  RuntimeGpuInfoSummary,
   CompatibilitySeverity,
   CompatibilityCheck,
   SystemRuntimeInfo,
   CompatibilityReport,
-  ConfigData,
 } from "@local-studio/contracts/system";
 
 export type Brand<Primitive, Label extends string> = Primitive & {

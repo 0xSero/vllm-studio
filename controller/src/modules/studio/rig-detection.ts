@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import { getGpuInfo } from "../system/platform/gpu";
 
 export const LOCAL_RIG_NODE_ID = "local";
-export const DEFAULT_RIG_ID = "default";
+const DEFAULT_RIG_ID = "default";
 
 interface KnownAcceleratorSpec {
   pattern: RegExp;
@@ -15,57 +15,26 @@ interface KnownAcceleratorSpec {
   unified_memory: boolean;
 }
 
-const KNOWN_ACCELERATORS: KnownAcceleratorSpec[] = [
-  {
-    pattern: /\b(?:GB10|DGX Spark)\b/i,
-    hardware_type: "dgx-spark",
-    memory_type: "LPDDR5X",
-    memory_bandwidth_gbs: 273,
-    unified_memory: true,
-  },
-  {
-    pattern: /RTX PRO 6000/i,
-    hardware_type: "gpu-server",
-    memory_type: "GDDR7",
-    memory_bandwidth_gbs: 1792,
-    unified_memory: false,
-  },
-  {
-    pattern: /RTX 5090/i,
-    hardware_type: "gpu-desktop",
-    memory_type: "GDDR7",
-    memory_bandwidth_gbs: 1792,
-    unified_memory: false,
-  },
-  {
-    pattern: /RTX 4090/i,
-    hardware_type: "gpu-desktop",
-    memory_type: "GDDR6X",
-    memory_bandwidth_gbs: 1008,
-    unified_memory: false,
-  },
-  {
-    pattern: /RTX 3090/i,
-    hardware_type: "gpu-desktop",
-    memory_type: "GDDR6X",
-    memory_bandwidth_gbs: 936,
-    unified_memory: false,
-  },
-  {
-    pattern: /\bApple\b/i,
-    hardware_type: "mac",
-    memory_type: "unified",
-    memory_bandwidth_gbs: 0,
-    unified_memory: true,
-  },
-];
+// [pattern, hardware_type, memory_type, memory_bandwidth_gbs, unified_memory]
+const KNOWN_ACCELERATORS: KnownAcceleratorSpec[] = (
+  [
+    [/\b(?:GB10|DGX Spark)\b/i, "dgx-spark", "LPDDR5X", 273, true],
+    [/RTX PRO 6000/i, "gpu-server", "GDDR7", 1792, false],
+    [/RTX 5090/i, "gpu-desktop", "GDDR7", 1792, false],
+    [/RTX 4090/i, "gpu-desktop", "GDDR6X", 1008, false],
+    [/RTX 3090/i, "gpu-desktop", "GDDR6X", 936, false],
+    [/\bApple\b/i, "mac", "unified", 0, true],
+  ] as const
+).map(([pattern, hardware_type, memory_type, memory_bandwidth_gbs, unified_memory]) => ({
+  pattern,
+  hardware_type,
+  memory_type,
+  memory_bandwidth_gbs,
+  unified_memory,
+}));
 
-const findKnownAccelerator = (name: string): KnownAcceleratorSpec | null => {
-  for (const spec of KNOWN_ACCELERATORS) {
-    if (spec.pattern.test(name)) return spec;
-  }
-  return null;
-};
+const findKnownAccelerator = (name: string): KnownAcceleratorSpec | null =>
+  KNOWN_ACCELERATORS.find((spec) => spec.pattern.test(name)) ?? null;
 
 const groupAccelerators = (gpus: GpuInfo[]): RigAccelerator[] => {
   const groups = new Map<string, { count: number; memoryMb: number }>();
@@ -88,25 +57,24 @@ const groupAccelerators = (gpus: GpuInfo[]): RigAccelerator[] => {
   });
 };
 
-const appleSiliconAccelerator = (cpuModel: string | null): RigAccelerator[] => {
-  if (platform() !== "darwin" || arch() !== "arm64") return [];
-  return [
-    {
-      name: cpuModel ?? "Apple Silicon",
-      count: 1,
-      memory_gb: Math.round(totalmem() / 1024 ** 3),
-      memory_type: "unified",
-      memory_bandwidth_gbs: null,
-      unified_memory: true,
-    },
-  ];
-};
+const appleSiliconAccelerator = (cpuModel: string | null): RigAccelerator[] =>
+  platform() === "darwin" && arch() === "arm64"
+    ? [
+        {
+          name: cpuModel ?? "Apple Silicon",
+          count: 1,
+          memory_gb: Math.round(totalmem() / 1024 ** 3),
+          memory_type: "unified",
+          memory_bandwidth_gbs: null,
+          unified_memory: true,
+        },
+      ]
+    : [];
 
 const inferHardwareType = (accelerators: RigAccelerator[]): RigHardwareType => {
   for (const accelerator of accelerators) {
-    const known = findKnownAccelerator(accelerator.name);
-    if (known?.hardware_type === "dgx-spark") return "dgx-spark";
-    if (known?.hardware_type === "mac") return "mac";
+    const known = findKnownAccelerator(accelerator.name)?.hardware_type;
+    if (known === "dgx-spark" || known === "mac") return known;
   }
   const gpuCount = accelerators.reduce((sum, accelerator) => sum + accelerator.count, 0);
   if (gpuCount >= 3) return "gpu-server";
@@ -141,16 +109,6 @@ export const buildDetectedNode = (): Effect.Effect<RigNode> =>
     }),
   );
 
-const mergeDetectedNode = (stored: RigNode, detected: RigNode): RigNode => ({
-  ...stored,
-  hostname: detected.hostname,
-  os: detected.os,
-  cpu_model: detected.cpu_model,
-  cpu_cores: detected.cpu_cores,
-  memory_gb: detected.memory_gb,
-  accelerators: detected.accelerators,
-});
-
 export const seedDefaultRig = (detected: RigNode): Rig => {
   const now = new Date().toISOString();
   return {
@@ -163,13 +121,21 @@ export const seedDefaultRig = (detected: RigNode): Rig => {
   };
 };
 
+/** Refresh the detected fields of the stored local node in place, if any rig has one. */
 export const refreshLocalNode = (rigs: Rig[], detected: RigNode): Rig | null => {
   for (const rig of rigs) {
     const index = rig.nodes.findIndex((node) => node.id === LOCAL_RIG_NODE_ID);
-    if (index < 0) continue;
-    const stored = rig.nodes[index];
+    const stored = index >= 0 ? rig.nodes[index] : undefined;
     if (!stored) continue;
-    rig.nodes[index] = mergeDetectedNode(stored, detected);
+    rig.nodes[index] = {
+      ...stored,
+      hostname: detected.hostname,
+      os: detected.os,
+      cpu_model: detected.cpu_model,
+      cpu_cores: detected.cpu_cores,
+      memory_gb: detected.memory_gb,
+      accelerators: detected.accelerators,
+    };
     return rig;
   }
   return null;

@@ -20,6 +20,14 @@ const storeError = (operation: RecipeStoreError["operation"], source: unknown): 
     source,
   });
 
+const tryParseRecipe = (raw: unknown): Recipe | null => {
+  try {
+    return parseRecipe(raw);
+  } catch {
+    return null;
+  }
+};
+
 export class RecipeStore {
   private readonly db: ReturnType<typeof openSqliteDatabase>;
   private useJsonColumn = false;
@@ -65,20 +73,30 @@ export class RecipeStore {
     this.useJsonColumn = false;
   }
 
+  private get column(): string {
+    return this.useJsonColumn ? "json" : "data";
+  }
+
+  /** Rows with unreadable or unparseable payloads are skipped, never thrown. */
+  private decodeRow(row: Record<string, string> | null): Recipe | null {
+    const raw = row?.[this.column];
+    if (typeof raw !== "string") return null;
+    try {
+      return parseRecipe(JSON.parse(raw));
+    } catch {
+      return null;
+    }
+  }
+
   list(): Effect.Effect<Recipe[], RecipeStoreError> {
     return Effect.try({
       try: () => {
-        const column = this.useJsonColumn ? "json" : "data";
-        const rows = this.db.query(`SELECT ${column} FROM recipes ORDER BY id`).all() as Array<
+        const rows = this.db.query(`SELECT ${this.column} FROM recipes ORDER BY id`).all() as Array<
           Record<string, string>
         >;
         return rows.flatMap((row) => {
-          try {
-            const raw = row[column];
-            return typeof raw === "string" ? [parseRecipe(JSON.parse(raw))] : [];
-          } catch {
-            return [];
-          }
+          const recipe = this.decodeRow(row);
+          return recipe ? [recipe] : [];
         });
       },
       catch: (source) => storeError("list", source),
@@ -87,20 +105,13 @@ export class RecipeStore {
 
   get(recipeId: string): Effect.Effect<Recipe | null, RecipeStoreError> {
     return Effect.try({
-      try: () => {
-        const column = this.useJsonColumn ? "json" : "data";
-        const row = this.db
-          .query(`SELECT ${column} FROM recipes WHERE id = ?`)
-          .get(recipeId) as Record<string, string> | null;
-        if (!row) return null;
-        const raw = row[column];
-        if (typeof raw !== "string") return null;
-        try {
-          return parseRecipe(JSON.parse(raw));
-        } catch {
-          return null;
-        }
-      },
+      try: () =>
+        this.decodeRow(
+          this.db.query(`SELECT ${this.column} FROM recipes WHERE id = ?`).get(recipeId) as Record<
+            string,
+            string
+          > | null,
+        ),
       catch: (source) => storeError("get", source),
     });
   }
@@ -108,24 +119,16 @@ export class RecipeStore {
   save(recipe: Recipe): Effect.Effect<void, RecipeStoreError> {
     return Effect.try({
       try: () => {
-        const data = JSON.stringify(recipe);
-        const column = this.useJsonColumn ? "json" : "data";
-        if (this.useJsonColumn) {
-          this.db
-            .query(
-              `INSERT INTO recipes (id, ${column}, created_at, updated_at)
-               VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-               ON CONFLICT(id) DO UPDATE SET ${column} = excluded.${column}, updated_at = CURRENT_TIMESTAMP`,
-            )
-            .run(recipe.id, data);
-          return;
-        }
+        const column = this.column;
+        // The legacy "json" schema also owns created_at; the "data" schema defaults it.
+        const insert = this.useJsonColumn
+          ? `INSERT INTO recipes (id, json, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+          : `INSERT INTO recipes (id, data, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)`;
         this.db
           .query(
-            `INSERT INTO recipes (id, data, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-             ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP`,
+            `${insert} ON CONFLICT(id) DO UPDATE SET ${column} = excluded.${column}, updated_at = CURRENT_TIMESTAMP`,
           )
-          .run(recipe.id, data);
+          .run(recipe.id, JSON.stringify(recipe));
       },
       catch: (source) => storeError("save", source),
     });
@@ -149,22 +152,12 @@ export class RecipeStore {
           catch: (source) => storeError("import", source),
         }),
       ),
-      Effect.flatMap((parsed) => {
-        const entries = Array.isArray(parsed) ? parsed : [parsed];
-        return Effect.forEach(entries, (entry) =>
-          Effect.sync(() => {
-            try {
-              return parseRecipe(entry);
-            } catch {
-              return null;
-            }
-          }).pipe(
-            Effect.flatMap((recipe) =>
-              recipe ? this.save(recipe).pipe(Effect.as(1)) : Effect.succeed(0),
-            ),
-          ),
-        );
-      }),
+      Effect.flatMap((parsed) =>
+        Effect.forEach(Array.isArray(parsed) ? parsed : [parsed], (entry) => {
+          const recipe = tryParseRecipe(entry);
+          return recipe ? this.save(recipe).pipe(Effect.as(1)) : Effect.succeed(0);
+        }),
+      ),
       Effect.map((counts) => counts.reduce((total, count) => total + count, 0)),
     );
   }

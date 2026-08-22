@@ -15,13 +15,6 @@ const serveRuntimeSchema = Schema.Struct({
 const stringValue = (value: unknown): string | null =>
   typeof value === "string" && value.trim() ? value.trim() : null;
 
-const defaultRuntime = (backend: unknown): Record<string, unknown> => {
-  const runtimeReference = stringValue(backend) ?? "vllm";
-  return runtimeReference === "llamacpp"
-    ? { kind: "binary", ref: "llama-server" }
-    : { kind: "managed_venv", ref: runtimeReference };
-};
-
 const normalizedRuntime = (
   data: Record<string, unknown>,
   extraArguments: Record<string, unknown>,
@@ -37,7 +30,10 @@ const normalizedRuntime = (
   if (dockerImage) return { kind: "docker", ref: dockerImage };
   const pythonPath = stringValue(data["python_path"]);
   if (pythonPath) return { kind: "system", ref: pythonPath };
-  return defaultRuntime(data["backend"]);
+  const backend = stringValue(data["backend"]) ?? "vllm";
+  return backend === "llamacpp"
+    ? { kind: "binary", ref: "llama-server" }
+    : { kind: "managed_venv", ref: backend };
 };
 
 // Defense-in-depth range checks: the editor floors these, but a recipe can also
@@ -162,11 +158,7 @@ export const normalizeRecipeInput = (raw: unknown): Record<string, unknown> => {
   }
 
   const envCandidates = ["env_vars", "env-vars", "envVars"];
-  const hasEnvironmentVariables =
-    data["env_vars"] !== undefined ||
-    data["env-vars"] !== undefined ||
-    data["envVars"] !== undefined;
-  if (!hasEnvironmentVariables) {
+  if (!envCandidates.some((key) => data[key] !== undefined)) {
     for (const key of envCandidates) {
       if (key in extraArguments) {
         data["env_vars"] = extraArguments[key];
@@ -240,18 +232,6 @@ export const parseRecipe = (raw: unknown): Recipe => {
         Object.entries(parsed.env_vars).map(([key, value]) => [key, String(value)]),
       )
     : null;
-  return {
-    ...parsed,
-    id: asRecipeId(parsed.id),
-    vision: parsed.vision ?? null,
-    env_vars: environmentVariables,
-    tool_call_parser: parsed.tool_call_parser ?? null,
-    reasoning_parser: parsed.reasoning_parser ?? null,
-    quantization: parsed.quantization ?? null,
-    dtype: parsed.dtype ?? null,
-    served_model_name: parsed.served_model_name ?? null,
-    python_path: parsed.python_path ?? null,
-    max_thinking_tokens: parsed.max_thinking_tokens ?? null,
-    extra_args: parsed.extra_args ?? {},
-  };
+  // Every other nullable field is already `T | null` after decoding.
+  return { ...parsed, id: asRecipeId(parsed.id), env_vars: environmentVariables };
 };

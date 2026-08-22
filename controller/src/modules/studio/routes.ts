@@ -9,7 +9,6 @@ import { registerStudioModelIndexRoutes } from "./model-index";
 import { registerStudioProviderRoutes } from "./provider-routes";
 import { registerStudioRigRoutes } from "./rig-routes";
 import { getGpuInfo } from "../system/platform/gpu";
-import type { GpuInfo } from "../models/types";
 import { discoverModelDirectories, estimateWeightsSizeBytes } from "../models/model-browser";
 import { STUDIO_STARTER_PRESETS } from "./configs";
 import {
@@ -37,6 +36,11 @@ class StudioOperationError extends Schema.TaggedErrorClass<StudioOperationError>
   },
 ) {}
 
+const studioError =
+  (operation: StudioOperationError["operation"], message: string) =>
+  (source: unknown): StudioOperationError =>
+    new StudioOperationError({ operation, message, source });
+
 interface StudioDiskInfo {
   path: string;
   total_bytes: number | null;
@@ -47,8 +51,7 @@ interface StudioDiskInfo {
 const diskInfo = (path: string): Effect.Effect<StudioDiskInfo> =>
   Effect.tryPromise({
     try: () => statfs(path),
-    catch: (source) =>
-      new StudioOperationError({ operation: "disk", message: "Disk unavailable", source }),
+    catch: studioError("disk", "Disk unavailable"),
   }).pipe(
     Effect.map((stats) => ({
       path,
@@ -75,37 +78,46 @@ const insideModelsRoot = (
     : Effect.fail(badRequest(`${label} must be inside models_dir`));
 };
 
+const movePath = (source: string, target: string): Effect.Effect<void, unknown> =>
+  Effect.tryPromise({ try: () => rename(source, target), catch: (error) => error }).pipe(
+    // rename() cannot cross filesystems, so fall back to copy-then-delete.
+    Effect.catch((error) =>
+      (error as NodeJS.ErrnoException).code === "EXDEV"
+        ? Effect.tryPromise({
+            try: async () => {
+              await cp(source, target, { recursive: true, force: false, errorOnExist: true });
+              await rm(source, { recursive: true, force: true });
+            },
+            catch: (copyError) => copyError,
+          })
+        : Effect.fail(error),
+    ),
+  );
+
 const pathExists = (path: string): Effect.Effect<boolean> =>
   Effect.tryPromise({ try: () => statfs(path), catch: (source) => source }).pipe(
     Effect.as(true),
     Effect.catch(() => Effect.succeed(false)),
   );
 
-export const deriveRecommendationVramGb = (gpus: GpuInfo[]): number =>
-  gpus.reduce((sum, gpu) => sum + gpu.memory_total_mb / 1024, 0);
-
 export const registerStudioRoutes = defineRoutes((app, context) => {
   const buildSettingsPayload = Effect.gen(function* () {
     const persisted = yield* Effect.try({
       try: () => loadPersistedConfig(context.config.data_dir),
-      catch: (source) =>
-        new StudioOperationError({
-          operation: "settings",
-          message: "Could not load settings",
-          source,
-        }),
+      catch: studioError("settings", "Could not load settings"),
     });
     const legacyUiPreferences = (
       persisted as PersistedConfig & { ui_preferences?: Record<string, string> }
     ).ui_preferences;
     const dbUiPreferences = yield* context.stores.controllerSettingsStore.getUiPreferencesEffect();
-    const uiPreferences =
-      Object.keys(dbUiPreferences).length > 0
-        ? dbUiPreferences
-        : legacyUiPreferences && typeof legacyUiPreferences === "object"
-          ? legacyUiPreferences
-          : {};
-    if (Object.keys(dbUiPreferences).length === 0 && Object.keys(uiPreferences).length > 0) {
+    const hasDbPreferences = Object.keys(dbUiPreferences).length > 0;
+    const uiPreferences = hasDbPreferences
+      ? dbUiPreferences
+      : legacyUiPreferences && typeof legacyUiPreferences === "object"
+        ? legacyUiPreferences
+        : {};
+    // Migrate the file-era preferences into the DB the first time they are read.
+    if (!hasDbPreferences && Object.keys(uiPreferences).length > 0) {
       yield* context.stores.controllerSettingsStore.saveUiPreferencesEffect(uiPreferences);
     }
     return {
@@ -133,12 +145,7 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
             modelsDirectory !== undefined
               ? savePersistedConfig(context.config.data_dir, { models_dir: modelsDirectory })
               : loadPersistedConfig(context.config.data_dir),
-          catch: (source) =>
-            new StudioOperationError({
-              operation: "settings",
-              message: "Could not save settings",
-              source,
-            }),
+          catch: studioError("settings", "Could not save settings"),
         });
         if (uiPreferences !== undefined) {
           yield* context.stores.controllerSettingsStore.saveUiPreferencesEffect(
@@ -217,7 +224,7 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
     effectRoute(app.get, "/studio/presets", (ctx) =>
       getGpuInfo().pipe(
         Effect.map((gpus) => {
-          const maxVramGb = deriveRecommendationVramGb(gpus);
+          const maxVramGb = gpus.reduce((sum, gpu) => sum + gpu.memory_total_mb / 1024, 0);
           const appleSilicon = platform() === "darwin" && arch() === "arm64";
           const presets = STUDIO_STARTER_PRESETS.filter(
             (preset) => !appleSilicon || preset.backend !== "vllm",
@@ -239,12 +246,7 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
           return yield* Effect.fail(notFound("Model path not found"));
         yield* Effect.tryPromise({
           try: () => rm(target, { recursive: true, force: true }),
-          catch: (source) =>
-            new StudioOperationError({
-              operation: "delete",
-              message: "Could not delete model",
-              source,
-            }),
+          catch: studioError("delete", "Could not delete model"),
         });
         return ctx.json({ success: true });
       }),
@@ -271,45 +273,14 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
           return yield* Effect.fail(notFound("source_path not found"));
         yield* Effect.tryPromise({
           try: () => mkdir(targetRoot, { recursive: true }),
-          catch: (sourceError) =>
-            new StudioOperationError({
-              operation: "move",
-              message: "Could not create target",
-              source: sourceError,
-            }),
+          catch: studioError("move", "Could not create target"),
         });
         const target = resolve(targetRoot, basename(source));
         if (yield* pathExists(target))
           return yield* Effect.fail(badRequest("Target path already exists"));
         if (source !== target) {
-          yield* Effect.tryPromise({
-            try: () => rename(source, target),
-            catch: (sourceError) => sourceError,
-          }).pipe(
-            Effect.catch((sourceError) =>
-              (sourceError as NodeJS.ErrnoException).code === "EXDEV"
-                ? Effect.tryPromise({
-                    try: () =>
-                      cp(source, target, { recursive: true, force: false, errorOnExist: true }),
-                    catch: (copyError) => copyError,
-                  }).pipe(
-                    Effect.andThen(
-                      Effect.tryPromise({
-                        try: () => rm(source, { recursive: true, force: true }),
-                        catch: (removeError) => removeError,
-                      }),
-                    ),
-                  )
-                : Effect.fail(sourceError),
-            ),
-            Effect.mapError(
-              (sourceError) =>
-                new StudioOperationError({
-                  operation: "move",
-                  message: "Could not move model",
-                  source: sourceError,
-                }),
-            ),
+          yield* movePath(source, target).pipe(
+            Effect.mapError(studioError("move", "Could not move model")),
           );
         }
         return ctx.json({ success: true, target });

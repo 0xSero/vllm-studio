@@ -67,18 +67,16 @@ export const registerStudioProviderRoutes = defineRoutes((app, context) => {
       Effect.gen(function* () {
         const body = yield* decodeJsonBody(ctx, ProviderCreateSchema);
         const id = (yield* requiredTrimmed(body.id, "id")).toLowerCase();
-        const name = yield* requiredTrimmed(body.name, "name");
-        const baseUrl = yield* requiredTrimmed(body.base_url, "base_url");
-        if (context.config.providers.some((provider) => provider.id === id)) {
-          return yield* Effect.fail(badRequest(`Provider "${id}" already exists`));
-        }
         const provider: ProviderConfig = {
           id,
-          name,
-          base_url: baseUrl,
+          name: yield* requiredTrimmed(body.name, "name"),
+          base_url: yield* requiredTrimmed(body.base_url, "base_url"),
           api_key: body.api_key?.trim() ?? "",
           enabled: body.enabled ?? true,
         };
+        if (context.config.providers.some((entry) => entry.id === id)) {
+          return yield* Effect.fail(badRequest(`Provider "${id}" already exists`));
+        }
         yield* saveProviders(context, [...context.config.providers, provider]);
         return ctx.json({ success: true, provider: serializeProvider(provider) });
       }),
@@ -88,25 +86,22 @@ export const registerStudioProviderRoutes = defineRoutes((app, context) => {
       Effect.gen(function* () {
         const providerId = ctx.req.param("id") ?? "";
         const body = yield* decodeJsonBody(ctx, ProviderUpdateSchema);
-        const index = context.config.providers.findIndex((provider) => provider.id === providerId);
-        const current = index >= 0 ? context.config.providers[index] : undefined;
+        const current = context.config.providers.find((entry) => entry.id === providerId);
         if (!current) return yield* Effect.fail(notFound(`Provider "${providerId}" not found`));
-        const name =
-          body.name === undefined ? current.name : yield* requiredTrimmed(body.name, "name");
-        const baseUrl =
-          body.base_url === undefined
-            ? current.base_url
-            : yield* requiredTrimmed(body.base_url, "base_url");
         const updated: ProviderConfig = {
           id: providerId,
-          name,
-          base_url: baseUrl,
+          name: body.name === undefined ? current.name : yield* requiredTrimmed(body.name, "name"),
+          base_url:
+            body.base_url === undefined
+              ? current.base_url
+              : yield* requiredTrimmed(body.base_url, "base_url"),
           api_key: body.api_key?.trim() ?? current.api_key,
           enabled: body.enabled ?? current.enabled,
         };
-        const providers = [...context.config.providers];
-        providers[index] = updated;
-        yield* saveProviders(context, providers);
+        yield* saveProviders(
+          context,
+          context.config.providers.map((entry) => (entry.id === providerId ? updated : entry)),
+        );
         return ctx.json({ success: true, provider: serializeProvider(updated) });
       }),
     ),

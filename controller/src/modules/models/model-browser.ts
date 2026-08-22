@@ -4,7 +4,6 @@ import { Effect, Schema } from "effect";
 import type { ModelInfo } from "./types";
 
 const MODEL_BROWSER_WEIGHT_EXTENSIONS = [".safetensors", ".bin", ".gguf"] as const;
-const MODEL_BROWSER_CONFIG_FILENAMES = ["config.json"] as const;
 const MODEL_QUANTIZATION_SIGNATURES = [
   "awq",
   "gptq",
@@ -47,11 +46,10 @@ export const looksLikeModelDirectory = (path: string): Effect.Effect<boolean, Mo
     try: () => readdir(path, { withFileTypes: true }),
     catch: (source) => modelBrowserError("scan", path, source),
   }).pipe(
-    Effect.map(
-      (entries) =>
-        MODEL_BROWSER_CONFIG_FILENAMES.some((configName) =>
-          entries.some((entry) => entry.isFile() && entry.name === configName),
-        ) || entries.some((entry) => entry.isFile() && isWeightFile(entry.name)),
+    Effect.map((entries) =>
+      entries.some(
+        (entry) => entry.isFile() && (entry.name === "config.json" || isWeightFile(entry.name)),
+      ),
     ),
   );
 

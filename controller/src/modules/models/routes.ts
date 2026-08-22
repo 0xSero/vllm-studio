@@ -6,6 +6,12 @@ import { effectRoute, defineRoutes, mergeRoutes } from "../../http/route-registr
 import type { AppContext } from "../../app-context";
 import type { ProcessInfo, Recipe } from "../models/types";
 import { resolveModelVision } from "@local-studio/contracts/model-capabilities";
+import { buildModelInfo, discoverModelDirectories } from "./model-browser";
+import { selectRunningRecipe } from "./recipes/recipe-matching";
+import { notFound } from "../../core/errors";
+import { findObservedInferenceProcess } from "../../core/function-observability";
+import { fetchInference } from "../../http/local-fetch";
+import { listProviderModelsCached } from "../../services/provider-routing";
 
 interface OpenAIModelInfo {
   id: string;
@@ -15,11 +21,6 @@ interface OpenAIModelInfo {
   active: boolean;
   max_model_len?: number | null;
   metadata: Record<string, unknown>;
-}
-
-interface OpenAIModelList {
-  object: "list";
-  data: OpenAIModelInfo[];
 }
 
 const ActiveModelsSchema = Schema.Struct({
@@ -38,24 +39,50 @@ const decodeResponse = <S extends Schema.Constraint>(
   Effect.tryPromise({ try: () => response.json(), catch: (source) => source }).pipe(
     Effect.flatMap(Schema.decodeUnknownEffect(schema)),
   );
-import { buildModelInfo, discoverModelDirectories } from "./model-browser";
-import { selectRunningRecipe } from "./recipes/recipe-matching";
-import { notFound } from "../../core/errors";
-import { findObservedInferenceProcess } from "../../core/function-observability";
-import { fetchInference } from "../../http/local-fetch";
-import { listProviderModelsCached } from "../../services/provider-routing";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+const fetchUrl = (url: string): Effect.Effect<Response, unknown> =>
+  Effect.tryPromise({ try: () => fetch(url), catch: (source) => source });
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const expandUserPath = (pathValue: string): string =>
+  resolve(pathValue.startsWith("~") ? pathValue.replace("~", homedir()) : pathValue);
+
+const appendId = (index: Map<string, string[]>, key: string, recipeId: string): void => {
+  const existing = index.get(key);
+  if (existing) existing.push(recipeId);
+  else index.set(key, [recipeId]);
+};
+
+interface ModelRoot {
+  path: string;
+  exists: boolean;
+  sources: Set<string>;
+  recipeIds: Set<string>;
 }
 
-function recipeMetadata(recipe: Recipe): Record<string, unknown> {
-  const metadata = recipe.extra_args?.["metadata"];
-  return isRecord(metadata) ? metadata : {};
-}
+const addRoot = (
+  index: Map<string, ModelRoot>,
+  pathValue: string,
+  source: string,
+  recipeId?: string,
+): void => {
+  const resolvedPath = expandUserPath(pathValue);
+  const entry = index.get(resolvedPath) ?? {
+    path: resolvedPath,
+    exists: existsSync(resolvedPath),
+    sources: new Set<string>(),
+    recipeIds: new Set<string>(),
+  };
+  entry.sources.add(source);
+  if (recipeId) entry.recipeIds.add(recipeId);
+  index.set(resolvedPath, entry);
+};
 
-function resolvedRecipeMetadata(recipe: Recipe, modelId: string): Record<string, unknown> {
-  const metadata = recipeMetadata(recipe);
+const resolvedRecipeMetadata = (recipe: Recipe, modelId: string): Record<string, unknown> => {
+  const raw = recipe.extra_args?.["metadata"];
+  const metadata = isRecord(raw) ? raw : {};
   return {
     ...metadata,
     vision: resolveModelVision({
@@ -64,7 +91,7 @@ function resolvedRecipeMetadata(recipe: Recipe, modelId: string): Record<string,
       metadata,
     }),
   };
-}
+};
 
 const fetchActiveModelLength = (context: AppContext): Effect.Effect<number | undefined> =>
   fetchInference(context, "/v1/models", { timeoutMs: 5000 }).pipe(
@@ -80,18 +107,17 @@ const resolveActiveRecipe = (
   recipes: readonly Recipe[],
   label: string,
 ): Effect.Effect<{ current: ProcessInfo | null; activeRecipe: Recipe | null }> =>
-  Effect.gen(function* () {
-    const current = yield* findObservedInferenceProcess(context, label);
-    // Several recipes can share one model path, and each would match the
-    // single running process — pick the best match once so exactly one
-    // entry is reported active (the rest stay listed, just inactive).
-    return {
+  // Several recipes can share one model path, and each would match the
+  // single running process — pick the best match once so exactly one
+  // entry is reported active (the rest stay listed, just inactive).
+  findObservedInferenceProcess(context, label).pipe(
+    Effect.map((current) => ({
       current,
       activeRecipe: current
         ? selectRunningRecipe(recipes, current, { allowEitherPathContains: true })
         : null,
-    };
-  });
+    })),
+  );
 
 const toOpenAIModelInfo = (
   recipe: Recipe,
@@ -108,6 +134,28 @@ const toOpenAIModelInfo = (
     active,
     max_model_len: (active ? activeMaxModelLength : undefined) ?? recipe.max_model_len,
     metadata: resolvedRecipeMetadata(recipe, modelId),
+  };
+};
+
+const HUGGINGFACE_SORT_FIELDS: Record<string, string> = {
+  createdAt: "createdAt",
+  trending: "trendingScore",
+  downloads: "downloads",
+  likes: "likes",
+  lastModified: "lastModified",
+  modified: "lastModified",
+};
+
+const normalizeHuggingFaceModel = (model: Record<string, unknown>): Record<string, unknown> => {
+  const modelId = String(model["modelId"] ?? model["id"] ?? "");
+  return {
+    ...model,
+    _id: String(model["_id"] ?? modelId),
+    modelId,
+    downloads: Number(model["downloads"] ?? 0),
+    likes: Number(model["likes"] ?? 0),
+    tags: Array.isArray(model["tags"]) ? model["tags"] : [],
+    private: Boolean(model["private"]),
   };
 };
 
@@ -129,8 +177,8 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
 
         if (models.length === 0 && current) {
           const inferredId =
-            current?.served_model_name ||
-            (current?.model_path ? basename(current.model_path) : "") ||
+            current.served_model_name ||
+            (current.model_path ? basename(current.model_path) : "") ||
             "active-model";
           models.push({
             id: inferredId,
@@ -139,9 +187,7 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
             owned_by: "local-studio",
             active: true,
             max_model_len: activeMaxModelLength ?? 32768,
-            metadata: {
-              vision: resolveModelVision({ identifiers: [inferredId] }),
-            },
+            metadata: { vision: resolveModelVision({ identifiers: [inferredId] }) },
           });
         }
 
@@ -165,8 +211,7 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
           }
         }
 
-        const payload: OpenAIModelList = { object: "list", data: models };
-        return ctx.json(payload);
+        return ctx.json({ object: "list" as const, data: models });
       }),
     ),
 
@@ -174,9 +219,9 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
       Effect.gen(function* () {
         const modelId = ctx.req.param("modelId");
         const recipes = yield* context.stores.recipeStore.list();
-        const recipe =
-          recipes.find((entry) => entry.served_model_name === modelId || entry.id === modelId) ??
-          null;
+        const recipe = recipes.find(
+          (entry) => entry.served_model_name === modelId || entry.id === modelId,
+        );
         if (!recipe) {
           return yield* Effect.fail(notFound("Model not found"));
         }
@@ -199,82 +244,36 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
         const recipes = yield* context.stores.recipeStore.list();
         const recipesByPath = new Map<string, string[]>();
         const recipesByBasename = new Map<string, string[]>();
-
-        const expandUserPath = (pathValue: string): string => {
-          if (pathValue.startsWith("~")) {
-            return resolve(pathValue.replace("~", homedir()));
-          }
-          return resolve(pathValue);
-        };
+        const rootIndex = new Map<string, ModelRoot>();
+        addRoot(rootIndex, context.config.models_dir, "config");
 
         for (const recipe of recipes) {
           const modelPath = recipe.model_path?.trim();
-          if (!modelPath) {
-            continue;
-          }
-          const name = basename(modelPath);
-          const existingNames = recipesByBasename.get(name) ?? [];
-          existingNames.push(recipe.id);
-          recipesByBasename.set(name, existingNames);
-          if (modelPath.startsWith("/")) {
-            const canonical = expandUserPath(modelPath);
-            const existingPaths = recipesByPath.get(canonical) ?? [];
-            existingPaths.push(recipe.id);
-            recipesByPath.set(canonical, existingPaths);
-          }
-        }
-
-        const rootIndex = new Map<
-          string,
-          { path: string; exists: boolean; sources: Set<string>; recipeIds: Set<string> }
-        >();
-
-        const addRoot = (pathValue: string, source: string, recipeId?: string): void => {
-          const resolvedPath = expandUserPath(pathValue);
-          const entry = rootIndex.get(resolvedPath) ?? {
-            path: resolvedPath,
-            exists: existsSync(resolvedPath),
-            sources: new Set<string>(),
-            recipeIds: new Set<string>(),
-          };
-          entry.sources.add(source);
-          if (recipeId) {
-            entry.recipeIds.add(recipeId);
-          }
-          rootIndex.set(resolvedPath, entry);
-        };
-
-        addRoot(context.config.models_dir, "config");
-
-        for (const recipe of recipes) {
-          const modelPath = recipe.model_path?.trim();
-          if (!modelPath || !modelPath.startsWith("/")) {
-            continue;
-          }
-          const parent = dirname(expandUserPath(modelPath));
-          if (parent === "/") {
-            continue;
-          }
-          addRoot(parent, "recipe_parent", recipe.id);
+          if (!modelPath) continue;
+          appendId(recipesByBasename, basename(modelPath), recipe.id);
+          if (!modelPath.startsWith("/")) continue;
+          const canonical = expandUserPath(modelPath);
+          appendId(recipesByPath, canonical, recipe.id);
+          const parent = dirname(canonical);
+          if (parent !== "/") addRoot(rootIndex, parent, "recipe_parent", recipe.id);
         }
 
         const roots = Array.from(rootIndex.values()).sort((left, right) =>
           left.path.localeCompare(right.path),
         );
-        const scanRoots = roots.filter((root) => root.exists).map((root) => root.path);
 
-        const modelDirectories = yield* discoverModelDirectories(scanRoots, 2, 1000);
+        const modelDirectories = yield* discoverModelDirectories(
+          roots.filter((root) => root.exists).map((root) => root.path),
+          2,
+          1000,
+        );
         const models = yield* Effect.forEach(
           modelDirectories,
           (directory) => {
-            const canonical = resolve(directory);
-            let recipeIds = recipesByPath.get(canonical) ?? [];
-            if (recipeIds.length === 0) {
-              const byName = recipesByBasename.get(basename(directory)) ?? [];
-              if (byName.length === 1) {
-                recipeIds = [...byName];
-              }
-            }
+            const byPath = recipesByPath.get(resolve(directory)) ?? [];
+            const byName = recipesByBasename.get(basename(directory)) ?? [];
+            // A basename match is only trustworthy when exactly one recipe claims it.
+            const recipeIds = byPath.length > 0 ? byPath : byName.length === 1 ? byName : [];
             return buildModelInfo(directory, recipeIds);
           },
           { concurrency: "unbounded" },
@@ -283,16 +282,14 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
           String(left.name).toLowerCase().localeCompare(String(right.name).toLowerCase()),
         );
 
-        const rootsPayload = roots.map((root) => ({
-          path: root.path,
-          exists: Boolean(root.exists),
-          sources: Array.from(root.sources).sort(),
-          recipe_ids: Array.from(root.recipeIds).sort(),
-        }));
-
         return ctx.json({
           models,
-          roots: rootsPayload,
+          roots: roots.map((root) => ({
+            path: root.path,
+            exists: root.exists,
+            sources: Array.from(root.sources).sort(),
+            recipe_ids: Array.from(root.recipeIds).sort(),
+          })),
           configured_models_dir: context.config.models_dir,
         });
       }),
@@ -306,97 +303,60 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
         const limit = Math.min(Math.max(Number(ctx.req.query("limit") ?? 50), 1), 100);
         const offset = Math.max(Number(ctx.req.query("offset") ?? 0), 0);
 
-        const sortMapping: Record<string, string> = {
-          createdAt: "createdAt",
-          trending: "trendingScore",
-          downloads: "downloads",
-          likes: "likes",
-          lastModified: "lastModified",
-          modified: "lastModified",
-        };
-        const hfSort = sort ? (sortMapping[sort] ?? "trendingScore") : undefined;
-        const requestLimit = Math.min(limit + offset, 500);
         const params = new URLSearchParams({
-          limit: String(requestLimit),
+          limit: String(Math.min(limit + offset, 500)),
           full: "false",
         });
-        if (hfSort) {
-          params.set("sort", hfSort);
-        }
-        if (search) {
-          params.set("search", search);
-        }
-        if (filter) {
-          params.set("filter", filter);
-        }
+        if (sort) params.set("sort", HUGGINGFACE_SORT_FIELDS[sort] ?? "trendingScore");
+        if (search) params.set("search", search);
+        if (filter) params.set("filter", filter);
 
-        const normalize = (model: Record<string, unknown>): Record<string, unknown> => {
-          const modelId = String(model["modelId"] ?? model["id"] ?? "");
-          return {
-            ...model,
-            _id: String(model["_id"] ?? modelId),
-            modelId,
-            downloads: Number(model["downloads"] ?? 0),
-            likes: Number(model["likes"] ?? 0),
-            tags: Array.isArray(model["tags"]) ? model["tags"] : [],
-            private: Boolean(model["private"]),
-          };
-        };
-
-        const url = `https://huggingface.co/api/models?${params.toString()}`;
-        return yield* Effect.all([
-          Effect.tryPromise({ try: () => fetch(url), catch: (source) => source }),
-          search && search.includes("/")
-            ? Effect.tryPromise({
-                try: () =>
-                  fetch(
-                    `https://huggingface.co/api/models/${search.split("/").map(encodeURIComponent).join("/")}`,
-                  ),
-                catch: (source) => source,
-              })
+        const [listResponse, exactResponse] = yield* Effect.all([
+          fetchUrl(`https://huggingface.co/api/models?${params.toString()}`),
+          search?.includes("/")
+            ? fetchUrl(
+                `https://huggingface.co/api/models/${search.split("/").map(encodeURIComponent).join("/")}`,
+              )
             : Effect.succeed(null),
-        ]).pipe(
-          Effect.flatMap(([listResponse, exactResponse]) =>
-            Effect.gen(function* () {
-              if (!listResponse.ok) {
-                return Response.json(
-                  { detail: `HuggingFace API error: ${listResponse.status}` },
-                  { status: listResponse.status },
-                );
-              }
-              const data = (yield* decodeResponse(listResponse, HuggingFaceModelsSchema)).map(
-                normalize,
-              );
-              let results = data.slice(offset, offset + limit);
+        ]);
 
-              if (exactResponse?.ok) {
-                const exact = normalize(
-                  yield* decodeResponse(exactResponse, HuggingFaceModelSchema),
-                );
-                const exactId = String(exact["modelId"] ?? "").toLowerCase();
-                if (exactId) {
-                  results = [
-                    exact,
-                    ...results.filter(
-                      (entry) => String(entry["modelId"] ?? "").toLowerCase() !== exactId,
-                    ),
-                  ];
-                }
-              }
+        if (!listResponse.ok) {
+          return Response.json(
+            { detail: `HuggingFace API error: ${listResponse.status}` },
+            { status: listResponse.status },
+          );
+        }
+        const data = (yield* decodeResponse(listResponse, HuggingFaceModelsSchema)).map(
+          normalizeHuggingFaceModel,
+        );
+        let results = data.slice(offset, offset + limit);
 
-              return ctx.json(results);
-            }),
-          ),
-          Effect.catch((error) =>
-            Effect.succeed(
-              ctx.json(
-                { detail: `Failed to reach HuggingFace API: ${String(error)}` },
-                { status: 503 },
+        if (exactResponse?.ok) {
+          const exact = normalizeHuggingFaceModel(
+            yield* decodeResponse(exactResponse, HuggingFaceModelSchema),
+          );
+          const exactId = String(exact["modelId"] ?? "").toLowerCase();
+          if (exactId) {
+            results = [
+              exact,
+              ...results.filter(
+                (entry) => String(entry["modelId"] ?? "").toLowerCase() !== exactId,
               ),
+            ];
+          }
+        }
+
+        return ctx.json(results);
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.succeed(
+            ctx.json(
+              { detail: `Failed to reach HuggingFace API: ${String(error)}` },
+              { status: 503 },
             ),
           ),
-        );
-      }),
+        ),
+      ),
     ),
   );
 });

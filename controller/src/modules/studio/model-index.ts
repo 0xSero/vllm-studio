@@ -24,6 +24,14 @@ interface ModelIndexCacheEntry {
 
 let cache: ModelIndexCacheEntry | null = null;
 
+const decodeIndex = (
+  value: unknown,
+  message: string,
+): Effect.Effect<ModelIndexResponse, ModelIndexError> =>
+  Schema.decodeUnknownEffect(ModelIndexSchema)(value).pipe(
+    Effect.mapError((source) => new ModelIndexError({ message, source })),
+  );
+
 const readAndValidate = (path: string): Effect.Effect<ModelIndexResponse, ModelIndexError> =>
   Effect.tryPromise({
     try: () => readFile(path, "utf8"),
@@ -37,29 +45,17 @@ const readAndValidate = (path: string): Effect.Effect<ModelIndexResponse, ModelI
           new ModelIndexError({ message: `Model index at ${path} is not valid JSON`, source }),
       }),
     ),
-    Effect.flatMap((value) =>
-      Schema.decodeUnknownEffect(ModelIndexSchema)(value).pipe(
-        Effect.mapError(
-          (source) =>
-            new ModelIndexError({ message: `Model index at ${path} failed validation`, source }),
-        ),
-      ),
-    ),
+    Effect.flatMap((value) => decodeIndex(value, `Model index at ${path} failed validation`)),
   );
 
-export const loadModelIndex = (
+const loadModelIndex = (
   context: Pick<AppContext, "config" | "logger">,
 ): Effect.Effect<ModelIndexResponse, ModelIndexError> =>
   Effect.gen(function* () {
     const overridePath = resolve(context.config.data_dir, "model-index.json");
     if (!existsSync(overridePath)) {
       context.logger.info("Serving bundled model index");
-      return yield* Schema.decodeUnknownEffect(ModelIndexSchema)(bundledModelIndexSource).pipe(
-        Effect.mapError(
-          (source) =>
-            new ModelIndexError({ message: "Bundled model index failed validation", source }),
-        ),
-      );
+      return yield* decodeIndex(bundledModelIndexSource, "Bundled model index failed validation");
     }
     const fileStat = yield* Effect.tryPromise({
       try: () => stat(overridePath),

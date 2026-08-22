@@ -30,33 +30,17 @@ const recipeMatchRank = (
   options: RecipeMatchOptions = {},
 ): number => {
   const canonicalName = (recipe.served_model_name ?? "").toLowerCase();
-  if (
-    canonicalName &&
-    current.served_model_name &&
-    current.served_model_name.toLowerCase() === canonicalName
-  ) {
-    return 4;
-  }
-
-  if (!current.model_path) {
-    return 0;
-  }
+  if (canonicalName && current.served_model_name?.toLowerCase() === canonicalName) return 4;
+  if (!current.model_path) return 0;
 
   const recipePath = normalizeModelPath(recipe.model_path);
   const currentPath = normalizeModelPath(current.model_path);
-
-  if (recipePath === currentPath) {
-    return 3;
-  }
+  if (recipePath === currentPath) return 3;
 
   if (options.allowEitherPathContains) {
-    if (isPathPrefix(currentPath, recipePath) || isPathPrefix(recipePath, currentPath)) {
-      return 2;
-    }
-  } else if (options.allowCurrentContainsRecipePath) {
-    if (isPathPrefix(recipePath, currentPath)) {
-      return 2;
-    }
+    if (isPathPrefix(currentPath, recipePath) || isPathPrefix(recipePath, currentPath)) return 2;
+  } else if (options.allowCurrentContainsRecipePath && isPathPrefix(recipePath, currentPath)) {
+    return 2;
   }
 
   // Basename fallback ONLY when one side lacks directory context (e.g. the
@@ -70,18 +54,7 @@ const recipeMatchRank = (
   return 0;
 };
 
-/**
- * Determine whether a running process matches a given recipe.
- * Matching order:
- * 1) served_model_name (case-insensitive)
- * 2) normalized exact model path
- * 3) optional contains-style path match (route-specific)
- * 4) model path basename
- * @param recipe - Recipe to match against.
- * @param current - Current process info.
- * @param options - Matching options.
- * @returns True if the process matches the recipe.
- */
+/** True when the running process matches the recipe at any rank (see recipeMatchRank). */
 export const isRecipeRunning = (
   recipe: Recipe,
   current: ProcessInfo,
