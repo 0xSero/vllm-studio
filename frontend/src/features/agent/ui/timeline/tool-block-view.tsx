@@ -357,11 +357,9 @@ function editsToDiff(value: unknown): string | null {
 // render an incremental diff so the user sees the edit as it streams.
 function partialEditsDiffFromArgsText(argsText: string | undefined): string | null {
   if (!argsText) return null;
-  const oldKey = extractPartialField(argsText, ["old_str", "old_text", "oldText"]);
-  const newKey = extractPartialField(argsText, ["new_str", "new_text", "newText", "replacement"]);
-  if (oldKey === null && newKey === null) return null;
-  const oldText = oldKey ?? "";
-  const newText = newKey ?? "";
+  const oldText = extractPartialField(argsText, ["old_str", "old_text", "oldText"]) ?? "";
+  const newText =
+    extractPartialField(argsText, ["new_str", "new_text", "newText", "replacement"]) ?? "";
   if (!oldText && !newText) return null;
   return diffHunk("@@ edit @@", oldText, newText);
 }

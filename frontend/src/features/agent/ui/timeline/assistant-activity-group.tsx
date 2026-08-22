@@ -145,7 +145,7 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
             collapsed summary grows with the turn ("Ran 20 commands · edited 13
             files · …") and will not fit a phone column — let it truncate
             instead of forcing the row wider than the thread. */}
-        {live ? null : <SummaryGlyph kind={summaryIcon} />}
+        {!live ? <SummaryGlyph kind={summaryIcon} /> : null}
         <span
           className={`text-[length:var(--fs-base)] font-normal leading-5 ${
             live ? "codex-shimmer-text shrink-0" : "min-w-0 flex-1 truncate text-(--fg)/48"
