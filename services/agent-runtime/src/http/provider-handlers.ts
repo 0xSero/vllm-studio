@@ -25,7 +25,7 @@ export async function handleProvidersList(): Promise<Response> {
 export async function handleProviderLogin(request: Request, providerId: string): Promise<Response> {
   const body = await readJsonBody(request);
   const authType = body?.type === "api_key" ? "api_key" : body?.type === "oauth" ? "oauth" : null;
-  if (!authType) return jsonError("Body must include type: \"oauth\" | \"api_key\".");
+  if (!authType) return jsonError('Body must include type: "oauth" | "api_key".');
   try {
     const result = await startProviderLogin(providerId, authType);
     if ("error" in result) return jsonError(result.error, result.status);
@@ -58,12 +58,15 @@ export async function handleProviderLoginRespond(
   return Response.json({ ok: true });
 }
 
-export function handleProviderLoginCancel(jobId: string): Response {
+export function handleProviderLoginCancel(_request: Request, jobId: string): Response {
   if (!cancelProviderLogin(jobId)) return jsonError(`Unknown login job '${jobId}'.`, 404);
   return Response.json({ ok: true });
 }
 
-export async function handleProviderLogout(providerId: string): Promise<Response> {
+export async function handleProviderLogout(
+  _request: Request,
+  providerId: string,
+): Promise<Response> {
   try {
     const result = await logoutProvider(providerId);
     if ("error" in result) return jsonError(result.error, result.status);

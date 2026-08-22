@@ -81,7 +81,7 @@ export async function handleAutomationPatch(request: Request, id: string): Promi
   }
 }
 
-export async function handleAutomationDelete(id: string): Promise<Response> {
+export async function handleAutomationDelete(_request: Request, id: string): Promise<Response> {
   try {
     const removed = await deleteAutomation(id);
     if (!removed) return jsonError(`Unknown automation '${id}'.`, 404);
@@ -91,7 +91,7 @@ export async function handleAutomationDelete(id: string): Promise<Response> {
   }
 }
 
-export async function handleAutomationRun(id: string): Promise<Response> {
+export async function handleAutomationRun(_request: Request, id: string): Promise<Response> {
   const automation = await getAutomation(id);
   if (!automation) return jsonError(`Unknown automation '${id}'.`, 404);
   // Awaits the whole run: the automation exists, so a null result can only mean

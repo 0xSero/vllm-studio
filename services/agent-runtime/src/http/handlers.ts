@@ -25,12 +25,9 @@ import {
 import { isAgentSettledEvent } from "../../../../shared/agent/pi-events";
 import { markGoalTurnAborted } from "../goal-driver";
 import { piResourceDiagnostics, piRuntimeManager } from "../pi-runtime";
-import type { LoggedPiEvent, PiAgentSession, PiAgentStatus } from "../pi-runtime-types";
+import type { LoggedPiEvent, PiAgentSession } from "../pi-runtime-types";
 import { listSessions } from "../sessions-store";
-import {
-  sessionListChangedVersion,
-  subscribeSessionListChanged,
-} from "../session-list-changed";
+import { sessionListChangedVersion, subscribeSessionListChanged } from "../session-list-changed";
 import { errorMessage, jsonError } from "./helpers";
 import { sseResponse } from "./sse";
 
@@ -53,26 +50,18 @@ function resolveTurnSession(turn: AgentTurnRequest): ResolvedTurnSession | null 
   const status = resolved.session.status;
   const controlTargetActive = controlTargetHasActiveTurn(status);
   return {
-    effectivePiSessionId: effectivePiSessionId(turn, status, controlTargetActive),
-    effectiveStreamingBehavior: effectiveStreamingBehavior(turn, status),
+    effectivePiSessionId:
+      turn.mode !== "prompt" && controlTargetActive
+        ? (status.piSessionId ?? turn.piSessionId)
+        : turn.piSessionId,
+    effectiveStreamingBehavior:
+      turn.mode === "prompt" && status.active === true
+        ? (turn.streamingBehavior ?? "steer")
+        : turn.streamingBehavior,
     controlTargetActive,
     session: resolved.session,
     sessionId: resolved.sessionId,
   };
-}
-
-function effectivePiSessionId(
-  turn: AgentTurnRequest,
-  status: PiAgentStatus,
-  controlTargetActive: boolean,
-) {
-  if (turn.mode === "prompt") return turn.piSessionId;
-  return controlTargetActive ? (status.piSessionId ?? turn.piSessionId) : turn.piSessionId;
-}
-
-function effectiveStreamingBehavior(turn: AgentTurnRequest, status: PiAgentStatus) {
-  if (turn.mode === "prompt" && status.active === true) return turn.streamingBehavior ?? "steer";
-  return turn.streamingBehavior;
 }
 
 function ensurePromptRuntime(turn: AgentTurnRequest, resolved: ResolvedTurnSession): Promise<void> {
@@ -150,6 +139,21 @@ function commandResult(
   };
 }
 
+/** The rejection shape for a turn that never reached a live runtime session. */
+function unresolvedTurn(turn: AgentTurnRequest, error: string, status: number): Response {
+  return Response.json(
+    {
+      type: "command",
+      outcome: "rejected",
+      runtimeSessionId: turn.sessionId,
+      piSessionId: turn.piSessionId,
+      active: false,
+      error,
+    } satisfies AgentTurnCommandResult,
+    { status },
+  );
+}
+
 export async function handleAgentTurn(request: Request): Promise<Response> {
   const body = await readJsonRequestWithinLimit(request, AGENT_TURN_BODY_LIMIT_BYTES);
   if (!body.ok) return jsonError(body.error, body.status);
@@ -162,15 +166,7 @@ export async function handleAgentTurn(request: Request): Promise<Response> {
     const turnStartedAt = new Date(Date.now() - 2_000);
     const resolved = resolveTurnSession(turn);
     if (!resolved) {
-      const result: AgentTurnCommandResult = {
-        type: "command",
-        outcome: "rejected",
-        runtimeSessionId: turn.sessionId,
-        piSessionId: turn.piSessionId,
-        active: false,
-        error: "Runtime session is no longer active.",
-      };
-      return Response.json(result, { status: 409 });
+      return unresolvedTurn(turn, "Runtime session is no longer active.", 409);
     }
 
     if (turn.mode === "prompt") {
@@ -196,17 +192,7 @@ export async function handleAgentTurn(request: Request): Promise<Response> {
     }
     return Response.json(commandResult("queued", resolved));
   } catch (error) {
-    return Response.json(
-      {
-        type: "command",
-        outcome: "rejected",
-        runtimeSessionId: turn.sessionId,
-        piSessionId: turn.piSessionId,
-        active: false,
-        error: errorMessage(error, "Pi agent turn failed"),
-      } satisfies AgentTurnCommandResult,
-      { status: 500 },
-    );
+    return unresolvedTurn(turn, errorMessage(error, "Pi agent turn failed"), 500);
   }
 }
 
@@ -230,15 +216,13 @@ export async function handleAgentAbort(request: Request): Promise<Response> {
 }
 
 export async function handleExtensionUiResponse(request: Request): Promise<Response> {
-  const body = (await request.json().catch(() => null)) as
-    | {
-        sessionId?: unknown;
-        requestId?: unknown;
-        value?: unknown;
-        confirmed?: unknown;
-        cancelled?: unknown;
-      }
-    | null;
+  const body = (await request.json().catch(() => null)) as {
+    sessionId?: unknown;
+    requestId?: unknown;
+    value?: unknown;
+    confirmed?: unknown;
+    cancelled?: unknown;
+  } | null;
   const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
   const requestId = typeof body?.requestId === "string" ? body.requestId.trim() : "";
   if (!sessionId || !requestId) return jsonError("sessionId and requestId are required");
@@ -249,7 +233,9 @@ export async function handleExtensionUiResponse(request: Request): Promise<Respo
     ...(typeof body?.confirmed === "boolean" ? { confirmed: body.confirmed } : {}),
     cancelled: body?.cancelled === true,
   });
-  return accepted ? Response.json({ ok: true }) : jsonError("Extension request is no longer active", 409);
+  return accepted
+    ? Response.json({ ok: true })
+    : jsonError("Extension request is no longer active", 409);
 }
 
 // ─── POST /api/agent/compact ──────────────────────────────────────────────
@@ -324,28 +310,8 @@ export function handleRuntimeSessions(): Response {
   });
 }
 
-function initialRuntimeStatusPhase(
-  active: boolean,
-  replayBacklogCount: number,
-): "running" | "idle" | null {
-  if (active) return "running";
-  return replayBacklogCount === 0 ? "idle" : null;
-}
-
 function replayAfterCursor(requestedAfter: number, runtimeEventSeq: number): number {
   return requestedAfter > runtimeEventSeq ? 0 : requestedAfter;
-}
-
-function shouldSendTrailingIdleStatus({
-  active,
-  replayBacklogCount,
-  sentTerminalStatus,
-}: {
-  active: boolean;
-  replayBacklogCount: number;
-  sentTerminalStatus: boolean;
-}): boolean {
-  return !active && replayBacklogCount > 0 && !sentTerminalStatus;
 }
 
 // ─── GET /api/agent/runtime/status ────────────────────────────────────────
@@ -399,15 +365,11 @@ export function handleRuntimeEvents(request: Request): Response {
   return sseResponse({
     signal: request.signal,
     start(send, close) {
-      let off = () => {};
-      let ping: ReturnType<typeof setInterval> | null = null;
       let replaying = true;
       const replayQueue: LoggedPiEvent[] = [];
       const sentSeqs = new Set<number>();
       let after = replayAfterCursor(requestedAfter, session.status.eventSeq);
-      const safeSend = (payload: unknown, id?: number) => {
-        send(encode(payload, id));
-      };
+      const safeSend = (payload: unknown, id?: number) => send(encode(payload, id));
 
       const sendLogged = (logged: LoggedPiEvent) => {
         after = replayAfterCursor(after, session.status.eventSeq);
@@ -427,37 +389,33 @@ export function handleRuntimeEvents(request: Request): Response {
         sendLogged(logged);
       };
 
-      off = session.onLoggedEvent(onLiveEvent);
+      const off = session.onLoggedEvent(onLiveEvent);
       const backlog = session.getEventsAfter(after);
-      const initialPhase = initialRuntimeStatusPhase(session.status.active, backlog.length);
+      const initialPhase = session.status.active ? "running" : backlog.length === 0 ? "idle" : null;
       if (initialPhase) {
-        safeSend({
-          type: "status",
-          phase: initialPhase,
-          session: session.status,
-        });
+        safeSend({ type: "status", phase: initialPhase, session: session.status });
       }
       let sentTerminalStatus = false;
-      for (const logged of backlog) {
-        sendLogged(logged);
-        if (isAgentSettledEvent(logged.event)) sentTerminalStatus = true;
-      }
+      const drain = (events: LoggedPiEvent[]) => {
+        for (const logged of events) {
+          sendLogged(logged);
+          if (isAgentSettledEvent(logged.event)) sentTerminalStatus = true;
+        }
+      };
+      drain(backlog);
       replaying = false;
-      for (const logged of replayQueue) {
-        sendLogged(logged);
-        if (isAgentSettledEvent(logged.event)) sentTerminalStatus = true;
-      }
+      drain(replayQueue);
+      // An idle session whose backlog carried no settle event still owes the
+      // client a terminal status, or the UI waits on a turn that already ended.
       if (
-        shouldSendTrailingIdleStatus({
-          active: session.status.active,
-          replayBacklogCount: backlog.length + replayQueue.length,
-          sentTerminalStatus,
-        })
+        !session.status.active &&
+        backlog.length + replayQueue.length > 0 &&
+        !sentTerminalStatus
       ) {
         safeSend({ type: "status", phase: "idle", session: session.status });
       }
 
-      ping = setInterval(() => {
+      const ping = setInterval(() => {
         if (!session.status.active) {
           safeSend({ type: "status", phase: "idle", session: session.status });
           close();
@@ -471,7 +429,7 @@ export function handleRuntimeEvents(request: Request): Response {
       }
       return () => {
         off();
-        if (ping) clearInterval(ping);
+        clearInterval(ping);
       };
     },
   });

@@ -7,10 +7,7 @@
 //
 
 import { Schema } from "effect";
-import {
-  ConnectorTestInputSchema,
-  ConnectorUpsertInputSchema,
-} from "../connector-contract";
+import { ConnectorTestInputSchema, ConnectorUpsertInputSchema } from "../connector-contract";
 import {
   connectorToolPrefix,
   enabledConnectors,
@@ -41,6 +38,7 @@ import {
   type ConnectorGrantTarget,
 } from "../connector-grants-contract";
 import { resolveBundledResource } from "../plugin-resources";
+import { decodeBody, errorMessage, jsonError } from "./helpers";
 
 export async function handleConnectorsList(): Promise<Response> {
   const connectors = await listConnectors();
@@ -58,18 +56,17 @@ export async function handleConnectorsList(): Promise<Response> {
 async function rejectionFor(
   body: typeof ConnectorUpsertInputSchema.Type,
 ): Promise<Response | null> {
-  const reject = (error: string, status: number) => Response.json({ error }, { status });
-  if (!isValidConnectorId(body.id)) return reject("invalid connector id", 400);
+  if (!isValidConnectorId(body.id)) return jsonError("invalid connector id");
   if (body.transport === "stdio" && !body.command) {
-    return reject("command is required for stdio", 400);
+    return jsonError("command is required for stdio");
   }
   if (body.transport === "http") {
-    if (!body.url) return reject("url is required for http", 400);
+    if (!body.url) return jsonError("url is required for http");
     // An MCP endpoint is fetched by this process with whatever headers the row
     // carries, so the scheme is worth pinning: `file:` would read local paths
     // and the exotic schemes are not something a user meant to type.
     if (!/^https?:\/\//i.test(body.url)) {
-      return reject("url must start with http:// or https://", 400);
+      return jsonError("url must start with http:// or https://");
     }
   }
   // Tool names are namespaced `<id with - as _>_<tool>`, so `a-b` and `a_b`
@@ -82,17 +79,13 @@ async function rejectionFor(
       entry.id !== body.id && connectorToolPrefix(entry.id) === connectorToolPrefix(body.id),
   );
   return collision
-    ? reject(`Tool names would collide with connector "${collision.id}"`, 409)
+    ? jsonError(`Tool names would collide with connector "${collision.id}"`, 409)
     : null;
 }
 
 export async function handleConnectorUpsert(request: Request): Promise<Response> {
-  let body: typeof ConnectorUpsertInputSchema.Type;
-  try {
-    body = Schema.decodeUnknownSync(ConnectorUpsertInputSchema)(await request.json());
-  } catch {
-    return Response.json({ error: "invalid connector payload" }, { status: 400 });
-  }
+  const body = await decodeBody(request, ConnectorUpsertInputSchema, "invalid connector payload");
+  if (body instanceof Response) return body;
   const rejection = await rejectionFor(body);
   if (rejection) return rejection;
   const connector: ConnectorConfig = {
@@ -122,25 +115,19 @@ export async function handleConnectorUpsert(request: Request): Promise<Response>
     closePooledConnection(connector.id);
     return Response.json({ connectors: connectors.map(toConnectorView) });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Connector could not be saved" },
-      { status: 409 },
-    );
+    return jsonError(errorMessage(error, "Connector could not be saved"), 409);
   }
 }
 
 export async function handleConnectorDelete(request: Request): Promise<Response> {
   const id = new URL(request.url).searchParams.get("id") ?? "";
-  if (!id) return Response.json({ error: "id is required" }, { status: 400 });
+  if (!id) return jsonError("id is required");
   try {
     const connectors = await removeConnector(id);
     closePooledConnection(id);
     return Response.json({ connectors: connectors.map(toConnectorView) });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Connector could not be removed" },
-      { status: 409 },
-    );
+    return jsonError(errorMessage(error, "Connector could not be removed"), 409);
   }
 }
 
@@ -190,14 +177,14 @@ export async function handleConnectorInventory(request: Request): Promise<Respon
 }
 
 export async function handleConnectorCall(request: Request): Promise<Response> {
-  let body: typeof ConnectorToolCallSchema.Type;
-  try {
-    body = Schema.decodeUnknownSync(ConnectorToolCallSchema)(await request.json());
-  } catch {
-    return Response.json({ error: "connector_id and tool are required" }, { status: 400 });
-  }
+  const body = await decodeBody(
+    request,
+    ConnectorToolCallSchema,
+    "connector_id and tool are required",
+  );
+  if (body instanceof Response) return body;
   if (!body.connector_id.trim() || !body.tool.trim()) {
-    return Response.json({ error: "connector_id and tool are required" }, { status: 400 });
+    return jsonError("connector_id and tool are required");
   }
   try {
     // Filtering the inventory only decides what the model is told about; the
@@ -219,13 +206,6 @@ export async function handleConnectorCall(request: Request): Promise<Response> {
       { status },
     );
   }
-}
-
-function grantsFailure(error: unknown, fallback: string): Response {
-  return Response.json(
-    { error: error instanceof Error ? error.message : fallback },
-    { status: 500 },
-  );
 }
 
 /**
@@ -262,55 +242,48 @@ export async function handleConnectorGrantsGet(request: Request): Promise<Respon
     const [grants, connectors] = await Promise.all([listConnectorGrants(), grantTargets(probeId)]);
     return Response.json({ grants, connectors });
   } catch (error) {
-    return grantsFailure(error, "Connector grants failed");
+    return jsonError(errorMessage(error, "Connector grants failed"), 500);
   }
 }
 
 export async function handleConnectorGrantPut(request: Request): Promise<Response> {
-  let input: typeof ConnectorGrantInputSchema.Type;
-  try {
-    input = Schema.decodeUnknownSync(ConnectorGrantInputSchema)(await request.json());
-  } catch {
-    return Response.json(
-      { error: "modelId, connectorId and tools are required" },
-      { status: 400 },
-    );
-  }
+  const input = await decodeBody(
+    request,
+    ConnectorGrantInputSchema,
+    "modelId, connectorId and tools are required",
+  );
+  if (input instanceof Response) return input;
   if (!input.modelId.trim() || !input.connectorId.trim()) {
-    return Response.json({ error: "modelId and connectorId are required" }, { status: 400 });
+    return jsonError("modelId and connectorId are required");
   }
   try {
     return Response.json({ grants: await setConnectorGrant(input) });
   } catch (error) {
-    return grantsFailure(error, "Connector grant could not be saved");
+    return jsonError(errorMessage(error, "Connector grant could not be saved"), 500);
   }
 }
 
 export async function handleConnectorGrantDelete(request: Request): Promise<Response> {
-  let input: typeof ConnectorGrantRemovalSchema.Type;
-  try {
-    input = Schema.decodeUnknownSync(ConnectorGrantRemovalSchema)(await request.json());
-  } catch {
-    return Response.json({ error: "modelId and connectorId are required" }, { status: 400 });
-  }
+  const input = await decodeBody(
+    request,
+    ConnectorGrantRemovalSchema,
+    "modelId and connectorId are required",
+  );
+  if (input instanceof Response) return input;
   try {
     return Response.json({
       grants: await removeConnectorGrant(input.modelId, input.connectorId),
     });
   } catch (error) {
-    return grantsFailure(error, "Connector grant could not be removed");
+    return jsonError(errorMessage(error, "Connector grant could not be removed"), 500);
   }
 }
 
 export async function handleConnectorTest(request: Request): Promise<Response> {
-  let body: typeof ConnectorTestInputSchema.Type;
-  try {
-    body = Schema.decodeUnknownSync(ConnectorTestInputSchema)(await request.json());
-  } catch {
-    return Response.json({ error: "id is required" }, { status: 400 });
-  }
+  const body = await decodeBody(request, ConnectorTestInputSchema, "id is required");
+  if (body instanceof Response) return body;
   const connector = (await listConnectors()).find((entry) => entry.id === body.id);
-  if (!connector) return Response.json({ error: "unknown connector" }, { status: 404 });
+  if (!connector) return jsonError("unknown connector", 404);
   const result = await probeConnector(connector);
   return Response.json({
     ok: result.ok,
