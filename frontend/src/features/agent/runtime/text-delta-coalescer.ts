@@ -8,6 +8,7 @@
 // is dropped; a kind switch or a non-delta `message_update` flushes first to
 // preserve ordering.
 
+import { asRecord } from "@/features/agent/messages";
 import type { SessionId } from "@/features/agent/runtime/types";
 import { traceAgentReasoning } from "@/features/agent/trace-reasoning";
 
@@ -72,10 +73,6 @@ export function createTextDeltaCoalescer({
     return slot;
   };
 
-  const applyPending = (sessionId: SessionId, snapshot: PendingSnapshot): void => {
-    applyPiEvent(sessionId, snapshot.event, snapshot.seq);
-  };
-
   const cancelFlush = (slot: SessionSlot): void => {
     if (slot.flushHandle) {
       slot.flushHandle.cancel();
@@ -89,7 +86,7 @@ export function createTextDeltaCoalescer({
     cancelFlush(slot);
     const current = slot.pending;
     slot.pending = null;
-    applyPending(sessionId, current);
+    applyPiEvent(sessionId, current.event, current.seq);
   };
 
   const scheduleFlush = (sessionId: SessionId): void => {
@@ -104,7 +101,7 @@ export function createTextDeltaCoalescer({
       slotNow.flushHandle = null;
       const current = slotNow.pending;
       slotNow.pending = null;
-      if (current) applyPending(sessionId, current);
+      if (current) applyPiEvent(sessionId, current.event, current.seq);
     });
   };
 
@@ -126,14 +123,8 @@ export function createTextDeltaCoalescer({
       canMerge && existingDelta && incomingDelta
         ? mergeTextDeltaEvent(normalizedEvent, existingDelta.delta + incomingDelta.delta)
         : normalizedEvent;
-    slot.pending = {
-      event: nextEvent,
-      seq: options.seq ?? carried?.seq,
-    };
-    traceAgentReasoning("coalescer.snapshot", {
-      sessionId,
-      type: normalizedEvent.type,
-    });
+    slot.pending = { event: nextEvent, seq: options.seq ?? carried?.seq };
+    traceAgentReasoning("coalescer.snapshot", { sessionId, type: normalizedEvent.type });
     scheduleFlush(sessionId);
     return true;
   };
@@ -141,12 +132,9 @@ export function createTextDeltaCoalescer({
   // Flush every slot, cancel any pending frame handles, then drop all slots so
   // the map does not retain one entry per session for the app lifetime.
   const clear = (): void => {
-    for (const sessionId of Array.from(slots.keys())) {
-      const slot = slots.get(sessionId);
-      if (slot) {
-        flushNow(sessionId);
-        cancelFlush(slot);
-      }
+    for (const [sessionId, slot] of [...slots]) {
+      flushNow(sessionId);
+      cancelFlush(slot);
     }
     slots.clear();
   };
@@ -194,10 +182,4 @@ function normalizeDeltaEvent(event: Record<string, unknown>): Record<string, unk
     ...event,
     assistantMessageEvent: { ...assistantMessageEvent, type: "thinking_delta" },
   };
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }

@@ -56,17 +56,16 @@ const RuntimeStatusResponseSchema = Schema.Struct({
   events: Schema.optional(Schema.Array(RuntimeLoggedEventSchema)),
 });
 
-const RuntimeSessionsResponseSchema = Schema.Struct({
-  sessions: Schema.optional(
-    Schema.Array(Schema.Struct({ sessionId: Schema.String, status: RuntimeStatusSchema })),
-  ),
+const RuntimeSessionEntrySchema = Schema.Struct({
+  sessionId: Schema.String,
+  status: RuntimeStatusSchema,
 });
 
-export type RuntimeSessionSummary = Schema.Schema.Type<
-  typeof RuntimeSessionsResponseSchema
->["sessions"] extends readonly (infer T)[] | undefined
-  ? T
-  : never;
+const RuntimeSessionsResponseSchema = Schema.Struct({
+  sessions: Schema.optional(Schema.Array(RuntimeSessionEntrySchema)),
+});
+
+export type RuntimeSessionSummary = Schema.Schema.Type<typeof RuntimeSessionEntrySchema>;
 
 const decodeStatusResponseOption = Schema.decodeUnknownOption(RuntimeStatusResponseSchema, {
   onExcessProperty: "preserve",

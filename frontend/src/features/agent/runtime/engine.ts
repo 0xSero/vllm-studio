@@ -9,6 +9,7 @@ import {
 } from "@/features/agent/messages";
 import { foldSessionEvents } from "@/features/agent/runtime/pi-event-applier";
 import {
+  isLiveTurnStatus,
   runtimeCanHydrateCanonicalSession,
   runtimeStatusAcceptsControl,
   settleTurnFinalizingTools,
@@ -34,6 +35,9 @@ import {
 import { readTranscriptSnapshot } from "@/features/agent/workspace/transcript-cache";
 
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
+
+/** `Effect.tryPromise` with the rejection reason passed through unchanged. */
+const attempt = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: (e) => e });
 
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
@@ -125,32 +129,29 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           const selection = selectionForRef.current(sessionId);
           const skills = selection.skills ?? EMPTY_SKILLS;
           const promptTemplates = selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES;
-          const browserEnabledForTurn = browserToolEnabled;
           const message = selectedContextPrompt(text, skills);
           const contextualQueueReplacement = queueReplacement
             ? selectedContextPrompt(queueReplacement, skills)
             : undefined;
-          const result = yield* Effect.tryPromise({
-            try: () =>
-              api.submitTurnCommand({
-                sessionId: runtime,
-                modelId,
-                thinkingLevel,
-                toolAccess,
-                message,
-                cwd: cwd.trim() || undefined,
-                piSessionId,
-                mode,
-                queueAction,
-                queueReplacement: contextualQueueReplacement,
-                browserToolEnabled: browserEnabledForTurn,
-                browserSessionId: runtime,
-                browserBackend,
-                skills,
-                promptTemplates,
-              }),
-            catch: (error) => error,
-          });
+          const result = yield* attempt(() =>
+            api.submitTurnCommand({
+              sessionId: runtime,
+              modelId,
+              thinkingLevel,
+              toolAccess,
+              message,
+              cwd: cwd.trim() || undefined,
+              piSessionId,
+              mode,
+              queueAction,
+              queueReplacement: contextualQueueReplacement,
+              browserToolEnabled,
+              browserSessionId: runtime,
+              browserBackend,
+              skills,
+              promptTemplates,
+            }),
+          );
           applyTurnAccepted({ updateSession, onPiSessionIdChange }, sessionId, result);
           return { ok: true };
         }).pipe(
@@ -215,10 +216,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           // and /abort has no piSessionId fallback lookup.
           const runtime = sessionRuntimeController().connectionKey(sessionId);
           updateSession(sessionId, (session) => ({ ...session, status: "stopping" }));
-          const cleared = yield* Effect.tryPromise({
-            try: () => api.abortSession(runtime),
-            catch: (error) => error,
-          });
+          const cleared = yield* attempt(() => api.abortSession(runtime));
           // Settle the session fully. A direct status write bypasses the reducer
           // that normally finalizes tool badges on agent_end, and idling the
           // session detaches the SSE — so if the runtime's terminal event never
@@ -262,10 +260,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           const runtimeId = sessionRuntimeController().connectionKey(sessionId);
           const [replayResult, runtimeStatus] = yield* Effect.all(
             [
-              Effect.tryPromise({
-                try: () => api.loadCanonicalSession(piSessionId, cwd),
-                catch: (error) => error,
-              }).pipe(Effect.result),
+              attempt(() => api.loadCanonicalSession(piSessionId, cwd)).pipe(Effect.result),
               Effect.tryPromise({
                 try: () => api.loadRuntimeStatus(runtimeId, piSessionId),
                 catch: () => null,
@@ -371,10 +366,9 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       const piSessionId = session.piSessionId;
       return Effect.runPromise(
         Effect.gen(function* () {
-          const result = yield* Effect.tryPromise({
-            try: () => api.loadCanonicalSession(piSessionId, cwd, { before: cursor }),
-            catch: (error) => error,
-          }).pipe(Effect.result);
+          const result = yield* attempt(() =>
+            api.loadCanonicalSession(piSessionId, cwd, { before: cursor }),
+          ).pipe(Effect.result);
           if (result._tag !== "Success") return;
           const { messages: earlier } = foldSessionEvents(result.success.events);
           updateSession(sessionId, (current) => ({
@@ -400,31 +394,26 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
         Effect.gen(function* () {
           const session = tabsRef.current.find((tab) => tab.id === sessionId);
           if (!session || !modelId) return;
+          const selection = selectionForRef.current(sessionId);
           updateSession(sessionId, (s) => ({ ...s, error: "" }));
-          const result = yield* Effect.tryPromise({
-            try: () =>
-              api.compactSession({
-                sessionId: session.id,
-                modelId,
-                thinkingLevel,
-                toolAccess,
-                cwd: cwd.trim() || undefined,
-                piSessionId: session.piSessionId,
-                browserToolEnabled,
-                browserSessionId: session.id,
-                browserBackend,
-                skills: selectionForRef.current(sessionId).skills ?? EMPTY_SKILLS,
-                promptTemplates:
-                  selectionForRef.current(sessionId).promptTemplates ?? EMPTY_PROMPT_TEMPLATES,
-              }),
-            catch: (error) => error,
-          });
+          const result = yield* attempt(() =>
+            api.compactSession({
+              sessionId: session.id,
+              modelId,
+              thinkingLevel,
+              toolAccess,
+              cwd: cwd.trim() || undefined,
+              piSessionId: session.piSessionId,
+              browserToolEnabled,
+              browserSessionId: session.id,
+              browserBackend,
+              skills: selection.skills ?? EMPTY_SKILLS,
+              promptTemplates: selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES,
+            }),
+          );
           const nextSessionId = result.status?.piSessionId || session.piSessionId;
           if (nextSessionId) {
-            yield* Effect.tryPromise({
-              try: () => loadAndReplay(nextSessionId, sessionId),
-              catch: (error) => error,
-            });
+            yield* attempt(() => loadAndReplay(nextSessionId, sessionId));
           }
           updateSession(sessionId, (s) => ({
             ...s,
@@ -452,9 +441,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     ): Promise<boolean> => {
       // "stopping" counts: the composer still draws itself as running there, and
       // a turn being torn down can still take a follow-up for the next one.
-      if (tab.status !== "running" && tab.status !== "starting" && tab.status !== "stopping") {
-        return false;
-      }
+      if (!isLiveTurnStatus(tab.status)) return false;
       const status = await loadRuntimeStatusCb(runtime, tab.piSessionId).catch(() => null);
       return runtimeStatusAcceptsControl(status, tab.piSessionId);
     },
@@ -527,10 +514,7 @@ function canonicalEventsBeforeRuntimeTail(
     const candidate = { eventIndex: canonicalMessages[index]?.eventIndex ?? 0, score };
     if (!best || candidate.score >= best.score) best = candidate;
   }
-  if (best) {
-    return canonicalEvents.slice(0, best.eventIndex);
-  }
-  return canonicalEvents;
+  return best ? canonicalEvents.slice(0, best.eventIndex) : canonicalEvents;
 }
 
 function runtimeEventsInOrder(
@@ -538,12 +522,7 @@ function runtimeEventsInOrder(
 ): Record<string, unknown>[] {
   return [...runtimeEvents]
     .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
-    .flatMap((entry) => {
-      if (entry.event && typeof entry.event === "object") {
-        return [entry.event];
-      }
-      return [];
-    });
+    .flatMap((entry) => (entry.event && typeof entry.event === "object" ? [entry.event] : []));
 }
 
 function dedupeAdjacentEvents(events: Record<string, unknown>[]): Record<string, unknown>[] {
@@ -567,11 +546,6 @@ function mergeCanonicalAndRuntimeEvents(
   ]);
 }
 
-function reconcileReplayMessages(
-  current: ChatMessage[],
-  canonical: ChatMessage[],
-): ChatMessage[] {
-  if (canonical.length === 0) return current;
-  if (canonical.length >= current.length) return canonical;
-  return current;
+function reconcileReplayMessages(current: ChatMessage[], canonical: ChatMessage[]): ChatMessage[] {
+  return canonical.length > 0 && canonical.length >= current.length ? canonical : current;
 }

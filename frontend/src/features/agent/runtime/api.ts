@@ -36,8 +36,15 @@ export function runtimeContextUsage(
   status: RuntimeStatus | null | undefined,
   fallback: RuntimeContextUsage | null | undefined,
 ): RuntimeContextUsage | null {
-  if (status) return status.contextUsage ?? null;
-  return fallback ?? null;
+  return status ? (status.contextUsage ?? null) : (fallback ?? null);
+}
+
+function jsonRequest(url: string, body: unknown, method = "POST"): Promise<Response> {
+  return fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 const AbortSessionResponseSchema = Schema.Struct({
@@ -96,11 +103,7 @@ export async function loadRuntimeStatus(
 
 export async function abortSession(sessionId: string): Promise<AbortSessionResult> {
   try {
-    const response = await fetch("/api/agent/abort", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId }),
-    });
+    const response = await jsonRequest("/api/agent/abort", { sessionId });
     return parseAbortSessionResult(await safeJson<unknown>(response));
   } catch {
     return { steering: [], followUp: [] };
@@ -112,10 +115,10 @@ export async function respondExtensionUi(
   requestId: string,
   response: { value?: string; confirmed?: boolean; cancelled?: boolean },
 ): Promise<void> {
-  const result = await fetch("/api/agent/runtime/extension-ui", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sessionId, requestId, ...response }),
+  const result = await jsonRequest("/api/agent/runtime/extension-ui", {
+    sessionId,
+    requestId,
+    ...response,
   });
   if (!result.ok) throw new Error("Extension response was rejected");
 }
@@ -172,11 +175,11 @@ export async function loadCanonicalSession(
   };
 }
 
-export type CompactSessionArgs = {
+/** Fields every agent runtime command carries. */
+type AgentCommandArgs = {
   sessionId: string;
   modelId: string;
   thinkingLevel?: import("@/features/agent/contracts").AgentThinkingLevel;
-  toolAccess?: AgentToolAccess;
   cwd?: string;
   piSessionId?: string | null;
   browserToolEnabled: boolean;
@@ -185,48 +188,32 @@ export type CompactSessionArgs = {
   skills: ComposerSkillRef[];
   promptTemplates?: ComposerPromptTemplateRef[];
 };
+
+export type CompactSessionArgs = AgentCommandArgs & { toolAccess?: AgentToolAccess };
 
 export type CompactSessionResult = {
   status?: RuntimeStatus;
 };
 
 export async function compactSession(args: CompactSessionArgs): Promise<CompactSessionResult> {
-  const response = await fetch("/api/agent/compact", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(args),
-  });
+  const response = await jsonRequest("/api/agent/compact", args);
   const payload = await safeJson<{ error?: string; status?: RuntimeStatus }>(response);
   if (!response.ok) throw new Error(payload.error || "Compaction failed");
   return payload;
 }
 
-export type SubmitTurnArgs = {
-  sessionId: string;
-  modelId: string;
-  thinkingLevel?: import("@/features/agent/contracts").AgentThinkingLevel;
+export type SubmitTurnArgs = AgentCommandArgs & {
   toolAccess: AgentToolAccess;
   message: string;
   images?: AgentImageInput[];
-  cwd?: string;
-  piSessionId?: string | null;
   /** Control mode for steer/follow-up; omitted for a normal prompt. */
   mode?: "steer" | "follow_up";
   queueAction?: AgentQueueAction;
   queueReplacement?: string;
-  browserToolEnabled: boolean;
-  browserSessionId?: string;
-  browserBackend?: BrowserBackend;
-  skills: ComposerSkillRef[];
-  promptTemplates?: ComposerPromptTemplateRef[];
 };
 
 export async function submitTurnCommand(args: SubmitTurnArgs): Promise<AgentTurnCommandResult> {
-  const response = await fetch("/api/agent/turn", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(args),
-  });
+  const response = await jsonRequest("/api/agent/turn", args);
   const payload = await safeJson<{ error?: string } & Partial<AgentTurnCommandResult>>(response);
   const parsed = parseAgentTurnCommandResult(payload);
   if (!response.ok || !parsed) {
@@ -260,15 +247,10 @@ export function subscribeRuntimeEvents(
       return;
     }
     const payload = decodeRuntimeEventPayload(parsed);
-    if (!payload) return;
-    handlers.onPayload(payload);
+    if (payload) handlers.onPayload(payload);
   };
   source.onerror = handlers.onError;
-  return {
-    close: () => {
-      source.close();
-    },
-  };
+  return { close: () => source.close() };
 }
 
 const decodeSessionGoalResponseOption = Schema.decodeUnknownOption(SessionGoalResponseSchema, {
@@ -298,11 +280,7 @@ export async function updateSessionGoal(
   piSessionId: string,
   patch: SessionGoalPatch,
 ): Promise<SessionGoal | null> {
-  const response = await fetch(sessionGoalUrl(piSessionId), {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(patch),
-  });
+  const response = await jsonRequest(sessionGoalUrl(piSessionId), patch, "PUT");
   if (!response.ok) throw new Error("Failed to update the goal.");
   return decodeSessionGoal(await safeJson<unknown>(response));
 }

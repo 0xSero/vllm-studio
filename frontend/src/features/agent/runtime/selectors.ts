@@ -1,3 +1,4 @@
+import { isLiveTurnStatus } from "@/features/agent/runtime/session-status";
 import type { PaneId, PaneState, WorkspaceState } from "@/features/agent/workspace/types";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 
@@ -41,13 +42,8 @@ export function findWorkspaceSessionByPiSessionId(
 }
 
 function sessionOutranks(candidate: Session, current: Session): boolean {
-  const candidateWorking =
-    candidate.status === "running" ||
-    candidate.status === "starting" ||
-    candidate.status === "stopping";
-  const currentWorking =
-    current.status === "running" || current.status === "starting" || current.status === "stopping";
-  if (candidateWorking !== currentWorking) return candidateWorking;
+  const candidateWorking = isLiveTurnStatus(candidate.status);
+  if (candidateWorking !== isLiveTurnStatus(current.status)) return candidateWorking;
   if (candidate.messages.length !== current.messages.length) {
     return candidate.messages.length > current.messages.length;
   }
@@ -55,11 +51,7 @@ function sessionOutranks(candidate: Session, current: Session): boolean {
 }
 
 export function referencedSessionIds(state: WorkspaceState): Set<SessionId> {
-  const ids = new Set<SessionId>();
-  for (const pane of state.panesById.values()) {
-    ids.add(pane.sessionId);
-  }
-  return ids;
+  return new Set([...state.panesById.values()].map((pane) => pane.sessionId));
 }
 
 export { controlTargetHasActiveTurn } from "@shared/agent/agent-turn";

@@ -103,20 +103,16 @@ function createPromptTurnContext(
   if (!selected || !deps.modelId) return null;
 
   const selection = deps.selectionFor(sessionId);
-  const skills = args.skills ?? selection.skills ?? EMPTY_SKILLS;
-  const promptTemplates =
-    args.promptTemplates ?? selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES;
-
   return {
     assistantId: newId("assistant"),
     browserEnabledForTurn: args.browserToolEnabled ?? deps.browserToolEnabled,
-    promptTemplates,
+    promptTemplates: args.promptTemplates ?? selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES,
     // The session id is the opaque runtime key the server addresses this
     // session by.
     runtime: selected.id,
     selected,
     sessionId,
-    skills,
+    skills: args.skills ?? selection.skills ?? EMPTY_SKILLS,
     userId: newId("user"),
   };
 }
@@ -194,7 +190,7 @@ function startPromptCommand(
   }).pipe(
     Effect.catch(({ error }) =>
       Effect.gen(function* () {
-        const currentPiSessionId = latestPiSessionId(deps, context, null);
+        const currentPiSessionId = latestPiSessionId(deps, context) ?? "";
         const status = yield* Effect.tryPromise({
           try: () => api.loadRuntimeStatus(context.runtime, currentPiSessionId),
           catch: () => null,
@@ -245,9 +241,7 @@ function promptTurnRequest(
     message: args.prompt,
     images: args.images,
     cwd: deps.cwd.trim() || undefined,
-    piSessionId:
-      deps.tabsRef.current.find((tab) => tab.id === context.sessionId)?.piSessionId ??
-      context.selected.piSessionId,
+    piSessionId: latestPiSessionId(deps, context),
     browserToolEnabled: context.browserEnabledForTurn,
     browserSessionId: context.runtime,
     browserBackend: deps.browserBackend,
@@ -256,16 +250,12 @@ function promptTurnRequest(
   };
 }
 
-function latestPiSessionId(
-  deps: PromptStreamDeps,
-  context: PromptTurnContext,
-  eventId: string | null,
-): string {
+/** The session's pi id as of right now — the live tabs snapshot wins over the
+ *  copy captured when the turn started. */
+function latestPiSessionId(deps: PromptStreamDeps, context: PromptTurnContext) {
   return (
-    eventId ??
     deps.tabsRef.current.find((tab) => tab.id === context.sessionId)?.piSessionId ??
-    context.selected.piSessionId ??
-    ""
+    context.selected.piSessionId
   );
 }
 

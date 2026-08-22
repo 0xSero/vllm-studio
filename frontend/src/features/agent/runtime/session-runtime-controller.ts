@@ -37,7 +37,7 @@ import { createTextDeltaCoalescer } from "@/features/agent/runtime/text-delta-co
 import { Effect, Fiber, Schedule } from "effect";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import { publishRuntimeActivity } from "@/features/agent/session-index";
-import { settleTurn } from "@/features/agent/runtime/session-status";
+import { isLiveTurnStatus, settleTurn } from "@/features/agent/runtime/session-status";
 
 const RESUME_IDLE_RECONNECT_MS = 15_000;
 const RESUME_RECONNECT_DELAY_MS = 1_000;
@@ -148,20 +148,24 @@ export function createSessionRuntimeController(): SessionRuntimeController {
   const connectionKeyOverrides = new Map<SessionId, string>();
   const connectionKeyFor = (session: Session): string =>
     connectionKeyOverrides.get(session.id) ?? session.id;
+  const cursorFor = (sessionId: SessionId): RuntimeCursor =>
+    cursors.get(sessionId) ?? adoptExternalCursor(undefined);
+  // Every app-lifetime per-session map, so eviction and teardown drop entries
+  // from all of them in one place.
+  const perSessionMaps: Array<Map<SessionId, unknown>> = [
+    cursors,
+    turnAcceptedAt,
+    turnFinishedAt,
+    connectionKeyOverrides,
+    streamContext.liveAssistantIds,
+  ];
 
   // Sessions evicted from the workspace registry (closed panes, pruned
   // background sessions) must not leave app-lifetime entries behind in this
   // singleton's per-session maps. Only truly-gone ids are pruned —
   // idle-but-open sessions keep their cursor seed.
   const pruneStaleSessionEntries = (knownIds: ReadonlySet<SessionId>): void => {
-    const maps: Array<Map<SessionId, unknown>> = [
-      cursors,
-      turnAcceptedAt,
-      turnFinishedAt,
-      connectionKeyOverrides,
-      streamContext.liveAssistantIds,
-    ];
-    for (const map of maps) {
+    for (const map of perSessionMaps) {
       for (const sessionId of [...map.keys()]) {
         if (!knownIds.has(sessionId)) map.delete(sessionId);
       }
@@ -190,10 +194,7 @@ export function createSessionRuntimeController(): SessionRuntimeController {
     commit(sessionId, (session) =>
       decorate(stampSeq(reduceSessionEvent(session, streamContext, event), seq)),
     );
-    cursors.set(
-      sessionId,
-      commitRuntimeSeq(cursors.get(sessionId) ?? adoptExternalCursor(undefined), seq),
-    );
+    cursors.set(sessionId, commitRuntimeSeq(cursorFor(sessionId), seq));
   };
 
   // Text-delta coalescer (text-delta-coalescer.ts): a per-session pending
@@ -227,8 +228,7 @@ export function createSessionRuntimeController(): SessionRuntimeController {
   };
 
   const acceptSeq = (sessionId: SessionId, seq?: number): boolean => {
-    const current = cursors.get(sessionId) ?? adoptExternalCursor(undefined);
-    const decision = acceptRuntimeSeq(current, seq);
+    const decision = acceptRuntimeSeq(cursorFor(sessionId), seq);
     if (decision.accept) cursors.set(sessionId, decision.cursor);
     return decision.accept;
   };
@@ -548,9 +548,7 @@ export function createSessionRuntimeController(): SessionRuntimeController {
           coalescer.flushNow(sessionId);
           dropLiveTarget(sessionId);
           commit(sessionId, (session) =>
-            session.status === "running" ||
-            session.status === "starting" ||
-            session.status === "stopping"
+            isLiveTurnStatus(session.status)
               ? {
                   ...settleTurn(session),
                   contextUsage: runtimeContextUsage(status, session.contextUsage),
@@ -564,7 +562,7 @@ export function createSessionRuntimeController(): SessionRuntimeController {
     const connect = () => {
       // (Re)connect from the highest RECEIVED seq — an unflushed coalesced
       // delta is still in memory, so replaying it would double-apply.
-      const after = reconnectAfter(cursors.get(sessionId) ?? adoptExternalCursor(undefined));
+      const after = reconnectAfter(cursorFor(sessionId));
       sub = subscribeRuntimeEvents(runtime, after, piSessionId, {
         onPayload: (payload) => {
           if (closed) return;
@@ -581,22 +579,19 @@ export function createSessionRuntimeController(): SessionRuntimeController {
 
     connect();
 
-    const watchdogFiber =
-      RESUME_IDLE_RECONNECT_MS > 0
-        ? (Effect.runFork(
-            Effect.sync(() => {
-              if (closed || Date.now() - lastPayloadAt < RESUME_IDLE_RECONNECT_MS) return;
-              void reconcileLiveness();
-            }).pipe(Effect.repeat(Schedule.spaced(RESUME_IDLE_RECONNECT_MS))),
-          ) as never)
-        : null;
+    const watchdogFiber = Effect.runFork(
+      Effect.sync(() => {
+        if (closed || Date.now() - lastPayloadAt < RESUME_IDLE_RECONNECT_MS) return;
+        void reconcileLiveness();
+      }).pipe(Effect.repeat(Schedule.spaced(RESUME_IDLE_RECONNECT_MS))),
+    );
 
     return {
       key: resumeConnectionKey(runtime, piSessionId),
       close: () => {
         closed = true;
         if (reconnectTimer !== null) clearTimeout(reconnectTimer);
-        if (watchdogFiber) void Effect.runPromise(Fiber.interrupt(watchdogFiber));
+        void Effect.runPromise(Fiber.interrupt(watchdogFiber));
         coalescer.flushNow(sessionId);
         sub?.close();
       },
@@ -622,7 +617,7 @@ export function createSessionRuntimeController(): SessionRuntimeController {
       // would make the next reconnect re-apply the whole accumulated log (the
       // 502-retry-storm duplication). A missing seq falls back to the old
       // always-rewind behavior to preserve the dropped-second-turn guarantee.
-      const received = (cursors.get(sessionId) ?? adoptExternalCursor(undefined)).receivedSeq ?? 0;
+      const received = cursorFor(sessionId).receivedSeq ?? 0;
       if (runtimeEventSeq === undefined || runtimeEventSeq < received) {
         adoptCursor(sessionId, 0);
       }
@@ -642,19 +637,21 @@ export function createSessionRuntimeController(): SessionRuntimeController {
       adoptCursor(sessionId, committedSeq);
     },
     reconcile: (sessions) => {
-      const desired = new Map<
-        SessionId,
-        { connectionKey: string; piSessionId: string | null; lastEventSeq: number | undefined }
-      >();
-      for (const session of sessions) {
-        if (shouldSubscribeRuntimeEvents(session.status)) {
-          desired.set(session.id, {
-            connectionKey: connectionKeyFor(session),
-            piSessionId: session.piSessionId ?? null,
-            lastEventSeq: session.lastEventSeq,
-          });
-        }
-      }
+      const desired = new Map(
+        sessions
+          .filter((session) => shouldSubscribeRuntimeEvents(session.status))
+          .map(
+            (session) =>
+              [
+                session.id,
+                {
+                  connectionKey: connectionKeyFor(session),
+                  piSessionId: session.piSessionId ?? null,
+                  lastEventSeq: session.lastEventSeq,
+                },
+              ] as const,
+          ),
+      );
 
       for (const [sessionId, attachment] of [...attachments]) {
         const want = desired.get(sessionId);
@@ -703,11 +700,7 @@ export function createSessionRuntimeController(): SessionRuntimeController {
       // Workspace teardown: drop every per-session map so the app-lifetime
       // singleton doesn't retain one entry per session ever opened. Also drops
       // every live-target pin so a remount can't inherit a stale id.
-      cursors.clear();
-      turnAcceptedAt.clear();
-      turnFinishedAt.clear();
-      connectionKeyOverrides.clear();
-      streamContext.liveAssistantIds.clear();
+      for (const map of perSessionMaps) map.clear();
     },
     connectionKey: (sessionId) => connectionKeyOverrides.get(sessionId) ?? sessionId,
     seedConnectionKey: (sessionId, runtimeKey) => {

@@ -127,17 +127,15 @@ export function reduceSessionEvent(
     // would invent state the log doesn't have — and must not open a bubble.
     if (ctx.replay) return next;
     const target = resolveAssistantTarget(next, ctx);
-    const settled = patchAssistantMessage(
-      target.session,
-      target.targetId,
-      (msg) => ({
-        ...msg,
-        blocks: finalizeRunningToolBlocks(msg.blocks ?? []),
-        streamCalls: undefined,
-      }),
-      ctx.replay,
-    );
-    return clearPendingUserMessages(settled);
+    const settled = patchAssistantMessage(target, ctx, (msg) => ({
+      ...msg,
+      blocks: finalizeRunningToolBlocks(msg.blocks ?? []),
+      streamCalls: undefined,
+    }));
+    // Deliberately leaves `awaitingEcho` intact — the echo may still be in
+    // flight, and that marker is the only thing standing between a late echo
+    // and a duplicated bubble.
+    return clearUserMessageFlag(settled, "pending");
   }
 
   const afterFinalMessage = reduceFinalAssistantMessageEvent(next, ctx, event);
@@ -145,27 +143,17 @@ export function reduceSessionEvent(
 
   if (!assistantPiEventAffectsBlocks(event)) return next;
   const target = resolveAssistantTarget(next, ctx);
-  traceAgentReasoning("pi-event-applier.before", {
-    sessionId: session.id,
-    assistantId: target.targetId,
-    event,
+  const trace = { sessionId: session.id, assistantId: target.targetId, event };
+  traceAgentReasoning("pi-event-applier.before", trace);
+  return patchAssistantMessage(target, ctx, (msg) => {
+    const blocks = applyAssistantPiEventToBlocks(msg.blocks ?? [], event);
+    traceAgentReasoning("pi-event-applier.after", {
+      ...trace,
+      beforeBlocks: msg.blocks ?? [],
+      afterBlocks: blocks,
+    });
+    return blocks ? { ...msg, blocks } : msg;
   });
-  return patchAssistantMessage(
-    target.session,
-    target.targetId,
-    (msg) => {
-      const blocks = applyAssistantPiEventToBlocks(msg.blocks ?? [], event);
-      traceAgentReasoning("pi-event-applier.after", {
-        sessionId: session.id,
-        assistantId: target.targetId,
-        event,
-        beforeBlocks: msg.blocks ?? [],
-        afterBlocks: blocks,
-      });
-      return blocks ? { ...msg, blocks } : msg;
-    },
-    ctx.replay,
-  );
 }
 
 /**
@@ -208,10 +196,9 @@ export function foldSessionEvents(events: Record<string, unknown>[]): {
 // assistant bubble (reload-mid-turn reattach); otherwise a new bubble opens
 // and becomes the active target. Canonical replay never adopts the last
 // bubble: a settled log renders one bubble per settled message.
-function resolveAssistantTarget(
-  session: Session,
-  ctx: SessionStreamContext,
-): { session: Session; targetId: string } {
+type AssistantTarget = { session: Session; targetId: string };
+
+function resolveAssistantTarget(session: Session, ctx: SessionStreamContext): AssistantTarget {
   // Validate the pin the same way the active id is validated below. An
   // unvalidated pin that outlived its bubble made patchAssistantMessage drop
   // every event on the floor while the seq cursor advanced anyway — the
@@ -271,12 +258,9 @@ function reduceSessionHeaderEvent(
     return next;
   }
   if (event.type === "model_change") {
-    const modelId =
-      typeof event.model === "string"
-        ? event.model
-        : typeof event.modelId === "string"
-          ? event.modelId
-          : null;
+    const modelId = [event.model, event.modelId].find(
+      (value): value is string => typeof value === "string",
+    );
     if (!modelId || session.modelId === modelId) return session;
     return { ...session, modelId };
   }
@@ -301,58 +285,42 @@ function reduceToolResultMessageEvent(
   const owner = assistantWithTool(session.messages, toolCallId);
   const target = owner ? { session, targetId: owner } : resolveAssistantTarget(session, ctx);
   const resultText = messageText(msg.content as string | Record<string, unknown>[] | undefined);
-  const isError = Boolean(msg.isError);
-  return patchAssistantMessage(
-    target.session,
-    target.targetId,
-    (current) => ({
-      ...current,
-      blocks: upsertTool(
-        current.blocks ?? [],
-        toolCallId,
-        (existing) => ({
-          ...existing,
-          status: isError ? "error" : "done",
-          text: resultText || existing.text,
-        }),
-        () => ({
-          kind: "tool",
-          id: toolCallId,
-          name: (typeof msg.toolName === "string" && msg.toolName) || "tool",
-          status: isError ? "error" : "done",
-          text: resultText,
-        }),
-      ),
-    }),
-    ctx.replay,
-  );
+  const status = msg.isError ? "error" : "done";
+  return patchAssistantMessage(target, ctx, (current) => ({
+    ...current,
+    blocks: upsertTool(
+      current.blocks ?? [],
+      toolCallId,
+      (existing) => ({ ...existing, status, text: resultText || existing.text }),
+      () => ({
+        kind: "tool",
+        id: toolCallId,
+        name: (typeof msg.toolName === "string" && msg.toolName) || "tool",
+        status,
+        text: resultText,
+      }),
+    ),
+  }));
 }
 
 function assistantWithTool(messages: ChatMessage[], toolCallId: string): string | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    const hasTool = (message.blocks ?? []).some(
-      (block) => block.kind === "tool" && block.id === toolCallId,
-    );
-    if (message.role === "assistant" && hasTool) return message.id;
-  }
-  return null;
+  return (
+    messages.findLast(
+      (message) =>
+        message.role === "assistant" &&
+        (message.blocks ?? []).some((block) => block.kind === "tool" && block.id === toolCallId),
+    )?.id ?? null
+  );
 }
 
 // Backward id lookup: patch/target lookups land on (or near) the last message,
 // so scanning from the end is O(1) in practice instead of O(N) per event.
 function messageIndexById(messages: ChatMessage[], id: string): number {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index].id === id) return index;
-  }
-  return -1;
+  return messages.findLastIndex((message) => message.id === id);
 }
 
 function lastAssistantId(messages: ChatMessage[]): string | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index].role === "assistant") return messages[index].id;
-  }
-  return undefined;
+  return messages.findLast((message) => message.role === "assistant")?.id;
 }
 
 /**
@@ -369,17 +337,17 @@ function lastAssistantId(messages: ChatMessage[]): string | undefined {
  * tail — the array copy was the part that grew with transcript length.
  */
 function patchAssistantMessage(
-  session: Session,
-  assistantId: string,
+  target: AssistantTarget,
+  ctx: SessionStreamContext,
   patch: (msg: ChatMessage) => ChatMessage,
-  replay = false,
 ): Session {
-  const index = messageIndexById(session.messages, assistantId);
+  const { session, targetId } = target;
+  const index = messageIndexById(session.messages, targetId);
   if (index < 0) return session;
   const current = session.messages[index];
   const next = patch(current);
   if (next === current) return session;
-  if (replay) {
+  if (ctx.replay) {
     session.messages[index] = next;
     return session;
   }
@@ -407,8 +375,6 @@ function reduceAssistantSnapshotEvent(
   const message = asRecord(event.message);
   if (message?.role !== "assistant") return null;
   const target = resolveAssistantTarget(session, ctx);
-  session = target.session;
-  const targetId = target.targetId;
   const content = assistantSnapshotContent(event, message);
 
   const stopReason = typeof message.stopReason === "string" ? message.stopReason : "";
@@ -420,31 +386,26 @@ function reduceAssistantSnapshotEvent(
   const callAborted = type === "message_end" && stopReason === "aborted";
   const failureText = callErrored ? assistantFailureText(message, stopReason) : "";
 
-  let next = patchAssistantMessage(
-    session,
-    targetId,
-    (current) => {
-      const streamCalls = nextStreamCalls(current.streamCalls, type, content);
-      const existingBlocks = current.blocks ?? [];
-      let blocks = mergeExistingToolState(existingBlocks, blocksFromTurnSnapshots(streamCalls));
-      blocks = applyLegacyToolCallDeltaIfSnapshotMissedIt(blocks, existingBlocks, event, content);
-      // Carry over any tool block created from tool_execution_*/toolcall_* events
-      // that the latest content snapshot doesn't list — for EVERY update, not just
-      // toolcall_* ones. Without this, the model's closing text-only summary after
-      // a tool-heavy turn rebuilds blocks from a tool-free snapshot and
-      // mergeExistingToolState silently drops the completed tools (they vanish from
-      // the bubble).
-      blocks = preserveMissingToolBlocks(blocks, existingBlocks);
-      // A call that ended (errored or aborted) won't execute its declared tools —
-      // settle them so they don't show a perpetual "running" badge. An error marks
-      // them errored; an abort just settles them done.
-      if (callErrored) blocks = finalizeRunningToolBlocks(blocks, "error");
-      else if (callAborted) blocks = finalizeRunningToolBlocks(blocks, "done");
-      if (failureText) blocks = appendFailureBlock(blocks, failureText);
-      return { ...current, streamCalls, blocks, text: messageTextFromBlocks(blocks) };
-    },
-    ctx.replay,
-  );
+  let next = patchAssistantMessage(target, ctx, (current) => {
+    const streamCalls = nextStreamCalls(current.streamCalls, type, content);
+    const existingBlocks = current.blocks ?? [];
+    let blocks = mergeExistingToolState(existingBlocks, blocksFromTurnSnapshots(streamCalls));
+    blocks = applyLegacyToolCallDeltaIfSnapshotMissedIt(blocks, existingBlocks, event, content);
+    // Carry over any tool block created from tool_execution_*/toolcall_* events
+    // that the latest content snapshot doesn't list — for EVERY update, not just
+    // toolcall_* ones. Without this, the model's closing text-only summary after
+    // a tool-heavy turn rebuilds blocks from a tool-free snapshot and
+    // mergeExistingToolState silently drops the completed tools (they vanish from
+    // the bubble).
+    blocks = preserveMissingToolBlocks(blocks, existingBlocks);
+    // A call that ended (errored or aborted) won't execute its declared tools —
+    // settle them so they don't show a perpetual "running" badge. An error marks
+    // them errored; an abort just settles them done.
+    if (callErrored) blocks = finalizeRunningToolBlocks(blocks, "error");
+    else if (callAborted) blocks = finalizeRunningToolBlocks(blocks, "done");
+    if (failureText) blocks = appendFailureBlock(blocks, failureText);
+    return { ...current, streamCalls, blocks, text: messageTextFromBlocks(blocks) };
+  });
   if (failureText) next = { ...next, error: failureText };
   return next;
 }
@@ -477,10 +438,7 @@ function assistantSnapshotContent(
 
 function recordArray(value: unknown): Array<Record<string, unknown>> {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((part): Array<Record<string, unknown>> => {
-    const record = asRecord(part);
-    return record ? [record] : [];
-  });
+  return value.map(asRecord).filter((record) => record !== null);
 }
 
 function hasToolCallPart(content: Array<Record<string, unknown>>): boolean {
@@ -581,11 +539,7 @@ function nextStreamCalls(
   content: Array<Record<string, unknown>>,
 ): Array<Array<Record<string, unknown>>> {
   const calls = prev ? prev.slice() : [];
-  if (type === "message_start") {
-    calls.push(content);
-    return calls;
-  }
-  if (calls.length === 0) {
+  if (type === "message_start" || calls.length === 0) {
     calls.push(content);
     return calls;
   }
@@ -643,25 +597,17 @@ function reduceUserMessageEvent(
   // it brightens to normal, and open the assistant bubble for the steered reply
   // — same as a freshly echoed mid-stream message, just without duplicating it.
   const pending = findPendingUserMessage(session.messages, text);
-  if (pending) {
-    const nextAssistantId = newId("assistant");
-    ctx.liveAssistantIds.set(session.id, nextAssistantId);
-    return {
-      ...session,
-      queue,
-      activeAssistantId: nextAssistantId,
-      messages: [
-        ...session.messages.map((message) =>
-          message.id === pending.id ? { ...message, pending: false, awaitingEcho: false } : message,
-        ),
-        { id: nextAssistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
-      ],
-    };
-  }
-
-  if (hasMatchingLastUserMessage(session.messages, text)) {
+  if (!pending && hasMatchingLastUserMessage(session.messages, text)) {
     return { ...session, queue };
   }
+  const messages = pending
+    ? session.messages.map((message) =>
+        message.id === pending.id ? { ...message, pending: false, awaitingEcho: false } : message,
+      )
+    : [
+        ...session.messages,
+        { id: newId("user"), role: "user" as const, text, timestamp: nowLabel() },
+      ];
   // A mid-stream user message (steer/follow-up) opens the next assistant
   // bubble; later events in this turn target it via ctx.liveAssistantIds.
   const nextAssistantId = newId("assistant");
@@ -671,8 +617,7 @@ function reduceUserMessageEvent(
     queue,
     activeAssistantId: nextAssistantId,
     messages: [
-      ...session.messages,
-      { id: newId("user"), role: "user", text, timestamp: nowLabel() },
+      ...messages,
       { id: nextAssistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
     ],
   };
@@ -688,26 +633,20 @@ function reduceUserMessageEvent(
 // echoes missed, and both messages were appended a second time.
 function findPendingUserMessage(messages: ChatMessage[], text: string): ChatMessage | undefined {
   const target = text.trim();
-  return [...messages]
-    .reverse()
-    .find(
-      (message) =>
-        message.role === "user" &&
-        (message.awaitingEcho === true || message.pending === true) &&
-        message.text.trim() === target,
-    );
+  return messages.findLast(
+    (message) =>
+      message.role === "user" &&
+      (message.awaitingEcho === true || message.pending === true) &&
+      message.text.trim() === target,
+  );
 }
 
-/** Un-dim steer bubbles at the end of a run: delivered or not, a stuck-dimmed
- *  message reads as broken. Deliberately leaves `awaitingEcho` intact — the
- *  echo may still be in flight, and that marker is the only thing standing
- *  between a late echo and a duplicated bubble. */
-function clearPendingUserMessages(session: Session): Session {
-  if (!session.messages.some((message) => message.pending)) return session;
+function clearUserMessageFlag(session: Session, flag: "pending" | "awaitingEcho"): Session {
+  if (!session.messages.some((message) => message[flag])) return session;
   return {
     ...session,
     messages: session.messages.map((message) =>
-      message.pending ? { ...message, pending: false } : message,
+      message[flag] ? { ...message, [flag]: false } : message,
     ),
   };
 }
@@ -716,13 +655,7 @@ function clearPendingUserMessages(session: Session): Session {
  *  still waiting for one never got matched and must stop shadowing later
  *  messages that happen to share its text. */
 export function clearAwaitingEchoUserMessages(session: Session): Session {
-  if (!session.messages.some((message) => message.awaitingEcho)) return session;
-  return {
-    ...session,
-    messages: session.messages.map((message) =>
-      message.awaitingEcho ? { ...message, awaitingEcho: false } : message,
-    ),
-  };
+  return clearUserMessageFlag(session, "awaitingEcho");
 }
 
 function reduceFinalAssistantMessageEvent(
@@ -739,41 +672,27 @@ function reduceFinalAssistantMessageEvent(
   const content = finalMessageContent(msg.content);
   const stopReason = typeof msg.stopReason === "string" ? msg.stopReason : undefined;
 
-  if (ctx.replay) {
-    // Canonical replay grouping: a settled `message` fills the still-open
-    // bubble when one exists (streamed reattach / tool-result fallback) and
-    // otherwise renders as its own bubble; either way it closes the target so
-    // the NEXT settled message opens a fresh one — one bubble per settled
-    // message, matching the on-disk log.
-    const blocks = blocksFromMessageContent(content, { stopReason });
-    const text = messageTextFromBlocks(blocks);
-    const target = resolveAssistantTarget(session, ctx);
-    const patched = patchAssistantMessage(
-      target.session,
-      target.targetId,
-      (current) => ({
-        ...current,
-        text,
-        blocks,
-      }),
-      ctx.replay,
-    );
-    ctx.liveAssistantIds.delete(session.id);
-    return { ...patched, activeAssistantId: undefined };
-  }
-
-  const errorMessage = assistantFailureText(msg, stopReason);
+  const errorMessage = ctx.replay ? "" : assistantFailureText(msg, stopReason);
   const blocks = blocksFromMessageContent(content, { stopReason, errorMessage });
   const text = messageTextFromBlocks(blocks);
   const target = resolveAssistantTarget(session, ctx);
-  let next = patchAssistantMessage(
-    target.session,
-    target.targetId,
-    (current) => reconcileFinalAssistantMessage(current, text, blocks),
-    ctx.replay,
+  // Canonical replay grouping: a settled `message` fills the still-open bubble
+  // when one exists (streamed reattach / tool-result fallback) and otherwise
+  // renders as its own bubble; either way it closes the target so the NEXT
+  // settled message opens a fresh one — one bubble per settled message,
+  // matching the on-disk log.
+  const patched = patchAssistantMessage(
+    target,
+    ctx,
+    ctx.replay
+      ? (current) => ({ ...current, text, blocks })
+      : (current) => reconcileFinalAssistantMessage(current, text, blocks),
   );
-  if (errorMessage) next = { ...next, error: errorMessage };
-  return next;
+  if (ctx.replay) {
+    ctx.liveAssistantIds.delete(session.id);
+    return { ...patched, activeAssistantId: undefined };
+  }
+  return errorMessage ? { ...patched, error: errorMessage } : patched;
 }
 
 function assistantFailureText(
@@ -783,11 +702,11 @@ function assistantFailureText(
   // Only a genuine error is a failure. "aborted" (Stop pressed / navigated away)
   // is a clean stop and must produce no error text.
   if (stopReason !== "error") return "";
-  const raw = [message.errorMessage, message.error]
-    .find((value): value is string => typeof value === "string" && value.trim().length > 0)
-    ?.trim();
-  if (!raw) return "Assistant turn failed.";
-  return raw;
+  return (
+    [message.errorMessage, message.error]
+      .find((value): value is string => typeof value === "string" && value.trim().length > 0)
+      ?.trim() || "Assistant turn failed."
+  );
 }
 
 function appendFailureBlock(blocks: AssistantBlock[], text: string): AssistantBlock[] {
@@ -797,11 +716,7 @@ function appendFailureBlock(blocks: AssistantBlock[], text: string): AssistantBl
 
 function finalMessageContent(value: unknown): string | Array<Record<string, unknown>> | undefined {
   if (typeof value === "string") return value;
-  if (!Array.isArray(value)) return undefined;
-  return value.flatMap((part) => {
-    const record = asRecord(part);
-    return record ? [record] : [];
-  });
+  return Array.isArray(value) ? recordArray(value) : undefined;
 }
 
 function assistantHasGeneratedBlocks(blocks: AssistantBlock[]): boolean {
@@ -897,7 +812,7 @@ function isMeaningfulAssistantText(text: string): boolean {
 }
 
 function hasMatchingLastUserMessage(messages: ChatMessage[], text: string): boolean {
-  const lastUser = [...messages].reverse().find((entry) => entry.role === "user");
+  const lastUser = messages.findLast((entry) => entry.role === "user");
   return Boolean(
     lastUser &&
     (lastUser.text === text ||
@@ -941,13 +856,10 @@ function reconcileQueueWithPiEvent(
 ): QueuedMessage[] {
   if (event.type !== "queue_update") return queue;
   const pending = new Map<string, string[]>();
-  const addPending = (mode: QueuedMessage["mode"], messages: string[]) => {
-    for (const text of messages) {
-      const key = queueKey(mode, text);
-      pending.set(key, [...(pending.get(key) ?? []), text]);
-    }
-  };
-  addPending("follow_up", stringArray(event.followUp));
+  for (const text of stringArray(event.followUp)) {
+    const key = queueKey("follow_up", text);
+    pending.set(key, [...(pending.get(key) ?? []), text]);
+  }
 
   const next = queue.flatMap((item) => {
     if (item.mode !== "follow_up") return [];

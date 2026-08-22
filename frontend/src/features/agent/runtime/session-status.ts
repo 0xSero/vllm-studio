@@ -7,6 +7,12 @@ export function isWorkingStatus(status: string): boolean {
   return WORKING_SESSION_STATUSES.includes(status);
 }
 
+/** Working on a turn (as opposed to merely hydrating): the statuses that own a
+ *  live runtime attachment, so a session in one must not be pruned or idled. */
+export function isLiveTurnStatus(status: string): boolean {
+  return status === "running" || status === "starting" || status === "stopping";
+}
+
 export function settleTurn(session: Session): Session {
   return { ...session, status: "idle", activeAssistantId: undefined };
 }

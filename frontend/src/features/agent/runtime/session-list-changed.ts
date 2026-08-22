@@ -6,11 +6,6 @@ const decodeSessionListChangedEvent = Schema.decodeUnknownOption(SessionListChan
   onExcessProperty: "preserve",
 });
 
-function isSessionListChangedEvent(raw: unknown): boolean {
-  if (!raw || typeof raw !== "object") return false;
-  return decodeSessionListChangedEvent(raw)._tag === "Some";
-}
-
 export function openSessionListChangedSubscription(onChanged: () => void): () => void {
   const source = new EventSource("/api/agent/session-list-changed");
   source.onmessage = (event) => {
@@ -20,11 +15,10 @@ export function openSessionListChangedSubscription(onChanged: () => void): () =>
     } catch {
       return;
     }
-    if (!isSessionListChangedEvent(parsed)) return;
+    if (!parsed || typeof parsed !== "object") return;
+    if (decodeSessionListChangedEvent(parsed)._tag !== "Some") return;
     window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT));
     onChanged();
   };
-  return () => {
-    source.close();
-  };
+  return () => source.close();
 }
