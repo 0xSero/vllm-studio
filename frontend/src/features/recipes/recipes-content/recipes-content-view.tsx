@@ -60,20 +60,21 @@ const TAB_HEADINGS: Record<RecipesContentTab, { title: string; description: stri
   picks: {
     title: "Recommended models",
     description:
-      "Hand-picked models grouped by the hardware they need, each checked against the selected Worker's memory.",
+      "Hand-picked models grouped by the hardware they need, each checked against the selected machine's memory.",
   },
   get: {
     title: "Search Hugging Face",
     description:
-      "Search the Hub, check whether a model fits the selected Worker, and pull its weights.",
+      "Search the Hub, check whether a model fits the selected machine, and pull its weights there.",
   },
   serves: {
     title: "Your servers",
-    description: "The selected Worker's saved model, runtime, and configuration combinations.",
+    description: "The selected machine's saved model, runtime, and configuration combinations.",
   },
   downloads: {
     title: "Downloads",
-    description: "Everything downloading on the selected Worker, with progress, retry, and cancel.",
+    description:
+      "Everything downloading on the selected machine, with progress, retry, and cancel.",
   },
 };
 

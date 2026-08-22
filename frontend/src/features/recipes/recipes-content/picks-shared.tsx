@@ -6,7 +6,6 @@ import { ModelButton, StatusPill } from "@/ui";
 import { ModelLogo } from "@/ui/model-logo";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { cx } from "@/ui/utils";
-import api from "@/lib/api/client";
 import type {
   ModelIndexModel,
   ModelIndexResponse,
@@ -21,6 +20,7 @@ import { readExplorePoolOverrideGb } from "./explore-pool-storage";
 import { buildHardwareProfile } from "./hardware-profile";
 import { FitVerdict, HubLink, modelBrand } from "./model-brand";
 import { ModelCatalogTable } from "./model-catalog-table";
+import { useModelManagementApi } from "@/features/recipes/model-management-api";
 import {
   FIT_BUDGET_RATIO,
   FIT_DOT_CLASS,
@@ -35,6 +35,7 @@ import {
 } from "./model-fit";
 
 export function useModelIndex() {
+  const api = useModelManagementApi();
   const [data, setData] = useState<ModelIndexResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +50,7 @@ export function useModelIndex() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [api]);
 
   useMountSubscription(() => {
     void refresh();
@@ -59,6 +60,7 @@ export function useModelIndex() {
 }
 
 export function useHardwareProfile() {
+  const api = useModelManagementApi();
   const [gpus, setGpus] = useState<GPU[]>([]);
   const [apiMaxVramGb, setApiMaxVramGb] = useState(0);
   const [poolOverrideGb, setPoolOverrideGb] = useState<number | null>(null);
@@ -76,7 +78,7 @@ export function useHardwareProfile() {
       setApiMaxVramGb(typeof presetsData?.max_vram_gb === "number" ? presetsData.max_vram_gb : 0);
       setGpus(gpuData.gpus ?? []);
     })();
-  }, []);
+  }, [api]);
 
   return useMemo(() => {
     const poolGbFromGpus = sumGpuMemoryPoolGb(gpus);

@@ -9,8 +9,10 @@ import { useDownloads } from "@/hooks/use-downloads";
 import { TableNotice, TableSkeleton } from "./catalog-table-shell";
 import { FIT_BUDGET_RATIO, formatGb } from "./model-fit";
 import { PicksCatalog, useHardwareProfile, useModelIndex } from "./picks-shared";
+import { useModelManagementApi } from "@/features/recipes/model-management-api";
 
 export function PicksTab() {
+  const api = useModelManagementApi();
   const { data, loading, error, refresh } = useModelIndex();
   const hardware = useHardwareProfile();
   const {
@@ -18,7 +20,7 @@ export function PicksTab() {
     startingModelIds,
     error: downloadError,
     startDownload,
-  } = useDownloads();
+  } = useDownloads(2500, api);
 
   const handleDownload = useCallback(
     (variant: ModelIndexVariant) => {

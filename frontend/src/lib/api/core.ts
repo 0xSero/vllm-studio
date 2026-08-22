@@ -7,7 +7,6 @@ import {
   isBenignSseTransportFailure,
   scrubTransportFetchErrorMessage,
 } from "./sse-transport-errors";
-import { getSelectedWorkerId } from "./worker-selection";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_RETRIES = 3;
@@ -62,8 +61,9 @@ export function createApiCore(params: {
   useProxy: boolean;
   backendUrlOverride?: string;
   apiKeyOverride?: string;
+  workerId?: string;
 }) {
-  const { baseUrl, useProxy, backendUrlOverride, apiKeyOverride } = params;
+  const { baseUrl, useProxy, backendUrlOverride, apiKeyOverride, workerId } = params;
   const hasBackendUrlOverride = Boolean(backendUrlOverride?.trim());
 
   const normalizeSsePayload = (
@@ -167,7 +167,6 @@ export function createApiCore(params: {
       headers["X-Backend-Suppress-Auth"] = "1";
     }
 
-    const workerId = getSelectedWorkerId();
     if (workerId) headers["X-Local-Studio-Worker-Id"] = workerId;
 
     if (extraHeaders) {

@@ -19,6 +19,7 @@ export function createApiClient(params: {
   useProxy: boolean;
   backendUrlOverride?: string;
   apiKeyOverride?: string;
+  workerId?: string;
 }) {
   const core = createApiCore(params);
   return {
@@ -60,3 +61,5 @@ export function createApiClient(params: {
     healthPoll: (timeoutMs?: number) => core.healthPoll(timeoutMs),
   };
 }
+
+export type ApiClient = ReturnType<typeof createApiClient>;

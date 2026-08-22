@@ -7,11 +7,6 @@ import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import type { Rig, RigsPayload, WorkerStatus } from "@/lib/types";
 import {
-  getSelectedWorkerId,
-  setSelectedWorkerId,
-  WORKER_SELECTION_EVENT,
-} from "@/lib/api/worker-selection";
-import {
   clearHeadConnection,
   createHeadApiClient,
   getHeadConnection,
@@ -95,8 +90,6 @@ export interface ConfigureState {
   headConnection: HeadConnection | null;
   headConnected: boolean;
   workers: readonly WorkerStatus[];
-  selectedWorkerId: string;
-  selectWorker: (workerId: string) => void;
   loading: boolean;
   refreshing: boolean;
   error: string | null;
@@ -120,7 +113,6 @@ export function useConfigure(): ConfigureState {
   const [workers, setWorkers] = useState<readonly WorkerStatus[]>([]);
   const [headConnection, setConnectedHead] = useState<HeadConnection | null>(getHeadConnection);
   const [headConnected, setHeadConnected] = useState(false);
-  const [selectedWorkerId, setWorkerId] = useState(getSelectedWorkerId);
 
   const reload = useCallback(async () => {
     setRefreshing(true);
@@ -143,11 +135,6 @@ export function useConfigure(): ConfigureState {
           : [];
       const nextRigs = { ...localRigs, rigs: [...localRigs.rigs, ...remoteRigs] };
       setHeadConnected(Boolean(headPayload));
-      const selected = getSelectedWorkerId();
-      if (selected && !nextWorkers.some((worker) => worker.id === selected)) {
-        setSelectedWorkerId("");
-        setWorkerId("");
-      }
       writePageCache(RIGS_CACHE_KEY, nextRigs);
       setRigsPayload(nextRigs);
       setWorkers(nextWorkers);
@@ -164,16 +151,6 @@ export function useConfigure(): ConfigureState {
   }, [reload]);
 
   useMountSubscription(() => {
-    const sync = () => setWorkerId(getSelectedWorkerId());
-    window.addEventListener(WORKER_SELECTION_EVENT, sync);
-    window.addEventListener("storage", sync);
-    return () => {
-      window.removeEventListener(WORKER_SELECTION_EVENT, sync);
-      window.removeEventListener("storage", sync);
-    };
-  }, []);
-
-  useMountSubscription(() => {
     const sync = () => {
       setConnectedHead(getHeadConnection());
       void reload();
@@ -181,11 +158,6 @@ export function useConfigure(): ConfigureState {
     window.addEventListener(HEAD_CONNECTION_CHANGED_EVENT, sync);
     return () => window.removeEventListener(HEAD_CONNECTION_CHANGED_EVENT, sync);
   }, [reload]);
-
-  const selectWorker = useCallback((workerId: string) => {
-    setSelectedWorkerId(workerId);
-    setWorkerId(workerId);
-  }, []);
 
   const applyRig = useCallback((rig: Rig) => {
     setRigsPayload((current) => {
@@ -283,8 +255,6 @@ export function useConfigure(): ConfigureState {
     headConnection,
     headConnected,
     workers,
-    selectedWorkerId,
-    selectWorker,
     loading,
     refreshing,
     error,

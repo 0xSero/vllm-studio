@@ -16,6 +16,7 @@ import {
   TableFrame,
   TableNotice,
 } from "./catalog-table-shell";
+import { useModelManagementApi } from "@/features/recipes/model-management-api";
 
 export function downloadProgressText(
   download: Pick<ModelDownload, "downloaded_bytes" | "total_bytes">,
@@ -49,12 +50,16 @@ export function DownloadsTab({
 }: {
   onCreateServe: (download: ModelDownload) => void;
 }) {
-  const { downloads, error, pauseDownload, resumeDownload, cancelDownload } = useDownloads();
+  const api = useModelManagementApi();
+  const { downloads, error, pauseDownload, resumeDownload, cancelDownload } = useDownloads(
+    2500,
+    api,
+  );
 
   if (error) {
     return (
       <TableNotice
-        title="The download worker is not responding"
+        title="The selected machine is not responding"
         body={error}
         action={
           <span className="text-[length:var(--fs-sm)] text-(--dim)">

@@ -48,15 +48,19 @@ export const clearHeadConnection = (): void => {
   window.dispatchEvent(new Event("storage"));
 };
 
-export const createHeadApiClient = (connection = getHeadConnection()) => {
+export const createHeadApiClient = (connection = getHeadConnection(), workerId?: string) => {
   if (!connection) throw new Error("Connect a Studio Head first");
   return createApiClient({
     baseUrl: "/api/proxy",
     useProxy: true,
     backendUrlOverride: connection.url,
     apiKeyOverride: getControllerApiKey(connection.url),
+    workerId,
   });
 };
+
+export const createHeadWorkerApiClient = (workerId: string, connection = getHeadConnection()) =>
+  createHeadApiClient(connection, workerId);
 
 export const headProxyHeaders = (connection = getHeadConnection()): Record<string, string> => {
   if (!connection) throw new Error("Connect a Studio Head first");

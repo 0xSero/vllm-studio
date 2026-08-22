@@ -4,6 +4,8 @@ import type { MiddlewareHandler, Next } from "hono";
 import type { AppContext } from "../../app-context";
 import { effectMiddleware, type ControllerEnvironment } from "../../http/effect-handler";
 
+const FORWARDED_REQUEST_TIMEOUT_MS = 600_000;
+
 const HEAD_PATHS = [
   "/api/docs",
   "/api/spec",
@@ -73,7 +75,7 @@ export const createFederationProxyMiddleware = (
           signal: raw.signal,
         };
         if (body) request.body = body;
-        return context.workerPool.fetch(target, path, request).pipe(
+        return context.workerPool.fetch(target, path, request, FORWARDED_REQUEST_TIMEOUT_MS).pipe(
           Effect.map((response) => forwardedResponse(response, target.id)),
           Effect.catch((error) =>
             Effect.succeed(

@@ -2,7 +2,6 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import api from "@/lib/api/client";
 import type { Backend, RecipeWithStatus } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { ENGINE_LABEL, getEngineCapabilities } from "@/features/recipes/engine-capabilities";
@@ -20,8 +19,10 @@ import {
   getCommandOverride,
   parseRecipeSource,
 } from "./recipe-modal-source";
+import { useModelManagementApi } from "@/features/recipes/model-management-api";
 
 function useRuntimeInstallation(backend: Backend) {
+  const api = useModelManagementApi();
   const [installing, setInstalling] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const install = useCallback(async () => {
@@ -35,7 +36,7 @@ function useRuntimeInstallation(backend: Backend) {
     } finally {
       setInstalling(false);
     }
-  }, [backend]);
+  }, [api, backend]);
   return { installing, message, install };
 }
 
@@ -48,6 +49,7 @@ export function useRecipeModalModel({
   onChange: (recipe: RecipeEditor) => void;
   recipes: RecipeWithStatus[];
 }) {
+  const api = useModelManagementApi();
   const [activeTab, setActiveTab] = useState<RecipeModalTabId>("general");
   const [editedCommand, setEditedCommand] = useState<string | null>(null);
   const [recipeSourceText, setRecipeSourceText] = useState(() => formatRecipeSource(recipe));
@@ -92,7 +94,7 @@ export function useRecipeModalModel({
     return () => {
       cancelled = true;
     };
-  }, [isLlamacpp, llamaConfigHelp]);
+  }, [api, isLlamacpp, llamaConfigHelp]);
 
   const applyRecipeChange = useCallback(
     (next: RecipeEditor, options: { syncSource?: boolean; syncAuxiliary?: boolean } = {}) => {

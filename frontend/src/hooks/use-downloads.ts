@@ -4,6 +4,7 @@ import { effectInterval } from "@/lib/effect-timers";
 
 import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api/client";
+import type { ApiClient } from "@/lib/api/create-api-client";
 import type { ModelDownload } from "@/lib/types";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
@@ -16,7 +17,7 @@ type StartDownloadParams = {
   hf_token?: string;
 };
 
-export function useDownloads(pollIntervalMs = 2500) {
+export function useDownloads(pollIntervalMs = 2500, client: ApiClient = api) {
   const [downloads, setDownloads] = useState<ModelDownload[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +25,7 @@ export function useDownloads(pollIntervalMs = 2500) {
 
   const refresh = useCallback(async () => {
     try {
-      const data = await api.getDownloads();
+      const data = await client.getDownloads();
       setDownloads(data.downloads || []);
       setError(null);
     } catch (err) {
@@ -32,7 +33,7 @@ export function useDownloads(pollIntervalMs = 2500) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [client]);
 
   // Only in-flight/resumable-soon states justify the fast poll; terminal
   // states (failed/canceled/completed) don't change server-side, so they fall
@@ -52,7 +53,7 @@ export function useDownloads(pollIntervalMs = 2500) {
       setStartingModelIds((previous) => new Set(previous).add(modelId));
       setError(null);
       try {
-        const result = await api.startDownload(params);
+        const result = await client.startDownload(params);
         await refresh();
         return result.download;
       } catch (err) {
@@ -66,34 +67,34 @@ export function useDownloads(pollIntervalMs = 2500) {
         });
       }
     },
-    [refresh],
+    [client, refresh],
   );
 
   const pauseDownload = useCallback(
     async (id: string) => {
-      const result = await api.pauseDownload(id);
+      const result = await client.pauseDownload(id);
       await refresh();
       return result.download;
     },
-    [refresh],
+    [client, refresh],
   );
 
   const resumeDownload = useCallback(
     async (id: string, hfToken?: string) => {
-      const result = await api.resumeDownload(id, hfToken);
+      const result = await client.resumeDownload(id, hfToken);
       await refresh();
       return result.download;
     },
-    [refresh],
+    [client, refresh],
   );
 
   const cancelDownload = useCallback(
     async (id: string) => {
-      const result = await api.cancelDownload(id);
+      const result = await client.cancelDownload(id);
       await refresh();
       return result.download;
     },
-    [refresh],
+    [client, refresh],
   );
 
   const downloadsByModel = useMemo(() => {

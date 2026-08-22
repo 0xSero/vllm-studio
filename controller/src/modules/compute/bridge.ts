@@ -8,6 +8,10 @@ import {
   isJsonStringArgumentKey,
 } from "@local-studio/contracts/engine-args";
 import { getExtraArgument } from "../engines/argument-utilities";
+import {
+  isManagedPythonBackend,
+  managedVenvPython,
+} from "../engines/runtimes/managed-venv";
 import { resolveLlamaBinary } from "../engines/specs/llamacpp-spec";
 import type { GpuInfo, ProcessInfo, Recipe } from "../models/types";
 import { resolveRecipeGpuUuids } from "../system/gpu-visibility";
@@ -163,12 +167,17 @@ const siblingBinary = (pythonPath: string | undefined | null, name: string): str
 
 const resolveEngineBinary = (recipe: Recipe, config: Config): string | null => {
   const recipePython = recipe.python_path && existsSync(recipe.python_path) ? recipe.python_path : null;
+  const managedPython =
+    recipe.runtime.kind === "managed_venv" && isManagedPythonBackend(recipe.backend)
+      ? managedVenvPython(config, recipe.backend)
+      : null;
+  const python = recipePython ?? (managedPython && existsSync(managedPython) ? managedPython : null);
   switch (recipe.backend) {
     case "vllm":
-      return siblingBinary(recipePython, "vllm") ?? resolveBinary("vllm");
+      return siblingBinary(python, "vllm") ?? resolveBinary("vllm");
     case "sglang":
       return (
-        siblingBinary(recipePython ?? config.sglang_python, "sglang") ?? resolveBinary("sglang")
+        siblingBinary(python ?? config.sglang_python, "sglang") ?? resolveBinary("sglang")
       );
     case "llamacpp": {
       try {
@@ -179,7 +188,7 @@ const resolveEngineBinary = (recipe: Recipe, config: Config): string | null => {
     }
     case "mlx":
       return (
-        siblingBinary(recipePython ?? config.mlx_python, "mlx_lm.server") ??
+        siblingBinary(python ?? config.mlx_python, "mlx_lm.server") ??
         resolveBinary("mlx_lm.server")
       );
     default:

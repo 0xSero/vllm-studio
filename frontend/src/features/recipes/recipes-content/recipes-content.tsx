@@ -2,65 +2,60 @@
 
 import { useCallback, useMemo, type ReactNode } from "react";
 import { AppPage, ModelButton, PageContainer, PageHeader } from "@/ui";
-import {
-  ManagementWorkerSelect,
-  useManagementWorkers,
-  useSelectedWorker,
-} from "@/features/federation/management-worker";
+import { ModelMachineSelect, useModelMachines } from "@/features/recipes/model-management-machine";
+import { ModelManagementApiProvider } from "@/features/recipes/model-management-api";
 import { TableNotice } from "./catalog-table-shell";
 import type { RecipesTableProps } from "./types";
 import { useRecipesContentModel, type RecipesContentTab } from "./recipes-content-model";
 import { RecipesContentView } from "./recipes-content-view";
 
 export function RecipesContent({ embedded = false }: { embedded?: boolean }) {
-  const management = useManagementWorkers();
-  const selection = useSelectedWorker(
-    management.workers,
-    management.mode !== null && !management.loading,
-  );
-  const headMode = management.mode === "head";
-  const managementAction = headMode ? (
-    <ManagementWorkerSelect
-      workers={management.workers}
-      selectedWorkerId={selection.selectedWorkerId}
-      onSelect={selection.selectWorker}
+  const management = useModelMachines();
+  const managementAction = (
+    <ModelMachineSelect
+      machines={management.machines}
+      selectedMachine={management.selectedMachine}
+      onSelect={management.selectMachine}
     />
-  ) : null;
+  );
 
-  if (management.mode === null) {
+  if (management.loading && management.machines.length === 0) {
     return (
       <ModelsWorkerGate
         embedded={embedded}
         action={null}
-        title={management.error ? "The Head did not respond" : "Loading Workers"}
-        body={management.error ?? "Checking which controllers are available for model management."}
+        title="Loading machines"
+        body="Checking which controllers are available for model management."
       />
     );
   }
 
-  if (headMode && !selection.selectedWorker) {
-    const hasWorkers = management.workers.length > 0;
+  if (!management.selectedMachine || !management.client) {
+    const hasMachines = management.machines.length > 0;
     return (
       <ModelsWorkerGate
         embedded={embedded}
         action={managementAction}
-        title={hasWorkers ? "Select a Worker" : "No Workers connected"}
+        title={hasMachines ? "Choose a machine" : "No model machines available"}
         body={
-          hasWorkers
-            ? "Choose the Worker whose hardware, recipes, downloads, and model servers you want to manage. Chat routing remains automatic."
-            : "Add a Worker controller in Configure → Machines before managing models."
+          management.error ??
+          (hasMachines
+            ? "Choose where recommendations are fitted, weights are downloaded, and model servers are hosted. Chat routing remains automatic."
+            : "Connect this desktop controller or add a Worker in Configure → Machines.")
         }
-        openMachines={!hasWorkers}
+        openMachines={!hasMachines}
       />
     );
   }
 
   return (
-    <WorkerRecipesContent
-      key={`${management.mode}:${selection.selectedWorkerId}`}
-      embedded={embedded}
-      managementAction={managementAction}
-    />
+    <ModelManagementApiProvider client={management.client}>
+      <WorkerRecipesContent
+        key={management.selectedMachine.key}
+        embedded={embedded}
+        managementAction={managementAction}
+      />
+    </ModelManagementApiProvider>
   );
 }
 
@@ -76,10 +71,9 @@ function WorkerRecipesContent({
   const selectTab = useCallback(
     (tab: RecipesContentTab) => {
       setTab(tab);
-      if (!embedded) return;
       const url = new URL(window.location.href);
       url.searchParams.set("tab", tab);
-      url.hash = "models";
+      if (embedded) url.hash = "models";
       window.history.replaceState(null, "", url);
     },
     [embedded, setTab],
@@ -200,7 +194,7 @@ function ModelsWorkerGate({
       <PageContainer width="md" className="pt-6 sm:pt-8">
         <PageHeader
           title="Models"
-          description="Manage the models, downloads, recipes, and servers owned by one Worker."
+          description="Choose a machine, then manage its recommendations, downloads, recipes, and model servers."
           actions={action}
         />
         <div className="mt-8">{notice}</div>

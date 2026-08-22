@@ -58,6 +58,7 @@ const readLinuxIdentity = (pid: number): ProcessIdentity | null => {
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
     const afterComm = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+    if (afterComm[0] === "Z") return null;
     const parentProcessId = Number(afterComm[1]);
     const processGroupId = Number(afterComm[2]);
     const sessionId = Number(afterComm[3]);

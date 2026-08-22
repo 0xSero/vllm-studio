@@ -10,11 +10,12 @@ import {
 import { useExplore } from "./use-explore";
 import { useDownloads } from "@/hooks/use-downloads";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import api from "@/lib/api/client";
 import { LazyHuggingFaceModelCardPanel } from "@/ui/lazy-huggingface-model-card";
 import type { ModelFit } from "./hardware-profile";
+import { useModelManagementApi } from "@/features/recipes/model-management-api";
 
 export function ExploreTab() {
+  const api = useModelManagementApi();
   const {
     groups,
     maxVramGb,
@@ -42,7 +43,7 @@ export function ExploreTab() {
     startDownload,
     pauseDownload,
     resumeDownload,
-  } = useDownloads();
+  } = useDownloads(2500, api);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const [localModelIds, setLocalModelIds] = useState<Set<string>>(new Set());
   const [selectedModelCard, setSelectedModelCard] = useState<{
@@ -64,7 +65,7 @@ export function ExploreTab() {
       }
       setLocalModelIds(ids);
     } catch {}
-  }, []);
+  }, [api]);
 
   useMountSubscription(() => {
     void loadLocalModels();

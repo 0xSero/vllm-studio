@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import api from "@/lib/api/client";
 import type { GPU, HuggingFaceModel } from "@/lib/types";
 import type { ModelIndexModel } from "@/lib/api/studio";
 import { useHuggingFaceModelSearch } from "@/features/recipes/use-huggingface-model-search";
@@ -29,6 +28,7 @@ import {
   type HardwareProfile,
   type ModelFit,
 } from "./hardware-profile";
+import { useModelManagementApi } from "@/features/recipes/model-management-api";
 
 export interface ModelGroup {
   key: string;
@@ -70,6 +70,7 @@ export function derivativeScore(model: HuggingFaceModel, search: string): number
 }
 
 export function useExplore() {
+  const api = useModelManagementApi();
   const [gpus, setGpus] = useState<GPU[]>([]);
   const [apiMaxVramGb, setApiMaxVramGb] = useState(0);
   const [search, setSearch] = useState("");
@@ -139,7 +140,7 @@ export function useExplore() {
       setApiMaxVramGb(0);
       setGpus([]);
     }
-  }, []);
+  }, [api]);
 
   useMountSubscription(() => {
     void loadCatalogAndGpus();

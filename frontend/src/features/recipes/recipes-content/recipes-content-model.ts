@@ -2,7 +2,6 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import api from "@/lib/api/client";
 import type { ModelDownload, ModelInfo, RecipeWithStatus, RuntimeTarget } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
@@ -14,6 +13,7 @@ import { DEFAULT_RECIPE } from "./default-recipe";
 import type { RecipesTableProps } from "./types";
 import { useRecipesDerived } from "./use-recipes-derived";
 import { isRecipeActive } from "./launch-reconciliation";
+import { useModelManagementApi } from "@/features/recipes/model-management-api";
 
 export type RecipesContentTab = "picks" | "get" | "serves" | "downloads";
 
@@ -21,6 +21,7 @@ const requestedTab = (value: string | null): RecipesContentTab =>
   value === "get" || value === "serves" || value === "downloads" ? value : "picks";
 
 export function useRecipesContentModel() {
+  const api = useModelManagementApi();
   const searchParams = useSearchParams();
   const urlTab = requestedTab(searchParams.get("tab"));
   const newRecipeRequested = searchParams.get("new") === "1";
@@ -89,7 +90,7 @@ export function useRecipesContentModel() {
       console.error("Failed to load recipes:", e);
       return [];
     }
-  }, []);
+  }, [api]);
 
   useMountSubscription(() => {
     void (async () => {
@@ -173,7 +174,7 @@ export function useRecipesContentModel() {
     } finally {
       setSaving(false);
     }
-  }, [loadRecipes, modalRecipe]);
+  }, [api, loadRecipes, modalRecipe]);
 
   const handleDeleteRecipe = useCallback(
     async (recipeId: string) => {
@@ -186,7 +187,7 @@ export function useRecipesContentModel() {
         alert("Failed to delete: " + (e as Error).message);
       }
     },
-    [loadRecipes],
+    [api, loadRecipes],
   );
 
   const handleLaunchRecipe = useCallback(
@@ -204,7 +205,7 @@ export function useRecipesContentModel() {
         setLaunching(false);
       }
     },
-    [loadRecipes],
+    [api, loadRecipes],
   );
 
   const handleEvictModel = useCallback(async () => {
@@ -214,7 +215,7 @@ export function useRecipesContentModel() {
     } catch (e) {
       alert("Failed to evict: " + (e as Error).message);
     }
-  }, [loadRecipes]);
+  }, [api, loadRecipes]);
 
   const handleToggleRecipeMenu = useCallback((recipeId: string) => {
     setRecipeMenuOpen((current) => (current === recipeId ? null : recipeId));
