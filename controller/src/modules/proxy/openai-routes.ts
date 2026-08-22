@@ -13,7 +13,7 @@ import {
   stripDeepSeekControlTokens,
 } from "./reasoning";
 import {
-  recordNonStreamingInferenceUsage,
+  recordInferenceUsage,
   type InferenceUsageInput,
 } from "./inference-accounting";
 import {
@@ -294,10 +294,11 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
           const result = { ...decoded.value };
 
           const usage = result["usage"] as InferenceUsageInput | undefined;
-          const usageTotals = yield* recordNonStreamingInferenceUsage(
+          const usageTotals = yield* recordInferenceUsage(
             { logger: context.logger, stores: context.stores },
             {
               usage,
+              streamed: false,
               record: {
                 model: recordedModel,
                 source: sourceHeader,
