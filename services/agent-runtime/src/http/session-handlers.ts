@@ -27,16 +27,10 @@ function archiveOptions(searchParams: URLSearchParams) {
   };
 }
 
-function positiveInteger(value: string | null): number | undefined {
+function integerParam(value: string | null, minimum: number): number | undefined {
   if (value === null) return undefined;
   const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-function nonNegativeInteger(value: string | null): number | undefined {
-  if (value === null) return undefined;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+  return Number.isInteger(parsed) && parsed >= minimum ? parsed : undefined;
 }
 
 function idsFrom(searchParams: URLSearchParams): string[] | undefined {
@@ -63,8 +57,9 @@ export async function handleSessionsList(request: Request): Promise<Response> {
   const cwd = existingWorkspace(cwdParam);
   if (cwd instanceof Response) return cwd;
   const limitValue = searchParams.get("limit");
-  const limit = positiveInteger(limitValue);
-  if (limitValue !== null && limit === undefined) return jsonError("limit must be a positive integer");
+  const limit = integerParam(limitValue, 1);
+  if (limitValue !== null && limit === undefined)
+    return jsonError("limit must be a positive integer");
   const sinceValue = searchParams.get("since");
   const since = parseRelativeSince(sinceValue);
   if (sinceValue && !since) return jsonError("since must use a relative value like 7d");
@@ -83,27 +78,29 @@ export async function handleAllSessions(request: Request): Promise<Response> {
   const archive = archiveOptions(searchParams);
   const aggregated: AggregatedSession[] = [];
   const seenIds = new Set<string>();
-  await Promise.all(listProjectsFromStore().map(async (project) => {
-    try {
-      const cwd = resolveAllowedWorkspace(project.path);
-      const sessions = await listSessions(cwd, {
-        ...(since && !archive.archivedOnly ? { since } : {}),
-        ids: idsFrom(searchParams),
-        ...archive,
-      });
-      for (const summary of sessions) {
-        seenIds.add(summary.id);
-        aggregated.push({
-          ...summary,
-          projectId: project.id,
-          projectName: project.name,
-          projectPath: project.path,
+  await Promise.all(
+    listProjectsFromStore().map(async (project) => {
+      try {
+        const cwd = resolveAllowedWorkspace(project.path);
+        const sessions = await listSessions(cwd, {
+          ...(since && !archive.archivedOnly ? { since } : {}),
+          ids: idsFrom(searchParams),
+          ...archive,
         });
+        for (const summary of sessions) {
+          seenIds.add(summary.id);
+          aggregated.push({
+            ...summary,
+            projectId: project.id,
+            projectName: project.name,
+            projectPath: project.path,
+          });
+        }
+      } catch {
+        // A project whose directory is gone contributes no sessions.
       }
-    } catch {
-      return;
-    }
-  }));
+    }),
+  );
   if (archive.archivedOnly) {
     for (const metadata of listArchivedSessionMetadata()) {
       if (seenIds.has(metadata.id)) continue;
@@ -126,8 +123,11 @@ export async function handleAllSessions(request: Request): Promise<Response> {
       });
     }
   }
-  aggregated.sort((a, b) =>
-    new Date(b.startedAt || b.updatedAt).getTime() - new Date(a.startedAt || a.updatedAt).getTime());
+  aggregated.sort(
+    (a, b) =>
+      new Date(b.startedAt || b.updatedAt).getTime() -
+      new Date(a.startedAt || a.updatedAt).getTime(),
+  );
   return Response.json({ sessions: aggregated });
 }
 
@@ -142,8 +142,8 @@ export async function handleSessionGet(request: Request, id: string): Promise<Re
   if (!cwdValue) return jsonError("cwd is required");
   const cwd = existingWorkspace(cwdValue);
   if (cwd instanceof Response) return cwd;
-  const tail = nonNegativeInteger(searchParams.get("tail"));
-  const before = nonNegativeInteger(searchParams.get("before"));
+  const tail = integerParam(searchParams.get("tail"), 0);
+  const before = integerParam(searchParams.get("before"), 0);
   const { events, cursor, meta } = await loadSession(cwd, id, { tail, before });
   return Response.json({ events, cursor, meta });
 }
@@ -165,8 +165,10 @@ export async function handleSessionPatch(request: Request, id: string): Promise<
     const resolved = existingWorkspace(cwdValue);
     if (resolved instanceof Response) return resolved;
     cwd = resolved;
-    summary = (await listSessions(cwd, { ids: [id], includeArchived: true }))
-      .find((session) => session.id === id) ?? null;
+    summary =
+      (await listSessions(cwd, { ids: [id], includeArchived: true })).find(
+        (session) => session.id === id,
+      ) ?? null;
     if (body.archived && !summary) return jsonError("session not found", 404);
   }
   try {

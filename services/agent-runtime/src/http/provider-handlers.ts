@@ -12,27 +12,22 @@ import {
   respondProviderLogin,
   startProviderLogin,
 } from "../provider-hub";
-import { errorMessage, jsonError, readJsonBody } from "./helpers";
+import { guarded, jsonError, readJsonBody } from "./helpers";
 
-export async function handleProvidersList(): Promise<Response> {
-  try {
-    return Response.json({ providers: await listProviders() });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to list providers."), 500);
-  }
+export function handleProvidersList(): Promise<Response> {
+  return guarded("Failed to list providers.", async () =>
+    Response.json({ providers: await listProviders() }),
+  );
 }
 
 export async function handleProviderLogin(request: Request, providerId: string): Promise<Response> {
   const body = await readJsonBody(request);
   const authType = body?.type === "api_key" ? "api_key" : body?.type === "oauth" ? "oauth" : null;
   if (!authType) return jsonError('Body must include type: "oauth" | "api_key".');
-  try {
+  return guarded("Failed to start login.", async () => {
     const result = await startProviderLogin(providerId, authType);
-    if ("error" in result) return jsonError(result.error, result.status);
-    return Response.json(result);
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to start login."), 500);
-  }
+    return "error" in result ? jsonError(result.error, result.status) : Response.json(result);
+  });
 }
 
 export function handleProviderLoginJob(request: Request, jobId: string): Response {
@@ -63,15 +58,9 @@ export function handleProviderLoginCancel(_request: Request, jobId: string): Res
   return Response.json({ ok: true });
 }
 
-export async function handleProviderLogout(
-  _request: Request,
-  providerId: string,
-): Promise<Response> {
-  try {
+export function handleProviderLogout(_request: Request, providerId: string): Promise<Response> {
+  return guarded("Failed to sign out.", async () => {
     const result = await logoutProvider(providerId);
-    if ("error" in result) return jsonError(result.error, result.status);
-    return Response.json(result);
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to sign out."), 500);
-  }
+    return "error" in result ? jsonError(result.error, result.status) : Response.json(result);
+  });
 }

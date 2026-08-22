@@ -23,6 +23,9 @@ import {
   beginGoogleLoopbackAuthorization,
   cancelGoogleLoopbackAuthorization,
 } from "../google-oauth-loopback";
+import { decodeBody, errorMessage, jsonError } from "./helpers";
+
+const GoogleService = Schema.Union([Schema.Literal("gmail"), Schema.Literal("google-calendar")]);
 
 const GoogleClientInputSchema = Schema.Struct({
   clientId: Schema.String,
@@ -30,19 +33,16 @@ const GoogleClientInputSchema = Schema.Struct({
 });
 
 const GoogleDisconnectInputSchema = Schema.Struct({
-  account: Schema.Union([Schema.Literal("gmail"), Schema.Literal("google-calendar")]),
+  account: GoogleService,
   accountKey: Schema.String,
 });
 
-const GoogleAccountInputSchema = Schema.Struct({
-  account: Schema.Union([Schema.Literal("gmail"), Schema.Literal("google-calendar")]),
-});
+const GoogleAccountInputSchema = Schema.Struct({ account: GoogleService });
 
 function failure(error: unknown, fallback = "Google account failed"): Response {
-  const status = error instanceof GoogleAccountError ? error.status : 500;
-  return Response.json(
-    { error: error instanceof Error ? error.message : fallback },
-    { status },
+  return jsonError(
+    errorMessage(error, fallback),
+    error instanceof GoogleAccountError ? error.status : 500,
   );
 }
 
@@ -66,15 +66,10 @@ export async function handleGoogleAccountGet(): Promise<Response> {
 }
 
 export async function handleGoogleClientPut(request: Request): Promise<Response> {
-  let input: typeof GoogleClientInputSchema.Type;
+  const input = await decodeBody(request, GoogleClientInputSchema, "clientId must be a string");
+  if (input instanceof Response) return input;
   try {
-    input = Schema.decodeUnknownSync(GoogleClientInputSchema)(await request.json());
-  } catch {
-    return Response.json({ error: "clientId must be a string" }, { status: 400 });
-  }
-  try {
-    const account = await Effect.runPromise(saveGoogleClient(input));
-    return Response.json({ account });
+    return Response.json({ account: await Effect.runPromise(saveGoogleClient(input)) });
   } catch (error) {
     return failure(error);
   } finally {
@@ -83,14 +78,14 @@ export async function handleGoogleClientPut(request: Request): Promise<Response>
 }
 
 export async function handleGoogleAccountDisconnect(request: Request): Promise<Response> {
-  let input: typeof GoogleDisconnectInputSchema.Type;
-  try {
-    input = Schema.decodeUnknownSync(GoogleDisconnectInputSchema)(await request.json());
-  } catch {
-    return Response.json({ error: "account and accountKey are required" }, { status: 400 });
-  }
+  const input = await decodeBody(
+    request,
+    GoogleDisconnectInputSchema,
+    "account and accountKey are required",
+  );
+  if (input instanceof Response) return input;
   if (!GOOGLE_ACCOUNT_KEY_PATTERN.test(input.accountKey)) {
-    return Response.json({ error: "accountKey is not a known account" }, { status: 400 });
+    return jsonError("accountKey is not a known account");
   }
   const identity = { service: input.account, accountKey: input.accountKey };
   try {
@@ -111,33 +106,30 @@ export async function handleGoogleAccountDisconnect(request: Request): Promise<R
   }
 }
 
-export async function handleGoogleAuthorizeBegin(request: Request): Promise<Response> {
-  let input: typeof GoogleAccountInputSchema.Type;
+/** Both authorize routes name their service the same way and fail the same way. */
+async function withGoogleService(
+  request: Request,
+  fallback: string,
+  run: (account: (typeof GoogleAccountInputSchema.Type)["account"]) => Promise<Response>,
+): Promise<Response> {
+  const input = await decodeBody(request, GoogleAccountInputSchema, "account is required");
+  if (input instanceof Response) return input;
   try {
-    input = Schema.decodeUnknownSync(GoogleAccountInputSchema)(await request.json());
-  } catch {
-    return Response.json({ error: "account is required" }, { status: 400 });
-  }
-  try {
-    return Response.json(
-      await Effect.runPromise(beginGoogleLoopbackAuthorization(input.account)),
-    );
+    return await run(input.account);
   } catch (error) {
-    return failure(error, "Google sign-in failed");
+    return failure(error, fallback);
   }
 }
 
-export async function handleGoogleAuthorizeCancel(request: Request): Promise<Response> {
-  let input: typeof GoogleAccountInputSchema.Type;
-  try {
-    input = Schema.decodeUnknownSync(GoogleAccountInputSchema)(await request.json());
-  } catch {
-    return Response.json({ error: "account is required" }, { status: 400 });
-  }
-  try {
-    await Effect.runPromise(cancelGoogleLoopbackAuthorization(input.account));
+export function handleGoogleAuthorizeBegin(request: Request): Promise<Response> {
+  return withGoogleService(request, "Google sign-in failed", async (account) =>
+    Response.json(await Effect.runPromise(beginGoogleLoopbackAuthorization(account))),
+  );
+}
+
+export function handleGoogleAuthorizeCancel(request: Request): Promise<Response> {
+  return withGoogleService(request, "Google sign-in cancellation failed", async (account) => {
+    await Effect.runPromise(cancelGoogleLoopbackAuthorization(account));
     return Response.json({ cancelled: true });
-  } catch (error) {
-    return failure(error, "Google sign-in cancellation failed");
-  }
+  });
 }

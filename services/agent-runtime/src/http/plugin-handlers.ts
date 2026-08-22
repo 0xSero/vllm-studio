@@ -5,7 +5,6 @@
 // agent actually loads from.
 //
 
-import { Schema } from "effect";
 import { PluginUpsertInputSchema } from "../plugin-contract";
 import {
   listUserPlugins,
@@ -15,19 +14,14 @@ import {
   setUserPluginEnabled,
   writeUserPlugin,
 } from "../user-plugins";
+import { decodeBody, errorMessage, jsonError } from "./helpers";
 
-const failure = (error: unknown, fallback: string, status: number) =>
-  Response.json({ error: error instanceof Error ? error.message : fallback }, { status });
-
-async function listing(): Promise<Response> {
+/** The listing every write answers with, so the tab never re-fetches. */
+export async function handlePluginsList(): Promise<Response> {
   return Response.json({
     directory: resolveUserPluginsDir(),
     plugins: await listUserPlugins(),
   });
-}
-
-export async function handlePluginsList(): Promise<Response> {
-  return listing();
 }
 
 /**
@@ -38,29 +32,25 @@ export async function handlePluginsList(): Promise<Response> {
  * user sends a message. Nothing is spawned here.
  */
 export async function handlePluginUpsert(request: Request): Promise<Response> {
-  let body: typeof PluginUpsertInputSchema.Type;
-  try {
-    body = Schema.decodeUnknownSync(PluginUpsertInputSchema)(await request.json());
-  } catch {
-    return Response.json({ error: "invalid plugin payload" }, { status: 400 });
-  }
+  const body = await decodeBody(request, PluginUpsertInputSchema, "invalid plugin payload");
+  if (body instanceof Response) return body;
   try {
     if (body.source !== undefined) await writeUserPlugin(body.id, body.source);
     if (body.enabled !== undefined) await setUserPluginEnabled(body.id, body.enabled);
-    return listing();
+    return handlePluginsList();
   } catch (error) {
-    return failure(error, "Plugin could not be saved", 409);
+    return jsonError(errorMessage(error, "Plugin could not be saved"), 409);
   }
 }
 
 export async function handlePluginDelete(request: Request): Promise<Response> {
   const id = new URL(request.url).searchParams.get("id") ?? "";
-  if (!id) return Response.json({ error: "id is required" }, { status: 400 });
+  if (!id) return jsonError("id is required");
   try {
     await removeUserPlugin(id);
-    return listing();
+    return handlePluginsList();
   } catch (error) {
-    return failure(error, "Plugin could not be removed", 409);
+    return jsonError(errorMessage(error, "Plugin could not be removed"), 409);
   }
 }
 
@@ -72,13 +62,10 @@ export async function handlePluginDelete(request: Request): Promise<Response> {
  */
 export async function handlePluginSource(request: Request): Promise<Response> {
   const id = new URL(request.url).searchParams.get("id") ?? "";
-  if (!id) return Response.json({ error: "id is required" }, { status: 400 });
+  if (!id) return jsonError("id is required");
   try {
     return Response.json(await readUserPlugin(id));
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Plugin could not be read" },
-      { status: 404 },
-    );
+    return jsonError(errorMessage(error, "Plugin could not be read"), 404);
   }
 }

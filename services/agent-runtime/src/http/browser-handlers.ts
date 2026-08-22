@@ -357,15 +357,6 @@ type PortCandidate = {
   process?: string;
 };
 
-type LocalhostSite = {
-  port: number;
-  url: string;
-  displayUrl: string;
-  title: string;
-  process?: string;
-  current?: boolean;
-};
-
 function parseCurrentPort(request: Request): number | null {
   const host = request.headers.get("host") ?? "";
   const match = host.match(/:(\d+)$/);
@@ -413,10 +404,7 @@ async function listListeningPorts(): Promise<PortCandidate[]> {
   return FALLBACK_PORTS.map((port) => ({ port }));
 }
 
-async function probePort(
-  candidate: PortCandidate,
-  currentPort: number | null,
-): Promise<LocalhostSite | null> {
+async function probePort(candidate: PortCandidate, currentPort: number | null) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   const url = `http://127.0.0.1:${candidate.port}`;
@@ -454,11 +442,8 @@ export async function handleBrowserLocalhosts(request: Request): Promise<Respons
     candidates.map((candidate) => probePort(candidate, currentPort)),
   );
   const sites = probed
-    .filter((site): site is LocalhostSite => Boolean(site))
-    .sort((a, b) => {
-      if (a.current !== b.current) return a.current ? -1 : 1;
-      return a.port - b.port;
-    });
+    .flatMap((site) => site ?? [])
+    .sort((a, b) => (a.current === b.current ? a.port - b.port : a.current ? -1 : 1));
   return Response.json({ sites });
 }
 

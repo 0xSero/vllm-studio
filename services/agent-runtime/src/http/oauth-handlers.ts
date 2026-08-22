@@ -8,10 +8,7 @@
 //
 
 import { Schema } from "effect";
-import {
-  OAuthClientInputSchema,
-  OAuthConnectorInputSchema,
-} from "../oauth-connector-contract";
+import { OAuthClientInputSchema, OAuthConnectorInputSchema } from "../oauth-connector-contract";
 import {
   beginOAuthConnectorAuthorization,
   cancelOAuthConnectorAuthorization,
@@ -21,15 +18,16 @@ import {
   saveOAuthConnectorClient,
 } from "../oauth-connectors";
 import { closePooledConnection } from "../connector-pool";
+import { decodeBody, errorMessage, jsonError } from "./helpers";
 
 function failure(error: unknown, fallback: string): Response {
-  const status = error instanceof OAuthConnectorError ? error.status : 500;
-  return Response.json(
-    { error: error instanceof Error ? error.message : fallback },
-    { status },
+  return jsonError(
+    errorMessage(error, fallback),
+    error instanceof OAuthConnectorError ? error.status : 500,
   );
 }
 
+/** The writes name their connector in the body, the reads in ?connectorId. */
 async function connectorIdFromBody(request: Request): Promise<string | null> {
   try {
     const input = Schema.decodeUnknownSync(OAuthConnectorInputSchema)(await request.json());
@@ -39,9 +37,12 @@ async function connectorIdFromBody(request: Request): Promise<string | null> {
   }
 }
 
+const connectorIdFromQuery = (request: Request): string | null =>
+  new URL(request.url).searchParams.get("connectorId")?.trim() || null;
+
 export async function handleOAuthAuthorizeBegin(request: Request): Promise<Response> {
   const connectorId = await connectorIdFromBody(request);
-  if (!connectorId) return Response.json({ error: "connectorId is required" }, { status: 400 });
+  if (!connectorId) return jsonError("connectorId is required");
   try {
     return Response.json(await beginOAuthConnectorAuthorization(connectorId));
   } catch (error) {
@@ -51,7 +52,7 @@ export async function handleOAuthAuthorizeBegin(request: Request): Promise<Respo
 
 export async function handleOAuthAuthorizeCancel(request: Request): Promise<Response> {
   const connectorId = await connectorIdFromBody(request);
-  if (!connectorId) return Response.json({ error: "connectorId is required" }, { status: 400 });
+  if (!connectorId) return jsonError("connectorId is required");
   try {
     cancelOAuthConnectorAuthorization(connectorId);
     return Response.json({ cancelled: true });
@@ -61,8 +62,8 @@ export async function handleOAuthAuthorizeCancel(request: Request): Promise<Resp
 }
 
 export async function handleOAuthStatus(request: Request): Promise<Response> {
-  const connectorId = new URL(request.url).searchParams.get("connectorId")?.trim();
-  if (!connectorId) return Response.json({ error: "connectorId is required" }, { status: 400 });
+  const connectorId = connectorIdFromQuery(request);
+  if (!connectorId) return jsonError("connectorId is required");
   try {
     return Response.json(await getOAuthConnectorStatus(connectorId));
   } catch (error) {
@@ -71,23 +72,24 @@ export async function handleOAuthStatus(request: Request): Promise<Response> {
 }
 
 export async function handleOAuthClientPut(request: Request): Promise<Response> {
-  let input: typeof OAuthClientInputSchema.Type;
+  const input = await decodeBody(
+    request,
+    OAuthClientInputSchema,
+    "connectorId and clientId are required",
+  );
+  if (input instanceof Response) return input;
+  const connectorId = input.connectorId.trim();
   try {
-    input = Schema.decodeUnknownSync(OAuthClientInputSchema)(await request.json());
-  } catch {
-    return Response.json({ error: "connectorId and clientId are required" }, { status: 400 });
-  }
-  try {
-    await saveOAuthConnectorClient(input.connectorId.trim(), input.clientId);
-    return Response.json(await getOAuthConnectorStatus(input.connectorId.trim()));
+    await saveOAuthConnectorClient(connectorId, input.clientId);
+    return Response.json(await getOAuthConnectorStatus(connectorId));
   } catch (error) {
     return failure(error, "OAuth client could not be saved");
   }
 }
 
 export async function handleOAuthDisconnect(request: Request): Promise<Response> {
-  const connectorId = new URL(request.url).searchParams.get("connectorId")?.trim();
-  if (!connectorId) return Response.json({ error: "connectorId is required" }, { status: 400 });
+  const connectorId = connectorIdFromQuery(request);
+  if (!connectorId) return jsonError("connectorId is required");
   try {
     const status = await disconnectOAuthConnector(connectorId);
     // A pooled child spawned with the old token keeps running otherwise.

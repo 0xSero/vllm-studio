@@ -28,7 +28,7 @@ import { piResourceDiagnostics, piRuntimeManager } from "../pi-runtime";
 import type { LoggedPiEvent, PiAgentSession } from "../pi-runtime-types";
 import { listSessions } from "../sessions-store";
 import { sessionListChangedVersion, subscribeSessionListChanged } from "../session-list-changed";
-import { errorMessage, jsonError } from "./helpers";
+import { errorMessage, jsonError, readJsonBody } from "./helpers";
 import { sseResponse } from "./sse";
 
 // ─── POST /api/agent/turn ─────────────────────────────────────────────────
@@ -216,13 +216,7 @@ export async function handleAgentAbort(request: Request): Promise<Response> {
 }
 
 export async function handleExtensionUiResponse(request: Request): Promise<Response> {
-  const body = (await request.json().catch(() => null)) as {
-    sessionId?: unknown;
-    requestId?: unknown;
-    value?: unknown;
-    confirmed?: unknown;
-    cancelled?: unknown;
-  } | null;
+  const body = await readJsonBody(request);
   const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
   const requestId = typeof body?.requestId === "string" ? body.requestId.trim() : "";
   if (!sessionId || !requestId) return jsonError("sessionId and requestId are required");
