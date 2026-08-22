@@ -137,11 +137,17 @@ export function ApiConnectionSection({
         actions={
           <div className="flex items-center gap-2">
             <ApiUrlCensorToggle />
-            <ApiStatus
-              status={connectionStatus}
-              message={statusMessage}
-              loading={apiSettingsLoading}
-            />
+            {apiSettingsLoading ? (
+              <StatusPill tone="info">loading</StatusPill>
+            ) : (
+              <span className="inline-flex items-center gap-1.5">
+                {STATUS_ICONS[connectionStatus]}
+                <StatusPill tone={STATUS_TONES[connectionStatus]}>
+                  {statusMessage ||
+                    (connectionStatus === "unknown" ? "not tested" : connectionStatus)}
+                </StatusPill>
+              </span>
+            )}
           </div>
         }
       >
@@ -425,24 +431,3 @@ const STATUS_ICONS: Record<ConnectionStatus, ReactNode> = {
   error: <X className="h-3 w-3 text-(--err)" />,
   unknown: null,
 };
-
-function ApiStatus({
-  status,
-  message,
-  loading,
-}: {
-  status: ConnectionStatus;
-  message: string;
-  loading: boolean;
-}) {
-  if (loading) {
-    return <StatusPill tone="info">loading</StatusPill>;
-  }
-  const label = message || (status === "unknown" ? "not tested" : status);
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      {STATUS_ICONS[status]}
-      <StatusPill tone={STATUS_TONES[status]}>{label}</StatusPill>
-    </span>
-  );
-}

@@ -332,7 +332,10 @@ function BackendRow({
 }) {
   const meta = ENGINE_META[id] ?? { label: id, description: "Runtime backend" };
   const [state, setState] = useState<UpgradeState>({ status: "idle" });
-  const onUpgrade = upgradeHandler(id);
+  const onUpgrade =
+    id === "vllm" || id === "sglang" || id === "llamacpp"
+      ? () => api.upgradeRuntime(id)
+      : undefined;
   const location = info.python_path ?? info.binary_path ?? "";
 
   const handleUpgrade = useCallback(async () => {
@@ -380,9 +383,4 @@ function BackendRow({
       ) : null}
     </>
   );
-}
-
-function upgradeHandler(id: string) {
-  if (id === "vllm" || id === "sglang" || id === "llamacpp") return () => api.upgradeRuntime(id);
-  return undefined;
 }
