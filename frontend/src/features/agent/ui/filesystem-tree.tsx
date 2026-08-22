@@ -4,36 +4,19 @@ import { useMemo } from "react";
 import { ChevronDown, ChevronRight, File, Folder } from "@/ui/icon-registry";
 import type { FsEntry } from "@/features/agent/filesystem-types";
 
-const TONE_GROUPS: [string, string[]][] = [
-  [
-    "text-(--link)",
-    [
-      "ts",
-      "tsx",
-      "js",
-      "jsx",
-      "mjs",
-      "cjs",
-      "py",
-      "rs",
-      "go",
-      "rb",
-      "java",
-      "c",
-      "cpp",
-      "h",
-      "swift",
-      "kt",
-    ],
-  ],
-  ["text-(--warn)", ["css", "scss", "sass", "less", "sh", "bash", "zsh", "fish"]],
-  ["text-(--ok)", ["json", "yaml", "yml", "toml", "ini", "env", "lock"]],
-  ["text-(--fg) opacity-60", ["md", "mdx", "txt", "rst"]],
-  ["text-(--err) opacity-70", ["png", "jpg", "jpeg", "gif", "webp", "svg", "mp4", "mov"]],
+// Extension → tone, grouped by family so a new extension is a one-word edit.
+const TONE_GROUPS: [tone: string, extensions: string][] = [
+  ["text-(--link)", "ts tsx js jsx mjs cjs py rs go rb java c cpp h swift kt"],
+  ["text-(--warn)", "css scss sass less sh bash zsh fish"],
+  ["text-(--ok)", "json yaml yml toml ini env lock"],
+  ["text-(--fg) opacity-60", "md mdx txt rst"],
+  ["text-(--err) opacity-70", "png jpg jpeg gif webp svg mp4 mov"],
 ];
 
 const FILE_TONE_BY_EXT: Record<string, string> = Object.fromEntries(
-  TONE_GROUPS.flatMap(([tone, exts]) => exts.map((ext) => [ext, tone] as const)),
+  TONE_GROUPS.flatMap(([tone, extensions]) =>
+    extensions.split(" ").map((extension) => [extension, tone]),
+  ),
 );
 
 export function fileTone(name: string): string {
@@ -71,17 +54,7 @@ export function Breadcrumb({ relPath, onRoot }: { relPath: string; onRoot: () =>
   );
 }
 
-export function TreeFileList({
-  entries,
-  searchQuery,
-  openFile,
-  onOpen,
-  onToggleDir,
-  depth,
-  expandedDirs,
-  dirChildren,
-  dirLoading,
-}: {
+type TreeFileListProps = {
   entries: FsEntry[];
   searchQuery: string;
   openFile: string | null;
@@ -91,7 +64,11 @@ export function TreeFileList({
   expandedDirs: Set<string>;
   dirChildren: Map<string, FsEntry[]>;
   dirLoading: Set<string>;
-}) {
+};
+
+export function TreeFileList(props: TreeFileListProps) {
+  const { entries, searchQuery, openFile, onOpen, onToggleDir, depth } = props;
+  const { expandedDirs, dirChildren, dirLoading } = props;
   const filtered = useMemo(() => {
     if (!searchQuery) return entries;
     const q = searchQuery.toLowerCase();
@@ -158,19 +135,7 @@ export function TreeFileList({
                 ) : null}
               </button>
             </div>
-            {children ? (
-              <TreeFileList
-                entries={children}
-                searchQuery={searchQuery}
-                openFile={openFile}
-                onOpen={onOpen}
-                onToggleDir={onToggleDir}
-                depth={depth + 1}
-                expandedDirs={expandedDirs}
-                dirChildren={dirChildren}
-                dirLoading={dirLoading}
-              />
-            ) : null}
+            {children ? <TreeFileList {...props} entries={children} depth={depth + 1} /> : null}
           </div>
         );
       })}

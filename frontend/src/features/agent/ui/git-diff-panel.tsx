@@ -89,6 +89,45 @@ export function GitDiffPanel({ cwd }: { cwd: string | null }) {
   }, [load]);
   const files = useMemo(() => parseUnifiedDiff(payload?.diff ?? ""), [payload?.diff]);
 
+  const renderBody = () => {
+    if (!cwd)
+      return (
+        <div className="p-4 text-xs text-(--dim)">
+          Choose a project directory to view git changes.
+        </div>
+      );
+    if (payload?.error) return <ErrorBox className="m-3 p-3">{payload.error}</ErrorBox>;
+    if (payload?.isRepo === false)
+      return (
+        <div className="flex flex-col gap-3 p-4 text-xs text-(--dim)">
+          <span>This directory is not a git repository.</span>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void run({ action: "init" })}
+            disabled={loading}
+            className="w-fit"
+          >
+            Initialize git repository
+          </Button>
+        </div>
+      );
+    if (files.length === 0) {
+      const status = payload?.status ?? [];
+      return (
+        <div className="p-4 text-xs text-(--dim)">
+          {loading ? "Loading diff…" : "No unstaged tracked-file changes."}
+          {status.length > 0 ? (
+            <pre className="mt-3 overflow-auto rounded-md border border-(--border)/80 bg-(--color-input) p-2 font-mono text-[length:var(--fs-sm)] text-(--fg)">
+              {status.join("\n")}
+            </pre>
+          ) : null}
+        </div>
+      );
+    }
+    return <DiffFileList files={files} viewMode={viewMode} onViewMode={setViewMode} />;
+  };
+
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-(--color-panel)">
       <GitPanelHeader cwd={cwd} loading={loading} payload={payload} onReload={load} />
@@ -105,82 +144,8 @@ export function GitDiffPanel({ cwd }: { cwd: string | null }) {
         mergeError={mergeError}
         onMerge={merge}
       />
-      <GitDiffPanelBody
-        cwd={cwd}
-        files={files}
-        viewMode={viewMode}
-        onViewMode={setViewMode}
-        initGit={() => run({ action: "init" })}
-        loading={loading}
-        payload={payload}
-      />
+      {renderBody()}
     </section>
-  );
-}
-
-function GitDiffPanelBody({
-  cwd,
-  files,
-  viewMode,
-  onViewMode,
-  initGit,
-  loading,
-  payload,
-}: {
-  cwd: string | null;
-  files: DiffFile[];
-  viewMode: DiffViewMode;
-  onViewMode: (mode: DiffViewMode) => void;
-  initGit: () => Promise<void>;
-  loading: boolean;
-  payload: (Partial<GitState> & { error?: string }) | null;
-}) {
-  if (!cwd)
-    return (
-      <div className="p-4 text-xs text-(--dim)">
-        Choose a project directory to view git changes.
-      </div>
-    );
-  if (payload?.error) return <ErrorBox className="m-3 p-3">{payload.error}</ErrorBox>;
-  if (payload?.isRepo === false) return <InitializeGitPanel initGit={initGit} loading={loading} />;
-  if (files.length === 0)
-    return <EmptyDiffPanel loading={loading} status={payload?.status ?? []} />;
-  return <DiffFileList files={files} viewMode={viewMode} onViewMode={onViewMode} />;
-}
-
-function InitializeGitPanel({
-  initGit,
-  loading,
-}: {
-  initGit: () => Promise<void>;
-  loading: boolean;
-}) {
-  return (
-    <div className="flex flex-col gap-3 p-4 text-xs text-(--dim)">
-      <span>This directory is not a git repository.</span>
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={() => void initGit()}
-        disabled={loading}
-        className="w-fit"
-      >
-        Initialize git repository
-      </Button>
-    </div>
-  );
-}
-
-function EmptyDiffPanel({ loading, status }: { loading: boolean; status: string[] }) {
-  return (
-    <div className="p-4 text-xs text-(--dim)">
-      {loading ? "Loading diff…" : "No unstaged tracked-file changes."}
-      {status.length > 0 ? (
-        <pre className="mt-3 overflow-auto rounded-md border border-(--border)/80 bg-(--color-input) p-2 font-mono text-[length:var(--fs-sm)] text-(--fg)">
-          {status.join("\n")}
-        </pre>
-      ) : null}
-    </div>
   );
 }
 

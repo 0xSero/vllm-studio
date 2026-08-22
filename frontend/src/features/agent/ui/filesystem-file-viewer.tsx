@@ -49,6 +49,10 @@ export function FileViewer({
     },
     [draft, onAddComment],
   );
+  const cancelDraft = useCallback(() => {
+    setComposingLine(null);
+    setDraft("");
+  }, []);
   const handleDoubleClick = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
       if (event.target instanceof Element && !event.target.closest("textarea, button"))
@@ -143,10 +147,7 @@ export function FileViewer({
                     event.preventDefault();
                     submitDraft(lineNumber);
                   }
-                  if (event.key === "Escape") {
-                    setComposingLine(null);
-                    setDraft("");
-                  }
+                  if (event.key === "Escape") cancelDraft();
                 }}
                 placeholder="Comment to model… (⌘↵ to send)"
                 className="w-full resize-none rounded-md border border-(--border) bg-(--color-input) px-2 py-1 text-[length:var(--fs-xs)] text-(--fg) outline-none placeholder:text-(--dim)"
@@ -155,10 +156,7 @@ export function FileViewer({
               <div className="flex justify-end gap-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    setComposingLine(null);
-                    setDraft("");
-                  }}
+                  onClick={cancelDraft}
                   className="rounded px-2 py-0.5 text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg)"
                 >
                   Cancel
@@ -184,6 +182,7 @@ export function FileViewer({
       commentsByLine,
       composingLine,
       draft,
+      cancelDraft,
       submitDraft,
       onRemoveComment,
     ],
