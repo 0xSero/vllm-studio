@@ -39,12 +39,8 @@ import { appendFile, mkdir, readFile, readdir, realpath, stat, writeFile } from 
 import { homedir } from "node:os";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ToolResult } from "./bridge.ts";
 import { Type, type Static, type TSchema } from "./schema.ts";
-
-type ToolResult = {
-  content: Array<{ type: "text"; text: string }>;
-  details: Record<string, unknown>;
-};
 
 type Vault = {
   path: string;
