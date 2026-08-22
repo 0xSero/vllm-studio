@@ -28,9 +28,8 @@ import {
   switchBranch,
 } from "@/features/agent/projects/api";
 import type { GitBranch as GitBranchType, GitWorktree } from "@/features/agent/contracts";
-import { GoalCard, type GoalDraft } from "@/features/agent/ui/goal-card";
-import { GoalStrip } from "@/features/agent/ui/goal-strip";
-import { useSessionGoal } from "@/features/agent/ui/use-session-goal";
+import { GoalCard, GoalStrip, type GoalDraft } from "@/features/agent/ui/goal-ui";
+import { useSessionGoal } from "@/features/agent/ui/use-goal";
 import { ADD_PROJECT_EVENT } from "@/lib/workspace-events";
 import { cx } from "@/ui/utils";
 import { QueuedMessageStack } from "@/features/agent/ui/queued-message-stack";

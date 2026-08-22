@@ -54,8 +54,7 @@ import {
   useChatPaneRuntimeHandle,
 } from "@/features/agent/ui/chat-pane-hooks";
 import { useChatPaneSessionTitle } from "@/features/agent/ui/chat-pane-session-title";
-import { useGoalCommand } from "@/features/agent/ui/use-goal-command";
-import { useGoalMode } from "@/features/agent/ui/use-goal-mode";
+import { useGoal } from "@/features/agent/ui/use-goal";
 import { useComposerCommandHandlers } from "@/features/agent/ui/use-composer-command-handlers";
 import { useChatPaneSendFlow } from "@/features/agent/ui/chat-pane-send-flow";
 import { ChatPaneHandle } from "@/features/agent/messages";
@@ -393,10 +392,18 @@ export function ChatPane({
   });
 
   const activePiSessionId = activeTab?.piSessionId ?? null;
-  const { goalRevision, goalAction, flushPendingGoal } = useGoalCommand(
-    activePiSessionId,
-    activeTabId,
+  const reportGoalError = useCallback(
+    (message: string) => {
+      if (activeTab) updateTab(activeTab.id, (tab) => ({ ...tab, error: message }));
+    },
+    [activeTab, updateTab],
   );
+  const goalApi = useGoal({
+    piSessionId: activePiSessionId,
+    tabId: activeTabId,
+    reportError: reportGoalError,
+  });
+  const { goalRevision, goalAction, flushPendingGoal } = goalApi;
   const handlePiSessionIdAssigned = useCallback(
     (piSessionId: string) => {
       handlePiSessionIdChange(piSessionId);
@@ -456,7 +463,6 @@ export function ChatPane({
       activeTab ? applyContextRow(activeTab.id, "skill", row, tools) : Promise.resolve(),
     [activeTab, tools],
   );
-  const [goalModeOn, setGoalModeOn] = useState(false);
   const [automationDrawerOpen, setAutomationDrawerOpen] = useState(false);
   // Seed the automation with the last thing the user asked for: the common case
   // is "keep doing what I just asked, on a schedule".
@@ -491,7 +497,7 @@ export function ChatPane({
           ...(onForkSession ? { forkSession: onForkSession } : {}),
           ...(canExport ? { exportSession } : {}),
           goal: goalAction,
-          enterGoalMode: () => setGoalModeOn(true),
+          enterGoalMode: goalApi.enterGoalMode,
           openAutomation: () => setAutomationDrawerOpen(true),
         }),
         promptTemplateCommandProvider({
@@ -506,6 +512,7 @@ export function ChatPane({
       canExport,
       compactSession,
       goalAction,
+      goalApi.enterGoalMode,
       exportSession,
       onForkSession,
       onToggleBrowserTool,
@@ -575,22 +582,9 @@ export function ChatPane({
       abortTurn,
       attachFiles,
     });
-  const reportGoalError = useCallback(
-    (message: string) => {
-      if (activeTab) updateTab(activeTab.id, (tab) => ({ ...tab, error: message }));
-    },
-    [activeTab, updateTab],
-  );
-  const goalModeApi = useGoalMode({
-    goalAction,
-    reportError: reportGoalError,
-    sendMessage,
-    goalMode: goalModeOn,
-    setGoalMode: setGoalModeOn,
-  });
   const handleComposerSubmit = useCallback(
     (event: FormEvent) => {
-      if (goalModeApi.submitAsGoal(event, activeTab?.input ?? "")) return;
+      if (goalApi.submitAsGoal(event, activeTab?.input ?? "", sendMessage)) return;
       const invocation = parseSlashInvocation(activeTab?.input ?? "");
       if (invocation && commandRegistry.find(invocation.name, commandContext)) {
         event.preventDefault();
@@ -599,7 +593,7 @@ export function ChatPane({
       }
       void sendMessage(event);
     },
-    [activeTab, commandContext, commandRegistry, goalModeApi, runCommandInvocation, sendMessage],
+    [activeTab, commandContext, commandRegistry, goalApi, runCommandInvocation, sendMessage],
   );
   const loadEarlierHistory = useCallback(
     () => (activeTabId ? engine.loadEarlier(activeTabId) : Promise.resolve()),
@@ -709,7 +703,7 @@ export function ChatPane({
           onComposerDragOver={handleComposerDragOver}
           onComposerDrop={handleComposerDrop}
           onComposerKeyDown={(event) => {
-            if (goalModeApi.interceptKeyDown(event)) return;
+            if (goalApi.interceptKeyDown(event)) return;
             handleComposerKeyDown(event);
           }}
           onComposerPaste={handleComposerPaste}
@@ -722,7 +716,7 @@ export function ChatPane({
           onSubmit={handleComposerSubmit}
           onToggleBrowserBackend={onToggleBrowserBackend}
           onToggleBrowserTool={onToggleBrowserTool}
-          placeholder={goalModeApi.goalPlaceholder ?? composerVisual.placeholder}
+          placeholder={goalApi.goalPlaceholder ?? composerVisual.placeholder}
           drawer={
             <SessionProjectDrawer
               tabId={activeTabId}
@@ -750,8 +744,8 @@ export function ChatPane({
           selectedSkills={selectedSkills}
           status={activeTab?.status}
           textareaRef={textareaRef}
-          goalMode={goalModeApi.goalMode}
-          onExitGoalMode={goalModeApi.exitGoalMode}
+          goalMode={goalApi.goalMode}
+          onExitGoalMode={goalApi.exitGoalMode}
           floating={composerOnly}
           dense={!showHeader && !composerOnly}
         />
