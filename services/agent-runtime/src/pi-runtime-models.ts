@@ -17,14 +17,6 @@ import { resolveModelVision } from "../../../controller/contracts/model-capabili
 const PROVIDER_ID = "local-studio";
 const USER_PI_PREFIX = "user-pi-";
 
-function userPiModelsPath(): string {
-  const agentDir = process.env["PI_CODING_AGENT_DIR"]?.trim();
-  return path.join(
-    agentDir || path.join(process.env["HOME"] ?? homedir(), ".pi", "agent"),
-    "models.json",
-  );
-}
-
 type PiProviderModel = {
   id: string;
   name?: string;
@@ -56,7 +48,10 @@ function baseProviderName(name: string): string {
 }
 
 async function loadUserPiProviders(): Promise<UserPiProviders> {
-  const modelsPath = userPiModelsPath();
+  const agentDir =
+    process.env["PI_CODING_AGENT_DIR"]?.trim() ||
+    path.join(process.env["HOME"] ?? homedir(), ".pi", "agent");
+  const modelsPath = path.join(agentDir, "models.json");
   if (!existsSync(modelsPath)) return {};
   try {
     const parsed = JSON.parse(await readFile(modelsPath, "utf-8")) as unknown;
@@ -117,15 +112,11 @@ function supportedPiThinkingLevels(
   });
 }
 
-function isInklingModelId(modelId: string): boolean {
-  return modelId.toLowerCase().includes("inkling");
-}
-
 export function controllerModelThinkingLevels(
   reasoning: boolean,
   modelId = "",
 ): AgentThinkingLevel[] {
-  if (reasoning && isInklingModelId(modelId)) {
+  if (reasoning && modelId.toLowerCase().includes("inkling")) {
     return ["off", "minimal", "low", "medium", "high", "max"];
   }
   return reasoning ? ["auto", "low", "medium", "high", "max", "off"] : ["off"];
@@ -174,10 +165,6 @@ function providerIdForController(controller: PiControllerConfig, index: number):
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
   return `${PROVIDER_ID}-${normalized || index + 1}`;
-}
-
-function qualifyModelId(providerId: string, rawId: string): string {
-  return providerId === PROVIDER_ID ? rawId : `${providerId}/${rawId}`;
 }
 
 function normalizeBackendUrl(value: string): string {
@@ -359,7 +346,7 @@ async function fetchModelsFromController(
   const models = normalizeOpenAIModels(payload && typeof payload === "object" ? payload : {}).map(
     (model) => ({
       ...model,
-      id: qualifyModelId(providerId, model.id),
+      id: providerId === PROVIDER_ID ? model.id : `${providerId}/${model.id}`,
       rawId: model.id,
       providerId,
       controllerUrl: backendUrl,

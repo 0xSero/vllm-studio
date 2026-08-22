@@ -138,12 +138,6 @@ function runtimeFingerprint(
   });
 }
 
-function shouldRestartAfterPromptError(error: unknown): boolean {
-  return (
-    error instanceof Error && /Cannot continue from message role: assistant/i.test(error.message)
-  );
-}
-
 type PiResourceDiagnostic = {
   type: "info" | "warning" | "error";
   message: string;
@@ -354,9 +348,10 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
       try {
         await this.promptSession(message, options);
       } catch (error) {
-        if (options.restartOnContinuationError === false || !shouldRestartAfterPromptError(error)) {
-          throw error;
-        }
+        const continuationRefused =
+          error instanceof Error &&
+          /Cannot continue from message role: assistant/i.test(error.message);
+        if (options.restartOnContinuationError === false || !continuationRefused) throw error;
         // Rebuild the session from scratch (no resume id) and re-send: pi
         // refuses to continue a transcript that ends on an assistant message.
         await this.start(this.currentModelId, this.currentCwd, null, this.currentStartOptions);

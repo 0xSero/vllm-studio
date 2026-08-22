@@ -107,20 +107,19 @@ const store = createSessionScopedJsonStore<Automation>({
   normalize: normalizeAutomation,
 });
 
-function parseTime(time: string): { hours: number; minutes: number } {
-  const match = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
-  const hours = match ? Math.min(23, Number(match[1])) : 8;
-  const minutes = match ? Math.min(59, Number(match[2])) : 0;
-  return { hours, minutes };
-}
-
 export function nextRunAt(schedule: AutomationSchedule, from: Date): Date {
   if (schedule.kind === "interval") {
     return new Date(from.getTime() + schedule.minutes * 60_000);
   }
-  const { hours, minutes } = parseTime(schedule.time);
+  // Unparseable times fall back to 08:00, the same default a missing one gets.
+  const match = /^(\d{1,2}):(\d{2})$/.exec(schedule.time.trim());
   const next = new Date(from);
-  next.setHours(hours, minutes, 0, 0);
+  next.setHours(
+    match ? Math.min(23, Number(match[1])) : 8,
+    match ? Math.min(59, Number(match[2])) : 0,
+    0,
+    0,
+  );
   const dayBlocked = (day: number) =>
     schedule.kind === "weekly"
       ? day !== schedule.day
