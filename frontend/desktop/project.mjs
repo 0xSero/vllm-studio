@@ -1481,7 +1481,7 @@ var init_validate_shared_contracts = __esm(() => {
     "controller/src/modules/shared/system-types.ts",
     "frontend/src/lib/types.ts",
     "frontend/src/lib/controller-events-contract.ts"
-  ]), scanRoots = ["shared", "controller/contracts", "controller/src", "frontend/src"], findings2 = [], exportedDeclarations = new Map;
+  ]), scanRoots = ["shared", "controller/contracts", "controller/src", "frontend/src", "services/agent-runtime/src"], findings2 = [], exportedDeclarations = new Map;
   for (let scanRoot of scanRoots)
     walk(join4(root3, scanRoot));
   if (findings2.length > 0) {

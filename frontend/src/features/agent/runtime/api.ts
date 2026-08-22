@@ -4,6 +4,7 @@ import {
   type SessionGoal,
   type SessionGoalPatch,
 } from "@shared/agent/session-goal";
+import type { SessionUsageTotals } from "@shared/agent/session-usage";
 import { safeJson } from "@/features/agent/safe-json";
 import {
   parseAgentTurnCommandResult,
@@ -141,19 +142,7 @@ export function respondExtensionUi(
   );
 }
 
-/** What the session has spent over its whole life. Distinct from the context
- *  window, which compaction resets — this does not. */
-export type SessionUsageTotals = {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  reasoning: number;
-  total: number;
-  cost: number;
-  calls: number;
-  compactions: number;
-};
+export type { SessionUsageTotals } from "@shared/agent/session-usage";
 
 export type CanonicalSessionMeta = {
   title: string | null;
