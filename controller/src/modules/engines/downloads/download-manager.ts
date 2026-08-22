@@ -34,7 +34,7 @@ import {
   fetchHuggingFaceModelInfo,
   type FetchEffect,
 } from "./huggingface-api";
-import { trackWriterFailure, waitForWriterDrain } from "./stream-backpressure";
+import { awaitWriterEvent, trackWriterFailure } from "./stream-backpressure";
 
 const sumDownloadedBytes = (files: DownloadFileInfo[]): number =>
   files.reduce((total, file) => total + (file.downloaded_bytes || 0), 0);
@@ -136,30 +136,9 @@ const closeWriter = (
 ): Effect.Effect<void, EngineOperationError> =>
   writer.closed || writer.destroyed
     ? Effect.void
-    : Effect.callback<void, EngineOperationError>((resume) => {
-        let completed = false;
-        const cleanup = (): void => {
-          writer.removeListener("error", onError);
-          writer.removeListener("close", onClose);
-        };
-        const finish = (effect: Effect.Effect<void, EngineOperationError>): void => {
-          if (completed) return;
-          completed = true;
-          cleanup();
-          resume(effect);
-        };
-        const onError = (cause: unknown): void =>
-          finish(Effect.fail(operationError("close-download-writer", cause)));
-        const onClose = (): void => finish(Effect.void);
-        writer.once("error", onError);
-        writer.once("close", onClose);
-        try {
-          writer.end();
-        } catch (cause) {
-          onError(cause);
-        }
-        return Effect.sync(cleanup);
-      });
+    : awaitWriterEvent(writer, "close", () => writer.end()).pipe(
+        Effect.mapError((cause) => operationError("close-download-writer", cause)),
+      );
 
 export class DownloadManager {
   private readonly active = new Map<string, ActiveDownload>();
@@ -593,7 +572,7 @@ export class DownloadManager {
               );
               yield* attempt("check-download-writer", writerFailure.throwIfFailed);
               if (!writable) {
-                yield* waitForWriterDrain(writer).pipe(
+                yield* awaitWriterEvent(writer, "drain").pipe(
                   Effect.mapError((cause) => operationError("drain-download-writer", cause)),
                 );
                 yield* attempt("check-download-writer", writerFailure.throwIfFailed);

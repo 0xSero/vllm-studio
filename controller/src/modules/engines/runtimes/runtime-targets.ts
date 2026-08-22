@@ -229,17 +229,26 @@ const DOCKER_IMAGE_PATTERN: Record<EngineBackend, RegExp> = {
   mlx: /(mlx-lm|mlx_lm|mlx)/i,
 };
 
+/** Installed images first, then running containers — the later pass wins the merge. */
+const DOCKER_LISTINGS = [
+  { args: ["images", "--format", "{{.Repository}}:{{.Tag}}"], running: false },
+  { args: ["ps", "--format", "{{.Image}}"], running: true },
+] as const;
+
 const dockerCandidates = (): Effect.Effect<Candidate[]> =>
   Effect.gen(function* () {
     if (process.env["LOCAL_STUDIO_RUNTIME_SKIP_DOCKER"] === "1") return [];
     const docker = resolveBinary("docker");
     if (!docker) return [];
     const candidates: Candidate[] = [];
-    const collect = (stdout: string, running: boolean): void => {
-      for (const image of stdout
+    for (const { args, running } of DOCKER_LISTINGS) {
+      const result = yield* runCommandEffect(docker, [...args], 3_000);
+      if (result.status !== 0) continue;
+      const images = result.stdout
         .split("\n")
         .map((line) => line.trim())
-        .filter(Boolean)) {
+        .filter(Boolean);
+      for (const image of images) {
         for (const backend of BACKENDS) {
           if (!DOCKER_IMAGE_PATTERN[backend].test(image)) continue;
           candidates.push({
@@ -258,15 +267,7 @@ const dockerCandidates = (): Effect.Effect<Candidate[]> =>
           });
         }
       }
-    };
-    const images = yield* runCommandEffect(
-      docker,
-      ["images", "--format", "{{.Repository}}:{{.Tag}}"],
-      3_000,
-    );
-    if (images.status === 0) collect(images.stdout, false);
-    const processes = yield* runCommandEffect(docker, ["ps", "--format", "{{.Image}}"], 3_000);
-    if (processes.status === 0) collect(processes.stdout, true);
+    }
     return candidates;
   });
 
