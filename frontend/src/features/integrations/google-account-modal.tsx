@@ -87,12 +87,16 @@ export function GoogleAccountModal({
   }, [refresh]);
 
   const cancelAuthorizationRequest = useCallback(async (): Promise<void> => {
-    await requestAgentJson(AUTHORIZE_URL, Schema.decodeUnknownSync(GoogleCancellationResponseSchema), {
-      method: "DELETE",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ account: accountId }),
-      keepalive: true,
-    });
+    await requestAgentJson(
+      AUTHORIZE_URL,
+      Schema.decodeUnknownSync(GoogleCancellationResponseSchema),
+      {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ account: accountId }),
+        keepalive: true,
+      },
+    );
   }, [accountId]);
 
   const cancelAuthorization = useCallback(async (): Promise<void> => {
@@ -166,11 +170,15 @@ export function GoogleAccountModal({
     setBusy(true);
     setError("");
     try {
-      const result = await requestAgentJson<{ account: GoogleAccountView }>(ACCOUNT_URL, decodeAccount, {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ account: accountId, accountKey }),
-      });
+      const result = await requestAgentJson<{ account: GoogleAccountView }>(
+        ACCOUNT_URL,
+        decodeAccount,
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ account: accountId, accountKey }),
+        },
+      );
       setAccount(result.account);
       setConfirmingKey(null);
       onChanged();

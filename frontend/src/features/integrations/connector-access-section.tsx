@@ -8,7 +8,7 @@ import {
   type ConnectorGrant,
   type ConnectorGrantTarget,
 } from "@local-studio/agent-runtime/connector-grants-contract";
-import { Alert, RefreshIconButton } from "@/ui";
+import { Alert } from "@/ui";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
   DataRow,
@@ -23,6 +23,10 @@ import {
   TableSkeleton,
   TextCell,
 } from "@/features/recipes/recipes-content/catalog-table-shell";
+import {
+  CatalogSectionHeader,
+  useCatalogSection,
+} from "@/features/recipes/recipes-content/catalog-section";
 import { requestAgentJson } from "./agent-json";
 import { ConnectorGrantForm, EVERY_MODEL_VALUE, type GrantDraft } from "./connector-grant-form";
 
@@ -59,25 +63,22 @@ function toolSummary(grant: ConnectorGrant): string {
 }
 
 export function ConnectorAccessSection() {
-  const [grants, setGrants] = useState<ConnectorGrant[]>([]);
   const [connectors, setConnectors] = useState<ConnectorGrantTarget[]>([]);
   const [models, setModels] = useState<Array<{ id: string; name: string }>>([]);
   const [draft, setDraft] = useState<GrantDraft>(emptyDraft);
-  const [loaded, setLoaded] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
 
-  const refresh = useCallback(() => {
-    setRefreshing(true);
-    void Promise.all([
-      requestAgentJson(GRANTS_URL, Schema.decodeUnknownSync(ConnectorGrantsResponseSchema)),
-      requestAgentJson("/api/agent/models", Schema.decodeUnknownSync(AgentModelsResponseSchema)).catch(
-        () => ({ models: [] }),
-      ),
-    ])
-      .then(([access, catalog]) => {
-        setGrants([...access.grants]);
+  // One refresh loads two endpoints: the grants (with their connector targets)
+  // and the model catalog the form's picker is drawn from.
+  const load = useCallback(
+    () =>
+      Promise.all([
+        requestAgentJson(GRANTS_URL, Schema.decodeUnknownSync(ConnectorGrantsResponseSchema)),
+        requestAgentJson(
+          "/api/agent/models",
+          Schema.decodeUnknownSync(AgentModelsResponseSchema),
+        ).catch(() => ({ models: [] })),
+      ]).then(([access, catalog]) => {
         setConnectors([...access.connectors]);
         setModels(catalog.models.map((model) => ({ id: model.id, name: model.name })));
         setDraft((current) =>
@@ -85,20 +86,12 @@ export function ConnectorAccessSection() {
             ? current
             : { ...current, connectorId: access.connectors[0]?.id ?? "" },
         );
-        setError("");
-      })
-      .catch((loadError: unknown) => {
-        setError(loadError instanceof Error ? loadError.message : "Connector access failed");
-      })
-      .finally(() => {
-        setLoaded(true);
-        setRefreshing(false);
-      });
-  }, []);
-
-  useMountSubscription(() => {
-    refresh();
-  }, [refresh]);
+        return access.grants;
+      }),
+    [],
+  );
+  const section = useCatalogSection({ load });
+  const { items: grants, setItems: setGrants, loaded, error, setError } = section;
 
   // Tool names are fetched only for the connector being edited. Listing them
   // for everything would open every enabled connector, and opening a stdio MCP
@@ -132,7 +125,7 @@ export function ConnectorAccessSection() {
         Schema.decodeUnknownSync(GrantMutationResponseSchema),
         { headers: { "content-type": "application/json" }, ...init },
       );
-      setGrants([...result.grants]);
+      setGrants(result.grants);
       setError("");
     } catch (mutateError) {
       setError(mutateError instanceof Error ? mutateError.message : "Connector access failed");
@@ -160,12 +153,12 @@ export function ConnectorAccessSection() {
         title="Model access"
         description="Connector tools a model may be offered and may call. A model with no row here sees none of that connector's tools."
         actions={
-          <div className="flex items-center gap-2">
-            <StatusText tone={error ? "warn" : loaded ? "ok" : "dim"}>
-              {loaded ? `${grants.length} grants` : "loading"}
-            </StatusText>
-            <RefreshIconButton onClick={refresh} loading={refreshing} label="Refresh grants" />
-          </div>
+          <CatalogSectionHeader
+            section={section}
+            statusTone={error ? "warn" : loaded ? "ok" : "dim"}
+            statusText={loaded ? `${grants.length} grants` : "loading"}
+            refreshLabel="Refresh grants"
+          />
         }
       >
         {!loaded ? (
