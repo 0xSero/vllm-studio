@@ -128,7 +128,10 @@ export function subagentReport(run: SubagentRun): LastAssistantResult {
   const result = lastAssistantResult(run.cwd, run.piSessionId);
   // Aborting the child writes "Request was aborted" into its transcript as an
   // assistant error; adopting it would paint a deliberate stop as a failure.
-  return { text: clampReport(result.text), error: run.status === "cancelled" ? null : result.error };
+  return {
+    text: clampReport(result.text),
+    error: run.status === "cancelled" ? null : result.error,
+  };
 }
 
 /** True while this runtime still has the child streaming. */
@@ -191,18 +194,16 @@ export async function runSubagent(input: {
   const registry = state();
   const { parentPiSessionId } = input;
 
+  const parent = findParentRuntime(parentPiSessionId);
   if (
     registry.childPiSessionIds.has(parentPiSessionId) ||
-    sessionSubagentLink(parentPiSessionId) !== null
+    sessionSubagentLink(parentPiSessionId) !== null ||
+    parent?.sessionId.startsWith(SUBAGENT_SESSION_PREFIX)
   ) {
     throw new Error("Subagents cannot spawn their own subagents.");
   }
-  const parent = findParentRuntime(parentPiSessionId);
   if (!parent) {
     throw new Error("No running session found for this conversation.");
-  }
-  if (parent.sessionId.startsWith(SUBAGENT_SESSION_PREFIX)) {
-    throw new Error("Subagents cannot spawn their own subagents.");
   }
   const running = listSubagents(parentPiSessionId).filter((run) => run.status === "running");
   if (running.length >= MAX_CONCURRENT_PER_PARENT) {

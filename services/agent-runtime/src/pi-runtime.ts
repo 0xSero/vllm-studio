@@ -93,24 +93,27 @@ function selectPiRuntimeModel(
   models: Awaited<ReturnType<typeof refreshPiModels>>["models"],
   requestedModelId: string,
 ) {
+  /** Exactly one match resolves; several are a genuine ambiguity, none falls through. */
+  const only = (matches: typeof models) => {
+    if (matches.length > 1) throw new Error(`Model '${requestedModelId}' is ambiguous.`);
+    return matches[0] ?? null;
+  };
   const exact = models.find((model) => model.id === requestedModelId);
   if (exact) return exact;
   const separator = requestedModelId.indexOf("/");
   if (separator > 0) {
     const providerId = requestedModelId.slice(0, separator);
     const rawId = requestedModelId.slice(separator + 1);
-    const qualified = models.filter(
-      (model) => model.providerId === providerId && (model.rawId === rawId || model.id === rawId),
+    const qualified = only(
+      models.filter(
+        (model) => model.providerId === providerId && (model.rawId === rawId || model.id === rawId),
+      ),
     );
-    if (qualified.length === 1) return qualified[0];
-    if (qualified.length > 1) throw new Error(`Model '${requestedModelId}' is ambiguous.`);
+    if (qualified) return qualified;
   }
-  const unqualified = models.filter(
-    (model) => model.rawId === requestedModelId || model.name === requestedModelId,
+  return only(
+    models.filter((model) => model.rawId === requestedModelId || model.name === requestedModelId),
   );
-  if (unqualified.length === 1) return unqualified[0];
-  if (unqualified.length > 1) throw new Error(`Model '${requestedModelId}' is ambiguous.`);
-  return null;
 }
 
 function runtimeFingerprint(

@@ -17,7 +17,7 @@ export type {
 } from "../../../shared/agent/automation";
 
 const AUTOMATIONS_SUBDIR = "automations";
-const MAX_SUMMARY_CHARS = 2000;
+export const automationSummaryLimit = 2000;
 export const automationRunHistoryLimit = 20;
 
 export function prependAutomationRun(
@@ -62,7 +62,8 @@ function normalizeRun(value: unknown): AutomationRun | null {
     cwd: typeof value.cwd === "string" ? value.cwd : "",
     projectId: typeof value.projectId === "string" ? value.projectId : null,
     outcome: value.outcome === "error" ? "error" : "ok",
-    summary: typeof value.summary === "string" ? value.summary.slice(0, MAX_SUMMARY_CHARS) : "",
+    summary:
+      typeof value.summary === "string" ? value.summary.slice(0, automationSummaryLimit) : "",
     ...(typeof value.error === "string" ? { error: value.error } : {}),
   };
 }
@@ -247,5 +248,3 @@ export async function deleteAutomation(id: string): Promise<boolean> {
   await rm(path.join(resolveDataDir(), AUTOMATIONS_SUBDIR, `${id}.json`), { force: true });
   return true;
 }
-
-export const automationSummaryLimit = MAX_SUMMARY_CHARS;

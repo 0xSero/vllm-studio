@@ -94,14 +94,10 @@ export function createSessionListWatcher(): SessionListWatcher {
     dispose(): void {
       if (disposed) return;
       disposed = true;
-      if (notifyTimer) {
-        clearTimeout(notifyTimer);
-        notifyTimer = null;
-      }
-      if (refreshTimer) {
-        clearInterval(refreshTimer);
-        refreshTimer = null;
-      }
+      if (notifyTimer) clearTimeout(notifyTimer);
+      notifyTimer = null;
+      if (refreshTimer) clearInterval(refreshTimer);
+      refreshTimer = null;
       closeWatcher(projectsWatcher);
       projectsWatcher = null;
       for (const watcher of watchers.values()) closeWatcher(watcher);

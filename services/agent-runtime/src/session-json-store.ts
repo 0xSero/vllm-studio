@@ -18,11 +18,8 @@ function withFileLock<T>(file: string, task: () => Promise<T>): Promise<T> {
 }
 
 function sanitizeSessionId(sessionId: string | null | undefined): string | null {
-  if (typeof sessionId !== "string") return null;
-  const trimmed = sessionId.trim();
-  if (!trimmed) return null;
-  if (!/^[a-zA-Z0-9_.:-]{1,128}$/.test(trimmed)) return null;
-  return trimmed;
+  const trimmed = typeof sessionId === "string" ? sessionId.trim() : "";
+  return /^[a-zA-Z0-9_.:-]{1,128}$/.test(trimmed) ? trimmed : null;
 }
 
 export function createSessionScopedJsonStore<T extends { updatedAt: string }>(config: {

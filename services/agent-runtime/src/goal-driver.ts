@@ -57,14 +57,13 @@ export function markGoalTurnAborted(session: PiAgentSession): void {
   if (state) state.aborted = true;
 }
 
-function eventTouchesTools(event: LoggedPiEvent["event"]): boolean {
-  const type = typeof event?.type === "string" ? event.type : "";
-  return type.includes("tool");
+function eventType(event: LoggedPiEvent["event"]): string {
+  return typeof event?.type === "string" ? event.type : "";
 }
 
 /** Assistant text carried by a settled message event, if this is one. */
 function assistantTextFromEvent(event: LoggedPiEvent["event"]): string {
-  const type = typeof event?.type === "string" ? event.type : "";
+  const type = eventType(event);
   if (type !== "message" && type !== "message_end") return "";
   const message = isRecord(event) ? (event as Record<string, unknown>).message : null;
   if (!isRecord(message) || message.role !== "assistant") return "";
@@ -85,26 +84,21 @@ async function openGoalRun(session: PiAgentSession): Promise<void> {
 
 /** Snapshot and clear the per-turn state in one place, so no branch below can
  *  leak a flag into the next turn. */
-function takeTurn(state: DriverState): {
-  aborted: boolean;
-  wasContinuation: boolean;
-  hadTools: boolean;
-  assistantText: string;
-  runSeconds: number;
-} {
-  const runSeconds = state.runStartedAtMs === null ? 0 : (Date.now() - state.runStartedAtMs) / 1000;
+function takeTurn(state: DriverState) {
   const turn = {
     aborted: state.aborted,
     wasContinuation: state.lastTurnWasContinuation,
     hadTools: state.sawToolThisTurn,
     assistantText: state.assistantText,
-    runSeconds,
+    runSeconds: state.runStartedAtMs === null ? 0 : (Date.now() - state.runStartedAtMs) / 1000,
   };
-  state.aborted = false;
-  state.lastTurnWasContinuation = false;
-  state.sawToolThisTurn = false;
-  state.assistantText = "";
-  state.runStartedAtMs = null;
+  Object.assign(state, {
+    aborted: false,
+    lastTurnWasContinuation: false,
+    sawToolThisTurn: false,
+    assistantText: "",
+    runStartedAtMs: null,
+  } satisfies Partial<DriverState>);
   return turn;
 }
 
@@ -191,7 +185,7 @@ export function attachGoalDriver(session: PiAgentSession): void {
   };
   driverStates.set(session, state);
   session.onLoggedEvent((logged) => {
-    const type = typeof logged.event?.type === "string" ? logged.event.type : "";
+    const type = eventType(logged.event);
     if (type === "agent_start") {
       state.sawToolThisTurn = false;
       state.assistantText = "";
@@ -200,7 +194,7 @@ export function attachGoalDriver(session: PiAgentSession): void {
       void openGoalRun(session);
       return;
     }
-    if (eventTouchesTools(logged.event)) {
+    if (type.includes("tool")) {
       state.sawToolThisTurn = true;
       return;
     }

@@ -48,7 +48,8 @@ export class ConnectorPool {
     if (identity) {
       return googleWorkspaceConnection({
         service: identity.service,
-        authorize: (forceRefresh: boolean) => connectorAuthorizationHeaders(connector, forceRefresh),
+        authorize: (forceRefresh: boolean) =>
+          connectorAuthorizationHeaders(connector, forceRefresh),
         ...(signal ? { signal } : {}),
       });
     }
@@ -127,7 +128,11 @@ export class ConnectorPool {
       const tools = await connection.listTools();
       return { ok: true, tools };
     } catch (error) {
-      return { ok: false, tools: [], error: error instanceof Error ? error.message : String(error) };
+      return {
+        ok: false,
+        tools: [],
+        error: error instanceof Error ? error.message : String(error),
+      };
     } finally {
       connection?.close();
     }

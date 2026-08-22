@@ -114,7 +114,8 @@ function agentDirPath(): string {
 
 async function createHubRuntime(): Promise<ModelRuntime> {
   const modelsDir = agentDirPath();
-  const nativeAgentDir = process.env.PI_CODING_AGENT_DIR?.trim() || path.join(homedir(), ".pi", "agent");
+  const nativeAgentDir =
+    process.env.PI_CODING_AGENT_DIR?.trim() || path.join(homedir(), ".pi", "agent");
   await mkdir(modelsDir, { recursive: true });
   await mkdir(nativeAgentDir, { recursive: true });
   await chmod(modelsDir, 0o700).catch(() => undefined);

@@ -64,10 +64,7 @@ export async function readGoal(piSessionId: string): Promise<SessionGoal | null>
   return goal.objective ? goal : null;
 }
 
-export async function writeGoal(
-  piSessionId: string,
-  patch: GoalWritePatch,
-): Promise<SessionGoal> {
+export async function writeGoal(piSessionId: string, patch: GoalWritePatch): Promise<SessionGoal> {
   const { resetProgress, ...fields } = patch;
   return store.write(
     resetProgress ? { ...fields, ...PROGRESS_RESET, createdAt: new Date().toISOString() } : fields,

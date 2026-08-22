@@ -202,6 +202,11 @@ function controllerUrlIdentity(value: string): string {
   }
 }
 
+/** Last write wins per URL, so a list can name the same controller twice. */
+function uniqueByUrl(controllers: PiControllerConfig[]): PiControllerConfig[] {
+  return [...new Map(controllers.map((controller) => [controller.url, controller])).values()];
+}
+
 function normalizeControllerInput(input: PiControllerModelsRequest): PiControllerConfig | null {
   const url = normalizeBackendUrl(input.url || "");
   if (!url) return null;
@@ -239,7 +244,7 @@ function mergeControllers(
         ? { ...controller, apiKey: primary.apiKey }
         : controller,
     );
-    return [...new Map(merged.map((controller) => [controller.url, controller])).values()];
+    return uniqueByUrl(merged);
   }
   return primary ? [primary] : [];
 }
@@ -270,12 +275,11 @@ async function savePersistedControllers(
   agentDir: string,
   controllers: PiControllerModelsRequest[],
 ): Promise<void> {
-  const normalized = controllers
-    .map(normalizeControllerInput)
-    .filter((controller): controller is PiControllerConfig => controller !== null);
-  const unique = [
-    ...new Map(normalized.map((controller) => [controller.url, controller])).values(),
-  ];
+  const unique = uniqueByUrl(
+    controllers
+      .map(normalizeControllerInput)
+      .filter((controller): controller is PiControllerConfig => controller !== null),
+  );
   await writeFile(controllersPath(agentDir), JSON.stringify(unique, null, 2), "utf-8");
   await chmod(controllersPath(agentDir), 0o600).catch(() => undefined);
 }
@@ -355,7 +359,6 @@ async function fetchModelsFromController(
   const models = normalizeOpenAIModels(payload && typeof payload === "object" ? payload : {}).map(
     (model) => ({
       ...model,
-      reasoning: model.reasoning,
       id: qualifyModelId(providerId, model.id),
       rawId: model.id,
       providerId,
