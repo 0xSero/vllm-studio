@@ -11,7 +11,6 @@ import { normalizePackageSpec, probeVllmBinaryRuntime } from "../runtimes/runtim
 import { resolveVllmPythonPath } from "../runtimes/vllm-python-path";
 import type { BinaryProbeResult, ConfigHelpResult, EngineSpec } from "../engine-spec";
 
-
 const managedPackageSpec = (version?: string | null): string =>
   normalizePackageSpec("vllm", version);
 

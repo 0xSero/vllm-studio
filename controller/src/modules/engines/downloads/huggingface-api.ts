@@ -11,12 +11,8 @@ const compileGlob = (pattern: string): RegExp => {
   return new RegExp(regex, "i");
 };
 
-const matchesAny = (value: string, patterns: string[]): boolean => {
-  if (patterns.length === 0) {
-    return false;
-  }
-  return patterns.some((pattern) => compileGlob(pattern).test(value));
-};
+const matchesAny = (value: string, patterns: string[]): boolean =>
+  patterns.some((pattern) => compileGlob(pattern).test(value));
 
 export type FetchEffect = (
   url: string,
@@ -90,17 +86,15 @@ export const buildHuggingFaceFileList = (
 ): DownloadFileInfo[] => {
   const siblings = modelInfo.siblings ?? [];
   if (allowPatterns.length === 0) {
-    const primaryGgufFiles = siblings
-      .map((sibling) => sibling.rfilename)
-      .filter(
-        (filename) =>
-          /\.gguf$/i.test(filename) &&
-          !/(?:^|[-_.])(mmproj|projector|adapter|draft)(?:[-_.]|$)/i.test(filename),
-      );
     const ggufFamilies = new Set(
-      primaryGgufFiles.map((filename) =>
-        filename.replace(/-\d{5}-of-\d{5}\.gguf$/i, ".gguf"),
-      ),
+      siblings
+        .map((sibling) => sibling.rfilename)
+        .filter(
+          (filename) =>
+            /\.gguf$/i.test(filename) &&
+            !/(?:^|[-_.])(mmproj|projector|adapter|draft)(?:[-_.]|$)/i.test(filename),
+        )
+        .map((filename) => filename.replace(/-\d{5}-of-\d{5}\.gguf$/i, ".gguf")),
     );
     if (ggufFamilies.size > 1) {
       throw new Error(
@@ -112,24 +106,17 @@ export const buildHuggingFaceFileList = (
       );
     }
   }
-  const files: DownloadFileInfo[] = [];
-  for (const sibling of siblings) {
-    const filename = sibling.rfilename;
-    if (!filename) {
-      continue;
-    }
-    if (matchesAny(filename, ignorePatterns)) {
-      continue;
-    }
-    if (allowPatterns.length > 0 && !matchesAny(filename, allowPatterns)) {
-      continue;
-    }
-    files.push({
-      path: filename,
+  return siblings
+    .filter(
+      (sibling) =>
+        sibling.rfilename &&
+        !matchesAny(sibling.rfilename, ignorePatterns) &&
+        (allowPatterns.length === 0 || matchesAny(sibling.rfilename, allowPatterns)),
+    )
+    .map((sibling) => ({
+      path: sibling.rfilename,
       size_bytes: typeof sibling.size === "number" ? sibling.size : null,
       downloaded_bytes: 0,
-      status: "pending",
-    });
-  }
-  return files;
+      status: "pending" as const,
+    }));
 };

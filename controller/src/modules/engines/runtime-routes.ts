@@ -61,6 +61,12 @@ const parseRuntimeJobBody = (
 
 export const registerRuntimeRoutes = defineRoutes((app, context) => {
   const getObservedProcess = createGetObservedProcess(context);
+  const defaultBackendInfo = (backend: "sglang" | "llamacpp") =>
+    Effect.gen(function* () {
+      const current = yield* getObservedProcess(`runtime.backend.${backend}`);
+      const target = yield* getDefaultRuntimeTarget(context.config, backend, current);
+      return runtimeTargetToBackendInfo(target);
+    });
 
   return mergeRoutes(
     effectRoute(app.get, "/runtime/targets", (ctx) =>
@@ -137,19 +143,11 @@ export const registerRuntimeRoutes = defineRoutes((app, context) => {
     }),
 
     effectRoute(app.get, "/runtime/sglang", (ctx) =>
-      Effect.gen(function* () {
-        const current = yield* getObservedProcess("runtime.backend.sglang");
-        const target = yield* getDefaultRuntimeTarget(context.config, "sglang", current);
-        return ctx.json(runtimeTargetToBackendInfo(target));
-      }),
+      defaultBackendInfo("sglang").pipe(Effect.map((info) => ctx.json(info))),
     ),
 
     effectRoute(app.get, "/runtime/llamacpp", (ctx) =>
-      Effect.gen(function* () {
-        const current = yield* getObservedProcess("runtime.backend.llamacpp");
-        const target = yield* getDefaultRuntimeTarget(context.config, "llamacpp", current);
-        return ctx.json(runtimeTargetToBackendInfo(target));
-      }),
+      defaultBackendInfo("llamacpp").pipe(Effect.map((info) => ctx.json(info))),
     ),
 
     effectRoute(app.get, "/runtime/mlx", (ctx) =>

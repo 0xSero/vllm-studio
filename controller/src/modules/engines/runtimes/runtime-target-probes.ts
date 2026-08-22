@@ -3,6 +3,7 @@ import { basename, resolve } from "node:path";
 import { Effect, Schema } from "effect";
 import { coerce, compare } from "semver";
 import { resolveBinary, runCommandAsyncEffect } from "../../../core/command";
+import type { RuntimeBackendInfo } from "@local-studio/contracts/system";
 import { VLLM_RUNTIME_COMMAND_TIMEOUT_MS } from "../configs";
 
 export type PythonProbeBackend = "vllm" | "sglang" | "mlx";
@@ -138,6 +139,36 @@ export const probeBackendRuntime = (
       if (!fallback && probe.runnable) fallback = probe;
     }
     return fallback ?? notInstalled(null, false, `No runnable Python found for ${backend}`);
+  });
+
+/**
+ * Runtime info for a python-hosted backend: probe the running process' interpreter first,
+ * then the configured/managed/system pythons, and report the first that has the package.
+ */
+export const pythonBackendRuntimeInfo = (options: {
+  backend: PythonProbeBackend;
+  configuredPython: string | null | undefined;
+  resolvedPython: string | null;
+  runningProcess?: { pid: number; backend: string } | null | undefined;
+  upgradeCommandAvailable?: boolean;
+}): Effect.Effect<RuntimeBackendInfo> =>
+  Effect.gen(function* () {
+    const running = options.runningProcess;
+    const runningPython =
+      running?.backend === options.backend ? yield* probeRunningProcessPython(running.pid) : null;
+    const probe = yield* probeBackendRuntime(options.backend, [
+      runningPython,
+      options.configuredPython,
+      options.resolvedPython,
+      "python3",
+      "python",
+    ]);
+    return {
+      installed: probe.installed,
+      version: probe.version,
+      python_path: probe.pythonPath ?? options.configuredPython ?? null,
+      upgrade_command_available: options.upgradeCommandAvailable ?? probe.runnable,
+    };
   });
 
 export const probeRunningProcessPython = (pid: number): Effect.Effect<string | null> =>

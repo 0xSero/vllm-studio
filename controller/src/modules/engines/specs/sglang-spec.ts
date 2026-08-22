@@ -19,8 +19,7 @@ import {
 import { resolveVllmPythonPath } from "../runtimes/vllm-python-path";
 import {
   normalizePackageSpec,
-  probeBackendRuntime,
-  probeRunningProcessPython,
+  pythonBackendRuntimeInfo,
   resolvePythonFromScript,
 } from "../runtimes/runtime-target-probes";
 
@@ -39,9 +38,7 @@ const probeBinary = (binary: string): Effect.Effect<BinaryProbeResult> =>
       };
     }
     const help = yield* runCommandAsyncEffect(binary, ["--help"], { timeoutMs: 5_000 });
-    if (help.status === 0) {
-      return { installed: true, version: null, binaryPath: binary };
-    }
+    if (help.status === 0) return { installed: true, version: null, binaryPath: binary };
     return {
       installed: false,
       version: null,
@@ -51,43 +48,27 @@ const probeBinary = (binary: string): Effect.Effect<BinaryProbeResult> =>
   });
 
 const resolvePythonPath = (config: Config): string | null => {
-  const explicit = process.env["LOCAL_STUDIO_SGLANG_PYTHON"]?.trim();
-  if (explicit && existsSync(explicit)) return explicit;
-
-  const managedCandidates = [
+  const candidates = [
+    process.env["LOCAL_STUDIO_SGLANG_PYTHON"]?.trim(),
     managedVenvPython(config, "sglang"),
     "/opt/venvs/active/sglang-latest/bin/python",
     "/opt/venvs/sglang-latest/bin/python",
   ];
-  for (const candidate of managedCandidates) {
-    if (existsSync(candidate)) return candidate;
-  }
-
-  return resolvePythonFromScript(resolveBinary("sglang"));
+  return (
+    candidates.find((candidate) => candidate && existsSync(candidate)) ??
+    resolvePythonFromScript(resolveBinary("sglang"))
+  );
 };
 
 const getRuntimeInfo = (
   config: Config,
   runningProcess?: Pick<ProcessInfo, "pid" | "backend"> | null,
 ): Effect.Effect<RuntimeBackendInfo> =>
-  Effect.gen(function* () {
-    const runningPython =
-      runningProcess?.backend === "sglang"
-        ? yield* probeRunningProcessPython(runningProcess.pid)
-        : null;
-    const probe = yield* probeBackendRuntime("sglang", [
-      runningPython,
-      config.sglang_python,
-      resolvePythonPath(config),
-      "python3",
-      "python",
-    ]);
-    return {
-      installed: probe.installed,
-      version: probe.version,
-      python_path: probe.pythonPath ?? config.sglang_python ?? null,
-      upgrade_command_available: probe.runnable,
-    };
+  pythonBackendRuntimeInfo({
+    backend: "sglang",
+    configuredPython: config.sglang_python,
+    resolvedPython: resolvePythonPath(config),
+    runningProcess,
   });
 
 const getConfigHelp = (config: Config): Effect.Effect<ConfigHelpResult> =>
@@ -103,27 +84,21 @@ const getConfigHelp = (config: Config): Effect.Effect<ConfigHelpResult> =>
     const result = yield* runCommandAsyncEffect(python, ["-m", "sglang.launch_server", "--help"], {
       timeoutMs: 5_000,
     });
-    if (result.status !== 0) {
-      return {
-        config: result.stdout || null,
-        error: result.stderr || "Failed to fetch SGLang config",
-      };
-    }
-    return { config: result.stdout || null, error: null };
+    return {
+      config: result.stdout || null,
+      error: result.status === 0 ? null : result.stderr || "Failed to fetch SGLang config",
+    };
   });
 
 const installSglang = (options: InstallOptions): Effect.Effect<RuntimeUpgradeResult> => {
   const envCommand = getUpgradeCommandFromEnvironment(SGLANG_UPGRADE_ENV);
   if (envCommand) return runEnvironmentUpgradeCommand(envCommand, options.onSpawn);
-
-  const packageSpec = managedPackageSpec(options.version);
-  const pythonPath =
-    options.pythonPath ?? (options.config.sglang_python || resolveVllmPythonPath() || "python3");
   return installIntoManagedVenv({
     config: options.config,
     backend: "sglang",
-    packageSpec,
-    pythonPath,
+    packageSpec: managedPackageSpec(options.version),
+    pythonPath:
+      options.pythonPath ?? (options.config.sglang_python || resolveVllmPythonPath() || "python3"),
     createManagedVenv: !options.pythonPath,
     onProgress: options.onProgress,
     onSpawn: options.onSpawn,
