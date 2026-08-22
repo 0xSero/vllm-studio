@@ -125,21 +125,14 @@ function historyDetail({ verb, payload }: VerbCall): string | undefined {
 }
 
 /** The verb vocabulary: what a POST /api/agent/browser/:verb may ask for. */
+const done = (data: unknown): VerbResult => ({ ok: true, data });
+
 const HOST_VERBS: Record<string, (call: VerbCall) => Promise<VerbResult>> = {
   navigate: navigateVerb,
-  "get-url": async ({ session }) => ({ ok: true, data: await browserHost.getUrl(session) }),
-  "get-text": async ({ session }) => ({
-    ok: true,
-    data: { text: await browserHost.getText(session) },
-  }),
-  "get-html": async ({ session }) => ({
-    ok: true,
-    data: { html: await browserHost.getHtml(session) },
-  }),
-  screenshot: async ({ session }) => ({
-    ok: true,
-    data: { dataUri: await browserHost.screenshot(session) },
-  }),
+  "get-url": async ({ session }) => done(await browserHost.getUrl(session)),
+  "get-text": async ({ session }) => done({ text: await browserHost.getText(session) }),
+  "get-html": async ({ session }) => done({ html: await browserHost.getHtml(session) }),
+  screenshot: async ({ session }) => done({ dataUri: await browserHost.screenshot(session) }),
   click: async ({ payload, session }) =>
     selectorVerb(await browserHost.click({ selector: requireSelector(payload) }, session)),
   fill: async ({ payload, session }) =>
@@ -151,11 +144,11 @@ const HOST_VERBS: Record<string, (call: VerbCall) => Promise<VerbResult>> = {
     ),
   scroll: async ({ payload, session }) => {
     const deltaY = Number(payload.deltaY ?? 0);
-    const result = await browserHost.scroll(
+    const scrolled = await browserHost.scroll(
       { deltaY: Number.isFinite(deltaY) ? deltaY : 0 },
       session,
     );
-    return { ok: true, data: { deltaY: result.deltaY, scrollY: result.scrollY } };
+    return done({ deltaY: scrolled.deltaY, scrollY: scrolled.scrollY });
   },
   // The history-moving verbs all answer with the state they landed on.
   back: ({ session }) => stateAfter(browserHost.goBack(session), session),
@@ -165,7 +158,7 @@ const HOST_VERBS: Record<string, (call: VerbCall) => Promise<VerbResult>> = {
 
 async function stateAfter(action: Promise<unknown>, session: string | undefined) {
   await action;
-  return { ok: true, data: await browserHost.getState(session) };
+  return done(await browserHost.getState(session));
 }
 
 async function navigateVerb({ payload, session }: VerbCall): Promise<VerbResult> {
@@ -175,8 +168,7 @@ async function navigateVerb({ payload, session }: VerbCall): Promise<VerbResult>
   // browser-host/network-policy.ts.
   const url = sanitizeBrowserPaneUrl(String(payload.url ?? ""));
   if (!url) return { ok: false, error: "valid public or localhost http(s) url required" };
-  const result = await browserHost.navigate(url, session);
-  return { ok: true, data: result };
+  return done(await browserHost.navigate(url, session));
 }
 
 function selectorVerb(result: { found: boolean }): VerbResult {
@@ -204,19 +196,19 @@ async function fallbackVerb({ verb, payload, signal }: VerbCall): Promise<VerbRe
     if (!url) return { ok: false, error: "valid public or localhost http(s) url required" };
     const reader = await fetchReadable(url, signal);
     lastFallbackUrl = reader.url;
-    return { ok: true, data: { url: reader.url, title: reader.title, readingMode: true } };
+    return done({ url: reader.url, title: reader.title, readingMode: true });
   }
-  if (verb === "get-url") {
-    return { ok: true, data: { url: lastFallbackUrl, title: "" } };
-  }
+  if (verb === "get-url") return done({ url: lastFallbackUrl, title: "" });
   if (verb === "get-text" || verb === "get-html") {
     const url = sanitizeBrowserPaneUrl(String(payload.url ?? "")) || lastFallbackUrl;
     if (!url) return { ok: false, error: unavailableError() };
     const reader = await fetchReadable(url, signal);
     lastFallbackUrl = reader.url;
-    return verb === "get-text"
-      ? { ok: true, data: { text: reader.text, readingMode: true } }
-      : { ok: true, data: { html: reader.markdown ?? reader.text, readingMode: true } };
+    return done(
+      verb === "get-text"
+        ? { text: reader.text, readingMode: true }
+        : { html: reader.markdown ?? reader.text, readingMode: true },
+    );
   }
   return { ok: false, error: unavailableError() };
 }
