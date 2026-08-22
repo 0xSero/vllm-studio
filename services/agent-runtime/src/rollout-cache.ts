@@ -49,25 +49,20 @@ function cacheRoot(): string {
 }
 
 /**
+ * A path this rollout owns inside the cache — a JSON envelope by default, or a
+ * real file of any extension for callers that need one (the transcript sidecar
+ * is a `.jsonl` read with the same tail scanner as the rollout itself).
+ *
  * Rollout paths are long, contain the encoded cwd, and are not filename-safe.
  * Hash them, and keep a readable prefix so the directory can be eyeballed.
  */
-function cacheFileFor(kind: string, filepath: string, extension = ".json"): string {
+export function rolloutCacheFilePath(kind: string, filepath: string, extension = ".json"): string {
   const digest = createHash("sha256").update(path.resolve(filepath)).digest("hex").slice(0, 32);
   const readable = (path.basename(filepath).match(/^[\w.-]{0,40}/)?.[0] ?? "rollout").replace(
     /\.jsonl$/,
     "",
   );
   return path.join(cacheRoot(), kind, `${readable}.${digest}${extension}`);
-}
-
-/**
- * A path this rollout owns inside the cache, for callers that need a real file
- * rather than a JSON envelope — the transcript sidecar is a `.jsonl` that gets
- * read with the same tail scanner as the rollout itself.
- */
-export function rolloutCacheFilePath(kind: string, filepath: string, extension: string): string {
-  return cacheFileFor(kind, filepath, extension);
 }
 
 /** Omit size/mtime to accept the entry whatever the rollout looks like now. */
@@ -184,15 +179,15 @@ export function rolloutCache<T, S = T>(
 
   return {
     read(filepath, stat) {
-      const raw = readEnvelope<S>(cacheFileFor(kind, filepath), stat.size, stat.mtimeMs);
+      const raw = readEnvelope<S>(rolloutCacheFilePath(kind, filepath), stat.size, stat.mtimeMs);
       return raw === undefined ? undefined : decode(raw);
     },
     readStale(filepath) {
-      const raw = readEnvelope<S>(cacheFileFor(kind, filepath));
+      const raw = readEnvelope<S>(rolloutCacheFilePath(kind, filepath));
       return raw === undefined ? undefined : decode(raw);
     },
     write(filepath, stat, value) {
-      writeEnvelope(cacheFileFor(kind, filepath), {
+      writeEnvelope(rolloutCacheFilePath(kind, filepath), {
         schema: CACHE_SCHEMA,
         size: stat.size,
         mtimeMs: stat.mtimeMs,
@@ -201,7 +196,7 @@ export function rolloutCache<T, S = T>(
     },
     forget(filepath) {
       try {
-        unlinkSync(cacheFileFor(kind, filepath));
+        unlinkSync(rolloutCacheFilePath(kind, filepath));
       } catch {
         // Already gone, or never written.
       }

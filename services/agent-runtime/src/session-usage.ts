@@ -1,4 +1,5 @@
 import { statSync } from "node:fs";
+import { isRecord } from "../../../shared/agent/guards";
 import type { SessionUsageTotals } from "../../../shared/agent/session-usage";
 import {
   canResumeFrom,
@@ -42,19 +43,13 @@ const cache = new Map<string, CacheEntry>();
  */
 const usageDisk = rolloutCache<CacheEntry>("usage-totals");
 
-function numeric(source: Record<string, unknown> | null, keys: string[]): number {
-  if (!source) return 0;
+function numeric(source: unknown, keys: string[]): number {
+  if (!isRecord(source)) return 0;
   for (const key of keys) {
     const value = source[key];
     if (typeof value === "number" && Number.isFinite(value)) return value;
   }
   return 0;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 /** Fold one rollout line into the running totals. */
@@ -66,22 +61,22 @@ export function accumulateUsageLine(totals: SessionUsageTotals, line: string): S
   const hasCompaction = line.includes("compaction");
   if (!hasUsage && !hasCompaction) return totals;
 
-  let entry: Record<string, unknown> | null = null;
+  let entry: unknown;
   try {
-    entry = asRecord(JSON.parse(line));
+    entry = JSON.parse(line);
   } catch {
     return totals;
   }
-  if (!entry) return totals;
+  if (!isRecord(entry)) return totals;
 
   if (entry.type === "compaction" || entry.customType === "compaction") {
     return { ...totals, compactions: totals.compactions + 1 };
   }
 
-  const message = asRecord(entry.message);
-  if (!message || message.role !== "assistant") return totals;
-  const usage = asRecord(message.usage);
-  if (!usage) return totals;
+  const message = entry.message;
+  if (!isRecord(message) || message.role !== "assistant") return totals;
+  const usage = message.usage;
+  if (!isRecord(usage)) return totals;
 
   const input = numeric(usage, ["input", "input_tokens", "prompt_tokens"]);
   const output = numeric(usage, ["output", "output_tokens", "completion_tokens"]);
@@ -89,7 +84,7 @@ export function accumulateUsageLine(totals: SessionUsageTotals, line: string): S
   const cacheWrite = numeric(usage, ["cacheWrite", "cache_creation_input_tokens"]);
   const reasoning = numeric(usage, ["reasoning", "reasoning_tokens"]);
   const reported = numeric(usage, ["totalTokens", "total_tokens", "total"]);
-  const cost = numeric(asRecord(usage.cost), ["total"]);
+  const cost = numeric(usage.cost, ["total"]);
 
   return {
     input: totals.input + input,

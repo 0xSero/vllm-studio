@@ -109,13 +109,7 @@ export async function transcriptSource(filepath: string): Promise<TranscriptSour
     const head = await readRolloutHead(filepath);
     const previous = state.readStale(filepath);
 
-    const sidecarSize = (() => {
-      try {
-        return statSync(sidecar).size;
-      } catch {
-        return -1;
-      }
-    })();
+    const sidecarSize = statRollout(sidecar)?.size ?? -1;
 
     // Extend only when the sidecar we built for this file is still there.
     const resumable = canResumeFrom(previous, head, stat.size) && sidecarSize >= 0;

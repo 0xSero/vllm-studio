@@ -1,9 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
 import path from "node:path";
 import { notifySessionListChanged } from "./session-list-changed";
 import lockfile from "proper-lockfile";
@@ -64,25 +59,32 @@ function storePath(): string {
   return path.join(resolveDataDir(), SESSION_METADATA_FILENAME);
 }
 
+/** Optional string fields kept verbatim when present and dropped otherwise. */
+const OPTIONAL_STRING_FIELDS = [
+  "updatedAt",
+  "cwd",
+  "projectId",
+  "projectName",
+  "sessionUpdatedAt",
+  "parentSessionId",
+  "subagentName",
+] as const satisfies ReadonlyArray<keyof StoredSessionMetadata>;
+
 function normalizeStore(value: unknown): SessionMetadataStore {
   if (!isRecord(value) || !isRecord(value.sessions)) return defaultStore();
   const sessions: Record<string, StoredSessionMetadata> = {};
   for (const [id, metadata] of Object.entries(value.sessions)) {
     if (!id.trim() || !isRecord(metadata)) continue;
-    sessions[id] = {
+    const normalized: StoredSessionMetadata = {
       archived: metadata.archived === true,
       archivedAt: typeof metadata.archivedAt === "string" ? metadata.archivedAt : null,
-      updatedAt: typeof metadata.updatedAt === "string" ? metadata.updatedAt : undefined,
-      cwd: typeof metadata.cwd === "string" ? metadata.cwd : undefined,
       title: typeof metadata.title === "string" ? metadata.title : null,
-      projectId: typeof metadata.projectId === "string" ? metadata.projectId : undefined,
-      projectName: typeof metadata.projectName === "string" ? metadata.projectName : undefined,
-      sessionUpdatedAt:
-        typeof metadata.sessionUpdatedAt === "string" ? metadata.sessionUpdatedAt : undefined,
-      parentSessionId:
-        typeof metadata.parentSessionId === "string" ? metadata.parentSessionId : undefined,
-      subagentName: typeof metadata.subagentName === "string" ? metadata.subagentName : undefined,
     };
+    for (const field of OPTIONAL_STRING_FIELDS) {
+      const raw = metadata[field];
+      if (typeof raw === "string") normalized[field] = raw;
+    }
+    sessions[id] = normalized;
   }
   return { version: 1, sessions };
 }
@@ -141,27 +143,17 @@ async function withStoreLock<T>(callback: () => T): Promise<T> {
   }
 }
 
-function cleanOptionalString(value: string | null | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed || undefined;
-}
-
 function applyMetadataInput(
   current: StoredSessionMetadata,
   metadata?: SessionArchiveMetadataInput,
 ): StoredSessionMetadata {
   if (!metadata) return current;
   const next = { ...current };
-  const cwd = cleanOptionalString(metadata.cwd);
-  const title = cleanOptionalString(metadata.title);
-  const projectId = cleanOptionalString(metadata.projectId);
-  const projectName = cleanOptionalString(metadata.projectName);
-  const sessionUpdatedAt = cleanOptionalString(metadata.sessionUpdatedAt);
-  if (cwd) next.cwd = cwd;
-  if (title) next.title = title;
-  if (projectId) next.projectId = projectId;
-  if (projectName) next.projectName = projectName;
-  if (sessionUpdatedAt) next.sessionUpdatedAt = sessionUpdatedAt;
+  // Blank and whitespace-only values leave whatever is already stored alone.
+  for (const field of ["cwd", "title", "projectId", "projectName", "sessionUpdatedAt"] as const) {
+    const value = metadata[field]?.trim();
+    if (value) next[field] = value;
+  }
   return next;
 }
 
@@ -251,25 +243,12 @@ export async function setSessionArchived(
     const store = readStore();
     const current = store.sessions[id] ?? {};
     const archivedAt = archived ? (current.archivedAt ?? now.toISOString()) : null;
-    if (archived) {
-      store.sessions[id] = applyMetadataInput(
-        {
-          ...current,
-          archived: true,
-          archivedAt,
-          updatedAt: now.toISOString(),
-        },
-        metadata,
-      );
-    } else if (current.parentSessionId) {
-      store.sessions[id] = {
-        ...current,
-        archived: false,
-        archivedAt: null,
-        updatedAt: now.toISOString(),
-      };
-    } else {
+    if (!archived && !current.parentSessionId) {
+      // Nothing left worth keeping — an unarchived root session has no overlay.
       delete store.sessions[id];
+    } else {
+      const next = { ...current, archived, archivedAt, updatedAt: now.toISOString() };
+      store.sessions[id] = archived ? applyMetadataInput(next, metadata) : next;
     }
     for (const [childId, child] of Object.entries(store.sessions)) {
       if (child.parentSessionId !== id || childId === id) continue;

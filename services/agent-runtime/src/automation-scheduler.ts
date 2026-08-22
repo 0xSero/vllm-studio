@@ -5,6 +5,7 @@ import {
   patchAutomation,
   recordAutomationRun,
   type Automation,
+  type AutomationRun,
 } from "./automations-store";
 import { getGlobalSingleton } from "./instances";
 import { piRuntimeManager } from "./pi-runtime";
@@ -152,6 +153,12 @@ export async function runAutomationNow(id: string): Promise<Automation | null> {
   if (!automation || scheduler.running.has(id)) return null;
   scheduler.running.add(id);
   const target = resolveRunTarget(automation);
+  const record = (run: Omit<AutomationRun, "at">) =>
+    recordAutomationRun(
+      id,
+      { at: new Date().toISOString(), ...run },
+      nextRunAt(automation.schedule, new Date()).toISOString(),
+    );
   try {
     const { session } = piRuntimeManager.getSessionForLookup(
       target.runtimeSessionId,
@@ -177,33 +184,23 @@ export async function runAutomationNow(id: string): Promise<Automation | null> {
     const projectId =
       listProjectsFromStore().find((project) => project.path === status.cwd)?.id ?? null;
     if (!target.adopted) void session.stop().catch(() => undefined);
-    return await recordAutomationRun(
-      id,
-      {
-        at: new Date().toISOString(),
-        piSessionId,
-        cwd: status.cwd,
-        projectId,
-        outcome: error ? "error" : "ok",
-        summary: runSummary(target.note, result.text),
-        ...(error ? { error } : {}),
-      },
-      nextRunAt(automation.schedule, new Date()).toISOString(),
-    );
+    return await record({
+      piSessionId,
+      cwd: status.cwd,
+      projectId,
+      outcome: error ? "error" : "ok",
+      summary: runSummary(target.note, result.text),
+      ...(error ? { error } : {}),
+    });
   } catch (error) {
-    return await recordAutomationRun(
-      id,
-      {
-        at: new Date().toISOString(),
-        piSessionId: null,
-        cwd: automation.cwd,
-        projectId: null,
-        outcome: "error",
-        summary: "",
-        error: error instanceof Error ? error.message : "Automation run failed",
-      },
-      nextRunAt(automation.schedule, new Date()).toISOString(),
-    );
+    return await record({
+      piSessionId: null,
+      cwd: automation.cwd,
+      projectId: null,
+      outcome: "error",
+      summary: "",
+      error: error instanceof Error ? error.message : "Automation run failed",
+    });
   } finally {
     scheduler.running.delete(id);
   }

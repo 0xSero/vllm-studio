@@ -10,14 +10,13 @@ import {
   type AgentSessionRuntime,
   type ExtensionUIContext,
 } from "@earendil-works/pi-coding-agent";
-import { Effect } from "effect";
 import type { AgentImageInput } from "../../../shared/agent/agent-image-input";
 import type { AgentQueueAction } from "../../../shared/agent/agent-turn";
 import {
   applyRuntimeEnvInjections,
   buildAgentSessionOptionsSync,
   runtimeOptionsFingerprint,
-  resolveAgentCwdEffect,
+  resolveAgentCwd,
   type RuntimeStartOptions,
 } from "./pi-runtime-helpers";
 import { refreshPiModels, resolvePiModelSelection, toPiThinkingLevel } from "./pi-runtime-models";
@@ -186,265 +185,193 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     piSessionId?: string | null,
     options?: RuntimeStartOptions,
   ): Promise<void> {
-    const effectiveOptions = structuredClone(
-      options ?? (this.runtime ? this.currentStartOptions : {}),
+    return this.start(
+      modelId,
+      cwd,
+      piSessionId,
+      structuredClone(options ?? (this.runtime ? this.currentStartOptions : {})),
     );
-    return Effect.runPromise(this.ensureStartedEffect(modelId, cwd, piSessionId, effectiveOptions));
   }
 
-  private ensureStartedEffect(
+  private async start(
     modelId: string,
     cwd: string | undefined,
     piSessionId: string | null | undefined,
     options: RuntimeStartOptions,
-  ): Effect.Effect<void, unknown> {
-    return Effect.gen(
-      function* (this: PiSdkSession) {
-        const resolvedCwd = yield* resolveAgentCwdEffect(cwd);
-        const desiredSessionId = piSessionId ?? null;
-        const fingerprint = runtimeFingerprint(modelId, resolvedCwd, desiredSessionId, options);
-        if (this.runtime && this.currentFingerprint === fingerprint) return;
+  ): Promise<void> {
+    const resolvedCwd = await resolveAgentCwd(cwd);
+    const desiredSessionId = piSessionId ?? null;
+    const fingerprint = runtimeFingerprint(modelId, resolvedCwd, desiredSessionId, options);
+    if (this.runtime && this.currentFingerprint === fingerprint) return;
 
-        yield* this.stopEffect();
-        this.eventSeq = 0;
-        this.eventLog = [];
-        this.activePromptCount = 0;
-        this.lastError = null;
+    await this.stop();
+    this.eventSeq = 0;
+    this.eventLog = [];
+    this.activePromptCount = 0;
+    this.lastError = null;
 
-        const { models } = yield* Effect.tryPromise({
-          try: () => refreshPiModels(),
-          catch: (error) => error,
+    const { models } = await refreshPiModels();
+    const selectedModel = selectPiRuntimeModel(models, modelId);
+    if (!selectedModel) {
+      throw new Error(`Model '${modelId}' is not available from /v1/models.`);
+    }
+    const resolvedSelection = resolvePiModelSelection(selectedModel.id);
+    const providerId = selectedModel.providerId ?? resolvedSelection.providerId;
+    const backendModelId = selectedModel.rawId ?? resolvedSelection.modelId;
+
+    // One shared ModelRuntime across sessions and the provider hub: a
+    // sign-in completed in settings is live for the next turn.
+    const sharedModelRuntime = await getProviderHub();
+
+    const sessionOptions = buildAgentSessionOptionsSync({ options, cwd: resolvedCwd });
+    applyRuntimeEnvInjections(sessionOptions.envInjections);
+    // Expose the current session's model so the automations extension can
+    // default a scheduled run to the same model the user is talking to.
+    applyRuntimeEnvInjections({ LOCAL_STUDIO_MODEL_ID: modelId });
+    const sessionDir = configuredPiSessionDir(resolvedCwd);
+    const resumeFile = desiredSessionId ? findSessionFile(resolvedCwd, desiredSessionId) : null;
+    const sessionManager = resumeFile
+      ? SessionManager.open(resumeFile, sessionDir, resolvedCwd)
+      : SessionManager.create(resolvedCwd, sessionDir);
+    const resuming = Boolean(resumeFile);
+    const agentDir = getAgentDir();
+    const extensionUiContext = this.extensionUiContext();
+    const recordExtensionEvent = (event: PiEvent) => this.recordEvent(event);
+    const runtime = await createAgentSessionRuntime(
+      async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
+        const services = await createAgentSessionServices({
+          cwd,
+          agentDir,
+          modelRuntime: sharedModelRuntime,
+          resourceLoaderOptions: {
+            additionalSkillPaths: sessionOptions.skills,
+            additionalExtensionPaths: sessionOptions.extensionPaths,
+            additionalPromptTemplatePaths: sessionOptions.promptTemplatePaths,
+            // In-process: the goal section is injected per turn
+            // via before_agent_start, keyed by the canonical
+            // piSessionId this SessionManager owns. Runs here so
+            // it never depends on the RPC extension's session id
+            // (which differs and left the goal unread — #284).
+            extensionFactories: [
+              {
+                name: "local-studio-goal",
+                factory: createGoalPromptExtension(() => sessionManager.getSessionId()),
+              },
+            ],
+            // Vision guidance is APPENDED, not substituted. This branch used to
+            // set noExtensions/noSkills/noContextFiles and replace the whole
+            // system prompt, which silently disabled every first-party extension
+            // (session goal, artifact policy, subagents) on any
+            // vision-capable model — i.e. on the primary model.
+            ...(selectedModel.vision
+              ? {
+                  appendSystemPromptOverride: (base: string[]) => [...base, VISION_GUIDANCE],
+                }
+              : {}),
+          },
         });
-        const selectedModel = selectPiRuntimeModel(models, modelId);
-        if (!selectedModel) {
-          return yield* Effect.fail(
-            new Error(`Model '${modelId}' is not available from /v1/models.`),
+        const model = services.modelRuntime.getModel(providerId, backendModelId);
+        if (!model) {
+          throw new Error(
+            `Model '${providerId}/${backendModelId}' is not available to the SDK runtime.`,
           );
         }
-        const resolvedSelection = resolvePiModelSelection(selectedModel.id);
-        const providerId = selectedModel.providerId ?? resolvedSelection.providerId;
-        const backendModelId = selectedModel.rawId ?? resolvedSelection.modelId;
-
-        // One shared ModelRuntime across sessions and the provider hub: a
-        // sign-in completed in settings is live for the next turn.
-        const sharedModelRuntime = yield* Effect.tryPromise({
-          try: () => getProviderHub(),
-          catch: (error) => error,
+        const created = await createAgentSessionFromServices({
+          services,
+          sessionManager,
+          sessionStartEvent,
+          model,
+          thinkingLevel: selectedModel.reasoning
+            ? toPiThinkingLevel(options.thinkingLevel ?? "high")
+            : undefined,
         });
-
-        const sessionOptions = buildAgentSessionOptionsSync({ options, cwd: resolvedCwd });
-        applyRuntimeEnvInjections(sessionOptions.envInjections);
-        // Expose the current session's model so the automations extension can
-        // default a scheduled run to the same model the user is talking to.
-        applyRuntimeEnvInjections({ LOCAL_STUDIO_MODEL_ID: modelId });
-        const sessionDir = configuredPiSessionDir(resolvedCwd);
-        const resumeFile = desiredSessionId ? findSessionFile(resolvedCwd, desiredSessionId) : null;
-        const sessionManager = resumeFile
-          ? SessionManager.open(resumeFile, sessionDir, resolvedCwd)
-          : SessionManager.create(resolvedCwd, sessionDir);
-        const resuming = Boolean(resumeFile);
-        const agentDir = getAgentDir();
-        const extensionUiContext = this.extensionUiContext();
-        const recordExtensionEvent = (event: PiEvent) => this.recordEvent(event);
-        const runtime = yield* Effect.tryPromise({
-          try: () =>
-            createAgentSessionRuntime(
-              ({ cwd, agentDir, sessionManager, sessionStartEvent }) =>
-                Effect.runPromise(
-                  Effect.gen(function* () {
-                    const services = yield* Effect.tryPromise({
-                      try: () =>
-                        createAgentSessionServices({
-                          cwd,
-                          agentDir,
-                          modelRuntime: sharedModelRuntime,
-                          resourceLoaderOptions: {
-                            additionalSkillPaths: sessionOptions.skills,
-                            additionalExtensionPaths: sessionOptions.extensionPaths,
-                            additionalPromptTemplatePaths: sessionOptions.promptTemplatePaths,
-                            // In-process: the goal section is injected per turn
-                            // via before_agent_start, keyed by the canonical
-                            // piSessionId this SessionManager owns. Runs here so
-                            // it never depends on the RPC extension's session id
-                            // (which differs and left the goal unread — #284).
-                            extensionFactories: [
-                              {
-                                name: "local-studio-goal",
-                                factory: createGoalPromptExtension(() =>
-                                  sessionManager.getSessionId(),
-                                ),
-                              },
-                            ],
-                            // Vision guidance is APPENDED, not substituted. This branch used to
-                            // set noExtensions/noSkills/noContextFiles and replace the whole
-                            // system prompt, which silently disabled every first-party extension
-                            // (session goal, artifact policy, subagents) on any
-                            // vision-capable model — i.e. on the primary model.
-                            ...(selectedModel.vision
-                              ? {
-                                  appendSystemPromptOverride: (base: string[]) => [
-                                    ...base,
-                                    VISION_GUIDANCE,
-                                  ],
-                                }
-                              : {}),
-                          },
-                        }),
-                      catch: (error) => error,
-                    });
-                    const model = services.modelRuntime.getModel(providerId, backendModelId);
-                    if (!model) {
-                      return yield* Effect.fail(
-                        new Error(
-                          `Model '${providerId}/${backendModelId}' is not available to the SDK runtime.`,
-                        ),
-                      );
-                    }
-                    const created = yield* Effect.tryPromise({
-                      try: () =>
-                        createAgentSessionFromServices({
-                          services,
-                          sessionManager,
-                          sessionStartEvent,
-                          model,
-                          thinkingLevel: selectedModel.reasoning
-                            ? toPiThinkingLevel(options.thinkingLevel ?? "high")
-                            : undefined,
-                        }),
-                      catch: (error) => error,
-                    });
-                    const activeToolNames =
-                      options.toolAccess === "read_only"
-                        ? ["read", "grep", "find", "ls"]
-                        : created.session.getAllTools().map((tool) => tool.name);
-                    created.session.setActiveToolsByName(activeToolNames);
-                    yield* Effect.tryPromise({
-                      try: () =>
-                        created.session.bindExtensions({
-                          mode: "rpc",
-                          uiContext: extensionUiContext,
-                          onError: (error) => {
-                            recordExtensionEvent({
-                              type: "extension_error",
-                              error: error.error,
-                              extensionPath: error.extensionPath,
-                              event: error.event,
-                            });
-                          },
-                        }),
-                      catch: (error) => error,
-                    });
-                    const extensionErrors = services.resourceLoader
-                      .getExtensions()
-                      .errors.map(({ path, error }) => ({
-                        type: "error" as const,
-                        message: `Failed to load extension "${path}": ${error}`,
-                        path,
-                      }));
-                    const diagnostics = [...services.diagnostics, ...extensionErrors];
-                    diagnosticsMap().set(
-                      agentDir,
-                      diagnostics.map((d) => ({
-                        type: d.type as PiResourceDiagnostic["type"],
-                        message: d.message,
-                        path: "path" in d ? (d as { path?: string }).path : undefined,
-                      })),
-                    );
-                    return {
-                      ...created,
-                      services,
-                      diagnostics,
-                    };
-                  }),
-                ),
-              {
-                cwd: resolvedCwd,
-                agentDir,
-                sessionManager,
-                sessionStartEvent: {
-                  type: "session_start",
-                  reason: resuming ? "resume" : "startup",
-                },
-              },
-            ),
-          catch: (error) => error,
+        const activeToolNames =
+          options.toolAccess === "read_only"
+            ? ["read", "grep", "find", "ls"]
+            : created.session.getAllTools().map((tool) => tool.name);
+        created.session.setActiveToolsByName(activeToolNames);
+        await created.session.bindExtensions({
+          mode: "rpc",
+          uiContext: extensionUiContext,
+          onError: (error) => {
+            recordExtensionEvent({
+              type: "extension_error",
+              error: error.error,
+              extensionPath: error.extensionPath,
+              event: error.event,
+            });
+          },
         });
-
-        this.runtime = runtime;
-        this.agentDir = agentDir;
-        this.currentModelId = modelId;
-        this.currentCwd = resolvedCwd;
-        this.currentPiSessionId = runtime.session.sessionId || desiredSessionId;
-        this.currentFingerprint = fingerprint;
-        this.currentStartOptions = options;
-        this.unsubscribe = runtime.session.subscribe((event) => this.recordEvent(event));
-      }.bind(this),
+        const extensionErrors = services.resourceLoader
+          .getExtensions()
+          .errors.map(({ path, error }) => ({
+            type: "error" as const,
+            message: `Failed to load extension "${path}": ${error}`,
+            path,
+          }));
+        const diagnostics = [...services.diagnostics, ...extensionErrors];
+        diagnosticsMap().set(
+          agentDir,
+          diagnostics.map((d) => ({
+            type: d.type as PiResourceDiagnostic["type"],
+            message: d.message,
+            path: "path" in d ? (d as { path?: string }).path : undefined,
+          })),
+        );
+        return { ...created, services, diagnostics };
+      },
+      {
+        cwd: resolvedCwd,
+        agentDir,
+        sessionManager,
+        sessionStartEvent: { type: "session_start", reason: resuming ? "resume" : "startup" },
+      },
     );
+
+    this.runtime = runtime;
+    this.agentDir = agentDir;
+    this.currentModelId = modelId;
+    this.currentCwd = resolvedCwd;
+    this.currentPiSessionId = runtime.session.sessionId || desiredSessionId;
+    this.currentFingerprint = fingerprint;
+    this.currentStartOptions = options;
+    this.unsubscribe = runtime.session.subscribe((event) => this.recordEvent(event));
   }
 
-  prompt(
+  async prompt(
     message: string,
     onEvent: (event: PiEvent, seq: number) => void,
     options: PiPromptOptions = {},
   ): Promise<void> {
-    return Effect.runPromise(this.promptEffect(message, onEvent, options));
-  }
-
-  private promptEffect(
-    message: string,
-    onEvent: (event: PiEvent, seq: number) => void,
-    options: PiPromptOptions,
-  ): Effect.Effect<void, unknown> {
     const listener = (logged: LoggedPiEvent) => onEvent(logged.event, logged.seq);
     this.on("loggedEvent", listener);
     this.activePromptCount += 1;
     this.lastError = null;
-    return Effect.tryPromise({
-      try: () => this.promptSession(message, options),
-      catch: (error) => error,
-    }).pipe(
-      Effect.catch((error) =>
-        options.restartOnContinuationError !== false && shouldRestartAfterPromptError(error)
-          ? this.restartPromptEffect(message, options)
-          : Effect.fail(error),
-      ),
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          this.lastError = error instanceof Error ? error.message : String(error);
-        }).pipe(Effect.andThen(Effect.fail(error))),
-      ),
-      Effect.ensuring(
-        Effect.sync(() => {
-          this.activePromptCount = Math.max(0, this.activePromptCount - 1);
-          this.off("loggedEvent", listener);
-        }),
-      ),
-    );
+    try {
+      try {
+        await this.promptSession(message, options);
+      } catch (error) {
+        if (options.restartOnContinuationError === false || !shouldRestartAfterPromptError(error)) {
+          throw error;
+        }
+        // Rebuild the session from scratch (no resume id) and re-send: pi
+        // refuses to continue a transcript that ends on an assistant message.
+        await this.start(this.currentModelId, this.currentCwd, null, this.currentStartOptions);
+        await this.promptSession(message, options);
+      }
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      throw error;
+    } finally {
+      this.activePromptCount = Math.max(0, this.activePromptCount - 1);
+      this.off("loggedEvent", listener);
+    }
   }
 
   private promptSession(message: string, options: PiPromptOptions): Promise<void> {
     // restartOnContinuationError is ours, not the SDK's — everything else forwards.
     const { restartOnContinuationError: _restart, ...sdkOptions } = options;
     return this.requireSession().prompt(message, sdkOptions);
-  }
-
-  private restartPromptEffect(
-    message: string,
-    options: PiPromptOptions,
-  ): Effect.Effect<void, unknown> {
-    return this.ensureStartedEffect(
-      this.currentModelId,
-      this.currentCwd,
-      null,
-      this.currentStartOptions,
-    ).pipe(
-      Effect.andThen(
-        Effect.tryPromise({
-          try: () => this.promptSession(message, options),
-          catch: (error) => error,
-        }),
-      ),
-    );
   }
 
   async steer(message: string, images: AgentImageInput[] = []): Promise<void> {
@@ -524,11 +451,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     return true;
   }
 
-  stop(): Promise<void> {
-    return Effect.runPromise(this.stopEffect());
-  }
-
-  private stopEffect(): Effect.Effect<void> {
+  async stop(): Promise<void> {
     this.unsubscribe?.();
     this.unsubscribe = null;
     const runtime = this.runtime;
@@ -537,11 +460,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
       pending.resolve(pending.method === "confirm" ? false : undefined);
     }
     this.extensionUiPending.clear();
-    if (!runtime) return Effect.void;
-    return Effect.tryPromise({
-      try: () => runtime.dispose(),
-      catch: () => undefined,
-    }).pipe(Effect.catch(() => Effect.void));
+    await runtime?.dispose().catch(() => undefined);
   }
 
   get status(): PiAgentStatus {

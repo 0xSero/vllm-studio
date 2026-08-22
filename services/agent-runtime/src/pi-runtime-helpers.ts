@@ -2,7 +2,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import { Effect } from "effect";
 import { listProjectsFromStore, resolveAllowedWorkspace } from "./projects-store";
 import { hasEnabledConnectorsSync } from "./connectors-service";
 import { githubCliPathSync, hasGithubCliSync } from "./github-cli";
@@ -87,25 +86,17 @@ export function expandHome(value: string): string {
 // Resolve user-facing cwd input into the concrete directory Pi should run in.
 // The default keeps packaged Electron launches out of "/" by preferring the
 // selected project registry, then repo root during dev, then the user home.
-export function resolveAgentCwdEffect(input?: string): Effect.Effect<string, unknown> {
+export async function resolveAgentCwd(input?: string): Promise<string> {
   const defaultCwd = resolveDefaultAgentCwd();
   const raw = input?.trim() || defaultCwd;
   const expanded = expandHome(raw);
   const candidate = path.isAbsolute(expanded) ? expanded : path.resolve(defaultCwd, expanded);
-  return Effect.gen(function* () {
-    const resolved = yield* Effect.tryPromise({
-      try: () => realpath(candidate),
-      catch: (error) => error,
-    });
-    const info = yield* Effect.tryPromise({
-      try: () => stat(resolved),
-      catch: (error) => error,
-    });
-    if (!info.isDirectory()) {
-      return yield* Effect.fail(new Error(`Agent cwd is not a directory: ${resolved}`));
-    }
-    return resolveAllowedWorkspace(resolved);
-  });
+  const resolved = await realpath(candidate);
+  const info = await stat(resolved);
+  if (!info.isDirectory()) {
+    throw new Error(`Agent cwd is not a directory: ${resolved}`);
+  }
+  return resolveAllowedWorkspace(resolved);
 }
 
 // One resolver for every bundled resource (see plugin-resources) so the
