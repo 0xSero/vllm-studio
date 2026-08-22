@@ -22,13 +22,6 @@ export interface TelemetryOptions {
 
 const DEFAULT_TTL_MS = 1_000;
 
-const probesFor = (options: TelemetryOptions): readonly DeviceProbe[] => [
-  hostProbe,
-  acceleratorProbe,
-  storageProbe(options.storagePaths ?? []),
-  thermalProbe,
-];
-
 /** Derive the host profile from a snapshot: the accelerator mix decides what can run. */
 export const profileFrom = (
   snapshot: DeviceSnapshot,
@@ -73,13 +66,16 @@ const mergeCapabilities = (
   collected: readonly (readonly TelemetryField[])[],
 ): readonly TelemetryField[] => [...new Set(collected.flat())];
 
-export const collectSnapshot = (
-  options: TelemetryOptions = {},
-): Effect.Effect<DeviceSnapshot> =>
+export const collectSnapshot = (options: TelemetryOptions = {}): Effect.Effect<DeviceSnapshot> =>
   Effect.gen(function* () {
     const nodeId = options.nodeId ?? "self";
     const profile = bootstrapProfile(nodeId);
-    const probes = probesFor(options).filter((probe) => probe.detect(profile));
+    const probes: readonly DeviceProbe[] = [
+      hostProbe,
+      acceleratorProbe,
+      storageProbe(options.storagePaths ?? []),
+      thermalProbe,
+    ].filter((probe) => probe.detect(profile));
     // Probes are independent and all of them are I/O-bound; sampling them together keeps
     // one snapshot to the cost of its slowest probe rather than their sum.
     const results = yield* Effect.all(

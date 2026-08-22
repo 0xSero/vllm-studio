@@ -160,16 +160,11 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
     }
   };
 
-  const all = (): readonly InstanceRecord[] => {
-    try {
-      return readdirSync(directory)
-        .filter((file) => file.endsWith(".json"))
-        .map((file) => read(file.slice(0, -".json".length)))
-        .filter((record): record is InstanceRecord => record !== null);
-    } catch (error) {
-      throw error;
-    }
-  };
+  const all = (): readonly InstanceRecord[] =>
+    readdirSync(directory)
+      .filter((file) => file.endsWith(".json"))
+      .map((file) => read(file.slice(0, -".json".length)))
+      .filter((record): record is InstanceRecord => record !== null);
 
   const write = (record: InstanceRecord): void => {
     const path = recordPath(record.name);
@@ -245,7 +240,7 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
   ): Effect.Effect<InstanceRecord, LaunchFailure> =>
     Effect.gen(function* () {
       yield* acquirePlacementLock(lockPath);
-      const record = yield* Effect.gen(function* () {
+      return yield* Effect.gen(function* () {
         const held = reservation.shareable ? new Set<DeviceId>() : yield* heldDevices(alive);
         const free = reservation.candidates.filter((device) => !held.has(device));
         if (free.length < reservation.need) {
@@ -255,19 +250,17 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
             free: free.length,
           });
         }
-        let port: number;
-        if (reservation.exactPort !== undefined) {
-          const takenByRecord = all().some((record) => record.port === reservation.exactPort);
-          if (takenByRecord || !portIsBindable(reservation.exactPort)) {
-            return yield* Effect.fail<LaunchFailure>({
-              kind: "spawn-failed",
-              detail: `port ${reservation.exactPort} is already in use`,
-            });
-          }
-          port = reservation.exactPort;
-        } else {
-          port = allocatePort(reservation.basePort);
+        const exactPort = reservation.exactPort;
+        if (
+          exactPort !== undefined &&
+          (all().some((record) => record.port === exactPort) || !portIsBindable(exactPort))
+        ) {
+          return yield* Effect.fail<LaunchFailure>({
+            kind: "spawn-failed",
+            detail: `port ${exactPort} is already in use`,
+          });
         }
+        const port = exactPort ?? allocatePort(reservation.basePort);
         const now = Date.now();
         const reserved: InstanceRecord = {
           name: reservation.name,
@@ -285,7 +278,6 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
         write(reserved);
         return reserved;
       }).pipe(Effect.ensuring(Effect.sync(() => releaseLock(lockPath))));
-      return record;
     });
 
   return {

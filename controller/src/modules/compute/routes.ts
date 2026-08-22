@@ -37,18 +37,6 @@ const LaunchRequestSchema = Schema.Struct({
   binary: Schema.optional(Schema.String),
 });
 
-/** Optional-schema fields decode as `key: undefined`; spreading those over the defaults
- *  would erase them, so undefined entries are dropped before the merge. */
-const mergeOptions = (
-  overrides: Partial<Record<keyof ServingOptions, ServingOptions[keyof ServingOptions] | undefined>>,
-): ServingOptions => {
-  const merged: Record<string, unknown> = { ...defaultOptions };
-  for (const [key, value] of Object.entries(overrides)) {
-    if (value !== undefined) merged[key] = value;
-  }
-  return merged as unknown as ServingOptions;
-};
-
 const defaultOptions: ServingOptions = {
   tensorParallel: 1,
   pipelineParallel: 1,
@@ -62,6 +50,15 @@ const defaultOptions: ServingOptions = {
   toolCallParser: null,
   reasoningParser: null,
 };
+
+/** Optional-schema fields decode as `key: undefined`; spreading those over the defaults
+ *  would erase them, so undefined entries are dropped before the merge. */
+const mergeOptions = (overrides: Readonly<Record<string, unknown>>): ServingOptions => ({
+  ...defaultOptions,
+  ...(Object.fromEntries(
+    Object.entries(overrides).filter(([, value]) => value !== undefined),
+  ) as Partial<ServingOptions>),
+});
 
 export const registerComputeRoutes = defineRoutes((app, context) =>
   mergeRoutes(

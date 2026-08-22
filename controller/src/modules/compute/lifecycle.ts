@@ -107,12 +107,18 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
       return Date.now() < Date.parse(record.readyDeadlineAt) ? "starting" : "unhealthy";
     });
 
+  /** Empty for a reservation that never spawned — there is no log file to read yet. */
+  const logTailOf = (record: InstanceRecord): Effect.Effect<string> =>
+    record.ref === null ? Effect.succeed("") : launcherOf(record).logTail(record.ref, record);
+
   const stopRecord = (record: InstanceRecord): Effect.Effect<boolean> =>
     Effect.gen(function* () {
       if (record.ref === null) return true;
       const launcher = launcherOf(record);
       yield* launcher.stop(record.ref, record, STOP_GRACE_MS);
-      return !(yield* launcher.owns(record.ref, record)) && !(yield* launcher.alive(record.ref, record));
+      return (
+        !(yield* launcher.owns(record.ref, record)) && !(yield* launcher.alive(record.ref, record))
+      );
     });
 
   const failCleanup = (
@@ -120,9 +126,10 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
     failure: LaunchFailure,
   ): Effect.Effect<never, LaunchFailure> =>
     Effect.gen(function* () {
-      const cleanupRecord = failure.kind === "spawn-failed" && failure.startedReference
-        ? { ...record, ref: failure.startedReference }
-        : record;
+      const cleanupRecord =
+        failure.kind === "spawn-failed" && failure.startedReference
+          ? { ...record, ref: failure.startedReference }
+          : record;
       if (cleanupRecord !== record) deps.store.write(cleanupRecord);
       if (yield* stopRecord(cleanupRecord)) deps.store.drop(record.name);
       cancelRequested.delete(record.name);
@@ -142,24 +149,20 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
         }
         // Liveness before health: if our daemon died, a 200 on this port is someone else.
         if (!(yield* recordAlive(record))) {
-          const logTail =
-            record.ref === null ? "" : yield* launcherOf(record).logTail(record.ref, record);
           return yield* failCleanup(record, {
             kind: "exited-early",
             exitCode: null,
             signal: null,
-            logTail,
+            logTail: yield* logTailOf(record),
           });
         }
         if (yield* healthy(record)) return;
         yield* Effect.sleep(spec.health.intervalMs);
       }
-      const logTail =
-        record.ref === null ? "" : yield* launcherOf(record).logTail(record.ref, record);
       return yield* failCleanup(record, {
         kind: "unhealthy-timeout",
         waitedMs: Date.now() - startedAt,
-        logTail,
+        logTail: yield* logTailOf(record),
       });
     });
 
@@ -168,18 +171,16 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
       const host = yield* deps.host();
       const spec = engineSpec(input.engine);
       const support = spec.supports(host);
-      if (!support.ok) {
+      const unsupportedReason = !support.ok
+        ? support.reason
+        : supportsRuntime(input.engine, host, input.runtime)
+          ? null
+          : `runtime "${input.runtime}" not available (offers: ${support.runtimes.join(", ")})`;
+      if (unsupportedReason !== null) {
         return yield* Effect.fail<LaunchFailure>({
           kind: "unsupported",
           engine: input.engine,
-          reason: support.reason,
-        });
-      }
-      if (!supportsRuntime(input.engine, host, input.runtime)) {
-        return yield* Effect.fail<LaunchFailure>({
-          kind: "unsupported",
-          engine: input.engine,
-          reason: `runtime "${input.runtime}" not available (offers: ${support.runtimes.join(", ")})`,
+          reason: unsupportedReason,
         });
       }
 
@@ -282,13 +283,9 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
     });
 
   const instances = (): Effect.Effect<readonly InstanceView[]> =>
-    Effect.gen(function* () {
-      const views: InstanceView[] = [];
-      for (const record of deps.store.all()) {
-        views.push({ record, state: yield* stateOf(record) });
-      }
-      return views;
-    });
+    Effect.forEach(deps.store.all(), (record) =>
+      stateOf(record).pipe(Effect.map((state) => ({ record, state }))),
+    );
 
   const superviseOnce = (): Effect.Effect<number> =>
     Effect.gen(function* () {

@@ -30,25 +30,19 @@ const messageOf = (failure: LaunchFailure): string => {
   }
 };
 
-const statusOf = (failure: LaunchFailure): number => {
-  switch (failure.kind) {
-    case "unsupported":
-      return 422;
-    case "already-running":
-    case "no-capacity":
-      return 409;
-    case "cancelled":
-      return 400;
-    case "install-failed":
-    case "spawn-failed":
-    case "exited-early":
-    case "unhealthy-timeout":
-      return 503;
-  }
+const STATUS: Readonly<Record<LaunchFailure["kind"], number>> = {
+  unsupported: 422,
+  "already-running": 409,
+  "no-capacity": 409,
+  cancelled: 400,
+  "install-failed": 503,
+  "spawn-failed": 503,
+  "exited-early": 503,
+  "unhealthy-timeout": 503,
 };
 
 export const toHttp = (failure: LaunchFailure): HttpStatus =>
-  new HttpStatus({ status: statusOf(failure), detail: messageOf(failure) });
+  new HttpStatus({ status: STATUS[failure.kind], detail: messageOf(failure) });
 
 export interface LaunchEvent {
   readonly stage: "error" | "cancelled";

@@ -17,6 +17,15 @@ const readText = (path: string): string | null => {
   }
 };
 
+/** hwmon nodes come and go as drivers load; an unreadable directory is "no sensors". */
+const readDirectory = (path: string): readonly string[] => {
+  try {
+    return readdirSync(path);
+  } catch {
+    return [];
+  }
+};
+
 const parseCelsius = (raw: string | null): number | null => {
   if (raw === null) return null;
   const millidegrees = Number(raw);
@@ -33,13 +42,7 @@ const sourceFor = (chip: string): ThermalInfo["source"] => {
 
 const readChip = (directory: string): readonly ThermalInfo[] => {
   const chip = readText(`${HWMON_ROOT}/${directory}/name`) ?? directory;
-  const entries = ((): string[] => {
-    try {
-      return readdirSync(`${HWMON_ROOT}/${directory}`);
-    } catch {
-      return [] as string[];
-    }
-  })();
+  const entries = readDirectory(`${HWMON_ROOT}/${directory}`);
   const readings: ThermalInfo[] = [];
   for (const entry of entries) {
     if (!/^temp\d+_input$/.test(entry)) continue;
@@ -62,14 +65,7 @@ export const thermalProbe: DeviceProbe = {
   run: () =>
     neverFails(
       Effect.sync(() => {
-        const directories = ((): string[] => {
-          try {
-            return readdirSync(HWMON_ROOT);
-          } catch {
-            return [] as string[];
-          }
-        })();
-        const thermals = directories.flatMap(readChip);
+        const thermals = readDirectory(HWMON_ROOT).flatMap(readChip);
         return {
           fragment: { thermals },
           capabilities: thermals.length > 0 ? ["temperature" as const] : [],
