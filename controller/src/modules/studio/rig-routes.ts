@@ -12,7 +12,7 @@ import {
 } from "@local-studio/contracts/rigs";
 import { Effect } from "effect";
 import type { Schema } from "effect";
-import { badRequest, notFound } from "../../core/errors";
+import { badRequest, conflict, notFound } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
 import { effectRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import { Event } from "../system/event-manager";
@@ -180,6 +180,9 @@ export const registerStudioRigRoutes = defineRoutes((app, context) => {
       Effect.gen(function* () {
         const rig = yield* requireRig(ctx.req.param("rigId") ?? "");
         const body = yield* decodeJsonBody(ctx, RigNodeCreateSchema);
+        if (body.role === "worker" && context.config.controller_mode !== "head") {
+          return yield* Effect.fail(conflict("Workers can only be added to a Head controller"));
+        }
         const node: RigNode = {
           id: randomUUID(),
           name: yield* requiredName(body.name),
@@ -212,6 +215,9 @@ export const registerStudioRigRoutes = defineRoutes((app, context) => {
         const current = index >= 0 ? rig.nodes[index] : undefined;
         if (!current) return yield* Effect.fail(notFound(`Node "${nodeId}" not found`));
         const body = yield* decodeJsonBody(ctx, RigNodeUpdateSchema);
+        if (body.role === "worker" && context.config.controller_mode !== "head") {
+          return yield* Effect.fail(conflict("Workers can only be managed by a Head controller"));
+        }
         const updatedNode: RigNode = {
           ...current,
           name: body.name === undefined ? current.name : yield* requiredName(body.name),

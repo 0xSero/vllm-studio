@@ -324,8 +324,8 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
     ),
 
     registerStudioModelIndexRoutes(app, context),
-    registerStudioProviderRoutes(app, context),
-    registerCodexProviderRoutes(app, context),
+    context.config.controller_mode === "head" ? registerStudioProviderRoutes(app, context) : app,
+    context.config.controller_mode === "head" ? registerCodexProviderRoutes(app, context) : app,
     registerStudioRigRoutes(app, context),
   );
 });

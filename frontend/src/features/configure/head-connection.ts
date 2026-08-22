@@ -1,14 +1,13 @@
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import { createApiClient } from "@/lib/api/create-api-client";
 import {
   loadSavedControllers,
   normalizeControllerUrl,
   saveSavedControllers,
 } from "@/lib/api/controllers";
-import { clearApiKey, setStoredBackendUrl } from "@/lib/api/connection";
+import { setHeadConnection } from "@/lib/api/head-controller";
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 
-const SettingsSaveResponseSchema = Schema.Struct({ success: Schema.Boolean });
 const HEAD_PROBE_REQUEST = { timeout: 10_000, retries: 0 } as const;
 
 function headProbeError(cause: unknown): Error {
@@ -53,43 +52,11 @@ const connectHeadEffect = (input: { name: string; url: string }) =>
       return yield* Effect.fail(new Error("That controller is not running in Head mode"));
     }
 
-    const response = yield* Effect.tryPromise({
-      try: () =>
-        fetch("/api/settings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ backendUrl: url, apiKey: "" }),
-        }),
-      catch: (cause) =>
-        new Error(
-          cause instanceof Error
-            ? `Connected, but could not save the Head: ${cause.message}`
-            : "Connected, but could not save the Head",
-        ),
-    });
-
-    if (!response.ok) {
-      return yield* Effect.fail(
-        new Error(`Connected, but could not save the Head (${response.status})`),
-      );
-    }
-
-    const body = yield* Effect.tryPromise({
-      try: () => response.json(),
-      catch: () => new Error("Connected, but the desktop could not confirm the saved Head"),
-    });
-    yield* Schema.decodeUnknownEffect(SettingsSaveResponseSchema)(body).pipe(
-      Effect.mapError(
-        () => new Error("Connected, but the desktop could not confirm the saved Head"),
-      ),
-    );
-
     const controllers = loadSavedControllers().filter(
       (controller) => normalizeControllerUrl(controller.url) !== url,
     );
     saveSavedControllers([...controllers, { url, name: input.name.trim() || "Studio Head" }]);
-    clearApiKey();
-    setStoredBackendUrl(url);
+    setHeadConnection({ name: input.name.trim() || "Studio Head", url });
     scheduleDurableUiPreferencesSave();
     return url;
   });

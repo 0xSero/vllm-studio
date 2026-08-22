@@ -131,7 +131,10 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
           });
         }
 
-        const providerCatalogs = yield* listProviderModelsCached(context.config.providers);
+        const providerCatalogs =
+          context.config.controller_mode === "head"
+            ? yield* listProviderModelsCached(context.config.providers)
+            : [];
         for (const catalog of providerCatalogs) {
           for (const model of catalog.models) {
             const modelId = `${catalog.provider}/${model.id}`;
@@ -152,10 +155,13 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
         }
 
         const knownIds = new Set(models.map((model) => model.id));
-        const codexModels = yield* Effect.tryPromise({
-          try: () => context.codexProvider.models(),
-          catch: () => [] as const,
-        }).pipe(Effect.catch(() => Effect.succeed([] as const)));
+        const codexModels =
+          context.config.controller_mode === "head"
+            ? yield* Effect.tryPromise({
+                try: () => context.codexProvider.models(),
+                catch: () => [] as const,
+              }).pipe(Effect.catch(() => Effect.succeed([] as const)))
+            : [];
         for (const model of codexModels) {
           const id = `${CODEX_PROVIDER_ID}/${model.id}`;
           if (knownIds.has(id)) continue;

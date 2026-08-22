@@ -53,31 +53,43 @@ const acceleratorSpec = (accelerator: RigAccelerator): string =>
  * tabular inside it, on one baseline grid, so two cards still line up.
  */
 /** Which of the three kinds of machine this is, in the operator's words. */
-const provenance = (node: RigNode, isLocal: boolean, worker?: WorkerStatus) =>
-  worker
+const provenance = (
+  node: RigNode,
+  isLocal: boolean,
+  worker?: WorkerStatus,
+  connectionStatus?: "online" | "offline",
+) =>
+  connectionStatus
     ? {
-        tone: worker.healthy ? ("ok" as const) : ("error" as const),
-        label: worker.healthy ? "online" : "offline",
+        tone: connectionStatus === "online" ? ("ok" as const) : ("error" as const),
+        label: connectionStatus,
       }
-    : node.role === "head"
-      ? { tone: "ok" as const, label: "online" }
-      : isLocal
-    ? { tone: "ok" as const, label: "this machine" }
-    : node.source === "detected"
-      ? { tone: "info" as const, label: "detected" }
-      : { tone: "dim" as const, label: "added by hand" };
+    : worker
+      ? {
+          tone: worker.healthy ? ("ok" as const) : ("error" as const),
+          label: worker.healthy ? "online" : "offline",
+        }
+      : node.role === "head"
+        ? { tone: "ok" as const, label: "online" }
+        : isLocal
+          ? { tone: "ok" as const, label: "this machine" }
+          : node.source === "detected"
+            ? { tone: "info" as const, label: "detected" }
+            : { tone: "dim" as const, label: "added by hand" };
 
 /** Picture, name, what kind of box it is, and where to reach it. */
 function MachineHeader({
   node,
   isLocal,
   worker,
+  connectionStatus,
   onEdit,
   onRemove,
 }: {
   node: RigNode;
   isLocal: boolean;
   worker?: WorkerStatus;
+  connectionStatus?: "online" | "offline";
   onEdit: () => void;
   onRemove?: () => void;
 }) {
@@ -89,7 +101,7 @@ function MachineHeader({
     RIG_NODE_ROLE_LABELS[node.role],
     ...endpoint,
   ].join(" · ");
-  const source = provenance(node, isLocal, worker);
+  const source = provenance(node, isLocal, worker, connectionStatus);
 
   return (
     <div className="flex items-start gap-3 sm:gap-4">
@@ -202,12 +214,14 @@ export function MachineCard({
   node,
   isLocal,
   worker,
+  connectionStatus,
   onEdit,
   onRemove,
 }: {
   node: RigNode;
   isLocal: boolean;
   worker?: WorkerStatus;
+  connectionStatus?: "online" | "offline";
   onEdit: () => void;
   onRemove?: () => void;
 }) {
@@ -217,6 +231,7 @@ export function MachineCard({
         node={node}
         isLocal={isLocal}
         worker={worker}
+        connectionStatus={connectionStatus}
         onEdit={onEdit}
         onRemove={onRemove}
       />

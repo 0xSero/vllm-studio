@@ -5,7 +5,10 @@ import { createRecipesApi } from "./recipes";
 import { createStudioApi } from "./studio";
 import { createSystemApi } from "./system";
 import {
+  InferenceUsageAckSchema,
+  InferenceUsageBatchSchema,
   WorkersPayloadSchema,
+  type InferenceUsageEvent,
   type SessionMetadata,
   type SessionMetadataPayload,
 } from "@local-studio/contracts/federation";
@@ -35,6 +38,24 @@ export function createApiClient(params: {
         method: "PUT",
         retries: 0,
         body: JSON.stringify(metadata),
+      }),
+    getUsageOutbox: async (): Promise<readonly InferenceUsageEvent[]> =>
+      Schema.decodeUnknownSync(InferenceUsageBatchSchema)(
+        await core.request<unknown>("/studio/usage/outbox?limit=100", { retries: 0 }),
+      ).events,
+    ingestUsageEvents: async (events: readonly InferenceUsageEvent[]): Promise<readonly string[]> =>
+      Schema.decodeUnknownSync(InferenceUsageAckSchema)(
+        await core.request<unknown>("/studio/usage/events", {
+          method: "POST",
+          retries: 0,
+          body: JSON.stringify({ events }),
+        }),
+      ).event_ids,
+    acknowledgeUsageEvents: (eventIds: readonly string[]): Promise<{ success: boolean }> =>
+      core.request("/studio/usage/outbox/ack", {
+        method: "POST",
+        retries: 0,
+        body: JSON.stringify({ event_ids: eventIds }),
       }),
     healthPoll: (timeoutMs?: number) => core.healthPoll(timeoutMs),
   };

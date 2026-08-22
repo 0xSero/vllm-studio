@@ -30,6 +30,11 @@ import {
   TextCell,
 } from "@/features/recipes/recipes-content/catalog-table-shell";
 import { openExternal, requestJson } from "./google-account-model";
+import {
+  getHeadConnection,
+  headProxyHeaders,
+  HEAD_CONNECTION_CHANGED_EVENT,
+} from "@/lib/api/head-controller";
 
 function decodeProviders(input: unknown): ProvidersResponse {
   const providers = (input as { providers?: unknown })?.providers;
@@ -207,12 +212,14 @@ function LoginFlowPanel({
   jobId,
   providerName,
   apiRoot,
+  requestHeaders,
   onFinished,
   onClose,
 }: {
   jobId: string;
   providerName: string;
   apiRoot: string;
+  requestHeaders?: Record<string, string>;
   onFinished: () => void;
   onClose: () => void;
 }) {
@@ -227,6 +234,7 @@ function LoginFlowPanel({
         const view = await requestJson(
           `${apiRoot}/login/${encodeURIComponent(jobId)}?after=${cursor.after}`,
           decodeLoginJob,
+          { headers: requestHeaders },
         );
         if (cancelled) return;
         if (view.events.length > 0) {
@@ -253,7 +261,7 @@ function LoginFlowPanel({
         () => ({ ok: true }),
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...requestHeaders },
           body: JSON.stringify({ promptId, value }),
         },
       );
@@ -265,7 +273,7 @@ function LoginFlowPanel({
     await requestJson(
       `${apiRoot}/login/${encodeURIComponent(jobId)}/cancel`,
       () => ({ ok: true }),
-      { method: "POST" },
+      { method: "POST", headers: requestHeaders },
     ).catch(() => undefined);
     onClose();
   };
@@ -380,7 +388,7 @@ function ProviderDrawer({
       </ResourceDrawerSection>
       <p className="mb-5 text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
         {provider.controllerOwned
-          ? `Your ${provider.name} credential stays on the controller. Pi reaches these models through the same controller endpoint as local models.`
+          ? `Your ${provider.name} credential stays on the Studio Head. Pi reaches these models through the Head proxy.`
           : `Models from ${provider.name} appear beside controller models in Workbench after this provider is connected.`}
       </p>
       {activeForProvider ? (
@@ -389,6 +397,7 @@ function ProviderDrawer({
           jobId={activeForProvider.jobId}
           providerName={activeForProvider.providerName}
           apiRoot={providerApiRoot(provider)}
+          requestHeaders={provider.controllerOwned ? headProxyHeaders() : undefined}
           onFinished={onFinished}
           onClose={onClose}
         />
@@ -406,29 +415,24 @@ export function ModelProvidersSection() {
   const [selectedProvider, setSelectedProvider] = useState<ProviderView | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [headConnection, setHead] = useState(getHeadConnection);
 
   const refresh = useCallback(() => {
     setRefreshing(true);
+    setError(null);
+    const head = getHeadConnection();
+    setHead(head);
     void Promise.all([
       requestJson("/api/agent/providers", decodeProviders),
-      requestJson(
-        "/api/proxy/studio/providers/openai-codex/status",
-        decodeControllerProvider,
-      ).catch(
-        () =>
-          ({
-            id: "openai-codex",
-            name: "OpenAI Codex",
-            oauth: { label: "OpenAI (ChatGPT subscription)" },
-            configured: false,
-            modelCount: 0,
-            controllerOwned: true,
-          }) satisfies ProviderView,
-      ),
+      head
+        ? requestJson("/api/proxy/studio/providers/openai-codex/status", decodeControllerProvider, {
+            headers: headProxyHeaders(head),
+          })
+        : Promise.resolve(null),
     ])
       .then(([agentProviders, controllerCodex]) => {
         const list = [
-          controllerCodex,
+          ...(controllerCodex ? [controllerCodex] : []),
           ...agentProviders.providers.filter((provider) => provider.id !== "openai-codex"),
         ];
         setProviders(list);
@@ -447,12 +451,21 @@ export function ModelProvidersSection() {
     refresh();
   }, [refresh]);
 
+  useMountSubscription(() => {
+    const sync = () => refresh();
+    window.addEventListener(HEAD_CONNECTION_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(HEAD_CONNECTION_CHANGED_EVENT, sync);
+  }, [refresh]);
+
   const connect = async (provider: ProviderView, type: "oauth" | "api_key") => {
     setError(null);
     try {
       const { jobId } = await requestJson(`${providerApiRoot(provider)}/login`, decodeLoginStart, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(provider.controllerOwned ? headProxyHeaders() : {}),
+        },
         body: JSON.stringify(provider.controllerOwned ? {} : { type }),
       });
       setActive({ jobId, providerId: provider.id, providerName: provider.name });
@@ -467,6 +480,7 @@ export function ModelProvidersSection() {
       if (!provider) return;
       await requestJson(`${providerApiRoot(provider)}/logout`, () => ({ ok: true }), {
         method: "POST",
+        headers: provider.controllerOwned ? headProxyHeaders() : undefined,
       }).catch(() => undefined);
       refresh();
     },
@@ -525,6 +539,11 @@ export function ModelProvidersSection() {
           <div className="px-3 py-5">
             <Spinner size="xs" />
           </div>
+        ) : !headConnection && visibleProviders.length === 0 ? (
+          <TableNotice
+            title="Connect a Studio Head to add model accounts"
+            body="Cloud model credentials and their proxy live on the Head. Local models remain available through this Mac without one."
+          />
         ) : visibleProviders.length === 0 ? (
           <TableNotice
             title="No model companies match this search"

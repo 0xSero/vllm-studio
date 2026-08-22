@@ -1,4 +1,6 @@
 import type { Database } from "bun:sqlite";
+import { randomUUID } from "node:crypto";
+import type { ControllerMode, InferenceUsageEvent } from "@local-studio/contracts/federation";
 import {
   normalizeUsageStats,
   usageAverage,
@@ -50,10 +52,14 @@ const buildModelFilter = (
 export class InferenceRequestStore {
   private readonly db: Database;
   private readonly closeDatabase: () => Effect.Effect<void, RepositoryError>;
+  private readonly originControllerId: string;
+  private readonly controllerMode: ControllerMode;
 
-  public constructor(dbPath: string) {
+  public constructor(dbPath: string, controllerMode: ControllerMode) {
     this.db = openInitializedDatabase(dbPath, (db) => this.migrate(db));
     this.closeDatabase = makeDatabaseCloser(this.db, "inference-requests.close");
+    this.originControllerId = this.loadOriginControllerId();
+    this.controllerMode = controllerMode;
   }
 
   private migrate(db: Database): void {
@@ -78,18 +84,63 @@ export class InferenceRequestStore {
         streamed INTEGER NOT NULL DEFAULT 0
       )
     `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS inference_usage_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `);
     const columns = db.query("PRAGMA table_info(inference_requests)").all() as Array<{
       name: string;
     }>;
     if (!columns.some((column) => column.name === "worker_id")) {
       db.run("ALTER TABLE inference_requests ADD COLUMN worker_id TEXT");
     }
+    if (!columns.some((column) => column.name === "event_id")) {
+      db.run("ALTER TABLE inference_requests ADD COLUMN event_id TEXT");
+    }
+    if (!columns.some((column) => column.name === "occurred_at")) {
+      db.run("ALTER TABLE inference_requests ADD COLUMN occurred_at TEXT");
+    }
+    if (!columns.some((column) => column.name === "origin_controller_id")) {
+      db.run("ALTER TABLE inference_requests ADD COLUMN origin_controller_id TEXT");
+    }
+    if (!columns.some((column) => column.name === "synced_at")) {
+      db.run("ALTER TABLE inference_requests ADD COLUMN synced_at TEXT");
+    }
+    db.run(
+      "UPDATE inference_requests SET event_id = lower(hex(randomblob(16))) WHERE event_id IS NULL",
+    );
+    db.run("UPDATE inference_requests SET occurred_at = created_at WHERE occurred_at IS NULL");
     db.run(
       `CREATE INDEX IF NOT EXISTS idx_inference_requests_created_at ON inference_requests(created_at)`,
     );
     db.run(
       `CREATE INDEX IF NOT EXISTS idx_inference_requests_model_created ON inference_requests(model, created_at)`,
     );
+    db.run(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_inference_requests_event_id ON inference_requests(event_id)",
+    );
+  }
+
+  private loadOriginControllerId(): string {
+    const row = this.db
+      .query("SELECT value FROM inference_usage_metadata WHERE key = 'origin_controller_id'")
+      .get() as { value: string } | null;
+    const id = row?.value || randomUUID();
+    if (!row?.value) {
+      this.db
+        .query(
+          "INSERT INTO inference_usage_metadata (key, value) VALUES ('origin_controller_id', ?)",
+        )
+        .run(id);
+    }
+    this.db
+      .query(
+        "UPDATE inference_requests SET origin_controller_id = ? WHERE origin_controller_id IS NULL",
+      )
+      .run(id);
+    return id;
   }
 
   private recordSync(record: InferenceRequestRecord): void {
@@ -103,13 +154,17 @@ export class InferenceRequestStore {
     this.db
       .query(
         `INSERT INTO inference_requests (
+           event_id, occurred_at, origin_controller_id, synced_at,
            model, source, session_id, provider, worker_id,
            prompt_tokens, completion_tokens, reasoning_tokens,
            cache_read_tokens, cache_write_tokens, total_tokens,
            ttft_ms, duration_ms, status, streamed
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
+        randomUUID(),
+        this.originControllerId,
+        this.controllerMode === "standalone" ? null : new Date().toISOString(),
         record.model,
         record.source ?? null,
         record.session_id ?? null,
@@ -126,6 +181,86 @@ export class InferenceRequestStore {
         record.status ?? 200,
         record.streamed ? 1 : 0,
       );
+  }
+
+  private pendingSyncEventsSync(limit: number): InferenceUsageEvent[] {
+    const boundedLimit = Number.isFinite(limit)
+      ? Math.max(1, Math.min(500, Math.round(limit)))
+      : 100;
+    return this.db
+      .query(
+        `SELECT event_id, occurred_at, origin_controller_id, model, source, session_id,
+                provider, worker_id, prompt_tokens, completion_tokens, reasoning_tokens,
+                cache_read_tokens, cache_write_tokens, ttft_ms, duration_ms, status, streamed
+         FROM inference_requests
+         WHERE synced_at IS NULL AND event_id IS NOT NULL AND origin_controller_id IS NOT NULL
+         ORDER BY id ASC
+         LIMIT ?`,
+      )
+      .all(boundedLimit)
+      .map((row) => {
+        const event = row as Omit<InferenceUsageEvent, "streamed"> & { streamed: number };
+        return { ...event, streamed: event.streamed === 1 };
+      });
+  }
+
+  public pendingSyncEvents(limit = 100): Effect.Effect<InferenceUsageEvent[], RepositoryError> {
+    return repositoryEffect("inference-requests.pending-sync", () =>
+      this.pendingSyncEventsSync(limit),
+    );
+  }
+
+  public markSynced(eventIds: readonly string[]): Effect.Effect<void, RepositoryError> {
+    return repositoryEffect("inference-requests.mark-synced", () => {
+      const update = this.db.query(
+        "UPDATE inference_requests SET synced_at = CURRENT_TIMESTAMP WHERE event_id = ?",
+      );
+      const transaction = this.db.transaction((ids: readonly string[]) => {
+        for (const id of ids) update.run(id);
+      });
+      transaction(eventIds);
+    });
+  }
+
+  public importEvents(
+    events: readonly InferenceUsageEvent[],
+  ): Effect.Effect<void, RepositoryError> {
+    return repositoryEffect("inference-requests.import", () => {
+      const insert = this.db.query(
+        `INSERT OR IGNORE INTO inference_requests (
+           event_id, created_at, occurred_at, origin_controller_id, synced_at,
+           model, source, session_id, provider, worker_id,
+           prompt_tokens, completion_tokens, reasoning_tokens, cache_read_tokens,
+           cache_write_tokens, total_tokens, ttft_ms, duration_ms, status, streamed
+         ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      const transaction = this.db.transaction((batch: readonly InferenceUsageEvent[]) => {
+        for (const event of batch) {
+          insert.run(
+            event.event_id,
+            event.occurred_at,
+            event.occurred_at,
+            event.origin_controller_id,
+            event.model,
+            event.source,
+            event.session_id,
+            event.provider,
+            event.worker_id,
+            event.prompt_tokens,
+            event.completion_tokens,
+            event.reasoning_tokens,
+            event.cache_read_tokens,
+            event.cache_write_tokens,
+            event.prompt_tokens + event.completion_tokens,
+            event.ttft_ms,
+            event.duration_ms,
+            event.status,
+            event.streamed ? 1 : 0,
+          );
+        }
+      });
+      transaction(events);
+    });
   }
 
   public record(record: InferenceRequestRecord): Effect.Effect<void, RepositoryError> {

@@ -1,7 +1,13 @@
 import type { UsageStats } from "@local-studio/contracts/usage";
 import { validateUsageStats } from "@local-studio/contracts/usage-schema";
 import { Effect } from "effect";
+import {
+  InferenceUsageAckSchema,
+  InferenceUsageBatchSchema,
+} from "@local-studio/contracts/federation";
 import { observeControllerFunction } from "../../core/function-observability";
+import { conflict } from "../../core/errors";
+import { decodeJsonBody } from "../../core/validation";
 import { effectRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import type { AppContext } from "../../app-context";
 import { emptyResponse } from "./usage/usage-utilities";
@@ -54,5 +60,40 @@ export const registerUsageRoutes = defineRoutes((app, context) => {
       );
       return usageEffect.pipe(Effect.map((body) => ctx.json(body)));
     }),
+    effectRoute(app.get, "/studio/usage/outbox", (ctx) =>
+      Effect.gen(function* () {
+        if (context.config.controller_mode !== "standalone") {
+          return yield* Effect.fail(
+            conflict("Only a Standalone controller exposes a local usage outbox"),
+          );
+        }
+        const requested = Number(ctx.req.query("limit") ?? 100);
+        const events = yield* context.stores.inferenceRequestStore.pendingSyncEvents(requested);
+        return ctx.json({ events });
+      }),
+    ),
+    effectRoute(app.post, "/studio/usage/outbox/ack", (ctx) =>
+      Effect.gen(function* () {
+        if (context.config.controller_mode !== "standalone") {
+          return yield* Effect.fail(
+            conflict("Only a Standalone controller owns a local usage outbox"),
+          );
+        }
+        const body = yield* decodeJsonBody(ctx, InferenceUsageAckSchema);
+        yield* context.stores.inferenceRequestStore.markSynced(body.event_ids);
+        return ctx.json({ success: true });
+      }),
+    ),
+    effectRoute(app.post, "/studio/usage/events", (ctx) =>
+      Effect.gen(function* () {
+        if (context.config.controller_mode !== "head") {
+          return yield* Effect.fail(conflict("Usage events can only be ingested by a Head"));
+        }
+        const body = yield* decodeJsonBody(ctx, InferenceUsageBatchSchema);
+        yield* context.stores.inferenceRequestStore.importEvents(body.events);
+        usageCache = null;
+        return ctx.json({ event_ids: body.events.map((event) => event.event_id) });
+      }),
+    ),
   );
 });

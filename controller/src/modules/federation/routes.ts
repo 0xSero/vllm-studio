@@ -18,6 +18,9 @@ import {
 } from "../proxy/inference-accounting";
 import { modelNotRunningError } from "../proxy/openai-routes";
 import type { WorkerTarget } from "./worker-pool";
+import { listProviderModelsCached } from "../../services/provider-routing";
+import { CODEX_PROVIDER_ID } from "../../services/codex-provider";
+import type { AppContext } from "../../app-context";
 
 const ChatRequestSchema = Schema.Record(Schema.String, Schema.Unknown);
 
@@ -49,6 +52,55 @@ const aggregateModels = (statuses: WorkersPayload["workers"]): WorkerModel[] => 
   }
   return [...models.values()].sort((left, right) => left.id.localeCompare(right.id));
 };
+
+const aggregateHeadModels = (
+  context: AppContext,
+  statuses: WorkersPayload["workers"],
+): Effect.Effect<WorkerModel[]> =>
+  Effect.gen(function* () {
+    const models = new Map(aggregateModels(statuses).map((model) => [model.id, model]));
+    const providerCatalogs = yield* listProviderModelsCached(context.config.providers);
+    for (const catalog of providerCatalogs) {
+      for (const model of catalog.models) {
+        const id = `${catalog.provider}/${model.id}`;
+        models.set(id, {
+          id,
+          object: "model",
+          owned_by: catalog.provider,
+          active: true,
+          metadata: {
+            external: true,
+            provider: catalog.provider,
+          },
+        });
+      }
+    }
+    const codexModels = yield* Effect.tryPromise({
+      try: () => context.codexProvider.models(),
+      catch: () => [] as const,
+    }).pipe(Effect.catch(() => Effect.succeed([] as const)));
+    for (const model of codexModels) {
+      const id = `${CODEX_PROVIDER_ID}/${model.id}`;
+      models.set(id, {
+        id,
+        object: "model",
+        owned_by: CODEX_PROVIDER_ID,
+        active: true,
+        max_model_len: model.contextWindow,
+        metadata: {
+          provider: CODEX_PROVIDER_ID,
+          upstream_model_id: model.id,
+          api: "openai-responses",
+          context_window: model.contextWindow,
+          max_tokens: model.maxTokens,
+          reasoning: model.reasoning,
+          vision: model.vision,
+          input: model.vision ? ["text", "image"] : ["text"],
+        },
+      });
+    }
+    return [...models.values()].sort((left, right) => left.id.localeCompare(right.id));
+  });
 
 const readUsageFrame = (frame: string): InferenceUsageInput | null => {
   for (const line of frame.split("\n")) {
@@ -203,11 +255,10 @@ export const registerFederationRoutes = defineRoutes((app, context) => {
         ),
     ),
     effectRoute(app.get, "/v1/models", (ctx) =>
-      context.workerPool
-        .statuses()
-        .pipe(
-          Effect.map((statuses) => ctx.json({ object: "list", data: aggregateModels(statuses) })),
-        ),
+      context.workerPool.statuses().pipe(
+        Effect.flatMap((statuses) => aggregateHeadModels(context, statuses)),
+        Effect.map((data) => ctx.json({ object: "list", data })),
+      ),
     ),
     effectRoute(app.post, "/v1/chat/completions", (ctx) =>
       Effect.gen(function* () {

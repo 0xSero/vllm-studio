@@ -89,3 +89,33 @@ export const SessionMetadataPayloadSchema = Schema.Struct({
 });
 
 export type SessionMetadataPayload = typeof SessionMetadataPayloadSchema.Type;
+
+export const InferenceUsageEventSchema = Schema.Struct({
+  event_id: Schema.String,
+  occurred_at: Schema.String,
+  origin_controller_id: Schema.String,
+  model: Schema.String,
+  source: Schema.NullOr(Schema.String),
+  session_id: Schema.NullOr(Schema.String),
+  provider: Schema.NullOr(Schema.String),
+  worker_id: Schema.NullOr(Schema.String),
+  prompt_tokens: Schema.Number,
+  completion_tokens: Schema.Number,
+  reasoning_tokens: Schema.Number,
+  cache_read_tokens: Schema.Number,
+  cache_write_tokens: Schema.Number,
+  ttft_ms: Schema.NullOr(Schema.Number),
+  duration_ms: Schema.NullOr(Schema.Number),
+  status: Schema.Number,
+  streamed: Schema.Boolean,
+});
+
+export type InferenceUsageEvent = typeof InferenceUsageEventSchema.Type;
+
+export const InferenceUsageBatchSchema = Schema.Struct({
+  events: Schema.Array(InferenceUsageEventSchema),
+});
+
+export const InferenceUsageAckSchema = Schema.Struct({
+  event_ids: Schema.Array(Schema.String),
+});

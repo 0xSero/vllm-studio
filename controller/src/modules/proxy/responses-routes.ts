@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { Effect, Schema } from "effect";
-import { badRequest, serviceUnavailable } from "../../core/errors";
+import { badRequest, conflict, serviceUnavailable } from "../../core/errors";
 import { defineRoutes, effectRoute } from "../../http/route-registrar";
 import { parseProviderModel } from "../../services/provider-routing";
 import { CODEX_PROVIDER_ID } from "../../services/codex-provider";
@@ -60,6 +60,11 @@ export const registerResponsesRoutes = defineRoutes((app, context) =>
       const streamed = payload["stream"] === true;
 
       if (parsed.provider === CODEX_PROVIDER_ID) {
+        if (context.config.controller_mode !== "head") {
+          return yield* Effect.fail(
+            conflict("OpenAI Codex is available through a Head controller"),
+          );
+        }
         const result = yield* Effect.tryPromise({
           try: () => context.codexProvider.responses(parsed.modelId, payload, ctx.req.raw.signal),
           catch: () => serviceUnavailable("OpenAI Codex request failed"),

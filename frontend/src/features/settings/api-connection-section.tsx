@@ -28,6 +28,7 @@ import { DeployControllerPanel } from "./deploy-controller-panel";
 import { AppVersionSection } from "./app-version-section";
 import { StatusPill, Spinner, type UiTone } from "@/ui";
 import { ApiUrlCensorToggle, useApiUrlCensored } from "@/ui/api-url-censor";
+import { getHeadConnection } from "@/lib/api/head-controller";
 import {
   SettingsButton,
   SettingsGroup,
@@ -63,10 +64,11 @@ function controllerEntriesKey(entries: ControllerEntry[]): string {
 
 function readEntries(): ControllerEntry[] {
   const saved = loadSavedControllers();
+  const headUrl = normalizeControllerUrl(getHeadConnection()?.url ?? "");
   const byUrl = new Map<string, SavedController>();
   for (const entry of saved) {
     const url = normalizeControllerUrl(entry.url);
-    if (!url) continue;
+    if (!url || url === headUrl) continue;
     byUrl.set(url, { ...entry, url });
   }
   const next = [...byUrl.entries()].map(([url, value]) => ({
@@ -150,8 +152,8 @@ export function ApiConnectionSection({
     <div>
       <AppVersionSection />
       <SettingsGroup
-        title="Controllers"
-        description="Every controller is saved in one list. Switch active with the radio button."
+        title="Local controller"
+        description="This endpoint runs models on this machine. Connect and manage the Studio Head from Configure."
         actions={
           <div className="flex items-center gap-2">
             <ApiUrlCensorToggle />
@@ -446,8 +448,7 @@ function ApiStatus({
   if (loading) {
     return <StatusPill tone="info">loading</StatusPill>;
   }
-  const tone: UiTone =
-    status === "connected" ? "good" : status === "error" ? "danger" : "default";
+  const tone: UiTone = status === "connected" ? "good" : status === "error" ? "danger" : "default";
   const label = message || (status === "unknown" ? "not tested" : status);
   return (
     <span className="inline-flex items-center gap-1.5">

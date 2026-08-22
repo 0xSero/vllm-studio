@@ -13,7 +13,10 @@ import { MachineCard, machineGpuGb } from "./machine-card";
 import { NodeFormModal, nodeToForm, type NodeGroupChoice } from "./node-form-modal";
 import { connectHead } from "./head-connection";
 
-type NodeTarget = { mode: "add" } | { mode: "edit"; rigId: string; node: RigNode };
+type NodeTarget =
+  | { mode: "add" }
+  | { mode: "edit"; rigId: string; node: RigNode }
+  | { mode: "head"; node: RigNode };
 type DeleteTarget = { kind: "rig"; rig: Rig } | { kind: "node"; rigId: string; node: RigNode };
 
 /** The rig the controller seeds on first boot is not a name anyone chose. */
@@ -30,6 +33,8 @@ const compareNodes = (a: RigNode, b: RigNode) => {
 };
 
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+const isHeadScope = (id: string): boolean => id.startsWith("head:");
+const workerId = (id: string): string => (isHeadScope(id) ? id.slice("head:".length) : id);
 
 /**
  * Everything this workspace can run a model on.
@@ -42,6 +47,8 @@ const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ?
 export function MachinesSection({ state }: { state: ConfigureState }) {
   const [nodeTarget, setNodeTarget] = useState<NodeTarget | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const groupTitle = (rig: Rig): string =>
+    isHeadScope(rig.id) ? (state.headConnection?.name ?? "Studio Head") : rigTitle(rig);
 
   const groups = useMemo(
     () =>
@@ -59,8 +66,9 @@ export function MachinesSection({ state }: { state: ConfigureState }) {
 
   const machines = groups.flatMap((group) => group.nodes);
   const poolGb = groups.reduce((sum, group) => sum + group.gpuGb, 0);
+  const localGroups = groups.filter((group) => !isHeadScope(group.rig.id));
   const defaultRigId =
-    groups.find((group) => group.containsLocal)?.rig.id ?? groups[0]?.rig.id ?? null;
+    localGroups.find((group) => group.containsLocal)?.rig.id ?? localGroups[0]?.rig.id ?? null;
   // One group is the shipped default and naming it on screen says nothing. The
   // band only appears once there is a second group to tell it apart from.
   const showGroupBands = groups.length > 1;
@@ -70,14 +78,18 @@ export function MachinesSection({ state }: { state: ConfigureState }) {
     group: NodeGroupChoice | null,
   ) => {
     if (!nodeTarget) return;
+    if (nodeTarget.mode === "head" || payload.role === "head") {
+      if (!payload.address) throw new Error("Enter the Head controller URL");
+      await connectHead({ name: payload.name, url: payload.address });
+      await state.reload();
+      return;
+    }
     if (nodeTarget.mode === "edit") {
       await state.updateNode(nodeTarget.rigId, nodeTarget.node.id, payload);
       return;
     }
-    if (payload.role === "head") {
-      if (!payload.address) throw new Error("Enter the Head controller URL");
-      await connectHead({ name: payload.name, url: payload.address });
-      await state.reload();
+    if (payload.role === "worker") {
+      await state.addWorker(payload);
       return;
     }
     if (!group) throw new Error("Choose a group for this machine");
@@ -136,7 +148,7 @@ export function MachinesSection({ state }: { state: ConfigureState }) {
               <div className="flex items-baseline justify-between gap-4 px-1 pt-2">
                 <div className="flex min-w-0 items-baseline gap-2.5">
                   <span className="shrink-0 text-[length:var(--fs-xs)] font-medium text-(--dim)">
-                    {rigTitle(rig)}
+                    {groupTitle(rig)}
                   </span>
                   {rig.description ? (
                     <span className="truncate text-[length:var(--fs-xs)] text-(--dim)/60">
@@ -149,11 +161,11 @@ export function MachinesSection({ state }: { state: ConfigureState }) {
                     {plural(nodes.length, "machine")}
                     {gpuGb ? ` · ${gpuGb} GB` : ""}
                   </span>
-                  {!containsLocal ? (
+                  {!containsLocal && !isHeadScope(rig.id) ? (
                     <ModelButton
                       tone="danger"
                       onClick={() => setDeleteTarget({ kind: "rig", rig })}
-                      title={`Delete the ${rigTitle(rig)} group`}
+                      title={`Delete the ${groupTitle(rig)} group`}
                     >
                       Delete group
                     </ModelButton>
@@ -167,12 +179,27 @@ export function MachinesSection({ state }: { state: ConfigureState }) {
                   key={node.id}
                   node={node}
                   isLocal={node.id === state.localNodeId}
-                  worker={state.workers.find((worker) => worker.id === node.id)}
-                  onEdit={() => setNodeTarget({ mode: "edit", rigId: rig.id, node })}
+                  worker={state.workers.find((worker) => worker.id === workerId(node.id))}
+                  connectionStatus={
+                    node.role === "head" && isHeadScope(node.id)
+                      ? state.headConnected
+                        ? "online"
+                        : "offline"
+                      : undefined
+                  }
+                  onEdit={() =>
+                    setNodeTarget(
+                      node.role === "head" && isHeadScope(node.id)
+                        ? { mode: "head", node }
+                        : { mode: "edit", rigId: rig.id, node },
+                    )
+                  }
                   onRemove={
-                    node.id === state.localNodeId
-                      ? undefined
-                      : () => setDeleteTarget({ kind: "node", rigId: rig.id, node })
+                    node.role === "head" && isHeadScope(node.id)
+                      ? state.disconnectHead
+                      : node.id === state.localNodeId
+                        ? undefined
+                        : () => setDeleteTarget({ kind: "node", rigId: rig.id, node })
                   }
                 />
               ))
@@ -187,17 +214,18 @@ export function MachinesSection({ state }: { state: ConfigureState }) {
 
       {nodeTarget ? (
         <NodeFormModal
-          title={nodeTarget.mode === "edit" ? `Edit ${nodeTarget.node.name}` : "Add machine"}
-          initial={nodeTarget.mode === "edit" ? nodeToForm(nodeTarget.node) : undefined}
+          title={nodeTarget.mode === "add" ? "Add machine" : `Edit ${nodeTarget.node.name}`}
+          initial={nodeTarget.mode === "add" ? undefined : nodeToForm(nodeTarget.node)}
           detected={nodeTarget.mode === "edit" && nodeTarget.node.source === "detected"}
           groups={
-            nodeTarget.mode === "add"
+            nodeTarget.mode !== "edit"
               ? {
-                  options: groups.map(({ rig }) => ({ id: rig.id, label: rigTitle(rig) })),
+                  options: localGroups.map(({ rig }) => ({ id: rig.id, label: rigTitle(rig) })),
                   defaultRigId,
                 }
               : undefined
           }
+          hasHead={Boolean(state.headConnection)}
           onClose={() => setNodeTarget(null)}
           onSubmit={submitNode}
         />
@@ -208,7 +236,7 @@ export function MachinesSection({ state }: { state: ConfigureState }) {
           title={deleteTarget.kind === "rig" ? "Delete group" : "Remove machine"}
           message={
             deleteTarget.kind === "rig"
-              ? `Delete the "${rigTitle(deleteTarget.rig)}" group and the ${plural(deleteTarget.rig.nodes.length, "machine")} in it? No hardware is touched.`
+              ? `Delete the "${groupTitle(deleteTarget.rig)}" group and the ${plural(deleteTarget.rig.nodes.length, "machine")} in it? No hardware is touched.`
               : `Remove "${deleteTarget.node.name}"? Its GPUs stop counting toward the pool.`
           }
           confirmLabel="Remove"

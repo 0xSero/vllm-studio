@@ -9,11 +9,14 @@ const HEAD_PATHS = [
   "/api/spec",
   "/health",
   "/studio/rigs",
+  "/studio/providers",
   "/studio/sessions",
+  "/studio/usage",
   "/studio/workers",
   "/usage",
   "/v1/chat/completions",
   "/v1/models",
+  "/v1/responses",
 ] as const;
 
 const isHeadPath = (path: string): boolean =>

@@ -151,7 +151,10 @@ export const makeAppContext = Effect.gen(function* () {
     (resource) => releaseSafely("lifetime-metrics-store.close", logger, resource.close()),
   );
   const inferenceRequestStore = yield* Effect.acquireRelease(
-    initializeSync("inference-request-store.open", () => new InferenceRequestStore(dbPath)),
+    initializeSync(
+      "inference-request-store.open",
+      () => new InferenceRequestStore(dbPath, config.controller_mode),
+    ),
     (resource) => releaseSafely("inference-request-store.close", logger, resource.close()),
   );
   const controllerSettingsStore = yield* Effect.acquireRelease(

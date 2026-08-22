@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { Effect, Schema } from "effect";
-import { HttpStatus, notFound } from "../../core/errors";
+import { conflict, HttpStatus, notFound } from "../../core/errors";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
 import { effectRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import type { Recipe } from "../models/types";
@@ -12,10 +12,7 @@ import {
   exposeReasoningAsContentWhenEmpty,
   stripDeepSeekControlTokens,
 } from "./reasoning";
-import {
-  recordNonStreamingInferenceUsage,
-  type InferenceUsageInput,
-} from "./inference-accounting";
+import { recordNonStreamingInferenceUsage, type InferenceUsageInput } from "./inference-accounting";
 import {
   attachSessionUsage,
   createNonRunningModelWarner,
@@ -229,6 +226,15 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
           ctx.req.header("x-source") ??
           ctx.req.header("user-agent") ??
           null;
+
+        if (
+          requestProvider !== DEFAULT_CHAT_PROVIDER &&
+          context.config.controller_mode !== "head"
+        ) {
+          return yield* Effect.fail(
+            conflict("Cloud provider models are available through a Head controller"),
+          );
+        }
 
         if (
           !matchedRecipe &&

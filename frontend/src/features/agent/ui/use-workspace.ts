@@ -25,11 +25,12 @@ import type {
 import { useProjects } from "@/features/agent/projects/context";
 import { useToolsRef } from "@/features/agent/tools/context";
 import { BACKEND_URL_STORAGE_KEY, getApiKey, getStoredBackendUrl } from "@/lib/api/connection";
+import { getControllerApiKey, normalizeControllerUrl } from "@/lib/api/controllers";
 import {
-  CONTROLLERS_STORAGE_KEY,
-  loadSavedControllers,
-  normalizeControllerUrl,
-} from "@/lib/api/controllers";
+  getHeadConnection,
+  HEAD_CONNECTION_CHANGED_EVENT,
+  HEAD_CONNECTION_STORAGE_KEY,
+} from "@/lib/api/head-controller";
 import type { Session, UpdateSession } from "@/features/agent/runtime/types";
 import {
   useWorkspaceHydrationEffects,
@@ -98,28 +99,20 @@ function createWorkspaceWindow(source: Window): WorkspaceWindow {
   };
 }
 
-function agentModelControllersPayload() {
-  const activeUrl = normalizeControllerUrl(getStoredBackendUrl());
-  const saved = loadSavedControllers().flatMap((controller) => {
-    const url = normalizeControllerUrl(controller.url);
-    return url ? [{ ...controller, url }] : [];
-  });
-  const byUrl = new Map(saved.map((controller) => [controller.url, controller]));
-  if (activeUrl) {
-    const activeApiKey = getApiKey();
-    const savedActive = byUrl.get(activeUrl);
-    byUrl.delete(activeUrl);
-    return [
-      {
-        ...savedActive,
-        url: activeUrl,
-        ...(activeApiKey ? { apiKey: activeApiKey } : {}),
-        name: savedActive?.name ?? "primary",
-      },
-      ...byUrl.values(),
-    ];
+async function agentModelControllersPayload() {
+  const settingsResponse = await fetch("/api/settings", { cache: "no-store" });
+  const settings = await safeJson<{ backendUrl?: string }>(settingsResponse);
+  const localUrl = normalizeControllerUrl(getStoredBackendUrl() || settings.backendUrl || "");
+  const head = getHeadConnection();
+  const controllers = localUrl ? [{ url: localUrl, apiKey: getApiKey(), name: "This Mac" }] : [];
+  if (head && normalizeControllerUrl(head.url) !== localUrl) {
+    controllers.push({
+      url: head.url,
+      apiKey: getControllerApiKey(head.url),
+      name: head.name || "Studio Head",
+    });
   }
-  return [...byUrl.values()];
+  return controllers;
 }
 
 async function loadAgentModelsPayload(): Promise<{ models?: AgentModel[]; error?: string }> {
@@ -127,7 +120,7 @@ async function loadAgentModelsPayload(): Promise<{ models?: AgentModel[]; error?
     method: "POST",
     headers: { "Content-Type": "application/json" },
     cache: "no-store",
-    body: JSON.stringify({ controllers: agentModelControllersPayload() }),
+    body: JSON.stringify({ controllers: await agentModelControllersPayload() }),
   });
   const payload = await safeJson<{ models?: AgentModel[]; error?: string }>(response);
   if (!response.ok) throw new Error(payload.error || "Failed to load models");
@@ -224,7 +217,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
     };
     const onStorage = (event: StorageEvent | Event) => {
       const key = (event as StorageEvent).key;
-      if (key && key !== BACKEND_URL_STORAGE_KEY && key !== CONTROLLERS_STORAGE_KEY) return;
+      if (key && key !== BACKEND_URL_STORAGE_KEY && key !== HEAD_CONNECTION_STORAGE_KEY) return;
       reload();
     };
     const recoverIfEmpty = () => {
@@ -232,11 +225,13 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
     };
     const retryTimers = [900, 2500, 6000].map((ms) => window.setTimeout(recoverIfEmpty, ms));
     window.addEventListener("storage", onStorage);
+    window.addEventListener(HEAD_CONNECTION_CHANGED_EVENT, reload);
     window.addEventListener("focus", recoverIfEmpty);
     window.addEventListener("online", recoverIfEmpty);
     return () => {
       for (const t of retryTimers) window.clearTimeout(t);
       window.removeEventListener("storage", onStorage);
+      window.removeEventListener(HEAD_CONNECTION_CHANGED_EVENT, reload);
       window.removeEventListener("focus", recoverIfEmpty);
       window.removeEventListener("online", recoverIfEmpty);
     };

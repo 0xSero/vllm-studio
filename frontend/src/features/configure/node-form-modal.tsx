@@ -58,6 +58,21 @@ const ROLE_OPTIONS: Array<{ value: RigNodeRole; label: string }> = [
   { value: "worker", label: "Worker — lends GPUs to a head" },
 ];
 
+const availableRoleOptions = (
+  initial: NodeFormState | undefined,
+  adding: boolean,
+  hasHead: boolean,
+) => {
+  if (initial) return ROLE_OPTIONS.filter((option) => option.value === initial.role);
+  if (!adding) return ROLE_OPTIONS;
+  return ROLE_OPTIONS.filter(
+    (option) =>
+      option.value === "standalone" ||
+      (option.value === "head" && !hasHead) ||
+      (option.value === "worker" && hasHead),
+  );
+};
+
 function formError(
   form: NodeFormState,
   groups:
@@ -65,10 +80,12 @@ function formError(
     | undefined,
   creatingGroup: boolean,
   connectingHead: boolean,
+  hasHead: boolean,
 ): string | null {
   if (!form.name.trim()) return "Give this machine a name";
   if (connectingHead && !form.address.trim()) return "Enter the Head controller URL";
-  if (groups && !connectingHead && creatingGroup && !form.group_name.trim()) {
+  if (form.role === "worker" && !hasHead) return "Connect a Studio Head before adding a Worker";
+  if (groups && form.role === "standalone" && creatingGroup && !form.group_name.trim()) {
     return "Name the new group";
   }
   return null;
@@ -179,6 +196,7 @@ export function NodeFormModal({
   initial,
   detected,
   groups,
+  hasHead = false,
   onClose,
   onSubmit,
 }: {
@@ -191,6 +209,7 @@ export function NodeFormModal({
    * groups, so offering the choice again while editing would be a lie.
    */
   groups?: { options: Array<{ id: string; label: string }>; defaultRigId: string | null };
+  hasHead?: boolean;
   onClose: () => void;
   onSubmit: (
     payload: RigNodePayload & { name: string },
@@ -204,6 +223,7 @@ export function NodeFormModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const connectingHead = Boolean(groups) && form.role === "head";
+  const roleOptions = availableRoleOptions(initial, Boolean(groups), hasHead);
 
   const set = <K extends keyof NodeFormState>(key: K, value: NodeFormState[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -212,13 +232,14 @@ export function NodeFormModal({
 
   const groupChoice = (): NodeGroupChoice | null => {
     if (!groups) return null;
+    if (form.role !== "standalone") return null;
     return creatingGroup
       ? { kind: "new", name: form.group_name.trim() }
       : { kind: "existing", rigId: form.group_id };
   };
 
   const submit = async () => {
-    const validationError = formError(form, groups, creatingGroup, connectingHead);
+    const validationError = formError(form, groups, creatingGroup, connectingHead, hasHead);
     if (validationError) {
       setError(validationError);
       return;
@@ -291,7 +312,7 @@ export function NodeFormModal({
               onChange={(event) => {
                 if (isRigNodeRole(event.target.value)) set("role", event.target.value);
               }}
-              options={ROLE_OPTIONS}
+              options={roleOptions}
             />
           </FormField>
           {connectingHead ? (
@@ -345,7 +366,7 @@ export function NodeFormModal({
               />
             </FormField>
           )}
-          {groups && !connectingHead ? (
+          {groups && form.role === "standalone" ? (
             <>
               <FormField
                 label="Group"

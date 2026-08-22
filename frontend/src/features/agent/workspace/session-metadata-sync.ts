@@ -1,5 +1,5 @@
 import type { SessionMetadata } from "@local-studio/contracts/federation";
-import api from "@/lib/api/client";
+import { createHeadApiClient, getHeadConnection } from "@/lib/api/head-controller";
 import { readLocalProfile } from "@/features/shell/local-profile";
 import type { Session, SessionsMap } from "@/features/agent/runtime/types";
 
@@ -80,7 +80,8 @@ const schedule = (session: Session): void => {
     session.id,
     setTimeout(() => {
       timers.delete(session.id);
-      void api
+      if (!getHeadConnection()) return;
+      void createHeadApiClient()
         .upsertSessionMetadata(metadata)
         .then(() => signatures.set(session.id, signature))
         .catch(() => undefined);
