@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [main]
   push:
     branches: [main]
   schedule:
@@ -31,9 +31,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.sha }}
         run: |
-          if [[ "$GITHUB_HEAD_REF" == "dev" ]]; then
-            node scripts/project.mjs check-commits --range "$BASE_SHA..$HEAD_SHA" --exclude origin/dev
-          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             node scripts/project.mjs check-commits --range "$BASE_SHA..$HEAD_SHA" --exclude origin/main
           else
             node scripts/project.mjs check-commits --range "$BASE_SHA..$HEAD_SHA"
@@ -165,7 +163,7 @@ jobs:
 
   dependency-review:
     name: Dependency Review
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.repository.fork == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

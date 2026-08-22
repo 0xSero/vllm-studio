@@ -1,35 +1,39 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
+  push:
+    tags:
+      - "v*.*.*"
 
 concurrency:
-  group: release-main
-  cancel-in-progress: true
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   build:
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: macos-15
     permissions:
-      contents: write
+      contents: read
     outputs:
-      release_version: ${{ steps.next-release.outputs.version }}
+      release_version: ${{ steps.release-version.outputs.version }}
     env:
-      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+      RELEASE_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.sha }}
 
-      - name: Select tested main revision
-        run: git checkout -B main "${{ github.event.workflow_run.head_sha }}"
+      - id: release-version
+        name: Validate release tag
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must match vX.Y.Z" >&2
+            exit 1
+          fi
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Reject stale release revision
+      - name: Reject tags outside current main
         run: node scripts/project.mjs assert-release-main --commit "$RELEASE_SHA"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -43,79 +47,53 @@ jobs:
       - name: Install repository dependencies
         run: npm run setup
 
-      - id: next-release
-        name: Determine release version
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -o pipefail
-          npx --yes \
-            --package semantic-release@24.2.7 \
-            --package @semantic-release/commit-analyzer@13.0.1 \
-            --package @semantic-release/release-notes-generator@14.1.0 \
-            --package @semantic-release/github@11.0.6 \
-            --package conventional-changelog-conventionalcommits@8.0.0 \
-            semantic-release --dry-run 2>&1 | tee semantic-release.log
-          version="$(sed -nE 's/.*The next release version is ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' semantic-release.log | tail -1)"
-          if [ -n "$version" ]; then
-            echo "version=$version" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Build unsigned release app
-        if: steps.next-release.outputs.version != ''
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: >-
           npm --prefix frontend run desktop:pack --
           --config.mac.identity=null
           --config.mac.hardenedRuntime=false
-          --config.extraMetadata.version=${{ steps.next-release.outputs.version }}
-          --config.extraMetadata.localStudioCommit=${{ github.event.workflow_run.head_sha }}
+          --config.extraMetadata.version=${{ steps.release-version.outputs.version }}
+          --config.extraMetadata.localStudioCommit=${{ github.sha }}
 
       - name: Verify unsigned updater metadata
-        if: steps.next-release.outputs.version != ''
         run: |
           update_config="frontend/dist-desktop/mac-arm64/Local Studio.app/Contents/Resources/app-update.yml"
           test -f "$update_config"
-          grep -Fx "owner: sybil-solutions" "$update_config"
+          grep -Fx "owner: jake-molnia" "$update_config"
           grep -Fx "repo: local-studio" "$update_config"
           grep -Fx "provider: github" "$update_config"
           grep -Fx "updaterCacheDirName: frontend-updater" "$update_config"
 
       - name: Archive unsigned release app
-        if: steps.next-release.outputs.version != ''
         run: >-
           ditto -c -k --keepParent
           "frontend/dist-desktop/mac-arm64/Local Studio.app"
-          "local-studio-unsigned-${{ github.event.workflow_run.head_sha }}.zip"
+          "local-studio-unsigned-${{ github.sha }}.zip"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: steps.next-release.outputs.version != ''
         with:
-          name: local-studio-unsigned-${{ github.event.workflow_run.head_sha }}
-          path: local-studio-unsigned-${{ github.event.workflow_run.head_sha }}.zip
+          name: local-studio-unsigned-${{ github.sha }}
+          path: local-studio-unsigned-${{ github.sha }}.zip
           if-no-files-found: error
           retention-days: 1
 
   sign:
     needs: build
-    if: needs.build.outputs.release_version != ''
     runs-on: macos-15
     environment: release-signing
     permissions:
       contents: read
     env:
-      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+      RELEASE_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.sha }}
 
-      - name: Select tested main revision
-        run: git checkout -B main "$RELEASE_SHA"
-
-      - name: Reject stale release revision
+      - name: Reject tags outside current main
         run: node scripts/project.mjs assert-release-main --commit "$RELEASE_SHA"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -128,13 +106,13 @@ jobs:
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: local-studio-unsigned-${{ github.event.workflow_run.head_sha }}
+          name: local-studio-unsigned-${{ github.sha }}
           path: ${{ runner.temp }}/unsigned-release
 
       - name: Extract unsigned release app
         run: >-
           ditto -x -k
-          "${{ runner.temp }}/unsigned-release/local-studio-unsigned-${{ github.event.workflow_run.head_sha }}.zip"
+          "${{ runner.temp }}/unsigned-release/local-studio-unsigned-${{ github.sha }}.zip"
           "${{ runner.temp }}/unsigned-release/app"
 
       - name: Sign and notarize release assets
@@ -161,53 +139,40 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: local-studio-release-assets-${{ github.event.workflow_run.head_sha }}
+          name: local-studio-release-assets-${{ github.sha }}
           path: release-staging/*
           if-no-files-found: error
           retention-days: 7
 
   publish:
     needs: [build, sign]
-    if: needs.build.outputs.release_version != ''
     runs-on: macos-15
     permissions:
       contents: write
     env:
-      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+      RELEASE_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.sha }}
 
-      - name: Select tested main revision
-        run: git checkout -B main "$RELEASE_SHA"
-
-      - name: Reject stale release revision
+      - name: Reject tags outside current main
         run: node scripts/project.mjs assert-release-main --commit "$RELEASE_SHA"
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22.19.0
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: local-studio-release-assets-${{ github.event.workflow_run.head_sha }}
+          name: local-studio-release-assets-${{ github.sha }}
           path: release-staging
 
-      - name: Configure git author
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Publish release
+      - name: Publish GitHub release
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          npx --yes \
-            --package semantic-release@24.2.7 \
-            --package @semantic-release/commit-analyzer@13.0.1 \
-            --package @semantic-release/release-notes-generator@14.1.0 \
-            --package @semantic-release/github@11.0.6 \
-            --package conventional-changelog-conventionalcommits@8.0.0 \
-            semantic-release
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME"
+          release-staging/*
+          --repo "$GITHUB_REPOSITORY"
+          --title "Local Studio $GITHUB_REF_NAME"
+          --generate-notes
+          --verify-tag
+          --latest

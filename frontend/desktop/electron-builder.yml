@@ -137,7 +137,7 @@ directories:
 mac:
   icon: desktop/resources/icon.icns
   category: public.app-category.developer-tools
-  identity: "sherif cherfa (TZ447KHNZL)"
+  identity: "Jacob Molnia (MS5PHQJD6W)"
   target:
     - target: dmg
       arch:

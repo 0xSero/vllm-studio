@@ -40,6 +40,7 @@ export interface AgentModel {
   thinkingLevels?: AgentThinkingLevel[];
   vision: boolean;
   active: boolean;
+  api?: "openai-completions" | "openai-responses";
 }
 
 export function inferReasoningSupport(modelId: string): boolean {
@@ -118,6 +119,11 @@ function resolveReasoning(
   return typeof explicitReasoning === "boolean" ? explicitReasoning : inferReasoningSupport(id);
 }
 
+function resolveApi(metadata: Record<string, unknown>): AgentModel["api"] {
+  const api = metadata.api;
+  return api === "openai-responses" || api === "openai-completions" ? api : undefined;
+}
+
 export function normalizeOpenAIModel(model: OpenAIModelListItem): AgentModel {
   const metadata = recordFromUnknown(model.metadata);
   const id = String(model.id || "").trim();
@@ -126,6 +132,7 @@ export function normalizeOpenAIModel(model: OpenAIModelListItem): AgentModel {
   const maxTokens = resolveMaxTokens(model, metadata, contextWindow);
   const explicitActive = metadata.active ?? model.active;
 
+  const api = resolveApi(metadata);
   return {
     id,
     name,
@@ -139,6 +146,7 @@ export function normalizeOpenAIModel(model: OpenAIModelListItem): AgentModel {
       modalities: [model.input, model.inputs, model.modalities],
     }),
     active: explicitActive === true,
+    ...(api ? { api } : {}),
   };
 }
 

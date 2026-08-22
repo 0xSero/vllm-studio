@@ -37,6 +37,20 @@ function decodeProviders(input: unknown): ProvidersResponse {
   return { providers: providers as ProviderView[] };
 }
 
+function decodeControllerProvider(input: unknown): ProviderView {
+  const provider = (input as { provider?: unknown })?.provider as ProviderView | undefined;
+  if (!provider || typeof provider.id !== "string") {
+    throw new Error("Malformed controller provider response");
+  }
+  return { ...provider, controllerOwned: true };
+}
+
+function providerApiRoot(provider: Pick<ProviderView, "id" | "controllerOwned">): string {
+  return provider.controllerOwned
+    ? `/api/proxy/studio/providers/${encodeURIComponent(provider.id)}`
+    : `/api/agent/providers/${encodeURIComponent(provider.id)}`;
+}
+
 function decodeLoginStart(input: unknown): ProviderLoginStartResponse {
   const jobId = (input as { jobId?: unknown })?.jobId;
   if (typeof jobId !== "string") throw new Error("Malformed login response");
@@ -192,11 +206,13 @@ function PromptForm({
 function LoginFlowPanel({
   jobId,
   providerName,
+  apiRoot,
   onFinished,
   onClose,
 }: {
   jobId: string;
   providerName: string;
+  apiRoot: string;
   onFinished: () => void;
   onClose: () => void;
 }) {
@@ -209,7 +225,7 @@ function LoginFlowPanel({
       if (cursor.done || cancelled) return;
       try {
         const view = await requestJson(
-          `/api/agent/providers/login/${encodeURIComponent(jobId)}?after=${cursor.after}`,
+          `${apiRoot}/login/${encodeURIComponent(jobId)}?after=${cursor.after}`,
           decodeLoginJob,
         );
         if (cancelled) return;
@@ -233,7 +249,7 @@ function LoginFlowPanel({
   const respond = useCallback(
     async (promptId: number, value: string) => {
       await requestJson(
-        `/api/agent/providers/login/${encodeURIComponent(jobId)}/respond`,
+        `${apiRoot}/login/${encodeURIComponent(jobId)}/respond`,
         () => ({ ok: true }),
         {
           method: "POST",
@@ -242,12 +258,12 @@ function LoginFlowPanel({
         },
       );
     },
-    [jobId],
+    [apiRoot, jobId],
   );
 
   const cancel = async () => {
     await requestJson(
-      `/api/agent/providers/login/${encodeURIComponent(jobId)}/cancel`,
+      `${apiRoot}/login/${encodeURIComponent(jobId)}/cancel`,
       () => ({ ok: true }),
       { method: "POST" },
     ).catch(() => undefined);
@@ -363,14 +379,16 @@ function ProviderDrawer({
         <ResourceFact label="Credential" value={badge ?? "Not configured"} />
       </ResourceDrawerSection>
       <p className="mb-5 text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
-        Models from {provider.name} appear beside controller models in Workbench after this provider
-        is connected.
+        {provider.controllerOwned
+          ? `Your ${provider.name} credential stays on the controller. Pi reaches these models through the same controller endpoint as local models.`
+          : `Models from ${provider.name} appear beside controller models in Workbench after this provider is connected.`}
       </p>
       {activeForProvider ? (
         <LoginFlowPanel
           key={activeForProvider.jobId}
           jobId={activeForProvider.jobId}
           providerName={activeForProvider.providerName}
+          apiRoot={providerApiRoot(provider)}
           onFinished={onFinished}
           onClose={onClose}
         />
@@ -391,8 +409,28 @@ export function ModelProvidersSection() {
 
   const refresh = useCallback(() => {
     setRefreshing(true);
-    void requestJson("/api/agent/providers", decodeProviders)
-      .then(({ providers: list }) => {
+    void Promise.all([
+      requestJson("/api/agent/providers", decodeProviders),
+      requestJson(
+        "/api/proxy/studio/providers/openai-codex/status",
+        decodeControllerProvider,
+      ).catch(
+        () =>
+          ({
+            id: "openai-codex",
+            name: "OpenAI Codex",
+            oauth: { label: "OpenAI (ChatGPT subscription)" },
+            configured: false,
+            modelCount: 0,
+            controllerOwned: true,
+          }) satisfies ProviderView,
+      ),
+    ])
+      .then(([agentProviders, controllerCodex]) => {
+        const list = [
+          controllerCodex,
+          ...agentProviders.providers.filter((provider) => provider.id !== "openai-codex"),
+        ];
         setProviders(list);
         setSelectedProvider((current) =>
           current ? (list.find((provider) => provider.id === current.id) ?? current) : null,
@@ -412,15 +450,11 @@ export function ModelProvidersSection() {
   const connect = async (provider: ProviderView, type: "oauth" | "api_key") => {
     setError(null);
     try {
-      const { jobId } = await requestJson(
-        `/api/agent/providers/${encodeURIComponent(provider.id)}/login`,
-        decodeLoginStart,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type }),
-        },
-      );
+      const { jobId } = await requestJson(`${providerApiRoot(provider)}/login`, decodeLoginStart, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(provider.controllerOwned ? {} : { type }),
+      });
       setActive({ jobId, providerId: provider.id, providerName: provider.name });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start sign-in");
@@ -429,14 +463,14 @@ export function ModelProvidersSection() {
 
   const signOut = useCallback(
     async (providerId: string) => {
-      await requestJson(
-        `/api/agent/providers/${encodeURIComponent(providerId)}/logout`,
-        () => ({ ok: true }),
-        { method: "POST" },
-      ).catch(() => undefined);
+      const provider = providers?.find((candidate) => candidate.id === providerId);
+      if (!provider) return;
+      await requestJson(`${providerApiRoot(provider)}/logout`, () => ({ ok: true }), {
+        method: "POST",
+      }).catch(() => undefined);
       refresh();
     },
-    [refresh],
+    [providers, refresh],
   );
 
   const finished = useCallback(() => {

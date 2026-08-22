@@ -56,14 +56,14 @@ export function redactLogLine(line: string): string {
   // JSON-ish key/value pairs: "api_key": "...", 'token': '...'.
   // Preserves the quote style of the value.
   redacted = redacted.replace(
-    /(["']?(?:api_key|api-key|apikey|auth_token|access_token|token|secret|password|hf_token|openai_api_key|anthropic_api_key)["']?\s*:\s*)(["'])[^"']*\2/gi,
+    /(["']?(?:api_key|api-key|apikey|auth_token|access_token|refresh_token|authorization_code|device_code|code_verifier|token|secret|password|hf_token|openai_api_key|anthropic_api_key)["']?\s*:\s*)(["'])[^"']*\2/gi,
     `$1$2${REDACTED}$2`,
   );
 
   // CLI long flags: --api-key <value>, --hf-token <value>, etc.
   redacted = redacted.replace(
     new RegExp(
-      String.raw`(\s)(--(?:api-key|apikey|api_token|auth-token|access-token|hf-token|token|secret|password))\s+` +
+      String.raw`(\s)(--(?:api-key|apikey|api_token|auth-token|access-token|refresh-token|authorization-code|device-code|code-verifier|hf-token|token|secret|password))\s+` +
         TOKEN,
       "gi",
     ),
@@ -72,7 +72,7 @@ export function redactLogLine(line: string): string {
 
   // URL query parameters: api_key=..., token=..., password=..., refresh_token=..., client_secret=..., etc.
   redacted = redacted.replace(
-    /([?&])(api_key|api-key|apikey|token|access_token|auth_token|key|secret|hf_token|openai_api_key|anthropic_api_key|password|passwd|client_secret|refresh_token|id_token|session_token|secret_access_key)=([^&\s]*)/gi,
+    /([?&])(api_key|api-key|apikey|token|access_token|refresh_token|authorization_code|device_code|code_verifier|auth_token|key|secret|hf_token|openai_api_key|anthropic_api_key|password|passwd|client_secret|id_token|session_token|secret_access_key)=([^&\s]*)/gi,
     `$1$2=${REDACTED}`,
   );
 

@@ -1,0 +1,124 @@
+name: Nightly
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-main
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish-nightly:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - id: nightly-version
+        name: Resolve nightly version
+        run: |
+          latest_tag=""
+          while IFS= read -r tag; do
+            if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              latest_tag="$tag"
+              break
+            fi
+          done < <(git tag --list "v*" --sort=-v:refname)
+          latest_tag="${latest_tag:-v0.0.0}"
+          stable_version="${latest_tag#v}"
+          IFS=. read -r major minor patch <<< "$stable_version"
+          version="${major}.${minor}.$((patch + 1))-nightly.${GITHUB_RUN_NUMBER}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.19.0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.14
+
+      - name: Install repository dependencies
+        run: npm run setup
+
+      - name: Build unsigned nightly assets
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          NIGHTLY_VERSION: ${{ steps.nightly-version.outputs.version }}
+        run: >-
+          npm --prefix frontend run desktop:dist --
+          --config.mac.identity=null
+          --config.mac.hardenedRuntime=false
+          --config.mac.notarize=false
+          --config.dmg.sign=false
+          --config.extraMetadata.version="$NIGHTLY_VERSION"
+          --config.extraMetadata.localStudioCommit=${{ github.sha }}
+          --publish never
+
+      - name: Stage nightly assets
+        env:
+          NIGHTLY_VERSION: ${{ steps.nightly-version.outputs.version }}
+        run: |
+          output="frontend/dist-desktop"
+          staging="release-nightly"
+          base="Local Studio-${NIGHTLY_VERSION}-arm64"
+          mkdir -p "$staging"
+          cp "$output/${base}.dmg" "$staging/${base}.dmg"
+          cp "$output/${base}.dmg.blockmap" "$staging/${base}.dmg.blockmap"
+          cp "$output/${base}-mac.zip" "$staging/${base}-mac.zip"
+          cp "$output/${base}-mac.zip.blockmap" "$staging/${base}-mac.zip.blockmap"
+          cp "$output/latest-mac.yml" "$staging/latest-mac.yml"
+          cp "$output/${base}.dmg" "$staging/Local-Studio-Nightly-arm64.dmg"
+
+      - name: Publish rolling nightly release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NIGHTLY_VERSION: ${{ steps.nightly-version.outputs.version }}
+        run: |
+          notes="$RUNNER_TEMP/nightly-notes.md"
+          printf '%s\n\n%s\n\n%s\n' \
+            "Unsigned rolling build of main at $GITHUB_SHA." \
+            "Version: $NIGHTLY_VERSION" \
+            "macOS will require manual approval in System Settings → Privacy & Security. In-app auto-update is unavailable until nightly builds are signed." \
+            > "$notes"
+
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/nightly" >/dev/null 2>&1; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/nightly" \
+              -f sha="$GITHUB_SHA" -F force=true >/dev/null
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/nightly" -f sha="$GITHUB_SHA" >/dev/null
+          fi
+
+          if gh release view nightly --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/nightly" --jq '.assets[].id' |
+              while IFS= read -r asset_id; do
+                gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+              done
+            gh release edit nightly \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Local Studio Nightly ($NIGHTLY_VERSION)" \
+              --notes-file "$notes" \
+              --draft=false \
+              --prerelease \
+              --latest=false
+            gh release upload nightly release-nightly/* --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create nightly release-nightly/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --verify-tag \
+              --title "Local Studio Nightly ($NIGHTLY_VERSION)" \
+              --notes-file "$notes" \
+              --prerelease \
+              --latest=false
+          fi

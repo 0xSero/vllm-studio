@@ -7,7 +7,7 @@ ROLLBACK_ROOT="${LOCAL_STUDIO_ROLLBACK_ROOT:-$HOME/Library/Application Support/L
 LSREGISTER="${LOCAL_STUDIO_LSREGISTER:-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister}"
 PLIST_BUDDY="${LOCAL_STUDIO_PLIST_BUDDY:-/usr/libexec/PlistBuddy}"
 SKIP_RUNTIME_CLEANUP="${LOCAL_STUDIO_SKIP_RUNTIME_CLEANUP:-0}"
-RELEASE_DMG_URL="${LOCAL_STUDIO_RELEASE_DMG_URL:-https://github.com/sybil-solutions/local-studio/releases/latest/download/Local-Studio-arm64.dmg}"
+RELEASE_DMG_URL="${LOCAL_STUDIO_RELEASE_DMG_URL:-https://github.com/jake-molnia/local-studio/releases/latest/download/Local-Studio-arm64.dmg}"
 RELEASE_TEMP=""
 RELEASE_MOUNT=""
 

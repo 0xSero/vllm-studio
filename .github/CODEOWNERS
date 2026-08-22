@@ -1,14 +1,14 @@
 # Repository Owners
 
 # Default owner for all files
-* @0xSero
+* @jake-molnia
 
 # Application-specific owners
-/controller/ @0xSero
-/frontend/ @0xSero
+/controller/ @jake-molnia
+/frontend/ @jake-molnia
 
 # Configuration
-docker-compose.yml @0xSero
+docker-compose.yml @jake-molnia
 
 # Documentation
-*.md @0xSero
+*.md @jake-molnia

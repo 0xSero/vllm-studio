@@ -20,7 +20,7 @@ export interface ControllerDeployOptions {
 
 const MARKER = "LOCAL_STUDIO_CONTROLLER ";
 const INSTALL_SCRIPT_URL =
-  "https://raw.githubusercontent.com/sybil-solutions/local-studio/main/scripts/install-controller.sh";
+  "https://raw.githubusercontent.com/jake-molnia/local-studio/main/scripts/install-controller.sh";
 const DEPLOY_TIMEOUT_MS = 15 * 60_000;
 
 // "user@host" / "host" / tailnet names; conservative charset keeps the value

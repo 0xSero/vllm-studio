@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Local Studio controller installer — idempotent, single machine.
 #
-#   curl -fsSL https://raw.githubusercontent.com/sybil-solutions/local-studio/main/scripts/install-controller.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/jake-molnia/local-studio/main/scripts/install-controller.sh | bash
 #   # or piped over ssh by the desktop app's "Deploy controller" flow.
 #
 # Env overrides:
@@ -33,7 +33,7 @@ DATA_DIR="${LOCAL_STUDIO_DATA_DIR:-$DEFAULT_DATA_DIR}"
 MODELS_DIR="${LOCAL_STUDIO_MODELS_DIR:-$DATA_DIR/models}"
 HOST="${LOCAL_STUDIO_HOST:-0.0.0.0}"
 PORT="${LOCAL_STUDIO_PORT:-8080}"
-REPO="${LOCAL_STUDIO_REPO:-https://github.com/sybil-solutions/local-studio.git}"
+REPO="${LOCAL_STUDIO_REPO:-https://github.com/jake-molnia/local-studio.git}"
 BUN="$HOME/.bun/bin/bun"
 
 log() { printf '[local-studio] %s\n' "$*"; }

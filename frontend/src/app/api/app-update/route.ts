@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // Every release publishes Local-Studio-release.json alongside the signed
 // assets, so "what is the newest version" is one small fetch with no GitHub
 // API rate limits. The stable-name DMG below always points at that release.
-const RELEASE_BASE = "https://github.com/sybil-solutions/local-studio/releases/latest/download";
+const RELEASE_BASE = "https://github.com/jake-molnia/local-studio/releases/latest/download";
 const LATEST_DMG_URL = `${RELEASE_BASE}/Local-Studio-arm64.dmg`;
 
 const CACHE_MS = 10 * 60 * 1000;

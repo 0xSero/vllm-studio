@@ -22,6 +22,7 @@ import { ControllerRequestStore } from "./stores/controller-request-store";
 import { ControllerSettingsStore } from "./stores/controller-settings-store";
 import { InferenceRequestStore } from "./stores/inference-request-store";
 import { RigStore } from "./stores/rig-store";
+import { CodexProviderService } from "./services/codex-provider";
 
 export interface AppContext {
   config: Config;
@@ -31,6 +32,7 @@ export interface AppContext {
   downloadManager: DownloadManager;
   compute: Compute;
   bridge: ComputeBridge;
+  codexProvider: CodexProviderService;
   stores: {
     recipeStore: RecipeStore;
     downloadStore: DownloadStore;
@@ -171,6 +173,10 @@ export const makeAppContext = Effect.gen(function* () {
     store: compute.store,
     getRecipe: (recipeId) => recipeStore.get(recipeId),
   });
+  const codexProvider = yield* Effect.acquireRelease(
+    initializeSync("codex-provider.open", () => new CodexProviderService(config.data_dir)),
+    (resource) => Effect.sync(() => resource.shutdown()),
+  );
   const downloadManager = yield* initialize(
     "download-manager.open",
     DownloadManager.make(config, downloadStore, eventManager, logger),
@@ -193,6 +199,7 @@ export const makeAppContext = Effect.gen(function* () {
     downloadManager,
     compute,
     bridge,
+    codexProvider,
     stores: {
       recipeStore,
       downloadStore,

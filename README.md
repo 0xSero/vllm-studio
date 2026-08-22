@@ -9,10 +9,14 @@ and server surfaces.
 
 ## Download
 
-**[Download Local Studio for macOS (Apple Silicon)](https://github.com/sybil-solutions/local-studio/releases/latest/download/Local-Studio-arm64.dmg)**
+**[Download Local Studio for macOS (Apple Silicon)](https://github.com/jake-molnia/local-studio/releases/latest/download/Local-Studio-arm64.dmg)**
 — signed and notarized; updates itself from GitHub releases. All versions on the
-[releases page](https://github.com/sybil-solutions/local-studio/releases), or via
-[localstudio.ai](https://localstudio.ai).
+[releases page](https://github.com/jake-molnia/local-studio/releases).
+
+**[Download the rolling nightly build](https://github.com/jake-molnia/local-studio/releases/tag/nightly)**
+— built unsigned from every push to `main`. Nightly installs require manual
+approval in macOS Privacy & Security and cannot use in-app auto-update until the
+build is signed.
 
 It is built from two modules that share one controller API:
 
@@ -238,19 +242,26 @@ symlinks to `scripts/project.mjs`; they do not contain separate automation logic
 
 ## Releases
 
-Every successful `main` CI run builds an unsigned macOS app and keeps the
-exact-SHA package as a GitHub Actions artifact. Conventional commits
-then trigger `release.yml`. Semantic Release chooses the next version (`feat` →
-minor, breaking → major, all other allowed commit types → patch).
+Every pull request into `main` must pass CI. Every push to `main` refreshes the
+unsigned rolling `nightly` prerelease and its manually installable DMG. A stable
+release starts when a version tag matching `vX.Y.Z` is pushed for the current
+`main` commit; the tag supplies the packaged app version.
+
+```bash
+git checkout main
+git pull --ff-only origin main
+git tag v2.16.0
+git push origin v2.16.0
+```
 
 The release workflow builds the exact revision without Apple credentials,
 then passes only that unsigned app bundle to a separate signing job. The signing
 job installs the lockfile-pinned signing tooling without lifecycle scripts,
 signs, notarizes and staples the release assets, and hands them to a final
-publish job. Each stage rechecks that its revision is still `origin/main`; only
-the final stage can create the GitHub release with the DMG, updater files,
-stable website alias, checksums, and source manifest. There is no npm publish
-and tags are never created by hand.
+publish job. Each stage rejects a tag that does not point to the current
+`origin/main`; only the final stage can create the GitHub release with the DMG,
+updater files, stable download alias, checksums, and source manifest. GitHub
+generates release notes from the tagged changes. There is no npm publish.
 
 ## Acknowledgements
 

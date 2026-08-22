@@ -49,6 +49,7 @@ export type {
 // user-pi passthroughs). They are configured elsewhere; the hub surfaces only
 // the pi builtin/cloud providers.
 const INTERNAL_PROVIDER_PREFIXES = ["local-studio", "user-pi-"];
+const CONTROLLER_OWNED_PROVIDER_IDS = new Set(["openai-codex"]);
 
 const MAX_JOB_EVENTS = 200;
 const MAX_FINISHED_JOBS = 8;
@@ -105,7 +106,10 @@ function serializeAuthEvent(event: AuthEvent): ProviderLoginEventPayload {
 }
 
 function isInternalProviderId(id: string): boolean {
-  return INTERNAL_PROVIDER_PREFIXES.some((prefix) => id === prefix || id.startsWith(prefix));
+  return (
+    CONTROLLER_OWNED_PROVIDER_IDS.has(id) ||
+    INTERNAL_PROVIDER_PREFIXES.some((prefix) => id === prefix || id.startsWith(prefix))
+  );
 }
 
 function agentDirPath(): string {

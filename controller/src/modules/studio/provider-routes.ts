@@ -3,10 +3,7 @@ import { badRequest, notFound } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
 import { effectRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import { savePersistedConfig, type ProviderConfig } from "../../config/persisted-config";
-import {
-  discoverProviderModels,
-  enabledProvidersWithApiKey,
-} from "../../services/provider-routing";
+import { listConfiguredProviderModels } from "../../services/provider-catalog";
 
 type ProviderView = {
   id: string;
@@ -133,16 +130,8 @@ export const registerStudioProviderRoutes = defineRoutes((app, context) => {
     ),
 
     effectRoute(app.get, "/studio/provider-models", (ctx) =>
-      Effect.forEach(
-        enabledProvidersWithApiKey(context.config.providers),
-        (provider) => discoverProviderModels(provider).pipe(Effect.option),
-        { concurrency: "unbounded" },
-      ).pipe(
-        Effect.map((results) =>
-          ctx.json({
-            providers: results.flatMap((result) => (result._tag === "Some" ? [result.value] : [])),
-          }),
-        ),
+      listConfiguredProviderModels(context.config.providers).pipe(
+        Effect.map((providers) => ctx.json({ providers })),
       ),
     ),
   );
