@@ -28,6 +28,7 @@ const logBootSummary = (context: AppContext, port: number): Effect.Effect<void> 
         context.logger.info(
           [
             "Boot summary:",
+            `mode=${config.controller_mode}`,
             `listen=${config.host}:${port}`,
             `data_dir=${config.data_dir}`,
             `db_path=${config.db_path}`,
@@ -62,12 +63,14 @@ const runtime = createControllerRuntime();
 const program = Effect.scoped(
   Effect.gen(function* () {
     const context = yield* AppContextService;
-    if (metricsDisabled()) {
+    if (context.config.controller_mode === "head") {
+      context.logger.info("Head mode delegates compute and metrics to Worker controllers");
+    } else if (metricsDisabled()) {
       context.logger.warn("Metrics collector disabled by LOCAL_STUDIO_DISABLE_METRICS");
     } else {
       yield* Effect.forkScoped(startMetricsCollector(context));
     }
-    {
+    if (context.config.controller_mode !== "head") {
       yield* Effect.forkScoped(
         startComputeSupervisor(context.compute.service, (error) =>
           context.logger.error("Compute supervisor error", { error: String(error) }),

@@ -80,6 +80,45 @@ export const RIG_NODE_ROLE_LABELS: Record<RigNodeRole, string> = {
   standalone: "Standalone",
 };
 
+export const RigAcceleratorSchema = Schema.Struct({
+  name: Schema.String,
+  count: Schema.Number,
+  memory_gb: Schema.NullOr(Schema.Number),
+  memory_type: Schema.NullOr(Schema.String),
+  memory_bandwidth_gbs: Schema.NullOr(Schema.Number),
+  unified_memory: Schema.Boolean,
+});
+
+export const RigNodeSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  hardware_type: Schema.Literals(RIG_HARDWARE_TYPES),
+  role: Schema.Literals(RIG_NODE_ROLES),
+  source: Schema.Literals(["detected", "manual"]),
+  hostname: Schema.NullOr(Schema.String),
+  address: Schema.NullOr(Schema.String),
+  os: Schema.NullOr(Schema.String),
+  cpu_model: Schema.NullOr(Schema.String),
+  cpu_cores: Schema.NullOr(Schema.Number),
+  memory_gb: Schema.NullOr(Schema.Number),
+  accelerators: Schema.Array(RigAcceleratorSchema),
+  notes: Schema.NullOr(Schema.String),
+});
+
+export const RigSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  description: Schema.NullOr(Schema.String),
+  nodes: Schema.Array(RigNodeSchema),
+  created_at: Schema.String,
+  updated_at: Schema.String,
+});
+
+export const RigsPayloadSchema = Schema.Struct({
+  rigs: Schema.Array(RigSchema),
+  local_node_id: Schema.String,
+});
+
 export const RigAcceleratorInputSchema = Schema.Struct({
   name: Schema.String,
   count: Schema.optional(Schema.Number),
@@ -110,6 +149,7 @@ export const RigNodeCreateSchema = Schema.Struct({
   memory_gb: Schema.optional(Schema.NullOr(Schema.Number)),
   accelerators: Schema.optional(Schema.Array(RigAcceleratorInputSchema)),
   notes: Schema.optional(Schema.NullOr(Schema.String)),
+  api_key: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
 export const RigNodeUpdateSchema = Schema.Struct({
@@ -123,4 +163,5 @@ export const RigNodeUpdateSchema = Schema.Struct({
   memory_gb: Schema.optional(Schema.NullOr(Schema.Number)),
   accelerators: Schema.optional(Schema.Array(RigAcceleratorInputSchema)),
   notes: Schema.optional(Schema.NullOr(Schema.String)),
+  api_key: Schema.optional(Schema.NullOr(Schema.String)),
 });

@@ -1,11 +1,76 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
+import { AppPage, ModelButton, PageContainer, PageHeader } from "@/ui";
+import {
+  ManagementWorkerSelect,
+  useManagementWorkers,
+  useSelectedWorker,
+} from "@/features/federation/management-worker";
+import { TableNotice } from "./catalog-table-shell";
 import type { RecipesTableProps } from "./types";
 import { useRecipesContentModel, type RecipesContentTab } from "./recipes-content-model";
 import { RecipesContentView } from "./recipes-content-view";
 
 export function RecipesContent({ embedded = false }: { embedded?: boolean }) {
+  const management = useManagementWorkers();
+  const selection = useSelectedWorker(
+    management.workers,
+    management.mode !== null && !management.loading,
+  );
+  const headMode = management.mode === "head";
+  const managementAction = headMode ? (
+    <ManagementWorkerSelect
+      workers={management.workers}
+      selectedWorkerId={selection.selectedWorkerId}
+      onSelect={selection.selectWorker}
+    />
+  ) : null;
+
+  if (management.mode === null) {
+    return (
+      <ModelsWorkerGate
+        embedded={embedded}
+        action={null}
+        title={management.error ? "The Head did not respond" : "Loading Workers"}
+        body={management.error ?? "Checking which controllers are available for model management."}
+      />
+    );
+  }
+
+  if (headMode && !selection.selectedWorker) {
+    const hasWorkers = management.workers.length > 0;
+    return (
+      <ModelsWorkerGate
+        embedded={embedded}
+        action={managementAction}
+        title={hasWorkers ? "Select a Worker" : "No Workers connected"}
+        body={
+          hasWorkers
+            ? "Choose the Worker whose hardware, recipes, downloads, and model servers you want to manage. Chat routing remains automatic."
+            : "Add a Worker controller in Configure → Machines before managing models."
+        }
+        openMachines={!hasWorkers}
+      />
+    );
+  }
+
+  return (
+    <WorkerRecipesContent
+      key={`${management.mode}:${selection.selectedWorkerId}`}
+      embedded={embedded}
+      managementAction={managementAction}
+    />
+  );
+}
+
+function WorkerRecipesContent({
+  embedded,
+  managementAction,
+}: {
+  embedded: boolean;
+  managementAction: ReactNode;
+}) {
   const model = useRecipesContentModel();
   const setTab = model.setTab;
   const selectTab = useCallback(
@@ -52,6 +117,7 @@ export function RecipesContent({ embedded = false }: { embedded?: boolean }) {
   return (
     <RecipesContentView
       embedded={embedded}
+      managementAction={managementAction}
       tab={model.tab}
       setTab={selectTab}
       loading={model.loading}
@@ -85,5 +151,60 @@ export function RecipesContent({ embedded = false }: { embedded?: boolean }) {
       onEvictModel={model.actions.handleEvictModel}
       table={table}
     />
+  );
+}
+
+function ModelsWorkerGate({
+  embedded,
+  action,
+  title,
+  body,
+  openMachines = false,
+}: {
+  embedded: boolean;
+  action: ReactNode;
+  title: string;
+  body: string;
+  openMachines?: boolean;
+}) {
+  const notice = (
+    <TableNotice
+      title={title}
+      body={body}
+      action={
+        openMachines ? (
+          <ModelButton
+            tone="primary"
+            onClick={() => {
+              window.location.href = "/configure?section=rig#rig";
+            }}
+          >
+            Open Machines
+          </ModelButton>
+        ) : undefined
+      }
+    />
+  );
+
+  if (embedded) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-end">{action}</div>
+        {notice}
+      </div>
+    );
+  }
+
+  return (
+    <AppPage>
+      <PageContainer width="md" className="pt-6 sm:pt-8">
+        <PageHeader
+          title="Models"
+          description="Manage the models, downloads, recipes, and servers owned by one Worker."
+          actions={action}
+        />
+        <div className="mt-8">{notice}</div>
+      </PageContainer>
+    </AppPage>
   );
 }

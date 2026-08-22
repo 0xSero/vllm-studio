@@ -90,8 +90,6 @@ export type QueuedMessage = {
   sent?: boolean;
 };
 
-// A tab holds a plain `Session` — `runtime/types` is the single definition of
-// what fields a session record has.
 export type SessionTab = Session;
 
 export type RuntimeLoggedEvent = {

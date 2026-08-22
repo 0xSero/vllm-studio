@@ -50,6 +50,8 @@ export type {
 
 export type { ControllerUsageStats, UsageStats } from "@local-studio/contracts/usage";
 
+export type { WorkerModel, WorkerStatus, WorkersPayload } from "@local-studio/contracts/federation";
+
 export type {
   Rig,
   RigAccelerator,

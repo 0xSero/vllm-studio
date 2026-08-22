@@ -261,6 +261,7 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
 
         const payload: SystemConfigResponse = {
           config: {
+            controller_mode: context.config.controller_mode,
             host: context.config.host,
             port: context.config.port,
             inference_port: context.config.inference_port,

@@ -19,6 +19,7 @@ export interface RigNodePayload {
     unified_memory?: boolean;
   }>;
   notes?: string | null;
+  api_key?: string;
 }
 
 export function createRigsApi(core: ApiCore) {

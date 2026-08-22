@@ -11,6 +11,7 @@ import { MachineCardSkeleton } from "./configure-skeleton";
 import type { ConfigureState } from "./use-configure";
 import { MachineCard, machineGpuGb } from "./machine-card";
 import { NodeFormModal, nodeToForm, type NodeGroupChoice } from "./node-form-modal";
+import { connectHead } from "./head-connection";
 
 type NodeTarget = { mode: "add" } | { mode: "edit"; rigId: string; node: RigNode };
 type DeleteTarget = { kind: "rig"; rig: Rig } | { kind: "node"; rigId: string; node: RigNode };
@@ -71,6 +72,12 @@ export function MachinesSection({ state }: { state: ConfigureState }) {
     if (!nodeTarget) return;
     if (nodeTarget.mode === "edit") {
       await state.updateNode(nodeTarget.rigId, nodeTarget.node.id, payload);
+      return;
+    }
+    if (payload.role === "head") {
+      if (!payload.address) throw new Error("Enter the Head controller URL");
+      await connectHead({ name: payload.name, url: payload.address });
+      await state.reload();
       return;
     }
     if (!group) throw new Error("Choose a group for this machine");
@@ -160,6 +167,7 @@ export function MachinesSection({ state }: { state: ConfigureState }) {
                   key={node.id}
                   node={node}
                   isLocal={node.id === state.localNodeId}
+                  worker={state.workers.find((worker) => worker.id === node.id)}
                   onEdit={() => setNodeTarget({ mode: "edit", rigId: rig.id, node })}
                   onRemove={
                     node.id === state.localNodeId

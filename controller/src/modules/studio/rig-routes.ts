@@ -96,7 +96,7 @@ export const registerStudioRigRoutes = defineRoutes((app, context) => {
     context.eventManager.publish(new Event(CONTROLLER_EVENTS.RIG_UPDATED, {}));
   const loadRigsWithLocalNode = Effect.gen(function* () {
     const rigs = yield* listRigs;
-    const detected = yield* buildDetectedNode();
+    const detected = yield* buildDetectedNode(context.config.controller_mode);
     const refreshed = refreshLocalNode(rigs, detected);
     if (refreshed) {
       yield* saveRig(refreshed);
@@ -162,9 +162,15 @@ export const registerStudioRigRoutes = defineRoutes((app, context) => {
     effectRoute(app.delete, "/studio/rigs/:rigId", (ctx) =>
       Effect.gen(function* () {
         const rigId = ctx.req.param("rigId") ?? "";
+        const rig = yield* requireRig(rigId);
         if (!(yield* deleteRig(rigId))) {
           return yield* Effect.fail(notFound(`Rig "${rigId}" not found`));
         }
+        yield* Effect.forEach(
+          rig.nodes,
+          (node) => context.stores.rigNodeCredentialStore.deleteEffect(node.id),
+          { discard: true },
+        );
         yield* publishRigUpdate();
         return ctx.json({ success: true });
       }),
@@ -190,6 +196,9 @@ export const registerStudioRigRoutes = defineRoutes((app, context) => {
           notes: optionalString(body.notes, null),
         };
         const updated = yield* saveRigTouched({ ...rig, nodes: [...rig.nodes, node] });
+        if (body.api_key) {
+          yield* context.stores.rigNodeCredentialStore.saveEffect(node.id, body.api_key);
+        }
         yield* publishRigUpdate();
         return ctx.json({ success: true, rig: updated, node });
       }),
@@ -219,6 +228,9 @@ export const registerStudioRigRoutes = defineRoutes((app, context) => {
         const nodes = [...rig.nodes];
         nodes[index] = updatedNode;
         const updated = yield* saveRigTouched({ ...rig, nodes });
+        if (body.api_key) {
+          yield* context.stores.rigNodeCredentialStore.saveEffect(nodeId, body.api_key);
+        }
         yield* publishRigUpdate();
         return ctx.json({ success: true, rig: updated, node: updatedNode });
       }),
@@ -238,6 +250,7 @@ export const registerStudioRigRoutes = defineRoutes((app, context) => {
           ...rig,
           nodes: rig.nodes.filter((node) => node.id !== nodeId),
         });
+        yield* context.stores.rigNodeCredentialStore.deleteEffect(nodeId);
         yield* publishRigUpdate();
         return ctx.json({ success: true, rig: updated });
       }),

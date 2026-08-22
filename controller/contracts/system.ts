@@ -10,6 +10,7 @@ export interface ServiceInfo {
 }
 
 export interface SystemConfig {
+  controller_mode: ControllerMode;
   host: string;
   port: number;
   inference_port: number;
@@ -204,3 +205,4 @@ export interface RuntimeUpgradeResult {
   error: string | null;
   used_command: string | null;
 }
+import type { ControllerMode } from "./federation";

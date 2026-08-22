@@ -2,16 +2,18 @@
 
 import { RIG_HARDWARE_TYPE_LABELS, RIG_NODE_ROLE_LABELS } from "@local-studio/contracts/rigs";
 import { ModelButton } from "@/ui";
-import type { RigAccelerator, RigNode } from "@/lib/types";
+import type { RigAccelerator, RigNode, WorkerStatus } from "@/lib/types";
 import { StatCell, StatusText } from "@/features/recipes/recipes-content/catalog-table-shell";
 import { MachineImage } from "./hardware-image";
 
 /** GPU memory a machine contributes to the pool, in GB. */
 export const machineGpuGb = (node: RigNode): number =>
-  node.accelerators.reduce(
-    (sum, accelerator) => sum + (accelerator.memory_gb ?? 0) * accelerator.count,
-    0,
-  );
+  node.role === "head"
+    ? 0
+    : node.accelerators.reduce(
+        (sum, accelerator) => sum + (accelerator.memory_gb ?? 0) * accelerator.count,
+        0,
+      );
 
 /** How many physical accelerators are installed, across every model. */
 const acceleratorUnits = (node: RigNode): number =>
@@ -51,8 +53,15 @@ const acceleratorSpec = (accelerator: RigAccelerator): string =>
  * tabular inside it, on one baseline grid, so two cards still line up.
  */
 /** Which of the three kinds of machine this is, in the operator's words. */
-const provenance = (node: RigNode, isLocal: boolean) =>
-  isLocal
+const provenance = (node: RigNode, isLocal: boolean, worker?: WorkerStatus) =>
+  worker
+    ? {
+        tone: worker.healthy ? ("ok" as const) : ("error" as const),
+        label: worker.healthy ? "online" : "offline",
+      }
+    : node.role === "head"
+      ? { tone: "ok" as const, label: "online" }
+      : isLocal
     ? { tone: "ok" as const, label: "this machine" }
     : node.source === "detected"
       ? { tone: "info" as const, label: "detected" }
@@ -62,11 +71,13 @@ const provenance = (node: RigNode, isLocal: boolean) =>
 function MachineHeader({
   node,
   isLocal,
+  worker,
   onEdit,
   onRemove,
 }: {
   node: RigNode;
   isLocal: boolean;
+  worker?: WorkerStatus;
   onEdit: () => void;
   onRemove?: () => void;
 }) {
@@ -78,7 +89,7 @@ function MachineHeader({
     RIG_NODE_ROLE_LABELS[node.role],
     ...endpoint,
   ].join(" · ");
-  const source = provenance(node, isLocal);
+  const source = provenance(node, isLocal, worker);
 
   return (
     <div className="flex items-start gap-3 sm:gap-4">
@@ -163,7 +174,13 @@ function MachineStats({ node }: { node: RigNode }) {
       <StatCell
         label="GPU memory"
         value={gpuGb ? `${gpuGb} GB` : "—"}
-        sub={units ? `${units} ${units === 1 ? "accelerator" : "accelerators"}` : null}
+        sub={
+          node.role === "head"
+            ? "coordination only"
+            : units
+              ? `${units} ${units === 1 ? "accelerator" : "accelerators"}`
+              : null
+        }
         title="GPU memory this machine adds to the pool"
       />
       <StatCell
@@ -184,17 +201,25 @@ function MachineStats({ node }: { node: RigNode }) {
 export function MachineCard({
   node,
   isLocal,
+  worker,
   onEdit,
   onRemove,
 }: {
   node: RigNode;
   isLocal: boolean;
+  worker?: WorkerStatus;
   onEdit: () => void;
   onRemove?: () => void;
 }) {
   return (
     <article className="rounded-[var(--rad-lg)] border border-(--ui-border) bg-(--ui-surface) p-3 transition-colors hover:border-(--ui-border)/60 sm:p-4">
-      <MachineHeader node={node} isLocal={isLocal} onEdit={onEdit} onRemove={onRemove} />
+      <MachineHeader
+        node={node}
+        isLocal={isLocal}
+        worker={worker}
+        onEdit={onEdit}
+        onRemove={onRemove}
+      />
       <MachineAccelerators node={node} />
       <MachineStats node={node} />
 

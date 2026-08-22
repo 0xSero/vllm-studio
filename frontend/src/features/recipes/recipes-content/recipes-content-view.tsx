@@ -16,6 +16,7 @@ import { PicksTab } from "./picks-tab";
 
 type Props = {
   embedded?: boolean;
+  managementAction?: ReactNode;
   tab: RecipesContentTab;
   setTab: (tab: RecipesContentTab) => void;
   loading: boolean;
@@ -59,25 +60,27 @@ const TAB_HEADINGS: Record<RecipesContentTab, { title: string; description: stri
   picks: {
     title: "Recommended models",
     description:
-      "Hand-picked models grouped by the hardware they need, each checked against this machine's memory.",
+      "Hand-picked models grouped by the hardware they need, each checked against the selected Worker's memory.",
   },
   get: {
     title: "Search Hugging Face",
-    description: "Search the Hub, check whether a model fits this machine, and pull its weights.",
+    description:
+      "Search the Hub, check whether a model fits the selected Worker, and pull its weights.",
   },
   serves: {
     title: "Your servers",
-    description: "Saved model + runtime + configuration combinations, ready to launch.",
+    description: "The selected Worker's saved model, runtime, and configuration combinations.",
   },
   downloads: {
     title: "Downloads",
-    description: "Everything currently downloading, with progress, retry, and cancel.",
+    description: "Everything downloading on the selected Worker, with progress, retry, and cancel.",
   },
 };
 
 export function RecipesContentView(props: Props) {
   const {
     embedded = false,
+    managementAction,
     tab,
     setTab,
     loading,
@@ -146,12 +149,15 @@ export function RecipesContentView(props: Props) {
         <div className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-(--ui-separator) pb-3">
             <Tabs variant="pill" items={MODEL_TABS} activeTab={tab} onSelectTab={setTab} />
-            <RefreshButton
-              onRefresh={onRefresh}
-              loading={refreshing || loading}
-              label="Refresh models"
-              className="h-8 w-8"
-            />
+            <div className="flex items-center gap-2">
+              {managementAction}
+              <RefreshButton
+                onRefresh={onRefresh}
+                loading={refreshing || loading}
+                label="Refresh models"
+                className="h-8 w-8"
+              />
+            </div>
           </div>
           {content}
         </div>
@@ -164,12 +170,15 @@ export function RecipesContentView(props: Props) {
           activeTab={tab}
           onSelectTab={setTab}
           actions={
-            <RefreshButton
-              onRefresh={onRefresh}
-              loading={refreshing || loading}
-              label="Refresh models"
-              className="h-8 w-8"
-            />
+            <div className="flex items-center gap-2">
+              {managementAction}
+              <RefreshButton
+                onRefresh={onRefresh}
+                loading={refreshing || loading}
+                label="Refresh models"
+                className="h-8 w-8"
+              />
+            </div>
           }
         >
           {content}

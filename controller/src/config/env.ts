@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadPersistedConfig, type ProviderConfig } from "./persisted-config";
 import { parseBooleanFlag } from "../core/validation";
+import { ControllerModeSchema, type ControllerMode } from "@local-studio/contracts/federation";
 import {
   decodeAllowedHosts,
   defaultAllowedHosts,
@@ -17,6 +18,7 @@ import {
 const positiveIntegerSchema = Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0));
 
 export interface Config {
+  controller_mode: ControllerMode;
   host: string;
   port: number;
   api_key?: string;
@@ -83,6 +85,7 @@ export const createConfig = (): Config => {
   };
 
   const environmentSchema = Schema.Struct({
+    LOCAL_STUDIO_CONTROLLER_MODE: ControllerModeSchema,
     LOCAL_STUDIO_HOST: Schema.String,
     LOCAL_STUDIO_PORT: positiveIntegerSchema,
     LOCAL_STUDIO_API_KEY: Schema.optional(Schema.String),
@@ -113,6 +116,7 @@ export const createConfig = (): Config => {
     onExcessProperty: "preserve",
   })({
     ...process.env,
+    LOCAL_STUDIO_CONTROLLER_MODE: process.env["LOCAL_STUDIO_CONTROLLER_MODE"] ?? "standalone",
     LOCAL_STUDIO_HOST: process.env["LOCAL_STUDIO_HOST"] ?? "127.0.0.1",
     LOCAL_STUDIO_PORT: coercePositiveInteger("LOCAL_STUDIO_PORT", 8080),
     LOCAL_STUDIO_INFERENCE_HOST: process.env["LOCAL_STUDIO_INFERENCE_HOST"] ?? "localhost",
@@ -138,6 +142,7 @@ export const createConfig = (): Config => {
       : defaultAllowedHosts(host);
 
   const config: Config = {
+    controller_mode: parsed.LOCAL_STUDIO_CONTROLLER_MODE,
     host,
     port: parsed.LOCAL_STUDIO_PORT,
     inference_host: parsed.LOCAL_STUDIO_INFERENCE_HOST.trim() || "localhost",

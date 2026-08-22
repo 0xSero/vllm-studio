@@ -7,6 +7,7 @@ import { Monitor, Server, type LucideIcon } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { SettingsLayout, type SettingsSectionDef } from "@/features/settings/settings-ui";
 import { ServerContent } from "@/features/logs/server-view";
+import { ManagementWorkerSelect } from "@/features/federation/management-worker";
 import { useConfigure } from "./use-configure";
 import { MachinesSection } from "./machines-section";
 import {
@@ -87,6 +88,14 @@ export default function ConfigurePage() {
     window.history.replaceState(null, "", `${window.location.pathname}${query}#${next}`);
   };
 
+  const workerStatus = (
+    <ManagementWorkerSelect
+      workers={state.workers}
+      selectedWorkerId={state.selectedWorkerId}
+      onSelect={state.selectWorker}
+    />
+  );
+
   return (
     <SettingsLayout
       sections={CONFIGURE_SECTIONS}
@@ -94,9 +103,7 @@ export default function ConfigurePage() {
       title="Configure"
       width="wide"
       loading={state.refreshing || state.loading}
-      // Every section owns its own reload control, sitting next to the data it
-      // refreshes. A second one in the page chrome only raises the question of
-      // which one you are supposed to press.
+      status={state.workers.length > 0 ? workerStatus : undefined}
       showRefresh={false}
       onReload={state.reload}
       onSelectSection={selectSection}

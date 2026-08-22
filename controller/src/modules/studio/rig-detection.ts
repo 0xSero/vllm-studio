@@ -1,5 +1,11 @@
 import { arch, cpus, hostname, platform, release, totalmem } from "node:os";
-import type { Rig, RigAccelerator, RigHardwareType, RigNode } from "@local-studio/contracts/rigs";
+import type {
+  Rig,
+  RigAccelerator,
+  RigHardwareType,
+  RigNode,
+  RigNodeRole,
+} from "@local-studio/contracts/rigs";
 import type { GpuInfo } from "../models/types";
 import { Effect } from "effect";
 import { getGpuInfo } from "../system/platform/gpu";
@@ -114,7 +120,7 @@ const inferHardwareType = (accelerators: RigAccelerator[]): RigHardwareType => {
   return "custom";
 };
 
-export const buildDetectedNode = (): Effect.Effect<RigNode> =>
+export const buildDetectedNode = (role: RigNodeRole = "standalone"): Effect.Effect<RigNode> =>
   getGpuInfo().pipe(
     Effect.map((gpus) => {
       const cpuList = cpus();
@@ -127,7 +133,7 @@ export const buildDetectedNode = (): Effect.Effect<RigNode> =>
         id: LOCAL_RIG_NODE_ID,
         name: host,
         hardware_type: inferHardwareType(accelerators),
-        role: "standalone",
+        role,
         source: "detected",
         hostname: host,
         address: null,
@@ -143,6 +149,7 @@ export const buildDetectedNode = (): Effect.Effect<RigNode> =>
 
 const mergeDetectedNode = (stored: RigNode, detected: RigNode): RigNode => ({
   ...stored,
+  role: detected.role,
   hostname: detected.hostname,
   os: detected.os,
   cpu_model: detected.cpu_model,

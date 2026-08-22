@@ -13,6 +13,8 @@ import { registerModelsRoutes } from "../modules/models/routes";
 
 import { registerAllProxyRoutes } from "../modules/proxy/routes";
 import { registerStudioRoutes } from "../modules/studio/routes";
+import { registerFederationRoutes } from "../modules/federation/routes";
+import { createFederationProxyMiddleware } from "../modules/federation/proxy-middleware";
 import { effectRoute, mergeRoutes, type ControllerRouteApp } from "./route-registrar";
 import {
   createAuthMiddleware,
@@ -28,7 +30,8 @@ type ControllerApplication = ReturnType<typeof registerComputeRoutes> &
   ReturnType<typeof registerEngineRoutes> &
   ReturnType<typeof registerModelsRoutes> &
   ReturnType<typeof registerStudioRoutes> &
-  ReturnType<typeof registerAllProxyRoutes>;
+  ReturnType<typeof registerAllProxyRoutes> &
+  ReturnType<typeof registerFederationRoutes>;
 
 export const createApp = (
   context: AppContext,
@@ -49,16 +52,17 @@ export const createApp = (
         "Authorization",
         "Content-Type",
         "X-API-Key",
-        // Protocol headers for the Responses and Anthropic Messages dialects.
         "Anthropic-Version",
         "Anthropic-Beta",
         "OpenAI-Beta",
+        "X-Local-Studio-Worker-Id",
       ],
       exposeHeaders: [
         "X-RateLimit-Limit",
         "X-RateLimit-Remaining",
         "X-RateLimit-Reset",
         "Retry-After",
+        "X-Local-Studio-Worker-Id",
       ],
       maxAge: 600,
     }),
@@ -68,8 +72,12 @@ export const createApp = (
   app.use("*", createMutatingRateLimitMiddleware(context));
   app.use("*", createReadRateLimitMiddleware(context));
   app.use("*", createAuthMiddleware(context));
+  app.use("*", createFederationProxyMiddleware(context));
 
+  const federationRoutes =
+    context.config.controller_mode === "head" ? registerFederationRoutes(app, context) : app;
   const routes = mergeRoutes(
+    federationRoutes,
     registerSystemRoutes(app, context),
     registerComputeRoutes(app, context),
     registerEngineRoutes(app, context),

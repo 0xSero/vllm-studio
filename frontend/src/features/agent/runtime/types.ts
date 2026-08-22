@@ -32,6 +32,7 @@ export type Session = {
   // Pane/client identity AND the opaque runtime key sent to the server. One
   // per tab so tabs run independent agent sessions.
   id: SessionId;
+  headTracked?: boolean;
   // Pi session UUID (null = unstarted, will be assigned by pi when the first
   // turn runs).
   piSessionId: string | null;

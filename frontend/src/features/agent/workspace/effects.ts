@@ -25,6 +25,7 @@ import { writeSessionDrafts } from "@/features/agent/workspace/session-drafts";
 import { writeTranscriptSnapshot } from "@/features/agent/workspace/transcript-cache";
 import { readDefaultAgentModel } from "@/features/agent/workspace/model-preference";
 import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
+import { syncHeadSessionMetadata } from "@/features/agent/workspace/session-metadata-sync";
 
 const EMPTY_SELECTION: ToolSelection = {
   skills: [],
@@ -435,10 +436,12 @@ export function runWorkspaceEffect(
 
   if (action.type === "hydrate") {
     runInitialApiEffects(nextState, deps);
+    syncHeadSessionMetadata(nextState.sessions);
   }
 
   publishWorkspaceSessions(prevState, nextState, deps);
   if (SESSIONS_CHANGED_ACTIONS.has(action.type)) {
+    syncHeadSessionMetadata(nextState.sessions);
     persistSettledTranscripts(prevState, nextState, deps);
     persistTurnStartTranscripts(prevState, nextState, deps);
     persistExitedTranscripts(prevState, nextState, deps);

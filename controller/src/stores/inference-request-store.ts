@@ -20,6 +20,7 @@ export interface InferenceRequestRecord {
   source?: string | null;
   session_id?: string | null;
   provider?: string | null;
+  worker_id?: string | null;
   prompt_tokens: number;
   completion_tokens: number;
   reasoning_tokens?: number;
@@ -64,6 +65,7 @@ export class InferenceRequestStore {
         source TEXT,
         session_id TEXT,
         provider TEXT,
+        worker_id TEXT,
         prompt_tokens INTEGER NOT NULL DEFAULT 0,
         completion_tokens INTEGER NOT NULL DEFAULT 0,
         reasoning_tokens INTEGER NOT NULL DEFAULT 0,
@@ -76,6 +78,12 @@ export class InferenceRequestStore {
         streamed INTEGER NOT NULL DEFAULT 0
       )
     `);
+    const columns = db.query("PRAGMA table_info(inference_requests)").all() as Array<{
+      name: string;
+    }>;
+    if (!columns.some((column) => column.name === "worker_id")) {
+      db.run("ALTER TABLE inference_requests ADD COLUMN worker_id TEXT");
+    }
     db.run(
       `CREATE INDEX IF NOT EXISTS idx_inference_requests_created_at ON inference_requests(created_at)`,
     );
@@ -95,17 +103,18 @@ export class InferenceRequestStore {
     this.db
       .query(
         `INSERT INTO inference_requests (
-           model, source, session_id, provider,
+           model, source, session_id, provider, worker_id,
            prompt_tokens, completion_tokens, reasoning_tokens,
            cache_read_tokens, cache_write_tokens, total_tokens,
            ttft_ms, duration_ms, status, streamed
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         record.model,
         record.source ?? null,
         record.session_id ?? null,
         record.provider ?? null,
+        record.worker_id ?? null,
         promptTokens,
         completionTokens,
         reasoningTokens,

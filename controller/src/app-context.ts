@@ -23,12 +23,16 @@ import { ControllerSettingsStore } from "./stores/controller-settings-store";
 import { InferenceRequestStore } from "./stores/inference-request-store";
 import { RigStore } from "./stores/rig-store";
 import { CodexProviderService } from "./services/codex-provider";
+import { RigNodeCredentialStore } from "./stores/rig-node-credential-store";
+import { WorkerPool } from "./modules/federation/worker-pool";
+import { SessionMetadataStore } from "./stores/session-metadata-store";
 
 export interface AppContext {
   config: Config;
   logger: Logger;
   eventManager: EventManager;
   launchFailureBudget: LaunchFailureBudget;
+  workerPool: WorkerPool;
   downloadManager: DownloadManager;
   compute: Compute;
   bridge: ComputeBridge;
@@ -42,6 +46,8 @@ export interface AppContext {
     controllerSettingsStore: ControllerSettingsStore;
     controllerRequestStore: ControllerRequestStore;
     rigStore: RigStore;
+    rigNodeCredentialStore: RigNodeCredentialStore;
+    sessionMetadataStore: SessionMetadataStore;
   };
 }
 
@@ -160,6 +166,15 @@ export const makeAppContext = Effect.gen(function* () {
     initializeSync("rig-store.open", () => new RigStore(dbPath)),
     (resource) => releaseSafely("rig-store.close", logger, resource.close()),
   );
+  const rigNodeCredentialStore = yield* Effect.acquireRelease(
+    initializeSync("rig-node-credential-store.open", () => new RigNodeCredentialStore(dbPath)),
+    (resource) => releaseSafely("rig-node-credential-store.close", logger, resource.close()),
+  );
+  const sessionMetadataStore = yield* Effect.acquireRelease(
+    initializeSync("session-metadata-store.open", () => new SessionMetadataStore(dbPath)),
+    (resource) => releaseSafely("session-metadata-store.close", logger, resource.close()),
+  );
+  const workerPool = new WorkerPool(rigStore, rigNodeCredentialStore, logger);
   yield* initialize(
     "lifetime-metrics-store.initialize",
     lifetimeMetricsStore.ensureFirstStartedEffect(),
@@ -196,6 +211,7 @@ export const makeAppContext = Effect.gen(function* () {
     logger,
     eventManager,
     launchFailureBudget,
+    workerPool,
     downloadManager,
     compute,
     bridge,
@@ -209,6 +225,8 @@ export const makeAppContext = Effect.gen(function* () {
       controllerSettingsStore,
       controllerRequestStore,
       rigStore,
+      rigNodeCredentialStore,
+      sessionMetadataStore,
     },
   } satisfies AppContext;
 });

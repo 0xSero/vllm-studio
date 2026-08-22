@@ -1,5 +1,5 @@
 import { hc } from "hono/client";
-import { clearStoredBackendUrl, getApiKey, getStoredBackendUrl } from "./connection";
+import { clearStoredBackendUrl, getApiKey } from "./connection";
 import { delay } from "../async";
 import { isRecord } from "../guards";
 import { formatHttpErrorMessage, isRetryableError } from "./http-error-message";
@@ -7,6 +7,7 @@ import {
   isBenignSseTransportFailure,
   scrubTransportFetchErrorMessage,
 } from "./sse-transport-errors";
+import { getSelectedWorkerId } from "./worker-selection";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_RETRIES = 3;
@@ -153,9 +154,9 @@ export function createApiCore(params: {
   const buildHeaders = (extraHeaders?: HeadersInit): Record<string, string> => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
 
-    const storedBackendUrl = backendUrlOverride?.trim() || getStoredBackendUrl();
-    if (useProxy && storedBackendUrl) {
-      headers["X-Backend-Url"] = storedBackendUrl;
+    const explicitBackendUrl = backendUrlOverride?.trim();
+    if (useProxy && explicitBackendUrl) {
+      headers["X-Backend-Url"] = explicitBackendUrl;
       headers["X-Backend-Strict"] = "1";
     }
 
@@ -165,6 +166,9 @@ export function createApiCore(params: {
     } else if (apiKeyOverride !== undefined) {
       headers["X-Backend-Suppress-Auth"] = "1";
     }
+
+    const workerId = getSelectedWorkerId();
+    if (workerId) headers["X-Local-Studio-Worker-Id"] = workerId;
 
     if (extraHeaders) {
       const merged = new Headers(extraHeaders);

@@ -86,6 +86,7 @@ export function normalizePersistedTab(value: unknown): Session | null {
     ...fallback,
     ...persisted,
     id: tab.id,
+    headTracked: tab.headTracked === true,
     piSessionId: typeof tab.piSessionId === "string" ? tab.piSessionId : null,
     title: cleanSessionTitle(tab.title) || fallback.title,
     messages: [],
