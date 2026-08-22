@@ -16,7 +16,7 @@ import {
   subagentReport,
   type SubagentRun,
 } from "../subagents";
-import { errorMessage, jsonError, readJsonBody } from "./helpers";
+import { guarded, jsonError, readJsonBody } from "./helpers";
 
 const stringField = (body: Record<string, unknown> | null, key: string): string =>
   typeof body?.[key] === "string" ? (body[key] as string).trim() : "";
@@ -63,11 +63,11 @@ export async function handleSubagentGet(request: Request, runId: string): Promis
 export async function handleSubagentStop(request: Request, runId: string): Promise<Response> {
   const parent = stringField(await readJsonBody(request), "piSessionId");
   if (!parent) return jsonError("Body must include piSessionId.");
-  try {
-    return Response.json({ ok: true, subagent: runView(await stopSubagent(parent, runId)) });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Could not stop the subagent."), 404);
-  }
+  return guarded(
+    "Could not stop the subagent.",
+    async () => Response.json({ ok: true, subagent: runView(await stopSubagent(parent, runId)) }),
+    404,
+  );
 }
 
 export async function handleSubagentRun(request: Request): Promise<Response> {
@@ -78,7 +78,7 @@ export async function handleSubagentRun(request: Request): Promise<Response> {
   if (!parentPiSessionId || !task.trim()) {
     return jsonError("Body must include parentPiSessionId and task.");
   }
-  try {
+  return guarded("Subagent run failed.", async () => {
     const result = await runSubagent({
       parentPiSessionId,
       name,
@@ -86,7 +86,5 @@ export async function handleSubagentRun(request: Request): Promise<Response> {
       ...(typeof body?.modelId === "string" ? { modelId: body.modelId } : {}),
     });
     return Response.json({ ok: true, ...result });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Subagent run failed."), 500);
-  }
+  });
 }

@@ -58,8 +58,9 @@ export async function handleSessionsList(request: Request): Promise<Response> {
   if (cwd instanceof Response) return cwd;
   const limitValue = searchParams.get("limit");
   const limit = integerParam(limitValue, 1);
-  if (limitValue !== null && limit === undefined)
+  if (limitValue !== null && limit === undefined) {
     return jsonError("limit must be a positive integer");
+  }
   const sinceValue = searchParams.get("since");
   const since = parseRelativeSince(sinceValue);
   if (sinceValue && !since) return jsonError("since must use a relative value like 7d");
@@ -188,6 +189,5 @@ export async function handleSessionPatch(request: Request, id: string): Promise<
   }
 }
 
-export function handleSessionsDelete(): Response {
-  return jsonError("Session deletion is disabled. Archive sessions from the UI instead.", 405);
-}
+export const handleSessionsDelete = (): Response =>
+  jsonError("Session deletion is disabled. Archive sessions from the UI instead.", 405);

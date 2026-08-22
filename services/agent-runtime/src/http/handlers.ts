@@ -294,12 +294,18 @@ function replayAfterCursor(requestedAfter: number, runtimeEventSeq: number): num
 
 // ─── GET /api/agent/runtime/status ────────────────────────────────────────
 
-export function handleRuntimeStatus(request: Request): Response {
+/** Both replay routes name their session with ?sessionId plus ?piSessionId. */
+function lookupFromQuery(request: Request) {
   const searchParams = new URL(request.url).searchParams;
   const sessionId = searchParams.get("sessionId")?.trim() || "default";
   const piSessionId = searchParams.get("piSessionId")?.trim() || null;
-  const after = Number(searchParams.get("after") ?? 0);
   const resolved = piRuntimeManager.findSessionForLookup(sessionId, piSessionId);
+  return { searchParams, sessionId, resolved };
+}
+
+export function handleRuntimeStatus(request: Request): Response {
+  const { searchParams, sessionId, resolved } = lookupFromQuery(request);
+  const after = Number(searchParams.get("after") ?? 0);
   if (!resolved) {
     return Response.json({ sessionId, status: null, events: [] });
   }
@@ -327,14 +333,11 @@ function encode(payload: unknown, id?: number): string {
 }
 
 export function handleRuntimeEvents(request: Request): Response {
-  const searchParams = new URL(request.url).searchParams;
-  const sessionId = searchParams.get("sessionId")?.trim() || "default";
-  const piSessionId = searchParams.get("piSessionId")?.trim() || null;
+  const { searchParams, resolved } = lookupFromQuery(request);
   const requestedAfter = Math.max(
     parseSeq(searchParams.get("after")),
     parseSeq(request.headers.get("last-event-id")),
   );
-  const resolved = piRuntimeManager.findSessionForLookup(sessionId, piSessionId);
   if (!resolved) {
     return Response.json({ error: "Runtime session not found" }, { status: 404 });
   }

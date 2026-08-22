@@ -52,17 +52,10 @@ export async function handleBrowserVerb(request: Request, verb: string): Promise
     return Response.json({ ok: false, error: `Unknown browser verb: ${verb}` }, { status: 400 });
   }
   try {
-    const result = await dispatchVerb({
-      verb,
-      ...(await readPayload(request)),
-      signal: request.signal,
-    });
-    return Response.json(result);
+    const call = { verb, ...(await readPayload(request)), signal: request.signal };
+    return Response.json(await dispatchVerb(call));
   } catch (error) {
-    return Response.json({
-      ok: false,
-      error: errorMessage(error, "Browser command failed"),
-    });
+    return browserFailure(error, "Browser command failed");
   }
 }
 
@@ -246,7 +239,7 @@ async function browserJson(
     const result = await run();
     return result instanceof Response ? result : Response.json({ ok: true, ...result });
   } catch (error) {
-    return Response.json({ ok: false, error: errorMessage(error, fallback) });
+    return browserFailure(error, fallback);
   }
 }
 
@@ -262,6 +255,10 @@ async function readJson<T>(request: Request): Promise<{ value: T } | null> {
 }
 
 const invalidJson = () => Response.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+
+/** A host failure the panel renders inline: `{ ok:false }` with a 200. */
+const browserFailure = (error: unknown, fallback: string) =>
+  Response.json({ ok: false, error: errorMessage(error, fallback) });
 
 export async function handleBrowserFetch(request: Request): Promise<Response> {
   const raw = new URL(request.url).searchParams.get("url");
@@ -315,30 +312,15 @@ export function handleBrowserInput(request: Request): Promise<Response> {
 
 async function dispatchInput(body: InputBody): Promise<void> {
   if (body.kind === "key") {
-    await browserHost.dispatchKey({
-      type: body.type,
-      key: body.key,
-      code: body.code,
-    });
+    await browserHost.dispatchKey({ type: body.type, key: body.key, code: body.code });
     return;
   }
-  if (body.kind === "wheel") {
-    await browserHost.dispatchMouse({
-      type: "wheel",
-      x: Number(body.x) || 0,
-      y: Number(body.y) || 0,
-      deltaX: body.deltaX,
-      deltaY: body.deltaY,
-    });
-    return;
-  }
-  await browserHost.dispatchMouse({
-    type: body.type,
-    x: Number(body.x) || 0,
-    y: Number(body.y) || 0,
-    button: body.button,
-    clickCount: body.clickCount,
-  });
+  const at = { x: Number(body.x) || 0, y: Number(body.y) || 0 };
+  await browserHost.dispatchMouse(
+    body.kind === "wheel"
+      ? { type: "wheel", ...at, deltaX: body.deltaX, deltaY: body.deltaY }
+      : { type: body.type, ...at, button: body.button, clickCount: body.clickCount },
+  );
 }
 
 // ─── GET /api/agent/browser/localhosts ────────────────────────────────────
@@ -364,17 +346,21 @@ function parseCurrentPort(request: Request): number | null {
   return Number.isFinite(port) ? port : null;
 }
 
+const HTML_ENTITIES: Record<string, string> = {
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&amp;": "&",
+};
+
 function titleFromHtml(html: string): string {
   const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim();
-  // &amp; decodes last, or "&amp;lt;" round-trips into a phantom "<".
-  return title
-    ? title
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&amp;/g, "&")
-    : "";
+  // One pass, so a decoded "&" is never re-read as the start of an entity —
+  // sequentially, "&amp;lt;" would round-trip into a phantom "<".
+  return (
+    title?.replace(/&(?:lt|gt|quot|#39|amp);/g, (entity) => HTML_ENTITIES[entity] ?? entity) ?? ""
+  );
 }
 
 function parseLsof(stdout: string): PortCandidate[] {
@@ -530,10 +516,7 @@ export async function handleBrowserEngineSelect(request: Request): Promise<Respo
   try {
     writeEnginePreference(body.value.engine);
   } catch (error) {
-    return Response.json({
-      ok: false,
-      error: errorMessage(error, "failed to save browser engine"),
-    });
+    return browserFailure(error, "failed to save browser engine");
   }
   // The running context is bound to the old binary; the next verb relaunches.
   browserHost.stop();

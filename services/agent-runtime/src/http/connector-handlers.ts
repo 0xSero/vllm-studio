@@ -41,8 +41,7 @@ import { resolveBundledResource } from "../plugin-resources";
 import { decodeBody, errorMessage, jsonError } from "./helpers";
 
 export async function handleConnectorsList(): Promise<Response> {
-  const connectors = await listConnectors();
-  return Response.json({ connectors: connectors.map(toConnectorView) });
+  return Response.json({ connectors: (await listConnectors()).map(toConnectorView) });
 }
 
 /**
@@ -155,21 +154,14 @@ export async function handleConnectorInventory(request: Request): Promise<Respon
   });
   const inventory = await Promise.all(
     granted.map(async ({ connector, tools }) => {
+      const row = { id: connector.id, name: connector.name };
       try {
         const available = await listConnectorTools(connector.id);
-        return {
-          id: connector.id,
-          name: connector.name,
-          tools:
-            tools === "all" ? available : available.filter((tool) => tools.includes(tool.name)),
-        };
+        const offered =
+          tools === "all" ? available : available.filter((t) => tools.includes(t.name));
+        return { ...row, tools: offered };
       } catch (error) {
-        return {
-          id: connector.id,
-          name: connector.name,
-          tools: [],
-          error: error instanceof Error ? error.message : String(error),
-        };
+        return { ...row, tools: [], error: error instanceof Error ? error.message : String(error) };
       }
     }),
   );

@@ -33,27 +33,17 @@ export function sseResponse(options: {
   let onAbort: (() => void) | null = null;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
   let closed = false;
+  // Idempotent: the `closed` latch means every cleanup below runs exactly once.
   const close = (): void => {
     if (closed) return;
     closed = true;
-    if (heartbeat) {
-      clearInterval(heartbeat);
-      heartbeat = null;
-    }
-    if (teardown) {
-      teardown();
-      teardown = undefined;
-    }
-    if (onAbort && signal) {
-      signal.removeEventListener("abort", onAbort);
-      onAbort = null;
-    }
-    if (streamController) {
-      try {
-        streamController.close();
-      } catch {
-        // client already closed
-      }
+    if (heartbeat) clearInterval(heartbeat);
+    teardown?.();
+    if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+    try {
+      streamController?.close();
+    } catch {
+      // client already closed
     }
   };
   const send: SseSend = (frame) => {
