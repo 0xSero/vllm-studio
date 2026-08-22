@@ -69,5 +69,3 @@ const SPECS: Record<EngineBackend, EngineSpec> = {
 };
 
 export const getEngineSpec = (backend: EngineBackend): EngineSpec => SPECS[backend];
-
-export { vllmSpec, sglangSpec, llamacppSpec, mlxSpec };

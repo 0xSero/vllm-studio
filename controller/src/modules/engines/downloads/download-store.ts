@@ -28,6 +28,8 @@ const ModelDownloadSchema = Schema.Struct({
   error: Schema.NullOr(Schema.String),
 });
 
+type DownloadRow = { data: string };
+
 const decodeDownload = (value: unknown): Effect.Effect<ModelDownload, EngineOperationError> =>
   attempt("parse-download-record", () =>
     typeof value === "string" ? JSON.parse(value) : value,
@@ -74,9 +76,7 @@ export class DownloadStore {
         () =>
           store.db
             .query("SELECT data FROM model_downloads ORDER BY updated_at DESC")
-            .all() as Array<{
-            data: string;
-          }>,
+            .all() as DownloadRow[],
       );
       const decoded = yield* Effect.forEach(rows, (row) =>
         decodeDownload(row.data).pipe(Effect.option),
@@ -91,9 +91,9 @@ export class DownloadStore {
       const row = yield* attempt(
         "get-download",
         () =>
-          store.db.query("SELECT data FROM model_downloads WHERE id = ?").get(id) as {
-            data: string;
-          } | null,
+          store.db
+            .query("SELECT data FROM model_downloads WHERE id = ?")
+            .get(id) as DownloadRow | null,
       );
       if (!row?.data) return null;
       return yield* decodeDownload(row.data).pipe(Effect.catch(() => Effect.succeed(null)));
@@ -102,7 +102,6 @@ export class DownloadStore {
 
   public save(download: ModelDownload): Effect.Effect<void, EngineOperationError> {
     return attempt("save-download", () => {
-      const data = JSON.stringify(download);
       this.db
         .query(
           `
@@ -111,7 +110,7 @@ export class DownloadStore {
             ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP
           `,
         )
-        .run(download.id, data);
+        .run(download.id, JSON.stringify(download));
     });
   }
 

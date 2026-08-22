@@ -70,27 +70,26 @@ const runningCandidates = (
   backend: EngineBackend,
   runningProcess?: ProcessInfo | null,
 ): Candidate[] => {
-  const candidates: Candidate[] = [];
   const activePid = runningProcess?.pid ?? null;
-  for (const entry of listProcesses()) {
-    if (detectBackend(entry.args) !== backend) continue;
-    const pythonPath = backend === "llamacpp" ? null : parseCommandPython(entry.args);
-    const binaryPath = backend === "llamacpp" ? parseCommandBinary(entry.args) : null;
-    const key = pythonPath ?? binaryPath ?? `${entry.pid}:${entry.args.join(" ")}`;
-    candidates.push({
-      backend,
-      kind: pythonPath ? "venv" : "binary",
-      source: "running",
-      probe: "none",
-      candidate: key,
-      label: () => `${backend} running (${basename(key)})`,
-      installed: true,
-      active: activePid !== null && entry.pid === activePid,
-      pythonPath,
-      binaryPath,
+  return listProcesses()
+    .filter((entry) => detectBackend(entry.args) === backend)
+    .map((entry) => {
+      const pythonPath = backend === "llamacpp" ? null : parseCommandPython(entry.args);
+      const binaryPath = backend === "llamacpp" ? parseCommandBinary(entry.args) : null;
+      const key = pythonPath ?? binaryPath ?? `${entry.pid}:${entry.args.join(" ")}`;
+      return {
+        backend,
+        kind: pythonPath ? "venv" : "binary",
+        source: "running",
+        probe: "none",
+        candidate: key,
+        label: () => `${backend} running (${basename(key)})`,
+        installed: true,
+        active: activePid !== null && entry.pid === activePid,
+        pythonPath,
+        binaryPath,
+      };
     });
-  }
-  return candidates;
 };
 
 const configuredPythons = (backend: PythonProbeBackend, config: Config): string[] => {

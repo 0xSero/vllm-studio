@@ -6,6 +6,7 @@ import type { Config } from "../../../config/env";
 import { resolveBinary, runCommandAsyncEffect } from "../../../core/command";
 import type { RuntimeUpgradeResult, EngineBackend } from "@local-studio/contracts/system";
 import { ENGINE_INSTALL_TIMEOUT_MS, RUNTIME_UPGRADE_TIMEOUT_MS } from "../configs";
+import { failedUpgrade } from "../engine-operation";
 import { probePythonRuntime } from "./runtime-target-probes";
 
 export type ManagedPythonBackend = Extract<EngineBackend, "vllm" | "sglang" | "mlx">;
@@ -54,18 +55,6 @@ const tailOutput = (value: string): string =>
 
 const timeoutMinutes = (timeoutMs: number): number => Math.round(timeoutMs / 60_000);
 
-const failedInstall = (
-  error: string,
-  output: string | null = null,
-  usedCommand: string | null = null,
-): RuntimeUpgradeResult => ({
-  success: false,
-  version: null,
-  output,
-  error,
-  used_command: usedCommand,
-});
-
 const createVenvEffect = (
   basePython: string,
   venvDirectory: string,
@@ -81,7 +70,7 @@ const createVenvEffect = (
       onSpawn: options.onSpawn,
     });
     if (create.status !== 0) {
-      return failedInstall(
+      return failedUpgrade(
         create.timedOut
           ? `Creating the ${options.backend} virtual environment timed out after ${timeoutMinutes(RUNTIME_UPGRADE_TIMEOUT_MS)} minutes`
           : create.stderr || `Failed to create managed ${options.backend} virtual environment`,
@@ -105,7 +94,7 @@ const resolveInstallerEffect = (
         onSpawn: options.onSpawn,
       });
       if (pipCheck.status !== 0) {
-        return failedInstall(
+        return failedUpgrade(
           `Neither uv nor a working pip is available to install ${packageSpec}. Install uv with: ${UV_INSTALL_HINT}`,
           pipCheck.stdout || null,
           `${venvPython} -m pip --version`,
@@ -125,7 +114,7 @@ export const installIntoManagedVenv = (
 ): Effect.Effect<RuntimeUpgradeResult> =>
   Effect.gen(function* () {
     const basePython = resolveBinary("python3") ?? resolveBinary("python");
-    if (!basePython) return failedInstall("Python 3 was not found on PATH");
+    if (!basePython) return failedUpgrade("Python 3 was not found on PATH");
 
     const venvDirectory = managedVenvPath(options.config, options.backend);
     const venvPython = join(venvDirectory, "bin", "python");
@@ -164,7 +153,7 @@ export const installIntoManagedVenv = (
       },
     });
     if (install.status !== 0) {
-      return failedInstall(
+      return failedUpgrade(
         install.timedOut
           ? `Install of ${packageSpec} timed out after ${timeoutMinutes(installTimeout)} minutes. Retry the install; large torch/CUDA wheels are the usual cause.`
           : install.stderr || `Failed to install ${packageSpec}`,

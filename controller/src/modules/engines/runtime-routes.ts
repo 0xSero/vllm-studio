@@ -1,6 +1,7 @@
 import {
   RUNTIME_JOB_BACKENDS,
   RUNTIME_JOB_TYPES,
+  type RuntimeBackendInfo,
   type RuntimeJobBackend,
   type RuntimeJobType,
 } from "@local-studio/contracts/system";
@@ -9,7 +10,7 @@ import { badRequest, notFound } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
 import { effectRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import { getRocmInfo, resolveRocmSmiTool } from "../system/platform/rocm-info";
-import { getEngineSpec } from "./engine-spec";
+import { getEngineSpec, type EngineOperationError } from "./engine-spec";
 import { createGetObservedProcess } from "./observed-process";
 import {
   cancelEngineJob,
@@ -61,7 +62,9 @@ const parseRuntimeJobBody = (
 
 export const registerRuntimeRoutes = defineRoutes((app, context) => {
   const getObservedProcess = createGetObservedProcess(context);
-  const defaultBackendInfo = (backend: "sglang" | "llamacpp") =>
+  const defaultBackendInfo = (
+    backend: "sglang" | "llamacpp",
+  ): Effect.Effect<RuntimeBackendInfo, EngineOperationError> =>
     Effect.gen(function* () {
       const current = yield* getObservedProcess(`runtime.backend.${backend}`);
       const target = yield* getDefaultRuntimeTarget(context.config, backend, current);

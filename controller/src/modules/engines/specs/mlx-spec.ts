@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { Effect } from "effect";
+import type { Effect } from "effect";
 import type { Config } from "../../../config/env";
 import type { ProcessInfo } from "../../models/types";
 import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "@local-studio/contracts/system";

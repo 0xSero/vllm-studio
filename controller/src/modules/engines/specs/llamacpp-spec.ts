@@ -1,11 +1,12 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { Effect } from "effect";
+import type { Effect } from "effect";
 import type { Config } from "../../../config/env";
-import { resolveBinary, runCommandAsyncEffect } from "../../../core/command";
+import { resolveBinary } from "../../../core/command";
+import { probeConfigHelp } from "../runtimes/runtime-target-probes";
 import { LLAMACPP_HELP_TIMEOUT_MS } from "../configs";
 import type { ProcessInfo, Recipe } from "../../models/types";
-import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "@local-studio/contracts/system";
+import type { RuntimeBackendInfo } from "@local-studio/contracts/system";
 import { getLlamacppRuntimeInfo } from "../runtimes/runtime-info";
 import { getExtraArgument } from "../argument-utilities";
 import type { ConfigHelpResult, EngineSpec, InstallOptions } from "../engine-spec";
@@ -47,16 +48,11 @@ const getConfigHelp = (config: Config): Effect.Effect<ConfigHelpResult> => {
   const configured = config.llama_bin || "llama-server";
   const resolved =
     resolveBinary(configured) ?? (existsSync(configured) ? resolve(configured) : null);
-  const binary = resolved ?? configured;
-  return runCommandAsyncEffect(binary, ["--help"], { timeoutMs: LLAMACPP_HELP_TIMEOUT_MS }).pipe(
-    Effect.map((result) =>
-      result.status !== 0
-        ? {
-            config: result.stdout || null,
-            error: result.stderr || "Failed to fetch llama.cpp config",
-          }
-        : { config: result.stdout || null, error: null },
-    ),
+  return probeConfigHelp(
+    resolved ?? configured,
+    ["--help"],
+    LLAMACPP_HELP_TIMEOUT_MS,
+    "Failed to fetch llama.cpp config",
   );
 };
 

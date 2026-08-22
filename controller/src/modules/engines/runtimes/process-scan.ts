@@ -44,7 +44,7 @@ export const detectBackend = (args: string[]): Backend | null => {
   if (hasModuleInvocation(args, "sglang.launch_server")) return "sglang";
   if (hasCliServeInvocation(args, "sglang")) return "sglang";
   if (args.some((argument) => argument.includes("llama-server"))) return "llamacpp";
-  if (hasModuleInvocation(args, "mlx_lm.server")) return "mlx";
+  // Subsumes the exact `-m mlx_lm.server` form.
   if (args.some((argument) => argument.includes("mlx_lm.server"))) return "mlx";
   return null;
 };

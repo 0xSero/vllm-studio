@@ -563,9 +563,12 @@ export class DownloadManager {
         createWriteStream(temporaryPath, { flags: shouldAppend ? "a" : "w" }),
       );
       const writerFailure = trackWriterFailure(writer);
+      const finishWriter = closeWriter(writer).pipe(
+        Effect.ensuring(Effect.sync(writerFailure.dispose)),
+      );
       const reader = response.body?.getReader();
       if (!reader) {
-        yield* closeWriter(writer).pipe(Effect.ensuring(Effect.sync(writerFailure.dispose)));
+        yield* finishWriter;
         return yield* Effect.fail(
           operationError("read-download-stream", "Download response has no body"),
         );
@@ -612,11 +615,7 @@ export class DownloadManager {
             Effect.ensuring(Effect.ignore(Effect.try(() => streamReader.releaseLock()))),
           ),
       );
-      yield* consume.pipe(
-        Effect.onExit(() =>
-          closeWriter(writer).pipe(Effect.ensuring(Effect.sync(writerFailure.dispose))),
-        ),
-      );
+      yield* consume.pipe(Effect.onExit(() => finishWriter));
       file.downloaded_bytes = downloaded;
       if (file.size_bytes && downloaded < file.size_bytes) {
         file.status = "error";

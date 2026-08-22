@@ -6,6 +6,7 @@ import type { Config } from "../../../config/env";
 import { resolveBinary, runCommandAsyncEffect } from "../../../core/command";
 import type { RuntimeUpgradeResult } from "@local-studio/contracts/system";
 import type { InstallOptions } from "../engine-spec";
+import { failedUpgrade } from "../engine-operation";
 
 const LLAMACPP_REPO = "https://github.com/ggml-org/llama.cpp";
 const MANAGED_BUILD_TIMEOUT_MS = 45 * 60_000;
@@ -15,14 +16,6 @@ export const managedLlamacppRoot = (config: Pick<Config, "data_dir">): string =>
 
 export const managedLlamaServerPath = (config: Pick<Config, "data_dir">): string =>
   resolve(managedLlamacppRoot(config), "src", "build", "bin", "llama-server");
-
-const missingTool = (tool: string): RuntimeUpgradeResult => ({
-  success: false,
-  version: null,
-  output: null,
-  error: `llama.cpp source build needs "${tool}" on PATH. Install it (or set LOCAL_STUDIO_LLAMACPP_UPGRADE_CMD / LOCAL_STUDIO_LLAMA_BIN) and retry.`,
-  used_command: null,
-});
 
 const findNvcc = (): string | null => {
   const onPath = resolveBinary("nvcc");
@@ -35,7 +28,11 @@ export const installManagedLlamacpp = (
 ): Effect.Effect<RuntimeUpgradeResult> =>
   Effect.gen(function* () {
     for (const tool of ["git", "cmake"]) {
-      if (!resolveBinary(tool)) return missingTool(tool);
+      if (!resolveBinary(tool)) {
+        return failedUpgrade(
+          `llama.cpp source build needs "${tool}" on PATH. Install it (or set LOCAL_STUDIO_LLAMACPP_UPGRADE_CMD / LOCAL_STUDIO_LLAMA_BIN) and retry.`,
+        );
+      }
     }
 
     const root = managedLlamacppRoot(options.config);
@@ -60,15 +57,14 @@ export const installManagedLlamacpp = (
     const fail = (
       stage: string,
       result: { stdout: string; stderr: string; timedOut: boolean },
-    ): RuntimeUpgradeResult => ({
-      success: false,
-      version: null,
-      output: result.stdout || null,
-      error: result.timedOut
-        ? `${stage} timed out after ${Math.round(MANAGED_BUILD_TIMEOUT_MS / 60_000)} minutes`
-        : result.stderr || `${stage} failed`,
-      used_command: stage,
-    });
+    ): RuntimeUpgradeResult =>
+      failedUpgrade(
+        result.timedOut
+          ? `${stage} timed out after ${Math.round(MANAGED_BUILD_TIMEOUT_MS / 60_000)} minutes`
+          : result.stderr || `${stage} failed`,
+        result.stdout || null,
+        stage,
+      );
 
     if (!existsSync(sourceDirectory)) {
       const clone = yield* run("git", ["clone", "--depth", "1", LLAMACPP_REPO, sourceDirectory]);
@@ -99,13 +95,11 @@ export const installManagedLlamacpp = (
 
     const binary = managedLlamaServerPath(options.config);
     if (!existsSync(binary)) {
-      return {
-        success: false,
-        version: null,
-        output: build.stdout || null,
-        error: `Build finished but ${binary} was not produced`,
-        used_command: "cmake build",
-      };
+      return failedUpgrade(
+        `Build finished but ${binary} was not produced`,
+        build.stdout || null,
+        "cmake build",
+      );
     }
 
     const version = yield* run(binary, ["--version"]);

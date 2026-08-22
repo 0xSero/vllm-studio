@@ -11,6 +11,7 @@ import type {
   RuntimeUpgradeResult,
 } from "@local-studio/contracts/system";
 import { EngineOperationError, getEngineSpec, type InstallOptions } from "../engine-spec";
+import { failedUpgrade } from "../engine-operation";
 import { acquireEngineInstallLock, installLockTimeoutMessage } from "./install-lock";
 import { runPlatformUpgrade } from "./runtime-upgrade";
 import {
@@ -96,15 +97,7 @@ export const managedPackageSpec = (
   version?: string | null,
 ): string => getEngineSpec(backend).managedPackageSpec(version);
 
-const failedResult = (error: string): RuntimeUpgradeResult => ({
-  success: false,
-  version: null,
-  output: null,
-  error,
-  used_command: null,
-});
-
-const cancelledResult = failedResult("cancelled by user");
+const cancelledResult = failedUpgrade("cancelled by user");
 
 const runEngineInstall = (
   config: Config,
@@ -122,7 +115,7 @@ const runEngineInstall = (
     if (!lock) {
       return jobs.get(job.id)?.status === "cancelled"
         ? cancelledResult
-        : failedResult(installLockTimeoutMessage(backend));
+        : failedUpgrade(installLockTimeoutMessage(backend));
     }
     return yield* Effect.acquireUseRelease(
       Effect.succeed(lock),
@@ -157,8 +150,8 @@ const runJobOperation = (
   const backend = options.backend;
   if (!isPlatformBackend(backend)) return runEngineInstall(config, job, options, backend, target);
   return options.type === "update"
-    ? runPlatformUpgrade(backend, {})
-    : Effect.succeed(failedResult(`${backend.toUpperCase()} supports update jobs only.`));
+    ? runPlatformUpgrade(backend)
+    : Effect.succeed(failedUpgrade(`${backend.toUpperCase()} supports update jobs only.`));
 };
 
 const runJob = (

@@ -19,6 +19,7 @@ import {
 import { resolveVllmPythonPath } from "../runtimes/vllm-python-path";
 import {
   normalizePackageSpec,
+  probeConfigHelp,
   pythonBackendRuntimeInfo,
   resolvePythonFromScript,
 } from "../runtimes/runtime-target-probes";
@@ -81,13 +82,12 @@ const getConfigHelp = (config: Config): Effect.Effect<ConfigHelpResult> =>
       if (result.status === 0) return { config: result.stdout || null, error: null };
     }
     const python = resolvePythonPath(config) ?? "python3";
-    const result = yield* runCommandAsyncEffect(python, ["-m", "sglang.launch_server", "--help"], {
-      timeoutMs: 5_000,
-    });
-    return {
-      config: result.stdout || null,
-      error: result.status === 0 ? null : result.stderr || "Failed to fetch SGLang config",
-    };
+    return yield* probeConfigHelp(
+      python,
+      ["-m", "sglang.launch_server", "--help"],
+      5_000,
+      "Failed to fetch SGLang config",
+    );
   });
 
 const installSglang = (options: InstallOptions): Effect.Effect<RuntimeUpgradeResult> => {

@@ -14,8 +14,7 @@ import type {
 import type { Config } from "../../../config/env";
 import { resolveBinary, runCommandEffect, runCommandAsyncEffect } from "../../../core/command";
 import { getGpuInfo, queryNvidiaSmiSnapshot } from "../../system/platform/gpu";
-import { extractCudaVersion } from "./cuda-version";
-import { getVllmRuntimeInfo } from "./vllm-runtime";
+import { getVllmRuntimeInfo, vllmBackendInfo } from "./vllm-runtime";
 import { probeGpuMonitoring } from "../../system/platform/compatibility-report";
 import { getRocmInfo, resolveRocmSmiTool } from "../../system/platform/rocm-info";
 import { resolveNvidiaSmiBinary } from "../../system/platform/smi-tools";
@@ -118,13 +117,7 @@ const computeSystemRuntimeInfo = (
       isAppleSilicon: operatingSystem() === "darwin" && arch() === "arm64",
     });
     const rocm = kind === "rocm" ? yield* getRocmInfo(rocmSmiTool) : null;
-    const platform: RuntimePlatformInfo = {
-      kind,
-      vendor:
-        kind === "cuda" ? "nvidia" : kind === "rocm" ? "amd" : kind === "metal" ? "apple" : null,
-      rocm,
-      torch,
-    };
+    const platform: RuntimePlatformInfo = { kind, vendor: PLATFORM_VENDOR[kind], rocm, torch };
     const [gpuMonitoring, cuda] = yield* Effect.all(
       [
         kind === "metal"
@@ -148,19 +141,20 @@ const computeSystemRuntimeInfo = (
       cuda,
       gpus: { count: gpus.length, types },
       backends: {
-        vllm: {
-          installed: vllmInfo.installed,
-          version: vllmInfo.version,
-          python_path: vllmInfo.python_path,
-          binary_path: vllmInfo.vllm_bin,
-          upgrade_command_available: Boolean(vllmInfo.python_path),
-        },
+        vllm: vllmBackendInfo(vllmInfo),
         sglang: sglangInfo,
         llamacpp: llamaInfo,
         mlx: mlxInfo,
       },
     };
   });
+
+const PLATFORM_VENDOR: Record<RuntimePlatformKind, RuntimePlatformInfo["vendor"]> = {
+  cuda: "nvidia",
+  rocm: "amd",
+  metal: "apple",
+  unknown: null,
+};
 
 export const detectPlatformKind = (args: {
   forcedSmiTool: string | undefined;
@@ -207,6 +201,9 @@ export const getLlamacppRuntimeInfo = (config: Config): Effect.Effect<RuntimeBac
       upgrade_command_available: isUpgradeCommandConfigured(LLAMACPP_UPGRADE_ENV),
     };
   });
+
+const extractCudaVersion = (output: string): string | null =>
+  output.match(/CUDA (?:UMD )?Version\s*:\s*([0-9.]+)/i)?.[1] ?? null;
 
 const extractNvccVersion = (output: string): string | null =>
   output.match(/release\s+([0-9.]+)/i)?.[1] ?? null;

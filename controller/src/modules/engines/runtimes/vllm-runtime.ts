@@ -14,10 +14,11 @@ import { installIntoManagedVenv } from "./managed-venv";
 import {
   normalizePackageSpec,
   probeBackendRuntime,
+  probeConfigHelp,
   resolvePythonFromScript,
 } from "./runtime-target-probes";
-import type { InstallOptions } from "../engine-spec";
-import type { RuntimeUpgradeResult } from "@local-studio/contracts/system";
+import type { ConfigHelpResult, InstallOptions } from "../engine-spec";
+import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "@local-studio/contracts/system";
 
 const resolveVllmUpgradeTarget = (version?: string): string =>
   normalizePackageSpec("vllm", version?.trim() || getVllmUpgradeVersion());
@@ -69,14 +70,25 @@ const resolveVllmBinary = (pythonPath: string | null): string | null => {
   return resolveBinary("vllm");
 };
 
-export const getVllmRuntimeInfo = (): Effect.Effect<{
+export interface VllmRuntimeInfo {
   installed: boolean;
   version: string | null;
   python_path: string | null;
   vllm_bin: string | null;
   upgrade_command_available: boolean;
   bundled_wheel: { path: string; version: string | null } | null;
-}> =>
+}
+
+/** The `/runtime/vllm` shape narrowed to the generic backend row the Settings UI reads. */
+export const vllmBackendInfo = (info: VllmRuntimeInfo): RuntimeBackendInfo => ({
+  installed: info.installed,
+  version: info.version,
+  python_path: info.python_path,
+  binary_path: info.vllm_bin,
+  upgrade_command_available: Boolean(info.python_path),
+});
+
+export const getVllmRuntimeInfo = (): Effect.Effect<VllmRuntimeInfo> =>
   Effect.gen(function* () {
     const bundledWheel = resolveBundledWheel();
     const probe = yield* probeBackendRuntime("vllm", collectPythonCandidates());
@@ -90,23 +102,17 @@ export const getVllmRuntimeInfo = (): Effect.Effect<{
     };
   });
 
-export const getVllmConfigHelp = (): Effect.Effect<{
-  config: string | null;
-  error: string | null;
-}> =>
+export const getVllmConfigHelp = (): Effect.Effect<ConfigHelpResult> =>
   Effect.gen(function* () {
     const pythonPath = yield* resolvePythonBinary();
     const vllmBin = resolveVllmBinary(pythonPath);
     if (!pythonPath && !vllmBin) return { config: null, error: "vLLM runtime not available" };
-    const command = vllmBin ?? pythonPath ?? "";
-    const args = vllmBin
-      ? ["serve", "--help"]
-      : ["-m", "vllm.entrypoints.openai.api_server", "--help"];
-    const result = yield* runCommandAsyncEffect(command, args, { timeoutMs: 5_000 });
-    return {
-      config: result.stdout || null,
-      error: result.status === 0 ? null : result.stderr || "Failed to fetch vLLM config",
-    };
+    return yield* probeConfigHelp(
+      vllmBin ?? pythonPath ?? "",
+      vllmBin ? ["serve", "--help"] : ["-m", "vllm.entrypoints.openai.api_server", "--help"],
+      5_000,
+      "Failed to fetch vLLM config",
+    );
   });
 
 export const installVllmRuntime = (

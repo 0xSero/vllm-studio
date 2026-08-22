@@ -4,9 +4,24 @@ import { Effect, Schema } from "effect";
 import { coerce, compare } from "semver";
 import { resolveBinary, runCommandAsyncEffect } from "../../../core/command";
 import type { RuntimeBackendInfo } from "@local-studio/contracts/system";
+import type { ConfigHelpResult } from "../engine-spec";
 import { VLLM_RUNTIME_COMMAND_TIMEOUT_MS } from "../configs";
 
 export type PythonProbeBackend = "vllm" | "sglang" | "mlx";
+
+/** Every engine's "dump the server's --help" probe reports the same config/error pair. */
+export const probeConfigHelp = (
+  command: string,
+  args: string[],
+  timeoutMs: number,
+  failureMessage: string,
+): Effect.Effect<ConfigHelpResult> =>
+  runCommandAsyncEffect(command, args, { timeoutMs }).pipe(
+    Effect.map((result) => ({
+      config: result.stdout || null,
+      error: result.status === 0 ? null : result.stderr || failureMessage,
+    })),
+  );
 
 export const normalizePackageSpec = (packageName: string, version?: string | null): string => {
   const normalized = version?.trim();
