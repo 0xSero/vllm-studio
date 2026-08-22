@@ -81,37 +81,23 @@ export async function loadGitSummary(cwd: string): Promise<GitSummary | null> {
   };
 }
 
-export async function initGit(cwd: string): Promise<void> {
-  const response = await fetch(`/api/agent/git?cwd=${encodeURIComponent(cwd)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "init" }),
-  });
-  if (!response.ok) {
-    const payload = await safeJson<{ error?: string }>(response);
-    throw new Error(payload.error || "Failed to initialize git repository");
-  }
-}
-
-export async function listBranches(cwd: string): Promise<GitBranch[]> {
-  const response = await fetch(`/api/agent/git/branches?cwd=${encodeURIComponent(cwd)}`, {
+async function listGitEntities<T>(resource: "branches" | "worktrees", cwd: string): Promise<T[]> {
+  const response = await fetch(`/api/agent/git/${resource}?cwd=${encodeURIComponent(cwd)}`, {
     cache: "no-store",
   });
-  const payload = await safeJson<{ branches?: GitBranch[]; error?: string }>(response);
-  if (!response.ok) throw new Error(payload.error || "Failed to list branches");
-  return payload.branches ?? [];
+  const payload = await safeJson<{ branches?: T[]; worktrees?: T[]; error?: string }>(response);
+  if (!response.ok) throw new Error(payload.error || `Failed to list ${resource}`);
+  return payload[resource] ?? [];
 }
 
-export async function listWorktrees(cwd: string): Promise<GitWorktree[]> {
-  const response = await fetch(`/api/agent/git/worktrees?cwd=${encodeURIComponent(cwd)}`, {
-    cache: "no-store",
-  });
-  const payload = await safeJson<{ worktrees?: GitWorktree[]; error?: string }>(response);
-  if (!response.ok) throw new Error(payload.error || "Failed to list worktrees");
-  return payload.worktrees ?? [];
-}
+export const listBranches = (cwd: string) => listGitEntities<GitBranch>("branches", cwd);
+export const listWorktrees = (cwd: string) => listGitEntities<GitWorktree>("worktrees", cwd);
 
-export async function runGitAction(cwd: string, action: GitAction): Promise<void> {
+export async function runGitAction(
+  cwd: string,
+  action: GitAction,
+  errorMessage = "Git operation failed",
+): Promise<void> {
   const response = await fetch(`/api/agent/git?cwd=${encodeURIComponent(cwd)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -119,22 +105,17 @@ export async function runGitAction(cwd: string, action: GitAction): Promise<void
   });
   if (!response.ok) {
     const payload = await safeJson<{ error?: string }>(response);
-    throw new Error(payload.error || "Git operation failed");
+    throw new Error(payload.error || errorMessage);
   }
 }
 
-export async function switchBranch(cwd: string, branch: string): Promise<void> {
-  await runGitAction(cwd, { action: "switch_branch", branch });
-}
-
-export async function createBranch(cwd: string, branch: string): Promise<void> {
-  await runGitAction(cwd, { action: "create_branch", branch });
-}
-
-export async function addWorktree(cwd: string, branch: string, path: string): Promise<void> {
-  await runGitAction(cwd, { action: "add_worktree", branch, path });
-}
-
-export async function removeWorktree(cwd: string, path: string): Promise<void> {
-  await runGitAction(cwd, { action: "remove_worktree", path });
-}
+export const initGit = (cwd: string) =>
+  runGitAction(cwd, { action: "init" }, "Failed to initialize git repository");
+export const switchBranch = (cwd: string, branch: string) =>
+  runGitAction(cwd, { action: "switch_branch", branch });
+export const createBranch = (cwd: string, branch: string) =>
+  runGitAction(cwd, { action: "create_branch", branch });
+export const addWorktree = (cwd: string, branch: string, path: string) =>
+  runGitAction(cwd, { action: "add_worktree", branch, path });
+export const removeWorktree = (cwd: string, path: string) =>
+  runGitAction(cwd, { action: "remove_worktree", path });

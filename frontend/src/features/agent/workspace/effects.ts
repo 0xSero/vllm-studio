@@ -26,10 +26,7 @@ import { writeTranscriptSnapshot } from "@/features/agent/workspace/transcript-c
 import { readDefaultAgentModel } from "@/features/agent/workspace/model-preference";
 import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
 
-const EMPTY_SELECTION: ToolSelection = {
-  skills: [],
-  promptTemplates: [],
-};
+const EMPTY_SELECTION: ToolSelection = { skills: [], promptTemplates: [] };
 
 type SetupCheck = { id: string; ok: boolean; guidance?: string };
 
@@ -88,13 +85,10 @@ const METADATA_PATCH_ACTIONS = new Set<WorkspaceAction["type"]>([
   "patchActiveTab",
 ]);
 
-function dispatchEvent(deps: WorkspaceEffectDeps, type: string): void {
-  deps.window.dispatchEvent(new deps.window.Event(type));
-}
-
 function scheduleSessionsRefresh(deps: WorkspaceEffectDeps): void {
-  dispatchEvent(deps, SESSIONS_CHANGED_EVENT);
-  deps.window.setTimeout?.(() => dispatchEvent(deps, SESSIONS_CHANGED_EVENT), 1_500);
+  const fire = () => deps.window.dispatchEvent(new deps.window.Event(SESSIONS_CHANGED_EVENT));
+  fire();
+  deps.window.setTimeout?.(fire, 1_500);
 }
 
 function normalizeModelsPayload(
@@ -112,6 +106,10 @@ function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps):
         catch: () => null,
       }).pipe(Effect.catch(() => Effect.succeed(null)))
     : Effect.succeed(null);
+  const applySetupWarning = (payload: { checks?: SetupCheck[] } | null, hasModels: boolean) => {
+    const pi = payload?.checks?.find((check) => check.id === "pi");
+    deps.dispatch?.({ type: "setSetupWarning", warning: setupWarningFromPiCheck(pi, hasModels) });
+  };
 
   if (deps.api.loadModels) {
     // Retry quietly with backoff: transient controller/network failures should
@@ -137,12 +135,7 @@ function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps):
           if (normalized.models.length > 0) {
             deps.dispatch?.({ type: "setSetupWarning", warning: "" });
           } else {
-            const setupPayload = yield* loadSetupChecksEffect;
-            const pi = setupPayload?.checks?.find((check) => check.id === "pi");
-            deps.dispatch?.({
-              type: "setSetupWarning",
-              warning: setupWarningFromPiCheck(pi, false),
-            });
+            applySetupWarning(yield* loadSetupChecksEffect, false);
           }
         }).pipe(
           Effect.catch((error) =>
@@ -163,13 +156,7 @@ function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps):
   } else if (deps.api.loadSetupChecks) {
     void Effect.runPromise(
       loadSetupChecksEffect.pipe(
-        Effect.map((payload) => {
-          const pi = payload?.checks?.find((check) => check.id === "pi");
-          deps.dispatch?.({
-            type: "setSetupWarning",
-            warning: setupWarningFromPiCheck(pi, state.models.length > 0),
-          });
-        }),
+        Effect.map((payload) => applySetupWarning(payload, state.models.length > 0)),
       ),
     );
   }
@@ -274,40 +261,21 @@ function publishWorkspaceSessions(
   }
 }
 
-function queueLocatedReplay(
-  piSessionId: string | null | undefined,
-  state: WorkspaceState,
-  deps: WorkspaceEffectDeps,
-): void {
-  if (!piSessionId) return;
-  const located = findPaneByPiSessionId(state, piSessionId);
-  if (located) deps.queueReplay(located.paneId, piSessionId);
-}
-
 function queueReplayEffects(
   action: WorkspaceAction,
   prevState: WorkspaceState,
   nextState: WorkspaceState,
   deps: WorkspaceEffectDeps,
 ): void {
-  switch (action.type) {
-    case "openSessionPayloadInPane":
-    case "splitPaneWithPayload":
-      if (
-        action.payload.piSessionId &&
-        !findPaneByPiSessionId(prevState, action.payload.piSessionId)
-      ) {
-        queueLocatedReplay(action.payload.piSessionId, nextState, deps);
-      }
-      return;
-    case "urlNavRequested":
-      if (action.sessionId && !findPaneByPiSessionId(prevState, action.sessionId)) {
-        queueLocatedReplay(action.sessionId, nextState, deps);
-      }
-      return;
-    default:
-      return;
-  }
+  const piSessionId =
+    action.type === "openSessionPayloadInPane" || action.type === "splitPaneWithPayload"
+      ? action.payload.piSessionId
+      : action.type === "urlNavRequested"
+        ? action.sessionId
+        : undefined;
+  if (!piSessionId || findPaneByPiSessionId(prevState, piSessionId)) return;
+  const located = findPaneByPiSessionId(nextState, piSessionId);
+  if (located) deps.queueReplay(located.paneId, piSessionId);
 }
 
 function persistActionEffects(
@@ -353,6 +321,8 @@ function paneMetadataKey(
   });
 }
 
+// Widened to string: persisted/hydrated sessions can carry statuses outside the
+// current union, and they must still settle rather than be treated as in-flight.
 function isSettledStatus(status: string): boolean {
   return status === "idle" || status === "done";
 }
@@ -369,58 +339,40 @@ function transcriptSignature(session: Session): string {
   ].join("|");
 }
 
-function persistSettledTranscripts(
+/**
+ * Snapshots transcripts at the three points they can go stale: when a session
+ * settles, when a new turn starts (preserving the pre-turn transcript), and
+ * when a session leaves the workspace entirely.
+ */
+function persistTranscripts(
   prevState: WorkspaceState,
   nextState: WorkspaceState,
   deps: WorkspaceEffectDeps,
 ): void {
-  for (const [id, session] of nextState.sessions) {
-    if (!session.piSessionId || session.messages.length === 0) continue;
-    if (!isSettledStatus(session.status)) continue;
-    const before = prevState.sessions.get(id);
-    if (before && transcriptSignature(before) === transcriptSignature(session)) continue;
+  const snapshot = (session: Session) => {
+    if (!session.piSessionId || session.messages.length === 0) return;
     writeTranscriptSnapshot(
       session.piSessionId,
       session.messages,
       cleanSessionTitle(session.title),
       deps.storage,
     );
-  }
-}
-
-function persistTurnStartTranscripts(
-  prevState: WorkspaceState,
-  nextState: WorkspaceState,
-  deps: WorkspaceEffectDeps,
-): void {
+  };
   for (const [id, session] of nextState.sessions) {
-    if (!session.piSessionId || session.messages.length === 0) continue;
-    if (session.status !== "running" && session.status !== "starting") continue;
     const before = prevState.sessions.get(id);
-    if (!before || before.status === session.status) continue;
-    writeTranscriptSnapshot(
-      session.piSessionId,
-      session.messages,
-      cleanSessionTitle(session.title),
-      deps.storage,
-    );
+    if (isSettledStatus(session.status)) {
+      if (!before || transcriptSignature(before) !== transcriptSignature(session))
+        snapshot(session);
+    } else if (
+      (session.status === "running" || session.status === "starting") &&
+      before &&
+      before.status !== session.status
+    ) {
+      snapshot(session);
+    }
   }
-}
-
-function persistExitedTranscripts(
-  prevState: WorkspaceState,
-  nextState: WorkspaceState,
-  deps: WorkspaceEffectDeps,
-): void {
   for (const [id, session] of prevState.sessions) {
-    if (!session.piSessionId || session.messages.length === 0) continue;
-    if (nextState.sessions.has(id)) continue;
-    writeTranscriptSnapshot(
-      session.piSessionId,
-      session.messages,
-      cleanSessionTitle(session.title),
-      deps.storage,
-    );
+    if (!nextState.sessions.has(id)) snapshot(session);
   }
 }
 
@@ -439,14 +391,9 @@ export function runWorkspaceEffect(
 
   publishWorkspaceSessions(prevState, nextState, deps);
   if (SESSIONS_CHANGED_ACTIONS.has(action.type)) {
-    persistSettledTranscripts(prevState, nextState, deps);
-    persistTurnStartTranscripts(prevState, nextState, deps);
-    persistExitedTranscripts(prevState, nextState, deps);
-  }
-  if (
-    SESSIONS_CHANGED_ACTIONS.has(action.type) &&
-    storedSessionsKey(prevState) !== storedSessionsKey(nextState)
-  ) {
-    scheduleSessionsRefresh(deps);
+    persistTranscripts(prevState, nextState, deps);
+    if (storedSessionsKey(prevState) !== storedSessionsKey(nextState)) {
+      scheduleSessionsRefresh(deps);
+    }
   }
 }

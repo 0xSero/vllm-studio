@@ -127,37 +127,28 @@ function parsePersistedPaneState(raw: string): Partial<PersistedPaneState> | nul
   }
 }
 
-function restoreTabsWithSelections(rawTabs: unknown[]): {
-  tabs: Session[];
-  selections: Map<SessionId, ToolSelection>;
-  legacyRuntimeKeys: Map<SessionId, string>;
+/** Restores the pane's active session plus the tool selection and legacy runtime
+ * key persisted alongside it. Older snapshots stored several tabs per pane; only
+ * the active one survives, so the other entries are read and discarded. */
+function restorePersistedPane(pane: PersistedPaneRecord): {
+  session: Session;
+  selection: ToolSelection | null;
+  legacyRuntimeKey: string | null;
 } {
-  const tabs: Session[] = [];
-  const selections = new Map<SessionId, ToolSelection>();
-  const legacyRuntimeKeys = new Map<SessionId, string>();
-  for (const raw of rawTabs) {
+  const restored: Array<{ raw: unknown; session: Session }> = [];
+  for (const raw of Array.isArray(pane.tabs) ? pane.tabs : []) {
     const session = normalizePersistedTab(raw);
-    if (!session) continue;
-    tabs.push(session);
-    const selection = toolSelectionFromPersistedTab(raw);
-    if (selection) selections.set(session.id, selection);
-    const legacyRuntimeKey = legacyRuntimeKeyFromPersistedTab(raw);
-    if (legacyRuntimeKey && legacyRuntimeKey !== session.id) {
-      legacyRuntimeKeys.set(session.id, legacyRuntimeKey);
-    }
+    if (session) restored.push({ raw, session });
   }
-  return { tabs: tabs.length > 0 ? tabs : [makeFreshTab()], selections, legacyRuntimeKeys };
-}
-
-function activePersistedTabId(
-  pane: PersistedPaneState["panes"][string],
-  tabs: Session[],
-): SessionId {
-  const activeTabId = pane.activeTabId;
-  if (typeof activeTabId === "string" && tabs.some((tab) => tab.id === activeTabId)) {
-    return activeTabId;
-  }
-  return tabs[0].id;
+  if (restored.length === 0) restored.push({ raw: null, session: makeFreshTab() });
+  const activeTabId = typeof pane.activeTabId === "string" ? pane.activeTabId : null;
+  const active = restored.find((entry) => entry.session.id === activeTabId) ?? restored[0];
+  const legacyRuntimeKey = legacyRuntimeKeyFromPersistedTab(active.raw);
+  return {
+    session: active.session,
+    selection: toolSelectionFromPersistedTab(active.raw),
+    legacyRuntimeKey: legacyRuntimeKey === active.session.id ? null : legacyRuntimeKey,
+  };
 }
 
 function focusedPersistedPaneId(focusedPaneId: unknown, leaves: PaneId[]): PaneId {
@@ -195,16 +186,11 @@ export function restorePersistedPaneState(raw: string): RestoredPaneState | null
   const legacyRuntimeKeys = new Map<SessionId, string>();
 
   for (const paneId of leaves) {
-    const pane = persistedPanes[paneId] ?? {};
-    const rawTabs = Array.isArray(pane.tabs) ? pane.tabs : [];
-    const restored = restoreTabsWithSelections(rawTabs);
-    const activeSessionId = activePersistedTabId(pane, restored.tabs);
-    const session = restored.tabs.find((tab) => tab.id === activeSessionId) ?? restored.tabs[0];
+    const restored = restorePersistedPane(persistedPanes[paneId] ?? {});
+    const { session } = restored;
     sessions.set(session.id, session);
-    const selection = restored.selections.get(session.id);
-    if (selection) selections.set(session.id, selection);
-    const legacyRuntimeKey = restored.legacyRuntimeKeys.get(session.id);
-    if (legacyRuntimeKey) legacyRuntimeKeys.set(session.id, legacyRuntimeKey);
+    if (restored.selection) selections.set(session.id, restored.selection);
+    if (restored.legacyRuntimeKey) legacyRuntimeKeys.set(session.id, restored.legacyRuntimeKey);
     panesById.set(paneId, { sessionId: session.id });
   }
 
@@ -236,10 +222,7 @@ export function sessionMetaForPersistence(
     lastEventSeq: tab.lastEventSeq,
     queue: tab.queue,
   };
-  if (selection) {
-    return { ...base, ...persistedTabFieldsFromSelection(selection) };
-  }
-  return base;
+  return selection ? { ...base, ...persistedTabFieldsFromSelection(selection) } : base;
 }
 
 export { reducer } from "@/features/agent/workspace/reducer";

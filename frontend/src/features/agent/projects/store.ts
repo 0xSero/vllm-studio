@@ -38,10 +38,6 @@ export type ProjectsStore = {
 const getBrowserWindow = (): BrowserWindowLike | null =>
   typeof window === "undefined" ? null : window;
 
-const notify = (target: BrowserWindowLike | null, eventName: string): void => {
-  target?.dispatchEvent(new Event(eventName));
-};
-
 export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}): ProjectsStore {
   const api = dependencies.api ?? defaultApi;
   const readSelection = dependencies.readSelectedProjectId ?? readSelectedProjectId;
@@ -77,20 +73,18 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
 
   const loadGitSummary = async (cwd: string): Promise<GitSummary | null> => {
     if (!cwd) return null;
+    let summary: GitSummary | null = null;
     try {
-      const summary = await api.loadGitSummary(cwd);
-      const next = new Map(snapshot.gitSummaries);
-      if (summary) next.set(cwd, summary);
-      else next.delete(cwd);
-      update({ ...snapshot, gitSummaries: next });
-      return summary;
+      summary = await api.loadGitSummary(cwd);
     } catch {
+      // Nothing cached to invalidate: leave the snapshot untouched.
       if (!snapshot.gitSummaries.has(cwd)) return null;
-      const next = new Map(snapshot.gitSummaries);
-      next.delete(cwd);
-      update({ ...snapshot, gitSummaries: next });
-      return null;
     }
+    const next = new Map(snapshot.gitSummaries);
+    if (summary) next.set(cwd, summary);
+    else next.delete(cwd);
+    update({ ...snapshot, gitSummaries: next });
+    return summary;
   };
 
   const loadGitSummaryOnce = (cwd: string): void => {
@@ -162,7 +156,7 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
       const toIndex = targetId ? projects.findIndex((entry) => entry.id === targetId) : -1;
       if (toIndex === -1) projects.push(moved);
       else projects.splice(toIndex, 0, moved);
-      writeProjectOrder(projects.map((entry) => entry.id));
+      writeStored(PROJECTS_ORDER_KEY, JSON.stringify(projects.map((entry) => entry.id)));
       writeCachedProjects(projects);
       replaceProjects(projects);
     },
@@ -173,7 +167,7 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
       await api.initGit(cwd);
       await loadGitSummary(cwd);
       void refresh();
-      notify(getWindow(), SESSIONS_CHANGED_EVENT);
+      getWindow()?.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT));
     },
   };
 }
@@ -194,59 +188,52 @@ const SELECTED_PROJECT_KEY = "local-studio.agent.selectedProjectId";
 const PROJECTS_CACHE_KEY = "local-studio.agent.projects.cache.v1";
 const PROJECTS_ORDER_KEY = "local-studio.agent.projects.order.v1";
 
-function readProjectOrder(): string[] {
-  if (typeof window === "undefined") return [];
+function readStoredJson(key: string): unknown {
+  if (typeof window === "undefined") return null;
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(PROJECTS_ORDER_KEY) ?? "[]") as unknown;
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
   } catch {
-    return [];
+    return null;
   }
 }
 
-function writeProjectOrder(ids: string[]): void {
+function writeStored(key: string, value: string | null): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(PROJECTS_ORDER_KEY, JSON.stringify(ids));
+    if (value === null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, value);
   } catch {}
 }
 
 /** Apply the user's saved manual order; projects without a saved position keep
  * their load order and sort after the ordered ones. */
 function applyProjectOrder(projects: Project[]): Project[] {
-  const order = readProjectOrder();
+  const stored = readStoredJson(PROJECTS_ORDER_KEY);
+  const order = Array.isArray(stored)
+    ? stored.filter((id): id is string => typeof id === "string")
+    : [];
   if (order.length === 0) return projects;
   const position = new Map(order.map((id, index) => [id, index] as const));
-  return [...projects].sort((a, b) => {
-    const pa = position.get(a.id) ?? Number.MAX_SAFE_INTEGER;
-    const pb = position.get(b.id) ?? Number.MAX_SAFE_INTEGER;
-    return pa - pb;
-  });
+  const rank = (project: Project) => position.get(project.id) ?? Number.MAX_SAFE_INTEGER;
+  return [...projects].sort((a, b) => rank(a) - rank(b));
 }
 
 function readCachedProjects(): Project[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(PROJECTS_CACHE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (entry): entry is Project =>
-        Boolean(entry) &&
-        typeof (entry as Project).id === "string" &&
-        typeof (entry as Project).path === "string",
-    );
-  } catch {
-    return [];
-  }
+  const parsed = readStoredJson(PROJECTS_CACHE_KEY);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter(
+    (entry): entry is Project =>
+      Boolean(entry) &&
+      typeof (entry as Project).id === "string" &&
+      typeof (entry as Project).path === "string",
+  );
 }
 
-function writeCachedProjects(projects: Project[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(PROJECTS_CACHE_KEY, JSON.stringify(projects));
-  } catch {}
-}
+const writeCachedProjects = (projects: Project[]) =>
+  writeStored(PROJECTS_CACHE_KEY, JSON.stringify(projects));
+
+const writeSelectedProjectId = (id: string | null) => writeStored(SELECTED_PROJECT_KEY, id);
 
 function readSelectedProjectId(): string | null {
   if (typeof window === "undefined") return null;
@@ -255,12 +242,4 @@ function readSelectedProjectId(): string | null {
   } catch {
     return null;
   }
-}
-
-function writeSelectedProjectId(id: string | null): void {
-  if (typeof window === "undefined") return;
-  try {
-    if (id) window.localStorage.setItem(SELECTED_PROJECT_KEY, id);
-    else window.localStorage.removeItem(SELECTED_PROJECT_KEY);
-  } catch {}
 }

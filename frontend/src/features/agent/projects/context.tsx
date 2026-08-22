@@ -75,7 +75,7 @@ export function useProjects(): ProjectsContextValue {
   const selectedProject = useMemo(() => findById(selectedId), [findById, selectedId]);
   const agentCwd = selectedProject?.path ?? "";
 
-  const value = useMemo<ProjectsContextValue>(
+  return useMemo<ProjectsContextValue>(
     () => ({
       projects,
       loaded,
@@ -107,6 +107,4 @@ export function useProjects(): ProjectsContextValue {
       store,
     ],
   );
-
-  return value;
 }
