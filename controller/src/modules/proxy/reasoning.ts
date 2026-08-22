@@ -218,21 +218,12 @@ export const normalizeReasoningAndContentInMessage = (message: Record<string, un
     .join("\n");
   const nextContent = contentThink.cleaned;
 
-  if (contentIsString && nextContent !== contentRaw) message["content"] = nextContent;
-  if (message["reasoning_content"] !== nextReasoning) message["reasoning_content"] = nextReasoning;
-
   if (contentIsString) {
-    const strippedContent = stripToolCallXmlBlocks(String(message["content"] ?? ""));
-    message["content"] = collapseRepeatedVisibleContent(strippedContent);
+    message["content"] = collapseRepeatedVisibleContent(stripToolCallXmlBlocks(nextContent));
   }
-  const strippedReasoning = stripToolCallXmlBlocks(
-    typeof message["reasoning_content"] === "string" ? String(message["reasoning_content"]) : "",
-  );
-  if (strippedReasoning) {
-    message["reasoning_content"] = strippedReasoning;
-  } else {
-    delete message["reasoning_content"];
-  }
+  const strippedReasoning = stripToolCallXmlBlocks(nextReasoning);
+  if (strippedReasoning) message["reasoning_content"] = strippedReasoning;
+  else delete message["reasoning_content"];
   delete message["reasoning"];
   delete message["reasoning_text"];
 };

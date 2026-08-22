@@ -24,29 +24,6 @@ type PassthroughPath = "/v1/responses" | "/v1/messages";
 const FORWARDED_HEADERS = ["anthropic-version", "anthropic-beta", "openai-beta"] as const;
 
 export const registerPassthroughRoutes = defineRoutes((app, context) => {
-  const resolveUpstream = (
-    path: PassthroughPath,
-    requestedModel: string | null,
-    parsed: Record<string, unknown>,
-  ): Effect.Effect<{ upstreamUrl: string; auth: Record<string, string> }, unknown> => {
-    const { upstreamUrl, auth, providerRouting } = resolveUpstreamForModel(
-      requestedModel,
-      parsed,
-      path,
-      context,
-      { includeXApiKey: true },
-    );
-    if (providerRouting || !requestedModel) {
-      return Effect.succeed({ upstreamUrl, auth });
-    }
-    return findRecipeByModel(requestedModel, context).pipe(
-      Effect.map((recipe) => {
-        if (recipe?.served_model_name) parsed["model"] = recipe.served_model_name;
-        return { upstreamUrl, auth };
-      }),
-    );
-  };
-
   const forward =
     (path: PassthroughPath) =>
     (ctx: Context<ControllerEnvironment>): ControllerEffect<Response, unknown> =>
@@ -56,7 +33,17 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
           catch: () => new HttpStatus({ status: 400, detail: "Invalid JSON request body" }),
         });
         const requestedModel = typeof parsed["model"] === "string" ? parsed["model"] : null;
-        const { upstreamUrl, auth } = yield* resolveUpstream(path, requestedModel, parsed);
+        const { upstreamUrl, auth, providerRouting } = resolveUpstreamForModel(
+          requestedModel,
+          parsed,
+          path,
+          context,
+          { includeXApiKey: true },
+        );
+        if (!providerRouting && requestedModel) {
+          const recipe = yield* findRecipeByModel(requestedModel, context);
+          if (recipe?.served_model_name) parsed["model"] = recipe.served_model_name;
+        }
 
         const headers: Record<string, string> = { "Content-Type": "application/json", ...auth };
         for (const name of FORWARDED_HEADERS) {

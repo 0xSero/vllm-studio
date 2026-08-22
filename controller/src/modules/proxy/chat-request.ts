@@ -19,11 +19,6 @@ const PROXY_SESSION_HEADER_NAMES = [
 
 const NON_RUNNING_MODEL_WARN_INTERVAL_MS = 10 * 60_000;
 
-interface NonRunningModelWarningState {
-  lastWarnAt: number;
-  suppressed: number;
-}
-
 export interface NonRunningModelWarnDetails {
   requestedModel: string | null;
   requestedRecipeId: string;
@@ -34,7 +29,7 @@ export interface NonRunningModelWarnDetails {
 export const createNonRunningModelWarner = (
   logger: Pick<Logger, "warn">,
 ): ((details: NonRunningModelWarnDetails) => void) => {
-  const warnings = new Map<string, NonRunningModelWarningState>();
+  const warnings = new Map<string, { lastWarnAt: number; suppressed: number }>();
   return (details) => {
     const key = [
       details.requestedRecipeId,
@@ -62,6 +57,11 @@ export const createNonRunningModelWarner = (
   };
 };
 
+const sessionIdIn = (record: Record<string, unknown>): string | null => {
+  const value = record["session_id"] ?? record["sessionId"] ?? record["chat_id"];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+};
+
 export const extractSessionId = (
   parsedBody: Record<string, unknown>,
   header: (name: string) => string | undefined,
@@ -69,17 +69,12 @@ export const extractSessionId = (
   const fromHeader = PROXY_SESSION_HEADER_NAMES.map((name) => header(name)).find(Boolean);
   if (fromHeader?.trim()) return fromHeader.trim();
 
-  const direct = parsedBody["session_id"] ?? parsedBody["sessionId"] ?? parsedBody["chat_id"];
-  if (typeof direct === "string" && direct.trim()) return direct.trim();
-
   const metadata = parsedBody["metadata"];
-  if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
-    const record = metadata as Record<string, unknown>;
-    const fromMetadata = record["session_id"] ?? record["sessionId"] ?? record["chat_id"];
-    if (typeof fromMetadata === "string" && fromMetadata.trim()) return fromMetadata.trim();
-  }
-
-  return null;
+  const inMetadata =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? sessionIdIn(metadata as Record<string, unknown>)
+      : null;
+  return sessionIdIn(parsedBody) ?? inMetadata;
 };
 
 export const attachSessionUsage = (
@@ -176,17 +171,13 @@ export const resolveUpstreamForModel = (
 };
 
 export const ensureStreamingUsageIncluded = (payload: Record<string, unknown>): boolean => {
-  if (!Boolean(payload["stream"])) return false;
-  const existingStreamOptions =
-    payload["stream_options"] &&
-    typeof payload["stream_options"] === "object" &&
-    !Array.isArray(payload["stream_options"])
-      ? (payload["stream_options"] as Record<string, unknown>)
+  if (!payload["stream"]) return false;
+  const options = payload["stream_options"];
+  const existing =
+    options && typeof options === "object" && !Array.isArray(options)
+      ? (options as Record<string, unknown>)
       : {};
-  if (existingStreamOptions["include_usage"] === true) return false;
-  payload["stream_options"] = {
-    ...existingStreamOptions,
-    include_usage: true,
-  };
+  if (existing["include_usage"] === true) return false;
+  payload["stream_options"] = { ...existing, include_usage: true };
   return true;
 };

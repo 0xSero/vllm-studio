@@ -36,40 +36,36 @@ export interface ChatCompletionsStreamParameters {
   keepaliveIntervalMs?: number;
 }
 
+const frame = (payload: string): Uint8Array => new TextEncoder().encode(`data: ${payload}\n\n`);
+
 const errorFrame = (message: string): Uint8Array =>
-  new TextEncoder().encode(
-    `data: ${JSON.stringify({ error: { message, type: "upstream_error" } })}\n\n`,
-  );
+  frame(JSON.stringify({ error: { message, type: "upstream_error" } }));
 
 const responseErrorFrame = (status: number, body: string): Uint8Array =>
-  new TextEncoder().encode(
-    `data: ${body || JSON.stringify({ error: { message: `Upstream returned ${status}`, type: "upstream_error" } })}\n\n`,
+  frame(
+    body ||
+      JSON.stringify({ error: { message: `Upstream returned ${status}`, type: "upstream_error" } }),
   );
+
+const IMPLICIT_REASONING_PARSERS = ["deepseek_r1", "minimax_m2_append_think"];
+const IMPLICIT_REASONING_MODEL_HINTS = ["deepseek", "r1", "reasoning", "thinking"];
 
 const shouldBufferImplicitReasoning = (input: {
   matchedRecipe: Recipe | null;
   recordedModel: string;
 }): boolean => {
   const { matchedRecipe } = input;
-  const reasoningParser =
-    matchedRecipe && matchedRecipe.reasoning_parser !== null
-      ? matchedRecipe.reasoning_parser
-      : matchedRecipe
-        ? (getDefaultReasoningParser(matchedRecipe) ?? null)
-        : null;
+  const reasoningParser = matchedRecipe
+    ? (matchedRecipe.reasoning_parser ?? getDefaultReasoningParser(matchedRecipe) ?? null)
+    : null;
   const upstreamParsesReasoning =
     (matchedRecipe?.backend === "vllm" || matchedRecipe?.backend === "sglang") &&
     Boolean(reasoningParser);
   if (upstreamParsesReasoning) return false;
-  const parser = (reasoningParser ?? "").toLowerCase();
   const modelLower = input.recordedModel.toLowerCase();
   return (
-    parser === "deepseek_r1" ||
-    parser === "minimax_m2_append_think" ||
-    modelLower.includes("deepseek") ||
-    modelLower.includes("r1") ||
-    modelLower.includes("reasoning") ||
-    modelLower.includes("thinking")
+    IMPLICIT_REASONING_PARSERS.includes((reasoningParser ?? "").toLowerCase()) ||
+    IMPLICIT_REASONING_MODEL_HINTS.some((hint) => modelLower.includes(hint))
   );
 };
 

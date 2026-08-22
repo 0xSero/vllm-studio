@@ -20,16 +20,14 @@ const TokenizeResponseSchema = Schema.Struct({
   tokens: Schema.optional(Schema.Array(Schema.Unknown)),
 });
 
-const TextPartSchema = Schema.Struct({ type: Schema.String, text: Schema.optional(Schema.String) });
 const MessageSchema = Schema.Struct({
-  content: Schema.optional(Schema.Union([Schema.String, Schema.Array(TextPartSchema)])),
+  content: Schema.optional(
+    Schema.Union([
+      Schema.String,
+      Schema.Array(Schema.Struct({ type: Schema.String, text: Schema.optional(Schema.String) })),
+    ]),
+  ),
 });
-
-const responseTokens = (response: Response): Effect.Effect<number, unknown> =>
-  Effect.tryPromise({ try: () => response.json(), catch: (source) => source }).pipe(
-    Effect.flatMap(Schema.decodeUnknownEffect(TokenizeResponseSchema)),
-    Effect.map((payload) => payload.tokens?.length ?? 0),
-  );
 
 const tokenize = (
   context: AppContext,
@@ -43,7 +41,10 @@ const tokenize = (
   }).pipe(
     Effect.flatMap((response) =>
       response.ok
-        ? responseTokens(response)
+        ? Effect.tryPromise({ try: () => response.json(), catch: (source) => source }).pipe(
+            Effect.flatMap(Schema.decodeUnknownEffect(TokenizeResponseSchema)),
+            Effect.map((payload) => payload.tokens?.length ?? 0),
+          )
         : Effect.fail(new Error(`Tokenize failed: ${response.status}`)),
     ),
   );
@@ -61,8 +62,8 @@ const messageText = (messages: readonly unknown[]): string =>
     })
     .join("\n");
 
-export const registerTokenizationRoutes = defineRoutes((app, context) => {
-  return mergeRoutes(
+export const registerTokenizationRoutes = defineRoutes((app, context) =>
+  mergeRoutes(
     effectRoute(app.post, "/v1/count-tokens", (ctx) =>
       Effect.gen(function* () {
         const current = yield* findObservedInferenceProcess(context, "countTokens");
@@ -103,5 +104,5 @@ export const registerTokenizationRoutes = defineRoutes((app, context) => {
         });
       }),
     ),
-  );
-});
+  ),
+);

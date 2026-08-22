@@ -4,26 +4,18 @@
 
 const VALID_JSON_ESCAPES = new Set(['"', "\\", "/", "b", "f", "n", "r", "t", "u"]);
 
-function isControlCharacter(char: string): boolean {
-  const codePoint = char.codePointAt(0);
-  return codePoint !== undefined && codePoint >= 0x00 && codePoint <= 0x1f;
-}
+const NAMED_CONTROL_ESCAPES: Record<string, string> = {
+  "\b": "\\b",
+  "\f": "\\f",
+  "\n": "\\n",
+  "\r": "\\r",
+  "\t": "\\t",
+};
 
-function escapeControlCharacter(char: string): string {
-  switch (char) {
-    case "\b":
-      return "\\b";
-    case "\f":
-      return "\\f";
-    case "\n":
-      return "\\n";
-    case "\r":
-      return "\\r";
-    case "\t":
-      return "\\t";
-    default:
-      return `\\u${char.codePointAt(0)?.toString(16).padStart(4, "0") ?? "0000"}`;
-  }
+function escapeIfControlCharacter(char: string): string {
+  const codePoint = char.codePointAt(0);
+  if (codePoint === undefined || codePoint > 0x1f) return char;
+  return NAMED_CONTROL_ESCAPES[char] ?? `\\u${codePoint.toString(16).padStart(4, "0")}`;
 }
 
 /**
@@ -31,7 +23,7 @@ function escapeControlCharacter(char: string): string {
  * - escaping raw control characters inside strings
  * - doubling backslashes before invalid escape characters
  */
-export function repairJson(json: string): string {
+function repairJson(json: string): string {
   let repaired = "";
   let inString = false;
   for (let index = 0; index < json.length; index++) {
@@ -70,7 +62,7 @@ export function repairJson(json: string): string {
       repaired += "\\\\";
       continue;
     }
-    repaired += isControlCharacter(char) ? escapeControlCharacter(char) : char;
+    repaired += escapeIfControlCharacter(char);
   }
   return repaired;
 }
