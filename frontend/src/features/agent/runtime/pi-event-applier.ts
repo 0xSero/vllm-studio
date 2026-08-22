@@ -421,19 +421,14 @@ function assistantSnapshotContent(
   const partialContent = partial?.role === "assistant" ? recordArray(partial.content) : [];
   if (partialContent.length === 0) return messageContent;
 
-  const messageHasTool = hasToolCallPart(messageContent);
-  const partialHasTool = hasToolCallPart(partialContent);
   if (messageContent.length === 0) return partialContent;
-  if (partialHasTool && !messageHasTool) return partialContent;
-  if (
-    partialHasTool &&
-    messageHasTool &&
+  if (!hasToolCallPart(partialContent)) return messageContent;
+  if (!hasToolCallPart(messageContent)) return partialContent;
+  // Both frames carry tool calls: keep whichever is further along.
+  const partialIsAhead =
     partialContent.length >= messageContent.length &&
-    contentPayloadLength(partialContent) > contentPayloadLength(messageContent)
-  ) {
-    return partialContent;
-  }
-  return messageContent;
+    contentPayloadLength(partialContent) > contentPayloadLength(messageContent);
+  return partialIsAhead ? partialContent : messageContent;
 }
 
 function recordArray(value: unknown): Array<Record<string, unknown>> {
@@ -492,6 +487,8 @@ function snapshotToolArgsText(
   return null;
 }
 
+const TOOLCALL_UPDATE_TYPES = new Set(["toolcall_start", "toolcall_delta", "toolcall_end"]);
+
 function applyLegacyToolCallDeltaIfSnapshotMissedIt(
   blocks: AssistantBlock[],
   existingBlocks: AssistantBlock[],
@@ -500,14 +497,7 @@ function applyLegacyToolCallDeltaIfSnapshotMissedIt(
 ): AssistantBlock[] {
   if (event.type !== "message_update") return blocks;
   const assistantMessageEvent = asRecord(event.assistantMessageEvent);
-  const eventType = assistantMessageEvent?.type;
-  if (
-    eventType !== "toolcall_start" &&
-    eventType !== "toolcall_delta" &&
-    eventType !== "toolcall_end"
-  ) {
-    return blocks;
-  }
+  if (!TOOLCALL_UPDATE_TYPES.has(assistantMessageEvent?.type as string)) return blocks;
   const snapshot = toolCallSnapshotFromUpdate(assistantMessageEvent ?? undefined, event.message);
   if (snapshot?.id) {
     const snapshotArgsText = snapshotToolArgsText(content, snapshot.id);
@@ -527,10 +517,8 @@ function preserveMissingToolBlocks(
   existingBlocks: AssistantBlock[],
 ): AssistantBlock[] {
   const ids = new Set(blocks.filter((block) => block.kind === "tool").map((block) => block.id));
-  const missingTools = existingBlocks.filter(
-    (block) => block.kind === "tool" && !ids.has(block.id),
-  );
-  return missingTools.length ? [...blocks, ...missingTools] : blocks;
+  const missing = existingBlocks.filter((block) => block.kind === "tool" && !ids.has(block.id));
+  return missing.length ? [...blocks, ...missing] : blocks;
 }
 
 function nextStreamCalls(
@@ -836,12 +824,8 @@ function queueKey(mode: QueuedMessage["mode"], text: string): string {
   return `${mode}:${queueDisplayText(text)}`;
 }
 
-function consumePending(
-  pending: Map<string, string[]>,
-  mode: QueuedMessage["mode"],
-  text: string,
-): string | null {
-  const key = queueKey(mode, text);
+function consumePending(pending: Map<string, string[]>, text: string): string | null {
+  const key = queueKey("follow_up", text);
   const values = pending.get(key);
   if (!values || values.length === 0) return null;
   const [value, ...remaining] = values;
@@ -863,16 +847,21 @@ function reconcileQueueWithPiEvent(
 
   const next = queue.flatMap((item) => {
     if (item.mode !== "follow_up") return [];
-    const acceptedByPi = consumePending(pending, item.mode, item.text);
+    const acceptedByPi = consumePending(pending, item.text);
     if (acceptedByPi) return [{ ...item, text: queueDisplayText(acceptedByPi), sent: true }];
     return item.sent ? [] : [item];
   });
 
-  for (const [key, messages] of pending) {
-    const separator = key.indexOf(":");
-    const mode = key.slice(0, separator) as QueuedMessage["mode"];
+  // Only follow_up messages are ever staged above, so anything still pending is
+  // a queue entry pi knows about that the UI had not drawn yet.
+  for (const messages of pending.values()) {
     for (const text of messages) {
-      next.push({ id: newId("queue"), mode, text: queueDisplayText(text), sent: true });
+      next.push({
+        id: newId("queue"),
+        mode: "follow_up",
+        text: queueDisplayText(text),
+        sent: true,
+      });
     }
   }
   return next;

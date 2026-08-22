@@ -271,21 +271,13 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           if (replayResult._tag === "Success") {
             const { events, cursor, meta } = replayResult.success;
             const runtimeActive = runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId);
-            const replayEvents = mergeCanonicalAndRuntimeEvents(
-              events,
-              runtimeActive ? runtimeStatus?.events : [],
+            const replay = foldSessionEvents(
+              mergeCanonicalAndRuntimeEvents(events, runtimeActive ? runtimeStatus?.events : []),
             );
-            const {
-              messages,
-              title,
-              startedAt,
-              modelId: replayModelId,
-              tokenStats,
-            } = foldSessionEvents(replayEvents);
             const replaySeq = replayCursorAfterRuntimeHydration(runtimeStatus, piSessionId);
             updateSession(sessionId, (session) => ({
               ...session,
-              messages: reconcileReplayMessages(session.messages, messages),
+              messages: reconcileReplayMessages(session.messages, replay.messages),
               piSessionId,
               cwd: session.cwd || cwd,
               // Head-scan meta carries the real session model/title; the fold's
@@ -294,12 +286,12 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               modelId:
                 session.modelId ||
                 meta?.modelId ||
-                replayModelId ||
+                replay.modelId ||
                 runtimeStatus?.modelId ||
                 modelId,
-              title: meta?.title ?? title ?? session.title,
-              startedAt: meta?.startedAt ?? startedAt ?? session.startedAt,
-              tokenStats: tokenStats ?? undefined,
+              title: meta?.title ?? replay.title ?? session.title,
+              startedAt: meta?.startedAt ?? replay.startedAt ?? session.startedAt,
+              tokenStats: replay.tokenStats ?? undefined,
               // Lifetime spend is computed server-side from the whole rollout,
               // so it survives both compaction and the tail load's cutoff.
               usageTotals: meta?.usage ?? session.usageTotals,
@@ -308,7 +300,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               activeAssistantId: undefined,
               // A non-null cursor means the tail load left older history unread;
               // the timeline shows a "Load earlier" affordance while it is set.
-              historyCursor: messages.length > 0 ? cursor : (session.historyCursor ?? null),
+              historyCursor: replay.messages.length > 0 ? cursor : (session.historyCursor ?? null),
               // The replay has landed, so whatever came from the snapshot has
               // been superseded and must not keep asking to be replayed.
               hydratedFromCache: false,
