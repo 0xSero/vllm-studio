@@ -1,11 +1,5 @@
 import { Effect } from "effect";
-import type {
-  Accelerator,
-  DeviceSnapshot,
-  HostProfile,
-  NodeId,
-  TelemetryField,
-} from "../contracts";
+import type { Accelerator, DeviceSnapshot, HostProfile, NodeId } from "../contracts";
 import { acceleratorProbe } from "./accelerators";
 import { hostArch, hostPlatform, hostProbe, readHostInfo } from "./host";
 import { storageProbe } from "./storage";
@@ -62,10 +56,6 @@ export const bootstrapProfile = (nodeId: NodeId): HostProfile => ({
   deviceCount: 0,
 });
 
-const mergeCapabilities = (
-  collected: readonly (readonly TelemetryField[])[],
-): readonly TelemetryField[] => [...new Set(collected.flat())];
-
 export const collectSnapshot = (options: TelemetryOptions = {}): Effect.Effect<DeviceSnapshot> =>
   Effect.gen(function* () {
     const nodeId = options.nodeId ?? "self";
@@ -91,7 +81,7 @@ export const collectSnapshot = (options: TelemetryOptions = {}): Effect.Effect<D
       ),
       storage: results.flatMap((result) => result.fragment.storage ?? []),
       thermals: results.flatMap((result) => result.fragment.thermals ?? []),
-      capabilities: mergeCapabilities(results.map((result) => result.capabilities)),
+      capabilities: [...new Set(results.flatMap((result) => result.capabilities))],
     };
   });
 

@@ -33,13 +33,12 @@ const readVolume = (mount: string): { key: string; volume: VolumeInfo } | null =
   }
 };
 
-export const systemRoot = (): string => (hostPlatform() === "win32" ? "C:\\" : "/");
-
 /** Sample the system root plus whichever paths matter to this install (model store,
  *  data root). Duplicate mounts collapse, so passing several paths on one volume is free. */
-export const readVolumes = (paths: readonly string[]): readonly VolumeInfo[] => {
+const readVolumes = (paths: readonly string[]): readonly VolumeInfo[] => {
+  const systemRoot = hostPlatform() === "win32" ? "C:\\" : "/";
   const seen = new Map<string, VolumeInfo>();
-  for (const path of [systemRoot(), ...paths]) {
+  for (const path of [systemRoot, ...paths]) {
     const reading = readVolume(path);
     if (!reading) continue;
     if (!seen.has(reading.key)) seen.set(reading.key, reading.volume);
@@ -54,7 +53,10 @@ export const storageProbe = (paths: readonly string[]): DeviceProbe => ({
     neverFails(
       Effect.sync(() => {
         const storage = readVolumes(paths);
-        return { fragment: { storage }, capabilities: storage.length > 0 ? ["storage" as const] : [] };
+        return {
+          fragment: { storage },
+          capabilities: storage.length > 0 ? ["storage" as const] : [],
+        };
       }),
     ),
 });

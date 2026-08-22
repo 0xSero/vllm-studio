@@ -18,8 +18,6 @@ export interface DeviceProbe {
   readonly run: (host: HostProfile) => Effect.Effect<ProbeResult>;
 }
 
-export const emptyResult: ProbeResult = { fragment: {}, capabilities: [] };
-
 /** A probe must never fail the snapshot: a missing tool is data, not an error. */
 export const neverFails = (effect: Effect.Effect<ProbeResult>): Effect.Effect<ProbeResult> =>
-  effect.pipe(Effect.catchCause(() => Effect.succeed(emptyResult)));
+  effect.pipe(Effect.catchCause(() => Effect.succeed({ fragment: {}, capabilities: [] })));

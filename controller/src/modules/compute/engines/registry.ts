@@ -249,13 +249,11 @@ const SPECS: Readonly<Record<EngineId, ComputeEngineSpec>> = {
 
 export const engineSpec = (id: EngineId): ComputeEngineSpec => SPECS[id];
 
-export const allEngineSpecs: readonly ComputeEngineSpec[] = Object.values(SPECS);
-
 /** Engines this host can actually run, with the runtimes available for each. */
 export const availableEngines = (
   host: HostProfile,
 ): readonly { readonly id: EngineId; readonly support: EngineSupport }[] =>
-  allEngineSpecs.map((spec) => ({ id: spec.id, support: spec.supports(host) }));
+  Object.values(SPECS).map((spec) => ({ id: spec.id, support: spec.supports(host) }));
 
 export const supportsRuntime = (
   id: EngineId,

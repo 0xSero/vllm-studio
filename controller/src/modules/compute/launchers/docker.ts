@@ -114,32 +114,26 @@ const verifiedExecutable = (
     return daemon.status === 0 && daemon.stdout.trim() === reference.daemonId ? executable : null;
   });
 
-const sameDockerReference = (reference: HandleReference, record: InstanceRecord): boolean => {
-  const stored = record.ref;
+/** A handle is ours only if it is byte-for-byte the one we stored: same container, same
+ *  daemon, same docker binary. Comparing every field of the handle means a field added to
+ *  the reference type cannot be forgotten here. */
+const sameStoredReference = (reference: HandleReference, record: InstanceRecord): boolean => {
+  const stored = record.ref as Record<string, unknown> | null;
   return (
-    reference.kind === "docker" &&
-    stored?.kind === "docker" &&
-    reference.containerId === stored.containerId &&
-    reference.daemonId === stored.daemonId &&
-    reference.executablePath === stored.executablePath &&
-    reference.executableToken === stored.executableToken
+    stored !== null &&
+    stored["kind"] === reference.kind &&
+    Object.entries(reference).every(([key, value]) => stored[key] === value)
   );
 };
 
-const samePendingReference = (reference: HandleReference, record: InstanceRecord): boolean => {
-  const stored = record.ref;
-  return (
-    reference.kind === "docker-pending" &&
-    stored?.kind === "docker-pending" &&
-    reference.containerName === stored.containerName &&
-    reference.containerName === containerName(record.name) &&
-    reference.nonce === stored.nonce &&
-    reference.nonce === record.nonce &&
-    reference.daemonId === stored.daemonId &&
-    reference.executablePath === stored.executablePath &&
-    reference.executableToken === stored.executableToken
-  );
-};
+const sameDockerReference = (reference: HandleReference, record: InstanceRecord): boolean =>
+  reference.kind === "docker" && sameStoredReference(reference, record);
+
+const samePendingReference = (reference: HandleReference, record: InstanceRecord): boolean =>
+  reference.kind === "docker-pending" &&
+  sameStoredReference(reference, record) &&
+  reference.containerName === containerName(record.name) &&
+  reference.nonce === record.nonce;
 
 const ownershipExact = (
   reference: HandleReference,
