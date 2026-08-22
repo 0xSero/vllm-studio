@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 import { Button, RefreshIconButton, SearchInput, StatusPill } from "@/ui";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceLogo } from "@/ui/resource-logo";
@@ -18,6 +18,7 @@ import {
 } from "@/features/recipes/recipes-content/catalog-table-shell";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { writeClipboardText } from "@/lib/clipboard";
+import { requestAgentJson } from "./agent-json";
 
 const SkillSchema = Schema.Struct({
   id: Schema.String,
@@ -37,16 +38,8 @@ const SkillResponseSchema = Schema.Struct({
 
 type Skill = Schema.Schema.Type<typeof SkillSchema>;
 
-const requestSkills = <T,>(url: string, schema: Schema.ConstraintDecoder<T>) =>
-  Effect.tryPromise({
-    try: async () => {
-      const response = await fetch(url, { cache: "no-store" });
-      const body: unknown = await response.json();
-      if (!response.ok) throw new Error("Skill discovery failed");
-      return Schema.decodeUnknownSync(schema)(body);
-    },
-    catch: (error) => (error instanceof Error ? error : new Error(String(error))),
-  });
+const decodeSkills = Schema.decodeUnknownSync(SkillsResponseSchema);
+const decodeSkill = Schema.decodeUnknownSync(SkillResponseSchema);
 
 function SkillDrawer({
   skill,
@@ -125,7 +118,7 @@ export function SkillsSection() {
 
   const loadSkills = useCallback(() => {
     setRefreshing(true);
-    void Effect.runPromise(requestSkills("/api/agent/skills", SkillsResponseSchema))
+    void requestAgentJson("/api/agent/skills", decodeSkills)
       .then((payload) => {
         setSkills(payload.skills);
         setError("");
@@ -157,11 +150,9 @@ export function SkillsSection() {
     setSelectedSkill(null);
     setDetailLoading(true);
     setError("");
-    void Effect.runPromise(
-      requestSkills(
-        `/api/agent/skills/load?path=${encodeURIComponent(skill.path)}`,
-        SkillResponseSchema,
-      ),
+    void requestAgentJson(
+      `/api/agent/skills/load?path=${encodeURIComponent(skill.path)}`,
+      decodeSkill,
     )
       .then((payload) => setSelectedSkill(payload.skill))
       .catch((loadError: unknown) =>

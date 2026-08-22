@@ -23,7 +23,7 @@ import {
   TableSkeleton,
   TextCell,
 } from "@/features/recipes/recipes-content/catalog-table-shell";
-import { requestJson } from "./google-account-model";
+import { requestAgentJson } from "./agent-json";
 import { ConnectorGrantForm, EVERY_MODEL_VALUE, type GrantDraft } from "./connector-grant-form";
 
 /**
@@ -71,12 +71,10 @@ export function ConnectorAccessSection() {
   const refresh = useCallback(() => {
     setRefreshing(true);
     void Promise.all([
-      requestJson(GRANTS_URL, Schema.decodeUnknownSync(ConnectorGrantsResponseSchema), {
-        cache: "no-store",
-      }),
-      requestJson("/api/agent/models", Schema.decodeUnknownSync(AgentModelsResponseSchema), {
-        cache: "no-store",
-      }).catch(() => ({ models: [] })),
+      requestAgentJson(GRANTS_URL, Schema.decodeUnknownSync(ConnectorGrantsResponseSchema)),
+      requestAgentJson("/api/agent/models", Schema.decodeUnknownSync(AgentModelsResponseSchema)).catch(
+        () => ({ models: [] }),
+      ),
     ])
       .then(([access, catalog]) => {
         setGrants([...access.grants]);
@@ -108,10 +106,9 @@ export function ConnectorAccessSection() {
   // anything.
   const loadConnectorTools = useCallback((connectorId: string) => {
     if (!connectorId) return;
-    void requestJson(
+    void requestAgentJson(
       `${GRANTS_URL}?connector=${encodeURIComponent(connectorId)}`,
       Schema.decodeUnknownSync(ConnectorGrantsResponseSchema),
-      { cache: "no-store" },
     )
       .then((access) => {
         const probed = access.connectors.find((entry) => entry.id === connectorId);
@@ -130,7 +127,7 @@ export function ConnectorAccessSection() {
   const mutate = async (init: RequestInit) => {
     setBusy(true);
     try {
-      const result = await requestJson(
+      const result = await requestAgentJson(
         GRANTS_URL,
         Schema.decodeUnknownSync(GrantMutationResponseSchema),
         { headers: { "content-type": "application/json" }, ...init },

@@ -11,13 +11,13 @@ import type { GoogleWorkspacePluginId } from "@local-studio/agent-runtime/google
 import { Alert, Button, UiModal, UiModalBody, UiModalHeader } from "@/ui";
 import { KeyRound, X } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { jsonBody, requestAgentJson } from "./agent-json";
 import {
   GoogleCancellationResponseSchema,
   clientReplacementWarning,
   connectedGoogleAccounts,
   connectionSignature,
   openExternal,
-  requestJson,
 } from "./google-account-model";
 import { GoogleAccountLoadState } from "./google-account-load-state";
 import { ConnectedGoogleAccounts } from "./google-account-connected";
@@ -57,9 +57,10 @@ export function GoogleAccountModal({
 
   const refresh = useCallback(async (): Promise<boolean> => {
     try {
-      const result = await requestJson<{ account: GoogleAccountView }>(ACCOUNT_URL, decodeAccount, {
-        cache: "no-store",
-      });
+      const result = await requestAgentJson<{ account: GoogleAccountView }>(
+        ACCOUNT_URL,
+        decodeAccount,
+      );
       setAccount(result.account);
       setError("");
       setClientId((current) => current || result.account.clientId || "");
@@ -86,7 +87,7 @@ export function GoogleAccountModal({
   }, [refresh]);
 
   const cancelAuthorizationRequest = useCallback(async (): Promise<void> => {
-    await requestJson(AUTHORIZE_URL, Schema.decodeUnknownSync(GoogleCancellationResponseSchema), {
+    await requestAgentJson(AUTHORIZE_URL, Schema.decodeUnknownSync(GoogleCancellationResponseSchema), {
       method: "DELETE",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ account: accountId }),
@@ -130,7 +131,7 @@ export function GoogleAccountModal({
     setError("");
     try {
       if (!account?.configured || editing) {
-        const saved = await requestJson<{ account: GoogleAccountView }>(
+        const saved = await requestAgentJson<{ account: GoogleAccountView }>(
           ACCOUNT_URL,
           decodeAccount,
           {
@@ -146,14 +147,10 @@ export function GoogleAccountModal({
       }
       lifecycle.active = true;
       lifecycle.baseline = connectionSignature(account, accountId);
-      const result = await requestJson<{ authorizationUrl: string }>(
+      const result = await requestAgentJson<{ authorizationUrl: string }>(
         AUTHORIZE_URL,
         Schema.decodeUnknownSync(GoogleAuthorizationResponseSchema),
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ account: accountId }),
-        },
+        jsonBody({ account: accountId }),
       );
       await openExternal(result.authorizationUrl);
       setAwaiting(true);
@@ -169,7 +166,7 @@ export function GoogleAccountModal({
     setBusy(true);
     setError("");
     try {
-      const result = await requestJson<{ account: GoogleAccountView }>(ACCOUNT_URL, decodeAccount, {
+      const result = await requestAgentJson<{ account: GoogleAccountView }>(ACCOUNT_URL, decodeAccount, {
         method: "DELETE",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ account: accountId, accountKey }),

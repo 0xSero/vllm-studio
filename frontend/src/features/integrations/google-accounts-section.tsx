@@ -27,8 +27,9 @@ import {
   TextCell,
   type StatusTone,
 } from "@/features/recipes/recipes-content/catalog-table-shell";
+import { requestAgentJson } from "./agent-json";
 import { GoogleAccountModal } from "./google-account-modal";
-import { connectedGoogleAccounts, requestJson } from "./google-account-model";
+import { connectedGoogleAccounts } from "./google-account-model";
 
 /**
  * Accounts a session signs into, rather than servers it launches.
@@ -70,10 +71,9 @@ export function GoogleAccountsSection() {
 
   const refresh = useCallback(() => {
     setRefreshing(true);
-    void requestJson<{ account: GoogleAccountView }>(
+    void requestAgentJson<{ account: GoogleAccountView }>(
       "/api/agent/accounts/google",
       Schema.decodeUnknownSync(GoogleAccountResponseSchema),
-      { cache: "no-store" },
     )
       .then((result) => {
         setAccount(result.account);

@@ -29,7 +29,8 @@ import {
   TableSection,
   TextCell,
 } from "@/features/recipes/recipes-content/catalog-table-shell";
-import { openExternal, requestJson } from "./google-account-model";
+import { jsonBody, requestAgentJson } from "./agent-json";
+import { openExternal } from "./google-account-model";
 
 function decodeProviders(input: unknown): ProvidersResponse {
   const providers = (input as { providers?: unknown })?.providers;
@@ -208,7 +209,7 @@ function LoginFlowPanel({
     const tick = async () => {
       if (cursor.done || cancelled) return;
       try {
-        const view = await requestJson(
+        const view = await requestAgentJson(
           `/api/agent/providers/login/${encodeURIComponent(jobId)}?after=${cursor.after}`,
           decodeLoginJob,
         );
@@ -232,21 +233,17 @@ function LoginFlowPanel({
 
   const respond = useCallback(
     async (promptId: number, value: string) => {
-      await requestJson(
+      await requestAgentJson(
         `/api/agent/providers/login/${encodeURIComponent(jobId)}/respond`,
         () => ({ ok: true }),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ promptId, value }),
-        },
+        jsonBody({ promptId, value }),
       );
     },
     [jobId],
   );
 
   const cancel = async () => {
-    await requestJson(
+    await requestAgentJson(
       `/api/agent/providers/login/${encodeURIComponent(jobId)}/cancel`,
       () => ({ ok: true }),
       { method: "POST" },
@@ -391,7 +388,7 @@ export function ModelProvidersSection() {
 
   const refresh = useCallback(() => {
     setRefreshing(true);
-    void requestJson("/api/agent/providers", decodeProviders)
+    void requestAgentJson("/api/agent/providers", decodeProviders)
       .then(({ providers: list }) => {
         setProviders(list);
         setSelectedProvider((current) =>
@@ -412,14 +409,10 @@ export function ModelProvidersSection() {
   const connect = async (provider: ProviderView, type: "oauth" | "api_key") => {
     setError(null);
     try {
-      const { jobId } = await requestJson(
+      const { jobId } = await requestAgentJson(
         `/api/agent/providers/${encodeURIComponent(provider.id)}/login`,
         decodeLoginStart,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type }),
-        },
+        jsonBody({ type }),
       );
       setActive({ jobId, providerId: provider.id, providerName: provider.name });
     } catch (err) {
@@ -429,7 +422,7 @@ export function ModelProvidersSection() {
 
   const signOut = useCallback(
     async (providerId: string) => {
-      await requestJson(
+      await requestAgentJson(
         `/api/agent/providers/${encodeURIComponent(providerId)}/logout`,
         () => ({ ok: true }),
         { method: "POST" },

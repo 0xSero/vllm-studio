@@ -9,23 +9,6 @@ export const GoogleCancellationResponseSchema = Schema.Struct({
   cancelled: Schema.Literal(true),
 });
 
-function responseError(body: unknown, fallback: string): string {
-  if (!body || typeof body !== "object") return fallback;
-  const error = Reflect.get(body, "error");
-  return typeof error === "string" ? error : fallback;
-}
-
-export async function requestJson<T>(
-  url: string,
-  decode: (input: unknown) => T,
-  init?: RequestInit,
-): Promise<T> {
-  const response = await fetch(url, init);
-  const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(responseError(body, `Request failed (${response.status})`));
-  return decode(body);
-}
-
 export async function openExternal(url: string): Promise<void> {
   const bridge = window.localStudioDesktop?.openExternal;
   if (bridge && (await bridge(url))) return;
