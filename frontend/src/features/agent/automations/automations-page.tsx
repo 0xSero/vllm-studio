@@ -166,11 +166,7 @@ export default function AutomationsPage() {
     // bottom safe-area inset, so a viewport-height child overflows it.
     <div className="flex h-full min-h-0 w-full bg-(--ui-bg) text-(--ui-fg) md:h-[100dvh]">
       <div
-        className={
-          editorOpen
-            ? "hidden min-h-0 shrink-0 md:flex md:w-[min(380px,38%)]"
-            : "flex min-h-0 w-full shrink-0 md:w-[min(380px,38%)]"
-        }
+        className={`min-h-0 shrink-0 md:w-[min(380px,38%)] ${editorOpen ? "hidden md:flex" : "flex w-full"}`}
       >
         <AutomationList
           automations={automations ?? []}

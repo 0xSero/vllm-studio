@@ -44,15 +44,8 @@ function lastActive(session: AggregatedSession): string {
 
 function matches(session: AggregatedSession, query: string): boolean {
   if (!query) return true;
-  return [
-    sessionTitle(session),
-    session.lastUserPromptText ?? "",
-    session.projectName,
-    session.projectPath,
-  ]
-    .join(" ")
-    .toLocaleLowerCase()
-    .includes(query);
+  const haystack = `${sessionTitle(session)} ${session.lastUserPromptText ?? ""} ${session.projectName} ${session.projectPath}`;
+  return haystack.toLocaleLowerCase().includes(query);
 }
 
 /**

@@ -12,13 +12,9 @@ import type { Session } from "@/features/agent/runtime/types";
 
 export function randomIdSegment(length: number): string {
   const cryptoApi = globalThis.crypto;
-  if (cryptoApi?.randomUUID) {
-    return cryptoApi.randomUUID().replace(/-/g, "").slice(0, length);
-  }
+  if (cryptoApi?.randomUUID) return cryptoApi.randomUUID().replace(/-/g, "").slice(0, length);
   const bytes = new Uint8Array(Math.ceil(length / 2));
-  if (cryptoApi?.getRandomValues) {
-    cryptoApi.getRandomValues(bytes);
-  }
+  cryptoApi?.getRandomValues?.(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"))
     .join("")
     .slice(0, length);
