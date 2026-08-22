@@ -10,66 +10,56 @@ function formatAttachmentSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+const MEDIA_CARD = "overflow-hidden rounded-md border border-(--border) bg-black/40 p-0";
+const MEDIA_CAPTION = "truncate px-2 py-1 font-mono text-[length:var(--fs-xs)] text-(--dim)";
+
 function UserAttachmentPreview({ attachment }: { attachment: ChatMessageAttachment }) {
   const size = formatAttachmentSize(attachment.size);
   const title = `${attachment.name} · ${attachment.type} · ${size}${attachment.path ? ` · ${attachment.path}` : ""}`;
-  if (attachment.previewKind === "image" && attachment.previewUrl) {
+  const caption = (
+    <>
+      {attachment.name} · {size}
+    </>
+  );
+  const url = attachment.previewUrl;
+  if (url && attachment.previewKind === "image") {
     return (
-      <figure
-        className="overflow-hidden rounded-md border border-(--border) bg-black/40 p-0"
-        title={title}
-      >
+      <figure className={MEDIA_CARD} title={title}>
         <img
-          src={attachment.previewUrl}
+          src={url}
           alt={attachment.name}
           // Reserve vertical space so the async image decode doesn't grow from
           // 0 → up to 288px and shove the whole transcript below it (the scroller
           // runs overflow-anchor:none, so nothing absorbs that reflow).
           className="max-h-72 min-h-40 w-full object-contain"
         />
-        <figcaption className="truncate px-2 py-1 font-mono text-[length:var(--fs-xs)] text-(--dim)">
-          {attachment.name} · {size}
-        </figcaption>
+        <figcaption className={MEDIA_CAPTION}>{caption}</figcaption>
       </figure>
     );
   }
-  if (attachment.previewKind === "video" && attachment.previewUrl) {
+  if (url && attachment.previewKind === "video") {
     return (
-      <figure
-        className="overflow-hidden rounded-md border border-(--border) bg-black/40 p-0"
-        title={title}
-      >
-        <video src={attachment.previewUrl} className="max-h-72 w-full" controls />
-        <figcaption className="truncate px-2 py-1 font-mono text-[length:var(--fs-xs)] text-(--dim)">
-          {attachment.name} · {size}
-        </figcaption>
+      <figure className={MEDIA_CARD} title={title}>
+        <video src={url} className="max-h-72 w-full" controls />
+        <figcaption className={MEDIA_CAPTION}>{caption}</figcaption>
       </figure>
     );
   }
-  if (attachment.previewKind === "audio" && attachment.previewUrl) {
+  if (url && attachment.previewKind === "audio") {
     return (
       <figure className="rounded-md border border-(--border) bg-black/30 p-2" title={title}>
-        <audio src={attachment.previewUrl} className="w-full" controls />
+        <audio src={url} className="w-full" controls />
         <figcaption className="truncate pt-1 font-mono text-[length:var(--fs-xs)] text-(--dim)">
-          {attachment.name} · {size}
+          {caption}
         </figcaption>
       </figure>
     );
   }
-  if (attachment.previewKind === "pdf" && attachment.previewUrl) {
+  if (url && attachment.previewKind === "pdf") {
     return (
-      <div
-        className="overflow-hidden rounded-md border border-(--border) bg-black/40 p-0"
-        title={title}
-      >
-        <iframe
-          src={attachment.previewUrl}
-          title={attachment.name}
-          className="h-72 w-full border-0 bg-(--bg)"
-        />
-        <div className="truncate px-2 py-1 font-mono text-[length:var(--fs-xs)] text-(--dim)">
-          {attachment.name} · {size}
-        </div>
+      <div className={MEDIA_CARD} title={title}>
+        <iframe src={url} title={attachment.name} className="h-72 w-full border-0 bg-(--bg)" />
+        <div className={MEDIA_CAPTION}>{caption}</div>
       </div>
     );
   }

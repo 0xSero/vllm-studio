@@ -18,15 +18,14 @@ import {
    tool calls inside the activity group. It stays collapsed by default even while
    live so streaming thought text doesn't continuously resize the transcript. */
 function ReasoningDisclosure({ block, active }: { block: ThinkingBlock; active: boolean }) {
-  const [userOpen, setUserOpen] = useState<boolean | null>(null);
-  const open = userOpen ?? false;
+  const [open, setOpen] = useState(false);
   return (
     <details className="group min-w-0" open={open}>
       <summary
         className="flex min-h-6 cursor-pointer list-none items-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
-          setUserOpen(!open);
+          setOpen(!open);
         }}
       >
         <span
@@ -108,15 +107,7 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
   // grow by hundreds of pixels and update every token; auto-opening them makes
   // the transcript visibly jump and flicker. The summary row stays one line and
   // users can still expand details explicitly.
-  const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
-  const expanded = userExpanded ?? false;
-  const working =
-    live &&
-    visibleSegments.some(
-      (segment) =>
-        segment.kind === "tools" && segment.blocks.some((block) => block.status === "running"),
-    );
-  const busy = working || live;
+  const [expanded, setExpanded] = useState(false);
   const summary = useMemo(() => summarizeActivity(visibleSegments), [visibleSegments]);
   // One kind of tool -> that tool's glyph; a mixed turn -> the terminal glyph.
   const summaryIcon = useMemo(() => summaryIconKind(visibleSegments), [visibleSegments]);
@@ -134,7 +125,7 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
       <div className="flex min-w-0 flex-col gap-0.5">
         {items.map((item) =>
           item.kind === "reasoning" ? (
-            <ReasoningDisclosure key={item.id} block={item.block} active={busy} />
+            <ReasoningDisclosure key={item.id} block={item.block} active={live} />
           ) : null,
         )}
       </div>
@@ -147,29 +138,29 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
         className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
-          setUserExpanded(!expanded);
+          setExpanded(!expanded);
         }}
       >
         {/* "Working" is a fixed short word and must never shrink, but the
             collapsed summary grows with the turn ("Ran 20 commands · edited 13
             files · …") and will not fit a phone column — let it truncate
             instead of forcing the row wider than the thread. */}
-        {!(busy) ? <SummaryGlyph kind={summaryIcon} /> : null}
+        {live ? null : <SummaryGlyph kind={summaryIcon} />}
         <span
           className={`text-[length:var(--fs-base)] font-normal leading-5 ${
-            busy ? "codex-shimmer-text shrink-0" : "min-w-0 flex-1 truncate"
-          } ${busy ? "" : "text-(--fg)/48"}`}
+            live ? "codex-shimmer-text shrink-0" : "min-w-0 flex-1 truncate text-(--fg)/48"
+          }`}
         >
-          {busy ? "Working" : summary}
+          {live ? "Working" : summary}
         </span>
-        {!expanded && (busy) && preview ? (
+        {!expanded && live && preview ? (
           <span className="flex min-w-0 flex-1 items-center gap-1.5 text-(--dim)/70">
             <PreviewGlyph kind={preview.kind} verb={preview.verb} />
             <span className="min-w-0 flex-1 truncate font-mono text-[length:var(--codex-chat-code-font-size)] leading-5">
               {preview.detail || preview.verb}
             </span>
           </span>
-        ) : busy ? (
+        ) : live ? (
           <span className="min-w-0 flex-1" />
         ) : null}
         <ChevronRight className="h-3 w-3 shrink-0 text-(--dim)/50 transition-transform group-open:rotate-90" />

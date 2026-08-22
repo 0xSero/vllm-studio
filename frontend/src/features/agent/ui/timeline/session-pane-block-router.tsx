@@ -1,4 +1,4 @@
-import { memo, useMemo, type ReactNode } from "react";
+import { memo, useMemo } from "react";
 import type { AssistantBlock, ChatMessage, EventBlock, TextBlock } from "@/features/agent/messages";
 import { traceAgentReasoning } from "@/features/agent/trace-reasoning";
 import { AssistantMarkdown } from "@/features/agent/ui/assistant-markdown";
@@ -23,7 +23,7 @@ const MemoContentBlock = memo(function MemoContentBlock({
   return <AssistantMarkdown text={block.text} cwd={cwd} />;
 });
 
-function EventBlockView({ block }: { block: EventBlock }) {
+const MemoEventBlock = memo(function MemoEventBlock({ block }: { block: EventBlock }) {
   return (
     <div className="flex items-center gap-3 py-1 text-[length:var(--fs-sm)] text-(--fg)/35">
       <span className="h-px flex-1 bg-(--separator)" />
@@ -31,10 +31,6 @@ function EventBlockView({ block }: { block: EventBlock }) {
       <span className="h-px flex-1 bg-(--separator)" />
     </div>
   );
-}
-
-const MemoEventBlock = memo(function MemoEventBlock({ block }: { block: EventBlock }) {
-  return <EventBlockView block={block} />;
 });
 
 const EMPTY_BLOCKS: AssistantBlock[] = [];
@@ -65,47 +61,42 @@ const AssistantBlocks = memo(function AssistantBlocks({
     [routedBlocks],
   );
   const showActions = !running && copyText.trim().length > 0 && lastContentIndex >= 0;
-  const hasActivity = routedBlocks.some((item) => item.kind === "activity-group");
-  // The work phase ends the moment the final response starts streaming.
-  const working = live && lastContentIndex === -1;
 
   if (routedBlocks.length === 0) {
     return <article className="min-w-0" />;
   }
 
-  const nodes: ReactNode[] = [];
-  routedBlocks.forEach((item, index) => {
-    if (item.kind === "activity-group") {
-      nodes.push(
-        <AssistantActivityGroup
-          key={item.id}
-          segments={item.segments}
-          live={live && index === routedBlocks.length - 1}
-        />,
-      );
-      return;
-    }
-    if (item.kind === "content") {
-      nodes.push(
-        <div key={item.block.id} className="min-w-0">
-          <MemoContentBlock block={item.block} cwd={cwd} />
-          {showActions && index === lastContentIndex ? (
-            <AssistantMessageActions copyText={copyText} onForkSession={onForkSession} />
-          ) : null}
-        </div>,
-      );
-      return;
-    }
-    nodes.push(<MemoEventBlock key={item.block.id} block={item.block} />);
-  });
   return (
     <article className="min-w-0">
-      <div className="flex flex-col gap-3">{nodes}</div>
+      <div className="flex flex-col gap-3">
+        {routedBlocks.map((item, index) => {
+          if (item.kind === "activity-group") {
+            return (
+              <AssistantActivityGroup
+                key={item.id}
+                segments={item.segments}
+                live={live && index === routedBlocks.length - 1}
+              />
+            );
+          }
+          if (item.kind === "event") {
+            return <MemoEventBlock key={item.block.id} block={item.block} />;
+          }
+          return (
+            <div key={item.block.id} className="min-w-0">
+              <MemoContentBlock block={item.block} cwd={cwd} />
+              {showActions && index === lastContentIndex ? (
+                <AssistantMessageActions copyText={copyText} onForkSession={onForkSession} />
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
     </article>
   );
 });
 
-function SessionPaneBlockRouterInner({
+export const SessionPaneBlockRouter = memo(function SessionPaneBlockRouter({
   message,
   live,
   running,
@@ -131,7 +122,4 @@ function SessionPaneBlockRouterInner({
       onForkSession={onForkSession}
     />
   );
-}
-
-export const SessionPaneBlockRouter = memo(SessionPaneBlockRouterInner);
-SessionPaneBlockRouter.displayName = "SessionPaneBlockRouter";
+});

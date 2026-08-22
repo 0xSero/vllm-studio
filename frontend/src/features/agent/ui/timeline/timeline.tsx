@@ -491,13 +491,12 @@ function useTimelineScrollEffects({
     // otherwise trigger a scrollTop write for every token and make the timeline
     // look like it is flickering or fighting itself.
     const listEl = bottom?.parentElement ?? el;
+    const followGrowth = () => {
+      if (pendingRestoreTop !== null) restoreScrollTop();
+      else schedulePinToBottom();
+    };
     const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(() => {
-            if (pendingRestoreTop !== null) restoreScrollTop();
-            else schedulePinToBottom();
-          });
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(followGrowth);
     resizeObserver?.observe(el);
     if (listEl !== el) resizeObserver?.observe(listEl);
 
@@ -505,12 +504,7 @@ function useTimelineScrollEffects({
     // deliberately excluded and left to ResizeObserver so we don't do a DOM
     // scroll write on every token.
     const mutationObserver =
-      typeof MutationObserver === "undefined"
-        ? null
-        : new MutationObserver(() => {
-            if (pendingRestoreTop !== null) restoreScrollTop();
-            else schedulePinToBottom();
-          });
+      typeof MutationObserver === "undefined" ? null : new MutationObserver(followGrowth);
     mutationObserver?.observe(listEl, { childList: true, subtree: true });
 
     // Initial alignment (also covers async-loaded history once it renders, via

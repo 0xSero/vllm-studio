@@ -38,10 +38,6 @@ import {
 
 const ToolPreviewHeightContext = createContext<PreviewHeight>("md");
 
-function useToolPreviewHeight(): PreviewHeight {
-  return useContext(ToolPreviewHeightContext);
-}
-
 export const TOOL_ICONS: Record<ToolKind, LucideIcon> = {
   edit: FilePenLine,
   search: Search,
@@ -50,6 +46,8 @@ export const TOOL_ICONS: Record<ToolKind, LucideIcon> = {
   browser: Globe2,
   generic: Wrench,
 };
+
+const EXEC_ARG_KEYS = ["cmd", "command", "script", "shell", "input"];
 
 type ToolMeta = { verb: string; detail: string | null };
 
@@ -65,7 +63,7 @@ function toolMeta(block: ToolBlock, filePath?: string | null): ToolMeta {
     "ref_id",
   ]);
   const query = toolArg(block, ["query", "q", "pattern", "search", "search_query", "needle"]);
-  const command = toolArg(block, ["cmd", "command", "script", "shell", "input"]);
+  const command = toolArg(block, EXEC_ARG_KEYS);
   const url = toolArg(block, ["url", "href"]);
   const resolvedPath = filePath ?? path;
   const kind = classifyTool(block);
@@ -74,7 +72,7 @@ function toolMeta(block: ToolBlock, filePath?: string | null): ToolMeta {
   switch (kind) {
     case "edit":
     case "read":
-      return { verb, detail: resolvedPath ?? fileBasename(resolvedPath) };
+      return { verb, detail: resolvedPath };
     case "search": {
       const compact = compactToolText(query, 80);
       return { verb, detail: compact ? `for ${compact}` : (path ?? "files") };
@@ -97,22 +95,24 @@ function toolMeta(block: ToolBlock, filePath?: string | null): ToolMeta {
   }
 }
 
+/** Browser actions, matched against the tool name in order: [needle, running, done]. */
+const BROWSER_LABELS: Array<[string, string, string]> = [
+  ["navigate", "Navigating", "Navigated"],
+  ["get_text", "Reading page", "Read page"],
+  ["get_html", "Reading page", "Read page"],
+  ["screenshot", "Taking screenshot", "Took screenshot"],
+  ["click", "Clicking", "Clicked"],
+  ["fill", "Filling field", "Filled field"],
+  ["scroll", "Scrolling", "Scrolled"],
+  ["get_url", "Checking URL", "Checked URL"],
+  ["history", "Checking history", "Checked history"],
+];
+
 function browserToolLabel(block: ToolBlock): string {
-  const running = block.status === "running";
-  const normalized = block.name
-    .toLowerCase()
-    .replace(/^browser_/, "")
-    .replace(/^chrome_/, "");
-  if (normalized.includes("navigate")) return running ? "Navigating" : "Navigated";
-  if (normalized.includes("get_text")) return running ? "Reading page" : "Read page";
-  if (normalized.includes("get_html")) return running ? "Reading page" : "Read page";
-  if (normalized.includes("screenshot")) return running ? "Taking screenshot" : "Took screenshot";
-  if (normalized.includes("click")) return running ? "Clicking" : "Clicked";
-  if (normalized.includes("fill")) return running ? "Filling field" : "Filled field";
-  if (normalized.includes("scroll")) return running ? "Scrolling" : "Scrolled";
-  if (normalized.includes("get_url")) return running ? "Checking URL" : "Checked URL";
-  if (normalized.includes("history")) return running ? "Checking history" : "Checked history";
-  return running ? "Using browser" : "Used browser";
+  const name = block.name.toLowerCase().replace(/^(?:browser|chrome)_/, "");
+  const match = BROWSER_LABELS.find(([needle]) => name.includes(needle));
+  const [, running, done] = match ?? ["", "Using browser", "Used browser"];
+  return block.status === "running" ? running : done;
 }
 
 function browserToolDetail(block: ToolBlock): string | null {
@@ -191,7 +191,7 @@ function ShellBlock({
 }) {
   const failed = status === "error";
   const trimmedOutput = output?.replace(/\s+$/, "") || null;
-  const height = useToolPreviewHeight();
+  const height = useContext(ToolPreviewHeightContext);
   return (
     <div
       className={`overflow-hidden rounded-md border bg-(--color-input) ${
@@ -221,7 +221,7 @@ function ShellBlock({
 }
 
 function ToolOutput({ children }: { children: ReactNode }) {
-  const height = useToolPreviewHeight();
+  const height = useContext(ToolPreviewHeightContext);
   return (
     <PreviewScroll
       height={height}
@@ -235,7 +235,7 @@ function ToolOutput({ children }: { children: ReactNode }) {
 }
 
 function HighlightedToolSource({ body, lang }: { body: string; lang: string }) {
-  const height = useToolPreviewHeight();
+  const height = useContext(ToolPreviewHeightContext);
   const highlighted = useMemo(
     () => (lang ? highlightLines(lang, body.split("\n")).join("\n") : null),
     [body, lang],
@@ -273,7 +273,7 @@ const DIFF_MARKER_STYLES: Record<DiffPreviewLine["kind"], string> = {
 };
 
 function DiffPreviewSource({ body, filePath }: { body: string; filePath?: string | null }) {
-  const height = useToolPreviewHeight();
+  const height = useContext(ToolPreviewHeightContext);
   const preview = useMemo(() => parseDiffPreview(body), [body]);
   const language = detectLang(filePath);
   const highlightedLines = useMemo(
@@ -335,10 +335,13 @@ type FileWritePreviewData = {
   patchContent: string | null;
 };
 
-type EditEntry = {
-  oldText?: unknown;
-  newText?: unknown;
-};
+type EditEntry = { oldText?: unknown; newText?: unknown };
+
+function diffHunk(header: string, oldText: string, newText: string): string {
+  const removed = oldText.split("\n").map((line) => `-${line}`);
+  const added = newText.split("\n").map((line) => `+${line}`);
+  return [header, ...removed, ...added].join("\n");
+}
 
 function editsToDiff(value: unknown): string | null {
   if (!Array.isArray(value)) return null;
@@ -348,9 +351,7 @@ function editsToDiff(value: unknown): string | null {
     const oldText = typeof edit.oldText === "string" ? edit.oldText : "";
     const newText = typeof edit.newText === "string" ? edit.newText : "";
     if (!oldText && !newText) return [];
-    const removed = oldText.split("\n").map((line) => `-${line}`);
-    const added = newText.split("\n").map((line) => `+${line}`);
-    return [`@@ edit ${index + 1} @@`, ...removed, ...added].join("\n");
+    return diffHunk(`@@ edit ${index + 1} @@`, oldText, newText);
   });
   return hunks.length ? hunks.join("\n") : null;
 }
@@ -367,9 +368,7 @@ function partialEditsDiffFromArgsText(argsText: string | undefined): string | nu
   const oldText = oldKey ?? "";
   const newText = newKey ?? "";
   if (!oldText && !newText) return null;
-  const removed = oldText.split("\n").map((line: string) => `-${line}`);
-  const added = newText.split("\n").map((line: string) => `+${line}`);
-  return ["@@ edit @@", ...removed, ...added].join("\n");
+  return diffHunk("@@ edit @@", oldText, newText);
 }
 
 function patchPreviewFromArgs(block: ToolBlock): string | null {
@@ -420,13 +419,8 @@ function FileWritePreview({
   filePath,
   fileContent,
   patchContent,
-}: {
-  block: ToolBlock;
-  filePath: string | null;
-  fileContent: string | null;
-  patchContent: string | null;
-}) {
-  const height = useToolPreviewHeight();
+}: FileWritePreviewData & { block: ToolBlock }) {
+  const height = useContext(ToolPreviewHeightContext);
   const previewHeightPx = PREVIEW_HEIGHT_PX[height];
   const lang = detectLang(filePath);
   const body = fileContent ?? patchContent ?? "";
@@ -498,21 +492,19 @@ function DiffPreview({ block, diffText }: { block: ToolBlock; diffText: string }
 }
 
 function execCommand(block: ToolBlock): string | null {
-  const command = extractFromArgs(block.args, block.argsText, [
-    "cmd",
-    "command",
-    "script",
-    "shell",
-    "input",
-  ]);
+  const command = extractFromArgs(block.args, block.argsText, EXEC_ARG_KEYS);
   return command && command.trim() ? command : null;
 }
+
+const BROWSER_RESULT_LIMIT = 1200;
 
 function BrowserPreview({ block }: { block: ToolBlock }) {
   const args = browserToolArgs(block);
   const display =
-    compactBrowserResult(block.resultText) ||
-    (block.text && block.text !== block.argsText ? compactBrowserResult(block.text) : null);
+    compactToolText(block.resultText, BROWSER_RESULT_LIMIT) ||
+    (block.text && block.text !== block.argsText
+      ? compactToolText(block.text, BROWSER_RESULT_LIMIT)
+      : null);
   return (
     <ToolSummary block={block} open={block.status === "running"}>
       {args ? (
@@ -535,11 +527,6 @@ function browserToolArgs(block: ToolBlock): string | null {
   return pairs.length ? pairs.join("  ") : null;
 }
 
-function compactBrowserResult(result: string | null | undefined): string | null {
-  if (!result) return null;
-  return compactToolText(result, 1200);
-}
-
 function ToolPreviewHeightProvider({ kind, children }: { kind: ToolKind; children: ReactNode }) {
   const defaultHeight = useAppStore((state) => state.toolPreviewHeight);
   const overrides = useAppStore((state) => state.toolPreviewHeightOverrides);
@@ -552,52 +539,35 @@ function ToolPreviewHeightProvider({ kind, children }: { kind: ToolKind; childre
 export function ToolBlockView({ block }: { block: ToolBlock }) {
   useFilesystemRefresh(block);
   const kind = classifyTool(block);
+  return (
+    <ToolPreviewHeightProvider kind={kind}>{toolBlockBody(block, kind)}</ToolPreviewHeightProvider>
+  );
+}
+
+/** Picks the richest preview the block's args support, falling back to the plain
+ *  summary + output rows. */
+function toolBlockBody(block: ToolBlock, kind: ToolKind): ReactNode {
   const fileWritePreview = FILE_WRITE_TOOL_NAMES.has(block.name.toLowerCase())
     ? fileWritePreviewData(block)
     : null;
-  if (fileWritePreview) {
-    return (
-      <ToolPreviewHeightProvider kind={kind}>
-        <FileWritePreview block={block} {...fileWritePreview} />
-      </ToolPreviewHeightProvider>
-    );
-  }
+  if (fileWritePreview) return <FileWritePreview block={block} {...fileWritePreview} />;
   const diffPreview = diffPreviewData(block);
-  if (diffPreview) {
+  if (diffPreview) return <DiffPreview block={block} diffText={diffPreview} />;
+  const command = kind === "exec" ? execCommand(block) : null;
+  if (command) {
     return (
-      <ToolPreviewHeightProvider kind={kind}>
-        <DiffPreview block={block} diffText={diffPreview} />
-      </ToolPreviewHeightProvider>
+      <ToolSummary block={block} open={block.status === "running"}>
+        <ShellBlock command={command} output={block.resultText || null} status={block.status} />
+      </ToolSummary>
     );
   }
-  if (kind === "exec") {
-    const command = execCommand(block);
-    if (command) {
-      return (
-        <ToolPreviewHeightProvider kind={kind}>
-          <ToolSummary block={block} open={block.status === "running"}>
-            <ShellBlock command={command} output={block.resultText || null} status={block.status} />
-          </ToolSummary>
-        </ToolPreviewHeightProvider>
-      );
-    }
-  }
-  if (kind === "browser") {
-    return (
-      <ToolPreviewHeightProvider kind={kind}>
-        <BrowserPreview block={block} />
-      </ToolPreviewHeightProvider>
-    );
-  }
-
+  if (kind === "browser") return <BrowserPreview block={block} />;
   const display =
     block.resultText || (block.text && block.text !== block.argsText ? block.text : "");
   return (
-    <ToolPreviewHeightProvider kind={kind}>
-      <ToolSummary block={block} open={block.status === "running"}>
-        {display ? <ToolOutput>{display}</ToolOutput> : null}
-      </ToolSummary>
-    </ToolPreviewHeightProvider>
+    <ToolSummary block={block} open={block.status === "running"}>
+      {display ? <ToolOutput>{display}</ToolOutput> : null}
+    </ToolSummary>
   );
 }
 
