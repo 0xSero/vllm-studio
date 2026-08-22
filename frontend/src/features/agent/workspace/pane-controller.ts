@@ -41,14 +41,6 @@ function validPaneId(paneId: PaneId | undefined): paneId is PaneId {
   return Boolean(paneId && typeof paneId === "string");
 }
 
-function paneExists(state: WorkspaceState, paneId: PaneId): boolean {
-  return state.panesById.has(paneId);
-}
-
-function leafExists(state: WorkspaceState, paneId: PaneId): boolean {
-  return collectLeaves(state.layout).includes(paneId);
-}
-
 function setPane(state: WorkspaceState, paneId: PaneId, pane: PaneState): WorkspaceState {
   const next = new Map(state.panesById);
   next.set(paneId, pane);
@@ -65,13 +57,10 @@ function pruneOrphanSessions(state: WorkspaceState): WorkspaceState {
 
 export function claimCanonicalSession(state: WorkspaceState, canonical: Session): WorkspaceState {
   if (!canonical.piSessionId) return state;
-  const duplicateIds = new Set(
-    [...state.sessions]
-      .filter(
-        ([id, session]) => id !== canonical.id && session.piSessionId === canonical.piSessionId,
-      )
-      .map(([id]) => id),
-  );
+  const duplicateIds = new Set<SessionId>();
+  for (const [id, session] of state.sessions) {
+    if (id !== canonical.id && session.piSessionId === canonical.piSessionId) duplicateIds.add(id);
+  }
   const sessions = new Map(state.sessions);
   for (const id of duplicateIds) sessions.delete(id);
   const panesById = new Map(state.panesById);
@@ -93,13 +82,7 @@ export function claimCanonicalSession(state: WorkspaceState, canonical: Session)
     nextPanes.delete(paneId);
     layout = removeLeaf(layout, paneId) ?? layout;
   }
-  return {
-    ...state,
-    sessions,
-    panesById: nextPanes,
-    layout,
-    focusedPaneId: keptPaneId,
-  };
+  return { ...state, sessions, panesById: nextPanes, layout, focusedPaneId: keptPaneId };
 }
 
 export function patchWorkspaceSession(
@@ -112,14 +95,8 @@ export function patchWorkspaceSession(
   const sessions = patchSessionInMap(state.sessions, sessionId, patch);
   const after = sessions.get(sessionId);
   if (!after || after === before) return state;
-  return claimCanonicalSession(
-    {
-      ...state,
-      sessions,
-      sessionDrafts: updateSessionDrafts(state.sessionDrafts, before, after),
-    },
-    after,
-  );
+  const sessionDrafts = updateSessionDrafts(state.sessionDrafts, before, after);
+  return claimCanonicalSession({ ...state, sessions, sessionDrafts }, after);
 }
 
 function focusExistingSession(
@@ -152,6 +129,17 @@ function replacePaneSession(
   return claimCanonicalSession({ ...next, focusedPaneId: paneId }, restored);
 }
 
+/** Collapse the workspace to a single pane holding `pane`, dropping every other
+ * split and the sessions that only those panes referenced. */
+function makeOnlyPane(state: WorkspaceState, paneId: PaneId, pane: PaneState): WorkspaceState {
+  return pruneOrphanSessions({
+    ...state,
+    layout: { kind: "leaf", paneId },
+    panesById: new Map([[paneId, pane]]),
+    focusedPaneId: paneId,
+  });
+}
+
 function focusSessionAsOnlyPane(
   state: WorkspaceState,
   paneId: PaneId,
@@ -159,12 +147,7 @@ function focusSessionAsOnlyPane(
 ): WorkspaceState {
   const pane = state.panesById.get(paneId);
   if (!pane || paneSessionId(pane) !== sessionId) return state;
-  const next = pruneOrphanSessions({
-    ...state,
-    layout: { kind: "leaf", paneId },
-    panesById: new Map([[paneId, pane]]),
-    focusedPaneId: paneId,
-  });
+  const next = makeOnlyPane(state, paneId, pane);
   const session = next.sessions.get(sessionId);
   return session ? claimCanonicalSession(next, session) : next;
 }
@@ -176,13 +159,8 @@ function replaceWorkspaceSession(
 ): WorkspaceState {
   if (!validPaneId(paneId) || !isSession(session)) return state;
   const restored = restoreSessionDraft(session, state.sessionDrafts);
-  const next = pruneOrphanSessions({
-    ...withSessions(state, setSessionInMap(state.sessions, restored)),
-    layout: { kind: "leaf", paneId },
-    panesById: new Map([[paneId, { sessionId: restored.id }]]),
-    focusedPaneId: paneId,
-  });
-  return claimCanonicalSession(next, restored);
+  const seeded = withSessions(state, setSessionInMap(state.sessions, restored));
+  return claimCanonicalSession(makeOnlyPane(seeded, paneId, { sessionId: restored.id }), restored);
 }
 
 function copySessionWithFreshRuntimeId(
@@ -202,7 +180,7 @@ function splitPaneWithSession(
   side: "a" | "b" = "b",
 ): WorkspaceState | null {
   if (!validPaneId(newPaneId)) return null;
-  if (!leafExists(state, sourcePaneId)) return null;
+  if (!collectLeaves(state.layout).includes(sourcePaneId)) return null;
   const restored = restoreSessionDraft(session, state.sessionDrafts);
   const layout = splitLeafWithinLimits(state.layout, sourcePaneId, newPaneId, direction, side);
   if (!layout) return null;
@@ -252,7 +230,7 @@ function withComposerFocusIntent(
 
 function openNewSessionInFocusedPane(
   state: WorkspaceState,
-  payload: OpenNewSessionPayload,
+  payload: SessionPayload & { project?: Project; newPaneId?: PaneId; replaceWorkspace?: boolean },
 ): WorkspaceState {
   const targetPaneId = state.focusedPaneId;
   const pane = state.panesById.get(targetPaneId);
@@ -267,18 +245,18 @@ function openNewSessionInFocusedPane(
     modelId: payload.tab.modelId || state.selectedModel || undefined,
   };
   const active = paneActiveSession(state, pane);
-  const activeIsEmptyStarter = Boolean(active && isEmptyStarterSession(active));
+  const starter = active && isEmptyStarterSession(active) ? active : null;
   if (payload.replaceWorkspace) {
-    if (active && activeIsEmptyStarter) {
+    if (starter) {
       return withComposerFocusIntent(
-        focusSessionAsOnlyPane(state, targetPaneId, active.id),
-        active.id,
+        focusSessionAsOnlyPane(state, targetPaneId, starter.id),
+        starter.id,
       );
     }
     const minted = replaceWorkspaceSession(state, targetPaneId, session);
     return withComposerFocusIntent(minted, minted.panesById.get(targetPaneId)?.sessionId);
   }
-  if (activeIsEmptyStarter || collectLeaves(state.layout).length >= 2) {
+  if (starter || collectLeaves(state.layout).length >= 2) {
     return replacePaneSession(state, targetPaneId, session);
   }
   return (
@@ -347,7 +325,7 @@ function adoptReplaySession(
 
 function replaySessionInSplitPane(
   state: WorkspaceState,
-  payload: ReplaySessionInSplitPayload,
+  payload: ReplaySessionPayload & { paneId?: PaneId },
 ): WorkspaceState {
   if (!payload.piSessionId) return state;
   const existing = findWorkspaceSessionByPiSessionId(state, payload.piSessionId);
@@ -359,9 +337,9 @@ function replaySessionInSplitPane(
 
 export function openSessionPayloadInPane(
   state: WorkspaceState,
-  payload: OpenSessionPayloadInPanePayload,
+  payload: SessionPayload & { paneId: PaneId; payload: WorkspaceSessionPayload },
 ): WorkspaceState {
-  if (!paneExists(state, payload.paneId)) return state;
+  if (!state.panesById.has(payload.paneId)) return state;
   if (payload.payload.piSessionId) {
     const existing = findWorkspaceSessionByPiSessionId(state, payload.payload.piSessionId);
     if (existing?.paneId) return focusExistingSession(state, existing.paneId, existing.session.id);
@@ -376,9 +354,8 @@ export function openSessionPayloadInPane(
     });
   }
   if (payload.payload.paneId && payload.payload.tabId) {
-    const sourceSession = state.sessions.get(payload.payload.tabId);
-    if (!sourceSession) return state;
-    const session = copySessionWithFreshRuntimeId(sourceSession, payload.tab);
+    const source = state.sessions.get(payload.payload.tabId);
+    const session = source ? copySessionWithFreshRuntimeId(source, payload.tab) : null;
     return session ? replacePaneSession(state, payload.paneId, session) : state;
   }
   return { ...state, focusedPaneId: payload.paneId };
@@ -388,22 +365,20 @@ export function splitPaneWithPayload(
   state: WorkspaceState,
   payload: SplitPaneWithPayloadPayload,
 ): WorkspaceState {
-  if (!leafExists(state, payload.paneId)) return state;
+  if (!collectLeaves(state.layout).includes(payload.paneId)) return state;
+  const split = (session: Session) =>
+    splitPaneWithSession(
+      state,
+      payload.paneId,
+      session,
+      payload.newPaneId,
+      payload.direction,
+      payload.side,
+    ) ?? state;
   if (payload.payload.piSessionId) {
     const existing = findWorkspaceSessionByPiSessionId(state, payload.payload.piSessionId);
     if (existing?.paneId) return focusExistingSession(state, existing.paneId, existing.session.id);
-    if (existing) {
-      return (
-        splitPaneWithSession(
-          state,
-          payload.paneId,
-          existing.session,
-          payload.newPaneId,
-          payload.direction,
-          payload.side,
-        ) ?? state
-      );
-    }
+    if (existing) return split(existing.session);
   }
   if (collectLeaves(state.layout).length >= 2) return state;
   if (!validPaneId(payload.newPaneId)) return state;
@@ -416,24 +391,16 @@ export function splitPaneWithPayload(
     title: payload.payload.title ?? "Loading session",
   };
   const sourceSession = payload.payload.tabId ? state.sessions.get(payload.payload.tabId) : null;
-  const session =
-    (!payload.payload.piSessionId && sourceSession
+  const forked =
+    !payload.payload.piSessionId && sourceSession
       ? copySessionWithFreshRuntimeId(sourceSession, baseSession)
-      : null) ?? baseSession;
-  return (
-    splitPaneWithSession(
-      state,
-      payload.paneId,
-      session,
-      payload.newPaneId,
-      payload.direction,
-      payload.side,
-    ) ?? state
-  );
+      : null;
+  return split(forked ?? baseSession);
 }
 
 export function focusPane(state: WorkspaceState, payload: { paneId: PaneId }): WorkspaceState {
-  return paneExists(state, payload.paneId) ? { ...state, focusedPaneId: payload.paneId } : state;
+  if (!state.panesById.has(payload.paneId)) return state;
+  return { ...state, focusedPaneId: payload.paneId };
 }
 
 export function focusPaneSession(
@@ -457,7 +424,7 @@ export function renameTab(
 
 export function splitTabIntoNewPane(
   state: WorkspaceState,
-  payload: SplitTabPayload,
+  payload: SessionPayload & { sourcePaneId: PaneId; sourceTabId: SessionId; newPaneId?: PaneId },
 ): WorkspaceState {
   const leaves = collectLeaves(state.layout);
   const sourcePane = state.panesById.get(payload.sourcePaneId);
@@ -473,19 +440,15 @@ export function splitTabIntoNewPane(
 
 export function closePane(state: WorkspaceState, payload: { paneId: PaneId }): WorkspaceState {
   const leaves = collectLeaves(state.layout);
-  if (!leaves.includes(payload.paneId)) return state;
-  if (leaves.length <= 1) return state;
+  if (leaves.length <= 1 || !leaves.includes(payload.paneId)) return state;
   const nextPanes = new Map(state.panesById);
   nextPanes.delete(payload.paneId);
-  const remaining = leaves.filter((id) => id !== payload.paneId);
+  const survivor = leaves.find((id) => id !== payload.paneId) ?? state.focusedPaneId;
   return pruneOrphanSessions({
     ...state,
     layout: removeLeaf(state.layout, payload.paneId) ?? state.layout,
     panesById: nextPanes,
-    focusedPaneId:
-      state.focusedPaneId === payload.paneId
-        ? (remaining[0] ?? state.focusedPaneId)
-        : state.focusedPaneId,
+    focusedPaneId: state.focusedPaneId === payload.paneId ? survivor : state.focusedPaneId,
   });
 }
 
@@ -552,21 +515,11 @@ export function applyUrlNavigation(
 
 type SessionPayload = { tab?: Session };
 
-type OpenNewSessionPayload = SessionPayload & {
-  project?: Project;
-  newPaneId?: PaneId;
-  replaceWorkspace?: boolean;
-};
 type ReplaySessionPayload = SessionPayload & {
   piSessionId: string;
   sessionTitle?: string;
   newPaneId?: PaneId;
   replaceWorkspace?: boolean;
-};
-type ReplaySessionInSplitPayload = ReplaySessionPayload & { paneId?: PaneId };
-type OpenSessionPayloadInPanePayload = SessionPayload & {
-  paneId: PaneId;
-  payload: WorkspaceSessionPayload;
 };
 type SplitPaneWithPayloadPayload = SessionPayload & {
   paneId: PaneId;
@@ -574,11 +527,6 @@ type SplitPaneWithPayloadPayload = SessionPayload & {
   direction: "vertical" | "horizontal";
   side: "a" | "b";
   payload: WorkspaceSessionPayload;
-};
-type SplitTabPayload = SessionPayload & {
-  sourcePaneId: PaneId;
-  sourceTabId: SessionId;
-  newPaneId?: PaneId;
 };
 
 function navigationIntentParts(intent: string): [number, number] | null {

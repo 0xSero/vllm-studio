@@ -29,17 +29,12 @@ function chooseModelId(
   return models.find((model) => model.active)?.id || models[0]?.id || "";
 }
 
-function reduceWorkspaceStatus(
-  state: WorkspaceState,
-  action: WorkspaceAction,
-): WorkspaceState | null {
+export function reducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
   switch (action.type) {
     case "hydrate": {
       const next = { ...state, ...action.state };
       return { ...next, hydrated: action.hydrated ?? next.hydrated };
     }
-    case "notifySessionsChanged":
-      return state;
     case "setModelsLoading":
       return { ...state, modelsLoading: action.loading };
     case "setModels":
@@ -55,78 +50,24 @@ function reduceWorkspaceStatus(
       return { ...state, setupWarning: action.warning };
     case "setError":
       return { ...state, error: action.error };
-    default:
-      return null;
-  }
-}
-
-function reducePaneLayoutAction(
-  state: WorkspaceState,
-  action: WorkspaceAction,
-): WorkspaceState | null {
-  switch (action.type) {
     case "setSplitRatio":
-      return setWorkspaceSplitRatio(state, { path: action.path, ratio: action.ratio });
+      return setWorkspaceSplitRatio(state, action);
     case "focusPane":
-      return focusPane(state, { paneId: action.paneId });
+      return focusPane(state, action);
     case "focusPaneSession":
-      return focusPaneSession(state, {
-        paneId: action.paneId,
-        sessionId: action.sessionId,
-        replaceWorkspace: action.replaceWorkspace,
-      });
+      return focusPaneSession(state, action);
     case "closePane":
-      return closePane(state, { paneId: action.paneId });
-    default:
-      return null;
-  }
-}
-
-function reduceSessionOpenAction(
-  state: WorkspaceState,
-  action: WorkspaceAction,
-): WorkspaceState | null {
-  switch (action.type) {
+      return closePane(state, action);
     case "openSessionPayloadInPane":
-      return openSessionPayloadInPane(state, {
-        paneId: action.paneId,
-        payload: action.payload,
-        tab: action.tab,
-      });
+      return openSessionPayloadInPane(state, action);
     case "splitPaneWithPayload":
-      return splitPaneWithPayload(state, {
-        paneId: action.paneId,
-        direction: action.direction,
-        side: action.side,
-        payload: action.payload,
-        newPaneId: action.newPaneId,
-        tab: action.tab,
-      });
-    default:
-      return null;
-  }
-}
-
-function reduceSessionEditAction(
-  state: WorkspaceState,
-  action: WorkspaceAction,
-): WorkspaceState | null {
-  switch (action.type) {
+      return splitPaneWithPayload(state, action);
     case "renameTab":
-      return renameTab(state, {
-        paneId: action.paneId,
-        tabId: action.tabId,
-        title: action.title,
-      });
+      return renameTab(state, action);
     case "splitTab":
-      return splitTabIntoNewPane(state, {
-        sourcePaneId: action.sourcePaneId,
-        sourceTabId: action.sourceTabId,
-        newPaneId: action.newPaneId,
-        tab: action.tab,
-      });
+      return splitTabIntoNewPane(state, action);
     case "setPaneSession":
-      return setPaneSession(state, { paneId: action.paneId, session: action.session });
+      return setPaneSession(state, action);
     case "setDetachedSession":
       return { ...state, sessions: setSession(state.sessions, action.session) };
     case "removeDetachedSession":
@@ -134,35 +75,15 @@ function reduceSessionEditAction(
     case "patchSession":
       return patchWorkspaceSession(state, action.sessionId, action.patch);
     case "patchActiveTab":
-      return patchActiveTab(state, { paneId: action.paneId, patch: action.patch });
+      return patchActiveTab(state, action);
     case "urlNavRequested": {
-      const next = applyUrlNavigation(state, {
-        key: action.key,
-        intent: action.intent,
-        project: action.project,
-        sessionId: action.sessionId,
-        sessionTitle: action.sessionTitle,
-        newSession: action.newSession,
-        split: action.split,
-        replaceWorkspace: action.replaceWorkspace,
-        paneId: action.paneId,
-        tab: action.tab,
-      });
+      const next = applyUrlNavigation(state, action);
       return next === state
         ? state
         : { ...next, hydrated: action.newSession || Boolean(action.sessionId) || next.hydrated };
     }
+    // "notifySessionsChanged" carries no state change; it only drives effects.
     default:
-      return null;
+      return state;
   }
-}
-
-export function reducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
-  return (
-    reduceWorkspaceStatus(state, action) ??
-    reducePaneLayoutAction(state, action) ??
-    reduceSessionOpenAction(state, action) ??
-    reduceSessionEditAction(state, action) ??
-    state
-  );
 }

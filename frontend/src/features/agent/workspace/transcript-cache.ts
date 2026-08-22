@@ -110,18 +110,10 @@ function cacheKeys(storage: TranscriptStorage): string[] {
 }
 
 function evictStaleSessions(storage: TranscriptStorage, keepKey: string): void {
-  const keys = cacheKeys(storage);
-  if (keys.length <= MAX_SESSIONS) return;
-  const dated = keys
-    .filter((key) => key !== keepKey)
-    .map((key) => {
-      const entry = parseCachedTranscript(storage.getItem(key));
-      return { key, updatedAt: entry?.updatedAt ?? 0 };
-    })
-    .sort((a, b) => a.updatedAt - b.updatedAt);
-  for (const { key } of dated.slice(0, keys.length - MAX_SESSIONS)) {
-    storage.removeItem(key);
-  }
+  // `keepKey` was just written and is excluded from `oldestFirst`, so count it
+  // back in when measuring the cache against the cap.
+  const stale = oldestFirst(storage, keepKey);
+  for (const key of stale.slice(0, stale.length + 1 - MAX_SESSIONS)) storage.removeItem(key);
 }
 
 export function readTranscriptSnapshot(

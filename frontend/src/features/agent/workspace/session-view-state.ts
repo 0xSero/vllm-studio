@@ -103,14 +103,22 @@ function writeSessionViews(
   } catch {}
 }
 
+/** Falls back to keys the view used to be stored under: a session only gets a
+ * stable id once the runtime answers. */
+function lookupView(
+  views: ReadonlyMap<string, SessionViewState>,
+  identity: SessionViewIdentity,
+): SessionViewState | null {
+  return (
+    views.get(identity.key) ?? identity.aliases.map((key) => views.get(key)).find(Boolean) ?? null
+  );
+}
+
 export function readSessionView(
   storage: ViewStorage,
   identity: SessionViewIdentity,
 ): SessionViewState | null {
-  const views = loadSessionViews(storage);
-  return (
-    views.get(identity.key) ?? identity.aliases.map((key) => views.get(key)).find(Boolean) ?? null
-  );
+  return lookupView(loadSessionViews(storage), identity);
 }
 
 export function patchSessionView(
@@ -119,11 +127,7 @@ export function patchSessionView(
   patch: Partial<SessionViewState>,
 ): SessionViewState {
   const views = loadSessionViews(storage);
-  const current = views.get(identity.key) ??
-    identity.aliases.map((key) => views.get(key)).find(Boolean) ?? {
-      scrollTop: 0,
-      stickToBottom: true,
-    };
+  const current = lookupView(views, identity) ?? { scrollTop: 0, stickToBottom: true };
   const next = normalizeView({ ...current, ...patch });
   for (const alias of identity.aliases) views.delete(alias);
   views.delete(identity.key);
