@@ -106,14 +106,10 @@ const buildCurrentMetrics = (
       } else {
         if (previous) {
           const elapsedSeconds = (nowMs - previous.ts) / 1000;
-          promptThroughput = Math.max(
-            0,
-            (promptTokensTotal - previous.promptTokens) / elapsedSeconds,
-          );
-          generationThroughput = Math.max(
-            0,
-            (generationTokensTotal - previous.genTokens) / elapsedSeconds,
-          );
+          const rate = (latest: number, earlier: number): number =>
+            Math.max(0, (latest - earlier) / elapsedSeconds);
+          promptThroughput = rate(promptTokensTotal, previous.promptTokens);
+          generationThroughput = rate(generationTokensTotal, previous.genTokens);
         }
         throughputSamples.set(modelId, {
           promptTokens: promptTokensTotal,
@@ -195,6 +191,7 @@ export const registerMonitoringRoutes = defineRoutes((app, context) => {
           promptTokensRaw === undefined ? {} : { prompt_tokens: promptTokensRaw },
         ).pipe(Effect.mapError(() => badRequest("Invalid benchmark query")));
         const promptTokens = query.prompt_tokens ?? 1000;
+
         const current = yield* findObservedInferenceProcess(context, "benchmark");
         if (!current) {
           return ctx.json({ error: "No model running" });
@@ -219,11 +216,8 @@ export const registerMonitoringRoutes = defineRoutes((app, context) => {
         if (!response.ok) {
           return ctx.json({ error: `Request failed: ${response.status}` });
         }
-        const data = yield* Effect.tryPromise({
-          try: () => response.json(),
-          catch: (error) => error,
-        }).pipe(
-          Effect.flatMap((value) => Schema.decodeUnknownEffect(BenchmarkResponseSchema)(value)),
+        const data = yield* Effect.tryPromise(() => response.json()).pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(BenchmarkResponseSchema)),
           Effect.mapError(() => serviceUnavailable("Invalid benchmark response")),
         );
         const usage = data.usage ?? {};

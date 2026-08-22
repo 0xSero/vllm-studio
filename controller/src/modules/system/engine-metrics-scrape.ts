@@ -99,7 +99,7 @@ export const SGLANG_METRIC_NAMES: EngineMetricNames = {
 // llama-server --metrics (bridge launches pass it by default). Throughput comes from the
 // gauge names; token totals drive the same counter-delta math as vLLM/SGLang. There is
 // no TTFT histogram, so those names resolve to nothing and TTFT stays 0.
-export const LLAMACPP_METRIC_NAMES: EngineMetricNames = {
+const LLAMACPP_METRIC_NAMES: EngineMetricNames = {
   promptTokens: ["llamacpp:prompt_tokens_total"],
   generationTokens: ["llamacpp:tokens_predicted_total"],
   promptThroughput: ["llamacpp:prompt_tokens_seconds"],
@@ -109,4 +109,11 @@ export const LLAMACPP_METRIC_NAMES: EngineMetricNames = {
   kvCacheUsage: ["llamacpp:kv_cache_usage_ratio"],
   ttftSum: "llamacpp:time_to_first_token_seconds_sum",
   ttftCount: "llamacpp:time_to_first_token_seconds_count",
+};
+
+/** The metric vocabulary each backend the controller can launch publishes under. */
+export const ENGINE_METRIC_NAMES: Record<string, EngineMetricNames> = {
+  vllm: VLLM_METRIC_NAMES,
+  sglang: SGLANG_METRIC_NAMES,
+  llamacpp: LLAMACPP_METRIC_NAMES,
 };

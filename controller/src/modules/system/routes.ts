@@ -58,9 +58,9 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
       let settled = false;
       const cleanup = (): void => {
         socket.removeListener("connect", onConnect);
-        socket.removeListener("timeout", onTimeout);
-        socket.removeListener("error", onError);
-        signal.removeEventListener("abort", onAbort);
+        socket.removeListener("timeout", onUnreachable);
+        socket.removeListener("error", onUnreachable);
+        signal.removeEventListener("abort", onUnreachable);
         socket.destroy();
       };
       const finalize = (result: boolean): void => {
@@ -70,15 +70,13 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
         resume(Effect.succeed(result));
       };
       const onConnect = (): void => finalize(true);
-      const onTimeout = (): void => finalize(false);
-      const onError = (): void => finalize(false);
-      const onAbort = (): void => finalize(false);
+      const onUnreachable = (): void => finalize(false);
 
       socket.setTimeout(timeoutMs);
       socket.once("connect", onConnect);
-      socket.once("timeout", onTimeout);
-      socket.once("error", onError);
-      signal.addEventListener("abort", onAbort, { once: true });
+      socket.once("timeout", onUnreachable);
+      socket.once("error", onUnreachable);
+      signal.addEventListener("abort", onUnreachable, { once: true });
       return Effect.sync(cleanup);
     });
 
@@ -163,11 +161,10 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
           config.head_dim ?? (hiddenSize && headCount ? hiddenSize / headCount : undefined);
 
         const kvBytesPerValue = kvDtype.toLowerCase() === "fp8" ? 1 : 2;
-        let kvCacheBytes = 0;
-        if (layerCount && keyValueHeadCount && headDim) {
-          kvCacheBytes =
-            contextLength * layerCount * keyValueHeadCount * headDim * 2 * kvBytesPerValue;
-        }
+        const kvCacheBytes =
+          layerCount && keyValueHeadCount && headDim
+            ? contextLength * layerCount * keyValueHeadCount * headDim * 2 * kvBytesPerValue
+            : 0;
 
         const weightsTotalGb = weightsBytes / 1024 ** 3;
         const weightsPerGpuGb = weightsTotalGb / tpSize;
@@ -178,11 +175,10 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
         const totalGb = perGpuGb * tpSize;
 
         const gpus = yield* getGpuInfo();
-        let perGpuCapacityGb = 0;
-        if (gpus.length >= tpSize && tpSize > 0) {
-          const candidates = gpus.slice(0, tpSize).map((gpu) => gpu.memory_total_mb / 1024);
-          perGpuCapacityGb = Math.min(...candidates);
-        }
+        const perGpuCapacityGb =
+          gpus.length >= tpSize && tpSize > 0
+            ? Math.min(...gpus.slice(0, tpSize).map((gpu) => gpu.memory_total_mb / 1024))
+            : 0;
 
         const fits = perGpuCapacityGb > 0 ? perGpuGb <= perGpuCapacityGb : true;
         const utilizationPercent = perGpuCapacityGb > 0 ? (perGpuGb / perGpuCapacityGb) * 100 : 0;

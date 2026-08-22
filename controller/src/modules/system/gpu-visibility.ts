@@ -51,13 +51,9 @@ function environmentVisibilitySelector(recipe: Recipe): string | null {
   return selector;
 }
 
-function canonicalNvidiaUuid(uuid: string): string {
-  return `GPU-${uuid.slice(4).toLowerCase()}`;
-}
-
 function leaseableUuid(gpu: GpuInfo): string | null {
   const uuid = gpu.uuid?.trim();
-  return uuid && fullNvidiaUuid.test(uuid) ? canonicalNvidiaUuid(uuid) : null;
+  return uuid && fullNvidiaUuid.test(uuid) ? `GPU-${uuid.slice(4).toLowerCase()}` : null;
 }
 
 function appendUnique(values: string[], value: string): void {

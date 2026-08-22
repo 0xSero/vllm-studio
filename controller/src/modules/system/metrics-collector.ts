@@ -3,12 +3,7 @@ import { Effect, Schedule } from "effect";
 import { getGpuInfo } from "./platform/gpu";
 import { getSystemRuntimeInfo } from "../engines/runtimes/runtime-info";
 import type { UsageAggregate } from "../../stores/inference-request-store";
-import {
-  SGLANG_METRIC_NAMES,
-  LLAMACPP_METRIC_NAMES,
-  VLLM_METRIC_NAMES,
-  scrapeEngineMetrics,
-} from "./engine-metrics-scrape";
+import { ENGINE_METRIC_NAMES, scrapeEngineMetrics } from "./engine-metrics-scrape";
 import {
   bumpBestLower,
   bumpPeak,
@@ -70,26 +65,19 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
     yield* context.eventManager.publishGpu(gpuList.map((gpu) => ({ ...gpu })));
 
     if (Date.now() - lastRuntimeSummaryAt > METRICS_RUNTIME_SUMMARY_INTERVAL_MS) {
-      yield* getSystemRuntimeInfo(context.config).pipe(
-        Effect.flatMap((runtime) => {
-          const leaseHolder = current
-            ? (current.served_model_name ?? current.model_path?.split("/").pop() ?? "inference")
-            : null;
-          return context.eventManager
-            .publishRuntimeSummary({
-              platform: runtime.platform,
-              gpu_monitoring: runtime.gpu_monitoring,
-              backends: runtime.backends,
-              lease: { holder: leaseHolder, since: leaseHolder ? new Date().toISOString() : null },
-            })
-            .pipe(
-              Effect.tap(() =>
-                Effect.sync(() => {
-                  lastRuntimeSummaryAt = Date.now();
-                }),
-              ),
-            );
-        }),
+      yield* Effect.gen(function* () {
+        const runtime = yield* getSystemRuntimeInfo(context.config);
+        const leaseHolder = current
+          ? (current.served_model_name ?? current.model_path?.split("/").pop() ?? "inference")
+          : null;
+        yield* context.eventManager.publishRuntimeSummary({
+          platform: runtime.platform,
+          gpu_monitoring: runtime.gpu_monitoring,
+          backends: runtime.backends,
+          lease: { holder: leaseHolder, since: leaseHolder ? new Date().toISOString() : null },
+        });
+        lastRuntimeSummaryAt = Date.now();
+      }).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
             context.logger.debug("Runtime summary publish failed", { error: String(error) });
@@ -99,18 +87,14 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
     }
 
     const lifetimeData = yield* lifetimeStore.getAllEffect();
+    const kwhPerMillion = (tokenKey: string): number | null => {
+      const tokens = lifetimeData[tokenKey];
+      return tokens ? (lifetimeData["energy_wh"] ?? 0) / 1000 / (tokens / 1_000_000) : null;
+    };
     const baseMetrics = {
       ...lifetimeFields(lifetimeData, totalPowerWatts),
-      kwh_per_million_input: lifetimeData["prompt_tokens_total"]
-        ? (lifetimeData["energy_wh"] ?? 0) /
-          1000 /
-          ((lifetimeData["prompt_tokens_total"] ?? 1) / 1_000_000)
-        : null,
-      kwh_per_million_output: lifetimeData["completion_tokens_total"]
-        ? (lifetimeData["energy_wh"] ?? 0) /
-          1000 /
-          ((lifetimeData["completion_tokens_total"] ?? 1) / 1_000_000)
-        : null,
+      kwh_per_million_input: kwhPerMillion("prompt_tokens_total"),
+      kwh_per_million_output: kwhPerMillion("completion_tokens_total"),
     };
 
     if (current) {
@@ -133,36 +117,25 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
       let generationTokensTotal = 0;
       let avgTtftMs = 0;
 
-      if (
-        current.backend === "vllm" ||
-        current.backend === "sglang" ||
-        current.backend === "llamacpp"
-      ) {
+      const names = ENGINE_METRIC_NAMES[current.backend ?? ""];
+      if (names) {
         const vllmMetrics = yield* scrapeVllmMetrics(context.config.inference_port);
         const now = Date.now() / 1000;
         const elapsed =
           lastMetricsTime > 0 ? now - lastMetricsTime : METRICS_LIFETIME_UPTIME_INCREMENT_SECONDS;
-        const names =
-          current.backend === "sglang"
-            ? SGLANG_METRIC_NAMES
-            : current.backend === "llamacpp"
-              ? LLAMACPP_METRIC_NAMES
-              : VLLM_METRIC_NAMES;
+        /** Rate of a monotonic counter across the gap since the previous scrape. */
+        const counterRate = (metricNames: string[]): number => {
+          const previous = firstMetric(lastVllmMetrics, metricNames);
+          const latest = firstMetric(vllmMetrics, metricNames);
+          return latest > previous ? (latest - previous) / elapsed : 0;
+        };
         if (
           elapsed > 0 &&
           Object.keys(vllmMetrics).length > 0 &&
           Object.keys(lastVllmMetrics).length > 0
         ) {
-          const previousPromptTokens = firstMetric(lastVllmMetrics, names.promptTokens);
-          const currentPromptTokens = firstMetric(vllmMetrics, names.promptTokens);
-          const previousGenerationTokens = firstMetric(lastVllmMetrics, names.generationTokens);
-          const currentGenerationTokens = firstMetric(vllmMetrics, names.generationTokens);
-          if (currentPromptTokens > previousPromptTokens) {
-            promptThroughput = (currentPromptTokens - previousPromptTokens) / elapsed;
-          }
-          if (currentGenerationTokens > previousGenerationTokens) {
-            generationThroughput = (currentGenerationTokens - previousGenerationTokens) / elapsed;
-          }
+          promptThroughput = counterRate(names.promptTokens);
+          generationThroughput = counterRate(names.generationTokens);
         }
 
         promptThroughput = firstMetric(vllmMetrics, names.promptThroughput) || promptThroughput;
@@ -175,13 +148,12 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
         promptTokensTotal = firstMetric(vllmMetrics, names.promptTokens);
         generationTokensTotal = firstMetric(vllmMetrics, names.generationTokens);
 
-        const previousTtftSum = lastVllmMetrics[names.ttftSum] ?? 0;
-        const previousTtftCount = lastVllmMetrics[names.ttftCount] ?? 0;
-        const currentTtftSum = vllmMetrics[names.ttftSum] ?? 0;
-        const currentTtftCount = vllmMetrics[names.ttftCount] ?? 0;
-        const dTtftCount = currentTtftCount - previousTtftCount;
-        if (dTtftCount > 0) {
-          avgTtftMs = ((currentTtftSum - previousTtftSum) / dTtftCount) * 1000;
+        const ttftCountDelta =
+          (vllmMetrics[names.ttftCount] ?? 0) - (lastVllmMetrics[names.ttftCount] ?? 0);
+        if (ttftCountDelta > 0) {
+          const ttftSumDelta =
+            (vllmMetrics[names.ttftSum] ?? 0) - (lastVllmMetrics[names.ttftSum] ?? 0);
+          avgTtftMs = (ttftSumDelta / ttftCountDelta) * 1000;
         }
 
         lastVllmMetrics = vllmMetrics;
@@ -190,9 +162,9 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
         if (promptThroughput > 0 || generationThroughput > 0 || avgTtftMs > 0) {
           yield* context.stores.peakMetricsStore.updateIfBetterEffect(
             modelId,
-            promptThroughput > 0 ? promptThroughput : undefined,
-            generationThroughput > 0 ? generationThroughput : undefined,
-            avgTtftMs > 0 ? avgTtftMs : undefined,
+            positiveOrUndefined(promptThroughput),
+            positiveOrUndefined(generationThroughput),
+            positiveOrUndefined(avgTtftMs),
           );
         }
       } else {
@@ -212,9 +184,9 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
         yield* context.stores.peakMetricsStore.updateSessionPeakEffect(
           sessionPeakId,
           modelId,
-          sessionPeaks.prompt_throughput > 0 ? sessionPeaks.prompt_throughput : undefined,
-          sessionPeaks.generation_throughput > 0 ? sessionPeaks.generation_throughput : undefined,
-          sessionPeaks.ttft_ms > 0 ? sessionPeaks.ttft_ms : undefined,
+          positiveOrUndefined(sessionPeaks.prompt_throughput),
+          positiveOrUndefined(sessionPeaks.generation_throughput),
+          positiveOrUndefined(sessionPeaks.ttft_ms),
         );
       }
 

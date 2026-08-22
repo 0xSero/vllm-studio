@@ -139,58 +139,49 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
     Stream.scoped(
       Stream.unwrap(
         Effect.acquireRelease(
-          Effect.try({
-            try: () => {
-              const child = spawn(
-                "docker",
-                ["logs", "--tail", String(replayLimit), "--follow", container],
-                {
-                  stdio: ["ignore", "pipe", "pipe"],
-                },
-              );
-              const output = new PassThrough();
-              const readers: Array<{
-                readonly readable: NonNullable<typeof child.stdout>;
-                readonly end: () => void;
-                readonly error: (cause: Error) => void;
-              }> = [];
-              let openStreams = 0;
-              for (const readable of [child.stdout, child.stderr]) {
-                if (!readable) continue;
-                openStreams += 1;
-                readable.pipe(output, { end: false });
-                const end = (): void => {
-                  openStreams -= 1;
-                  if (openStreams === 0) output.end();
-                };
-                const error = (cause: Error): void => {
-                  output.destroy(cause);
-                };
-                readable.once("end", end);
-                readable.once("error", error);
-                readers.push({ readable, end, error });
-              }
-              if (openStreams === 0) output.end();
-              const childError = (cause: Error): void => {
-                output.destroy(cause);
+          attempt(() => {
+            const child = spawn(
+              "docker",
+              ["logs", "--tail", String(replayLimit), "--follow", container],
+              { stdio: ["ignore", "pipe", "pipe"] },
+            );
+            const output = new PassThrough();
+            const onError = (cause: Error): void => {
+              output.destroy(cause);
+            };
+            const readers: Array<{
+              readonly readable: NonNullable<typeof child.stdout>;
+              readonly end: () => void;
+            }> = [];
+            let openStreams = 0;
+            for (const readable of [child.stdout, child.stderr]) {
+              if (!readable) continue;
+              openStreams += 1;
+              readable.pipe(output, { end: false });
+              const end = (): void => {
+                openStreams -= 1;
+                if (openStreams === 0) output.end();
               };
-              child.once("error", childError);
-              const lines = createInterface({ input: output, crlfDelay: Infinity });
-              return { child, childError, lines, output, readers };
-            },
-            catch: (error) => error,
+              readable.once("end", end);
+              readable.once("error", onError);
+              readers.push({ readable, end });
+            }
+            if (openStreams === 0) output.end();
+            child.once("error", onError);
+            const lines = createInterface({ input: output, crlfDelay: Infinity });
+            return { child, onError, lines, output, readers };
           }),
-          ({ child, childError, lines, output, readers }) =>
+          ({ child, onError, lines, output, readers }) =>
             Effect.gen(function* () {
               lines.close();
-              for (const { readable, end, error } of readers) {
+              for (const { readable, end } of readers) {
                 readable.removeListener("end", end);
-                readable.removeListener("error", error);
+                readable.removeListener("error", onError);
                 readable.unpipe(output);
               }
               output.destroy();
               yield* terminateChild(child);
-              child.removeListener("error", childError);
+              child.removeListener("error", onError);
             }),
         ).pipe(Effect.map(({ lines }) => Stream.fromAsyncIterable(lines, (error) => error))),
       ),
