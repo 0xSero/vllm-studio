@@ -32,16 +32,6 @@ const chipHint: Record<SubagentRun["status"], string> = {
   cancelled: "stopped — open the subagent session",
 };
 
-async function fetchSubagents(parentPiSessionId: string): Promise<SubagentRun[]> {
-  const response = await fetch(
-    `/api/agent/subagents?piSessionId=${encodeURIComponent(parentPiSessionId)}`,
-    { cache: "no-store" },
-  );
-  if (!response.ok) return [];
-  const payload = (await response.json()) as { subagents?: SubagentRun[] };
-  return Array.isArray(payload.subagents) ? payload.subagents : [];
-}
-
 export function SubagentChips({ piSessionId }: { piSessionId: string }) {
   const router = useRouter();
   const [runs, setRuns] = useState<SubagentRun[]>([]);
@@ -50,8 +40,14 @@ export function SubagentChips({ piSessionId }: { piSessionId: string }) {
     let cancelled = false;
     const load = async () => {
       try {
-        const next = await fetchSubagents(piSessionId);
-        if (!cancelled) setRuns(next);
+        const response = await fetch(
+          `/api/agent/subagents?piSessionId=${encodeURIComponent(piSessionId)}`,
+          { cache: "no-store" },
+        );
+        const payload = response.ok
+          ? ((await response.json()) as { subagents?: SubagentRun[] })
+          : {};
+        if (!cancelled) setRuns(Array.isArray(payload.subagents) ? payload.subagents : []);
       } catch {
         // Transient; next poll retries.
       }

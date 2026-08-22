@@ -86,33 +86,36 @@ export function sessionIdForNavigation(
   return newParam === null ? sessionId : null;
 }
 
-function projectForNavigation(projects: ProjectsContextValue, projectId: string | null) {
-  if (projectId) return projects.findById(projectId);
-  return null;
-}
-
-function requestWorkspaceUrlNavigation({
+export function useAgentWorkspaceNavigationEffects({
   lastHandledNavKey,
   projects,
   searchParams,
   dispatch,
 }: WorkspaceNavigationDeps): void {
-  const params = navigationParams(searchParams);
-  const key = navigationKey(params);
-  if (!key) return;
-  if (lastHandledNavKey === key) {
+  useMountSubscription(() => {
+    requestNavigation();
+  }, [lastHandledNavKey, projects, searchParams, dispatch]);
+
+  function requestNavigation(): void {
+    const params = navigationParams(searchParams);
+    const key = navigationKey(params);
+    if (!key) return;
+    if (lastHandledNavKey === key) {
+      consumeOneShotNavParams(params.projectId, params.sessionId);
+      return;
+    }
+
+    const project = params.projectId ? projects.findById(params.projectId) : null;
+    if (params.projectId && !project) return;
+
+    if (project) projects.selectProject(project);
+    const sessionTitle = params.sessionId
+      ? consumeAgentSessionNavTitle(params.sessionId)
+      : undefined;
+    const action = workspaceNavigationAction(searchParams, project, sessionTitle);
+    if (action) dispatch(action);
     consumeOneShotNavParams(params.projectId, params.sessionId);
-    return;
   }
-
-  const project = projectForNavigation(projects, params.projectId);
-  if (params.projectId && !project) return;
-
-  if (project) projects.selectProject(project);
-  const sessionTitle = params.sessionId ? consumeAgentSessionNavTitle(params.sessionId) : undefined;
-  const action = workspaceNavigationAction(searchParams, project, sessionTitle);
-  if (action) dispatch(action);
-  consumeOneShotNavParams(params.projectId, params.sessionId);
 }
 
 export function settledAgentNavigationHref(
@@ -135,15 +138,4 @@ function consumeOneShotNavParams(projectId: string | null, sessionId: string | n
   const href = settledAgentNavigationHref(window.location.href, projectId, sessionId);
   if (href !== window.location.href) window.history.replaceState(window.history.state, "", href);
   settleNewChatNavigation();
-}
-
-export function useAgentWorkspaceNavigationEffects({
-  lastHandledNavKey,
-  projects,
-  searchParams,
-  dispatch,
-}: WorkspaceNavigationDeps): void {
-  useMountSubscription(() => {
-    requestWorkspaceUrlNavigation({ lastHandledNavKey, projects, searchParams, dispatch });
-  }, [lastHandledNavKey, projects, searchParams, dispatch]);
 }

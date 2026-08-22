@@ -61,35 +61,14 @@ function MermaidBlock({ code, fence }: { code: string; fence: string }) {
   return <div ref={containerRef} className="my-3 overflow-x-auto" />;
 }
 
-function MarkdownWithMermaid({ text }: { text: string }) {
-  return (
-    <>
-      {splitMermaidSegments(text).map((segment, index) =>
-        segment.kind === "mermaid" ? (
-          <MermaidBlock
-            key={`${index}-${segment.code}`}
-            code={segment.code}
-            fence={segment.fence}
-          />
-        ) : (
-          <AssistantMarkdown key={index} text={segment.text} />
-        ),
-      )}
-    </>
-  );
-}
-
-function previewKindForPath(path: string): PreviewKind | null {
-  if (/\.(html?|svg)$/i.test(path)) return "html";
-  if (/\.(jsx|tsx)$/i.test(path)) return "jsx";
-  if (/\.(md|mdx|markdown)$/i.test(path)) return "md";
-  if (/\.(png|jpe?g|gif|webp|avif|bmp|ico|apng)$/i.test(path)) return "image";
-  if (/\.pdf$/i.test(path)) return "pdf";
-  return null;
-}
-
 export function previewKindForOpenFile(openFile: string | null): PreviewKind | null {
-  return openFile ? previewKindForPath(openFile) : null;
+  if (!openFile) return null;
+  if (/\.(html?|svg)$/i.test(openFile)) return "html";
+  if (/\.(jsx|tsx)$/i.test(openFile)) return "jsx";
+  if (/\.(md|mdx|markdown)$/i.test(openFile)) return "md";
+  if (/\.(png|jpe?g|gif|webp|avif|bmp|ico|apng)$/i.test(openFile)) return "image";
+  if (/\.pdf$/i.test(openFile)) return "pdf";
+  return null;
 }
 
 /** Kinds served from the file's own bytes instead of a UTF-8 text read. */
@@ -145,7 +124,17 @@ export function RenderedPreview({ content, kind }: { content: string; kind: Prev
   if (kind === "md") {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg) px-3 py-2 text-sm leading-6 text-(--fg)">
-        <MarkdownWithMermaid text={content} />
+        {splitMermaidSegments(content).map((segment, index) =>
+          segment.kind === "mermaid" ? (
+            <MermaidBlock
+              key={`${index}-${segment.code}`}
+              code={segment.code}
+              fence={segment.fence}
+            />
+          ) : (
+            <AssistantMarkdown key={index} text={segment.text} />
+          ),
+        )}
       </div>
     );
   }

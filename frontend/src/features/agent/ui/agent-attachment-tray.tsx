@@ -68,33 +68,27 @@ export function AgentAttachmentTray({
   );
 }
 
+/** Kinds with no thumbnail of their own get a three-letter tile instead. */
+const PREVIEW_BADGES: Record<string, string> = { pdf: "PDF", audio: "AUD" };
+
 function AttachmentPreview({ file }: { file: AgentComposerAttachment }) {
   if (isImageAttachment(file)) {
     return <img src={file.content} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />;
   }
-
-  if (isRenderableAttachment(file) && file.previewKind === "pdf") {
-    return (
-      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--bg) font-mono text-[length:var(--fs-2xs)] text-(--fg)">
-        PDF
-      </span>
-    );
-  }
-
-  if (isRenderableAttachment(file) && file.previewKind === "video") {
+  const kind = isRenderableAttachment(file) ? file.previewKind : undefined;
+  if (kind === "video") {
     return (
       <video src={file.previewUrl} className="h-8 w-8 shrink-0 rounded-lg object-cover" muted />
     );
   }
-
-  if (isRenderableAttachment(file) && file.previewKind === "audio") {
+  const badge = kind ? PREVIEW_BADGES[kind] : undefined;
+  if (badge) {
     return (
       <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--bg) font-mono text-[length:var(--fs-2xs)] text-(--fg)">
-        AUD
+        {badge}
       </span>
     );
   }
-
   return <FileIcon className="h-3 w-3 shrink-0" />;
 }
 

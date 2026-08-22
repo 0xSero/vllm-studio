@@ -24,10 +24,6 @@ const RECENT_LIMIT = 20;
  *  lines at the widest sidebar setting. */
 const PREVIEW_CHARS = 120;
 
-function sameActiveSet(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
-  return left.size === right.size && [...left].every((id) => right.has(id));
-}
-
 /** Day buckets, the way the reference nav groups them: today and yesterday by
  *  name, the rest of the week by weekday, older rows by date. */
 function dayLabel(iso: string): string {
@@ -86,10 +82,9 @@ export function RecentSessionsSection() {
     let previous = getSessionActivity().active;
     return subscribeSessionActivity(() => {
       const next = getSessionActivity().active;
-      const unchanged = sameActiveSet(previous, next);
+      const unchanged = previous.size === next.size && [...previous].every((id) => next.has(id));
       previous = next;
-      if (unchanged) return;
-      setReloadNonce((nonce) => nonce + 1);
+      if (!unchanged) setReloadNonce((nonce) => nonce + 1);
     });
   }, []);
 
