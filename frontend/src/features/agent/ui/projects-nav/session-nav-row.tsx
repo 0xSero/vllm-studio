@@ -5,7 +5,7 @@ import { MenuItem } from "@/ui";
 import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type DragEvent, type MouseEvent } from "react";
-import { useClickOutside } from "@/hooks/use-click-outside";
+import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { Archive, MoreIcon, PinIcon, PinOffIcon, SquarePen, X } from "@/ui/icon-registry";
 import type { SessionActivity } from "@/features/agent/session-index";
 import type { SessionPref } from "@/features/agent/messages/session-prefs";

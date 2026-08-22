@@ -5,7 +5,7 @@ import { Menu, PanelRightFilled, PanelRightHollow, TerminalSquare } from "@/ui/i
 import { useAppStore } from "@/store";
 import { MenuItem } from "@/ui";
 import { POPOVER_MENU_CLASS } from "@/ui/popover";
-import { useClickOutside } from "@/hooks/use-click-outside";
+import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { setReasoningVisible, useReasoningVisible } from "@/features/agent/messages/session-prefs";
 import { CloseIcon, MoreIcon } from "@/ui/icons";
 import { preloadTerminalPanel } from "@/features/agent/ui/terminal-panel";
