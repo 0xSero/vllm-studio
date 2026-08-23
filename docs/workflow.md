@@ -24,13 +24,16 @@ desktop artifact. Required CI checks must pass before a pull request is merged.
 ## Nightly releases
 
 Every push to `main` publishes a rolling `nightly` prerelease. The workflow
-builds Developer ID signed DMG, ZIP and updater metadata assets from the exact
-`main` commit, versions them with a sortable UTC timestamp and commit hash, and
-moves the `nightly` tag to that commit. Current large assets are replaced while
-historical ZIP blockmaps remain available for differential downloads. Packaged
-desktop users can select Stable or Nightly under Settings → Application → Update
-channel; Nightly reads updater metadata directly from the rolling release while
-Stable follows the newest versioned release.
+publishes `latest` and exact-commit controller images, then builds Developer ID
+signed DMG, ZIP and updater metadata assets from the same `main` commit, versions
+them with a sortable UTC timestamp and commit hash, and moves the `nightly` tag
+to that commit. Pull requests that change the controller or either image
+workflow build the multi-platform controller image without publishing it.
+Current large assets are replaced while historical ZIP blockmaps remain
+available for differential downloads. Packaged desktop users can select Stable
+or Nightly under Settings → Application → Update channel; Nightly reads updater
+metadata directly from the rolling release while Stable follows the newest
+versioned release.
 
 Nightly builds are not notarized, so macOS may require approval in System
 Settings under Privacy & Security after the first download.

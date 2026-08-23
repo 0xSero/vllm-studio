@@ -6,15 +6,11 @@ on:
       - main
     paths:
       - .github/workflows/controller-image.yml
+      - .github/workflows/nightly.yml
       - controller/**
   push:
-    branches:
-      - main
     tags:
       - v*.*.*
-    paths:
-      - .github/workflows/controller-image.yml
-      - controller/**
   workflow_dispatch:
 
 permissions:
