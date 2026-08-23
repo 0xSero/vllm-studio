@@ -7,7 +7,7 @@ import { decodeJsonBody } from "../../core/validation";
 import { effectRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import { registerStudioModelIndexRoutes } from "./model-index";
 import { registerStudioProviderRoutes } from "./provider-routes";
-import { registerCodexProviderRoutes } from "./codex-provider-routes";
+import { registerModelProviderAuthRoutes } from "./model-provider-auth-routes";
 import { registerStudioRigRoutes } from "./rig-routes";
 import { getGpuInfo } from "../system/platform/gpu";
 import type { GpuInfo } from "../models/types";
@@ -325,7 +325,7 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
 
     registerStudioModelIndexRoutes(app, context),
     context.config.controller_mode === "head" ? registerStudioProviderRoutes(app, context) : app,
-    context.config.controller_mode === "head" ? registerCodexProviderRoutes(app, context) : app,
+    context.config.controller_mode === "head" ? registerModelProviderAuthRoutes(app, context) : app,
     registerStudioRigRoutes(app, context),
   );
 });

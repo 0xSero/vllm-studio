@@ -36,23 +36,24 @@ import {
   HEAD_CONNECTION_CHANGED_EVENT,
 } from "@/lib/api/head-controller";
 
+const HEAD_OWNED_PROVIDER_IDS = new Set(["openai-codex", "cursor"]);
+
 function decodeProviders(input: unknown): ProvidersResponse {
   const providers = (input as { providers?: unknown })?.providers;
   if (!Array.isArray(providers)) throw new Error("Malformed providers response");
   return { providers: providers as ProviderView[] };
 }
 
-function decodeControllerProvider(input: unknown): ProviderView {
-  const provider = (input as { provider?: unknown })?.provider as ProviderView | undefined;
-  if (!provider || typeof provider.id !== "string") {
-    throw new Error("Malformed controller provider response");
-  }
-  return { ...provider, controllerOwned: true };
+function decodeControllerProviders(input: unknown): ProvidersResponse {
+  const decoded = decodeProviders(input);
+  return {
+    providers: decoded.providers.map((provider) => ({ ...provider, controllerOwned: true })),
+  };
 }
 
 function providerApiRoot(provider: Pick<ProviderView, "id" | "controllerOwned">): string {
   return provider.controllerOwned
-    ? `/api/proxy/studio/providers/${encodeURIComponent(provider.id)}`
+    ? `/api/proxy/studio/model-providers/${encodeURIComponent(provider.id)}`
     : `/api/agent/providers/${encodeURIComponent(provider.id)}`;
 }
 
@@ -425,15 +426,19 @@ export function ModelProvidersSection() {
     void Promise.all([
       requestJson("/api/agent/providers", decodeProviders),
       head
-        ? requestJson("/api/proxy/studio/providers/openai-codex/status", decodeControllerProvider, {
+        ? requestJson("/api/proxy/studio/model-providers", decodeControllerProviders, {
             headers: headProxyHeaders(head),
           })
-        : Promise.resolve(null),
+        : Promise.resolve({ providers: [] }),
     ])
-      .then(([agentProviders, controllerCodex]) => {
+      .then(([agentProviders, controllerProviders]) => {
+        const controllerIds = new Set(controllerProviders.providers.map((provider) => provider.id));
         const list = [
-          ...(controllerCodex ? [controllerCodex] : []),
-          ...agentProviders.providers.filter((provider) => provider.id !== "openai-codex"),
+          ...controllerProviders.providers,
+          ...agentProviders.providers.filter(
+            (provider) =>
+              !HEAD_OWNED_PROVIDER_IDS.has(provider.id) && !controllerIds.has(provider.id),
+          ),
         ];
         setProviders(list);
         setSelectedProvider((current) =>
@@ -466,7 +471,7 @@ export function ModelProvidersSection() {
           "Content-Type": "application/json",
           ...(provider.controllerOwned ? headProxyHeaders() : {}),
         },
-        body: JSON.stringify(provider.controllerOwned ? {} : { type }),
+        body: JSON.stringify({ type }),
       });
       setActive({ jobId, providerId: provider.id, providerName: provider.name });
     } catch (err) {

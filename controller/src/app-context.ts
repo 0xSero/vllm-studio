@@ -23,6 +23,8 @@ import { ControllerSettingsStore } from "./stores/controller-settings-store";
 import { InferenceRequestStore } from "./stores/inference-request-store";
 import { RigStore } from "./stores/rig-store";
 import { CodexProviderService } from "./services/codex-provider";
+import { CursorProviderService } from "./services/cursor-provider";
+import { HeadProviderService } from "./services/head-provider";
 import { RigNodeCredentialStore } from "./stores/rig-node-credential-store";
 import { WorkerPool } from "./modules/federation/worker-pool";
 import { SessionMetadataStore } from "./stores/session-metadata-store";
@@ -36,7 +38,7 @@ export interface AppContext {
   downloadManager: DownloadManager;
   compute: Compute;
   bridge: ComputeBridge;
-  codexProvider: CodexProviderService;
+  headProviders: HeadProviderService;
   stores: {
     recipeStore: RecipeStore;
     downloadStore: DownloadStore;
@@ -191,8 +193,26 @@ export const makeAppContext = Effect.gen(function* () {
     store: compute.store,
     getRecipe: (recipeId) => recipeStore.get(recipeId),
   });
-  const codexProvider = yield* Effect.acquireRelease(
-    initializeSync("codex-provider.open", () => new CodexProviderService(config.data_dir)),
+  const cursorProvider = yield* Effect.tryPromise({
+    try: () => CursorProviderService.open(config.data_dir),
+    catch: (source) => source,
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.sync(() => {
+        logger.warn("Cursor provider initialization failed", { error: String(error) });
+        return null;
+      }),
+    ),
+  );
+  const headProviders = yield* Effect.acquireRelease(
+    initializeSync(
+      "head-providers.open",
+      () =>
+        new HeadProviderService([
+          new CodexProviderService(config.data_dir),
+          ...(cursorProvider ? [cursorProvider] : []),
+        ]),
+    ),
     (resource) => Effect.sync(() => resource.shutdown()),
   );
   const downloadManager = yield* initialize(
@@ -218,7 +238,7 @@ export const makeAppContext = Effect.gen(function* () {
     downloadManager,
     compute,
     bridge,
-    codexProvider,
+    headProviders,
     stores: {
       recipeStore,
       downloadStore,

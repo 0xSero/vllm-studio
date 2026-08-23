@@ -3,7 +3,6 @@ import { Effect, Schema } from "effect";
 import { badRequest, conflict, serviceUnavailable } from "../../core/errors";
 import { defineRoutes, effectRoute } from "../../http/route-registrar";
 import { parseProviderModel } from "../../services/provider-routing";
-import { CODEX_PROVIDER_ID } from "../../services/codex-provider";
 import {
   recordNonStreamingInferenceUsage,
   recordStreamingInferenceUsage,
@@ -59,15 +58,21 @@ export const registerResponsesRoutes = defineRoutes((app, context) =>
       const sessionId = extractSessionId(payload, (name) => ctx.req.header(name));
       const streamed = payload["stream"] === true;
 
-      if (parsed.provider === CODEX_PROVIDER_ID) {
+      if (context.headProviders.has(parsed.provider)) {
         if (context.config.controller_mode !== "head") {
           return yield* Effect.fail(
-            conflict("OpenAI Codex is available through a Head controller"),
+            conflict("Subscription models are available through a Head controller"),
           );
         }
         const result = yield* Effect.tryPromise({
-          try: () => context.codexProvider.responses(parsed.modelId, payload, ctx.req.raw.signal),
-          catch: () => serviceUnavailable("OpenAI Codex request failed"),
+          try: () =>
+            context.headProviders.responses(
+              parsed.provider,
+              parsed.modelId,
+              payload,
+              ctx.req.raw.signal,
+            ),
+          catch: () => serviceUnavailable(`${parsed.provider} request failed`),
         });
         if (streamed) {
           yield* Effect.forkDetach(
@@ -85,7 +90,7 @@ export const registerResponsesRoutes = defineRoutes((app, context) =>
                     usage,
                     record: {
                       model: parsed.modelId,
-                      provider: CODEX_PROVIDER_ID,
+                      provider: parsed.provider,
                       source,
                       session_id: sessionId,
                       duration_ms: Math.round(performance.now() - requestStart),
@@ -96,7 +101,7 @@ export const registerResponsesRoutes = defineRoutes((app, context) =>
               }),
               Effect.catch((error) =>
                 Effect.sync(() =>
-                  context.logger.warn("Failed to record Codex response usage", {
+                  context.logger.warn("Failed to record subscription response usage", {
                     error: String(error),
                   }),
                 ),
@@ -116,7 +121,7 @@ export const registerResponsesRoutes = defineRoutes((app, context) =>
             usage,
             record: {
               model: parsed.modelId,
-              provider: CODEX_PROVIDER_ID,
+              provider: parsed.provider,
               source,
               session_id: sessionId,
               duration_ms: Math.round(performance.now() - requestStart),

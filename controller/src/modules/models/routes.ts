@@ -44,7 +44,6 @@ import { notFound } from "../../core/errors";
 import { findObservedInferenceProcess } from "../../core/function-observability";
 import { fetchInference } from "../../http/local-fetch";
 import { listProviderModelsCached } from "../../services/provider-routing";
-import { CODEX_PROVIDER_ID } from "../../services/codex-provider";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -155,36 +154,38 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
         }
 
         const knownIds = new Set(models.map((model) => model.id));
-        const codexModels =
+        const headProviderCatalogs =
           context.config.controller_mode === "head"
             ? yield* Effect.tryPromise({
-                try: () => context.codexProvider.models(),
+                try: () => context.headProviders.catalogs(),
                 catch: () => [] as const,
               }).pipe(Effect.catch(() => Effect.succeed([] as const)))
             : [];
-        for (const model of codexModels) {
-          const id = `${CODEX_PROVIDER_ID}/${model.id}`;
-          if (knownIds.has(id)) continue;
-          knownIds.add(id);
-          models.push({
-            id,
-            name: model.name,
-            object: "model",
-            created: now,
-            owned_by: CODEX_PROVIDER_ID,
-            active: true,
-            max_model_len: model.contextWindow,
-            metadata: {
-              provider: CODEX_PROVIDER_ID,
-              upstream_model_id: model.id,
-              api: "openai-responses",
-              context_window: model.contextWindow,
-              max_tokens: model.maxTokens,
-              reasoning: model.reasoning,
-              vision: model.vision,
-              input: model.vision ? ["text", "image"] : ["text"],
-            },
-          });
+        for (const catalog of headProviderCatalogs) {
+          for (const model of catalog.models) {
+            const id = `${catalog.providerId}/${model.id}`;
+            if (knownIds.has(id)) continue;
+            knownIds.add(id);
+            models.push({
+              id,
+              name: model.name,
+              object: "model",
+              created: now,
+              owned_by: catalog.providerId,
+              active: true,
+              max_model_len: model.contextWindow,
+              metadata: {
+                provider: catalog.providerId,
+                upstream_model_id: model.id,
+                api: "openai-responses",
+                context_window: model.contextWindow,
+                max_tokens: model.maxTokens,
+                reasoning: model.reasoning,
+                vision: model.vision,
+                input: model.vision ? ["text", "image"] : ["text"],
+              },
+            });
+          }
         }
 
         const payload: OpenAIModelList = { object: "list", data: models };

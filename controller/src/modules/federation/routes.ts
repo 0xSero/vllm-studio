@@ -19,7 +19,6 @@ import {
 import { modelNotRunningError } from "../proxy/openai-routes";
 import type { WorkerTarget } from "./worker-pool";
 import { listProviderModelsCached } from "../../services/provider-routing";
-import { CODEX_PROVIDER_ID } from "../../services/codex-provider";
 import type { AppContext } from "../../app-context";
 
 const ChatRequestSchema = Schema.Record(Schema.String, Schema.Unknown);
@@ -75,29 +74,31 @@ const aggregateHeadModels = (
         });
       }
     }
-    const codexModels = yield* Effect.tryPromise({
-      try: () => context.codexProvider.models(),
+    const headProviderCatalogs = yield* Effect.tryPromise({
+      try: () => context.headProviders.catalogs(),
       catch: () => [] as const,
     }).pipe(Effect.catch(() => Effect.succeed([] as const)));
-    for (const model of codexModels) {
-      const id = `${CODEX_PROVIDER_ID}/${model.id}`;
-      models.set(id, {
-        id,
-        object: "model",
-        owned_by: CODEX_PROVIDER_ID,
-        active: true,
-        max_model_len: model.contextWindow,
-        metadata: {
-          provider: CODEX_PROVIDER_ID,
-          upstream_model_id: model.id,
-          api: "openai-responses",
-          context_window: model.contextWindow,
-          max_tokens: model.maxTokens,
-          reasoning: model.reasoning,
-          vision: model.vision,
-          input: model.vision ? ["text", "image"] : ["text"],
-        },
-      });
+    for (const catalog of headProviderCatalogs) {
+      for (const model of catalog.models) {
+        const id = `${catalog.providerId}/${model.id}`;
+        models.set(id, {
+          id,
+          object: "model",
+          owned_by: catalog.providerId,
+          active: true,
+          max_model_len: model.contextWindow,
+          metadata: {
+            provider: catalog.providerId,
+            upstream_model_id: model.id,
+            api: "openai-responses",
+            context_window: model.contextWindow,
+            max_tokens: model.maxTokens,
+            reasoning: model.reasoning,
+            vision: model.vision,
+            input: model.vision ? ["text", "image"] : ["text"],
+          },
+        });
+      }
     }
     return [...models.values()].sort((left, right) => left.id.localeCompare(right.id));
   });

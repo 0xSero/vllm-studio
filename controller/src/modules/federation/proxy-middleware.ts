@@ -11,6 +11,7 @@ const HEAD_PATHS = [
   "/api/spec",
   "/health",
   "/studio/rigs",
+  "/studio/model-providers",
   "/studio/providers",
   "/studio/sessions",
   "/studio/usage",

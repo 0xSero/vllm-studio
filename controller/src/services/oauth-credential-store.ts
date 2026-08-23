@@ -21,13 +21,15 @@ const CredentialsSchema = Schema.Record(Schema.String, OAuthCredentialSchema);
 
 type StoredCredentials = Record<string, OAuthCredential>;
 
-export class CodexCredentialStore implements CredentialStore {
+export class OAuthCredentialStore implements CredentialStore {
   readonly #path: string;
+  readonly #providerName: string;
   #loaded: Promise<StoredCredentials> | null = null;
   #writes: Promise<void> = Promise.resolve();
 
-  public constructor(dataDirectory: string) {
-    this.#path = resolve(dataDirectory, "credentials", "openai-codex.json");
+  public constructor(dataDirectory: string, filename: string, providerName: string) {
+    this.#path = resolve(dataDirectory, "credentials", filename);
+    this.#providerName = providerName;
   }
 
   #load(): Promise<StoredCredentials> {
@@ -87,7 +89,9 @@ export class CodexCredentialStore implements CredentialStore {
         const current = credentials[providerId];
         return update(current).then((next) => {
           if (!next) return current;
-          if (next.type !== "oauth") throw new Error("Codex credentials must use OAuth");
+          if (next.type !== "oauth") {
+            throw new Error(`${this.#providerName} credentials must use OAuth`);
+          }
           credentials[providerId] = next;
           return this.#persist(credentials).then(() => next);
         });
