@@ -6,7 +6,7 @@ Keep code composable and typed, use Effect for async and streaming, use the shar
 
 NEVER WRITE TESTS. Do not add or restore unit, integration, end-to-end, snapshot, browser, smoke, or any other automated test code.
 
-Branch from the current `origin/dev`, keep one owner and one scoped pull request per branch, target `dev`, and never push directly to `dev` or `main`.
+Branch from the current `origin/main`, keep one owner and one scoped pull request per branch, target `main`, and never push directly to `main`.
 
 semantic-release's computed version is the authority for stable desktop releases. The release workflow injects that exact version into Electron package metadata, signing, staging, updater metadata, and versioned asset names before publishing the tag and GitHub release. Checked-in versions for the root app, frontend, controller, controller contracts, and agent runtime are synchronized development fallbacks for local and dev builds; they do not predict or define the next stable release. `shared/package.json` intentionally remains independently versioned at `0.0.0` and is not a desktop release version source.
 

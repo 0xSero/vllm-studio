@@ -2,7 +2,6 @@ import { performance } from "node:perf_hooks";
 import { Effect, Schema, Stream } from "effect";
 import type { AppContext } from "../../app-context";
 import { buildSseHeaders } from "../../http/sse";
-import type { ProviderRouteConfig } from "../../services/provider-routing";
 import type { Recipe } from "../models/types";
 import { getDefaultReasoningParser } from "../compute/recipe-defaults";
 import { recordStreamingInferenceUsage, type InferenceUsageInput } from "./inference-accounting";
@@ -31,7 +30,7 @@ export interface ChatCompletionsStreamParameters {
   recordedProvider: string;
   requestStart: number;
   requestProvider: string;
-  providerRouting: ProviderRouteConfig | null;
+  providerRouted: boolean;
   context: Pick<AppContext, "logger" | "stores">;
   keepaliveIntervalMs?: number;
 }
@@ -84,7 +83,7 @@ const responseBodyStream = (
     recordedModel,
     recordedProvider,
     requestStart,
-    providerRouting,
+    providerRouted,
     requestProvider,
     context,
   } = parameters;
@@ -92,9 +91,7 @@ const responseBodyStream = (
   if (!source) {
     return Stream.succeed(
       errorFrame(
-        providerRouting
-          ? `${requestProvider} backend unavailable`
-          : "Inference backend unavailable",
+        providerRouted ? `${requestProvider} backend unavailable` : "Inference backend unavailable",
       ),
     );
   }

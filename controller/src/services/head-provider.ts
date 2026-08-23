@@ -4,13 +4,18 @@ import type {
   ProviderView,
 } from "@local-studio/contracts/provider-auth";
 
+export type HeadProviderApi = "openai-completions" | "openai-responses";
+
 export type HeadProviderModel = {
   id: string;
   name: string;
+  api: HeadProviderApi;
   contextWindow: number;
   maxTokens: number;
   reasoning: boolean;
   vision: boolean;
+  compat?: Record<string, unknown>;
+  thinkingLevelMap?: Partial<Record<string, string | null>>;
 };
 
 export type HeadProviderCompletion = {
@@ -23,13 +28,35 @@ export type HeadProviderResponse = {
   completion: Promise<HeadProviderCompletion | null>;
 };
 
+export type HeadProviderCompletionsRoute = {
+  upstreamUrl: string;
+  headers: Record<string, string>;
+};
+
 export type HeadProviderCatalog = {
   providerId: string;
   models: HeadProviderModel[];
 };
 
-export interface HeadProviderAdapter {
+export const headProviderModelMetadata = (
+  providerId: string,
+  model: HeadProviderModel,
+): Record<string, unknown> => ({
+  provider: providerId,
+  upstream_model_id: model.id,
+  api: model.api,
+  context_window: model.contextWindow,
+  max_tokens: model.maxTokens,
+  reasoning: model.reasoning,
+  vision: model.vision,
+  input: model.vision ? ["text", "image"] : ["text"],
+  ...(model.compat ? { compat: model.compat } : {}),
+  ...(model.thinkingLevelMap ? { thinking_level_map: model.thinkingLevelMap } : {}),
+});
+
+interface HeadProviderBaseAdapter {
   readonly id: string;
+  readonly api: HeadProviderApi;
   view(): Promise<ProviderView>;
   models(): Promise<HeadProviderModel[]>;
   startLogin(authType: ProviderAuthType): string;
@@ -37,13 +64,24 @@ export interface HeadProviderAdapter {
   respond(jobId: string, promptId: number, value: string): boolean;
   cancel(jobId: string): boolean;
   logout(): Promise<void>;
+  shutdown(): void;
+}
+
+export interface HeadResponsesProviderAdapter extends HeadProviderBaseAdapter {
+  readonly api: "openai-responses";
   responses(
     modelId: string,
     request: Record<string, unknown>,
     signal: AbortSignal,
   ): Promise<HeadProviderResponse>;
-  shutdown(): void;
 }
+
+export interface HeadCompletionsProviderAdapter extends HeadProviderBaseAdapter {
+  readonly api: "openai-completions";
+  completionsRoute(modelId: string): Promise<HeadProviderCompletionsRoute>;
+}
+
+export type HeadProviderAdapter = HeadResponsesProviderAdapter | HeadCompletionsProviderAdapter;
 
 export class HeadProviderService {
   readonly #providers: ReadonlyMap<string, HeadProviderAdapter>;
@@ -99,13 +137,36 @@ export class HeadProviderService {
     return this.#provider(providerId).logout();
   }
 
+  public supports(providerId: string, api: HeadProviderApi): boolean {
+    return this.#providers.get(providerId)?.api === api;
+  }
+
+  public completionsRoute(
+    providerId: string,
+    modelId: string,
+  ): Promise<HeadProviderCompletionsRoute> {
+    const provider = this.#provider(providerId);
+    if (provider.api !== "openai-completions") {
+      return Promise.reject(
+        new Error(`Head model provider '${providerId}' does not serve Chat Completions`),
+      );
+    }
+    return provider.completionsRoute(modelId);
+  }
+
   public responses(
     providerId: string,
     modelId: string,
     request: Record<string, unknown>,
     signal: AbortSignal,
   ): Promise<HeadProviderResponse> {
-    return this.#provider(providerId).responses(modelId, request, signal);
+    const provider = this.#provider(providerId);
+    if (provider.api !== "openai-responses") {
+      return Promise.reject(
+        new Error(`Head model provider '${providerId}' does not serve Responses`),
+      );
+    }
+    return provider.responses(modelId, request, signal);
   }
 
   public has(providerId: string): boolean {

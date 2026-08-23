@@ -4,6 +4,7 @@ import { decodeJsonBody } from "../../core/validation";
 import { effectRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import { savePersistedConfig, type ProviderConfig } from "../../config/persisted-config";
 import { listConfiguredProviderModels } from "../../services/provider-catalog";
+import { isReservedConfiguredProviderId } from "../../services/provider-routing";
 
 type ProviderView = {
   id: string;
@@ -72,6 +73,9 @@ export const registerStudioProviderRoutes = defineRoutes((app, context) => {
       Effect.gen(function* () {
         const body = yield* decodeJsonBody(ctx, ProviderCreateSchema);
         const id = (yield* required(body.id, "id")).toLowerCase();
+        if (isReservedConfiguredProviderId(id)) {
+          return yield* Effect.fail(badRequest(`Provider "${id}" is managed by Studio Head`));
+        }
         const name = yield* required(body.name, "name");
         const baseUrl = yield* required(body.base_url, "base_url");
         if (context.config.providers.some((provider) => provider.id === id)) {
@@ -93,6 +97,11 @@ export const registerStudioProviderRoutes = defineRoutes((app, context) => {
       Effect.gen(function* () {
         const providerId = ctx.req.param("id") ?? "";
         const body = yield* decodeJsonBody(ctx, ProviderUpdateSchema);
+        if (isReservedConfiguredProviderId(providerId)) {
+          return yield* Effect.fail(
+            badRequest(`Provider "${providerId}" is managed by Studio Head`),
+          );
+        }
         const index = context.config.providers.findIndex((provider) => provider.id === providerId);
         const current = index >= 0 ? context.config.providers[index] : undefined;
         if (!current) return yield* Effect.fail(notFound(`Provider "${providerId}" not found`));

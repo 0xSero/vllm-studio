@@ -11,10 +11,7 @@ import {
   type MutableModels,
   type ProviderStreams,
 } from "@earendil-works/pi-ai";
-import type {
-  ExtensionAPI,
-  ProviderConfig,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ProviderConfig } from "@earendil-works/pi-coding-agent";
 import type {
   ProviderAuthType,
   ProviderLoginEvent,
@@ -25,7 +22,11 @@ import type {
 } from "@local-studio/contracts/provider-auth";
 import { redactLogLine } from "../core/log-redaction";
 import { createCursorResponses } from "./cursor-responses";
-import type { HeadProviderAdapter, HeadProviderModel, HeadProviderResponse } from "./head-provider";
+import type {
+  HeadProviderModel,
+  HeadProviderResponse,
+  HeadResponsesProviderAdapter,
+} from "./head-provider";
 import { OAuthCredentialStore } from "./oauth-credential-store";
 
 export const CURSOR_PROVIDER_ID = "cursor";
@@ -101,8 +102,9 @@ const abortable = <A>(operation: Promise<A>, signal?: AbortSignal): Promise<A> =
   });
 };
 
-export class CursorProviderService implements HeadProviderAdapter {
+export class CursorProviderService implements HeadResponsesProviderAdapter {
   public readonly id = CURSOR_PROVIDER_ID;
+  public readonly api = "openai-responses" as const;
   readonly #models: MutableModels;
   readonly #jobs = new Map<string, LoginJob>();
   #providerConfig: ProviderConfig | null = null;
@@ -243,6 +245,7 @@ export class CursorProviderService implements HeadProviderAdapter {
         ? this.#models.getModels(CURSOR_PROVIDER_ID).map((model) => ({
             id: model.id,
             name: model.name,
+            api: "openai-responses" as const,
             contextWindow: model.contextWindow,
             maxTokens: model.maxTokens,
             reasoning: model.reasoning,

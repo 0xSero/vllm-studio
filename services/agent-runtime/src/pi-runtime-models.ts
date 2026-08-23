@@ -387,7 +387,9 @@ async function fetchModelsFromController(
       providerId,
       controllerUrl: backendUrl,
       controllerName: label,
-      thinkingLevels: controllerModelThinkingLevels(model.reasoning, model.rawId ?? model.id),
+      thinkingLevels: model.thinkingLevelMap
+        ? supportedPiThinkingLevels(model, model.reasoning, model.compat)
+        : controllerModelThinkingLevels(model.reasoning, model.rawId ?? model.id),
       name: multipleControllers ? `${model.name} · ${label}` : model.name,
     }),
   );
@@ -515,7 +517,11 @@ async function refreshPiModelsUnlocked(
   const writtenAgentDir = await writePiModelsConfig(controllerModels, userPiProviders);
   const providerModels = await collectProviderAgentModels();
 
-  const allModels = [...models, ...userPiModels, ...providerModels];
+  const allModels = [
+    ...new Map(
+      [...models, ...userPiModels, ...providerModels].map((model) => [model.id, model]),
+    ).values(),
+  ];
   if (allModels.length === 0 && controllerError) {
     throw controllerError instanceof Error
       ? controllerError
@@ -600,40 +606,43 @@ export function modelsToPiModels(models: AgentModel[]) {
       maxTokens: model.maxTokens,
       ...(model.api ? { api: model.api } : {}),
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      ...(model.controllerUrl && model.reasoning
-        ? {
-            thinkingLevelMap:
-              model.api === "openai-responses"
-                ? CONTROLLER_RESPONSES_THINKING_LEVEL_MAP
-                : CONTROLLER_THINKING_LEVEL_MAP,
-          }
-        : deepSeekReasoning
+      ...(model.thinkingLevelMap
+        ? { thinkingLevelMap: model.thinkingLevelMap }
+        : model.controllerUrl && model.reasoning
           ? {
-              thinkingLevelMap: {
-                off: null,
-                minimal: null,
-                low: "low",
-                medium: "medium",
-                high: "high",
-                xhigh: "max",
-                max: "max",
-              },
+              thinkingLevelMap:
+                model.api === "openai-responses"
+                  ? CONTROLLER_RESPONSES_THINKING_LEVEL_MAP
+                  : CONTROLLER_THINKING_LEVEL_MAP,
             }
-          : inklingReasoning
+          : deepSeekReasoning
             ? {
                 thinkingLevelMap: {
-                  off: "none",
-                  minimal: "minimal",
+                  off: null,
+                  minimal: null,
                   low: "low",
                   medium: "medium",
                   high: "high",
-                  xhigh: null,
+                  xhigh: "max",
                   max: "max",
                 },
               }
-            : {}),
+            : inklingReasoning
+              ? {
+                  thinkingLevelMap: {
+                    off: "none",
+                    minimal: "minimal",
+                    low: "low",
+                    medium: "medium",
+                    high: "high",
+                    xhigh: null,
+                    max: "max",
+                  },
+                }
+              : {}),
       compat: {
         ...VLLM_OPENAI_COMPAT,
+        ...model.compat,
         ...(model.api === "openai-responses"
           ? {
               supportsOpenAIGrammarTools: true,

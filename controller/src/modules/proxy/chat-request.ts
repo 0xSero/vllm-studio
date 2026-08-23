@@ -1,13 +1,13 @@
 import type { Logger } from "../../core/logger";
 import type { AppContext } from "../../app-context";
 import { Effect } from "effect";
+import { serviceUnavailable } from "../../core/errors";
 import type { Recipe } from "../models/types";
 import { buildInferenceUrl } from "../../http/local-fetch";
 import {
   DEFAULT_CHAT_PROVIDER,
   parseProviderModel,
   resolveConfiguredProviderConfig,
-  type ProviderRouteConfig,
 } from "../../services/provider-routing";
 import type { InferenceUsageTotals } from "./inference-accounting";
 const PROXY_SESSION_HEADER_NAMES = [
@@ -124,7 +124,7 @@ export interface UpstreamResolution {
   upstreamUrl: string;
   auth: Record<string, string>;
   requestProvider: string;
-  providerRouting: ProviderRouteConfig | null;
+  providerRouted: boolean;
   rewroteModel: boolean;
 }
 
@@ -161,7 +161,7 @@ export const resolveUpstreamForModel = (
         ...(options.includeXApiKey ? { "x-api-key": providerRouting.apiKey } : {}),
       },
       requestProvider,
-      providerRouting,
+      providerRouted: true,
       rewroteModel: true,
     };
   }
@@ -170,9 +170,43 @@ export const resolveUpstreamForModel = (
     upstreamUrl: buildInferenceUrl(context, path),
     auth: inferenceKey ? { Authorization: `Bearer ${inferenceKey}` } : {},
     requestProvider,
-    providerRouting: null,
+    providerRouted: false,
     rewroteModel: false,
   };
+};
+
+export const resolveChatUpstreamForModel = (
+  requestedModel: string | null,
+  parsed: Record<string, unknown>,
+  context: AppContext,
+): Effect.Effect<UpstreamResolution, unknown> => {
+  const providerModel = requestedModel
+    ? parseProviderModel(requestedModel)
+    : { provider: DEFAULT_CHAT_PROVIDER, modelId: "" };
+  if (
+    context.config.controller_mode === "head" &&
+    context.headProviders.supports(providerModel.provider, "openai-completions")
+  ) {
+    return Effect.tryPromise({
+      try: () =>
+        context.headProviders.completionsRoute(providerModel.provider, providerModel.modelId),
+      catch: () => serviceUnavailable(`${providerModel.provider} request routing is unavailable`),
+    }).pipe(
+      Effect.map((route) => {
+        parsed["model"] = providerModel.modelId;
+        return {
+          upstreamUrl: route.upstreamUrl,
+          auth: route.headers,
+          requestProvider: providerModel.provider,
+          providerRouted: true,
+          rewroteModel: true,
+        };
+      }),
+    );
+  }
+  return Effect.succeed(
+    resolveUpstreamForModel(requestedModel, parsed, "/v1/chat/completions", context),
+  );
 };
 
 export const ensureStreamingUsageIncluded = (payload: Record<string, unknown>): boolean => {

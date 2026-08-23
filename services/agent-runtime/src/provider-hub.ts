@@ -49,7 +49,7 @@ export type {
 // user-pi passthroughs). They are configured elsewhere; the hub surfaces only
 // the pi builtin/cloud providers.
 const INTERNAL_PROVIDER_PREFIXES = ["local-studio", "user-pi-"];
-const CONTROLLER_OWNED_PROVIDER_IDS = new Set(["openai-codex"]);
+const CONTROLLER_OWNED_PROVIDER_IDS = new Set(["openai-codex", "openrouter"]);
 
 const MAX_JOB_EVENTS = 200;
 const MAX_FINISHED_JOBS = 8;
@@ -118,7 +118,8 @@ function agentDirPath(): string {
 
 async function createHubRuntime(): Promise<ModelRuntime> {
   const modelsDir = agentDirPath();
-  const nativeAgentDir = process.env.PI_CODING_AGENT_DIR?.trim() || path.join(homedir(), ".pi", "agent");
+  const nativeAgentDir =
+    process.env.PI_CODING_AGENT_DIR?.trim() || path.join(homedir(), ".pi", "agent");
   await mkdir(modelsDir, { recursive: true });
   await mkdir(nativeAgentDir, { recursive: true });
   await chmod(modelsDir, 0o700).catch(() => undefined);

@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 import type { ProviderConfig } from "../config/persisted-config";
+import { isReservedConfiguredProviderId } from "./provider-routing";
 
 const ProviderModelsSchema = Schema.Struct({
   data: Schema.optional(
@@ -73,7 +74,10 @@ export const listConfiguredProviderModels = (
   providers: ProviderConfig[],
 ): Effect.Effect<ConfiguredProviderCatalog[]> =>
   Effect.forEach(
-    providers.filter((provider) => provider.enabled && provider.api_key),
+    providers.filter(
+      (provider) =>
+        provider.enabled && provider.api_key && !isReservedConfiguredProviderId(provider.id),
+    ),
     (provider) => fetchConfiguredProviderModels(provider).pipe(Effect.option),
     { concurrency: "unbounded" },
   ).pipe(

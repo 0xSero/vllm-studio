@@ -3,6 +3,11 @@ import type { ProviderConfig } from "../config/persisted-config";
 
 export const DEFAULT_CHAT_PROVIDER = "openai";
 
+const RESERVED_PROVIDER_IDS = new Set(["openrouter"]);
+
+export const isReservedConfiguredProviderId = (providerId: string): boolean =>
+  RESERVED_PROVIDER_IDS.has(providerId.toLowerCase());
+
 export interface ParsedProviderModel {
   provider: string;
   modelId: string;
@@ -35,6 +40,7 @@ export const resolveConfiguredProviderConfig = (
   providerId: string,
   providers: ProviderConfig[] = [],
 ): ProviderRouteConfig | null => {
+  if (isReservedConfiguredProviderId(providerId)) return null;
   const match = providers.find((p) => p.id.toLowerCase() === providerId.toLowerCase() && p.enabled);
   if (!match || !match.api_key) return null;
   return { baseUrl: match.base_url, apiKey: match.api_key };
@@ -50,7 +56,10 @@ const ProviderModelsSchema = Schema.Struct({
 });
 
 export const enabledProvidersWithApiKey = (providers: ProviderConfig[] = []): ProviderConfig[] =>
-  providers.filter((provider) => provider.enabled && provider.api_key);
+  providers.filter(
+    (provider) =>
+      provider.enabled && provider.api_key && !isReservedConfiguredProviderId(provider.id),
+  );
 
 export const discoverProviderModels = (
   provider: ProviderConfig,

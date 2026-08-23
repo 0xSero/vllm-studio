@@ -20,6 +20,7 @@ import { modelNotRunningError } from "../proxy/openai-routes";
 import type { WorkerTarget } from "./worker-pool";
 import { listProviderModelsCached } from "../../services/provider-routing";
 import type { AppContext } from "../../app-context";
+import { headProviderModelMetadata } from "../../services/head-provider";
 
 const ChatRequestSchema = Schema.Record(Schema.String, Schema.Unknown);
 
@@ -87,16 +88,7 @@ const aggregateHeadModels = (
           owned_by: catalog.providerId,
           active: true,
           max_model_len: model.contextWindow,
-          metadata: {
-            provider: catalog.providerId,
-            upstream_model_id: model.id,
-            api: "openai-responses",
-            context_window: model.contextWindow,
-            max_tokens: model.maxTokens,
-            reasoning: model.reasoning,
-            vision: model.vision,
-            input: model.vision ? ["text", "image"] : ["text"],
-          },
+          metadata: headProviderModelMetadata(catalog.providerId, model),
         });
       }
     }

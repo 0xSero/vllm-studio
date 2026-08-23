@@ -58,12 +58,13 @@ export const registerResponsesRoutes = defineRoutes((app, context) =>
       const sessionId = extractSessionId(payload, (name) => ctx.req.header(name));
       const streamed = payload["stream"] === true;
 
-      if (context.headProviders.has(parsed.provider)) {
-        if (context.config.controller_mode !== "head") {
-          return yield* Effect.fail(
-            conflict("Subscription models are available through a Head controller"),
-          );
-        }
+      if (context.headProviders.has(parsed.provider) && context.config.controller_mode !== "head") {
+        return yield* Effect.fail(
+          conflict("Cloud provider models are available through a Head controller"),
+        );
+      }
+
+      if (context.headProviders.supports(parsed.provider, "openai-responses")) {
         const result = yield* Effect.tryPromise({
           try: () =>
             context.headProviders.responses(
@@ -132,14 +133,20 @@ export const registerResponsesRoutes = defineRoutes((app, context) =>
         return result.response;
       }
 
+      if (context.headProviders.has(parsed.provider)) {
+        return yield* Effect.fail(
+          badRequest(`${parsed.provider} models use the Chat Completions API`),
+        );
+      }
+
       const upstreamPayload = { ...payload };
-      const { upstreamUrl, auth, providerRouting } = resolveUpstreamForModel(
+      const { upstreamUrl, auth, providerRouted } = resolveUpstreamForModel(
         requestedModel,
         upstreamPayload,
         "/v1/responses",
         context,
       );
-      if (!providerRouting) {
+      if (!providerRouted) {
         const recipe = yield* findRecipeByModel(requestedModel, context);
         if (recipe?.served_model_name) upstreamPayload["model"] = recipe.served_model_name;
       }

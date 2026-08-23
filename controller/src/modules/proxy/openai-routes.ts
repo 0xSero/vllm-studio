@@ -19,9 +19,29 @@ import {
   ensureStreamingUsageIncluded,
   extractSessionId,
   findRecipeByModel,
-  resolveUpstreamForModel,
+  resolveChatUpstreamForModel,
 } from "./chat-request";
 import { buildChatCompletionsStreamResponse } from "./chat-completions-stream";
+
+const FORWARDED_UPSTREAM_RESPONSE_HEADERS = [
+  "retry-after",
+  "x-ratelimit-limit",
+  "x-ratelimit-remaining",
+  "x-ratelimit-reset",
+  "x-request-id",
+] as const;
+
+const upstreamResponseHeaders = (response: Response, includeContentType = false): Headers => {
+  const headers = new Headers();
+  for (const name of FORWARDED_UPSTREAM_RESPONSE_HEADERS) {
+    const value = response.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  if (includeContentType) {
+    headers.set("Content-Type", response.headers.get("content-type") ?? "application/json");
+  }
+  return headers;
+};
 
 export interface ModelNotRunningError {
   error: { message: string; type: "model_not_running"; code: "model_not_running" };
@@ -215,12 +235,15 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
         const bodyBuffer = bodyRead.value;
         const { parsed, requestedModel, matchedRecipe, isStreaming, bodyChanged, sessionId } =
           yield* parseChatBody(bodyBuffer, (name) => ctx.req.header(name));
-        const { upstreamUrl, auth, requestProvider, providerRouting, rewroteModel } =
-          resolveUpstreamForModel(requestedModel, parsed, "/v1/chat/completions", context);
+        const { upstreamUrl, auth, requestProvider, providerRouted, rewroteModel } =
+          yield* resolveChatUpstreamForModel(requestedModel, parsed, context);
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
           ...auth,
         };
+        if (providerRouted && requestProvider === "openrouter" && sessionId) {
+          headers["x-session-id"] = sessionId;
+        }
         const sourceHeader =
           ctx.req.header("x-vllm-source") ??
           ctx.req.header("x-source") ??
@@ -259,7 +282,7 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
         const requestStart = performance.now();
         const recordedModel =
           matchedRecipe?.served_model_name ?? matchedRecipe?.id ?? requestedModel ?? "unknown";
-        const recordedProvider = providerRouting ? requestProvider : "local";
+        const recordedProvider = providerRouted ? requestProvider : "local";
 
         if (!isStreaming) {
           const fetched = yield* Effect.tryPromise({
@@ -283,8 +306,12 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
               : yield* Effect.fail(fetched.error);
           }
           const response = fetched.value;
-          const decoded = yield* Effect.tryPromise({
-            try: () => response.json(),
+          const responseBody = yield* Effect.tryPromise({
+            try: () => response.text(),
+            catch: (source) => source,
+          }).pipe(Effect.catch(() => Effect.succeed("")));
+          const decoded = yield* Effect.try({
+            try: () => JSON.parse(responseBody),
             catch: (source) => source,
           }).pipe(
             Effect.flatMap(Schema.decodeUnknownEffect(ChatRequestSchema)),
@@ -295,7 +322,10 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
           );
           if (!decoded.ok) {
             if (clientSignal.aborted) return new Response(null, { status: 499 });
-            return new Response(null, { status: response.status });
+            return new Response(responseBody, {
+              status: response.status,
+              headers: upstreamResponseHeaders(response, true),
+            });
           }
           const result = { ...decoded.value };
 
@@ -318,7 +348,10 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
           attachSessionUsage(result, sessionId, usageTotals);
           normalizeCompletionChoices(result, recordedModel, sourceHeader);
 
-          return Response.json(result, { status: response.status });
+          return Response.json(result, {
+            status: response.status,
+            headers: upstreamResponseHeaders(response),
+          });
         }
 
         return buildChatCompletionsStreamResponse({
@@ -333,7 +366,7 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
           recordedProvider,
           requestStart,
           requestProvider,
-          providerRouting,
+          providerRouted,
           context,
         });
       }),

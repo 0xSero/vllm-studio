@@ -29,14 +29,14 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
     requestedModel: string | null,
     parsed: Record<string, unknown>,
   ): Effect.Effect<{ upstreamUrl: string; auth: Record<string, string> }, unknown> => {
-    const { upstreamUrl, auth, providerRouting } = resolveUpstreamForModel(
+    const { upstreamUrl, auth, providerRouted } = resolveUpstreamForModel(
       requestedModel,
       parsed,
       path,
       context,
       { includeXApiKey: true },
     );
-    if (providerRouting || !requestedModel) {
+    if (providerRouted || !requestedModel) {
       return Effect.succeed({ upstreamUrl, auth });
     }
     return findRecipeByModel(requestedModel, context).pipe(

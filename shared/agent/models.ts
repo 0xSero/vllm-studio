@@ -38,6 +38,8 @@ export interface AgentModel {
   maxTokens: number;
   reasoning: boolean;
   thinkingLevels?: AgentThinkingLevel[];
+  thinkingLevelMap?: Partial<Record<AgentThinkingLevel, string | null>>;
+  compat?: Record<string, unknown>;
   vision: boolean;
   active: boolean;
   api?: "openai-completions" | "openai-responses";
@@ -72,6 +74,27 @@ function numberFromUnknown(value: unknown): number | undefined {
 
 function recordFromUnknown(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
+}
+
+function thinkingLevelMapFromUnknown(
+  value: unknown,
+): Partial<Record<AgentThinkingLevel, string | null>> | undefined {
+  if (!isRecord(value)) return undefined;
+  const levels: AgentThinkingLevel[] = [
+    "auto",
+    "off",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ];
+  const entries = levels.flatMap((level) => {
+    const mapped = value[level];
+    return typeof mapped === "string" || mapped === null ? ([[level, mapped]] as const) : [];
+  });
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 function firstNumber(values: unknown[], fallback: number): number {
@@ -133,6 +156,8 @@ export function normalizeOpenAIModel(model: OpenAIModelListItem): AgentModel {
   const explicitActive = metadata.active ?? model.active;
 
   const api = resolveApi(metadata);
+  const compat = isRecord(metadata.compat) ? metadata.compat : undefined;
+  const thinkingLevelMap = thinkingLevelMapFromUnknown(metadata.thinking_level_map);
   return {
     id,
     name,
@@ -140,6 +165,8 @@ export function normalizeOpenAIModel(model: OpenAIModelListItem): AgentModel {
     contextWindow,
     maxTokens,
     reasoning: resolveReasoning(model, metadata, id),
+    ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
+    ...(compat ? { compat } : {}),
     vision: resolveModelVision({
       identifiers: [id],
       metadata,

@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Context, Effect, Layer, Schema } from "effect";
 import { createConfig, type Config } from "./config/env";
+import { savePersistedConfig } from "./config/persisted-config";
 import { createLogger, resolveLogLevel, type Logger } from "./core/logger";
 import { primaryLogPathFor } from "./core/log-files";
 import { DownloadManager } from "./modules/engines/downloads/download-manager";
@@ -25,6 +26,7 @@ import { RigStore } from "./stores/rig-store";
 import { CodexProviderService } from "./services/codex-provider";
 import { CursorProviderService } from "./services/cursor-provider";
 import { HeadProviderService } from "./services/head-provider";
+import { OpenRouterProviderService } from "./services/openrouter-provider";
 import { RigNodeCredentialStore } from "./stores/rig-node-credential-store";
 import { WorkerPool } from "./modules/federation/worker-pool";
 import { SessionMetadataStore } from "./stores/session-metadata-store";
@@ -193,6 +195,27 @@ export const makeAppContext = Effect.gen(function* () {
     store: compute.store,
     getRecipe: (recipeId) => recipeStore.get(recipeId),
   });
+  const openrouterProvider = new OpenRouterProviderService(config.data_dir);
+  const legacyOpenRouter = config.providers.find(
+    (provider) => provider.id.toLowerCase() === "openrouter",
+  );
+  if (legacyOpenRouter) {
+    if (legacyOpenRouter.api_key.trim()) {
+      yield* initialize(
+        "openrouter-credentials.migrate",
+        Effect.tryPromise({
+          try: () => openrouterProvider.migrateApiKey(legacyOpenRouter.api_key),
+          catch: (source) => source,
+        }),
+      );
+    }
+    config.providers = config.providers.filter(
+      (provider) => provider.id.toLowerCase() !== "openrouter",
+    );
+    yield* initializeSync("openrouter-provider-config.remove", () =>
+      savePersistedConfig(config.data_dir, { providers: config.providers }),
+    );
+  }
   const cursorProvider = yield* Effect.tryPromise({
     try: () => CursorProviderService.open(config.data_dir),
     catch: (source) => source,
@@ -210,6 +233,7 @@ export const makeAppContext = Effect.gen(function* () {
       () =>
         new HeadProviderService([
           new CodexProviderService(config.data_dir),
+          openrouterProvider,
           ...(cursorProvider ? [cursorProvider] : []),
         ]),
     ),

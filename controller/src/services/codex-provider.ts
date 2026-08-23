@@ -20,7 +20,7 @@ import type {
 } from "@local-studio/contracts/provider-auth";
 import { Effect } from "effect";
 import { redactLogLine } from "../core/log-redaction";
-import type { HeadProviderAdapter } from "./head-provider";
+import type { HeadResponsesProviderAdapter } from "./head-provider";
 import { OAuthCredentialStore } from "./oauth-credential-store";
 
 export const CODEX_PROVIDER_ID = "openai-codex";
@@ -48,6 +48,7 @@ type LoginJob = {
 export type CodexModelView = {
   id: string;
   name: string;
+  api: "openai-responses";
   contextWindow: number;
   maxTokens: number;
   reasoning: boolean;
@@ -239,8 +240,9 @@ const normalizeSse = (
   return { stream, completion };
 };
 
-export class CodexProviderService implements HeadProviderAdapter {
+export class CodexProviderService implements HeadResponsesProviderAdapter {
   public readonly id = CODEX_PROVIDER_ID;
+  public readonly api = "openai-responses" as const;
   readonly #models: MutableModels;
   readonly #jobs = new Map<string, LoginJob>();
 
@@ -276,6 +278,7 @@ export class CodexProviderService implements HeadProviderAdapter {
         ? this.#models.getModels(CODEX_PROVIDER_ID).map((model) => ({
             id: model.id,
             name: model.name,
+            api: "openai-responses" as const,
             contextWindow: model.contextWindow,
             maxTokens: model.maxTokens,
             reasoning: model.reasoning,
@@ -479,7 +482,8 @@ export class CodexProviderService implements HeadProviderAdapter {
             const response = new Response(errorBody, {
               status: upstream.status,
               headers: {
-                "Content-Type": upstream.headers.get("content-type") ?? "application/json; charset=utf-8",
+                "Content-Type":
+                  upstream.headers.get("content-type") ?? "application/json; charset=utf-8",
               },
             });
             return { response, completion: Promise.resolve(null) };

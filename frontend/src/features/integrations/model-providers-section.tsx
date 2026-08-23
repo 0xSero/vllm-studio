@@ -36,7 +36,7 @@ import {
   HEAD_CONNECTION_CHANGED_EVENT,
 } from "@/lib/api/head-controller";
 
-const HEAD_OWNED_PROVIDER_IDS = new Set(["openai-codex", "cursor"]);
+const HEAD_OWNED_PROVIDER_IDS = new Set(["openai-codex", "cursor", "openrouter"]);
 
 function decodeProviders(input: unknown): ProvidersResponse {
   const providers = (input as { providers?: unknown })?.providers;

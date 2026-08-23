@@ -5,6 +5,7 @@ import { Effect, Schema } from "effect";
 import { effectRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import type { Recipe } from "../models/types";
 import { resolveModelVision } from "@local-studio/contracts/model-capabilities";
+import { headProviderModelMetadata } from "../../services/head-provider";
 
 interface OpenAIModelInfo {
   id: string;
@@ -174,16 +175,7 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
               owned_by: catalog.providerId,
               active: true,
               max_model_len: model.contextWindow,
-              metadata: {
-                provider: catalog.providerId,
-                upstream_model_id: model.id,
-                api: "openai-responses",
-                context_window: model.contextWindow,
-                max_tokens: model.maxTokens,
-                reasoning: model.reasoning,
-                vision: model.vision,
-                input: model.vision ? ["text", "image"] : ["text"],
-              },
+              metadata: headProviderModelMetadata(catalog.providerId, model),
             });
           }
         }
