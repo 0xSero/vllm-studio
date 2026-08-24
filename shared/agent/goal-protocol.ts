@@ -44,9 +44,9 @@ export type GoalOutcome = { kind: "complete" } | { kind: "blocked"; reason: stri
 
 const COMPLETE_SENTINEL_LINE_RE = /(?:^|\n)[ \t]*GOAL_COMPLETE[ \t]*$/;
 const BLOCKED_SENTINEL_LINE_RE =
-  /(?:^|\n)[ \t]*GOAL_BLOCKED(?:[ \t]*[:\-–—]?[ \t]*([^\n]*))?[ \t]*$/;
+  /(?:^|\n)[ \t]*GOAL_BLOCKED(?![A-Za-z0-9_])(?:[ \t]*[:\-–—]?[ \t]*([^\n]*))?[ \t]*$/;
 const SENTINEL_LINE_RE =
-  /(?:^|\n)[ \t]*(?:GOAL_COMPLETE|GOAL_BLOCKED(?:[ \t]*[:\-–—]?[ \t]*[^\n]*)?)[ \t]*$/;
+  /(?:^|\n)[ \t]*(?:GOAL_COMPLETE|GOAL_BLOCKED(?![A-Za-z0-9_])(?:[ \t]*[:\-–—]?[ \t]*[^\n]*)?)[ \t]*$/;
 
 /** The outcome a settled turn declared, or null when it declared none. */
 export function goalOutcomeFromText(text: string): GoalOutcome | null {
