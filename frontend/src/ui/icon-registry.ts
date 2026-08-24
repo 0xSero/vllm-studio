@@ -58,6 +58,7 @@ export {
   ArrowUp,
   ArrowUpCircle,
   AtSign,
+  Bot,
   Boxes,
   Brain,
   Cable,

@@ -17,7 +17,7 @@ import { type FileMentionRow, type MentionRow } from "@/features/agent/ui/agent-
 import { builtinCommandProvider } from "@/features/agent/composer/builtin-commands";
 import { AutomationDrawer } from "@/features/agent/ui/automation-drawer";
 import { ComposerProjectDrawer } from "@/features/agent/ui/composer-project-drawer";
-import { SubagentChips } from "@/features/agent/ui/subagent-chips";
+import { SubagentList } from "@/features/agent/ui/subagent-list";
 import { GitDiffDrawer } from "@/features/agent/ui/git-diff-drawer";
 import {
   promptTemplateCommandProvider,
@@ -695,10 +695,7 @@ export function ChatPane({
           />
         ) : null}
         {activePiSessionId ? (
-          <SubagentChips
-            piSessionId={activePiSessionId}
-            projectId={activeTab?.projectId ?? null}
-          />
+          <SubagentList piSessionId={activePiSessionId} cwd={cwd || null} />
         ) : null}
         <AgentComposerFrame
           attachments={attachments}
