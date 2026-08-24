@@ -81,12 +81,11 @@ export function SubagentList({
   if (runs.length === 0) return null;
 
   return (
-    <div className="mx-auto mb-1.5 w-full max-w-[var(--composer-w)]">
-      <div className="px-2 pb-0.5 text-[length:var(--fs-2xs)] font-medium uppercase tracking-wide text-(--fg)/35">
-        Subagents
-      </div>
-      <div className="flex flex-col">
-        {runs.map((run) => (
+    // Rows only, no header and no container chrome: this sits in a column that
+    // already stacks the drawer and the composer, each with its own surface —
+    // one more captioned box was pure bulk.
+    <div className="mx-auto mb-1 flex w-full max-w-[calc(var(--composer-w)*0.9)] flex-col sm:w-[90%]">
+      {runs.map((run) => (
           <button
             key={run.id}
             type="button"
@@ -100,7 +99,7 @@ export function SubagentList({
                 ? `${run.name} — failed: ${run.error ?? "unknown error"}`
                 : `${run.name} — open in the side panel`
             }
-            className="group flex h-8 w-full items-center gap-2 rounded-[10px] px-2 text-left text-[length:var(--fs-sm)] text-(--fg)/75 transition-colors hover:bg-(--hover) hover:text-(--fg)/92 disabled:cursor-default disabled:opacity-60"
+            className="group flex h-7 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[length:var(--fs-sm)] text-(--fg)/70 transition-colors hover:bg-(--hover) hover:text-(--fg)/90 disabled:cursor-default disabled:opacity-60"
           >
             <Bot className="h-3.5 w-3.5 shrink-0 text-(--fg)/40" strokeWidth={1.75} aria-hidden />
             <span className="min-w-0 flex-1 truncate">{run.name}</span>
@@ -113,9 +112,8 @@ export function SubagentList({
               {statusLabel(run)}
             </span>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-(--fg)/25 opacity-0 transition-opacity group-hover:opacity-100" />
-          </button>
-        ))}
-      </div>
+        </button>
+      ))}
     </div>
   );
 }

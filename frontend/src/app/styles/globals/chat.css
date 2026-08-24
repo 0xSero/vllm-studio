@@ -3,7 +3,8 @@
   --codex-chat-font-family: var(--font-sans);
   --codex-chat-mono-font-family:
     ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  --codex-chat-font-size: 16px;
+  /* 15px, not 16: against a 14px UI base the 16px transcript read oversized. */
+  --codex-chat-font-size: 15px;
   --codex-chat-line-height: 1.5;
   --codex-chat-code-font-size: 13px;
   --codex-chat-font-weight: 400;
