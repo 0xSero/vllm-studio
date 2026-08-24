@@ -18,6 +18,11 @@ export function splitVisibleAgentModels(
   return {
     controllerModels,
     otherModels,
-    visibleModels: showOtherModels ? [...controllerModels, ...otherModels] : controllerModels,
+    // With no controller models at all, an empty picker helps nobody — fall
+    // back to the other models even when they are toggled off.
+    visibleModels:
+      showOtherModels || controllerModels.length === 0
+        ? [...controllerModels, ...otherModels]
+        : controllerModels,
   };
 }
