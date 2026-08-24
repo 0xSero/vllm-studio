@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useMemo } from "react";
 import { Schema } from "effect";
 import {
   PLUGIN_TEMPLATE,
