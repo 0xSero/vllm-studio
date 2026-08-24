@@ -38,7 +38,11 @@ export function useSessionGoal(
     let cancelled = false;
     const load = async () => {
       const next = await loadSessionGoal(piSessionId);
-      if (!cancelled) setGoal(next);
+      if (cancelled || !next.ok) return; // a failed poll keeps the last known goal
+      setGoal(next.goal);
+      // A healthy poll also retires a stale mutation error — nothing else does,
+      // so a transient failure used to leave the banner up indefinitely.
+      setError(null);
     };
     void load();
     const timer = window.setInterval(() => void load(), POLL_MS);

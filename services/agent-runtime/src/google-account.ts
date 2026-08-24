@@ -279,9 +279,29 @@ function normalizeSecrets(
   };
 }
 
+/**
+ * A public OAuth client id shipped with the build or set by the deployment.
+ *
+ * Desktop-app clients are public by design (PKCE carries the proof, not a
+ * secret), so an id provided here spares the user the whole Google Cloud
+ * console detour: with it set, the account is "configured" out of the box and
+ * Connect goes straight to the consent screen. A client the user saves in the
+ * UI still wins — it is stored metadata, and this fallback only fills the
+ * never-configured case.
+ */
+function envGoogleClientId(): string | null {
+  const value = process.env.LOCAL_STUDIO_GOOGLE_CLIENT_ID?.trim();
+  return value || null;
+}
+
 async function readMetadata(): Promise<Metadata | null> {
   const file = resolveGoogleAccountFilePath();
-  if (!existsSync(file)) return null;
+  if (!existsSync(file)) {
+    const clientId = envGoogleClientId();
+    return clientId
+      ? { version: 2, clientId, hasClientSecret: false, accounts: {} }
+      : null;
+  }
   try {
     return normalizeMetadata(
       Schema.decodeUnknownSync(StoredMetadataSchema)(JSON.parse(await readFile(file, "utf8"))),

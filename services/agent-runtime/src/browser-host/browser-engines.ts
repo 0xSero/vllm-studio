@@ -249,15 +249,24 @@ function autoPath(): string | null {
  * `preferenceUnavailable` is reported by the caller so a chosen-but-missing
  * browser degrades to a working default instead of killing the browser tool.
  */
+const warnedStaleOverrides = new Set<string>();
+
 export function resolveBrowserEngine(): ResolvedBrowserEngine {
   const override = explicitBinaryOverride();
   if (override) {
-    if (!existsSync(override)) {
-      throw new BrowserEngineError(
-        `Browser unavailable: LOCAL_STUDIO_CHROME_PATH points at a missing binary: ${override}`,
+    if (existsSync(override)) {
+      return { id: "custom", label: overrideLabel(override), path: override, source: "override" };
+    }
+    // A stale override degrades to auto-detection instead of killing the
+    // browser tool outright: one forgotten env var otherwise reads as "the
+    // browser broke", with a working Chromium sitting right there. Warned
+    // once — this resolver runs on every frame poll.
+    if (!warnedStaleOverrides.has(override)) {
+      warnedStaleOverrides.add(override);
+      console.warn(
+        `[browser-engines] LOCAL_STUDIO_CHROME_PATH points at a missing binary (${override}); falling back to auto-detection`,
       );
     }
-    return { id: "custom", label: overrideLabel(override), path: override, source: "override" };
   }
 
   const preference = readEnginePreference();

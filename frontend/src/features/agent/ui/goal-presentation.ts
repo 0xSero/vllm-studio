@@ -1,4 +1,4 @@
-import type { GoalStatus } from "@shared/agent/session-goal";
+import type { GoalStatus, SessionGoal } from "@shared/agent/session-goal";
 
 /** Spelled-out status. The strip carries status as colour plus an icon and uses
  *  this for its accessible name; the drawer card shows it as text. */
@@ -44,4 +44,17 @@ export function formatGoalDuration(totalSeconds: number): string {
 export function goalBudgetTone(turnsUsed: number, turnBudget: number, spent: boolean): string {
   if (spent) return "text-(--err)";
   return turnsUsed >= turnBudget - 1 ? "text-(--warn)" : "text-(--fg)/40";
+}
+
+/** Turn N is in flight while the goal is active; once it settles, N is done. */
+export function goalIteration(goal: SessionGoal): number {
+  return goal.status === "active" ? goal.turnsUsed + 1 : Math.max(1, goal.turnsUsed);
+}
+
+/** The one turn counter, shared by the strip and the card. They used to derive
+ *  their own — "Iteration 4" a row above "3/10 turns" — which read as two
+ *  different facts about the same goal. */
+export function formatGoalTurn(goal: SessionGoal): string {
+  const iteration = goalIteration(goal);
+  return goal.turnBudget === null ? `Turn ${iteration}` : `Turn ${iteration}/${goal.turnBudget}`;
 }

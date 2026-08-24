@@ -100,7 +100,13 @@ function closePersistedTerminalOwner(ownerKey: string) {
 }
 
 function acceptedBrowserUrl(url: string): string | null {
-  return /^file:\/\//i.test(url) ? sanitizeLocalFileUrl(url) : sanitizeBrowserPaneUrl(url);
+  // allowPrivate here is only a syntax pass — the runtime is the policy
+  // authority and rejects private hosts when its allow-private switch is off.
+  // Refusing them client-side too would make the address bar silently eat
+  // tailnet/LAN URLs on the desktop, where they are allowed.
+  return /^file:\/\//i.test(url)
+    ? sanitizeLocalFileUrl(url)
+    : sanitizeBrowserPaneUrl(url, { allowPrivate: true });
 }
 
 export function AgentBrowserPanel({

@@ -11,6 +11,7 @@ import {
   findSubagent,
   listSubagents,
   runSubagent,
+  spawnSubagent,
   stopSubagent,
   subagentIsActive,
   subagentReport,
@@ -78,13 +79,27 @@ export async function handleSubagentRun(request: Request): Promise<Response> {
   if (!parentPiSessionId || !task.trim()) {
     return jsonError("Body must include parentPiSessionId and task.");
   }
+  const input = {
+    parentPiSessionId,
+    name,
+    task,
+    ...(typeof body?.modelId === "string" ? { modelId: body.modelId } : {}),
+  };
   try {
-    const result = await runSubagent({
-      parentPiSessionId,
-      name,
-      task,
-      ...(typeof body?.modelId === "string" ? { modelId: body.modelId } : {}),
-    });
+    // wait:false answers as soon as the child is prompting; the caller polls
+    // the detail route for the report. The awaited form stays for callers
+    // whose runs fit inside the HTTP hops' ~5-minute header timeout.
+    if (body?.wait === false) {
+      const { run, completion } = await spawnSubagent(input);
+      completion.catch(() => undefined);
+      return Response.json({
+        ok: true,
+        runId: run.id,
+        name: run.name,
+        piSessionId: run.piSessionId,
+      });
+    }
+    const result = await runSubagent(input);
     return Response.json({ ok: true, ...result });
   } catch (error) {
     return jsonError(errorMessage(error, "Subagent run failed."), 500);

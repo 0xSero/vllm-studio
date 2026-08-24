@@ -81,7 +81,7 @@ export function GitWorkflowBar({
             value={commitMessage}
             onChange={(event) => onCommitMessage(event.target.value)}
             placeholder="commit message"
-            className="h-7 min-w-0 flex-1 rounded-md border border-(--border)/80 bg-(--color-input) px-2 text-(--fg) outline-none focus:border-(--border-hover)"
+            className="h-7 min-w-0 flex-1 rounded-md border border-(--border)/80 bg-(--color-input) px-2 text-(--fg) outline-none focus:border-(--color-border-hover)"
           />
           <Button
             variant="ghost"

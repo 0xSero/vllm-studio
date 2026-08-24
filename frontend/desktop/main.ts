@@ -15,6 +15,7 @@ import { DESKTOP_CONFIG } from "./configs";
 import { writeJsonAtomic } from "./helpers/fs-json";
 import { log } from "./helpers/logger";
 import { isHttpUrl } from "./helpers/url";
+import { installApplicationMenu } from "./logic/app-menu";
 import { createMainWindow } from "./logic/window-manager";
 import { registerNavigationPolicy } from "./logic/security";
 import { startFrontendServer, stopFrontendServer, type ServerHandle } from "./logic/app-server";
@@ -616,6 +617,7 @@ async function run(): Promise<void> {
 
   await app.whenReady();
 
+  installApplicationMenu();
   initializeAutoUpdates();
 
   try {

@@ -13,6 +13,8 @@ type SubagentRun = {
   name: string;
   piSessionId: string | null;
   status: "running" | "done" | "error" | "cancelled";
+  /** False while "running" means the child is registered but not streaming. */
+  active?: boolean;
   startedAt: string;
   finishedAt: string | null;
   error?: string;
@@ -42,7 +44,13 @@ async function fetchSubagents(parentPiSessionId: string): Promise<SubagentRun[]>
   return Array.isArray(payload.subagents) ? payload.subagents : [];
 }
 
-export function SubagentChips({ piSessionId }: { piSessionId: string }) {
+export function SubagentChips({
+  piSessionId,
+  projectId,
+}: {
+  piSessionId: string;
+  projectId?: string | null;
+}) {
   const router = useRouter();
   const [runs, setRuns] = useState<SubagentRun[]>([]);
 
@@ -74,14 +82,21 @@ export function SubagentChips({ piSessionId }: { piSessionId: string }) {
           type="button"
           disabled={!run.piSessionId}
           onClick={() => {
-            if (run.piSessionId) {
-              router.push(`/agent?session=${encodeURIComponent(run.piSessionId)}`);
-            }
+            if (!run.piSessionId) return;
+            // Same link shape as every other open-session affordance: without
+            // the project param the workspace replays into a null project and
+            // the child opens as a blank pane.
+            const project = projectId ? `project=${encodeURIComponent(projectId)}&` : "";
+            router.push(
+              `/agent?${project}session=${encodeURIComponent(run.piSessionId)}&replace=1`,
+            );
           }}
           title={
             run.status === "error"
               ? `${run.name} — failed: ${run.error ?? "unknown error"}`
-              : `${run.name} — ${chipHint[run.status]}`
+              : run.status === "running" && run.active === false
+                ? `${run.name} — running (idle)`
+                : `${run.name} — ${chipHint[run.status]}`
           }
           className="flex items-center gap-1.5 rounded-full bg-(--fg)/[0.05] px-2.5 py-1 text-[length:var(--fs-sm)] text-(--fg)/75 transition-colors hover:bg-(--fg)/[0.08] hover:text-(--fg)/90 disabled:cursor-default"
         >

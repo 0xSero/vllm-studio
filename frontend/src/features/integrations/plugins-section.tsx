@@ -16,6 +16,7 @@ import { ResourceLogo } from "@/ui/resource-logo";
 import {
   DataRow,
   EndCell,
+  GroupRow,
   HeadCell,
   IdentityCell,
   RowAction,
@@ -231,6 +232,7 @@ function PluginRowView({
         label={plugin.id}
         description={
           rowError ||
+          plugin.note ||
           (plugin.read_only
             ? "A directory extension — edit it in your editor"
             : `${formatBytes(plugin.bytes)} · ${plugin.file}`)
@@ -242,7 +244,7 @@ function PluginRowView({
       <EndCell>
         <div className="flex items-center justify-end gap-2">
           <StatusText tone={plugin.enabled ? "ok" : "dim"}>
-            {plugin.enabled ? "loaded" : "disabled"}
+            {plugin.builtin ? (plugin.enabled ? "loaded" : "inactive") : plugin.enabled ? "loaded" : "disabled"}
           </StatusText>
           {plugin.read_only ? null : (
             <>
@@ -345,6 +347,9 @@ export function PluginsSection() {
     );
   }, [plugins, query]);
 
+  const builtins = useMemo(() => visible.filter((plugin) => plugin.builtin), [visible]);
+  const authored = useMemo(() => visible.filter((plugin) => !plugin.builtin), [visible]);
+
   const closeDrawer = () => {
     setEditing(null);
     setComposing(false);
@@ -405,9 +410,27 @@ export function PluginsSection() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((plugin) => (
+              {authored.length ? (
+                <GroupRow colSpan={3} label="Yours" blurb={directory || undefined} />
+              ) : null}
+              {authored.map((plugin) => (
                 <PluginRowView
-                  key={plugin.id}
+                  key={plugin.path}
+                  plugin={plugin}
+                  onOpen={() => openPlugin(plugin)}
+                  onChanged={setPlugins}
+                />
+              ))}
+              {builtins.length ? (
+                <GroupRow
+                  colSpan={3}
+                  label="Built in"
+                  blurb="Shipped with the app and loaded by the runtime, not from your extensions directory"
+                />
+              ) : null}
+              {builtins.map((plugin) => (
+                <PluginRowView
+                  key={plugin.path}
                   plugin={plugin}
                   onOpen={() => openPlugin(plugin)}
                   onChanged={setPlugins}

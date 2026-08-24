@@ -132,7 +132,9 @@
 }
 
 .chat-markdown ::selection {
-  background: color-mix(in srgb, var(--accent) 42%, transparent);
+  /* Mixed toward --bg, not transparent: themes with a white/near-fg accent
+     (zai-dark) made a transparent mix read as fg-on-fg. */
+  background: color-mix(in srgb, var(--accent) 35%, var(--bg));
   color: var(--fg);
 }
 
@@ -390,7 +392,10 @@
   background: transparent;
   border: 0;
   padding: 0;
-  color: #fff;
+  /* var(--fg), never #fff: this rule outranks .syntax-highlight, so it colours
+     every un-tokenised run (punctuation, plain identifiers) — which on the
+     light themes made those runs white-on-white. */
+  color: var(--fg);
   white-space: pre;
   word-break: normal;
 }
