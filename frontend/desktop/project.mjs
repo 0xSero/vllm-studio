@@ -54,11 +54,26 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
+// Manual walks, NOT readdirSync({recursive:true}): recursive readdir follows
+// symlinked directories, so one self-referential symlink in node_modules
+// expands forever and the build dies OOM. Dirent.isDirectory() is false for
+// symlinks, so these never descend through one.
+function walkUnder(directory, keep) {
+  let found = [];
+  for (let entry of readdirSync(directory, { withFileTypes: !0 })) {
+    let target = resolve(directory, entry.name);
+    if (entry.isDirectory())
+      found.push(...walkUnder(target, keep));
+    else if (keep(entry))
+      found.push(target);
+  }
+  return found;
+}
 function filesUnder(directory) {
-  return readdirSync(directory, { recursive: !0, withFileTypes: !0 }).filter((entry) => entry.isFile()).map((entry) => resolve(entry.parentPath, entry.name));
+  return walkUnder(directory, (entry) => entry.isFile());
 }
 function symlinksUnder(directory) {
-  return readdirSync(directory, { recursive: !0, withFileTypes: !0 }).filter((entry) => entry.isSymbolicLink()).map((entry) => resolve(entry.parentPath, entry.name));
+  return walkUnder(directory, (entry) => entry.isSymbolicLink());
 }
 function isRuntimeFile(file) {
   let path2 = relative(standaloneBase, file).replaceAll("\\", "/");
@@ -547,7 +562,20 @@ function isRuntimeFile2(file2) {
   ].some((prefix) => path3 === prefix || path3.startsWith(prefix));
 }
 function filesUnder2(directory) {
-  return readdirSync4(directory, { recursive: !0, withFileTypes: !0 }).filter((entry) => entry.isFile()).map((entry) => resolve2(entry.parentPath, entry.name));
+  // A manual walk, NOT readdirSync({recursive:true}): recursive readdir
+  // follows symlinked directories, so one self-referential symlink anywhere
+  // in node_modules expands node_modules/node_modules/... until the build
+  // dies OOM. A Dirent's isDirectory() is false for symlinks, so this walk
+  // records them as entries and never descends.
+  let files = [];
+  for (let entry of readdirSync4(directory, { withFileTypes: !0 })) {
+    let target = resolve2(directory, entry.name);
+    if (entry.isDirectory())
+      files.push(...filesUnder2(target));
+    else if (entry.isFile())
+      files.push(target);
+  }
+  return files;
 }
 function isVerifiedCopy(file2, repoRelativePath) {
   let source = resolve2(repoRoot, repoRelativePath);
