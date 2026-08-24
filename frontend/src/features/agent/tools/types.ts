@@ -61,6 +61,17 @@ export type ContextAttachRequest = {
   content: string;
 };
 
+/** Ask the right panel to open an existing session (e.g. a subagent's) in its
+ *  side-chat pane. Same id-stamped shape as FileOpenRequest: the consumer
+ *  reacts to a changed id, never to a re-render. */
+export type SessionPreviewRequest = {
+  id: number;
+  piSessionId: string;
+  title: string;
+  /** The session's working directory — replay needs it to find the log. */
+  cwd: string | null;
+};
+
 export type ToolSelection = {
   skills: ComposerSkillRef[];
   promptTemplates: ComposerPromptTemplateRef[];

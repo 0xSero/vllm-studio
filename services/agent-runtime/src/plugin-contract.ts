@@ -19,11 +19,16 @@ const PluginFields = {
   updated_at: Schema.String,
   /**
    * True for anything this surface can list but must not rewrite: directory
-   * extensions and package manifests, which pi loads but which are not a single
-   * editable file. Listing them anyway is the point — a plugin page that hides
-   * half of what actually runs is worse than no page.
+   * extensions, package manifests, and the bundled extensions, which pi loads
+   * but which are not a single editable file. Listing them anyway is the point
+   * — a plugin page that hides half of what actually runs is worse than no
+   * page.
    */
   read_only: Schema.Boolean,
+  /** True for the extensions this app ships and loads on every session build. */
+  builtin: Schema.optional(Schema.Boolean),
+  /** One line of honest state for a builtin: what makes it load, or not. */
+  note: Schema.optional(Schema.String),
 };
 
 export const PluginRowSchema = Schema.Struct(PluginFields);

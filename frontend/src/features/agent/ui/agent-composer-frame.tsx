@@ -145,7 +145,7 @@ export function AgentComposerFrame({
       )}
     >
       {banner ? (
-        <div className="mx-auto flex w-full max-w-[calc(var(--composer-w)*0.9)] items-center gap-2 pb-3 pl-1 text-[length:var(--codex-chat-font-size)] text-(--fg)/35 sm:w-[90%]">
+        <div className="mx-auto flex w-full max-w-[calc(var(--composer-w)*0.9)] items-center gap-2 pb-2 pl-1 text-[length:var(--fs-sm)] text-(--fg)/35 sm:w-[90%]">
           <Spinner size="xs" />
           {banner.label}
         </div>
@@ -245,7 +245,7 @@ export function AgentComposerFrame({
       ) : (
         <div
           aria-hidden="true"
-          className="mx-auto mt-2 h-3 w-full max-w-[calc(var(--composer-w)*0.9)] sm:mt-2.5 sm:h-4 sm:w-[90%]"
+          className="mx-auto mt-1.5 h-2 w-full max-w-[calc(var(--composer-w)*0.9)] sm:h-2.5 sm:w-[90%]"
         />
       )}
     </form>

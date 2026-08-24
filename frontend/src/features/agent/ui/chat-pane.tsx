@@ -17,7 +17,7 @@ import { type FileMentionRow, type MentionRow } from "@/features/agent/ui/agent-
 import { builtinCommandProvider } from "@/features/agent/composer/builtin-commands";
 import { AutomationDrawer } from "@/features/agent/ui/automation-drawer";
 import { ComposerProjectDrawer } from "@/features/agent/ui/composer-project-drawer";
-import { SubagentChips } from "@/features/agent/ui/subagent-chips";
+import { SubagentList } from "@/features/agent/ui/subagent-list";
 import { GitDiffDrawer } from "@/features/agent/ui/git-diff-drawer";
 import {
   promptTemplateCommandProvider,
@@ -457,6 +457,17 @@ export function ChatPane({
     [activeTab, tools],
   );
   const [goalModeOn, setGoalModeOn] = useState(false);
+  // Goal mode is a property of the tab it was entered on, but the state lives
+  // pane-wide — without this reset, entering goal mode in one tab silently
+  // converted the next message of whatever tab was switched to into its goal.
+  // Render-time derived-state reset (React's "adjusting state when a prop
+  // changes" pattern), since effect hooks are banned in this codebase.
+  const goalModeTabId = activeTab?.id ?? null;
+  const [lastGoalModeTabId, setLastGoalModeTabId] = useState(goalModeTabId);
+  if (lastGoalModeTabId !== goalModeTabId) {
+    setLastGoalModeTabId(goalModeTabId);
+    if (goalModeOn) setGoalModeOn(false);
+  }
   const [automationDrawerOpen, setAutomationDrawerOpen] = useState(false);
   // Seed the automation with the last thing the user asked for: the common case
   // is "keep doing what I just asked, on a schedule".
@@ -683,7 +694,9 @@ export function ChatPane({
             onClose={() => setAutomationDrawerOpen(false)}
           />
         ) : null}
-        {activePiSessionId ? <SubagentChips piSessionId={activePiSessionId} /> : null}
+        {activePiSessionId ? (
+          <SubagentList piSessionId={activePiSessionId} cwd={cwd || null} />
+        ) : null}
         <AgentComposerFrame
           attachments={attachments}
           banner={composerVisual.banner}

@@ -9,6 +9,7 @@ import {
   GOAL_STATUS_COLOR,
   GOAL_STATUS_LABEL,
   formatGoalDuration,
+  formatGoalTurn,
   goalBudgetTone,
   goalStatusPrefix,
 } from "@/features/agent/ui/goal-presentation";
@@ -42,8 +43,6 @@ export function GoalStrip({
   const terminal = goalIsTerminal(goal.status);
   const paused = goal.status === "paused";
   const prefix = goalStatusPrefix(goal.status);
-  // Turn N is in flight while the goal is active; once it settles, N is done.
-  const iteration = goal.status === "active" ? goal.turnsUsed + 1 : Math.max(1, goal.turnsUsed);
   return (
     <div className="mx-auto mb-1 flex w-[calc(100%_-_26px)] max-w-[calc(var(--composer-w)*0.9_-_26px)] items-center gap-2 rounded-[var(--composer-radius-inner)] border border-(--border) bg-(--fg)/[0.022] px-2.5 py-1 text-[length:var(--fs-xs)] backdrop-blur-sm [corner-shape:superellipse(1.5)] sm:w-[calc(90%_-_26px)]">
       <button
@@ -62,19 +61,18 @@ export function GoalStrip({
           {prefix ? <span className="text-(--fg)/85">{prefix} · </span> : null}
           {goal.objective}
         </span>
-        <span className="hidden shrink-0 tabular-nums text-(--fg)/34 sm:inline">
-          Iteration {iteration}
+        {/* One turn counter, shared with the card — two competing numbers a
+            row apart ("Iteration 4" over "3/10 turns") read as two facts. */}
+        <span
+          className={cx(
+            "shrink-0 tabular-nums",
+            goal.turnBudget !== null
+              ? goalBudgetTone(goal.turnsUsed, goal.turnBudget, goal.status === "budget_limited")
+              : "text-(--fg)/34",
+          )}
+        >
+          {formatGoalTurn(goal)}
         </span>
-        {goal.turnBudget !== null ? (
-          <span
-            className={cx(
-              "shrink-0 tabular-nums",
-              goalBudgetTone(goal.turnsUsed, goal.turnBudget, goal.status === "budget_limited"),
-            )}
-          >
-            {goal.turnsUsed}/{goal.turnBudget}
-          </span>
-        ) : null}
         <GoalElapsed goal={goal} />
       </button>
       {terminal ? (

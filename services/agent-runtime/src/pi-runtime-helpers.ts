@@ -285,6 +285,13 @@ function runtimeSkillPaths(options: RuntimeStartOptions): string[] {
       "automations",
       process.env.LOCAL_STUDIO_AUTOMATIONS_SKILL_PATH,
     ),
+    // Same rule: the subagent tools are always registered, and without the
+    // guidance most models never think to fan out.
+    resolveBundledResourcePath(
+      "skills",
+      "subagents",
+      process.env.LOCAL_STUDIO_SUBAGENTS_SKILL_PATH,
+    ),
   ]);
 }
 

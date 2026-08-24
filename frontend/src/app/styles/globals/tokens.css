@@ -450,10 +450,14 @@
   --h-toolbar-pane: 40px;
   --composer-w: clamp(28rem, 42rem, 48vw);
   --thread-w: 900px;
-  --composer-radius: 25px;
-  --composer-radius-inner: 20px;
-  --composer-elevation: 0 8px 24px rgba(0, 0, 0, 0.11);
-  --composer-elevation-inner: 0 8px 24px rgba(0, 0, 0, 0.08);
+  /* Tightened from 25/20px radii and 24px-blur shadows: the composer stack is
+     several nested surfaces (drawer, strip, box), and at that scale the
+     roundness and shadow spread read as bulk, not polish — the app's density
+     baseline is 10px cards and hairlines. */
+  --composer-radius: 16px;
+  --composer-radius-inner: 12px;
+  --composer-elevation: 0 3px 10px rgba(0, 0, 0, 0.07);
+  --composer-elevation-inner: 0 2px 6px rgba(0, 0, 0, 0.05);
   --qr-surface: #ffffff;
   --qr-shadow: 0 16px 45px -28px rgba(0, 0, 0, 0.8);
   --qr-placeholder: rgba(0, 0, 0, 0.55);

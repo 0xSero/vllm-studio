@@ -168,15 +168,14 @@ a.nav-link:hover,
   ring-offset-color: var(--bg);
 }
 
-/* Selection */
+/* Selection. One rule for all themes: the old dark variant hung off a `.dark`
+   class nothing ever sets (themes are data-theme attributes), so every dark
+   theme fell through to a mix of --hl1 (near-white on zai-dark) with
+   transparent — whitish text on a whitish wash. Mixing the accent toward the
+   theme's own background keeps the selection visible on all 16 themes. */
 ::selection {
-  background: color-mix(in srgb, var(--hl1) 42%, transparent);
+  background: color-mix(in srgb, var(--accent) 35%, var(--bg));
   color: var(--fg);
-}
-
-.dark ::selection {
-  background: color-mix(in srgb, var(--hl1) 52%, #000 28%);
-  color: #fff;
 }
 
 /* Left sidebar scroller: no scrollbar at rest, a slim overlay thumb only while

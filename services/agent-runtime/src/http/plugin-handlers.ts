@@ -6,6 +6,7 @@
 //
 
 import { Schema } from "effect";
+import { listBuiltinPlugins } from "../builtin-plugins";
 import { PluginUpsertInputSchema } from "../plugin-contract";
 import {
   listUserPlugins,
@@ -20,9 +21,13 @@ const failure = (error: unknown, fallback: string, status: number) =>
   Response.json({ error: error instanceof Error ? error.message : fallback }, { status });
 
 async function listing(): Promise<Response> {
+  // Builtins first: the page groups them apart, and on a fresh install they
+  // are the difference between "nine extensions run every session" and a
+  // blank table that reads as a missing feature.
+  const [builtin, user] = await Promise.all([listBuiltinPlugins(), listUserPlugins()]);
   return Response.json({
     directory: resolveUserPluginsDir(),
-    plugins: await listUserPlugins(),
+    plugins: [...builtin, ...user],
   });
 }
 

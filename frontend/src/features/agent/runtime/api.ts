@@ -338,14 +338,26 @@ function decodeSessionGoal(raw: unknown): SessionGoal | null {
 const sessionGoalUrl = (piSessionId: string) =>
   `/api/agent/goal?piSessionId=${encodeURIComponent(piSessionId)}`;
 
-export function loadSessionGoal(piSessionId: string): Promise<SessionGoal | null> {
+/**
+ * "No goal" and "the request failed" are different answers: the first should
+ * clear the strip, the second should leave the last known goal alone. When
+ * both collapsed to null, one flaky poll made the goal vanish for a poll
+ * interval and reappear — which reads as data loss.
+ */
+export type SessionGoalLoad = { ok: true; goal: SessionGoal | null } | { ok: false };
+
+export function loadSessionGoal(piSessionId: string): Promise<SessionGoalLoad> {
   return Effect.runPromise(
     Effect.gen(function* () {
       const response = yield* fetchEffect(sessionGoalUrl(piSessionId), { cache: "no-store" });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        return response.status === 404
+          ? ({ ok: true, goal: null } as SessionGoalLoad)
+          : ({ ok: false } as SessionGoalLoad);
+      }
       const payload = yield* safeJsonEffect<unknown>(response);
-      return decodeSessionGoal(payload);
-    }).pipe(Effect.catch(() => Effect.succeed(null))),
+      return { ok: true, goal: decodeSessionGoal(payload) } as SessionGoalLoad;
+    }).pipe(Effect.catch(() => Effect.succeed<SessionGoalLoad>({ ok: false }))),
   );
 }
 

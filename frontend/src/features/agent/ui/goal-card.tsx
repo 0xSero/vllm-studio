@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { FilePenLine, Pause, Play, RotateCcw, Save, Target, Trash2, X } from "@/ui/icon-registry";
 import { goalIsTerminal, type SessionGoal } from "@shared/agent/session-goal";
 import { cx } from "@/ui/utils";
 import {
   GOAL_STATUS_COLOR,
   GOAL_STATUS_LABEL,
+  formatGoalTurn,
   goalBudgetTone,
 } from "@/features/agent/ui/goal-presentation";
 
@@ -143,8 +144,7 @@ function GoalCardHeader({
             : goalBudgetTone(goal.turnsUsed, goal.turnBudget, goal.status === "budget_limited"),
         )}
       >
-        {goal.turnsUsed}
-        {goal.turnBudget === null ? "" : `/${goal.turnBudget}`} turns
+        {formatGoalTurn(goal)}
       </span>
       <button
         type="button"
@@ -204,6 +204,9 @@ function GoalEditor({
   onCancel: () => void;
   onSave: () => void;
 }) {
+  // Panes are forkable, so two drawers can be open at once — a hardcoded id
+  // here made the label focus the other drawer's input.
+  const budgetInputId = useId();
   return (
     <div className="pt-1.5">
       <textarea
@@ -223,11 +226,11 @@ function GoalEditor({
         aria-label="Goal objective"
       />
       <div className="flex items-center gap-2 pt-1">
-        <label className="flex items-center gap-1.5 text-(--fg)/48" htmlFor="goal-turn-budget">
+        <label className="flex items-center gap-1.5 text-(--fg)/48" htmlFor={budgetInputId}>
           Turn budget
         </label>
         <input
-          id="goal-turn-budget"
+          id={budgetInputId}
           type="number"
           min={1}
           value={budgetDraft}
