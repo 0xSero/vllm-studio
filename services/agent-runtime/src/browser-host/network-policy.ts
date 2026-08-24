@@ -52,6 +52,18 @@ export type PinnedDestination = {
 const RESOLVE_TIMEOUT_MS = 5_000;
 
 /**
+ * The pane's private-network allowance. The desktop shell sets this: a
+ * single-user machine previewing its own LAN and tailnet is the embedded
+ * browser's day job, and Tailscale peers live in CGNAT space that the base
+ * policy rightly refuses on shared deployments. Read per call — it is one env
+ * lookup, and the browsing policy should follow the process env, not a
+ * snapshot taken before the desktop shell finished wiring it.
+ */
+function allowPrivateBrowsing(): boolean {
+  return process.env.LOCAL_STUDIO_BROWSER_ALLOW_PRIVATE === "1";
+}
+
+/**
  * Vet a URL against the browsing policy without touching the network. Accepts
  * http(s) and ws(s) (websockets are policed by the same host rules). Returns
  * the normalized URL, or null when the policy rejects it.
@@ -70,14 +82,20 @@ export function checkBrowserUrl(raw: string, mode: BrowserNetworkMode): string |
   probe.protocol = url.protocol.replace(/^ws/, "http");
   const sanitized =
     mode === "pane"
-      ? sanitizeBrowserPaneUrl(probe.toString())
+      ? sanitizeBrowserPaneUrl(probe.toString(), { allowPrivate: allowPrivateBrowsing() })
       : sanitizePublicBrowserUrl(probe.toString());
   return sanitized ? url.toString() : null;
 }
 
-function expectedHostClass(hostname: string, mode: BrowserNetworkMode): "public" | "loopback" {
+function expectedHostClass(
+  hostname: string,
+  mode: BrowserNetworkMode,
+): "public" | "loopback" | "private" {
   const hostClass = classifyBrowserHost(hostname);
   if (hostClass === "blocked") throw new Error(`Browser policy blocked host: ${hostname}`);
+  if (hostClass === "private" && !(mode === "pane" && allowPrivateBrowsing())) {
+    throw new Error(`Browser policy blocked private host: ${hostname}`);
+  }
   if (hostClass === "loopback" && mode !== "pane") {
     throw new Error(`Browser policy blocked loopback host: ${hostname}`);
   }
@@ -121,10 +139,21 @@ export async function resolvePinnedDestination(
     ? [{ address: hostname, family: literalFamily === 6 ? 6 : 4 }]
     : await resolveWithTimeout(hostname);
   if (answers.length === 0) throw new Error(`Host resolved to no addresses: ${hostname}`);
+  // A loopback spelling must stay on loopback, always. For everything else,
+  // the private allowance also has to accept public names that RESOLVE private
+  // — a tailnet MagicDNS name is a public hostname answering with a CGNAT
+  // address, which is the exact shape the strict policy exists to refuse and
+  // the exact shape the allowance exists to permit.
+  const allowedClasses: string[] =
+    expected === "loopback"
+      ? ["loopback"]
+      : mode === "pane" && allowPrivateBrowsing()
+        ? ["public", "private"]
+        : [expected];
   for (const answer of answers) {
     // Zone-scoped addresses (fe80::1%en0) never pass; the '%' would also
     // confuse the classifier, so reject them outright.
-    if (answer.address.includes("%") || classifyBrowserHost(answer.address) !== expected) {
+    if (answer.address.includes("%") || !allowedClasses.includes(classifyBrowserHost(answer.address))) {
       throw new Error(
         `Browser policy blocked resolved address for ${hostname}: ${answer.address}`,
       );

@@ -26,6 +26,10 @@ type StoredSessionMetadata = {
   sessionUpdatedAt?: string;
   parentSessionId?: string;
   subagentName?: string;
+  /** Subagent bookkeeping, persisted so the in-memory run registry can be
+   *  rebuilt after a runtime restart instead of forgetting every child. */
+  subagentRunId?: string;
+  subagentTask?: string;
 };
 
 type SessionMetadataStore = {
@@ -60,6 +64,8 @@ const OPTIONAL_STRING_FIELDS = [
   "sessionUpdatedAt",
   "parentSessionId",
   "subagentName",
+  "subagentRunId",
+  "subagentTask",
 ] as const satisfies ReadonlyArray<keyof StoredSessionMetadata>;
 
 function normalizeStore(value: unknown): SessionMetadataStore {
@@ -185,6 +191,7 @@ export async function setSubagentLink(
   childSessionId: string,
   parentSessionId: string,
   subagentName: string | null,
+  run?: { runId?: string; cwd?: string; task?: string },
 ): Promise<void> {
   const childId = childSessionId.trim();
   const parentId = parentSessionId.trim();
@@ -196,10 +203,41 @@ export async function setSubagentLink(
       ...current,
       parentSessionId: parentId,
       ...(subagentName?.trim() ? { subagentName: subagentName.trim() } : {}),
+      ...(run?.runId?.trim() ? { subagentRunId: run.runId.trim() } : {}),
+      ...(run?.cwd?.trim() ? { cwd: run.cwd.trim() } : {}),
+      ...(run?.task?.trim() ? { subagentTask: run.task.trim() } : {}),
       updatedAt: new Date().toISOString(),
     };
     writeStore(store);
   });
+}
+
+export type StoredSubagentChild = {
+  childSessionId: string;
+  parentSessionId: string;
+  subagentName: string | null;
+  runId: string | null;
+  cwd: string | null;
+  task: string | null;
+  updatedAt: string | null;
+};
+
+/** Every child ever linked to this parent — the durable half of the subagent
+ *  registry, used to rebuild it after a restart. */
+export function listSubagentChildren(parentSessionId: string): StoredSubagentChild[] {
+  const parentId = parentSessionId.trim();
+  if (!parentId) return [];
+  return Object.entries(readStore().sessions)
+    .filter(([, metadata]) => metadata.parentSessionId === parentId)
+    .map(([childSessionId, metadata]) => ({
+      childSessionId,
+      parentSessionId: parentId,
+      subagentName: metadata.subagentName ?? null,
+      runId: metadata.subagentRunId ?? null,
+      cwd: metadata.cwd ?? null,
+      task: metadata.subagentTask ?? null,
+      updatedAt: metadata.updatedAt ?? null,
+    }));
 }
 
 export function listArchivedSessionMetadata(): ArchivedSessionMetadata[] {

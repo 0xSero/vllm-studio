@@ -22,6 +22,9 @@ import { Type } from "./schema.ts";
 const FRONTEND_BASE = frontendBase();
 const RUN_TIMEOUT_MS = 15 * 60_000;
 const MANAGE_TIMEOUT_MS = 30_000;
+const POLL_INTERVAL_MS = 5_000;
+/** Consecutive failed status polls tolerated before giving up (~1 minute). */
+const MAX_POLL_FAILURES = 12;
 const SAFETY_NOTE =
   "At most 4 subagents run at once per session, and subagents cannot spawn their own subagents.";
 
@@ -109,7 +112,12 @@ export default function subagentsExtension(pi: ExtensionAPI): void {
       if (!piSessionId) {
         return failure("Subagents are unavailable: the session id is unknown.");
       }
-      const called = await callRuntime(
+      // Spawn-then-poll, never one long request: the HTTP hops between here
+      // and the runtime cut a response off after ~5 minutes of headerless
+      // waiting, which turned every long run into a phantom "runtime
+      // unreachable" failure while the child worked on. The spawn call
+      // returns once the child is prompting; the report comes from polling.
+      const spawned = await callRuntime(
         "/api/agent/subagents",
         {
           method: "POST",
@@ -117,16 +125,71 @@ export default function subagentsExtension(pi: ExtensionAPI): void {
             parentPiSessionId: piSessionId,
             name: args.name ?? "Subagent",
             task: args.task ?? "",
+            wait: false,
           },
         },
         signal,
-        RUN_TIMEOUT_MS,
+        MANAGE_TIMEOUT_MS,
       );
-      if (!called.ok) return failure(`Subagent failed: ${called.error}`, { name: args.name });
-      return textResult(String(called.payload.result ?? "(no report)"), {
-        name: args.name,
-        piSessionId: called.payload.piSessionId ?? null,
-      });
+      if (!spawned.ok) return failure(`Subagent failed: ${spawned.error}`, { name: args.name });
+      const runId = typeof spawned.payload.runId === "string" ? spawned.payload.runId : "";
+      const childSessionId = spawned.payload.piSessionId ?? null;
+      if (!runId) return failure("Subagent failed: the runtime returned no run id.");
+
+      const deadline = Date.now() + RUN_TIMEOUT_MS;
+      const statusPath = `/api/agent/subagents/${encodeURIComponent(runId)}?piSessionId=${encodeURIComponent(piSessionId)}`;
+      let pollFailures = 0;
+      while (Date.now() < deadline && !signal?.aborted) {
+        await new Promise((resolve) => {
+          const timer = setTimeout(resolve, POLL_INTERVAL_MS);
+          signal?.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timer);
+              resolve(undefined);
+            },
+            { once: true },
+          );
+        });
+        if (signal?.aborted) break;
+        const polled = await callRuntime(statusPath, { method: "GET" }, signal, MANAGE_TIMEOUT_MS);
+        if (!polled.ok) {
+          pollFailures += 1;
+          if (pollFailures >= MAX_POLL_FAILURES) {
+            return failure(
+              `Subagent ${runId} is unreachable: ${polled.error}. It may still be running — check subagent_status.`,
+              { runId, name: args.name },
+            );
+          }
+          continue;
+        }
+        pollFailures = 0;
+        const run = (polled.payload.subagent ?? {}) as SubagentSummary;
+        if (run.status === "running") continue;
+        if (run.status === "done") {
+          return textResult(run.report || "(the subagent produced no final text)", {
+            runId,
+            name: args.name,
+            piSessionId: run.piSessionId ?? childSessionId,
+          });
+        }
+        const partial = run.report ? `\n\nPartial work:\n${run.report}` : "";
+        if (run.status === "cancelled") {
+          return textResult(`Subagent "${args.name ?? runId}" was stopped before it reported.${partial}`, {
+            runId,
+            status: "cancelled",
+          });
+        }
+        return failure(`Subagent failed: ${run.error ?? "unknown error"}${partial}`, {
+          runId,
+          name: args.name,
+        });
+      }
+      const why = signal?.aborted ? "The turn was stopped" : "The 15-minute wait elapsed";
+      return textResult(
+        `${why} while subagent ${runId} was still working. It keeps running — check on it with subagent_status ${runId}, or stop it with subagent_stop.`,
+        { runId, name: args.name, piSessionId: childSessionId, status: "running" },
+      );
     },
   });
 

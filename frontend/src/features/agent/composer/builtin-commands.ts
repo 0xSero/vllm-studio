@@ -74,7 +74,9 @@ export function builtinCommandProvider(actions: BuiltinComposerActions): Compose
               id: "builtin:goal",
               name: "goal",
               title: "Goal",
-              description: "Set a goal to keep pursuing",
+              // The subcommands' only surface: the empty-args path enters goal
+              // mode before the action's usage string can ever print.
+              description: "Set a goal to keep pursuing — also: pause · resume · clear · budget <n|off>",
               source: "core",
               icon: "command" as const,
               run: async (args: string) => {

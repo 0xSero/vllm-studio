@@ -38,7 +38,11 @@ export function useSessionGoal(
     let cancelled = false;
     const load = async () => {
       const next = await loadSessionGoal(piSessionId);
-      if (!cancelled) setGoal(next);
+      if (cancelled || !next.ok) return; // a failed poll keeps the last known goal
+      setGoal(next.goal);
+      // A healthy poll also retires a stale mutation error — nothing else does,
+      // so a transient failure used to leave the banner up indefinitely.
+      setError(null);
     };
     void load();
     const timer = window.setInterval(() => void load(), POLL_MS);
@@ -156,6 +160,16 @@ export function useGoal({
 }): GoalComposerApi {
   const [goalRevision, setGoalRevision] = useState(0);
   const [goalMode, setGoalMode] = useState(false);
+  // Goal mode is a property of the tab it was entered on, but this hook is
+  // pane-wide — without this reset, entering goal mode in one tab silently
+  // converted the next message of whatever tab was switched to into its goal.
+  // Render-time derived-state reset (React's "adjusting state when a prop
+  // changes" pattern), since effect hooks are banned in this codebase.
+  const [lastGoalModeTabId, setLastGoalModeTabId] = useState(tabId);
+  if (lastGoalModeTabId !== tabId) {
+    setLastGoalModeTabId(tabId);
+    if (goalMode) setGoalMode(false);
+  }
   const pendingObjectiveRef = useRef<{ tabId: string | null; objective: string } | null>(null);
 
   const writeObjective = useCallback(async (sessionId: string, objective: string) => {

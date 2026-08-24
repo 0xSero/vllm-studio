@@ -5,6 +5,7 @@
 // agent actually loads from.
 //
 
+import { listBuiltinPlugins } from "../builtin-plugins";
 import { PluginUpsertInputSchema } from "../plugin-contract";
 import {
   listUserPlugins,
@@ -18,11 +19,15 @@ import { discoverSkills, loadSkillInstructions } from "../skill-discovery";
 import { discoverPromptTemplates, loadPromptTemplateInstructions } from "../prompt-templates-store";
 import { decodeBody, errorMessage, jsonError } from "./helpers";
 
-/** The listing every write answers with, so the tab never re-fetches. */
+/** The listing every write answers with, so the tab never re-fetches.
+ *  Builtins first: the page groups them apart, and on a fresh install they
+ *  are the difference between "nine extensions run every session" and a
+ *  blank table that reads as a missing feature. */
 export async function handlePluginsList(): Promise<Response> {
+  const [builtin, user] = await Promise.all([listBuiltinPlugins(), listUserPlugins()]);
   return Response.json({
     directory: resolveUserPluginsDir(),
-    plugins: await listUserPlugins(),
+    plugins: [...builtin, ...user],
   });
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   FilePenLine,
   Pause,
@@ -67,6 +67,19 @@ function goalBudgetTone(turnsUsed: number, turnBudget: number, spent: boolean): 
   return turnsUsed >= turnBudget - 1 ? "text-(--warn)" : "text-(--fg)/40";
 }
 
+/** Turn N is in flight while the goal is active; once it settles, N is done. */
+function goalIteration(goal: SessionGoal): number {
+  return goal.status === "active" ? goal.turnsUsed + 1 : Math.max(1, goal.turnsUsed);
+}
+
+/** The one turn counter, shared by the strip and the card. They used to derive
+ *  their own — "Iteration 4" a row above "3/10 turns" — which read as two
+ *  different facts about the same goal. */
+function formatGoalTurn(goal: SessionGoal): string {
+  const iteration = goalIteration(goal);
+  return goal.turnBudget === null ? `Turn ${iteration}` : `Turn ${iteration}/${goal.turnBudget}`;
+}
+
 const stripActionClass =
   "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-(--fg)/45 transition-colors hover:bg-(--hover) hover:text-(--fg)/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--fg)/25";
 
@@ -126,8 +139,6 @@ export function GoalStrip({
 }) {
   const paused = goal.status === "paused";
   const prefix = GOAL_STATUS_PREFIX[goal.status];
-  // Turn N is in flight while the goal is active; once it settles, N is done.
-  const iteration = goal.status === "active" ? goal.turnsUsed + 1 : Math.max(1, goal.turnsUsed);
   return (
     <div className="mx-auto mb-1 flex w-[calc(100%_-_26px)] max-w-[calc(var(--composer-w)*0.9_-_26px)] items-center gap-2 rounded-[var(--composer-radius-inner)] border border-(--border) bg-(--fg)/[0.022] px-2.5 py-1 text-[length:var(--fs-xs)] backdrop-blur-sm [corner-shape:superellipse(1.5)] sm:w-[calc(90%_-_26px)]">
       <button
@@ -146,19 +157,16 @@ export function GoalStrip({
           {prefix ? <span className="text-(--fg)/85">{prefix} · </span> : null}
           {goal.objective}
         </span>
-        <span className="hidden shrink-0 tabular-nums text-(--fg)/34 sm:inline">
-          Iteration {iteration}
+        <span
+          className={cx(
+            "shrink-0 tabular-nums",
+            goal.turnBudget !== null
+              ? goalBudgetTone(goal.turnsUsed, goal.turnBudget, goal.status === "budget_limited")
+              : "text-(--fg)/34",
+          )}
+        >
+          {formatGoalTurn(goal)}
         </span>
-        {goal.turnBudget !== null ? (
-          <span
-            className={cx(
-              "shrink-0 tabular-nums",
-              goalBudgetTone(goal.turnsUsed, goal.turnBudget, goal.status === "budget_limited"),
-            )}
-          >
-            {goal.turnsUsed}/{goal.turnBudget}
-          </span>
-        ) : null}
         <GoalElapsed goal={goal} />
       </button>
       {goalIsTerminal(goal.status) ? (
@@ -232,6 +240,9 @@ export function GoalCard({
   onClear: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  // Panes are forkable, so two drawers can be open at once — a hardcoded id
+  // here made the label focus the other drawer's input.
+  const budgetInputId = useId();
   const [draft, setDraft] = useState("");
   const paused = goal?.status === "paused";
   const [budgetDraft, setBudgetDraft] = useState("");
@@ -296,8 +307,7 @@ export function GoalCard({
                 : goalBudgetTone(goal.turnsUsed, goal.turnBudget, goal.status === "budget_limited"),
             )}
           >
-            {goal.turnsUsed}
-            {goal.turnBudget === null ? "" : `/${goal.turnBudget}`} turns
+            {formatGoalTurn(goal)}
           </span>
           <IconAction
             icon={FilePenLine}
@@ -336,11 +346,11 @@ export function GoalCard({
             aria-label="Goal objective"
           />
           <div className="flex items-center gap-2 pt-1">
-            <label className="flex items-center gap-1.5 text-(--fg)/48" htmlFor="goal-turn-budget">
+            <label className="flex items-center gap-1.5 text-(--fg)/48" htmlFor={budgetInputId}>
               Turn budget
             </label>
             <input
-              id="goal-turn-budget"
+              id={budgetInputId}
               type="number"
               min={1}
               value={budgetDraft}

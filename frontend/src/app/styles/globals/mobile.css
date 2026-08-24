@@ -62,8 +62,15 @@
   }
 }
 
-/* Mobile chat optimization */
-@media (max-width: 768px) {
+/* Mobile chat optimization.
+
+   Gated on a coarse pointer as well as width: page zoom in the desktop app
+   shrinks the CSS viewport, and a zoomed-in 1500px window "becomes" 700px
+   wide. Width alone would then hand a mouse-driven desktop UI the 44px touch
+   targets and 16px body below — which is exactly what reads as a chunky,
+   low-fidelity app at zoom. A phone is narrow AND coarse; a zoomed desktop is
+   only narrow. */
+@media (max-width: 768px) and (pointer: coarse) {
   .chat-input-area {
     padding-bottom: env(safe-area-inset-bottom, 0);
   }

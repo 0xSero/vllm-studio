@@ -20,6 +20,12 @@ import { playwrightManager } from "../browser-host/playwright";
 import { fetchReadable } from "../browser-host/reader";
 import { errorMessage } from "./helpers";
 
+/** Same switch network-policy.ts honors — the two must agree, or a URL the
+ *  navigate verb accepted dies at the pinning proxy with a confusing 403. */
+const paneUrlOptions = () => ({
+  allowPrivate: process.env.LOCAL_STUDIO_BROWSER_ALLOW_PRIVATE === "1",
+});
+
 // The reason the engine could not be resolved, phrased for whoever has to fix
 // it — a missing LOCAL_STUDIO_CHROME_PATH binary reads differently from "no
 // browser installed", and the old single string blamed the wrong dial.
@@ -163,10 +169,10 @@ async function stateAfter(action: Promise<unknown>, session: string | undefined)
 
 async function navigateVerb({ payload, session }: VerbCall): Promise<VerbResult> {
   // Pane rules: public web plus loopback (previewing local dev servers is the
-  // pane's main job); other private ranges stay blocked. The same policy is
-  // re-applied — with DNS pinning — to every request the page then makes; see
-  // browser-host/network-policy.ts.
-  const url = sanitizeBrowserPaneUrl(String(payload.url ?? ""));
+  // pane's main job); other private ranges are opt-in via the desktop's
+  // allow-private switch. The same policy is re-applied — with DNS pinning —
+  // to every request the page then makes; see browser-host/network-policy.ts.
+  const url = sanitizeBrowserPaneUrl(String(payload.url ?? ""), paneUrlOptions());
   if (!url) return { ok: false, error: "valid public or localhost http(s) url required" };
   return done(await browserHost.navigate(url, session));
 }
@@ -192,7 +198,7 @@ function requireSelector(payload: Record<string, unknown>): string {
 // previewable even when there's no headless Chromium to drive a full surface.
 async function fallbackVerb({ verb, payload, signal }: VerbCall): Promise<VerbResult> {
   if (verb === "navigate") {
-    const url = sanitizeBrowserPaneUrl(String(payload.url ?? ""));
+    const url = sanitizeBrowserPaneUrl(String(payload.url ?? ""), paneUrlOptions());
     if (!url) return { ok: false, error: "valid public or localhost http(s) url required" };
     const reader = await fetchReadable(url, signal);
     lastFallbackUrl = reader.url;
@@ -200,7 +206,7 @@ async function fallbackVerb({ verb, payload, signal }: VerbCall): Promise<VerbRe
   }
   if (verb === "get-url") return done({ url: lastFallbackUrl, title: "" });
   if (verb === "get-text" || verb === "get-html") {
-    const url = sanitizeBrowserPaneUrl(String(payload.url ?? "")) || lastFallbackUrl;
+    const url = sanitizeBrowserPaneUrl(String(payload.url ?? ""), paneUrlOptions()) || lastFallbackUrl;
     if (!url) return { ok: false, error: unavailableError() };
     const reader = await fetchReadable(url, signal);
     lastFallbackUrl = reader.url;

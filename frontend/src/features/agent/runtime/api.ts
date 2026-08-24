@@ -266,13 +266,23 @@ function decodeSessionGoal(raw: unknown): SessionGoal | null {
 const sessionGoalUrl = (piSessionId: string) =>
   `/api/agent/goal?piSessionId=${encodeURIComponent(piSessionId)}`;
 
-export async function loadSessionGoal(piSessionId: string): Promise<SessionGoal | null> {
+/**
+ * "No goal" and "the request failed" are different answers: the first should
+ * clear the strip, the second should leave the last known goal alone. When
+ * both collapsed to null, one flaky poll made the goal vanish for a poll
+ * interval and reappear — which reads as data loss.
+ */
+export type SessionGoalLoad = { ok: true; goal: SessionGoal | null } | { ok: false };
+
+export async function loadSessionGoal(piSessionId: string): Promise<SessionGoalLoad> {
   try {
     const response = await fetch(sessionGoalUrl(piSessionId), { cache: "no-store" });
-    if (!response.ok) return null;
-    return decodeSessionGoal(await safeJson<unknown>(response));
+    if (!response.ok) {
+      return response.status === 404 ? { ok: true, goal: null } : { ok: false };
+    }
+    return { ok: true, goal: decodeSessionGoal(await safeJson<unknown>(response)) };
   } catch {
-    return null;
+    return { ok: false };
   }
 }
 

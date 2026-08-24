@@ -216,6 +216,9 @@ const SKILL_SPECS: readonly BundledResourceSpec[] = [
   // there too. Skills are progressively disclosed — this costs one line in
   // the prompt until the model opens it.
   { name: "automations", env: "LOCAL_STUDIO_AUTOMATIONS_SKILL_PATH" },
+  // Same rule: the subagent tools are always registered, and without the
+  // guidance most models never think to fan out.
+  { name: "subagents", env: "LOCAL_STUDIO_SUBAGENTS_SKILL_PATH" },
 ];
 
 function runtimeEnvInjections(

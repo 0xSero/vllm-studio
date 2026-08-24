@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState, type ComponentType, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type KeyboardEvent,
+} from "react";
 import {
   Activity,
   FolderTree,
@@ -30,6 +37,7 @@ import {
   sanitizeLocalFileUrl,
 } from "@/features/agent/sanitize-embedded-browser-url";
 import { useTools } from "@/features/agent/tools/context";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import type { ComputerTab } from "@/features/agent/tools/types";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import type { Session } from "@/features/agent/runtime/types";
@@ -92,7 +100,13 @@ function closePersistedTerminalOwner(ownerKey: string) {
 }
 
 function acceptedBrowserUrl(url: string): string | null {
-  return /^file:\/\//i.test(url) ? sanitizeLocalFileUrl(url) : sanitizeBrowserPaneUrl(url);
+  // allowPrivate here is only a syntax pass — the runtime is the policy
+  // authority and rejects private hosts when its allow-private switch is off.
+  // Refusing them client-side too would make the address bar silently eat
+  // tailnet/LAN URLs on the desktop, where they are allowed.
+  return /^file:\/\//i.test(url)
+    ? sanitizeLocalFileUrl(url)
+    : sanitizeBrowserPaneUrl(url, { allowPrivate: true });
 }
 
 export function AgentBrowserPanel({
@@ -210,6 +224,34 @@ export function AgentBrowserPanel({
     setSideChatSeed(createSideChatSession(activeProject ?? null, focusedSession, activeModelId));
     tools.closeComputerTab("side-chat");
   }, [activeModelId, activeProject, focusedSession, handles, sideChatSeed.id, tools]);
+  // Open an existing session (a subagent's) in the side-chat pane: swap in a
+  // tab seeded with its piSessionId, and ChatPane's hydration effect replays
+  // the transcript. The request already switched the panel to this tab. Same
+  // id-guarded subscription shape as the composer's context-attach consumer.
+  const sessionPreviewRequest = tools.sessionPreviewRequest;
+  const handledPreviewRef = useRef(0);
+  useMountSubscription(() => {
+    if (!sessionPreviewRequest || handledPreviewRef.current === sessionPreviewRequest.id) return;
+    handledPreviewRef.current = sessionPreviewRequest.id;
+    const previewTab: Session = {
+      ...makeFreshTab(),
+      title: sessionPreviewRequest.title,
+      piSessionId: sessionPreviewRequest.piSessionId,
+      cwd: sessionPreviewRequest.cwd ?? focusedSession?.cwd ?? activeProject?.path,
+      projectId: focusedSession?.projectId ?? activeProject?.id,
+      modelId: focusedSession?.modelId ?? activeModelId,
+    };
+    handles.removeDetachedSession(sideChatSeed.id);
+    setSideChatSeed(previewTab);
+    handles.updateDetachedSession(previewTab, (current) => current);
+  }, [
+    activeModelId,
+    activeProject,
+    focusedSession,
+    handles,
+    sessionPreviewRequest,
+    sideChatSeed.id,
+  ]);
   const closeComputerTab = useCallback(
     (closing: ComputerTab) => {
       if (closing === "side-chat") {

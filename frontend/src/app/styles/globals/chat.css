@@ -3,7 +3,8 @@
   --codex-chat-font-family: var(--font-sans);
   --codex-chat-mono-font-family:
     ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  --codex-chat-font-size: 16px;
+  /* 15px, not 16: against a 14px UI base the 16px transcript read oversized. */
+  --codex-chat-font-size: 15px;
   --codex-chat-line-height: 1.5;
   --codex-chat-code-font-size: 13px;
   --codex-chat-font-weight: 400;
@@ -132,7 +133,9 @@
 }
 
 .chat-markdown ::selection {
-  background: color-mix(in srgb, var(--accent) 42%, transparent);
+  /* Mixed toward --bg, not transparent: themes with a white/near-fg accent
+     (zai-dark) made a transparent mix read as fg-on-fg. */
+  background: color-mix(in srgb, var(--accent) 35%, var(--bg));
   color: var(--fg);
 }
 
@@ -390,7 +393,10 @@
   background: transparent;
   border: 0;
   padding: 0;
-  color: #fff;
+  /* var(--fg), never #fff: this rule outranks .syntax-highlight, so it colours
+     every un-tokenised run (punctuation, plain identifiers) — which on the
+     light themes made those runs white-on-white. */
+  color: var(--fg);
   white-space: pre;
   word-break: normal;
 }
