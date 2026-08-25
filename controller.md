@@ -149,7 +149,7 @@ POST /v1/chat/completions   (proxy/openai-routes.ts)
 | `prettier` | formatting |
 | `@types/node`, `bun-types` | typings |
 
-Root `npm run check` includes `check:controller` = `typecheck && lint && check` (knip + jscpd + depcheck + `controller-standards`).
+Root `npm run check` (= `node scripts/project.mjs check`) runs the controller's `typecheck`, `lint`, and `check` (knip + jscpd + depcheck + `controller-standards`).
 
 ---
 
