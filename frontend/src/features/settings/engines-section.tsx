@@ -360,6 +360,6 @@ function EngineStatus({ installed, active }: { installed: boolean; active?: bool
 }
 
 function upgradeHandler(id: string) {
-  if (id === "vllm" || id === "sglang" || id === "llamacpp") return () => api.upgradeRuntime(id);
+  if (id === "vllm" || id === "sglang" || id === "exllamav3") return () => api.upgradeRuntime(id);
   return undefined;
 }

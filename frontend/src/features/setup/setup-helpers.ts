@@ -30,10 +30,7 @@ export function buildStarterRecipe(
   const recipeId = dedupeRecipeId(recipeBase, existingRecipes);
 
   const backend = preset?.backend ?? "vllm";
-  const modelPath =
-    backend === "llamacpp" && preset?.gguf_file
-      ? `${download.target_dir.replace(/\/+$/, "")}/${preset.gguf_file}`
-      : download.target_dir;
+  const modelPath = download.target_dir;
 
   return {
     id: recipeId,

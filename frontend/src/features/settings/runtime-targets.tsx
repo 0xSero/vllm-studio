@@ -33,19 +33,18 @@ export const ENGINE_META: Record<string, { label: string; description: string }>
     description: "High-throughput LLM serving with CUDA-oriented scheduling.",
   },
   sglang: { label: "SGLang", description: "Fast structured generation and multi-turn serving." },
-  llamacpp: {
-    label: "llama.cpp",
-    description: "GGUF inference through CPU, Metal, or CUDA builds.",
+  exllamav3: {
+    label: "exllamav3",
+    description: "exl3 quantized inference served through TabbyAPI.",
   },
-  mlx: { label: "MLX", description: "Apple Silicon inference through mlx-lm." },
 };
 
-export type ManagedRuntimeInstallBackend = Extract<EngineBackend, "vllm" | "sglang" | "mlx">;
+export type ManagedRuntimeInstallBackend = Extract<EngineBackend, "vllm" | "sglang" | "exllamav3">;
 
 export const MANAGED_RUNTIME_BACKENDS: readonly ManagedRuntimeInstallBackend[] = [
   "vllm",
   "sglang",
-  "mlx",
+  "exllamav3",
 ] as const;
 
 export const isRunningEngineJob = (job: EngineJob | undefined): boolean =>
@@ -95,13 +94,9 @@ const managedInstallJob = (
       job.backend === backend && job.type === "install" && !job.targetId && isRunningEngineJob(job),
   ) ?? jobs.find((job) => job.backend === backend && job.type === "install" && !job.targetId);
 
-export const isManagedRuntimeTarget = (target: RuntimeTarget): boolean => {
-  if (!MANAGED_RUNTIME_BACKENDS.includes(target.backend as ManagedRuntimeInstallBackend)) {
-    return false;
-  }
-  const normalizedPythonPath = target.pythonPath?.replace(/\\/g, "/") ?? "";
-  return normalizedPythonPath.endsWith(`/runtime/venvs/${target.backend}-latest/bin/python`);
-};
+export const isManagedRuntimeTarget = (target: RuntimeTarget): boolean =>
+  MANAGED_RUNTIME_BACKENDS.includes(target.backend as ManagedRuntimeInstallBackend) &&
+  target.kind === "docker";
 
 const managedTargetForBackend = (
   targets: RuntimeTarget[],
@@ -141,9 +136,9 @@ function installedVersionLabel(target: RuntimeTarget | undefined): string {
 }
 
 /**
- * Everything the managed-venv row needs to know, resolved in one place: which
- * target (if any) the controller created for this backend, which job is
- * touching it, and whether the button installs or updates.
+ * Everything the engine-image row needs to know, resolved in one place: which
+ * docker target the controller reports for this backend, which pull job is
+ * touching it, and whether the button pulls or re-pulls.
  */
 function describeManagedInstall(
   backend: ManagedRuntimeInstallBackend,
@@ -161,8 +156,8 @@ function describeManagedInstall(
     job,
     running: isRunningEngineJob(job),
     updateTarget: installedTarget?.capabilities.canUpdate ? installedTarget : undefined,
-    actionLabel: installedTarget ? "Update" : "Install",
-    location: target?.pythonPath ?? `$DATA_DIR/runtime/venvs/${backend}-latest`,
+    actionLabel: installedTarget ? "Update" : "Pull image",
+    location: target?.dockerImage ?? "pinned image",
   };
 }
 
@@ -187,8 +182,8 @@ function ManagedRuntimeInstallRow({
     <>
       <DataRow>
         <IdentityCell
-          label={`${meta.label} latest venv`}
-          description={`Controller-managed Python environment for ${meta.label}.`}
+          label={`${meta.label} image`}
+          description={`Pinned serving image for ${meta.label}.`}
         />
         <TextCell mono>{installedVersionLabel(target)}</TextCell>
         <TextCell mono title={location}>
@@ -203,7 +198,7 @@ function ManagedRuntimeInstallRow({
                 health={target.health.status}
               />
             ) : (
-              <StatusText tone={job?.status === "success" ? "ok" : "dim"}>venv</StatusText>
+              <StatusText tone={job?.status === "success" ? "ok" : "dim"}>docker</StatusText>
             )}
             <RowAction
               alwaysVisible
@@ -211,10 +206,10 @@ function ManagedRuntimeInstallRow({
                 void (updateTarget ? onUpdateTarget?.(updateTarget) : onInstall(backend))
               }
               disabled={running || !canAct}
-              title={`${actionLabel} the managed ${meta.label} venv`}
+              title={`${actionLabel} the pinned ${meta.label} image`}
             >
               {running ? <Spinner size="xs" /> : null}
-              {running ? job?.status : installedTarget ? actionLabel : "Create venv"}
+              {running ? job?.status : actionLabel}
             </RowAction>
           </div>
         </EndCell>

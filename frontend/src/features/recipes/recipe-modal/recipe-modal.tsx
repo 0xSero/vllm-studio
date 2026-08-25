@@ -95,8 +95,6 @@ export function RecipeModal({
               extraArgsText: model.extraArgsText,
               extraArgsError: model.extraArgsError,
               onExtraArgsChange: model.handleExtraArgsChange,
-              llamaConfigLoading: model.llamaConfigLoading,
-              llamaConfigHelp: model.llamaConfigHelp,
             }}
             command={{
               recipeSourceText: model.recipeSourceText,

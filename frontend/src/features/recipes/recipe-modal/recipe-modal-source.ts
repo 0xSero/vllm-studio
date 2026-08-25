@@ -4,7 +4,7 @@ import { filterExtraArgsForEditor } from "@/features/recipes/editor-extra-args";
 import { normalizeRecipeForEditor } from "@/features/recipes/normalize-recipe";
 import { prepareRecipeForSave } from "@/features/recipes/prepare-recipe";
 
-const BACKENDS = new Set<Backend>(["vllm", "sglang", "llamacpp", "mlx"]);
+const BACKENDS = new Set<Backend>(["vllm", "sglang", "exllamav3"]);
 
 export function getCommandOverride(recipe: RecipeEditor): string | null {
   const launchCommand = recipe.extra_args?.["launch_command"];

@@ -441,8 +441,7 @@ function deriveBackends(
   const entries: ([string, BackendInfo] | null)[] = [
     ["vllm", summary.backends.vllm],
     ["sglang", summary.backends.sglang],
-    ["llamacpp", summary.backends.llamacpp],
-    summary.backends.mlx ? ["mlx", summary.backends.mlx] : null,
+    ["exllamav3", summary.backends.exllamav3],
   ];
   return entries.filter((e): e is [string, BackendInfo] => e !== null);
 }

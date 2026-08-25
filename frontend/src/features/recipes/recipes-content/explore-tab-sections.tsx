@@ -15,8 +15,7 @@ export const EXPLORE_LIBRARIES = [
   { value: "transformers", label: "Transformers" },
   { value: "pytorch", label: "PyTorch" },
   { value: "safetensors", label: "Safetensors" },
-  { value: "gguf", label: "GGUF" },
-  { value: "exl2", label: "EXL2" },
+  { value: "exl3", label: "EXL3" },
   { value: "awq", label: "AWQ" },
   { value: "gptq", label: "GPTQ" },
 ] as const;
