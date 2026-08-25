@@ -1,5 +1,24 @@
 # Engine layer: registry-as-backbone, then the omarchy cuts
 
+> **Status (2026-08-25): ALL STAGES LANDED** on `refactor/engines-omarchy`
+> (Stage 0 `8a58a4c2c`, Stage A `d10d5905c`, Stages B+C together `7853e4efd`,
+> frontend follow-through `173ca3680`, plus an owner-directed proxy
+> unification `f98790d69`: /v1/chat/completions joined /v1/responses and
+> /v1/messages as pure passthrough + recording). engines+compute went from
+> 8,368 to 5,191 lines; the proxy from 2,199 to 922.
+>
+> Deviations from the text below, all deliberate:
+> - Unservable registry entries (dropped backends) are preserved in the
+>   registry file and reported in a boot warning, rather than surfaced as a
+>   typed `unsupported` value in /recipes — the wire shape stays unchanged.
+> - Images are pinned by tag (vllm/vllm-openai:latest, lmsysorg/sglang:latest,
+>   ghcr.io/theroyallab/tabbyapi:latest, rocm/vllm:latest); digest pinning is
+>   still open.
+> - The opt-in custom launch command survives — it now runs inside the
+>   engine's container instead of as a host process.
+> - /runtime/targets/:id/select was deleted (nothing called it); jobs and
+>   targets kept their envelopes and row shapes.
+
 Owner-approved direction (2026-08-25): the controller's `engines` (4,574 LOC)
 and `compute` (3,794 LOC) modules spend ~8,400 lines on a job that
 `~/omarchy/local-inference` proves is a ~1,500-line problem. The excess is the
