@@ -1,10 +1,11 @@
 import { Effect, Schema } from "effect";
-import { badRequest } from "../../core/errors";
+import { badRequest, HttpStatus, notFound, serviceUnavailable } from "../../core/errors";
 import { readBoundedRequestBody } from "../../http/bounded-body";
 import { defineRoutes, effectRoute, mergeRoutes } from "../../http/route-registrar";
 import { ENGINE_IDS, type EngineId, type ServingOptions } from "./contracts";
 import { availableEngines } from "./engines/registry";
 import { toHttp } from "./failures";
+import { formatLaunchFailureBudgetMessage } from "./launch-failure-budget";
 
 const LAUNCH_REQUEST_LIMIT = 64 * 1024;
 
@@ -121,6 +122,65 @@ export const registerComputeRoutes = defineRoutes((app, context) =>
       context.compute.service
         .cancel(ctx.req.param("name") ?? "")
         .pipe(Effect.map((cancelled) => ctx.json({ cancelled }))),
+    ),
+
+    /* ── one-active-model lifecycle, legacy wire shapes preserved ──────────── */
+
+    effectRoute(app.post, "/launch/:recipeId", (ctx) =>
+      Effect.gen(function* () {
+        const recipeId = ctx.req.param("recipeId") ?? "";
+        const recipe = yield* context.stores.recipeStore.get(recipeId);
+        if (!recipe) return yield* Effect.fail(notFound("Recipe not found"));
+        const blocked = context.launchFailureBudget.isBlocked(recipeId);
+        if (blocked) {
+          return yield* Effect.fail(
+            new HttpStatus({ status: 429, detail: formatLaunchFailureBudgetMessage(blocked) }),
+          );
+        }
+        yield* context.compute.model.launchRecipe(recipe).pipe(
+          Effect.mapError((failure) => {
+            if (failure.kind !== "already-running" && failure.kind !== "cancelled") {
+              context.launchFailureBudget.recordFailure(recipeId);
+            }
+            return toHttp(failure);
+          }),
+        );
+        context.launchFailureBudget.reset(recipeId);
+        return ctx.json({ success: true, message: "Launch started" });
+      }),
+    ),
+
+    effectRoute(app.post, "/launch/:recipeId/cancel", (ctx) =>
+      Effect.gen(function* () {
+        const recipeId = ctx.req.param("recipeId") ?? "";
+        const cancelled = yield* context.compute.model.cancelLaunch();
+        if (!cancelled) {
+          return yield* Effect.fail(notFound(`No launch in progress for ${recipeId}`));
+        }
+        return ctx.json({ success: true, message: `Launch of ${recipeId} cancelled` });
+      }),
+    ),
+
+    effectRoute(app.post, "/evict", (ctx) =>
+      Effect.gen(function* () {
+        yield* context.compute.model
+          .evict()
+          .pipe(
+            Effect.mapError((error) => serviceUnavailable(`Failed to evict: ${String(error)}`)),
+          );
+        return ctx.json({ success: true, evicted_pid: null });
+      }),
+    ),
+
+    effectRoute(app.get, "/wait-ready", (ctx) =>
+      Effect.gen(function* () {
+        const timeout = Number(ctx.req.query("timeout") ?? 300);
+        const start = Date.now();
+        if (yield* context.compute.model.waitForHealthy(timeout * 1000)) {
+          return ctx.json({ ready: true, elapsed: Math.floor((Date.now() - start) / 1000) });
+        }
+        return ctx.json({ ready: false, elapsed: timeout, error: "Timeout waiting for backend" });
+      }),
     ),
   ),
 );

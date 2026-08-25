@@ -22,16 +22,15 @@ import type { ComputeLaunchInput, ComputeService } from "./lifecycle";
 import type { InstanceStore } from "./instances/store";
 
 /**
- * The legacy-surface bridge: everything the old engine coordinator and process manager
- * answered — "what is serving on the inference port", "what is launching", launch,
- * evict, wait-ready — answered from compute instance records instead. One model at a
- * time is preserved by giving the active model a fixed instance name and serving it on
- * the legacy inference port, so the proxy, metrics and speech surfaces are unchanged.
+ * The one-active-model surface: "what is serving on the inference port", "what is
+ * launching", launch, evict, wait-ready — answered from compute instance records.
+ * The active model gets a fixed instance name and serves on the inference port, so
+ * the proxy, metrics and speech surfaces are unchanged.
  */
 
 export const LLM_INSTANCE = "llm";
 
-export interface ComputeBridge {
+export interface ActiveModel {
   readonly findInferenceProcess: () => Effect.Effect<ProcessInfo | null>;
   readonly getCurrentRecipe: () => Effect.Effect<Recipe | null, unknown>;
   readonly launchingRecipeId: () => string | null;
@@ -41,7 +40,7 @@ export interface ComputeBridge {
   readonly waitForHealthy: (timeoutMs: number) => Effect.Effect<boolean>;
 }
 
-export interface ComputeBridgeDependencies {
+export interface ActiveModelDependencies {
   readonly config: Config;
   readonly compute: ComputeService;
   readonly store: InstanceStore;
@@ -237,11 +236,11 @@ export const recipeToLaunchInput = (
   };
 };
 
-/* ── the bridge ────────────────────────────────────────────────────────────── */
+/* ── the surface ───────────────────────────────────────────────────────────── */
 
 const RUNNING_STATES = new Set(["starting", "ready", "unhealthy"]);
 
-export const createComputeBridge = (deps: ComputeBridgeDependencies): ComputeBridge => {
+export const createActiveModel = (deps: ActiveModelDependencies): ActiveModel => {
   const llmRecord = (): InstanceRecord | null => deps.store.read(LLM_INSTANCE);
 
   const findInferenceProcess = (): Effect.Effect<ProcessInfo | null> =>

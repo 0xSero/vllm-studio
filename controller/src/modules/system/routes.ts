@@ -90,7 +90,7 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
           running: Boolean(current),
           process: current,
           inference_port: context.config.inference_port,
-          launching: context.bridge.launchingRecipeId(),
+          launching: context.compute.model.launchingRecipeId(),
           launch_failures: context.launchFailureBudget.listActive(),
         });
       }),

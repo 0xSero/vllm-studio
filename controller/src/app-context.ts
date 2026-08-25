@@ -10,8 +10,7 @@ import { DownloadStore } from "./modules/engines/downloads/download-store";
 import {
   createLaunchFailureBudget,
   type LaunchFailureBudget,
-} from "./modules/engines/launch-failure-budget";
-import { createComputeBridge, type ComputeBridge } from "./modules/compute/bridge";
+} from "./modules/compute/launch-failure-budget";
 import { makeCompute, type Compute } from "./modules/compute/service";
 import { shutdownEngineJobs } from "./modules/engines/runtimes/engine-jobs";
 import { shutdownRuntimeInfo } from "./modules/engines/runtimes/runtime-info";
@@ -30,7 +29,6 @@ export interface AppContext {
   launchFailureBudget: LaunchFailureBudget;
   downloadManager: DownloadManager;
   compute: Compute;
-  bridge: ComputeBridge;
   stores: {
     recipeStore: RecipeStore;
     downloadStore: DownloadStore;
@@ -166,13 +164,9 @@ export const makeAppContext = Effect.gen(function* () {
   );
 
   const launchFailureBudget = createLaunchFailureBudget();
-  const compute = yield* initializeSync("compute.open", () => makeCompute(config, eventManager));
-  const bridge = createComputeBridge({
-    config,
-    compute: compute.service,
-    store: compute.store,
-    getRecipe: (recipeId) => recipeStore.get(recipeId),
-  });
+  const compute = yield* initializeSync("compute.open", () =>
+    makeCompute(config, eventManager, (recipeId) => recipeStore.get(recipeId)),
+  );
   const downloadManager = yield* initialize(
     "download-manager.open",
     DownloadManager.make(config, downloadStore, eventManager, logger),
@@ -194,7 +188,6 @@ export const makeAppContext = Effect.gen(function* () {
     launchFailureBudget,
     downloadManager,
     compute,
-    bridge,
     stores: {
       recipeStore,
       downloadStore,

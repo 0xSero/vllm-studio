@@ -42,7 +42,7 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
     });
 
   const collect = Effect.gen(function* () {
-    const current = yield* context.bridge.findInferenceProcess();
+    const current = yield* context.compute.model.findInferenceProcess();
     const gpuList = yield* getGpuInfo();
 
     const lifetimeStore = context.stores.lifetimeMetricsStore;
@@ -58,7 +58,7 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
       running: Boolean(current),
       process: current,
       inference_port: context.config.inference_port,
-      launching: context.bridge.launchingRecipeId(),
+      launching: context.compute.model.launchingRecipeId(),
     });
     yield* context.eventManager.publishGpu(gpuList.map((gpu) => ({ ...gpu })));
 
