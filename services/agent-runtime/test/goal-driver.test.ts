@@ -68,8 +68,25 @@ const assistantSays = (text: string) => ({
   message: { role: "assistant", content: [{ type: "text", text }] },
 });
 
-/** The driver settles asynchronously off the event stream. */
-const flush = () => new Promise((resolve) => setTimeout(resolve, 30));
+/**
+ * The driver settles asynchronously off the event stream, so wait for the goal
+ * record to stop changing rather than for a fixed delay. A single 30ms sleep
+ * raced the driver on loaded CI runners: the assertions ran while the turn was
+ * still being processed, so the suite failed intermittently on CI while
+ * passing on every developer machine.
+ */
+const flush = async (): Promise<void> => {
+  const deadline = Date.now() + 2_000;
+  let previous = JSON.stringify(await readGoal(PI_SESSION_ID));
+  let stableReads = 0;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const current = JSON.stringify(await readGoal(PI_SESSION_ID));
+    stableReads = current === previous ? stableReads + 1 : 0;
+    previous = current;
+    if (stableReads >= 3) return;
+  }
+};
 
 async function setGoal(patch: Parameters<typeof writeGoal>[1] = {}) {
   await writeGoal(PI_SESSION_ID, {
