@@ -2,7 +2,7 @@ import { chmod, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { expandHome } from "./pi-runtime-helpers";
+import { expandHome } from "./pi/options";
 import { isValidPluginId, type PluginRow } from "./plugin-contract";
 
 export { PLUGIN_TEMPLATE, isValidPluginId, type PluginRow } from "./plugin-contract";

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { inferReasoningSupport, normalizeOpenAIModel } from "../../../shared/agent/models";
-import { controllerModelThinkingLevels, modelsToPiModels } from "../src/pi-runtime-models";
+import { controllerModelThinkingLevels, modelsToPiModels } from "../src/pi/models";
 
 describe("Inkling thinking levels", () => {
   test("detects Inkling as a reasoning model", () => {

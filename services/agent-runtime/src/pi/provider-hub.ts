@@ -27,23 +27,23 @@ import type {
   Api,
 } from "@earendil-works/pi-ai";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
-import { inferReasoningSupport, type AgentModel } from "../../../shared/agent/models";
-import { resolveDataDir } from "./data-dir";
-import { getGlobalSingleton } from "./instances";
+import { inferReasoningSupport, type AgentModel } from "../../../../shared/agent/models";
+import { resolveDataDir } from "../data-dir";
+import { getGlobalSingleton } from "../instances";
 import type {
   ProviderLoginEvent,
   ProviderLoginEventPayload,
   ProviderLoginJobView,
   ProviderLoginPrompt,
   ProviderView,
-} from "./provider-hub-contract";
+} from "../provider-hub-contract";
 
 export type {
   ProviderLoginEvent,
   ProviderLoginJobView,
   ProviderLoginPrompt,
   ProviderView,
-} from "./provider-hub-contract";
+} from "../provider-hub-contract";
 
 // Providers composed from Local Studio's own models.json (controllers and
 // user-pi passthroughs). They are configured elsewhere; the hub surfaces only

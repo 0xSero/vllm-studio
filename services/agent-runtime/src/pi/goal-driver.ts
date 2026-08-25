@@ -26,12 +26,12 @@
 //    UI can render and the user can resume from.
 //
 
-import { isAgentSettledEvent } from "../../../shared/agent/pi-events";
-import { goalContinuationPrompt, goalOutcomeFromText } from "../../../shared/agent/goal-protocol";
-import { isRecord } from "../../../shared/agent/guards";
-import type { LoggedPiEvent, PiAgentSession } from "./pi-runtime-types";
-import { readGoal, writeGoal, type GoalWritePatch } from "./goals-store";
-import { assistantMessageText } from "./session-text";
+import { isAgentSettledEvent } from "../../../../shared/agent/pi-events";
+import { goalContinuationPrompt, goalOutcomeFromText } from "../../../../shared/agent/goal-protocol";
+import { isRecord } from "../../../../shared/agent/guards";
+import type { LoggedPiEvent, PiAgentSession } from "./types";
+import { readGoal, writeGoal, type GoalWritePatch } from "../goals-store";
+import { assistantMessageText } from "../session-text";
 
 const CONTINUATION_GRACE_MS = 2000;
 

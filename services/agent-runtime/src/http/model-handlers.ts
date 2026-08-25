@@ -1,7 +1,7 @@
 import {
   refreshPiModels,
   type PiControllerModelsRequest,
-} from "../pi-runtime-models";
+} from "../pi/models";
 import { errorMessage, jsonError } from "./helpers";
 
 function parseControllers(value: unknown): PiControllerModelsRequest[] {

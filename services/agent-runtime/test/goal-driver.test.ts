@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { attachGoalDriver, markGoalTurnAborted } from "../src/goal-driver";
+import { attachGoalDriver, markGoalTurnAborted } from "../src/pi/goal-driver";
 import { readGoal, writeGoal } from "../src/goals-store";
-import type { LoggedPiEvent, PiAgentSession } from "../src/pi-runtime-types";
+import type { LoggedPiEvent, PiAgentSession } from "../src/pi/types";
 
 const PI_SESSION_ID = "goal-driver-test-session";
 const temporaryRoots: string[] = [];

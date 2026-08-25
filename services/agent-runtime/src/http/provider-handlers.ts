@@ -11,7 +11,7 @@ import {
   logoutProvider,
   respondProviderLogin,
   startProviderLogin,
-} from "../provider-hub";
+} from "../pi/provider-hub";
 import { errorMessage, jsonError, readJsonBody } from "./helpers";
 
 export async function handleProvidersList(): Promise<Response> {

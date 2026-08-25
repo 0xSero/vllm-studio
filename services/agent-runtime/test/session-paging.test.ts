@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { encodeCwdForPi, findSessionFile, loadSession } from "../src/sessions-store";
+import { encodeCwdForPi, findSessionFile, loadSession } from "../src/pi/sessions";
 
 // Characterisation of `tail` / `before` paging.
 //

@@ -18,7 +18,7 @@
 
 import { randomUUID } from "node:crypto";
 import { getGlobalSingleton } from "./instances";
-import { piRuntimeManager } from "./pi-runtime";
+import { piRuntimeManager } from "./pi/runtime";
 import { lastAssistantResult, type LastAssistantResult } from "./session-text";
 import {
   listSubagentChildren,

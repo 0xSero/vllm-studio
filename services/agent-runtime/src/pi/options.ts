@@ -3,16 +3,16 @@ import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { Effect } from "effect";
-import { listProjectsFromStore, resolveAllowedWorkspace } from "./projects-store";
-import { hasEnabledConnectorsSync } from "./connectors-service";
-import { githubCliPathSync, hasGithubCliSync } from "./github-cli";
-import { hasObsidianVaultSync, listObsidianVaultsSync } from "./obsidian-vault";
-import { resolveBundledResource } from "./plugin-resources";
+import { listProjectsFromStore, resolveAllowedWorkspace } from "../projects-store";
+import { hasEnabledConnectorsSync } from "../connectors-service";
+import { githubCliPathSync, hasGithubCliSync } from "../github-cli";
+import { hasObsidianVaultSync, listObsidianVaultsSync } from "../obsidian-vault";
+import { resolveBundledResource } from "../plugin-resources";
 import type {
   AgentBrowserBackend as BrowserBackend,
   AgentThinkingLevel,
   AgentToolAccess,
-} from "../../../shared/agent/agent-turn";
+} from "../../../../shared/agent/agent-turn";
 
 type RuntimeSkillRef = {
   id?: string;

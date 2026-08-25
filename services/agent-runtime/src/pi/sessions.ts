@@ -15,22 +15,22 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { resolveDataDir } from "./data-dir";
-import { expandHome } from "./pi-runtime-helpers";
-import { rolloutCache, statRollout } from "./rollout-cache";
-import { transcriptSource } from "./transcript-sidecar";
+import { resolveDataDir } from "../data-dir";
+import { expandHome } from "./options";
+import { rolloutCache, statRollout } from "../rollout-cache";
+import { transcriptSource } from "../transcript-sidecar";
 import {
   cleanSessionTitle,
   sessionTitleFromUserPrompt,
-} from "../../../shared/agent/session-title";
-import { readSessionListMetadata } from "./session-metadata-store";
-import type { SessionSummary } from "../../../shared/agent/session-summary";
+} from "../../../../shared/agent/session-title";
+import { readSessionListMetadata } from "../session-metadata-store";
+import type { SessionSummary } from "../../../../shared/agent/session-summary";
 import {
   emptyUsageTotals,
   readSessionUsageTotals,
   type SessionUsageTotals,
-} from "./session-usage";
-export type { SessionSummary } from "../../../shared/agent/session-summary";
+} from "../session-usage";
+export type { SessionSummary } from "../../../../shared/agent/session-summary";
 
 export type SessionEvent = Record<string, unknown> & { type?: string };
 

@@ -1,7 +1,7 @@
 import { existsSync, watch, type FSWatcher } from "node:fs";
 import { listProjectsFromStore, projectsStoreFilePath } from "./projects-store";
 import { notifySessionListChanged } from "./session-list-changed";
-import { sessionDirRootsForCwd } from "./sessions-store";
+import { sessionDirRootsForCwd } from "./pi/sessions";
 
 const DEBOUNCE_MS = 200;
 const REFRESH_INTERVAL_MS = 15_000;

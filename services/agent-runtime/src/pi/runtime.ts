@@ -13,34 +13,34 @@ import {
   type ExtensionUIContext,
 } from "@earendil-works/pi-coding-agent";
 import { Effect } from "effect";
-import type { AgentImageInput } from "../../../shared/agent/agent-image-input";
-import type { AgentQueueAction } from "../../../shared/agent/agent-turn";
+import type { AgentImageInput } from "../../../../shared/agent/agent-image-input";
+import type { AgentQueueAction } from "../../../../shared/agent/agent-turn";
 import {
   applyRuntimeEnvInjections,
   buildAgentSessionOptionsSync,
   runtimeOptionsFingerprint,
   resolveAgentCwdEffect,
   type RuntimeStartOptions,
-} from "./pi-runtime-helpers";
+} from "./options";
 import {
   refreshPiModels,
   resolvePiModelSelection,
   toPiThinkingLevel,
-} from "./pi-runtime-models";
+} from "./models";
 import { getProviderHub } from "./provider-hub";
 import { attachGoalDriver } from "./goal-driver";
 import { createGoalPromptExtension } from "./goal-prompt";
-import { configuredPiSessionDir, findSessionFile } from "./sessions-store";
-import { getGlobalSingleton } from "./instances";
-import { connectorsRevisionSync } from "./connectors-service";
-import { userPluginsRevisionSync } from "./user-plugins";
+import { configuredPiSessionDir, findSessionFile } from "./sessions";
+import { getGlobalSingleton } from "../instances";
+import { connectorsRevisionSync } from "../connectors-service";
+import { userPluginsRevisionSync } from "../user-plugins";
 import type {
   LoggedPiEvent,
   PiAgentSession,
   PiAgentStatus,
   PiContextUsage,
   PiPromptOptions,
-} from "./pi-runtime-types";
+} from "./types";
 
 type PiEvent = LoggedPiEvent["event"];
 

@@ -25,7 +25,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { resolveDataDir } from "./data-dir";
+import { resolveDataDir } from "../data-dir";
 
 const MARKER = "Local Studio session goal:";
 

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { encodeCwdForPi } from "../src/sessions-store";
+import { encodeCwdForPi } from "../src/pi/sessions";
 import { subagentReport, type SubagentRun } from "../src/subagents";
 
 const temporaryRoots: string[] = [];

@@ -3,7 +3,7 @@ import type { AggregatedSession } from "../../../../shared/agent/session-summary
 import { browserHost } from "../browser-host/browser-host";
 import { listProjectsFromStore, resolveAllowedWorkspace } from "../projects-store";
 import { listArchivedSessionMetadata, setSessionArchived } from "../session-metadata-store";
-import { listSessions, loadSession } from "../sessions-store";
+import { listSessions, loadSession } from "../pi/sessions";
 import { errorMessage, jsonError } from "./helpers";
 
 function parseRelativeSince(value: string | null): Date | null {

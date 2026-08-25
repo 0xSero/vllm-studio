@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildAgentSessionOptionsSync } from "../src/pi-runtime-helpers";
+import { buildAgentSessionOptionsSync } from "../src/pi/options";
 
 // The automations extension creates a scheduled run from inside a chat, and the
 // tool's cwd argument is optional ("defaults to the current project"). Nothing

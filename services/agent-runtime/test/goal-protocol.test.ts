@@ -5,7 +5,7 @@ import {
   isGoalContinuationPrompt,
   stripGoalSentinels,
 } from "../../../shared/agent/goal-protocol";
-import { goalSystemPromptSection } from "../src/goal-prompt";
+import { goalSystemPromptSection } from "../src/pi/goal-prompt";
 
 describe("continuation prompts are recognisable on both sides", () => {
   test("the driver's own re-prompt is tagged so the transcript can drop it", () => {

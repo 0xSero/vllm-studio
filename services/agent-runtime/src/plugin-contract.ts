@@ -74,7 +74,7 @@ export const PLUGIN_TEMPLATE = `// A Local Studio plugin is a pi extension: one 
 // below are registered. Anything this file does runs inside the agent process
 // with your own permissions.
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "./pi";
 import { Type } from "typebox";
 
 export default function (pi: ExtensionAPI) {

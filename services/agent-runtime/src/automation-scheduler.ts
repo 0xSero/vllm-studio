@@ -7,11 +7,11 @@ import {
   type Automation,
 } from "./automations-store";
 import { getGlobalSingleton } from "./instances";
-import { piRuntimeManager } from "./pi-runtime";
+import { piRuntimeManager } from "./pi/runtime";
 import { lastAssistantResult } from "./session-text";
 import { listProjectsFromStore } from "./projects-store";
-import { refreshPiModels } from "./pi-runtime-models";
-import { findSessionFile } from "./sessions-store";
+import { refreshPiModels } from "./pi/models";
+import { findSessionFile } from "./pi/sessions";
 
 const TICK_MS = 30_000;
 

@@ -2,7 +2,6 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { Effect } from "effect";
-import { createAgentSessionRuntime } from "@earendil-works/pi-coding-agent";
 import {
   controlTargetHasActiveTurn,
   isAgentThinkingLevel,
@@ -24,10 +23,11 @@ import {
   type ComposerSkillRef,
 } from "../../../../shared/agent/composer-refs";
 import { isAgentSettledEvent } from "../../../../shared/agent/pi-events";
-import { markGoalTurnAborted } from "../goal-driver";
-import { piResourceDiagnostics, piRuntimeManager } from "../pi-runtime";
-import type { LoggedPiEvent, PiAgentSession, PiAgentStatus } from "../pi-runtime-types";
-import { listSessions } from "../sessions-store";
+import { markGoalTurnAborted } from "../pi/goal-driver";
+import { piResourceDiagnostics, piRuntimeManager } from "../pi/runtime";
+import { PI_SDK_PACKAGE, piSdkAvailable } from "../pi";
+import type { LoggedPiEvent, PiAgentSession, PiAgentStatus } from "../pi/types";
+import { listSessions } from "../pi/sessions";
 import {
   sessionListChangedVersion,
   subscribeSessionListChanged,
@@ -578,8 +578,8 @@ export function handleSetupChecks(): Response {
       {
         id: "pi-sdk",
         label: "Pi SDK",
-        ok: typeof createAgentSessionRuntime === "function",
-        value: "@earendil-works/pi-coding-agent",
+        ok: piSdkAvailable(),
+        value: PI_SDK_PACKAGE,
         guidance: "The agent runtime is provided by the bundled Pi SDK package.",
       },
       {

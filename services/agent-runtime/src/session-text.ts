@@ -1,5 +1,5 @@
 import { openSync, readSync, closeSync, statSync } from "node:fs";
-import { findSessionFile } from "./sessions-store";
+import { findSessionFile } from "./pi/sessions";
 import { isRecord } from "../../../shared/agent/guards";
 
 const TAIL_BYTES = 256 * 1024;

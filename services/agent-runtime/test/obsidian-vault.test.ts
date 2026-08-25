@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { hasObsidianVaultSync, listObsidianVaultsSync } from "../src/obsidian-vault";
-import { buildAgentSessionOptionsSync } from "../src/pi-runtime-helpers";
+import { buildAgentSessionOptionsSync } from "../src/pi/options";
 
 // Vault discovery is the whole load gate for the obsidian extension, and its
 // only input is a file Obsidian writes for its own purposes. The cases that
