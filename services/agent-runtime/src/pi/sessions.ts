@@ -879,3 +879,52 @@ export function canonicalSessionSnapshot(
     revision: 0,
   });
 }
+
+export type LoadSessionSnapshotResult = {
+  snapshot: SessionSnapshot;
+  meta: LoadSessionMeta;
+  // Full transcript length before any tail slice, so the client knows how many
+  // older items a larger `tail` re-fetch would bring in.
+  totalItems: number;
+};
+
+// Slice the last `tail` items, extended back to the nearest user item so tool
+// results and assistant segments always travel with the turn that owns them —
+// the item-count analogue of `tailBoundaryIndex` on the event log.
+function tailTranscript(
+  transcript: SessionSnapshot["transcript"],
+  tail: number,
+): SessionSnapshot["transcript"] {
+  if (transcript.length <= tail) return transcript;
+  for (let index = transcript.length - tail; index >= 0; index -= 1) {
+    if (transcript[index]?.role === "user") return transcript.slice(index);
+  }
+  return transcript;
+}
+
+/** The snapshot form of a canonical session plus the same head-scan metadata
+ *  (real title, model, lifetime usage) the event form returns — one fetch
+ *  hydrates a reopened session. */
+export async function loadSessionSnapshot(
+  cwd: string,
+  piSessionId: string,
+  options: { tail?: number } = {},
+): Promise<LoadSessionSnapshotResult | null> {
+  const file = findSessionFile(cwd, piSessionId);
+  if (!file) return null;
+  const snapshot = canonicalSessionSnapshot(cwd, piSessionId);
+  if (!snapshot) return null;
+  const [{ meta }, usage] = await Promise.all([
+    readSessionHead(file),
+    readSessionUsageTotals(file),
+  ]);
+  meta.usage = usage;
+  const totalItems = snapshot.transcript.length;
+  const tail = options.tail && options.tail > 0 ? Math.floor(options.tail) : undefined;
+  const transcript = tail ? tailTranscript(snapshot.transcript, tail) : snapshot.transcript;
+  return {
+    snapshot: transcript === snapshot.transcript ? snapshot : { ...snapshot, transcript },
+    meta,
+    totalItems,
+  };
+}

@@ -1,5 +1,4 @@
 import { isGoalContinuationPrompt } from "@shared/agent/goal-protocol";
-import { piEventIsSuccessfulCompaction } from "@shared/agent/pi-events";
 import {
   cleanSessionTitle,
   isPlaceholderSessionTitle,
@@ -54,16 +53,6 @@ export function numberFromRecord(record: Record<string, unknown>, keys: string[]
   return 0;
 }
 
-export function extractToolText(value: unknown): string {
-  if (!value || typeof value !== "object") return "";
-  const result = value as { content?: Array<{ type?: string; text?: string }> };
-  if (!Array.isArray(result.content)) return "";
-  return result.content
-    .map((item) => (item && item.type === "text" && typeof item.text === "string" ? item.text : ""))
-    .filter(Boolean)
-    .join("\n");
-}
-
 export function piSessionIdFromEvent(event: Record<string, unknown>): string | null {
   if (event.type !== "session") return null;
   for (const key of ["id", "sessionId", "session_id"]) {
@@ -88,16 +77,6 @@ export function usageFromEvent(event: Record<string, unknown>): TokenStats | nul
   const current = total || read + write;
   if (read <= 0 && write <= 0 && current <= 0) return null;
   return { read, write, current };
-}
-
-export function compactionTextFromEvent(event: Record<string, unknown>): string | null {
-  if (!piEventIsSuccessfulCompaction(event)) return null;
-  const result = asRecord(event.result);
-  return (
-    [event.message, event.summary, event.text, result?.summary].find(
-      (value): value is string => typeof value === "string" && value.trim().length > 0,
-    ) ?? "Context compacted"
-  );
 }
 
 export function formatTokenCount(tokens: number): string {

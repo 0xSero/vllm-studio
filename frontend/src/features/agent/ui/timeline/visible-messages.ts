@@ -97,7 +97,6 @@ function mergeRun(run: ChatMessage[], cache: Map<string, MergedRun>): ChatMessag
       .filter(Boolean)
       .join("\n"),
     blocks: run.flatMap((segment) => segment.blocks ?? []),
-    streamCalls: run.flatMap((segment) => segment.streamCalls ?? []),
     timestamp: run.reduce<string | undefined>(
       (timestamp, segment) => segment.timestamp ?? timestamp,
       undefined,

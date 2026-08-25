@@ -58,10 +58,6 @@ export type ChatMessage = {
   attachments?: ChatMessageAttachment[];
   skills?: ComposerSkillRef[];
   blocks?: AssistantBlock[];
-  // Transient streaming state: one accumulated pi content snapshot per LLM call
-  // of the in-flight turn. `blocks` are rebuilt from this each frame. Cleared
-  // when the turn ends; not meant for persistence.
-  streamCalls?: Array<Array<Record<string, unknown>>>;
   // A steer message optimistically shown in the transcript before Pi has
   // injected it into the running turn. Rendered dimmed until the runtime echoes
   // it back (the model is now seeing it), at which point this clears. Transient
@@ -99,8 +95,3 @@ export type QueuedMessage = {
 // A tab holds a plain `Session` — `runtime/types` is the single definition of
 // what fields a session record has.
 export type SessionTab = Session;
-
-export type RuntimeLoggedEvent = {
-  readonly seq?: number;
-  readonly event?: Record<string, unknown>;
-};

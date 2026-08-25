@@ -12,6 +12,9 @@ const config = {
     "desktop/interfaces.ts": ["types"],
   },
   ignoreDependencies: [
+    // Pinned direct so the pi supply chain stays version-locked (see #432);
+    // consumed transitively by @earendil-works/pi-coding-agent.
+    "@earendil-works/pi-ai",
     "tailwindcss",
     "postcss",
     "@local-studio/contracts",

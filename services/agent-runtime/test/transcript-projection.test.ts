@@ -98,6 +98,19 @@ describe("TranscriptProjector", () => {
       type: "tool_execution_start", toolCallId: "call-9", toolName: "bash", args: { cmd: "ls" },
     } as never);
     expect(started).toMatchObject({ type: "item_started", item: { id: "tool:call-9", status: "running" } });
+    const [updated] = projector.progressFor({
+      type: "tool_execution_update", toolCallId: "call-9", toolName: "bash", args: { cmd: "ls" },
+      partialResult: { content: [{ type: "text", text: "partial" }], details: { lines: 3 } },
+    } as never);
+    expect(updated).toMatchObject({
+      type: "item_updated",
+      item: {
+        id: "tool:call-9",
+        status: "running",
+        details: { lines: 3 },
+        content: [{ type: "text", text: "partial" }],
+      },
+    });
     const [finished] = projector.progressFor({
       type: "tool_execution_end", toolCallId: "call-9", toolName: "bash", args: { cmd: "ls" },
       isError: false, result: { content: [{ type: "text", text: "ok" }], details: { exit: 0 } },

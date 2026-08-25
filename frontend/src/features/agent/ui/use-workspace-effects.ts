@@ -4,7 +4,7 @@ import { workspaceCommands } from "@/features/agent/workspace/commands";
 import { loadInitialFromStorage } from "@/features/agent/workspace/persistence";
 import type { ToolsContextValue } from "@/features/agent/tools/context";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
-import { shouldSubscribeRuntimeEvents } from "@/features/agent/runtime/runtime-cursor";
+import { shouldSubscribeRuntimeEvents } from "@/features/agent/runtime/session-status";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 import { openSessionListChangedSubscription } from "@/features/agent/runtime/session-list-changed";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";

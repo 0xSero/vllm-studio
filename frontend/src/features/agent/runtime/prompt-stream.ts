@@ -135,6 +135,10 @@ function appendOptimisticPrompt(
     error: "",
     status: "starting",
     usedSkills: mergeSkills(session.usedSkills, context.skills),
+    // Turn-intent token only: the assistant's content itself is projected from
+    // the pi transcript (there is no optimistic assistant bubble any more),
+    // but abort/failed-submit settling still keys on "is the session still on
+    // this turn".
     activeAssistantId: context.assistantId,
     title:
       session.messages.filter((message) => message.role === "user").length === 0
@@ -150,7 +154,6 @@ function appendOptimisticPrompt(
         skills: context.skills,
         timestamp: nowLabel(),
       },
-      { id: context.assistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
     ],
   }));
 }

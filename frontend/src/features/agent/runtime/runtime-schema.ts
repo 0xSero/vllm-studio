@@ -37,7 +37,27 @@ const RuntimePiEventSchema = Schema.Struct({
   event: Schema.Record(Schema.String, Schema.Unknown),
 });
 
-const RuntimeEventPayloadSchema = Schema.Union([RuntimeStatusEventSchema, RuntimePiEventSchema]);
+// The pi-native transcript frames (docs/agent-state-plan.md): an authoritative
+// snapshot on connect/settle, streamed progress deltas between. The payloads
+// are pi-protocol shapes; the pi module's wire guards narrow them.
+const RuntimeSnapshotEventSchema = Schema.Struct({
+  type: Schema.Literal("snapshot"),
+  revision: Schema.Number,
+  snapshot: Schema.Record(Schema.String, Schema.Unknown),
+});
+
+const RuntimeProgressEventSchema = Schema.Struct({
+  type: Schema.Literal("progress"),
+  revision: Schema.Number,
+  progress: Schema.Record(Schema.String, Schema.Unknown),
+});
+
+const RuntimeEventPayloadSchema = Schema.Union([
+  RuntimeStatusEventSchema,
+  RuntimePiEventSchema,
+  RuntimeSnapshotEventSchema,
+  RuntimeProgressEventSchema,
+]);
 
 export type RuntimeEventPayload = Schema.Schema.Type<typeof RuntimeEventPayloadSchema>;
 

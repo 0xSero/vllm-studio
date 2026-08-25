@@ -1,13 +1,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import { Effect } from "effect";
-import {
-  asRecord,
-  finalizeRunningToolBlocks,
-  replayCursorAfterRuntimeHydration,
-  type ChatMessage,
-  type RuntimeLoggedEvent,
-} from "@/features/agent/messages";
-import { foldSessionEvents } from "@/features/agent/runtime/pi-event-applier";
+import { replayCursorAfterRuntimeHydration, type TokenStats } from "@/features/agent/messages";
+import type { SessionSnapshot } from "@/features/agent/pi";
 import {
   runtimeCanHydrateCanonicalSession,
   runtimeStatusAcceptsControl,
@@ -266,15 +260,16 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             status: "loading",
             error: "",
           }));
-          // Canonical replay and the runtime-status probe are independent — the
-          // status key is derived synchronously — so run them concurrently
-          // instead of blocking the (now tail-limited) canonical read on the
+          // The canonical snapshot and the runtime-status probe are independent
+          // — the status key is derived synchronously — so run them
+          // concurrently instead of blocking the tail-limited read on the
           // status round-trip.
           const runtimeId = sessionRuntimeController().connectionKey(sessionId);
           const [replayResult, runtimeStatus] = yield* Effect.all(
             [
               Effect.tryPromise({
-                try: () => api.loadCanonicalSession(piSessionId, cwd),
+                try: () =>
+                  api.loadCanonicalSnapshot(piSessionId, cwd, { tail: api.DEFAULT_SESSION_TAIL }),
                 catch: (error) => error,
               }).pipe(Effect.result),
               Effect.tryPromise({
@@ -285,53 +280,39 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             { concurrency: "unbounded" },
           );
           if (replayResult._tag === "Success") {
-            const { events, cursor, meta } = replayResult.success;
+            const { snapshot, meta, totalItems } = replayResult.success;
             const runtimeActive = runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId);
-            const replayEvents = mergeCanonicalAndRuntimeEvents(
-              events,
-              runtimeActive ? runtimeStatus?.events : [],
-            );
-            const {
-              messages,
-              title,
-              startedAt,
-              modelId: replayModelId,
-              tokenStats,
-            } = foldSessionEvents(replayEvents);
             const replaySeq = replayCursorAfterRuntimeHydration(runtimeStatus, piSessionId);
+            // The projection commit replaces messages; if the runtime is live,
+            // its SSE snapshot (a higher revision of the same pi session)
+            // supersedes this canonical seed the moment the stream attaches.
+            sessionRuntimeController().seedSnapshot(sessionId, snapshot);
             updateSession(sessionId, (session) => ({
               ...session,
-              messages: reconcileReplayMessages(session.messages, messages),
               piSessionId,
               cwd: session.cwd || cwd,
-              // Head-scan meta carries the real session model/title; the fold's
-              // own title would be the tail slice's first user message, not the
-              // session's first prompt.
-              modelId:
-                session.modelId ||
-                meta?.modelId ||
-                replayModelId ||
-                runtimeStatus?.modelId ||
-                modelId,
-              title: meta?.title ?? title ?? session.title,
-              startedAt: meta?.startedAt ?? startedAt ?? session.startedAt,
-              tokenStats: tokenStats ?? undefined,
+              // Head-scan meta carries the real session model/title; a tail
+              // slice's own first user message is NOT the session's title.
+              modelId: session.modelId || meta?.modelId || runtimeStatus?.modelId || modelId,
+              title: meta?.title ?? session.title,
+              startedAt: meta?.startedAt ?? session.startedAt,
+              tokenStats: tokenStatsFromSnapshot(snapshot),
               // Lifetime spend is computed server-side from the whole rollout,
               // so it survives both compaction and the tail load's cutoff.
               usageTotals: meta?.usage ?? session.usageTotals,
               contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
               status: runtimeActive ? "running" : "idle",
               activeAssistantId: undefined,
-              // A non-null cursor means the tail load left older history unread;
-              // the timeline shows a "Load earlier" affordance while it is set.
-              historyCursor: messages.length > 0 ? cursor : (session.historyCursor ?? null),
+              // More transcript exists above the loaded slice: the item-count
+              // tail to request when the user asks for earlier history.
+              historyCursor: nextHistoryTail(snapshot.transcript.length, totalItems),
               // The replay has landed, so whatever came from the snapshot has
               // been superseded and must not keep asking to be replayed.
               hydratedFromCache: false,
               error: "",
             }));
             // Reattach the live stream from the hydrated cursor so EventSource
-            // does not replay already-rendered content.
+            // does not replay already-processed meta events.
             sessionRuntimeController().noteReplayHydrated(sessionId, replaySeq);
           } else {
             const err = replayResult.failure;
@@ -368,30 +349,30 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     [cwd, modelId, updateSession],
   );
 
-  // Page the previous (older) chunk of a tail-loaded transcript into view and
-  // prepend it. Each page is snapped to a user-turn boundary and abuts the
-  // current first message exactly (cursor = first loaded byte), so folding the
-  // page on its own and prepending is equivalent to a single larger fold.
+  // Page older history into view: re-fetch the canonical snapshot with a larger
+  // item tail (the server snaps the slice to a user-turn boundary) and prepend
+  // the items not already loaded. Deterministic item ids make the prepend an
+  // exact set difference.
   const loadEarlier = useCallback(
     (sessionId: SessionId): Promise<void> => {
       const session = tabsRef.current.find((tab) => tab.id === sessionId);
-      const cursor = session?.historyCursor;
-      if (!session || !session.piSessionId || !cwd || cursor == null) return Promise.resolve();
+      const tail = session?.historyCursor;
+      if (!session || !session.piSessionId || !cwd || tail == null) return Promise.resolve();
       if (loadingEarlierRef.current.has(sessionId)) return Promise.resolve();
       loadingEarlierRef.current.add(sessionId);
       const piSessionId = session.piSessionId;
       return Effect.runPromise(
         Effect.gen(function* () {
           const result = yield* Effect.tryPromise({
-            try: () => api.loadCanonicalSession(piSessionId, cwd, { before: cursor }),
+            try: () => api.loadCanonicalSnapshot(piSessionId, cwd, { tail }),
             catch: (error) => error,
           }).pipe(Effect.result);
           if (result._tag !== "Success") return;
-          const { messages: earlier } = foldSessionEvents(result.success.events);
+          const { snapshot, totalItems } = result.success;
+          sessionRuntimeController().prependTranscript(sessionId, snapshot.transcript);
           updateSession(sessionId, (current) => ({
             ...current,
-            messages: earlier.length > 0 ? [...earlier, ...current.messages] : current.messages,
-            historyCursor: result.success.cursor,
+            historyCursor: nextHistoryTail(snapshot.transcript.length, totalItems),
           }));
         }).pipe(
           Effect.ensuring(
@@ -496,93 +477,22 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   );
 }
 
-function eventKey(event: Record<string, unknown>): string {
-  try {
-    return JSON.stringify(event);
-  } catch {
-    return `${String(event.type ?? "event")}:${Object.keys(event).join(",")}`;
+// Older history exists above the loaded slice? Then the item-count tail to
+// request next time the user pages back; null when the slice reaches the top.
+function nextHistoryTail(loadedItems: number, totalItems: number): number | null {
+  return totalItems > loadedItems ? loadedItems + api.DEFAULT_SESSION_TAIL : null;
+}
+
+// The context counter seeds from the newest assistant call's usage — the same
+// numbers the live usage events carry.
+function tokenStatsFromSnapshot(snapshot: SessionSnapshot): TokenStats | undefined {
+  for (let index = snapshot.transcript.length - 1; index >= 0; index -= 1) {
+    const item = snapshot.transcript[index];
+    if (item.role !== "assistant" || !item.usage) continue;
+    const read = item.usage.input;
+    const write = item.usage.output;
+    const current = item.usage.totalTokens || read + write;
+    if (read > 0 || write > 0 || current > 0) return { read, write, current };
   }
-}
-
-function messageFingerprint(event: Record<string, unknown>): string | null {
-  const message = asRecord(event.message);
-  if (!message || typeof message.role !== "string") return null;
-  return eventKey(message);
-}
-
-function canonicalEventsBeforeRuntimeTail(
-  canonicalEvents: Record<string, unknown>[],
-  runtime: Record<string, unknown>[],
-): Record<string, unknown>[] {
-  const canonicalMessages = canonicalEvents.flatMap((event, eventIndex) => {
-    const fingerprint = messageFingerprint(event);
-    return fingerprint ? [{ eventIndex, fingerprint }] : [];
-  });
-  const runtimeMessages = runtime.flatMap((event) => {
-    if (event.type !== "message" && event.type !== "message_end") return [];
-    const fingerprint = messageFingerprint(event);
-    return fingerprint ? [fingerprint] : [];
-  });
-  const firstRuntimeMessage = runtimeMessages[0];
-  if (!firstRuntimeMessage) return canonicalEvents;
-  let best: { eventIndex: number; score: number } | null = null;
-  for (let index = 0; index < canonicalMessages.length; index += 1) {
-    if (canonicalMessages[index]?.fingerprint !== firstRuntimeMessage) continue;
-    let score = 0;
-    while (
-      canonicalMessages[index + score]?.fingerprint === runtimeMessages[score] &&
-      runtimeMessages[score]
-    ) {
-      score += 1;
-    }
-    const candidate = { eventIndex: canonicalMessages[index]?.eventIndex ?? 0, score };
-    if (!best || candidate.score >= best.score) best = candidate;
-  }
-  if (best) {
-    return canonicalEvents.slice(0, best.eventIndex);
-  }
-  return canonicalEvents;
-}
-
-function runtimeEventsInOrder(
-  runtimeEvents: readonly RuntimeLoggedEvent[],
-): Record<string, unknown>[] {
-  return [...runtimeEvents]
-    .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
-    .flatMap((entry) => {
-      if (entry.event && typeof entry.event === "object") {
-        return [entry.event];
-      }
-      return [];
-    });
-}
-
-function dedupeAdjacentEvents(events: Record<string, unknown>[]): Record<string, unknown>[] {
-  let previous = "";
-  return events.filter((event) => {
-    const key = eventKey(event);
-    if (key === previous) return false;
-    previous = key;
-    return true;
-  });
-}
-
-function mergeCanonicalAndRuntimeEvents(
-  canonicalEvents: Record<string, unknown>[],
-  runtimeEvents: readonly RuntimeLoggedEvent[] = [],
-): Record<string, unknown>[] {
-  const runtime = runtimeEventsInOrder(runtimeEvents);
-  return dedupeAdjacentEvents([
-    ...canonicalEventsBeforeRuntimeTail(canonicalEvents, runtime),
-    ...runtime,
-  ]);
-}
-
-function reconcileReplayMessages(
-  current: ChatMessage[],
-  canonical: ChatMessage[],
-): ChatMessage[] {
-  if (canonical.length === 0) return current;
-  if (canonical.length >= current.length) return canonical;
-  return current;
+  return undefined;
 }

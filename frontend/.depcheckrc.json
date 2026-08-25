@@ -1,5 +1,6 @@
 {
   "ignores": [
+    "@earendil-works/pi-ai",
     "@hono/node-server",
     "@lydell/node-pty",
     "@modelcontextprotocol/sdk",

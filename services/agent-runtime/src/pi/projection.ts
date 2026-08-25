@@ -354,6 +354,30 @@ export class TranscriptProjector {
           },
         ];
       }
+      case "tool_execution_update": {
+        // Long-running tools stream partial results (terminal output, subagent
+        // progress details). The partial rides as an item_updated of the still
+        // running tool item — the client reducer replaces it in place.
+        const toolCallId = typeof record["toolCallId"] === "string" ? record["toolCallId"] : "";
+        const partial = asRecord(record["partialResult"]) ?? asRecord(record["result"]);
+        if (!toolCallId) return [];
+        return [
+          {
+            type: "item_updated",
+            item: toolItem(
+              {
+                toolCallId,
+                toolName: record["toolName"],
+                content: partial?.["content"] ?? [],
+                details: partial?.["details"],
+                timestamp: Date.now(),
+              },
+              (record["args"] ?? {}) as ToolTranscriptItem["input"],
+              true,
+            ),
+          },
+        ];
+      }
       case "tool_execution_end": {
         const toolCallId = typeof record["toolCallId"] === "string" ? record["toolCallId"] : "";
         const result = asRecord(record["result"]);

@@ -1,10 +1,17 @@
-import { finalizeRunningToolBlocks } from "@/features/agent/messages/block-event";
+import { finalizeRunningToolBlocks } from "@/features/agent/pi";
 import type { Session } from "./types";
 
 const WORKING_SESSION_STATUSES: readonly string[] = ["starting", "running", "stopping", "loading"];
 
 export function isWorkingStatus(status: string): boolean {
   return WORKING_SESSION_STATUSES.includes(status);
+}
+
+// A prompt's optimistic "starting" phase deliberately does not subscribe yet:
+// the runtime can still be idle from the previous turn, and subscribing too
+// early can receive a final idle status before `/turn` has restarted Pi.
+export function shouldSubscribeRuntimeEvents(status: string): boolean {
+  return status === "running" || status === "stopping";
 }
 
 export function settleTurn(session: Session): Session {

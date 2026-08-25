@@ -109,6 +109,37 @@ items). Replay = fetch snapshot; engine.ts splicing/fingerprinting deleted;
 one replay guard instead of four; transcript-cache stores `{revision,
 snapshot}`. rAF coalescing survives as a view-layer batch, not a state layer.
 
+**LANDED** (branch refactor/agent-state-pi). As built:
+- `frontend/src/features/agent/pi/` = vendored ~100-line reducer (typed
+  against `@earendil-works/pi-protocol`, now a frontend dep; importing
+  `pi-coding-agent/client` would drag RemoteSession + the agent tree into the
+  bundle), wire guards, and the adapter with a per-item identity cache so
+  unchanged bubbles keep React identity across streamed commits.
+- Controller keeps per-session `TranscriptState`; snapshot acceptance is
+  controller policy (a restarted runtime restarts revisions from zero for the
+  same pi session, which upstream's `applyTranscriptSnapshot` would treat as
+  stale forever) — restart detection reuses the seq-rewind paths. Progress is
+  gated by `snapshotRevision` floor + `appliedRevision` high-water. One
+  rAF-scheduled projection commit replaces the effect-coalescer.
+- Optimistic bubbles: local ids (`newId`) vs projected ids
+  (`user:`/`assistant:`/`tool:`) partition the merge; locals ride the tail
+  until a projected user item matches by text, absorbing attachments/skills.
+  The optimistic assistant placeholder is gone (it rendered nothing).
+- Legacy `{type:"pi"}` frames now feed only session-meta-reducer.ts
+  (queue/usage/extension-UI/header/error) — each branch dies in B/C/D.
+- Canonical endpoint: `format=snapshot` returns `{snapshot, meta, totalItems}`
+  with item-count `tail` snapped to a user-turn boundary; `historyCursor`
+  is now the next tail to request, not a byte offset. Runtime projector
+  gained `tool_execution_update` (live partial tool output).
+- Deliberate changes: replay grouping now matches live (per-turn bubbles, the
+  timeline run-merge); the "Context compacted" transcript chip is dropped
+  until the projection carries compaction (Stage C) — usage/context reset
+  still signal it; queuedSteer items are filtered (queue chips own that UI).
+- Verified live against GLM-5.2 (production build + scratch runtime):
+  streaming thinking/text deltas, tool chip with args+output, exact final
+  reply, steer echo consumed without duplication, reload → identical
+  transcript from canonical snapshot, token/context stats restored.
+
 ### Stage B — one status truth
 `snapshot.phase` + the session-list SSE replace the 5 s poll, the liveness
 watchdog, both grace windows, and the status half of the controller. One
