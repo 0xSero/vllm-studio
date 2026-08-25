@@ -127,7 +127,9 @@ export const makeAppContext = Effect.gen(function* () {
   }
 
   const recipeStore = yield* Effect.acquireRelease(
-    initialize("recipe-store.open", RecipeStore.open(dbPath)),
+    // Registry-backed: recipes live in data_dir/model-index.json; the sqlite
+    // path is only read once, to migrate legacy rows into the registry.
+    initialize("recipe-store.open", RecipeStore.open(config.data_dir, dbPath)),
     (resource) => releaseSafely("recipe-store.close", logger, resource.close()),
   );
   const downloadStore = yield* Effect.acquireRelease(
