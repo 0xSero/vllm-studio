@@ -1,8 +1,9 @@
 import { Effect } from "effect";
 import type { Config } from "../../config/env";
 import { runCommandAsyncEffect } from "../../core/command";
-import type { Recipe } from "../models/types";
+import type { ProcessInfo, Recipe } from "../models/types";
 import type { EventManager } from "../system/event-manager";
+import { scrapeEngineMetrics } from "../system/engine-metrics-scrape";
 import { createActiveModel, type ActiveModel } from "./active-model";
 import type { DeviceId, HostProfile, EngineRuntimeKind } from "./contracts";
 import { makeTelemetry, profileFrom, type Telemetry } from "./devices/snapshot";
@@ -26,6 +27,7 @@ export interface Compute {
 }
 
 const DOCKER_PROBE_TIMEOUT_MS = 5_000;
+const EXTERNAL_INFERENCE_PROBE_TIMEOUT_MS = 2_000;
 /** Docker appearing or losing GPU passthrough mid-run is rare; refresh occasionally. */
 const DOCKER_PROBE_TTL_MS = 60_000;
 
@@ -98,7 +100,32 @@ export const makeCompute = (
       eventManager.publishLaunchProgress(name, stage, message),
   });
 
-  const model = createActiveModel({ config, compute: service, store, getRecipe });
+  const observeExternalInference = (): Effect.Effect<ProcessInfo | null> =>
+    scrapeEngineMetrics(
+      config.inference_port,
+      EXTERNAL_INFERENCE_PROBE_TIMEOUT_MS,
+      config.inference_host,
+    ).pipe(
+      Effect.map((scrape) => {
+        const backend = scrape.hasVllm ? "vllm" : scrape.hasSglang ? "sglang" : null;
+        if (scrape.status !== 200 || !backend || !scrape.modelName) return null;
+        return {
+          pid: 0,
+          backend,
+          model_path: null,
+          port: config.inference_port,
+          served_model_name: scrape.modelName,
+        } satisfies ProcessInfo;
+      }),
+    );
+
+  const model = createActiveModel({
+    config,
+    compute: service,
+    store,
+    getRecipe,
+    observeExternalInference,
+  });
 
   return { service, telemetry, store, host, model };
 };

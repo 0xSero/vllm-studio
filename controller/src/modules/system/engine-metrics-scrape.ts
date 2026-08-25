@@ -40,8 +40,12 @@ const parseEngineMetrics = (status: number, text: string): EngineScrape => {
   return scrape;
 };
 
-export const scrapeEngineMetrics = (port: number, timeoutMs: number): Effect.Effect<EngineScrape> =>
-  fetchLocal(port, "/metrics", { timeoutMs }).pipe(
+export const scrapeEngineMetrics = (
+  port: number,
+  timeoutMs: number,
+  host = "localhost",
+): Effect.Effect<EngineScrape> =>
+  fetchLocal(port, "/metrics", { host, timeoutMs }).pipe(
     Effect.flatMap((response) =>
       response.status === 200
         ? Effect.tryPromise(() => response.text()).pipe(
@@ -95,4 +99,3 @@ export const SGLANG_METRIC_NAMES: EngineMetricNames = {
   ttftSum: "sglang:time_to_first_token_seconds_sum",
   ttftCount: "sglang:time_to_first_token_seconds_count",
 };
-

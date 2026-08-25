@@ -41,6 +41,7 @@ export interface ActiveModelDependencies {
   readonly compute: ComputeService;
   readonly store: InstanceStore;
   readonly getRecipe: (recipeId: string) => Effect.Effect<Recipe | null, unknown>;
+  readonly observeExternalInference: () => Effect.Effect<ProcessInfo | null>;
 }
 
 /* ── recipe extra_args -> argv (semantics preserved from the legacy builder) ── */
@@ -199,13 +200,25 @@ const RUNNING_STATES = new Set(["starting", "ready", "unhealthy"]);
 
 export const createActiveModel = (deps: ActiveModelDependencies): ActiveModel => {
   const llmRecord = (): InstanceRecord | null => deps.store.read(LLM_INSTANCE);
+  let externalObservation: { at: number; process: ProcessInfo | null } | null = null;
+
+  const observeExternalInference = (): Effect.Effect<ProcessInfo | null> =>
+    Effect.gen(function* () {
+      const now = Date.now();
+      if (externalObservation && now - externalObservation.at < 1_000) {
+        return externalObservation.process;
+      }
+      const process = yield* deps.observeExternalInference();
+      externalObservation = { at: now, process };
+      return process;
+    });
 
   const findInferenceProcess = (): Effect.Effect<ProcessInfo | null> =>
     Effect.gen(function* () {
       const record = llmRecord();
-      if (!record || record.ref === null) return null;
+      if (!record || record.ref === null) return yield* observeExternalInference();
       const state = yield* deps.compute.stateOf(record);
-      if (!RUNNING_STATES.has(state)) return null;
+      if (!RUNNING_STATES.has(state)) return yield* observeExternalInference();
       const recipe = yield* deps
         .getRecipe(record.recipeId)
         .pipe(Effect.catch(() => Effect.succeed(null)));
