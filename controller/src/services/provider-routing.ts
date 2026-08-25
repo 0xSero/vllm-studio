@@ -31,13 +31,19 @@ export const parseProviderModel = (rawModel: string): ParsedProviderModel => {
   return { provider: DEFAULT_CHAT_PROVIDER, modelId: trimmed };
 };
 
+/** Providers get configured both with and without a trailing /v1, and every
+ *  consumer appends /v1/… itself — so strip a trailing /v1 at the chokepoints
+ *  instead of letting user-entered /v1 URLs produce /v1/v1 paths. */
+const stripTrailingV1 = (baseUrl: string): string =>
+  baseUrl.replace(/\/+$/, "").replace(/\/v1$/i, "");
+
 export const resolveConfiguredProviderConfig = (
   providerId: string,
   providers: ProviderConfig[] = [],
 ): ProviderRouteConfig | null => {
   const match = providers.find((p) => p.id.toLowerCase() === providerId.toLowerCase() && p.enabled);
   if (!match || !match.api_key) return null;
-  return { baseUrl: match.base_url, apiKey: match.api_key };
+  return { baseUrl: stripTrailingV1(match.base_url), apiKey: match.api_key };
 };
 
 interface ProviderModelCatalog {
@@ -57,7 +63,7 @@ export const discoverProviderModels = (
   timeoutMs = 10_000,
 ): Effect.Effect<ProviderModelCatalog, unknown> =>
   Effect.gen(function* () {
-    const url = `${provider.base_url.replace(/\/+$/, "")}/v1/models`;
+    const url = `${stripTrailingV1(provider.base_url)}/v1/models`;
     const response = yield* Effect.tryPromise({
       try: () =>
         fetch(url, {
