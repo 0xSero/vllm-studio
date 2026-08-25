@@ -13,12 +13,15 @@ import type { GpuInfo } from "../models/types";
 import { discoverModelDirectories, estimateWeightsSizeBytes } from "../models/model-browser";
 import { STUDIO_STARTER_PRESETS } from "./configs";
 import {
+  getDefaultRuntimeTarget,
+  runtimeTargetToBackendInfo,
+} from "../engines/runtimes/runtime-targets";
+import {
   getPersistedConfigPath,
   loadPersistedConfig,
   savePersistedConfig,
   type PersistedConfig,
 } from "../../config/persisted-config";
-import { getVllmRuntimeInfo } from "../engines/runtimes/vllm-runtime";
 
 const SettingsUpdateSchema = Schema.Struct({
   models_dir: Schema.optional(Schema.NullOr(Schema.String)),
@@ -162,7 +165,12 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
         const cpuList = cpus();
         const [gpus, runtime, disks] = yield* Effect.all([
           getGpuInfo(),
-          getVllmRuntimeInfo(),
+          context.compute
+            .host()
+            .pipe(
+              Effect.flatMap((host) => getDefaultRuntimeTarget(host, "vllm")),
+              Effect.map(runtimeTargetToBackendInfo),
+            ),
           Effect.all([diskInfo(context.config.data_dir), diskInfo(context.config.models_dir)]),
         ]);
         return ctx.json({
@@ -179,8 +187,8 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
           runtime: {
             vllm_installed: runtime.installed,
             vllm_version: runtime.version,
-            python_path: runtime.python_path,
-            vllm_bin: runtime.vllm_bin,
+            python_path: null,
+            vllm_bin: null,
           },
           disks,
           config: {
@@ -191,9 +199,6 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
             models_dir: context.config.models_dir,
             data_dir: context.config.data_dir,
             db_path: context.config.db_path,
-            sglang_python: context.config.sglang_python ?? null,
-            llama_bin: context.config.llama_bin ?? null,
-            mlx_python: context.config.mlx_python ?? null,
           },
         });
       }),

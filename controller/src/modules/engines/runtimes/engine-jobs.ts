@@ -1,75 +1,34 @@
-import type { ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { Effect, Fiber } from "effect";
-import type { Config } from "../../../config/env";
-import type {
-  EngineBackend,
-  EngineJob,
-  RuntimeJobBackend,
-  RuntimeJobType,
-  RuntimeTarget,
-  RuntimeUpgradeResult,
-} from "@local-studio/contracts/system";
-import { EngineOperationError, getEngineSpec, type InstallOptions } from "../engine-spec";
-import { acquireEngineInstallLock, installLockTimeoutMessage } from "./install-lock";
-import { runPlatformUpgrade } from "./runtime-upgrade";
-import {
-  clearRuntimeTargetsCache,
-  getDefaultRuntimeTarget,
-  getRuntimeTarget,
-} from "./runtime-targets";
-import type { ProcessInfo } from "../../models/types";
-import {
-  isManagedPythonBackend,
-  managedVenvName,
-  type ManagedPythonBackend,
-  type InstallProgressUpdate,
-} from "./managed-venv";
+import { Effect } from "effect";
+import type { EngineJob, RuntimeJobBackend, RuntimeJobType } from "@local-studio/contracts/system";
+import type { HostProfile } from "../../compute/contracts";
+import { clearRuntimeTargetsCache, pinnedImageFor } from "./runtime-targets";
 import { pidExists } from "./pid-exists";
 
-export { managedVenvPath } from "./managed-venv";
+/**
+ * Engine jobs, docker-only: every job — install or update — is a `docker pull`
+ * of the engine's pinned image. The job registry (list, poll, cancel, prune)
+ * keeps its wire shape from the installer era; only the operation changed.
+ */
 
 type CreateEngineJobOptions = {
   backend: RuntimeJobBackend;
   type: RuntimeJobType;
-  targetId?: string;
-  version?: string;
-  preferBundled?: boolean;
-  runningProcess?: ProcessInfo | null;
+  host: HostProfile;
 };
 
 const MAX_OUTPUT_TAIL_LENGTH = 4000;
+const MAX_FINISHED_JOBS = 50;
 const jobs = new Map<string, EngineJob>();
 const jobChildren = new Map<string, ChildProcess>();
-const jobRuns = new Map<string, { fiber: Fiber.Fiber<void, never> | null }>();
-
-const tailOutput = (value: string | null | undefined): string | undefined => {
-  if (!value) return undefined;
-  return value.length > MAX_OUTPUT_TAIL_LENGTH ? value.slice(-MAX_OUTPUT_TAIL_LENGTH) : value;
-};
 
 const nowIso = (): string => new Date().toISOString();
 
-const isPlatformBackend = (backend: RuntimeJobBackend): backend is "cuda" | "rocm" =>
-  backend === "cuda" || backend === "rocm";
-
-const createJobRecord = (options: CreateEngineJobOptions): EngineJob => ({
-  id: randomUUID(),
-  backend: options.backend,
-  ...(options.targetId ? { targetId: options.targetId } : {}),
-  type: options.type,
-  status: "queued",
-  progress: 0,
-  message: `${options.type} queued for ${options.backend}`,
-  startedAt: nowIso(),
-});
-
-const updateJob = (id: string, updates: Partial<EngineJob>): EngineJob | null => {
+const updateJob = (id: string, updates: Partial<EngineJob>): void => {
   const current = jobs.get(id);
-  if (!current) return null;
-  const next = { ...current, ...updates };
-  jobs.set(id, next);
-  return next;
+  if (!current) return;
+  jobs.set(id, { ...current, ...updates });
 };
 
 const updateRunningJob = (id: string, updates: Partial<EngineJob>): void => {
@@ -77,192 +36,6 @@ const updateRunningJob = (id: string, updates: Partial<EngineJob>): void => {
   if (!current || current.status !== "running") return;
   jobs.set(id, { ...current, ...updates });
 };
-
-const describeDefaultCommand = (options: CreateEngineJobOptions): string | undefined => {
-  if (isPlatformBackend(options.backend)) {
-    return options.type === "update"
-      ? `configured ${options.backend.toUpperCase()} upgrade command`
-      : undefined;
-  }
-  if (options.backend === "llamacpp") return "configured llama.cpp upgrade command";
-  if (options.type === "install" && isManagedPythonBackend(options.backend)) {
-    return `python -m venv $DATA_DIR/runtime/venvs/${managedVenvName(options.backend)} && pip install ${managedPackageSpec(options.backend, options.version)}`;
-  }
-  return `python -m pip install --upgrade ${managedPackageSpec(options.backend, options.version)}`;
-};
-
-export const managedPackageSpec = (
-  backend: ManagedPythonBackend,
-  version?: string | null,
-): string => getEngineSpec(backend).managedPackageSpec(version);
-
-const cancelledResult: RuntimeUpgradeResult = {
-  success: false,
-  version: null,
-  output: null,
-  error: "cancelled by user",
-  used_command: null,
-};
-
-const installLockFailure = (backend: EngineBackend): RuntimeUpgradeResult => ({
-  success: false,
-  version: null,
-  output: null,
-  error: installLockTimeoutMessage(backend),
-  used_command: null,
-});
-
-const runEngineInstall = (
-  config: Config,
-  job: EngineJob,
-  options: CreateEngineJobOptions,
-  backend: EngineBackend,
-  target: RuntimeTarget | null,
-): Effect.Effect<RuntimeUpgradeResult, EngineOperationError> =>
-  Effect.gen(function* () {
-    const lock = yield* acquireEngineInstallLock(config, backend, {
-      onWait: (): void =>
-        updateRunningJob(job.id, { message: `waiting for in-progress ${backend} install...` }),
-      shouldContinue: (): boolean => jobs.get(job.id)?.status === "running",
-    });
-    if (!lock) {
-      return jobs.get(job.id)?.status === "cancelled"
-        ? cancelledResult
-        : installLockFailure(backend);
-    }
-    return yield* Effect.acquireUseRelease(
-      Effect.succeed(lock),
-      () => {
-        if (jobs.get(job.id)?.status !== "running") return Effect.succeed(cancelledResult);
-        return getEngineSpec(backend).install({
-          config,
-          version: options.version,
-          pythonPath: target?.pythonPath ?? null,
-          preferBundled: options.preferBundled,
-          createManagedVenv: !options.targetId,
-          onProgress: (update: InstallProgressUpdate): void => updateRunningJob(job.id, update),
-          onSpawn: (child: ChildProcess): void => {
-            jobChildren.set(job.id, child);
-          },
-        } satisfies InstallOptions);
-      },
-      (heldLock) =>
-        Effect.sync(() => {
-          heldLock.release();
-          jobChildren.delete(job.id);
-        }),
-    );
-  });
-
-const unsupportedPlatformInstall = (backend: "cuda" | "rocm"): RuntimeUpgradeResult => ({
-  success: false,
-  version: null,
-  output: null,
-  error: `${backend.toUpperCase()} supports update jobs only.`,
-  used_command: null,
-});
-
-const runJobOperation = (
-  config: Config,
-  job: EngineJob,
-  options: CreateEngineJobOptions,
-  target: RuntimeTarget | null,
-): Effect.Effect<RuntimeUpgradeResult, EngineOperationError> => {
-  switch (options.type) {
-    case "install":
-      return isPlatformBackend(options.backend)
-        ? Effect.succeed(unsupportedPlatformInstall(options.backend))
-        : runEngineInstall(config, job, options, options.backend, target);
-    case "update":
-      return isPlatformBackend(options.backend)
-        ? runPlatformUpgrade(options.backend, {})
-        : runEngineInstall(config, job, options, options.backend, target);
-  }
-};
-
-const runJob = (
-  config: Config,
-  job: EngineJob,
-  options: CreateEngineJobOptions,
-): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    if (jobs.get(job.id)?.status !== "queued") return;
-    const defaultCommand = describeDefaultCommand(options);
-    updateJob(job.id, {
-      status: "running",
-      progress: 0.05,
-      message: `${options.type} running for ${options.backend}`,
-      ...(defaultCommand ? { command: defaultCommand } : {}),
-    });
-    let target: RuntimeTarget | null = null;
-    if (options.targetId && !isPlatformBackend(options.backend)) {
-      target = yield* getRuntimeTarget(config, options.targetId, options.runningProcess);
-      if (!target) {
-        return yield* Effect.fail(
-          new EngineOperationError({
-            operation: "resolve-runtime-target",
-            message: "Runtime target not found",
-          }),
-        );
-      }
-      if (!target.capabilities.canUpdate) {
-        return yield* Effect.fail(
-          new EngineOperationError({
-            operation: "validate-runtime-target",
-            message: target.health.message ?? "Update is unsupported for this target.",
-          }),
-        );
-      }
-    }
-    if (!target && options.backend === "vllm") {
-      target = yield* getDefaultRuntimeTarget(config, "vllm", options.runningProcess);
-    }
-
-    const result = yield* runJobOperation(config, job, options, target);
-
-    clearRuntimeTargetsCache();
-    const outputTail = tailOutput(result.output ?? result.error);
-    const command = result.used_command ?? job.command;
-    if (!result.success) {
-      updateRunningJob(job.id, {
-        status: "error",
-        progress: 1,
-        message: result.error ?? `${options.type} failed`,
-        ...(command ? { command } : {}),
-        ...(outputTail ? { outputTail } : {}),
-        ...(result.error ? { error: result.error } : {}),
-        finishedAt: nowIso(),
-      });
-      return;
-    }
-
-    updateRunningJob(job.id, {
-      status: "success",
-      progress: 1,
-      message: result.version
-        ? `${options.type} complete (${result.version})`
-        : `${options.type} complete`,
-      ...(command ? { command } : {}),
-      ...(outputTail ? { outputTail } : {}),
-      finishedAt: nowIso(),
-    });
-  }).pipe(
-    Effect.catch((error) =>
-      Effect.sync(() => {
-        const message = error instanceof Error ? error.message : String(error);
-        updateRunningJob(job.id, {
-          status: "error",
-          progress: 1,
-          message,
-          error: message,
-          outputTail: message,
-          finishedAt: nowIso(),
-        });
-      }),
-    ),
-  );
-
-const MAX_FINISHED_JOBS = 50;
 
 const pruneFinishedJobs = (): void => {
   const finished = [...jobs.values()]
@@ -276,30 +49,67 @@ const pruneFinishedJobs = (): void => {
     if (stale) {
       jobs.delete(stale.id);
       jobChildren.delete(stale.id);
-      jobRuns.delete(stale.id);
     }
   }
 };
 
-export const createEngineJob = (
-  config: Config,
-  options: CreateEngineJobOptions,
-): Effect.Effect<EngineJob> =>
-  Effect.gen(function* () {
-    const job = createJobRecord(options);
+const finishJob = (id: string, updates: Partial<EngineJob>): void => {
+  updateRunningJob(id, { ...updates, progress: 1, finishedAt: nowIso() });
+  jobChildren.delete(id);
+  clearRuntimeTargetsCache();
+};
+
+const runPull = (job: EngineJob, image: string): void => {
+  const child = spawn("docker", ["pull", image], { stdio: ["ignore", "pipe", "pipe"] });
+  jobChildren.set(job.id, child);
+  let output = "";
+  let layersDone = 0;
+  const observe = (chunk: Buffer): void => {
+    const text = chunk.toString();
+    output = (output + text).slice(-MAX_OUTPUT_TAIL_LENGTH);
+    layersDone += (text.match(/Pull complete|Already exists/g) ?? []).length;
+    updateRunningJob(job.id, {
+      // Layer count is unknown up front; converge without ever claiming done.
+      progress: Math.min(0.95, 0.1 + layersDone * 0.08),
+      message: `pulling ${image}`,
+      outputTail: output,
+    });
+  };
+  child.stdout?.on("data", observe);
+  child.stderr?.on("data", observe);
+  child.on("error", (error) => {
+    finishJob(job.id, { status: "error", message: error.message, error: error.message });
+  });
+  child.on("close", (code) => {
+    if (jobs.get(job.id)?.status !== "running") return;
+    if (code === 0) {
+      finishJob(job.id, { status: "success", message: `pulled ${image}`, outputTail: output });
+    } else {
+      const message = `docker pull exited with ${code ?? "signal"}`;
+      finishJob(job.id, { status: "error", message, error: message, outputTail: output });
+    }
+  });
+};
+
+export const createEngineJob = (options: CreateEngineJobOptions): Effect.Effect<EngineJob, Error> =>
+  Effect.sync(() => {
+    const image = pinnedImageFor(options.backend, options.host);
+    if (!image) {
+      throw new Error(`${options.backend} has no serving image for this hardware`);
+    }
+    const job: EngineJob = {
+      id: randomUUID(),
+      backend: options.backend,
+      type: options.type,
+      status: "running",
+      progress: 0.05,
+      message: `pulling ${image}`,
+      command: `docker pull ${image}`,
+      startedAt: nowIso(),
+    };
     jobs.set(job.id, job);
     pruneFinishedJobs();
-    const run = { fiber: null as Fiber.Fiber<void, never> | null };
-    jobRuns.set(job.id, run);
-    run.fiber = yield* runJob(config, job, options).pipe(
-      Effect.ensuring(
-        Effect.sync(() => {
-          if (jobRuns.get(job.id) === run) jobRuns.delete(job.id);
-          jobChildren.delete(job.id);
-        }),
-      ),
-      Effect.forkDetach({ startImmediately: true }),
-    );
+    runPull(job, image);
     return job;
   });
 
@@ -343,19 +153,16 @@ export const cancelEngineJob = (id: string): Effect.Effect<EngineJob | null> =>
     if (job.status === "success" || job.status === "error" || job.status === "cancelled") {
       return job;
     }
-    const cancelled = updateJob(id, {
+    updateJob(id, {
       status: "cancelled",
       progress: 1,
       message: "cancelled by user",
       finishedAt: nowIso(),
     });
     yield* terminateJobChild(id);
-    const fiber = jobRuns.get(id)?.fiber;
-    if (fiber) yield* Fiber.interrupt(fiber);
     jobChildren.delete(id);
-    jobRuns.delete(id);
     pruneFinishedJobs();
-    return cancelled;
+    return jobs.get(id) ?? null;
   });
 
 export const shutdownEngineJobs = (): Effect.Effect<void> =>

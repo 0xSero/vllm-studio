@@ -15,12 +15,12 @@ const serveRuntimeSchema = Schema.Struct({
 const stringValue = (value: unknown): string | null =>
   typeof value === "string" && value.trim() ? value.trim() : null;
 
-const defaultRuntime = (backend: unknown): Record<string, unknown> => {
-  const runtimeReference = stringValue(backend) ?? "vllm";
-  return runtimeReference === "llamacpp"
-    ? { kind: "binary", ref: "llama-server" }
-    : { kind: "managed_venv", ref: runtimeReference };
-};
+/** No runtime in the payload means "the engine's pinned image": docker with an
+ *  empty ref, which the launch path treats as image-from-spec. */
+const defaultRuntime = (backend: unknown): Record<string, unknown> => ({
+  kind: "docker",
+  ref: stringValue(backend) ?? "vllm",
+});
 
 const normalizedRuntime = (
   data: Record<string, unknown>,
@@ -194,7 +194,7 @@ export const recipeSchema = Schema.Struct({
   name: Schema.String,
   model_path: Schema.String,
   vision: Schema.Union([Schema.Null, Schema.Boolean]),
-  backend: Schema.Literals(["vllm", "sglang", "llamacpp", "mlx"]),
+  backend: Schema.Literals(["vllm", "sglang", "exllamav3"]),
   runtime: serveRuntimeSchema,
   env_vars: Schema.Union([Schema.Null, Schema.Record(Schema.String, Schema.String)]),
   tensor_parallel_size: integerSchema,

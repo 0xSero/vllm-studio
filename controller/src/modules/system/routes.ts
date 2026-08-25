@@ -103,7 +103,7 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
     effectRoute(app.get, "/compat", (ctx) =>
       Effect.gen(function* () {
         const known = yield* findObservedInferenceProcess(context, "compat");
-        const runtime = yield* getSystemRuntimeInfo(context.config, known);
+        const runtime = yield* context.compute.host().pipe(Effect.flatMap(getSystemRuntimeInfo));
         const portOpen = yield* checkService(
           SYSTEM_SERVICE_CHECK_HOST,
           context.config.inference_port,
@@ -257,7 +257,7 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
           description: "Next.js web UI",
         });
 
-        const runtime = yield* getSystemRuntimeInfo(context.config, current);
+        const runtime = yield* context.compute.host().pipe(Effect.flatMap(getSystemRuntimeInfo));
 
         const payload: SystemConfigResponse = {
           config: {
@@ -268,9 +268,6 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
             models_dir: context.config.models_dir,
             data_dir: context.config.data_dir,
             db_path: context.config.db_path,
-            sglang_python: context.config.sglang_python ?? null,
-            llama_bin: context.config.llama_bin ?? null,
-            mlx_python: context.config.mlx_python ?? null,
           },
           services,
           environment: {

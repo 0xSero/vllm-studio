@@ -8,7 +8,7 @@ const HandleReferenceSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("pinned"), holder: Schema.String }),
 ]);
 const InstanceRecordSchema = Schema.Struct({ name: Schema.String, nodeId: Schema.String, engine: Schema.Literals(ENGINE_IDS), recipeId: Schema.String,
-  runtime: Schema.Literals(["process", "docker"]), ref: Schema.NullOr(HandleReferenceSchema), port: Schema.Number, devices: Schema.Array(Schema.String),
+  runtime: Schema.Literals(["docker"]), ref: Schema.NullOr(HandleReferenceSchema), port: Schema.Number, devices: Schema.Array(Schema.String),
   nonce: Schema.String, startedAt: Schema.String, readyDeadlineAt: Schema.String });
 export const decodeInstanceRecord = (value: unknown): InstanceRecord =>
   Schema.decodeUnknownSync(InstanceRecordSchema)(value) as InstanceRecord;

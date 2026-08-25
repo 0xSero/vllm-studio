@@ -4,10 +4,6 @@ import { Effect } from "effect";
 import type { RuntimeRocmInfo, RuntimeRocmSmiTool } from "../../models/types";
 import { runCommandAsyncEffect } from "../../../core/command";
 import { resolveAmdSmiBinary, resolveForcedRocmTool, resolveRocmSmiBinary } from "./smi-tools";
-import {
-  ROCM_UPGRADE_ENV,
-  isUpgradeCommandConfigured,
-} from "../../engines/runtimes/upgrade-config";
 
 const parseHipccVersion = (output: string): string | null => {
   const match = output.match(/HIP version\s*:\s*([0-9.]+)/i);
@@ -91,6 +87,6 @@ export const getRocmInfo = (smiTool: RuntimeRocmSmiTool | null): Effect.Effect<R
       hip_version: hipVersion,
       smi_tool: smiTool,
       gpu_arch: Array.from(gpuArch),
-      upgrade_command_available: isUpgradeCommandConfigured(ROCM_UPGRADE_ENV),
+      upgrade_command_available: false,
     };
   });

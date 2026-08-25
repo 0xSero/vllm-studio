@@ -183,10 +183,9 @@ export const plan = (
   const image = request.dockerImage ?? parts.image;
   return {
     kind: request.runtime,
-    // A container image supplies its own executable; a process launch needs the binary.
-    argv: request.runtime === "docker" ? [...parts.args] : [request.binary, ...parts.args],
-    // An engine may always offer an image; only a container plan carries one.
-    ...(request.runtime === "docker" && image ? { image } : {}),
+    // The container image supplies its own executable.
+    argv: [...parts.args],
+    ...(image ? { image } : {}),
     env: { ...request.env, ...(parts.env ?? {}) },
     ports: [{ container: parts.listenPort, host: request.port }],
     mounts: modelMounts(request),

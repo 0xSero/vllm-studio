@@ -1,6 +1,6 @@
 import { Effect, Option, Schema } from "effect";
 import { openSqliteDatabase } from "../../../stores/sqlite";
-import type { EngineOperationError } from "../engine-spec";
+import type { EngineOperationError } from "../engine-operation";
 import { attempt, operationError } from "../engine-operation";
 import type { ModelDownload } from "../types";
 

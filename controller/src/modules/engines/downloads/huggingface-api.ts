@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
 import type { DownloadFileInfo } from "../types";
-import { type EngineOperationError } from "../engine-spec";
+import { type EngineOperationError } from "../engine-operation";
 import { operationError } from "../engine-operation";
 
 const escapeRegex = (value: string): string => value.replace(/[.+^${}()|[\]\\]/g, "\\$&");

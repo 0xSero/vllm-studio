@@ -36,12 +36,13 @@ const supports = (host: HostProfile): EngineSupport => {
   if (host.accelerator !== "cuda") {
     return unsupported(`SGLang needs a CUDA device; this host reports ${host.accelerator}`);
   }
-  return host.dockerGpu ? supported("process", "docker") : supported("process");
+  return host.dockerGpu
+    ? supported("docker")
+    : unsupported("SGLang needs Docker with GPU passthrough (nvidia-container-toolkit)");
 };
 
 export const sglang: ComputeEngineSpec = {
   id: "sglang",
-  defaultBinary: "sglang",
   defaultPort: 30000,
   health: health("/health", READY_DEADLINE_MS),
   metrics: prometheusMetrics("sglang", "token_usage"),

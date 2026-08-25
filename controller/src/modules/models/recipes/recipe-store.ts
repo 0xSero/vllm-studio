@@ -81,6 +81,15 @@ export class RecipeStore {
     this.overlayPath = resolve(dataDirectory, "model-index.json");
     try {
       this.migrateFromSqlite(sqliteDatabasePath);
+      // Entries the current roster cannot serve (e.g. legacy llamacpp/mlx
+      // recipes) stay in the registry file untouched but are not served;
+      // say so once instead of hiding them silently.
+      const unservable = this.readOverlay().entries.filter((entry) => !recipeFromEntry(entry));
+      if (unservable.length > 0) {
+        console.warn(
+          `[recipes] ${unservable.length} registry entr${unservable.length === 1 ? "y is" : "ies are"} not servable by this roster and will not be listed: ${unservable.map((entry) => entry.id).join(", ")}`,
+        );
+      }
     } catch (source) {
       throw storeError("open", source);
     }

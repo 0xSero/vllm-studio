@@ -5,7 +5,6 @@ import { getSystemRuntimeInfo } from "../engines/runtimes/runtime-info";
 import type { UsageAggregate } from "../../stores/inference-request-store";
 import {
   SGLANG_METRIC_NAMES,
-  LLAMACPP_METRIC_NAMES,
   VLLM_METRIC_NAMES,
   scrapeEngineMetrics,
 } from "./engine-metrics-scrape";
@@ -63,7 +62,9 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
     yield* context.eventManager.publishGpu(gpuList.map((gpu) => ({ ...gpu })));
 
     if (Date.now() - lastRuntimeSummaryAt > METRICS_RUNTIME_SUMMARY_INTERVAL_MS) {
-      yield* getSystemRuntimeInfo(context.config).pipe(
+      yield* context.compute.host().pipe(
+        Effect.flatMap(getSystemRuntimeInfo),
+      ).pipe(
         Effect.flatMap((runtime) => {
           const leaseHolder = current
             ? (current.served_model_name ?? current.model_path?.split("/").pop() ?? "inference")
@@ -135,21 +136,12 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
       let generationTokensTotal = 0;
       let avgTtftMs = 0;
 
-      if (
-        current.backend === "vllm" ||
-        current.backend === "sglang" ||
-        current.backend === "llamacpp"
-      ) {
+      if (current.backend === "vllm" || current.backend === "sglang") {
         const vllmMetrics = yield* scrapeVllmMetrics(context.config.inference_port);
         const now = Date.now() / 1000;
         const elapsed =
           lastMetricsTime > 0 ? now - lastMetricsTime : METRICS_LIFETIME_UPTIME_INCREMENT_SECONDS;
-        const names =
-          current.backend === "sglang"
-            ? SGLANG_METRIC_NAMES
-            : current.backend === "llamacpp"
-              ? LLAMACPP_METRIC_NAMES
-              : VLLM_METRIC_NAMES;
+        const names = current.backend === "sglang" ? SGLANG_METRIC_NAMES : VLLM_METRIC_NAMES;
         if (
           elapsed > 0 &&
           Object.keys(vllmMetrics).length > 0 &&

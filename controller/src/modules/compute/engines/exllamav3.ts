@@ -5,11 +5,11 @@ const READY_DEADLINE_MS = 900_000;
 
 /**
  * exllamav3 is a quantisation/inference library, not a server. The OpenAI-compatible
- * surface comes from TabbyAPI, which loads exl3 weights — so this spec launches TabbyAPI
- * and the "engine" is the loader it is configured with.
+ * surface comes from TabbyAPI, which loads exl3 weights — so this spec launches the
+ * TabbyAPI image and the "engine" is the loader it is configured with.
  *
- * TabbyAPI is configured mainly through config.yml; only the flags below are stable on the
- * command line, so most tuning arrives via extraArgs by design.
+ * TabbyAPI is configured mainly through config.yml; only the flags below are stable on
+ * the command line, so most tuning arrives via extraArgs by design.
  */
 const spelling: Spelling = {
   maxContextLength: { flag: "--max-seq-len" },
@@ -17,21 +17,25 @@ const spelling: Spelling = {
   // equivalent; recipes that split across cards pass --gpu-split through extraArgs.
 };
 
+const image = (host: HostProfile): string | null =>
+  host.accelerator === "cuda" ? "ghcr.io/theroyallab/tabbyapi:latest" : null;
+
 const supports = (host: HostProfile): EngineSupport => {
   if (host.platform === "darwin") return unsupported("exllamav3 requires CUDA; macOS has none");
   if (host.accelerator !== "cuda") {
     return unsupported(`exllamav3 needs a CUDA device; this host reports ${host.accelerator}`);
   }
-  // No first-party image; a container would have to be built locally.
-  return supported("process");
+  return host.dockerGpu
+    ? supported("docker")
+    : unsupported("exllamav3 (TabbyAPI) needs Docker with GPU passthrough");
 };
 
 export const exllamav3: ComputeEngineSpec = {
   id: "exllamav3",
-  defaultBinary: "tabbyapi",
   defaultPort: 5000,
   health: health("/health", READY_DEADLINE_MS),
   metrics: noMetrics,
+  image,
   supports,
   plan: (request) =>
     plan(request, {
@@ -42,5 +46,6 @@ export const exllamav3: ComputeEngineSpec = {
       ),
       health: health("/health", READY_DEADLINE_MS),
       listenPort: request.port,
+      image: image(request.host),
     }),
 };
