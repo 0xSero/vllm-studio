@@ -59,7 +59,7 @@ preserve the streaming runtime contract.
 
 ```bash
 npm run desktop:build:main
-npm run desktop:start
+electron desktop/dist/main.js  # after npm run desktop:build:main
 npm run desktop:pack
 npm run desktop:dist
 ```
@@ -68,8 +68,8 @@ npm run desktop:dist
 DMG, updater ZIP, blockmaps, and update metadata. The only canonical install is
 `/Applications/Local Studio.app` with bundle id `org.local.studio.desktop`.
 Run `APPLE_KEYCHAIN_PROFILE=vllm-studio-notarize npm run
-desktop:dist:notarized` to submit and staple the app when the Apple developer
-team has an active agreement.
+release signing and notarization run in CI (`sign-release` in release.yml); local
+builds stay unsigned.
 
 ## Controller Connection
 

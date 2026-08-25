@@ -25,7 +25,13 @@ export type ActivitySegment =
 export type RoutedBlock =
   | { kind: "activity-group"; id: string; segments: ActivitySegment[] }
   | { kind: "content"; block: TextBlock }
+  | { kind: "subagent"; block: ToolBlock }
   | { kind: "event"; block: EventBlock };
+
+/** Spawning a subagent is not tool noise: it starts a second agent that runs
+ *  for minutes and owns its own session. It gets a top-level row like content
+ *  does, instead of being counted inside a collapsed "called 1 tool". */
+export const SUBAGENT_TOOL_NAME = "subagent";
 
 export type ActivityItem =
   | { kind: "reasoning"; id: string; block: ThinkingBlock }
@@ -77,6 +83,11 @@ export function groupAssistantBlocks(inputBlocks: AssistantBlock[]): RoutedBlock
 
   for (const block of blocks) {
     if (block.kind === "tool") {
+      if (block.name.toLowerCase() === SUBAGENT_TOOL_NAME) {
+        flushActivity();
+        routed.push({ kind: "subagent", block });
+        continue;
+      }
       flushReasoning();
       tools.push(block);
       continue;

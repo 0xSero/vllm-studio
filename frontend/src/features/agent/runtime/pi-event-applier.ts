@@ -313,6 +313,9 @@ function reduceToolResultMessageEvent(
         (existing) => ({
           ...existing,
           status: isError ? "error" : "done",
+          // Replay is the only place a reopened session learns a tool's
+          // structured payload, so carry it here too.
+          details: asRecord(msg.details) ?? existing.details,
           text: resultText || existing.text,
         }),
         () => ({
@@ -320,6 +323,7 @@ function reduceToolResultMessageEvent(
           id: toolCallId,
           name: (typeof msg.toolName === "string" && msg.toolName) || "tool",
           status: isError ? "error" : "done",
+          ...(asRecord(msg.details) ? { details: asRecord(msg.details) as Record<string, unknown> } : {}),
           text: resultText,
         }),
       ),

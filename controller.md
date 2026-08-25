@@ -43,12 +43,13 @@ src/main.ts
 Every route is an **Effect handler** run through the Effect `ManagedRuntime`. The middleware chain (in `app.ts`, applied in order) is:
 
 1. `controllerRuntimeMiddleware` — injects the runtime into Hono context (needed by `effectHandler`).
-2. `cors` — allowlisted origins (from `LOCAL_STUDIO_CORS_ORIGINS`, with sane localhost defaults).
-3. request logger middleware (debug line per non-telemetry-skipped path).
-4. `createControllerRequestObservabilityMiddleware` — records every request into `controllerRequestStore`.
-5. `createMutatingRateLimitMiddleware` — defaults 120/min per client for POST/PUT/PATCH/DELETE.
-6. `createReadRateLimitMiddleware` — defaults 1200/min per client for GET (exempts /health, /status, /metrics, /events, /api/docs, /api/spec, SSE streams).
-7. `createAuthMiddleware` — optional bearer / `X-API-Key` auth when `LOCAL_STUDIO_API_KEY` is set; `WWW-Authenticate` on 401. `/health` is public.
+2. `createKeylessRequestGuardMiddleware` — when no API key is configured, 403s any request whose `Host` is not in `allowed_hosts` or whose `Origin` (if present) is not in `cors_origins`; the DNS-rebinding defense for keyless local binds.
+3. `cors` — allowlisted origins (from `LOCAL_STUDIO_CORS_ORIGINS`, with sane localhost defaults).
+4. request logger middleware (debug line per non-telemetry-skipped path).
+5. `createControllerRequestObservabilityMiddleware` — records every request into `controllerRequestStore`.
+6. `createMutatingRateLimitMiddleware` — defaults 120/min per client for POST/PUT/PATCH/DELETE.
+7. `createReadRateLimitMiddleware` — defaults 1200/min per client for GET (exempts /health, /status, /metrics, /events, /api/docs, /api/spec, SSE streams).
+8. `createAuthMiddleware` — optional bearer / `X-API-Key` auth when `LOCAL_STUDIO_API_KEY` is set; `WWW-Authenticate` on 401. `/health` is public.
 
 Key helpers in `src/http/`:
 
@@ -149,7 +150,7 @@ POST /v1/chat/completions   (proxy/openai-routes.ts)
 | `prettier` | formatting |
 | `@types/node`, `bun-types` | typings |
 
-Root `npm run check` includes `check:controller` = `typecheck && lint && check` (knip + jscpd + depcheck + `controller-standards`).
+Root `npm run check` (= `node scripts/project.mjs check`) runs the controller's `typecheck`, `lint`, and `check` (knip + jscpd + depcheck + `controller-standards`).
 
 ---
 
@@ -193,7 +194,7 @@ Root `npm run check` includes `check:controller` = `typecheck && lint && check` 
 | Events (SSE) | `modules/system/event-manager.ts` | Typed event bus (`CONTROLLER_EVENTS` contract) → `/events` SSE stream; launch progress, log lines, download events, rig events. |
 | Usage aggregation | `modules/system/usage-routes.ts`, `stores/inference-request-store.ts` | Aggregated usage stats (+ controller request counts), optional 15s cache. |
 | Controller request telemetry | `core/function-observability.ts`, `stores/controller-request-store.ts` | Record every HTTP request + internal function call (duration, success, error class). |
-| Config & env | `config/env.ts`, `config/persisted-config.ts` | Env-driven config with Effect Schema validation; persisted JSON config (models_dir, providers, UI prefs). |
+| Config & env | `config/env.ts`, `config/persisted-config.ts` | Env-driven config with Effect Schema validation; persisted JSON config (models_dir, providers, selected_runtime_target_ids); UI prefs live in the sqlite `controller_settings` table, not the JSON. |
 | Auth & rate limiting | `http/security-middleware.ts` | API-key auth + mutating/read rate limiting. |
 | OpenAPI + Swagger | `http/app.ts` + `hono-openapi` | Auto-generated `/api/spec` + `/api/docs`. |
 
@@ -215,11 +216,11 @@ Root `npm run check` includes `check:controller` = `typecheck && lint && check` 
 
 **Recipes** (`recipe-routes.ts`): `GET /recipes`, `GET /recipes/:recipeId`, `POST /recipes`, `PUT /recipes/:recipeId`, `DELETE /recipes/:recipeId`
 
-**Lifecycle** (`lifecycle-routes.ts`): `POST /launch/:recipeId`, `POST /launch/:recipeId/cancel`, `POST /evict`, `POST /wait-ready`
+**Lifecycle** (`lifecycle-routes.ts`): `POST /launch/:recipeId`, `POST /launch/:recipeId/cancel`, `POST /evict`, `GET /wait-ready`
 
 **Downloads** (`download-routes.ts`): `GET /studio/downloads`, `GET /studio/downloads/:downloadId`, `POST /studio/downloads`, `POST /studio/downloads/:downloadId/cancel`, `POST /studio/downloads/:downloadId/pause`, `POST /studio/downloads/:downloadId/resume`
 
-**Runtimes** (`runtime-routes.ts`): `GET /runtime/vllm`, `GET /runtime/vllm/config`, `GET /runtime/sglang`, `GET /runtime/llamacpp`, `GET /runtime/llamacpp/config`, `GET /runtime/mlx`, `GET /runtime/rocm`, `GET /runtime/cuda`, `POST /runtime/:backend/upgrade`, `GET /runtime/targets`, `POST /runtime/targets/:targetId/select`, `GET /runtime/jobs`, `GET /runtime/jobs/:jobId`, `POST /runtime/jobs/:jobId/cancel`
+**Runtimes** (`runtime-routes.ts`): `GET /runtime/vllm`, `GET /runtime/vllm/config`, `GET /runtime/sglang`, `GET /runtime/llamacpp`, `GET /runtime/llamacpp/config`, `GET /runtime/mlx`, `GET /runtime/rocm`, `GET /runtime/cuda`, `POST /runtime/:backend/upgrade`, `GET /runtime/targets`, `POST /runtime/targets/:targetId/select`, `POST /runtime/jobs`, `GET /runtime/jobs`, `GET /runtime/jobs/:jobId`, `POST /runtime/jobs/:jobId/cancel`
 
 ### 5.3 Models (`modules/models/routes.ts`)
 `GET /v1/models`, `GET /v1/models/:modelId`, `GET /v1/studio/models`, `GET /v1/huggingface/models`
@@ -258,7 +259,7 @@ Usage: `GET /usage`
 | `ControllerSettingsStore` | `stores/controller-settings-store.ts` | `controller_settings` | UI preferences. |
 | `ControllerRequestStore` | `stores/controller-request-store.ts` | `controller_requests`, `controller_function_calls` | Request + internal-function telemetry. |
 | `RigStore` | `stores/rig-store.ts` | `rigs` | Persisted rig/node records. |
-| `openSqliteDatabase` | `stores/sqlite.ts` | (shared) | DB open with busy_timeout, chmod 600, and **drops known-obsolete tables** (jobs, chat_sessions, chat_messages, runs, usage, etc.) on open. |
+| `openSqliteDatabase` | `stores/sqlite.ts` | (shared) | DB open with busy_timeout and chmod 600. (The old drop-obsolete-tables sweep was removed; legacy tables from earlier eras persist in existing databases untouched.) |
 
 Additionally, compute instance records are persisted as **one JSON file per instance** in the data dir (write-then-rename), and `config/persisted-config.ts` handles JSON config (models_dir, providers, UI prefs).
 
@@ -339,7 +340,7 @@ Persistent, Effect-wrapped repositories described in §6.
 6. **Boundary validation everywhere.** Config, request bodies, persisted JSON — all validated with Effect Schema; tagged error unions avoid substring-matching error messages.
 7. **Secret discipline.** Logs are redacted before reaching HTTP/SSE clients; raw files stay on disk; the API key is required for non-loopback binds.
 8. **Crash-loop protection.** `launch-failure-budget` (3 fails / 10 min) gates recipe launches with 429s.
-9. **Obsolete-state cleanup.** `stores/sqlite.ts` drops known-obsolete tables on open; instance JSON uses write-then-rename.
+9. **Obsolete-state cleanup.** Instance JSON uses write-then-rename. (sqlite.ts no longer drops legacy tables on open — old databases keep them.)
 
 ---
 

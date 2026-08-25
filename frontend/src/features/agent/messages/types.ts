@@ -24,6 +24,12 @@ export type ToolBlock = {
   args?: Record<string, unknown>;
   // Tool execution output (separate from args so we can render both).
   resultText?: string;
+  // The tool's own structured result payload. pi carries this beside the text
+  // on every tool result; the transcript keeps it because some tools identify
+  // something the UI can then act on — a subagent returns the run id and pi
+  // session id of the child it spawned, which is what lets its row open that
+  // session in the side panel.
+  details?: Record<string, unknown>;
   // Back-compat single-text field used by legacy renderers / replays.
   text: string;
 };

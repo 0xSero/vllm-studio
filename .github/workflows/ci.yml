@@ -42,6 +42,8 @@ jobs:
         run: node scripts/project.mjs validate-contracts
       - name: Barrel/dir sibling structure gate
         run: node scripts/project.mjs validate-structure
+      - name: Automation layout gate
+        run: node scripts/project.mjs audit-layout
 
   controller:
     if: github.event_name != 'schedule'

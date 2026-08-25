@@ -378,7 +378,11 @@ function applyToolExecutionToBlocks(
 ): AssistantBlock[] | null {
   const id = String(event.toolCallId || "");
   if (!id) return null;
-  const resultText = extractToolText(event.partialResult || event.result);
+  const payload = event.partialResult || event.result;
+  const resultText = extractToolText(payload);
+  // A tool's structured payload rides alongside its text; tool_execution_update
+  // carries it too, so a long-running tool can report progress before it ends.
+  const details = asRecord(asRecord(payload)?.details) ?? undefined;
   const status =
     event.type === "tool_execution_end"
       ? ((event.isError ? "error" : "done") as ToolBlock["status"])
@@ -390,9 +394,16 @@ function applyToolExecutionToBlocks(
       ...existing,
       status: status ?? existing.status,
       resultText: resultText || existing.resultText,
+      details: details ?? existing.details,
       text: existing.argsText || existing.text || resultText,
     }),
-    () => toolBlock(id, "tool", { status: status ?? "running", resultText, text: resultText }),
+    () =>
+      toolBlock(id, "tool", {
+        status: status ?? "running",
+        resultText,
+        ...(details ? { details } : {}),
+        text: resultText,
+      }),
   );
 }
 

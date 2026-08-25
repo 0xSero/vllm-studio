@@ -7,12 +7,9 @@
     "dev": "bun --watch src/main.ts",
     "start": "bun src/main.ts",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "format": "prettier --write \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "standards": "node ../scripts/project.mjs controller-standards",
-    "check": "knip && jscpd src && depcheck --skip-missing && bun run standards",
-    "check:fix": "knip --fix"
+    "check": "knip && jscpd src && depcheck --skip-missing && bun run standards"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.83.0",
@@ -39,7 +36,6 @@
     "eslint-plugin-unicorn": "60.0.0",
     "jscpd": "4.0.5",
     "knip": "5.44.2",
-    "prettier": "3.4.2",
     "typescript": "5.9.2"
   },
   "engines": {

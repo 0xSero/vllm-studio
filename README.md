@@ -108,7 +108,7 @@ Start the controller (listens on `127.0.0.1:8080`, data dir + SQLite created
 automatically, model weights in `LOCAL_STUDIO_MODELS_DIR`, default `/models`):
 
 ```bash
-npm run dev:controller
+bun --cwd controller run dev
 ```
 
 Start the frontend in a second terminal, then open
@@ -167,7 +167,7 @@ terminals:
 
 ```bash
 npm run build
-npm run start:controller
+bun --cwd controller run start
 npm run start
 ```
 
@@ -226,15 +226,24 @@ The controller installer registers a persistent user service automatically
 (`launchd` on macOS and `systemd --user` on Linux), so installed controllers
 return after login without a repository daemon wrapper.
 
-## Validation
+## Commands
+
+Five commands cover the whole repo; everything else is plumbing they call.
 
 ```bash
-npm run check
+npm run setup           # toolchain check + install every workspace
+npm run dev             # frontend dev server + agent runtime, watch mode
+npm run check           # every gate CI runs, in one command
+npm run build           # production Next build + standalone repair + assertions
+npm run desktop:dist    # build and package the macOS app
 ```
 
-The configured pre-push hook (`.githooks/pre-push`) checks conventional commits
-and runs the frontend quality gate before pushing. The hook filenames are
-symlinks to `scripts/project.mjs`; they do not contain separate automation logic.
+All automation lives in `frontend/desktop/automation/*.mjs` — plain readable
+modules dispatched by `scripts/project.mjs` (`node scripts/project.mjs` with no
+arguments lists every subcommand). The pre-push hook checks conventional
+commits and runs the frontend quality gate before pushing; the hook filenames
+in `.githooks/` are symlinks to `scripts/project.mjs` and contain no logic of
+their own.
 
 ## Releases
 

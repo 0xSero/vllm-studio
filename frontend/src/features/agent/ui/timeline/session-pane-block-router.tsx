@@ -5,6 +5,7 @@ import { AssistantMarkdown } from "@/features/agent/ui/assistant-markdown";
 import { AssistantActivityGroup } from "@/features/agent/ui/timeline/assistant-activity-group";
 import { AssistantMessageActions } from "@/features/agent/ui/timeline/assistant-message-actions";
 import { UserMessage } from "@/features/agent/ui/timeline/user-message-block";
+import { SubagentRow } from "@/features/agent/ui/timeline/subagent-row";
 import {
   assistantContentCopyText,
   groupAssistantBlocks,
@@ -94,6 +95,10 @@ const AssistantBlocks = memo(function AssistantBlocks({
           ) : null}
         </div>,
       );
+      return;
+    }
+    if (item.kind === "subagent") {
+      nodes.push(<SubagentRow key={item.block.id} block={item.block} />);
       return;
     }
     nodes.push(<MemoEventBlock key={item.block.id} block={item.block} />);
