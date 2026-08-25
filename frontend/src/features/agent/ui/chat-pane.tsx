@@ -17,7 +17,7 @@ import { type FileMentionRow, type MentionRow } from "@/features/agent/ui/agent-
 import { builtinCommandProvider } from "@/features/agent/composer/builtin-commands";
 import { AutomationDrawer } from "@/features/agent/ui/automation-drawer";
 import { ComposerProjectDrawer } from "@/features/agent/ui/composer-project-drawer";
-import { SubagentList } from "@/features/agent/ui/subagent-list";
+import { TranscriptSessionContext } from "@/features/agent/ui/timeline/subagent-row";
 import { GitDiffDrawer } from "@/features/agent/ui/git-diff-drawer";
 import {
   promptTemplateCommandProvider,
@@ -162,8 +162,16 @@ function ChatTranscript({
 }) {
   const viewKey = activeTab?.piSessionId ?? activeTab?.id ?? null;
   const viewAlias = activeTab?.piSessionId ? activeTab.id : null;
+  // Subagent rows inside the transcript need the parent session to look up
+  // their live status; the memoized block layers between here and the row are
+  // exactly why this is a context and not a prop.
+  const transcriptSession = useMemo(
+    () => ({ piSessionId: activeTab?.piSessionId ?? null, cwd: cwd || null }),
+    [activeTab?.piSessionId, cwd],
+  );
   if (composerOnly) return null;
   return (
+    <TranscriptSessionContext value={transcriptSession}>
     <div className={terminalView ? "hidden" : "flex min-h-0 min-w-0 flex-1"}>
       {showEmptyPrompt ? (
         <EmptyPromptTimeline />
@@ -183,6 +191,7 @@ function ChatTranscript({
         />
       )}
     </div>
+    </TranscriptSessionContext>
   );
 }
 
@@ -693,9 +702,6 @@ export function ChatPane({
             prompt={lastUserPrompt}
             onClose={() => setAutomationDrawerOpen(false)}
           />
-        ) : null}
-        {activePiSessionId ? (
-          <SubagentList piSessionId={activePiSessionId} cwd={cwd || null} />
         ) : null}
         <AgentComposerFrame
           attachments={attachments}
