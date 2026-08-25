@@ -25,8 +25,6 @@ export type RecipeModalEnvironmentProps = {
   extraArgsText: string;
   extraArgsError: string | null;
   onExtraArgsChange: (value: string) => void;
-  llamaConfigLoading: boolean;
-  llamaConfigHelp: { config: string | null; error?: string | null } | null;
 };
 
 export type RecipeModalCommandProps = {

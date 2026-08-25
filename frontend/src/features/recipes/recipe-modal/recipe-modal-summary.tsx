@@ -9,8 +9,7 @@ import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 const BACKEND_ITEMS: SegmentedItem<Backend>[] = [
   { id: "vllm", label: "vLLM" },
   { id: "sglang", label: "SGLang" },
-  { id: "llamacpp", label: "llama.cpp" },
-  { id: "mlx", label: "MLX" },
+  { id: "exllamav3", label: "exllamav3" },
 ];
 
 export function RecipeModalSummary({

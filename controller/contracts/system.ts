@@ -17,9 +17,6 @@ export interface SystemConfig {
   models_dir: string;
   data_dir: string;
   db_path: string;
-  sglang_python: string | null;
-  llama_bin: string | null;
-  mlx_python: string | null;
 }
 
 export interface EnvironmentInfo {
@@ -36,9 +33,9 @@ export interface RuntimeBackendInfo {
   upgrade_command_available?: boolean;
 }
 
-export type EngineBackend = "vllm" | "sglang" | "llamacpp" | "mlx";
+export type EngineBackend = "vllm" | "sglang" | "exllamav3";
 
-export const RUNTIME_JOB_BACKENDS = ["vllm", "sglang", "llamacpp", "mlx", "cuda", "rocm"] as const;
+export const RUNTIME_JOB_BACKENDS = ["vllm", "sglang", "exllamav3"] as const;
 
 export type RuntimeJobBackend = (typeof RUNTIME_JOB_BACKENDS)[number];
 
@@ -97,7 +94,7 @@ export interface EngineJob {
 
 export const EngineJobSchema = Schema.Struct({
   id: Schema.String,
-  backend: Schema.Literals(["vllm", "sglang", "llamacpp", "mlx"]),
+  backend: Schema.Literals(RUNTIME_JOB_BACKENDS),
   targetId: Schema.optional(Schema.String),
   type: Schema.Literals(RUNTIME_JOB_TYPES),
   status: Schema.Literals(["queued", "running", "success", "error", "cancelled"]),
@@ -175,8 +172,7 @@ export interface SystemRuntimeInfo {
   backends: {
     vllm: RuntimeBackendInfo;
     sglang: RuntimeBackendInfo;
-    llamacpp: RuntimeBackendInfo;
-    mlx?: RuntimeBackendInfo;
+    exllamav3: RuntimeBackendInfo;
   };
 }
 

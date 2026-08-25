@@ -46,7 +46,7 @@ export const FORMAT_BLURBS: Record<ModelIndexVariantFormat, string> = {
   bf16: "Full precision — reference quality, largest download",
   fp8: "Half the weights, near-BF16 quality, needs sm_89+",
   nvfp4: "4-bit for Blackwell; falls back to slower kernels elsewhere",
-  q4: "Smallest footprint — llama.cpp / GGUF and AWQ builds",
+  q4: "Smallest footprint — AWQ and other 4-bit builds",
 };
 
 export function variantSizeGb(variant: ModelIndexVariant, model: ModelIndexModel): number | null {

@@ -3,8 +3,8 @@ import { quantizationLabels } from "@/lib/huggingface";
 const QUANTIZATION_TAGS = [
   "awq",
   "gptq",
-  "gguf",
   "exl2",
+  "exl3",
   "fp8",
   "fp16",
   "bf16",

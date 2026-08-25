@@ -9,8 +9,6 @@ import { badRequest, notFound } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
 import { effectRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import { getRocmInfo, resolveRocmSmiTool } from "../system/platform/rocm-info";
-import { getEngineSpec } from "./engine-spec";
-import { createGetObservedProcess } from "./observed-process";
 import {
   cancelEngineJob,
   createEngineJob,
@@ -18,21 +16,9 @@ import {
   listEngineJobs,
 } from "./runtimes/engine-jobs";
 import { getCudaInfo } from "./runtimes/runtime-info";
-import {
-  getDefaultRuntimeTarget,
-  getRuntimeTargets,
-  runtimeTargetToBackendInfo,
-  selectRuntimeTarget,
-} from "./runtimes/runtime-targets";
-import { getVllmConfigHelp, getVllmRuntimeInfo } from "./runtimes/vllm-runtime";
+import { getDefaultRuntimeTarget, getRuntimeTargets, runtimeTargetToBackendInfo } from "./runtimes/runtime-targets";
 
-type RuntimeJobBody = {
-  backend?: RuntimeJobBackend;
-  targetId?: string;
-  type?: RuntimeJobType;
-  version?: string;
-  preferBundled?: boolean;
-};
+/** The docker-only runtime surface: targets are pinned images, jobs are pulls. */
 
 const RuntimeJobBodySchema = Schema.Struct({
   backend: Schema.optional(Schema.Literals(RUNTIME_JOB_BACKENDS)),
@@ -44,60 +30,32 @@ const RuntimeJobBodySchema = Schema.Struct({
   args: Schema.optional(Schema.Never),
 });
 
-const parseRuntimeJobBody = (
-  ctx: Parameters<typeof decodeJsonBody>[0],
-): Effect.Effect<RuntimeJobBody, ReturnType<typeof badRequest>> =>
-  decodeJsonBody(ctx, RuntimeJobBodySchema).pipe(
-    Effect.map(
-      (body): RuntimeJobBody => ({
-        ...(body.backend ? { backend: body.backend } : {}),
-        ...(body.targetId ? { targetId: body.targetId } : {}),
-        ...(body.type ? { type: body.type } : {}),
-        ...(body.version ? { version: body.version } : {}),
-        ...(body.prefer_bundled !== undefined ? { preferBundled: body.prefer_bundled } : {}),
-      }),
-    ),
-  );
-
 export const registerRuntimeRoutes = defineRoutes((app, context) => {
-  const getObservedProcess = createGetObservedProcess(context);
+  const startPullJob = (
+    backend: RuntimeJobBackend,
+    type: RuntimeJobType,
+  ): Effect.Effect<ReturnType<typeof getEngineJob>, ReturnType<typeof badRequest>> =>
+    Effect.gen(function* () {
+      const host = yield* context.compute.host();
+      return yield* createEngineJob({ backend, type, host }).pipe(
+        Effect.mapError((error) => badRequest(error.message)),
+      );
+    });
 
   return mergeRoutes(
     effectRoute(app.get, "/runtime/targets", (ctx) =>
       Effect.gen(function* () {
-        const current = yield* getObservedProcess("runtime.targets");
-        const targets = yield* getRuntimeTargets(context.config, current);
+        const host = yield* context.compute.host();
+        const targets = yield* getRuntimeTargets(host);
         return ctx.json({ targets });
-      }),
-    ),
-
-    effectRoute(app.post, "/runtime/targets/:targetId/select", (ctx) =>
-      Effect.gen(function* () {
-        const current = yield* getObservedProcess("runtime.target.select");
-        const target = yield* selectRuntimeTarget(
-          context.config,
-          ctx.req.param("targetId") ?? "",
-          current,
-        );
-        return target
-          ? ctx.json({ target })
-          : yield* Effect.fail(notFound("Runtime target not found"));
       }),
     ),
 
     effectRoute(app.post, "/runtime/jobs", (ctx) =>
       Effect.gen(function* () {
-        const body = yield* parseRuntimeJobBody(ctx);
+        const body = yield* decodeJsonBody(ctx, RuntimeJobBodySchema);
         if (!body.backend) return yield* Effect.fail(badRequest("backend is required"));
-        const current = yield* getObservedProcess("runtime.jobs");
-        const job = yield* createEngineJob(context.config, {
-          backend: body.backend,
-          type: body.type ?? "update",
-          ...(body.targetId ? { targetId: body.targetId } : {}),
-          ...(body.version ? { version: body.version } : {}),
-          ...(body.preferBundled !== undefined ? { preferBundled: body.preferBundled } : {}),
-          runningProcess: current,
-        });
+        const job = yield* startPullJob(body.backend, body.type ?? "update");
         return ctx.json({ job });
       }),
     ),
@@ -122,41 +80,18 @@ export const registerRuntimeRoutes = defineRoutes((app, context) => {
     ),
 
     effectRoute(app.get, "/runtime/vllm", (ctx) =>
-      getVllmRuntimeInfo().pipe(Effect.map((info) => ctx.json(info))),
+      Effect.gen(function* () {
+        const host = yield* context.compute.host();
+        const target = yield* getDefaultRuntimeTarget(host, "vllm");
+        return ctx.json(runtimeTargetToBackendInfo(target));
+      }),
     ),
-
-    effectRoute(app.get, "/runtime/vllm/config", (ctx) =>
-      getVllmConfigHelp().pipe(Effect.map((config) => ctx.json(config))),
-    ),
-
-    effectRoute(app.get, "/runtime/llamacpp/config", (ctx) => {
-      const configHelp = getEngineSpec("llamacpp").getConfigHelp;
-      return configHelp
-        ? configHelp(context.config).pipe(Effect.map((config) => ctx.json(config)))
-        : Effect.fail(notFound("llama.cpp config help not available"));
-    }),
 
     effectRoute(app.get, "/runtime/sglang", (ctx) =>
       Effect.gen(function* () {
-        const current = yield* getObservedProcess("runtime.backend.sglang");
-        const target = yield* getDefaultRuntimeTarget(context.config, "sglang", current);
+        const host = yield* context.compute.host();
+        const target = yield* getDefaultRuntimeTarget(host, "sglang");
         return ctx.json(runtimeTargetToBackendInfo(target));
-      }),
-    ),
-
-    effectRoute(app.get, "/runtime/llamacpp", (ctx) =>
-      Effect.gen(function* () {
-        const current = yield* getObservedProcess("runtime.backend.llamacpp");
-        const target = yield* getDefaultRuntimeTarget(context.config, "llamacpp", current);
-        return ctx.json(runtimeTargetToBackendInfo(target));
-      }),
-    ),
-
-    effectRoute(app.get, "/runtime/mlx", (ctx) =>
-      Effect.gen(function* () {
-        const current = yield* getObservedProcess("runtime.backend.mlx");
-        const info = yield* getEngineSpec("mlx").getRuntimeInfo!(context.config, current);
-        return ctx.json(info);
       }),
     ),
 
@@ -173,17 +108,8 @@ export const registerRuntimeRoutes = defineRoutes((app, context) => {
         const requestedBackend = ctx.req.param("backend");
         const backend = RUNTIME_JOB_BACKENDS.find((value) => value === requestedBackend);
         if (!backend) return yield* Effect.fail(notFound("Unknown runtime backend"));
-        const body = yield* parseRuntimeJobBody(ctx);
-        const current = yield* getObservedProcess(`runtime.upgrade.${backend}`);
-        const job = yield* createEngineJob(context.config, {
-          backend,
-          type: "update",
-          ...(body.targetId ? { targetId: body.targetId } : {}),
-          ...(body.version ? { version: body.version.trim() } : {}),
-          ...(body.preferBundled !== undefined ? { preferBundled: body.preferBundled } : {}),
-          runningProcess: current,
-        });
-        return ctx.json({ job_id: job.id, job });
+        const job = yield* startPullJob(backend, "update");
+        return ctx.json({ job_id: job?.id ?? null, job });
       }),
     ),
   );

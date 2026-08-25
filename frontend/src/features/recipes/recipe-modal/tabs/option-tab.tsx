@@ -16,14 +16,13 @@ import {
   Zap,
 } from "@/ui/icon-registry";
 import { FormField, FormSection, Input, SegmentedControl, Slider } from "@/ui";
-import { ENGINE_LABEL, getEngineOptions } from "@/features/recipes/engine-capabilities";
+import { ENGINE_LABEL } from "@/features/recipes/engine-capabilities";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import {
   type VisionMode,
   visionForMode,
   visionModeForRecipe,
 } from "@/features/recipes/recipe-vision";
-import { EngineOptionsSection } from "../engine-options-section";
 import { createRecipeFields } from "../recipe-fields";
 import type { RecipeModalTabId } from "./tab-id";
 import type { RecipeModalSectionProps, RecipeModalTabProps } from "./tab-props";
@@ -53,7 +52,7 @@ function Context({ recipe, onChange, capabilities }: SectionProps) {
         {capabilities.contextLength
           ? field.input("max_model_len", "Context Length", {
               type: "number",
-              placeholder: capabilities.backend === "llamacpp" ? "8192" : "32768",
+              placeholder: "32768",
             })
           : null}
         {capabilities.seed
@@ -458,26 +457,11 @@ export function RecipeModalOptionTab({
   tab,
   ...props
 }: RecipeModalTabProps & { tab: OptionTabId }) {
-  const options = getEngineOptions(props.capabilities.options, tab);
   return (
     <div className="space-y-6">
       {TAB_SECTIONS[tab].map((Section, index) => (
         <Section key={index} {...props} />
       ))}
-      {options.length ? (
-        <EngineOptionsSection
-          title={`${ENGINE_LABEL[props.capabilities.backend]} ${OPTION_TITLES[tab]}`}
-          icon={<Settings className="h-4 w-4" />}
-          options={options}
-          helpText={
-            tab === "features" && props.capabilities.options === "llamacpp"
-              ? "All llama.cpp flags are supported via Extra CLI Arguments. These cover the most-used options."
-              : undefined
-          }
-          getValueForKey={props.getExtraArgValueForKey}
-          setValueForKey={props.setExtraArgValueForKey}
-        />
-      ) : null}
     </div>
   );
 }

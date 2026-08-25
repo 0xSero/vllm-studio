@@ -1,14 +1,10 @@
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { Effect } from "effect";
 import type { Config } from "../../config/env";
-import { resolveBinary } from "../../core/command";
 import {
   isInternalRecipeKey,
   isJsonStringArgumentKey,
 } from "@local-studio/contracts/engine-args";
 import { getExtraArgument } from "../engines/argument-utilities";
-import { resolveLlamaBinary } from "../engines/specs/llamacpp-spec";
 import type { GpuInfo, ProcessInfo, Recipe } from "../models/types";
 import { resolveRecipeGpuUuids } from "../system/gpu-visibility";
 import { getGpuInfo } from "../system/platform/gpu";
@@ -22,16 +18,15 @@ import type { ComputeLaunchInput, ComputeService } from "./lifecycle";
 import type { InstanceStore } from "./instances/store";
 
 /**
- * The legacy-surface bridge: everything the old engine coordinator and process manager
- * answered — "what is serving on the inference port", "what is launching", launch,
- * evict, wait-ready — answered from compute instance records instead. One model at a
- * time is preserved by giving the active model a fixed instance name and serving it on
- * the legacy inference port, so the proxy, metrics and speech surfaces are unchanged.
+ * The one-active-model surface: "what is serving on the inference port", "what is
+ * launching", launch, evict, wait-ready — answered from compute instance records.
+ * The active model gets a fixed instance name and serves on the inference port, so
+ * the proxy, metrics and speech surfaces are unchanged.
  */
 
 export const LLM_INSTANCE = "llm";
 
-export interface ComputeBridge {
+export interface ActiveModel {
   readonly findInferenceProcess: () => Effect.Effect<ProcessInfo | null>;
   readonly getCurrentRecipe: () => Effect.Effect<Recipe | null, unknown>;
   readonly launchingRecipeId: () => string | null;
@@ -41,7 +36,7 @@ export interface ComputeBridge {
   readonly waitForHealthy: (timeoutMs: number) => Effect.Effect<boolean>;
 }
 
-export interface ComputeBridgeDependencies {
+export interface ActiveModelDependencies {
   readonly config: Config;
   readonly compute: ComputeService;
   readonly store: InstanceStore;
@@ -153,48 +148,6 @@ const launchCommandOverride = (recipe: Recipe): string[] | null => {
   return argv.length > 0 ? argv : null;
 };
 
-/* ── binary resolution per backend ─────────────────────────────────────────── */
-
-const siblingBinary = (pythonPath: string | undefined | null, name: string): string | null => {
-  if (!pythonPath) return null;
-  const candidate = join(dirname(pythonPath), name);
-  return existsSync(candidate) ? candidate : null;
-};
-
-const resolveEngineBinary = (recipe: Recipe, config: Config): string | null => {
-  const recipePython = recipe.python_path && existsSync(recipe.python_path) ? recipe.python_path : null;
-  switch (recipe.backend) {
-    case "vllm":
-      return siblingBinary(recipePython, "vllm") ?? resolveBinary("vllm");
-    case "sglang":
-      return (
-        siblingBinary(recipePython ?? config.sglang_python, "sglang") ?? resolveBinary("sglang")
-      );
-    case "llamacpp": {
-      try {
-        return resolveLlamaBinary(recipe, config);
-      } catch {
-        return null;
-      }
-    }
-    case "mlx":
-      return (
-        siblingBinary(recipePython ?? config.mlx_python, "mlx_lm.server") ??
-        resolveBinary("mlx_lm.server")
-      );
-    default:
-      return null;
-  }
-};
-
-const resolveRecipeBinary = (recipe: Recipe, config: Config): string | null => {
-  if (recipe.runtime.kind === "binary" || recipe.runtime.kind === "system") {
-    return recipe.runtime.ref;
-  }
-  if (recipe.runtime.kind === "docker") return null;
-  return resolveEngineBinary(recipe, config);
-};
-
 /* ── recipe -> launch input ────────────────────────────────────────────────── */
 
 export const recipeToLaunchInput = (
@@ -205,12 +158,16 @@ export const recipeToLaunchInput = (
   const override = launchCommandOverride(recipe);
   const toolCallParser = recipe.tool_call_parser ?? getDefaultToolCallParser(recipe) ?? null;
   const reasoningParser = recipe.reasoning_parser ?? getDefaultReasoningParser(recipe) ?? null;
-  const dockerImage = recipe.runtime.kind === "docker" ? recipe.runtime.ref : null;
+  // A recipe may pin its serving image (a ref with a registry path or tag);
+  // a bare engine name or empty ref means the spec's pinned image at plan time.
+  const runtimeReference = recipe.runtime.kind === "docker" ? recipe.runtime.ref : "";
+  const dockerImage =
+    runtimeReference.includes("/") || runtimeReference.includes(":") ? runtimeReference : null;
   return {
     name: LLM_INSTANCE,
     engine: recipe.backend as EngineId,
     recipeId: recipe.id,
-    runtime: dockerImage ? "docker" : "process",
+    runtime: "docker",
     deviceCount: devices.length,
     ...(devices.length > 0 ? { devices } : {}),
     portOverride: recipe.port || config.inference_port,
@@ -232,16 +189,15 @@ export const recipeToLaunchInput = (
     extraArgs: serializeRecipeExtraArguments(recipe),
     env: recipe.env_vars ?? {},
     dockerImage,
-    binary: resolveRecipeBinary(recipe, config),
     ...(override ? { commandOverride: override } : {}),
   };
 };
 
-/* ── the bridge ────────────────────────────────────────────────────────────── */
+/* ── the surface ───────────────────────────────────────────────────────────── */
 
 const RUNNING_STATES = new Set(["starting", "ready", "unhealthy"]);
 
-export const createComputeBridge = (deps: ComputeBridgeDependencies): ComputeBridge => {
+export const createActiveModel = (deps: ActiveModelDependencies): ActiveModel => {
   const llmRecord = (): InstanceRecord | null => deps.store.read(LLM_INSTANCE);
 
   const findInferenceProcess = (): Effect.Effect<ProcessInfo | null> =>
@@ -253,10 +209,9 @@ export const createComputeBridge = (deps: ComputeBridgeDependencies): ComputeBri
       const recipe = yield* deps
         .getRecipe(record.recipeId)
         .pipe(Effect.catch(() => Effect.succeed(null)));
-      const backend = record.engine === "exllamav3" ? "unknown" : record.engine;
       return {
-        pid: record.ref.kind === "process" ? record.ref.pid : 0,
-        backend,
+        pid: 0,
+        backend: record.engine,
         model_path: recipe?.model_path ?? null,
         port: record.port,
         served_model_name: recipe?.served_model_name ?? null,

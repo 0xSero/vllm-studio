@@ -1,62 +1,245 @@
-import { Effect } from "effect";
+import { performance } from "node:perf_hooks";
+import { Effect, Stream } from "effect";
 import type { Context } from "hono";
-import { HttpStatus } from "../../core/errors";
+import { HttpStatus, notFound } from "../../core/errors";
 import { buildSseHeaders } from "../../http/sse";
 import { defineRoutes, effectRoute, mergeRoutes } from "../../http/route-registrar";
 import type { ControllerEffect, ControllerEnvironment } from "../../http/effect-handler";
-import { findRecipeByModel, resolveUpstreamForModel } from "./chat-request";
+import { isRecipeRunning } from "../models/recipes/recipe-matching";
+import type { Recipe } from "../models/types";
+import { DEFAULT_CHAT_PROVIDER } from "../../services/provider-routing";
+import {
+  createNonRunningModelWarner,
+  ensureStreamingUsageIncluded,
+  extractSessionId,
+  findRecipeByModel,
+  resolveUpstreamForModel,
+} from "./chat-request";
+import {
+  recordNonStreamingInferenceUsage,
+  recordStreamingInferenceUsage,
+  type InferenceUsageInput,
+} from "./inference-accounting";
+import { createUsageObserver, usageFromPayload, type ProxyDialect } from "./usage-observer";
 
 /**
- * Pass-through for the OpenAI Responses API and the Anthropic Messages API.
+ * The one inference proxy: OpenAI chat completions, OpenAI Responses, and
+ * Anthropic Messages, all served the same way. The engines this controller
+ * launches speak all three dialects natively — vLLM and SGLang serve
+ * /v1/responses and /v1/messages beside /v1/chat/completions — so the
+ * controller's job is routing, auth, and recording, never translation.
  *
- * The engines this controller launches already speak these dialects — vLLM and
- * SGLang serve /v1/responses and /v1/messages beside /v1/chat/completions — so
- * the controller's job here is routing and auth, not translation. The body is
- * forwarded verbatim except for the model field, which is resolved the same
- * two ways as chat: a "provider/model" id routes to that configured provider
- * with its key, and anything else is canonicalized against the recipe store so
- * aliases reach the engine under its served model name. Streams pass through
- * byte-for-byte; each dialect frames its own protocol and heartbeats.
+ * The request body is forwarded verbatim except for the model field (resolved
+ * against the recipe store so aliases reach the engine under its served model
+ * name, or rewritten for a configured "provider/model" route) and, for chat
+ * streams, stream_options.include_usage so usage can be recorded. Responses
+ * stream back byte-for-byte; a side observer reads token usage out of the
+ * frames without touching them.
  */
-type PassthroughPath = "/v1/responses" | "/v1/messages";
+
+const KEEPALIVE_INTERVAL_MS = 15_000;
+
+interface DialectRoute {
+  dialect: ProxyDialect;
+  path: "/v1/chat/completions" | "/v1/responses" | "/v1/messages";
+}
+
+const DIALECTS: readonly DialectRoute[] = [
+  { dialect: "chat", path: "/v1/chat/completions" },
+  { dialect: "responses", path: "/v1/responses" },
+  { dialect: "messages", path: "/v1/messages" },
+];
 
 /** Client protocol headers each dialect expects the upstream to see. */
 const FORWARDED_HEADERS = ["anthropic-version", "anthropic-beta", "openai-beta"] as const;
 
+export interface ModelNotRunningError {
+  error: { message: string; type: "model_not_running"; code: "model_not_running" };
+  detail: string;
+}
+
+export const modelNotRunningError = (
+  activeModel: string | null,
+  requestedModel: string | null | undefined,
+): ModelNotRunningError => {
+  const message = activeModel
+    ? `Model ${activeModel} is running; ${requestedModel} is not. Launch it from the frontend before sending requests.`
+    : `No model is running. Launch ${requestedModel} from the frontend before sending requests.`;
+  return {
+    error: { message, type: "model_not_running", code: "model_not_running" },
+    detail: message,
+  };
+};
+
+const errorFrame = (message: string): Uint8Array =>
+  new TextEncoder().encode(
+    `data: ${JSON.stringify({ error: { message, type: "upstream_error" } })}\n\n`,
+  );
+
 export const registerPassthroughRoutes = defineRoutes((app, context) => {
-  const resolveUpstream = (
-    path: PassthroughPath,
+  const warnNonRunningModel = createNonRunningModelWarner(context.logger);
+
+  const gateOnRunningModel = (
+    matchedRecipe: Recipe,
     requestedModel: string | null,
-    parsed: Record<string, unknown>,
-  ): Effect.Effect<{ upstreamUrl: string; auth: Record<string, string> }, unknown> => {
-    const { upstreamUrl, auth, providerRouting } = resolveUpstreamForModel(
-      requestedModel,
-      parsed,
-      path,
-      context,
-      { includeXApiKey: true },
-    );
-    if (providerRouting || !requestedModel) {
-      return Effect.succeed({ upstreamUrl, auth });
-    }
-    return findRecipeByModel(requestedModel, context).pipe(
-      Effect.map((recipe) => {
-        if (recipe?.served_model_name) parsed["model"] = recipe.served_model_name;
-        return { upstreamUrl, auth };
+    sourceHeader: string | null,
+  ): Effect.Effect<ModelNotRunningError | null, unknown> =>
+    context.compute.model.findInferenceProcess().pipe(
+      Effect.map((current) => {
+        const matches =
+          current && isRecipeRunning(matchedRecipe, current, { allowEitherPathContains: true });
+        if (matches) return null;
+        const activeModel = current?.served_model_name ?? current?.model_path ?? null;
+        warnNonRunningModel({
+          requestedModel,
+          requestedRecipeId: matchedRecipe.id,
+          activeModel,
+          source: sourceHeader,
+        });
+        return modelNotRunningError(activeModel, requestedModel);
       }),
     );
+
+  const streamedResponse = (input: {
+    dialect: ProxyDialect;
+    upstream: Response;
+    body: ReadableStream<Uint8Array>;
+    clientSignal: AbortSignal;
+    record: {
+      model: string;
+      source: string | null;
+      session_id: string | null;
+      provider: string;
+    };
+    requestStart: number;
+  }): Response => {
+    const merged: InferenceUsageInput = {};
+    let sawUsage = false;
+    let ttftMs: number | null = null;
+    const observed = input.body.pipeThrough(
+      createUsageObserver(input.dialect, {
+        onUsage: (usage) => {
+          sawUsage = true;
+          Object.assign(merged, usage);
+        },
+        onFirstFrame: () => {
+          ttftMs ??= Math.max(0, Math.round(performance.now() - input.requestStart));
+        },
+      }),
+    );
+    const upstream = Stream.fromReadableStream({
+      evaluate: () => observed,
+      onError: (source) => source,
+    }).pipe(
+      Stream.catchCause((cause) => {
+        if (!input.clientSignal.aborted) {
+          context.logger.error("Passthrough stream failed", { error: String(cause) });
+        }
+        return Stream.empty;
+      }),
+      Stream.ensuring(
+        Effect.suspend(() =>
+          sawUsage
+            ? recordStreamingInferenceUsage(
+                { logger: context.logger, stores: context.stores },
+                {
+                  usage: merged,
+                  record: {
+                    ...input.record,
+                    ttft_ms: ttftMs,
+                    duration_ms: Math.round(performance.now() - input.requestStart),
+                    status: input.upstream.status,
+                  },
+                },
+              ).pipe(
+                Effect.catch((error) =>
+                  Effect.sync(() =>
+                    context.logger.warn("Streaming accounting failed", { error: String(error) }),
+                  ),
+                ),
+              )
+            : Effect.void,
+        ),
+      ),
+    );
+    // Chat clients idle through long generations behind proxies that time out
+    // silent connections; SSE comment keepalives are protocol-invisible. The
+    // other dialects heartbeat themselves (Messages sends ping events).
+    const keepalive = new TextEncoder().encode(": keepalive\n\n");
+    const heartbeat = Stream.concat(
+      Stream.succeed(keepalive),
+      Stream.tick(KEEPALIVE_INTERVAL_MS).pipe(Stream.map(() => keepalive)),
+    );
+    const stream =
+      input.dialect === "chat"
+        ? Stream.merge(upstream, heartbeat, { haltStrategy: "left" })
+        : upstream;
+    return new Response(Stream.toReadableStream(stream), {
+      status: input.upstream.status,
+      headers: buildSseHeaders(),
+    });
   };
 
   const forward =
-    (path: PassthroughPath) =>
+    ({ dialect, path }: DialectRoute) =>
     (ctx: Context<ControllerEnvironment>): ControllerEffect<Response, unknown> =>
       Effect.gen(function* () {
-        const parsed = yield* Effect.tryPromise({
+        const clientSignal = ctx.req.raw.signal;
+        const bodyRead = yield* Effect.tryPromise({
           try: () => ctx.req.json<Record<string, unknown>>(),
           catch: () => new HttpStatus({ status: 400, detail: "Invalid JSON request body" }),
-        });
-        const requestedModel = typeof parsed["model"] === "string" ? parsed["model"] : null;
-        const { upstreamUrl, auth } = yield* resolveUpstream(path, requestedModel, parsed);
+        }).pipe(
+          Effect.match({
+            onFailure: (error) => ({ ok: false as const, error }),
+            onSuccess: (value) => ({ ok: true as const, value }),
+          }),
+        );
+        if (!bodyRead.ok) {
+          return clientSignal.aborted
+            ? new Response(null, { status: 499 })
+            : yield* Effect.fail(bodyRead.error);
+        }
+        const parsed: Record<string, unknown> = { ...bodyRead.value };
+        const sessionId = extractSessionId(parsed, (name) => ctx.req.header(name));
+        const sourceHeader =
+          ctx.req.header("x-vllm-source") ??
+          ctx.req.header("x-source") ??
+          ctx.req.header("user-agent") ??
+          null;
+
+        let requestedModel = typeof parsed["model"] === "string" ? parsed["model"] : null;
+        let matchedRecipe: Recipe | null = null;
+        if (requestedModel) {
+          matchedRecipe = yield* findRecipeByModel(requestedModel, context);
+          const canonical = matchedRecipe?.served_model_name ?? matchedRecipe?.id;
+          if (canonical && canonical !== requestedModel) {
+            parsed["model"] = canonical;
+            requestedModel = canonical;
+          }
+        }
+        const { upstreamUrl, auth, requestProvider, providerRouting } = resolveUpstreamForModel(
+          requestedModel,
+          parsed,
+          path,
+          context,
+          { includeXApiKey: true },
+        );
+
+        if (
+          !matchedRecipe &&
+          requestProvider === DEFAULT_CHAT_PROVIDER &&
+          requestedModel &&
+          context.config.strict_openai_models
+        ) {
+          return yield* Effect.fail(notFound(`Model not managed: ${requestedModel}`));
+        }
+        if (matchedRecipe) {
+          const rejection = yield* gateOnRunningModel(matchedRecipe, requestedModel, sourceHeader);
+          if (rejection) return ctx.json(rejection, { status: 503 });
+        }
+
+        const isStreaming = Boolean(parsed["stream"]);
+        if (dialect === "chat") ensureStreamingUsageIncluded(parsed);
 
         const headers: Record<string, string> = { "Content-Type": "application/json", ...auth };
         for (const name of FORWARDED_HEADERS) {
@@ -64,7 +247,14 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
           if (value) headers[name] = value;
         }
 
-        const clientSignal = ctx.req.raw.signal;
+        const requestStart = performance.now();
+        const record = {
+          model: matchedRecipe?.served_model_name ?? matchedRecipe?.id ?? requestedModel ?? "unknown",
+          source: sourceHeader,
+          session_id: sessionId,
+          provider: providerRouting ? requestProvider : "local",
+        };
+
         const fetched = yield* Effect.tryPromise({
           try: (signal) =>
             fetch(upstreamUrl, {
@@ -78,28 +268,74 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
               status: 503,
               detail: `The inference engine did not answer ${path}. It may still be starting, or this engine may not serve this API.`,
             }),
-        });
+        }).pipe(
+          Effect.match({
+            onFailure: (error) => ({ ok: false as const, error }),
+            onSuccess: (value) => ({ ok: true as const, value }),
+          }),
+        );
         if (clientSignal.aborted) return new Response(null, { status: 499 });
+        if (!fetched.ok) {
+          // A chat client that asked for a stream reads SSE frames, not a JSON
+          // error status; surface connection failures inside the protocol.
+          if (dialect === "chat" && isStreaming) {
+            return new Response(errorFrame("Inference backend unavailable").slice().buffer, {
+              headers: buildSseHeaders(),
+            });
+          }
+          return yield* Effect.fail(fetched.error);
+        }
+        const upstream = fetched.value;
 
-        const contentType = fetched.headers.get("content-type") ?? "";
-        if (contentType.includes("text/event-stream") && fetched.body) {
-          return new Response(fetched.body, {
-            status: fetched.status,
-            headers: buildSseHeaders(),
+        const contentType = upstream.headers.get("content-type") ?? "";
+        if (contentType.includes("text/event-stream") && upstream.body) {
+          return streamedResponse({
+            dialect,
+            upstream,
+            body: upstream.body,
+            clientSignal,
+            record,
+            requestStart,
           });
         }
+
         const body = yield* Effect.tryPromise({
-          try: () => fetched.arrayBuffer(),
+          try: () => upstream.arrayBuffer(),
           catch: () => new HttpStatus({ status: 502, detail: "Upstream response unreadable" }),
         });
+        yield* Effect.try({
+          try: () => JSON.parse(new TextDecoder().decode(body)) as unknown,
+          catch: () => null,
+        }).pipe(
+          Effect.flatMap((payload) => {
+            const usage =
+              payload && typeof payload === "object" && !Array.isArray(payload)
+                ? usageFromPayload(dialect, payload as Record<string, unknown>)
+                : null;
+            return recordNonStreamingInferenceUsage(
+              { logger: context.logger, stores: context.stores },
+              {
+                usage: usage ?? undefined,
+                record: {
+                  ...record,
+                  duration_ms: Math.round(performance.now() - requestStart),
+                  status: upstream.status,
+                },
+              },
+            );
+          }),
+          Effect.catch(() => Effect.succeed(null)),
+        );
         return new Response(body, {
-          status: fetched.status,
+          status: upstream.status,
           headers: { "Content-Type": contentType || "application/json" },
         });
       });
 
+  const [chat, responses, messages] = DIALECTS;
   return mergeRoutes(
-    effectRoute(app.post, "/v1/responses", forward("/v1/responses")),
-    effectRoute(app.post, "/v1/messages", forward("/v1/messages")),
+    effectRoute(app.post, chat!.path, forward(chat!)),
+    effectRoute(app.post, responses!.path, forward(responses!)),
+    effectRoute(app.post, messages!.path, forward(messages!)),
   );
 });

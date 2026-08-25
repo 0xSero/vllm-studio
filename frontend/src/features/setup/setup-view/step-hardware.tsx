@@ -34,10 +34,7 @@ export function StepHardware({
   continueFromHardware: () => void;
 }) {
   const hardware = buildHardwareSummary(diagnostics);
-  const managedBackends =
-    diagnostics?.platform === "darwin" && diagnostics.arch === "arm64"
-      ? (["mlx"] as const)
-      : MANAGED_RUNTIME_BACKENDS;
+  const managedBackends = MANAGED_RUNTIME_BACKENDS;
   const visibleTargets = runtimeTargets
     .filter(
       (target) =>

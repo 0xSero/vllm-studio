@@ -72,8 +72,7 @@ function backendFacts(summary: RuntimeSummaryData) {
   const entries: Array<[string, RuntimeBackendInfo | undefined]> = [
     ["vllm", summary.backends.vllm],
     ["sglang", summary.backends.sglang],
-    ["llama.cpp", summary.backends.llamacpp],
-    ["mlx", summary.backends.mlx],
+    ["exllamav3", summary.backends.exllamav3],
   ];
   return entries
     .filter(([, info]) => Boolean(info))

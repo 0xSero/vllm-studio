@@ -28,9 +28,6 @@ export interface Config {
   data_dir: string;
   db_path: string;
   models_dir: string;
-  sglang_python?: string;
-  llama_bin?: string;
-  mlx_python?: string;
   strict_openai_models: boolean;
   providers: ProviderConfig[];
 }
@@ -95,9 +92,6 @@ export const createConfig = (): Config => {
     LOCAL_STUDIO_DATA_DIR: Schema.String,
     LOCAL_STUDIO_DB_PATH: Schema.optional(Schema.String),
     LOCAL_STUDIO_MODELS_DIR: Schema.String,
-    LOCAL_STUDIO_SGLANG_PYTHON: Schema.optional(Schema.String),
-    LOCAL_STUDIO_LLAMA_BIN: Schema.optional(Schema.String),
-    LOCAL_STUDIO_MLX_PYTHON: Schema.optional(Schema.String),
     LOCAL_STUDIO_STRICT_OPENAI_MODELS: Schema.optional(Schema.String),
   });
 
@@ -168,15 +162,6 @@ export const createConfig = (): Config => {
     );
   }
 
-  if (parsed.LOCAL_STUDIO_SGLANG_PYTHON) {
-    config.sglang_python = parsed.LOCAL_STUDIO_SGLANG_PYTHON;
-  }
-  if (parsed.LOCAL_STUDIO_LLAMA_BIN) {
-    config.llama_bin = parsed.LOCAL_STUDIO_LLAMA_BIN;
-  }
-  if (parsed.LOCAL_STUDIO_MLX_PYTHON) {
-    config.mlx_python = parsed.LOCAL_STUDIO_MLX_PYTHON;
-  }
 
   const persisted = loadPersistedConfig(config.data_dir);
   if (persisted.models_dir) {

@@ -16,8 +16,6 @@ export function RecipeModalTabEnvironment({
   extraArgsText,
   extraArgsError,
   onExtraArgsChange,
-  llamaConfigLoading,
-  llamaConfigHelp,
 }: {
   recipe: RecipeEditor;
   onChange: (next: RecipeEditor) => void;
@@ -29,20 +27,9 @@ export function RecipeModalTabEnvironment({
   extraArgsText: string;
   extraArgsError: string | null;
   onExtraArgsChange: (value: string) => void;
-  llamaConfigLoading: boolean;
-  llamaConfigHelp: { config: string | null; error?: string | null } | null;
 }) {
-  const isLlamacpp = capabilities.backend === "llamacpp";
-
   return (
     <div className="space-y-6">
-      {isLlamacpp ? (
-        <p className="text-xs text-(--ui-muted)">
-          llama.cpp uses the configured server binary. Set{" "}
-          <span className="font-mono">LOCAL_STUDIO_LLAMA_BIN</span> if you need a custom path.
-        </p>
-      ) : null}
-
       <FormSection icon={<Variable className="h-4 w-4" />} title="Environment Variables">
         <div className="space-y-2">
           {envVarEntries.map((entry, index) => (
@@ -105,26 +92,6 @@ export function RecipeModalTabEnvironment({
         </p>
       </FormSection>
 
-      {isLlamacpp ? (
-        <details className="overflow-hidden rounded-md border border-(--ui-border) bg-(--ui-bg)">
-          <summary className="cursor-pointer border-b border-(--ui-border) bg-(--ui-surface) px-3 py-2 text-xs text-(--ui-muted)">
-            llama.cpp CLI Reference
-          </summary>
-          <div className="px-3 py-2">
-            {llamaConfigLoading ? (
-              <div className="text-xs text-(--ui-muted)">Loading llama.cpp config…</div>
-            ) : null}
-            {!llamaConfigLoading && llamaConfigHelp?.error ? (
-              <div className="text-xs text-(--ui-danger)">{llamaConfigHelp.error}</div>
-            ) : null}
-            {!llamaConfigLoading && !llamaConfigHelp?.error ? (
-              <pre className="whitespace-pre-wrap text-xs text-(--ui-muted)">
-                {llamaConfigHelp?.config ?? "No config data returned."}
-              </pre>
-            ) : null}
-          </div>
-        </details>
-      ) : null}
     </div>
   );
 }

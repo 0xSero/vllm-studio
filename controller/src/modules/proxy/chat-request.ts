@@ -9,7 +9,6 @@ import {
   resolveConfiguredProviderConfig,
   type ProviderRouteConfig,
 } from "../../services/provider-routing";
-import type { InferenceUsageTotals } from "./inference-accounting";
 const PROXY_SESSION_HEADER_NAMES = [
   "x-vllm-session-id",
   "x-session-id",
@@ -80,27 +79,6 @@ export const extractSessionId = (
   }
 
   return null;
-};
-
-export const attachSessionUsage = (
-  result: Record<string, unknown>,
-  sessionId: string | null,
-  totals: InferenceUsageTotals | null,
-): void => {
-  if (!sessionId) return;
-
-  const promptTokens = totals?.promptTokens ?? 0;
-  const completionTokens = totals?.completionTokens ?? 0;
-
-  result["session_id"] = sessionId;
-  result["session_usage"] = {
-    prompt_tokens: promptTokens,
-    completion_tokens: completionTokens,
-    total_tokens: promptTokens + completionTokens,
-    current_prompt_tokens: promptTokens,
-    current_completion_tokens: completionTokens,
-    current_reasoning_tokens: totals?.reasoningTokens ?? 0,
-  };
 };
 
 export const findRecipeByModel = (

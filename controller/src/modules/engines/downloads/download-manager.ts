@@ -15,7 +15,7 @@ import type { Config } from "../../../config/env";
 import type { Logger } from "../../../core/logger";
 import { Event, type EventManager } from "../../system/event-manager";
 import { DOWNLOAD_DEFAULT_IGNORE_FILENAMES, DOWNLOAD_PROGRESS_THROTTLE_MS } from "../configs";
-import { type EngineOperationError } from "../engine-spec";
+import { type EngineOperationError } from "../engine-operation";
 import { attempt, operationError } from "../engine-operation";
 import type { DownloadFileInfo, DownloadStatus, ModelDownload } from "../types";
 import type { DownloadStore } from "./download-store";

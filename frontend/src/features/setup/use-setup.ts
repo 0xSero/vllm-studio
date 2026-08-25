@@ -30,11 +30,10 @@ import {
 } from "./setup-actions";
 import { useSetupBenchmark } from "./use-setup-benchmark";
 import { selectSetupDownload } from "./setup-downloads";
-import { ggufFileOptions, manualDownloadPreset, type GgufFileOption } from "./setup-model-files";
 import { loadSetupProgress, updateSetupProgress } from "./setup-progress";
 import type { HuggingFaceModelCardPayload } from "@/lib/huggingface";
 
-type ManagedSetupBackend = Extract<EngineBackend, "vllm" | "sglang" | "mlx">;
+type ManagedSetupBackend = Extract<EngineBackend, "vllm" | "sglang" | "exllamav3">;
 
 export function useSetup() {
   const router = useRouter();
@@ -58,8 +57,6 @@ export function useSetup() {
   const [maxVram, setMaxVram] = useState(0);
   const [selectedModel, setSelectedModel] = useState(initialProgress.selectedModel);
   const [manualModelId, setManualModelIdState] = useState(initialProgress.manualModelId);
-  const [manualGgufOptions, setManualGgufOptions] = useState<GgufFileOption[]>([]);
-  const [manualGgufFile, setManualGgufFile] = useState("");
   const [resolvingManualModel, setResolvingManualModel] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
@@ -79,8 +76,6 @@ export function useSetup() {
 
   const setManualModelId = useCallback((value: string) => {
     setManualModelIdState(value);
-    setManualGgufOptions([]);
-    setManualGgufFile("");
     updateSetupProgress({ manualModelId: value });
   }, []);
 
@@ -277,13 +272,8 @@ export function useSetup() {
       );
       const payload = (await response.json()) as HuggingFaceModelCardPayload & { error?: string };
       if (!response.ok) throw new Error(payload.error || "Failed to inspect the model repository");
-      const options = ggufFileOptions(payload);
-      setManualGgufOptions(options);
-      const selected =
-        options.find((option) => option.value === manualGgufFile) ??
-        (options.length === 1 ? options[0] : undefined);
-      if (options.length > 1 && !selected) return;
-      await beginDownload(trimmed, manualDownloadPreset(trimmed, selected));
+      if (payload.error) throw new Error(payload.error);
+      await beginDownload(trimmed, undefined);
     } catch (cause) {
       if (!(cause instanceof DOMException && cause.name === "AbortError")) {
         setError(cause instanceof Error ? cause.message : "Failed to inspect the model repository");
@@ -291,7 +281,7 @@ export function useSetup() {
     } finally {
       setResolvingManualModel(false);
     }
-  }, [beginDownload, lifecycle, manualGgufFile, manualModelId, resolvingManualModel]);
+  }, [beginDownload, lifecycle, manualModelId, resolvingManualModel]);
   const continueFromHardware = useCallback(() => {
     if (!hardwareConfirmed) return;
     setStep(2);
@@ -353,9 +343,6 @@ export function useSetup() {
     selectedModel,
     manualModelId,
     setManualModelId,
-    manualGgufOptions,
-    manualGgufFile,
-    setManualGgufFile,
     resolvingManualModel,
     savingSettings,
     upgrading,

@@ -13,9 +13,6 @@ import type {
   StorageInfo,
   StudioDiagnostics,
   StudioSettings,
-  RuntimeBackendInfo,
-  RuntimeCudaInfo,
-  RuntimeRocmInfo,
   RuntimeTarget,
 } from "../types";
 import { encodePathSegments, type ApiCore, type RequestOptions } from "./core";
@@ -33,23 +30,6 @@ export interface StudioModelsRoot {
   exists: boolean;
   sources?: string[];
   recipe_ids?: string[];
-}
-
-export interface VllmRuntimeInfo {
-  installed: boolean;
-  version: string | null;
-  python_path: string | null;
-  vllm_bin: string | null;
-  upgrade_command_available?: boolean;
-  bundled_wheel: {
-    path: string;
-    version: string | null;
-  } | null;
-}
-
-export interface VllmRuntimeConfig {
-  config: string | null;
-  error?: string | null;
 }
 
 export interface RuntimeJobResponse {
@@ -224,8 +204,6 @@ export function createStudioApi(core: ApiCore) {
       }>;
     }> => core.request("/studio/provider-models"),
 
-    getVllmRuntime: (): Promise<VllmRuntimeInfo> => core.request("/runtime/vllm"),
-
     getRuntimeTargets: (): Promise<{ targets: RuntimeTarget[] }> =>
       core.request("/runtime/targets"),
 
@@ -249,23 +227,8 @@ export function createStudioApi(core: ApiCore) {
     cancelRuntimeJob: (id: string): Promise<{ job: EngineJob }> =>
       core.request(`/runtime/jobs/${encodePathSegments(id)}/cancel`, { method: "POST" }),
 
-    getVllmRuntimeConfig: (): Promise<VllmRuntimeConfig> => core.request("/runtime/vllm/config"),
-
-    getSglangRuntime: (): Promise<RuntimeBackendInfo> => core.request("/runtime/sglang"),
-
-    getLlamacppRuntime: (): Promise<RuntimeBackendInfo> => core.request("/runtime/llamacpp"),
-
-    getMlxRuntime: (): Promise<RuntimeBackendInfo> => core.request("/runtime/mlx"),
-
-    getLlamacppRuntimeConfig: (): Promise<{ config: string | null; error?: string | null }> =>
-      core.request("/runtime/llamacpp/config"),
-
-    getCudaRuntime: (): Promise<RuntimeCudaInfo> => core.request("/runtime/cuda"),
-
-    getRocmRuntime: (): Promise<RuntimeRocmInfo> => core.request("/runtime/rocm"),
-
     upgradeRuntime: (
-      backend: "vllm" | "sglang" | "llamacpp" | "mlx" | "cuda" | "rocm",
+      backend: "vllm" | "sglang" | "exllamav3",
       payload: { preferBundled?: boolean; version?: string; targetId?: string } = {},
     ): Promise<RuntimeJobResponse> =>
       core.request(`/runtime/${backend}/upgrade`, {

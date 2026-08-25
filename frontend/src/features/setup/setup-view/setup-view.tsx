@@ -21,7 +21,6 @@ import { StepBringup } from "./step-bringup";
 import { StepHardware } from "./step-hardware";
 import { StepModel } from "./step-model";
 import { StepWelcome } from "./step-welcome";
-import type { GgufFileOption } from "../setup-model-files";
 
 interface SetupBenchmarkResult {
   prompt_tokens: number;
@@ -54,9 +53,6 @@ interface SetupViewProps {
   selectedModel: string;
   manualModelId: string;
   setManualModelId: (value: string) => void;
-  manualGgufOptions: GgufFileOption[];
-  manualGgufFile: string;
-  setManualGgufFile: (value: string) => void;
   resolvingManualModel: boolean;
   savingSettings: boolean;
   upgrading: boolean;
@@ -173,9 +169,6 @@ export function SetupView(props: SetupViewProps) {
           maxVram={props.maxVram}
           manualModelId={props.manualModelId}
           setManualModelId={props.setManualModelId}
-          manualGgufOptions={props.manualGgufOptions}
-          manualGgufFile={props.manualGgufFile}
-          setManualGgufFile={props.setManualGgufFile}
           resolvingManualModel={props.resolvingManualModel}
           beginVariantDownload={props.beginVariantDownload}
           submitManualModel={props.submitManualModel}

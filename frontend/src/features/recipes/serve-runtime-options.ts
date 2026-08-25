@@ -58,11 +58,11 @@ export const runtimeOptionsFor = (
   const options: ServeRuntimeOption[] = [
     {
       id: runtimeId(defaultRuntime),
-      label: defaultRuntime.label ?? `Managed ${ENGINE_LABEL[backend]}`,
-      detail: managed?.version ? `managed venv · ${managed.version}` : "managed by Local Studio",
+      label: defaultRuntime.label ?? `${ENGINE_LABEL[backend]} (Docker)`,
+      detail: managed?.version ? `pinned image · ${managed.version}` : "engine's pinned image",
       runtime: defaultRuntime,
-      installed: backend === "llamacpp" ? Boolean(managed) : Boolean(managed?.installed),
-      canInstall: backend !== "llamacpp" && !managed?.installed,
+      installed: Boolean(managed?.installed),
+      canInstall: !managed?.installed,
       version: managed?.version ?? null,
     },
   ];

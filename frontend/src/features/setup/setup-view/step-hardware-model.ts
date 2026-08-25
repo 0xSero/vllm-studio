@@ -17,7 +17,7 @@ function isAppleSilicon(diagnostics: StudioDiagnostics | null): boolean {
 }
 
 function runtimeDescription(diagnostics: StudioDiagnostics | null, appleSilicon: boolean): string {
-  if (appleSilicon) return "Apple Silicon detected. Use MLX or llama.cpp with Metal acceleration.";
+  if (appleSilicon) return "Apple Silicon detected. Local serving engines need a CUDA or ROCm GPU; connect a remote endpoint instead.";
   if (diagnostics?.runtime.vllm_installed) {
     return `vLLM ${diagnostics.runtime.vllm_version ?? ""} detected.`;
   }
