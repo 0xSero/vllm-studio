@@ -841,3 +841,41 @@ export async function loadSession(
   }
   return { events: activeBranchEvents(filepath, events), cursor, meta: null };
 }
+
+/* ── canonical snapshot (docs/agent-state-plan.md Stage 0) ─────────────────── */
+
+import type { SessionSnapshot } from "@earendil-works/pi-protocol";
+import { projectSnapshot } from "./projection";
+
+/**
+ * Project a settled on-disk session into the same SessionSnapshot shape the
+ * live runtime serves, via the same projector — one projection for live and
+ * replay, which is the point. The active branch (root → leaf) is the
+ * transcript; compaction summaries and label entries are not messages and
+ * fall out naturally.
+ */
+export function canonicalSessionSnapshot(
+  cwd: string,
+  piSessionId: string,
+): SessionSnapshot | null {
+  const file = findSessionFile(cwd, piSessionId);
+  if (!file) return null;
+  const manager = SessionManager.open(file);
+  const messages = manager
+    .getBranch()
+    .filter(
+      (entry): entry is Extract<typeof entry, { type: "message" }> => entry.type === "message",
+    )
+    .map((entry) => entry.message);
+  return projectSnapshot({
+    sessionId: manager.getSessionId() || piSessionId,
+    sessionName: manager.getSessionName(),
+    cwd: manager.getCwd() || cwd,
+    messages,
+    phase: "idle",
+    model: { provider: "unknown", id: "unknown" },
+    thinkingLevel: "off",
+    queuedSteer: [],
+    revision: 0,
+  });
+}

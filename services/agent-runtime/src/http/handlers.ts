@@ -434,10 +434,12 @@ export function handleRuntimeStatus(request: Request): Response {
     Number.isFinite(after) ? after : 0,
     resolved.session.status.eventSeq,
   );
+  const includeSnapshot = searchParams.get("snapshot") === "1";
   return Response.json({
     sessionId: resolved.sessionId,
     status: resolved.session.status,
     events: resolved.session.getEventsAfter(afterSeq),
+    ...(includeSnapshot ? { snapshot: resolved.session.snapshot() } : {}),
   });
 }
 
@@ -480,12 +482,20 @@ export function handleRuntimeEvents(request: Request): Response {
         send(encode(payload, id));
       };
 
+      const sendSnapshot = () => {
+        const snapshot = session.snapshot();
+        if (snapshot) safeSend({ type: "snapshot", revision: snapshot.revision, snapshot });
+      };
       const sendLogged = (logged: LoggedPiEvent) => {
         after = replayAfterCursor(after, session.status.eventSeq);
         if (logged.seq <= after || sentSeqs.has(logged.seq)) return;
         sentSeqs.add(logged.seq);
         safeSend({ type: "pi", seq: logged.seq, event: logged.event }, logged.seq);
+        for (const progress of logged.progress ?? []) {
+          safeSend({ type: "progress", revision: logged.revision ?? 0, progress });
+        }
         if (isAgentSettledEvent(logged.event)) {
+          sendSnapshot();
           safeSend({ type: "status", phase: "done", session: session.status });
           setTimeout(close, 25);
         }
@@ -499,6 +509,9 @@ export function handleRuntimeEvents(request: Request): Response {
       };
 
       off = session.onLoggedEvent(onLiveEvent);
+      // Snapshot-first: a client that understands snapshots needs nothing
+      // else to render; the event backlog below remains for the legacy path.
+      sendSnapshot();
       const backlog = session.getEventsAfter(after);
       const initialPhase = initialRuntimeStatusPhase(session.status.active, backlog.length);
       if (initialPhase) {

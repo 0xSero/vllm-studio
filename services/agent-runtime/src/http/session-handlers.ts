@@ -3,7 +3,7 @@ import type { AggregatedSession } from "../../../../shared/agent/session-summary
 import { browserHost } from "../browser-host/browser-host";
 import { listProjectsFromStore, resolveAllowedWorkspace } from "../projects-store";
 import { listArchivedSessionMetadata, setSessionArchived } from "../session-metadata-store";
-import { listSessions, loadSession } from "../pi/sessions";
+import { listSessions, loadSession, canonicalSessionSnapshot } from "../pi/sessions";
 import { errorMessage, jsonError } from "./helpers";
 
 function parseRelativeSince(value: string | null): Date | null {
@@ -142,6 +142,11 @@ export async function handleSessionGet(request: Request, id: string): Promise<Re
   if (!cwdValue) return jsonError("cwd is required");
   const cwd = existingWorkspace(cwdValue);
   if (cwd instanceof Response) return cwd;
+  if (searchParams.get("format") === "snapshot") {
+    const snapshot = canonicalSessionSnapshot(cwd, id);
+    if (!snapshot) return jsonError("session not found", 404);
+    return Response.json({ snapshot });
+  }
   const tail = nonNegativeInteger(searchParams.get("tail"));
   const before = nonNegativeInteger(searchParams.get("before"));
   const { events, cursor, meta } = await loadSession(cwd, id, { tail, before });

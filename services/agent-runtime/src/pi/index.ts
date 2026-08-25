@@ -15,6 +15,13 @@ export type {
   RuntimeStartOptions,
 } from "./types";
 export type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+export type {
+  SessionSnapshot,
+  TranscriptItem,
+  TranscriptProgress,
+} from "@earendil-works/pi-protocol";
+export { projectSnapshot, projectTranscript, TranscriptProjector } from "./projection";
+export { canonicalSessionSnapshot } from "./sessions";
 
 /** Capability probe for setup checks: is the bundled pi SDK loadable? */
 import { createAgentSessionRuntime } from "@earendil-works/pi-coding-agent";

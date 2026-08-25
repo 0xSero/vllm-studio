@@ -14,6 +14,10 @@ export type { AgentSessionEvent };
 
 export type LoggedPiEvent = {
   seq: number;
+  /** Monotonic snapshot revision at the time this event was recorded. */
+  revision?: number;
+  /** Normalized transcript deltas projected from this event, when it carries any. */
+  progress?: import("@earendil-works/pi-protocol").TranscriptProgress[];
   event: PiEvent;
   timestamp: string;
 };
@@ -69,6 +73,8 @@ export interface PiAgentSession {
   compact(customInstructions?: string): Promise<unknown>;
   stop(): Promise<void>;
   readonly status: PiAgentStatus;
+  /** Authoritative transcript snapshot in pi's wire shape; null when stopped. */
+  snapshot(): import("@earendil-works/pi-protocol").SessionSnapshot | null;
   getEventsAfter(seq: number): LoggedPiEvent[];
   onLoggedEvent(listener: (event: LoggedPiEvent) => void): () => void;
   adoptPiSessionId(piSessionId: string | null | undefined): void;

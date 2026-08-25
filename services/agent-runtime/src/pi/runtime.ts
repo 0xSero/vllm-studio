@@ -34,6 +34,8 @@ import { configuredPiSessionDir, findSessionFile } from "./sessions";
 import { getGlobalSingleton } from "../instances";
 import { connectorsRevisionSync } from "../connectors-service";
 import { userPluginsRevisionSync } from "../user-plugins";
+import type { SessionSnapshot } from "@earendil-works/pi-protocol";
+import { TranscriptProjector, projectSnapshot } from "./projection";
 import type {
   LoggedPiEvent,
   PiAgentSession,
@@ -186,6 +188,10 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   private runtime: AgentSessionRuntime | null = null;
   private unsubscribe: (() => void) | null = null;
   private eventSeq = 0;
+  /** Monotonic across runtime rebuilds (unlike eventSeq), so snapshot
+   *  consumers never see revision go backwards. */
+  private revision = 0;
+  private projector = new TranscriptProjector();
   private eventLog: LoggedPiEvent[] = [];
   private activePromptCount = 0;
   private lastError: string | null = null;
@@ -194,6 +200,8 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   private currentCwd = "";
   private currentModelId = "";
   private currentStartOptions: RuntimeStartOptions = {};
+  private currentProviderId = "unknown";
+  private currentBackendModelId = "unknown";
   private agentDir = "";
   private queueEventBufferDepth = 0;
   private bufferedQueueEvent: PiEvent | null = null;
@@ -395,6 +403,8 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         this.runtime = runtime;
         this.agentDir = agentDir;
         this.currentModelId = modelId;
+        this.currentProviderId = providerId ?? "unknown";
+        this.currentBackendModelId = backendModelId ?? "unknown";
         this.currentCwd = resolvedCwd;
         this.currentPiSessionId = runtime.session.sessionId || desiredSessionId;
         this.currentFingerprint = fingerprint;
@@ -621,6 +631,36 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     };
   }
 
+  /** The authoritative transcript, projected into pi's wire snapshot shape.
+   *  Null while no runtime session exists. */
+  snapshot(): SessionSnapshot | null {
+    const session = this.runtime?.session;
+    if (!session) return null;
+    try {
+      const phase: SessionSnapshot["phase"] = session.isCompacting
+        ? "compaction"
+        : session.retryAttempt > 0
+          ? "retry"
+          : session.isStreaming || this.activePromptCount > 0
+            ? "turn"
+            : "idle";
+      return projectSnapshot({
+        sessionId: session.sessionId || this.currentPiSessionId || "unknown",
+        sessionName: session.sessionName,
+        cwd: this.currentCwd,
+        messages: session.messages,
+        streamingMessage: session.state.streamingMessage,
+        phase,
+        model: { provider: this.currentProviderId, id: this.currentBackendModelId },
+        thinkingLevel: session.thinkingLevel ?? "off",
+        queuedSteer: [...session.getSteeringMessages(), ...session.getFollowUpMessages()],
+        revision: this.revision,
+      });
+    } catch {
+      return null;
+    }
+  }
+
   private computeContextUsage() {
     const session = this.runtime?.session;
     if (!session) return null;
@@ -727,8 +767,18 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     if (event.type === "session_info_changed" && this.runtime?.session.sessionId) {
       this.currentPiSessionId = this.runtime.session.sessionId;
     }
+    this.revision += 1;
+    let progress: LoggedPiEvent["progress"];
+    try {
+      const projected = this.projector.progressFor(event as AgentSessionEvent);
+      if (projected.length > 0) progress = projected;
+    } catch {
+      // Projection is best-effort observation; the raw event still flows.
+    }
     const logged: LoggedPiEvent = {
       seq: ++this.eventSeq,
+      revision: this.revision,
+      ...(progress ? { progress } : {}),
       event: event as PiEvent,
       timestamp: new Date().toISOString(),
     };
