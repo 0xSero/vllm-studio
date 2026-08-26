@@ -119,7 +119,19 @@ existing theme system from these tokens (respecting the theme-token baseline
 rule: every var defined for all themes), rather than restyling components.
 Adopt the conversation spacing scale in the agent timeline if desired.
 
-## Wave 3 (implementation order, after owner sign-off on B)
+## Wave 3 — status
+
+Owner sign-off (2026-08-26): restructure approved; cuts resolved as
+**consolidate, don't delete**; theme approved. **LANDED** (278e61e6d):
+one Settings page (14 sections — Access folded under Tools & MCP, Skills +
+Plugins merged, Google accounts kept as a section), three-row sidebar
+(Status / Models / Settings), old routes redirect, GitHub gains a
+paste-a-token path (`PUT /api/agent/oauth/token` → grant store →
+`GITHUB_PERSONAL_ACCESS_TOKEN` at spawn), and the Cursor Dark theme from the
+extracted tokens. Google BYO-client OAuth remains available but is no longer
+a top-level surface. Verified live in dev; all gates green.
+
+## Original implementation order (for reference)
 
 1. Settings unification shell (A) with redirects — pure moves, no deletions.
 2. Cuts 3→5→4 (Access fold-in, /logs, Usage move) — low risk.
