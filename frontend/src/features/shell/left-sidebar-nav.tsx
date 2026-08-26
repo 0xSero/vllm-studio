@@ -2,36 +2,25 @@
 
 import Link from "next/link";
 import { type ComponentType, type MouseEvent } from "react";
-import {
-  AutomationsIcon,
-  ConfigureIcon,
-  IntegrationsIcon,
-  ModelsIcon,
-  StatusIcon,
-  UsageIcon,
-} from "@/ui/icon-registry";
+import { ConfigureIcon, ModelsIcon, StatusIcon } from "@/ui/icon-registry";
 
 export type IconComponent = ComponentType<{ className?: string; strokeWidth?: number }>;
 
 // Sessions has no nav row: the Search command palette is the session list.
 //
-// Integrations sits between Automations and Configure because the rail reads
-// top to bottom as widening scope: what is running, what it can run, what runs
-// on its own, what it can reach outside this machine, and only then the
-// machine's own settings.
+// Three destinations, Cursor-style (docs/cursor-restructure-plan.md): what is
+// running, what it can run, and everything else — Automations stays
+// agent-scoped at /agent/automations, and Integrations, Configure and Usage
+// collapsed into Settings sections.
 export const tabs = [
   { href: "/", label: "Status", icon: StatusIcon },
   { href: "/models", label: "Models", icon: ModelsIcon },
-  { href: "/agent/automations", label: "Automations", icon: AutomationsIcon },
-  { href: "/integrations", label: "Integrations", icon: IntegrationsIcon },
-  { href: "/configure", label: "Configure", icon: ConfigureIcon },
-  { href: "/usage", label: "Usage", icon: UsageIcon },
+  { href: "/settings", label: "Settings", icon: ConfigureIcon },
 ];
 
 export function mobilePageTitle(pathname: string): string {
   if (pathname.startsWith("/agent/automations")) return "Automations";
   if (pathname.startsWith("/agent")) return "Tasks";
-  if (pathname.startsWith("/logs")) return "Logs";
   const tab = tabs.find((entry) => isRouteActive(pathname, entry.href));
   return tab?.label ?? "Local Studio";
 }

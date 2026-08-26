@@ -1,12 +1,19 @@
 "use client";
 import { useMemo, useState } from "react";
 import {
+  Activity,
   Archive,
+  Brain,
   Cable,
   Cpu,
+  GraduationCap,
   Keyboard,
+  KeyRound,
   type LucideIcon,
+  Monitor,
   Paintbrush,
+  Plug,
+  Server,
   ServerCog,
   Smartphone,
 } from "@/ui/icon-registry";
@@ -21,6 +28,15 @@ import { EnginesSection } from "./engines-section";
 import { ServicesSettings, SystemDetails, SystemOverview } from "./system-settings-section";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { ProfileSettings } from "./profile-settings";
+import {
+  AccountsSettingsSection,
+  ExtendSection,
+  MachinesSettingsSection,
+  ModelAccountsSection,
+  ServerLogsSection,
+  ToolsMcpSection,
+  UsageSettingsSection,
+} from "./hub-sections";
 interface SettingsViewProps {
   data: ConfigData | null;
   compatibilityReport: CompatibilityReport | null;
@@ -41,10 +57,20 @@ interface SettingsViewProps {
   onSystemSectionActive: () => void;
 }
 const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
+// One settings surface (docs/cursor-restructure-plan.md): everything that is
+// not the workspace is a section here — Configure, Usage and the Integrations
+// tabs collapsed into this rail rather than holding their own pages.
 const SECTIONS: SettingsSectionDef[] = [
   ["profile", "Profile & phone", "Your identity and phone pairing.", Smartphone],
   ["connection", "General", "Controller connections and API access.", Cable],
+  ["models-hub", "Model accounts", "Sign-in state and API keys for model companies.", Brain],
+  ["machines", "Machines", "Computers whose GPUs this workspace can run models on.", Monitor],
   ["system", "System", "Engines, services, storage, and hardware.", Cpu],
+  ["server", "Server & logs", "Controller health, logs, and API reference.", Server],
+  ["mcp", "Tools & MCP", "MCP servers a session can reach, and which models may call them.", Plug],
+  ["extend", "Skills & plugins", "Skills the agent can use and plugins the runtime loads.", GraduationCap],
+  ["accounts", "Accounts", "Google services a session can read from.", KeyRound],
+  ["usage", "Usage", "Tokens, requests, latency, and errors over time.", Activity],
   ["appearance", "Appearance", "Theme, typography, and interface scale.", Paintbrush],
   ["terminal", "Shortcuts", "Quick panel and terminal key bindings.", Keyboard],
   ["archive", "Archived chats", "Sessions hidden from the task list.", Archive],
@@ -61,6 +87,13 @@ const normalizeSectionId = (value: string): SettingsSectionId | null => {
   if (isSectionId(value)) return value;
   if (value === "desktop") return "terminal";
   if (value === "engines" || value === "services") return "system";
+  // Tenants absorbed from the old Configure, Usage and Integrations pages:
+  // their section names keep resolving so old links land on the right rail row.
+  if (value === "overview" || value === "rig" || value === "rigs") return "machines";
+  if (value === "logs") return "server";
+  if (value === "connectors" || value === "integrations" || value === "access") return "mcp";
+  if (value === "plugins" || value === "skills") return "extend";
+  if (value === "models") return "models-hub";
   return null;
 };
 export function SettingsView({
@@ -146,6 +179,13 @@ export function SettingsView({
           <SystemDetails data={data} compatibilityReport={compatibilityReport} />
         </div>
       ) : null}
+      {activeSection === "models-hub" ? <ModelAccountsSection /> : null}
+      {activeSection === "machines" ? <MachinesSettingsSection /> : null}
+      {activeSection === "server" ? <ServerLogsSection /> : null}
+      {activeSection === "mcp" ? <ToolsMcpSection /> : null}
+      {activeSection === "extend" ? <ExtendSection /> : null}
+      {activeSection === "accounts" ? <AccountsSettingsSection /> : null}
+      {activeSection === "usage" ? <UsageSettingsSection /> : null}
       {activeSection === "appearance" ? <AppearanceSettings /> : null}
       {activeSection === "terminal" ? <ShortcutsSettings /> : null}
       {activeSection === "archive" ? <ArchivedChatsSettings /> : null}

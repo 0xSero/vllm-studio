@@ -25,13 +25,16 @@ import { renderCommandLine, type CatalogEntry } from "./connector-catalog";
 /**
  * The Connect surface for an OAuth-capable catalog connector.
  *
- * There is no token field here, deliberately and permanently: the runtime owns
- * the grant. What this drawer does is narrate the flow — Connect, type the
- * shown code on the provider's site (device flow) or finish consent in the
- * opened tab (PKCE), watch the status flip to connected. The one text input
- * that can appear is the provider's PUBLIC client id, asked for once when the
- * provider ships no baked-in client, with a deep link that pre-fills the
- * provider's registration form so getting one is a click.
+ * Two ways in, one owner: the runtime holds the grant either way.
+ *
+ * - The OAuth flow — Connect, type the shown code on the provider's site
+ *   (device flow) or finish consent in the opened tab (PKCE), watch the
+ *   status flip to connected.
+ * - A pasted token — a PAT the user minted on the provider's own site,
+ *   stored by the runtime exactly like an OAuth grant. For providers that
+ *   ship no baked-in client (GitHub), this is the click-to-connect path:
+ *   the device-flow dance only existed to obtain what a token paste gives
+ *   directly, and the spawned MCP child receives the same env var either way.
  */
 
 const decodeStatus = Schema.decodeUnknownSync(OAuthStatusResponseSchema);
@@ -119,6 +122,50 @@ function ClientSetup({
         <ExternalLink className="h-3.5 w-3.5" />
         Create the OAuth app on {company} (pre-filled)
       </Button>
+    </div>
+  );
+}
+
+function TokenPaste({
+  company,
+  tokenEnv,
+  tokenDraft,
+  busy,
+  onTokenDraft,
+  onSave,
+}: {
+  company: string;
+  tokenEnv: string;
+  tokenDraft: string;
+  busy: boolean;
+  onTokenDraft: (next: string) => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="mb-6">
+      <FormField
+        label={`Or paste a ${company} token`}
+        description={`A token minted on ${company}'s own site (a fine-grained personal access token works). The runtime stores it like any grant and injects it as ${tokenEnv} when the server starts — no OAuth app registration needed.`}
+      >
+        <div className="flex items-center gap-2">
+          <Input
+            type="password"
+            value={tokenDraft}
+            onChange={(event) => onTokenDraft(event.target.value)}
+            placeholder="paste token"
+            className="font-mono"
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={busy}
+            disabled={!tokenDraft.trim()}
+            onClick={onSave}
+          >
+            Save token
+          </Button>
+        </div>
+      </FormField>
     </div>
   );
 }
@@ -310,6 +357,26 @@ async function cancelConnectAction(context: ActionContext): Promise<void> {
   }
 }
 
+async function saveTokenAction(context: ActionContext, token: string): Promise<boolean> {
+  context.setBusy(true);
+  context.setError("");
+  try {
+    const next = await requestAgentJson("/api/agent/oauth/token", decodeStatus, {
+      ...jsonBody({ connectorId: context.entryId, token }),
+      method: "PUT",
+    });
+    context.setStatus(next);
+    context.setWaiting(false);
+    await context.refreshConnectors();
+    return true;
+  } catch (tokenError) {
+    context.setError(failureMessage(tokenError, "The token could not be saved"));
+    return false;
+  } finally {
+    context.setBusy(false);
+  }
+}
+
 async function disconnectAction(context: ActionContext): Promise<void> {
   context.setBusy(true);
   context.setError("");
@@ -341,6 +408,7 @@ export function ConnectorOAuthDrawer({
   onChanged: (connectors: readonly ConnectorView[]) => void;
 }) {
   const [clientDraft, setClientDraft] = useState("");
+  const [tokenDraft, setTokenDraft] = useState("");
   const [editingClient, setEditingClient] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -396,7 +464,7 @@ export function ConnectorOAuthDrawer({
       status={
         connected && status?.account
           ? `Connected as ${status.account}`
-          : "Connects with the provider's own sign-in — no tokens to paste"
+          : `Sign in with ${entry.company}, or paste a token you minted yourself`
       }
       footer={
         <FooterActions
@@ -421,10 +489,18 @@ export function ConnectorOAuthDrawer({
         error={error}
         waiting={waiting}
         connected={connected}
+        busy={busy}
         showClientSetup={showClientSetup}
         seededDraft={seededDraft}
         editingClient={editingClient}
+        tokenDraft={tokenDraft}
         onClientDraft={setClientDraft}
+        onTokenDraft={setTokenDraft}
+        onSaveToken={() =>
+          void saveTokenAction(context, tokenDraft).then((saved) => {
+            if (saved) setTokenDraft("");
+          })
+        }
         onEditClient={() => setEditingClient(true)}
       />
     </ResourceDrawer>
@@ -438,10 +514,14 @@ function DrawerBody({
   error,
   waiting,
   connected,
+  busy,
   showClientSetup,
   seededDraft,
   editingClient,
+  tokenDraft,
   onClientDraft,
+  onTokenDraft,
+  onSaveToken,
   onEditClient,
 }: {
   entry: CatalogEntry;
@@ -450,10 +530,14 @@ function DrawerBody({
   error: string;
   waiting: boolean;
   connected: boolean;
+  busy: boolean;
   showClientSetup: boolean;
   seededDraft: string;
   editingClient: boolean;
+  tokenDraft: string;
   onClientDraft: (next: string) => void;
+  onTokenDraft: (next: string) => void;
+  onSaveToken: () => void;
   onEditClient: () => void;
 }) {
   return (
@@ -461,7 +545,7 @@ function DrawerBody({
       <p className="mb-6 text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
         {entry.description} Connecting authorizes Local Studio with {entry.company} directly; the
         runtime keeps the grant and hands the launched server a fresh access token each time it
-        starts. Nothing secret is typed here and nothing secret is shown here.
+        starts. Nothing secret is ever shown here.
       </p>
 
       {!status && !error ? (
@@ -477,6 +561,17 @@ function DrawerBody({
           company={entry.company}
           clientDraft={seededDraft}
           onClientDraft={onClientDraft}
+        />
+      ) : null}
+
+      {entry.auth && status && !connected && !waiting ? (
+        <TokenPaste
+          company={entry.company}
+          tokenEnv={entry.auth.tokenEnv}
+          tokenDraft={tokenDraft}
+          busy={busy}
+          onTokenDraft={onTokenDraft}
+          onSave={onSaveToken}
         />
       ) : null}
 

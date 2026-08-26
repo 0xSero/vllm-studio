@@ -78,7 +78,9 @@ const milliseconds = (value: number | null): string =>
  * six-cell grid. Those six are true of the whole retention window, so they sit
  * above the tab strip rather than inside any one tab.
  */
-export default function UsagePage() {
+/** The whole page, or — `embedded` — the same content as a settings section:
+ *  no page chrome and no profile header (Settings has a Profile section). */
+export default function UsagePage({ embedded = false }: { embedded?: boolean }) {
   const { stats, loading, error, loadStats } = useUsage();
   const [tab, setTab] = useState<UsageTab>("models");
   const [profile, updateProfile] = useLocalProfile();
@@ -98,24 +100,30 @@ export default function UsagePage() {
   if (loading && !stats) return <UsageSkeleton />;
 
   if (error && !stats) {
-    return (
-      <AppPage>
-        <div className="mx-auto flex max-w-md flex-col items-start gap-3 py-16">
-          <ErrorBox>{error}</ErrorBox>
-          <Button variant="secondary" onClick={loadStats}>
-            Retry
-          </Button>
-        </div>
-      </AppPage>
+    const retry = (
+      <div className="mx-auto flex max-w-md flex-col items-start gap-3 py-16">
+        <ErrorBox>{error}</ErrorBox>
+        <Button variant="secondary" onClick={loadStats}>
+          Retry
+        </Button>
+      </div>
     );
+    return embedded ? retry : <AppPage>{retry}</AppPage>;
   }
   if (!stats) return null;
 
   const heading = TAB_HEADINGS[tab];
 
-  return (
-    <AppPage>
-      <PageContainer width="sm" className="pt-5 sm:pt-7">
+  const body = (
+    <>
+      {embedded ? (
+        <header className="flex items-center justify-between gap-3">
+          <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">
+            What this machine has served, over the whole retention window.
+          </p>
+          <RefreshButton onRefresh={loadStats} loading={loading} className="h-7 w-7" />
+        </header>
+      ) : (
         <header className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <button
@@ -160,8 +168,9 @@ export default function UsagePage() {
           </div>
           <RefreshButton onRefresh={loadStats} loading={loading} className="h-7 w-7" />
         </header>
+      )}
 
-        <section className="mt-8">
+      <section className="mt-8">
           <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">Proxied tokens</p>
           <div className="mt-1 text-[length:var(--fs-display)] font-medium leading-none tracking-[-0.03em] tabular-nums text-(--ui-fg)">
             {formatNumber(stats.totals.total_tokens)}
@@ -220,6 +229,14 @@ export default function UsagePage() {
             )}
           </div>
         </section>
+    </>
+  );
+
+  if (embedded) return <div>{body}</div>;
+  return (
+    <AppPage>
+      <PageContainer width="sm" className="pt-5 sm:pt-7">
+        {body}
       </PageContainer>
     </AppPage>
   );

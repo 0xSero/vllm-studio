@@ -506,7 +506,7 @@ export function ChatPane({
           toggleBrowserTool: onToggleBrowserTool,
           // The command is `/connectors`, so it lands on the tab it names
           // rather than on whichever tab the page happens to open with.
-          openIntegrations: () => router.push("/integrations#connectors"),
+          openIntegrations: () => router.push("/settings#mcp"),
           ...(openTerminalAction ? { openTerminal: openTerminalAction } : {}),
           ...(onForkSession ? { forkSession: onForkSession } : {}),
           ...(canExport ? { exportSession } : {}),

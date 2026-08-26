@@ -33,24 +33,24 @@ const APP_DESTINATIONS: AppDestination[] = [
     description: "Controller, GPU, model status, and live metrics.",
   },
   {
-    href: "/usage",
+    href: "/settings#usage",
     label: "Usage",
     keywords: "tokens requests analytics costs provider pi sessions peaks",
     description: "Token, request, and model usage analytics.",
   },
   {
-    href: "/integrations",
-    label: "Integrations",
+    href: "/settings#mcp",
+    label: "Tools & MCP",
     keywords:
-      "connectors mcp servers accounts google gmail workspace access grants providers cloud models sign in oauth api keys skills plugins",
-    description: "Connectors, accounts, model sign-ins, and skills.",
+      "integrations connectors mcp servers accounts google gmail workspace access grants providers cloud models sign in oauth api keys skills plugins",
+    description: "MCP servers, connector access, and sign-ins.",
   },
   {
-    href: "/configure",
-    label: "Configure",
+    href: "/settings#machines",
+    label: "Machines",
     keywords:
-      "machines hardware gpu memory pool server logs api docs swagger controller engines runtime",
-    description: "Manage the machines that run models, and the controller.",
+      "configure machines hardware gpu memory pool server logs api docs swagger controller engines runtime",
+    description: "The machines that run models, and the controller.",
   },
   {
     href: "/agent",

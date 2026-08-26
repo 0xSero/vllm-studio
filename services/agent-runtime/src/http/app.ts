@@ -80,6 +80,7 @@ import {
   handleOAuthClientPut,
   handleOAuthDisconnect,
   handleOAuthStatus,
+  handleOAuthTokenPut,
 } from "./oauth-handlers";
 import {
   handleProjectAdd,
@@ -172,6 +173,7 @@ export function createAgentRuntimeApp() {
   app.delete("/api/agent/oauth/authorize", (c) => handleOAuthAuthorizeCancel(c.req.raw));
   app.get("/api/agent/oauth/status", (c) => handleOAuthStatus(c.req.raw));
   app.put("/api/agent/oauth/client", (c) => handleOAuthClientPut(c.req.raw));
+  app.put("/api/agent/oauth/token", (c) => handleOAuthTokenPut(c.req.raw));
   app.delete("/api/agent/oauth", (c) => handleOAuthDisconnect(c.req.raw));
   app.get("/api/agent/accounts/google", () => handleGoogleAccountGet());
   app.put("/api/agent/accounts/google", (c) => handleGoogleClientPut(c.req.raw));

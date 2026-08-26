@@ -7,7 +7,6 @@ import { useSettings } from "@/features/settings/use-settings";
 import { SetupView } from "@/features/setup/setup-view/setup-view";
 import { useSetup } from "@/features/setup/use-setup";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { legacyIntegrationHref } from "@/features/integrations/integration-navigation";
 
 const hasSettingsHash = () => {
   if (typeof window === "undefined") return true;
@@ -22,11 +21,6 @@ export default function SettingsPage() {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("local-studio-setup-complete") === "true";
   });
-
-  useMountSubscription(() => {
-    const integrationHref = legacyIntegrationHref(window.location.hash);
-    if (integrationHref) router.replace(integrationHref);
-  }, [router]);
 
   const showSetupWizard =
     !hasSettingsHash() &&
