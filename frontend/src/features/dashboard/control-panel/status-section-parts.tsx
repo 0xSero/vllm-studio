@@ -4,7 +4,12 @@ import type { ReactNode } from "react";
 import { Square } from "@/ui/icon-registry";
 import { ModelStopConfirm } from "@/features/dashboard/model-stop-confirm";
 import { useModelLifecycle } from "@/features/dashboard/use-model-lifecycle";
-import type { ProcessInfo, RecipeWithStatus, RuntimePlatformKind } from "@/lib/types";
+import type {
+  InferenceEndpointStatus,
+  ProcessInfo,
+  RecipeWithStatus,
+  RuntimePlatformKind,
+} from "@/lib/types";
 import { cx } from "@/ui/utils";
 import { ModelsDropdown } from "./status-section-models-dropdown";
 import type { MetricColumnView } from "./status-section-view";
@@ -195,6 +200,38 @@ function StatusHeaderActions({
 export function benchmarkButtonLabel(benchmarking: boolean, result: number | null): string {
   if (benchmarking) return "Benchmarking…";
   return result === null ? "Bench" : `Bench · ${result.toFixed(1)} tok/s`;
+}
+
+export function EndpointStatusStrip({ endpoints }: { endpoints: InferenceEndpointStatus[] }) {
+  if (endpoints.length === 0) return null;
+  return (
+    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+      {endpoints.map((endpoint) => (
+        <div
+          key={endpoint.id}
+          className="flex min-w-0 items-center gap-2 border border-(--border)/55 bg-(--surface)/40 px-3 py-2"
+        >
+          <span
+            className={`h-1.5 w-1.5 shrink-0 ${endpoint.healthy ? "bg-emerald-400" : "bg-(--err)"}`}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[length:var(--fs-sm)] font-medium text-(--fg)">
+              {endpoint.name}
+            </span>
+            <span className="block truncate font-mono text-[length:var(--fs-xs)] text-(--dim)">
+              {endpoint.models.length > 0 ? endpoint.models.join(", ") : "No models discovered"}
+            </span>
+          </span>
+          <span className="shrink-0 font-mono text-[length:var(--fs-xs)] text-(--dim)">
+            {endpoint.port ? `:${endpoint.port}` : "—"}
+          </span>
+          <span className="shrink-0 text-[length:var(--fs-xs)] text-(--dim)">
+            {endpoint.healthy ? "active" : "offline"}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function HeaderStopButton({ running }: { running: boolean }) {

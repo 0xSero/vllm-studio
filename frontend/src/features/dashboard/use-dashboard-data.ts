@@ -40,6 +40,7 @@ export function useDashboardData() {
     isConnected: realtime.connected,
     isStatusLoading: realtime.statusLoading,
     inferencePort: realtime.status?.inference_port,
+    endpoints: realtime.status?.endpoints ?? [],
     benchmarking: actions.benchmarking,
     benchmarkResult: actions.benchmarkResult,
     launching: lifecycle.status === "starting",

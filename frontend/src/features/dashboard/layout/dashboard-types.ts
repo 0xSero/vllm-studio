@@ -1,5 +1,6 @@
 import type {
   GPU,
+  InferenceEndpointStatus,
   LaunchProgress,
   Metrics,
   ProcessInfo,
@@ -30,6 +31,7 @@ export interface DashboardLayoutProps {
   isConnected: boolean;
   isStatusLoading: boolean;
   inferencePort?: number;
+  endpoints: InferenceEndpointStatus[];
   onNavigateLogs: () => void;
   onBenchmark: () => void;
   onLaunch: (recipeId: string) => Promise<void>;

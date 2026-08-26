@@ -123,6 +123,15 @@ export interface ProcessInfo {
   served_model_name?: string | null;
 }
 
+export interface InferenceEndpointStatus {
+  id: string;
+  name: string;
+  ownership: "external";
+  port: number | null;
+  healthy: boolean;
+  models: string[];
+}
+
 export interface LogSession {
   id: string;
   recipe_id?: string;

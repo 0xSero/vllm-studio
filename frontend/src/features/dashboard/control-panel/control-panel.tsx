@@ -35,6 +35,7 @@ export function ControlPanel(props: DashboardLayoutProps) {
         isStatusLoading={props.isStatusLoading}
         platformKind={props.platformKind}
         inferencePort={props.inferencePort}
+        endpoints={props.endpoints}
         onNavigateLogs={props.onNavigateLogs}
         onBenchmark={props.onBenchmark}
         benchmarking={props.benchmarking}

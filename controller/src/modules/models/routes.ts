@@ -138,7 +138,7 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
               object: "model",
               created: now,
               owned_by: catalog.provider,
-              active: false,
+              active: catalog.healthy,
               max_model_len: null,
               metadata: {
                 external: true,

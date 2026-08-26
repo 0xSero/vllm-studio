@@ -8,6 +8,8 @@ import type { SystemConfigResponse } from "../models/types";
 import { badRequest, notFound } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
 import { findObservedInferenceProcess } from "../../core/function-observability";
+import type { InferenceEndpointStatus } from "@local-studio/contracts/observability";
+import { listProviderModelsCached, providerPort } from "../../services/provider-routing";
 import { estimateWeightsSizeBytes } from "../models/model-browser";
 import { getGpuInfo } from "./platform/gpu";
 import { getSystemRuntimeInfo } from "../engines/runtimes/runtime-info";
@@ -86,10 +88,26 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
     effectRoute(app.get, "/status", (ctx) =>
       Effect.gen(function* () {
         const current = yield* findObservedInferenceProcess(context, "status");
+        const catalogs = yield* listProviderModelsCached(context.config.providers);
+        const catalogsByProvider = new Map(catalogs.map((catalog) => [catalog.provider, catalog]));
+        const endpoints: InferenceEndpointStatus[] = context.config.providers
+          .filter((provider) => provider.enabled)
+          .map((provider) => {
+            const catalog = catalogsByProvider.get(provider.id);
+            return {
+              id: provider.id,
+              name: provider.name,
+              ownership: "external",
+              port: providerPort(provider.base_url),
+              healthy: catalog?.healthy ?? false,
+              models: catalog?.models.map((model) => model.id) ?? [],
+            };
+          });
         return ctx.json({
-          running: Boolean(current),
+          running: Boolean(current) || endpoints.some((endpoint) => endpoint.healthy),
           process: current,
           inference_port: context.config.inference_port,
+          endpoints,
           launching: context.compute.model.launchingRecipeId(),
           launch_failures: context.launchFailureBudget.listActive(),
         });

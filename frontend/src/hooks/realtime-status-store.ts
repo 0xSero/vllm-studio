@@ -261,10 +261,10 @@ function emitNoPolledStatus() {
 
 function emitPolledStatus({ compatibility, gpus, metrics, status }: PollResults) {
   if (!status) return emitNoPolledStatus();
-  const { running, process, inference_port } = status;
+  const { running, process, inference_port, endpoints } = status;
   const launching = status.launching ?? null;
   emitIfChanged({
-    status: { running, process, inference_port, launching },
+    status: { running, process, inference_port, endpoints, launching },
     statusLoading: false,
     connected: true,
     gpus,
@@ -289,6 +289,9 @@ function statusFromEventData(
     running: Boolean(data["running"] ?? process),
     process,
     inference_port: Number(data["inference_port"] ?? 8000),
+    endpoints: Array.isArray(data["endpoints"])
+      ? (data["endpoints"] as NonNullable<RealtimeStatusSnapshot["status"]>["endpoints"])
+      : [],
     launching:
       typeof data["launching"] === "string" && data["launching"] ? data["launching"] : null,
   };

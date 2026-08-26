@@ -1,5 +1,6 @@
 import type {
   GPU,
+  InferenceEndpointStatus,
   LaunchProgressData,
   Metrics,
   ProcessInfo,
@@ -24,12 +25,33 @@ function areProcessInfosEqual(a: ProcessInfo | null, b: ProcessInfo | null) {
   );
 }
 
+function areEndpointStatusesEqual(a: InferenceEndpointStatus[], b: InferenceEndpointStatus[]) {
+  if (a === b) return true;
+  return (
+    a.length === b.length &&
+    a.every((left, index) => {
+      const right = b[index];
+      return (
+        right !== undefined &&
+        left.id === right.id &&
+        left.name === right.name &&
+        left.ownership === right.ownership &&
+        left.port === right.port &&
+        left.healthy === right.healthy &&
+        left.models.length === right.models.length &&
+        left.models.every((model, modelIndex) => model === right.models[modelIndex])
+      );
+    })
+  );
+}
+
 export function areStatusEqual(a: StatusData | null, b: StatusData | null) {
   if (a === b) return true;
   if (!a || !b) return false;
   return (
     a.running === b.running &&
     a.inference_port === b.inference_port &&
+    areEndpointStatusesEqual(a.endpoints, b.endpoints) &&
     areProcessInfosEqual(a.process, b.process)
   );
 }

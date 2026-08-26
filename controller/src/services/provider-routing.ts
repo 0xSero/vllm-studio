@@ -46,9 +46,10 @@ export const resolveConfiguredProviderConfig = (
   return { baseUrl: stripTrailingV1(match.base_url), apiKey: match.api_key };
 };
 
-interface ProviderModelCatalog {
+export interface ProviderModelCatalog {
   provider: string;
   models: Array<{ id: string }>;
+  healthy: boolean;
 }
 
 const ProviderModelsSchema = Schema.Struct({
@@ -82,7 +83,7 @@ export const discoverProviderModels = (
       const id = model.id?.trim();
       return id ? [{ id }] : [];
     });
-    return { provider: provider.id, models };
+    return { provider: provider.id, models, healthy: true };
   });
 
 /** /v1/models sits on the model picker's hot path, so provider discovery there
@@ -113,7 +114,11 @@ export const listProviderModelsCached = (
         ),
         Effect.catch(() =>
           Effect.sync(() => {
-            const catalog: ProviderModelCatalog = { provider: provider.id, models: [] };
+            const catalog: ProviderModelCatalog = {
+              provider: provider.id,
+              models: [],
+              healthy: false,
+            };
             catalogCache.set(key, { expiresAt: Date.now() + FAILURE_TTL_MS, catalog });
             return catalog;
           }),
@@ -122,3 +127,13 @@ export const listProviderModelsCached = (
     },
     { concurrency: "unbounded" },
   );
+
+export const providerPort = (baseUrl: string): number | null => {
+  try {
+    const url = new URL(baseUrl);
+    const port = url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80;
+    return Number.isInteger(port) && port > 0 && port <= 65_535 ? port : null;
+  } catch {
+    return null;
+  }
+};
