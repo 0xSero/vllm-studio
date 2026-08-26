@@ -5,7 +5,7 @@ import { RefreshCw } from "@/ui/icon-registry";
 import { ModelButton } from "@/ui";
 import { cx } from "@/ui/utils";
 import type { ModelIndexVariant } from "@/lib/api/studio";
-import { useDownloads } from "@/hooks/use-downloads";
+import { useDownloads } from "@/features/recipes/use-downloads";
 import { TableNotice, TableSkeleton } from "./catalog-table-shell";
 import { FIT_BUDGET_RATIO, formatGb } from "./model-fit";
 import { PicksCatalog, useHardwareProfile, useModelIndex } from "./picks-shared";

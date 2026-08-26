@@ -145,30 +145,6 @@ export function PicksCatalog({
 }
 
 /** Single-tier view, kept for the setup wizard's one-tier-at-a-time step. */
-export function TierSection({
-  tier,
-  poolGb,
-  downloadsByModel,
-  startingModelIds,
-  onDownload,
-}: {
-  tier: ModelIndexTier;
-  poolGb: number;
-  downloadsByModel: Map<string, ModelDownload>;
-  startingModelIds: Set<string>;
-  onDownload: (variant: ModelIndexVariant) => void;
-}) {
-  return (
-    <PicksCatalog
-      tiers={[tier]}
-      poolGb={poolGb}
-      downloadsByModel={downloadsByModel}
-      startingModelIds={startingModelIds}
-      onDownload={onDownload}
-    />
-  );
-}
-
 function PickDrawer({
   model,
   poolGb,

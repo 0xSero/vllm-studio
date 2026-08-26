@@ -1,7 +1,7 @@
 "use client";
 
 import { Pause, Play, Plus, X } from "@/ui/icon-registry";
-import { useDownloads } from "@/hooks/use-downloads";
+import { useDownloads } from "@/features/recipes/use-downloads";
 import { formatBytes } from "@/lib/formatters";
 import type { ModelDownload } from "@/lib/types";
 import { ModelLogo } from "@/ui/model-logo";

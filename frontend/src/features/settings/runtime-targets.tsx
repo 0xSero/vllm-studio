@@ -50,9 +50,6 @@ export const MANAGED_RUNTIME_BACKENDS: readonly ManagedRuntimeInstallBackend[] =
 export const isRunningEngineJob = (job: EngineJob | undefined): boolean =>
   job?.status === "queued" || job?.status === "running";
 
-export const isTerminalEngineJob = (job: EngineJob): boolean =>
-  job.status === "success" || job.status === "error" || job.status === "cancelled";
-
 const ENGINE_JOB_OUTPUT_TAIL_CHARS = 500;
 
 function clipEngineJobOutputTail(outputTail: string | undefined): string | null {
@@ -64,20 +61,6 @@ function clipEngineJobOutputTail(outputTail: string | undefined): string | null 
 }
 
 /** Multi-line failure summary for a job that ended in `error`: message, reason, output tail. */
-export function describeFailedEngineJob(job: EngineJob): string {
-  const headline = job.message?.trim() || `${job.backend} ${job.type} failed`;
-  const lines = [headline];
-  const reason = job.error?.trim();
-  if (reason && reason !== headline) {
-    lines.push(reason);
-  }
-  const tail = clipEngineJobOutputTail(job.outputTail);
-  if (tail) {
-    lines.push(tail);
-  }
-  return lines.join("\n");
-}
-
 export const jobForRuntimeTarget = (
   jobs: EngineJob[],
   target: RuntimeTarget,

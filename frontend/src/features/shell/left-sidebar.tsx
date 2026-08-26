@@ -46,7 +46,10 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const hidesAppSidebar = routeHidesAppSidebar(pathname);
-  const projectsNavImmediate = pathname.startsWith("/agent");
+  // Sessions and projects are the sidebar's body on EVERY page, not an agent
+  // extra: lazy-loading them on hover made the nav look empty anywhere else,
+  // which read as "the sessions are gone".
+  const projectsNavImmediate = !hidesAppSidebar;
   const {
     desktopSidebarPinnedOpen,
     setDesktopSidebarPinnedOpen,
