@@ -291,7 +291,7 @@ function statusFromEventData(
     inference_port: Number(data["inference_port"] ?? 8000),
     endpoints: Array.isArray(data["endpoints"])
       ? (data["endpoints"] as NonNullable<RealtimeStatusSnapshot["status"]>["endpoints"])
-      : [],
+      : (snapshot.status?.endpoints ?? []),
     launching:
       typeof data["launching"] === "string" && data["launching"] ? data["launching"] : null,
   };
