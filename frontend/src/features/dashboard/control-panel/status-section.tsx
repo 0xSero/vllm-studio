@@ -1,7 +1,14 @@
 "use client";
 
-import type { GPU, Metrics, ProcessInfo, RecipeWithStatus, RuntimePlatformKind } from "@/lib/types";
-import { StatusHeader, StatusMetricStrip } from "./status-section-parts";
+import type {
+  GPU,
+  InferenceEndpointStatus,
+  Metrics,
+  ProcessInfo,
+  RecipeWithStatus,
+  RuntimePlatformKind,
+} from "@/lib/types";
+import { EndpointStatusStrip, StatusHeader, StatusMetricStrip } from "./status-section-parts";
 import { MetricTrends, useMetricSamples } from "./status-section-trends";
 import { resolveStatusSectionView } from "./status-section-view";
 
@@ -15,6 +22,7 @@ interface StatusSectionProps {
   isStatusLoading: boolean;
   platformKind?: RuntimePlatformKind | null;
   inferencePort?: number;
+  endpoints: InferenceEndpointStatus[];
   onNavigateLogs: () => void;
   onBenchmark: () => void;
   benchmarking: boolean;
@@ -37,6 +45,7 @@ export function StatusSection({
   isStatusLoading,
   platformKind,
   inferencePort,
+  endpoints,
   onNavigateLogs,
   onBenchmark,
   benchmarking,
@@ -82,6 +91,7 @@ export function StatusSection({
         onViewAll={onViewAll}
         recipes={recipes}
       />
+      <EndpointStatusStrip endpoints={endpoints} />
       <StatusMetricStrip
         live={view.liveMetrics}
         steady={view.steadyMetrics}

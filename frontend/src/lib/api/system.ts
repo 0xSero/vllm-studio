@@ -2,6 +2,7 @@ import type {
   CompatibilityReport,
   ConfigData,
   GPU,
+  InferenceEndpointStatus,
   Metrics,
   ProcessInfo,
   UsageStats,
@@ -161,12 +162,14 @@ export function createSystemApi(core: ApiCore) {
       running: boolean;
       process: ProcessInfo | null;
       inference_port: number;
+      endpoints: InferenceEndpointStatus[];
       launching: string | null;
     }> => {
       const data = await core.request<{
         running: boolean;
         process: ProcessInfo | null;
         inference_port: number;
+        endpoints?: InferenceEndpointStatus[];
         launching?: string | null;
       }>("/status", options);
 
@@ -174,6 +177,7 @@ export function createSystemApi(core: ApiCore) {
         running: data.running ?? !!data.process,
         process: data.process ?? null,
         inference_port: data.inference_port || 8000,
+        endpoints: Array.isArray(data.endpoints) ? data.endpoints : [],
         launching: typeof data.launching === "string" && data.launching ? data.launching : null,
       };
     },

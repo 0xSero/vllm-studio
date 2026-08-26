@@ -62,6 +62,7 @@ export type {
 
 export type {
   GPU,
+  InferenceEndpointStatus,
   LogSession,
   Metrics,
   PeakMetrics,

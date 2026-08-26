@@ -1,5 +1,6 @@
 import type {
   GPU,
+  InferenceEndpointStatus,
   LaunchProgressData,
   Metrics,
   ProcessInfo,
@@ -12,6 +13,7 @@ export interface StatusData {
   running: boolean;
   process: ProcessInfo | null;
   inference_port: number;
+  endpoints: InferenceEndpointStatus[];
   launching: string | null;
 }
 
