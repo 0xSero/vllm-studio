@@ -15,7 +15,14 @@ import {
 } from "./studio-core";
 
 type Message = { role: "user" | "assistant" | "event"; content: string };
-type Project = { id: string; name: string; path: string };
+
+function objectValue(value: Json | undefined): RecordJson | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+function readableEvent(event: RecordJson): string {
+  const value = event.message ?? event.content ?? event.text ?? event.type;
+  return typeof value === "string" ? value : JSON.stringify(event);
+}
 
 function Tools({ cwd }: { cwd: string }) {
   const [path, setPath] = useState("");
@@ -67,7 +74,11 @@ function Tools({ cwd }: { cwd: string }) {
       </div>
       <div className="row">
         <input value={command} onChange={(event) => setCommand(event.target.value)} />
-        <button onClick={() => run("/api/agent/terminal", body({ cwd, command }))}>
+        <button
+          onClick={() =>
+            run(`/api/agent/terminal?cwd=${encodeURIComponent(cwd)}`, body({ command }))
+          }
+        >
           Run locally
         </button>
       </div>
@@ -97,6 +108,8 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
   const activeCwd = cwd || projects[0]?.path || "";
   const sessionsState = useJson<RecordJson>(`/api/agent/sessions/all?since=30d`);
   const [sessionId, setSessionId] = useState("");
+  const [piSessionId, setPiSessionId] = useState<string | null>(null);
+  const [eventCursor, setEventCursor] = useState(0);
   const [messages, setMessages] = useState<Message[]>([]);
   const [prompt, setPrompt] = useState("");
   const [modelId, setModelId] = useState("");
@@ -109,6 +122,8 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
   const activeModel = modelId || String(models[0]?.id ?? models[0]?.name ?? "");
   const createSession = () => {
     setSessionId(crypto.randomUUID());
+    setPiSessionId(null);
+    setEventCursor(0);
     setMessages([]);
   };
   const loadSession = async (id: string, projectPath = activeCwd) => {
@@ -117,7 +132,13 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
       const data = await request<RecordJson>(
         `/api/agent/sessions/${encodeURIComponent(id)}?cwd=${encodeURIComponent(projectPath)}`,
       );
-      setMessages([{ role: "event", content: JSON.stringify(data, null, 2) }]);
+      const meta = objectValue(data.meta);
+      const canonical = meta?.piSessionId;
+      setPiSessionId(typeof canonical === "string" ? canonical : null);
+      setEventCursor(typeof data.cursor === "number" ? data.cursor : 0);
+      setMessages(
+        records(data, "events").map((entry) => ({ role: "event", content: readableEvent(entry) })),
+      );
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
     }
@@ -143,7 +164,21 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
       await request<RecordJson>(`/api/agent/${endpoint}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sessionId, cwd: activeCwd }),
+        body: JSON.stringify(
+          endpoint === "compact"
+            ? {
+                sessionId,
+                cwd: activeCwd,
+                piSessionId,
+                modelId: activeModel,
+                thinkingLevel: "auto",
+                toolAccess: fullTools ? "full" : "read_only",
+                browserToolEnabled: browserEnabled,
+                skills: [],
+                promptTemplates: [],
+              }
+            : { sessionId },
+        ),
       });
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
@@ -167,7 +202,7 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
           message: content,
           images: [],
           cwd: activeCwd,
-          piSessionId: null,
+          piSessionId,
           toolAccess: fullTools ? "full" : "read_only",
           browserToolEnabled: browserEnabled,
           skills: [],
@@ -185,10 +220,18 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
   useMountSubscription(() => {
     if (!sessionId) return;
     const events = new EventSource(
-      `/api/agent/runtime/events?sessionId=${encodeURIComponent(sessionId)}`,
+      `/api/agent/runtime/events?sessionId=${encodeURIComponent(sessionId)}&after=${eventCursor}`,
     );
-    events.onmessage = (event) =>
-      setMessages((items) => [...items, { role: "event", content: event.data }]);
+    events.onmessage = (event) => {
+      try {
+        const parsed = JSON.parse(event.data) as RecordJson;
+        const seq = parsed.seq ?? parsed.eventSeq;
+        if (typeof seq === "number") setEventCursor((current) => Math.max(current, seq));
+        setMessages((items) => [...items, { role: "event", content: readableEvent(parsed) }]);
+      } catch {
+        setMessages((items) => [...items, { role: "event", content: event.data }]);
+      }
+    };
     events.onerror = () => events.close();
     return () => events.close();
   }, [sessionId]);
@@ -307,8 +350,11 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
 }
 
 export function Automations() {
+  const [piSessionId, setPiSessionId] = useState("");
   const automations = useJson<RecordJson>("/api/agent/automations");
-  const goal = useJson<RecordJson>("/api/agent/goal");
+  const goal = useJson<RecordJson>(
+    `/api/agent/goal?piSessionId=${encodeURIComponent(piSessionId)}`,
+  );
   const [text, setText] = useState("");
   const [message, setMessage] = useState("");
   const run = async (path: `/api/${string}`, init?: RequestInit) => {
@@ -338,12 +384,34 @@ export function Automations() {
           <h2>Goal</h2>
           <div className="row">
             <input
+              value={piSessionId}
+              onChange={(event) => setPiSessionId(event.target.value)}
+              placeholder="Runtime session id"
+            />
+            <input
               value={text}
               onChange={(event) => setText(event.target.value)}
               placeholder="Goal"
             />
-            <button onClick={() => run("/api/agent/goal", json({ goal: text }, "PUT"))}>Set</button>
-            <button onClick={() => run("/api/agent/goal", { method: "DELETE" })}>Clear</button>
+            <button
+              onClick={() =>
+                run(
+                  `/api/agent/goal?piSessionId=${encodeURIComponent(piSessionId)}`,
+                  json({ objective: text }, "PUT"),
+                )
+              }
+            >
+              Set
+            </button>
+            <button
+              onClick={() =>
+                run(`/api/agent/goal?piSessionId=${encodeURIComponent(piSessionId)}`, {
+                  method: "DELETE",
+                })
+              }
+            >
+              Clear
+            </button>
           </div>
           <JsonView value={goal.data} />
         </article>

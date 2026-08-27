@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -24,8 +24,11 @@ export async function request<T extends Json>(
 }
 
 export function records(value: Json | null, key: string): RecordJson[] {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
-  const list = value[key];
+  const list = Array.isArray(value)
+    ? value
+    : value && typeof value === "object"
+      ? value[key]
+      : null;
   return Array.isArray(list)
     ? list.filter(
         (item): item is RecordJson =>
@@ -129,6 +132,10 @@ export function Dashboard() {
     metrics.reload();
     downloads.reload();
   };
+  useMountSubscription(() => {
+    const timer = window.setInterval(reload, 5000);
+    return () => window.clearInterval(timer);
+  }, []);
   return (
     <Page title="Dashboard" actions={<button onClick={reload}>Refresh</button>}>
       <ErrorText value={health.error || status.error || metrics.error || downloads.error} />
@@ -576,6 +583,14 @@ export function Models() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<RecordJson | null>(null);
   const [message, setMessage] = useState("");
+  const [revision, setRevision] = useState("");
+  const [destination, setDestination] = useState("");
+  const [patterns, setPatterns] = useState("");
+  const [token, setToken] = useState("");
+  useMountSubscription(() => {
+    const timer = window.setInterval(downloads.reload, 2000);
+    return () => window.clearInterval(timer);
+  }, []);
   const run = async (path: `/api/${string}`, init?: RequestInit) => {
     try {
       await request<RecordJson>(path, init);
@@ -591,7 +606,7 @@ export function Models() {
     event.preventDefault();
     try {
       setResults(
-        await request<RecordJson>(`/api/huggingface/models?q=${encodeURIComponent(query)}`),
+        await request<RecordJson>(`/api/huggingface/models?search=${encodeURIComponent(query)}`),
       );
     } catch (value) {
       setMessage(value instanceof Error ? value.message : String(value));
@@ -601,7 +616,20 @@ export function Models() {
     run("/api/proxy/studio/downloads", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model_id: query }),
+      body: JSON.stringify({
+        model_id: query,
+        ...(revision ? { revision } : {}),
+        ...(destination ? { destination_dir: destination } : {}),
+        ...(patterns
+          ? {
+              allow_patterns: patterns
+                .split(",")
+                .map((value) => value.trim())
+                .filter(Boolean),
+            }
+          : {}),
+        ...(token ? { hf_token: token } : {}),
+      }),
     });
   return (
     <Page
@@ -621,6 +649,27 @@ export function Models() {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Hugging Face model id"
+        />
+        <input
+          value={revision}
+          onChange={(event) => setRevision(event.target.value)}
+          placeholder="Revision (optional)"
+        />
+        <input
+          value={destination}
+          onChange={(event) => setDestination(event.target.value)}
+          placeholder="Local destination (optional)"
+        />
+        <input
+          value={patterns}
+          onChange={(event) => setPatterns(event.target.value)}
+          placeholder="Allowed files, comma separated"
+        />
+        <input
+          type="password"
+          value={token}
+          onChange={(event) => setToken(event.target.value)}
+          placeholder="HF token (kept local)"
         />
         <button>Search</button>
         <button type="button" onClick={startDownload} disabled={!query.trim()}>
@@ -666,6 +715,26 @@ export function Models() {
                 <span>
                   {String(download.model_id ?? id)} · {String(download.status ?? "")}
                 </span>
+                <button
+                  onClick={() =>
+                    run(`/api/proxy/studio/downloads/${encodeURIComponent(id)}/pause`, {
+                      method: "POST",
+                    })
+                  }
+                >
+                  Pause
+                </button>
+                <button
+                  onClick={() =>
+                    run(`/api/proxy/studio/downloads/${encodeURIComponent(id)}/resume`, {
+                      method: "POST",
+                      headers: { "content-type": "application/json" },
+                      body: token ? JSON.stringify({ hf_token: token }) : "{}",
+                    })
+                  }
+                >
+                  Resume
+                </button>
                 <button
                   onClick={() =>
                     run(`/api/proxy/studio/downloads/${encodeURIComponent(id)}/cancel`, {
