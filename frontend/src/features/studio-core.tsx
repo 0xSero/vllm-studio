@@ -38,6 +38,30 @@ const SavedControllerSchema = Schema.Struct({
 });
 const SavedControllersSchema = Schema.Array(SavedControllerSchema);
 const decodeSavedControllers = Schema.decodeUnknownOption(SavedControllersSchema);
+const ProviderLoginStartSchema = Schema.Struct({ jobId: Schema.String });
+const ProviderLoginJobSchema = Schema.Struct({
+  jobId: Schema.String,
+  providerId: Schema.String,
+  status: Schema.Literals(["running", "success", "error", "cancelled"]),
+  error: Schema.optional(Schema.String),
+  events: Schema.Array(Schema.Json),
+  pendingPrompt: Schema.optional(
+    Schema.Struct({
+      id: Schema.Number,
+      type: Schema.Literals(["text", "secret", "select", "manual_code"]),
+      message: Schema.String,
+      placeholder: Schema.optional(Schema.String),
+    }),
+  ),
+});
+type ProviderLoginJob = typeof ProviderLoginJobSchema.Type;
+const decodeProviderLoginStart = Schema.decodeUnknownSync(ProviderLoginStartSchema, {
+  onExcessProperty: "preserve",
+});
+const decodeProviderLoginJob = Schema.decodeUnknownSync(ProviderLoginJobSchema, {
+  onExcessProperty: "preserve",
+});
+
 function loadSavedControllerMetadata(): SavedController[] {
   const raw = localStorage.getItem("local-studio.saved-controller-metadata");
   if (!raw) return [];
@@ -301,6 +325,7 @@ export function Settings() {
   const [apiKey, setApiKey] = useState("");
   const [message, setMessage] = useState("");
   const [controllerName, setControllerName] = useState("");
+  const [modelsDirectory, setModelsDirectory] = useState("");
   const [savedControllers, setSavedControllers] = useState<SavedController[]>([]);
   const [remoteConsent, setRemoteConsent] = useState(false);
   const currentRecord = records([current.data], "current")[0] ?? {};
@@ -344,7 +369,7 @@ export function Settings() {
       setMessage(value instanceof Error ? value.message : String(value));
     }
   };
-  const save = async () => {
+  const save = async (): Promise<boolean> => {
     try {
       const destination = controllerDestination;
       const hostname = new URL(destination).hostname;
@@ -365,6 +390,24 @@ export function Settings() {
       setApiKey("");
       setMessage("Connection settings saved locally");
       void current.reload();
+      return true;
+    } catch (value) {
+      setMessage(value instanceof Error ? value.message : String(value));
+      return false;
+    }
+  };
+  const switchAndTest = async (path: `/api/${string}`, label: string) => {
+    if (await save()) await test(path, label);
+  };
+  const saveRuntimeSettings = async () => {
+    try {
+      await requestRecord("/api/proxy/studio/settings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ models_dir: modelsDirectory.trim() || null }),
+      });
+      setMessage("Runtime model directory saved");
+      void studio.reload();
     } catch (value) {
       setMessage(value instanceof Error ? value.message : String(value));
     }
@@ -430,16 +473,15 @@ export function Settings() {
             custody ends at that destination only after this consent.
           </p>
           <div className="row">
-            <button
-              onClick={async () => {
-                await save();
-                await test("/api/health", "Controller switch and test");
-              }}
-            >
+            <button onClick={() => switchAndTest("/api/health", "Controller switch and test")}>
               Switch and test
             </button>
-            <button onClick={() => test("/api/proxy/compat", "Compatibility check")}>
-              Check compatibility
+            <button
+              onClick={() =>
+                switchAndTest("/api/proxy/compat", "Controller switch and compatibility check")
+              }
+            >
+              Switch and check compatibility
             </button>
             <button onClick={save}>Switch controller</button>
             <button onClick={saveControllerMetadata}>Save controller</button>
@@ -472,9 +514,13 @@ export function Settings() {
         </article>
         <article>
           <h2>Runtime settings</h2>
-          <p>
-            Engine, storage, model roots, service, and hardware policy from the local controller.
-          </p>
+          <p>Set the controller model root. Runtime install/update actions are under Configure.</p>
+          <input
+            value={modelsDirectory}
+            onChange={(event) => setModelsDirectory(event.target.value)}
+            placeholder="Absolute model directory"
+          />
+          <button onClick={saveRuntimeSettings}>Save model directory</button>
           <JsonView value={studio.data} />
         </article>
         <article>
@@ -557,6 +603,8 @@ function IntegrationsManager() {
   const [id, setId] = useState("");
   const [url, setUrl] = useState("");
   const [message, setMessage] = useState("");
+  const [loginJob, setLoginJob] = useState<ProviderLoginJob | null>(null);
+  const [loginResponse, setLoginResponse] = useState("");
   const run = async (path: `/api/${string}`, init?: RequestInit) => {
     try {
       await requestRecord(path, init);
@@ -569,6 +617,43 @@ function IntegrationsManager() {
       setMessage(value instanceof Error ? value.message : String(value));
     }
   };
+  const pollLogin = async (jobId: string) => {
+    try {
+      const value = await requestRecord(
+        `/api/agent/providers/login/${encodeURIComponent(jobId)}?after=0`,
+      );
+      setLoginJob(decodeProviderLoginJob(value));
+    } catch (value) {
+      setMessage(value instanceof Error ? value.message : String(value));
+    }
+  };
+  const startLogin = async (providerId: string, type: "oauth" | "api_key") => {
+    try {
+      const value = await requestRecord(
+        `/api/agent/providers/${encodeURIComponent(providerId)}/login`,
+        post({ type }),
+      );
+      const started = decodeProviderLoginStart(value);
+      await pollLogin(started.jobId);
+    } catch (value) {
+      setMessage(value instanceof Error ? value.message : String(value));
+    }
+  };
+  const respondLogin = async () => {
+    const prompt = loginJob?.pendingPrompt;
+    if (!loginJob || !prompt) return;
+    await run(
+      `/api/agent/providers/login/${encodeURIComponent(loginJob.jobId)}/respond`,
+      post({ promptId: prompt.id, value: loginResponse }),
+    );
+    setLoginResponse("");
+    await pollLogin(loginJob.jobId);
+  };
+  useMountSubscription(() => {
+    if (!loginJob || loginJob.status !== "running") return;
+    const timer = window.setInterval(() => void pollLogin(loginJob.jobId), 1000);
+    return () => window.clearInterval(timer);
+  }, [loginJob?.jobId, loginJob?.status]);
   const post = (value: RecordJson): RequestInit => ({
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -636,13 +721,8 @@ function IntegrationsManager() {
             return (
               <div className="item" key={providerId}>
                 <span>{jsonText(provider.name, providerId)}</span>
-                <button
-                  onClick={() =>
-                    run(`/api/agent/providers/${encodeURIComponent(providerId)}/login`, post({}))
-                  }
-                >
-                  Sign in
-                </button>
+                <button onClick={() => startLogin(providerId, "oauth")}>OAuth sign in</button>
+                <button onClick={() => startLogin(providerId, "api_key")}>API key sign in</button>
                 <button
                   onClick={() =>
                     run(`/api/agent/providers/${encodeURIComponent(providerId)}/logout`, post({}))
@@ -653,6 +733,38 @@ function IntegrationsManager() {
               </div>
             );
           })}
+          {loginJob ? (
+            <section>
+              <p>
+                Login {loginJob.providerId}: {loginJob.status} {loginJob.error ?? ""}
+              </p>
+              <pre>{JSON.stringify(loginJob.events, null, 2)}</pre>
+              {loginJob.pendingPrompt ? (
+                <div className="row">
+                  <label>
+                    {loginJob.pendingPrompt.message}
+                    <input
+                      type={loginJob.pendingPrompt.type === "secret" ? "password" : "text"}
+                      value={loginResponse}
+                      onChange={(event) => setLoginResponse(event.target.value)}
+                      placeholder={loginJob.pendingPrompt.placeholder}
+                    />
+                  </label>
+                  <button onClick={respondLogin}>Respond</button>
+                </div>
+              ) : null}
+              <button onClick={() => pollLogin(loginJob.jobId)}>Poll login</button>
+              <button
+                onClick={() =>
+                  run(`/api/agent/providers/login/${encodeURIComponent(loginJob.jobId)}/cancel`, {
+                    method: "POST",
+                  })
+                }
+              >
+                Cancel login
+              </button>
+            </section>
+          ) : null}
           <JsonView value={providers.data} />
         </article>
         <article>
@@ -676,6 +788,84 @@ function IntegrationsManager() {
     </>
   );
 }
+function OperationsManager() {
+  const runtimeJobs = useJson("/api/proxy/runtime/jobs");
+  const localAgents = useJson("/api/local-agents");
+  const [backend, setBackend] = useState("vllm");
+  const [operation, setOperation] = useState("inspect");
+  const [jobId, setJobId] = useState("");
+  const [modelId, setModelId] = useState("");
+  const [agent, setAgent] = useState("pi");
+  const [message, setMessage] = useState("");
+  const act = async (path: `/api/${string}`, body?: RecordJson) => {
+    try {
+      const init: RequestInit = { method: "POST" };
+      if (body) {
+        init.headers = { "content-type": "application/json" };
+        init.body = JSON.stringify(body);
+      }
+      await requestRecord(path, init);
+      setMessage("Local operation accepted");
+      void runtimeJobs.reload();
+      void localAgents.reload();
+    } catch (value) {
+      setMessage(value instanceof Error ? value.message : String(value));
+    }
+  };
+  return (
+    <article>
+      <h2>Runtime and local agents</h2>
+      <ErrorText value={message || runtimeJobs.error || localAgents.error} />
+      <div className="row">
+        <select value={backend} onChange={(event) => setBackend(event.target.value)}>
+          {(["vllm", "sglang", "llamacpp", "mlx", "cuda", "rocm"] as const).map((value) => (
+            <option key={value}>{value}</option>
+          ))}
+        </select>
+        <select value={operation} onChange={(event) => setOperation(event.target.value)}>
+          {(["inspect", "install", "update", "download"] as const).map((value) => (
+            <option key={value}>{value}</option>
+          ))}
+        </select>
+        <button onClick={() => act("/api/proxy/runtime/jobs", { backend, type: operation })}>
+          Start runtime job
+        </button>
+        <input
+          value={jobId}
+          onChange={(event) => setJobId(event.target.value)}
+          placeholder="Job ID"
+        />
+        <button
+          disabled={!jobId.trim()}
+          onClick={() => act(`/api/proxy/runtime/jobs/${encodeURIComponent(jobId.trim())}/cancel`)}
+        >
+          Cancel runtime job
+        </button>
+      </div>
+      <JsonView value={runtimeJobs.data} />
+      <div className="row">
+        <input
+          value={modelId}
+          onChange={(event) => setModelId(event.target.value)}
+          placeholder="Model ID"
+        />
+        <select value={agent} onChange={(event) => setAgent(event.target.value)}>
+          {(["pi", "opencode", "droid", "hermes", "omp"] as const).map((value) => (
+            <option key={value}>{value}</option>
+          ))}
+        </select>
+        <button
+          disabled={!modelId.trim()}
+          onClick={() => act("/api/local-agents", { modelId: modelId.trim(), targets: [agent] })}
+        >
+          Attach model
+        </button>
+      </div>
+      <JsonView value={localAgents.data} />
+    </article>
+  );
+}
+
 export function Configure() {
   return (
     <Page title="Configure">
@@ -692,7 +882,7 @@ export function Configure() {
           <MachineManager />
           <Resource title="Machines and rigs" path="/api/proxy/studio/rigs" />
           <Resource title="Runtime targets" path="/api/proxy/runtime/targets" />
-          <Resource title="Local agents" path="/api/local-agents" />
+          <OperationsManager />
         </div>
       </section>
       <section id="integrations">
@@ -705,7 +895,6 @@ export function Configure() {
           <Resource title="Server health" path="/api/health" />
           <Resource title="Diagnostics" path="/api/proxy/studio/diagnostics" />
           <Resource title="Storage" path="/api/proxy/studio/storage" />
-          <Resource title="Runtime jobs" path="/api/proxy/runtime/jobs" />
         </div>
       </section>
     </Page>
