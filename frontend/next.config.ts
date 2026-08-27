@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
   // undefined, but generateBuildId() calls it as a function without a guard.
   generateBuildId: () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
   output: "standalone",
+  outputFileTracingRoot: path.join(__dirname, ".."),
   images: { unoptimized: true },
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   // Keep the Pi SDK out of the webpack/turbopack bundle so it loads from
@@ -41,10 +42,9 @@ const nextConfig: NextConfig = {
   // the standalone output so the provider set is always complete.
   outputFileTracingIncludes: {
     "/api/**": [
-      "./node_modules/@earendil-works/pi-ai/dist/**/*.js",
-      "./node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/**/*.js",
-      "./node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/**/*",
-      "./node_modules/typebox/**/*",
+      "../node_modules/@earendil-works/pi-ai/dist/**/*.js",
+      "../node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/**/*",
+      "../node_modules/typebox/**/*",
     ],
   },
   outputFileTracingExcludes: {
@@ -76,7 +76,7 @@ const nextConfig: NextConfig = {
       "../shared/**/*",
       "../site/**/*",
       "../*.md",
-      "../package-lock.json",
+      "../bun.lock",
       "../release.config.cjs",
       "../tsconfig*.json",
     ],
@@ -95,7 +95,7 @@ const nextConfig: NextConfig = {
   webpack: (config, { nextRuntime }) => {
     config.resolve.modules = [
       ...(config.resolve.modules ?? ["node_modules"]),
-      path.join(__dirname, "node_modules"),
+      path.join(__dirname, "../node_modules"),
     ];
     // instrumentation.ts is compiled for the edge runtime too. Its node-only
     // half (instrumentation-node.ts, node:net) is behind a NEXT_RUNTIME gate,

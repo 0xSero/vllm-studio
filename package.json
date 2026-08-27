@@ -4,30 +4,41 @@
   "private": true,
   "engines": {
     "node": ">=22.19.0",
-    "npm": ">=10.0.0"
+    "bun": ">=1.3.14"
   },
   "scripts": {
     "doctor": "node scripts/project.mjs doctor",
-    "setup": "node scripts/project.mjs setup",
+    "setup": "bun install --frozen-lockfile && bun run setup:git-hooks",
     "release:notes": "node scripts/project.mjs release-notes",
     "release:check-commits": "node scripts/project.mjs check-commits --range origin/main..HEAD",
     "release:stage-desktop": "node scripts/project.mjs stage-release",
     "setup:git-hooks": "node scripts/project.mjs setup-hooks",
     "dev:controller": "bun run --cwd controller dev",
-    "dev": "npm --prefix frontend run dev",
-    "build": "npm --prefix frontend run build",
+    "dev": "bun run --cwd frontend dev",
+    "build": "bun run --cwd frontend build",
     "start:controller": "bun run --cwd controller start",
-    "start": "npm --prefix frontend start",
-    "check": "npm run check:automation && npm run check:contracts && npm run check:structure && npm run check:frontend && npm run check:controller && npm run check:agent-runtime",
+    "start": "bun run --cwd frontend start",
+    "check": "bun run check:automation && bun run check:contracts && bun run check:structure && bun run check:frontend && bun run check:controller && bun run check:agent-runtime",
     "check:automation": "node scripts/project.mjs audit-layout",
     "check:contracts": "node scripts/project.mjs validate-contracts",
     "check:structure": "node scripts/project.mjs validate-structure",
-    "check:frontend": "npm --prefix frontend run check:quality",
-    "check:controller": "cd controller && bun run typecheck && bun run lint && bun run check",
-    "check:agent-runtime": "cd services/agent-runtime && bun run check",
-    "dev:agent-runtime": "npm --prefix services/agent-runtime run build && node services/agent-runtime/dist/server.js",
-    "desktop:build": "cd frontend && npm run desktop:build",
-    "desktop:dist": "cd frontend && npm run desktop:dist",
-    "desktop:pack": "cd frontend && npm run desktop:pack"
+    "check:frontend": "bun run --cwd frontend check:quality",
+    "check:controller": "bun run --cwd controller typecheck && bun run --cwd controller lint && bun run --cwd controller check",
+    "check:agent-runtime": "bun run --cwd services/agent-runtime check",
+    "dev:agent-runtime": "bun run --cwd services/agent-runtime build && node services/agent-runtime/dist/server.js",
+    "desktop:build": "bun run --cwd frontend desktop:build",
+    "desktop:dist": "bun run --cwd frontend desktop:dist",
+    "desktop:pack": "bun run --cwd frontend desktop:pack"
+  },
+  "packageManager": "bun@1.3.14",
+  "workspaces": [
+    "controller",
+    "controller/contracts",
+    "frontend",
+    "services/agent-runtime",
+    "shared"
+  ],
+  "overrides": {
+    "eslint-plugin-react-hooks": "7.0.1"
   }
 }

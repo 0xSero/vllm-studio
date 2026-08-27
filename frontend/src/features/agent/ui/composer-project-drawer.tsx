@@ -151,8 +151,6 @@ export function ComposerProjectDrawer({
   const label = projectName ?? activeProject?.name ?? "Choose project";
   const hasQueue = queueItems.length > 0;
   const paused = goal?.status === "paused";
-  const terminal =
-    goal?.status === "complete" || goal?.status === "blocked" || goal?.status === "budget_limited";
 
   const startEditing = () => {
     if (!goal) return;

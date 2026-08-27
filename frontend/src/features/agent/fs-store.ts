@@ -1,4 +1,11 @@
-import { existsSync, promises as fs, lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
+import {
+  existsSync,
+  promises as fs,
+  lstatSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import path from "node:path";
 import type { FsEntry } from "@/features/agent/filesystem-types";
 import { listProjectsFromStore } from "@local-studio/agent-runtime/projects-store";
@@ -162,6 +169,11 @@ const SEARCH_MAX_DEPTH = 12;
 // ignore rules as listDirectory, with hard caps so a huge tree cannot stall the
 // request. Symlinks are skipped entirely: that keeps the walk inside the root
 // and cannot loop, so no per-entry ensureInside is needed.
+function fileMatch(query: string, name: string, relativePath: string): "name" | "path" | undefined {
+  if (!query || name.toLowerCase().includes(query)) return "name";
+  if (relativePath.toLowerCase().includes(query)) return "path";
+}
+
 export function searchFiles(rootCwd: string, query: string, limit = 20): FsEntry[] {
   const root = resolveWorkspaceRoot(rootCwd);
   const q = query.trim().toLowerCase();
@@ -198,9 +210,8 @@ export function searchFiles(rootCwd: string, query: string, limit = 20): FsEntry
       }
       if (!s.isFile()) continue;
       const rel = path.relative(root, abs);
-      const nameHit = !q || name.toLowerCase().includes(q);
-      const pathHit = !q || rel.toLowerCase().includes(q);
-      if (!nameHit && !pathHit) continue;
+      const match = fileMatch(q, name, rel);
+      if (!match) continue;
       const entry: FsEntry = {
         name,
         path: abs,
@@ -209,7 +220,7 @@ export function searchFiles(rootCwd: string, query: string, limit = 20): FsEntry
         size: s.size,
         modifiedAt: s.mtime.toISOString(),
       };
-      if (nameHit) nameMatches.push(entry);
+      if (match === "name") nameMatches.push(entry);
       else pathMatches.push(entry);
     }
   }

@@ -21,12 +21,16 @@
     "@hono/node-server": "^2.0.12",
     "@lydell/node-pty": "1.2.0-beta.12",
     "@modelcontextprotocol/sdk": "1.30.0",
+    "@silvia-odwyer/photon-node": "0.3.4",
     "chromium-bidi": "0.12.0",
+    "devtools-protocol": "0.0.1686980",
     "effect": "4.0.0-beta.90",
     "hono": "4.12.30",
+    "mitt": "3.0.1",
     "playwright-core": "1.61.1",
     "proper-lockfile": "4.1.2",
-    "semver": "7.8.5"
+    "semver": "7.8.5",
+    "undici": "8.5.0"
   },
   "devDependencies": {
     "@types/node": "24.6.0",

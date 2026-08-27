@@ -378,7 +378,16 @@ import {
 import path2 from "node:path";
 import { spawnSync as spawnSync2 } from "node:child_process";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
-var packageDir, distDir, bundlePath, runtimePackages, build, lydellDir, bundle, sourceRoot;
+function packageDirectoryFor(resolver, packageName) {
+  let segments = packageName.split("/");
+  for (let searchPath of resolver.resolve.paths(packageName) ?? []) {
+    let directory = path2.join(searchPath, ...segments);
+    if (existsSync4(path2.join(directory, "package.json")))
+      return directory;
+  }
+  throw Error(`Missing browser runtime package: ${packageName}`);
+}
+var packageDir, distDir, bundlePath, runtimePackages, build, bundle, sourceRoot;
 var init_bundle = __esm(() => {
   packageDir = path2.resolve(path2.dirname(fileURLToPath2(import.meta.url)), "../../services/agent-runtime"), distDir = path2.join(packageDir, "dist"), bundlePath = path2.join(distDir, "standalone.mjs"), runtimePackages = [
     "playwright-core",
@@ -408,14 +417,17 @@ var init_bundle = __esm(() => {
   ], { cwd: packageDir, stdio: "inherit" });
   if (build.status !== 0)
     throw Error(`Agent runtime bundle failed with status ${build.status ?? "unknown"}`);
-  lydellDir = path2.join(packageDir, "node_modules", "@lydell");
-  if (existsSync4(lydellDir)) {
-    for (let entry of readdirSync3(lydellDir))
-      if (entry.startsWith("node-pty-"))
-        runtimePackages.push(`@lydell/${entry}`);
+  let packageRequire = createRequire(path2.join(packageDir, "package.json"));
+  let nodePtyDirectory = packageDirectoryFor(packageRequire, "@lydell/node-pty");
+  let nodePtyManifest = JSON.parse(readFileSync5(path2.join(nodePtyDirectory, "package.json"), "utf8"));
+  for (let packageName of Object.keys(nodePtyManifest.optionalDependencies ?? {})) {
+    try {
+      packageDirectoryFor(packageRequire, packageName), runtimePackages.push(packageName);
+    } catch {
+    }
   }
   for (let packageName of runtimePackages) {
-    let segments = packageName.split("/"), source = path2.join(packageDir, "node_modules", ...segments), destination = path2.join(distDir, "node_modules", ...segments);
+    let segments = packageName.split("/"), source = packageDirectoryFor(packageRequire, packageName), destination = path2.join(distDir, "node_modules", ...segments);
     if (!existsSync4(path2.join(source, "package.json")))
       throw Error(`Missing browser runtime package: ${packageName}`);
     mkdirSync(path2.dirname(destination), { recursive: !0 }), cpSync(source, destination, { recursive: !0 });
@@ -495,6 +507,7 @@ import {
   cpSync as cpSync2,
   existsSync as existsSync5,
   lstatSync as lstatSync2,
+  mkdirSync as mkdirSync2,
   readdirSync as readdirSync4,
   readFileSync as readFileSync7,
   rmdirSync,
@@ -540,28 +553,36 @@ function removeEmptyDirectories(directory) {
   if (directory !== standaloneBase2 && readdirSync4(directory).length === 0)
     rmdirSync(directory);
 }
+function copyPackageTree(resolver, packageName, destination, copies) {
+  let source = packageDirectoryFor(resolver, packageName), canonicalSource = realpathSync2(source), existing = copies.get(canonicalSource);
+  rmSync3(destination, { recursive: !0, force: !0 }), mkdirSync2(dirname2(destination), { recursive: !0 });
+  if (existing) {
+    symlinkSync(relative3(dirname2(destination), existing), destination, "dir");
+    return;
+  }
+  copies.set(canonicalSource, destination), cpSync2(source, destination, { recursive: !0, dereference: !0 }), rmSync3(resolve2(destination, "node_modules"), { recursive: !0, force: !0 });
+  let manifest = JSON.parse(readFileSync7(resolve2(source, "package.json"), "utf8")), childResolver = createRequire(resolve2(source, "package.json"));
+  for (let dependency of Object.keys(manifest.dependencies ?? {}))
+    copyPackageTree(childResolver, dependency, resolve2(destination, "node_modules", dependency), copies);
+  for (let dependency of Object.keys({ ...manifest.optionalDependencies, ...manifest.peerDependencies })) {
+    try {
+      packageDirectoryFor(childResolver, dependency), copyPackageTree(childResolver, dependency, resolve2(destination, "node_modules", dependency), copies);
+    } catch {
+    }
+  }
+}
 var projectRoot2, repoRoot, standaloneBase2, standaloneRoots, standaloneRoot, runtimeDependencyPaths, tracedPiPackageDirectory, unverified, pruned = 0;
 var init_complete_standalone_build = __esm(() => {
   projectRoot2 = resolve2(import.meta.dirname, ".."), repoRoot = resolve2(projectRoot2, ".."), standaloneBase2 = resolve2(projectRoot2, ".next", "standalone"), standaloneRoots = [resolve2(standaloneBase2, "frontend"), standaloneBase2], standaloneRoot = standaloneRoots.find((root) => existsSync5(resolve2(root, "server.js")));
   if (!standaloneRoot)
     throw Error(`Missing standalone server under: ${standaloneBase2}`);
   runtimeDependencyPaths = [
-    "node_modules/typebox",
-    "node_modules/@earendil-works/pi-coding-agent"
+    ["typebox", "node_modules/typebox"],
+    ["@earendil-works/pi-coding-agent", "node_modules/@earendil-works/pi-coding-agent"]
   ];
-  for (let dependencyPath of runtimeDependencyPaths) {
-    let source = resolve2(projectRoot2, dependencyPath);
-    if (!existsSync5(source))
-      throw Error(`Missing runtime dependency source: ${dependencyPath}`);
-    let destination = resolve2(standaloneRoot, dependencyPath);
-    cpSync2(source, destination, { recursive: !0 });
-    let executableShimDirectories = readdirSync4(destination, {
-      recursive: !0,
-      withFileTypes: !0
-    }).filter((entry) => entry.isDirectory() && entry.name === ".bin").map((entry) => resolve2(entry.parentPath, entry.name));
-    for (let directory of executableShimDirectories)
-      rmSync3(directory, { recursive: !0, force: !0 });
-  }
+  let projectRequire = createRequire(resolve2(projectRoot2, "package.json")), copiedPackages = /* @__PURE__ */ new Map();
+  for (let [packageName, destinationPath] of runtimeDependencyPaths)
+    copyPackageTree(projectRequire, packageName, resolve2(standaloneRoot, destinationPath), copiedPackages);
   tracedPiPackageDirectory = resolve2(standaloneRoot, ".next/node_modules/@earendil-works");
   if (existsSync5(tracedPiPackageDirectory)) {
     let packageTargets = new Map([
@@ -580,6 +601,14 @@ var init_complete_standalone_build = __esm(() => {
         throw Error(`Expected traced Pi package alias to be a symlink: ${link}`);
       unlinkSync(link), symlinkSync(relative3(dirname2(link), target), link, "dir");
     }
+  }
+  let externalLinks = readdirSync4(standaloneRoot, { recursive: !0, withFileTypes: !0 }).filter((entry) => entry.isSymbolicLink()).map((entry) => resolve2(entry.parentPath, entry.name)).filter((link) => {
+    let target = relative3(standaloneRoot, realpathSync2(link));
+    return target === ".." || target.startsWith("../") || target.startsWith("..\\");
+  });
+  for (let link of externalLinks) {
+    let target = realpathSync2(link);
+    unlinkSync(link), cpSync2(target, link, { recursive: !0, dereference: !0 });
   }
   unverified = [];
   for (let file2 of filesUnder2(standaloneBase2)) {
@@ -1484,7 +1513,7 @@ var init_validate_package_json = __esm(() => {
     ["services/agent-runtime/package.json", ["bundle", "build", "dev", "start"]],
     ["shared/package.json", []],
     ["controller/contracts/package.json", []]
-  ], packageLocks = ["frontend/package-lock.json", "controller/bun.lock", "services/agent-runtime/bun.lock", "shared/bun.lock"], packageMissing = [];
+  ], packageLocks = ["bun.lock"], packageMissing = [];
   for (let [manifest, scripts] of packageRequirements) {
     let packageJson = packageAuditRead(manifest);
     if (packageJson.private !== true)
