@@ -1,5 +1,5 @@
 import { performance } from "node:perf_hooks";
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { HttpStatus, notFound } from "../../core/errors";
 import { effectHandler } from "../../http/effect-handler";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
@@ -11,7 +11,12 @@ import {
   parseProviderModel,
   resolveProviderConfig,
 } from "../../services/provider-routing";
-import { normalizeChatMessageContentParts, normalizeToolRequest } from "./content-normalizer";
+import {
+  normalizeChatMessageContentParts,
+  normalizeToolRequest,
+  isProxyObject,
+  type ProxyObject,
+} from "./content-normalizer";
 import {
   normalizeReasoningAndContentInMessage,
   normalizeToolCallsInMessage,
@@ -27,6 +32,15 @@ import {
   type OpenAIUsage,
 } from "./chat-request";
 import { buildChatCompletionsStreamResponse } from "./chat-completions-stream";
+
+interface FailureResult<Error> {
+  ok: false;
+  error: Error;
+}
+interface SuccessResult<Value> {
+  ok: true;
+  value: Value;
+}
 
 export interface ModelNotRunningError {
   error: { message: string; type: "model_not_running"; code: "model_not_running" };
@@ -47,9 +61,7 @@ export const modelNotRunningError = (
 };
 
 const stripDeepSeekControlTokens = (text: string): string =>
-  text
-    .replaceAll("<｜begin▁of▁sentence｜>", "")
-    .replaceAll("<｜end▁of▁sentence｜>", "");
+  text.replaceAll("<｜begin▁of▁sentence｜>", "").replaceAll("<｜end▁of▁sentence｜>", "");
 
 const isDeepSeekV4ControllerRecipe = (recipe: Recipe | null): boolean => {
   if (!recipe) return false;
@@ -66,7 +78,7 @@ const isDeepSeekV4ControllerRecipe = (recipe: Recipe | null): boolean => {
  * controller boundary, while preserving actual reasoning and reasoning_effort.
  */
 export const sanitizeDeepSeekV4ControllerRequest = (
-  body: Record<string, unknown>,
+  body: ProxyObject,
   recipe: Recipe | null,
 ): boolean => {
   if (!isDeepSeekV4ControllerRecipe(recipe)) return false;
@@ -80,16 +92,16 @@ export const sanitizeDeepSeekV4ControllerRequest = (
   const messages = body["messages"];
   if (!Array.isArray(messages)) return changed;
   for (const message of messages) {
-    if (!message || typeof message !== "object" || Array.isArray(message)) continue;
-    const record = message as Record<string, unknown>;
+    if (!isProxyObject(message)) continue;
+    const record = message;
     if (
-      typeof record["reasoning_content"] === "string" &&
+      Schema.is(Schema.String)(record["reasoning_content"]) &&
       record["reasoning_content"].trim().length === 0
     ) {
       delete record["reasoning_content"];
       changed = true;
     }
-    if (typeof record["content"] === "string") {
+    if (Schema.is(Schema.String)(record["content"])) {
       const cleaned = stripDeepSeekControlTokens(record["content"]);
       if (cleaned !== record["content"]) {
         record["content"] = cleaned;
@@ -103,29 +115,29 @@ export const sanitizeDeepSeekV4ControllerRequest = (
 export const registerOpenAIRoutes = defineRoutes((app, context) => {
   const warnNonRunningModel = createNonRunningModelWarner(context.logger);
 
+  const ChatRequestSchema = Schema.Record(Schema.String, Schema.Unknown);
   interface ParsedChatBody {
-    parsed: Record<string, unknown>;
+    parsed: ProxyObject;
     requestedModel: string | null;
     matchedRecipe: Recipe | null;
     isStreaming: boolean;
     bodyChanged: boolean;
     sessionId: string | null;
   }
-  const ChatRequestSchema = Schema.Record(Schema.String, Schema.Unknown);
 
   const parseChatBody = (
     bodyBuffer: ArrayBuffer,
     getHeader: (name: string) => string | undefined,
-  ): Effect.Effect<ParsedChatBody, HttpStatus | unknown> =>
+  ): Effect.Effect<ParsedChatBody, unknown> =>
     Effect.gen(function* () {
-      const decoded = yield* Effect.try({
-        try: () =>
-          Schema.decodeUnknownSync(ChatRequestSchema)(
-            JSON.parse(new TextDecoder().decode(bodyBuffer)),
-          ),
+      const parsed = yield* Effect.try({
+        try: (): ProxyObject => {
+          const decoded = JSON.parse(new TextDecoder().decode(bodyBuffer));
+          Schema.decodeUnknownSync(ChatRequestSchema)(decoded);
+          return decoded;
+        },
         catch: () => new HttpStatus({ status: 400, detail: "Invalid JSON body" }),
       });
-      const parsed: Record<string, unknown> = { ...decoded };
       const sessionId = extractSessionId(parsed, getHeader);
       let requestedModel: string | null = null;
       let matchedRecipe: Recipe | null = null;
@@ -134,7 +146,7 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
       if (normalizeChatMessageContentParts(parsed)) {
         bodyChanged = true;
       }
-      if (typeof parsed["model"] === "string") {
+      if (Schema.is(Schema.String)(parsed["model"])) {
         requestedModel = parsed["model"];
         matchedRecipe = yield* findRecipeByModel(requestedModel, context);
         if (matchedRecipe) {
@@ -159,16 +171,21 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
       return { parsed, requestedModel, matchedRecipe, isStreaming, bodyChanged, sessionId };
     });
 
-  const resolveChatUpstream = (
-    requestedModel: string | null,
-    parsed: Record<string, unknown>,
-  ): {
+  interface RequestHeaders {
+    [name: string]: string;
+  }
+  interface ChatUpstream {
     upstreamUrl: string;
-    headers: Record<string, string>;
+    headers: RequestHeaders;
     requestProvider: string;
     providerRouting: ReturnType<typeof resolveProviderConfig>;
     rewroteModel: boolean;
-  } => {
+  }
+
+  const resolveChatUpstream = (
+    requestedModel: string | null,
+    parsed: ProxyObject,
+  ): ChatUpstream => {
     const providerModel = requestedModel
       ? parseProviderModel(requestedModel)
       : { provider: DEFAULT_CHAT_PROVIDER, modelId: "" };
@@ -189,14 +206,9 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
         ? `${providerRouting.baseUrl.replace(/\/+$/, "")}/v1/chat/completions`
         : buildInferenceUrl(context, "/v1/chat/completions");
     const inferenceKey = process.env["INFERENCE_API_KEY"] ?? "";
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(providerRouting
-        ? { Authorization: `Bearer ${providerRouting.apiKey}` }
-        : inferenceKey
-          ? { Authorization: `Bearer ${inferenceKey}` }
-          : {}),
-    };
+    const headers: RequestHeaders = { "Content-Type": "application/json" };
+    if (providerRouting) headers["Authorization"] = `Bearer ${providerRouting.apiKey}`;
+    else if (inferenceKey) headers["Authorization"] = `Bearer ${inferenceKey}`;
     return { upstreamUrl, headers, requestProvider, providerRouting, rewroteModel };
   };
 
@@ -221,17 +233,27 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
       }),
     );
 
+  const OpenAIUsageSchema = Schema.Struct({
+    prompt_tokens: Schema.optional(Schema.Number),
+    completion_tokens: Schema.optional(Schema.Number),
+    reasoning_tokens: Schema.optional(Schema.Number),
+    completion_tokens_details: Schema.optional(
+      Schema.Struct({ reasoning_tokens: Schema.optional(Schema.Number) }),
+    ),
+  });
+
   const normalizeCompletionChoices = (
-    result: Record<string, unknown>,
+    result: ProxyObject,
     recordedModel: string,
     sourceHeader: string | null,
   ): void => {
     const choices = result["choices"];
     if (!Array.isArray(choices)) return;
     for (const choice of choices) {
-      const choiceRecord = choice as Record<string, unknown>;
-      const message = choiceRecord["message"] as Record<string, unknown> | undefined;
-      if (!message) continue;
+      if (!isProxyObject(choice)) continue;
+      const choiceRecord = choice;
+      const message = choiceRecord["message"];
+      if (!isProxyObject(message)) continue;
       if (normalizeToolCallsInMessage(message)) choiceRecord["finish_reason"] = "tool_calls";
       normalizeReasoningAndContentInMessage(message);
       if (exposeReasoningAsContentWhenEmpty(message, recordedModel)) {
@@ -246,6 +268,100 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
     }
   };
 
+  const getSourceHeader = (getHeader: (name: string) => string | undefined): string | null =>
+    getHeader("x-vllm-source") ?? getHeader("x-source") ?? getHeader("user-agent") ?? null;
+
+  const handleNonStreaming = (
+    upstreamUrl: string,
+    headers: RequestHeaders,
+    body: ArrayBuffer,
+    clientSignal: AbortSignal,
+    recordedModel: string,
+    sourceHeader: string | null,
+    sessionId: string | null,
+    recordedProvider: string,
+    requestStart: number,
+  ) =>
+    Effect.gen(function* () {
+      const fetched = yield* Effect.tryPromise({
+        try: (signal) =>
+          fetch(upstreamUrl, {
+            method: "POST",
+            headers,
+            body,
+            signal: AbortSignal.any([clientSignal, signal]),
+          }),
+        catch: (source) => source,
+      }).pipe(
+        Effect.match({
+          onFailure: (error) => ({ ok: false, error }) satisfies FailureResult<typeof error>,
+          onSuccess: (value) => ({ ok: true, value }) satisfies SuccessResult<typeof value>,
+        }),
+      );
+      if (!fetched.ok) {
+        return clientSignal.aborted
+          ? new Response(null, { status: 499 })
+          : yield* Effect.fail(fetched.error);
+      }
+      const response = fetched.value;
+      const decoded = yield* Effect.tryPromise({
+        try: async (): Promise<ProxyObject> => {
+          const value: ProxyObject = JSON.parse(await response.text());
+          Schema.decodeUnknownSync(ChatRequestSchema)(value);
+          return value;
+        },
+        catch: (source) => source,
+      }).pipe(
+        Effect.match({
+          onFailure: (error) => ({ ok: false, error }) satisfies FailureResult<typeof error>,
+          onSuccess: (value) => ({ ok: true, value }) satisfies SuccessResult<typeof value>,
+        }),
+      );
+      if (!decoded.ok) {
+        if (clientSignal.aborted) return new Response(null, { status: 499 });
+        return new Response(null, { status: response.status });
+      }
+      const result = { ...decoded.value };
+
+      const decodedUsage = Schema.decodeUnknownOption(OpenAIUsageSchema)(result["usage"]).pipe(
+        Option.getOrUndefined,
+      );
+      let usage: OpenAIUsage | undefined;
+      if (decodedUsage) {
+        usage = {};
+        if (decodedUsage.prompt_tokens !== undefined)
+          usage.prompt_tokens = decodedUsage.prompt_tokens;
+        if (decodedUsage.completion_tokens !== undefined)
+          usage.completion_tokens = decodedUsage.completion_tokens;
+        if (decodedUsage.reasoning_tokens !== undefined)
+          usage.reasoning_tokens = decodedUsage.reasoning_tokens;
+        if (decodedUsage.completion_tokens_details?.reasoning_tokens !== undefined) {
+          usage.completion_tokens_details = {
+            reasoning_tokens: decodedUsage.completion_tokens_details.reasoning_tokens,
+          };
+        }
+      }
+      yield* recordNonStreamingInferenceUsage(
+        { logger: context.logger, stores: context.stores },
+        {
+          usage,
+          record: {
+            model: recordedModel,
+            source: sourceHeader,
+            session_id: sessionId,
+            provider: recordedProvider,
+            duration_ms: Math.round(performance.now() - requestStart),
+            status: response.status,
+          },
+        },
+      );
+
+      attachSessionUsage(result, sessionId, usage);
+      normalizeCompletionChoices(result, recordedModel, sourceHeader);
+
+      return Response.json(result, { status: response.status });
+    });
+
   return mergeRoutes(
     app.post(
       "/v1/chat/completions",
@@ -257,8 +373,8 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
             catch: () => new HttpStatus({ status: 400, detail: "Invalid request body" }),
           }).pipe(
             Effect.match({
-              onFailure: (error) => ({ ok: false as const, error }),
-              onSuccess: (value) => ({ ok: true as const, value }),
+              onFailure: (error) => ({ ok: false, error }) satisfies FailureResult<typeof error>,
+              onSuccess: (value) => ({ ok: true, value }) satisfies SuccessResult<typeof value>,
             }),
           );
           if (!bodyRead.ok) {
@@ -271,11 +387,7 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
             yield* parseChatBody(bodyBuffer, (name) => ctx.req.header(name));
           const { upstreamUrl, headers, requestProvider, providerRouting, rewroteModel } =
             resolveChatUpstream(requestedModel, parsed);
-          const sourceHeader =
-            ctx.req.header("x-vllm-source") ??
-            ctx.req.header("x-source") ??
-            ctx.req.header("user-agent") ??
-            null;
+          const sourceHeader = getSourceHeader((name) => ctx.req.header(name));
 
           if (
             !matchedRecipe &&
@@ -307,63 +419,17 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
           const recordedProvider = providerRouting ? requestProvider : "local";
 
           if (!isStreaming) {
-            const fetched = yield* Effect.tryPromise({
-              try: (signal) =>
-                fetch(upstreamUrl, {
-                  method: "POST",
-                  headers,
-                  body: finalBody,
-                  signal: AbortSignal.any([clientSignal, signal]),
-                }),
-              catch: (source) => source,
-            }).pipe(
-              Effect.match({
-                onFailure: (error) => ({ ok: false as const, error }),
-                onSuccess: (value) => ({ ok: true as const, value }),
-              }),
+            return yield* handleNonStreaming(
+              upstreamUrl,
+              headers,
+              finalBody,
+              clientSignal,
+              recordedModel,
+              sourceHeader,
+              sessionId,
+              recordedProvider,
+              requestStart,
             );
-            if (!fetched.ok) {
-              return clientSignal.aborted
-                ? new Response(null, { status: 499 })
-                : yield* Effect.fail(fetched.error);
-            }
-            const response = fetched.value;
-            const decoded = yield* Effect.tryPromise({
-              try: () => response.json(),
-              catch: (source) => source,
-            }).pipe(
-              Effect.flatMap(Schema.decodeUnknownEffect(ChatRequestSchema)),
-              Effect.match({
-                onFailure: (error) => ({ ok: false as const, error }),
-                onSuccess: (value) => ({ ok: true as const, value }),
-              }),
-            );
-            if (!decoded.ok) {
-              if (clientSignal.aborted) return new Response(null, { status: 499 });
-              return new Response(null, { status: response.status });
-            }
-            const result = { ...decoded.value };
-
-            const usage = result["usage"] as OpenAIUsage | undefined;
-            yield* recordNonStreamingInferenceUsage(
-              { logger: context.logger, stores: context.stores },
-              {
-                usage,
-                record: {
-                  model: recordedModel,
-                  source: sourceHeader,
-                  session_id: sessionId,
-                  provider: recordedProvider,
-                  duration_ms: Math.round(performance.now() - requestStart),
-                  status: response.status,
-                },
-              },
-            );
-
-            attachSessionUsage(result, sessionId, usage);
-            normalizeCompletionChoices(result, recordedModel, sourceHeader);
-
-            return Response.json(result, { status: response.status });
           }
 
           return buildChatCompletionsStreamResponse({

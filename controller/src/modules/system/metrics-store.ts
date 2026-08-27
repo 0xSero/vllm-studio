@@ -7,6 +7,35 @@ import {
   type RepositoryError,
 } from "../../stores/sqlite";
 
+export interface PeakMetric {
+  [key: string]: string | number | null;
+  model_id: string;
+  prefill_tps: number | null;
+  generation_tps: number | null;
+  ttft_ms: number | null;
+  total_tokens: number;
+  total_requests: number;
+  updated_at: string;
+}
+
+export interface PeakMetricSession {
+  [key: string]: string | number | null;
+  session_id: string;
+  model_id: string;
+  peak_prefill_tps: number | null;
+  peak_generation_tps: number | null;
+  best_ttft_ms: number | null;
+  started_at: string;
+  updated_at: string;
+}
+
+export interface PeakMetricWithBestSession extends PeakMetric {
+  best_session_id: string | null;
+  best_session_prefill_tps: number | null;
+  best_session_generation_tps: number | null;
+  best_session_ttft_ms: number | null;
+}
+
 export class PeakMetricsStore {
   private readonly db: Database;
   private readonly closeDatabase: () => Effect.Effect<void, RepositoryError>;
@@ -44,16 +73,14 @@ export class PeakMetricsStore {
     );
   }
 
-  public get(modelId: string): Record<string, unknown> | null {
+  public get(modelId: string): PeakMetric | null {
     const row = this.db
-      .query("SELECT * FROM peak_metrics WHERE model_id = ?")
-      .get(modelId) as Record<string, unknown> | null;
+      .query<PeakMetric, [string]>("SELECT * FROM peak_metrics WHERE model_id = ?")
+      .get(modelId);
     return row ? { ...row } : null;
   }
 
-  public getEffect(
-    modelId: string,
-  ): Effect.Effect<Record<string, unknown> | null, RepositoryError> {
+  public getEffect(modelId: string): Effect.Effect<PeakMetric | null, RepositoryError> {
     return repositoryEffect("peak-metrics.get", () => this.get(modelId));
   }
 
@@ -62,7 +89,7 @@ export class PeakMetricsStore {
     prefillTps?: number,
     generationTps?: number,
     ttftMs?: number,
-  ): Record<string, unknown> {
+  ): Partial<PeakMetric> {
     const current = this.get(modelId);
     const updates: Record<string, number> = {};
 
@@ -133,7 +160,7 @@ export class PeakMetricsStore {
     prefillTps?: number,
     generationTps?: number,
     ttftMs?: number,
-  ): Effect.Effect<Record<string, unknown>, RepositoryError> {
+  ): Effect.Effect<Partial<PeakMetric>, RepositoryError> {
     return repositoryEffect("peak-metrics.update-if-better", () =>
       this.updateIfBetter(modelId, prefillTps, generationTps, ttftMs),
     );
@@ -170,7 +197,7 @@ export class PeakMetricsStore {
     prefillTps?: number,
     generationTps?: number,
     ttftMs?: number,
-  ): Record<string, unknown> {
+  ): Partial<PeakMetricSession> {
     this.db
       .query(
         `
@@ -216,28 +243,28 @@ export class PeakMetricsStore {
     prefillTps?: number,
     generationTps?: number,
     ttftMs?: number,
-  ): Effect.Effect<Record<string, unknown>, RepositoryError> {
+  ): Effect.Effect<Partial<PeakMetricSession>, RepositoryError> {
     return repositoryEffect("peak-metric-sessions.update", () =>
       this.updateSessionPeak(sessionId, modelId, prefillTps, generationTps, ttftMs),
     );
   }
 
-  public getSession(sessionId: string): Record<string, unknown> | null {
+  public getSession(sessionId: string): PeakMetricSession | null {
     const row = this.db
-      .query("SELECT * FROM peak_metric_sessions WHERE session_id = ?")
-      .get(sessionId) as Record<string, unknown> | null;
+      .query<PeakMetricSession, [string]>("SELECT * FROM peak_metric_sessions WHERE session_id = ?")
+      .get(sessionId);
     return row ? { ...row } : null;
   }
 
   public getSessionEffect(
     sessionId: string,
-  ): Effect.Effect<Record<string, unknown> | null, RepositoryError> {
+  ): Effect.Effect<PeakMetricSession | null, RepositoryError> {
     return repositoryEffect("peak-metric-sessions.get", () => this.getSession(sessionId));
   }
 
-  public getBestSession(modelId: string): Record<string, unknown> | null {
+  public getBestSession(modelId: string): PeakMetricSession | null {
     const row = this.db
-      .query(
+      .query<PeakMetricSession, [string]>(
         `
         SELECT * FROM peak_metric_sessions
         WHERE model_id = ?
@@ -248,34 +275,34 @@ export class PeakMetricsStore {
         LIMIT 1
       `,
       )
-      .get(modelId) as Record<string, unknown> | null;
+      .get(modelId);
     return row ? { ...row } : null;
   }
 
   public getBestSessionEffect(
     modelId: string,
-  ): Effect.Effect<Record<string, unknown> | null, RepositoryError> {
+  ): Effect.Effect<PeakMetricSession | null, RepositoryError> {
     return repositoryEffect("peak-metric-sessions.get-best", () => this.getBestSession(modelId));
   }
 
-  public getAll(): Array<Record<string, unknown>> {
-    const rows = this.db.query("SELECT * FROM peak_metrics ORDER BY model_id").all() as Array<
-      Record<string, unknown>
-    >;
+  public getAll(): PeakMetricWithBestSession[] {
+    const rows = this.db
+      .query<PeakMetric, []>("SELECT * FROM peak_metrics ORDER BY model_id")
+      .all();
     return rows.map((row) => {
-      const modelId = String(row["model_id"] ?? "");
+      const modelId = row.model_id;
       const bestSession = modelId ? this.getBestSession(modelId) : null;
       return {
         ...row,
-        best_session_id: bestSession?.["session_id"] ?? null,
-        best_session_prefill_tps: bestSession?.["peak_prefill_tps"] ?? null,
-        best_session_generation_tps: bestSession?.["peak_generation_tps"] ?? null,
-        best_session_ttft_ms: bestSession?.["best_ttft_ms"] ?? null,
+        best_session_id: bestSession?.session_id ?? null,
+        best_session_prefill_tps: bestSession?.peak_prefill_tps ?? null,
+        best_session_generation_tps: bestSession?.peak_generation_tps ?? null,
+        best_session_ttft_ms: bestSession?.best_ttft_ms ?? null,
       };
     });
   }
 
-  public getAllEffect(): Effect.Effect<Array<Record<string, unknown>>, RepositoryError> {
+  public getAllEffect(): Effect.Effect<PeakMetricWithBestSession[], RepositoryError> {
     return repositoryEffect("peak-metrics.get-all", () => this.getAll());
   }
 
@@ -311,16 +338,14 @@ export class LifetimeMetricsStore {
       ["first_started_at", 0],
     ];
     for (const [key, value] of defaults) {
-      db
-        .query("INSERT OR IGNORE INTO lifetime_metrics (key, value) VALUES (?, ?)")
-        .run(key, value);
+      db.query("INSERT OR IGNORE INTO lifetime_metrics (key, value) VALUES (?, ?)").run(key, value);
     }
   }
 
   public get(key: string): number {
-    const row = this.db.query("SELECT value FROM lifetime_metrics WHERE key = ?").get(key) as {
-      value?: number;
-    } | null;
+    const row = this.db
+      .query<{ value: number }, [string]>("SELECT value FROM lifetime_metrics WHERE key = ?")
+      .get(key);
     return row?.value ?? 0;
   }
 
@@ -329,10 +354,9 @@ export class LifetimeMetricsStore {
   }
 
   public getAll(): Record<string, number> {
-    const rows = this.db.query("SELECT key, value FROM lifetime_metrics").all() as Array<{
-      key: string;
-      value: number;
-    }>;
+    const rows = this.db
+      .query<{ key: string; value: number }, []>("SELECT key, value FROM lifetime_metrics")
+      .all();
     return Object.fromEntries(rows.map((row) => [row.key, row.value]));
   }
 

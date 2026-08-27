@@ -11,7 +11,7 @@ import { probePythonRuntime } from "./runtime-target-probes";
 export type ManagedPythonBackend = Extract<EngineBackend, "vllm" | "sglang" | "mlx">;
 
 export const isManagedPythonBackend = (
-  backend: EngineBackend | string,
+  backend: string,
 ): backend is ManagedPythonBackend =>
   backend === "vllm" || backend === "sglang" || backend === "mlx";
 

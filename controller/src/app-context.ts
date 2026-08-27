@@ -58,20 +58,31 @@ let modelsDirectoryState: ModelsDirectoryState = "missing";
 
 export const getModelsDirectoryState = (): ModelsDirectoryState => modelsDirectoryState;
 
-const initializationError = (operation: string, source: unknown): AppContextInitializationError =>
-  new AppContextInitializationError({ operation, message: String(source), source });
+interface InitializationFailure {
+  readonly cause: unknown;
+}
+
+const initializationError = (
+  operation: string,
+  failure: InitializationFailure,
+): AppContextInitializationError =>
+  new AppContextInitializationError({
+    operation,
+    message: String(failure.cause),
+    source: failure.cause,
+  });
 
 const initialize = <A, E>(
   operation: string,
   effect: Effect.Effect<A, E>,
 ): Effect.Effect<A, AppContextInitializationError> =>
-  effect.pipe(Effect.mapError((source) => initializationError(operation, source)));
+  effect.pipe(Effect.mapError((source) => initializationError(operation, { cause: source })));
 
 const initializeSync = <A>(
   operation: string,
   make: () => A,
 ): Effect.Effect<A, AppContextInitializationError> =>
-  Effect.try({ try: make, catch: (source) => initializationError(operation, source) });
+  Effect.try({ try: make, catch: (source) => initializationError(operation, { cause: source }) });
 
 const releaseSafely = (
   operation: string,
