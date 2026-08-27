@@ -2,6 +2,8 @@ import { Schema } from "effect";
 
 const StringRecordSchema = Schema.Record(Schema.String, Schema.String);
 
+const SecretFlagsSchema = Schema.Record(Schema.String, Schema.Boolean);
+
 const ConnectorOriginSchema = Schema.Struct({
   kind: Schema.String,
   id: Schema.String,
@@ -22,9 +24,11 @@ const ConnectorFields = {
   command: Schema.optional(Schema.String),
   args: Schema.optional(Schema.Array(Schema.String)),
   env: Schema.optional(StringRecordSchema),
+  envSecret: Schema.optional(SecretFlagsSchema),
   cwd: Schema.optional(Schema.String),
   url: Schema.optional(Schema.String),
   headers: Schema.optional(StringRecordSchema),
+  headerSecret: Schema.optional(SecretFlagsSchema),
   auth: Schema.optional(ConnectorAuthReferenceSchema),
   allowTools: Schema.optional(Schema.Array(Schema.String)),
   origin: Schema.optional(ConnectorOriginSchema),
@@ -42,17 +46,15 @@ export const ConnectorsFileSchema = Schema.Struct({
 export const ConnectorsResponseSchema = Schema.Struct({
   connectors: Schema.Array(ConnectorViewSchema),
 });
+const {
+  auth: _auth,
+  origin: _origin,
+  enabled: _enabled,
+  ...ConnectorUpsertFields
+} = ConnectorFields;
 export const ConnectorUpsertInputSchema = Schema.Struct({
-  id: Schema.String,
+  ...ConnectorUpsertFields,
   name: Schema.optional(Schema.String),
-  transport: Schema.Union([Schema.Literal("stdio"), Schema.Literal("http")]),
-  command: Schema.optional(Schema.String),
-  args: Schema.optional(Schema.Array(Schema.String)),
-  env: Schema.optional(StringRecordSchema),
-  cwd: Schema.optional(Schema.String),
-  url: Schema.optional(Schema.String),
-  headers: Schema.optional(StringRecordSchema),
-  allowTools: Schema.optional(Schema.Array(Schema.String)),
   enabled: Schema.optional(Schema.Boolean),
 });
 export const ConnectorTestInputSchema = Schema.Struct({ id: Schema.String });

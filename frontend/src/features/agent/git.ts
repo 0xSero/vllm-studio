@@ -101,10 +101,6 @@ export async function loadGitState(cwd: string): Promise<GitState> {
     branch: current,
     status: statusLines(statusRaw),
     entries: statusEntries(statusRaw),
-    // `git diff HEAD` omits untracked (new) files, so a "build me a site"
-    // session that creates dozens of new files shows an empty diff while the
-    // counter says +N. Append synthesized new-file diffs so the panel reviews
-    // them like GitHub does.
     diff: untracked.diff
       ? `${diff}${diff.endsWith("\n") || !diff ? "" : "\n"}${untracked.diff}`
       : diff,
@@ -117,9 +113,6 @@ export async function loadGitState(cwd: string): Promise<GitState> {
   };
 }
 
-// git treats a leading-dash argument as an option, so a ref/branch like
-// `--upload-pack=…` would be interpreted as a flag even through execFile (which
-// only stops shell injection, not argument injection). Reject them.
 function assertNotOption(value: string, label: string): string {
   if (value.startsWith("-")) throw new Error(`Invalid ${label}: must not start with "-"`);
   return value;
@@ -164,8 +157,6 @@ export async function runGitAction(cwd: string, action: GitAction): Promise<GitS
   return loadGitState(cwd);
 }
 
-/** Local branches plus the remote branches of the repo in `cwd`, each marked
- *  with whether it is the checked-out one and whether it lives on a remote. */
 export async function listBranches(cwd: string): Promise<GitBranch[]> {
   const [branchRaw, localRaw] = await Promise.all([
     git(cwd, ["branch", "--show-current"]).catch(() => ""),
@@ -193,7 +184,6 @@ export async function listBranches(cwd: string): Promise<GitBranch[]> {
   return branches;
 }
 
-/** The linked worktrees of the repo in `cwd`, parsed from porcelain output. */
 export async function listWorktrees(cwd: string): Promise<GitWorktree[]> {
   const raw = await git(cwd, ["worktree", "list", "--porcelain"]).catch(() => "");
   const worktrees: GitWorktree[] = [];
@@ -217,9 +207,6 @@ export async function listWorktrees(cwd: string): Promise<GitWorktree[]> {
   }));
 }
 
-/** A worktree lives outside a project root (it is a sibling leaf of the repo),
- *  but it must still resolve inside the configured git roots so a request can't
- *  point git at an arbitrary filesystem path. */
 function assertWorktreePath(input: string): string {
   const clean = input.trim();
   if (!clean || !path.isAbsolute(clean)) throw new Error("Invalid worktree path: must be absolute");
@@ -297,19 +284,9 @@ export function numstatStats(numstat: string): GitDiffStats {
   return { additions, deletions };
 }
 
-// Per-file and total caps so a session that generates large bundles (e.g. an
-// 800KB data.js) can't blow up the diff payload; GitHub collapses huge files
-// too. Beyond the cap the file's content is truncated with a marker.
 const MAX_UNTRACKED_LINES_PER_FILE = 1000;
 const MAX_UNTRACKED_DIFF_BYTES = 1_500_000;
 
-/**
- * Synthesize a unified-diff block for one untracked file so it renders as a
- * GitHub-style "new file" (all additions). Binary files emit a marker instead
- * of their bytes; long files are truncated to MAX_UNTRACKED_LINES_PER_FILE.
- * `additions` is the file's true line count (matching git's working-tree count),
- * not the possibly-truncated number of rendered `+` rows.
- */
 export interface UntrackedFileDiffBlock {
   block: string;
   additions: number;

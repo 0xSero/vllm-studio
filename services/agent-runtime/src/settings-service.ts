@@ -9,7 +9,6 @@ export interface ApiSettings {
   apiKey: string;
 }
 
-/** Marker substring used to mask secrets in UI surfaces. */
 const MASKED_KEY_MARKER = "••••";
 
 const SavedApiSettingsSchema = Schema.Struct({
@@ -43,16 +42,12 @@ export async function saveApiSettings(settings: ApiSettings): Promise<void> {
   resolveDataDir();
   const settingsFile = resolveSettingsFilePath();
   const payload = JSON.stringify(settings, null, 2);
-  // Write-then-rename: a crash mid-write would truncate the file, and
-  // getApiSettings swallows the parse error and returns defaults — silently
-  // wiping the persisted API key and backend URL.
   const tempFile = `${settingsFile}.tmp-${process.pid}`;
   await writeFile(tempFile, payload, "utf-8");
   await chmod(tempFile, 0o600).catch(() => undefined);
   await rename(tempFile, settingsFile);
 }
 
-// Mask API key for display (show first 4 and last 4 chars)
 export function maskApiKey(key: string): string {
   if (!key || key.length < 12) return key ? "••••••••" : "";
   return `${key.slice(0, 4)}${MASKED_KEY_MARKER}${key.slice(-4)}`;
@@ -69,9 +64,6 @@ function isValidUrl(url: string): boolean {
   }
 }
 
-// Validate a partial update, merge it over persisted settings (preserving
-// unchanged values, ignoring a masked API key), and persist. Throws
-// `InvalidSettingsError` when a provided URL is malformed.
 export async function applySettingsUpdate(update: Partial<ApiSettings>): Promise<ApiSettings> {
   const { backendUrl, apiKey } = update;
 
@@ -82,7 +74,6 @@ export async function applySettingsUpdate(update: Partial<ApiSettings>): Promise
   const current = await getApiSettings();
   const next: ApiSettings = {
     backendUrl: backendUrl || current.backendUrl,
-    // Only update API key if explicitly provided (not the masked value).
     apiKey: apiKey && !apiKey.includes(MASKED_KEY_MARKER) ? apiKey : current.apiKey,
   };
 
@@ -90,7 +81,6 @@ export async function applySettingsUpdate(update: Partial<ApiSettings>): Promise
   return next;
 }
 
-/** Public-facing settings shape: API key masked, plus a `hasApiKey` flag. */
 export function maskedSettingsView(settings: ApiSettings) {
   return {
     backendUrl: settings.backendUrl,

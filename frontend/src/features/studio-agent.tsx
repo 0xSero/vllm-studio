@@ -8,6 +8,7 @@ import {
   ErrorText,
   JsonView,
   Page,
+  jsonText,
   Tabs,
   records,
   requestRecord,
@@ -42,9 +43,6 @@ const SessionPreferencesSchema = Schema.Record(Schema.String, SessionPreferenceS
 type SessionPreference = typeof SessionPreferenceSchema.Type;
 type SessionPreferences = typeof SessionPreferencesSchema.Type;
 const decodeSessionPreferences = Schema.decodeUnknownOption(SessionPreferencesSchema);
-function jsonText(value: Json | undefined, fallback = ""): string {
-  return isString(value) ? value : fallback;
-}
 const TurnResponseSchema = Schema.Struct({
   outcome: Schema.Literals(["accepted", "queued", "rejected"]),
   piSessionId: Schema.optional(Schema.NullOr(Schema.String)),
@@ -73,6 +71,16 @@ function sessionListPath(filter: SessionFilter): `/api/${string}` {
 function modelThinkingLevels(model: RecordJson | undefined): string[] {
   return Array.isArray(model?.thinkingLevels) ? model.thinkingLevels.filter(isString) : ["auto"];
 }
+function selectedCatalogue(catalogue: RecordJson[], selected: string[]): RecordJson[] {
+  return catalogue
+    .filter((item) => selected.includes(jsonText(item.id)))
+    .map((item) => ({
+      id: jsonText(item.id),
+      name: jsonText(item.name),
+      path: jsonText(item.path),
+      source: jsonText(item.source),
+    }));
+}
 function WorkbenchActions({
   quick,
   sessionId,
@@ -100,6 +108,31 @@ function WorkbenchActions({
     >
       Continue in main window
     </button>
+  );
+}
+
+function SubagentStatus({ piSessionId }: { piSessionId: string | null }) {
+  const state = useJson(
+    `/api/agent/subagents?piSessionId=${encodeURIComponent(piSessionId ?? "")}`,
+  );
+  useMountSubscription(() => {
+    if (!piSessionId) return;
+    const timer = window.setInterval(() => void state.reload(), 4_000);
+    return () => window.clearInterval(timer);
+  }, [piSessionId]);
+  const runs = records(state.data, "subagents");
+  if (!piSessionId || runs.length === 0) return null;
+  return (
+    <section className="card">
+      <h2>Subagents</h2>
+      {runs.map((run) => (
+        <div className="item" key={jsonText(run.id)}>
+          <strong>{jsonText(run.name, "Subagent")}</strong>
+          <span>{jsonText(run.status, "unknown")}</span>
+          {run.active === false && run.status === "running" ? <span>idle</span> : null}
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -184,22 +217,8 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
   useMountSubscription(() => {
     if (thinking !== "auto" && !thinkingLevels.includes(thinking)) setThinking("auto");
   }, [activeModel, thinking]);
-  const composerSkills = skillCatalogue
-    .filter((skill) => skills.includes(jsonText(skill.id)))
-    .map((skill) => ({
-      id: jsonText(skill.id),
-      name: jsonText(skill.name),
-      path: jsonText(skill.path),
-      source: jsonText(skill.source),
-    }));
-  const composerTemplates = templateCatalogue
-    .filter((template) => templates.includes(jsonText(template.id)))
-    .map((template) => ({
-      id: jsonText(template.id),
-      name: jsonText(template.name),
-      path: jsonText(template.path),
-      source: jsonText(template.source),
-    }));
+  const composerSkills = selectedCatalogue(skillCatalogue, skills);
+  const composerTemplates = selectedCatalogue(templateCatalogue, templates);
   useMountSubscription(() => {
     setRemoteConsent(
       localStorage.getItem(`local-studio.remote-consent.${modelDestination}`) === "1",
@@ -502,6 +521,7 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
           .slice(0, 1)
           .join("")}
       />
+      <SubagentStatus piSessionId={piSessionId} />
       <div className="row">
         <select value={activeCwd} onChange={(event) => setCwd(event.target.value)}>
           {projects.map((project) => (
@@ -672,9 +692,6 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
             </button>
             <button onClick={exportSession} disabled={!sessionId}>
               Export
-            </button>
-            <button onClick={archiveSession} disabled={!sessionId}>
-              Archive (deletion disabled)
             </button>
           </div>
           {sessions.map((session) => (

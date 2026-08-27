@@ -17,9 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with: {fetch-depth: 0}
+        with: { fetch-depth: 0 }
       - uses: ./.github/actions/setup
-        with: {node: "true", bun: "false"}
+        with: { node: "true", bun: "false" }
       - name: Conventional commit gate
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -44,14 +44,14 @@ jobs:
         include:
           - component: controller
             install: bun install --frozen-lockfile --cwd controller
-            check: bun run --cwd controller typecheck && bun run --cwd controller lint && bun run --cwd controller check
+            check: bun run check:controller
           - component: agent-runtime
             install: bun install --frozen-lockfile --cwd services/agent-runtime && bun install --frozen-lockfile --cwd shared
-            check: bun run --cwd services/agent-runtime check
+            check: bun run check:agent-runtime
           - component: frontend
             node: "true"
             install: npm run setup
-            check: npm --prefix frontend run check:quality
+            check: bun run check:frontend
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
@@ -65,7 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-        with: {node: "true", install: npm run setup}
+        with: { node: "true", install: npm run setup }
       - name: Build unsigned package
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with: {fetch-depth: 0}
+        with: { fetch-depth: 0 }
       - uses: trufflesecurity/trufflehog@v3.96.0
         with:
           path: ./
@@ -104,10 +104,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: github/codeql-action/init@v4
-        with: {languages: "javascript, typescript"}
+        with: { languages: "javascript, typescript" }
       - uses: github/codeql-action/autobuild@v4
       - uses: github/codeql-action/analyze@v4
-        with: {category: /language:javascript-typescript}
+        with: { category: /language:javascript-typescript }
   dependency-review:
     name: Dependency Review
     if: github.event_name == 'pull_request'

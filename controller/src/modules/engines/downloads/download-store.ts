@@ -1,6 +1,6 @@
 import { Effect, Option, Schema } from "effect";
 import { openSqliteDatabase } from "../../../stores/sqlite";
-import type { EngineOperationError } from "../engine-spec";
+import type { EngineOperationError } from "../engine-operation";
 import { attempt, operationError } from "../engine-operation";
 import type { ModelDownload } from "@local-studio/contracts/recipes";
 
@@ -70,12 +70,10 @@ export class DownloadStore {
   public list(): Effect.Effect<ModelDownload[], EngineOperationError> {
     const db = this.db;
     return Effect.gen(function* () {
-      const rows = yield* attempt(
-        "list-downloads",
-        () =>
-          db
-            .query<DownloadDataRow, []>("SELECT data FROM model_downloads ORDER BY updated_at DESC")
-            .all(),
+      const rows = yield* attempt("list-downloads", () =>
+        db
+          .query<DownloadDataRow, []>("SELECT data FROM model_downloads ORDER BY updated_at DESC")
+          .all(),
       );
       const decoded = yield* Effect.forEach(rows, (row) =>
         decodeDownload(row.data).pipe(Effect.option),
@@ -87,10 +85,10 @@ export class DownloadStore {
   public get(id: string): Effect.Effect<ModelDownload | null, EngineOperationError> {
     const db = this.db;
     return Effect.gen(function* () {
-      const row = yield* attempt(
-        "get-download",
-        () =>
-          db.query<DownloadDataRow, [string]>("SELECT data FROM model_downloads WHERE id = ?").get(id),
+      const row = yield* attempt("get-download", () =>
+        db
+          .query<DownloadDataRow, [string]>("SELECT data FROM model_downloads WHERE id = ?")
+          .get(id),
       );
       if (!row?.data) return null;
       return yield* decodeDownload(row.data).pipe(Effect.catch(() => Effect.succeed(null)));

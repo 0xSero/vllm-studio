@@ -1,12 +1,16 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { StdioServerParameters } from "@modelcontextprotocol/sdk/client/stdio.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import {
   CallToolResultSchema,
   type CallToolRequest,
   type Tool,
   type ToolAnnotations,
 } from "@modelcontextprotocol/sdk/types.js";
+import { BoundedStdioClientTransport } from "./mcp-stdio-transport";
+
+export { McpProtocolError } from "./mcp-stdio-transport";
 
 export type McpToolAnnotations = ToolAnnotations;
 export type McpToolInfo = Tool;
@@ -39,10 +43,33 @@ export type McpTarget = StdioTarget | HttpTarget;
 
 const CLIENT_INFO = { name: "local-studio", version: "2.0.0" };
 
-const processEnvironment = (): Record<string, string> =>
-  Object.fromEntries(
-    Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
-  );
+const INHERITED_ENV_KEYS = [
+  "PATH",
+  "HOME",
+  "USER",
+  "SHELL",
+  "TMPDIR",
+  "LANG",
+  "LC_ALL",
+  "TERM",
+  "SYSTEMROOT",
+  "SystemRoot",
+  "COMSPEC",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "USERPROFILE",
+  "TEMP",
+  "TMP",
+] as const;
+
+const processEnvironment = () => {
+  const entries: [string, string][] = [];
+  for (const key of INHERITED_ENV_KEYS) {
+    const value = process.env[key];
+    if (value !== undefined) entries.push([key, value]);
+  }
+  return Object.fromEntries(entries);
+};
 
 const combinedSignal = (
   requestSignal: AbortSignal | null | undefined,
@@ -52,7 +79,8 @@ const combinedSignal = (
   return requestSignal ?? targetSignal ?? undefined;
 };
 
-const authorizedFetch = (target: HttpTarget): typeof fetch =>
+const authorizedFetch =
+  (target: HttpTarget): typeof fetch =>
   async (input, init) => {
     const send = async (forceRefresh: boolean): Promise<Response> => {
       const headers = new Headers(init?.headers);
@@ -69,50 +97,97 @@ const authorizedFetch = (target: HttpTarget): typeof fetch =>
     return response.status === 401 && target.authorize ? send(true) : response;
   };
 
-const transportFor = (target: McpTarget) => {
+class TerminalFailure {
+  private error: Error | null = null;
+  private reject: (error: Error) => void = () => undefined;
+  private readonly failed = new Promise<never>((_, reject) => {
+    this.reject = reject;
+  });
+
+  run<T>(operation: () => Promise<T>): Promise<T> {
+    return this.error ? Promise.reject(this.error) : Promise.race([operation(), this.failed]);
+  }
+
+  fail(error: Error): Error {
+    if (!this.error) {
+      this.error = error;
+      this.reject(error);
+    }
+    return this.error;
+  }
+}
+
+interface TransportConnection {
+  transport: Transport;
+  terminal: TerminalFailure | null;
+}
+
+const transportFor = (target: McpTarget): TransportConnection => {
   if (target.transport === "stdio") {
-    const options = {
+    const terminal = new TerminalFailure();
+    const options: StdioServerParameters = {
       command: target.command,
       args: target.args ?? [],
       env: { ...processEnvironment(), ...target.env },
-      stderr: "pipe" as const,
+      stderr: "pipe",
       cwd: target.cwd,
     };
-    return new StdioClientTransport(options);
+    return {
+      transport: new BoundedStdioClientTransport(options, (error) => terminal.fail(error)),
+      terminal,
+    };
   }
-  return new StreamableHTTPClientTransport(new URL(target.url), {
-    requestInit: { headers: target.headers ?? {} },
-    fetch: authorizedFetch(target),
-  });
+  return {
+    transport: new StreamableHTTPClientTransport(new URL(target.url), {
+      requestInit: { headers: target.headers ?? {} },
+      fetch: authorizedFetch(target),
+    }),
+    terminal: null,
+  };
 };
 
 class SdkMcpConnection implements McpConnection {
   private readonly client = new Client(CLIENT_INFO, { capabilities: {} });
   private readonly connected: Promise<void>;
   private readonly signal: AbortSignal | undefined;
+  private readonly terminal: TerminalFailure | null;
+  private closed = false;
 
   constructor(target: McpTarget) {
+    const connection = transportFor(target);
     this.signal = target.transport === "http" ? target.signal : undefined;
-    this.connected = this.client.connect(transportFor(target), { signal: this.signal });
-  }
-
-  async listTools(): Promise<McpToolInfo[]> {
-    await this.connected;
-    const result = await this.client.listTools({}, { signal: this.signal });
-    return result.tools;
-  }
-
-  async callTool(name: string, args: McpToolArguments): Promise<McpCallToolResult> {
-    await this.connected;
-    return this.client.callTool(
-      { name, arguments: args },
-      CallToolResultSchema,
-      { signal: this.signal },
+    this.terminal = connection.terminal;
+    this.connected = this.run(() =>
+      this.client.connect(connection.transport, { signal: this.signal }),
     );
   }
 
+  listTools(): Promise<McpToolInfo[]> {
+    return this.run(async () => {
+      await this.connected;
+      const result = await this.client.listTools({}, { signal: this.signal });
+      return result.tools;
+    });
+  }
+
+  callTool(name: string, args: McpToolArguments): Promise<McpCallToolResult> {
+    return this.run(async () => {
+      await this.connected;
+      return this.client.callTool({ name, arguments: args }, CallToolResultSchema, {
+        signal: this.signal,
+      });
+    });
+  }
+
   close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.terminal?.fail(new Error("MCP connection is closed"));
     void this.client.close().catch(() => undefined);
+  }
+
+  private run<T>(operation: () => Promise<T>): Promise<T> {
+    return this.terminal ? this.terminal.run(operation) : operation();
   }
 }
 

@@ -10,9 +10,16 @@ import {
   type ConnectorView,
 } from "./connector-contract";
 import {
+  GOOGLE_MCP_PREVIEW_ENV,
   GOOGLE_WORKSPACE_BINDINGS,
-  googleWorkspaceConnectorAccount,
-  type GoogleWorkspacePluginId,
+  googleWorkspaceAuthAccount,
+  googleWorkspaceConnectorId,
+  googleWorkspaceConnectorIdentity,
+  googleWorkspaceEndpoint,
+  googleWorkspaceTransport,
+  isGoogleWorkspaceEndpoint,
+  legacyGoogleWorkspaceService,
+  type GoogleWorkspaceIdentity,
 } from "./google-workspace-binding";
 
 export {
@@ -24,6 +31,11 @@ export {
 
 const MASK = "••••••••";
 const SECRET_KEY_PATTERN = /token|key|secret|password|auth/i;
+
+export const isSecretConnectorKey = (
+  key: string,
+  flags: Readonly<Record<string, boolean>> | undefined,
+): boolean => flags?.[key] ?? SECRET_KEY_PATTERN.test(key);
 let connectorAccess = Promise.resolve();
 
 function withConnectorAccess<A>(operation: () => Promise<A>): Promise<A> {
@@ -37,36 +49,69 @@ function withConnectorAccess<A>(operation: () => Promise<A>): Promise<A> {
 
 function claimsGoogleWorkspace(connector: ConnectorConfig): boolean {
   return (
-    googleWorkspaceConnectorAccount(connector.id) !== null ||
+    googleWorkspaceConnectorIdentity(connector.id) !== null ||
+    legacyGoogleWorkspaceService(connector.id) !== null ||
     connector.auth?.provider === "google-workspace" ||
     connector.origin?.binding === "google-workspace"
   );
 }
 
+export function googleWorkspaceConnector(
+  identity: GoogleWorkspaceIdentity,
+  email: string,
+  enabled: boolean,
+): ConnectorConfig {
+  const binding = GOOGLE_WORKSPACE_BINDINGS[identity.service];
+  const transport = googleWorkspaceTransport(process.env[GOOGLE_MCP_PREVIEW_ENV]);
+  return {
+    id: googleWorkspaceConnectorId(identity.service, identity.accountKey),
+    name: email ? `${binding.name} · ${email}` : binding.name,
+    transport: "http",
+    url: googleWorkspaceEndpoint(identity.service, transport),
+    auth: {
+      type: "oauth",
+      provider: "google-workspace",
+      account: googleWorkspaceAuthAccount(identity),
+    },
+    allowTools: [...binding.observeTools],
+    origin: {
+      kind: "account-adapter",
+      id: googleWorkspaceAuthAccount(identity),
+      binding: "google-workspace",
+    },
+    enabled,
+  };
+}
+
+function legacyGoogleWorkspaceConnector(
+  connector: ConnectorConfig,
+  service: GoogleWorkspaceIdentity["service"],
+): ConnectorConfig {
+  return {
+    id: connector.id,
+    name: `${GOOGLE_WORKSPACE_BINDINGS[service].name} (sign in again)`,
+    transport: "http",
+    url: GOOGLE_WORKSPACE_BINDINGS[service].mcpEndpoint,
+    allowTools: [],
+    origin: { kind: "account-adapter", id: service, binding: "google-workspace" },
+    enabled: false,
+  };
+}
+
 function matchesManagedIdentity(
   connector: ConnectorConfig,
-  account: GoogleWorkspacePluginId,
-  binding: (typeof GOOGLE_WORKSPACE_BINDINGS)[GoogleWorkspacePluginId],
+  identity: GoogleWorkspaceIdentity,
 ): boolean {
+  const account = googleWorkspaceAuthAccount(identity);
   return (
     connector.transport === "http" &&
-    connector.url === binding.endpoint &&
+    isGoogleWorkspaceEndpoint(identity.service, connector.url ?? "") &&
     connector.auth?.type === "oauth" &&
     connector.auth.provider === "google-workspace" &&
     connector.auth.account === account &&
     connector.origin?.kind === "account-adapter" &&
     connector.origin.id === account &&
     connector.origin.binding === "google-workspace"
-  );
-}
-
-function matchesManagedTools(
-  connector: ConnectorConfig,
-  binding: (typeof GOOGLE_WORKSPACE_BINDINGS)[GoogleWorkspacePluginId],
-): boolean {
-  return (
-    connector.allowTools?.length === binding.observeTools.length &&
-    binding.observeTools.every((tool, index) => connector.allowTools?.[index] === tool)
   );
 }
 
@@ -80,28 +125,33 @@ function hasOnlyManagedFields(connector: ConnectorConfig): boolean {
   );
 }
 
+function matchesManagedTools(
+  connector: ConnectorConfig,
+  identity: GoogleWorkspaceIdentity,
+): boolean {
+  const tools = GOOGLE_WORKSPACE_BINDINGS[identity.service].observeTools;
+  return (
+    connector.allowTools?.length === tools.length &&
+    tools.every((tool, index) => connector.allowTools?.[index] === tool)
+  );
+}
+
 export function protectManagedConnector(connector: ConnectorConfig): ConnectorConfig {
   if (!claimsGoogleWorkspace(connector)) return connector;
-  const account = googleWorkspaceConnectorAccount(connector.id);
-  const binding = account ? GOOGLE_WORKSPACE_BINDINGS[account] : null;
+  const legacyService = legacyGoogleWorkspaceService(connector.id);
+  if (legacyService) return legacyGoogleWorkspaceConnector(connector, legacyService);
+  const identity = googleWorkspaceConnectorIdentity(connector.id);
   if (
-    !account ||
-    !binding ||
-    !matchesManagedIdentity(connector, account, binding) ||
+    !identity ||
+    !matchesManagedIdentity(connector, identity) ||
     !hasOnlyManagedFields(connector) ||
-    !matchesManagedTools(connector, binding)
+    !matchesManagedTools(connector, identity)
   ) {
     throw new Error(`Managed Google Workspace connector "${connector.id}" is immutable`);
   }
   return {
-    id: binding.connectorId,
-    name: binding.name,
-    transport: "http",
-    url: binding.endpoint,
-    auth: { type: "oauth", provider: "google-workspace", account },
-    allowTools: [...binding.observeTools],
-    origin: { kind: "account-adapter", id: account, binding: "google-workspace" },
-    enabled: connector.enabled,
+    ...googleWorkspaceConnector(identity, "", connector.enabled),
+    name: connector.name,
   };
 }
 
@@ -112,6 +162,8 @@ export function resolveConnectorsFilePath(): string {
 const CONNECTOR_ID_PATTERN = /^[a-z0-9][a-z0-9-_]{0,63}$/;
 
 export const isValidConnectorId = (id: string): boolean => CONNECTOR_ID_PATTERN.test(id);
+
+export const connectorToolPrefix = (id: string): string => id.replace(/-/g, "_");
 
 export async function listConnectors(): Promise<ConnectorConfig[]> {
   const file = resolveConnectorsFilePath();
@@ -144,22 +196,39 @@ export async function upsertConnector(connector: ConnectorConfig): Promise<Conne
   return upsertConnectors([connector]);
 }
 
+function mergedConnectorSecrets(
+  connector: ConnectorConfig,
+  existing: ConnectorConfig | undefined,
+): Pick<ConnectorConfig, "env" | "headers" | "envSecret" | "headerSecret"> {
+  return {
+    env: mergeSecrets(connector.env, existing?.env, existing?.envSecret),
+    headers: mergeSecrets(connector.headers, existing?.headers, existing?.headerSecret),
+    envSecret: connector.envSecret ?? existing?.envSecret,
+    headerSecret: connector.headerSecret ?? existing?.headerSecret,
+  };
+}
+
+function mergeConnector(
+  connector: ConnectorConfig,
+  existing: ConnectorConfig | undefined,
+): ConnectorConfig {
+  return {
+    ...connector,
+    ...mergedConnectorSecrets(connector, existing),
+    cwd: connector.cwd ?? existing?.cwd,
+    allowTools: "allowTools" in connector ? connector.allowTools : existing?.allowTools,
+    origin: connector.origin ?? existing?.origin,
+    auth: connector.auth ?? existing?.auth,
+  };
+}
+
 export function upsertConnectors(incoming: ConnectorConfig[]): Promise<ConnectorConfig[]> {
   return withConnectorAccess(async () => {
     const connectors = await listConnectors();
     for (const candidate of incoming) {
       const connector = protectManagedConnector(candidate);
       const index = connectors.findIndex((entry) => entry.id === connector.id);
-      const existing = index === -1 ? null : connectors[index];
-      const merged: ConnectorConfig = {
-        ...connector,
-        env: mergeSecrets(connector.env, existing?.env),
-        headers: mergeSecrets(connector.headers, existing?.headers),
-        cwd: connector.cwd ?? existing?.cwd,
-        allowTools: connector.allowTools ?? existing?.allowTools,
-        origin: connector.origin ?? existing?.origin,
-        auth: connector.auth ?? existing?.auth,
-      };
+      const merged = mergeConnector(connector, connectors[index]);
       if (index === -1) connectors.push(merged);
       else connectors[index] = merged;
     }
@@ -169,7 +238,7 @@ export function upsertConnectors(incoming: ConnectorConfig[]): Promise<Connector
 }
 
 export function removeConnector(id: string): Promise<ConnectorConfig[]> {
-  if (googleWorkspaceConnectorAccount(id)) {
+  if (googleWorkspaceConnectorIdentity(id)) {
     return Promise.reject(
       new Error(`Managed Google Workspace connector "${id}" cannot be removed`),
     );
@@ -184,23 +253,28 @@ export function removeConnector(id: string): Promise<ConnectorConfig[]> {
 function mergeSecrets(
   incoming: Record<string, string> | undefined,
   stored: Record<string, string> | undefined,
+  storedFlags: Readonly<Record<string, boolean>> | undefined,
 ): Record<string, string> | undefined {
   if (!incoming) return incoming;
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(incoming)) {
-    result[key] = value === MASK && stored?.[key] ? stored[key] : value;
+    result[key] =
+      value === MASK && stored?.[key] && isSecretConnectorKey(key, storedFlags)
+        ? stored[key]
+        : value;
   }
   return result;
 }
 
 const maskRecord = (
   record: Record<string, string> | undefined,
+  flags: Readonly<Record<string, boolean>> | undefined,
 ): Record<string, string> | undefined => {
   if (!record) return record;
   return Object.fromEntries(
     Object.entries(record).map(([key, value]) => [
       key,
-      SECRET_KEY_PATTERN.test(key) && value ? MASK : value,
+      isSecretConnectorKey(key, flags) && value ? MASK : value,
     ]),
   );
 };
@@ -208,12 +282,16 @@ const maskRecord = (
 export function toConnectorView(connector: ConnectorConfig): ConnectorView {
   return {
     ...connector,
-    env: maskRecord(connector.env),
-    headers: maskRecord(connector.headers),
+    env: maskRecord(connector.env, connector.envSecret),
+    headers: maskRecord(connector.headers, connector.headerSecret),
     secret_keys: [
-      ...Object.keys(connector.env ?? {}),
-      ...Object.keys(connector.headers ?? {}),
-    ].filter((key) => SECRET_KEY_PATTERN.test(key)),
+      ...Object.keys(connector.env ?? {}).filter((key) =>
+        isSecretConnectorKey(key, connector.envSecret),
+      ),
+      ...Object.keys(connector.headers ?? {}).filter((key) =>
+        isSecretConnectorKey(key, connector.headerSecret),
+      ),
+    ],
   };
 }
 

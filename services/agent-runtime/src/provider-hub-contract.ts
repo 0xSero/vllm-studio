@@ -1,9 +1,3 @@
-//
-// Wire types for the provider hub — importable from client components, so
-// nothing here may import pi packages or Node builtins. The runtime-side
-// implementation lives in provider-hub.ts.
-//
-
 export type ProviderAuthType = "oauth" | "api_key";
 
 export type ProviderView = {

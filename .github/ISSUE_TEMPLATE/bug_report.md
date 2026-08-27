@@ -1,42 +1,25 @@
 ---
 name: Bug report
-about: Create a report to help us improve
-title: '[BUG] '
+about: Report a reproducible problem
+title: "[BUG] "
 labels: "Type: Bug"
-assignees: ''
+assignees: ""
 ---
 
-## Bug Description
+## Problem
 
-A clear and concise description of what the bug is.
+What happened, and what did you expect?
 
-## To Reproduce
+## Reproduction
 
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
-
-## Expected Behavior
-
-A clear and concise description of what you expected to happen.
+List the smallest reliable steps.
 
 ## Environment
 
-- **OS**: [e.g. Ubuntu 22.04, macOS 14.0]
-- **Local Studio Version**: [e.g. 0.3.1]
-- **Backend**: [vLLM / SGLang / llama.cpp / MLX]
-- **Model**: [e.g. Llama-3-8B-Instruct]
+- **OS**:
+- **Local Studio version**:
+- **Backend and model**:
 
-## Logs
+## Evidence
 
-If applicable, add relevant logs, error messages, or screenshots:
-
-```
-Paste logs here
-```
-
-## Additional Context
-
-Add any other context about the problem here.
+Add relevant logs, error messages, or screenshots. Remove secrets first.

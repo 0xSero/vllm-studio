@@ -1,9 +1,12 @@
 import { Effect, Schema } from "effect";
 import { badRequest, notFound } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
-import { effectHandler } from "../../http/effect-handler";
-import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
+import { effectRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
 import { savePersistedConfig, type ProviderConfig } from "../../config/persisted-config";
+import {
+  discoverProviderModels,
+  enabledProvidersWithApiKey,
+} from "../../services/provider-routing";
 
 type ProviderView = {
   id: string;
@@ -26,10 +29,6 @@ const ProviderUpdateSchema = Schema.Struct({
   base_url: Schema.optional(Schema.String),
   api_key: Schema.optional(Schema.String),
   enabled: Schema.optional(Schema.Boolean),
-});
-
-const ProviderModelsSchema = Schema.Struct({
-  data: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String) }))),
 });
 
 class ProviderPersistenceError extends Schema.TaggedErrorClass<ProviderPersistenceError>()(
@@ -66,133 +65,83 @@ const required = (
   return trimmed ? Effect.succeed(trimmed) : Effect.fail(badRequest(`${label} is required`));
 };
 
-const providerModels = (
-  provider: ProviderConfig,
-): Effect.Effect<{ provider: string; models: Array<{ id: string }> }, unknown> =>
-  Effect.gen(function* () {
-    const url = `${provider.base_url.replace(/\/+$/, "")}/v1/models`;
-    const response = yield* Effect.tryPromise({
-      try: () =>
-        fetch(url, {
-          headers: { Authorization: `Bearer ${provider.api_key}` },
-          signal: AbortSignal.timeout(10_000),
-        }),
-      catch: (source) => source,
-    });
-    if (!response.ok) return yield* Effect.fail(response.status);
-    const payload = yield* Effect.tryPromise({
-      try: () => response.json(),
-      catch: (source) => source,
-    });
-    const decoded = yield* Schema.decodeUnknownEffect(ProviderModelsSchema)(payload);
-    const models = (decoded.data ?? []).flatMap((model) => {
-      const id = model.id?.trim();
-      return id ? [{ id }] : [];
-    });
-    return { provider: provider.id, models };
-  });
-
 export const registerStudioProviderRoutes = defineRoutes((app, context) => {
   return mergeRoutes(
-    app.get(
-      "/studio/providers",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.sync(() => ctx.json({ providers: context.config.providers.map(serializeProvider) })),
-      ),
+    effectRoute(app.get, "/studio/providers", (ctx) =>
+      Effect.sync(() => ctx.json({ providers: context.config.providers.map(serializeProvider) })),
     ),
 
-    app.post(
-      "/studio/providers",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const body = yield* decodeJsonBody(ctx, ProviderCreateSchema);
-          const id = (yield* required(body.id, "id")).toLowerCase();
-          const name = yield* required(body.name, "name");
-          const baseUrl = yield* required(body.base_url, "base_url");
-          if (context.config.providers.some((provider) => provider.id === id)) {
-            return yield* Effect.fail(badRequest(`Provider "${id}" already exists`));
-          }
-          const provider: ProviderConfig = {
-            id,
-            name,
-            base_url: baseUrl,
-            api_key: body.api_key?.trim() ?? "",
-            enabled: body.enabled ?? true,
-          };
-          yield* saveProviders(context, [...context.config.providers, provider]);
-          return ctx.json({ success: true, provider: serializeProvider(provider) });
-        }),
-      ),
+    effectRoute(app.post, "/studio/providers", (ctx) =>
+      Effect.gen(function* () {
+        const body = yield* decodeJsonBody(ctx, ProviderCreateSchema);
+        const id = (yield* required(body.id, "id")).toLowerCase();
+        const name = yield* required(body.name, "name");
+        const baseUrl = yield* required(body.base_url, "base_url");
+        if (context.config.providers.some((provider) => provider.id === id)) {
+          return yield* Effect.fail(badRequest(`Provider "${id}" already exists`));
+        }
+        const provider: ProviderConfig = {
+          id,
+          name,
+          base_url: baseUrl,
+          api_key: body.api_key?.trim() ?? "",
+          enabled: body.enabled ?? true,
+        };
+        yield* saveProviders(context, [...context.config.providers, provider]);
+        return ctx.json({ success: true, provider: serializeProvider(provider) });
+      }),
     ),
 
-    app.put(
-      "/studio/providers/:id",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const providerId = ctx.req.param("id") ?? "";
-          const body = yield* decodeJsonBody(ctx, ProviderUpdateSchema);
-          const index = context.config.providers.findIndex(
-            (provider) => provider.id === providerId,
-          );
-          const current = index >= 0 ? context.config.providers[index] : undefined;
-          if (!current) return yield* Effect.fail(notFound(`Provider "${providerId}" not found`));
-          const name = body.name === undefined ? current.name : yield* required(body.name, "name");
-          const baseUrl =
-            body.base_url === undefined
-              ? current.base_url
-              : yield* required(body.base_url, "base_url");
-          const updated: ProviderConfig = {
-            id: providerId,
-            name,
-            base_url: baseUrl,
-            api_key: body.api_key?.trim() ?? current.api_key,
-            enabled: body.enabled ?? current.enabled,
-          };
-          const providers = [...context.config.providers];
-          providers[index] = updated;
-          yield* saveProviders(context, providers);
-          return ctx.json({ success: true, provider: serializeProvider(updated) });
-        }),
-      ),
+    effectRoute(app.put, "/studio/providers/:id", (ctx) =>
+      Effect.gen(function* () {
+        const providerId = ctx.req.param("id") ?? "";
+        const body = yield* decodeJsonBody(ctx, ProviderUpdateSchema);
+        const index = context.config.providers.findIndex((provider) => provider.id === providerId);
+        const current = index >= 0 ? context.config.providers[index] : undefined;
+        if (!current) return yield* Effect.fail(notFound(`Provider "${providerId}" not found`));
+        const name = body.name === undefined ? current.name : yield* required(body.name, "name");
+        const baseUrl =
+          body.base_url === undefined
+            ? current.base_url
+            : yield* required(body.base_url, "base_url");
+        const updated: ProviderConfig = {
+          id: providerId,
+          name,
+          base_url: baseUrl,
+          api_key: body.api_key?.trim() ?? current.api_key,
+          enabled: body.enabled ?? current.enabled,
+        };
+        const providers = [...context.config.providers];
+        providers[index] = updated;
+        yield* saveProviders(context, providers);
+        return ctx.json({ success: true, provider: serializeProvider(updated) });
+      }),
     ),
 
-    app.delete(
-      "/studio/providers/:id",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const providerId = ctx.req.param("id") ?? "";
-          if (!context.config.providers.some((provider) => provider.id === providerId)) {
-            return yield* Effect.fail(notFound(`Provider "${providerId}" not found`));
-          }
-          yield* saveProviders(
-            context,
-            context.config.providers.filter((provider) => provider.id !== providerId),
-          );
-          return ctx.json({ success: true });
-        }),
-      ),
+    effectRoute(app.delete, "/studio/providers/:id", (ctx) =>
+      Effect.gen(function* () {
+        const providerId = ctx.req.param("id") ?? "";
+        if (!context.config.providers.some((provider) => provider.id === providerId)) {
+          return yield* Effect.fail(notFound(`Provider "${providerId}" not found`));
+        }
+        yield* saveProviders(
+          context,
+          context.config.providers.filter((provider) => provider.id !== providerId),
+        );
+        return ctx.json({ success: true });
+      }),
     ),
 
-    app.get(
-      "/studio/provider-models",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.forEach(
-          context.config.providers.filter((provider) => provider.enabled && provider.api_key),
-          (provider) => providerModels(provider).pipe(Effect.option),
-          { concurrency: "unbounded" },
-        ).pipe(
-          Effect.map((results) =>
-            ctx.json({
-              providers: results.flatMap((result) =>
-                result._tag === "Some" ? [result.value] : [],
-              ),
-            }),
-          ),
+    effectRoute(app.get, "/studio/provider-models", (ctx) =>
+      Effect.forEach(
+        enabledProvidersWithApiKey(context.config.providers),
+        (provider) => discoverProviderModels(provider).pipe(Effect.option),
+        { concurrency: "unbounded" },
+      ).pipe(
+        Effect.map((results) =>
+          ctx.json({
+            providers: results.flatMap((result) => (result._tag === "Some" ? [result.value] : [])),
+          }),
         ),
       ),
     ),

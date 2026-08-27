@@ -1,125 +1,165 @@
 import { Hono } from "hono";
-import {
-  handleAgentAbort,
-  handleAgentCompact,
-  handleAgentTurn,
-  handleExtensionUiResponse,
-  handleRuntimeEvents,
-  handleRuntimeSessions,
-  handleRuntimeStatus,
-  handleSetupChecks,
-} from "./handlers";
-import {
-  handleBrowserFetch,
-  handleBrowserFrame,
-  handleBrowserInput,
-  handleBrowserLocalhosts,
-  handleBrowserState,
-  handleBrowserVerb,
-  handleBrowserViewport,
-} from "./browser-handlers";
-import {
-  handleProviderLogin,
-  handleProviderLoginCancel,
-  handleProviderLoginJob,
-  handleProviderLoginRespond,
-  handleProviderLogout,
-  handleProvidersList,
-} from "./provider-handlers";
-import {
-  handleAutomationCreate,
-  handleAutomationDelete,
-  handleAutomationPatch,
-  handleAutomationRun,
-  handleAutomationsList,
-  handleGoalDelete,
-  handleGoalGet,
-  handleGoalPut,
-} from "./automation-handlers";
-import { handleSubagentRun, handleSubagentsList } from "./subagent-handlers";
-import { handlePrGet, handlePrMerge } from "./pr-handlers";
-import {
-  handlePtyClose,
-  handlePtyInput,
-  handlePtyOpen,
-  handlePtyResize,
-  handlePtyStream,
-} from "./pty-handlers";
+import * as automation from "./automation-handlers";
+import * as browser from "./browser-handlers";
+import * as connector from "./connector-handlers";
+import * as discovery from "./discovery-handlers";
+import * as google from "./google-account-handlers";
+import * as agent from "./handlers";
 import { handleAgentModels } from "./model-handlers";
-import {
-  handleAllSessions,
-  handleSessionGet,
-  handleSessionPatch,
-  handleSessionsDelete,
-  handleSessionsList,
-} from "./session-handlers";
+import * as oauth from "./oauth-handlers";
+import * as plugin from "./plugin-handlers";
+import * as project from "./project-handlers";
+import * as provider from "./provider-handlers";
+import * as pr from "./pr-handlers";
+import * as pty from "./pty-handlers";
+import * as session from "./session-handlers";
+import * as subagent from "./subagent-handlers";
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const isLoopbackHost = (header?: string): boolean => {
+  if (!header) return false;
+  const host = header.trim().toLowerCase();
+  return LOOPBACK_HOSTS.has(
+    host.startsWith("[") ? host.replace(/\]:\d+$/, "]") : host.replace(/:\d+$/, ""),
+  );
+};
+type Params = Record<string, string>;
+type Route = [string, (request: Request, params: Params) => Response | Promise<Response>];
+
+const getRoutes: Route[] = [
+  ["/api/agent/runtime/sessions", agent.handleRuntimeSessions],
+  ["/api/agent/runtime/status", agent.handleRuntimeStatus],
+  ["/api/agent/runtime/events", agent.handleRuntimeEvents],
+  ["/api/agent/session-list-changed", agent.handleSessionListChanged],
+  ["/api/agent/setup-checks", agent.handleSetupChecks],
+  ["/api/agent/models", handleAgentModels],
+  ["/api/agent/sessions", session.handleSessionsList],
+  ["/api/agent/sessions/all", session.handleAllSessions],
+  ["/api/agent/sessions/:id", (request, { id }) => session.handleSessionGet(request, id)],
+  ["/api/agent/automations", automation.handleAutomationsList],
+  ["/api/agent/connectors", connector.handleConnectorsList],
+  ["/api/agent/connectors/call", connector.handleConnectorInventory],
+  ["/api/agent/connectors/grants", connector.handleConnectorGrantsGet],
+  ["/api/agent/connectors/ssh-server-path", connector.handleSshServerPath],
+  ["/api/agent/oauth/status", oauth.handleOAuthStatus],
+  ["/api/agent/accounts/google", google.handleGoogleAccountGet],
+  ["/api/agent/projects", project.handleProjectsList],
+  ["/api/agent/plugins", plugin.handlePluginsList],
+  ["/api/agent/plugins/source", plugin.handlePluginSource],
+  ["/api/agent/skills", discovery.handleSkillsList],
+  ["/api/agent/skills/load", discovery.handleSkillLoad],
+  ["/api/agent/prompt-templates", discovery.handlePromptTemplatesList],
+  ["/api/agent/prompt-templates/load", discovery.handlePromptTemplateLoad],
+  ["/api/agent/pr", pr.handlePrGet],
+  ["/api/agent/subagents", subagent.handleSubagentsList],
+  [
+    "/api/agent/subagents/:runId",
+    (request, { runId }) => subagent.handleSubagentGet(request, runId),
+  ],
+  ["/api/agent/goal", automation.handleGoalGet],
+  ["/api/agent/providers", provider.handleProvidersList],
+  [
+    "/api/agent/providers/login/:jobId",
+    (request, { jobId }) => provider.handleProviderLoginJob(request, jobId),
+  ],
+  ["/api/agent/terminal/pty/stream", pty.handlePtyStream],
+  ["/api/agent/browser/fetch", browser.handleBrowserFetch],
+  ["/api/agent/browser/frame", browser.handleBrowserFrame],
+  ["/api/agent/browser/localhosts", browser.handleBrowserLocalhosts],
+  ["/api/agent/browser/state", browser.handleBrowserState],
+  ["/api/agent/browser/history", browser.handleBrowserHistory],
+  ["/api/agent/browser/engines", browser.handleBrowserEngines],
+];
+const postRoutes: Route[] = [
+  ["/api/agent/turn", agent.handleAgentTurn],
+  ["/api/agent/abort", agent.handleAgentAbort],
+  ["/api/agent/compact", agent.handleAgentCompact],
+  ["/api/agent/runtime/extension-ui", agent.handleExtensionUiResponse],
+  ["/api/agent/models", handleAgentModels],
+  ["/api/agent/automations", automation.handleAutomationCreate],
+  ["/api/agent/automations/:id/run", (_, { id }) => automation.handleAutomationRun(id)],
+  ["/api/agent/connectors", connector.handleConnectorUpsert],
+  ["/api/agent/connectors/call", connector.handleConnectorCall],
+  ["/api/agent/connectors/test", connector.handleConnectorTest],
+  ["/api/agent/oauth/authorize", oauth.handleOAuthAuthorizeBegin],
+  ["/api/agent/accounts/google/authorize", google.handleGoogleAuthorizeBegin],
+  ["/api/agent/projects", project.handleProjectAdd],
+  ["/api/agent/plugins", plugin.handlePluginUpsert],
+  ["/api/agent/pr/merge", pr.handlePrMerge],
+  ["/api/agent/subagents", subagent.handleSubagentRun],
+  [
+    "/api/agent/subagents/:runId/stop",
+    (request, { runId }) => subagent.handleSubagentStop(request, runId),
+  ],
+  [
+    "/api/agent/providers/login/:jobId/respond",
+    (request, { jobId }) => provider.handleProviderLoginRespond(request, jobId),
+  ],
+  [
+    "/api/agent/providers/login/:jobId/cancel",
+    (_, { jobId }) => provider.handleProviderLoginCancel(jobId),
+  ],
+  [
+    "/api/agent/providers/:providerId/login",
+    (request, { providerId }) => provider.handleProviderLogin(request, providerId),
+  ],
+  [
+    "/api/agent/providers/:providerId/logout",
+    (_, { providerId }) => provider.handleProviderLogout(providerId),
+  ],
+  ["/api/agent/terminal/pty/open", pty.handlePtyOpen],
+  ["/api/agent/terminal/pty/input", pty.handlePtyInput],
+  ["/api/agent/terminal/pty/resize", pty.handlePtyResize],
+  ["/api/agent/terminal/pty/close", pty.handlePtyClose],
+  ["/api/agent/browser/input", browser.handleBrowserInput],
+  ["/api/agent/browser/viewport", browser.handleBrowserViewport],
+  ["/api/agent/browser/engine", browser.handleBrowserEngineSelect],
+  ["/api/agent/browser/:verb", (request, { verb }) => browser.handleBrowserVerb(request, verb)],
+];
+const patchRoutes: Route[] = [
+  ["/api/agent/sessions/:id", (request, { id }) => session.handleSessionPatch(request, id)],
+  [
+    "/api/agent/automations/:id",
+    (request, { id }) => automation.handleAutomationPatch(request, id),
+  ],
+];
+const putRoutes: Route[] = [
+  ["/api/agent/connectors/grants", connector.handleConnectorGrantPut],
+  ["/api/agent/oauth/client", oauth.handleOAuthClientPut],
+  ["/api/agent/accounts/google", google.handleGoogleClientPut],
+  ["/api/agent/goal", automation.handleGoalPut],
+];
+const deleteRoutes: Route[] = [
+  ["/api/agent/sessions", session.handleSessionsDelete],
+  ["/api/agent/automations/:id", (_, { id }) => automation.handleAutomationDelete(id)],
+  ["/api/agent/connectors", connector.handleConnectorDelete],
+  ["/api/agent/connectors/grants", connector.handleConnectorGrantDelete],
+  ["/api/agent/oauth/authorize", oauth.handleOAuthAuthorizeCancel],
+  ["/api/agent/oauth", oauth.handleOAuthDisconnect],
+  ["/api/agent/accounts/google", google.handleGoogleAccountDisconnect],
+  ["/api/agent/accounts/google/authorize", google.handleGoogleAuthorizeCancel],
+  ["/api/agent/projects", project.handleProjectRemove],
+  ["/api/agent/plugins", plugin.handlePluginDelete],
+  ["/api/agent/goal", automation.handleGoalDelete],
+];
 
 export function createAgentRuntimeApp() {
   const app = new Hono();
-
+  app.use("*", (c, next) =>
+    isLoopbackHost(c.req.header("host"))
+      ? next()
+      : Promise.resolve(c.json({ error: "Forbidden host" }, 403)),
+  );
   app.get("/health", (c) =>
     c.json({ ok: true, service: "local-studio-agent-runtime", pid: process.pid }),
   );
-  app.post("/api/agent/turn", (c) => handleAgentTurn(c.req.raw));
-  app.post("/api/agent/abort", (c) => handleAgentAbort(c.req.raw));
-  app.post("/api/agent/compact", (c) => handleAgentCompact(c.req.raw));
-  app.post("/api/agent/runtime/extension-ui", (c) => handleExtensionUiResponse(c.req.raw));
-  app.get("/api/agent/runtime/sessions", () => handleRuntimeSessions());
-  app.get("/api/agent/runtime/status", (c) => handleRuntimeStatus(c.req.raw));
-  app.get("/api/agent/runtime/events", (c) => handleRuntimeEvents(c.req.raw));
-  app.get("/api/agent/setup-checks", () => handleSetupChecks());
-  app.get("/api/agent/models", () => handleAgentModels());
-  app.post("/api/agent/models", (c) => handleAgentModels(c.req.raw));
-  app.get("/api/agent/sessions", (c) => handleSessionsList(c.req.raw));
-  app.delete("/api/agent/sessions", () => handleSessionsDelete());
-  app.get("/api/agent/sessions/all", (c) => handleAllSessions(c.req.raw));
-  app.get("/api/agent/sessions/:id", (c) => handleSessionGet(c.req.raw, c.req.param("id")));
-  app.patch("/api/agent/sessions/:id", (c) => handleSessionPatch(c.req.raw, c.req.param("id")));
-  app.get("/api/agent/automations", () => handleAutomationsList());
-  app.post("/api/agent/automations", (c) => handleAutomationCreate(c.req.raw));
-  app.patch("/api/agent/automations/:id", (c) =>
-    handleAutomationPatch(c.req.raw, c.req.param("id")),
-  );
-  app.delete("/api/agent/automations/:id", (c) =>
-    handleAutomationDelete(c.req.param("id")),
-  );
-  app.post("/api/agent/automations/:id/run", (c) => handleAutomationRun(c.req.param("id")));
-  app.get("/api/agent/pr", (c) => handlePrGet(c.req.raw));
-  app.post("/api/agent/pr/merge", (c) => handlePrMerge(c.req.raw));
-  app.get("/api/agent/subagents", (c) => handleSubagentsList(c.req.raw));
-  app.post("/api/agent/subagents", (c) => handleSubagentRun(c.req.raw));
-  app.get("/api/agent/goal", (c) => handleGoalGet(c.req.raw));
-  app.put("/api/agent/goal", (c) => handleGoalPut(c.req.raw));
-  app.delete("/api/agent/goal", (c) => handleGoalDelete(c.req.raw));
-  app.get("/api/agent/providers", () => handleProvidersList());
-  app.get("/api/agent/providers/login/:jobId", (c) =>
-    handleProviderLoginJob(c.req.raw, c.req.param("jobId")),
-  );
-  app.post("/api/agent/providers/login/:jobId/respond", (c) =>
-    handleProviderLoginRespond(c.req.raw, c.req.param("jobId")),
-  );
-  app.post("/api/agent/providers/login/:jobId/cancel", (c) =>
-    handleProviderLoginCancel(c.req.param("jobId")),
-  );
-  app.post("/api/agent/providers/:providerId/login", (c) =>
-    handleProviderLogin(c.req.raw, c.req.param("providerId")),
-  );
-  app.post("/api/agent/providers/:providerId/logout", (c) =>
-    handleProviderLogout(c.req.param("providerId")),
-  );
-  app.post("/api/agent/terminal/pty/open", (c) => handlePtyOpen(c.req.raw));
-  app.get("/api/agent/terminal/pty/stream", (c) => handlePtyStream(c.req.raw));
-  app.post("/api/agent/terminal/pty/input", (c) => handlePtyInput(c.req.raw));
-  app.post("/api/agent/terminal/pty/resize", (c) => handlePtyResize(c.req.raw));
-  app.post("/api/agent/terminal/pty/close", (c) => handlePtyClose(c.req.raw));
-  app.get("/api/agent/browser/fetch", (c) => handleBrowserFetch(c.req.raw));
-  app.get("/api/agent/browser/frame", () => handleBrowserFrame());
-  app.post("/api/agent/browser/input", (c) => handleBrowserInput(c.req.raw));
-  app.get("/api/agent/browser/localhosts", (c) => handleBrowserLocalhosts(c.req.raw));
-  app.get("/api/agent/browser/state", () => handleBrowserState());
-  app.post("/api/agent/browser/viewport", (c) => handleBrowserViewport(c.req.raw));
-  app.post("/api/agent/browser/:verb", (c) => handleBrowserVerb(c.req.raw, c.req.param("verb")));
-
+  for (const [path, handle] of getRoutes) app.get(path, (c) => handle(c.req.raw, c.req.param()));
+  for (const [path, handle] of postRoutes) app.post(path, (c) => handle(c.req.raw, c.req.param()));
+  for (const [path, handle] of patchRoutes)
+    app.patch(path, (c) => handle(c.req.raw, c.req.param()));
+  for (const [path, handle] of putRoutes) app.put(path, (c) => handle(c.req.raw, c.req.param()));
+  for (const [path, handle] of deleteRoutes)
+    app.delete(path, (c) => handle(c.req.raw, c.req.param()));
   app.onError((error, c) =>
     c.json({ error: error instanceof Error ? error.message : "Internal Server Error" }, 500),
   );

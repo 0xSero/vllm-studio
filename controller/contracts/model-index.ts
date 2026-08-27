@@ -36,11 +36,29 @@ export const ModelIndexTierSchema = Schema.Struct({
   models: Schema.Array(ModelIndexModelSchema),
 });
 
+/**
+ * A launchable registry entry: a model the operator authored (or that was
+ * migrated from the old SQLite recipes table), carrying its full serve
+ * configuration. `serve` is the recipe body minus id/name — it is validated by
+ * the recipe serializer on read, not here, so the recipe shape stays declared
+ * exactly once (in contracts/recipes.ts).
+ */
+export const ModelIndexEntrySchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  serve: Schema.Record(Schema.String, Schema.Unknown),
+});
+
 export const ModelIndexSchema = Schema.Struct({
   version: Schema.Number,
   updated: Schema.String,
   intelligence_source: Schema.optional(Schema.String),
   tiers: Schema.Array(ModelIndexTierSchema),
+  /** Launchable entries. The catalog tiers describe what exists; entries
+   *  describe what this controller can actually serve. */
+  entries: Schema.optional(Schema.Array(ModelIndexEntrySchema)),
+  /** Set once when the old SQLite recipes table was imported. */
+  migrated_from_sqlite: Schema.optional(Schema.String),
 });
 
 export type ModelIndexVariant = Schema.Schema.Type<typeof ModelIndexVariantSchema>;
@@ -90,7 +108,9 @@ const CompactIndexSchema = Schema.Struct({
 });
 
 const compact = Schema.decodeUnknownSync(CompactIndexSchema)(compactSource);
-export const bundledModelIndexSource: ModelIndexResponse = Schema.decodeUnknownSync(ModelIndexSchema)({
+export const bundledModelIndexSource: ModelIndexResponse = Schema.decodeUnknownSync(
+  ModelIndexSchema,
+)({
   version: compact.v,
   updated: compact.u,
   intelligence_source: compact.s,
@@ -125,3 +145,4 @@ export const bundledModelIndexSource: ModelIndexResponse = Schema.decodeUnknownS
     })),
   })),
 });
+export type ModelIndexEntry = Schema.Schema.Type<typeof ModelIndexEntrySchema>;

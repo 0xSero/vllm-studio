@@ -1,66 +1,44 @@
-- name: 'Priority: Critical'
-  color: '#b60205'
-  description: Critical priority - blocks release or major functionality
-- name: 'Priority: High'
-  color: '#d93f0b'
-  description: High priority - important but not blocking
-- name: 'Priority: Medium'
-  color: '#fbca04'
-  description: Medium priority - normal priority
-- name: 'Priority: Low'
-  color: '#7057ff'
-  description: Low priority - nice to have
-- name: 'Type: Bug'
-  color: '#d73a4a'
-  description: Something isn't working
-- name: 'Type: Feature'
-  color: '#a2eeef'
-  description: New feature or request
-- name: 'Type: Enhancement'
-  color: '#84b6eb'
-  description: Improvement to existing functionality
-- name: 'Type: Documentation'
-  color: '#0075ca'
-  description: Documentation improvements
-- name: 'Type: Performance'
-  color: '#fbca04'
-  description: Performance improvements
-- name: 'Type: Security'
-  color: '#d93f0b'
-  description: Security issues or fixes
-- name: 'Area: Controller'
-  color: '#006b75'
-  description: Related to controller/backend
-- name: 'Area: Frontend'
-  color: '#5319e7'
-  description: Related to frontend/Next.js
-- name: 'Area: Infrastructure'
-  color: '#1d76db'
-  description: Related to CI/CD, Docker, infrastructure
-- name: 'Status: Ready'
-  color: '#2da44e'
-  description: Ready to work on
-- name: 'Status: In Progress'
-  color: '#ffab00'
-  description: Currently being worked on
-- name: 'Status: Blocked'
-  color: '#b60205'
-  description: Blocked by something
-- name: 'Status: Needs Review'
-  color: '#5319e7'
-  description: Needs review
+- name: "Priority: Critical"
+  color: "#b60205"
+- name: "Priority: High"
+  color: "#d93f0b"
+- name: "Priority: Medium"
+  color: "#fbca04"
+- name: "Priority: Low"
+  color: "#7057ff"
+- name: "Type: Bug"
+  color: "#d73a4a"
+- name: "Type: Feature"
+  color: "#a2eeef"
+- name: "Type: Enhancement"
+  color: "#84b6eb"
+- name: "Type: Documentation"
+  color: "#0075ca"
+- name: "Type: Performance"
+  color: "#fbca04"
+- name: "Type: Security"
+  color: "#d93f0b"
+- name: "Area: Controller"
+  color: "#006b75"
+- name: "Area: Frontend"
+  color: "#5319e7"
+- name: "Area: Infrastructure"
+  color: "#1d76db"
+- name: "Status: Ready"
+  color: "#2da44e"
+- name: "Status: In Progress"
+  color: "#ffab00"
+- name: "Status: Blocked"
+  color: "#b60205"
+- name: "Status: Needs Review"
+  color: "#5319e7"
 - name: Good First Issue
-  color: '#7057ff'
-  description: Good for newcomers
+  color: "#7057ff"
 - name: Help Wanted
-  color: '#008672'
-  description: Help wanted
+  color: "#008672"
 - name: Dependencies
-  color: '#0366d6'
-  description: Pull requests that update dependencies
+  color: "#0366d6"
 - name: Duplicate
-  color: '#cfd3d7'
-  description: Duplicate issue
+  color: "#cfd3d7"
 - name: Wontfix
-  color: '#ffffff'
-  description: Will not be fixed
+  color: "#ffffff"

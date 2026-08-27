@@ -1,6 +1,7 @@
 import path from "node:path";
 import { Option, Schema } from "effect";
 import type { AggregatedSession } from "../../../../shared/agent/session-summary";
+import { browserHost } from "../browser-host/browser-host";
 import { listProjectsFromStore, resolveAllowedWorkspace } from "../projects-store";
 import { listArchivedSessionMetadata, setSessionArchived } from "../session-metadata-store";
 import { listSessions, loadSession } from "../sessions-store";
@@ -185,6 +186,25 @@ function optionalString(value: SessionPatch["title"]): string | null {
   return decoded?.trim() || null;
 }
 
+type SessionSummary = Awaited<ReturnType<typeof listSessions>>[number];
+type ArchiveContext = { cwd: string; summary: SessionSummary | null };
+
+async function resolveArchiveContext(
+  id: string,
+  archived: boolean,
+  cwdValue: string,
+): Promise<ArchiveContext | Response> {
+  if (!cwdValue) return { cwd: "", summary: null };
+  const cwd = existingWorkspace(cwdValue);
+  if (cwd instanceof Response) return cwd;
+  const summary =
+    (await listSessions(cwd, { ids: [id], includeArchived: true })).find(
+      (session) => session.id === id,
+    ) ?? null;
+  if (archived && !summary) return jsonError("session not found", 404);
+  return { cwd, summary };
+}
+
 export async function handleSessionPatch(request: Request, id: string): Promise<Response> {
   if (!validSessionId(id)) return jsonError("session id is invalid");
   const rawBody = await request.json().catch(() => null);
@@ -192,26 +212,22 @@ export async function handleSessionPatch(request: Request, id: string): Promise<
   if (!body) return jsonError("archived boolean is required");
   const cwdValue = optionalString(body.cwd) ?? "";
   if (body.archived && !cwdValue) return jsonError("cwd is required to archive a session");
-  let cwd = "";
-  let summary: Awaited<ReturnType<typeof listSessions>>[number] | null = null;
-  if (cwdValue) {
-    const resolved = existingWorkspace(cwdValue);
-    if (resolved instanceof Response) return resolved;
-    cwd = resolved;
-    summary =
-      (await listSessions(cwd, { ids: [id], includeArchived: true })).find(
-        (session) => session.id === id,
-      ) ?? null;
-    if (body.archived && !summary) return jsonError("session not found", 404);
+  const context = await resolveArchiveContext(id, body.archived, cwdValue);
+  if (context instanceof Response) return context;
+  const { cwd, summary } = context;
+  try {
+    const archiveState = await setSessionArchived(id, body.archived, new Date(), {
+      cwd: summary?.cwd ?? cwd,
+      title: summary?.firstUserMessage ?? optionalString(body.title),
+      projectId: optionalString(body.projectId),
+      projectName: optionalString(body.projectName),
+      sessionUpdatedAt: summary?.updatedAt ?? null,
+    });
+    if (body.archived) void browserHost.closeSession(id).catch(() => undefined);
+    return Response.json({ session: { id, ...archiveState } });
+  } catch (error) {
+    return jsonError(errorMessage(error, "Failed to update session archive"), 500);
   }
-  const archiveState = await setSessionArchived(id, body.archived, new Date(), {
-    cwd: summary ? summary.cwd : cwd,
-    title: summary?.firstUserMessage ?? optionalString(body.title),
-    projectId: optionalString(body.projectId),
-    projectName: optionalString(body.projectName),
-    sessionUpdatedAt: summary ? summary.updatedAt : null,
-  });
-  return Response.json({ session: { id, ...archiveState } });
 }
 
 export function handleSessionsDelete(): Response {

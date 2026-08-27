@@ -9,9 +9,7 @@
   "scripts": {
     "doctor": "node scripts/project.mjs doctor",
     "setup": "bun install --frozen-lockfile && bun run setup:git-hooks",
-    "release:notes": "node scripts/project.mjs release-notes",
-    "release:check-commits": "node scripts/project.mjs check-commits --range origin/main..HEAD",
-    "release:stage-desktop": "node scripts/project.mjs stage-release",
+    "release:semantic": "npx --yes --package semantic-release@24.2.7 --package @semantic-release/commit-analyzer@13.0.1 --package @semantic-release/release-notes-generator@14.1.0 --package @semantic-release/github@11.0.6 --package conventional-changelog-conventionalcommits@8.0.0 semantic-release",
     "setup:git-hooks": "node scripts/project.mjs setup-hooks",
     "dev:controller": "bun run --cwd controller dev",
     "dev": "bun run --cwd frontend dev",
@@ -25,10 +23,7 @@
     "check:frontend": "bun run --cwd frontend check:quality",
     "check:controller": "bun run --cwd controller typecheck && bun run --cwd controller lint && bun run --cwd controller check",
     "check:agent-runtime": "bun run --cwd services/agent-runtime check",
-    "dev:agent-runtime": "bun run --cwd services/agent-runtime build && node services/agent-runtime/dist/server.js",
-    "desktop:build": "bun run --cwd frontend desktop:build",
-    "desktop:dist": "bun run --cwd frontend desktop:dist",
-    "desktop:pack": "bun run --cwd frontend desktop:pack"
+    "dev:agent-runtime": "bun run --cwd services/agent-runtime build && node services/agent-runtime/dist/server.js"
   },
   "packageManager": "bun@1.3.14",
   "workspaces": [

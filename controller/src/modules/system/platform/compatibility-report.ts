@@ -80,28 +80,23 @@ export const probeGpuMonitoring = (
   return Effect.succeed({ available: false, tool: null });
 };
 
-const gpuDriverSuggestion = (kind: SystemRuntimeInfo["platform"]["kind"]): string => {
-  if (kind === "rocm") {
-    return "Verify ROCm is installed and GPU tools are available (amd-smi/rocm-smi).";
-  }
-  if (kind === "cuda") {
-    return "Verify NVIDIA drivers are installed and nvidia-smi is accessible.";
-  }
-  return "Verify GPU drivers are installed and set LOCAL_STUDIO_GPU_SMI_TOOL if needed.";
-};
-
-export const buildCompatibilityReport = (args: {
+type CompatibilityReportArguments = {
   runtime: SystemRuntimeInfo;
   inference_port: number;
   inference_port_open: boolean;
   inference_process_known: boolean;
   gpu_monitoring: { available: boolean; tool: RuntimeGpuMonitoringTool | null };
-}): CompatibilityReport => {
-  const { runtime } = args;
-  const checks: CompatibilityCheck[] = [];
-  const gpuMonitoring = args.gpu_monitoring;
+};
 
+const addGpuChecks = (checks: CompatibilityCheck[], args: CompatibilityReportArguments): void => {
+  const { runtime } = args;
   if (runtime.gpus.count === 0) {
+    const suggestedFix =
+      runtime.platform.kind === "rocm"
+        ? "Verify ROCm is installed and GPU tools are available (amd-smi/rocm-smi)."
+        : runtime.platform.kind === "cuda"
+          ? "Verify NVIDIA drivers are installed and nvidia-smi is accessible."
+          : "Verify GPU drivers are installed and set LOCAL_STUDIO_GPU_SMI_TOOL if needed.";
     addCheck(checks, {
       id: "gpu.none-detected",
       severity: "warn",
@@ -110,10 +105,9 @@ export const buildCompatibilityReport = (args: {
         `platform.kind=${runtime.platform.kind}`,
         `gpus.count=${runtime.gpus.count}`,
       ]),
-      suggested_fix: gpuDriverSuggestion(runtime.platform.kind),
+      suggested_fix: suggestedFix,
     });
   }
-
   if (runtime.platform.kind === "rocm" && !runtime.platform.torch.torch_hip) {
     addCheck(checks, {
       id: "torch.rocm-missing-hip",
@@ -128,7 +122,13 @@ export const buildCompatibilityReport = (args: {
         "Install a ROCm-enabled PyTorch build that matches your ROCm version, and ensure the controller is using that Python environment.",
     });
   }
+};
 
+const addMonitoringChecks = (
+  checks: CompatibilityCheck[],
+  args: CompatibilityReportArguments,
+): void => {
+  const { runtime, gpu_monitoring: gpuMonitoring } = args;
   if (runtime.platform.kind === "rocm" && !gpuMonitoring.available) {
     addCheck(checks, {
       id: "gpu-monitoring.rocm-unavailable",
@@ -139,7 +139,6 @@ export const buildCompatibilityReport = (args: {
         "Ensure `amd-smi` or `rocm-smi` is installed and on PATH, or set AMD_SMI_PATH/ROCM_SMI_PATH.",
     });
   }
-
   if (runtime.platform.kind === "cuda" && !gpuMonitoring.available) {
     addCheck(checks, {
       id: "gpu-monitoring.cuda-unavailable",
@@ -151,7 +150,13 @@ export const buildCompatibilityReport = (args: {
         "Ensure NVIDIA drivers are installed and nvidia-smi is on PATH (snap-installed bun can block access).",
     });
   }
+};
 
+const addRuntimeChecks = (
+  checks: CompatibilityCheck[],
+  args: CompatibilityReportArguments,
+): void => {
+  const { runtime } = args;
   if (args.inference_port_open && !args.inference_process_known) {
     addCheck(checks, {
       id: "inference.port-in-use",
@@ -162,14 +167,11 @@ export const buildCompatibilityReport = (args: {
         "Stop the process using the inference port, or change LOCAL_STUDIO_INFERENCE_PORT to a free port.",
     });
   }
-
-  const hasInstalledBackend = [
-    runtime.backends.vllm,
-    runtime.backends.sglang,
-    runtime.backends.llamacpp,
-    runtime.backends.mlx,
-  ].some((backend) => backend?.installed ?? false);
-  if (!hasInstalledBackend) {
+  if (
+    !runtime.backends.vllm.installed &&
+    !runtime.backends.sglang.installed &&
+    !runtime.backends.exllamav3.installed
+  ) {
     addCheck(checks, {
       id: "backends.none-installed",
       severity: "info",
@@ -179,12 +181,20 @@ export const buildCompatibilityReport = (args: {
         "Install at least one backend runtime (vLLM, SGLang, llama.cpp, or MLX), then restart the controller.",
     });
   }
+};
 
+export const buildCompatibilityReport = (
+  args: CompatibilityReportArguments,
+): CompatibilityReport => {
+  const checks: CompatibilityCheck[] = [];
+  addGpuChecks(checks, args);
+  addMonitoringChecks(checks, args);
+  addRuntimeChecks(checks, args);
   return {
-    platform: { kind: runtime.platform.kind },
-    gpu_monitoring: gpuMonitoring,
-    torch: runtime.platform.torch,
-    backends: runtime.backends,
+    platform: { kind: args.runtime.platform.kind },
+    gpu_monitoring: args.gpu_monitoring,
+    torch: args.runtime.platform.torch,
+    backends: args.runtime.backends,
     checks,
   };
 };

@@ -13,6 +13,7 @@ export interface ProviderConfig {
 export interface PersistedConfig {
   models_dir?: string;
   providers?: ProviderConfig[];
+  ui_preferences?: Record<string, string>;
   selected_runtime_target_ids?: Partial<Record<"vllm" | "sglang" | "llamacpp" | "mlx", string>>;
 }
 
@@ -27,6 +28,7 @@ const ProviderConfigSchema = Schema.Struct({
 const PersistedConfigSchema = Schema.Struct({
   models_dir: Schema.optionalKey(Schema.String),
   providers: Schema.optionalKey(Schema.mutable(Schema.Array(ProviderConfigSchema))),
+  ui_preferences: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   selected_runtime_target_ids: Schema.optionalKey(
     Schema.Struct({
       vllm: Schema.optionalKey(Schema.String),
@@ -70,6 +72,8 @@ export const savePersistedConfig = (
   else if (updates.models_dir !== undefined) next.models_dir = updates.models_dir;
   if (updates.providers === null) delete next.providers;
   else if (updates.providers !== undefined) next.providers = updates.providers;
+  if (updates.ui_preferences === null) delete next.ui_preferences;
+  else if (updates.ui_preferences !== undefined) next.ui_preferences = updates.ui_preferences;
   if (updates.selected_runtime_target_ids === null) delete next.selected_runtime_target_ids;
   else if (updates.selected_runtime_target_ids !== undefined) {
     next.selected_runtime_target_ids = updates.selected_runtime_target_ids;

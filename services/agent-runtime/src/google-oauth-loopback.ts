@@ -33,8 +33,8 @@ function page(response: ServerResponse, success: boolean, activated: boolean): P
   const message = !success
     ? "Return to Local Studio and start Google sign-in again."
     : activated
-      ? "The read-only plugin is ready in Local Studio. You can close this tab."
-      : "The account is connected. Return to Local Studio to finish enabling the plugin.";
+      ? "The read-only tools are ready in Local Studio. You can close this tab."
+      : "The account is connected. Return to Local Studio to finish enabling its tools.";
   const role = success ? "status" : "alert";
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title><style>:root{color-scheme:light dark;font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}*{box-sizing:border-box}body{min-height:100vh;margin:0;display:grid;place-items:center;padding:1.5rem;background:Canvas;color:CanvasText}main{width:min(100%,32rem);padding:2rem;border:1px solid color-mix(in srgb,CanvasText 16%,transparent);border-radius:1rem;background:color-mix(in srgb,Canvas 94%,CanvasText 6%);box-shadow:0 1.5rem 4rem color-mix(in srgb,CanvasText 10%,transparent)}.brand{margin:0 0 2.5rem;font-size:.75rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.status{margin:0 0 .75rem;font-size:.8125rem;font-weight:650;color:color-mix(in srgb,CanvasText 68%,transparent)}h1{margin:0;font-size:clamp(1.5rem,5vw,2rem);line-height:1.15;letter-spacing:-.025em}p:last-child{margin:1rem 0 0;color:color-mix(in srgb,CanvasText 68%,transparent);line-height:1.6}</style></head><body><main><p class="brand">Local Studio</p><p class="status" role="${role}">${status}</p><h1>${title}</h1><p>${message}</p></main></body></html>`;
   return new Promise((resolve) => {
@@ -88,21 +88,24 @@ async function handleCallback(
     return;
   }
   try {
-    const adapterWasEnabled = await Effect.runPromise(googleWorkspaceAdapterEnabled(account));
     const result = await Effect.runPromise(
       completeGoogleAuthorizationWithActivation(
         account,
         { state, code },
         flowId,
-        (signal) =>
-          enableGoogleWorkspaceAdapter(account, signal).pipe(
-            Effect.as(true),
-            Effect.catch(() => Effect.succeed(false)),
-          ),
-        restoreGoogleWorkspaceAdapter(account, adapterWasEnabled),
+        (signal, identity) =>
+          Effect.gen(function* () {
+            const wasEnabled = yield* googleWorkspaceAdapterEnabled(identity);
+            const activated = yield* enableGoogleWorkspaceAdapter(identity, signal).pipe(
+              Effect.as(true),
+              Effect.catch(() => Effect.succeed(false)),
+            );
+            return { activated, wasEnabled };
+          }),
+        (identity, activation) => restoreGoogleWorkspaceAdapter(identity, activation.wasEnabled),
       ),
     );
-    await page(response, true, result.activation);
+    await page(response, true, result.activation.activated);
     closeFlow(account, flowId);
   } catch (error) {
     await page(response, false, false);
@@ -117,9 +120,9 @@ function listen(server: Server): Promise<number> {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       server.removeListener("error", reject);
-      const address = Schema.decodeUnknownOption(
-        Schema.Struct({ port: Schema.Number }),
-      )(server.address());
+      const address = Schema.decodeUnknownOption(Schema.Struct({ port: Schema.Number }))(
+        server.address(),
+      );
       if (address._tag === "None") {
         reject(new Error("Loopback listener failed"));
         return;

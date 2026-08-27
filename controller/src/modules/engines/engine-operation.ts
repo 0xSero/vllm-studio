@@ -1,5 +1,12 @@
-import { Effect } from "effect";
-import { EngineOperationError } from "./engine-spec";
+import { Effect, Schema } from "effect";
+
+export class EngineOperationError extends Schema.TaggedErrorClass<EngineOperationError>()(
+  "EngineOperationError",
+  {
+    operation: Schema.String,
+    message: Schema.String,
+  },
+) {}
 
 export const operationError = (operation: string, cause: unknown): EngineOperationError =>
   new EngineOperationError({

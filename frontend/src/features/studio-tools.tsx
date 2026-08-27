@@ -244,44 +244,26 @@ function GitTools({ cwd }: { cwd: string }) {
   const [output, setOutput] = useState<Json | null>(null);
   const [error, setError] = useState("");
   const query = `cwd=${encodeURIComponent(cwd)}`;
-  const run = async (url: `/api/${string}`, init?: RequestInit) => {
+  const run = async (url: `/api/${string}`, init?: RequestInit, accept?: (value: Json) => void) => {
     try {
-      setOutput(await request(url, init));
-      setError("");
-    } catch (value) {
-      setError(value instanceof Error ? value.message : String(value));
-    }
-  };
-  const refreshGit = async () => {
-    try {
-      const value = await requestRecord(`/api/agent/git?${query}`);
-      setGitState(decodeGitState(value));
+      const value = await request(url, init);
+      accept?.(value);
       setOutput(value);
       setError("");
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
     }
   };
-  const refreshPullRequest = async () => {
-    try {
-      const value = await requestRecord(`/api/agent/pr?${query}`);
-      setPullRequest(decodePullRequest(value).pr ?? null);
-      setOutput(value);
-      setError("");
-    } catch (value) {
-      setError(value instanceof Error ? value.message : String(value));
-    }
-  };
-  const gitAction = async (value: RecordJson) => {
-    try {
-      const response = await requestRecord(`/api/agent/git?${query}`, post(value));
-      setGitState(decodeGitState(response));
-      setOutput(response);
-      setError("");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    }
-  };
+  const refreshGit = () =>
+    run(`/api/agent/git?${query}`, undefined, (value) => setGitState(decodeGitState(value)));
+  const refreshPullRequest = () =>
+    run(`/api/agent/pr?${query}`, undefined, (value) =>
+      setPullRequest(decodePullRequest(value).pr ?? null),
+    );
+  const gitAction = (value: RecordJson) =>
+    run(`/api/agent/git?${query}`, post(value), (response) =>
+      setGitState(decodeGitState(response)),
+    );
   const indexAction = (verb: "add" | "restore" | "revert") => {
     const quoted = shellPath(path);
     if (!quoted) {

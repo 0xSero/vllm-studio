@@ -9,6 +9,8 @@ import {
   type Spelling,
 } from "./shared";
 
+// vLLM compiles CUDA graphs on a cold start; a large MoE's first launch is the worst case
+// observed, and a warm start beats it by two orders of magnitude.
 const READY_DEADLINE_MS = 1_800_000;
 
 const spelling: Spelling = {
@@ -32,24 +34,18 @@ const image = (host: HostProfile): string | null => {
 };
 
 const supports = (host: HostProfile): EngineSupport => {
-  if (host.platform === "darwin") {
-    return unsupported("vLLM has no Metal backend — use llamacpp or mlx on Apple Silicon");
-  }
+  if (host.platform === "darwin") return unsupported("vLLM has no Metal backend");
   if (host.platform === "win32" && !host.wsl) return unsupported("vLLM on Windows requires WSL2");
-  if (host.accelerator === "rocm") {
-    return host.dockerGpu
-      ? supported("docker")
-      : unsupported("vLLM on ROCm needs Docker with GPU passthrough (rocm/vllm)");
-  }
-  if (host.accelerator !== "cuda") {
+  if (host.accelerator !== "cuda" && host.accelerator !== "rocm") {
     return unsupported(`vLLM needs a CUDA or ROCm device; this host reports ${host.accelerator}`);
   }
-  return host.dockerGpu ? supported("process", "docker") : supported("process");
+  return host.dockerGpu
+    ? supported("docker")
+    : unsupported("vLLM needs Docker with GPU passthrough (nvidia-container-toolkit)");
 };
 
 export const vllm: ComputeEngineSpec = {
   id: "vllm",
-  defaultBinary: "vllm",
   defaultPort: 8000,
   health: health("/health", READY_DEADLINE_MS),
   metrics: prometheusMetrics("vllm", "kv_cache_usage_perc"),
@@ -57,10 +53,12 @@ export const vllm: ComputeEngineSpec = {
   supports,
   plan: (request) =>
     plan(request, {
+      // `vllm serve <path>` takes the model positionally.
       args: serverArguments(
         request,
         {
-          subcommand: request.runtime === "docker" ? [] : ["serve"],
+          // The vllm-openai image's entrypoint is already `vllm serve`.
+          subcommand: [],
           modelFlag: null,
           servedNameFlag: "--served-model-name",
           spelling,

@@ -1,5 +1,9 @@
 import {
+  chmodSync,
+  closeSync,
+  fsyncSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -8,7 +12,7 @@ import {
 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { Effect, Option, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import type {
   DeviceId,
   EngineId,
@@ -17,6 +21,10 @@ import type {
   NodeId,
   EngineRuntimeKind,
 } from "../contracts";
+import { decodeInstanceRecord } from "./record-schema";
+
+const ErrorCodeSchema = Schema.Struct({ code: Schema.String });
+const decodeErrorCode = Schema.decodeUnknownOption(ErrorCodeSchema);
 
 /**
  * The instance store: one JSON file per running deployment, written write-then-rename so
@@ -68,35 +76,6 @@ export interface Reservation {
 /** Names come from recipes but stop/drop accept user input — keep them inside the dir. */
 const safeName = (name: string): string => name.replace(/[/\\]/g, "_");
 
-const HandleReferenceSchema = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("process"),
-    pid: Schema.Number,
-    startToken: Schema.NullOr(Schema.String),
-  }),
-  Schema.Struct({ kind: Schema.Literal("docker"), container: Schema.String }),
-  Schema.Struct({
-    kind: Schema.Literal("remote"),
-    nodeId: Schema.String,
-    name: Schema.String,
-  }),
-  Schema.Struct({ kind: Schema.Literal("pinned"), holder: Schema.String }),
-]);
-
-const InstanceRecordSchema = Schema.Struct({
-  name: Schema.String,
-  nodeId: Schema.String,
-  engine: Schema.Literals(["vllm", "sglang", "llamacpp", "mlx", "exllamav3"]),
-  recipeId: Schema.String,
-  runtime: Schema.Literals(["process", "docker"]),
-  ref: Schema.NullOr(HandleReferenceSchema),
-  port: Schema.Number,
-  devices: Schema.Array(Schema.String),
-  nonce: Schema.String,
-  startedAt: Schema.String,
-  readyDeadlineAt: Schema.String,
-});
-
 const pidAlive = (pid: number): boolean => {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
@@ -131,6 +110,7 @@ const lockIsStale = (lockPath: string): boolean => {
     const holder = Number.parseInt(readFileSync(lockPath, "utf8").trim(), 10);
     return !pidAlive(holder);
   } catch {
+    // Unreadable or already gone — the next acquire attempt settles it.
     return false;
   }
 };
@@ -139,6 +119,7 @@ const releaseLock = (lockPath: string): void => {
   try {
     rmSync(lockPath);
   } catch {
+    /* already gone */
   }
 };
 
@@ -160,46 +141,60 @@ const acquirePlacementLock = (lockPath: string): Effect.Effect<void, LaunchFailu
     }
   });
 
+/* ── store ───────────────────────────────────────────────────────────────── */
 
 export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
   const directory = join(dataDirectory, "instances");
   const logsDirectory = join(directory, "logs");
-  mkdirSync(logsDirectory, { recursive: true });
+  mkdirSync(logsDirectory, { recursive: true, mode: 0o700 });
+  chmodSync(directory, 0o700);
+  chmodSync(logsDirectory, 0o700);
   const lockPath = join(directory, "placement.lock");
   const recordPath = (name: string): string => join(directory, `${safeName(name)}.json`);
 
   const read = (name: string): InstanceRecord | null => {
     try {
-      const parsed = Schema.decodeUnknownOption(InstanceRecordSchema)(
-        JSON.parse(readFileSync(recordPath(name), "utf8")),
-      );
-      return Option.isSome(parsed) ? parsed.value : null;
-    } catch {
-      return null;
+      const path = recordPath(name);
+      chmodSync(path, 0o600);
+      return decodeInstanceRecord(JSON.parse(readFileSync(path, "utf8")));
+    } catch (error) {
+      const decodedError = decodeErrorCode(error);
+      if (decodedError._tag === "Some" && decodedError.value.code === "ENOENT") return null;
+      throw error;
     }
   };
 
-  const all = (): readonly InstanceRecord[] => {
-    try {
-      return readdirSync(directory)
-        .filter((file) => file.endsWith(".json"))
-        .map((file) => read(file.slice(0, -".json".length)))
-        .filter((record): record is InstanceRecord => record !== null);
-    } catch {
-      return [];
-    }
-  };
+  const all = (): readonly InstanceRecord[] =>
+    readdirSync(directory)
+      .filter((file) => file.endsWith(".json"))
+      .map((file) => read(file.slice(0, -".json".length)))
+      .filter((record): record is InstanceRecord => record !== null);
 
   const write = (record: InstanceRecord): void => {
     const path = recordPath(record.name);
-    writeFileSync(`${path}.tmp`, JSON.stringify(record, null, 2));
-    renameSync(`${path}.tmp`, path);
+    const temporaryPath = `${path}.${randomUUID()}.tmp`;
+    try {
+      // wx + rename keeps a crash mid-write from reading as garbage; the
+      // fsync before rename keeps a power loss right after the rename from
+      // resurrecting an empty lease file (rename can outlive its contents).
+      const file = openSync(temporaryPath, "wx", 0o600);
+      try {
+        writeFileSync(file, JSON.stringify(record, null, 2));
+        fsyncSync(file);
+      } finally {
+        closeSync(file);
+      }
+      renameSync(temporaryPath, path);
+    } finally {
+      rmSync(temporaryPath, { force: true });
+    }
   };
 
   const drop = (name: string): void => {
     try {
       rmSync(recordPath(name));
     } catch {
+      /* already gone */
     }
   };
 

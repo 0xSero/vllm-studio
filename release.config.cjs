@@ -1,8 +1,4 @@
-/**
- * Monorepo, protected `main`: no npm publish, no direct commits to main.
- * Creates Git tag + GitHub Release only (release notes from commits).
- * @type {import("semantic-release").GlobalConfig}
- */
+/** @type {import("semantic-release").GlobalConfig} */
 module.exports = {
   branches: ["main"],
   plugins: [
@@ -11,9 +7,7 @@ module.exports = {
       {
         preset: "conventionalcommits",
         releaseRules: [
-          { type: "feat", release: "minor" },
-          { type: "fix", release: "patch" },
-          { type: "perf", release: "patch" },
+          { breaking: true, release: "major" },
           { type: "refactor", release: "patch" },
           { type: "micro", release: "patch" },
           { type: "release", release: "patch" },
@@ -22,7 +16,6 @@ module.exports = {
           { type: "docs", release: "patch" },
           { type: "chore", release: "patch" },
           { type: "style", release: "patch" },
-          { breaking: true, release: "major" },
         ],
       },
     ],

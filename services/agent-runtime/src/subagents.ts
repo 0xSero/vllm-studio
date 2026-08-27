@@ -1,16 +1,12 @@
-//
-// Subagents: child pi sessions a parent session's model spawns through the
-// `subagent` tool. Each subagent runs headless in this runtime with its own
-// context and canonical session file (so the UI can open it like any other
-// session), reports its final text back as the tool result, and shows up in
-// the parent's chips via the registry here.
-//
-
 import { randomUUID } from "node:crypto";
 import { getGlobalSingleton } from "./instances";
 import { piRuntimeManager } from "./pi-runtime";
-import { lastAssistantText } from "./session-text";
-import { sessionSubagentLink, setSubagentLink } from "./session-metadata-store";
+import { lastAssistantResult, type LastAssistantResult } from "./session-text";
+import {
+  listSubagentChildren,
+  sessionSubagentLink,
+  setSubagentLink,
+} from "./session-metadata-store";
 
 const NICKNAMES = [
   "Euclid",
@@ -35,9 +31,13 @@ const NICKNAMES = [
   "Bohr",
 ];
 
-const MAX_CONCURRENT_PER_PARENT = 4;
+export const MAX_CONCURRENT_PER_PARENT = 4;
 const MAX_RESULT_CHARS = 8000;
 const SUBAGENT_SESSION_PREFIX = "subagent:";
+
+export type SubagentStatus = "running" | "done" | "error" | "cancelled";
+
+export type SubagentResult = { piSessionId: string | null; result: string };
 
 export type SubagentRun = {
   id: string;
@@ -45,7 +45,9 @@ export type SubagentRun = {
   name: string;
   task: string;
   piSessionId: string | null;
-  status: "running" | "done" | "error";
+  runtimeSessionId: string;
+  cwd: string;
+  status: SubagentStatus;
   startedAt: string;
   finishedAt: string | null;
   error?: string;
@@ -53,25 +55,63 @@ export type SubagentRun = {
 
 type SubagentState = {
   byParent: Map<string, SubagentRun[]>;
-  /** pi session ids that ARE subagents — they may not spawn their own */
   childPiSessionIds: Set<string>;
+  rehydratedParents: Set<string>;
 };
 
 function state(): SubagentState {
   return getGlobalSingleton("subagentRegistry", () => ({
     byParent: new Map<string, SubagentRun[]>(),
     childPiSessionIds: new Set<string>(),
+    rehydratedParents: new Set<string>(),
   }));
 }
 
+function rehydrateParent(parentPiSessionId: string): void {
+  const registry = state();
+  if (registry.rehydratedParents.has(parentPiSessionId)) return;
+  registry.rehydratedParents.add(parentPiSessionId);
+  const live = registry.byParent.get(parentPiSessionId) ?? [];
+  const known = new Set(live.map((run) => run.piSessionId).filter(Boolean));
+  for (const child of listSubagentChildren(parentPiSessionId)) {
+    registry.childPiSessionIds.add(child.childSessionId);
+    if (known.has(child.childSessionId)) continue;
+    const runId = child.runId ?? child.childSessionId.slice(0, 8);
+    live.push({
+      id: runId,
+      parentPiSessionId,
+      name: child.subagentName ?? "Subagent",
+      task: child.task ?? "",
+      piSessionId: child.childSessionId,
+      runtimeSessionId: `${SUBAGENT_SESSION_PREFIX}${parentPiSessionId}:${runId}`,
+      cwd: child.cwd ?? "",
+      status: "done",
+      startedAt: child.updatedAt ?? new Date(0).toISOString(),
+      finishedAt: child.updatedAt,
+    });
+  }
+  live.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  registry.byParent.set(parentPiSessionId, live);
+}
+
 export function listSubagents(parentPiSessionId: string): SubagentRun[] {
+  rehydrateParent(parentPiSessionId);
   return state().byParent.get(parentPiSessionId) ?? [];
+}
+
+export function findSubagent(parentPiSessionId: string, runId: string): SubagentRun | null {
+  const target = runId.trim();
+  return listSubagents(parentPiSessionId).find((run) => run.id === target) ?? null;
 }
 
 function findParentRuntime(parentPiSessionId: string) {
   return piRuntimeManager
     .listSessions()
     .find(({ session }) => session.status.piSessionId === parentPiSessionId);
+}
+
+function findChildRuntime(run: SubagentRun) {
+  return piRuntimeManager.findSessionForLookup(run.runtimeSessionId, run.piSessionId);
 }
 
 function taskPrompt(name: string, task: string): string {
@@ -84,7 +124,106 @@ function taskPrompt(name: string, task: string): string {
   ].join("\n");
 }
 
-function requireParentRuntime(registry: SubagentState, parentPiSessionId: string) {
+function clampReport(text: string): string {
+  if (text.length <= MAX_RESULT_CHARS) return text;
+  const dropped = text.length - MAX_RESULT_CHARS;
+  return `${text.slice(0, MAX_RESULT_CHARS)}\n\n[truncated — ${dropped} more characters; open the subagent's session for the rest]`;
+}
+
+export function subagentReport(run: SubagentRun): LastAssistantResult {
+  if (!run.piSessionId) return { text: "", error: null };
+  const result = lastAssistantResult(run.cwd, run.piSessionId);
+  return {
+    text: clampReport(result.text),
+    error: run.status === "cancelled" ? null : result.error,
+  };
+}
+
+export function subagentIsActive(run: SubagentRun): boolean {
+  return findChildRuntime(run)?.session.status.active === true;
+}
+
+function settle(run: SubagentRun, status: SubagentStatus, error?: string): void {
+  if (run.status !== "running") return;
+  run.status = status;
+  if (error) run.error = error;
+  run.finishedAt = new Date().toISOString();
+}
+
+async function adoptChildSession(run: SubagentRun, piSessionId: string | null): Promise<void> {
+  if (!piSessionId || run.piSessionId === piSessionId) return;
+  run.piSessionId = piSessionId;
+  state().childPiSessionIds.add(piSessionId);
+  await setSubagentLink(piSessionId, run.parentPiSessionId, run.name, {
+    runId: run.id,
+    cwd: run.cwd,
+    task: run.task,
+  }).catch(() => undefined);
+}
+
+export async function stopSubagent(parentPiSessionId: string, runId: string): Promise<SubagentRun> {
+  const run = findSubagent(parentPiSessionId, runId);
+  if (!run) throw new Error(`No subagent "${runId}" was spawned by this session.`);
+  if (run.status !== "running") return run;
+  settle(run, "cancelled");
+  const child = findChildRuntime(run);
+  if (child) {
+    await child.session.abort().catch(() => undefined);
+    await child.session.stop().catch(() => undefined);
+  }
+  return run;
+}
+
+function stoppedResult(run: SubagentRun, text: string): SubagentResult {
+  const partial = text ? `\n\nPartial work so far:\n${text}` : "";
+  return {
+    piSessionId: run.piSessionId,
+    result: `Subagent "${run.name}" was stopped before it reported.${partial}`,
+  };
+}
+
+type SubagentSession = ReturnType<typeof piRuntimeManager.getSessionForLookup>["session"];
+
+async function completeSubagent(
+  run: SubagentRun,
+  session: SubagentSession,
+): Promise<SubagentResult> {
+  try {
+    await session.prompt(taskPrompt(run.name, run.task), () => {});
+    const status = session.status;
+    await adoptChildSession(run, status.piSessionId);
+    const report = subagentReport(run);
+    void session.stop().catch(() => undefined);
+    if (run.status === "cancelled") return stoppedResult(run, report.text);
+    const failure = status.lastError ?? report.error;
+    if (failure) {
+      settle(run, "error", failure);
+      throw new Error(`Subagent "${run.name}" failed: ${failure}`);
+    }
+    settle(run, "done");
+    return {
+      piSessionId: run.piSessionId,
+      result: report.text || "(the subagent produced no final text)",
+    };
+  } catch (error) {
+    if (run.status === "cancelled") return stoppedResult(run, subagentReport(run).text);
+    settle(run, "error", error instanceof Error ? error.message : "Subagent run failed");
+    throw error;
+  }
+}
+
+export async function spawnSubagent(input: {
+  parentPiSessionId: string;
+  name: string;
+  task: string;
+  modelId?: string;
+}): Promise<{
+  run: SubagentRun;
+  completion: Promise<SubagentResult>;
+}> {
+  const registry = state();
+  const { parentPiSessionId } = input;
+
   if (
     registry.childPiSessionIds.has(parentPiSessionId) ||
     sessionSubagentLink(parentPiSessionId) !== null
@@ -98,14 +237,44 @@ function requireParentRuntime(registry: SubagentState, parentPiSessionId: string
   if (parent.sessionId.startsWith(SUBAGENT_SESSION_PREFIX)) {
     throw new Error("Subagents cannot spawn their own subagents.");
   }
-  const runs = listSubagents(parentPiSessionId);
-  const running = runs.filter((run) => run.status === "running");
+  const running = listSubagents(parentPiSessionId).filter((run) => run.status === "running");
   if (running.length >= MAX_CONCURRENT_PER_PARENT) {
     throw new Error(
-      `Too many subagents already running (${running.length}). Wait for one to finish.`,
+      `Too many subagents already running (${running.length}). Wait for one to finish, or stop one with subagent_stop.`,
     );
   }
-  return { parent, runs };
+
+  const siblingCount = listSubagents(parentPiSessionId).length;
+  const runId = randomUUID().slice(0, 8);
+  const cwd = parent.session.status.cwd;
+  const run: SubagentRun = {
+    id: runId,
+    parentPiSessionId,
+    name: input.name.trim() || NICKNAMES[siblingCount % NICKNAMES.length],
+    task: input.task,
+    piSessionId: null,
+    runtimeSessionId: `${SUBAGENT_SESSION_PREFIX}${parentPiSessionId}:${runId}`,
+    cwd,
+    status: "running",
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+  };
+  const runs = registry.byParent.get(parentPiSessionId) ?? [];
+  runs.push(run);
+  registry.byParent.set(parentPiSessionId, runs);
+
+  const modelId = input.modelId?.trim() || parent.session.status.modelId;
+
+  try {
+    const { session } = piRuntimeManager.getSessionForLookup(run.runtimeSessionId, null);
+    await session.ensureStarted(modelId, cwd || undefined, null, {});
+    run.cwd = session.status.cwd || cwd;
+    await adoptChildSession(run, session.status.piSessionId);
+    return { run, completion: completeSubagent(run, session) };
+  } catch (error) {
+    settle(run, "error", error instanceof Error ? error.message : "Subagent run failed");
+    throw error;
+  }
 }
 
 export async function runSubagent(input: {
@@ -113,59 +282,7 @@ export async function runSubagent(input: {
   name: string;
   task: string;
   modelId?: string;
-}): Promise<{ piSessionId: string | null; result: string }> {
-  const registry = state();
-  const { parentPiSessionId } = input;
-
-  const { parent, runs } = requireParentRuntime(registry, parentPiSessionId);
-
-  const run: SubagentRun = {
-    id: randomUUID().slice(0, 8),
-    parentPiSessionId,
-    name: input.name.trim() || NICKNAMES[runs.length % NICKNAMES.length],
-    task: input.task,
-    piSessionId: null,
-    status: "running",
-    startedAt: new Date().toISOString(),
-    finishedAt: null,
-  };
-  runs.push(run);
-  registry.byParent.set(parentPiSessionId, runs);
-
-  const modelId = input.modelId?.trim() || parent.session.status.modelId;
-  const cwd = parent.session.status.cwd;
-  const runtimeSessionId = `${SUBAGENT_SESSION_PREFIX}${parentPiSessionId}:${run.id}`;
-
-  try {
-    const { session } = piRuntimeManager.getSessionForLookup(runtimeSessionId, null);
-    await session.ensureStarted(modelId, cwd || undefined, null, {});
-    await session.prompt(taskPrompt(run.name, input.task), () => {});
-    const status = session.status;
-    run.piSessionId = status.piSessionId;
-    if (status.piSessionId) {
-      registry.childPiSessionIds.add(status.piSessionId);
-      await setSubagentLink(status.piSessionId, parentPiSessionId, run.name).catch(() => undefined);
-    }
-    const text = status.piSessionId ? lastAssistantText(status.cwd, status.piSessionId) : "";
-    void session.stop().catch(() => undefined);
-    if (status.lastError) {
-      run.status = "error";
-      run.error = status.lastError;
-      run.finishedAt = new Date().toISOString();
-      throw new Error(`Subagent "${run.name}" failed: ${status.lastError}`);
-    }
-    run.status = "done";
-    run.finishedAt = new Date().toISOString();
-    return {
-      piSessionId: status.piSessionId,
-      result: text.slice(0, MAX_RESULT_CHARS) || "(the subagent produced no final text)",
-    };
-  } catch (error) {
-    if (run.status === "running") {
-      run.status = "error";
-      run.error = error instanceof Error ? error.message : "Subagent run failed";
-      run.finishedAt = new Date().toISOString();
-    }
-    throw error;
-  }
+}): Promise<SubagentResult> {
+  const { completion } = await spawnSubagent(input);
+  return completion;
 }

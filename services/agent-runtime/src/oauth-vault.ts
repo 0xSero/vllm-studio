@@ -75,19 +75,14 @@ function request(
       key,
     };
     if (value !== undefined) payload.value = value;
-    process.send(
-      payload,
-      undefined,
-      undefined,
-      (error: Error | null) => {
-        if (!error) return;
-        const active = pending.get(id);
-        if (!active) return;
-        pending.delete(id);
-        clearTimeout(active.timeout);
-        active.reject(new OAuthVaultError("Secure OAuth storage request failed"));
-      },
-    );
+    process.send(payload, undefined, undefined, (error: Error | null) => {
+      if (!error) return;
+      const active = pending.get(id);
+      if (!active) return;
+      pending.delete(id);
+      clearTimeout(active.timeout);
+      active.reject(new OAuthVaultError("Secure OAuth storage request failed"));
+    });
   });
 }
 

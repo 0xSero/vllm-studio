@@ -1,22 +1,3 @@
-//
-// A rollout with the noise removed.
-//
-// 91-95% of a real rollout is `custom` / `custom_message` entries written by pi
-// extensions on every turn — state snapshots that are inert to the transcript
-// and thrown away on every read. Paging the
-// transcript therefore means scanning 40-145 MB to find a few hundred messages,
-// and no amount of seeking helps because the messages are interleaved
-// throughout rather than clustered at the end.
-//
-// So keep a second copy containing only the lines that matter. It is a plain
-// `.jsonl` in the same format, which is the point: `readTailRegion` runs over it
-// unchanged, and cursors stay opaque byte offsets — just into a file that is
-// twenty times smaller.
-//
-// Both files are append-only, so the sidecar is extended rather than rebuilt as
-// the session grows, and a cursor handed out for an earlier page stays valid.
-//
-
 import { appendFileSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Schema } from "effect";
@@ -31,10 +12,6 @@ import {
 
 const SIDECAR_KIND = "transcript";
 
-/**
- * Mirrors `isInertEvent` in sessions-store. Checked as a byte prefix on the raw
- * line so the common case never pays for `JSON.parse`.
- */
 const INERT_PREFIXES = ['{"type":"custom"', '{"type":"custom_message"'];
 const InertEventSchema = Schema.Struct({ type: Schema.optional(Schema.String) });
 
@@ -42,7 +19,6 @@ function lineIsInert(line: string): boolean {
   for (const prefix of INERT_PREFIXES) {
     if (line.startsWith(prefix)) return true;
   }
-  // Backstop for logs whose key order differs from what pi writes today.
   if (!line.includes('"custom')) return false;
   try {
     const type = Schema.decodeUnknownSync(InertEventSchema)(JSON.parse(line)).type;
@@ -55,13 +31,14 @@ function lineIsInert(line: string): boolean {
 type SidecarState = {
   sourceSize: number;
   sourceMtimeMs: number;
-  /** Offset in the SOURCE just past the last complete line copied. */
   scannedBytes: number;
-  /** Opening bytes of the source, to notice a rewrite rather than an append. */
   head: string;
 };
 
-const state = rolloutCache<SidecarState>("transcript-state");
+const state = rolloutCache<SidecarState, SidecarState>("transcript-state", {
+  serialize: (value) => value,
+  deserialize: (value) => value,
+});
 
 async function appendFrom(source: string, sidecar: string, start: number): Promise<number> {
   let batch: string[] = [];
@@ -80,13 +57,6 @@ async function appendFrom(source: string, sidecar: string, start: number): Promi
 
 export type TranscriptSource = { filepath: string; size: number };
 
-/**
- * The file to page the transcript from: the sidecar when one can be built,
- * otherwise the rollout itself.
- *
- * Never throws and never blocks correctness — every failure path returns the
- * original rollout, which reads identically, just slower.
- */
 export async function transcriptSource(filepath: string): Promise<TranscriptSource> {
   const original = (): TranscriptSource => ({
     filepath,
@@ -109,8 +79,6 @@ export async function transcriptSource(filepath: string): Promise<TranscriptSour
       }
     })();
 
-    // Extend only when this is the same file, grown, and the sidecar we built
-    // for it is still there. Anything else means starting over.
     const resumable =
       previous !== undefined &&
       previous.head === head &&

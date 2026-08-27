@@ -2,16 +2,14 @@ import { spawn } from "node:child_process";
 import { unlink } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { PassThrough } from "node:stream";
-import { Effect, Schema, Stream } from "effect";
-import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
+import { Effect, Option, Schema, Stream } from "effect";
+import { defineRoutes, effectRoute, mergeRoutes } from "../../http/route-registrar";
 import { badRequest, notFound } from "../../core/errors";
 import { findObservedInferenceProcess } from "../../core/function-observability";
 import { buildSseHeaders, toReadableByteStream, withSseHeartbeat } from "../../http/sse";
-import { effectHandler } from "../../http/effect-handler";
 import { CONTROLLER_EVENTS } from "@local-studio/contracts/controller-events";
 import { Event } from "./event-manager";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
-import type { ProcessInfo, Recipe } from "../models/types";
 import {
   cleanupLogFiles,
   fallbackLogPathFor,
@@ -32,6 +30,10 @@ const LogLimitQuerySchema = Schema.Struct({
     ),
   ),
 });
+const DockerContainerSchema = Schema.String.pipe(
+  Schema.check(Schema.isPattern(/^[a-zA-Z0-9_.-]+$/)),
+);
+const LogEventDataSchema = Schema.Struct({ line: Schema.String });
 const LogTailQuerySchema = Schema.Struct({
   tail: Schema.optionalKey(
     Schema.FiniteFromString.pipe(
@@ -81,24 +83,6 @@ const terminateChild = (child: ReturnType<typeof spawn>): Effect.Effect<void> =>
     yield* Effect.raceFirst(waitForChildExit(child), Effect.sleep(1_000));
   });
 
-type LogSessionRow = {
-  id: string;
-  recipe_id: string;
-  recipe_name: string | null;
-  model_path: string | null;
-  model: string;
-  backend: string | null;
-  created_at: string;
-  status: string;
-};
-
-const logSessionStatus = (recipe: Recipe | null, current: ProcessInfo | null): string => {
-  if (!recipe || !current) return "stopped";
-  return isRecipeRunning(recipe, current, { allowCurrentContainsRecipePath: true })
-    ? "running"
-    : "stopped";
-};
-
 export const registerLogsRoutes = defineRoutes((app, context) => {
   let lastCleanupAt = 0;
 
@@ -125,10 +109,14 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
           extraArguments["docker_container"] ??
           extraArguments["container-name"] ??
           extraArguments["container_name"];
-        const decoded = Schema.decodeUnknownOption(Schema.String)(value);
-        if (decoded._tag === "None") return null;
-        const container = decoded.value.trim();
-        return /^[a-zA-Z0-9_.-]+$/.test(container) ? container : null;
+        return Option.getOrNull(
+          Schema.decodeUnknownOption(DockerContainerSchema)(
+            Schema.decodeUnknownOption(Schema.String)(value).pipe(
+              Option.map((container) => container.trim()),
+              Option.getOrNull,
+            ),
+          ),
+        );
       }),
     );
 
@@ -219,23 +207,34 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
     ).pipe(Stream.interruptWhen(abortEffect(signal)));
 
   return mergeRoutes(
-    app.get(
-      "/logs",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          yield* Effect.sync(maybeCleanup);
-          const current = yield* findObservedInferenceProcess(context, "logs");
-          const entries = yield* Effect.try({
-            try: () => listLogFiles(context.config.data_dir),
-            catch: (error) => error,
-          });
-          const sessions: LogSessionRow[] = [];
-          let controllerSession: LogSessionRow | null = null;
-          for (const entry of entries) {
+    effectRoute(app.get, "/logs", (ctx) =>
+      Effect.gen(function* () {
+        yield* Effect.sync(maybeCleanup);
+        const current = yield* findObservedInferenceProcess(context, "logs");
+        const entries = yield* Effect.try({
+          try: () => listLogFiles(context.config.data_dir),
+          catch: (error) => error,
+        });
+        type LogSessionRow = {
+          id: string;
+          recipe_id: string;
+          recipe_name: string | null;
+          model_path: string | null;
+          model: string;
+          backend: string | null;
+          created_at: string;
+          status: string;
+        };
+        const rows = yield* Effect.forEach(entries, (entry) =>
+          Effect.gen(function* () {
             const sessionId = entry.sessionId;
             const recipe = yield* context.stores.recipeStore.get(sessionId);
-            const row = {
+            const running = Boolean(
+              current &&
+              recipe &&
+              isRecipeRunning(recipe, current, { allowCurrentContainsRecipePath: true }),
+            );
+            const row: LogSessionRow = {
               id: sessionId,
               recipe_id: recipe?.id ?? sessionId,
               recipe_name: recipe?.name ?? null,
@@ -243,172 +242,155 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
               model: recipe ? (recipe.served_model_name ?? recipe.name) : sessionId,
               backend: recipe?.backend ?? null,
               created_at: new Date(entry.mtimeMs).toISOString(),
-              status: logSessionStatus(recipe, current),
+              status: running ? "running" : "stopped",
             };
-            if (sessionId === "controller") controllerSession = row;
-            else sessions.push(row);
-          }
-          if (controllerSession) sessions.push(controllerSession);
-          return ctx.json({ sessions });
-        }),
-      ),
+            return row;
+          }),
+        );
+        const sessions = rows.filter((row) => row.id !== "controller");
+        const controllerSession = rows.find((row) => row.id === "controller");
+        if (controllerSession) sessions.push(controllerSession);
+        return ctx.json({ sessions });
+      }),
     ),
 
-    app.get(
-      "/logs/:sessionId",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const sessionId = yield* decodeSessionId(ctx.req.param("sessionId") ?? "");
-          const limitRaw = ctx.req.query("limit");
-          const query = yield* Schema.decodeUnknownEffect(LogLimitQuerySchema)(
-            limitRaw === undefined ? {} : { limit: limitRaw },
-          ).pipe(Effect.mapError(() => badRequest("Invalid log limit")));
-          const limit = query.limit ?? 2000;
-          const dockerContainer = yield* getDockerContainerForSession(sessionId);
-          if (dockerContainer) {
-            const dockerLines = (yield* readDockerLogLines(dockerContainer, limit)).map(
-              redactLogLine,
-            );
-            if (dockerLines.length > 0) {
-              return ctx.json({
-                id: sessionId,
-                logs: dockerLines,
-                content: dockerLines.join("\n"),
-              });
-            }
-          }
-          const path = yield* Effect.sync(() =>
-            resolveExistingLogPath(context.config.data_dir, sessionId),
+    effectRoute(app.get, "/logs/:sessionId", (ctx) =>
+      Effect.gen(function* () {
+        const sessionId = yield* decodeSessionId(ctx.req.param("sessionId") ?? "");
+        const limitRaw = ctx.req.query("limit");
+        const query = yield* Schema.decodeUnknownEffect(LogLimitQuerySchema)(
+          limitRaw === undefined ? {} : { limit: limitRaw },
+        ).pipe(Effect.mapError(() => badRequest("Invalid log limit")));
+        const limit = query.limit ?? 2000;
+        const dockerContainer = yield* getDockerContainerForSession(sessionId);
+        if (dockerContainer) {
+          const dockerLines = (yield* readDockerLogLines(dockerContainer, limit)).map(
+            redactLogLine,
           );
-          if (!path) return yield* Effect.fail(notFound("Log not found"));
-          const lines = (yield* Effect.try({
-            try: () => tailFileLines(path, limit),
-            catch: (error) => error,
-          }))
-            .map((line) => line.replace(/\n$/, ""))
-            .map(redactLogLine);
-          return ctx.json({ id: sessionId, logs: lines, content: lines.join("\n") });
-        }),
-      ),
-    ),
-
-    app.delete(
-      "/logs/:sessionId",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const sessionId = yield* decodeSessionId(ctx.req.param("sessionId") ?? "");
-          if (sessionId === "controller") {
-            return yield* Effect.fail(badRequest("controller logs cannot be deleted via API"));
+          if (dockerLines.length > 0) {
+            return ctx.json({
+              id: sessionId,
+              logs: dockerLines,
+              content: dockerLines.join("\n"),
+            });
           }
-          const primary = primaryLogPathFor(context.config.data_dir, sessionId);
-          const fallback = fallbackLogPathFor(sessionId);
-          const removals = yield* Effect.forEach([primary, fallback], (path) =>
-            Effect.tryPromise({ try: () => unlink(path), catch: (error) => error }).pipe(
-              Effect.as(true),
-              Effect.catch(() => Effect.succeed(false)),
-            ),
-          );
-          const deleted = removals.some(Boolean);
-          if (!deleted) return yield* Effect.fail(notFound("Log not found"));
-          return ctx.json({ success: true });
-        }),
-      ),
+        }
+        const path = yield* Effect.sync(() =>
+          resolveExistingLogPath(context.config.data_dir, sessionId),
+        );
+        if (!path) return yield* Effect.fail(notFound("Log not found"));
+        const lines = (yield* Effect.try({
+          try: () => tailFileLines(path, limit),
+          catch: (error) => error,
+        }))
+          .map((line) => line.replace(/\n$/, ""))
+          .map(redactLogLine);
+        return ctx.json({ id: sessionId, logs: lines, content: lines.join("\n") });
+      }),
     ),
 
-    app.get(
-      "/events",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.sync(() => {
-          const signal = ctx.req.raw.signal;
-          const frames = context.eventManager
-            .subscribe("default", signal)
-            .pipe(Stream.map((event) => event.toSse()));
-          return new Response(toReadableByteStream(withSseHeartbeat(frames, 15_000, signal)), {
-            headers: buildSseHeaders(),
-          });
-        }),
-      ),
+    effectRoute(app.delete, "/logs/:sessionId", (ctx) =>
+      Effect.gen(function* () {
+        const sessionId = yield* decodeSessionId(ctx.req.param("sessionId") ?? "");
+        if (sessionId === "controller") {
+          return yield* Effect.fail(badRequest("controller logs cannot be deleted via API"));
+        }
+        const primary = primaryLogPathFor(context.config.data_dir, sessionId);
+        const fallback = fallbackLogPathFor(sessionId);
+        const removals = yield* Effect.forEach([primary, fallback], (path) =>
+          Effect.tryPromise({ try: () => unlink(path), catch: (error) => error }).pipe(
+            Effect.as(true),
+            Effect.catch(() => Effect.succeed(false)),
+          ),
+        );
+        const deleted = removals.some(Boolean);
+        if (!deleted) return yield* Effect.fail(notFound("Log not found"));
+        return ctx.json({ success: true });
+      }),
     ),
 
-    app.get(
-      "/logs/:sessionId/stream",
-      documentRoute,
-      effectHandler((ctx) =>
-        Effect.gen(function* () {
-          const sessionId = yield* decodeSessionId(ctx.req.param("sessionId") ?? "");
-          const tailRaw = ctx.req.query("tail");
-          const query = yield* Schema.decodeUnknownEffect(LogTailQuerySchema)(
-            tailRaw === undefined ? {} : { tail: tailRaw },
-          ).pipe(Effect.mapError(() => badRequest("Invalid log tail")));
-          const replayLimit = query.tail ?? 2000;
-          const path = yield* Effect.sync(() =>
-            resolveExistingLogPath(context.config.data_dir, sessionId),
-          );
-          const configuredDockerContainer = yield* getDockerContainerForSession(sessionId);
-          const dockerContainer =
-            configuredDockerContainer && (yield* dockerContainerExists(configuredDockerContainer))
-              ? configuredDockerContainer
-              : null;
-          const signal = ctx.req.raw.signal;
-          const frameForLine = (line: string): string =>
-            new Event(CONTROLLER_EVENTS.LOG, {
-              session_id: sessionId,
-              line: redactLogLine(line),
-            }).toSse();
-          const replay = dockerContainer
-            ? streamDockerLogLines(dockerContainer, replayLimit, signal).pipe(
+    effectRoute(app.get, "/events", (ctx) =>
+      Effect.sync(() => {
+        const signal = ctx.req.raw.signal;
+        const frames = context.eventManager
+          .subscribe("default", signal)
+          .pipe(Stream.map((event) => event.toSse()));
+        return new Response(toReadableByteStream(withSseHeartbeat(frames, 15_000, signal)), {
+          headers: buildSseHeaders(),
+        });
+      }),
+    ),
+
+    effectRoute(app.get, "/logs/:sessionId/stream", (ctx) =>
+      Effect.gen(function* () {
+        const sessionId = yield* decodeSessionId(ctx.req.param("sessionId") ?? "");
+        const tailRaw = ctx.req.query("tail");
+        const query = yield* Schema.decodeUnknownEffect(LogTailQuerySchema)(
+          tailRaw === undefined ? {} : { tail: tailRaw },
+        ).pipe(Effect.mapError(() => badRequest("Invalid log tail")));
+        const replayLimit = query.tail ?? 2000;
+        const path = yield* Effect.sync(() =>
+          resolveExistingLogPath(context.config.data_dir, sessionId),
+        );
+        const configuredDockerContainer = yield* getDockerContainerForSession(sessionId);
+        const dockerContainer =
+          configuredDockerContainer && (yield* dockerContainerExists(configuredDockerContainer))
+            ? configuredDockerContainer
+            : null;
+        const signal = ctx.req.raw.signal;
+        const frameForLine = (line: string): string =>
+          new Event(CONTROLLER_EVENTS.LOG, {
+            session_id: sessionId,
+            line: redactLogLine(line),
+          }).toSse();
+        const replay = dockerContainer
+          ? streamDockerLogLines(dockerContainer, replayLimit, signal).pipe(
+              Stream.map(frameForLine),
+            )
+          : path && replayLimit > 0
+            ? Stream.fromEffect(
+                Effect.try({
+                  try: () => tailFileLines(path, replayLimit),
+                  catch: (error) => error,
+                }),
+              ).pipe(
+                Stream.flatMap(Stream.fromIterable),
+                Stream.filter((line) => line.length > 0),
                 Stream.map(frameForLine),
               )
-            : path && replayLimit > 0
-              ? Stream.fromEffect(
-                  Effect.try({
-                    try: () => tailFileLines(path, replayLimit),
-                    catch: (error) => error,
-                  }),
-                ).pipe(
-                  Stream.flatMap(Stream.fromIterable),
-                  Stream.filter((line) => line.length > 0),
-                  Stream.map(frameForLine),
-                )
-              : Stream.empty;
-          const live = dockerContainer
-            ? Stream.empty
-            : context.eventManager.subscribe(`logs:${sessionId}`, signal).pipe(
-                Stream.map((event) => {
-                  const logData = Schema.decodeUnknownOption(
-                    Schema.Struct({ line: Schema.String }),
-                  )(event.data);
-                  if (event.type === CONTROLLER_EVENTS.LOG && logData._tag === "Some") {
-                    return new Event(CONTROLLER_EVENTS.LOG, {
-                      ...event.data,
-                      line: redactLogLine(logData.value.line),
-                    }).toSse();
-                  }
+            : Stream.empty;
+        const live = dockerContainer
+          ? Stream.empty
+          : context.eventManager.subscribe(`logs:${sessionId}`, signal).pipe(
+              Stream.map((event) => {
+                const logData = Schema.decodeUnknownOption(LogEventDataSchema)(event.data);
+                if (event.type !== CONTROLLER_EVENTS.LOG || Option.isNone(logData)) {
                   return event.toSse();
-                }),
-              );
-          const frames = replay.pipe(
-            Stream.concat(live),
-            Stream.catch((error) =>
-              Stream.succeed(
-                new Event(CONTROLLER_EVENTS.LOG, {
-                  session_id: sessionId,
-                  line: redactLogLine(`Log stream failed: ${String(error)}`),
-                }).toSse(),
-              ),
+                }
+                return new Event(CONTROLLER_EVENTS.LOG, {
+                  ...event.data,
+                  line: redactLogLine(logData.value.line),
+                }).toSse();
+              }),
+            );
+        const frames = replay.pipe(
+          Stream.concat(live),
+          Stream.catch((error) =>
+            Stream.succeed(
+              new Event(CONTROLLER_EVENTS.LOG, {
+                session_id: sessionId,
+                line: redactLogLine(`Log stream failed: ${String(error)}`),
+              }).toSse(),
             ),
-          );
-          return new Response(toReadableByteStream(withSseHeartbeat(frames, 15_000, signal)), {
-            headers: buildSseHeaders({
-              "Cache-Control": "no-cache, no-transform",
-              Connection: "keep-alive",
-            }),
-          });
-        }),
-      ),
+          ),
+        );
+        return new Response(toReadableByteStream(withSseHeartbeat(frames, 15_000, signal)), {
+          headers: buildSseHeaders({
+            "Cache-Control": "no-cache, no-transform",
+            Connection: "keep-alive",
+          }),
+        });
+      }),
     ),
   );
 });

@@ -21,21 +21,18 @@ import {
   resolveAgentCwdEffect,
   type RuntimeStartOptions,
 } from "./pi-runtime-helpers";
-import {
-  refreshPiModels,
-  resolvePiModelSelection,
-  toPiThinkingLevel,
-} from "./pi-runtime-models";
+import { refreshPiModels, resolvePiModelSelection, toPiThinkingLevel } from "./pi-runtime-models";
 import { getProviderHub } from "./provider-hub";
 import { attachGoalDriver } from "./goal-driver";
 import { createGoalPromptExtension } from "./goal-prompt";
-import { findRuntimeSessionForLookup, piStatusFromEvents } from "./pi-runtime-state";
 import { configuredPiSessionDir, findSessionFile } from "./sessions-store";
 import { getGlobalSingleton } from "./instances";
 import { connectorsRevisionSync } from "./connectors-service";
+import { userPluginsRevisionSync } from "./user-plugins";
 import type {
   LoggedPiEvent,
   PiAgentSession,
+  PiAgentStatus,
   PiPromptOptions,
 } from "./pi-runtime-types";
 
@@ -53,7 +50,7 @@ function comparableQueuedText(text: string): string {
   return (index === -1 ? text : text.slice(index + marker.length)).trim();
 }
 
-export function takeQueuedFollowUp(
+function takeQueuedFollowUp(
   followUp: readonly string[],
   message: string,
 ): { selected: string; before: string[]; after: string[] } | null {
@@ -71,7 +68,7 @@ export function takeQueuedFollowUp(
   };
 }
 
-export function planQueuedFollowUpMutation(
+function planQueuedFollowUpMutation(
   followUp: readonly string[],
   message: string,
   action: AgentQueueAction,
@@ -96,7 +93,7 @@ type QueueTransport = {
   followUp: (message: string, images?: AgentImageInput[]) => Promise<void>;
 };
 
-export async function restoreQueuedMessages(
+async function restoreQueuedMessages(
   session: QueueTransport,
   cleared: { steering: readonly string[]; followUp: readonly string[] },
   mutation: { promoted: string | null; followUp: readonly string[] } | null,
@@ -107,14 +104,10 @@ export async function restoreQueuedMessages(
   for (const queued of mutation?.followUp ?? cleared.followUp) await session.followUp(queued);
 }
 
-
-/** Appended to the system prompt for vision-capable models. Kept as an extra
- *  section rather than a replacement so first-party extensions still apply. */
 const VISION_GUIDANCE =
   "When an image is attached, inspect it carefully before answering. State only details visible in the image. Never invent labels, UI elements, text, or facts. Say when details are too small or uncertain. Give a concise answer. Use available tools to inspect supplied files when helpful.";
 
-
-export function selectPiRuntimeModel(
+function selectPiRuntimeModel(
   models: Awaited<ReturnType<typeof refreshPiModels>>["models"],
   requestedModelId: string,
 ) {
@@ -138,14 +131,6 @@ export function selectPiRuntimeModel(
   return null;
 }
 
-export function resolvePiRuntimeStartOptions(
-  current: RuntimeStartOptions,
-  running: boolean,
-  requested?: RuntimeStartOptions,
-): RuntimeStartOptions {
-  return structuredClone(requested ?? (running ? current : {}));
-}
-
 function runtimeFingerprint(
   modelId: string,
   cwd: string,
@@ -158,6 +143,7 @@ function runtimeFingerprint(
     piSessionId: piSessionId ?? "",
     options: runtimeOptionsFingerprint(options),
     connectors: connectorsRevisionSync(),
+    plugins: userPluginsRevisionSync(),
   });
 }
 
@@ -213,10 +199,8 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     piSessionId?: string | null,
     options?: RuntimeStartOptions,
   ): Promise<void> {
-    const effectiveOptions = resolvePiRuntimeStartOptions(
-      this.currentStartOptions,
-      Boolean(this.runtime),
-      options,
+    const effectiveOptions = structuredClone(
+      options ?? (this.runtime ? this.currentStartOptions : {}),
     );
     return Effect.runPromise(this.ensureStartedEffect(modelId, cwd, piSessionId, effectiveOptions));
   }
@@ -254,8 +238,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
         const providerId = selectedModel.providerId ?? resolvedSelection.providerId;
         const backendModelId = selectedModel.rawId ?? resolvedSelection.modelId;
 
-        // One shared ModelRuntime across sessions and the provider hub: a
-        // sign-in completed in settings is live for the next turn.
         const sharedModelRuntime = yield* Effect.tryPromise({
           try: () => getProviderHub(),
           catch: (error) => error,
@@ -263,8 +245,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
 
         const sessionOptions = buildAgentSessionOptionsSync({ options, cwd: resolvedCwd });
         applyRuntimeEnvInjections(sessionOptions.envInjections);
-        // Expose the current session's model so the automations extension can
-        // default a scheduled run to the same model the user is talking to.
         applyRuntimeEnvInjections({ LOCAL_STUDIO_MODEL_ID: modelId });
         const sessionDir = configuredPiSessionDir(resolvedCwd);
         const resumeFile = desiredSessionId ? findSessionFile(resolvedCwd, desiredSessionId) : null;
@@ -294,10 +274,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
                     };
                     if (selectedModel.vision) {
                       Object.assign(resourceLoaderOptions, {
-                        appendSystemPromptOverride: (base: string[]) => [
-                          ...base,
-                          VISION_GUIDANCE,
-                        ],
+                        appendSystemPromptOverride: (base: string[]) => [...base, VISION_GUIDANCE],
                       });
                     }
                     const services = yield* Effect.tryPromise({
@@ -352,15 +329,13 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
                         }),
                       catch: (error) => error,
                     });
-                    const extensionErrors = services.resourceLoader
-                      .getExtensions()
-                      .errors.map(
-                        ({ path, error }): PiResourceDiagnostic => ({
-                          type: "error",
-                          message: `Failed to load extension "${path}": ${error}`,
-                          path,
-                        }),
-                      );
+                    const extensionErrors = services.resourceLoader.getExtensions().errors.map(
+                      ({ path, error }): PiResourceDiagnostic => ({
+                        type: "error",
+                        message: `Failed to load extension "${path}": ${error}`,
+                        path,
+                      }),
+                    );
                     const diagnostics = [...services.diagnostics, ...extensionErrors];
                     const resourceDiagnostics: PiResourceDiagnostic[] = services.diagnostics.map(
                       (diagnostic) => ({
@@ -424,8 +399,8 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     }).pipe(
       Effect.catch((error) =>
         options.restartOnContinuationError !== false &&
-          error instanceof Error &&
-          shouldRestartAfterPromptError(error)
+        error instanceof Error &&
+        shouldRestartAfterPromptError(error)
           ? this.restartPromptEffect(message, options)
           : Effect.fail(error),
       ),
@@ -542,11 +517,6 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     });
   }
 
-  /** Stop the current run and hand back whatever was still queued.
-   *
-   *  clearQueue() returns the texts precisely so they are not lost — pi's own
-   *  TUI puts them back in the editor. Discarding them meant a stop silently
-   *  destroyed every message the user had lined up. */
   abort(): Promise<{ steering: string[]; followUp: string[] }> {
     return Effect.runPromise(
       Effect.tryPromise({
@@ -595,24 +565,23 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     }).pipe(Effect.catch(() => Effect.void));
   }
 
-  get status() {
+  get status(): PiAgentStatus {
     const sdkSession = this.runtime?.session;
-    return piStatusFromEvents({
+    const sdkActive =
+      Boolean(sdkSession?.isStreaming) ||
+      Boolean(sdkSession?.isCompacting) ||
+      (sdkSession?.pendingMessageCount ?? 0) > 0;
+    return {
       running: Boolean(this.runtime),
-      activePromptCount: this.activePromptCount,
-      sdkActive:
-        Boolean(sdkSession?.isStreaming) ||
-        Boolean(sdkSession?.isCompacting) ||
-        (sdkSession?.pendingMessageCount ?? 0) > 0,
+      active: this.activePromptCount > 0 || sdkActive,
       modelId: this.currentModelId,
       cwd: this.currentCwd,
       piSessionId: this.currentPiSessionId,
       agentDir: this.agentDir,
       eventSeq: this.eventSeq,
       lastError: this.lastError,
-      eventLog: this.eventLog,
       contextUsage: this.computeContextUsage(),
-    });
+    };
   }
 
   private computeContextUsage() {
@@ -771,6 +740,59 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
 function piEventsAfter(eventLog: LoggedPiEvent[], seq: number): LoggedPiEvent[] {
   const floor = Number.isFinite(seq) ? Math.max(0, Math.trunc(seq)) : 0;
   return eventLog.filter((entry) => entry.seq > floor);
+}
+
+type RuntimeLookupEntry = {
+  sessionId: string;
+  session: PiAgentSession;
+};
+
+function findRuntimeSessionForLookup(
+  entries: Iterable<RuntimeLookupEntry>,
+  sessionId: string,
+  piSessionId?: string | null,
+): RuntimeLookupEntry | null {
+  const snapshot = [...entries];
+  const exact = snapshot.find((entry) => entry.sessionId === sessionId);
+  const target = piSessionId?.trim();
+  if (!target) return exact ?? null;
+  const matches = snapshot.filter(
+    (entry) =>
+      entry.session.status.piSessionId === target ||
+      (entry.sessionId === sessionId && !entry.session.status.piSessionId),
+  );
+  return matches.reduce<RuntimeLookupEntry | null>(
+    (best, candidate) =>
+      !best || runtimeLookupOutranks(candidate, best, sessionId) ? candidate : best,
+    null,
+  );
+}
+
+function runtimeLookupOutranks(
+  candidate: RuntimeLookupEntry,
+  current: RuntimeLookupEntry,
+  requestedSessionId: string,
+): boolean {
+  const candidateRank = runtimeLookupRank(candidate, requestedSessionId);
+  const currentRank = runtimeLookupRank(current, requestedSessionId);
+  for (let index = 0; index < candidateRank.length; index += 1) {
+    if (candidateRank[index] !== currentRank[index]) {
+      return candidateRank[index] > currentRank[index];
+    }
+  }
+  return false;
+}
+
+function runtimeLookupRank(
+  entry: RuntimeLookupEntry,
+  requestedSessionId: string,
+): [number, number, number, number] {
+  return [
+    entry.session.status.active === true ? 1 : 0,
+    entry.session.status.running === true ? 1 : 0,
+    entry.sessionId === requestedSessionId ? 1 : 0,
+    entry.session.status.eventSeq ?? 0,
+  ];
 }
 
 const DEFAULT_SESSION_ID = "default";

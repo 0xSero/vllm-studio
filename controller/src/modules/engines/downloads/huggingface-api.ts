@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
-import type { DownloadFileInfo } from "@local-studio/contracts/recipes";
-import { type EngineOperationError } from "../engine-spec";
+import type { DownloadFileInfo } from "../types";
+import { type EngineOperationError } from "../engine-operation";
 import { operationError } from "../engine-operation";
 
 const escapeRegex = (value: string): string => value.replace(/[.+^${}()|[\]\\]/g, "\\$&");
@@ -98,9 +98,7 @@ export const buildHuggingFaceFileList = (
           !/(?:^|[-_.])(mmproj|projector|adapter|draft)(?:[-_.]|$)/i.test(filename),
       );
     const ggufFamilies = new Set(
-      primaryGgufFiles.map((filename) =>
-        filename.replace(/-\d{5}-of-\d{5}\.gguf$/i, ".gguf"),
-      ),
+      primaryGgufFiles.map((filename) => filename.replace(/-\d{5}-of-\d{5}\.gguf$/i, ".gguf")),
     );
     if (ggufFamilies.size > 1) {
       throw new Error(

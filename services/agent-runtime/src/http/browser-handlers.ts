@@ -1,9 +1,24 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import { sanitizeBrowserPaneUrl } from "../../../../shared/agent/sanitize-embedded-browser-url";
-import { browserHost } from "../browser-host/browser-host";
+import { browserHost, normalizeBrowserSessionKey } from "../browser-host/browser-host";
+import {
+  explicitBinaryOverride,
+  isBrowserEngineId,
+  listBrowserEngines,
+  readEnginePreference,
+  resolveBrowserEngine,
+  writeEnginePreference,
+} from "../browser-host/browser-engines";
+import { browserHistory } from "../browser-host/browser-history";
+import { playwrightManager } from "../browser-host/playwright";
 import { fetchReadable } from "../browser-host/reader";
+import { errorMessage } from "./helpers";
+
+const paneUrlOptions = () => ({
+  allowPrivate: process.env.LOCAL_STUDIO_BROWSER_ALLOW_PRIVATE === "1",
+});
 
 const ALLOWED_VERBS = new Set([
   "navigate",
@@ -19,134 +34,206 @@ const ALLOWED_VERBS = new Set([
   "reload",
 ]);
 
-const UNAVAILABLE_ERROR = "Browser unavailable: no Chromium found — set LOCAL_STUDIO_CHROME_PATH";
+function unavailableError(): string {
+  try {
+    resolveBrowserEngine();
+    return "Browser unavailable";
+  } catch (error) {
+    return errorMessage(error, "Browser unavailable");
+  }
+}
 
 let lastFallbackUrl = "";
 
 type VerbResult = { ok: boolean; data?: unknown; error?: string };
 
 const BrowserVerbPayloadSchema = Schema.Struct({
+  sessionId: Schema.optional(Schema.String),
   url: Schema.optional(Schema.String),
   selector: Schema.optional(Schema.String),
   value: Schema.optional(Schema.Union([Schema.String, Schema.Number, Schema.Boolean])),
   deltaY: Schema.optional(Schema.Union([Schema.Number, Schema.String])),
 });
-
-type BrowserVerbPayload = typeof BrowserVerbPayloadSchema.Type;
+type BrowserVerbPayload = Omit<typeof BrowserVerbPayloadSchema.Type, "sessionId">;
 
 export async function handleBrowserVerb(request: Request, verb: string): Promise<Response> {
   if (!ALLOWED_VERBS.has(verb)) {
     return Response.json({ ok: false, error: `Unknown browser verb: ${verb}` }, { status: 400 });
   }
-  const payload = await readPayload(request);
+  const { payload, session } = await readPayload(request);
   try {
-    const result = await dispatchVerb(verb, payload);
+    const result = await dispatchVerb(verb, payload, session, request.signal);
     return Response.json(result);
   } catch (error) {
     return Response.json({
       ok: false,
-      error: error instanceof Error ? error.message : "Browser command failed",
+      error: errorMessage(error, "Browser command failed"),
     });
   }
 }
 
-async function readPayload(request: Request): Promise<BrowserVerbPayload> {
+async function readPayload(
+  request: Request,
+): Promise<{ payload: BrowserVerbPayload; session: string | undefined }> {
   try {
-    return Schema.decodeUnknownSync(BrowserVerbPayloadSchema)(await request.json());
+    const body = Schema.decodeUnknownSync(BrowserVerbPayloadSchema)(await request.json());
+    const { sessionId, ...payload } = body;
+    return { payload, session: normalizeBrowserSessionKey(sessionId) ?? undefined };
   } catch {
-    return {};
+    return { payload: {}, session: undefined };
   }
 }
 
-async function dispatchVerb(verb: string, payload: BrowserVerbPayload): Promise<VerbResult> {
-  if (!browserHost.isAvailable()) return fallbackVerb(verb, payload);
+async function dispatchVerb(
+  verb: string,
+  payload: BrowserVerbPayload,
+  session: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<VerbResult> {
   try {
-    return await runHostVerb(verb, payload);
+    const result = await runVerb(verb, payload, session, signal);
+    recordHistory(verb, payload, result);
+    return result;
   } catch (error) {
-    // A launch/connection failure for the reading verbs still degrades to
-    // reading mode rather than failing the tool call outright.
-    if (verb === "navigate" || verb === "get-text") return fallbackVerb(verb, payload);
+    browserHistory.record({
+      action: verb,
+      detail: historyDetail(verb, payload),
+      ok: false,
+      error: errorMessage(error, String(error)),
+    });
     throw error;
   }
 }
 
-async function runHostVerb(verb: string, payload: BrowserVerbPayload): Promise<VerbResult> {
+async function runVerb(
+  verb: string,
+  payload: BrowserVerbPayload,
+  session: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<VerbResult> {
+  if (!browserHost.isAvailable()) return fallbackVerb(verb, payload, signal);
+  try {
+    return await runHostVerb(verb, payload, session);
+  } catch (error) {
+    if (verb === "navigate" || verb === "get-text") return fallbackVerb(verb, payload, signal);
+    throw error;
+  }
+}
+
+function recordHistory(verb: string, payload: BrowserVerbPayload, result: VerbResult): void {
+  const data = Option.getOrNull(
+    Schema.decodeUnknownOption(
+      Schema.Struct({
+        url: Schema.optional(Schema.String),
+        title: Schema.optional(Schema.String),
+      }),
+    )(result.data),
+  );
+  browserHistory.record({
+    action: verb,
+    url: data?.url,
+    title: data?.title,
+    detail: historyDetail(verb, payload),
+    ok: result.ok,
+    error: result.error,
+  });
+}
+
+function historyDetail(verb: string, payload: BrowserVerbPayload): string | undefined {
+  if (verb === "navigate") return String(payload.url ?? "") || undefined;
+  if (verb === "click") return String(payload.selector ?? "") || undefined;
+  if (verb === "fill") return `${String(payload.selector ?? "")} = ${String(payload.value ?? "")}`;
+  if (verb === "scroll") return `deltaY ${Number(payload.deltaY ?? 0)}`;
+  return undefined;
+}
+
+async function runHostVerb(
+  verb: string,
+  payload: BrowserVerbPayload,
+  session: string | undefined,
+): Promise<VerbResult> {
   switch (verb) {
     case "navigate":
-      return navigateVerb(payload);
+      return navigateVerb(payload, session);
     case "get-url":
-      return { ok: true, data: await browserHost.getUrl() };
+      return { ok: true, data: await browserHost.getUrl(session) };
     case "get-text":
-      return { ok: true, data: { text: await browserHost.getText() } };
+      return { ok: true, data: { text: await browserHost.getText(session) } };
     case "get-html":
-      return { ok: true, data: { html: await browserHost.getHtml() } };
+      return { ok: true, data: { html: await browserHost.getHtml(session) } };
     case "screenshot":
-      return { ok: true, data: { dataUri: await browserHost.screenshot() } };
+      return { ok: true, data: { dataUri: await browserHost.screenshot(session) } };
     case "click":
-      return selectorVerb(await browserHost.click({ selector: requireSelector(payload) }));
+      return selectorVerb(await browserHost.click({ selector: requireSelector(payload) }, session));
     case "fill":
       return selectorVerb(
-        await browserHost.fill({
-          selector: requireSelector(payload),
-          value: String(payload.value ?? ""),
-        }),
+        await browserHost.fill(
+          {
+            selector: requireSelector(payload),
+            value: String(payload.value ?? ""),
+          },
+          session,
+        ),
       );
     case "scroll":
-      return scrollVerb(payload);
+      return scrollVerb(payload, session);
     case "back":
-      await browserHost.goBack();
-      return { ok: true, data: await browserHost.getState() };
+      await browserHost.goBack(session);
+      return { ok: true, data: await browserHost.getState(session) };
     case "forward":
-      await browserHost.goForward();
-      return { ok: true, data: await browserHost.getState() };
+      await browserHost.goForward(session);
+      return { ok: true, data: await browserHost.getState(session) };
     case "reload":
-      await browserHost.reload();
-      return { ok: true, data: await browserHost.getState() };
+      await browserHost.reload(session);
+      return { ok: true, data: await browserHost.getState(session) };
     default:
       return { ok: false, error: `Unsupported browser verb: ${verb}` };
   }
 }
 
-async function navigateVerb(payload: BrowserVerbPayload): Promise<VerbResult> {
-  // Pane rules: public web plus loopback (previewing local dev servers is the
-  // pane's main job); other private ranges stay blocked.
-  const url = sanitizeBrowserPaneUrl(payload.url ?? "");
+async function navigateVerb(
+  payload: BrowserVerbPayload,
+  session: string | undefined,
+): Promise<VerbResult> {
+  const url = sanitizeBrowserPaneUrl(String(payload.url ?? ""), paneUrlOptions());
   if (!url) return { ok: false, error: "valid public or localhost http(s) url required" };
-  const result = await browserHost.navigate(url);
+  const result = await browserHost.navigate(url, session);
   return { ok: true, data: result };
 }
 
-async function scrollVerb(payload: BrowserVerbPayload): Promise<VerbResult> {
+async function scrollVerb(
+  payload: BrowserVerbPayload,
+  session: string | undefined,
+): Promise<VerbResult> {
   const deltaY = Number(payload.deltaY ?? 0);
-  const result = await browserHost.scroll({ deltaY: Number.isFinite(deltaY) ? deltaY : 0 });
+  const result = await browserHost.scroll(
+    { deltaY: Number.isFinite(deltaY) ? deltaY : 0 },
+    session,
+  );
   return { ok: true, data: { deltaY: result.deltaY, scrollY: result.scrollY } };
 }
 
 function selectorVerb(result: { found: boolean }): VerbResult {
-  const response: VerbResult = {
-    ok: result.found,
-    data: { found: result.found },
-  };
+  const response: VerbResult = { ok: result.found, data: { found: result.found } };
   if (!result.found) response.error = "selector not found";
   return response;
 }
 
 function requireSelector(payload: BrowserVerbPayload): string {
-  const selector = payload.selector ?? "";
+  const selector = String(payload.selector ?? "");
   if (!selector) throw new Error("selector required");
   return selector;
 }
 
-// Chromium-unavailable fallbacks. navigate/get-url/get-text/get-html degrade to
-// reading mode (remembering the last navigated URL per process so reads work
-// without a url arg); every other verb returns the clear unavailable error. The
-// fallback honors pane rules (public + loopback) so local dev servers stay
-// previewable even when there's no headless Chromium to drive a full surface.
-async function fallbackVerb(verb: string, payload: BrowserVerbPayload): Promise<VerbResult> {
+async function fallbackVerb(
+  verb: string,
+  payload: BrowserVerbPayload,
+  signal: AbortSignal | undefined,
+): Promise<VerbResult> {
   if (verb === "navigate") {
-    const url = sanitizeBrowserPaneUrl(payload.url ?? "");
+    const url = sanitizeBrowserPaneUrl(String(payload.url ?? ""), paneUrlOptions());
     if (!url) return { ok: false, error: "valid public or localhost http(s) url required" };
-    const reader = await fetchReadable(url);
+    const reader = await fetchReadable(url, signal);
     lastFallbackUrl = reader.url;
     return { ok: true, data: { url: reader.url, title: reader.title, readingMode: true } };
   }
@@ -154,41 +241,34 @@ async function fallbackVerb(verb: string, payload: BrowserVerbPayload): Promise<
     return { ok: true, data: { url: lastFallbackUrl, title: "" } };
   }
   if (verb === "get-text" || verb === "get-html") {
-    const url = sanitizeBrowserPaneUrl(payload.url ?? "") || lastFallbackUrl;
-    if (!url) return { ok: false, error: UNAVAILABLE_ERROR };
-    const reader = await fetchReadable(url);
+    const url =
+      sanitizeBrowserPaneUrl(String(payload.url ?? ""), paneUrlOptions()) || lastFallbackUrl;
+    if (!url) return { ok: false, error: unavailableError() };
+    const reader = await fetchReadable(url, signal);
     lastFallbackUrl = reader.url;
     return verb === "get-text"
       ? { ok: true, data: { text: reader.text, readingMode: true } }
       : { ok: true, data: { html: reader.markdown ?? reader.text, readingMode: true } };
   }
-  return { ok: false, error: UNAVAILABLE_ERROR };
+  return { ok: false, error: unavailableError() };
 }
 
 export async function handleBrowserFetch(request: Request): Promise<Response> {
   const raw = new URL(request.url).searchParams.get("url");
   if (!raw) return Response.json({ error: "url is required" }, { status: 400 });
   try {
-    const result = await fetchReadable(raw);
+    const result = await fetchReadable(raw, request.signal);
     return Response.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Fetch failed";
-    // Only the initial url-rejection is a client error (400); resolved-host,
-    // redirect, and upstream failures are bad-gateway (502) like before.
+    const message = errorMessage(error, "Fetch failed");
     const status = message.startsWith("url rejected") ? 400 : 502;
     return Response.json({ error: message }, { status });
   }
 }
 
-// ─── GET /api/agent/browser/frame ─────────────────────────────────────────
-//
-// Frame poll for the visible browser panel (~10fps JSON poll instead of SSE:
-// Next's standalone server buffers locally-built event streams, and polling
-// survives buffering proxies for remote deploys).
-
 export async function handleBrowserFrame(): Promise<Response> {
   if (!browserHost.isAvailable()) {
-    return Response.json({ ok: false, error: UNAVAILABLE_ERROR }, { status: 503 });
+    return Response.json({ ok: false, error: unavailableError() }, { status: 503 });
   }
   try {
     const { frame, state } = await browserHost.pollFrame();
@@ -205,25 +285,15 @@ export async function handleBrowserFrame(): Promise<Response> {
   } catch (error) {
     return Response.json({
       ok: false,
-      error: error instanceof Error ? error.message : "frame poll failed",
+      error: errorMessage(error, "frame poll failed"),
     });
   }
 }
 
-const MouseButtonSchema = Schema.Union([
-  Schema.Literal("left"),
-  Schema.Literal("right"),
-  Schema.Literal("middle"),
-]);
-
+const MouseButtonSchema = Schema.Literals(["left", "right", "middle"]);
 const MouseInputSchema = Schema.Struct({
   kind: Schema.Literal("mouse"),
-  type: Schema.Union([
-    Schema.Literal("down"),
-    Schema.Literal("up"),
-    Schema.Literal("move"),
-    Schema.Literal("wheel"),
-  ]),
+  type: Schema.Literals(["down", "up", "move", "wheel"]),
   x: Schema.Number,
   y: Schema.Number,
   button: Schema.optional(MouseButtonSchema),
@@ -231,7 +301,6 @@ const MouseInputSchema = Schema.Struct({
   deltaX: Schema.optional(Schema.Number),
   deltaY: Schema.optional(Schema.Number),
 });
-
 const WheelInputSchema = Schema.Struct({
   kind: Schema.Literal("wheel"),
   x: Schema.Number,
@@ -239,14 +308,12 @@ const WheelInputSchema = Schema.Struct({
   deltaX: Schema.optional(Schema.Number),
   deltaY: Schema.optional(Schema.Number),
 });
-
 const KeyInputSchema = Schema.Struct({
   kind: Schema.Literal("key"),
-  type: Schema.Union([Schema.Literal("down"), Schema.Literal("up")]),
+  type: Schema.Literals(["down", "up"]),
   key: Schema.String,
   code: Schema.String,
 });
-
 const InputBodySchema = Schema.Union([MouseInputSchema, WheelInputSchema, KeyInputSchema]);
 type InputBody = typeof InputBodySchema.Type;
 
@@ -266,7 +333,7 @@ export async function handleBrowserInput(request: Request): Promise<Response> {
   } catch (error) {
     return Response.json({
       ok: false,
-      error: error instanceof Error ? error.message : "input dispatch failed",
+      error: errorMessage(error, "input dispatch failed"),
     });
   }
 }
@@ -299,11 +366,6 @@ async function dispatchInput(body: InputBody): Promise<void> {
   });
 }
 
-// ─── GET /api/agent/browser/localhosts ────────────────────────────────────
-//
-// Discovers locally listening HTTP dev servers for the browser panel's
-// localhost picker.
-
 const execFileAsync = promisify(execFile);
 const PROBE_TIMEOUT_MS = 650;
 const LSOF_TIMEOUT_MS = 2_500;
@@ -335,11 +397,11 @@ function titleFromHtml(html: string): string {
   const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim();
   return title
     ? title
-        .replace(/&amp;/g, "&")
         .replace(/&lt;/g, "<")
         .replace(/&gt;/g, ">")
         .replace(/&quot;/g, '"')
         .replace(/&#39;/g, "'")
+        .replace(/&amp;/g, "&")
     : "";
 }
 
@@ -364,8 +426,7 @@ async function listListeningPorts(): Promise<PortCandidate[]> {
     });
     const ports = parseLsof(stdout);
     if (ports.length > 0) return ports;
-  } catch {
-  }
+  } catch {}
   return FALLBACK_PORTS.map((port) => ({ port }));
 }
 
@@ -418,7 +479,6 @@ export async function handleBrowserLocalhosts(request: Request): Promise<Respons
   return Response.json({ sites });
 }
 
-
 export async function handleBrowserState(): Promise<Response> {
   if (!browserHost.isAvailable()) {
     return Response.json({ ok: false, error: "Browser unavailable" }, { status: 503 });
@@ -428,11 +488,10 @@ export async function handleBrowserState(): Promise<Response> {
   } catch (error) {
     return Response.json({
       ok: false,
-      error: error instanceof Error ? error.message : "getState failed",
+      error: errorMessage(error, "getState failed"),
     });
   }
 }
-
 
 const ViewportBodySchema = Schema.Struct({
   width: Schema.Union([Schema.Number, Schema.String]),
@@ -463,7 +522,64 @@ export async function handleBrowserViewport(request: Request): Promise<Response>
   } catch (error) {
     return Response.json({
       ok: false,
-      error: error instanceof Error ? error.message : "setViewport failed",
+      error: errorMessage(error, "setViewport failed"),
     });
   }
+}
+
+export async function handleBrowserHistory(request: Request): Promise<Response> {
+  const params = new URL(request.url).searchParams;
+  const limit = Number(params.get("limit") ?? 50);
+  const visitedOnly = params.get("visited") === "1";
+  return Response.json({
+    ok: true,
+    data: visitedOnly
+      ? { visited: browserHistory.visitedUrls(limit) }
+      : { entries: browserHistory.list(limit) },
+  });
+}
+
+function enginesPayload() {
+  const preference = readEnginePreference();
+  const engines = listBrowserEngines();
+  const active = playwrightManager.activeEngine();
+  const chosen = engines.find((engine) => engine.id === preference);
+  return {
+    preference,
+    preferenceUnavailable: preference !== "auto" && !chosen?.path,
+    override: explicitBinaryOverride(),
+    active: active
+      ? { id: active.id, label: active.label, path: active.path, source: active.source }
+      : null,
+    unavailableReason: active ? null : unavailableError(),
+    engines,
+  };
+}
+
+export async function handleBrowserEngines(): Promise<Response> {
+  return Response.json({ ok: true, data: enginesPayload() });
+}
+
+const BrowserEngineBodySchema = Schema.Struct({ engine: Schema.String });
+
+export async function handleBrowserEngineSelect(request: Request): Promise<Response> {
+  let body: typeof BrowserEngineBodySchema.Type;
+  try {
+    body = Schema.decodeUnknownSync(BrowserEngineBodySchema)(await request.json());
+  } catch {
+    return Response.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+  }
+  if (!isBrowserEngineId(body.engine)) {
+    return Response.json({ ok: false, error: "unknown browser engine" }, { status: 400 });
+  }
+  try {
+    writeEnginePreference(body.engine);
+  } catch (error) {
+    return Response.json({
+      ok: false,
+      error: errorMessage(error, "failed to save browser engine"),
+    });
+  }
+  browserHost.stop();
+  return Response.json({ ok: true, data: enginesPayload() });
 }

@@ -1,4 +1,5 @@
 import {
+  constants,
   existsSync,
   promises as fs,
   lstatSync,
@@ -6,6 +7,7 @@ import {
   realpathSync,
   statSync,
 } from "node:fs";
+import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
 import type { FsEntry } from "@/features/agent/filesystem-types";
 import { listProjectsFromStore } from "@local-studio/agent-runtime/projects-store";
@@ -24,9 +26,6 @@ const IGNORE_DIRS = new Set([
   ".local-studio",
 ]);
 
-// Filesystem roots and top-level system directories that must never serve as a
-// workspace root — otherwise a caller could set cwd="/" and read "etc/passwd"
-// while staying nominally "inside" the root.
 const SYSTEM_ROOTS = new Set([
   "/",
   "/bin",
@@ -47,9 +46,6 @@ const SYSTEM_ROOTS = new Set([
   "/var",
 ]);
 
-// macOS symlinks several of those into /private (/etc → /private/etc, /var →
-// /private/var), so matching the literal names alone lets `cwd=/etc` through
-// once it is symlink-resolved. Resolve the list once and match against both.
 const RESOLVED_SYSTEM_ROOTS = new Set(
   [...SYSTEM_ROOTS].map((entry) => {
     try {
@@ -60,9 +56,6 @@ const RESOLVED_SYSTEM_ROOTS = new Set(
   }),
 );
 
-// Reject the filesystem root and system directories as workspace roots. Returns
-// the symlink-resolved absolute path. Used by the filesystem and terminal
-// routes before any read/list/exec against a caller-supplied cwd.
 export function assertWorkspaceRoot(rootCwd: string): string {
   const resolved = path.resolve(rootCwd);
   const real = (() => {
@@ -91,11 +84,6 @@ function resolveRealPath(candidate: string): string {
   }
 }
 
-// Trust boundary: agent filesystem list/read operates inside the caller's
-// current workspace cwd, while still rejecting filesystem roots and system
-// directories. Registered projects remain accepted, but exact registration is
-// not required: sessions may run from the repo opened by the app, a project
-// subdirectory, or a newly selected cwd before the project registry refreshes.
 function resolveWorkspaceRoot(cwd: string): string {
   const requestedReal = resolveRealPath(cwd);
   for (const project of listProjectsFromStore()) {
@@ -106,15 +94,12 @@ function resolveWorkspaceRoot(cwd: string): string {
   return assertWorkspaceRoot(requestedReal);
 }
 
-// Reject any path that escapes the project root, resolving symlinks on both the
-// root and the target so a symlink inside the root cannot point outside it.
 function ensureInside(rootCwd: string, target: string): string {
   const realRoot = realpathSync(assertWorkspaceRoot(rootCwd));
   let realTarget: string;
   try {
     realTarget = realpathSync(target);
   } catch {
-    // Target may not exist yet; fall back to a lexical resolution.
     realTarget = path.resolve(target);
   }
   const rel = path.relative(realRoot, realTarget);
@@ -162,13 +147,6 @@ export function listDirectory(rootCwd: string, relPath: string): FsEntry[] {
 const SEARCH_MAX_VISITED = 20_000;
 const SEARCH_MAX_DEPTH = 12;
 
-// Recursive, query-aware file lookup for the composer's @-mention picker. A
-// single-level listing can only offer files sitting directly in the workspace
-// root, so every nested file — nearly all of them in a real repo — was
-// unreachable. Walks breadth-first (shallow matches first) under the same
-// ignore rules as listDirectory, with hard caps so a huge tree cannot stall the
-// request. Symlinks are skipped entirely: that keeps the walk inside the root
-// and cannot loop, so no per-entry ensureInside is needed.
 function fileMatch(query: string, name: string, relativePath: string): "name" | "path" | undefined {
   if (!query || name.toLowerCase().includes(query)) return "name";
   if (relativePath.toLowerCase().includes(query)) return "path";
@@ -249,8 +227,6 @@ export async function readFileSnippet(
     return { content: "", truncated: true, size: stats.size };
   }
   const buf = await fs.readFile(target);
-  // Heuristic: if the buffer contains a NUL byte in the first 8KB, treat as
-  // binary and refuse to render text.
   const head = buf.subarray(0, Math.min(buf.length, 8192));
   if (head.includes(0)) {
     return { content: "", truncated: true, size: stats.size };
@@ -258,26 +234,26 @@ export async function readFileSnippet(
   return { content: buf.toString("utf-8"), truncated: false, size: stats.size };
 }
 
-// Raw bytes for files the text reader refuses (images, PDFs). Same trust
-// boundary as readFileSnippet — resolved inside an allowed workspace root — but
-// returns the buffer unchanged so the caller can serve it with a real content
-// type instead of a "binary, cannot render" dead end.
-export async function readFileBytes(
+export async function openReadableFile(
   rootCwd: string,
   relPath: string,
-  maxBytes = 64 * 1024 * 1024,
-): Promise<{ bytes: Buffer; size: number; modifiedAt: Date }> {
+): Promise<{ file: FileHandle; size: number; modifiedAt: Date }> {
   const root = resolveWorkspaceRoot(rootCwd);
-  const target = ensureInside(root, path.resolve(root, relPath));
-  // Redundant with ensureInside, but stated in a form static analysis can
-  // verify: the realpath'd target sits under the realpath'd root.
-  if (target !== root && !target.startsWith(root + path.sep)) {
+  const resolved = path.resolve(root, relPath);
+  const relative = path.relative(root, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new Error("Path escapes project root");
   }
-  const stats = await fs.stat(target);
-  if (!stats.isFile()) throw new Error("Not a file");
-  if (stats.size > maxBytes) throw new Error("File is too large to serve");
-  return { bytes: await fs.readFile(target), size: stats.size, modifiedAt: stats.mtime };
+  const target = ensureInside(root, resolved);
+  const file = await fs.open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const stats = await file.stat();
+    if (!stats.isFile()) throw new Error("Not a file");
+    return { file, size: stats.size, modifiedAt: stats.mtime };
+  } catch (error) {
+    await file.close();
+    throw error;
+  }
 }
 
 export async function writeFileContent(

@@ -1,21 +1,3 @@
-//
-// Disk-backed memo for per-rollout derived data.
-//
-// Two things a session open needs — the active-branch id set and the lifetime
-// usage totals — cost a full pass over the rollout to compute. Both are already
-// memoised in process on (size, mtime). That is not enough: the expensive
-// sessions are the large ones, and a controller restart drops every entry, so
-// the first open of a big session after a restart re-pays the whole thing. On
-// the largest rollout on this machine (3.56 GB) that is ~25s for the branch
-// walk alone.
-//
-// Persisting the same memo turns once-per-process into once-ever.
-//
-// The cache is strictly derived data: a miss, a corrupt file, an unwritable
-// directory, and a schema change all degrade to "recompute", never to an error
-// and never to a wrong answer. Nothing here is authoritative.
-//
-
 import { createHash } from "node:crypto";
 import {
   createReadStream,
@@ -30,11 +12,6 @@ import {
 import path from "node:path";
 import { resolveDataDir } from "./data-dir";
 
-/**
- * Bump when the shape of any cached payload changes. Entries written by an
- * older build are ignored rather than misread — cheaper and safer than
- * migrating derived data we can always recompute.
- */
 const CACHE_SCHEMA = 1;
 
 type Envelope<T> = {
@@ -48,10 +25,6 @@ function cacheRoot(): string {
   return path.join(resolveDataDir(), "rollout-cache");
 }
 
-/**
- * Rollout paths are long, contain the encoded cwd, and are not filename-safe.
- * Hash them, and keep a readable prefix so the directory can be eyeballed.
- */
 function cacheFileFor(kind: string, filepath: string, extension = ".json"): string {
   const digest = createHash("sha256").update(path.resolve(filepath)).digest("hex").slice(0, 32);
   const readable = (path.basename(filepath).match(/^[\w.-]{0,40}/)?.[0] ?? "rollout").replace(
@@ -61,11 +34,6 @@ function cacheFileFor(kind: string, filepath: string, extension = ".json"): stri
   return path.join(cacheRoot(), kind, `${readable}.${digest}${extension}`);
 }
 
-/**
- * A path this rollout owns inside the cache, for callers that need a real file
- * rather than a JSON envelope — the transcript sidecar is a `.jsonl` that gets
- * read with the same tail scanner as the rollout itself.
- */
 export function rolloutCacheFilePath(kind: string, filepath: string, extension: string): string {
   return cacheFileFor(kind, filepath, extension);
 }
@@ -83,24 +51,8 @@ function readEnvelope<T>(file: string, size?: number, mtimeMs?: number): T | und
   return parsed.value;
 }
 
-/**
- * Entries are keyed by rollout path, and rollouts are deleted, renamed and
- * archived without telling us. Nothing would ever remove those entries, so the
- * directory would grow for the life of the install. Cap it: when a kind's
- * directory exceeds the limit, drop the least recently used entries.
- *
- * The cost of over-evicting is one recomputation, so this can be crude.
- */
 const MAX_ENTRIES_PER_KIND = 512;
 
-/**
- * Evict least-recently-used entries from a cache directory.
- *
- * Exported because the transcript sidecar is a `.jsonl` living in its own
- * directory rather than a JSON envelope, so it does not pass through
- * `writeEnvelope` and would otherwise accumulate one file per session opened,
- * forever, at roughly 5% of each rollout's size.
- */
 export function evictIfCrowded(directory: string, extension = ".json"): void {
   let names: string[];
   try {
@@ -124,9 +76,7 @@ export function evictIfCrowded(directory: string, extension = ".json"): void {
   for (const { file } of byAge.slice(0, byAge.length - MAX_ENTRIES_PER_KIND)) {
     try {
       unlinkSync(file);
-    } catch {
-      // Another process got there first, or the entry is locked; either is fine.
-    }
+    } catch {}
   }
 }
 
@@ -134,69 +84,24 @@ function writeEnvelope<T>(file: string, envelope: Envelope<T>): void {
   try {
     const directory = path.dirname(file);
     mkdirSync(directory, { recursive: true });
-    // Write-then-rename: a reader must never see a half-written entry, and two
-    // agent-runtime processes opening the same session would otherwise
-    // interleave into one corrupt file.
     const temporary = `${file}.${process.pid}.tmp`;
     writeFileSync(temporary, JSON.stringify(envelope), "utf-8");
     renameSync(temporary, file);
     evictIfCrowded(directory);
-  } catch {
-    // A cache that cannot be written is still a correct cache.
-  }
+  } catch {}
 }
 
 export type RolloutCache<T> = {
-  /** Cached value for this rollout, or undefined if it must be recomputed. */
   read(filepath: string, stat: { size: number; mtimeMs: number }): T | undefined;
-  /**
-   * The stored value regardless of whether the rollout has changed since.
-   *
-   * For a whole-file answer a stale entry is useless, but for a *resumable*
-   * one it is the entire point: the usage scan wants the prefix it computed
-   * last time so it can read only the bytes appended since. The caller owns
-   * deciding whether the staleness is the kind it can resume from.
-   */
   readStale(filepath: string): T | undefined;
   write(filepath: string, stat: { size: number; mtimeMs: number }, value: T): void;
-  /** Drop this rollout's entry — used when the on-disk value is proven stale. */
   forget(filepath: string): void;
 };
 
-/**
- * A named disk cache. `kind` becomes a subdirectory, so each caller's entries
- * can be inspected and invalidated independently.
- *
- * `serialize`/`deserialize` exist because the most valuable payload is a Set of
- * ids, and JSON has no Set.
- */
-export function rolloutCache<T, S = T>(
+export function rolloutCache<T, S>(
   kind: string,
-  codec?: { serialize: (value: T) => S; deserialize: (raw: S) => T },
+  codec: { serialize: (value: T) => S; deserialize: (raw: S) => T },
 ): RolloutCache<T> {
-  if (!codec) {
-    return {
-      read(filepath, stat) {
-        return readEnvelope<T>(cacheFileFor(kind, filepath), stat.size, stat.mtimeMs);
-      },
-      readStale(filepath) {
-        return readEnvelope<T>(cacheFileFor(kind, filepath));
-      },
-      write(filepath, stat, value) {
-        writeEnvelope(cacheFileFor(kind, filepath), {
-          schema: CACHE_SCHEMA,
-          size: stat.size,
-          mtimeMs: stat.mtimeMs,
-          value,
-        });
-      },
-      forget(filepath) {
-        try {
-          unlinkSync(cacheFileFor(kind, filepath));
-        } catch {}
-      },
-    };
-  }
   const decode = (raw: S): T | undefined => {
     try {
       return codec.deserialize(raw);
@@ -204,20 +109,17 @@ export function rolloutCache<T, S = T>(
       return undefined;
     }
   };
+  const read = (filepath: string, stat?: { size: number; mtimeMs: number }) => {
+    const raw = readEnvelope<S>(cacheFileFor(kind, filepath), stat?.size, stat?.mtimeMs);
+    return raw === undefined ? undefined : decode(raw);
+  };
   return {
-    read(filepath, stat) {
-      const raw = readEnvelope<S>(cacheFileFor(kind, filepath), stat.size, stat.mtimeMs);
-      return raw === undefined ? undefined : decode(raw);
-    },
-    readStale(filepath) {
-      const raw = readEnvelope<S>(cacheFileFor(kind, filepath));
-      return raw === undefined ? undefined : decode(raw);
-    },
+    read: (filepath, stat) => read(filepath, stat),
+    readStale: (filepath) => read(filepath),
     write(filepath, stat, value) {
       writeEnvelope(cacheFileFor(kind, filepath), {
         schema: CACHE_SCHEMA,
-        size: stat.size,
-        mtimeMs: stat.mtimeMs,
+        ...stat,
         value: codec.serialize(value),
       });
     },
@@ -228,7 +130,6 @@ export function rolloutCache<T, S = T>(
     },
   };
 }
-
 
 export async function readRolloutHead(filepath: string, bytes = 512): Promise<string> {
   const chunks: Buffer[] = [];

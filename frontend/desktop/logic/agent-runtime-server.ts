@@ -7,6 +7,7 @@ import { DESKTOP_CONFIG } from "../configs";
 import { log } from "../helpers/logger";
 import { resolveStablePort } from "../helpers/ports";
 import { resolveAugmentedPath } from "../helpers/resolve-path";
+import { registerOAuthVault } from "./oauth-vault";
 
 export type AgentRuntimeHandle = {
   frontendUrl: string;
@@ -111,8 +112,11 @@ export async function startAgentRuntime(
       LOCAL_STUDIO_RESOURCES_PATH: process.resourcesPath,
       LOCAL_STUDIO_AGENT_CWD: process.env.LOCAL_STUDIO_AGENT_CWD || app.getPath("home"),
       LOCAL_STUDIO_FRONTEND_BASE: options.frontendUrl,
+      LOCAL_STUDIO_BROWSER_ALLOW_PRIVATE: process.env.LOCAL_STUDIO_BROWSER_ALLOW_PRIVATE || "1",
     },
   });
+
+  registerOAuthVault(child, DESKTOP_CONFIG.userDataDir);
 
   child.stdout?.on("data", (chunk: Buffer | string) => {
     log.info(`agent-runtime: ${String(chunk).trim()}`);

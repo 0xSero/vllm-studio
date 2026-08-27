@@ -6,6 +6,13 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadPersistedConfig, type ProviderConfig } from "./persisted-config";
 import { parseBooleanFlag } from "../core/validation";
+import {
+  decodeAllowedHosts,
+  defaultAllowedHosts,
+  isLoopbackHost,
+  isWildcardHost,
+  normalizeHttpOrigin,
+} from "./request-authority";
 
 const positiveIntegerSchema = Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0));
 
@@ -13,6 +20,7 @@ export interface Config {
   host: string;
   port: number;
   api_key?: string;
+  allowed_hosts?: string[];
   cors_origins?: string[];
   inference_host: string;
   inference_port: number;
@@ -20,9 +28,6 @@ export interface Config {
   data_dir: string;
   db_path: string;
   models_dir: string;
-  sglang_python?: string;
-  llama_bin?: string;
-  mlx_python?: string;
   strict_openai_models: boolean;
   providers: ProviderConfig[];
 }
@@ -44,86 +49,22 @@ export const loadDotEnvironment = (): string | undefined => {
 const defaultModelsDirectory = (): string =>
   process.platform === "win32" ? join(homedir(), "models") : "/models";
 
-const isLoopbackHost = (value: string): boolean => {
-  const normalized = value.trim().toLowerCase();
-  return normalized === "127.0.0.1" || normalized === "localhost" || normalized === "::1";
-};
-
-const normalizeOrigin = (value: string): string | null => {
-  try {
-    const origin = new URL(value.trim()).origin;
-    return origin === "null" ? null : origin;
-  } catch {
-    return null;
+const validateControllerAccess = (
+  config: Config,
+  host: string,
+  allowedHosts: string[] | undefined,
+  allowUnauthenticated: boolean,
+): void => {
+  if (!config.api_key && !allowUnauthenticated && !isLoopbackHost(host)) {
+    throw new Error(
+      "LOCAL_STUDIO_API_KEY is required when binding the controller to a non-loopback host. Set LOCAL_STUDIO_ALLOW_UNAUTHENTICATED=true only for trusted local environments.",
+    );
   }
-};
-
-const parseCorsOrigins = (value: string | undefined): string[] => {
-  const defaults = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
-    "http://host.docker.internal:3000",
-    "http://host.docker.internal:3001",
-  ];
-  const candidates =
-    value && value.trim().length > 0 ? value.split(",").map((entry) => entry.trim()) : defaults;
-  return [
-    ...new Set(
-      candidates
-        .map((entry) => normalizeOrigin(entry))
-        .filter((entry): entry is string => Boolean(entry)),
-    ),
-  ];
-};
-
-const environmentSchema = Schema.Struct({
-  LOCAL_STUDIO_HOST: Schema.String,
-  LOCAL_STUDIO_PORT: positiveIntegerSchema,
-  LOCAL_STUDIO_API_KEY: Schema.optional(Schema.String),
-  LOCAL_STUDIO_ALLOW_UNAUTHENTICATED: Schema.optional(Schema.String),
-  LOCAL_STUDIO_CORS_ORIGINS: Schema.optional(Schema.String),
-  LOCAL_STUDIO_INFERENCE_HOST: Schema.String,
-  LOCAL_STUDIO_INFERENCE_PORT: positiveIntegerSchema,
-
-  LOCAL_STUDIO_DATA_DIR: Schema.String,
-  LOCAL_STUDIO_DB_PATH: Schema.optional(Schema.String),
-  LOCAL_STUDIO_MODELS_DIR: Schema.String,
-  LOCAL_STUDIO_SGLANG_PYTHON: Schema.optional(Schema.String),
-  LOCAL_STUDIO_LLAMA_BIN: Schema.optional(Schema.String),
-  LOCAL_STUDIO_MLX_PYTHON: Schema.optional(Schema.String),
-  LOCAL_STUDIO_STRICT_OPENAI_MODELS: Schema.optional(Schema.String),
-});
-
-const coercePositiveInteger = (
-  key: "LOCAL_STUDIO_PORT" | "LOCAL_STUDIO_INFERENCE_PORT",
-  fallback: number,
-): number => {
-  const value = process.env[key];
-  return value === undefined ? fallback : Number(value);
-};
-
-const validateAuthentication = (
-  config: Config,
-  allowUnauthenticatedValue: string | undefined,
-): void => {
-  const allowUnauthenticated = parseBooleanFlag(allowUnauthenticatedValue);
-  if (config.api_key || allowUnauthenticated || isLoopbackHost(config.host)) return;
-  throw new Error(
-    "LOCAL_STUDIO_API_KEY is required when binding the controller to a non-loopback host. Set LOCAL_STUDIO_ALLOW_UNAUTHENTICATED=true only for trusted local environments.",
-  );
-};
-
-const applyRuntimePaths = (
-  config: Config,
-  sglangPython: string | undefined,
-  llamaBinary: string | undefined,
-  mlxPython: string | undefined,
-): void => {
-  if (sglangPython) config.sglang_python = sglangPython;
-  if (llamaBinary) config.llama_bin = llamaBinary;
-  if (mlxPython) config.mlx_python = mlxPython;
+  if (!config.api_key && isWildcardHost(host) && allowedHosts?.length === 0) {
+    throw new Error(
+      "LOCAL_STUDIO_ALLOWED_HOSTS is required for a keyless wildcard controller bind",
+    );
+  }
 };
 
 const applyPersistedConfig = (config: Config): void => {
@@ -135,8 +76,56 @@ const applyPersistedConfig = (config: Config): void => {
 export const createConfig = (): Config => {
   loadDotEnvironment();
 
+  // Anchor defaults to the controller package root (two levels up from src/config/)
+  // so the data dir lands at <repo>/data regardless of the cwd the process started from.
   const controllerRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const defaultDataDirectory = resolve(controllerRoot, "..", "data");
+
+  const parseCorsOrigins = (value: string | undefined): string[] => {
+    const defaults = [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "http://[::1]:3000",
+      "http://localhost:3001",
+      "http://127.0.0.1:3001",
+      "http://[::1]:3001",
+      "http://host.docker.internal:3000",
+      "http://host.docker.internal:3001",
+    ];
+    const candidates =
+      value && value.trim().length > 0 ? value.split(",").map((entry) => entry.trim()) : defaults;
+    return [
+      ...new Set(
+        candidates
+          .map((entry) => normalizeHttpOrigin(entry))
+          .filter((entry): entry is string => Boolean(entry)),
+      ),
+    ];
+  };
+
+  const environmentSchema = Schema.Struct({
+    LOCAL_STUDIO_HOST: Schema.String,
+    LOCAL_STUDIO_PORT: positiveIntegerSchema,
+    LOCAL_STUDIO_API_KEY: Schema.optional(Schema.String),
+    LOCAL_STUDIO_ALLOW_UNAUTHENTICATED: Schema.optional(Schema.String),
+    LOCAL_STUDIO_ALLOWED_HOSTS: Schema.optional(Schema.String),
+    LOCAL_STUDIO_CORS_ORIGINS: Schema.optional(Schema.String),
+    LOCAL_STUDIO_INFERENCE_HOST: Schema.String,
+    LOCAL_STUDIO_INFERENCE_PORT: positiveIntegerSchema,
+
+    LOCAL_STUDIO_DATA_DIR: Schema.String,
+    LOCAL_STUDIO_DB_PATH: Schema.optional(Schema.String),
+    LOCAL_STUDIO_MODELS_DIR: Schema.String,
+    LOCAL_STUDIO_STRICT_OPENAI_MODELS: Schema.optional(Schema.String),
+  });
+
+  const coercePositiveInteger = (
+    key: "LOCAL_STUDIO_PORT" | "LOCAL_STUDIO_INFERENCE_PORT",
+    fallback: number,
+  ): number => {
+    const value = process.env[key];
+    return value === undefined ? fallback : Number(value);
+  };
 
   const parsed = Schema.decodeUnknownSync(environmentSchema, {
     onExcessProperty: "preserve",
@@ -152,10 +141,19 @@ export const createConfig = (): Config => {
   const host = parsed.LOCAL_STUDIO_HOST.trim() || "127.0.0.1";
 
   const strictOpenAIModelsEnabled = parseBooleanFlag(parsed.LOCAL_STUDIO_STRICT_OPENAI_MODELS);
+
+  // The db default follows the resolved data dir so overriding LOCAL_STUDIO_DATA_DIR
+  // alone keeps the database inside it.
   const dataDirectory = resolve(parsed.LOCAL_STUDIO_DATA_DIR);
   const databasePath = resolve(
     parsed.LOCAL_STUDIO_DB_PATH ?? resolve(dataDirectory, "controller.db"),
   );
+  const apiKey = parsed.LOCAL_STUDIO_API_KEY?.trim();
+  const allowedHosts = apiKey
+    ? undefined
+    : parsed.LOCAL_STUDIO_ALLOWED_HOSTS?.trim()
+      ? decodeAllowedHosts(parsed.LOCAL_STUDIO_ALLOWED_HOSTS)
+      : defaultAllowedHosts(host);
 
   const config: Config = {
     host,
@@ -171,16 +169,14 @@ export const createConfig = (): Config => {
     providers: [],
   };
 
-  if (parsed.LOCAL_STUDIO_API_KEY) {
-    config.api_key = parsed.LOCAL_STUDIO_API_KEY;
-  }
+  if (apiKey) config.api_key = apiKey;
+  if (allowedHosts) config.allowed_hosts = allowedHosts;
 
-  validateAuthentication(config, parsed.LOCAL_STUDIO_ALLOW_UNAUTHENTICATED);
-  applyRuntimePaths(
+  validateControllerAccess(
     config,
-    parsed.LOCAL_STUDIO_SGLANG_PYTHON,
-    parsed.LOCAL_STUDIO_LLAMA_BIN,
-    parsed.LOCAL_STUDIO_MLX_PYTHON,
+    host,
+    allowedHosts,
+    parseBooleanFlag(parsed.LOCAL_STUDIO_ALLOW_UNAUTHENTICATED),
   );
   applyPersistedConfig(config);
 

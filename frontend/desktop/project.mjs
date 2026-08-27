@@ -111,7 +111,7 @@ if (invoked === "commit-msg") {
     console.error(`Usage: node scripts/project.mjs <${[...commands.keys()].join("|")}>`);
     process.exit(1);
   } else {
-    await commands.get(command)();
+    await Promise.resolve(commands.get(command)());
   }
 }
 

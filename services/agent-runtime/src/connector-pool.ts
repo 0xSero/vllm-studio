@@ -2,112 +2,158 @@ import {
   connectMcp,
   type McpCallToolResult,
   type McpConnection,
+  type McpTarget,
   type McpToolArguments,
   type McpToolInfo,
 } from "./mcp-client";
-import { connectorAuthorizationHeaders } from "./connector-auth";
+import { connectorAuthorizationHeaders, googleWorkspaceConnectorAuth } from "./connector-auth";
 import { listConnectors, type ConnectorConfig } from "./connectors-service";
-
-const pool = new Map<string, McpConnection>();
+import { googleWorkspaceConnection } from "./google-account";
+import { googleWorkspaceEndpointTransport } from "./google-workspace-binding";
+import { oauthConnectorSpawnEnv, type OAuthConnectorDependencies } from "./oauth-connectors";
 
 export class ConnectorToolDeniedError extends Error {}
 
-const toTarget = (connector: ConnectorConfig, signal?: AbortSignal) => {
-  if (connector.transport === "stdio") {
-    return {
-      transport: "stdio" as const,
-      command: connector.command ?? "",
-      args: [...(connector.args ?? [])],
-      env: connector.env ?? {},
-      cwd: connector.cwd,
+export class ConnectorPool {
+  private pool = new Map<string, McpConnection>();
+
+  async resolveConnectorTarget(
+    connector: ConnectorConfig,
+    signal?: AbortSignal,
+    oauthDependencies?: OAuthConnectorDependencies,
+  ): Promise<McpTarget> {
+    if (connector.transport === "stdio") {
+      const target: McpTarget = {
+        transport: "stdio",
+        command: connector.command ?? "",
+        args: [...(connector.args ?? [])],
+        env: {
+          ...connector.env,
+          ...(await oauthConnectorSpawnEnv(connector, oauthDependencies)),
+        },
+      };
+      if (connector.cwd) target.cwd = connector.cwd;
+      return target;
+    }
+    const target: McpTarget = {
+      transport: "http",
+      url: connector.url ?? "",
+      headers: connector.headers ?? {},
     };
+    if (connector.auth) {
+      target.authorize = (forceRefresh: boolean) =>
+        connectorAuthorizationHeaders(connector, forceRefresh);
+    }
+    if (signal) target.signal = signal;
+    return target;
   }
-  const target = {
-    transport: "http" as const,
-    url: connector.url ?? "",
-    headers: connector.headers ?? {},
-    signal,
-    authorize: connector.auth
-      ? (forceRefresh: boolean) => connectorAuthorizationHeaders(connector, forceRefresh)
-      : undefined,
-  };
-  return target;
-};
 
-async function enabledConnector(connectorId: string): Promise<ConnectorConfig> {
-  const connector = (await listConnectors()).find((entry) => entry.id === connectorId);
-  if (!connector) throw new Error(`Unknown connector "${connectorId}"`);
-  if (!connector.enabled) throw new Error(`Connector "${connectorId}" is disabled`);
-  return connector;
-}
+  private async openConnection(
+    connector: ConnectorConfig,
+    signal?: AbortSignal,
+  ): Promise<McpConnection> {
+    const identity = googleWorkspaceConnectorAuth(connector);
+    if (identity) {
+      const input = {
+        service: identity.service,
+        transport: googleWorkspaceEndpointTransport(identity.service, connector.url ?? ""),
+        authorize: (forceRefresh: boolean) =>
+          connectorAuthorizationHeaders(connector, forceRefresh),
+        signal,
+      };
+      return googleWorkspaceConnection(input);
+    }
+    return connectMcp(await this.resolveConnectorTarget(connector, signal));
+  }
 
-function allowedTools(connector: ConnectorConfig, tools: McpToolInfo[]): McpToolInfo[] {
-  if (!connector.allowTools) return tools;
-  const allow = new Set(connector.allowTools);
-  return tools.filter((tool) => allow.has(tool.name));
-}
+  private async enabledConnector(connectorId: string): Promise<ConnectorConfig> {
+    const connector = (await listConnectors()).find((entry) => entry.id === connectorId);
+    if (!connector) throw new Error(`Unknown connector "${connectorId}"`);
+    if (!connector.enabled) throw new Error(`Connector "${connectorId}" is disabled`);
+    return connector;
+  }
 
-function assertToolAllowed(connector: ConnectorConfig, tool: string): void {
-  if (!connector.allowTools || connector.allowTools.includes(tool)) return;
-  throw new ConnectorToolDeniedError(
-    `Tool "${tool}" is not allowed for connector "${connector.id}"`,
-  );
-}
+  private allowedTools(connector: ConnectorConfig, tools: McpToolInfo[]): McpToolInfo[] {
+    if (!connector.allowTools) return tools;
+    const allow = new Set(connector.allowTools);
+    return tools.filter((tool) => allow.has(tool.name));
+  }
 
-export async function getPooledConnection(connectorId: string): Promise<McpConnection> {
-  const existing = pool.get(connectorId);
-  if (existing) return existing;
-  const connector = await enabledConnector(connectorId);
-  const connection = connectMcp(toTarget(connector));
-  pool.set(connectorId, connection);
-  return connection;
-}
+  private assertToolAllowed(connector: ConnectorConfig, tool: string): void {
+    if (!connector.allowTools || connector.allowTools.includes(tool)) return;
+    throw new ConnectorToolDeniedError(
+      `Tool "${tool}" is not allowed for connector "${connector.id}"`,
+    );
+  }
 
-export function closePooledConnection(connectorId: string): void {
-  const connection = pool.get(connectorId);
-  if (!connection) return;
-  pool.delete(connectorId);
-  connection.close();
-}
+  async getPooledConnection(connectorId: string): Promise<McpConnection> {
+    const existing = this.pool.get(connectorId);
+    if (existing) return existing;
+    const connector = await this.enabledConnector(connectorId);
+    const connection = await this.openConnection(connector);
+    this.pool.set(connectorId, connection);
+    return connection;
+  }
 
-export async function listConnectorTools(connectorId: string): Promise<McpToolInfo[]> {
-  const connector = await enabledConnector(connectorId);
-  try {
-    const connection = await getPooledConnection(connectorId);
-    return allowedTools(connector, await connection.listTools());
-  } catch (error) {
-    closePooledConnection(connectorId);
-    throw error;
+  closePooledConnection(connectorId: string): void {
+    const connection = this.pool.get(connectorId);
+    if (!connection) return;
+    this.pool.delete(connectorId);
+    connection.close();
+  }
+
+  async listConnectorTools(connectorId: string): Promise<McpToolInfo[]> {
+    const connector = await this.enabledConnector(connectorId);
+    try {
+      const connection = await this.getPooledConnection(connectorId);
+      return this.allowedTools(connector, await connection.listTools());
+    } catch (error) {
+      this.closePooledConnection(connectorId);
+      throw error;
+    }
+  }
+
+  async callConnectorTool(
+    connectorId: string,
+    tool: string,
+    args: McpToolArguments,
+  ): Promise<McpCallToolResult> {
+    const connector = await this.enabledConnector(connectorId);
+    this.assertToolAllowed(connector, tool);
+    try {
+      return await (await this.getPooledConnection(connectorId)).callTool(tool, args);
+    } catch (error) {
+      this.closePooledConnection(connectorId);
+      throw error;
+    }
+  }
+
+  async probeConnector(
+    connector: ConnectorConfig,
+    signal?: AbortSignal,
+  ): Promise<{ ok: boolean; tools: McpToolInfo[]; error?: string }> {
+    let connection: McpConnection | null = null;
+    try {
+      connection = await this.openConnection(connector, signal);
+      const tools = await connection.listTools();
+      return { ok: true, tools };
+    } catch (error) {
+      return {
+        ok: false,
+        tools: [],
+        error: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      connection?.close();
+    }
   }
 }
 
-export async function callConnectorTool(
-  connectorId: string,
-  tool: string,
-  args: McpToolArguments,
-): Promise<McpCallToolResult> {
-  const connector = await enabledConnector(connectorId);
-  assertToolAllowed(connector, tool);
-  try {
-    return await (await getPooledConnection(connectorId)).callTool(tool, args);
-  } catch (error) {
-    closePooledConnection(connectorId);
-    throw error;
-  }
-}
+const pool = new ConnectorPool();
 
-export async function probeConnector(
-  connector: ConnectorConfig,
-  signal?: AbortSignal,
-): Promise<{ ok: boolean; tools: McpToolInfo[]; error?: string }> {
-  let connection: McpConnection | null = null;
-  try {
-    connection = connectMcp(toTarget(connector, signal));
-    const tools = await connection.listTools();
-    return { ok: true, tools };
-  } catch (error) {
-    return { ok: false, tools: [], error: error instanceof Error ? error.message : String(error) };
-  } finally {
-    connection?.close();
-  }
-}
+export const resolveConnectorTarget = pool.resolveConnectorTarget.bind(pool);
+export const getPooledConnection = pool.getPooledConnection.bind(pool);
+export const closePooledConnection = pool.closePooledConnection.bind(pool);
+export const listConnectorTools = pool.listConnectorTools.bind(pool);
+export const callConnectorTool = pool.callConnectorTool.bind(pool);
+export const probeConnector = pool.probeConnector.bind(pool);

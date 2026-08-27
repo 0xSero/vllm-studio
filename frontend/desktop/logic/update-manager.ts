@@ -30,9 +30,6 @@ function setUpdateError(error: UpdateFailure): void {
 function resolveFeedUrl(): string | null {
   const raw = process.env.LOCAL_STUDIO_UPDATE_URL?.trim();
   if (!raw) return null;
-  // Refuse cleartext update feeds — auto-update over http is trivially
-  // MITM-able into shipping an arbitrary binary. Allow http only for loopback
-  // (local testing of an update server).
   try {
     const parsed = new URL(raw);
     if (parsed.protocol !== "https:" && !isLoopbackHttpUrl(raw)) {
@@ -57,9 +54,6 @@ function ensureFeedConfigured(): ConfiguredFeed {
     return { ok: true, url: feedUrl };
   }
 
-  // Default feed: the public GitHub releases, which ship latest-mac.yml plus
-  // signed zip/dmg assets. electron-updater verifies the download's code
-  // signature against the running app before installing.
   autoUpdater.setFeedURL({
     provider: "github",
     owner: "sybil-solutions",
@@ -86,9 +80,6 @@ export async function checkForUpdates(force = false): Promise<DesktopUpdateSnaps
     return disabledState;
   }
 
-  // Dev-channel builds install via the dev mirror, never the stable releases —
-  // the default GitHub feed would happily "update" them onto stable. An
-  // explicit LOCAL_STUDIO_UPDATE_URL override still wins for feed testing.
   if (isDevChannelBuild && !resolveFeedUrl()) {
     const devChannelState = {
       status: "idle",
@@ -114,8 +105,6 @@ export async function checkForUpdates(force = false): Promise<DesktopUpdateSnaps
     autoUpdater.allowPrerelease = false;
     const result = await autoUpdater.checkForUpdates();
     if (result?.downloadPromise) void result.downloadPromise.catch(setUpdateError);
-    // An unpackaged app resolves null without emitting any status event; leave
-    // "checking" behind and the renderer would poll forever.
     if (!result && latestUpdateState.status === "checking") {
       setUpdateState({ status: "idle", message: "Updater unavailable in this build" });
     }

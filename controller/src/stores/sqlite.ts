@@ -2,9 +2,9 @@ import { Database } from "bun:sqlite";
 import { chmodSync } from "node:fs";
 import { Effect } from "effect";
 
-export type SqliteNumberValue = number | string | bigint | boolean | null | undefined;
+type DatabaseValue = string | number | bigint | boolean | null | undefined;
 
-export const toFiniteNumber = (value: SqliteNumberValue): number => {
+export const toFiniteNumber = (value: DatabaseValue): number => {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
 };
@@ -43,7 +43,7 @@ export const makeDatabaseCloser = (
     });
 };
 
-export const toNullableNumber = (value: SqliteNumberValue): number | null => {
+export const toNullableNumber = (value: DatabaseValue): number | null => {
   if (value === null || value === undefined) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;

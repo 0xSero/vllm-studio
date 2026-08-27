@@ -1,3 +1,4 @@
+import { Schema } from "effect";
 import type {
   EngineSupport,
   HealthCheck,
@@ -19,7 +20,10 @@ export const health = (path: string, readyDeadlineMs: number, intervalMs = 2_000
 });
 
 export const unsupported = (reason: string): EngineSupport => ({ ok: false, reason });
-export const supported = (...runtimes: EngineRuntimeKind[]): EngineSupport => ({ ok: true, runtimes });
+export const supported = (...runtimes: EngineRuntimeKind[]): EngineSupport => ({
+  ok: true,
+  runtimes,
+});
 
 export const noMetrics: MetricMap = {
   requestsRunning: [],
@@ -37,6 +41,7 @@ export const prometheusMetrics = (prefix: string, kvName: string): MetricMap => 
   generationTokensTotal: [`${prefix}:generation_tokens_total`],
 });
 
+/* ── tuning knobs ────────────────────────────────────────────────────────── */
 
 /**
  * How one engine spells one canonical knob. `null` in a spelling table means the engine
@@ -70,26 +75,19 @@ const TUNING_ORDER: readonly TuningKey[] = [
   "reasoningParser",
 ];
 
-const shouldEmit = (key: TuningKey, options: ServingOptions): boolean => {
-  switch (key) {
-    case "tensorParallel":
-    case "pipelineParallel":
-      return options[key] > 1;
-    case "maxContextLength":
-    case "memoryFraction":
-    case "maxConcurrentRequests":
-      return options[key] > 0;
-    case "trustRemoteCode":
-      return options[key];
-    case "kvCacheDtype":
-    case "dtype":
-    case "quantization":
-    case "toolCallParser":
-    case "reasoningParser": {
-      const value = options[key];
-      return value !== null && value !== "" && value !== "auto";
-    }
-  }
+/** Parallelism of 1 is the default everywhere; emitting it only adds noise and, for some
+ *  builds, forces a distributed code path that a single card does not need. */
+const PARALLEL_KEYS = new Set<TuningKey>(["tensorParallel", "pipelineParallel"]);
+
+const isNumber = Schema.is(Schema.Number);
+const isString = Schema.is(Schema.String);
+const isBoolean = Schema.is(Schema.Boolean);
+
+const shouldEmit = (key: TuningKey, value: ServingOptions[TuningKey]): boolean => {
+  if (value === null || value === undefined || value === false || value === "auto") return false;
+  if (isNumber(value)) return PARALLEL_KEYS.has(key) ? value > 1 : value > 0;
+  if (isString(value)) return value.length > 0;
+  return true;
 };
 
 export const tuningArguments = (options: ServingOptions, spelling: Spelling): string[] => {
@@ -97,8 +95,8 @@ export const tuningArguments = (options: ServingOptions, spelling: Spelling): st
   for (const key of TUNING_ORDER) {
     const spec = spelling[key];
     const value = options[key];
-    if (!spec || !shouldEmit(key, options)) continue;
-    if (key === "trustRemoteCode") args.push(spec.flag);
+    if (!spec || !shouldEmit(key, value)) continue;
+    if (isBoolean(value)) args.push(spec.flag);
     else args.push(spec.flag, String(value));
     if (spec.companion) args.push(spec.companion);
   }
@@ -115,9 +113,7 @@ const flagKey = (token: string): string | null =>
  * left to argparse.
  */
 export const mergeArguments = (base: readonly string[], extra: readonly string[]): string[] => {
-  const overridden = new Set(
-    extra.map(flagKey).filter((key): key is string => key !== null),
-  );
+  const overridden = new Set(extra.map(flagKey).filter((key): key is string => key !== null));
   const merged: string[] = [];
   for (let index = 0; index < base.length; index += 1) {
     const token = base[index] ?? "";
@@ -126,12 +122,14 @@ export const mergeArguments = (base: readonly string[], extra: readonly string[]
       merged.push(token);
       continue;
     }
+    // Skip the flag and its value, if it takes one.
     const next = base[index + 1];
     if (next !== undefined && flagKey(next) === null && !token.includes("=")) index += 1;
   }
   return [...merged, ...extra];
 };
 
+/* ── plan assembly ───────────────────────────────────────────────────────── */
 
 export const modelReference = (request: LaunchRequest): string =>
   request.runtime === "docker" ? CONTAINER_MODEL_DIR : request.modelPath;
@@ -150,6 +148,10 @@ export const serveAddress = (request: LaunchRequest, listenPort: number): string
   String(listenPort),
 ];
 
+/**
+ * The shape every OpenAI-compatible server shares. `modelFlag: null` passes the model
+ * positionally (vLLM's `serve <path>` form).
+ */
 export const serverArguments = (
   request: LaunchRequest,
   spec: {
@@ -184,17 +186,14 @@ export const plan = (
   },
 ): LaunchPlan => {
   const image = request.dockerImage ?? parts.image;
-  const launchPlan: LaunchPlan = {
+  const base = {
     kind: request.runtime,
-    argv: request.runtime === "docker" ? [...parts.args] : [request.binary, ...parts.args],
+    argv: [...parts.args],
     env: { ...request.env, ...parts.env },
     ports: [{ container: parts.listenPort, host: request.port }],
     mounts: modelMounts(request),
     devices: request.devices,
     health: parts.health,
   };
-  if (request.runtime === "docker" && image) {
-    return { ...launchPlan, image };
-  }
-  return launchPlan;
+  return image ? { ...base, image } : base;
 };

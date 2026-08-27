@@ -1,18 +1,3 @@
-//
-// Provider hub: one shared pi ModelRuntime for the whole runtime process.
-//
-// Owns sign-in to model providers (OAuth and API-key) through pi's provider
-// auth: credentials persist to <dataDir>/pi-agent/auth.json — the same
-// file/format the pi CLI uses — and OAuth refresh runs inside the store's
-// serialized write path at request time. Sessions receive this instance via
-// createAgentSessionServices({ modelRuntime }), so a login is live for the
-// next turn without a restart.
-//
-// Login flows are provider-owned and interactive (browser URLs, device codes,
-// key prompts). The hub bridges them to HTTP as in-memory jobs: AuthEvents
-// append to a log the UI polls, prompts park until the UI responds.
-//
-
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -72,8 +57,6 @@ type LoginJob = {
   finishedAt: number | null;
 };
 
-// AuthEvent is already plain data; re-shaping onto the contract union keeps
-// the wire format stable if pi adds fields.
 function serializeAuthEvent(event: AuthEvent): ProviderLoginEventPayload {
   switch (event.type) {
     case "auth_url": {
@@ -116,7 +99,8 @@ function agentDirPath(): string {
 
 async function createHubRuntime(): Promise<ModelRuntime> {
   const modelsDir = agentDirPath();
-  const nativeAgentDir = process.env.PI_CODING_AGENT_DIR?.trim() || path.join(homedir(), ".pi", "agent");
+  const nativeAgentDir =
+    process.env.PI_CODING_AGENT_DIR?.trim() || path.join(homedir(), ".pi", "agent");
   await mkdir(modelsDir, { recursive: true });
   await mkdir(nativeAgentDir, { recursive: true });
   await chmod(modelsDir, 0o700).catch(() => undefined);
@@ -139,7 +123,6 @@ export function getProviderHub(): Promise<ModelRuntime> {
   return hubPromise();
 }
 
-/** Re-read models.json after Local Studio rewrites it (controller refresh). */
 export async function refreshProviderHub(): Promise<void> {
   const runtime = await hubPromise();
   await runtime.refresh({ allowNetwork: false });
@@ -210,8 +193,6 @@ function parkPrompt(job: LoginJob, prompt: AuthPrompt): Promise<string> {
       if (job.pending === pending) job.pending = null;
       prompt.signal?.removeEventListener("abort", onAbort);
     };
-    // A login flow awaits one prompt at a time; a still-pending previous
-    // prompt means the flow abandoned it (e.g. a callback won a race).
     job.pending?.reject(new Error("Prompt superseded"));
     job.pending = pending;
     prompt.signal?.addEventListener("abort", onAbort);
@@ -367,11 +348,6 @@ function providerModelToAgentModel(
   };
 }
 
-/**
- * Models from signed-in cloud providers, shaped for the Local Studio picker.
- * Controller/user-pi providers are excluded — the existing models path owns
- * them. Never throws: providers with broken auth just contribute nothing.
- */
 export async function listProviderAgentModels(): Promise<AgentModel[]> {
   try {
     const runtime = await hubPromise();

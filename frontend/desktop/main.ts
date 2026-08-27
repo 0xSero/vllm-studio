@@ -16,6 +16,7 @@ import { DESKTOP_CONFIG } from "./configs";
 import { writeJsonAtomic } from "./helpers/fs-json";
 import { log } from "./helpers/logger";
 import { isHttpUrl } from "./helpers/url";
+import { installApplicationMenu } from "./logic/app-menu";
 import { createMainWindow } from "./logic/window-manager";
 import { registerNavigationPolicy } from "./logic/security";
 import { startFrontendServer, stopFrontendServer, type ServerHandle } from "./logic/app-server";
@@ -38,16 +39,6 @@ import {
   toggleQuickPanel,
 } from "./logic/quick-panel-window";
 import { getStoredQuickPanelHotkey, setStoredQuickPanelHotkey } from "./logic/desktop-settings";
-import {
-  closePty,
-  closePtyByOwner,
-  isPtyAvailable,
-  killAllPtys,
-  openPty,
-  ptyUnavailableReason,
-  resizePty,
-  writePty,
-} from "./logic/pty-manager";
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type SessionPrefs = { [key: string]: Json };
@@ -420,43 +411,6 @@ function registerIpcHandlers(): void {
     writeUiPreferencesFile(stringPrefs);
   });
 
-  ipcMain.handle("desktop:pty-status", async () => ({
-    available: isPtyAvailable(),
-    reason: ptyUnavailableReason(),
-  }));
-
-  ipcMain.handle(
-    "desktop:pty-open",
-    async (event, opts: { cwd?: string; cols?: number; rows?: number; ownerKey?: string }) => {
-      return openPty(event.sender, opts ?? {});
-    },
-  );
-
-  ipcMain.handle("desktop:pty-write", async (_, id: IpcValue, data: IpcValue) => {
-    const decodedId = decodeStringOption(id);
-    const decodedData = decodeStringOption(data);
-    if (Option.isNone(decodedId) || Option.isNone(decodedData)) return;
-    writePty(decodedId.value, decodedData.value);
-  });
-
-  ipcMain.handle("desktop:pty-resize", async (_, id: IpcValue, cols: IpcValue, rows: IpcValue) => {
-    const decodedId = decodeStringOption(id);
-    if (Option.isNone(decodedId)) return;
-    resizePty(decodedId.value, Number(cols), Number(rows));
-  });
-
-  ipcMain.handle("desktop:pty-close", async (_, id: IpcValue) => {
-    const decoded = decodeStringOption(id);
-    if (Option.isNone(decoded)) return;
-    closePty(decoded.value);
-  });
-
-  ipcMain.handle("desktop:pty-close-owner", async (_, ownerKey: IpcValue) => {
-    const decoded = decodeStringOption(ownerKey);
-    if (Option.isNone(decoded)) return;
-    closePtyByOwner(decoded.value);
-  });
-
   ipcMain.handle("desktop:quick-panel-expand", async () => {
     resizeQuickPanelToThread();
   });
@@ -571,7 +525,6 @@ async function shutdown(): Promise<void> {
     appState = "stopping";
     stopFrontendHealthMonitor();
     globalShortcut.unregisterAll();
-    killAllPtys();
     await stopFrontendServer(frontendServer);
     frontendServer = undefined;
   })();
@@ -648,6 +601,7 @@ async function run(): Promise<void> {
 
   await app.whenReady();
 
+  installApplicationMenu();
   initializeAutoUpdates();
 
   try {

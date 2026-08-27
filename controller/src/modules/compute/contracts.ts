@@ -11,15 +11,19 @@
  *      deadline — there is no status field to go stale.
  */
 
-/** Superset of the shared `EngineBackend`, which does not yet carry exllamav3. The two
- *  converge when exllamav3 can actually launch; until then `toEngineBackend` narrows. */
-export type EngineId = "vllm" | "sglang" | "llamacpp" | "mlx" | "exllamav3";
+/** The engine roster. Matches the shared `EngineBackend` exactly. */
+export type EngineId = "vllm" | "sglang" | "exllamav3";
+
+export const ENGINE_IDS: readonly EngineId[] = ["vllm", "sglang", "exllamav3"] as const;
 
 export type Accelerator = "cuda" | "rocm" | "metal" | "xpu" | "cpu";
-export type EngineRuntimeKind = "process" | "docker";
+/** Engines run in containers, full stop. The one-member union keeps the field
+ *  self-describing in records and plans. */
+export type EngineRuntimeKind = "docker";
 export type HostPlatform = "linux" | "darwin" | "win32";
 export type HostArch = "x64" | "arm64";
 
+/** Node id. `"self"` is always this host; peers use their registered id. */
 export type NodeId = string;
 
 /** Stable across reboots: an NVIDIA/AMD GPU UUID, or a synthetic id for accelerators
@@ -40,6 +44,7 @@ export interface HostProfile {
   readonly deviceCount: number;
 }
 
+/* ── engines ─────────────────────────────────────────────────────────────── */
 
 export type EngineSupport =
   | { readonly ok: true; readonly runtimes: readonly EngineRuntimeKind[] }
@@ -47,6 +52,7 @@ export type EngineSupport =
 
 export interface HealthCheck {
   readonly path: string;
+  /** Cold start budget. vLLM compiles graphs; llama.cpp just mmaps. */
   readonly readyDeadlineMs: number;
   readonly intervalMs: number;
 }
@@ -81,6 +87,7 @@ export interface Mount {
  */
 export interface LaunchPlan {
   readonly kind: EngineRuntimeKind;
+  /** The container's entrypoint args. */
   readonly argv: readonly string[];
   readonly image?: string;
   readonly env: Readonly<Record<string, string>>;
@@ -103,6 +110,7 @@ export interface ServingOptions {
   readonly maxContextLength: number;
   readonly memoryFraction: number;
   readonly maxConcurrentRequests: number;
+  /** "auto" is treated as unset — every engine defaults it the same way. */
   readonly kvCacheDtype: string | null;
   readonly dtype: string | null;
   readonly quantization: string | null;
@@ -117,6 +125,7 @@ export interface LaunchRequest {
   readonly runtime: EngineRuntimeKind;
   readonly devices: readonly DeviceId[];
   readonly port: number;
+  /** Absolute path to the model directory. */
   readonly modelPath: string;
   readonly servedModelName: string;
   readonly options: ServingOptions;
@@ -124,30 +133,47 @@ export interface LaunchRequest {
   readonly extraArgs: readonly string[];
   readonly env: Readonly<Record<string, string>>;
   readonly dockerImage: string | null;
-  readonly binary: string;
 }
 
+/** An engine as the compute layer sees it: what it supports, how to plan a
+ *  launch, how to check it. Named apart from the legacy engines module's
+ *  EngineSpec (install/probe/runtime-info), which it will eventually replace. */
 export interface ComputeEngineSpec {
   readonly id: EngineId;
   readonly supports: (host: HostProfile) => EngineSupport;
   readonly plan: (request: LaunchRequest) => LaunchPlan;
   readonly health: HealthCheck;
   readonly metrics: MetricMap;
-  readonly image?: (host: HostProfile) => string | null;
-  /** Default executable name when the recipe does not pin one. */
-  readonly defaultBinary: string;
+  /** The pinned serving image for this engine on this hardware. */
+  readonly image: (host: HostProfile) => string | null;
   readonly defaultPort: number;
 }
 
+/* ── instances ───────────────────────────────────────────────────────────── */
 
 export type HandleReference =
   | {
       readonly kind: "process";
       readonly pid: number;
-      /** Linux /proc/<pid>/stat field 22. Closes pid reuse across reboots. */
+      readonly processGroupId: number | null;
+      readonly sessionId: number | null;
       readonly startToken: string | null;
     }
-  | { readonly kind: "docker"; readonly container: string }
+  | {
+      readonly kind: "docker";
+      readonly containerId: string;
+      readonly daemonId: string;
+      readonly executablePath: string;
+      readonly executableToken: string;
+    }
+  | {
+      readonly kind: "docker-pending";
+      readonly containerName: string;
+      readonly nonce: string;
+      readonly daemonId: string;
+      readonly executablePath: string;
+      readonly executableToken: string;
+    }
   | { readonly kind: "remote"; readonly nodeId: NodeId; readonly name: string }
   /** A device hold with no supervised process — e.g. the speech worker claims its GPU
    *  through the lease shim. Always "alive"; freed only by explicit release. */
@@ -176,6 +202,7 @@ export interface InstanceRecord {
 
 export type InstanceState = "reserving" | "starting" | "ready" | "unhealthy" | "exited";
 
+/* ── devices ─────────────────────────────────────────────────────────────── */
 
 export type TelemetryField =
   | "memory"
@@ -252,7 +279,11 @@ export type LaunchFailure =
   | { readonly kind: "already-running"; readonly name: string }
   | { readonly kind: "no-capacity"; readonly need: number; readonly free: number }
   | { readonly kind: "install-failed"; readonly engine: EngineId; readonly detail: string }
-  | { readonly kind: "spawn-failed"; readonly detail: string }
+  | {
+      readonly kind: "spawn-failed";
+      readonly detail: string;
+      readonly startedReference?: HandleReference;
+    }
   | {
       readonly kind: "exited-early";
       readonly exitCode: number | null;

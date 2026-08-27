@@ -1,5 +1,7 @@
-export type Backend = "vllm" | "sglang" | "llamacpp" | "mlx";
+export type Backend = "vllm" | "sglang" | "exllamav3";
 
+/** Docker is the only launchable runtime; the legacy kinds remain parseable so
+ *  recipes saved by older versions keep loading (they launch via docker anyway). */
 export type ServeRuntimeKind = "managed_venv" | "system" | "docker" | "binary";
 
 export interface ServeRuntime {

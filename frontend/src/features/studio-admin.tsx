@@ -136,6 +136,7 @@ export function RecipeManager() {
             </div>
           );
         })}
+      <button onClick={() => run("/api/proxy/evict", { method: "POST" })}>Stop active model</button>
       <JsonView value={status.data} />
     </article>
   );
@@ -385,13 +386,11 @@ export function DesktopManager() {
   const bridge = globalThis.window?.localStudioDesktop;
   const [path, setPath] = useState("");
   const [projectId, setProjectId] = useState("");
+  const [deployMode, setDeployMode] = useState<"ssh" | "local">("ssh");
   const [deployHost, setDeployHost] = useState("");
   const [hotkey, setHotkey] = useState("");
   const [output, setOutput] = useState<Json | null>(null);
   const [deployLog, setDeployLog] = useState<string[]>([]);
-  const [terminalId, setTerminalId] = useState("");
-  const [terminalInput, setTerminalInput] = useState("");
-  const [terminalOutput, setTerminalOutput] = useState("");
   const [error, setError] = useState("");
   useMountSubscription(
     () =>
@@ -400,22 +399,6 @@ export function DesktopManager() {
       ),
     [bridge],
   );
-  useMountSubscription(() => {
-    if (!bridge) return;
-    const stopData = bridge.terminal.onData((id, chunk) => {
-      if (id === terminalId) setTerminalOutput((value) => value + chunk);
-    });
-    const stopExit = bridge.terminal.onExit((id, info) => {
-      if (id === terminalId) {
-        setTerminalOutput((value) => `${value}\n[exit ${info.exitCode}]`);
-        setTerminalId("");
-      }
-    });
-    return () => {
-      stopData();
-      stopExit();
-    };
-  }, [bridge, terminalId]);
   const call = async (operation: () => Promise<object | string | number | boolean | null>) => {
     try {
       setOutput(JSON.stringify(await operation()));
@@ -435,32 +418,15 @@ export function DesktopManager() {
     });
   };
   const deploy = async () => {
-    if (!bridge || !deployHost.trim()) return;
+    if (!bridge || (deployMode === "ssh" && !deployHost.trim())) return;
     setDeployLog([]);
     await call(async () => {
-      const result = await bridge.controllerDeploy.start({ host: deployHost });
+      const result = await bridge.controllerDeploy.start({ mode: deployMode, host: deployHost });
       if (!result.ok) return { ok: false, error: result.error ?? "Deployment failed" };
       if (!result.url || !result.apiKey)
         return { ok: false, error: "Deployment omitted credentials" };
       await request("/api/settings", jsonBody({ backendUrl: result.url, apiKey: result.apiKey }));
       return { ok: true, url: result.url, credentialStored: true };
-    });
-  };
-  const openTerminal = async () => {
-    if (!bridge) return;
-    await call(async () => {
-      const result = await bridge.terminal.open({ cwd: path || undefined, cols: 100, rows: 28 });
-      setTerminalId(result.id);
-      setTerminalOutput(result.replay ?? "");
-      return { id: result.id, reused: result.reused ?? false };
-    });
-  };
-  const closeTerminal = async () => {
-    if (!bridge || !terminalId) return;
-    await call(async () => {
-      await bridge.terminal.close(terminalId);
-      setTerminalId("");
-      return true;
     });
   };
   if (!bridge)
@@ -495,36 +461,6 @@ export function DesktopManager() {
       </div>
       <div className="row">
         <button onClick={() => call(() => bridge.getRuntime())}>Desktop runtime</button>
-        <button onClick={() => call(() => bridge.terminal.status())}>Terminal status</button>
-        <button onClick={openTerminal}>
-          {terminalId ? "Reconnect terminal" : "Open terminal"}
-        </button>
-        <input
-          value={terminalInput}
-          onChange={(event) => setTerminalInput(event.target.value)}
-          placeholder="Terminal input"
-        />
-        <button
-          disabled={!terminalId}
-          onClick={() =>
-            call(async () => {
-              await bridge.terminal.write(terminalId, `${terminalInput}\n`);
-              setTerminalInput("");
-              return true;
-            })
-          }
-        >
-          Write terminal
-        </button>
-        <button
-          disabled={!terminalId}
-          onClick={() => call(() => bridge.terminal.resize(terminalId, 120, 36).then(() => true))}
-        >
-          Resize terminal
-        </button>
-        <button disabled={!terminalId} onClick={closeTerminal}>
-          Close terminal
-        </button>
         <button onClick={() => call(() => bridge.loadUiPreferences())}>Load preferences</button>
         <button
           onClick={() =>
@@ -564,14 +500,23 @@ export function DesktopManager() {
         </button>
       </div>
       <div className="row">
-        <input
-          value={deployHost}
-          onChange={(event) => setDeployHost(event.target.value)}
-          placeholder="SSH host for controller"
-        />
+        <select
+          value={deployMode}
+          onChange={(event) => setDeployMode(event.target.value === "local" ? "local" : "ssh")}
+          aria-label="Controller deployment destination"
+        >
+          <option value="ssh">Remote SSH host</option>
+          <option value="local">This machine</option>
+        </select>
+        {deployMode === "ssh" ? (
+          <input
+            value={deployHost}
+            onChange={(event) => setDeployHost(event.target.value)}
+            placeholder="SSH host for controller"
+          />
+        ) : null}
         <button onClick={deploy}>Deploy controller and store credential</button>
       </div>
-      {terminalOutput ? <pre aria-label="Desktop terminal output">{terminalOutput}</pre> : null}
       {deployLog.length ? (
         <pre aria-label="Controller deployment log">{deployLog.join("\n")}</pre>
       ) : null}

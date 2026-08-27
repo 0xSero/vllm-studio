@@ -5,11 +5,6 @@ import { Schema } from "effect";
 
 const isNumber = Schema.is(Schema.Number);
 
-/** Everything the session has spent, for the whole of its life.
- *
- *  This is deliberately NOT the context window. Context resets on every
- *  compaction; spend does not. A session that has compacted four times still
- *  cost what it cost, and that total is the number worth showing. */
 export type SessionUsageTotals = {
   input: number;
   output: number;
@@ -40,35 +35,15 @@ type CacheEntry = {
   size: number;
   mtimeMs: number;
   totals: SessionUsageTotals;
-  /**
-   * Byte offset just past the last COMPLETE line folded into `totals`. A
-   * rollout is appended to while we read it, so the tail of a scan is often a
-   * half-written line; resuming from `size` would start mid-JSON and silently
-   * drop a turn's usage. Resuming from here re-reads that partial line instead.
-   */
   scannedBytes: number;
-  /** First bytes of the file, to notice a rewrite rather than an append. */
   head: string;
 };
 
-// Rollouts are append-only, so a file whose size and mtime are unchanged has
-// unchanged totals — and one that has only grown needs just its new bytes read.
-// Keyed by path; one entry per session file.
-const cache = new Map<string, CacheEntry>();
+const usageDisk = rolloutCache<CacheEntry, CacheEntry>("usage-totals", {
+  serialize: (value) => value,
+  deserialize: (value) => value,
+});
 
-/**
- * The same memo, on disk, so a controller restart does not re-scan every large
- * rollout from zero. The stored entry carries its own size/mtime/head, so a
- * stale read is still useful: it is the prefix to resume from.
- */
-const usageDisk = rolloutCache<CacheEntry>("usage-totals");
-
-/**
- * Guard against the append-only assumption being wrong. If a session file is
- * ever replaced rather than extended, its opening bytes change, and resuming
- * mid-file would fold a stranger's numbers into this session's total. Cheap
- * enough to check every time: one small read at a fixed offset.
- */
 type ScanResult = { totals: SessionUsageTotals; scannedBytes: number };
 
 async function scanFrom(
@@ -97,9 +72,6 @@ function asRecord(value: UnparsedValue): UnknownRecord | null {
 }
 
 export function accumulateUsageLine(totals: SessionUsageTotals, line: string): SessionUsageTotals {
-  // Cheap pre-filter: the vast majority of lines are tool output and user text
-  // with no usage block at all, and JSON.parse on a multi-GB log is the whole
-  // cost of this scan.
   const hasUsage = line.includes('"usage"');
   const hasCompaction = line.includes("compaction");
   if (!hasUsage && !hasCompaction) return totals;
@@ -142,14 +114,6 @@ export function accumulateUsageLine(totals: SessionUsageTotals, line: string): S
   };
 }
 
-/** Walk a rollout and total what it spent.
- *
- *  Streams so memory stays flat regardless of file size, and never reads the
- *  same byte twice: an unchanged file returns the cached totals, and a grown
- *  one is resumed from the end of the last complete line rather than rescanned
- *  from zero. The status panel asks for this on every session open, and the
- *  session you are actively using is exactly the one whose file keeps growing —
- *  rescanning from zero made the busiest session the slowest to open. */
 export async function readSessionUsageTotals(filepath: string): Promise<SessionUsageTotals> {
   let stat: { size: number; mtimeMs: number };
   try {
@@ -158,22 +122,11 @@ export async function readSessionUsageTotals(filepath: string): Promise<SessionU
     return emptyUsageTotals();
   }
 
-  const cached = cache.get(filepath);
-  if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) {
-    return cached.totals;
-  }
-
   try {
     const head = await readRolloutHead(filepath);
 
-    // Nothing in memory — but a previous process may have scanned this file.
-    // Read the stored prefix even though the rollout has since grown: that is
-    // exactly what makes the scan resumable across a restart.
-    const previous = cached ?? usageDisk.readStale(filepath);
+    const previous = usageDisk.readStale(filepath);
 
-    // Resume only when this is the same file, grown. A shrunken file or a
-    // changed head means it was rewritten, and the cached prefix is no longer
-    // ours to trust.
     const resumable =
       previous !== undefined &&
       previous.head === head &&
@@ -181,7 +134,6 @@ export async function readSessionUsageTotals(filepath: string): Promise<SessionU
       previous.scannedBytes > 0;
 
     if (resumable && previous.size === stat.size && previous.mtimeMs === stat.mtimeMs) {
-      cache.set(filepath, previous);
       return previous.totals;
     }
 
@@ -190,7 +142,6 @@ export async function readSessionUsageTotals(filepath: string): Promise<SessionU
       : await scanFrom(filepath, 0, emptyUsageTotals());
 
     const entry = { size: stat.size, mtimeMs: stat.mtimeMs, totals, scannedBytes, head };
-    cache.set(filepath, entry);
     usageDisk.write(filepath, stat, entry);
     return totals;
   } catch {

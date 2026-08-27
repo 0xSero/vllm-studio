@@ -902,9 +902,7 @@ export function Configure() {
 }
 
 export function Models() {
-  const recipes = useJson("/api/proxy/recipes");
   const downloads = useJson("/api/proxy/studio/downloads");
-  const status = useJson("/api/proxy/status");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Json | null>(null);
   const [message, setMessage] = useState("");
@@ -927,9 +925,7 @@ export function Models() {
     try {
       await requestRecord(path, init);
       setMessage("Action accepted by the local controller");
-      void recipes.reload();
       void downloads.reload();
-      void status.reload();
     } catch (value) {
       setMessage(value instanceof Error ? value.message : String(value));
     }
@@ -1024,7 +1020,7 @@ export function Models() {
         Hugging Face receives the model id and optional token. The controller writes files to{" "}
         {downloadDestination}. The token is sent only when Download is pressed and then cleared.
       </label>
-      <ErrorText value={message || recipes.error || downloads.error || status.error} />
+      <ErrorText value={message || downloads.error} />
       {results ? (
         <article>
           <h2>Hugging Face discovery</h2>
@@ -1041,28 +1037,6 @@ export function Models() {
       ) : null}
       <div className="grid">
         <RecipeManager />
-        <article>
-          <h2>Recipes and serving profiles</h2>
-          {records(recipes.data, "recipes").map((recipe) => {
-            const id = jsonText(recipe.id);
-            return (
-              <div className="item" key={id}>
-                <span>{jsonText(recipe.name, id)}</span>
-                <button
-                  onClick={() =>
-                    run(`/api/proxy/launch/${encodeURIComponent(id)}`, { method: "POST" })
-                  }
-                >
-                  Launch
-                </button>
-              </div>
-            );
-          })}
-          <button onClick={() => run("/api/proxy/evict", { method: "POST" })}>
-            Stop active model
-          </button>
-          <JsonView value={status.data} />
-        </article>
         <article>
           <h2>Download progress</h2>
           {records(downloads.data, "downloads").map((download) => {

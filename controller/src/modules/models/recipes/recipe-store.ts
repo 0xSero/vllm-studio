@@ -1,8 +1,12 @@
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { Effect, Schema } from "effect";
-import { parseRecipe } from "./recipe-serializer";
+import { parseRecipe, recipeExtraArgumentSchema } from "./recipe-serializer";
 import type { Recipe } from "../types";
+import type { RecipeExtraArgument } from "@local-studio/contracts/recipes";
 import { openSqliteDatabase } from "../../../stores/sqlite";
+import { ModelIndexEntrySchema, type ModelIndexEntry } from "../../../../contracts/model-index";
 
 export class RecipeStoreError extends Schema.TaggedErrorClass<RecipeStoreError>()(
   "RecipeStoreError",
@@ -13,11 +17,9 @@ export class RecipeStoreError extends Schema.TaggedErrorClass<RecipeStoreError>(
   },
 ) {}
 
-type RecipeStoreErrorSource = RecipeStoreError["source"];
-
 const storeError = (
   operation: RecipeStoreError["operation"],
-  source: RecipeStoreErrorSource,
+  source: RecipeStoreError["source"],
 ): RecipeStoreError =>
   new RecipeStoreError({
     operation,
@@ -25,69 +27,154 @@ const storeError = (
     source,
   });
 
-export class RecipeStore {
-  private readonly db: ReturnType<typeof openSqliteDatabase>;
-  private useJsonColumn = false;
+interface RegistryOverlay {
+  version: number;
+  updated: string;
+  intelligence_source?: string | undefined;
+  tiers: RecipeExtraArgument[];
+  entries: ModelIndexEntry[];
+  migrated_from_sqlite?: string | undefined;
+}
 
-  constructor(dbPath: string) {
-    this.db = openSqliteDatabase(dbPath);
+const RegistryOverlaySchema = Schema.Struct({
+  version: Schema.Number,
+  updated: Schema.String,
+  intelligence_source: Schema.optional(Schema.String),
+  tiers: Schema.Array(recipeExtraArgumentSchema),
+  entries: Schema.Array(ModelIndexEntrySchema),
+  migrated_from_sqlite: Schema.optional(Schema.String),
+});
+const decodeRegistryOverlay = Schema.decodeUnknownSync(RegistryOverlaySchema, {
+  onExcessProperty: "preserve",
+});
+
+const emptyOverlay = (): RegistryOverlay => ({
+  version: 1,
+  updated: new Date().toISOString().slice(0, 10),
+  tiers: [],
+  entries: [],
+});
+
+const entryFromRecipe = (recipe: Recipe): ModelIndexEntry => {
+  const { id, name, ...serve } = recipe;
+  return { id, name, serve };
+};
+
+const recipeFromEntry = (entry: ModelIndexEntry): Recipe | null => {
+  try {
+    return parseRecipe({ id: entry.id, name: entry.name, ...entry.serve });
+  } catch {
+    return null;
+  }
+};
+
+export class RecipeStore {
+  private readonly overlayPath: string;
+
+  constructor(dataDirectory: string, sqliteDatabasePath: string) {
+    this.overlayPath = resolve(dataDirectory, "model-index.json");
     try {
-      this.migrate();
+      this.migrateFromSqlite(sqliteDatabasePath);
+      // Entries the current roster cannot serve (e.g. legacy llamacpp/mlx
+      // recipes) stay in the registry file untouched but are not served;
+      // say so once instead of hiding them silently.
+      const unservable = this.readOverlay().entries.filter((entry) => !recipeFromEntry(entry));
+      if (unservable.length > 0) {
+        console.warn(
+          `[recipes] ${unservable.length} registry entr${unservable.length === 1 ? "y is" : "ies are"} not servable by this roster and will not be listed: ${unservable.map((entry) => entry.id).join(", ")}`,
+        );
+      }
     } catch (source) {
-      try {
-        this.db.close();
-      } catch {}
       throw storeError("open", source);
     }
   }
 
-  static open(dbPath: string): Effect.Effect<RecipeStore, RecipeStoreError> {
+  static open(
+    dataDirectory: string,
+    sqliteDatabasePath: string,
+  ): Effect.Effect<RecipeStore, RecipeStoreError> {
     return Effect.try({
-      try: () => new RecipeStore(dbPath),
+      try: () => new RecipeStore(dataDirectory, sqliteDatabasePath),
       catch: (source) => (source instanceof RecipeStoreError ? source : storeError("open", source)),
     });
   }
 
-  private migrate(): void {
-    const table = this.db
-      .query("SELECT name FROM sqlite_master WHERE type='table' AND name='recipes'")
-      .get();
-    if (table) {
-      const columns = Schema.decodeUnknownSync(
-        Schema.Array(Schema.Struct({ name: Schema.String })),
-      )(this.db.query("PRAGMA table_info(recipes)").all());
-      const columnNames = new Set(columns.map((column) => column.name));
-      this.useJsonColumn = columnNames.has("json") && !columnNames.has("data");
-      if (!columnNames.has("json") && !columnNames.has("data")) this.useJsonColumn = true;
-      return;
+  private readOverlay(): RegistryOverlay {
+    if (!existsSync(this.overlayPath)) return emptyOverlay();
+    const decoded = decodeRegistryOverlay({
+      ...emptyOverlay(),
+      ...JSON.parse(readFileSync(this.overlayPath, "utf-8")),
+    });
+    return { ...decoded, tiers: [...decoded.tiers], entries: [...decoded.entries] };
+  }
+
+  private writeOverlay(overlay: RegistryOverlay): void {
+    mkdirSync(resolve(this.overlayPath, ".."), { recursive: true });
+    const temporary = `${this.overlayPath}.tmp-${process.pid}`;
+    writeFileSync(temporary, `${JSON.stringify(overlay, null, 2)}\n`, "utf-8");
+    renameSync(temporary, this.overlayPath);
+  }
+
+  private migrateFromSqlite(sqliteDatabasePath: string): void {
+    const overlay = this.readOverlay();
+    if (overlay.migrated_from_sqlite) return;
+    let imported = 0;
+    if (existsSync(sqliteDatabasePath)) {
+      const db = openSqliteDatabase(sqliteDatabasePath);
+      try {
+        const table = db
+          .query("SELECT name FROM sqlite_master WHERE type='table' AND name='recipes'")
+          .get();
+        if (table) {
+          const columns = db.query<{ name: string }, []>("PRAGMA table_info(recipes)").all();
+          const names = new Set(columns.map((column) => column.name));
+          const column = names.has("data") ? "data" : names.has("json") ? "json" : null;
+          if (column) {
+            const rows = db
+              .query<
+                { data?: string; json?: string },
+                []
+              >(`SELECT ${column} FROM recipes ORDER BY id`)
+              .all();
+            const known = new Set(overlay.entries.map((entry) => entry.id));
+            for (const row of rows) {
+              const raw = row[column];
+              if (!raw) continue;
+              let recipe: Recipe | null = null;
+              try {
+                recipe = parseRecipe(JSON.parse(raw));
+              } catch {
+                continue;
+              }
+              if (known.has(recipe.id)) continue;
+              overlay.entries.push(entryFromRecipe(recipe));
+              known.add(recipe.id);
+              imported += 1;
+            }
+          }
+        }
+      } finally {
+        try {
+          db.close();
+        } catch {
+          // The database was only needed for the read; a failed close is
+          // irrelevant to the migration outcome.
+        }
+      }
     }
-    this.db.run(`
-      CREATE TABLE IF NOT EXISTS recipes (
-        id TEXT PRIMARY KEY,
-        data TEXT NOT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    this.useJsonColumn = false;
+    overlay.migrated_from_sqlite = new Date().toISOString();
+    this.writeOverlay(overlay);
+    if (imported > 0) {
+      console.log(`[recipes] migrated ${imported} recipe(s) from sqlite into the model registry`);
+    }
   }
 
   list(): Effect.Effect<Recipe[], RecipeStoreError> {
     return Effect.try({
-      try: () => {
-        const column = this.useJsonColumn ? "json" : "data";
-        const rows = Schema.decodeUnknownSync(
-          Schema.Array(Schema.Record(Schema.String, Schema.String)),
-        )(this.db.query(`SELECT ${column} FROM recipes ORDER BY id`).all());
-        return rows.flatMap((row) => {
-          try {
-            const raw = row[column];
-            return raw ? [parseRecipe(JSON.parse(raw))] : [];
-          } catch {
-            return [];
-          }
-        });
-      },
+      try: () =>
+        this.readOverlay()
+          .entries.map(recipeFromEntry)
+          .filter((recipe): recipe is Recipe => recipe !== null),
       catch: (source) => storeError("list", source),
     });
   }
@@ -95,17 +182,8 @@ export class RecipeStore {
   get(recipeId: string): Effect.Effect<Recipe | null, RecipeStoreError> {
     return Effect.try({
       try: () => {
-        const column = this.useJsonColumn ? "json" : "data";
-        const result = this.db.query(`SELECT ${column} FROM recipes WHERE id = ?`).get(recipeId);
-        if (!result) return null;
-        const row = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.String))(result);
-        const raw = row[column];
-        if (!raw) return null;
-        try {
-          return parseRecipe(JSON.parse(raw));
-        } catch {
-          return null;
-        }
+        const entry = this.readOverlay().entries.find((candidate) => candidate.id === recipeId);
+        return entry ? recipeFromEntry(entry) : null;
       },
       catch: (source) => storeError("get", source),
     });
@@ -114,24 +192,12 @@ export class RecipeStore {
   save(recipe: Recipe): Effect.Effect<void, RecipeStoreError> {
     return Effect.try({
       try: () => {
-        const data = JSON.stringify(recipe);
-        const column = this.useJsonColumn ? "json" : "data";
-        if (this.useJsonColumn) {
-          this.db
-            .query(
-              `INSERT INTO recipes (id, ${column}, created_at, updated_at)
-               VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-               ON CONFLICT(id) DO UPDATE SET ${column} = excluded.${column}, updated_at = CURRENT_TIMESTAMP`,
-            )
-            .run(recipe.id, data);
-          return;
-        }
-        this.db
-          .query(
-            `INSERT INTO recipes (id, data, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-             ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP`,
-          )
-          .run(recipe.id, data);
+        const overlay = this.readOverlay();
+        const entry = entryFromRecipe(recipe);
+        const index = overlay.entries.findIndex((candidate) => candidate.id === recipe.id);
+        if (index === -1) overlay.entries.push(entry);
+        else overlay.entries[index] = entry;
+        this.writeOverlay(overlay);
       },
       catch: (source) => storeError("save", source),
     });
@@ -139,7 +205,14 @@ export class RecipeStore {
 
   delete(recipeId: string): Effect.Effect<boolean, RecipeStoreError> {
     return Effect.try({
-      try: () => this.db.query("DELETE FROM recipes WHERE id = ?").run(recipeId).changes > 0,
+      try: () => {
+        const overlay = this.readOverlay();
+        const next = overlay.entries.filter((candidate) => candidate.id !== recipeId);
+        if (next.length === overlay.entries.length) return false;
+        overlay.entries = next;
+        this.writeOverlay(overlay);
+        return true;
+      },
       catch: (source) => storeError("delete", source),
     });
   }
@@ -176,9 +249,7 @@ export class RecipeStore {
   }
 
   close(): Effect.Effect<void, RecipeStoreError> {
-    return Effect.try({
-      try: () => this.db.close(),
-      catch: (source) => storeError("close", source),
-    });
+    // The registry file is opened per operation; nothing is held.
+    return Effect.void;
   }
 }

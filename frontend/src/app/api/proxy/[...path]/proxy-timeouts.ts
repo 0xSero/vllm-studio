@@ -19,7 +19,7 @@ export function getUpstreamTimeoutMs(path: string[], method = "GET"): number {
   if (route === "events" || route.endsWith("/stream")) {
     return SSE_CONNECT_TIMEOUT_MS;
   }
-  if (route === "v1/chat/completions" || route === "v1/responses") {
+  if (route === "v1/chat/completions" || route === "v1/responses" || route === "v1/messages") {
     return CHAT_COMPLETION_UPSTREAM_TIMEOUT_MS;
   }
   if (route === "config" || route === "evict") {

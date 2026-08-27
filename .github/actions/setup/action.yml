@@ -1,14 +1,14 @@
 name: Setup JavaScript toolchain
-description: Install the pinned Node/Bun toolchain and locked dependencies
+description: Set up pinned Node/Bun and optional dependencies
 inputs:
   node:
-    description: Install Node.js
+    description: Set up Node.js
     default: "false"
   bun:
-    description: Install Bun
+    description: Set up Bun
     default: "true"
   install:
-    description: Locked install command; empty skips installation
+    description: Install command; empty skips
     default: ""
 runs:
   using: composite

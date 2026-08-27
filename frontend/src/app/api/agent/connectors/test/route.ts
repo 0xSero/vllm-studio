@@ -1,37 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { Schema } from "effect";
-import { ConnectorTestInputSchema } from "@local-studio/agent-runtime/connector-contract";
-import { listConnectors } from "@local-studio/agent-runtime/connectors-service";
-import { probeConnector } from "@local-studio/agent-runtime/connector-pool";
-import { requireApiAccess } from "@/lib/auth/guard";
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-interface ConnectorTestResponse {
-  ok: boolean;
-  tool_count: number;
-  tool_names: string[];
-  error?: string;
-}
-
-export async function POST(request: NextRequest) {
-  const denied = requireApiAccess(request);
-  if (denied) return denied;
-  let body: typeof ConnectorTestInputSchema.Type;
-  try {
-    body = Schema.decodeUnknownSync(ConnectorTestInputSchema)(await request.json());
-  } catch {
-    return NextResponse.json({ error: "id is required" }, { status: 400 });
-  }
-  const connector = (await listConnectors()).find((entry) => entry.id === body.id);
-  if (!connector) return NextResponse.json({ error: "unknown connector" }, { status: 404 });
-  const result = await probeConnector(connector);
-  const responseBody: ConnectorTestResponse = {
-    ok: result.ok,
-    tool_count: result.tools.length,
-    tool_names: result.tools.map((tool) => tool.name).slice(0, 40),
-  };
-  if (result.error) responseBody.error = result.error;
-  return NextResponse.json(responseBody);
-}
+export { authProxy as POST } from "@/app/api/agent/route-proxy";

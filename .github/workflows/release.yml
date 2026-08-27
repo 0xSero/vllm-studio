@@ -7,6 +7,8 @@ on:
 concurrency:
   group: release-main
   cancel-in-progress: true
+env:
+  RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
 jobs:
   build:
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
@@ -15,13 +17,11 @@ jobs:
       contents: write
     outputs:
       release_version: ${{ steps.next-release.outputs.version }}
-    env:
-      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ env.RELEASE_SHA }}
       - run: git checkout -B main "$RELEASE_SHA"
       - run: node scripts/project.mjs assert-release-main --commit "$RELEASE_SHA"
       - uses: ./.github/actions/setup
@@ -34,7 +34,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
-          npx --yes --package semantic-release@24.2.7 --package @semantic-release/commit-analyzer@13.0.1 --package @semantic-release/release-notes-generator@14.1.0 --package @semantic-release/github@11.0.6 --package conventional-changelog-conventionalcommits@8.0.0 semantic-release --dry-run 2>&1 | tee semantic-release.log
+          npm run release:semantic -- --dry-run 2>&1 | tee semantic-release.log
           version="$(sed -nE 's/.*The next release version is ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' semantic-release.log | tail -1)"
           if [ -n "$version" ]; then echo "version=$version" >> "$GITHUB_OUTPUT"; fi
       - name: Build unsigned release app
@@ -62,8 +62,8 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: steps.next-release.outputs.version != ''
         with:
-          name: local-studio-unsigned-${{ github.event.workflow_run.head_sha }}
-          path: local-studio-unsigned-${{ github.event.workflow_run.head_sha }}.zip
+          name: local-studio-unsigned-${{ env.RELEASE_SHA }}
+          path: local-studio-unsigned-${{ env.RELEASE_SHA }}.zip
           if-no-files-found: error
           retention-days: 1
   sign:
@@ -73,13 +73,11 @@ jobs:
     environment: release-signing
     permissions:
       contents: read
-    env:
-      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ env.RELEASE_SHA }}
       - run: git checkout -B main "$RELEASE_SHA"
       - run: node scripts/project.mjs assert-release-main --commit "$RELEASE_SHA"
       - uses: ./.github/actions/setup
@@ -89,7 +87,7 @@ jobs:
           install: npm --prefix frontend ci --ignore-scripts --legacy-peer-deps
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: local-studio-unsigned-${{ github.event.workflow_run.head_sha }}
+          name: local-studio-unsigned-${{ env.RELEASE_SHA }}
           path: ${{ runner.temp }}/unsigned-release
       - run: ditto -x -k "${{ runner.temp }}/unsigned-release/local-studio-unsigned-$RELEASE_SHA.zip" "${{ runner.temp }}/unsigned-release/app"
       - name: Sign and notarize release assets
@@ -106,7 +104,7 @@ jobs:
       - run: node scripts/project.mjs stage-release --version ${{ needs.build.outputs.release_version }} --commit "$RELEASE_SHA"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: local-studio-release-assets-${{ github.event.workflow_run.head_sha }}
+          name: local-studio-release-assets-${{ env.RELEASE_SHA }}
           path: release-staging/*
           if-no-files-found: error
           retention-days: 7
@@ -116,13 +114,11 @@ jobs:
     runs-on: macos-15
     permissions:
       contents: write
-    env:
-      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ env.RELEASE_SHA }}
       - run: git checkout -B main "$RELEASE_SHA"
       - run: node scripts/project.mjs assert-release-main --commit "$RELEASE_SHA"
       - uses: ./.github/actions/setup
@@ -131,7 +127,7 @@ jobs:
           bun: "false"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: local-studio-release-assets-${{ github.event.workflow_run.head_sha }}
+          name: local-studio-release-assets-${{ env.RELEASE_SHA }}
           path: release-staging
       - name: Configure git author
         run: |
@@ -140,4 +136,4 @@ jobs:
       - name: Publish release
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: npx --yes --package semantic-release@24.2.7 --package @semantic-release/commit-analyzer@13.0.1 --package @semantic-release/release-notes-generator@14.1.0 --package @semantic-release/github@11.0.6 --package conventional-changelog-conventionalcommits@8.0.0 semantic-release
+        run: npm run release:semantic

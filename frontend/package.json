@@ -42,7 +42,7 @@
     "typecheck:extensions": "tsc -p desktop/resources/pi-extensions/tsconfig.json"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.83.0",
+    "@earendil-works/pi-coding-agent": "0.84.2",
     "@local-studio/agent-runtime": "workspace:*",
     "effect": "4.0.0-beta.90",
     "electron-updater": "6.8.9",

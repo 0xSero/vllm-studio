@@ -159,6 +159,14 @@ PLIST
   plutil -lint "$PLIST" >/dev/null
   SERVICE="gui/$(id -u)/$LABEL"
   launchctl bootout "$SERVICE" >/dev/null 2>&1 || true
+  # bootout is asynchronous: bootstrap while the old service is still leaving
+  # the domain and launchd answers "Bootstrap failed: 5: Input/output error",
+  # which under set -e kills this script with the controller already stopped.
+  # Wait for the service to actually be gone before bootstrapping.
+  for _ in $(seq 1 50); do
+    launchctl print "$SERVICE" >/dev/null 2>&1 || break
+    sleep 0.2
+  done
   launchctl bootstrap "gui/$(id -u)" "$PLIST"
   launchctl enable "$SERVICE"
   launchctl kickstart -k "$SERVICE"
@@ -204,7 +212,7 @@ else
 fi
 
 # --- health ------------------------------------------------------------------
-log "waiting for controller on :$PORT…"
+log "waiting for controller on :${PORT}…"
 HEALTH_HOST="$HOST"
 case "$HEALTH_HOST" in
   ""|"0.0.0.0"|"::") HEALTH_HOST="127.0.0.1" ;;

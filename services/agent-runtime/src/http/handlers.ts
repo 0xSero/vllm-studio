@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { Effect, Option, Schema } from "effect";
+import { Option, Schema } from "effect";
 import {
   controlTargetHasActiveTurn,
   isAgentThinkingLevel,
@@ -21,22 +21,19 @@ import {
   selectedContextInstructions,
   type ComposerSkillRef,
 } from "../../../../shared/agent/composer-refs";
+import { isAgentSettledEvent } from "../../../../shared/agent/pi-events";
+import { markGoalTurnAborted } from "../goal-driver";
 import { piResourceDiagnostics, piRuntimeManager } from "../pi-runtime";
-import { isAgentSettledEvent } from "../pi-runtime-state";
 import type { LoggedPiEvent, PiAgentSession, PiAgentStatus } from "../pi-runtime-types";
 import { listSessions } from "../sessions-store";
+import { sessionListChangedVersion, subscribeSessionListChanged } from "../session-list-changed";
 import { errorMessage, jsonError } from "./helpers";
-import {
-  initialRuntimeStatusPhase,
-  replayAfterCursor,
-  shouldSendTrailingIdleStatus,
-} from "./stream-order";
-
+import { sseResponse } from "./sse";
 
 function adoptRuntimePiSessionId(
   session: PiAgentSession,
   piSessionId: string | null | undefined,
-) {
+): void {
   const next = piSessionId?.trim();
   if (next) session.adoptPiSessionId(next);
 }
@@ -80,85 +77,30 @@ function effectiveStreamingBehavior(turn: AgentTurnRequest, status: PiAgentStatu
   return turn.streamingBehavior;
 }
 
-function ensurePromptRuntimeEffect(
+async function dispatchControl(
   turn: AgentTurnRequest,
   resolved: ResolvedTurnSession,
-): Effect.Effect<void, unknown> {
-  return Effect.tryPromise({
-    try: () =>
-      resolved.session.ensureStarted(turn.modelId, turn.cwd, resolved.effectivePiSessionId, {
-        thinkingLevel: turn.thinkingLevel,
-        toolAccess: turn.toolAccess,
-        browserToolEnabled: turn.browserToolEnabled,
-        browserSessionId: turn.browserSessionId,
-        browserBackend: turn.browserBackend,
-        skills: turn.skills,
-        promptTemplates: turn.promptTemplates,
-      }),
-    catch: (error) => error,
-  });
-}
-
-function launchPrompt(
-  turn: AgentTurnRequest,
-  resolved: ResolvedTurnSession,
-  commandImages: AgentImageInput[] | undefined,
-) {
-  void Effect.runPromise(
-    Effect.tryPromise({
-      try: () =>
-        resolved.session.prompt(turn.message, () => undefined, {
-          streamingBehavior: resolved.effectiveStreamingBehavior,
-          images: commandImages,
-        }),
-      catch: (error) => error,
-    }).pipe(Effect.catch(() => Effect.void)),
-  );
-}
-
-function dispatchControlEffect(
-  turn: AgentTurnRequest,
-  resolved: ResolvedTurnSession,
-  commandImages: AgentImageInput[] | undefined,
-): Effect.Effect<"queued" | "rejected", unknown> {
-  if (!resolved.controlTargetActive) return Effect.succeed("rejected");
+  images?: AgentImageInput[],
+): Promise<"queued" | "rejected"> {
+  if (!resolved.controlTargetActive) return "rejected";
   if (turn.queueAction) {
-    return Effect.tryPromise({
-      try: () =>
-        resolved.session.mutateQueuedFollowUp(
-          turn.message,
-          turn.queueAction!,
-          turn.queueReplacement,
-          commandImages,
-        ),
-      catch: (error) => error,
-    }).pipe(Effect.map(() => "queued" as const));
-  }
-  if (turn.mode === "steer") {
-    return Effect.tryPromise({
-      try: () => resolved.session.steer(turn.message, commandImages),
-      catch: (error) => error,
-    }).pipe(Effect.map(() => "queued" as const));
-  }
-  if (turn.mode === "follow_up") {
-    return Effect.tryPromise({
-      try: () => resolved.session.followUp(turn.message, commandImages),
-      catch: (error) => error,
-    }).pipe(Effect.map(() => "queued" as const));
-  }
-  return Effect.succeed("rejected");
+    await resolved.session.mutateQueuedFollowUp(
+      turn.message,
+      turn.queueAction,
+      turn.queueReplacement,
+      images,
+    );
+  } else if (turn.mode === "steer") {
+    await resolved.session.steer(turn.message, images);
+  } else if (turn.mode === "follow_up") {
+    await resolved.session.followUp(turn.message, images);
+  } else return "rejected";
+  return "queued";
 }
 
-function resolvePiSessionIdEffect(
-  session: PiAgentSession,
-  since: Date,
-): Effect.Effect<string | null, unknown> {
-  const status = session.status;
-  if (status.piSessionId || !status.cwd) return Effect.succeed(status.piSessionId);
-  return Effect.tryPromise({
-    try: () => listSessions(status.cwd, { since }),
-    catch: (error) => error,
-  }).pipe(Effect.map((recent) => recent[0]?.id ?? null));
+async function resolvePiSessionId(session: PiAgentSession, since: Date): Promise<string | null> {
+  const { piSessionId, cwd } = session.status;
+  return piSessionId || !cwd ? piSessionId : ((await listSessions(cwd, { since }))[0]?.id ?? null);
 }
 
 function commandResult(
@@ -179,137 +121,120 @@ function commandResult(
   return result;
 }
 
-export function handleAgentTurn(request: Request): Promise<Response> {
-  return Effect.runPromise(turnRouteEffect(request));
-}
-
-function turnRouteEffect(request: Request): Effect.Effect<Response, unknown> {
-  return Effect.gen(function* () {
-    const body = yield* Effect.promise(() =>
-      readJsonRequestWithinLimit(request, AGENT_TURN_BODY_LIMIT_BYTES),
+export async function handleAgentTurn(request: Request): Promise<Response> {
+  const body = await readJsonRequestWithinLimit(request, AGENT_TURN_BODY_LIMIT_BYTES);
+  if (!body.ok) return jsonError(body.error, body.status);
+  const parsed = parseAgentTurnRequest(body.value);
+  if (!parsed.ok) return jsonError(parsed.error);
+  const turn = parsed.value;
+  const resolved = resolveTurnSession(turn);
+  if (!resolved) {
+    return Response.json(
+      {
+        type: "command",
+        outcome: "rejected",
+        runtimeSessionId: turn.sessionId,
+        piSessionId: turn.piSessionId,
+        active: false,
+        error: "Runtime session is no longer active.",
+      } satisfies AgentTurnCommandResult,
+      { status: 409 },
     );
-    if (!body.ok) return jsonError(body.error, body.status);
-    const parsed = parseAgentTurnRequest(body.value);
-    if (!parsed.ok) return jsonError(parsed.error);
-    const turn = parsed.value;
-    const commandImages = turn.images.length ? turn.images : undefined;
-
-    return yield* Effect.gen(function* () {
-      const turnStartedAt = new Date(Date.now() - 2_000);
-      const resolved = resolveTurnSession(turn);
-      if (!resolved) {
-        const result: AgentTurnCommandResult = {
-          type: "command",
-          outcome: "rejected",
-          runtimeSessionId: turn.sessionId,
-          piSessionId: turn.piSessionId,
-          active: false,
+  }
+  try {
+    const images = turn.images.length ? turn.images : undefined;
+    if (turn.mode === "prompt") {
+      const startedAt = new Date(Date.now() - 2_000);
+      await resolved.session.ensureStarted(turn.modelId, turn.cwd, resolved.effectivePiSessionId, {
+        thinkingLevel: turn.thinkingLevel,
+        toolAccess: turn.toolAccess,
+        browserToolEnabled: turn.browserToolEnabled,
+        browserSessionId: turn.browserSessionId,
+        browserBackend: turn.browserBackend,
+        skills: turn.skills,
+        promptTemplates: turn.promptTemplates,
+      });
+      const promptOptions: Parameters<PiAgentSession["prompt"]>[2] = {
+        streamingBehavior: resolved.effectiveStreamingBehavior,
+      };
+      if (images) promptOptions.images = images;
+      void resolved.session
+        .prompt(turn.message, () => undefined, promptOptions)
+        .catch(() => undefined);
+      const piSessionId = await resolvePiSessionId(resolved.session, startedAt);
+      adoptRuntimePiSessionId(resolved.session, piSessionId);
+      return Response.json(
+        commandResult(resolved.effectiveStreamingBehavior ? "queued" : "accepted", resolved, {
+          piSessionId,
+        }),
+      );
+    }
+    if ((await dispatchControl(turn, resolved, images)) === "rejected") {
+      return Response.json(
+        commandResult("rejected", resolved, {
           error: "Runtime session is no longer active.",
-        };
-        return Response.json(result, { status: 409 });
-      }
-
-      if (turn.mode === "prompt") {
-        yield* ensurePromptRuntimeEffect(turn, resolved);
-        launchPrompt(turn, resolved, commandImages);
-        const resolvedPiSessionId = yield* resolvePiSessionIdEffect(
-          resolved.session,
-          turnStartedAt,
-        );
-        adoptRuntimePiSessionId(resolved.session, resolvedPiSessionId);
-        return Response.json(
-          commandResult(resolved.effectiveStreamingBehavior ? "queued" : "accepted", resolved, {
-            piSessionId: resolvedPiSessionId,
-          }),
-        );
-      }
-
-      const controlOutcome = yield* dispatchControlEffect(turn, resolved, commandImages);
-      if (controlOutcome === "rejected") {
-        return Response.json(
-          commandResult("rejected", resolved, {
-            error: "Runtime session is no longer active.",
-          }),
-          { status: 409 },
-        );
-      }
-      return Response.json(commandResult("queued", resolved));
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.succeed(
-          Response.json(
-            {
-              type: "command",
-              outcome: "rejected",
-              runtimeSessionId: turn.sessionId,
-              piSessionId: turn.piSessionId,
-              active: false,
-              error: errorMessage(error, "Pi agent turn failed"),
-            } satisfies AgentTurnCommandResult,
-            { status: 500 },
-          ),
-        ),
-      ),
+        }),
+        { status: 409 },
+      );
+    }
+    return Response.json(commandResult("queued", resolved));
+  } catch (error) {
+    return Response.json(
+      {
+        type: "command",
+        outcome: "rejected",
+        runtimeSessionId: turn.sessionId,
+        piSessionId: turn.piSessionId,
+        active: false,
+        error: errorMessage(error, "Pi agent turn failed"),
+      } satisfies AgentTurnCommandResult,
+      { status: 500 },
     );
-  });
+  }
 }
-
 
 const AgentAbortRequestSchema = Schema.Struct({
   sessionId: Schema.optional(Schema.String),
 });
 
-type AgentAbortRequest = typeof AgentAbortRequestSchema.Type;
-const EMPTY_AGENT_ABORT_REQUEST: AgentAbortRequest = {};
-
 export async function handleAgentAbort(request: Request): Promise<Response> {
   const rawBody = await request.json().catch(() => null);
-  const body = Option.getOrElse(
-    Schema.decodeUnknownOption(AgentAbortRequestSchema)(rawBody),
-    () => EMPTY_AGENT_ABORT_REQUEST,
-  );
-  const sessionId = body.sessionId?.trim() || "default";
-  // Surface what the stop cleared so the client can put those messages back in
-  // front of the user instead of dropping them on the floor.
-  const cleared = await piRuntimeManager.getSession(sessionId).abort();
+  const body = Option.getOrNull(Schema.decodeUnknownOption(AgentAbortRequestSchema)(rawBody));
+  const sessionId = body?.sessionId?.trim() || "default";
+  const session = piRuntimeManager.getSession(sessionId);
+  markGoalTurnAborted(session);
+  const cleared = await session.abort();
   return Response.json({ ok: true, cleared });
 }
 
 const ExtensionUiRequestSchema = Schema.Struct({
-  sessionId: Schema.optional(Schema.Unknown),
-  requestId: Schema.optional(Schema.Unknown),
-  value: Schema.optional(Schema.Unknown),
-  confirmed: Schema.optional(Schema.Unknown),
-  cancelled: Schema.optional(Schema.Unknown),
+  sessionId: Schema.optional(Schema.String),
+  requestId: Schema.optional(Schema.String),
+  value: Schema.optional(Schema.String),
+  confirmed: Schema.optional(Schema.Boolean),
+  cancelled: Schema.optional(Schema.Boolean),
 });
-
-const decodeExtensionUiRequest = Schema.decodeUnknownOption(ExtensionUiRequestSchema);
-const decodeText = Schema.decodeUnknownOption(Schema.String);
-const decodeFlag = Schema.decodeUnknownOption(Schema.Boolean);
 
 type ExtensionUiResponse = {
   value?: string;
   confirmed?: boolean;
-  cancelled?: boolean;
+  cancelled: boolean;
 };
 
 export async function handleExtensionUiResponse(request: Request): Promise<Response> {
   const rawBody = await request.json().catch(() => null);
-  const body = Option.getOrNull(decodeExtensionUiRequest(rawBody));
-  const sessionId = Option.getOrElse(decodeText(body?.sessionId), () => "").trim();
-  const requestId = Option.getOrElse(decodeText(body?.requestId), () => "").trim();
+  const body = Option.getOrNull(Schema.decodeUnknownOption(ExtensionUiRequestSchema)(rawBody));
+  if (!body) return jsonError("sessionId and requestId are required");
+  const sessionId = body.sessionId?.trim() ?? "";
+  const requestId = body.requestId?.trim() ?? "";
   if (!sessionId || !requestId) return jsonError("sessionId and requestId are required");
   const resolved = piRuntimeManager.findSessionForLookup(sessionId);
   if (!resolved) return jsonError("Runtime session not found", 404);
-
   const response: ExtensionUiResponse = {
-    cancelled: Option.getOrElse(decodeFlag(body?.cancelled), () => false) === true,
+    cancelled: body.cancelled === true,
   };
-  const value = Option.getOrUndefined(decodeText(body?.value));
-  const confirmed = Option.getOrUndefined(decodeFlag(body?.confirmed));
-  if (value !== undefined) response.value = value.slice(0, 32_000);
-  if (confirmed !== undefined) response.confirmed = confirmed;
-
+  if (body.value !== undefined) response.value = body.value.slice(0, 32_000);
+  if (body.confirmed !== undefined) response.confirmed = body.confirmed;
   const accepted = resolved.session.respondExtensionUi(requestId, response);
   return accepted
     ? Response.json({ ok: true })
@@ -326,13 +251,11 @@ const CompactRequestSchema = Schema.Struct({
   customInstructions: Schema.optional(Schema.String),
   browserToolEnabled: Schema.optional(Schema.Boolean),
   browserSessionId: Schema.optional(Schema.String),
-  browserBackend: Schema.optional(Schema.Literals(["embedded", "sitegeist"])),
+  browserBackend: Schema.optional(Schema.Literals(["embedded", "chrome"])),
   skills: Schema.optional(Schema.Unknown),
   promptTemplates: Schema.optional(Schema.Unknown),
 });
-
 type CompactRequest = typeof CompactRequestSchema.Type;
-
 
 function compactInstructions(skills: ComposerSkillRef[], custom?: string): string | undefined {
   const selected = selectedContextInstructions(skills);
@@ -345,64 +268,51 @@ function compactInstructions(skills: ComposerSkillRef[], custom?: string): strin
   return [selected, additional].filter((value): value is string => Boolean(value)).join("\n\n");
 }
 
-export function handleAgentCompact(request: Request): Promise<Response> {
-  return Effect.runPromise(compactRouteEffect(request));
+async function compactSession(
+  body: CompactRequest,
+  modelId: string,
+  thinkingLevel: AgentThinkingLevel | undefined,
+): Promise<Response> {
+  const session = piRuntimeManager.getSession(body.sessionId?.trim() || "default");
+  const skills = sanitizeComposerSkills(body.skills);
+  const promptTemplates = sanitizeComposerPromptTemplates(body.promptTemplates);
+  await session.ensureStarted(
+    modelId,
+    body.cwd?.trim() || undefined,
+    body.piSessionId?.trim() || null,
+    {
+      thinkingLevel,
+      toolAccess: body.toolAccess === "full" ? "full" : "read_only",
+      browserToolEnabled: body.browserToolEnabled === true,
+      browserSessionId: body.browserSessionId?.trim() || undefined,
+      browserBackend: body.browserBackend === "chrome" ? "chrome" : "embedded",
+      skills,
+      promptTemplates,
+    },
+  );
+  const result = await session.compact(compactInstructions(skills, body.customInstructions));
+  return Response.json({ ok: true, result, status: session.status });
 }
 
-function compactRouteEffect(request: Request): Effect.Effect<Response, unknown> {
-  return Effect.gen(function* () {
-    const rawBody = yield* Effect.tryPromise({
-      try: () => request.json(),
-      catch: () => null,
-    });
-    const body: CompactRequest | null = Option.getOrNull(
-      Schema.decodeUnknownOption(CompactRequestSchema)(rawBody),
-    );
-    if (!body) return jsonError("Invalid JSON body");
-
-    const sessionId = body.sessionId?.trim() || "default";
-    const modelId = body.modelId?.trim();
-    const cwd = body.cwd?.trim() || undefined;
-    const piSessionId = body.piSessionId?.trim() || null;
-    if (!modelId) return jsonError("modelId is required");
-    let thinkingLevel: AgentThinkingLevel | undefined;
-    if (body.thinkingLevel != null) {
-      if (!isAgentThinkingLevel(body.thinkingLevel)) {
-        return jsonError("thinkingLevel must be a supported reasoning level");
-      }
-      thinkingLevel = body.thinkingLevel;
-    }
-
-    return yield* Effect.gen(function* () {
-      const session = piRuntimeManager.getSession(sessionId);
-      const skills = sanitizeComposerSkills(body.skills);
-      const promptTemplates = sanitizeComposerPromptTemplates(body.promptTemplates);
-      yield* Effect.tryPromise({
-        try: () =>
-          session.ensureStarted(modelId, cwd, piSessionId, {
-            thinkingLevel,
-            toolAccess: body.toolAccess === "full" ? "full" : "read_only",
-            browserToolEnabled: body.browserToolEnabled === true,
-            browserSessionId: body.browserSessionId?.trim() || undefined,
-            browserBackend: body.browserBackend === "sitegeist" ? "sitegeist" : "embedded",
-            skills,
-            promptTemplates,
-          }),
-        catch: (error) => error,
-      });
-      const result = yield* Effect.tryPromise({
-        try: () => session.compact(compactInstructions(skills, body.customInstructions)),
-        catch: (error) => error,
-      });
-      return Response.json({ ok: true, result, status: session.status });
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.succeed(jsonError(errorMessage(error, "Compaction failed"), 409)),
-      ),
-    );
-  });
+export async function handleAgentCompact(request: Request): Promise<Response> {
+  const rawBody = await request.json().catch(() => null);
+  const body: CompactRequest | null = Option.getOrNull(
+    Schema.decodeUnknownOption(CompactRequestSchema)(rawBody),
+  );
+  if (!body) return jsonError("Invalid JSON body");
+  const modelId = body.modelId?.trim();
+  if (!modelId) return jsonError("modelId is required");
+  if (body.thinkingLevel !== undefined && !isAgentThinkingLevel(body.thinkingLevel)) {
+    return jsonError("thinkingLevel must be a supported reasoning level");
+  }
+  let thinkingLevel: AgentThinkingLevel | undefined;
+  if (body.thinkingLevel !== undefined) thinkingLevel = body.thinkingLevel;
+  try {
+    return await compactSession(body, modelId, thinkingLevel);
+  } catch (error) {
+    return jsonError(errorMessage(error, "Compaction failed"), 409);
+  }
 }
-
 
 export function handleRuntimeSessions(): Response {
   return Response.json({
@@ -412,6 +322,29 @@ export function handleRuntimeSessions(): Response {
   });
 }
 
+function initialRuntimeStatusPhase(
+  active: boolean,
+  replayBacklogCount: number,
+): "running" | "idle" | null {
+  if (active) return "running";
+  return replayBacklogCount === 0 ? "idle" : null;
+}
+
+function replayAfterCursor(requestedAfter: number, runtimeEventSeq: number): number {
+  return requestedAfter > runtimeEventSeq ? 0 : requestedAfter;
+}
+
+function shouldSendTrailingIdleStatus({
+  active,
+  replayBacklogCount,
+  sentTerminalStatus,
+}: {
+  active: boolean;
+  replayBacklogCount: number;
+  sentTerminalStatus: boolean;
+}): boolean {
+  return !active && replayBacklogCount > 0 && !sentTerminalStatus;
+}
 
 export function handleRuntimeStatus(request: Request): Response {
   const searchParams = new URL(request.url).searchParams;
@@ -433,7 +366,6 @@ export function handleRuntimeStatus(request: Request): Response {
   });
 }
 
-
 function parseSeq(value: string | null): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0;
@@ -443,9 +375,9 @@ type RuntimeStreamPayload =
   | { type: "pi"; seq: number; event: LoggedPiEvent["event"] }
   | { type: "status"; phase: "done" | "idle" | "running"; session: PiAgentStatus };
 
-function encode(payload: RuntimeStreamPayload, id?: number): Uint8Array {
+function encode(payload: RuntimeStreamPayload, id?: number): string {
   const prefix = id === undefined ? "" : `id: ${id}\n`;
-  return new TextEncoder().encode(`${prefix}data: ${JSON.stringify(payload)}\n\n`);
+  return `${prefix}data: ${JSON.stringify(payload)}\n\n`;
 }
 
 export function handleRuntimeEvents(request: Request): Response {
@@ -462,9 +394,9 @@ export function handleRuntimeEvents(request: Request): Response {
   }
   const session = resolved.session;
 
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      let closed = false;
+  return sseResponse({
+    signal: request.signal,
+    start(send, close) {
       let off = () => {};
       let ping: ReturnType<typeof setInterval> | null = null;
       let replaying = true;
@@ -472,23 +404,7 @@ export function handleRuntimeEvents(request: Request): Response {
       const sentSeqs = new Set<number>();
       let after = replayAfterCursor(requestedAfter, session.status.eventSeq);
       const safeSend = (payload: RuntimeStreamPayload, id?: number) => {
-        if (closed) return;
-        try {
-          controller.enqueue(encode(payload, id));
-        } catch {
-          close();
-        }
-      };
-      const close = () => {
-        if (closed) return;
-        closed = true;
-        off();
-        if (ping) clearInterval(ping);
-        try {
-          controller.close();
-        } catch {
-          // client already closed
-        }
+        send(encode(payload, id));
       };
 
       const sendLogged = (logged: LoggedPiEvent) => {
@@ -548,29 +464,35 @@ export function handleRuntimeEvents(request: Request): Response {
         safeSend({ type: "status", phase: "running", session: session.status });
       }, 20_000);
 
-      request.signal.addEventListener("abort", close);
       if (!session.status.active) {
         setTimeout(close, 25);
       }
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
+      return () => {
+        off();
+        if (ping) clearInterval(ping);
+      };
     },
   });
 }
 
+const SESSION_LIST_HEARTBEAT_MS = 45_000;
+
+export function handleSessionListChanged(request: Request): Response {
+  return sseResponse({
+    signal: request.signal,
+    connectComment: `connected v${sessionListChangedVersion()}`,
+    heartbeat: { intervalMs: SESSION_LIST_HEARTBEAT_MS, comment: "keep-alive" },
+    start(send) {
+      return subscribeSessionListChanged((event) => {
+        send(`data: ${JSON.stringify(event)}\n\n`);
+      });
+    },
+  });
+}
 
 export function handleSetupChecks(): Response {
   const codexDir = path.join(homedir(), ".codex");
   const piDir = path.join(homedir(), ".pi");
-  // First-party extension load failures captured during the most recent SDK
-  // runtime creation. User/drop-in Pi extensions are intentionally disabled.
   const diagnostics = piResourceDiagnostics();
   return Response.json({
     checks: [

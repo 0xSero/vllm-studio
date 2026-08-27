@@ -3,10 +3,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { Schema } from "effect";
 import { resolveDataDir } from "./data-dir";
-import {
-  createSessionScopedJsonStore,
-  type PersistedValue,
-} from "./session-json-store";
+import { createSessionScopedJsonStore, type PersistedValue } from "./session-json-store";
 import { isRecord } from "../../../shared/agent/guards";
 import type {
   Automation,
@@ -40,14 +37,11 @@ function normalizeSchedule(value: PersistedValue): AutomationSchedule {
       return { kind: "interval", minutes: Math.round(value.minutes) };
     }
     if (value.kind === "daily" && isString(value.time)) {
-      if (value.weekdaysOnly === true) return { kind: "daily", time: value.time, weekdaysOnly: true };
+      if (value.weekdaysOnly === true)
+        return { kind: "daily", time: value.time, weekdaysOnly: true };
       return { kind: "daily", time: value.time };
     }
-    if (
-      value.kind === "weekly" &&
-      isNumber(value.day) &&
-      isString(value.time)
-    ) {
+    if (value.kind === "weekly" && isNumber(value.day) && isString(value.time)) {
       return {
         kind: "weekly",
         day: Math.min(6, Math.max(0, Math.round(value.day))),
@@ -72,6 +66,10 @@ function normalizeRun(value: PersistedValue): AutomationRun | null {
   return run;
 }
 
+function normalizeTargetSessionId(value: PersistedValue): string | null {
+  return isString(value) && value.trim() ? value.trim() : null;
+}
+
 function normalizeAutomation(value: PersistedValue): Automation {
   const record = isRecord(value) ? value : {};
   const now = new Date().toISOString();
@@ -91,6 +89,7 @@ function normalizeAutomation(value: PersistedValue): Automation {
     prompt: isString(record.prompt) ? record.prompt : "",
     modelId: isString(record.modelId) ? record.modelId : "",
     cwd: isString(record.cwd) ? record.cwd : "",
+    targetSessionId: normalizeTargetSessionId(record.targetSessionId),
     schedule: normalizeSchedule(record.schedule),
     status: record.status === "paused" ? "paused" : "active",
     nextRunAt: isString(record.nextRunAt) ? record.nextRunAt : null,
@@ -167,6 +166,7 @@ export async function createAutomation(input: {
   prompt: string;
   modelId: string;
   cwd: string;
+  targetSessionId?: string | null;
   schedule: unknown;
 }): Promise<Automation> {
   const id = `auto-${randomUUID().slice(0, 8)}`;
@@ -185,6 +185,7 @@ export async function createAutomation(input: {
       prompt: input.prompt,
       modelId: input.modelId,
       cwd: input.cwd,
+      targetSessionId: normalizeTargetSessionId(input.targetSessionId),
       schedule,
       status: "active",
       nextRunAt: nextRunAt(schedule, new Date()).toISOString(),
@@ -199,7 +200,12 @@ export async function createAutomation(input: {
 
 export async function patchAutomation(
   id: string,
-  patch: Partial<Pick<Automation, "name" | "prompt" | "modelId" | "cwd" | "status" | "unread">> & {
+  patch: Partial<
+    Pick<
+      Automation,
+      "name" | "prompt" | "modelId" | "cwd" | "status" | "unread" | "targetSessionId"
+    >
+  > & {
     schedule?: PersistedValue;
     nextRunAt?: string | null;
     lastRun?: AutomationRun | null;

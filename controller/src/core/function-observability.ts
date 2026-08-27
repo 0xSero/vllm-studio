@@ -49,7 +49,7 @@ export const observeControllerFunction = <A, E, R>(
 export const findObservedInferenceProcess = (
   context: AppContext,
   label: string,
-): ReturnType<AppContext["bridge"]["findInferenceProcess"]> =>
+): ReturnType<AppContext["compute"]["model"]["findInferenceProcess"]> =>
   observeControllerFunction(context, `${label}.findInferenceProcess`, () =>
-    context.bridge.findInferenceProcess(),
+    context.compute.model.findInferenceProcess(),
   );

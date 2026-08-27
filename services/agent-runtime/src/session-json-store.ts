@@ -3,9 +3,6 @@ import path from "node:path";
 import { Schema } from "effect";
 import { resolveDataDir } from "./data-dir";
 
-// Serialize read-modify-write cycles per file so concurrent POSTs (e.g. an
-// agent plan autosave overlapping a user edit) can't both read v1 and drop one
-// update. Promise-chain per path; entries are removed when the chain drains.
 const writeChains = new Map<string, Promise<unknown>>();
 
 export type PersistedValue =
@@ -70,8 +67,6 @@ export function createSessionScopedJsonStore<T extends { updatedAt: string }>(co
         updatedAt: new Date().toISOString(),
       });
       await mkdir(path.dirname(file), { recursive: true });
-      // Write-then-rename so a crash mid-write can't truncate the document
-      // (read() swallows parse errors and would silently return an empty doc).
       const tempFile = `${file}.tmp-${process.pid}`;
       await writeFile(tempFile, `${JSON.stringify(next, null, 2)}\n`, "utf8");
       await rename(tempFile, file);

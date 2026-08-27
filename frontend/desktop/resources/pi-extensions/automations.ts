@@ -1,34 +1,16 @@
-// Automations (Scheduled) tools for Local Studio.
-//
-// Lets the agent create, list and delete scheduled automations — a saved
-// prompt the runtime re-runs on a cron-like schedule in its own fresh session.
-// Calls proxy through the frontend like the subagents/connectors bridges, so
-// this file stays a plain pi extension with no runtime imports.
-//
-// The record shape mirrors services/agent-runtime automations-store.ts
-// (Automation): name, prompt, modelId, cwd, schedule{interval|daily|weekly}.
-
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { Schema } from "effect";
+import { requestJson, result } from "./first-party-tool.ts";
 
 const FRONTEND_BASE = process.env.LOCAL_STUDIO_FRONTEND_BASE ?? "http://127.0.0.1:3000";
 const CALL_TIMEOUT_MS = 30_000;
+const RUN_TIMEOUT_MS = 15 * 60_000;
 
 type AutomationDetails =
   | { failed: true }
   | { count: number; automations?: AutomationRecord[] }
   | { id: string; schedule?: NormalizedSchedule; modelId?: string };
-
-type ToolResult = {
-  content: Array<{ type: "text"; text: string }>;
-  details: AutomationDetails;
-};
-
-const textResult = (text: string, details: AutomationDetails): ToolResult => ({
-  content: [{ type: "text", text }],
-  details,
-});
 
 type IntervalSchedule = { kind: "interval"; minutes: number };
 type DailySchedule = { kind: "daily"; time: string; weekdaysOnly?: boolean };
@@ -50,7 +32,16 @@ const AutomationRecordSchema = Schema.Struct({
   name: Schema.optional(Schema.String),
   status: Schema.optional(Schema.String),
   nextRunAt: Schema.optional(Schema.String),
+  prompt: Schema.optional(Schema.String),
+  modelId: Schema.optional(Schema.String),
+  cwd: Schema.optional(Schema.String),
   schedule: Schema.optional(NormalizedScheduleSchema),
+});
+const AutomationUpdateSchema = Schema.Struct({
+  name: Schema.optional(Schema.String),
+  prompt: Schema.optional(Schema.String),
+  modelId: Schema.optional(Schema.String),
+  cwd: Schema.optional(Schema.String),
 });
 const ErrorResponseSchema = Schema.Struct({ error: Schema.String });
 const ModelsResponseSchema = Schema.Struct({
@@ -89,8 +80,6 @@ const WEEKDAY_NAMES = [
   "Saturday",
 ];
 
-/** Validate the agent-supplied schedule into the store's shape, or explain what
- *  is wrong. Kept pure so the normalization is unit-tested without HTTP. */
 export function normalizeScheduleArg(
   input: ScheduleArg | undefined,
 ): { ok: true; schedule: NormalizedSchedule } | { ok: false; error: string } {
@@ -144,29 +133,15 @@ async function httpJson(
   path: string,
   init: RequestInit,
   signal: AbortSignal | undefined,
+  timeoutMs = CALL_TIMEOUT_MS,
 ): Promise<{ ok: boolean; status: number; body: HttpJsonBody }> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
-  const abort = () => controller.abort();
-  signal?.addEventListener("abort", abort, { once: true });
-  if (signal?.aborted) controller.abort();
-  try {
-    const response = await fetch(`${FRONTEND_BASE}${path}`, {
-      ...init,
-      signal: controller.signal,
-    });
-    let body: HttpJsonBody = null;
-    try {
-      const parsedBody = Schema.decodeUnknownOption(HttpResponseSchema)(await response.json());
-      body = parsedBody._tag === "Some" ? parsedBody.value : null;
-    } catch {
-      body = null;
-    }
-    return { ok: response.ok, status: response.status, body };
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener("abort", abort);
-  }
+  const response = await requestJson(`${FRONTEND_BASE}${path}`, init, signal, timeoutMs);
+  const parsed = Schema.decodeUnknownOption(HttpResponseSchema)(response.body);
+  return {
+    ok: response.ok,
+    status: response.status,
+    body: parsed._tag === "Some" ? parsed.value : null,
+  };
 }
 
 function errorText(body: HttpJsonBody, status: number): string {
@@ -174,8 +149,6 @@ function errorText(body: HttpJsonBody, status: number): string {
   return parsed._tag === "Some" ? parsed.value.error : `HTTP ${status}`;
 }
 
-/** Resolve the model an automation should run under: explicit arg, else the
- *  current session's model (injected by pi-runtime), else the first available. */
 async function resolveModelId(
   explicit: string | undefined,
   signal: AbortSignal | undefined,
@@ -195,8 +168,6 @@ async function resolveModelId(
   return null;
 }
 
-/** Resolve the directory an automation should run in: explicit arg, else the
- *  current session's cwd (injected by pi-runtime), else the app default. */
 function resolveCwd(explicit: string | undefined): string {
   const trimmed = explicit?.trim();
   if (trimmed) return trimmed;
@@ -252,15 +223,21 @@ export default function automationsExtension(pi: ExtensionAPI): void {
       const args = params;
       const prompt = args.prompt.trim();
       if (!prompt)
-        return textResult("schedule_automation needs a non-empty prompt.", { failed: true });
+        return result<AutomationDetails>("schedule_automation needs a non-empty prompt.", {
+          failed: true,
+        });
       const scheduleResult = normalizeScheduleArg(args.schedule);
-      if (!scheduleResult.ok) return textResult(scheduleResult.error, { failed: true });
+      if (!scheduleResult.ok)
+        return result<AutomationDetails>(scheduleResult.error, { failed: true });
       try {
         const modelId = await resolveModelId(args.model, signal);
         if (!modelId) {
-          return textResult("No model available to run the automation. Pass a 'model' id.", {
-            failed: true,
-          });
+          return result<AutomationDetails>(
+            "No model available to run the automation. Pass a 'model' id.",
+            {
+              failed: true,
+            },
+          );
         }
         const { ok, status, body } = await httpJson(
           "/api/agent/automations",
@@ -278,20 +255,25 @@ export default function automationsExtension(pi: ExtensionAPI): void {
           signal,
         );
         if (!ok)
-          return textResult(`Failed to create automation: ${errorText(body, status)}`, {
-            failed: true,
-          });
+          return result<AutomationDetails>(
+            `Failed to create automation: ${errorText(body, status)}`,
+            {
+              failed: true,
+            },
+          );
         const parsedBody = Schema.decodeUnknownOption(CreatedAutomationResponseSchema)(body);
         const automation = parsedBody._tag === "Some" ? parsedBody.value.automation : undefined;
         const id = [automation?.id, "(unknown)"].filter(Boolean).slice(0, 1).join("");
-        return textResult(
+        return result<AutomationDetails>(
           `Created automation "${automation?.name ?? args.name ?? "Untitled"}" [${id}] — ` +
             `${describeSchedule(scheduleResult.schedule)}. Next run ${automation?.nextRunAt ?? "pending"}.`,
           { id, schedule: scheduleResult.schedule, modelId },
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        return textResult(`Failed to create automation: ${message}`, { failed: true });
+        return result<AutomationDetails>(`Failed to create automation: ${message}`, {
+          failed: true,
+        });
       }
     },
   });
@@ -309,20 +291,203 @@ export default function automationsExtension(pi: ExtensionAPI): void {
           signal,
         );
         if (!ok)
-          return textResult(`Failed to list automations: ${errorText(body, status)}`, {
-            failed: true,
-          });
+          return result<AutomationDetails>(
+            `Failed to list automations: ${errorText(body, status)}`,
+            {
+              failed: true,
+            },
+          );
         const parsedBody = Schema.decodeUnknownOption(AutomationsResponseSchema)(body);
         const automations = parsedBody._tag === "Some" ? parsedBody.value.automations : [];
         if (automations.length === 0)
-          return textResult("No automations are scheduled.", { count: 0 });
+          return result<AutomationDetails>("No automations are scheduled.", { count: 0 });
         const lines = automations.map(formatAutomationLine);
-        return textResult(`${automations.length} automation(s):\n${lines.join("\n")}`, {
-          count: automations.length,
-        });
+        return result<AutomationDetails>(
+          `${automations.length} automation(s):\n${lines.join("\n")}`,
+          {
+            count: automations.length,
+          },
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        return textResult(`Failed to list automations: ${message}`, { failed: true });
+        return result<AutomationDetails>(`Failed to list automations: ${message}`, {
+          failed: true,
+        });
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "read_automation",
+    label: "Read automation",
+    description:
+      "Read one automation, including its prompt, schedule, model, directory and run state.",
+    parameters: Type.Object({ id: Type.String({ description: "Automation id." }) }),
+    async execute(_id, params, signal) {
+      const id = params.id.trim();
+      if (!id)
+        return result<AutomationDetails>("read_automation needs an automation id.", {
+          failed: true,
+        });
+      try {
+        const response = await httpJson(
+          `/api/agent/automations/${encodeURIComponent(id)}`,
+          { method: "GET" },
+          signal,
+        );
+        if (!response.ok) {
+          return result<AutomationDetails>(
+            `Failed to read automation: ${errorText(response.body, response.status)}`,
+            {
+              failed: true,
+            },
+          );
+        }
+        const parsed = Schema.decodeUnknownOption(CreatedAutomationResponseSchema)(response.body);
+        if (parsed._tag === "None" || !parsed.value.automation) {
+          return result<AutomationDetails>("Automation response was invalid.", { failed: true });
+        }
+        const automation = parsed.value.automation;
+        return result<AutomationDetails>(JSON.stringify(automation, null, 2), { id });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return result<AutomationDetails>(`Failed to read automation: ${message}`, { failed: true });
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "update_automation",
+    label: "Update automation",
+    description: "Update an automation's name, prompt, model or working directory.",
+    parameters: Type.Object({
+      id: Type.String({ description: "Automation id." }),
+      name: Type.Optional(Type.String()),
+      prompt: Type.Optional(Type.String()),
+      modelId: Type.Optional(Type.String()),
+      cwd: Type.Optional(Type.String()),
+    }),
+    async execute(_id, params, signal) {
+      const id = params.id.trim();
+      if (!id)
+        return result<AutomationDetails>("update_automation needs an automation id.", {
+          failed: true,
+        });
+      const update = Schema.decodeUnknownSync(AutomationUpdateSchema)({
+        name: params.name,
+        prompt: params.prompt,
+        modelId: params.modelId,
+        cwd: params.cwd,
+      });
+      try {
+        const response = await httpJson(
+          `/api/agent/automations/${encodeURIComponent(id)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(update),
+          },
+          signal,
+        );
+        if (!response.ok) {
+          return result<AutomationDetails>(
+            `Failed to update automation: ${errorText(response.body, response.status)}`,
+            {
+              failed: true,
+            },
+          );
+        }
+        return result<AutomationDetails>(`Updated automation ${id}.`, { id });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return result<AutomationDetails>(`Failed to update automation: ${message}`, {
+          failed: true,
+        });
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "set_automation_status",
+    label: "Pause or resume automation",
+    description: "Pause or resume a scheduled automation.",
+    parameters: Type.Object({
+      id: Type.String({ description: "Automation id." }),
+      status: Type.Union([Type.Literal("active"), Type.Literal("paused")]),
+    }),
+    async execute(_id, params, signal) {
+      const id = params.id.trim();
+      if (!id)
+        return result<AutomationDetails>("set_automation_status needs an automation id.", {
+          failed: true,
+        });
+      try {
+        const response = await httpJson(
+          `/api/agent/automations/${encodeURIComponent(id)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: params.status }),
+          },
+          signal,
+        );
+        if (!response.ok) {
+          return result<AutomationDetails>(
+            `Failed to update automation: ${errorText(response.body, response.status)}`,
+            {
+              failed: true,
+            },
+          );
+        }
+        return result<AutomationDetails>(
+          `${params.status === "paused" ? "Paused" : "Resumed"} automation ${id}.`,
+          { id },
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return result<AutomationDetails>(`Failed to update automation: ${message}`, {
+          failed: true,
+        });
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "run_automation_now",
+    label: "Run automation now",
+    description:
+      "Run an automation immediately in a fresh session and wait for its recorded result.",
+    parameters: Type.Object({ id: Type.String({ description: "Automation id." }) }),
+    async execute(_id, params, signal) {
+      const id = params.id.trim();
+      if (!id)
+        return result<AutomationDetails>("run_automation_now needs an automation id.", {
+          failed: true,
+        });
+      try {
+        const response = await httpJson(
+          `/api/agent/automations/${encodeURIComponent(id)}/run`,
+          { method: "POST" },
+          signal,
+          RUN_TIMEOUT_MS,
+        );
+        if (!response.ok) {
+          return result<AutomationDetails>(
+            `Automation run failed: ${errorText(response.body, response.status)}`,
+            {
+              failed: true,
+            },
+          );
+        }
+        return result<AutomationDetails>(
+          `Automation ${id} finished. Read it for the recorded run history.`,
+          {
+            id,
+          },
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return result<AutomationDetails>(`Automation run failed: ${message}`, { failed: true });
       }
     },
   });
@@ -336,7 +501,10 @@ export default function automationsExtension(pi: ExtensionAPI): void {
     }),
     async execute(_id, params, signal) {
       const id = params.id.trim();
-      if (!id) return textResult("delete_automation needs an automation id.", { failed: true });
+      if (!id)
+        return result<AutomationDetails>("delete_automation needs an automation id.", {
+          failed: true,
+        });
       try {
         const { ok, status, body } = await httpJson(
           `/api/agent/automations/${encodeURIComponent(id)}`,
@@ -344,13 +512,18 @@ export default function automationsExtension(pi: ExtensionAPI): void {
           signal,
         );
         if (!ok)
-          return textResult(`Failed to delete automation: ${errorText(body, status)}`, {
-            failed: true,
-          });
-        return textResult(`Deleted automation ${id}.`, { id });
+          return result<AutomationDetails>(
+            `Failed to delete automation: ${errorText(body, status)}`,
+            {
+              failed: true,
+            },
+          );
+        return result<AutomationDetails>(`Deleted automation ${id}.`, { id });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        return textResult(`Failed to delete automation: ${message}`, { failed: true });
+        return result<AutomationDetails>(`Failed to delete automation: ${message}`, {
+          failed: true,
+        });
       }
     },
   });

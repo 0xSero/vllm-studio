@@ -1,13 +1,15 @@
 import type { Database } from "bun:sqlite";
-import type { ControllerUsageStats } from "@local-studio/contracts/usage";
+import {
+  normalizeControllerUsage,
+  usageRate,
+  type ControllerUsageStats,
+} from "@local-studio/contracts/usage";
 import type { Effect } from "effect";
 import {
   openInitializedDatabase,
   makeDatabaseCloser,
   repositoryEffect,
   type RepositoryError,
-  toFiniteNumber,
-  toNullableNumber,
 } from "./sqlite";
 
 export interface ControllerRequestRecord {
@@ -167,11 +169,6 @@ export class ControllerRequestStore {
       )
       .get();
 
-    const totalRow = totals ?? {};
-    const totalRequests = toFiniteNumber(totalRow["total_requests"]);
-    const successfulRequests = toFiniteNumber(totalRow["successful_requests"]);
-    const failedRequests = toFiniteNumber(totalRow["failed_requests"]);
-
     const byPath = this.db
       .query<NumberRow, []>(
         `SELECT
@@ -268,86 +265,45 @@ export class ControllerRequestStore {
       )
       .all();
 
-    const functionTotalRow = functionTotals ?? {};
-    const totalFunctionCalls = toFiniteNumber(functionTotalRow["total_calls"]);
-    const successfulFunctionCalls = toFiniteNumber(functionTotalRow["successful_calls"]);
-
-    return {
+    return normalizeControllerUsage({
       totals: {
-        total_requests: totalRequests,
-        successful_requests: successfulRequests,
-        failed_requests: failedRequests,
-        success_rate: totalRequests ? (successfulRequests / totalRequests) * 100 : 0,
+        ...totals,
+        success_rate: usageRate(totals?.["successful_requests"], totals?.["total_requests"]),
       },
       latency: {
-        avg_ms: toNullableNumber(totalRow["avg_duration_ms"]),
-        max_ms: toNullableNumber(totalRow["max_duration_ms"]),
+        avg_ms: totals?.["avg_duration_ms"],
+        max_ms: totals?.["max_duration_ms"],
       },
       recent_activity: {
-        last_hour_requests: toFiniteNumber((recent ?? {})["last_hour"]),
-        last_24h_requests: toFiniteNumber((recent ?? {})["last_24h"]),
-        last_24h_failed_requests: toFiniteNumber((recent ?? {})["last_24h_failed"]),
+        last_hour_requests: recent?.["last_hour"],
+        last_24h_requests: recent?.["last_24h"],
+        last_24h_failed_requests: recent?.["last_24h_failed"],
       },
-      by_path: byPath.map((row) => {
-        const requests = toFiniteNumber(row["requests"]);
-        const successful = toFiniteNumber(row["successful"]);
-        return {
-          method: String(row["method"] ?? ""),
-          path: String(row["path"] ?? ""),
-          requests,
-          successful,
-          failed: toFiniteNumber(row["failed"]),
-          success_rate: requests ? (successful / requests) * 100 : 0,
-          avg_duration_ms: toNullableNumber(row["avg_duration_ms"]),
-          max_duration_ms: toNullableNumber(row["max_duration_ms"]),
-        };
-      }),
-      by_status: byStatus.map((row) => ({
-        status: toFiniteNumber(row["status"]),
-        requests: toFiniteNumber(row["requests"]),
+      by_path: byPath.map((row) => ({
+        ...row,
+        success_rate: usageRate(row["successful"], row["requests"]),
       })),
-      recent_errors: errors.map((row) => ({
-        method: String(row["method"] ?? ""),
-        path: String(row["path"] ?? ""),
-        status: toFiniteNumber(row["status"]),
-        error_class: row["error_class"] ? String(row["error_class"]) : null,
-        error_message: row["error_message"] ? String(row["error_message"]) : null,
-        created_at: String(row["created_at"] ?? ""),
-      })),
+      by_status: byStatus,
+      recent_errors: errors,
       function_calls: {
         totals: {
-          total_calls: totalFunctionCalls,
-          successful_calls: successfulFunctionCalls,
-          failed_calls: toFiniteNumber(functionTotalRow["failed_calls"]),
-          success_rate: totalFunctionCalls
-            ? (successfulFunctionCalls / totalFunctionCalls) * 100
-            : 0,
+          ...functionTotals,
+          success_rate: usageRate(
+            functionTotals?.["successful_calls"],
+            functionTotals?.["total_calls"],
+          ),
         },
         latency: {
-          avg_ms: toNullableNumber(functionTotalRow["avg_duration_ms"]),
-          max_ms: toNullableNumber(functionTotalRow["max_duration_ms"]),
+          avg_ms: functionTotals?.["avg_duration_ms"],
+          max_ms: functionTotals?.["max_duration_ms"],
         },
-        by_function: byFunction.map((row) => {
-          const calls = toFiniteNumber(row["calls"]);
-          const successful = toFiniteNumber(row["successful"]);
-          return {
-            function_name: String(row["function_name"] ?? ""),
-            calls,
-            successful,
-            failed: toFiniteNumber(row["failed"]),
-            success_rate: calls ? (successful / calls) * 100 : 0,
-            avg_duration_ms: toNullableNumber(row["avg_duration_ms"]),
-            max_duration_ms: toNullableNumber(row["max_duration_ms"]),
-          };
-        }),
-        recent_errors: functionErrors.map((row) => ({
-          function_name: String(row["function_name"] ?? ""),
-          error_class: row["error_class"] ? String(row["error_class"]) : null,
-          error_message: row["error_message"] ? String(row["error_message"]) : null,
-          created_at: String(row["created_at"] ?? ""),
+        by_function: byFunction.map((row) => ({
+          ...row,
+          success_rate: usageRate(row["successful"], row["calls"]),
         })),
+        recent_errors: functionErrors,
       },
-    };
+    });
   }
 
   public aggregateEffect(): Effect.Effect<ControllerUsageStats, RepositoryError> {

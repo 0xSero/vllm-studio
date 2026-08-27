@@ -21,7 +21,7 @@ function readTail(filepath: string): string {
   return buffer.toString("utf8");
 }
 
-function textFromContent(content: UnparsedValue): string {
+export function assistantMessageText(content: UnparsedValue): string {
   if (isString(content)) return content;
   if (!Array.isArray(content)) return "";
   return content
@@ -50,7 +50,7 @@ export function lastAssistantResultFromJsonl(raw: string): LastAssistantResult {
     }
     if (!isRecord(entry) || entry.type !== "message" || !isRecord(entry.message)) continue;
     if (entry.message.role !== "assistant") continue;
-    const messageText = textFromContent(entry.message.content).trim();
+    const messageText = assistantMessageText(entry.message.content).trim();
     if (messageText) {
       text = messageText;
       error = null;
@@ -71,8 +71,4 @@ export function lastAssistantResult(cwd: string, piSessionId: string): LastAssis
   } catch {
     return { text: "", error: null };
   }
-}
-
-export function lastAssistantText(cwd: string, piSessionId: string): string {
-  return lastAssistantResult(cwd, piSessionId).text;
 }

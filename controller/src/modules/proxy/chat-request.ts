@@ -1,9 +1,16 @@
 import type { Logger } from "../../core/logger";
+import type { ProxyPayload } from "./usage-observer";
+import { isProxyObject, stringFromProxyValue } from "./usage-observer";
 import type { AppContext } from "../../app-context";
 import { Effect } from "effect";
 import type { Recipe } from "../models/types";
-import { Schema } from "effect";
-import { isProxyObject, type ProxyObject } from "./content-normalizer";
+import { buildInferenceUrl } from "../../http/local-fetch";
+import {
+  DEFAULT_CHAT_PROVIDER,
+  parseProviderModel,
+  resolveConfiguredProviderConfig,
+  type ProviderRouteConfig,
+} from "../../services/provider-routing";
 const PROXY_SESSION_HEADER_NAMES = [
   "x-vllm-session-id",
   "x-session-id",
@@ -11,17 +18,20 @@ const PROXY_SESSION_HEADER_NAMES = [
   "openai-conversation-id",
 ];
 
-export interface OpenAIUsage {
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  reasoning_tokens?: number;
-  completion_tokens_details?: { reasoning_tokens?: number };
-}
-
 const NON_RUNNING_MODEL_WARN_INTERVAL_MS = 10 * 60_000;
 
 interface WarningLogDetails {
-  [key: string]: string | number | null;
+  [key: string]: string | number | null | undefined;
+  requested_model: string | null;
+  requested_recipe_id: string;
+  active_model: string | null;
+  source: string | null;
+  suppressed_requests?: number;
+}
+
+export interface UpstreamAuth {
+  [key: string]: string;
+  Authorization: string;
 }
 
 interface NonRunningModelWarningState {
@@ -57,59 +67,36 @@ export const createNonRunningModelWarner = (
 
     const suppressed = state.suppressed;
     warnings.set(key, { lastWarnAt: now, suppressed: 0 });
-    const warningDetails: WarningLogDetails = {
+    const logDetails: WarningLogDetails = {
       requested_model: details.requestedModel,
       requested_recipe_id: details.requestedRecipeId,
       active_model: details.activeModel,
       source: details.source,
     };
-    if (suppressed > 0) warningDetails["suppressed_requests"] = suppressed;
-    logger.warn("Rejected chat request for non-running model", warningDetails);
+    if (suppressed > 0) logDetails.suppressed_requests = suppressed;
+    logger.warn("Rejected chat request for non-running model", logDetails);
   };
 };
 
 export const extractSessionId = (
-  parsedBody: ProxyObject,
+  parsedBody: ProxyPayload,
   header: (name: string) => string | undefined,
 ): string | null => {
   const fromHeader = PROXY_SESSION_HEADER_NAMES.map((name) => header(name)).find(Boolean);
   if (fromHeader?.trim()) return fromHeader.trim();
 
-  const direct = parsedBody["session_id"] ?? parsedBody["sessionId"] ?? parsedBody["chat_id"];
-  if (Schema.is(Schema.String)(direct) && direct.trim()) return direct.trim();
+  const direct = stringFromProxyValue(
+    parsedBody.session_id ?? parsedBody.sessionId ?? parsedBody.chat_id,
+  );
+  if (direct?.trim()) return direct.trim();
 
-  const metadata = parsedBody["metadata"];
-  if (isProxyObject(metadata)) {
-    const record = metadata;
-    const fromMetadata = record["session_id"] ?? record["sessionId"] ?? record["chat_id"];
-    if (Schema.is(Schema.String)(fromMetadata) && fromMetadata.trim()) return fromMetadata.trim();
-  }
+  const metadata = parsedBody.metadata;
+  const fromMetadata = stringFromProxyValue(
+    metadata?.session_id ?? metadata?.sessionId ?? metadata?.chat_id,
+  );
+  if (fromMetadata?.trim()) return fromMetadata.trim();
 
   return null;
-};
-
-export const attachSessionUsage = (
-  result: ProxyObject,
-  sessionId: string | null,
-  usage: OpenAIUsage | undefined,
-): void => {
-  if (!sessionId) return;
-
-  const promptTokens = usage?.["prompt_tokens"] ?? 0;
-  const completionTokens = usage?.["completion_tokens"] ?? 0;
-  const completionDetails = usage?.completion_tokens_details;
-  const reasoningTokens =
-    usage?.["reasoning_tokens"] ?? completionDetails?.["reasoning_tokens"] ?? 0;
-
-  result["session_id"] = sessionId;
-  result["session_usage"] = {
-    prompt_tokens: promptTokens,
-    completion_tokens: completionTokens,
-    total_tokens: promptTokens + completionTokens,
-    current_prompt_tokens: promptTokens,
-    current_completion_tokens: completionTokens,
-    current_reasoning_tokens: reasoningTokens,
-  };
 };
 
 export const findRecipeByModel = (
@@ -129,12 +116,65 @@ export const findRecipeByModel = (
     }),
   );
 
-export const ensureStreamingUsageIncluded = (payload: ProxyObject): boolean => {
-  if (!payload["stream"]) return false;
-  const rawStreamOptions = payload["stream_options"];
-  const existingStreamOptions: ProxyObject = isProxyObject(rawStreamOptions) ? rawStreamOptions : {};
+export interface UpstreamResolution {
+  upstreamUrl: string;
+  auth: Partial<UpstreamAuth>;
+  requestProvider: string;
+  providerRouting: ProviderRouteConfig | null;
+  rewroteModel: boolean;
+}
+
+/**
+ * Resolve where a requested model's traffic goes and how it authenticates.
+ * A "provider/model" id routes to that configured provider with its key, and
+ * anything else reaches the local inference engine with INFERENCE_API_KEY
+ * when one is set. When provider-routed, the request body's model field is
+ * rewritten to the provider-local id.
+ */
+export const resolveUpstreamForModel = (
+  requestedModel: string | null,
+  parsed: ProxyPayload,
+  path: string,
+  context: AppContext,
+  options: { includeXApiKey?: boolean } = {},
+): UpstreamResolution => {
+  const providerModel = requestedModel
+    ? parseProviderModel(requestedModel)
+    : { provider: DEFAULT_CHAT_PROVIDER, modelId: "" };
+  const requestProvider = providerModel.provider;
+  const providerRouting =
+    requestProvider !== DEFAULT_CHAT_PROVIDER
+      ? resolveConfiguredProviderConfig(requestProvider, context.config.providers)
+      : null;
+  if (providerRouting) {
+    parsed["model"] = providerModel.modelId;
+    const auth: UpstreamAuth = {
+      Authorization: `Bearer ${providerRouting.apiKey}`,
+    };
+    if (options.includeXApiKey) auth["x-api-key"] = providerRouting.apiKey;
+    return {
+      upstreamUrl: `${providerRouting.baseUrl.replace(/\/+$/, "")}${path}`,
+      auth,
+      requestProvider,
+      providerRouting,
+      rewroteModel: true,
+    };
+  }
+  const inferenceKey = process.env["INFERENCE_API_KEY"] ?? "";
+  return {
+    upstreamUrl: buildInferenceUrl(context, path),
+    auth: inferenceKey ? { Authorization: `Bearer ${inferenceKey}` } : {},
+    requestProvider,
+    providerRouting: null,
+    rewroteModel: false,
+  };
+};
+
+export const ensureStreamingUsageIncluded = (payload: ProxyPayload): boolean => {
+  if (!payload.stream) return false;
+  const existingStreamOptions = isProxyObject(payload.stream_options) ? payload.stream_options : {};
   if (existingStreamOptions["include_usage"] === true) return false;
-  payload["stream_options"] = {
+  payload.stream_options = {
     ...existingStreamOptions,
     include_usage: true,
   };

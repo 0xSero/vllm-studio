@@ -1,27 +1,23 @@
 ---
 name: Feature request
-about: Suggest an idea for this project
-title: '[FEATURE] '
+about: Suggest an improvement
+title: "[FEATURE] "
 labels: "Type: Feature"
-assignees: ''
+assignees: ""
 ---
 
-## Feature Description
+## Problem
 
-A clear and concise description of the feature you'd like to see.
+What need or pain point would this address?
 
-## Problem Statement
+## Proposed solution
 
-What problem does this feature solve? What pain point does it address?
+Describe the result, requirements, and constraints.
 
-## Proposed Solution
+## Alternatives
 
-Describe the solution you'd like. Include any specific requirements or constraints.
+What other solutions have you considered?
 
-## Alternatives Considered
+## Context
 
-Describe any alternative solutions or features you've considered.
-
-## Additional Context
-
-Add any other context, mockups, or examples about the feature request here.
+Add relevant examples or mockups.

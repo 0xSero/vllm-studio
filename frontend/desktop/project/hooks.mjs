@@ -34,9 +34,25 @@ function stagedPaths() {
 
 function validateSnapshot(directory, files) {
   installSnapshot(directory);
+  const canonicalJson = "shared/model-recommendations.json";
+  const canonicalPath = path.join(directory, canonicalJson);
+  if (!existsSync(canonicalPath)) throw Error(`Missing canonical model data: ${canonicalJson}`);
+  const canonicalSource = readFileSync(canonicalPath, "utf8");
+  let canonicalData;
+  try {
+    canonicalData = JSON.parse(canonicalSource);
+  } catch (error) {
+    throw Error(`Invalid canonical model data: ${canonicalJson}`, { cause: error });
+  }
+  const terminalNewline = canonicalSource.endsWith("\n") ? "\n" : "";
+  if (canonicalSource !== `${JSON.stringify(canonicalData)}${terminalNewline}`) {
+    throw Error(`${canonicalJson} must use canonical compact JSON`);
+  }
   const formatted = files.filter(
     (file) =>
-      /\.(?:css|js|jsx|json|md|mjs|ts|tsx)$/.test(file) && existsSync(path.join(directory, file)),
+      file !== canonicalJson &&
+      /\.(?:css|js|jsx|json|md|mjs|ts|tsx)$/.test(file) &&
+      existsSync(path.join(directory, file)),
   );
   if (formatted.length > 0) {
     execute(

@@ -1,13 +1,7 @@
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Schema } from "effect";
+import { notifySessionListChanged } from "./session-list-changed";
 import lockfile from "proper-lockfile";
 import { resolveDataDir } from "./data-dir";
 import { isRecord } from "../../../shared/agent/guards";
@@ -34,6 +28,8 @@ type StoredSessionMetadata = {
   sessionUpdatedAt?: string;
   parentSessionId?: string;
   subagentName?: string;
+  subagentRunId?: string;
+  subagentTask?: string;
 };
 
 type SessionMetadataStore = {
@@ -69,25 +65,31 @@ function storePath(): string {
 
 const isString = Schema.is(Schema.String);
 
+function normalizeStoredMetadata(metadata: PersistedValue): StoredSessionMetadata | null {
+  if (!isRecord(metadata)) return null;
+  return {
+    archived: metadata.archived === true,
+    archivedAt: isString(metadata.archivedAt) ? metadata.archivedAt : null,
+    updatedAt: isString(metadata.updatedAt) ? metadata.updatedAt : undefined,
+    cwd: isString(metadata.cwd) ? metadata.cwd : undefined,
+    title: isString(metadata.title) ? metadata.title : null,
+    projectId: isString(metadata.projectId) ? metadata.projectId : undefined,
+    projectName: isString(metadata.projectName) ? metadata.projectName : undefined,
+    sessionUpdatedAt: isString(metadata.sessionUpdatedAt) ? metadata.sessionUpdatedAt : undefined,
+    parentSessionId: isString(metadata.parentSessionId) ? metadata.parentSessionId : undefined,
+    subagentName: isString(metadata.subagentName) ? metadata.subagentName : undefined,
+    subagentRunId: isString(metadata.subagentRunId) ? metadata.subagentRunId : undefined,
+    subagentTask: isString(metadata.subagentTask) ? metadata.subagentTask : undefined,
+  };
+}
+
 function normalizeStore(value: PersistedValue): SessionMetadataStore {
   if (!isRecord(value) || !isRecord(value.sessions)) return defaultStore();
   const sessions: Record<string, StoredSessionMetadata> = {};
   for (const [id, metadata] of Object.entries(value.sessions)) {
-    if (!id.trim() || !isRecord(metadata)) continue;
-    sessions[id] = {
-      archived: metadata.archived === true,
-      archivedAt: isString(metadata.archivedAt) ? metadata.archivedAt : null,
-      updatedAt: isString(metadata.updatedAt) ? metadata.updatedAt : undefined,
-      cwd: isString(metadata.cwd) ? metadata.cwd : undefined,
-      title: isString(metadata.title) ? metadata.title : null,
-      projectId: isString(metadata.projectId) ? metadata.projectId : undefined,
-      projectName: isString(metadata.projectName) ? metadata.projectName : undefined,
-      sessionUpdatedAt:
-        isString(metadata.sessionUpdatedAt) ? metadata.sessionUpdatedAt : undefined,
-      parentSessionId:
-        isString(metadata.parentSessionId) ? metadata.parentSessionId : undefined,
-      subagentName: isString(metadata.subagentName) ? metadata.subagentName : undefined,
-    };
+    if (!id.trim()) continue;
+    const normalized = normalizeStoredMetadata(metadata);
+    if (normalized) sessions[id] = normalized;
   }
   return { version: 1, sessions };
 }
@@ -124,6 +126,7 @@ function writeStore(store: SessionMetadataStore): void {
     chmodSync(tempPath, 0o600);
   } catch {}
   renameSync(tempPath, filepath);
+  notifySessionListChanged();
 }
 
 async function withStoreLock<T>(callback: () => T): Promise<T> {
@@ -207,6 +210,7 @@ export async function setSubagentLink(
   childSessionId: string,
   parentSessionId: string,
   subagentName: string | null,
+  run?: { runId?: string; cwd?: string; task?: string },
 ): Promise<void> {
   const childId = childSessionId.trim();
   const parentId = parentSessionId.trim();
@@ -214,15 +218,48 @@ export async function setSubagentLink(
   await withStoreLock(() => {
     const store = readStore();
     const current = store.sessions[childId] ?? {};
-    const next = {
+    const next: StoredSessionMetadata = {
       ...current,
       parentSessionId: parentId,
       updatedAt: new Date().toISOString(),
     };
-    if (subagentName?.trim()) next.subagentName = subagentName.trim();
+    const name = subagentName?.trim();
+    const runId = run?.runId?.trim();
+    const cwd = run?.cwd?.trim();
+    const task = run?.task?.trim();
+    if (name) next.subagentName = name;
+    if (runId) next.subagentRunId = runId;
+    if (cwd) next.cwd = cwd;
+    if (task) next.subagentTask = task;
     store.sessions[childId] = next;
     writeStore(store);
   });
+}
+
+export type StoredSubagentChild = {
+  childSessionId: string;
+  parentSessionId: string;
+  subagentName: string | null;
+  runId: string | null;
+  cwd: string | null;
+  task: string | null;
+  updatedAt: string | null;
+};
+
+export function listSubagentChildren(parentSessionId: string): StoredSubagentChild[] {
+  const parentId = parentSessionId.trim();
+  if (!parentId) return [];
+  return Object.entries(readStore().sessions)
+    .filter(([, metadata]) => metadata.parentSessionId === parentId)
+    .map(([childSessionId, metadata]) => ({
+      childSessionId,
+      parentSessionId: parentId,
+      subagentName: metadata.subagentName ?? null,
+      runId: metadata.subagentRunId ?? null,
+      cwd: metadata.cwd ?? null,
+      task: metadata.subagentTask ?? null,
+      updatedAt: metadata.updatedAt ?? null,
+    }));
 }
 
 export function listArchivedSessionMetadata(): ArchivedSessionMetadata[] {

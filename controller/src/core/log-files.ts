@@ -183,7 +183,6 @@ export const cleanupLogFiles = (
   return { deleted: deletedPaths.length };
 };
 
-
 export const tailFileLines = (
   path: string,
   limit: number,
@@ -220,7 +219,18 @@ export const tailFileLines = (
     }
 
     const text = Buffer.concat(chunks.reverse()).toString("utf-8");
-    const lines = text.split(/\r?\n/);
+    // When the read started mid-file (pos > 0), the first element is a
+    // partial line whose beginning was never read. A secret assignment can
+    // be bisected here — the KEY= marker lands before the read window while
+    // the live value stays inside it — so the anchored redactor finds nothing
+    // to match and the fragment is emitted verbatim. Drop that leading
+    // fragment so only whole lines reach callers.
+    let trimmed = text;
+    if (pos > 0) {
+      const nl = text.indexOf("\n");
+      trimmed = nl === -1 ? "" : text.slice(nl + 1);
+    }
+    const lines = trimmed.split(/\r?\n/);
     if (lines.length > 0 && lines[lines.length - 1] === "") {
       lines.pop();
     }
