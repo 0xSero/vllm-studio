@@ -1,1 +1,3 @@
-export { UsageSkeleton as default } from "@/features/usage/usage-skeleton";
+export default function Loading() {
+  return <p className="page">Loading…</p>;
+}

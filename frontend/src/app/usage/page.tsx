@@ -1,1 +1,2 @@
-export { default } from "@/features/usage/usage-page";
+import { Usage } from "@/features/studio";
+export default Usage;

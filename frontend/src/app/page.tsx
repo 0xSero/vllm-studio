@@ -1,1 +1,2 @@
-export { default } from "@/features/dashboard/dashboard-page";
+import { Dashboard } from "@/features/studio";
+export default Dashboard;
