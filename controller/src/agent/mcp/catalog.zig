@@ -1,8 +1,6 @@
 const std = @import("std");
 
-pub const github_package = "@modelcontextprotocol/server-github";
-pub const github_version = "2025.4.8";
-pub const github_executable = "mcp-server-github";
+pub const github_url = "https://api.githubcopilot.com/mcp/";
 
 const EnvironmentField = struct {
     key: []const u8,
@@ -16,19 +14,13 @@ const Entry = struct {
     name: []const u8,
     company: []const u8,
     description: []const u8,
-    protocol_era: []const u8,
-    transport: []const u8,
-    runtime_kind: ?[]const u8 = null,
-    package: ?[]const u8 = null,
-    version: ?[]const u8 = null,
-    executable: ?[]const u8 = null,
-    requirements: []const []const u8 = &.{},
-    command: ?[]const u8 = null,
+    protocol_era: []const u8 = "modern",
+    transport: []const u8 = "stdio",
+    command: ?[]const u8 = "{{LOCAL_STUDIO_CONTROLLER}}",
     args: []const []const u8 = &.{},
-    url: ?[]const u8 = null,
-    state: []const u8,
-    filesystem_access: bool,
-    recommended: bool,
+    state: []const u8 = "remote",
+    filesystem_access: bool = false,
+    recommended: bool = true,
     installable: bool = true,
     required_configuration: []const []const u8 = &.{},
     env_fields: []const EnvironmentField = &.{},
@@ -36,282 +28,129 @@ const Entry = struct {
     unavailable_reason: ?[]const u8 = null,
 };
 
+pub const OAuthRemote = struct {
+    id: []const u8,
+    name: []const u8,
+    url: []const u8,
+    protocol_era: []const u8,
+    client_id_env: ?[]const u8 = null,
+};
+
+const oauth_remotes = [_]OAuthRemote{
+    .{ .id = "notion", .name = "Notion", .url = "https://mcp.notion.com/mcp", .protocol_era = "auto" },
+    .{ .id = "linear", .name = "Linear", .url = "https://mcp.linear.app/mcp", .protocol_era = "auto" },
+    .{ .id = "atlassian", .name = "Atlassian Rovo", .url = "https://mcp.atlassian.com/v1/mcp/authv2", .protocol_era = "auto" },
+    .{ .id = "cloudflare", .name = "Cloudflare API", .url = "https://mcp.cloudflare.com/mcp", .protocol_era = "modern" },
+    .{ .id = "cloudflare-bindings", .name = "Cloudflare Bindings", .url = "https://bindings.mcp.cloudflare.com/mcp", .protocol_era = "modern" },
+    .{ .id = "cloudflare-builds", .name = "Cloudflare Builds", .url = "https://builds.mcp.cloudflare.com/mcp", .protocol_era = "modern" },
+    .{ .id = "cloudflare-observability", .name = "Cloudflare Observability", .url = "https://observability.mcp.cloudflare.com/mcp", .protocol_era = "modern" },
+    .{ .id = "vercel", .name = "Vercel", .url = "https://mcp.vercel.com", .protocol_era = "auto" },
+    .{ .id = "railway", .name = "Railway", .url = "https://mcp.railway.com", .protocol_era = "auto" },
+    .{ .id = "supabase", .name = "Supabase", .url = "https://mcp.supabase.com/mcp", .protocol_era = "auto" },
+    .{ .id = "stripe", .name = "Stripe", .url = "https://mcp.stripe.com", .protocol_era = "auto" },
+    .{ .id = "x-api", .name = "X API", .url = "https://api.x.com/mcp", .protocol_era = "auto", .client_id_env = "LOCAL_STUDIO_X_CLIENT_ID" },
+};
+
 const entries = [_]Entry{
     .{
         .id = "browser",
         .name = "Browser",
         .company = "Local Studio",
-        .description = "Session-isolated web navigation and page reading built into Local Studio",
-        .protocol_era = "modern",
+        .description = "Bundled Chromium navigation, interaction, screenshots, network inspection, and readable web fetches",
         .transport = "builtin",
-        .state = "stateful",
-        .filesystem_access = false,
-        .recommended = true,
+        .command = null,
+        .state = "controller-owned",
         .installable = false,
     },
     .{
         .id = "github",
         .name = "GitHub",
         .company = "GitHub",
-        .description = "Repositories, issues, pull requests, Actions, and code search",
-        .protocol_era = "legacy",
-        .transport = "stdio",
-        .runtime_kind = "node",
-        .package = github_package,
-        .version = github_version,
-        .executable = github_executable,
-        .state = "remote",
-        .filesystem_access = false,
-        .recommended = true,
+        .description = "Read and write repositories, review pull requests, post review and issue comments, manage releases, projects, packages, notifications, and Actions",
+        .args = &.{ "mcp-forward", github_url, "auto" },
         .required_configuration = &.{"oauth"},
         .auth_provider = "github",
     },
-    .{
-        .id = "x",
-        .name = "X / Twitter",
-        .company = "X",
-        .description = "Read and publish through an authenticated X account",
-        .protocol_era = "legacy",
-        .transport = "stdio",
-        .runtime_kind = "node",
-        .package = "@enescinar/twitter-mcp",
-        .version = "0.2.0",
-        .executable = "twitter-server",
-        .state = "remote",
-        .filesystem_access = false,
-        .recommended = false,
-        .required_configuration = &.{ "API_KEY", "API_SECRET_KEY", "ACCESS_TOKEN", "ACCESS_TOKEN_SECRET" },
-        .env_fields = &.{
-            .{ .key = "API_KEY", .label = "X API key", .secret = true },
-            .{ .key = "API_SECRET_KEY", .label = "X API secret", .secret = true },
-            .{ .key = "ACCESS_TOKEN", .label = "Access token", .secret = true },
-            .{ .key = "ACCESS_TOKEN_SECRET", .label = "Access token secret", .secret = true },
-        },
-    },
-    .{
-        .id = "computer",
-        .name = "Remote computer",
-        .company = "Local Studio",
-        .description = "Run commands and work with files over SSH on another machine",
-        .protocol_era = "legacy",
-        .transport = "stdio",
-        .command = "{{LOCAL_STUDIO_CONTROLLER}}",
-        .args = &.{"mcp-ssh"},
-        .state = "stateful",
-        .filesystem_access = true,
-        .recommended = true,
-        .required_configuration = &.{"SSH_HOST"},
-        .env_fields = &.{.{ .key = "SSH_HOST", .label = "SSH host", .placeholder = "user@machine", .secret = false }},
-    },
-    .{
-        .id = "notion",
-        .name = "Notion",
-        .company = "Notion",
-        .description = "Workspace search, pages, databases, and content",
-        .protocol_era = "legacy",
-        .transport = "stdio",
-        .runtime_kind = "node",
-        .package = "mcp-remote",
-        .version = "0.1.43",
-        .executable = "mcp-remote",
-        .args = &.{"https://mcp.notion.com/mcp"},
-        .state = "remote",
-        .filesystem_access = false,
-        .recommended = true,
-        .required_configuration = &.{"oauth"},
-    },
-    .{
-        .id = "cloudflare",
-        .name = "Cloudflare",
-        .company = "Cloudflare",
-        .description = "Search and execute across the Cloudflare API",
-        .protocol_era = "legacy",
-        .transport = "stdio",
-        .runtime_kind = "node",
-        .package = "mcp-remote",
-        .version = "0.1.43",
-        .executable = "mcp-remote",
-        .args = &.{"https://mcp.cloudflare.com/mcp"},
-        .state = "remote",
-        .filesystem_access = false,
-        .recommended = true,
-        .required_configuration = &.{"oauth"},
-    },
-    .{
-        .id = "railway",
-        .name = "Railway",
-        .company = "Railway",
-        .description = "Projects, services, deployments, variables, logs, and infrastructure",
-        .protocol_era = "legacy",
-        .transport = "stdio",
-        .runtime_kind = "node",
-        .package = "mcp-remote",
-        .version = "0.1.43",
-        .executable = "mcp-remote",
-        .args = &.{"https://mcp.railway.com"},
-        .state = "remote",
-        .filesystem_access = false,
-        .recommended = true,
-        .required_configuration = &.{"oauth"},
-    },
-    .{
-        .id = "vercel",
-        .name = "Vercel",
-        .company = "Vercel",
-        .description = "Projects, deployments, logs, domains, and documentation",
-        .protocol_era = "auto",
-        .transport = "http",
-        .url = "https://mcp.vercel.com",
-        .state = "remote",
-        .filesystem_access = false,
-        .recommended = true,
-        .installable = false,
-        .required_configuration = &.{ "oauth", "approved-client" },
-        .unavailable_reason = "Remote MCP OAuth requires an approved client",
-    },
-    .{
-        .id = "mcp-docs",
-        .name = "MCP Documentation",
-        .company = "Model Context Protocol",
-        .description = "Search the official Model Context Protocol documentation",
-        .protocol_era = "modern",
-        .transport = "http",
-        .url = "https://modelcontextprotocol.io/mcp",
-        .state = "stateless",
-        .filesystem_access = false,
-        .recommended = true,
-    },
-    .{
-        .id = "code-storage-docs",
-        .name = "Code Storage Documentation",
-        .company = "The Pierre Computer Company",
-        .description = "Search and read the public Code.Storage documentation and submit documentation feedback",
-        .protocol_era = "legacy",
-        .transport = "stdio",
-        .runtime_kind = "node",
-        .package = "mcp-remote",
-        .version = "0.1.43",
-        .executable = "mcp-remote",
-        .args = &.{"https://code.storage/docs/mcp"},
-        .state = "stateless",
-        .filesystem_access = false,
-        .recommended = true,
-    },
-    .{
-        .id = "mcp-fetch",
-        .name = "Fetch",
-        .company = "Model Context Protocol",
-        .description = "Fetch web content and convert it for model consumption",
-        .protocol_era = "legacy",
-        .transport = "stdio",
-        .runtime_kind = "python",
-        .package = "mcp-server-fetch",
-        .version = "2026.7.10",
-        .executable = "mcp-server-fetch",
-        .requirements = &.{"mcp<2"},
-        .state = "stateless",
-        .filesystem_access = false,
-        .recommended = true,
-    },
-    .{
-        .id = "mcp-time",
-        .name = "Time",
-        .company = "Model Context Protocol",
-        .description = "Timezone lookup and conversion",
-        .protocol_era = "legacy",
-        .transport = "stdio",
-        .runtime_kind = "python",
-        .package = "mcp-server-time",
-        .version = "2026.7.10",
-        .executable = "mcp-server-time",
-        .requirements = &.{"mcp<2"},
-        .state = "stateless",
-        .filesystem_access = false,
-        .recommended = true,
-    },
-    .{
-        .id = "mcp-sequential-thinking",
-        .name = "Sequential Thinking",
-        .company = "Model Context Protocol",
-        .description = "Structured dynamic problem solving",
-        .protocol_era = "legacy",
-        .transport = "stdio",
-        .runtime_kind = "node",
-        .package = "@modelcontextprotocol/server-sequential-thinking",
-        .version = "2026.7.4",
-        .executable = "mcp-server-sequential-thinking",
-        .state = "stateless",
-        .filesystem_access = false,
-        .recommended = true,
-    },
-    .{
-        .id = "mcp-memory",
-        .name = "Memory",
-        .company = "Model Context Protocol",
-        .description = "Persistent knowledge graph memory",
-        .protocol_era = "legacy",
-        .transport = "stdio",
-        .runtime_kind = "node",
-        .package = "@modelcontextprotocol/server-memory",
-        .version = "2026.7.4",
-        .executable = "mcp-server-memory",
-        .state = "stateful",
-        .filesystem_access = false,
-        .recommended = true,
-    },
-    .{
-        .id = "mcp-everything",
-        .name = "Everything",
-        .company = "Model Context Protocol",
-        .description = "Reference server covering MCP protocol features",
-        .protocol_era = "legacy",
-        .transport = "stdio",
-        .runtime_kind = "node",
-        .package = "@modelcontextprotocol/server-everything",
-        .version = "2026.7.4",
-        .executable = "mcp-server-everything",
-        .state = "stateless",
-        .filesystem_access = false,
-        .recommended = false,
-    },
-    .{
-        .id = "mcp-filesystem",
-        .name = "Filesystem",
-        .company = "Model Context Protocol",
-        .description = "Restricted file operations within explicitly supplied roots",
-        .protocol_era = "legacy",
-        .transport = "stdio",
-        .runtime_kind = "node",
-        .package = "@modelcontextprotocol/server-filesystem",
-        .version = "2026.7.10",
-        .executable = "mcp-server-filesystem",
-        .state = "stateful",
-        .filesystem_access = true,
-        .recommended = false,
-        .required_configuration = &.{"roots"},
-    },
-    .{
-        .id = "mcp-git",
-        .name = "Git",
-        .company = "Model Context Protocol",
-        .description = "Repository inspection and mutation for one explicit repository",
-        .protocol_era = "legacy",
-        .transport = "stdio",
-        .runtime_kind = "python",
-        .package = "mcp-server-git",
-        .version = "2026.7.10",
-        .executable = "mcp-server-git",
-        .requirements = &.{"mcp<2"},
-        .args = &.{"--repository"},
-        .state = "stateful",
-        .filesystem_access = true,
-        .recommended = false,
-        .required_configuration = &.{"repository"},
-    },
+    remote("notion", "Notion", "Notion", "Workspace search, pages, databases, comments, and content", "https://mcp.notion.com/mcp", "auto", true),
+    remote("linear", "Linear", "Linear", "Issues, projects, cycles, initiatives, comments, and workspace search", "https://mcp.linear.app/mcp", "auto", true),
+    remote("atlassian", "Atlassian Rovo", "Atlassian", "Jira and Confluence search, issues, projects, pages, and comments", "https://mcp.atlassian.com/v1/mcp/authv2", "auto", true),
+    remote("cloudflare", "Cloudflare API", "Cloudflare", "Search and execute across the Cloudflare API", "https://mcp.cloudflare.com/mcp", "modern", true),
+    publicRemote("cloudflare-docs", "Cloudflare Documentation", "Cloudflare", "Search current Cloudflare product and developer documentation", "https://docs.mcp.cloudflare.com/mcp", "modern"),
+    remote("cloudflare-bindings", "Cloudflare Bindings", "Cloudflare", "Build Workers applications with Cloudflare bindings and resources", "https://bindings.mcp.cloudflare.com/mcp", "modern", false),
+    remote("cloudflare-builds", "Cloudflare Builds", "Cloudflare", "Inspect Workers builds and deployment failures", "https://builds.mcp.cloudflare.com/mcp", "modern", false),
+    remote("cloudflare-observability", "Cloudflare Observability", "Cloudflare", "Inspect logs, traces, errors, and operational health", "https://observability.mcp.cloudflare.com/mcp", "modern", true),
+    publicRemote("cloudflare-radar", "Cloudflare Radar", "Cloudflare", "Query public Internet traffic, routing, security, and outage data", "https://radar.mcp.cloudflare.com/mcp", "modern"),
+    remote("vercel", "Vercel", "Vercel", "Projects, deployments, logs, domains, teams, and documentation", "https://mcp.vercel.com", "auto", true),
+    remote("railway", "Railway", "Railway", "Projects, services, deployments, variables, logs, and infrastructure", "https://mcp.railway.com", "auto", true),
+    remote("supabase", "Supabase", "Supabase", "Projects, databases, SQL, migrations, logs, and edge functions", "https://mcp.supabase.com/mcp", "auto", true),
+    remote("stripe", "Stripe", "Stripe", "Customers, payments, subscriptions, products, invoices, and balance data", "https://mcp.stripe.com", "auto", true),
+    remote("x-api", "X API", "X", "Search posts and users, inspect trends and news, and use app-authorized X API tools", "https://api.x.com/mcp", "auto", true),
+    publicRemote("x-docs", "X Developer Documentation", "X", "Search and read current X API documentation, references, examples, and guides", "https://docs.x.com/mcp", "modern"),
+    publicRemote("mcp-docs", "MCP Documentation", "Model Context Protocol", "Search the official Model Context Protocol specification and documentation", "https://modelcontextprotocol.io/mcp", "modern"),
+    publicRemote("code-storage-docs", "Code.Storage Documentation", "The Pierre Computer Company", "Search and read Code.Storage documentation and submit documentation feedback", "https://code.storage/docs/mcp", "auto"),
+    accountEntry("code-storage", "Code.Storage", "Authenticated repositories, commits, refs, pushes, and remote agent handoff"),
+    accountEntry("google-gmail", "Gmail", "Search, read, compose, label, and send mail through connected Google accounts"),
+    accountEntry("google-drive", "Google Drive", "Search and read files through connected Google accounts"),
+    accountEntry("google-calendar", "Google Calendar", "Read and manage calendars and events through connected Google accounts"),
+    accountEntry("google-chat", "Google Chat", "Read spaces and send messages through connected Google accounts"),
+    disabledLocal("filesystem", "Filesystem", "Restricted file operations within task-scoped roots"),
+    disabledLocal("git", "Git", "Repository inspection and mutation within task-scoped roots"),
 };
 
+fn remote(comptime id: []const u8, comptime name: []const u8, comptime company: []const u8, comptime description: []const u8, comptime url: []const u8, comptime upstream_era: []const u8, comptime recommended: bool) Entry {
+    return .{
+        .id = id,
+        .name = name,
+        .company = company,
+        .description = description,
+        .args = &.{ "mcp-forward", url, upstream_era },
+        .recommended = recommended,
+        .required_configuration = &.{"oauth"},
+        .auth_provider = id,
+    };
+}
+
+pub fn oauthRemote(id: []const u8) ?OAuthRemote {
+    for (oauth_remotes) |remote_entry| if (std.mem.eql(u8, remote_entry.id, id)) return remote_entry;
+    return null;
+}
+
+fn publicRemote(comptime id: []const u8, comptime name: []const u8, comptime company: []const u8, comptime description: []const u8, comptime url: []const u8, comptime upstream_era: []const u8) Entry {
+    return .{ .id = id, .name = name, .company = company, .description = description, .args = &.{ "mcp-forward", url, upstream_era }, .state = "stateless" };
+}
+
+fn accountEntry(comptime id: []const u8, comptime name: []const u8, comptime description: []const u8) Entry {
+    return .{
+        .id = id,
+        .name = name,
+        .company = "Local Studio",
+        .description = description,
+        .transport = "builtin",
+        .command = null,
+        .state = "account-managed",
+        .installable = false,
+        .unavailable_reason = "Connect an account from Settings to create one connector per account",
+    };
+}
+
+fn disabledLocal(comptime id: []const u8, comptime name: []const u8, comptime description: []const u8) Entry {
+    return .{
+        .id = id,
+        .name = name,
+        .company = "Local Studio",
+        .description = description,
+        .transport = "builtin",
+        .command = null,
+        .state = "policy-disabled",
+        .filesystem_access = true,
+        .recommended = false,
+        .installable = false,
+        .unavailable_reason = "Filesystem-bound tools remain disabled until sandbox-backed task roots are active",
+    };
+}
+
 pub fn write(writer: *std.Io.Writer) !void {
-    try writer.writeAll("{\"source\":\"local-studio\",\"profile\":\"curated\",\"entries\":[");
+    try writer.writeAll("{\"source\":\"local-studio\",\"profile\":\"native-first-wave\",\"entries\":[");
     for (entries, 0..) |entry, index| {
         if (index > 0) try writer.writeByte(',');
         try writeEntry(writer, entry);
@@ -332,25 +171,6 @@ fn writeEntry(writer: *std.Io.Writer, entry: Entry) !void {
     try std.json.Stringify.value(entry.protocol_era, .{}, writer);
     try writer.writeAll(",\"transport\":");
     try std.json.Stringify.value(entry.transport, .{}, writer);
-    if (entry.runtime_kind) |kind| {
-        try writer.writeAll(",\"runtime\":{\"kind\":");
-        try std.json.Stringify.value(kind, .{}, writer);
-        try writer.writeAll(",\"package\":");
-        try std.json.Stringify.value(entry.package.?, .{}, writer);
-        try writer.writeAll(",\"version\":");
-        try std.json.Stringify.value(entry.version.?, .{}, writer);
-        try writer.writeAll(",\"executable\":");
-        try std.json.Stringify.value(entry.executable.?, .{}, writer);
-        if (entry.requirements.len > 0) {
-            try writer.writeAll(",\"with\":[");
-            for (entry.requirements, 0..) |requirement, index| {
-                if (index > 0) try writer.writeByte(',');
-                try std.json.Stringify.value(requirement, .{}, writer);
-            }
-            try writer.writeByte(']');
-        }
-        try writer.writeByte('}');
-    }
     if (entry.command) |command| {
         try writer.writeAll(",\"command\":");
         try std.json.Stringify.value(command, .{}, writer);
@@ -362,10 +182,6 @@ fn writeEntry(writer: *std.Io.Writer, entry: Entry) !void {
             try std.json.Stringify.value(argument, .{}, writer);
         }
         try writer.writeByte(']');
-    }
-    if (entry.url) |url| {
-        try writer.writeAll(",\"url\":");
-        try std.json.Stringify.value(url, .{}, writer);
     }
     try writer.writeAll(",\"state\":");
     try std.json.Stringify.value(entry.state, .{}, writer);

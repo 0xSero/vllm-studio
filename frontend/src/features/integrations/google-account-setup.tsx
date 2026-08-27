@@ -46,12 +46,8 @@ export function GoogleAccountSetup({
   return (
     <div className="space-y-4">
       <Alert variant="warning">
-        Local Studio ships no Google client. Create a <strong>Desktop app</strong> OAuth client in
-        your own Google Cloud project, enable the Gmail API, and add yourself as a test user. No
-        redirect URI has to be registered — desktop clients accept a loopback port. While the
-        consent screen is in testing, Google expires refresh tokens after about a week, so expect to
-        sign in again; publishing is not a shortcut, because Gmail read access is a restricted scope
-        subject to review. Confirm current policy in the console.
+        Create a <strong>Desktop app</strong> OAuth client in Google Cloud and add yourself as a
+        test user.
       </Alert>
       <FormField
         label="OAuth client ID"
@@ -84,15 +80,6 @@ export function GoogleAccountSetup({
           onClick={() => void openExternal("https://console.cloud.google.com/auth/clients")}
         >
           Google Cloud
-        </Button>
-        <Button
-          variant="ghost"
-          icon={<ExternalLink className="h-4 w-4" />}
-          onClick={() =>
-            void openExternal("https://developers.google.com/gmail/api/quickstart/nodejs")
-          }
-        >
-          Setup guide
         </Button>
       </div>
     </div>

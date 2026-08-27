@@ -91,7 +91,7 @@ export function AutomationEditor({
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const sandboxAccounts = useSandboxAccounts();
-  const daytonaAccounts = sandboxAccounts.filter((account) => account.provider === "daytona");
+  const availableSandboxAccounts = sandboxAccounts;
 
   useMountSubscription(() => {
     if (models.length === 0) return;
@@ -242,22 +242,22 @@ export function AutomationEditor({
                         onChange={(event) =>
                           setDraft((current) => ({
                             ...current,
-                            placement: event.target.value === "daytona" ? "daytona" : "local",
+                            placement: event.target.value === "sandbox" ? "sandbox" : "local",
                             sandboxAccountId:
-                              event.target.value === "daytona"
-                                ? current.sandboxAccountId || daytonaAccounts[0]?.id || ""
+                              event.target.value === "sandbox"
+                                ? current.sandboxAccountId || availableSandboxAccounts[0]?.id || ""
                                 : "",
                           }))
                         }
                       >
                         <option value="local">Local</option>
-                        <option value="daytona" disabled={daytonaAccounts.length === 0}>
-                          Daytona
+                        <option value="sandbox" disabled={availableSandboxAccounts.length === 0}>
+                          Sandbox
                         </option>
                       </Select>
                     </FormField>
-                    {draft.placement === "daytona" ? (
-                      <FormField label="Daytona account" required>
+                    {draft.placement === "sandbox" ? (
+                      <FormField label="Sandbox account" required>
                         <Select
                           value={draft.sandboxAccountId}
                           onChange={(event) =>
@@ -267,7 +267,7 @@ export function AutomationEditor({
                             }))
                           }
                         >
-                          {daytonaAccounts.map((account) => (
+                          {availableSandboxAccounts.map((account) => (
                             <option key={account.id} value={account.id}>
                               {account.label}
                             </option>

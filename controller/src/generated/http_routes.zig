@@ -10,7 +10,7 @@ pub const Route = struct {
     streaming: Streaming,
 };
 
-pub const route_count: usize = 284;
+pub const route_count: usize = 289;
 
 pub const routes = [_]Route{
     .{ .method = .GET, .path = "/api/docs", .ownership = .shared, .streaming = .never },
@@ -170,6 +170,7 @@ pub const routes = [_]Route{
     .{ .method = .PUT, .path = "/api/agent/accounts/credential-store", .ownership = .head, .streaming = .never },
     .{ .method = .GET, .path = "/api/agent/accounts/sandboxes", .ownership = .head, .streaming = .never },
     .{ .method = .POST, .path = "/api/agent/accounts/sandboxes", .ownership = .head, .streaming = .never },
+    .{ .method = .PUT, .path = "/api/agent/accounts/sandboxes", .ownership = .head, .streaming = .never },
     .{ .method = .DELETE, .path = "/api/agent/accounts/sandboxes", .ownership = .head, .streaming = .never },
     .{ .method = .GET, .path = "/api/agent/accounts/messaging", .ownership = .head, .streaming = .never },
     .{ .method = .POST, .path = "/api/agent/accounts/messaging", .ownership = .head, .streaming = .never },
@@ -188,7 +189,6 @@ pub const routes = [_]Route{
     .{ .method = .GET, .path = "/api/agent/connectors/call", .ownership = .head, .streaming = .never },
     .{ .method = .POST, .path = "/api/agent/connectors/call", .ownership = .head, .streaming = .never },
     .{ .method = .POST, .path = "/api/agent/connectors/test", .ownership = .head, .streaming = .never },
-    .{ .method = .GET, .path = "/api/agent/connectors/ssh-server-path", .ownership = .head, .streaming = .never },
     .{ .method = .GET, .path = "/api/agent/skills", .ownership = .head, .streaming = .never },
     .{ .method = .GET, .path = "/api/agent/skills/load", .ownership = .head, .streaming = .never },
     .{ .method = .GET, .path = "/api/agent/prompt-templates", .ownership = .head, .streaming = .never },
@@ -250,6 +250,7 @@ pub const routes = [_]Route{
     .{ .method = .PUT, .path = "/internal/node/v1/accounts/credential-store", .ownership = .worker, .streaming = .never },
     .{ .method = .GET, .path = "/internal/node/v1/accounts/sandboxes", .ownership = .worker, .streaming = .never },
     .{ .method = .POST, .path = "/internal/node/v1/accounts/sandboxes", .ownership = .worker, .streaming = .never },
+    .{ .method = .PUT, .path = "/internal/node/v1/accounts/sandboxes", .ownership = .worker, .streaming = .never },
     .{ .method = .DELETE, .path = "/internal/node/v1/accounts/sandboxes", .ownership = .worker, .streaming = .never },
     .{ .method = .GET, .path = "/internal/node/v1/connector-grants", .ownership = .worker, .streaming = .never },
     .{ .method = .PUT, .path = "/internal/node/v1/connector-grants", .ownership = .worker, .streaming = .never },
@@ -258,7 +259,6 @@ pub const routes = [_]Route{
     .{ .method = .POST, .path = "/internal/node/v1/connector-call", .ownership = .worker, .streaming = .never },
     .{ .method = .POST, .path = "/internal/node/v1/connector-test", .ownership = .worker, .streaming = .never },
     .{ .method = .POST, .path = "/internal/node/v1/messaging/react", .ownership = .head, .streaming = .never },
-    .{ .method = .GET, .path = "/internal/node/v1/connectors/ssh-server-path", .ownership = .worker, .streaming = .never },
     .{ .method = .GET, .path = "/internal/node/v1/skills", .ownership = .worker, .streaming = .never },
     .{ .method = .GET, .path = "/internal/node/v1/skills/load", .ownership = .worker, .streaming = .never },
     .{ .method = .GET, .path = "/internal/node/v1/prompt-templates", .ownership = .worker, .streaming = .never },
@@ -286,6 +286,11 @@ pub const routes = [_]Route{
     .{ .method = .POST, .path = "/internal/node/v1/browser/input", .ownership = .worker, .streaming = .never },
     .{ .method = .POST, .path = "/internal/node/v1/browser/viewport", .ownership = .worker, .streaming = .never },
     .{ .method = .POST, .path = "/internal/node/v1/browser/:verb", .ownership = .worker, .streaming = .never },
+    .{ .method = .POST, .path = "/internal/head-link/v1/poll", .ownership = .worker, .streaming = .never },
+    .{ .method = .POST, .path = "/internal/head-link/v1/complete", .ownership = .worker, .streaming = .never },
+    .{ .method = .POST, .path = "/internal/head-link/v1/chat/completions", .ownership = .worker, .streaming = .conditional },
+    .{ .method = .POST, .path = "/internal/head-link/v1/responses", .ownership = .worker, .streaming = .conditional },
+    .{ .method = .POST, .path = "/internal/head-link/v1/messages", .ownership = .worker, .streaming = .conditional },
     .{ .method = .POST, .path = "/internal/harness/v1/turn", .ownership = .worker, .streaming = .never },
     .{ .method = .POST, .path = "/internal/harness/v1/fx-gateway", .ownership = .worker, .streaming = .always },
     .{ .method = .POST, .path = "/internal/harness/v1/abort", .ownership = .worker, .streaming = .never },

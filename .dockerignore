@@ -1,9 +1,8 @@
 *
 !controller/
 !controller/**
+!contracts/
+!contracts/**
 controller/.managed/
 controller/.zig-cache/
 controller/zig-out/
-!controller/
-!contracts/
-!contracts/**

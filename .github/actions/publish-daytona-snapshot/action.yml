@@ -1,5 +1,5 @@
 name: Publish Daytona snapshot
-description: Publish an immutable Daytona snapshot from an OCI image digest
+description: Publish an immutable Daytona snapshot from a commit-addressed OCI image
 
 inputs:
   api-key:
@@ -10,7 +10,7 @@ inputs:
     required: false
     default: https://app.daytona.io/api
   image:
-    description: Immutable OCI image reference
+    description: OCI image reference tagged with the full source commit
     required: true
   snapshot-name:
     description: Immutable Daytona snapshot name
@@ -75,7 +75,7 @@ runs:
         fi
 
         if [[ "$status" == "404" ]]; then
-          payload="$(jq -cn --arg name "$SNAPSHOT_NAME" --arg image "$SNAPSHOT_IMAGE" --arg sandbox_class "$SNAPSHOT_SANDBOX_CLASS" '{name: $name, imageName: $image, sandboxClass: $sandbox_class}')"
+          payload="$(jq -cn --arg name "$SNAPSHOT_NAME" --arg image "$SNAPSHOT_IMAGE" --arg sandbox_class "$SNAPSHOT_SANDBOX_CLASS" '{name: $name, imageName: $image, sandboxClass: $sandbox_class, cpu: 2, memory: 4, disk: 8}')"
           if ! status="$(curl --silent --show-error --connect-timeout 15 --max-time 120 --output "$response" --write-out '%{http_code}' --request POST --header "Authorization: Bearer $DAYTONA_API_KEY" --header 'Content-Type: application/json' --data "$payload" "$endpoint/snapshots")"; then
             echo "Unable to create Daytona snapshot" >&2
             exit 1

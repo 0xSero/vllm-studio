@@ -256,7 +256,7 @@ export type SubmitTurnArgs = {
   sessionId: string;
   kind: "chat" | "project";
   harness?: string;
-  placement?: "local" | "daytona";
+  placement?: "local" | "sandbox";
   sandboxAccountId?: string;
   projectId?: string;
   modelId: string;

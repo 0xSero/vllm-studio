@@ -4,7 +4,7 @@ const sqlite = @import("../../storage/sqlite.zig");
 const Io = std.Io;
 
 pub const SessionKind = enum { chat, project };
-pub const Placement = enum { head, local, node, daytona };
+pub const Placement = enum { head, local, node, sandbox };
 
 pub const SessionInput = struct {
     id: []const u8,
@@ -22,6 +22,7 @@ pub const TurnAttempt = struct {
 };
 
 pub fn initialize(database: *sqlite.Database) !void {
+    try migratePlacement(database);
     try database.executeScript(
         \\CREATE TABLE IF NOT EXISTS agent_execution_sessions (
         \\  session_id TEXT PRIMARY KEY,
@@ -54,7 +55,7 @@ pub fn initialize(database: *sqlite.Database) !void {
         \\  turn_id TEXT NOT NULL REFERENCES agent_execution_turns(turn_id) ON DELETE CASCADE,
         \\  session_id TEXT NOT NULL REFERENCES agent_execution_sessions(session_id) ON DELETE CASCADE,
         \\  ordinal INTEGER NOT NULL,
-        \\  placement TEXT NOT NULL CHECK(placement IN ('head', 'local', 'node', 'daytona')),
+        \\  placement TEXT NOT NULL CHECK(placement IN ('head', 'local', 'node', 'sandbox')),
         \\  placement_id TEXT,
         \\  native_session_id TEXT,
         \\  status TEXT NOT NULL,
@@ -109,6 +110,44 @@ pub fn initialize(database: *sqlite.Database) !void {
     try ensureColumn(database, "agent_execution_sessions", "failure", "ALTER TABLE agent_execution_sessions ADD COLUMN failure TEXT");
     try ensureColumn(database, "agent_execution_turns", "failure", "ALTER TABLE agent_execution_turns ADD COLUMN failure TEXT");
     try ensureColumn(database, "agent_execution_attempts", "failure", "ALTER TABLE agent_execution_attempts ADD COLUMN failure TEXT");
+}
+
+fn migratePlacement(database: *sqlite.Database) !void {
+    const needs_migration = check: {
+        var statement = try database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'agent_execution_attempts'");
+        defer statement.deinit();
+        if (try statement.step() != .row) break :check false;
+        const definition = statement.columnText(0) orelse break :check false;
+        break :check std.mem.indexOf(u8, definition, "'daytona'") != null;
+    };
+    if (!needs_migration) return;
+    try database.executeScript(
+        \\PRAGMA foreign_keys = OFF;
+        \\BEGIN IMMEDIATE;
+        \\CREATE TABLE agent_execution_attempts_next (
+        \\  attempt_id TEXT PRIMARY KEY,
+        \\  turn_id TEXT NOT NULL REFERENCES agent_execution_turns(turn_id) ON DELETE CASCADE,
+        \\  session_id TEXT NOT NULL REFERENCES agent_execution_sessions(session_id) ON DELETE CASCADE,
+        \\  ordinal INTEGER NOT NULL,
+        \\  placement TEXT NOT NULL CHECK(placement IN ('head', 'local', 'node', 'sandbox')),
+        \\  placement_id TEXT,
+        \\  native_session_id TEXT,
+        \\  status TEXT NOT NULL,
+        \\  failure TEXT,
+        \\  lease_owner TEXT,
+        \\  lease_expires_at TEXT,
+        \\  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        \\  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        \\  UNIQUE(turn_id, ordinal)
+        \\);
+        \\INSERT INTO agent_execution_attempts_next (attempt_id, turn_id, session_id, ordinal, placement, placement_id, native_session_id, status, failure, lease_owner, lease_expires_at, created_at, updated_at)
+        \\SELECT attempt_id, turn_id, session_id, ordinal, CASE placement WHEN 'daytona' THEN 'sandbox' ELSE placement END, placement_id, native_session_id, status, failure, lease_owner, lease_expires_at, created_at, updated_at FROM agent_execution_attempts;
+        \\DROP TABLE agent_execution_attempts;
+        \\ALTER TABLE agent_execution_attempts_next RENAME TO agent_execution_attempts;
+        \\CREATE INDEX idx_agent_execution_attempts_lease ON agent_execution_attempts(status, lease_expires_at);
+        \\COMMIT;
+        \\PRAGMA foreign_keys = ON;
+    );
 }
 
 pub fn ensureSession(database: *sqlite.Database, input: SessionInput) !void {

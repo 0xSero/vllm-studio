@@ -274,6 +274,7 @@
     { "method": "PUT", "path": "/api/agent/accounts/credential-store", "ownership": "head", "streaming": "never" },
     { "method": "GET", "path": "/api/agent/accounts/sandboxes", "ownership": "head", "streaming": "never" },
     { "method": "POST", "path": "/api/agent/accounts/sandboxes", "ownership": "head", "streaming": "never" },
+    { "method": "PUT", "path": "/api/agent/accounts/sandboxes", "ownership": "head", "streaming": "never" },
     { "method": "DELETE", "path": "/api/agent/accounts/sandboxes", "ownership": "head", "streaming": "never" },
     { "method": "GET", "path": "/api/agent/accounts/messaging", "ownership": "head", "streaming": "never" },
     { "method": "POST", "path": "/api/agent/accounts/messaging", "ownership": "head", "streaming": "never" },
@@ -319,12 +320,6 @@
     {
       "method": "POST",
       "path": "/api/agent/connectors/test",
-      "ownership": "head",
-      "streaming": "never"
-    },
-    {
-      "method": "GET",
-      "path": "/api/agent/connectors/ssh-server-path",
       "ownership": "head",
       "streaming": "never"
     },
@@ -609,6 +604,7 @@
     { "method": "PUT", "path": "/internal/node/v1/accounts/credential-store", "ownership": "worker", "streaming": "never" },
     { "method": "GET", "path": "/internal/node/v1/accounts/sandboxes", "ownership": "worker", "streaming": "never" },
     { "method": "POST", "path": "/internal/node/v1/accounts/sandboxes", "ownership": "worker", "streaming": "never" },
+    { "method": "PUT", "path": "/internal/node/v1/accounts/sandboxes", "ownership": "worker", "streaming": "never" },
     { "method": "DELETE", "path": "/internal/node/v1/accounts/sandboxes", "ownership": "worker", "streaming": "never" },
     {
       "method": "GET",
@@ -650,12 +646,6 @@
       "method": "POST",
       "path": "/internal/node/v1/messaging/react",
       "ownership": "head",
-      "streaming": "never"
-    },
-    {
-      "method": "GET",
-      "path": "/internal/node/v1/connectors/ssh-server-path",
-      "ownership": "worker",
       "streaming": "never"
     },
     {
@@ -819,6 +809,36 @@
       "path": "/internal/node/v1/browser/:verb",
       "ownership": "worker",
       "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/head-link/v1/poll",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/head-link/v1/complete",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/head-link/v1/chat/completions",
+      "ownership": "worker",
+      "streaming": "conditional"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/head-link/v1/responses",
+      "ownership": "worker",
+      "streaming": "conditional"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/head-link/v1/messages",
+      "ownership": "worker",
+      "streaming": "conditional"
     },
     {
       "method": "POST",

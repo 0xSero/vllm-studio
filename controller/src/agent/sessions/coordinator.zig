@@ -3,7 +3,7 @@ const config = @import("../../app/config.zig");
 const records = @import("control_store.zig");
 const execution = @import("../execution/store.zig");
 const cloud_store = @import("../cloud/store.zig");
-const daytona_runtime = @import("../cloud/daytona.zig");
+const sandbox_runtime = @import("../cloud/runtime.zig");
 const agent_code_storage = @import("../../accounts/code_storage/service.zig");
 const sqlite = @import("../../storage/sqlite.zig");
 const harness_nodes = @import("../harness/nodes.zig");
@@ -17,6 +17,7 @@ const session_change = @import("change.zig");
 const workbench_change = @import("../../workbench/change.zig");
 
 const Io = std.Io;
+const sandbox_idle_seconds = 120;
 const http = std.http;
 
 const EventSnapshot = struct {
@@ -128,11 +129,11 @@ pub fn turnPayload(allocator: std.mem.Allocator, io: Io, mode: config.Mode, clie
     return turnPayloadInternal(allocator, io, mode, client, database, harness, null, document);
 }
 
-pub fn turnPayloadWithCloud(allocator: std.mem.Allocator, io: Io, mode: config.Mode, client: *http.Client, database: *sqlite.Database, harness: *harness_runtime.Manager, daytona: *daytona_runtime.Manager, document: []const u8) ![]u8 {
-    return turnPayloadInternal(allocator, io, mode, client, database, harness, daytona, document);
+pub fn turnPayloadWithCloud(allocator: std.mem.Allocator, io: Io, mode: config.Mode, client: *http.Client, database: *sqlite.Database, harness: *harness_runtime.Manager, sandboxes: *sandbox_runtime.Manager, document: []const u8) ![]u8 {
+    return turnPayloadInternal(allocator, io, mode, client, database, harness, sandboxes, document);
 }
 
-fn turnPayloadInternal(allocator: std.mem.Allocator, io: Io, mode: config.Mode, client: *http.Client, database: *sqlite.Database, harness: *harness_runtime.Manager, daytona: ?*daytona_runtime.Manager, document: []const u8) ![]u8 {
+fn turnPayloadInternal(allocator: std.mem.Allocator, io: Io, mode: config.Mode, client: *http.Client, database: *sqlite.Database, harness: *harness_runtime.Manager, sandboxes: ?*sandbox_runtime.Manager, document: []const u8) ![]u8 {
     const routed_document = try agent_goal_driver.decorateTurn(allocator, io, database, document);
     defer allocator.free(routed_document);
     var parsed = std.json.parseFromSlice(std.json.Value, allocator, routed_document, .{}) catch return error.InvalidTurnPayload;
@@ -199,13 +200,13 @@ fn turnPayloadInternal(allocator: std.mem.Allocator, io: Io, mode: config.Mode, 
     }
     const dispatch_document = detached_document orelse routed_document;
     if (!is_chat and !std.mem.eql(u8, requested_harness, "pi") and !std.mem.eql(u8, requested_harness, "fx") and !std.mem.eql(u8, requested_harness, "opencode") and !std.mem.eql(u8, requested_harness, "codex") and !std.mem.eql(u8, requested_harness, "claude")) return error.HarnessDriverUnavailable;
-    const existing_cloud = if (existing) |session| std.mem.startsWith(u8, session.node_id, "daytona-") else false;
+    const existing_cloud = if (existing) |session| std.mem.startsWith(u8, session.node_id, "daytona-") or std.mem.startsWith(u8, session.node_id, "vercel-") else false;
     if (existing != null and requested_placement != null and !is_chat) {
-        const requests_cloud = std.mem.eql(u8, requested_placement.?, "daytona");
+        const requests_cloud = std.mem.eql(u8, requested_placement.?, "sandbox");
         if (requests_cloud != existing_cloud) return error.SessionPlacementMismatch;
     }
-    const use_daytona = !is_chat and mode == .head and if (requested_placement) |value| std.mem.eql(u8, value, "daytona") else existing_cloud;
-    if (requested_placement) |value| if (!std.mem.eql(u8, value, "local") and !std.mem.eql(u8, value, "node") and !std.mem.eql(u8, value, "daytona")) return error.InvalidAgentPlacement;
+    const use_sandbox = !is_chat and mode == .head and if (requested_placement) |value| std.mem.eql(u8, value, "sandbox") else existing_cloud;
+    if (requested_placement) |value| if (!std.mem.eql(u8, value, "local") and !std.mem.eql(u8, value, "node") and !std.mem.eql(u8, value, "sandbox")) return error.InvalidAgentPlacement;
     if (is_chat and requested_placement != null and !std.mem.eql(u8, requested_placement.?, "head")) return error.InvalidChatPlacement;
 
     try lockedEnsureExecution(io, database, .{
@@ -217,24 +218,28 @@ fn turnPayloadInternal(allocator: std.mem.Allocator, io: Io, mode: config.Mode, 
         .model_id = model_id,
         .model_route_id = model_route_id,
     });
+    if (use_sandbox and existing_cloud) {
+        const cloud = sandboxes orelse return error.SandboxPlacementUnavailable;
+        try cloud.resumeSession(client, database, session_id);
+    }
     const preferred_node = if (existing) |session| session.node_id else requested_node;
-    var target = if (mode == .head and !is_chat and (!use_daytona or existing_cloud)) try selectHarnessNode(allocator, io, database, requested_harness, preferred_node) else null;
+    var target = if (mode == .head and !is_chat and (!use_sandbox or existing_cloud)) try selectHarnessNode(allocator, io, database, requested_harness, preferred_node) else null;
     defer if (target) |*node| node.deinit();
-    const cloud_workspace = if (use_daytona) try daytona_runtime.workspacePath(allocator, session_id) else null;
+    const cloud_workspace = if (use_sandbox) try sandbox_runtime.workspacePath(allocator, session_id) else null;
     defer if (cloud_workspace) |value| allocator.free(value);
-    const turn_attempt = try lockedBeginExecution(io, database, session_id, message, if (is_chat) .head else if (mode == .standalone) .local else if (use_daytona) .daytona else .node, if (target) |node| node.id else null, if (is_chat) "head" else if (mode == .standalone) "local" else if (target) |node| node.id else "daytona");
-    if (use_daytona and target == null) {
-        const cloud = daytona orelse return error.DaytonaPlacementUnavailable;
+    const turn_attempt = try lockedBeginExecution(io, database, session_id, message, if (is_chat) .head else if (mode == .standalone) .local else if (use_sandbox) .sandbox else .node, if (target) |node| node.id else null, if (is_chat) "head" else if (mode == .standalone) "local" else if (target) |node| node.id else "sandbox");
+    if (use_sandbox and target == null) {
+        const cloud = sandboxes orelse return error.SandboxPlacementUnavailable;
         const account_id = requested_sandbox_account_id orelse return error.SandboxAccountRequired;
         const checkout = agent_code_storage.forward(allocator, io, client, database, "/internal/node/v1/projects/cloud-checkout", .POST, routed_document) catch |failure| {
             try lockedExecutionStatus(io, database, session_id, "failed", null, @errorName(failure));
             return failure;
         };
         defer allocator.free(checkout);
-        const snapshot = try cloud.defaultSnapshot();
-        defer allocator.free(snapshot);
-        const worker_id = try lockedCreateCloudWorker(io, database, session_id, turn_attempt.attempt_id[0..], account_id, requested_harness, snapshot);
-        var provisioned = cloud.provision(client, database, worker_id[0..], session_id, account_id, requested_harness, snapshot, checkout) catch |failure| {
+        var selection = try cloud.selection(account_id);
+        defer selection.deinit();
+        const worker_id = try lockedCreateCloudWorker(io, database, session_id, turn_attempt.attempt_id[0..], @tagName(selection.provider), account_id, requested_harness, selection.artifact);
+        var provisioned = cloud.provision(client, database, &selection, worker_id[0..], session_id, account_id, requested_harness, checkout) catch |failure| {
             try lockedCloudWorkerStatus(io, database, worker_id[0..], "failed", @errorName(failure));
             try lockedExecutionStatus(io, database, session_id, "failed", null, @errorName(failure));
             return failure;
@@ -260,7 +265,7 @@ fn turnPayloadInternal(allocator: std.mem.Allocator, io: Io, mode: config.Mode, 
         .project_path = project_path,
         .model_id = model_id,
         .model_route_id = model_route_id,
-        .status = "queued",
+        .status = "starting",
         .event_cursor = if (existing) |session| session.event_cursor else 0,
         .sharing_policy = if (existing) |session| session.sharing_policy else "private",
     });
@@ -557,6 +562,7 @@ fn ingestRuntimeDocument(allocator: std.mem.Allocator, io: Io, database: *sqlite
     try records.updateRuntime(database, session_id, phase, native_session_id, committed_cursor);
     try records.updateDriver(database, session_id, harness_version, capabilities_json);
     try execution.setLatestStatus(database, session_id, phase, native_session_id, failure);
+    if (!active) try cloud_store.requestPause(database, session_id, sandbox_idle_seconds);
     try transaction.commit();
 }
 
@@ -720,10 +726,10 @@ fn lockedAttemptPlacement(io: Io, database: *sqlite.Database, attempt_id: []cons
     try execution.setAttemptPlacementId(database, attempt_id, placement_id);
 }
 
-fn lockedCreateCloudWorker(io: Io, database: *sqlite.Database, session_id: []const u8, attempt_id: []const u8, account_id: []const u8, harness: []const u8, image: []const u8) ![36]u8 {
+fn lockedCreateCloudWorker(io: Io, database: *sqlite.Database, session_id: []const u8, attempt_id: []const u8, provider: []const u8, account_id: []const u8, harness: []const u8, image: []const u8) ![36]u8 {
     try database.lock(io);
     defer database.unlock(io);
-    return cloud_store.create(database, io, session_id, attempt_id, account_id, harness, image, 3600);
+    return cloud_store.create(database, io, session_id, attempt_id, provider, account_id, harness, image, 3600);
 }
 
 fn lockedCloudWorkerStatus(io: Io, database: *sqlite.Database, worker_id: []const u8, status: []const u8, message: ?[]const u8) !void {

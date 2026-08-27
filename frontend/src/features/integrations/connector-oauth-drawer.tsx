@@ -17,7 +17,7 @@ import { StatusText } from "@/features/recipes/recipes-content/catalog-table-she
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { jsonBody, requestAgentJson } from "./agent-json";
 import { openExternal } from "./google-account-model";
-import { renderCommandLine, type CatalogEntry } from "./connector-catalog";
+import type { CatalogEntry } from "./connector-catalog";
 
 /**
  * The Connect surface for an OAuth-capable catalog connector.
@@ -114,7 +114,7 @@ function ClientSetup({
       </FormField>
       <Button size="sm" variant="secondary" onClick={() => void openExternal(auth.createClientUrl)}>
         <ExternalLink className="h-3.5 w-3.5" />
-        Create the OAuth app on {company} (pre-filled)
+        Create OAuth app
       </Button>
     </div>
   );
@@ -123,45 +123,38 @@ function ClientSetup({
 function GrantFacts({
   entry,
   status,
-  connector,
 }: {
   entry: CatalogEntry;
   status: OAuthStatusResponse | null;
-  connector: ConnectorView | null;
 }) {
-  const connected = Boolean(status?.connected);
-  const scopes = (connected && status ? status.scopes : (entry.auth?.scopes ?? [])).join(" · ");
-  const rowState = !connector
-    ? "Not registered yet — connecting registers it, disabled"
-    : connector.enabled
-      ? "Registered and enabled — tools are offered to the model"
-      : "Registered but disabled — enable it from the MCP servers table";
+  const tools =
+    entry.id === "github"
+      ? [
+          "Read and write repository content",
+          "Review pull requests and post inline comments",
+          "Create and manage issues and pull requests",
+          "Inspect and run GitHub Actions workflows",
+          "Manage projects, releases, packages, gists, and notifications",
+        ]
+      : [entry.description];
   return (
-    <ResourceDrawerSection title="What connecting grants">
-      <ResourceFact
-        label="Account"
-        value={
-          connected ? (
-            <StatusText tone="ok">{status?.account ?? "connected"}</StatusText>
-          ) : (
-            "none yet"
-          )
-        }
-      />
-      <ResourceFact label="Scopes" value={scopes || "—"} mono />
-      <ResourceFact
-        label="Runs"
-        value={renderCommandLine(entry.command ?? "", entry.args ?? [])}
-        mono
-      />
-      {entry.auth ? (
+    <>
+      <ResourceDrawerSection title="Tools">
+        {tools.map((tool) => (
+          <div key={tool} className="py-2.5 text-[length:var(--fs-sm)] text-(--ui-fg)">
+            {tool}
+          </div>
+        ))}
+      </ResourceDrawerSection>
+      <ResourceDrawerSection title="Permissions">
         <ResourceFact
-          label="Token handling"
-          value={`A fresh access token is injected into ${entry.auth.tokenEnv} when the server starts. It is never stored in the server row and never shown.`}
+          label="Scopes"
+          value={
+            (status?.scopes.length ? status.scopes : (entry.auth?.scopes ?? [])).join(" · ") || "—"
+          }
         />
-      ) : null}
-      <ResourceFact label="State" value={rowState} />
-    </ResourceDrawerSection>
+      </ResourceDrawerSection>
+    </>
   );
 }
 
@@ -173,7 +166,6 @@ function FooterActions({
   connectDisabled,
   onClose,
   onCancel,
-  onDisconnect,
   onConnect,
 }: {
   entryName: string;
@@ -183,7 +175,6 @@ function FooterActions({
   connectDisabled: boolean;
   onClose: () => void;
   onCancel: () => void;
-  onDisconnect: () => void;
   onConnect: () => void;
 }) {
   return (
@@ -195,13 +186,9 @@ function FooterActions({
         <Button variant="secondary" loading={busy} onClick={onCancel}>
           Cancel sign-in
         </Button>
-      ) : connected ? (
-        <Button variant="danger" loading={busy} onClick={onDisconnect}>
-          Disconnect
-        </Button>
       ) : (
         <Button loading={busy} disabled={connectDisabled} onClick={onConnect}>
-          Connect {entryName}
+          {connected ? "Add another account" : `Connect ${entryName}`}
         </Button>
       )}
     </>
@@ -265,7 +252,7 @@ const failureMessage = (error: unknown, fallback: string): string =>
 async function saveClientAction(context: ActionContext): Promise<boolean> {
   const trimmed = context.getSeededDraft().trim();
   if (!trimmed) return false;
-  const next = await requestAgentJson(statusUrl(context.entryId), decodeStatus, {
+  const next = await requestAgentJson("/api/agent/oauth/client", decodeStatus, {
     ...jsonBody({ connectorId: context.entryId, clientId: trimmed }),
     method: "PUT",
   });
@@ -302,10 +289,11 @@ async function connectAction(context: ActionContext): Promise<void> {
 async function cancelConnectAction(context: ActionContext): Promise<void> {
   context.setBusy(true);
   try {
-    await requestAgentJson("/api/agent/oauth/authorize", () => true, {
-      ...jsonBody({ connectorId: context.entryId }),
-      method: "DELETE",
-    });
+    await requestAgentJson(
+      `/api/agent/oauth/authorize?connectorId=${encodeURIComponent(context.entryId)}`,
+      () => true,
+      { method: "DELETE" },
+    );
   } catch {
     // Cancelling a flow that already ended is a success, not a failure.
   } finally {
@@ -315,12 +303,12 @@ async function cancelConnectAction(context: ActionContext): Promise<void> {
   }
 }
 
-async function disconnectAction(context: ActionContext): Promise<void> {
+async function disconnectAction(context: ActionContext, account: string): Promise<void> {
   context.setBusy(true);
   context.setError("");
   try {
     const next = await requestAgentJson(
-      `/api/agent/oauth?connectorId=${encodeURIComponent(context.entryId)}`,
+      `/api/agent/oauth?connectorId=${encodeURIComponent(context.entryId)}&account=${encodeURIComponent(account)}`,
       decodeStatus,
       { method: "DELETE" },
     );
@@ -335,13 +323,12 @@ async function disconnectAction(context: ActionContext): Promise<void> {
 
 export function ConnectorOAuthDrawer({
   entry,
-  connector,
+  connectors,
   onClose,
   onChanged,
 }: {
   entry: CatalogEntry;
-  /** The registered row, when one exists — names the enabled state honestly. */
-  connector: ConnectorView | null;
+  connectors: readonly ConnectorView[];
   onClose: () => void;
   onChanged: (connectors: readonly ConnectorView[]) => void;
 }) {
@@ -387,7 +374,8 @@ export function ConnectorOAuthDrawer({
 
   const connected = Boolean(status?.connected);
   const needsClient = Boolean(status) && !status?.configured;
-  const showClientSetup = Boolean(entry.auth && status && (needsClient || editingClient));
+  const canEditClient = Boolean(entry.auth?.clientIdEnv);
+  const showClientSetup = Boolean(canEditClient && status && (needsClient || editingClient));
 
   return (
     <ResourceDrawer
@@ -398,11 +386,7 @@ export function ConnectorOAuthDrawer({
           {connected ? "connected" : "not connected"}
         </StatusPill>
       }
-      status={
-        connected && status?.account
-          ? `Connected as ${status.account}`
-          : "Connects with the provider's own sign-in — no tokens to paste"
-      }
+      status={connected ? `${status?.accounts?.length ?? 1} connected` : entry.company}
       footer={
         <FooterActions
           entryName={entry.name}
@@ -412,7 +396,6 @@ export function ConnectorOAuthDrawer({
           connectDisabled={!status || (needsClient && !seededDraft.trim())}
           onClose={onClose}
           onCancel={() => void cancelConnectAction(context)}
-          onDisconnect={() => void disconnectAction(context)}
           onConnect={() => void connectAction(context)}
         />
       }
@@ -421,16 +404,18 @@ export function ConnectorOAuthDrawer({
     >
       <DrawerBody
         entry={entry}
-        connector={connector}
+        connectors={connectors}
         status={status}
         error={error}
         waiting={waiting}
         connected={connected}
         showClientSetup={showClientSetup}
+        canEditClient={canEditClient}
         seededDraft={seededDraft}
         editingClient={editingClient}
         onClientDraft={setClientDraft}
         onEditClient={() => setEditingClient(true)}
+        onDisconnect={(account) => void disconnectAction(context, account)}
       />
     </ResourceDrawer>
   );
@@ -438,37 +423,35 @@ export function ConnectorOAuthDrawer({
 
 function DrawerBody({
   entry,
-  connector,
+  connectors,
   status,
   error,
   waiting,
   connected,
   showClientSetup,
+  canEditClient,
   seededDraft,
   editingClient,
   onClientDraft,
   onEditClient,
+  onDisconnect,
 }: {
   entry: CatalogEntry;
-  connector: ConnectorView | null;
+  connectors: readonly ConnectorView[];
   status: OAuthStatusResponse | null;
   error: string;
   waiting: boolean;
   connected: boolean;
   showClientSetup: boolean;
+  canEditClient: boolean;
   seededDraft: string;
   editingClient: boolean;
   onClientDraft: (next: string) => void;
   onEditClient: () => void;
+  onDisconnect: (account: string) => void;
 }) {
   return (
     <>
-      <p className="mb-6 text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
-        {entry.description} Connecting authorizes Local Studio with {entry.company} directly; the
-        runtime keeps the grant and hands the launched server a fresh access token each time it
-        starts. Nothing secret is typed here and nothing secret is shown here.
-      </p>
-
       {!status && !error ? (
         <div className="mb-6 flex items-center gap-2 text-(--dim)">
           <Spinner size="xs" />
@@ -487,9 +470,35 @@ function DrawerBody({
 
       <FlowProgress waiting={waiting} pending={waiting ? (status?.pending ?? null) : null} />
 
-      <GrantFacts entry={entry} status={status} connector={connector} />
+      {status?.accounts?.length ? (
+        <ResourceDrawerSection title="Accounts">
+          {status.accounts.map((account) => {
+            const enabled = connectors.some(
+              (connector) => connector.auth?.account === account.id && connector.enabled,
+            );
+            return (
+              <ResourceFact
+                key={account.id}
+                label={account.label}
+                value={
+                  <span className="flex items-center justify-between gap-3">
+                    <StatusText tone={enabled ? "ok" : "dim"}>
+                      {enabled ? "Available" : "Connected"}
+                    </StatusText>
+                    <Button size="sm" variant="secondary" onClick={() => onDisconnect(account.id)}>
+                      Disconnect
+                    </Button>
+                  </span>
+                }
+              />
+            );
+          })}
+        </ResourceDrawerSection>
+      ) : null}
 
-      {status?.configured && !editingClient && !connected && !waiting ? (
+      <GrantFacts entry={entry} status={status} />
+
+      {canEditClient && status?.configured && !editingClient && !connected && !waiting ? (
         <button
           type="button"
           onClick={onEditClient}

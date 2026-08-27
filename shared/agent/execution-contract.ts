@@ -2,7 +2,7 @@ import { Schema } from "effect";
 import { AgentHarnessSchema } from "./harness-id";
 
 export const AgentSessionKindSchema = Schema.Literals(["chat", "project"]);
-export const AgentAttemptPlacementSchema = Schema.Literals(["head", "local", "node", "daytona"]);
+export const AgentAttemptPlacementSchema = Schema.Literals(["head", "local", "node", "sandbox"]);
 export const AgentExecutionStatusSchema = Schema.Literals([
   "queued",
   "running",

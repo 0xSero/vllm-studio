@@ -15,7 +15,7 @@ pub const Kind = enum {
 pub fn resolve(allocator: std.mem.Allocator, io: std.Io, environment: *const std.process.Environ.Map, connector: std.json.ObjectMap) !Launch {
     const cwd = stringField(connector, "cwd");
     if (cwd) |value| if (!std.fs.path.isAbsolute(value)) return error.ConnectorCwdMustBeAbsolute;
-    const runtime_value = connector.get("runtime") orelse return direct(allocator, connector, cwd);
+    const runtime_value = connector.get("runtime") orelse return direct(allocator, io, connector, cwd);
     if (runtime_value != .object) return error.InvalidConnectorRuntime;
     const runtime = runtime_value.object;
     const kind = stringField(runtime, "kind") orelse return error.ConnectorRuntimeKindRequired;
@@ -131,8 +131,9 @@ pub fn findExecutable(allocator: std.mem.Allocator, io: std.Io, environment: *co
     return null;
 }
 
-fn direct(allocator: std.mem.Allocator, connector: std.json.ObjectMap, cwd: ?[]const u8) !Launch {
-    const command = stringField(connector, "command") orelse return error.ConnectorCommandRequired;
+fn direct(allocator: std.mem.Allocator, io: std.Io, connector: std.json.ObjectMap, cwd: ?[]const u8) !Launch {
+    const configured = stringField(connector, "command") orelse return error.ConnectorCommandRequired;
+    const command = if (std.mem.eql(u8, configured, "{{LOCAL_STUDIO_CONTROLLER}}")) try std.process.executablePathAlloc(io, allocator) else configured;
     if (command.len == 0) return error.ConnectorCommandRequired;
     return .{ .argv = try appendConnectorArgs(allocator, connector, &.{command}), .cwd = cwd, .kind = .direct };
 }

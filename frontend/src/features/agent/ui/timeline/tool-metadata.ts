@@ -209,6 +209,15 @@ export function classifyTool(block: ToolBlock): ToolKind {
 export function toolVerb(block: ToolBlock): string {
   const running = block.status === "running";
   const name = block.name.toLowerCase();
+  if (name === "local_studio_prepare_checkout") {
+    return running ? "Preparing checkout" : "Prepared checkout";
+  }
+  if (name === "local_studio_start_sandbox") {
+    return running ? "Starting sandbox" : "Started sandbox";
+  }
+  if (name === "local_studio_clone_repository") {
+    return running ? "Cloning repository" : "Cloned repository";
+  }
   switch (classifyTool(block)) {
     case "edit":
       if (hasAnyNeedle(name, ["create", "write"])) return running ? "Creating" : "Created";

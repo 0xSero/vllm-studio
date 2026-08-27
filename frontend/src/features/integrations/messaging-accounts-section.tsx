@@ -7,8 +7,9 @@ import {
   type MessagingAccount,
   type MessagingProvider,
 } from "@shared/agent/messaging-account-contract";
-import { Alert, Button, FormField, Input, UiModal, UiModalBody, UiModalHeader } from "@/ui";
-import { MessageSquare, X } from "@/ui/icon-registry";
+import { Alert, Button, FormField, Input } from "@/ui";
+import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
+import { ResourceLogo } from "@/ui/resource-logo";
 import { requestJson } from "./google-account-model";
 
 const decodeAccounts = Schema.decodeUnknownSync(MessagingAccountsResponseSchema);
@@ -35,6 +36,7 @@ export function MessagingAccountModal({
   const valid =
     token.trim().length > 0 &&
     (provider === "telegram" || (applicationId.trim().length > 0 && publicKey.trim().length > 0));
+  const displayName = provider === "telegram" ? "Telegram" : "Discord";
 
   const connect = async () => {
     setBusy(true);
@@ -80,42 +82,52 @@ export function MessagingAccountModal({
   };
 
   return (
-    <UiModal isOpen onClose={busy ? () => undefined : onClose} maxWidth="max-w-lg">
-      <UiModalHeader
-        title={`Connect ${provider === "telegram" ? "Telegram" : "Discord"}`}
-        icon={<MessageSquare className="h-4 w-4 text-(--ui-info)" />}
-        onClose={onClose}
-        showCloseButton={!busy}
-        closeIcon={<X className="h-4 w-4" />}
-      />
-      <UiModalBody className="space-y-4 pb-5">
+    <ResourceDrawer
+      title={displayName}
+      icon={<ResourceLogo identity={provider} label={displayName} />}
+      status={connected.length ? `${connected.length} connected` : "Not connected"}
+      onClose={busy ? () => undefined : onClose}
+      footer={
+        <>
+          <Button variant="secondary" disabled={busy} onClick={onClose}>
+            Close
+          </Button>
+          <Button loading={busy} disabled={!valid} onClick={() => void connect()}>
+            Add account
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
         {error ? <Alert variant="error">{error}</Alert> : null}
-        {connected.map((account) => (
-          <div
-            key={account.id}
-            className="flex items-center gap-3 rounded-md border border-(--ui-separator) px-3 py-2"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[length:var(--fs-sm)]">{account.label}</div>
-              <div className="truncate font-mono text-[length:var(--fs-xs)] text-(--ui-muted)">
-                {account.subject}
-              </div>
-              {account.provider === "discord" ? (
-                <div className="truncate font-mono text-[length:var(--fs-xs)] text-(--ui-muted)">
-                  Interaction path: /api/agent/messaging/discord/{account.id}
-                </div>
-              ) : null}
-            </div>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={busy}
-              onClick={() => void disconnect(account.id)}
-            >
-              Disconnect
-            </Button>
+        <ResourceDrawerSection title="Tools">
+          <div className="py-2.5 text-[length:var(--fs-sm)] text-(--ui-fg)">
+            Receive direct messages and deliver final responses
           </div>
-        ))}
+        </ResourceDrawerSection>
+        {connected.length ? (
+          <ResourceDrawerSection title="Accounts">
+            {connected.map((account) => (
+              <ResourceFact
+                key={account.id}
+                label={account.label}
+                value={
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="truncate font-mono">{account.subject}</span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={() => void disconnect(account.id)}
+                    >
+                      Disconnect
+                    </Button>
+                  </span>
+                }
+              />
+            ))}
+          </ResourceDrawerSection>
+        ) : null}
         <FormField label="Label">
           <Input value={label} onChange={(event) => setLabel(event.target.value)} />
         </FormField>
@@ -145,15 +157,7 @@ export function MessagingAccountModal({
             className="font-mono"
           />
         </FormField>
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" disabled={busy} onClick={onClose}>
-            Cancel
-          </Button>
-          <Button loading={busy} disabled={!valid} onClick={() => void connect()}>
-            Connect account
-          </Button>
-        </div>
-      </UiModalBody>
-    </UiModal>
+      </div>
+    </ResourceDrawer>
   );
 }

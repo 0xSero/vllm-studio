@@ -11,6 +11,7 @@ pub const Bridge = struct {
     api_key: ?[]const u8,
     model_id: []const u8,
     session_id: []const u8,
+    local_scope: bool,
 };
 
 pub const Catalog = struct {
@@ -49,7 +50,7 @@ pub const Result = struct {
 
 pub fn load(allocator: std.mem.Allocator, io: std.Io, client: *std.http.Client, bridge: Bridge, browser_enabled: bool) !Catalog {
     if (bridge.base_url.len == 0) return Catalog.empty(allocator);
-    const response = try mcp_bridge.handle(allocator, io, client, bridge.base_url, bridge.api_key, bridge.model_id, bridge.session_id, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}");
+    const response = try mcp_bridge.handle(allocator, io, client, bridge.base_url, bridge.api_key, bridge.model_id, bridge.session_id, bridge.local_scope, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}");
     defer allocator.free(response);
     var parsed = std.json.parseFromSlice(std.json.Value, allocator, response, .{}) catch return error.InvalidMcpResponse;
     errdefer parsed.deinit();
@@ -92,7 +93,7 @@ pub fn call(allocator: std.mem.Allocator, io: std.Io, client: *std.http.Client, 
     try request.writer.writeAll(",\"arguments\":");
     try std.json.Stringify.value(arguments.value, .{}, &request.writer);
     try request.writer.writeAll("}}");
-    const response = mcp_bridge.handle(allocator, io, client, bridge.base_url, bridge.api_key, bridge.model_id, bridge.session_id, request.writer.buffered()) catch |reason| return failure(allocator, @errorName(reason));
+    const response = mcp_bridge.handle(allocator, io, client, bridge.base_url, bridge.api_key, bridge.model_id, bridge.session_id, bridge.local_scope, request.writer.buffered()) catch |reason| return failure(allocator, @errorName(reason));
     defer allocator.free(response);
     var parsed = std.json.parseFromSlice(std.json.Value, allocator, response, .{}) catch return failure(allocator, "Tool returned an invalid response");
     defer parsed.deinit();

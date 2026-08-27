@@ -33,22 +33,32 @@ const initialArguments = (entry: CatalogEntry, connector: ConnectorView | null):
 export function CatalogConnectorDrawer({
   entry,
   connector,
+  connectors = connector ? [connector] : [],
+  accountMode = false,
   onClose,
   onChanged,
 }: {
   entry: CatalogEntry;
   connector: ConnectorView | null;
+  connectors?: readonly ConnectorView[];
+  accountMode?: boolean;
   onClose: () => void;
   onChanged: (connectors: readonly ConnectorView[]) => void;
 }) {
-  const [argumentsValue, setArgumentsValue] = useState(() => initialArguments(entry, connector));
+  const [argumentsValue, setArgumentsValue] = useState(() =>
+    initialArguments(entry, accountMode ? null : connector),
+  );
+  const [accountLabel, setAccountLabel] = useState("");
   const [environment, setEnvironment] = useState<Record<string, string>>(() =>
     Object.fromEntries(
-      entry.envFields.map((field) => [field.key, connector?.env?.[field.key] ?? ""]),
+      entry.envFields.map((field) => [
+        field.key,
+        accountMode ? "" : (connector?.env?.[field.key] ?? ""),
+      ]),
     ),
   );
   const [enabled, setEnabled] = useState(
-    connector?.enabled ?? entry.requiredConfiguration.includes("oauth"),
+    accountMode || connector?.enabled || entry.requiredConfiguration.includes("oauth"),
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -72,12 +82,15 @@ export function CatalogConnectorDrawer({
       const args = entry.requiredConfiguration.includes("repository")
         ? ["--repository", argumentsValue.trim()]
         : splitLines(argumentsValue);
-      const { connectors } = await requestAgentJson(
+      const connectorId = accountMode ? `${entry.id}--${Date.now().toString(36)}` : entry.id;
+      const result = await requestAgentJson(
         "/api/agent/connectors",
         Schema.decodeUnknownSync(ConnectorsResponseSchema),
         jsonBody({
-          id: entry.id,
-          name: entry.name,
+          id: connectorId,
+          name: accountMode
+            ? `${entry.name} · ${accountLabel.trim() || `Account ${connectors.length + 1}`}`
+            : entry.name,
           transport: entry.transport,
           protocolEra: entry.protocolEra,
           runtime: entry.runtime,
@@ -89,18 +102,35 @@ export function CatalogConnectorDrawer({
           enabled,
         }),
       );
-      onChanged(connectors);
+      onChanged(result.connectors);
       if (entry.requiredConfiguration.includes("oauth")) {
         const tested = await requestAgentJson(
           "/api/agent/connectors/test",
           Schema.decodeUnknownSync(ConnectorTestResponseSchema),
-          jsonBody({ id: entry.id }),
+          jsonBody({ id: connectorId }),
         );
         if (!tested.ok) throw new Error(tested.error || "Provider sign-in failed");
       }
       onClose();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "MCP configuration failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const disconnect = async (id: string) => {
+    setSaving(true);
+    setError("");
+    try {
+      const result = await requestAgentJson(
+        `/api/agent/connectors?id=${encodeURIComponent(id)}`,
+        Schema.decodeUnknownSync(ConnectorsResponseSchema),
+        { method: "DELETE" },
+      );
+      onChanged(result.connectors);
+    } catch (disconnectError) {
+      setError(disconnectError instanceof Error ? disconnectError.message : "Disconnect failed");
     } finally {
       setSaving(false);
     }
@@ -114,7 +144,7 @@ export function CatalogConnectorDrawer({
     <ResourceDrawer
       title={entry.name}
       icon={<ResourceLogo identity={entry.id} label={entry.name} company={entry.company} />}
-      status={`${entry.company} · ${entry.state}`}
+      status={entry.company}
       onClose={onClose}
       width={720}
       footer={
@@ -128,42 +158,64 @@ export function CatalogConnectorDrawer({
               disabled={Boolean(missingConfiguration)}
               onClick={() => void save()}
             >
-              {connector
-                ? "Save changes"
-                : entry.requiredConfiguration.includes("oauth")
-                  ? "Connect MCP"
-                  : "Add MCP"}
+              {accountMode
+                ? "Add account"
+                : connector
+                  ? "Save changes"
+                  : entry.requiredConfiguration.includes("oauth")
+                    ? "Connect account"
+                    : "Add MCP"}
             </Button>
           ) : null}
         </>
       }
     >
-      <p className="mb-6 text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
-        {entry.description}
-      </p>
+      {accountMode && connectors.length ? (
+        <ResourceDrawerSection title="Accounts">
+          {connectors.map((connected) => (
+            <ResourceFact
+              key={connected.id}
+              label={connected.name.replace(`${entry.name} · `, "")}
+              value={
+                <span className="flex items-center justify-between gap-3">
+                  <span>{connected.enabled ? "Available" : "Disabled"}</span>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={saving}
+                    onClick={() => void disconnect(connected.id)}
+                  >
+                    Disconnect
+                  </Button>
+                </span>
+              }
+            />
+          ))}
+        </ResourceDrawerSection>
+      ) : null}
+
+      <ResourceDrawerSection title="Tools">
+        <ResourceFact label="Access" value={entry.description} />
+      </ResourceDrawerSection>
 
       {entry.unavailableReason ? <Alert variant="warning">{entry.unavailableReason}</Alert> : null}
-      {entry.requiredConfiguration.includes("oauth") ? (
-        <Alert variant="info">
-          The first connection opens the provider’s sign-in page. Local Studio keeps the OAuth
-          session in its private account directory and refreshes it for later tool calls.
-        </Alert>
-      ) : null}
       {entry.transport === "builtin" ? (
         <Alert variant="info">
           This capability ships inside Local Studio and is always available.
         </Alert>
       ) : null}
 
-      <ResourceDrawerSection title="Delivery">
-        <ResourceFact label="Runtime" value={runtime} mono />
-        <ResourceFact label="Launch" value={renderCatalogCommand(entry)} mono />
-        <ResourceFact label="Protocol" value={entry.protocolEra} mono />
-        <ResourceFact
-          label="Access"
-          value={entry.filesystemAccess ? "Explicit filesystem access" : "No filesystem access"}
-        />
-      </ResourceDrawerSection>
+      {!accountMode ? (
+        <ResourceDrawerSection title="Delivery">
+          <ResourceFact label="Runtime" value={runtime} mono />
+          <ResourceFact label="Launch" value={renderCatalogCommand(entry)} mono />
+          <ResourceFact label="Protocol" value={entry.protocolEra} mono />
+          <ResourceFact
+            label="Access"
+            value={entry.filesystemAccess ? "Explicit filesystem access" : "No filesystem access"}
+          />
+        </ResourceDrawerSection>
+      ) : null}
 
       {entry.requiredConfiguration.includes("roots") ? (
         <FormField
@@ -193,8 +245,22 @@ export function CatalogConnectorDrawer({
         </FormField>
       ) : null}
 
+      {accountMode ? (
+        <FormField label="Account label">
+          <Input
+            value={accountLabel}
+            onChange={(event) => setAccountLabel(event.target.value)}
+            placeholder={`Account ${connectors.length + 1}`}
+          />
+        </FormField>
+      ) : null}
+
       {entry.envFields.map((field) => (
-        <FormField key={field.key} label={field.label} description={field.key}>
+        <FormField
+          key={field.key}
+          label={field.label}
+          description={accountMode ? undefined : field.key}
+        >
           <Input
             value={environment[field.key] ?? ""}
             onChange={(event) =>
@@ -207,16 +273,13 @@ export function CatalogConnectorDrawer({
         </FormField>
       ))}
 
-      {entry.installable && entry.transport !== "builtin" ? (
+      {entry.installable && entry.transport !== "builtin" && !accountMode ? (
         <div className="mt-6">
           <Checkbox
             checked={enabled}
             onChange={setEnabled}
             label="Enabled — offer these tools to the selected model"
           />
-          <p className="mt-2 text-[length:var(--fs-sm)] text-(--dim)">
-            Pinned runtimes download into Local Studio’s isolated cache on first use.
-          </p>
         </div>
       ) : null}
 

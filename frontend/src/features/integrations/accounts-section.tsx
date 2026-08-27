@@ -25,6 +25,7 @@ import {
   type MessagingAccount,
   type MessagingProvider,
 } from "@shared/agent/messaging-account-contract";
+import { ConnectorsResponseSchema, type ConnectorView } from "@shared/agent/connector-contract";
 import { Alert } from "@/ui";
 import { ResourceLogo } from "@/ui/resource-logo";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -48,17 +49,23 @@ import { connectedGoogleAccounts, requestJson } from "./google-account-model";
 import { SandboxAccountModal } from "./sandboxes-section";
 import { MessagingAccountModal } from "./messaging-accounts-section";
 import { MessagingAccessSection } from "./messaging-access-section";
+import { requestAgentJson } from "./agent-json";
+import { hydrateConnectorCatalog, type CatalogEntry } from "./connector-catalog";
+import { ConnectorOAuthDrawer } from "./connector-oauth-drawer";
+import { CatalogConnectorDrawer } from "./catalog-connector-drawer";
 
 const COLUMNS = ["Account", "Access", "State"] as const;
 const decodeGoogle = Schema.decodeUnknownSync(GoogleAccountResponseSchema);
 const decodeCodeStorage = Schema.decodeUnknownSync(CodeStorageAccountsResponseSchema);
 const decodeSandboxes = Schema.decodeUnknownSync(SandboxAccountsResponseSchema);
 const decodeMessaging = Schema.decodeUnknownSync(MessagingAccountsResponseSchema);
+const decodeConnectors = Schema.decodeUnknownSync(ConnectorsResponseSchema);
 type AccountProviderId =
   | GoogleWorkspacePluginId
   | "code-storage"
   | SandboxProvider
-  | MessagingProvider;
+  | MessagingProvider
+  | string;
 type ProviderRow = {
   id: AccountProviderId;
   label: string;
@@ -68,6 +75,7 @@ type ProviderRow = {
   status: string;
   tone: StatusTone;
   action: string;
+  entry?: CatalogEntry;
 };
 
 export function AccountsSection({ searchQuery = "" }: { searchQuery?: string } = {}) {
@@ -75,6 +83,8 @@ export function AccountsSection({ searchQuery = "" }: { searchQuery?: string } =
   const [repositories, setRepositories] = useState<readonly CodeStorageAccountEntry[]>([]);
   const [sandboxes, setSandboxes] = useState<readonly SandboxAccountEntry[]>([]);
   const [messaging, setMessaging] = useState<readonly MessagingAccount[]>([]);
+  const [connectors, setConnectors] = useState<readonly ConnectorView[]>([]);
+  const [catalog, setCatalog] = useState<readonly CatalogEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [openProvider, setOpenProvider] = useState<AccountProviderId | null>(null);
@@ -85,12 +95,15 @@ export function AccountsSection({ searchQuery = "" }: { searchQuery?: string } =
       requestJson("/api/agent/accounts/code-storage", decodeCodeStorage, { cache: "no-store" }),
       requestJson("/api/agent/accounts/sandboxes", decodeSandboxes, { cache: "no-store" }),
       requestJson("/api/agent/accounts/messaging", decodeMessaging, { cache: "no-store" }),
+      requestAgentJson("/api/agent/connectors", decodeConnectors, { cache: "no-store" }),
     ])
-      .then(([googleResult, repositoryResult, sandboxResult, messagingResult]) => {
+      .then(([googleResult, repositoryResult, sandboxResult, messagingResult, connectorResult]) => {
         setGoogle(googleResult.account);
         setRepositories(repositoryResult.accounts);
         setSandboxes(sandboxResult.accounts);
         setMessaging(messagingResult.accounts);
+        setConnectors(connectorResult.connectors);
+        setCatalog(hydrateConnectorCatalog(connectorResult.catalog.entries));
         setError("");
       })
       .catch((loadError: unknown) =>
@@ -138,13 +151,13 @@ export function AccountsSection({ searchQuery = "" }: { searchQuery?: string } =
       tone: repositoryCount ? "ok" : "dim",
       action: repositoryCount ? "Manage" : "Connect",
     };
-    const sandboxRows = (["daytona"] as const).map((id): ProviderRow => {
+    const sandboxRows = (["daytona", "vercel"] as const).map((id): ProviderRow => {
       const accounts = sandboxes.filter((account) => account.provider === id);
-      const label = "Daytona";
+      const label = id === "daytona" ? "Daytona" : "Vercel";
       return {
         id,
         label,
-        company: "Daytona Platforms",
+        company: id === "daytona" ? "Daytona Platforms" : "Vercel",
         summary: accounts.length
           ? accounts.map((account) => account.label).join(", ")
           : "Sandbox provider",
@@ -170,8 +183,31 @@ export function AccountsSection({ searchQuery = "" }: { searchQuery?: string } =
         action: accounts.length ? "Manage" : "Connect",
       };
     });
-    return [...googleRows, repositoryRow, ...sandboxRows, ...messagingRows];
-  }, [google, messaging, repositories, sandboxes]);
+    const connectorRows = catalog
+      .filter((entry) => entry.auth || entry.requiredConfiguration.includes("authorization"))
+      .map((entry): ProviderRow => {
+        const accounts = connectors.filter(
+          (connector) =>
+            connector.id === entry.id ||
+            connector.id.startsWith(`account-${entry.id}-`) ||
+            connector.id.startsWith(`${entry.id}--`),
+        );
+        return {
+          id: `connector:${entry.id}`,
+          label: entry.name,
+          company: entry.company,
+          summary: accounts.length
+            ? accounts.map((account) => account.auth?.account ?? account.name).join(", ")
+            : entry.company,
+          access: "Connected tools",
+          status: accounts.length ? `${accounts.length} connected` : "Not connected",
+          tone: accounts.length ? "ok" : "dim",
+          action: accounts.length ? "Manage" : "Connect",
+          entry,
+        };
+      });
+    return [...connectorRows, ...googleRows, repositoryRow, ...sandboxRows, ...messagingRows];
+  }, [catalog, connectors, google, messaging, repositories, sandboxes]);
   const visibleRows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return query
@@ -186,7 +222,7 @@ export function AccountsSection({ searchQuery = "" }: { searchQuery?: string } =
       {error ? <Alert variant="error">{error}</Alert> : null}
       <TableSection
         title="Accounts"
-        description="Services Local Studio can sign into. Each provider can hold several accounts."
+        description="Sign-ins used by Local Studio tools."
         actions={
           <div className="flex items-center gap-2">
             <StatusText tone={error ? "warn" : loaded ? "ok" : "dim"}>
@@ -263,8 +299,9 @@ export function AccountsSection({ searchQuery = "" }: { searchQuery?: string } =
           onChanged={setRepositories}
         />
       ) : null}
-      {openProvider === "daytona" ? (
+      {openProvider === "daytona" || openProvider === "vercel" ? (
         <SandboxAccountModal
+          provider={openProvider}
           accounts={sandboxes}
           onClose={() => setOpenProvider(null)}
           onChanged={setSandboxes}
@@ -276,6 +313,36 @@ export function AccountsSection({ searchQuery = "" }: { searchQuery?: string } =
           accounts={messaging}
           onClose={() => setOpenProvider(null)}
           onChanged={setMessaging}
+        />
+      ) : null}
+      {rows.find((row) => row.id === openProvider)?.entry?.auth ? (
+        <ConnectorOAuthDrawer
+          entry={rows.find((row) => row.id === openProvider)!.entry!}
+          connectors={connectors.filter((connector) => {
+            const entry = rows.find((row) => row.id === openProvider)!.entry!;
+            return connector.id === entry.id || connector.id.startsWith(`account-${entry.id}-`);
+          })}
+          onClose={() => setOpenProvider(null)}
+          onChanged={setConnectors}
+        />
+      ) : null}
+      {rows.find((row) => row.id === openProvider)?.entry &&
+      !rows.find((row) => row.id === openProvider)?.entry?.auth ? (
+        <CatalogConnectorDrawer
+          entry={rows.find((row) => row.id === openProvider)!.entry!}
+          connector={
+            connectors.find(
+              (connector) =>
+                connector.id === rows.find((row) => row.id === openProvider)!.entry!.id,
+            ) ?? null
+          }
+          connectors={connectors.filter((connector) => {
+            const id = rows.find((row) => row.id === openProvider)!.entry!.id;
+            return connector.id === id || connector.id.startsWith(`${id}--`);
+          })}
+          onClose={() => setOpenProvider(null)}
+          onChanged={setConnectors}
+          accountMode
         />
       ) : null}
     </>

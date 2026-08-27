@@ -54,9 +54,9 @@ type AgentModelPickerProps = {
   selectedHarness?: string;
   onSelectHarness?: (harness: string) => void;
   harnessDisabled?: boolean;
-  selectedPlacement?: "local" | "daytona";
+  selectedPlacement?: "local" | "sandbox";
   selectedSandboxAccountId?: string;
-  onSelectPlacement?: (placement: "local" | "daytona", accountId?: string) => void;
+  onSelectPlacement?: (placement: "local" | "sandbox", accountId?: string) => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 };
@@ -125,10 +125,7 @@ export function AgentModelPicker({
   const [openSource, setOpenSource] = useState<"pointer" | "keyboard">("keyboard");
   const harnesses = useHarnessCatalog();
   const sandboxAccounts = useSandboxAccounts();
-  const daytonaAccounts = useMemo(
-    () => sandboxAccounts.filter((account) => account.provider === "daytona"),
-    [sandboxAccounts],
-  );
+  const availableSandboxAccounts = useMemo(() => sandboxAccounts, [sandboxAccounts]);
   const selectableHarnesses = useMemo(
     () => harnesses.filter((harness) => harness.selectable !== false),
     [harnesses],
@@ -159,11 +156,11 @@ export function AgentModelPicker({
     harnesses.find((harness) => harness.id === selectedHarness)?.name ?? selectedHarness;
   const placementLabel = useMemo(
     () =>
-      selectedPlacement === "daytona"
-        ? (daytonaAccounts.find((account) => account.id === selectedSandboxAccountId)?.label ??
-          "Daytona")
+      selectedPlacement === "sandbox"
+        ? (availableSandboxAccounts.find((account) => account.id === selectedSandboxAccountId)
+            ?.label ?? "Sandbox")
         : "Local",
-    [daytonaAccounts, selectedPlacement, selectedSandboxAccountId],
+    [availableSandboxAccounts, selectedPlacement, selectedSandboxAccountId],
   );
   const pickerRows = useMemo(
     () =>
@@ -564,23 +561,23 @@ export function AgentModelPicker({
                       close(true);
                     }}
                   />
-                  {daytonaAccounts.map((account) => (
+                  {availableSandboxAccounts.map((account) => (
                     <SimplePickerOption
                       key={account.id}
-                      label={`Daytona · ${account.label}`}
+                      label={`${account.provider === "daytona" ? "Daytona" : "Vercel"} · ${account.label}`}
                       selected={
-                        selectedPlacement === "daytona" && selectedSandboxAccountId === account.id
+                        selectedPlacement === "sandbox" && selectedSandboxAccountId === account.id
                       }
                       disabled={false}
                       onSelect={() => {
-                        onSelectPlacement("daytona", account.id);
+                        onSelectPlacement("sandbox", account.id);
                         close(true);
                       }}
                     />
                   ))}
-                  {daytonaAccounts.length === 0 ? (
+                  {availableSandboxAccounts.length === 0 ? (
                     <SimplePickerOption
-                      label="Connect Daytona in Accounts"
+                      label="Connect a sandbox provider in Accounts"
                       selected={false}
                       disabled
                       onSelect={() => undefined}

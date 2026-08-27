@@ -7,9 +7,13 @@ import {
   GoogleAuthorizationResponseSchema,
   type GoogleAccountView,
 } from "@shared/agent/google-account-contract";
-import type { GoogleWorkspacePluginId } from "@shared/agent/google-workspace-binding";
-import { Alert, Button, UiModal, UiModalBody, UiModalHeader } from "@/ui";
-import { KeyRound, X } from "@/ui/icon-registry";
+import {
+  GOOGLE_WORKSPACE_BINDINGS,
+  type GoogleWorkspacePluginId,
+} from "@shared/agent/google-workspace-binding";
+import { Alert, Button } from "@/ui";
+import { ResourceDrawer, ResourceDrawerSection } from "@/ui/resource-drawer";
+import { ResourceLogo } from "@/ui/resource-logo";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
   GoogleCancellationResponseSchema,
@@ -18,7 +22,6 @@ import {
   connectionSignature,
   openExternal,
   requestJson,
-  transportNotice,
 } from "./google-account-model";
 import { GoogleAccountLoadState } from "./google-account-load-state";
 import { ConnectedGoogleAccounts } from "./google-account-connected";
@@ -205,24 +208,49 @@ export function GoogleAccountModal({
     if (!busy && !awaiting) onClose();
   };
   return (
-    <UiModal isOpen onClose={dismiss} maxWidth="max-w-lg">
-      <UiModalHeader
-        title={connected.length ? displayName : `Connect ${displayName}`}
-        icon={
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-(--ui-info)/30 bg-(--ui-info)/10">
-            <KeyRound className="h-4 w-4 text-(--ui-info)" />
-          </span>
-        }
-        onClose={dismiss}
-        showCloseButton={!awaiting}
-        closeIcon={<X className="h-4 w-4" />}
-      />
-      <UiModalBody className="space-y-4 pb-5">
-        <Alert variant="info">{transportNotice(account)}</Alert>
+    <ResourceDrawer
+      title={displayName}
+      icon={<ResourceLogo identity={accountId} label={displayName} company="Google" />}
+      status={connected.length ? `${connected.length} connected` : "Not connected"}
+      onClose={dismiss}
+      footer={
+        <>
+          <Button
+            variant="secondary"
+            onClick={awaiting ? () => void cancelSignIn() : onClose}
+            loading={awaiting && busy}
+            disabled={busy && !awaiting}
+          >
+            {awaiting ? "Cancel sign-in" : "Close"}
+          </Button>
+          <Button
+            onClick={() => void connect()}
+            loading={busy && !awaiting}
+            disabled={awaiting || (needsClient && !clientId.trim())}
+          >
+            {awaiting
+              ? "Waiting for Google"
+              : replacement
+                ? "Revoke & replace"
+                : connected.length
+                  ? "Add another account"
+                  : "Connect account"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
         {!account ? (
           <GoogleAccountLoadState error={error} onRetry={() => void refresh()} />
         ) : (
           <>
+            <ResourceDrawerSection title="Tools">
+              {GOOGLE_WORKSPACE_BINDINGS[accountId].observeTools.map((tool) => (
+                <div key={tool} className="py-2.5 text-[length:var(--fs-sm)] text-(--ui-fg)">
+                  {tool.replaceAll("_", " ")}
+                </div>
+              ))}
+            </ResourceDrawerSection>
             <GoogleAccountSetup
               account={account}
               editing={editing}
@@ -235,7 +263,6 @@ export function GoogleAccountModal({
             />
             <ConnectedGoogleAccounts
               service={accountId}
-              displayName={displayName}
               accounts={connected}
               confirmingKey={confirmingKey}
               busy={busy}
@@ -248,33 +275,10 @@ export function GoogleAccountModal({
                 Finish consent in your browser. Local Studio is checking for the connection.
               </Alert>
             ) : null}
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button
-                variant="secondary"
-                onClick={awaiting ? () => void cancelSignIn() : onClose}
-                loading={awaiting && busy}
-                disabled={busy && !awaiting}
-              >
-                {awaiting ? "Cancel sign-in" : "Close"}
-              </Button>
-              <Button
-                onClick={() => void connect()}
-                loading={busy && !awaiting}
-                disabled={awaiting || (needsClient && !clientId.trim())}
-              >
-                {awaiting
-                  ? "Waiting for Google"
-                  : replacement
-                    ? "Revoke & replace"
-                    : connected.length
-                      ? "Add another account"
-                      : "Continue with Google"}
-              </Button>
-            </div>
           </>
         )}
         {error && account ? <Alert variant="error">{error}</Alert> : null}
-      </UiModalBody>
-    </UiModal>
+      </div>
+    </ResourceDrawer>
   );
 }

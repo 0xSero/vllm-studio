@@ -41,7 +41,7 @@ export const AutomationSchema = Schema.Struct({
   nodeId: Schema.optional(Schema.NullOr(Schema.String)),
   projectId: Schema.optional(Schema.NullOr(Schema.String)),
   harness: Schema.NullOr(AgentHarnessSchema),
-  placement: Schema.optional(Schema.Literals(["local", "daytona"])),
+  placement: Schema.optional(Schema.Literals(["local", "sandbox"])),
   sandboxAccountId: Schema.optional(Schema.NullOr(Schema.String)),
   schedule: AutomationScheduleSchema,
   status: Schema.Literals(["active", "paused"]),

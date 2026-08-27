@@ -76,7 +76,7 @@ export function TaskSetupBar({
       />
       <SetupButton
         icon={<Monitor className="size-3.5" />}
-        label={session.placement === "daytona" ? "Sandbox" : "Local"}
+        label={session.placement === "sandbox" ? "Sandbox" : "Local"}
         disabled={disabled}
         onClick={() => toggle("machine")}
       />
@@ -141,7 +141,7 @@ export function TaskSetupBar({
             <div className="flex flex-col gap-0.5">
               <MenuRow
                 label="Local"
-                active={session.placement !== "daytona"}
+                active={session.placement !== "sandbox"}
                 onClick={() => {
                   onPatch({ placement: "local", sandboxAccountId: undefined });
                   setMenu(null);
@@ -149,11 +149,11 @@ export function TaskSetupBar({
               />
               <MenuRow
                 label="Sandbox"
-                active={session.placement === "daytona"}
+                active={session.placement === "sandbox"}
                 onClick={() => {
                   setMenu(null);
                   void Effect.runPromise(defaultSandboxAccount()).then((accountId) => {
-                    if (accountId) onPatch({ placement: "daytona", sandboxAccountId: accountId });
+                    if (accountId) onPatch({ placement: "sandbox", sandboxAccountId: accountId });
                     else onPatch({ error: "Connect a sandbox account in Settings" });
                   });
                 }}

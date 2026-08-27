@@ -1,10 +1,8 @@
-import type { ConnectorView, McpCatalogEntry } from "@shared/agent/connector-contract";
+import type { McpCatalogEntry } from "@shared/agent/connector-contract";
 import {
   oauthConnectorProvider,
   type OAuthConnectorAuthDefinition,
 } from "@shared/agent/oauth-connector-contract";
-
-export const SSH_SERVER_PLACEHOLDER = "{{LOCAL_STUDIO_CONTROLLER}}";
 
 export type CatalogEntry = Omit<McpCatalogEntry, "command" | "args"> & {
   command: string;
@@ -12,11 +10,30 @@ export type CatalogEntry = Omit<McpCatalogEntry, "command" | "args"> & {
   auth?: OAuthConnectorAuthDefinition;
 };
 
+const remoteOAuthDefinition = (provider: string): OAuthConnectorAuthDefinition => ({
+  kind: "oauth-pkce",
+  clientIdEnv: provider === "x-api" ? "LOCAL_STUDIO_X_CLIENT_ID" : "",
+  tokenUrl: "",
+  scopes: [],
+  tokenEnv: "",
+  identityUrl: "",
+  identityField: "",
+  createClientUrl:
+    provider === "x-api" ? "https://developer.x.com/en/portal/projects-and-apps" : "",
+  setupHint:
+    provider === "x-api"
+      ? "Create an OAuth 2.0 public client with a localhost callback, then paste its public Client ID."
+      : "",
+});
+
 export const hydrateConnectorCatalog = (entries: readonly McpCatalogEntry[]): CatalogEntry[] =>
   entries.map((entry) => {
     const provider = entry.authProvider ? oauthConnectorProvider(entry.authProvider) : null;
     const hydrated = { ...entry, command: entry.command ?? "", args: entry.args ?? [] };
-    return provider ? { ...hydrated, auth: provider.auth } : hydrated;
+    if (provider) return { ...hydrated, auth: provider.auth };
+    return entry.authProvider
+      ? { ...hydrated, auth: remoteOAuthDefinition(entry.authProvider) }
+      : hydrated;
   });
 
 export function renderCommandLine(command: string, args: readonly string[]): string {
@@ -48,27 +65,4 @@ export function renderCatalogCommand(entry: CatalogEntry): string {
     ]);
   }
   return renderCommandLine(entry.command ?? "", entry.args ?? []);
-}
-
-export function renderConnectorCommand(connector: ConnectorView): string {
-  if (connector.transport === "http") return connector.url ?? "HTTP endpoint not set";
-  if (connector.runtime?.kind === "node") {
-    return renderCommandLine("npx", [
-      "--yes",
-      "--package",
-      `${connector.runtime.package}@${connector.runtime.version}`,
-      connector.runtime.executable,
-      ...(connector.args ?? []),
-    ]);
-  }
-  if (connector.runtime?.kind === "python") {
-    return renderCommandLine("uvx", [
-      ...(connector.runtime.with ?? []).flatMap((requirement) => ["--with", requirement]),
-      "--from",
-      `${connector.runtime.package}==${connector.runtime.version}`,
-      connector.runtime.executable,
-      ...(connector.args ?? []),
-    ]);
-  }
-  return renderCommandLine(connector.command ?? "", connector.args ?? []);
 }

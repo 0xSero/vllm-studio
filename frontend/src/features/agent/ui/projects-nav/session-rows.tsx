@@ -195,7 +195,7 @@ export function ProjectSessions({
     setLoading(true);
     try {
       const response = await fetch(
-        isChatsProject(project)
+        isChatsProject(project) || project.repository
           ? `/api/agent/sessions?projectId=${encodeURIComponent(project.id)}&since=7d&limit=${visibleLimit + SESSIONS_PAGE_SIZE}`
           : `/api/agent/sessions?cwd=${encodeURIComponent(project.path)}&since=7d&limit=${visibleLimit + SESSIONS_PAGE_SIZE}`,
         { cache: "no-store" },
@@ -207,7 +207,7 @@ export function ProjectSessions({
     } finally {
       setLoading(false);
     }
-  }, [project.path, visibleLimit]);
+  }, [project.id, project.path, project.repository, visibleLimit]);
 
   useProjectSessionsReloadEffect(reload);
 

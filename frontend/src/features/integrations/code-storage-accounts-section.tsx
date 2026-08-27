@@ -6,17 +6,10 @@ import {
   CodeStorageAccountsResponseSchema,
   type CodeStorageAccountEntry,
 } from "@shared/agent/code-storage-account-contract";
-import {
-  Alert,
-  Button,
-  FormField,
-  Input,
-  Textarea,
-  UiModal,
-  UiModalBody,
-  UiModalHeader,
-} from "@/ui";
-import { Eye, EyeOff, KeyRound, X } from "@/ui/icon-registry";
+import { Alert, Button, FormField, Input, Textarea } from "@/ui";
+import { Eye, EyeOff } from "@/ui/icon-registry";
+import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
+import { ResourceLogo } from "@/ui/resource-logo";
 import { requestJson } from "./google-account-model";
 
 const ACCOUNT_URL = "/api/agent/accounts/code-storage";
@@ -81,46 +74,57 @@ export function CodeStorageAccountModal({
   const valid = organization.trim().length > 0 && privateKey.trim().length > 0;
 
   return (
-    <UiModal isOpen onClose={busy ? () => undefined : onClose} maxWidth="max-w-lg">
-      <UiModalHeader
-        title="Connect Code.Storage"
-        icon={
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-(--ui-info)/30 bg-(--ui-info)/10">
-            <KeyRound className="h-4 w-4 text-(--ui-info)" />
-          </span>
-        }
-        onClose={onClose}
-        showCloseButton={!busy}
-        closeIcon={<X className="h-4 w-4" />}
-      />
-      <UiModalBody className="space-y-4 pb-5">
+    <ResourceDrawer
+      title="Code.Storage"
+      icon={<ResourceLogo identity="code-storage" label="Code.Storage" />}
+      status={accounts.length ? `${accounts.length} connected` : "Not connected"}
+      onClose={busy ? () => undefined : onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Close
+          </Button>
+          <Button onClick={() => void connect()} loading={busy} disabled={!valid}>
+            Add account
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
         {error ? <Alert variant="error">{error}</Alert> : null}
+        <ResourceDrawerSection title="Tools">
+          {[
+            "Read and write repositories",
+            "Create commits and update refs",
+            "Push changes and hand work to remote agents",
+          ].map((tool) => (
+            <div key={tool} className="py-2.5 text-[length:var(--fs-sm)] text-(--ui-fg)">
+              {tool}
+            </div>
+          ))}
+        </ResourceDrawerSection>
         {accounts.length ? (
-          <div className="rounded-md border border-(--ui-separator)">
+          <ResourceDrawerSection title="Accounts">
             {accounts.map((account) => (
-              <div
+              <ResourceFact
                 key={account.id}
-                className="flex items-center gap-3 border-b border-(--ui-separator) px-3 py-2 last:border-b-0"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[length:var(--fs-sm)] text-(--ui-fg)">
-                    {account.label}
-                  </div>
-                  <div className="truncate font-mono text-[length:var(--fs-xs)] text-(--ui-muted)">
-                    {account.organization}
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => void disconnect(account.id)}
-                >
-                  Disconnect
-                </Button>
-              </div>
+                label={account.label}
+                value={
+                  <span className="flex items-center justify-between gap-3">
+                    <span>{account.organization}</span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={() => void disconnect(account.id)}
+                    >
+                      Disconnect
+                    </Button>
+                  </span>
+                }
+              />
             ))}
-          </div>
+          </ResourceDrawerSection>
         ) : null}
         <FormField
           label="Organization"
@@ -164,15 +168,7 @@ export function CodeStorageAccountModal({
             </button>
           </div>
         </FormField>
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="secondary" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button onClick={() => void connect()} loading={busy} disabled={!valid}>
-            Connect account
-          </Button>
-        </div>
-      </UiModalBody>
-    </UiModal>
+      </div>
+    </ResourceDrawer>
   );
 }

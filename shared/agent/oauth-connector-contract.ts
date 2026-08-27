@@ -76,7 +76,17 @@ export const OAUTH_CONNECTOR_PROVIDERS: Record<OAuthConnectorProviderId, OAuthCo
       clientIdEnv: "LOCAL_STUDIO_GITHUB_CLIENT_ID",
       deviceUrl: "https://github.com/login/device/code",
       tokenUrl: "https://github.com/login/oauth/access_token",
-      scopes: ["repo", "read:org"],
+      scopes: [
+        "repo",
+        "read:org",
+        "workflow",
+        "project",
+        "write:packages",
+        "gist",
+        "notifications",
+        "read:user",
+        "user:email",
+      ],
       tokenEnv: "GITHUB_PERSONAL_ACCESS_TOKEN",
       identityUrl: "https://api.github.com/user",
       identityField: "login",
@@ -85,10 +95,7 @@ export const OAUTH_CONNECTOR_PROVIDERS: Record<OAuthConnectorProviderId, OAuthCo
         "?oauth_application[name]=Local%20Studio" +
         "&oauth_application[url]=https%3A%2F%2Fgithub.com%2F0xsero%2Fvllm-studio" +
         "&oauth_application[callback_url]=http%3A%2F%2F127.0.0.1%2Fcallback",
-      setupHint:
-        "Register the pre-filled OAuth app, tick “Enable Device Flow” on its settings page, " +
-        "then paste its Client ID here. The Client ID is a public identifier, not a secret, " +
-        "and no client secret is needed.",
+      setupHint: "Enable Device Flow in the app settings, then paste its public Client ID.",
     },
     connector: {
       command: "npx",
@@ -107,6 +114,13 @@ const PendingDeviceSchema = Schema.Struct({
   userCode: Schema.String,
   verificationUri: Schema.String,
   expiresAt: Schema.Number,
+});
+
+const OAuthAccountSchema = Schema.Struct({
+  id: Schema.String,
+  label: Schema.String,
+  expiresAt: Schema.NullOr(Schema.Number),
+  scopes: Schema.Array(Schema.String),
 });
 
 export const OAuthAuthorizeResponseSchema = Schema.Union([
@@ -131,6 +145,7 @@ export const OAuthStatusResponseSchema = Schema.Struct({
   account: Schema.NullOr(Schema.String),
   expiresAt: Schema.NullOr(Schema.Number),
   scopes: Schema.Array(Schema.String),
+  accounts: Schema.optional(Schema.Array(OAuthAccountSchema)),
   /** Live device flow, if one is waiting on the user right now. */
   pending: Schema.NullOr(PendingDeviceSchema),
   /** How the last flow failed, if it failed; cleared when a new one starts. */

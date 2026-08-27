@@ -5,7 +5,7 @@ const sqlite = @import("../../storage/sqlite.zig");
 const agent_coordinator = @import("../sessions/coordinator.zig");
 const agent_run_completion = @import("../sessions/run_completion.zig");
 const harness_runtime = @import("../harness/runtime.zig");
-const daytona_runtime = @import("../cloud/daytona.zig");
+const sandbox_runtime = @import("../cloud/runtime.zig");
 
 const Io = std.Io;
 const http = std.http;
@@ -41,8 +41,8 @@ pub fn createPayload(allocator: std.mem.Allocator, io: Io, database: *sqlite.Dat
     const sandbox_account_id = optionalString(object, "sandboxAccountId");
     if (std.mem.eql(u8, execution_kind, "chat") and (cwd != null or selected_harness != null)) return error.InvalidChatAutomation;
     if (std.mem.eql(u8, execution_kind, "project") and (cwd == null or selected_harness == null)) return error.InvalidProjectAutomation;
-    if (!std.mem.eql(u8, placement, "local") and !std.mem.eql(u8, placement, "daytona")) return error.InvalidAutomationPlacement;
-    if (std.mem.eql(u8, placement, "daytona") and sandbox_account_id == null) return error.SandboxAccountRequired;
+    if (!std.mem.eql(u8, placement, "local") and !std.mem.eql(u8, placement, "sandbox")) return error.InvalidAutomationPlacement;
+    if (std.mem.eql(u8, placement, "sandbox") and sandbox_account_id == null) return error.SandboxAccountRequired;
     const schedule = object.get("schedule") orelse return error.AutomationScheduleRequired;
     try validateSchedule(schedule);
     var random: [4]u8 = undefined;
@@ -111,8 +111,8 @@ pub fn patchPayload(allocator: std.mem.Allocator, io: Io, database: *sqlite.Data
     if (std.mem.eql(u8, execution_kind, "chat") and (cwd != null or selected_harness != null)) return error.InvalidChatAutomation;
     if (std.mem.eql(u8, execution_kind, "project") and (cwd == null or selected_harness == null)) return error.InvalidProjectAutomation;
     const placement = optionalString(automation.value.object, "placement") orelse "local";
-    if (!std.mem.eql(u8, placement, "local") and !std.mem.eql(u8, placement, "daytona")) return error.InvalidAutomationPlacement;
-    if (std.mem.eql(u8, placement, "daytona") and optionalString(automation.value.object, "sandboxAccountId") == null) return error.SandboxAccountRequired;
+    if (!std.mem.eql(u8, placement, "local") and !std.mem.eql(u8, placement, "sandbox")) return error.InvalidAutomationPlacement;
+    if (std.mem.eql(u8, placement, "sandbox") and optionalString(automation.value.object, "sandboxAccountId") == null) return error.SandboxAccountRequired;
     var now_buffer: [24]u8 = undefined;
     const now = formatTimestampAt(io, 0, &now_buffer);
     try automation.value.object.put(automation.arena.allocator(), "updatedAt", .{ .string = try automation.arena.allocator().dupe(u8, now) });
@@ -133,7 +133,7 @@ pub fn deletePayload(allocator: std.mem.Allocator, io: Io, database: *sqlite.Dat
     return allocator.dupe(u8, "{\"success\":true}");
 }
 
-pub fn runPayload(allocator: std.mem.Allocator, io: Io, mode: config.Mode, client: *http.Client, database: *sqlite.Database, harness: *harness_runtime.Manager, daytona: *daytona_runtime.Manager, automation_id: []const u8) ![]u8 {
+pub fn runPayload(allocator: std.mem.Allocator, io: Io, mode: config.Mode, client: *http.Client, database: *sqlite.Database, harness: *harness_runtime.Manager, sandboxes: *sandbox_runtime.Manager, automation_id: []const u8) ![]u8 {
     const stored = try lockedGet(allocator, io, database, automation_id) orelse return error.AutomationNotFound;
     defer allocator.free(stored);
     var automation = try parseObject(allocator, stored);
@@ -155,7 +155,7 @@ pub fn runPayload(allocator: std.mem.Allocator, io: Io, mode: config.Mode, clien
     const turn = try turnDocument(allocator, session_id, execution_kind, selected_harness, model_id, model_route_id, prompt, cwd, node_id, project_id, placement, sandbox_account_id);
     defer allocator.free(turn);
     var run_error: ?[]const u8 = null;
-    const response = agent_coordinator.turnPayloadWithCloud(allocator, io, mode, client, database, harness, daytona, turn) catch |failure| failed: {
+    const response = agent_coordinator.turnPayloadWithCloud(allocator, io, mode, client, database, harness, sandboxes, turn) catch |failure| failed: {
         run_error = @errorName(failure);
         break :failed null;
     };
@@ -180,14 +180,14 @@ pub fn runPayload(allocator: std.mem.Allocator, io: Io, mode: config.Mode, clien
     return output.toOwnedSlice();
 }
 
-pub fn runScheduler(allocator: std.mem.Allocator, io: Io, mode: config.Mode, client: *http.Client, database: *sqlite.Database, harness: *harness_runtime.Manager, daytona: *daytona_runtime.Manager) Io.Cancelable!void {
+pub fn runScheduler(allocator: std.mem.Allocator, io: Io, mode: config.Mode, client: *http.Client, database: *sqlite.Database, harness: *harness_runtime.Manager, sandboxes: *sandbox_runtime.Manager) Io.Cancelable!void {
     while (true) {
-        runDue(allocator, io, mode, client, database, harness, daytona) catch |failure| std.log.err("automation scheduler pass failed: {t}", .{failure});
+        runDue(allocator, io, mode, client, database, harness, sandboxes) catch |failure| std.log.err("automation scheduler pass failed: {t}", .{failure});
         try io.sleep(.fromSeconds(30), .awake);
     }
 }
 
-fn runDue(allocator: std.mem.Allocator, io: Io, mode: config.Mode, client: *http.Client, database: *sqlite.Database, harness: *harness_runtime.Manager, daytona: *daytona_runtime.Manager) !void {
+fn runDue(allocator: std.mem.Allocator, io: Io, mode: config.Mode, client: *http.Client, database: *sqlite.Database, harness: *harness_runtime.Manager, sandboxes: *sandbox_runtime.Manager) !void {
     var now_buffer: [24]u8 = undefined;
     const now = formatTimestampAt(io, 0, &now_buffer);
     try database.lock(io);
@@ -207,7 +207,7 @@ fn runDue(allocator: std.mem.Allocator, io: Io, mode: config.Mode, client: *http
             std.log.err("due automation is missing id", .{});
             continue;
         };
-        const response = runPayload(allocator, io, mode, client, database, harness, daytona, automation_id) catch |failure| {
+        const response = runPayload(allocator, io, mode, client, database, harness, sandboxes, automation_id) catch |failure| {
             std.log.err("automation {s} dispatch failed: {t}", .{ automation_id, failure });
             continue;
         };
@@ -393,7 +393,7 @@ fn formatTimestampSeconds(seconds: i64, buffer: *[24]u8) []const u8 {
     const month_day = year_day.calculateMonthDay();
     const day_seconds = epoch.getDaySeconds();
     return std.fmt.bufPrint(buffer, "{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}.000Z", .{
-        year_day.year, month_day.month.numeric(), month_day.day_index + 1,
+        year_day.year,                 month_day.month.numeric(),        month_day.day_index + 1,
         day_seconds.getHoursIntoDay(), day_seconds.getMinutesIntoHour(), day_seconds.getSecondsIntoMinute(),
     }) catch unreachable;
 }

@@ -48,6 +48,7 @@ const agent_models = @import("../agent/models/service.zig");
 const model_catalog = @import("../inference/models/catalog.zig");
 const agent_projects = @import("../agent/projects/service.zig");
 const agent_connectors = @import("../agent/connectors/service.zig");
+const agent_mcp_runtime = @import("../agent/mcp/runtime.zig");
 const agent_oauth = @import("../accounts/oauth/service.zig");
 const agent_google = @import("../accounts/google/service.zig");
 const agent_code_storage = @import("../accounts/code_storage/service.zig");
@@ -56,7 +57,7 @@ const agent_pr = @import("../agent/pull_requests/service.zig");
 const agent_terminal = @import("../agent/terminal/service.zig");
 const agent_pty = @import("../agent/terminal/pty.zig");
 const agent_browser = @import("../agent/browser/service.zig");
-const agent_daytona = @import("../agent/cloud/daytona.zig");
+const agent_sandboxes = @import("../agent/cloud/runtime.zig");
 const agent_messaging = @import("../agent/messaging/service.zig");
 const agent_goals = @import("../agent/goals/service.zig");
 const agent_git = @import("../agent/git/service.zig");
@@ -116,7 +117,8 @@ pub const HttpServer = struct {
     harness: harness_runtime.Manager,
     pty: agent_pty.Manager,
     browser: agent_browser.Manager,
-    daytona: agent_daytona.Manager,
+    mcp: agent_mcp_runtime.Manager,
+    sandboxes: agent_sandboxes.Manager,
     messaging: agent_messaging.Manager,
     connection_limiter: ConnectionLimiter = .{},
 
@@ -140,8 +142,10 @@ pub const HttpServer = struct {
         errdefer pty.deinit();
         var browser = try agent_browser.Manager.init(allocator, io, config.environment, config.data_dir);
         errdefer browser.deinit();
-        var daytona = try agent_daytona.Manager.init(allocator, io, config.data_dir, config.environment);
-        errdefer daytona.deinit();
+        var mcp = try agent_mcp_runtime.Manager.init(allocator, io, config.environment, config.data_dir);
+        errdefer mcp.deinit();
+        var sandboxes = try agent_sandboxes.Manager.init(allocator, io, &config);
+        errdefer sandboxes.deinit();
         var messaging = try agent_messaging.Manager.init(allocator, io, &config);
         errdefer messaging.deinit();
         return .{
@@ -162,7 +166,8 @@ pub const HttpServer = struct {
             .harness = harness,
             .pty = pty,
             .browser = browser,
-            .daytona = daytona,
+            .mcp = mcp,
+            .sandboxes = sandboxes,
             .messaging = messaging,
         };
     }
@@ -177,7 +182,8 @@ pub const HttpServer = struct {
         server.harness.deinit();
         server.pty.deinit();
         server.browser.deinit();
-        server.daytona.deinit();
+        server.mcp.deinit();
+        server.sandboxes.deinit();
         server.messaging.deinit();
         server.downloads.deinit();
         server.client.deinit();
@@ -189,10 +195,12 @@ pub const HttpServer = struct {
     pub fn run(server: *HttpServer, database: *sqlite.Database, recipe_column: recipes.PayloadColumn, system: *const system_info.Snapshot, worker_pool: *worker_service.Pool, supervisor: *lifecycle.Supervisor, runtime_cache: *runtime_info.Cache) !void {
         var group: Io.Group = .init;
         defer group.cancel(server.io);
+        server.browser.start() catch |failure| std.log.warn("bundled browser failed to start: {t}", .{failure});
+        try group.concurrent(server.io, warmMcpRuntime, .{ &server.mcp, database });
         if (server.config.mode != .head) try group.concurrent(server.io, runComputeSupervisor, .{&server.compute});
-        if (server.config.mode != .worker) try group.concurrent(server.io, automations.runScheduler, .{ server.allocator, server.io, server.config.mode, &server.client, database, &server.harness, &server.daytona });
+        if (server.config.mode != .worker) try group.concurrent(server.io, automations.runScheduler, .{ server.allocator, server.io, server.config.mode, &server.client, database, &server.harness, &server.sandboxes });
         if (server.config.mode != .worker) try group.concurrent(server.io, agent_coordinator.runEventPump, .{ server.allocator, server.io, server.config.mode, &server.client, database, &server.harness });
-        if (server.config.mode == .head) try group.concurrent(server.io, agent_daytona.Manager.runReconciler, .{ &server.daytona, &server.client, database });
+        if (server.config.mode == .head) try group.concurrent(server.io, agent_sandboxes.Manager.runReconciler, .{ &server.sandboxes, &server.client, database });
         if (server.config.mode == .head) try group.concurrent(server.io, agent_messaging.Manager.runTelegramPoller, .{ &server.messaging, server.config.mode, &server.client, database, &server.harness });
         if (server.config.mode == .head) try group.concurrent(server.io, agent_messaging.Manager.runDispatcher, .{ &server.messaging, server.config.mode, &server.client, database, &server.harness });
         while (!shutdown.isRequested()) {
@@ -204,7 +212,7 @@ pub const HttpServer = struct {
                 rejectOverloadedConnection(server.io, &stream);
                 continue;
             }
-            group.concurrent(server.io, serveConnection, .{ server.allocator, server.io, server.config.mode, &server.config, &server.studio, &server.model_index_cache, &server.runtime_jobs, &server.downloads, &server.compute, &server.head_provider_state, &server.oauth, &server.google, &server.code_storage, &server.harness, &server.pty, &server.browser, &server.daytona, &server.messaging, &server.client, database, recipe_column, server.config.llm_instance_path, server.config.inference_port, server.config.inference_origin, server.config.default_trust_remote_code, server.config.environment, system, worker_pool, supervisor, runtime_cache, server.config.spike_upstream, server.config.spike_fallback_upstream, &server.connection_limiter, stream }) catch {
+            group.concurrent(server.io, serveConnection, .{ server.allocator, server.io, server.config.mode, &server.config, &server.studio, &server.model_index_cache, &server.runtime_jobs, &server.downloads, &server.compute, &server.head_provider_state, &server.oauth, &server.google, &server.code_storage, &server.harness, &server.pty, &server.browser, &server.mcp, &server.sandboxes, &server.messaging, &server.client, database, recipe_column, server.config.llm_instance_path, server.config.inference_port, server.config.inference_origin, server.config.default_trust_remote_code, server.config.environment, system, worker_pool, supervisor, runtime_cache, server.config.spike_upstream, server.config.spike_fallback_upstream, &server.connection_limiter, stream }) catch {
                 server.connection_limiter.release();
                 stream.close(server.io);
             };
@@ -216,7 +224,11 @@ fn runComputeSupervisor(manager: *compute_lifecycle.Manager) Io.Cancelable!void 
     return manager.run();
 }
 
-fn serveConnection(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration: *const Config, studio: *studio_settings.State, model_index_cache: *model_index.Cache, runtime_jobs: *runtime_jobs_service.State, download_state: *download_manager.State, compute: *compute_lifecycle.Manager, head_provider_state: *head_providers.State, oauth: *agent_oauth.State, google: *agent_google.State, code_storage: *agent_code_storage.State, harness: *harness_runtime.Manager, pty: *agent_pty.Manager, browser: *agent_browser.Manager, daytona: *agent_daytona.Manager, messaging: *agent_messaging.Manager, client: *http.Client, database: *sqlite.Database, recipe_column: recipes.PayloadColumn, llm_instance_path: []const u8, inference_port: u16, inference_origin: []const u8, default_trust_remote_code: bool, environment: *const std.process.Environ.Map, system: *const system_info.Snapshot, worker_pool: *worker_service.Pool, supervisor: *lifecycle.Supervisor, runtime_cache: *runtime_info.Cache, spike_upstream: ?[]const u8, spike_fallback_upstream: ?[]const u8, connection_limiter: *ConnectionLimiter, stream: net.Stream) void {
+fn warmMcpRuntime(manager: *agent_mcp_runtime.Manager, database: *sqlite.Database) void {
+    manager.warm(database);
+}
+
+fn serveConnection(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration: *const Config, studio: *studio_settings.State, model_index_cache: *model_index.Cache, runtime_jobs: *runtime_jobs_service.State, download_state: *download_manager.State, compute: *compute_lifecycle.Manager, head_provider_state: *head_providers.State, oauth: *agent_oauth.State, google: *agent_google.State, code_storage: *agent_code_storage.State, harness: *harness_runtime.Manager, pty: *agent_pty.Manager, browser: *agent_browser.Manager, mcp: *agent_mcp_runtime.Manager, sandboxes: *agent_sandboxes.Manager, messaging: *agent_messaging.Manager, client: *http.Client, database: *sqlite.Database, recipe_column: recipes.PayloadColumn, llm_instance_path: []const u8, inference_port: u16, inference_origin: []const u8, default_trust_remote_code: bool, environment: *const std.process.Environ.Map, system: *const system_info.Snapshot, worker_pool: *worker_service.Pool, supervisor: *lifecycle.Supervisor, runtime_cache: *runtime_info.Cache, spike_upstream: ?[]const u8, spike_fallback_upstream: ?[]const u8, connection_limiter: *ConnectionLimiter, stream: net.Stream) void {
     defer {
         connection_limiter.release();
         var connection = stream;
@@ -238,7 +250,7 @@ fn serveConnection(allocator: std.mem.Allocator, io: Io, mode: Mode, configurati
             }
             return;
         };
-        const keep_connection = serveRequest(allocator, io, mode, configuration, studio, model_index_cache, runtime_jobs, download_state, compute, head_provider_state, oauth, google, code_storage, harness, pty, browser, daytona, messaging, client, database, recipe_column, llm_instance_path, inference_port, inference_origin, default_trust_remote_code, environment, system, worker_pool, supervisor, runtime_cache, spike_upstream, spike_fallback_upstream, &request) catch return;
+        const keep_connection = serveRequest(allocator, io, mode, configuration, studio, model_index_cache, runtime_jobs, download_state, compute, head_provider_state, oauth, google, code_storage, harness, pty, browser, mcp, sandboxes, messaging, client, database, recipe_column, llm_instance_path, inference_port, inference_origin, default_trust_remote_code, environment, system, worker_pool, supervisor, runtime_cache, spike_upstream, spike_fallback_upstream, &request) catch return;
         if (!keep_connection) return;
     }
 }
@@ -255,7 +267,7 @@ fn rejectOverloadedConnection(io: Io, stream: *net.Stream) void {
     writeProtocolError(&writer.interface, "503 Service Unavailable");
 }
 
-fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration: *const Config, studio: *studio_settings.State, model_index_cache: *model_index.Cache, runtime_jobs: *runtime_jobs_service.State, download_state: *download_manager.State, compute: *compute_lifecycle.Manager, head_provider_state: *head_providers.State, oauth: *agent_oauth.State, google: *agent_google.State, code_storage: *agent_code_storage.State, harness: *harness_runtime.Manager, pty: *agent_pty.Manager, browser: *agent_browser.Manager, daytona: *agent_daytona.Manager, messaging: *agent_messaging.Manager, client: *http.Client, database: *sqlite.Database, recipe_column: recipes.PayloadColumn, llm_instance_path: []const u8, inference_port: u16, inference_origin: []const u8, default_trust_remote_code: bool, environment: *const std.process.Environ.Map, system: *const system_info.Snapshot, worker_pool: *worker_service.Pool, supervisor: *lifecycle.Supervisor, runtime_cache: *runtime_info.Cache, spike_upstream: ?[]const u8, spike_fallback_upstream: ?[]const u8, request: *http.Server.Request) !bool {
+fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration: *const Config, studio: *studio_settings.State, model_index_cache: *model_index.Cache, runtime_jobs: *runtime_jobs_service.State, download_state: *download_manager.State, compute: *compute_lifecycle.Manager, head_provider_state: *head_providers.State, oauth: *agent_oauth.State, google: *agent_google.State, code_storage: *agent_code_storage.State, harness: *harness_runtime.Manager, pty: *agent_pty.Manager, browser: *agent_browser.Manager, mcp: *agent_mcp_runtime.Manager, sandboxes: *agent_sandboxes.Manager, messaging: *agent_messaging.Manager, client: *http.Client, database: *sqlite.Database, recipe_column: recipes.PayloadColumn, llm_instance_path: []const u8, inference_port: u16, inference_origin: []const u8, default_trust_remote_code: bool, environment: *const std.process.Environ.Map, system: *const system_info.Snapshot, worker_pool: *worker_service.Pool, supervisor: *lifecycle.Supervisor, runtime_cache: *runtime_info.Cache, spike_upstream: ?[]const u8, spike_fallback_upstream: ?[]const u8, request: *http.Server.Request) !bool {
     if (request.head.method.requestHasBody() and request.head.transfer_encoding == .none and request.head.content_length == null) request.head.keep_alive = false;
     const route = route_registry.find(request.head.method, request.head.target) orelse {
         try request.respond("{\"detail\":\"Not Found\"}", .{
@@ -312,6 +324,26 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         },
     }
 
+    if (std.mem.eql(u8, route.path, "/internal/head-link/v1/poll")) {
+        const document = try readBoundedJsonBody(allocator, request) orelse return false;
+        allocator.free(document);
+        const response = harness.relayPollPayload() catch |failure| return respondHarnessFailure(request, failure);
+        defer allocator.free(response);
+        try request.respond(response, .{ .keep_alive = false, .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
+        return false;
+    }
+    if (std.mem.eql(u8, route.path, "/internal/head-link/v1/complete")) {
+        const document = try readBoundedAgentBody(allocator, request) orelse return false;
+        defer allocator.free(document);
+        const response = harness.relayCompletePayload(document) catch |failure| return respondHarnessFailure(request, failure);
+        defer allocator.free(response);
+        try request.respond(response, .{ .keep_alive = false, .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
+        return false;
+    }
+    if (std.mem.eql(u8, route.path, "/internal/head-link/v1/chat/completions") or std.mem.eql(u8, route.path, "/internal/head-link/v1/responses") or std.mem.eql(u8, route.path, "/internal/head-link/v1/messages")) {
+        return harness.serveRelayedModel(route.path, request) catch |failure| return respondHarnessFailure(request, failure);
+    }
+
     if (std.mem.eql(u8, route.path, "/health")) {
         try request.respond("{\"status\":\"ok\",\"service\":\"local-studio-controller\"}", .{
             .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }},
@@ -355,7 +387,7 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         return request.head.keep_alive;
     }
     if (std.mem.eql(u8, route.path, "/api/agent/cloud/workers")) {
-        const response = try daytona.listPayload(database);
+        const response = try sandboxes.listPayload(database);
         defer allocator.free(response);
         try request.respond(response, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
         return request.head.keep_alive;
@@ -528,7 +560,7 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
     if (std.mem.eql(u8, route.path, "/api/agent/automations/:id/run")) {
         const automation_id = try request_tools.pathParameterBetween(allocator, request.head.target, "/api/agent/automations/", "/run");
         defer allocator.free(automation_id);
-        const response = automations.runPayload(allocator, io, mode, client, database, harness, daytona, automation_id) catch |failure| return respondAutomationFailure(request, failure);
+        const response = automations.runPayload(allocator, io, mode, client, database, harness, sandboxes, automation_id) catch |failure| return respondAutomationFailure(request, failure);
         defer allocator.free(response);
         try request.respond(response, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
         return request.head.keep_alive;
@@ -615,19 +647,36 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         };
         const payload = response catch |failure| return respondConnectorFailure(request, failure);
         defer allocator.free(payload);
+        if (mode == .standalone and request.head.method != .GET) {
+            const changed_id = if (id) |value| value else connectorIdFromDocument(allocator, document orelse "") catch null;
+            defer if (id == null) if (changed_id) |value| allocator.free(value);
+            if (changed_id) |value| mcp.remove(value);
+        }
         try request.respond(payload, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
         return request.head.keep_alive;
     }
     if (std.mem.startsWith(u8, route.path, "/api/agent/oauth")) {
-        const document = if (request.head.method == .POST or request.head.method == .PUT or std.mem.eql(u8, route.path, "/api/agent/oauth/authorize")) try readBoundedJsonBody(allocator, request) else null;
+        const method = request.head.method;
+        const authorize_route = std.mem.eql(u8, route.path, "/api/agent/oauth/authorize");
+        const remote_suffix = if (mode != .standalone) try allocator.dupe(u8, request.head.target["/api/agent/oauth".len..]) else null;
+        defer if (remote_suffix) |value| allocator.free(value);
+        const document = if (method == .POST or method == .PUT) try readBoundedJsonBody(allocator, request) else null;
         defer if (document) |value| allocator.free(value);
         const response = if (mode != .standalone) remote: {
-            const suffix = request.head.target["/api/agent/oauth".len..];
-            const internal_path = try std.fmt.allocPrint(allocator, "/internal/node/v1/oauth{s}", .{suffix});
+            const connector_id = if (authorize_route and method == .DELETE) try request_tools.queryParameter(allocator, request.head.target, "connectorId") else null;
+            defer if (connector_id) |value| allocator.free(value);
+            const internal_path = if (connector_id) |value|
+                try std.fmt.allocPrint(allocator, "/internal/node/v1/oauth/authorize?connectorId={s}", .{value})
+            else
+                try std.fmt.allocPrint(allocator, "/internal/node/v1/oauth{s}", .{remote_suffix.?});
             defer allocator.free(internal_path);
-            break :remote agent_oauth.forward(allocator, io, client, database, internal_path, request.head.method, document);
-        } else if (std.mem.eql(u8, route.path, "/api/agent/oauth/authorize"))
-            if (request.head.method == .POST) oauth.authorizePayload(client, document orelse return false) else oauth.cancelPayload()
+            break :remote agent_oauth.forward(allocator, io, client, database, internal_path, method, if (connector_id == null) document else null);
+        } else if (authorize_route)
+            if (method == .POST) oauth.authorizePayload(client, database, document orelse return false) else local: {
+                const connector_id = try request_tools.queryParameter(allocator, request.head.target, "connectorId");
+                defer if (connector_id) |value| allocator.free(value);
+                break :local oauth.cancelConnectorPayload(connector_id orelse return respondOAuthFailure(request, error.ConnectorIdRequired));
+            }
         else if (std.mem.eql(u8, route.path, "/api/agent/oauth/status")) local: {
             const connector_id = try request_tools.queryParameter(allocator, request.head.target, "connectorId");
             defer if (connector_id) |value| allocator.free(value);
@@ -637,7 +686,9 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         else local: {
             const connector_id = try request_tools.queryParameter(allocator, request.head.target, "connectorId");
             defer if (connector_id) |value| allocator.free(value);
-            break :local oauth.disconnectPayload(database, connector_id orelse return respondOAuthFailure(request, error.ConnectorIdRequired));
+            const account = try request_tools.queryParameter(allocator, request.head.target, "account");
+            defer if (account) |value| allocator.free(value);
+            break :local oauth.disconnectPayload(database, connector_id orelse return respondOAuthFailure(request, error.ConnectorIdRequired), account);
         };
         const payload = response catch |failure| return respondOAuthFailure(request, failure);
         defer allocator.free(payload);
@@ -705,13 +756,14 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         return request.head.keep_alive;
     }
     if (std.mem.eql(u8, route.path, "/api/agent/accounts/sandboxes")) {
-        const document = if (request.head.method == .POST) try readBoundedJsonBody(allocator, request) else null;
+        const document = if (request.head.method == .POST or request.head.method == .PUT) try readBoundedJsonBody(allocator, request) else null;
         defer if (document) |value| allocator.free(value);
         const account_id = if (request.head.method == .DELETE) try request_tools.queryParameter(allocator, request.head.target, "accountId") else null;
         defer if (account_id) |value| allocator.free(value);
         const response = switch (request.head.method) {
             .GET => code_storage.sandboxAccountsPayload(),
             .POST => code_storage.connectSandboxPayload(document orelse return false),
+            .PUT => code_storage.updateSandboxPayload(document orelse return false),
             .DELETE => code_storage.disconnectSandboxPayload(account_id orelse return respondDownloadError(request, .bad_request, "accountId is required")),
             else => unreachable,
         };
@@ -748,7 +800,7 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         const connector_id = if (request.head.method == .DELETE) try request_tools.queryParameter(allocator, request.head.target, "connectorId") else null;
         defer if (connector_id) |value| allocator.free(value);
         const response = switch (request.head.method) {
-            .GET => agent_connectors.grantsPayload(allocator, io, mode, configuration, client, database, node_id, probe_id),
+            .GET => agent_connectors.grantsPayload(allocator, io, mode, configuration, mcp, client, database, node_id, probe_id),
             .PUT => agent_connectors.putGrantPayload(allocator, io, mode, client, database, node_id, document orelse return false),
             .DELETE => agent_connectors.deleteGrantPayload(allocator, io, mode, client, database, node_id, model_id orelse return respondConnectorFailure(request, error.ConnectorGrantFieldsRequired), connector_id orelse return respondConnectorFailure(request, error.ConnectorGrantFieldsRequired)),
             else => unreachable,
@@ -766,9 +818,9 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         const document = if (request.head.method == .POST) try readBoundedAgentBody(allocator, request) else null;
         defer if (document) |value| allocator.free(value);
         const response = if (request.head.method == .GET)
-            agent_connectors.inventoryPayload(allocator, io, mode, configuration, client, database, node_id, model_id orelse "")
+            agent_connectors.inventoryPayload(allocator, io, mode, configuration, mcp, client, database, node_id, model_id orelse "")
         else
-            agent_connectors.callPayload(allocator, io, mode, configuration, client, database, node_id, document orelse return false);
+            agent_connectors.callPayload(allocator, io, mode, configuration, mcp, client, database, node_id, document orelse return false);
         const payload = response catch |failure| return respondConnectorFailure(request, failure);
         defer allocator.free(payload);
         try request.respond(payload, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
@@ -779,15 +831,7 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         defer if (node_id) |value| allocator.free(value);
         const document = try readBoundedJsonBody(allocator, request) orelse return false;
         defer allocator.free(document);
-        const response = agent_connectors.testPayload(allocator, io, mode, configuration, client, database, node_id, document) catch |failure| return respondConnectorFailure(request, failure);
-        defer allocator.free(response);
-        try request.respond(response, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
-        return request.head.keep_alive;
-    }
-    if (std.mem.eql(u8, route.path, "/api/agent/connectors/ssh-server-path")) {
-        const node_id = try request_tools.queryParameter(allocator, request.head.target, "nodeId");
-        defer if (node_id) |value| allocator.free(value);
-        const response = agent_connectors.sshPathPayload(allocator, io, mode, client, database, node_id) catch |failure| return respondConnectorFailure(request, failure);
+        const response = agent_connectors.testPayload(allocator, io, mode, configuration, mcp, client, database, node_id, document) catch |failure| return respondConnectorFailure(request, failure);
         defer allocator.free(response);
         try request.respond(response, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
         return request.head.keep_alive;
@@ -1006,6 +1050,7 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
             const response = agent_sessions.archivePayload(allocator, io, database, session_id, document) catch |failure| return respondSessionFailure(request, failure);
             defer allocator.free(response);
             if (std.mem.indexOf(u8, document, "\"archived\":true") != null) {
+                sandboxes.archiveSession(client, database, session_id) catch |failure| return respondSessionFailure(request, failure);
                 if (archived_session) |session| if (session.project_id) |project_id| {
                     code_storage.archiveWorkspace(database, project_id, session.id) catch |failure| return respondProjectFailure(request, failure);
                 };
@@ -1064,7 +1109,7 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
     if (std.mem.eql(u8, route.path, "/api/agent/turn")) {
         const document = try readBoundedAgentBody(allocator, request) orelse return false;
         defer allocator.free(document);
-        const response = agent_coordinator.turnPayloadWithCloud(allocator, io, mode, client, database, harness, daytona, document) catch |failure| return respondHarnessFailure(request, failure);
+        const response = agent_coordinator.turnPayloadWithCloud(allocator, io, mode, client, database, harness, sandboxes, document) catch |failure| return respondHarnessFailure(request, failure);
         defer allocator.free(response);
         try request.respond(response, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
         return request.head.keep_alive;
@@ -1163,24 +1208,39 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         };
         const payload = response catch |failure| return respondConnectorFailure(request, failure);
         defer allocator.free(payload);
+        if (request.head.method != .GET) {
+            const changed_id = if (id) |value| value else connectorIdFromDocument(allocator, document orelse "") catch null;
+            defer if (id == null) if (changed_id) |value| allocator.free(value);
+            if (changed_id) |value| mcp.remove(value);
+        }
         try request.respond(payload, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
         return request.head.keep_alive;
     }
     if (std.mem.startsWith(u8, route.path, "/internal/node/v1/oauth")) {
-        const document = if (request.head.method == .POST or request.head.method == .PUT or std.mem.eql(u8, route.path, "/internal/node/v1/oauth/authorize")) try readBoundedJsonBody(allocator, request) else null;
+        const method = request.head.method;
+        const authorize_route = std.mem.eql(u8, route.path, "/internal/node/v1/oauth/authorize");
+        const status_route = std.mem.eql(u8, route.path, "/internal/node/v1/oauth/status");
+        const client_route = std.mem.eql(u8, route.path, "/internal/node/v1/oauth/client");
+        const document = if (method == .POST or method == .PUT) try readBoundedJsonBody(allocator, request) else null;
         defer if (document) |value| allocator.free(value);
-        const response = if (std.mem.eql(u8, route.path, "/internal/node/v1/oauth/authorize"))
-            if (request.head.method == .POST) oauth.authorizePayload(client, document orelse return false) else oauth.cancelPayload()
-        else if (std.mem.eql(u8, route.path, "/internal/node/v1/oauth/status")) local: {
+        const response = if (authorize_route)
+            if (method == .POST) oauth.authorizePayload(client, database, document orelse return false) else local: {
+                const connector_id = try request_tools.queryParameter(allocator, request.head.target, "connectorId");
+                defer if (connector_id) |value| allocator.free(value);
+                break :local oauth.cancelConnectorPayload(connector_id orelse return respondOAuthFailure(request, error.ConnectorIdRequired));
+            }
+        else if (status_route) local: {
             const connector_id = try request_tools.queryParameter(allocator, request.head.target, "connectorId");
             defer if (connector_id) |value| allocator.free(value);
             break :local oauth.statusPayload(client, database, connector_id orelse return respondOAuthFailure(request, error.ConnectorIdRequired));
-        } else if (std.mem.eql(u8, route.path, "/internal/node/v1/oauth/client"))
+        } else if (client_route)
             oauth.clientPayload(database, document orelse return false)
         else local: {
             const connector_id = try request_tools.queryParameter(allocator, request.head.target, "connectorId");
             defer if (connector_id) |value| allocator.free(value);
-            break :local oauth.disconnectPayload(database, connector_id orelse return respondOAuthFailure(request, error.ConnectorIdRequired));
+            const account = try request_tools.queryParameter(allocator, request.head.target, "account");
+            defer if (account) |value| allocator.free(value);
+            break :local oauth.disconnectPayload(database, connector_id orelse return respondOAuthFailure(request, error.ConnectorIdRequired), account);
         };
         const payload = response catch |failure| return respondOAuthFailure(request, failure);
         defer allocator.free(payload);
@@ -1233,13 +1293,14 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         return request.head.keep_alive;
     }
     if (std.mem.eql(u8, route.path, "/internal/node/v1/accounts/sandboxes")) {
-        const document = if (request.head.method == .POST) try readBoundedJsonBody(allocator, request) else null;
+        const document = if (request.head.method == .POST or request.head.method == .PUT) try readBoundedJsonBody(allocator, request) else null;
         defer if (document) |value| allocator.free(value);
         const account_id = if (request.head.method == .DELETE) try request_tools.queryParameter(allocator, request.head.target, "accountId") else null;
         defer if (account_id) |value| allocator.free(value);
         const response = switch (request.head.method) {
             .GET => code_storage.sandboxAccountsPayload(),
             .POST => code_storage.connectSandboxPayload(document orelse return false),
+            .PUT => code_storage.updateSandboxPayload(document orelse return false),
             .DELETE => code_storage.disconnectSandboxPayload(account_id orelse return respondDownloadError(request, .bad_request, "accountId is required")),
             else => unreachable,
         };
@@ -1258,7 +1319,7 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         const connector_id = if (request.head.method == .DELETE) try request_tools.queryParameter(allocator, request.head.target, "connectorId") else null;
         defer if (connector_id) |value| allocator.free(value);
         const response = switch (request.head.method) {
-            .GET => agent_connectors.grantsLocal(allocator, io, configuration, client, database, probe_id),
+            .GET => agent_connectors.grantsLocal(allocator, io, configuration, mcp, client, database, probe_id),
             .PUT => agent_connectors.putGrantLocal(allocator, io, database, document orelse return false),
             .DELETE => agent_connectors.deleteGrantLocal(allocator, io, database, model_id orelse return respondConnectorFailure(request, error.ConnectorGrantFieldsRequired), connector_id orelse return respondConnectorFailure(request, error.ConnectorGrantFieldsRequired)),
             else => unreachable,
@@ -1274,9 +1335,9 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         const document = if (request.head.method == .POST) try readBoundedAgentBody(allocator, request) else null;
         defer if (document) |value| allocator.free(value);
         const response = if (request.head.method == .GET)
-            agent_connectors.inventoryLocal(allocator, io, configuration, client, database, model_id orelse "")
+            agent_connectors.inventoryLocal(allocator, io, configuration, mcp, client, database, model_id orelse "")
         else
-            agent_connectors.callLocal(allocator, io, configuration, client, database, document orelse return false);
+            agent_connectors.callLocal(allocator, io, configuration, mcp, client, database, document orelse return false);
         const payload = response catch |failure| return respondConnectorFailure(request, failure);
         defer allocator.free(payload);
         try request.respond(payload, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
@@ -1285,13 +1346,7 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
     if (std.mem.eql(u8, route.path, "/internal/node/v1/connector-test")) {
         const document = try readBoundedJsonBody(allocator, request) orelse return false;
         defer allocator.free(document);
-        const response = agent_connectors.testLocal(allocator, io, configuration, client, database, document) catch |failure| return respondConnectorFailure(request, failure);
-        defer allocator.free(response);
-        try request.respond(response, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
-        return request.head.keep_alive;
-    }
-    if (std.mem.eql(u8, route.path, "/internal/node/v1/connectors/ssh-server-path")) {
-        const response = try agent_connectors.sshPathLocal(allocator, io);
+        const response = agent_connectors.testLocal(allocator, io, configuration, mcp, client, database, document) catch |failure| return respondConnectorFailure(request, failure);
         defer allocator.free(response);
         try request.respond(response, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
         return request.head.keep_alive;
@@ -2593,20 +2648,24 @@ fn respondOAuthFailure(request: *http.Server.Request, failure: anyerror) !bool {
     const status: http.Status = switch (failure) {
         error.ConnectorIdRequired, error.InvalidOAuthPayload => .bad_request,
         error.OAuthConnectorNotFound => .not_found,
-        error.OAuthClientRequired, error.ConnectorNodeRequired => .conflict,
-        error.NodeUnavailable, error.NodeRequestRejected, error.OAuthProviderRejected, error.InvalidOAuthProviderResponse => .bad_gateway,
+        error.OAuthClientRequired, error.OAuthClientNotConfigurable, error.ConnectorNodeRequired => .conflict,
+        error.NodeUnavailable, error.NodeRequestRejected, error.OAuthProviderRejected, error.InvalidOAuthProviderResponse, error.McpOAuthDiscoveryRejected, error.McpOAuthRegistrationRejected, error.McpOAuthChallengeRequired, error.McpOAuthResourceMetadataRequired, error.InvalidMcpOAuthMetadata, error.InvalidMcpOAuthResponse => .bad_gateway,
         else => .internal_server_error,
     };
     const detail: []const u8 = switch (failure) {
         error.ConnectorIdRequired => "connectorId is required",
         error.InvalidOAuthPayload => "Invalid OAuth request",
         error.OAuthConnectorNotFound => "The connector does not support OAuth",
-        error.OAuthClientRequired => "Register an OAuth client for GitHub first",
+        error.OAuthClientRequired => "Register an OAuth client for this provider first",
+        error.OAuthClientNotConfigurable => "This provider manages OAuth client registration automatically",
         error.ConnectorNodeRequired => "No enrolled node offers MCP connectors",
         error.NodeUnavailable => "The connector node is unavailable",
         error.NodeRequestRejected => "The connector node rejected the OAuth request",
         error.OAuthProviderRejected => "GitHub refused the sign-in request",
         error.InvalidOAuthProviderResponse => "GitHub returned an invalid OAuth response",
+        error.McpOAuthDiscoveryRejected, error.McpOAuthChallengeRequired, error.McpOAuthResourceMetadataRequired, error.InvalidMcpOAuthMetadata => "The MCP server did not provide valid OAuth discovery metadata",
+        error.McpOAuthRegistrationRejected => "The MCP authorization server rejected client registration",
+        error.InvalidMcpOAuthResponse => "The MCP authorization server returned an invalid response",
         else => @errorName(failure),
     };
     return respondDownloadError(request, status, detail);
@@ -2636,7 +2695,7 @@ fn respondGoogleFailure(request: *http.Server.Request, failure: anyerror) !bool 
 
 fn respondCodeStorageFailure(request: *http.Server.Request, failure: anyerror) !bool {
     const status: http.Status = switch (failure) {
-        error.InvalidCodeStorageAccountPayload, error.InvalidCredentialStorePayload, error.InvalidSandboxAccountPayload, error.InvalidMessagingAccountPayload, error.SecretProviderRequired, error.SandboxProviderRequired, error.SandboxCredentialRequired, error.SandboxAccountRequired, error.MessagingProviderRequired, error.MessagingCredentialRequired, error.MessagingModelRequired, error.DiscordApplicationIdRequired, error.DiscordPublicKeyRequired, error.CodeStorageOrganizationRequired, error.CodeStoragePrivateKeyRequired, error.InvalidCodeStorageOrganization, error.InvalidCodeStoragePrivateKey, error.InvalidSecretProvider, error.CodeStorageAccountRequired => .bad_request,
+        error.InvalidCodeStorageAccountPayload, error.InvalidCredentialStorePayload, error.InvalidSandboxAccountPayload, error.InvalidSandboxProfile, error.InvalidMessagingAccountPayload, error.SecretProviderRequired, error.SandboxProviderRequired, error.SandboxCredentialRequired, error.SandboxAccountRequired, error.VercelTeamRequired, error.VercelProjectRequired, error.MessagingProviderRequired, error.MessagingCredentialRequired, error.MessagingModelRequired, error.DiscordApplicationIdRequired, error.DiscordPublicKeyRequired, error.CodeStorageOrganizationRequired, error.CodeStoragePrivateKeyRequired, error.InvalidCodeStorageOrganization, error.InvalidCodeStoragePrivateKey, error.InvalidSecretProvider, error.CodeStorageAccountRequired => .bad_request,
         error.CodeStorageAccountNotFound, error.SandboxAccountNotFound, error.MessagingAccountNotFound => .not_found,
         error.SecretSpecUnavailable, error.SecretStoreWriteFailed, error.SecretStoreReadFailed, error.SecretStoreDeleteFailed => .service_unavailable,
         error.ConnectorNodeRequired => .conflict,
@@ -2648,9 +2707,12 @@ fn respondCodeStorageFailure(request: *http.Server.Request, failure: anyerror) !
         error.InvalidCredentialStorePayload => "Invalid credential store request",
         error.SecretProviderRequired => "Choose a SecretSpec credential store",
         error.InvalidSandboxAccountPayload => "Invalid sandbox account request",
+        error.InvalidSandboxProfile => "Invalid sandbox machine profile",
         error.InvalidMessagingAccountPayload => "Invalid messaging account request",
-        error.SandboxProviderRequired => "Choose Daytona",
+        error.SandboxProviderRequired => "Choose Daytona or Vercel",
         error.SandboxCredentialRequired => "Enter the credentials required by this sandbox provider",
+        error.VercelTeamRequired => "Enter the Vercel team ID",
+        error.VercelProjectRequired => "Enter the Vercel project ID",
         error.SandboxAccountRequired => "Choose a sandbox account",
         error.SandboxAccountNotFound => "Sandbox account not found",
         error.MessagingProviderRequired => "Choose Telegram or Discord",
@@ -4143,4 +4205,14 @@ fn eventTimestamp(io: Io, buffer: *[24]u8) []const u8 {
         day_seconds.getMinutesIntoHour(),
         day_seconds.getSecondsIntoMinute(),
     }) catch unreachable;
+}
+
+fn connectorIdFromDocument(allocator: std.mem.Allocator, document: []const u8) !?[]u8 {
+    var parsed = std.json.parseFromSlice(std.json.Value, allocator, document, .{}) catch return error.InvalidConnectorRecord;
+    defer parsed.deinit();
+    if (parsed.value != .object) return error.InvalidConnectorRecord;
+    const value = parsed.value.object.get("id") orelse return null;
+    if (value != .string) return error.InvalidConnectorRecord;
+    const id = std.mem.trim(u8, value.string, " \t\r\n");
+    return if (id.len == 0) null else try allocator.dupe(u8, id);
 }

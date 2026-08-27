@@ -40,7 +40,6 @@ function DisconnectRow({
 
 export function ConnectedGoogleAccounts({
   service,
-  displayName,
   accounts,
   confirmingKey,
   busy,
@@ -49,7 +48,6 @@ export function ConnectedGoogleAccounts({
   onDisconnect,
 }: {
   service: GoogleWorkspacePluginId;
-  displayName: string;
   accounts: GoogleAccountEntryView[];
   confirmingKey: string | null;
   busy: boolean;
@@ -58,11 +56,7 @@ export function ConnectedGoogleAccounts({
   onDisconnect: (key: string) => void;
 }) {
   if (!accounts.length) {
-    return (
-      <Alert variant="info">
-        No {displayName} account is signed in yet. Add one to expose its read-only tools.
-      </Alert>
-    );
+    return <Alert variant="info">No accounts connected.</Alert>;
   }
   return (
     <div className="space-y-2" role="list">

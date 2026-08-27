@@ -4,6 +4,7 @@ const sqlite = @import("../../storage/sqlite.zig");
 const agent_connectors = @import("../../agent/connectors/service.zig");
 const harness_nodes = @import("../../agent/harness/nodes.zig");
 const node_transport = @import("../../topology/node_transport.zig");
+const mcp_oauth = @import("../mcp_oauth/service.zig");
 
 const Io = std.Io;
 const http = std.http;
@@ -11,6 +12,7 @@ const device_url = "https://github.com/login/device/code";
 const token_url = "https://github.com/login/oauth/access_token";
 const identity_url = "https://api.github.com/user";
 const max_response_bytes = 2 * 1024 * 1024;
+const github_scopes = "repo read:org workflow project write:packages gist notifications read:user user:email";
 
 const Pending = struct {
     allocator: std.mem.Allocator,
@@ -37,24 +39,32 @@ pub const State = struct {
     mutex: Io.Mutex = .init,
     pending: ?Pending = null,
     last_error: ?[]u8 = null,
+    remote: mcp_oauth.State,
 
     pub fn init(allocator: std.mem.Allocator, io: Io, data_dir: []const u8, environment: *const std.process.Environ.Map) !State {
+        var remote = try mcp_oauth.State.init(allocator, io, data_dir, environment);
+        errdefer remote.deinit();
         return .{
             .allocator = allocator,
             .io = io,
             .data_dir = try allocator.dupe(u8, data_dir),
             .environment = environment,
+            .remote = remote,
         };
     }
 
     pub fn deinit(state: *State) void {
         if (state.pending) |*value| value.deinit();
         if (state.last_error) |value| state.allocator.free(value);
+        state.remote.deinit();
         state.allocator.free(state.data_dir);
         state.* = undefined;
     }
 
-    pub fn authorizePayload(state: *State, client: *http.Client, document: []const u8) ![]u8 {
+    pub fn authorizePayload(state: *State, client: *http.Client, database: *sqlite.Database, document: []const u8) ![]u8 {
+        const connector_id = try connectorFromDocument(state.allocator, document);
+        defer state.allocator.free(connector_id);
+        if (!std.mem.eql(u8, connector_id, "github")) return state.remote.authorizePayload(client, database, document);
         try requireGithubDocument(state.allocator, document, false);
         try state.mutex.lock(state.io);
         defer state.mutex.unlock(state.io);
@@ -65,7 +75,8 @@ pub const State = struct {
         defer form.deinit();
         try form.writer.writeAll("client_id=");
         try formEncode(&form.writer, client_id);
-        try form.writer.writeAll("&scope=repo%20read%3Aorg");
+        try form.writer.writeAll("&scope=");
+        try formEncode(&form.writer, github_scopes);
         const response = try postForm(state.allocator, client, device_url, form.writer.buffered());
         defer state.allocator.free(response.body);
         if (response.status.class() != .success) return error.OAuthProviderRejected;
@@ -102,7 +113,8 @@ pub const State = struct {
         return output.toOwnedSlice();
     }
 
-    pub fn cancelPayload(state: *State) ![]u8 {
+    pub fn cancelConnectorPayload(state: *State, connector_id: []const u8) ![]u8 {
+        if (!std.mem.eql(u8, connector_id, "github")) return state.remote.cancelProviderPayload(connector_id);
         try state.mutex.lock(state.io);
         defer state.mutex.unlock(state.io);
         state.clearFlowLocked();
@@ -110,6 +122,7 @@ pub const State = struct {
     }
 
     pub fn statusPayload(state: *State, client: *http.Client, database: *sqlite.Database, connector_id: []const u8) ![]u8 {
+        if (!std.mem.eql(u8, connector_id, "github")) return state.remote.statusPayload(connector_id);
         try requireGithub(connector_id);
         try state.mutex.lock(state.io);
         defer state.mutex.unlock(state.io);
@@ -118,6 +131,9 @@ pub const State = struct {
     }
 
     pub fn clientPayload(state: *State, database: *sqlite.Database, document: []const u8) ![]u8 {
+        const connector_id = try connectorFromDocument(state.allocator, document);
+        defer state.allocator.free(connector_id);
+        if (!std.mem.eql(u8, connector_id, "github")) return state.remote.clientPayload(database, document);
         const client_id = try githubClientFromDocument(state.allocator, document);
         defer state.allocator.free(client_id);
         try state.mutex.lock(state.io);
@@ -128,25 +144,41 @@ pub const State = struct {
         if (stored.client_id == null or !std.mem.eql(u8, stored.client_id.?, client_id)) {
             if (stored.client_id) |value| state.allocator.free(value);
             stored.client_id = try state.allocator.dupe(u8, client_id);
-            if (stored.token) |*value| value.deinit();
-            stored.token = null;
+            for (stored.tokens.items) |*value| value.deinit();
+            stored.tokens.clearRetainingCapacity();
             try store_repository.save(state.allocator, state.io, state.data_dir, &stored);
-            try agent_connectors.disconnectOAuthLocal(state.allocator, state.io, database);
+            try agent_connectors.disconnectAllOAuthLocal(state.allocator, state.io, database);
         }
         return state.writeStatusLocked();
     }
 
-    pub fn disconnectPayload(state: *State, database: *sqlite.Database, connector_id: []const u8) ![]u8 {
+    pub fn disconnectPayload(state: *State, database: *sqlite.Database, connector_id: []const u8, account: ?[]const u8) ![]u8 {
+        if (!std.mem.eql(u8, connector_id, "github")) return state.remote.disconnectPayload(database, connector_id, account);
         try requireGithub(connector_id);
         try state.mutex.lock(state.io);
         defer state.mutex.unlock(state.io);
         state.clearFlowLocked();
         var stored = try store_repository.load(state.allocator, state.io, state.data_dir);
         defer stored.deinit();
-        if (stored.token) |*value| value.deinit();
-        stored.token = null;
+        if (account) |selected| {
+            var index: usize = 0;
+            while (index < stored.tokens.items.len) {
+                const matches = if (stored.tokens.items[index].account) |candidate| std.mem.eql(u8, candidate, selected) else false;
+                if (!matches) {
+                    index += 1;
+                    continue;
+                }
+                var removed = stored.tokens.orderedRemove(index);
+                removed.deinit();
+                break;
+            }
+            try agent_connectors.disconnectOAuthLocal(state.allocator, state.io, database, selected);
+        } else {
+            for (stored.tokens.items) |*value| value.deinit();
+            stored.tokens.clearRetainingCapacity();
+            try agent_connectors.disconnectAllOAuthLocal(state.allocator, state.io, database);
+        }
         try store_repository.save(state.allocator, state.io, state.data_dir, &stored);
-        try agent_connectors.disconnectOAuthLocal(state.allocator, state.io, database);
         return state.writeStatusLocked();
     }
 
@@ -195,7 +227,6 @@ pub const State = struct {
         const access = stringField(parsed.value.object, "access_token") orelse return error.InvalidOAuthProviderResponse;
         const account = try fetchAccount(state.allocator, client, access);
         defer if (account) |value| state.allocator.free(value);
-        if (stored.token) |*value| value.deinit();
         var scopes: std.ArrayList([]u8) = .empty;
         errdefer {
             for (scopes.items) |scope| state.allocator.free(scope);
@@ -207,20 +238,31 @@ pub const State = struct {
             while (values.next()) |scope| try scopes.append(state.allocator, try state.allocator.dupe(u8, scope));
         }
         if (scopes.items.len == 0) {
-            try scopes.append(state.allocator, try state.allocator.dupe(u8, "repo"));
-            try scopes.append(state.allocator, try state.allocator.dupe(u8, "read:org"));
+            var configured_scopes = std.mem.tokenizeScalar(u8, github_scopes, ' ');
+            while (configured_scopes.next()) |scope| try scopes.append(state.allocator, try state.allocator.dupe(u8, scope));
         }
         var timestamp_buffer: [24]u8 = undefined;
-        stored.token = .{
+        const account_name = account orelse "github";
+        const replacement = store_repository.Token{
             .allocator = state.allocator,
             .access = try state.allocator.dupe(u8, access),
-            .account = if (account) |value| try state.allocator.dupe(u8, value) else null,
+            .account = try state.allocator.dupe(u8, account_name),
             .scopes = try scopes.toOwnedSlice(state.allocator),
             .obtained_at = try state.allocator.dupe(u8, formatTimestamp(state.io, &timestamp_buffer)),
             .expires_at_ms = null,
         };
+        var replaced = false;
+        for (stored.tokens.items) |*token| {
+            const candidate = token.account orelse continue;
+            if (!std.mem.eql(u8, candidate, account_name)) continue;
+            token.deinit();
+            token.* = replacement;
+            replaced = true;
+            break;
+        }
+        if (!replaced) try stored.tokens.append(state.allocator, replacement);
         try store_repository.save(state.allocator, state.io, state.data_dir, &stored);
-        try agent_connectors.connectOAuthLocal(state.allocator, state.io, database, account);
+        try agent_connectors.connectOAuthLocal(state.allocator, state.io, database, account_name);
         state.clearFlowLocked();
     }
 
@@ -235,16 +277,32 @@ pub const State = struct {
         try output.writer.writeAll(",\"clientId\":");
         if (configured_client) |value| try std.json.Stringify.value(value, .{}, &output.writer) else try output.writer.writeAll("null");
         try output.writer.writeAll(",\"connected\":");
-        try output.writer.writeAll(if (stored.token != null) "true" else "false");
+        try output.writer.writeAll(if (stored.tokens.items.len > 0) "true" else "false");
         try output.writer.writeAll(",\"account\":");
-        if (stored.token) |token| if (token.account) |value| try std.json.Stringify.value(value, .{}, &output.writer) else try output.writer.writeAll("null") else try output.writer.writeAll("null");
+        if (stored.tokens.items.len > 0) if (stored.tokens.items[0].account) |value| try std.json.Stringify.value(value, .{}, &output.writer) else try output.writer.writeAll("null") else try output.writer.writeAll("null");
         try output.writer.writeAll(",\"expiresAt\":");
-        if (stored.token) |token| if (token.expires_at_ms) |value| try output.writer.print("{d}", .{value}) else try output.writer.writeAll("null") else try output.writer.writeAll("null");
+        if (stored.tokens.items.len > 0) if (stored.tokens.items[0].expires_at_ms) |value| try output.writer.print("{d}", .{value}) else try output.writer.writeAll("null") else try output.writer.writeAll("null");
         try output.writer.writeAll(",\"scopes\":[");
-        if (stored.token) |token| for (token.scopes, 0..) |scope, index| {
+        if (stored.tokens.items.len > 0) for (stored.tokens.items[0].scopes, 0..) |scope, index| {
             if (index > 0) try output.writer.writeByte(',');
             try std.json.Stringify.value(scope, .{}, &output.writer);
         };
+        try output.writer.writeAll("],\"accounts\":[");
+        for (stored.tokens.items, 0..) |token, token_index| {
+            if (token_index > 0) try output.writer.writeByte(',');
+            try output.writer.writeAll("{\"id\":");
+            try std.json.Stringify.value(token.account orelse "github", .{}, &output.writer);
+            try output.writer.writeAll(",\"label\":");
+            try std.json.Stringify.value(token.account orelse "GitHub", .{}, &output.writer);
+            try output.writer.writeAll(",\"expiresAt\":");
+            if (token.expires_at_ms) |value| try output.writer.print("{d}", .{value}) else try output.writer.writeAll("null");
+            try output.writer.writeAll(",\"scopes\":[");
+            for (token.scopes, 0..) |scope, scope_index| {
+                if (scope_index > 0) try output.writer.writeByte(',');
+                try std.json.Stringify.value(scope, .{}, &output.writer);
+            }
+            try output.writer.writeAll("]}");
+        }
         try output.writer.writeAll("],\"pending\":");
         if (state.pending) |pending| {
             try output.writer.writeAll("{\"userCode\":");
@@ -339,6 +397,14 @@ fn requireGithubDocument(allocator: std.mem.Allocator, document: []const u8, req
     if (parsed.value != .object) return error.InvalidOAuthPayload;
     try requireGithub(stringField(parsed.value.object, "connectorId") orelse return error.ConnectorIdRequired);
     if (require_client and stringField(parsed.value.object, "clientId") == null) return error.OAuthClientRequired;
+}
+
+fn connectorFromDocument(allocator: std.mem.Allocator, document: []const u8) ![]u8 {
+    var parsed = std.json.parseFromSlice(std.json.Value, allocator, document, .{}) catch return error.InvalidOAuthPayload;
+    defer parsed.deinit();
+    if (parsed.value != .object) return error.InvalidOAuthPayload;
+    const connector_id = stringField(parsed.value.object, "connectorId") orelse return error.ConnectorIdRequired;
+    return allocator.dupe(u8, connector_id);
 }
 
 fn githubClientFromDocument(allocator: std.mem.Allocator, document: []const u8) ![]u8 {

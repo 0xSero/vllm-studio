@@ -8,6 +8,7 @@ const max_frame_bytes = 4 * 1024 * 1024;
 const http = std.http;
 const modern_protocol = "2026-07-28";
 const legacy_protocol = "2025-06-18";
+const request_timeout = Io.Duration.fromSeconds(30);
 
 const Era = enum {
     modern,
@@ -28,32 +29,72 @@ pub const Operation = union(enum) {
     },
 };
 
+pub const StdioSession = struct {
+    allocator: std.mem.Allocator,
+    io: Io,
+    child: std.process.Child,
+    connection: Connection,
+    era: Era,
+    next_request_id: i64 = 10,
+    mutex: Io.Mutex = .init,
+
+    pub fn open(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, data_dir: []const u8, connector: std.json.ObjectMap) !*StdioSession {
+        var launch_arena = std.heap.ArenaAllocator.init(allocator);
+        defer launch_arena.deinit();
+        const launch = try connector_runtime.resolve(launch_arena.allocator(), io, environment, connector);
+        var child_environment = try minimalEnvironment(allocator, environment, connector);
+        defer child_environment.deinit();
+        try child_environment.put("LOCAL_STUDIO_DATA_DIR", data_dir);
+        try connector_runtime.addEnvironment(allocator, io, &child_environment, data_dir, connector, launch.kind);
+        try oauth_connector_store.injectEnvironment(allocator, io, data_dir, connector, &child_environment);
+        try account_store.injectEnvironment(allocator, io, data_dir, connector, environment, &child_environment);
+        const session = try allocator.create(StdioSession);
+        errdefer allocator.destroy(session);
+        session.* = .{
+            .allocator = allocator,
+            .io = io,
+            .child = try std.process.spawn(io, .{
+                .argv = launch.argv,
+                .environ_map = &child_environment,
+                .cwd = if (launch.cwd) |value| .{ .path = value } else .inherit,
+                .stdin = .pipe,
+                .stdout = .pipe,
+                .stderr = .ignore,
+                .pgid = 0,
+            }),
+            .connection = undefined,
+            .era = undefined,
+        };
+        errdefer session.child.kill(io);
+        session.connection = .{ .allocator = allocator, .io = io, .child = &session.child };
+        errdefer session.connection.deinit();
+        session.era = try discoverStdio(allocator, &session.connection, protocolPreference(connector));
+        return session;
+    }
+
+    pub fn close(session: *StdioSession) void {
+        session.connection.deinit();
+        session.child.kill(session.io);
+        const allocator = session.allocator;
+        session.* = undefined;
+        allocator.destroy(session);
+    }
+
+    pub fn execute(session: *StdioSession, operation: Operation) ![]u8 {
+        try session.mutex.lock(session.io);
+        defer session.mutex.unlock(session.io);
+        const request_id = session.next_request_id;
+        session.next_request_id += 1;
+        const document = try operationDocument(session.allocator, session.era, request_id, operation);
+        defer session.allocator.free(document);
+        return session.connection.request(request_id, document);
+    }
+};
+
 pub fn executeStdio(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, data_dir: []const u8, connector: std.json.ObjectMap, operation: Operation) ![]u8 {
-    var launch_arena = std.heap.ArenaAllocator.init(allocator);
-    defer launch_arena.deinit();
-    const launch = try connector_runtime.resolve(launch_arena.allocator(), io, environment, connector);
-    var child_environment = try minimalEnvironment(allocator, environment, connector);
-    defer child_environment.deinit();
-    try connector_runtime.addEnvironment(allocator, io, &child_environment, data_dir, connector, launch.kind);
-    try oauth_connector_store.injectEnvironment(allocator, io, data_dir, connector, &child_environment);
-    try account_store.injectEnvironment(allocator, io, data_dir, connector, environment, &child_environment);
-    var child = try std.process.spawn(io, .{
-        .argv = launch.argv,
-        .environ_map = &child_environment,
-        .cwd = if (launch.cwd) |value| .{ .path = value } else .inherit,
-        .stdin = .pipe,
-        .stdout = .pipe,
-        .stderr = .ignore,
-        .pgid = 0,
-    });
-    defer child.kill(io);
-    var connection = Connection{ .allocator = allocator, .io = io, .child = &child };
-    defer connection.deinit();
-    const era = try discoverStdio(allocator, &connection, protocolPreference(connector));
-    const request_id: i64 = if (era == .modern) 2 else 3;
-    const document = try operationDocument(allocator, era, request_id, operation);
-    defer allocator.free(document);
-    return connection.request(request_id, document);
+    const session = try StdioSession.open(allocator, io, environment, data_dir, connector);
+    defer session.close();
+    return session.execute(operation);
 }
 
 pub fn executeHttp(allocator: std.mem.Allocator, io: Io, client: *http.Client, connector: std.json.ObjectMap, operation: Operation) ![]u8 {
@@ -235,7 +276,33 @@ const HttpResponse = struct {
     }
 };
 
-fn postHttp(allocator: std.mem.Allocator, _: Io, client: *http.Client, connector: std.json.ObjectMap, url: []const u8, era: Era, session_id: ?[]const u8, method: []const u8, name: ?[]const u8, document: []const u8) !HttpResponse {
+fn postHttp(allocator: std.mem.Allocator, io: Io, client: *http.Client, connector: std.json.ObjectMap, url: []const u8, era: Era, session_id: ?[]const u8, method: []const u8, name: ?[]const u8, document: []const u8) !HttpResponse {
+    const Selection = union(enum) { request: anyerror!HttpResponse, timer: Io.Cancelable!void };
+    var selections: [2]Selection = undefined;
+    var select = Io.Select(Selection).init(io, &selections);
+    try select.concurrent(.request, postHttpRequest, .{ allocator, client, connector, url, era, session_id, method, name, document });
+    select.concurrent(.timer, waitForTimeout, .{io}) catch {
+        while (select.cancel()) |pending| deinitPost(pending);
+        return error.ConcurrencyUnavailable;
+    };
+    const selected = try select.await();
+    switch (selected) {
+        .request => |result| {
+            select.cancelDiscard();
+            return try result;
+        },
+        .timer => |result| {
+            result catch |failure| switch (failure) {
+                error.Canceled => return error.Canceled,
+            };
+            while (select.cancel()) |pending| deinitPost(pending);
+            return error.McpRequestTimeout;
+        },
+    }
+}
+
+fn postHttpRequest(allocator: std.mem.Allocator, client: *http.Client, connector: std.json.ObjectMap, url: []const u8, era: Era, session_id: ?[]const u8, method: []const u8, name: ?[]const u8, document: []const u8) !HttpResponse {
+    if (era == .modern) return postModernHttp(allocator, client, connector, url, method, name, document);
     if (document.len > max_frame_bytes) return error.McpFrameTooLarge;
     const uri = std.Uri.parse(url) catch return error.InvalidConnectorUrl;
     var headers: [260]http.Header = undefined;
@@ -291,6 +358,63 @@ fn postHttp(allocator: std.mem.Allocator, _: Io, client: *http.Client, connector
     const reader = response.reader(&read_buffer);
     _ = reader.streamRemaining(&output) catch return error.McpFrameTooLarge;
     return .{ .allocator = allocator, .body = try allocator.dupe(u8, output.buffered()), .session_id = owned_session_id, .status = code };
+}
+
+fn postModernHttp(allocator: std.mem.Allocator, client: *http.Client, connector: std.json.ObjectMap, url: []const u8, method: []const u8, name: ?[]const u8, document: []const u8) !HttpResponse {
+    if (document.len > max_frame_bytes) return error.McpFrameTooLarge;
+    var headers: [260]http.Header = undefined;
+    var count: usize = 0;
+    headers[count] = .{ .name = "Content-Type", .value = "application/json" };
+    count += 1;
+    headers[count] = .{ .name = "Accept", .value = "application/json, text/event-stream" };
+    count += 1;
+    headers[count] = .{ .name = "MCP-Protocol-Version", .value = modern_protocol };
+    count += 1;
+    headers[count] = .{ .name = "Mcp-Method", .value = method };
+    count += 1;
+    if (name) |value| {
+        headers[count] = .{ .name = "Mcp-Name", .value = value };
+        count += 1;
+    }
+    if (connector.get("headers")) |configured| {
+        if (configured != .object) return error.InvalidConnectorRecord;
+        var iterator = configured.object.iterator();
+        while (iterator.next()) |entry| {
+            if (entry.value_ptr.* != .string) return error.InvalidConnectorRecord;
+            if (reservedHeader(entry.key_ptr.*)) continue;
+            if (count == headers.len) return error.TooManyConnectorHeaders;
+            headers[count] = .{ .name = entry.key_ptr.*, .value = entry.value_ptr.string };
+            count += 1;
+        }
+    }
+    const storage = try allocator.alloc(u8, max_frame_bytes);
+    defer allocator.free(storage);
+    var output: Io.Writer = .fixed(storage);
+    const response = try client.fetch(.{
+        .location = .{ .url = url },
+        .method = .POST,
+        .payload = document,
+        .redirect_behavior = .unhandled,
+        .keep_alive = false,
+        .headers = .{ .authorization = .omit, .user_agent = .omit, .connection = .omit, .accept_encoding = .omit, .content_type = .omit },
+        .extra_headers = headers[0..count],
+        .response_writer = &output,
+    });
+    return .{ .allocator = allocator, .body = try allocator.dupe(u8, output.buffered()), .session_id = null, .status = @intFromEnum(response.status) };
+}
+
+fn waitForTimeout(io: Io) Io.Cancelable!void {
+    return io.sleep(request_timeout, .awake);
+}
+
+fn deinitPost(selection: anytype) void {
+    switch (selection) {
+        .request => |result| if (result) |response_value| {
+            var response = response_value;
+            response.deinit();
+        } else |_| {},
+        .timer => {},
+    }
 }
 
 fn requireHttpSuccess(status: u16) !void {
@@ -351,7 +475,7 @@ fn reservedHeader(name: []const u8) bool {
 fn minimalEnvironment(allocator: std.mem.Allocator, environment: *const std.process.Environ.Map, connector: std.json.ObjectMap) !std.process.Environ.Map {
     var result = std.process.Environ.Map.init(allocator);
     errdefer result.deinit();
-    for ([_][]const u8{ "PATH", "HOME", "USER", "SHELL", "TMPDIR", "LANG", "LC_ALL", "TERM", "SYSTEMROOT", "SystemRoot", "COMSPEC", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "TEMP", "TMP" }) |name| {
+    for ([_][]const u8{ "PATH", "HOME", "USER", "SHELL", "TMPDIR", "LANG", "LC_ALL", "TERM", "SYSTEMROOT", "SystemRoot", "COMSPEC", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "TEMP", "TMP", "SSL_CERT_FILE", "SSL_CERT_DIR", "NIX_SSL_CERT_FILE", "CURL_CA_BUNDLE", "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "all_proxy", "no_proxy" }) |name| {
         if (environment.get(name)) |value| try result.put(name, value);
     }
     if (connector.get("env")) |values| {

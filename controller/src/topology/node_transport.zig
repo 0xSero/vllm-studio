@@ -18,6 +18,8 @@ pub const Response = struct {
 };
 
 pub fn fetch(allocator: std.mem.Allocator, client: *http.Client, target: *const harness_nodes.Target, path: []const u8, method: http.Method, payload: ?[]const u8) !Response {
+    var transport_client: http.Client = .{ .allocator = allocator, .io = client.io };
+    defer transport_client.deinit();
     const url = try std.fmt.allocPrint(allocator, "{s}{s}", .{ target.address, path });
     defer allocator.free(url);
     const authorization = if (target.api_key.len > 0) try std.fmt.allocPrint(allocator, "Bearer {s}", .{target.api_key}) else null;
@@ -33,7 +35,7 @@ pub fn fetch(allocator: std.mem.Allocator, client: *http.Client, target: *const 
     const storage = try allocator.alloc(u8, max_response_bytes);
     errdefer allocator.free(storage);
     var output: Io.Writer = .fixed(storage);
-    const response = try client.fetch(.{
+    const response = try transport_client.fetch(.{
         .location = .{ .url = url },
         .method = method,
         .payload = payload,

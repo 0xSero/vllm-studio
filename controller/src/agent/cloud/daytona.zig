@@ -1,29 +1,19 @@
 const std = @import("std");
 const account_repository = @import("../../accounts/store.zig");
 const cloud_store = @import("store.zig");
+const cloud_types = @import("types.zig");
+const node_credentials = @import("../../topology/credential_store.zig");
 const enrollments = @import("../../topology/enrollments.zig");
+const model_relay = @import("../harness/model_relay.zig");
 const sqlite = @import("../../storage/sqlite.zig");
 
 const Io = std.Io;
 const http = std.http;
 const max_response_bytes = 16 * 1024 * 1024;
 const controller_port = 8080;
+const worker_lease_seconds = 3600;
 
-pub const Provisioned = struct {
-    allocator: std.mem.Allocator,
-    provider_id: []u8,
-    node_id: []u8,
-    address: []u8,
-    workspace: []u8,
-
-    pub fn deinit(worker: *Provisioned) void {
-        worker.allocator.free(worker.provider_id);
-        worker.allocator.free(worker.node_id);
-        worker.allocator.free(worker.address);
-        worker.allocator.free(worker.workspace);
-        worker.* = undefined;
-    }
-};
+const Lifecycle = enum { pause, stop, start, delete };
 
 const Credential = struct {
     allocator: std.mem.Allocator,
@@ -42,22 +32,39 @@ pub const Manager = struct {
     io: Io,
     data_dir: []u8,
     environment: *const std.process.Environ.Map,
+    head_origin: []u8,
+    head_api_key: ?[]u8,
+    links: Io.Group = .init,
 
-    pub fn init(allocator: std.mem.Allocator, io: Io, data_dir: []const u8, environment: *const std.process.Environ.Map) !Manager {
+    pub fn init(allocator: std.mem.Allocator, io: Io, data_dir: []const u8, environment: *const std.process.Environ.Map, head_port: u16, head_api_key: ?[]const u8) !Manager {
+        const owned_data_dir = try allocator.dupe(u8, data_dir);
+        errdefer allocator.free(owned_data_dir);
+        const head_origin = try std.fmt.allocPrint(allocator, "http://127.0.0.1:{d}", .{head_port});
+        errdefer allocator.free(head_origin);
+        const owned_head_api_key = if (head_api_key) |value| try allocator.dupe(u8, value) else null;
+        errdefer if (owned_head_api_key) |value| allocator.free(value);
         return .{
             .allocator = allocator,
             .io = io,
-            .data_dir = try allocator.dupe(u8, data_dir),
+            .data_dir = owned_data_dir,
             .environment = environment,
+            .head_origin = head_origin,
+            .head_api_key = owned_head_api_key,
         };
     }
 
     pub fn deinit(manager: *Manager) void {
+        manager.links.cancel(manager.io);
         manager.allocator.free(manager.data_dir);
+        manager.allocator.free(manager.head_origin);
+        if (manager.head_api_key) |value| manager.allocator.free(value);
         manager.* = undefined;
     }
 
-    pub fn provision(manager: *Manager, client: *http.Client, database: *sqlite.Database, worker_id: []const u8, session_id: []const u8, account_id: []const u8, requested_harness: []const u8, snapshot: []const u8, checkout: []const u8) !Provisioned {
+    pub fn provision(manager: *Manager, client: *http.Client, database: *sqlite.Database, worker_id: []const u8, session_id: []const u8, account_id: []const u8, requested_harness: []const u8, snapshot: []const u8, vcpus: u8, memory_gib: u16, storage_gib: u16, checkout: []const u8) !cloud_types.Provisioned {
+        _ = vcpus;
+        _ = memory_gib;
+        _ = storage_gib;
         var account_credential = try manager.loadCredential(account_id);
         defer account_credential.deinit();
         var controller_key_bytes: [32]u8 = undefined;
@@ -69,12 +76,10 @@ pub const Manager = struct {
         defer manager.allocator.free(created);
         const provider_id = try requiredResponseString(manager.allocator, created, "id");
         errdefer manager.allocator.free(provider_id);
-        errdefer manager.lifecycle(client, &account_credential, provider_id, .DELETE) catch {};
-        try lockedWorkerStatus(manager.io, database, worker_id, "starting", null);
+        errdefer manager.lifecycle(client, &account_credential, provider_id, .delete) catch {};
+        try lockedProvider(manager.io, database, worker_id, provider_id);
         try manager.waitForStarted(client, &account_credential, provider_id);
         try manager.waitForToolbox(client, &account_credential, provider_id);
-        try manager.verifyHead(client, &account_credential, provider_id);
-        try manager.startController(client, &account_credential, provider_id);
         const preview_path = try std.fmt.allocPrint(manager.allocator, "/sandbox/{s}/ports/{d}/preview-url", .{ provider_id, controller_port });
         defer manager.allocator.free(preview_path);
         const preview = try manager.waitForPreview(client, &account_credential, preview_path);
@@ -84,6 +89,7 @@ pub const Manager = struct {
         const catalog = try manager.waitForCatalog(client, address, controller_key[0..]);
         defer manager.allocator.free(catalog);
         if (!catalogHasHarness(manager.allocator, catalog, requested_harness)) return error.CloudHarnessUnavailable;
+        try model_relay.startClient(&manager.links, manager.allocator, manager.io, address, controller_key[0..], manager.head_origin, manager.head_api_key);
         const workspace = try manager.cloneWorkspace(client, &account_credential, provider_id, session_id, checkout);
         errdefer manager.allocator.free(workspace);
         const node_id = try std.fmt.allocPrint(manager.allocator, "daytona-{s}", .{worker_id[0..@min(worker_id.len, 20)]});
@@ -108,7 +114,8 @@ pub const Manager = struct {
         return cloud_store.listPayload(manager.allocator, database);
     }
 
-    pub fn defaultSnapshot(manager: *Manager) ![]u8 {
+    pub fn defaultSnapshot(manager: *Manager, profile_id: []const u8) ![]u8 {
+        _ = profile_id;
         if (manager.environment.get("LOCAL_STUDIO_DAYTONA_SNAPSHOT")) |configured| {
             const snapshot = std.mem.trim(u8, configured, " \t\r\n");
             if (!validSnapshot(snapshot)) return error.DaytonaSnapshotRequired;
@@ -128,7 +135,7 @@ pub const Manager = struct {
         }
     }
 
-    fn reconcile(manager: *Manager, client: *http.Client, database: *sqlite.Database) !void {
+    pub fn reconcile(manager: *Manager, client: *http.Client, database: *sqlite.Database) !void {
         var candidates = blk: {
             try database.lock(manager.io);
             defer database.unlock(manager.io);
@@ -136,6 +143,7 @@ pub const Manager = struct {
         };
         defer candidates.deinit();
         for (candidates.items.items) |*worker| {
+            if (!try manager.ownsAccount(worker.account_id)) continue;
             const provider_id = worker.provider_id orelse {
                 try lockedWorkerStatus(manager.io, database, worker.id, "deleted", "Sandbox was never created");
                 continue;
@@ -146,25 +154,66 @@ pub const Manager = struct {
             };
             defer account_credential.deinit();
             if (std.mem.eql(u8, worker.status, "ready")) {
-                try lockedWorkerStatus(manager.io, database, worker.id, "stopping", null);
-                manager.lifecycle(client, &account_credential, provider_id, .POST) catch |failure| {
+                try lockedWorkerStatus(manager.io, database, worker.id, "pausing", null);
+                const paused = manager.pauseSandbox(client, &account_credential, provider_id) catch |failure| {
+                    if (failure == error.DaytonaResourceNotFound) {
+                        try manager.removeWorkerEnrollment(database, worker);
+                        try lockedWorkerStatus(manager.io, database, worker.id, "deleted", null);
+                        continue;
+                    }
                     try lockedWorkerStatus(manager.io, database, worker.id, "failed", @errorName(failure));
                     continue;
                 };
-                try lockedWorkerStatus(manager.io, database, worker.id, "stopped", null);
+                try lockedWorkerStatus(manager.io, database, worker.id, if (paused) "paused" else "stopped", null);
                 continue;
             }
-            try lockedWorkerStatus(manager.io, database, worker.id, "deleting", null);
-            manager.lifecycle(client, &account_credential, provider_id, .DELETE) catch |failure| {
-                try lockedWorkerStatus(manager.io, database, worker.id, "failed", @errorName(failure));
-                continue;
+            manager.lifecycle(client, &account_credential, provider_id, .delete) catch |failure| {
+                if (failure != error.DaytonaResourceNotFound) {
+                    try lockedWorkerStatus(manager.io, database, worker.id, "failed", @errorName(failure));
+                    continue;
+                }
             };
-            if (worker.node_id) |node_id| {
-                const removed = enrollments.deletePayload(manager.allocator, manager.io, database, node_id) catch null;
-                if (removed) |payload| manager.allocator.free(payload);
-            }
+            try manager.removeWorkerEnrollment(database, worker);
             try lockedWorkerStatus(manager.io, database, worker.id, "deleted", null);
         }
+    }
+
+    pub fn @"resume"(manager: *Manager, client: *http.Client, database: *sqlite.Database, worker: *const cloud_store.Worker) !void {
+        const provider_id = worker.provider_id orelse return error.DaytonaSandboxNotCreated;
+        const node_id = worker.node_id orelse return error.DaytonaWorkerNotEnrolled;
+        const address = worker.address orelse return error.DaytonaWorkerNotEnrolled;
+        var account_credential = try manager.loadCredential(worker.account_id);
+        defer account_credential.deinit();
+        try lockedWorkerStatus(manager.io, database, worker.id, "resuming", null);
+        manager.lifecycle(client, &account_credential, provider_id, .start) catch |failure| {
+            if (failure == error.DaytonaResourceNotFound) {
+                try manager.removeWorkerEnrollment(database, worker);
+                try lockedWorkerStatus(manager.io, database, worker.id, "deleted", null);
+            } else try lockedWorkerStatus(manager.io, database, worker.id, "failed", @errorName(failure));
+            return failure;
+        };
+        try manager.waitForStarted(client, &account_credential, provider_id);
+        try manager.waitForToolbox(client, &account_credential, provider_id);
+        const controller_key = try lockedNodeCredential(manager.allocator, manager.io, database, node_id);
+        defer manager.allocator.free(controller_key);
+        const catalog = try manager.waitForCatalog(client, address, controller_key);
+        manager.allocator.free(catalog);
+        try model_relay.startClient(&manager.links, manager.allocator, manager.io, address, controller_key, manager.head_origin, manager.head_api_key);
+        try lockedWorkerReady(manager.io, database, worker.id, worker_lease_seconds);
+    }
+
+    fn removeWorkerEnrollment(manager: *Manager, database: *sqlite.Database, worker: *const cloud_store.Worker) !void {
+        if (worker.node_id) |node_id| {
+            const removed = enrollments.deletePayload(manager.allocator, manager.io, database, node_id) catch null;
+            if (removed) |payload| manager.allocator.free(payload);
+        }
+    }
+
+    pub fn ownsAccount(manager: *Manager, account_id: []const u8) !bool {
+        var accounts = try account_repository.load(manager.allocator, manager.io, manager.data_dir);
+        defer accounts.deinit();
+        const account = accounts.find(account_id) orelse return false;
+        return std.mem.eql(u8, account.provider, "daytona");
     }
 
     fn loadCredential(manager: *Manager, account_id: []const u8) !Credential {
@@ -191,7 +240,7 @@ pub const Manager = struct {
         errdefer output.deinit();
         try output.writer.writeAll("{\"snapshot\":");
         try std.json.Stringify.value(snapshot, .{}, &output.writer);
-        try output.writer.writeAll(",\"public\":true,\"autoStopInterval\":60,\"autoDeleteInterval\":30,\"ttlMinutes\":1440,\"name\":");
+        try output.writer.writeAll(",\"public\":true,\"autoStopInterval\":0,\"ttlMinutes\":0,\"name\":");
         const name = try std.fmt.allocPrint(manager.allocator, "local-studio-{s}", .{worker_id[0..@min(worker_id.len, 20)]});
         defer manager.allocator.free(name);
         try std.json.Stringify.value(name, .{}, &output.writer);
@@ -199,36 +248,18 @@ pub const Manager = struct {
         try std.json.Stringify.value(session_id, .{}, &output.writer);
         try output.writer.writeAll("},\"env\":{\"LOCAL_STUDIO_CONTROLLER_MODE\":\"worker\",\"LOCAL_STUDIO_HOST\":\"0.0.0.0\",\"LOCAL_STUDIO_PORT\":\"8080\",\"LOCAL_STUDIO_API_KEY\":");
         try std.json.Stringify.value(controller_key, .{}, &output.writer);
+        try output.writer.writeAll(",\"LOCAL_STUDIO_HEAD_API_KEY\":");
+        try std.json.Stringify.value(controller_key, .{}, &output.writer);
         try output.writer.writeAll(",\"LOCAL_STUDIO_DATA_DIR\":\"/home/node/.local-studio\",\"LOCAL_STUDIO_MODELS_DIR\":\"/home/node/models\",\"LOCAL_STUDIO_CLOUD_SESSION_ID\":");
         try std.json.Stringify.value(session_id, .{}, &output.writer);
         if (manager.environment.get("LOCAL_STUDIO_DAYTONA_SECRETSPEC_PROVIDER")) |provider| {
             try output.writer.writeAll(",\"LOCAL_STUDIO_SECRETSPEC_PROVIDER\":");
             try std.json.Stringify.value(provider, .{}, &output.writer);
         }
-        if (manager.environment.get("LOCAL_STUDIO_DAYTONA_HEAD_URL")) |head_url| {
-            try output.writer.writeAll(",\"LOCAL_STUDIO_HEAD_URL\":");
-            try std.json.Stringify.value(head_url, .{}, &output.writer);
-        }
-        if (manager.environment.get("LOCAL_STUDIO_DAYTONA_HEAD_API_KEY")) |head_api_key| {
-            try output.writer.writeAll(",\"LOCAL_STUDIO_HEAD_API_KEY\":");
-            try std.json.Stringify.value(head_api_key, .{}, &output.writer);
-        }
         try output.writer.writeByte('}');
         if (manager.environment.get("LOCAL_STUDIO_DAYTONA_SECRETSPEC_SECRETS")) |document| try writeSecretReferences(manager.allocator, &output.writer, document);
         try output.writer.writeByte('}');
         return output.toOwnedSlice();
-    }
-
-    fn verifyHead(manager: *Manager, client: *http.Client, account_credential: *const Credential, provider_id: []const u8) !void {
-        if (manager.environment.get("LOCAL_STUDIO_DAYTONA_HEAD_URL") == null) return error.DaytonaHeadEndpointRequired;
-        const response = try manager.toolboxRequest(client, account_credential, provider_id, "/process/execute", .POST, "{\"command\":\"curl --fail --silent --show-error --max-time 20 \\\"$LOCAL_STUDIO_HEAD_URL/health\\\" >/dev/null\",\"cwd\":\"/home/node\",\"timeout\":30}");
-        defer manager.allocator.free(response);
-        var parsed = std.json.parseFromSlice(std.json.Value, manager.allocator, response, .{}) catch return error.InvalidDaytonaResponse;
-        defer parsed.deinit();
-        if (parsed.value != .object) return error.InvalidDaytonaResponse;
-        const exit_code = parsed.value.object.get("exitCode") orelse parsed.value.object.get("code") orelse return error.InvalidDaytonaResponse;
-        if (exit_code != .integer) return error.InvalidDaytonaResponse;
-        if (exit_code.integer != 0) return error.DaytonaHeadUnavailable;
     }
 
     fn request(manager: *Manager, client: *http.Client, endpoint: []const u8, api_key: []const u8, path: []const u8, method: http.Method, payload: ?[]const u8) ![]u8 {
@@ -261,13 +292,6 @@ pub const Manager = struct {
             try manager.io.sleep(.fromSeconds(2), .awake);
         }
         return error.DaytonaWorkerBuildTimedOut;
-    }
-
-    fn startController(manager: *Manager, client: *http.Client, account_credential: *const Credential, provider_id: []const u8) !void {
-        const created = manager.toolboxRequest(client, account_credential, provider_id, "/process/session", .POST, "{\"sessionId\":\"local-studio-controller\"}") catch return error.DaytonaControllerSessionRejected;
-        manager.allocator.free(created);
-        const started = manager.toolboxRequest(client, account_credential, provider_id, "/process/session/local-studio-controller/exec", .POST, "{\"command\":\"/usr/local/bin/local-studio-controller\",\"runAsync\":true}") catch return error.DaytonaControllerStartRejected;
-        manager.allocator.free(started);
     }
 
     fn waitForPreview(manager: *Manager, client: *http.Client, account_credential: *const Credential, preview_path: []const u8) ![]u8 {
@@ -315,14 +339,26 @@ pub const Manager = struct {
         return error.DaytonaWorkerNotReady;
     }
 
-    fn lifecycle(manager: *Manager, client: *http.Client, account_credential: *const Credential, provider_id: []const u8, method: http.Method) !void {
-        const path = if (method == .POST)
-            try std.fmt.allocPrint(manager.allocator, "/sandbox/{s}/stop", .{provider_id})
-        else
-            try std.fmt.allocPrint(manager.allocator, "/sandbox/{s}", .{provider_id});
+    fn lifecycle(manager: *Manager, client: *http.Client, account_credential: *const Credential, provider_id: []const u8, operation: Lifecycle) !void {
+        const path = switch (operation) {
+            .pause => try std.fmt.allocPrint(manager.allocator, "/sandbox/{s}/pause", .{provider_id}),
+            .stop => try std.fmt.allocPrint(manager.allocator, "/sandbox/{s}/stop", .{provider_id}),
+            .start => try std.fmt.allocPrint(manager.allocator, "/sandbox/{s}/start", .{provider_id}),
+            .delete => try std.fmt.allocPrint(manager.allocator, "/sandbox/{s}", .{provider_id}),
+        };
         defer manager.allocator.free(path);
+        const method: http.Method = if (operation == .delete) .DELETE else .POST;
         const response = try manager.request(client, account_credential.endpoint, account_credential.api_key, path, method, if (method == .POST) "{}" else null);
         manager.allocator.free(response);
+    }
+
+    fn pauseSandbox(manager: *Manager, client: *http.Client, account_credential: *const Credential, provider_id: []const u8) !bool {
+        manager.lifecycle(client, account_credential, provider_id, .pause) catch |failure| {
+            if (failure != error.DaytonaRequestRejected) return failure;
+            try manager.lifecycle(client, account_credential, provider_id, .stop);
+            return false;
+        };
+        return true;
     }
 
     fn cloneWorkspace(manager: *Manager, client: *http.Client, account_credential: *const Credential, provider_id: []const u8, session_id: []const u8, checkout: []const u8) ![]u8 {
@@ -335,29 +371,28 @@ pub const Manager = struct {
         const reference = stringField(parsed.value.object, "ref") orelse "main";
         const workspace = try workspacePath(manager.allocator, session_id);
         errdefer manager.allocator.free(workspace);
-        const scheme = "https://";
-        if (!std.mem.startsWith(u8, repository_url, scheme)) return error.InvalidCloudCheckout;
-        const authenticated_url = try std.fmt.allocPrint(manager.allocator, "{s}{s}:{s}@{s}", .{ scheme, username, password, repository_url[scheme.len..] });
-        defer manager.allocator.free(authenticated_url);
-        const rewrite_key = try std.fmt.allocPrint(manager.allocator, "url.{s}.insteadOf", .{authenticated_url});
-        defer manager.allocator.free(rewrite_key);
-        const lfs_url = try std.fmt.allocPrint(manager.allocator, "{s}/info/lfs", .{authenticated_url});
-        defer manager.allocator.free(lfs_url);
+        const credentials = try std.fmt.allocPrint(manager.allocator, "{s}:{s}", .{ username, password });
+        defer manager.allocator.free(credentials);
+        const encoded = try manager.allocator.alloc(u8, std.base64.standard.Encoder.calcSize(credentials.len));
+        defer manager.allocator.free(encoded);
+        _ = std.base64.standard.Encoder.encode(encoded, credentials);
+        var command: Io.Writer.Allocating = .init(manager.allocator);
+        defer command.deinit();
+        try command.writer.writeAll("mkdir -p /home/node/workspaces && git -c ");
+        const authorization_option = try std.fmt.allocPrint(manager.allocator, "http.extraHeader=Authorization: Basic {s}", .{encoded});
+        defer manager.allocator.free(authorization_option);
+        try writeShellArgument(&command.writer, authorization_option);
+        try command.writer.writeAll(" clone --branch ");
+        try writeShellArgument(&command.writer, reference);
+        try command.writer.writeAll(" --no-single-branch -- ");
+        try writeShellArgument(&command.writer, repository_url);
+        try command.writer.writeByte(' ');
+        try writeShellArgument(&command.writer, workspace);
         var document: Io.Writer.Allocating = .init(manager.allocator);
         defer document.deinit();
-        try document.writer.writeAll("{\"command\":\"mkdir -p /home/node/workspaces && git clone --branch \\\"$LOCAL_STUDIO_GIT_REF\\\" -- \\\"$LOCAL_STUDIO_GIT_URL\\\" \\\"$LOCAL_STUDIO_GIT_WORKSPACE\\\"\",\"cwd\":\"/home/node\",\"timeout\":600,\"envs\":{\"GIT_CONFIG_COUNT\":\"2\",\"GIT_CONFIG_KEY_0\":");
-        try std.json.Stringify.value(rewrite_key, .{}, &document.writer);
-        try document.writer.writeAll(",\"GIT_CONFIG_VALUE_0\":");
-        try std.json.Stringify.value(repository_url, .{}, &document.writer);
-        try document.writer.writeAll(",\"GIT_CONFIG_KEY_1\":\"lfs.url\",\"GIT_CONFIG_VALUE_1\":");
-        try std.json.Stringify.value(lfs_url, .{}, &document.writer);
-        try document.writer.writeAll(",\"LOCAL_STUDIO_GIT_REF\":");
-        try std.json.Stringify.value(reference, .{}, &document.writer);
-        try document.writer.writeAll(",\"LOCAL_STUDIO_GIT_URL\":");
-        try std.json.Stringify.value(repository_url, .{}, &document.writer);
-        try document.writer.writeAll(",\"LOCAL_STUDIO_GIT_WORKSPACE\":");
-        try std.json.Stringify.value(workspace, .{}, &document.writer);
-        try document.writer.writeAll("}}");
+        try document.writer.writeAll("{\"command\":");
+        try std.json.Stringify.value(command.writer.buffered(), .{}, &document.writer);
+        try document.writer.writeAll(",\"cwd\":\"/home/node\",\"timeout\":600}");
         const response = try manager.toolboxRequest(client, account_credential, provider_id, "/process/execute", .POST, document.writer.buffered());
         defer manager.allocator.free(response);
         var result = std.json.parseFromSlice(std.json.Value, manager.allocator, response, .{}) catch return error.InvalidDaytonaResponse;
@@ -374,6 +409,14 @@ pub fn workspacePath(allocator: std.mem.Allocator, session_id: []const u8) ![]u8
     return std.fmt.allocPrint(allocator, "/home/node/workspaces/{s}", .{session_id});
 }
 
+fn writeShellArgument(writer: *Io.Writer, value: []const u8) !void {
+    try writer.writeByte('\'');
+    for (value) |byte| {
+        if (byte == '\'') try writer.writeAll("'\\''") else try writer.writeByte(byte);
+    }
+    try writer.writeByte('\'');
+}
+
 fn fetch(allocator: std.mem.Allocator, client: *http.Client, url: []const u8, method: http.Method, payload: ?[]const u8, headers: []const http.Header) ![]u8 {
     const storage = try allocator.alloc(u8, max_response_bytes);
     defer allocator.free(storage);
@@ -388,6 +431,7 @@ fn fetch(allocator: std.mem.Allocator, client: *http.Client, url: []const u8, me
         .extra_headers = headers,
         .response_writer = &output,
     });
+    if (response.status == .not_found) return error.DaytonaResourceNotFound;
     if (response.status.class() != .success) return error.DaytonaRequestRejected;
     const body = output.buffered();
     return allocator.dupe(u8, body);
@@ -529,8 +573,31 @@ fn lockedWorkerStatus(io: Io, database: *sqlite.Database, worker_id: []const u8,
     try cloud_store.setStatus(database, worker_id, status, message);
 }
 
+fn lockedWorkerReady(io: Io, database: *sqlite.Database, worker_id: []const u8, lease_seconds: u64) !void {
+    try database.lock(io);
+    defer database.unlock(io);
+    try cloud_store.setReady(database, worker_id, lease_seconds);
+}
+
+fn lockedNodeCredential(allocator: std.mem.Allocator, io: Io, database: *sqlite.Database, node_id: []const u8) ![]u8 {
+    try database.lock(io);
+    defer database.unlock(io);
+    const credential = try node_credentials.get(allocator, database, node_id);
+    if (credential.len == 0) {
+        allocator.free(credential);
+        return error.DaytonaWorkerCredentialMissing;
+    }
+    return credential;
+}
+
 fn lockedAttach(io: Io, database: *sqlite.Database, worker_id: []const u8, provider_id: []const u8, node_id: []const u8, address: []const u8) !void {
     try database.lock(io);
     defer database.unlock(io);
     try cloud_store.attach(database, worker_id, provider_id, node_id, address);
+}
+
+fn lockedProvider(io: Io, database: *sqlite.Database, worker_id: []const u8, provider_id: []const u8) !void {
+    try database.lock(io);
+    defer database.unlock(io);
+    try cloud_store.setProvider(database, worker_id, provider_id);
 }

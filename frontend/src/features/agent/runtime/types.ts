@@ -44,7 +44,7 @@ export type Session = {
   // turn runs).
   piSessionId: string | null;
   executionKind?: AgentSessionKind;
-  placement?: "local" | "daytona";
+  placement?: "local" | "sandbox";
   sandboxAccountId?: string;
   harness?: AgentHarness;
   projectId?: string;

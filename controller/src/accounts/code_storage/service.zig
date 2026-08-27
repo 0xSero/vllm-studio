@@ -439,19 +439,24 @@ pub const State = struct {
         defer parsed.deinit();
         if (parsed.value != .object) return error.InvalidSandboxAccountPayload;
         const provider = stringField(parsed.value.object, "provider") orelse return error.SandboxProviderRequired;
-        if (!std.mem.eql(u8, provider, "daytona")) return error.SandboxProviderRequired;
-        const label = stringField(parsed.value.object, "label") orelse "Daytona";
-        const endpoint = stringField(parsed.value.object, "endpoint") orelse "https://app.daytona.io/api";
+        if (!isSandboxProvider(provider)) return error.SandboxProviderRequired;
+        const is_daytona = std.mem.eql(u8, provider, "daytona");
+        const label = stringField(parsed.value.object, "label") orelse if (is_daytona) "Daytona" else "Vercel";
+        const endpoint = if (is_daytona) stringField(parsed.value.object, "endpoint") orelse "https://app.daytona.io/api" else "https://vercel.com/api";
+        const team_id = if (is_daytona) null else stringField(parsed.value.object, "teamId") orelse return error.VercelTeamRequired;
+        const project_id = if (is_daytona) null else stringField(parsed.value.object, "projectId") orelse return error.VercelProjectRequired;
+        const worker_image = if (is_daytona) null else stringField(parsed.value.object, "workerImage") orelse "local-studio-controller:nightly";
         var configuration: Io.Writer.Allocating = .init(state.allocator);
         defer configuration.deinit();
-        try configuration.writer.writeAll("{}");
+        try writeDefaultSandboxConfiguration(&configuration.writer, provider, team_id, project_id, worker_image);
         var secret: Io.Writer.Allocating = .init(state.allocator);
         defer secret.deinit();
-        const api_key = stringField(parsed.value.object, "apiKey") orelse return error.SandboxCredentialRequired;
-        try secret.writer.writeAll("{\"apiKey\":");
-        try std.json.Stringify.value(api_key, .{}, &secret.writer);
+        const credential = stringField(parsed.value.object, if (is_daytona) "apiKey" else "token") orelse return error.SandboxCredentialRequired;
+        try secret.writer.writeAll(if (is_daytona) "{\"apiKey\":" else "{\"token\":");
+        try std.json.Stringify.value(credential, .{}, &secret.writer);
         try secret.writer.writeByte('}');
-        const id_buffer = repository.accountId(provider, endpoint, secret.writer.buffered());
+        const subject = project_id orelse endpoint;
+        const id_buffer = repository.accountId(provider, subject, secret.writer.buffered());
         const secret_ref = try std.fmt.allocPrint(state.allocator, "SANDBOX_CREDENTIAL_{s}", .{id_buffer});
         defer state.allocator.free(secret_ref);
         var timestamp_buffer: [24]u8 = undefined;
@@ -465,7 +470,7 @@ pub const State = struct {
                 .allocator = state.allocator,
                 .id = try state.allocator.dupe(u8, &id_buffer),
                 .provider = try state.allocator.dupe(u8, provider),
-                .subject = try state.allocator.dupe(u8, endpoint),
+                .subject = try state.allocator.dupe(u8, subject),
                 .label = try state.allocator.dupe(u8, label),
                 .credential_kind = try state.allocator.dupe(u8, "json"),
                 .configuration_json = try state.allocator.dupe(u8, configuration.writer.buffered()),
@@ -479,6 +484,30 @@ pub const State = struct {
             account.?.configuration_json = try state.allocator.dupe(u8, configuration.writer.buffered());
         }
         try repository.setSecret(state.allocator, state.io, state.environment, state.data_dir, &store, account.?.secret_ref, account.?.secret_provider, secret.writer.buffered());
+        try repository.save(state.allocator, state.io, state.data_dir, &store);
+        return writeSandboxAccounts(state.allocator, &store);
+    }
+
+    pub fn updateSandboxPayload(state: *State, document: []const u8) ![]u8 {
+        var parsed = std.json.parseFromSlice(std.json.Value, state.allocator, document, .{}) catch return error.InvalidSandboxAccountPayload;
+        defer parsed.deinit();
+        if (parsed.value != .object) return error.InvalidSandboxAccountPayload;
+        const account_id = stringField(parsed.value.object, "accountId") orelse return error.SandboxAccountRequired;
+        if (!repository.validId(account_id)) return error.SandboxAccountRequired;
+        const configuration_value = parsed.value.object.get("configuration") orelse return error.InvalidSandboxProfile;
+        if (configuration_value != .object) return error.InvalidSandboxProfile;
+        try state.mutex.lock(state.io);
+        defer state.mutex.unlock(state.io);
+        var store = try repository.load(state.allocator, state.io, state.data_dir);
+        defer store.deinit();
+        const account = store.find(account_id) orelse return error.SandboxAccountNotFound;
+        if (!isSandboxProvider(account.provider)) return error.SandboxAccountNotFound;
+        try validateSandboxConfiguration(account.provider, configuration_value.object);
+        var configuration: Io.Writer.Allocating = .init(state.allocator);
+        defer configuration.deinit();
+        try std.json.Stringify.value(configuration_value, .{}, &configuration.writer);
+        state.allocator.free(account.configuration_json);
+        account.configuration_json = try state.allocator.dupe(u8, configuration.writer.buffered());
         try repository.save(state.allocator, state.io, state.data_dir, &store);
         return writeSandboxAccounts(state.allocator, &store);
     }
@@ -742,7 +771,8 @@ fn writeSandboxAccounts(allocator: std.mem.Allocator, store: *repository.Store) 
         try output.writer.writeAll(",\"label\":");
         try std.json.Stringify.value(account.label, .{}, &output.writer);
         try output.writer.writeAll(",\"endpoint\":");
-        try std.json.Stringify.value(account.subject, .{}, &output.writer);
+        if (std.mem.eql(u8, account.provider, "daytona")) try std.json.Stringify.value(account.subject, .{}, &output.writer) else try std.json.Stringify.value("https://vercel.com/api", .{}, &output.writer);
+        try writeSandboxConfigurationFields(allocator, &output.writer, account.provider, account.configuration_json);
         try output.writer.writeAll(",\"connectedAt\":");
         try std.json.Stringify.value(account.connected_at, .{}, &output.writer);
         try output.writer.writeAll(",\"secretProvider\":");
@@ -781,7 +811,7 @@ fn writeMessagingAccounts(allocator: std.mem.Allocator, store: *repository.Store
 }
 
 fn isSandboxProvider(provider: []const u8) bool {
-    return std.mem.eql(u8, provider, "daytona");
+    return std.mem.eql(u8, provider, "daytona") or std.mem.eql(u8, provider, "vercel");
 }
 
 fn isMessagingProvider(provider: []const u8) bool {
@@ -827,6 +857,96 @@ fn stringField(object: std.json.ObjectMap, name: []const u8) ?[]const u8 {
     const trimmed = std.mem.trim(u8, value.string, " \t\r\n");
     return if (trimmed.len == 0 or trimmed.len > 512 * 1024) null else trimmed;
 }
+
+fn writeDefaultSandboxConfiguration(writer: *Io.Writer, provider: []const u8, team_id: ?[]const u8, project_id: ?[]const u8, worker_image: ?[]const u8) !void {
+    try writer.writeAll("{\"teamId\":");
+    if (team_id) |value| try std.json.Stringify.value(value, .{}, writer) else try writer.writeAll("null");
+    try writer.writeAll(",\"projectId\":");
+    if (project_id) |value| try std.json.Stringify.value(value, .{}, writer) else try writer.writeAll("null");
+    try writer.writeAll(",\"workerImage\":");
+    if (worker_image) |value| try std.json.Stringify.value(value, .{}, writer) else try writer.writeAll("null");
+    try writer.writeAll(",\"defaultProfile\":\"standard\",\"profiles\":");
+    try writer.writeAll(if (std.mem.eql(u8, provider, "vercel")) vercel_default_profiles else daytona_default_profiles);
+    try writer.writeByte('}');
+}
+
+fn writeSandboxConfigurationFields(allocator: std.mem.Allocator, writer: *Io.Writer, provider: []const u8, document: []const u8) !void {
+    var parsed = std.json.parseFromSlice(std.json.Value, allocator, document, .{}) catch {
+        return writeDefaultSandboxConfigurationFields(writer, provider);
+    };
+    defer parsed.deinit();
+    if (parsed.value != .object) return writeDefaultSandboxConfigurationFields(writer, provider);
+    validateSandboxConfiguration(provider, parsed.value.object) catch return writeDefaultSandboxConfigurationFields(writer, provider);
+    const object = parsed.value.object;
+    try writer.writeAll(",\"teamId\":");
+    try std.json.Stringify.value(object.get("teamId") orelse .null, .{}, writer);
+    try writer.writeAll(",\"projectId\":");
+    try std.json.Stringify.value(object.get("projectId") orelse .null, .{}, writer);
+    try writer.writeAll(",\"workerImage\":");
+    try std.json.Stringify.value(object.get("workerImage") orelse .null, .{}, writer);
+    try writer.writeAll(",\"defaultProfile\":");
+    try std.json.Stringify.value(object.get("defaultProfile").?, .{}, writer);
+    try writer.writeAll(",\"profiles\":");
+    try std.json.Stringify.value(object.get("profiles").?, .{}, writer);
+}
+
+fn writeDefaultSandboxConfigurationFields(writer: *Io.Writer, provider: []const u8) !void {
+    try writer.writeAll(",\"teamId\":null,\"projectId\":null,\"workerImage\":null,\"defaultProfile\":\"standard\",\"profiles\":");
+    try writer.writeAll(if (std.mem.eql(u8, provider, "vercel")) vercel_default_profiles else daytona_default_profiles);
+}
+
+fn validateSandboxConfiguration(provider: []const u8, object: std.json.ObjectMap) !void {
+    const is_vercel = std.mem.eql(u8, provider, "vercel");
+    if (is_vercel) {
+        _ = stringField(object, "teamId") orelse return error.InvalidSandboxProfile;
+        _ = stringField(object, "projectId") orelse return error.InvalidSandboxProfile;
+        _ = stringField(object, "workerImage") orelse return error.InvalidSandboxProfile;
+    }
+    const default_profile = stringField(object, "defaultProfile") orelse return error.InvalidSandboxProfile;
+    if (!validProfileId(default_profile)) return error.InvalidSandboxProfile;
+    const profiles = object.get("profiles") orelse return error.InvalidSandboxProfile;
+    if (profiles != .array or profiles.array.items.len != 3) return error.InvalidSandboxProfile;
+    var seen: u3 = 0;
+    for (profiles.array.items) |profile| {
+        if (profile != .object) return error.InvalidSandboxProfile;
+        const id = stringField(profile.object, "id") orelse return error.InvalidSandboxProfile;
+        const label = stringField(profile.object, "label") orelse return error.InvalidSandboxProfile;
+        if (label.len > 32) return error.InvalidSandboxProfile;
+        const bit: u3 = if (std.mem.eql(u8, id, "light")) 1 else if (std.mem.eql(u8, id, "standard")) 2 else if (std.mem.eql(u8, id, "large")) 4 else return error.InvalidSandboxProfile;
+        if (seen & bit != 0) return error.InvalidSandboxProfile;
+        seen |= bit;
+        const cpu = positiveInteger(profile.object.get("cpu") orelse return error.InvalidSandboxProfile) orelse return error.InvalidSandboxProfile;
+        const memory = positiveInteger(profile.object.get("memoryGiB") orelse return error.InvalidSandboxProfile) orelse return error.InvalidSandboxProfile;
+        if (cpu > 32 or memory > 256) return error.InvalidSandboxProfile;
+        const storage = profile.object.get("storage") orelse return error.InvalidSandboxProfile;
+        if (storage != .object) return error.InvalidSandboxProfile;
+        const mode = stringField(storage.object, "mode") orelse return error.InvalidSandboxProfile;
+        if (is_vercel) {
+            if (!std.mem.eql(u8, mode, "provider-managed") or memory != cpu * 2) return error.InvalidSandboxProfile;
+        } else {
+            if (!std.mem.eql(u8, mode, "fixed")) return error.InvalidSandboxProfile;
+            const gib = positiveInteger(storage.object.get("gib") orelse return error.InvalidSandboxProfile) orelse return error.InvalidSandboxProfile;
+            if (gib > 1024) return error.InvalidSandboxProfile;
+        }
+    }
+    if (seen != 7) return error.InvalidSandboxProfile;
+}
+
+fn validProfileId(value: []const u8) bool {
+    return std.mem.eql(u8, value, "light") or std.mem.eql(u8, value, "standard") or std.mem.eql(u8, value, "large");
+}
+
+fn positiveInteger(value: std.json.Value) ?u16 {
+    const integer: i64 = switch (value) {
+        .integer => |number| number,
+        .float => |number| if (@floor(number) == number) @intFromFloat(number) else return null,
+        else => return null,
+    };
+    return if (integer > 0 and integer <= std.math.maxInt(u16)) @intCast(integer) else null;
+}
+
+const daytona_default_profiles = "[{\"id\":\"light\",\"label\":\"Light\",\"cpu\":1,\"memoryGiB\":2,\"storage\":{\"mode\":\"fixed\",\"gib\":10}},{\"id\":\"standard\",\"label\":\"Standard\",\"cpu\":2,\"memoryGiB\":4,\"storage\":{\"mode\":\"fixed\",\"gib\":20}},{\"id\":\"large\",\"label\":\"Large\",\"cpu\":4,\"memoryGiB\":8,\"storage\":{\"mode\":\"fixed\",\"gib\":40}}]";
+const vercel_default_profiles = "[{\"id\":\"light\",\"label\":\"Light\",\"cpu\":1,\"memoryGiB\":2,\"storage\":{\"mode\":\"provider-managed\"}},{\"id\":\"standard\",\"label\":\"Standard\",\"cpu\":2,\"memoryGiB\":4,\"storage\":{\"mode\":\"provider-managed\"}},{\"id\":\"large\",\"label\":\"Large\",\"cpu\":4,\"memoryGiB\":8,\"storage\":{\"mode\":\"provider-managed\"}}]";
 
 pub fn validateSecretProvider(value: []const u8) !void {
     if (value.len == 0 or value.len > 512 or value[0] == '-') return error.InvalidSecretProvider;

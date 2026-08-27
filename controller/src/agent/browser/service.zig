@@ -60,6 +60,12 @@ pub const Manager = struct {
         manager.* = undefined;
     }
 
+    pub fn start(manager: *Manager) !void {
+        try manager.mutex.lock(manager.io);
+        defer manager.mutex.unlock(manager.io);
+        try manager.ensureDevTools();
+    }
+
     pub fn verbPayload(manager: *Manager, client: *std.http.Client, verb: []const u8, document: []const u8) ![]u8 {
         var parsed = std.json.parseFromSlice(std.json.Value, manager.allocator, if (document.len == 0) "{}" else document, .{}) catch return error.InvalidBrowserPayload;
         defer parsed.deinit();

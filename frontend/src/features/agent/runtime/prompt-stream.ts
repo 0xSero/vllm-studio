@@ -1,6 +1,8 @@
 import { Effect } from "effect";
 import {
+  type AssistantBlock,
   type ChatMessageAttachment,
+  type ToolBlock,
   newId,
   nowLabel,
   sessionTitleFromPrompt,
@@ -74,6 +76,18 @@ type PromptTurnContext = {
   sessionId: SessionId;
   skills: ComposerSkillRef[];
   userId: string;
+};
+
+type SetupToolName =
+  | "local_studio_prepare_checkout"
+  | "local_studio_start_sandbox"
+  | "local_studio_clone_repository";
+
+type SetupToolUpdate = {
+  name: SetupToolName;
+  status: ToolBlock["status"];
+  args: Record<string, unknown>;
+  resultText?: string;
 };
 
 export type SessionSubmitGuard = Set<SessionId>;
@@ -192,8 +206,17 @@ function startPromptCommand(
     if (
       context.selected.executionKind === "project" &&
       context.selected.managedProject &&
+      context.selected.placement !== "sandbox" &&
       !context.selected.cwd
     ) {
+      setSetupTool(deps, context, {
+        name: "local_studio_prepare_checkout",
+        status: "running",
+        args: {
+          repository: context.selected.projectId ?? "",
+          ref: context.selected.baseRef || "main",
+        },
+      });
       const workspace = yield* Effect.tryPromise({
         try: () =>
           prepareTaskWorkspace({
@@ -206,16 +229,27 @@ function startPromptCommand(
       });
       context.selected.cwd = workspace.path;
       context.selected.detached = workspace.detached;
+      setSetupTool(deps, context, {
+        name: "local_studio_prepare_checkout",
+        status: "done",
+        args: {
+          repository: context.selected.projectId ?? "",
+          ref: context.selected.baseRef || "main",
+        },
+        resultText: workspace.path,
+      });
       deps.updateSession(context.sessionId, (session) => ({
         ...session,
         cwd: workspace.path,
         detached: workspace.detached,
       }));
     }
+    setSandboxSetupTools(deps, context, "running");
     const result = yield* Effect.tryPromise({
       try: () => api.submitTurnCommand(promptTurnRequest(deps, context, args)),
       catch: (error) => ({ _tag: "SubmitFailed" as const, error }),
     });
+    setSandboxSetupTools(deps, context, "done");
     const canonicalSessionId =
       result.nativeSessionId || result.piSessionId || result.runtimeSessionId || context.runtime;
     deps.updateSession(context.sessionId, (session) => ({
@@ -253,9 +287,11 @@ function startPromptCommand(
             status?.eventSeq,
           );
           if (status?.piSessionId) deps.onPiSessionIdChange?.(status?.piSessionId);
+          setSandboxSetupTools(deps, context, "done");
           return;
         }
         const message = error instanceof Error ? error.message : "Agent request failed";
+        failRunningSetupTools(deps, context, error);
         deps.updateSession(context.sessionId, (session) =>
           settleFailedTurn(session, context.assistantId, message),
         );
@@ -276,11 +312,95 @@ function startPromptCommand(
  */
 function settleFailedTurn(session: Session, assistantId: string, message: string): Session {
   if (session.activeAssistantId && session.activeAssistantId !== assistantId) return session;
+  const assistant = session.messages.find((entry) => entry.id === assistantId);
+  const hasSetupActivity = assistant?.blocks?.some(
+    (block) => block.kind === "tool" && block.name.startsWith("local_studio_"),
+  );
   return {
     ...settleTurn(session),
-    messages: session.messages.filter((entry) => entry.id !== assistantId),
+    messages: hasSetupActivity
+      ? session.messages
+      : session.messages.filter((entry) => entry.id !== assistantId),
     error: message,
   };
+}
+
+function setSetupTool(
+  deps: PromptStreamDeps,
+  context: PromptTurnContext,
+  update: SetupToolUpdate,
+): void {
+  const { name, status, args, resultText } = update;
+  const id = `${context.assistantId}:${name}`;
+  deps.updateSession(context.sessionId, (session) => ({
+    ...session,
+    messages: session.messages.map((message) => {
+      if (message.id !== context.assistantId) return message;
+      const blocks = message.blocks ?? [];
+      const index = blocks.findIndex((block) => block.kind === "tool" && block.id === id);
+      const tool: ToolBlock = {
+        kind: "tool",
+        id,
+        name,
+        status,
+        args,
+        argsText: JSON.stringify(args),
+        ...(resultText ? { resultText } : {}),
+        text: resultText ?? JSON.stringify(args),
+      };
+      const next: AssistantBlock[] =
+        index < 0
+          ? [...blocks, tool]
+          : blocks.map((block, blockIndex) => (blockIndex === index ? tool : block));
+      return { ...message, blocks: next };
+    }),
+  }));
+}
+
+function setSandboxSetupTools(
+  deps: PromptStreamDeps,
+  context: PromptTurnContext,
+  status: ToolBlock["status"],
+): void {
+  if (context.selected.placement !== "sandbox") return;
+  setSetupTool(deps, context, {
+    name: "local_studio_start_sandbox",
+    status,
+    args: { project: context.selected.projectId ?? "" },
+  });
+  setSetupTool(deps, context, {
+    name: "local_studio_clone_repository",
+    status,
+    args: {
+      repository: context.selected.projectId ?? "",
+      ref: context.selected.baseRef || "main",
+    },
+  });
+}
+
+function failRunningSetupTools(
+  deps: PromptStreamDeps,
+  context: PromptTurnContext,
+  error: unknown,
+): void {
+  const resultText = error instanceof Error ? error.message : "Setup failed";
+  deps.updateSession(context.sessionId, (session) => ({
+    ...session,
+    messages: session.messages.map((message) =>
+      message.id !== context.assistantId
+        ? message
+        : {
+            ...message,
+            blocks: message.blocks?.map((block) =>
+              block.kind === "tool" &&
+              block.name.startsWith("local_studio_") &&
+              block.status === "running"
+                ? { ...block, status: "error", resultText, text: resultText }
+                : block,
+            ),
+          },
+    ),
+  }));
 }
 
 function promptTurnRequest(

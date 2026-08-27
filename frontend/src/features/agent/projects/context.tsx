@@ -61,7 +61,7 @@ export function useProjects(): ProjectsContextValue {
   const resolveProject = useCallback(
     (tab: { projectId?: string; cwd?: string } | null | undefined): Project | null => {
       if (!tab) return findById(selectedId);
-      return findById(tab.projectId) ?? findByPath(tab.cwd) ?? findById(selectedId);
+      return findById(tab.projectId) ?? findByPath(tab.cwd);
     },
     [findById, findByPath, selectedId],
   );

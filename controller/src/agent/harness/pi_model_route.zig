@@ -33,10 +33,10 @@ pub const Config = struct {
         else
             null;
         errdefer if (environment_api_key) |value| allocator.free(value);
-        const local_base_url = if (configuration.mode != .worker)
-            try std.fmt.allocPrint(allocator, "http://127.0.0.1:{d}/v1", .{configuration.port})
+        const local_base_url: ?[]u8 = if (configuration.mode == .worker)
+            try std.fmt.allocPrint(allocator, "http://127.0.0.1:{d}/internal/head-link/v1", .{configuration.port})
         else
-            null;
+            try std.fmt.allocPrint(allocator, "http://127.0.0.1:{d}/v1", .{configuration.port});
         errdefer if (local_base_url) |value| allocator.free(value);
         const local_api_key = if (configuration.mode != .worker)
             try allocator.dupe(u8, configuration.api_key orelse "local-studio")

@@ -76,6 +76,9 @@ export const McpCatalogEntrySchema = Schema.Struct({
     Schema.Literal("stateless"),
     Schema.Literal("stateful"),
     Schema.Literal("remote"),
+    Schema.Literal("controller-owned"),
+    Schema.Literal("account-managed"),
+    Schema.Literal("policy-disabled"),
   ]),
   filesystemAccess: Schema.Boolean,
   recommended: Schema.Boolean,
@@ -130,10 +133,6 @@ export const ConnectorTestResponseSchema = Schema.Struct({
   tool_names: Schema.Array(Schema.String),
   error: Schema.optional(Schema.String),
 });
-export const ConnectorSshPathResponseSchema = Schema.Struct({
-  path: Schema.NullOr(Schema.String),
-});
-
 export type ConnectorRuntime = typeof ConnectorRuntimeSchema.Type;
 export type ConnectorOrigin = typeof ConnectorOriginSchema.Type;
 export type ConnectorAuthReference = typeof ConnectorAuthReferenceSchema.Type;

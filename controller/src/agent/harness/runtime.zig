@@ -3,6 +3,7 @@ const config_module = @import("../../app/config.zig");
 const harness_catalog = @import("catalog.zig");
 const harness_events = @import("events.zig");
 const pi_model_route = @import("pi_model_route.zig");
+const model_relay = @import("model_relay.zig");
 const harness_session_id = @import("session_id.zig");
 const runtime_limits = @import("../runtime/limits.zig");
 const runtime_window = @import("../runtime/window.zig");
@@ -95,12 +96,14 @@ pub const Manager = struct {
     opencode: harness_catalog.Installation,
     claude: harness_catalog.Installation,
     model_route: pi_model_route.Config,
+    model_relay: model_relay.Manager,
     mutex: Io.Mutex = .init,
     tasks: Io.Group = .init,
     sessions: std.StringHashMapUnmanaged(*Session) = .empty,
     pub fn init(allocator: std.mem.Allocator, io: Io, configuration: *const config_module.Config) !Manager {
         var model_route = try pi_model_route.Config.init(allocator, io, configuration);
         errdefer model_route.deinit();
+        const relay = model_relay.Manager.init(allocator, io, configuration.mode);
         var pi = try harness_catalog.discoverPi(allocator, io, configuration);
         errdefer pi.deinit();
         var codex = try harness_catalog.discoverCodex(allocator, io, configuration);
@@ -130,6 +133,7 @@ pub const Manager = struct {
             .opencode = opencode,
             .claude = claude,
             .model_route = model_route,
+            .model_relay = relay,
         };
     }
     pub fn deinit(manager: *Manager) void {
@@ -146,7 +150,20 @@ pub const Manager = struct {
         manager.opencode.deinit();
         manager.claude.deinit();
         manager.model_route.deinit();
+        manager.model_relay.deinit();
         manager.* = undefined;
+    }
+
+    pub fn serveRelayedModel(manager: *Manager, target: []const u8, request: *std.http.Server.Request) !bool {
+        return manager.model_relay.serveModel(target, request);
+    }
+
+    pub fn relayPollPayload(manager: *Manager) ![]u8 {
+        return manager.model_relay.pollPayload();
+    }
+
+    pub fn relayCompletePayload(manager: *Manager, document: []const u8) ![]u8 {
+        return manager.model_relay.completePayload(document);
     }
     pub fn setupPayload(manager: *Manager) ![]u8 {
         const available = manager.piIsAvailable();
@@ -830,7 +847,7 @@ pub const Manager = struct {
         const provider_url_config = try configAssignment(manager.allocator, "model_providers.local_studio.base_url", model_route.base_url);
         defer manager.allocator.free(provider_url_config);
         const args_config = "mcp_servers.local-studio.args=[\"mcp-bridge\"]";
-        const env_config = "mcp_servers.local-studio.env_vars=[\"LOCAL_STUDIO_MCP_BRIDGE_URL\",\"LOCAL_STUDIO_MCP_BRIDGE_MODEL\",\"LOCAL_STUDIO_MCP_BRIDGE_SESSION\",\"LOCAL_STUDIO_MCP_BRIDGE_KEY\"]";
+        const env_config = "mcp_servers.local-studio.env_vars=[\"LOCAL_STUDIO_MCP_BRIDGE_URL\",\"LOCAL_STUDIO_MCP_BRIDGE_MODEL\",\"LOCAL_STUDIO_MCP_BRIDGE_SESSION\",\"LOCAL_STUDIO_MCP_BRIDGE_KEY\",\"LOCAL_STUDIO_MCP_BRIDGE_SCOPE\"]";
         if (native_id.len == 0)
             try argv.appendSlice(manager.allocator, &.{ manager.codex.executable, "exec", "--json", "--color", "never", "--skip-git-repo-check", "--sandbox", sandbox, "-m", model_id })
         else
@@ -967,6 +984,7 @@ pub const Manager = struct {
         try environment.put("LOCAL_STUDIO_MCP_BRIDGE_MODEL", model_id);
         try environment.put("LOCAL_STUDIO_MCP_BRIDGE_SESSION", session_id);
         try environment.put("LOCAL_STUDIO_MCP_BRIDGE_KEY", manager.controller_api_key orelse "");
+        try environment.put("LOCAL_STUDIO_MCP_BRIDGE_SCOPE", if (manager.mode == .head) "public" else "local");
     }
 
     fn configureOpenCode(manager: *Manager, route: *pi_model_route.Route, session_dir: []const u8, model_id: []const u8) !void {
@@ -1130,6 +1148,7 @@ pub const Manager = struct {
                     .bridge_key = manager.controller_api_key,
                     .bridge_model = model_id,
                     .bridge_session = session_id,
+                    .bridge_local_scope = manager.mode != .head,
                 });
                 session.chat.?.deinit();
                 session.chat = replacement;
@@ -1157,6 +1176,7 @@ pub const Manager = struct {
             .bridge_key = manager.controller_api_key,
             .bridge_model = model_id,
             .bridge_session = session_id,
+            .bridge_local_scope = manager.mode != .head,
         });
         errdefer chat.deinit();
         const session = try manager.allocator.create(Session);
@@ -1746,6 +1766,8 @@ fn acpSessionRequest(manager: *Manager, request_id: []const u8, controller_execu
         try request.writer.writeAll("},{\"name\":\"LOCAL_STUDIO_MCP_BRIDGE_KEY\",\"value\":");
         try std.json.Stringify.value(key, .{}, &request.writer);
     }
+    try request.writer.writeAll("},{\"name\":\"LOCAL_STUDIO_MCP_BRIDGE_SCOPE\",\"value\":");
+    try std.json.Stringify.value(if (manager.mode == .head) "public" else "local", .{}, &request.writer);
     try request.writer.writeAll("}]}]}}");
     return request.toOwnedSlice();
 }

@@ -73,7 +73,7 @@ export function createAutomation(draft: AutomationDraft): Effect.Effect<Automati
     harness: draft.executionKind === "project" ? draft.harness : null,
     placement: draft.executionKind === "project" ? draft.placement : "local",
     sandboxAccountId:
-      draft.executionKind === "project" && draft.placement === "daytona"
+      draft.executionKind === "project" && draft.placement === "sandbox"
         ? draft.sandboxAccountId
         : null,
   };

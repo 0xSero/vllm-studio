@@ -11,7 +11,7 @@ export type AutomationDraft = {
   executionKind: "chat" | "project";
   cwd: string;
   harness: AgentHarness;
-  placement: "local" | "daytona";
+  placement: "local" | "sandbox";
   sandboxAccountId: string;
   schedule: AutomationSchedule;
 };

@@ -17,6 +17,7 @@ pub const Runtime = struct {
     bridge_key: ?[]u8,
     bridge_model: []u8,
     bridge_session: []u8,
+    bridge_local_scope: bool,
     cancelled: std.atomic.Value(bool) = .init(false),
 
     pub fn init(allocator: std.mem.Allocator, io: std.Io, options: Options) !Runtime {
@@ -48,6 +49,7 @@ pub const Runtime = struct {
             .bridge_key = bridge_key,
             .bridge_model = bridge_model,
             .bridge_session = bridge_session,
+            .bridge_local_scope = options.bridge_local_scope,
         };
     }
 
@@ -76,6 +78,7 @@ pub const Runtime = struct {
                 .api_key = runtime.bridge_key,
                 .model_id = runtime.bridge_model,
                 .session_id = runtime.bridge_session,
+                .local_scope = runtime.bridge_local_scope,
             },
         }, &runtime.store, sink, message, thinking, browser_enabled, &runtime.cancelled) catch |failure| {
             output.writeError(sink, @errorName(failure)) catch {};
@@ -97,4 +100,5 @@ pub const Options = struct {
     bridge_key: ?[]const u8,
     bridge_model: []const u8,
     bridge_session: []const u8,
+    bridge_local_scope: bool,
 };

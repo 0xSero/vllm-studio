@@ -24,11 +24,12 @@ pub const Token = struct {
 pub const Store = struct {
     allocator: std.mem.Allocator,
     client_id: ?[]u8 = null,
-    token: ?Token = null,
+    tokens: std.ArrayList(Token) = .empty,
 
     pub fn deinit(store: *Store) void {
         if (store.client_id) |value| store.allocator.free(value);
-        if (store.token) |*value| value.deinit();
+        for (store.tokens.items) |*value| value.deinit();
+        store.tokens.deinit(store.allocator);
         store.* = undefined;
     }
 };
@@ -49,8 +50,13 @@ pub fn load(allocator: std.mem.Allocator, io: std.Io, data_dir: []const u8) !Sto
     if (parsed.value.object.get("clients")) |clients| if (clients == .object) if (clients.object.get("github")) |github| if (github == .object) if (stringField(github.object, "clientId")) |value| {
         store.client_id = try allocator.dupe(u8, value);
     };
-    if (parsed.value.object.get("tokens")) |tokens| if (tokens == .object) if (tokens.object.get("github")) |github| if (github == .object) {
-        store.token = try parseToken(allocator, github.object);
+    if (parsed.value.object.get("tokens")) |tokens| if (tokens == .object) if (tokens.object.get("github")) |github| switch (github) {
+        .object => try store.tokens.append(allocator, try parseToken(allocator, github.object)),
+        .array => for (github.array.items) |item| {
+            if (item != .object) return error.InvalidOAuthConnectorStore;
+            try store.tokens.append(allocator, try parseToken(allocator, item.object));
+        },
+        else => return error.InvalidOAuthConnectorStore,
     };
     return store;
 }
@@ -60,29 +66,20 @@ pub fn save(allocator: std.mem.Allocator, io: std.Io, data_dir: []const u8, stor
     defer allocator.free(file_path);
     var output: std.Io.Writer.Allocating = .init(allocator);
     defer output.deinit();
-    try output.writer.writeAll("{\"version\":1,\"clients\":{");
+    try output.writer.writeAll("{\"version\":2,\"clients\":{");
     if (store.client_id) |client_id| {
         try output.writer.writeAll("\"github\":{\"clientId\":");
         try std.json.Stringify.value(client_id, .{}, &output.writer);
         try output.writer.writeByte('}');
     }
     try output.writer.writeAll("},\"tokens\":{");
-    if (store.token) |token| {
-        try output.writer.writeAll("\"github\":{\"accessToken\":");
-        try std.json.Stringify.value(token.access, .{}, &output.writer);
-        if (token.account) |account| {
-            try output.writer.writeAll(",\"account\":");
-            try std.json.Stringify.value(account, .{}, &output.writer);
-        }
-        if (token.expires_at_ms) |expires_at| try output.writer.print(",\"expiresAt\":{d}", .{expires_at});
-        try output.writer.writeAll(",\"scopes\":[");
-        for (token.scopes, 0..) |scope, index| {
+    if (store.tokens.items.len > 0) {
+        try output.writer.writeAll("\"github\":[");
+        for (store.tokens.items, 0..) |token, index| {
             if (index > 0) try output.writer.writeByte(',');
-            try std.json.Stringify.value(scope, .{}, &output.writer);
+            try writeToken(&output.writer, token);
         }
-        try output.writer.writeAll("],\"obtainedAt\":");
-        try std.json.Stringify.value(token.obtained_at, .{}, &output.writer);
-        try output.writer.writeByte('}');
+        try output.writer.writeByte(']');
     }
     try output.writer.writeAll("}}");
     var atomic_file = try std.Io.Dir.cwd().createFileAtomic(io, file_path, .{
@@ -102,7 +99,7 @@ pub fn save(allocator: std.mem.Allocator, io: std.Io, data_dir: []const u8, stor
 
 pub fn injectEnvironment(allocator: std.mem.Allocator, io: std.Io, data_dir: []const u8, connector: std.json.ObjectMap, environment: *std.process.Environ.Map) !void {
     const id = stringField(connector, "id") orelse return;
-    if (!std.mem.eql(u8, id, "github")) return;
+    if (!std.mem.eql(u8, id, "github") and !std.mem.startsWith(u8, id, "account-github-")) return;
     const auth = connector.get("auth") orelse return;
     if (auth != .object) return;
     const auth_type = stringField(auth.object, "type") orelse return;
@@ -110,8 +107,36 @@ pub fn injectEnvironment(allocator: std.mem.Allocator, io: std.Io, data_dir: []c
     if (!std.mem.eql(u8, auth_type, "oauth") or !std.mem.eql(u8, provider, "github")) return;
     var store = try load(allocator, io, data_dir);
     defer store.deinit();
-    const token = store.token orelse return error.OAuthConnectorNotConnected;
-    try environment.put("GITHUB_PERSONAL_ACCESS_TOKEN", token.access);
+    const account = stringField(auth.object, "account") orelse return error.OAuthConnectorNotConnected;
+    for (store.tokens.items) |token| {
+        if (token.account) |candidate| if (std.mem.eql(u8, candidate, account)) {
+            try environment.put("GITHUB_PERSONAL_ACCESS_TOKEN", token.access);
+            return;
+        };
+    }
+    if (std.mem.eql(u8, id, "github") and store.tokens.items.len == 1) {
+        try environment.put("GITHUB_PERSONAL_ACCESS_TOKEN", store.tokens.items[0].access);
+        return;
+    }
+    return error.OAuthConnectorNotConnected;
+}
+
+fn writeToken(writer: *std.Io.Writer, token: Token) !void {
+    try writer.writeAll("{\"accessToken\":");
+    try std.json.Stringify.value(token.access, .{}, writer);
+    if (token.account) |account| {
+        try writer.writeAll(",\"account\":");
+        try std.json.Stringify.value(account, .{}, writer);
+    }
+    if (token.expires_at_ms) |expires_at| try writer.print(",\"expiresAt\":{d}", .{expires_at});
+    try writer.writeAll(",\"scopes\":[");
+    for (token.scopes, 0..) |scope, index| {
+        if (index > 0) try writer.writeByte(',');
+        try std.json.Stringify.value(scope, .{}, writer);
+    }
+    try writer.writeAll("],\"obtainedAt\":");
+    try std.json.Stringify.value(token.obtained_at, .{}, writer);
+    try writer.writeByte('}');
 }
 
 fn parseToken(allocator: std.mem.Allocator, object: std.json.ObjectMap) !Token {

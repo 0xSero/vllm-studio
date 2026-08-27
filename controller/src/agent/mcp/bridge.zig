@@ -9,6 +9,7 @@ pub fn run(init: std.process.Init) !void {
     const model_id = requiredEnvironment(init.environ_map, "LOCAL_STUDIO_MCP_BRIDGE_MODEL") orelse return error.BridgeModelRequired;
     const session_id = requiredEnvironment(init.environ_map, "LOCAL_STUDIO_MCP_BRIDGE_SESSION") orelse return error.BridgeSessionRequired;
     const api_key = requiredEnvironment(init.environ_map, "LOCAL_STUDIO_MCP_BRIDGE_KEY");
+    const local_scope = std.mem.eql(u8, requiredEnvironment(init.environ_map, "LOCAL_STUDIO_MCP_BRIDGE_SCOPE") orelse "local", "local");
     var client: std.http.Client = .{ .allocator = init.gpa, .io = init.io };
     defer client.deinit();
     var input_buffer: [16 * 1024]u8 = undefined;
@@ -19,7 +20,7 @@ pub fn run(init: std.process.Init) !void {
         const line = std.mem.trim(u8, line_value, " \t\r");
         if (line.len == 0) continue;
         if (line.len > max_document_bytes) return error.McpRequestTooLarge;
-        const response = handle(init.gpa, init.io, &client, base_url, api_key, model_id, session_id, line) catch |failure| try errorResponse(init.gpa, line, failure);
+        const response = handle(init.gpa, init.io, &client, base_url, api_key, model_id, session_id, local_scope, line) catch |failure| try errorResponse(init.gpa, line, failure);
         defer init.gpa.free(response);
         if (response.len == 0) continue;
         try output.interface.writeAll(response);
@@ -28,7 +29,7 @@ pub fn run(init: std.process.Init) !void {
     }
 }
 
-pub fn handle(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, base_url: []const u8, api_key: ?[]const u8, model_id: []const u8, session_id: []const u8, document: []const u8) ![]u8 {
+pub fn handle(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, base_url: []const u8, api_key: ?[]const u8, model_id: []const u8, session_id: []const u8, local_scope: bool, document: []const u8) ![]u8 {
     var parsed = std.json.parseFromSlice(std.json.Value, allocator, document, .{}) catch return error.InvalidMcpRequest;
     defer parsed.deinit();
     if (parsed.value != .object) return error.InvalidMcpRequest;
@@ -39,8 +40,8 @@ pub fn handle(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, ba
     if (id == null) return allocator.dupe(u8, "");
     if (std.mem.eql(u8, method, "server/discover")) return discoverResponse(allocator, id.?);
     if (std.mem.eql(u8, method, "initialize")) return initializeResponse(allocator, id.?, object.get("params"));
-    if (std.mem.eql(u8, method, "tools/list")) return toolsResponse(allocator, io, client, base_url, api_key, model_id, session_id, id.?);
-    if (std.mem.eql(u8, method, "tools/call")) return callResponse(allocator, io, client, base_url, api_key, model_id, session_id, id.?, object.get("params"));
+    if (std.mem.eql(u8, method, "tools/list")) return toolsResponse(allocator, io, client, base_url, api_key, model_id, session_id, local_scope, id.?);
+    if (std.mem.eql(u8, method, "tools/call")) return callResponse(allocator, io, client, base_url, api_key, model_id, session_id, local_scope, id.?, object.get("params"));
     return rpcError(allocator, id.?, -32601, "unknown method");
 }
 
@@ -65,8 +66,8 @@ fn initializeResponse(allocator: std.mem.Allocator, id: std.json.Value, params: 
     return output.toOwnedSlice();
 }
 
-fn toolsResponse(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, base_url: []const u8, api_key: ?[]const u8, model_id: []const u8, session_id: []const u8, id: std.json.Value) ![]u8 {
-    const connector_tools = connectorToolFragment(allocator, io, client, base_url, api_key, model_id) catch null;
+fn toolsResponse(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, base_url: []const u8, api_key: ?[]const u8, model_id: []const u8, session_id: []const u8, local_scope: bool, id: std.json.Value) ![]u8 {
+    const connector_tools = connectorToolFragment(allocator, io, client, base_url, api_key, model_id, local_scope) catch null;
     defer if (connector_tools) |value| allocator.free(value);
     var output: Io.Writer.Allocating = .init(allocator);
     errdefer output.deinit();
@@ -79,10 +80,10 @@ fn toolsResponse(allocator: std.mem.Allocator, io: Io, client: *std.http.Client,
     return output.toOwnedSlice();
 }
 
-fn connectorToolFragment(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, base_url: []const u8, api_key: ?[]const u8, model_id: []const u8) ![]u8 {
+fn connectorToolFragment(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, base_url: []const u8, api_key: ?[]const u8, model_id: []const u8, local_scope: bool) ![]u8 {
     const encoded_model = try encodeQuery(allocator, model_id);
     defer allocator.free(encoded_model);
-    const url = try std.fmt.allocPrint(allocator, "{s}/internal/node/v1/connector-call?model_id={s}", .{ base_url, encoded_model });
+    const url = try std.fmt.allocPrint(allocator, "{s}{s}?model_id={s}", .{ base_url, if (local_scope) "/internal/node/v1/connector-call" else "/api/agent/connectors/call", encoded_model });
     defer allocator.free(url);
     const inventory = try request(allocator, io, client, url, api_key, .GET, null);
     defer allocator.free(inventory);
@@ -118,7 +119,7 @@ fn connectorToolFragment(allocator: std.mem.Allocator, io: Io, client: *std.http
     return output.toOwnedSlice();
 }
 
-fn callResponse(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, base_url: []const u8, api_key: ?[]const u8, model_id: []const u8, session_id: []const u8, id: std.json.Value, params_value: ?std.json.Value) ![]u8 {
+fn callResponse(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, base_url: []const u8, api_key: ?[]const u8, model_id: []const u8, session_id: []const u8, local_scope: bool, id: std.json.Value, params_value: ?std.json.Value) ![]u8 {
     const params = params_value orelse return error.McpParamsRequired;
     if (params != .object) return error.McpParamsRequired;
     const namespaced = stringField(params.object, "name") orelse return error.McpToolRequired;
@@ -131,7 +132,7 @@ fn callResponse(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, 
     if (connector_id.len == 0 or tool_name.len == 0) return error.InvalidMcpToolName;
     const arguments: std.json.Value = params.object.get("arguments") orelse .{ .object = .empty };
     if (arguments != .object) return error.InvalidMcpArguments;
-    if (std.mem.eql(u8, connector_id, "browser")) return browserCallResponse(allocator, io, client, base_url, api_key, session_id, id, tool_name, arguments.object);
+    if (std.mem.eql(u8, connector_id, "browser")) return browserCallResponse(allocator, io, client, base_url, api_key, session_id, local_scope, id, tool_name, arguments.object);
     var body: Io.Writer.Allocating = .init(allocator);
     defer body.deinit();
     try body.writer.writeAll("{\"connector_id\":");
@@ -143,7 +144,7 @@ fn callResponse(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, 
     try body.writer.writeAll(",\"args\":");
     try std.json.Stringify.value(arguments, .{}, &body.writer);
     try body.writer.writeByte('}');
-    const url = try std.fmt.allocPrint(allocator, "{s}/internal/node/v1/connector-call", .{base_url});
+    const url = try std.fmt.allocPrint(allocator, "{s}{s}", .{ base_url, if (local_scope) "/internal/node/v1/connector-call" else "/api/agent/connectors/call" });
     defer allocator.free(url);
     const called = try request(allocator, io, client, url, api_key, .POST, body.writer.buffered());
     defer allocator.free(called);
@@ -188,7 +189,7 @@ fn messagingCallResponse(allocator: std.mem.Allocator, io: Io, client: *std.http
     return output.toOwnedSlice();
 }
 
-fn browserCallResponse(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, base_url: []const u8, api_key: ?[]const u8, session_id: []const u8, id: std.json.Value, tool_name: []const u8, arguments: std.json.ObjectMap) ![]u8 {
+fn browserCallResponse(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, base_url: []const u8, api_key: ?[]const u8, session_id: []const u8, local_scope: bool, id: std.json.Value, tool_name: []const u8, arguments: std.json.ObjectMap) ![]u8 {
     const verb = if (std.mem.eql(u8, tool_name, "navigate")) "navigate" else if (std.mem.eql(u8, tool_name, "observe")) "observe" else if (std.mem.eql(u8, tool_name, "click")) "click" else if (std.mem.eql(u8, tool_name, "type")) "type" else if (std.mem.eql(u8, tool_name, "get_text")) "get-text" else if (std.mem.eql(u8, tool_name, "get_html")) "get-html" else if (std.mem.eql(u8, tool_name, "get_url")) "get-url" else if (std.mem.eql(u8, tool_name, "screenshot")) "screenshot" else if (std.mem.eql(u8, tool_name, "network")) "network" else return error.InvalidMcpToolName;
     var body: Io.Writer.Allocating = .init(allocator);
     defer body.deinit();
@@ -203,7 +204,7 @@ fn browserCallResponse(allocator: std.mem.Allocator, io: Io, client: *std.http.C
         try std.json.Stringify.value(entry.value_ptr.*, .{}, &body.writer);
     }
     try body.writer.writeByte('}');
-    const url = try std.fmt.allocPrint(allocator, "{s}/internal/node/v1/browser/{s}", .{ base_url, verb });
+    const url = try std.fmt.allocPrint(allocator, "{s}{s}/{s}", .{ base_url, if (local_scope) "/internal/node/v1/browser" else "/api/agent/browser", verb });
     defer allocator.free(url);
     const called = try request(allocator, io, client, url, api_key, .POST, body.writer.buffered());
     defer allocator.free(called);

@@ -3,26 +3,23 @@
 import { useState } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { AppContentColumn, AppPage, SearchInput } from "@/ui";
-import { GraduationCap, KeyRound, Plug } from "@/ui/icon-registry";
+import { GraduationCap, KeyRound } from "@/ui/icon-registry";
 import { cx } from "@/ui/utils";
-import { ConnectorsSection } from "./connectors-section";
 import { AccountsSection } from "./accounts-section";
 import { integrationSectionFromHash, type IntegrationSectionId } from "./integration-navigation";
 import { SkillsSection } from "./skills-section";
 
 const CATEGORIES = [
-  { id: "connectors", label: "MCPs", icon: Plug, description: "Servers and tools" },
-  { id: "skills", label: "Skills", icon: GraduationCap, description: "Session instructions" },
   { id: "accounts", label: "Accounts", icon: KeyRound, description: "Connected accounts" },
+  { id: "skills", label: "Skills", icon: GraduationCap, description: "Session instructions" },
 ] satisfies Array<{
   id: IntegrationSectionId;
   label: string;
-  icon: typeof Plug;
+  icon: typeof KeyRound;
   description: string;
 }>;
 
 function CustomizeSection({ section, query }: { section: IntegrationSectionId; query: string }) {
-  if (section === "connectors") return <ConnectorsSection searchQuery={query} />;
   if (section === "accounts") return <AccountsSection searchQuery={query} />;
   return <SkillsSection searchQuery={query} />;
 }
@@ -60,7 +57,7 @@ export function CustomizePage() {
           <SearchInput
             value={query}
             onChange={setQuery}
-            placeholder="Search accounts, skills, and MCPs..."
+            placeholder="Search accounts and skills..."
             aria-label="Search customize"
             className="w-full [&_input]:h-7 [&_input]:rounded-[5px] [&_input]:bg-(--ui-surface) [&_input]:text-[length:var(--fs-xs)]"
           />

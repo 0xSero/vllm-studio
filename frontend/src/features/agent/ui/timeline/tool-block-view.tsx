@@ -79,6 +79,11 @@ function toolMeta(block: ToolBlock, filePath?: string | null): ToolMeta {
   const resolvedPath = filePath ?? path;
   const kind = classifyTool(block);
   const verb = toolVerb(block);
+  const setupDetail = toolArg(block, ["ref"]);
+
+  if (block.name.startsWith("local_studio_")) {
+    return { verb, detail: compactToolText(setupDetail, 110) };
+  }
 
   switch (kind) {
     case "edit":
