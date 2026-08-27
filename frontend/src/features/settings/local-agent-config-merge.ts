@@ -6,7 +6,7 @@
 import { Schema } from "effect";
 import type { AttachAction, LocalAgentModel } from "./local-agent-types";
 import { sameBaseUrl, type JsonRecord, type JsonValue } from "./local-agent-config-file-io";
-import { isRecord } from "@/lib/guards";
+import { isRecord } from "@shared/agent/guards";
 
 const DEFAULT_PROVIDER_KEY = "local-studio";
 

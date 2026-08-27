@@ -6,7 +6,7 @@
 import path from "node:path";
 import type { LocalAgentTarget } from "./local-agent-types";
 import { pathExists, readJsonFile, sameBaseUrl } from "./local-agent-config-file-io";
-import { isRecord } from "@/lib/guards";
+import { isRecord } from "@shared/agent/guards";
 
 export const piConfigPath = (home: string): string =>
   path.join(home, ".pi", "agent", "models.json");
