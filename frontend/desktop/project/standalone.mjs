@@ -16,7 +16,14 @@ import {
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { frontendDir, repoRoot, walkUnder } from "./lib.mjs";
+import {
+  copyPackageTree,
+  frontendDir,
+  packageDirectoryFor,
+  readPackageManifest,
+  repoRoot,
+  walkUnder,
+} from "./lib.mjs";
 
 const standaloneBase = path.resolve(frontendDir, ".next", "standalone");
 
@@ -54,23 +61,21 @@ export function completeStandalone() {
   if (!standaloneRoot) throw Error(`Missing standalone server under: ${standaloneBase}`);
 
   const runtimeDependencyPaths = [
-    "node_modules/typebox",
-    "node_modules/@earendil-works/pi-coding-agent",
+    ["typebox", "node_modules/typebox"],
+    ["@earendil-works/pi-coding-agent", "node_modules/@earendil-works/pi-coding-agent"],
   ];
-  for (const dependencyPath of runtimeDependencyPaths) {
-    const source = path.resolve(frontendDir, dependencyPath);
-    if (!existsSync(source)) throw Error(`Missing runtime dependency source: ${dependencyPath}`);
-    const destination = path.resolve(standaloneRoot, dependencyPath);
-    cpSync(source, destination, { recursive: true });
-    const executableShimDirectories = readdirSync(destination, {
-      recursive: true,
-      withFileTypes: true,
-    })
-      .filter((entry) => entry.isDirectory() && entry.name === ".bin")
-      .map((entry) => path.resolve(entry.parentPath, entry.name));
-    for (const directory of executableShimDirectories) {
-      rmSync(directory, { recursive: true, force: true });
+  const projectRequire = createRequire(path.resolve(frontendDir, "package.json"));
+  const copiedPackages = new Map();
+  for (const [packageName, destinationPath] of runtimeDependencyPaths) {
+    if (!resolvablePackageDirectory(projectRequire, packageName)) {
+      throw Error(`Missing runtime dependency source: ${destinationPath}`);
     }
+    copyPackageTree(
+      projectRequire,
+      packageName,
+      path.resolve(standaloneRoot, destinationPath),
+      copiedPackages,
+    );
   }
 
   const tracedPiPackageDirectory = path.resolve(
@@ -101,6 +106,16 @@ export function completeStandalone() {
       unlinkSync(link);
       symlinkSync(path.relative(path.dirname(link), target), link, "dir");
     }
+  }
+
+  const externalLinks = symlinksUnder(standaloneRoot).filter((link) => {
+    const target = path.relative(standaloneRoot, realpathSync(link));
+    return target === ".." || target.startsWith(`..${path.sep}`) || path.isAbsolute(target);
+  });
+  for (const link of externalLinks) {
+    const target = realpathSync(link);
+    unlinkSync(link);
+    cpSync(target, link, { recursive: true, dereference: true });
   }
 
   const isVerifiedCopy = (file, repoRelativePath) => {
@@ -178,6 +193,58 @@ function assertRuntimeLinks(runtimeRoot) {
   if (dangling.length > 0) throw Error(`Dangling traced runtime packages: ${dangling.join(", ")}`);
 }
 
+function resolvablePackageDirectory(resolver, packageName) {
+  try {
+    return packageDirectoryFor(resolver, packageName);
+  } catch {
+    return undefined;
+  }
+}
+
+function assertContainedPackage(runtimeRoot, packageName, packageDirectory) {
+  const relative = path.relative(runtimeRoot, realpathSync(packageDirectory));
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw Error(`Pi dependency escaped standalone runtime: ${packageName}`);
+  }
+}
+
+function assertPackageClosure(sourceResolver, runtimeResolver, packageName, runtimeRoot, visited) {
+  const sourceDirectory = packageDirectoryFor(sourceResolver, packageName);
+  const runtimeDirectory = packageDirectoryFor(runtimeResolver, packageName);
+  assertContainedPackage(runtimeRoot, packageName, runtimeDirectory);
+  const sourceManifestPath = path.resolve(sourceDirectory, "package.json");
+  const runtimeManifestPath = path.resolve(runtimeDirectory, "package.json");
+  if (!readFileSync(sourceManifestPath).equals(readFileSync(runtimeManifestPath))) {
+    throw Error(`Standalone package provenance mismatch: ${packageName}`);
+  }
+  const canonicalRuntimeDirectory = realpathSync(runtimeDirectory);
+  if (visited.has(canonicalRuntimeDirectory)) return;
+  visited.add(canonicalRuntimeDirectory);
+  const manifest = readPackageManifest(sourceManifestPath);
+  const sourceChildResolver = createRequire(sourceManifestPath);
+  const runtimeChildResolver = createRequire(runtimeManifestPath);
+  for (const dependency of Object.keys(manifest.dependencies)) {
+    assertPackageClosure(
+      sourceChildResolver,
+      runtimeChildResolver,
+      dependency,
+      runtimeRoot,
+      visited,
+    );
+  }
+  const optional = { ...manifest.optionalDependencies, ...manifest.peerDependencies };
+  for (const dependency of Object.keys(optional)) {
+    if (!resolvablePackageDirectory(sourceChildResolver, dependency)) continue;
+    assertPackageClosure(
+      sourceChildResolver,
+      runtimeChildResolver,
+      dependency,
+      runtimeRoot,
+      visited,
+    );
+  }
+}
+
 function assertPiRuntime(runtimeRoot) {
   const codingAgent = path.resolve(runtimeRoot, "node_modules/@earendil-works/pi-coding-agent");
   const piAi = path.resolve(codingAgent, "node_modules/@earendil-works/pi-ai");
@@ -195,15 +262,17 @@ function assertPiRuntime(runtimeRoot) {
         `Standalone Pi runtime entrypoint is not importable: ${result.stderr || result.stdout}`,
       );
   }
-  const manifestPath = path.resolve(realpathSync(piAi), "package.json");
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  const resolver = createRequire(manifestPath);
-  for (const dependency of Object.keys(manifest.dependencies ?? {})) {
-    const resolved = realpathSync(resolver.resolve(dependency));
-    const relative = path.relative(runtimeRoot, resolved);
-    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
-      throw Error(`Pi AI dependency escaped standalone runtime: ${dependency}`);
-  }
+  const sourceResolver = createRequire(path.resolve(frontendDir, "package.json"));
+  const runtimeResolver = createRequire(path.resolve(runtimeRoot, "package.json"));
+  const visited = new Set();
+  assertPackageClosure(sourceResolver, runtimeResolver, "typebox", runtimeRoot, visited);
+  assertPackageClosure(
+    sourceResolver,
+    runtimeResolver,
+    "@earendil-works/pi-coding-agent",
+    runtimeRoot,
+    visited,
+  );
 }
 
 export function assertStandalone() {
