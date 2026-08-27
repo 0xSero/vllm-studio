@@ -80,6 +80,16 @@ export const probeGpuMonitoring = (
   return Effect.succeed({ available: false, tool: null });
 };
 
+const gpuDriverSuggestion = (kind: SystemRuntimeInfo["platform"]["kind"]): string => {
+  if (kind === "rocm") {
+    return "Verify ROCm is installed and GPU tools are available (amd-smi/rocm-smi).";
+  }
+  if (kind === "cuda") {
+    return "Verify NVIDIA drivers are installed and nvidia-smi is accessible.";
+  }
+  return "Verify GPU drivers are installed and set LOCAL_STUDIO_GPU_SMI_TOOL if needed.";
+};
+
 export const buildCompatibilityReport = (args: {
   runtime: SystemRuntimeInfo;
   inference_port: number;
@@ -100,12 +110,7 @@ export const buildCompatibilityReport = (args: {
         `platform.kind=${runtime.platform.kind}`,
         `gpus.count=${runtime.gpus.count}`,
       ]),
-      suggested_fix:
-        runtime.platform.kind === "rocm"
-          ? "Verify ROCm is installed and GPU tools are available (amd-smi/rocm-smi)."
-          : runtime.platform.kind === "cuda"
-            ? "Verify NVIDIA drivers are installed and nvidia-smi is accessible."
-            : "Verify GPU drivers are installed and set LOCAL_STUDIO_GPU_SMI_TOOL if needed.",
+      suggested_fix: gpuDriverSuggestion(runtime.platform.kind),
     });
   }
 

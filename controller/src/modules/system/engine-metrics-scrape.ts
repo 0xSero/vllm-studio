@@ -23,11 +23,11 @@ const parseEngineMetrics = (status: number, text: string): EngineScrape => {
   const scrape = emptyScrape();
   scrape.status = status;
   if (status !== 200) return scrape;
-  for (const line of text.split("\n")) {
-    if (line.startsWith("#") || line.trim().length === 0) continue;
-    if (!scrape.hasVllm && line.startsWith("vllm:")) scrape.hasVllm = true;
-    if (!scrape.hasSglang && line.startsWith("sglang:")) scrape.hasSglang = true;
-    if (!scrape.hasLlamacpp && line.startsWith("llamacpp:")) scrape.hasLlamacpp = true;
+  const lines = text.split("\n").filter((line) => !line.startsWith("#") && line.trim().length > 0);
+  scrape.hasVllm = lines.some((line) => line.startsWith("vllm:"));
+  scrape.hasSglang = lines.some((line) => line.startsWith("sglang:"));
+  scrape.hasLlamacpp = lines.some((line) => line.startsWith("llamacpp:"));
+  for (const line of lines) {
     if (!scrape.modelName) {
       const label = line.match(/(?:served_model_name|model_name)="([^"]+)"/);
       if (label?.[1]) scrape.modelName = label[1];

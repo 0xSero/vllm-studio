@@ -85,9 +85,7 @@ const resolveCalculatorModel = (
     return resolved;
   });
 
-const readModelConfig = (
-  modelPath: string,
-): Effect.Effect<ModelConfig, Schema.SchemaError> =>
+const readModelConfig = (modelPath: string): Effect.Effect<ModelConfig, Schema.SchemaError> =>
   Effect.tryPromise({
     try: () => readFile(join(modelPath, "config.json"), "utf-8"),
     catch: (source) => source,
@@ -96,17 +94,23 @@ const readModelConfig = (
     Effect.catch(() => Schema.decodeUnknownEffect(ModelConfigSchema)({})),
   );
 
+const firstDimension = (...values: Array<number | undefined>): number | undefined =>
+  values.find((value) => value !== undefined);
+
 const estimateVram = (
   body: VramCalculatorBody,
   weightsBytes: number,
   config: ModelConfig,
 ): VramEstimate => {
-  const layerCount = config.num_hidden_layers ?? config.n_layer ?? config.num_layers;
-  const hiddenSize = config.hidden_size ?? config.n_embd ?? config.d_model ?? config.dim;
-  const headCount = config.num_attention_heads ?? config.n_head ?? config.num_heads;
-  const keyValueHeadCount = config.num_key_value_heads ?? config.num_kv_heads ?? headCount;
-  const headDim =
-    config.head_dim ?? (hiddenSize && headCount ? hiddenSize / headCount : undefined);
+  const layerCount = firstDimension(config.num_hidden_layers, config.n_layer, config.num_layers);
+  const hiddenSize = firstDimension(config.hidden_size, config.n_embd, config.d_model, config.dim);
+  const headCount = firstDimension(config.num_attention_heads, config.n_head, config.num_heads);
+  const keyValueHeadCount = firstDimension(
+    config.num_key_value_heads,
+    config.num_kv_heads,
+    headCount,
+  );
+  const headDim = config.head_dim ?? (hiddenSize && headCount ? hiddenSize / headCount : undefined);
   const kvBytesPerValue = (body.kv_dtype ?? "auto").toLowerCase() === "fp8" ? 1 : 2;
   const contextLength = body.context_length;
   const tpSize = body.tp_size ?? 1;

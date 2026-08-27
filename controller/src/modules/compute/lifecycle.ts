@@ -75,6 +75,24 @@ export interface ComputeService {
   readonly superviseOnce: () => Effect.Effect<number>;
 }
 
+const validateLaunchSupport = (
+  input: ComputeLaunchInput,
+  host: HostProfile,
+): Effect.Effect<void, LaunchFailure> => {
+  const support = engineSpec(input.engine).supports(host);
+  if (!support.ok) {
+    return Effect.fail({ kind: "unsupported", engine: input.engine, reason: support.reason });
+  }
+  if (!supportsRuntime(input.engine, host, input.runtime)) {
+    return Effect.fail({
+      kind: "unsupported",
+      engine: input.engine,
+      reason: `runtime "${input.runtime}" not available (offers: ${support.runtimes.join(", ")})`,
+    });
+  }
+  return Effect.void;
+};
+
 export const makeComputeService = (deps: ComputeDeps): ComputeService => {
   const cancelRequested = new Set<string>();
 
@@ -165,21 +183,7 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
     Effect.gen(function* () {
       const host = yield* deps.host();
       const spec = engineSpec(input.engine);
-      const support = spec.supports(host);
-      if (!support.ok) {
-        return yield* Effect.fail<LaunchFailure>({
-          kind: "unsupported",
-          engine: input.engine,
-          reason: support.reason,
-        });
-      }
-      if (!supportsRuntime(input.engine, host, input.runtime)) {
-        return yield* Effect.fail<LaunchFailure>({
-          kind: "unsupported",
-          engine: input.engine,
-          reason: `runtime "${input.runtime}" not available (offers: ${support.runtimes.join(", ")})`,
-        });
-      }
+      yield* validateLaunchSupport(input, host);
 
       const existing = deps.store.read(input.name);
       if (existing) {

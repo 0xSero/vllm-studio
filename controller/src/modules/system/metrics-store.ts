@@ -36,6 +36,37 @@ export interface PeakMetricWithBestSession extends PeakMetric {
   best_session_ttft_ms: number | null;
 }
 
+type PeakUpdates = {
+  prefill_tps?: number;
+  generation_tps?: number;
+  ttft_ms?: number;
+};
+
+const collectPeakUpdates = (
+  current: PeakMetric | null,
+  prefillTps?: number,
+  generationTps?: number,
+  ttftMs?: number,
+): PeakUpdates => {
+  const updates: PeakUpdates = {};
+  const candidates: Array<
+    [keyof PeakUpdates, number | undefined, number | null | undefined, number]
+  > = [
+    ["prefill_tps", prefillTps, current?.prefill_tps, 1],
+    ["generation_tps", generationTps, current?.generation_tps, 1],
+    ["ttft_ms", ttftMs, current?.ttft_ms, -1],
+  ];
+  for (const [key, value, previous, direction] of candidates) {
+    if (
+      value !== undefined &&
+      (previous === null || previous === undefined || direction * value > direction * previous)
+    ) {
+      updates[key] = value;
+    }
+  }
+  return updates;
+};
+
 export class PeakMetricsStore {
   private readonly db: Database;
   private readonly closeDatabase: () => Effect.Effect<void, RepositoryError>;
@@ -91,65 +122,31 @@ export class PeakMetricsStore {
     ttftMs?: number,
   ): Partial<PeakMetric> {
     const current = this.get(modelId);
-    const updates: Record<string, number> = {};
+    const updates = collectPeakUpdates(current, prefillTps, generationTps, ttftMs);
 
-    if (current) {
-      if (
-        prefillTps !== undefined &&
-        (current["prefill_tps"] === null || Number(prefillTps) > Number(current["prefill_tps"]))
-      ) {
-        updates["prefill_tps"] = prefillTps;
-      }
-      if (
-        generationTps !== undefined &&
-        (current["generation_tps"] === null ||
-          Number(generationTps) > Number(current["generation_tps"]))
-      ) {
-        updates["generation_tps"] = generationTps;
-      }
-      if (
-        ttftMs !== undefined &&
-        (current["ttft_ms"] === null || Number(ttftMs) < Number(current["ttft_ms"]))
-      ) {
-        updates["ttft_ms"] = ttftMs;
-      }
-    } else {
-      if (prefillTps !== undefined) {
-        updates["prefill_tps"] = prefillTps;
-      }
-      if (generationTps !== undefined) {
-        updates["generation_tps"] = generationTps;
-      }
-      if (ttftMs !== undefined) {
-        updates["ttft_ms"] = ttftMs;
-      }
-    }
-
-    if (Object.keys(updates).length > 0) {
-      if (current) {
-        const setClause = Object.keys(updates)
-          .map((key) => `${key} = ?`)
-          .join(", ");
-        this.db
-          .query(
-            `UPDATE peak_metrics SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE model_id = ?`,
-          )
-          .run(...Object.values(updates), modelId);
-      } else {
-        this.db
-          .query(
-            `
+    if (Object.keys(updates).length > 0 && current) {
+      const setClause = Object.keys(updates)
+        .map((key) => `${key} = ?`)
+        .join(", ");
+      this.db
+        .query(
+          `UPDATE peak_metrics SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE model_id = ?`,
+        )
+        .run(...Object.values(updates), modelId);
+    } else if (Object.keys(updates).length > 0) {
+      this.db
+        .query(
+          `
           INSERT INTO peak_metrics (model_id, prefill_tps, generation_tps, ttft_ms)
           VALUES (?, ?, ?, ?)
         `,
-          )
-          .run(
-            modelId,
-            updates["prefill_tps"] ?? null,
-            updates["generation_tps"] ?? null,
-            updates["ttft_ms"] ?? null,
-          );
-      }
+        )
+        .run(
+          modelId,
+          updates["prefill_tps"] ?? null,
+          updates["generation_tps"] ?? null,
+          updates["ttft_ms"] ?? null,
+        );
     }
 
     return this.get(modelId) ?? {};

@@ -12,7 +12,10 @@ const AmdSmiValueSchema = Schema.Union([
   Schema.Null,
 ]);
 
-type AmdSmiValue = { readonly value?: number | undefined; readonly unit?: string | undefined } | "N/A" | null;
+type AmdSmiValue =
+  | { readonly value?: number | undefined; readonly unit?: string | undefined }
+  | "N/A"
+  | null;
 
 const AmdSmiMetricGpuSchema = Schema.Struct({
   gpu: Schema.optional(Schema.Number),
@@ -23,37 +26,35 @@ const AmdSmiMetricGpuSchema = Schema.Struct({
       free_vram: Schema.optional(AmdSmiValueSchema),
     }),
   ),
-  usage: Schema.optional(
-    Schema.Struct({ gfx_activity: Schema.optional(AmdSmiValueSchema) }),
-  ),
+  usage: Schema.optional(Schema.Struct({ gfx_activity: Schema.optional(AmdSmiValueSchema) })),
   temperature: Schema.optional(
     Schema.Struct({
       hotspot: Schema.optional(AmdSmiValueSchema),
       edge: Schema.optional(AmdSmiValueSchema),
     }),
   ),
-  power: Schema.optional(
-    Schema.Struct({ socket_power: Schema.optional(AmdSmiValueSchema) }),
-  ),
+  power: Schema.optional(Schema.Struct({ socket_power: Schema.optional(AmdSmiValueSchema) })),
 });
 
 interface AmdSmiMetricGpu {
   readonly gpu?: number | undefined;
-  readonly mem_usage?: {
-    readonly total_vram?: AmdSmiValue | undefined;
-    readonly used_vram?: AmdSmiValue | undefined;
-    readonly free_vram?: AmdSmiValue | undefined;
-  } | undefined;
+  readonly mem_usage?:
+    | {
+        readonly total_vram?: AmdSmiValue | undefined;
+        readonly used_vram?: AmdSmiValue | undefined;
+        readonly free_vram?: AmdSmiValue | undefined;
+      }
+    | undefined;
   readonly usage?: { readonly gfx_activity?: AmdSmiValue | undefined } | undefined;
-  readonly temperature?: { readonly hotspot?: AmdSmiValue | undefined; readonly edge?: AmdSmiValue | undefined } | undefined;
+  readonly temperature?:
+    | { readonly hotspot?: AmdSmiValue | undefined; readonly edge?: AmdSmiValue | undefined }
+    | undefined;
   readonly power?: { readonly socket_power?: AmdSmiValue | undefined } | undefined;
 }
 
 const AmdSmiStaticGpuSchema = Schema.Struct({
   gpu: Schema.optional(Schema.Number),
-  asic: Schema.optional(
-    Schema.Struct({ market_name: Schema.optional(Schema.String) }),
-  ),
+  asic: Schema.optional(Schema.Struct({ market_name: Schema.optional(Schema.String) })),
 });
 
 interface AmdSmiStaticGpu {
@@ -149,16 +150,14 @@ const isAveragePowerLabel = (label: string): boolean =>
 const isPowerLimitLabel = (label: string): boolean =>
   (label.includes("power cap") || label.includes("max")) && label.includes("(w)");
 
-const updateRocmSmiEntry = (
-  entry: RocmSmiParsed,
-  label: string,
-  valueText: string,
-): void => {
-  if (label.includes("card model")) {
-    entry.name = valueText;
-    return;
-  }
-  if (isCardSeriesLabel(label, entry)) {
+const rocmSmiPowerField = (label: string): "power_draw_w" | "power_limit_w" | null => {
+  if (isAveragePowerLabel(label)) return "power_draw_w";
+  if (isPowerLimitLabel(label)) return "power_limit_w";
+  return null;
+};
+
+const updateRocmSmiEntry = (entry: RocmSmiParsed, label: string, valueText: string): void => {
+  if (label.includes("card model") || isCardSeriesLabel(label, entry)) {
     entry.name = valueText;
     return;
   }
@@ -182,12 +181,9 @@ const updateRocmSmiEntry = (
     entry.temp_c = parseRocmSmiValue(valueText.replace(/c$/i, "").trim())?.value ?? null;
     return;
   }
-  if (isAveragePowerLabel(label)) {
-    entry.power_draw_w = parseRocmSmiValue(valueText.replace(/w$/i, "").trim())?.value ?? null;
-    return;
-  }
-  if (isPowerLimitLabel(label)) {
-    entry.power_limit_w = parseRocmSmiValue(valueText.replace(/w$/i, "").trim())?.value ?? null;
+  const powerField = rocmSmiPowerField(label);
+  if (powerField) {
+    entry[powerField] = parseRocmSmiValue(valueText.replace(/w$/i, "").trim())?.value ?? null;
   }
 };
 
@@ -204,18 +200,17 @@ const emptyRocmSmiEntry = (index: number): RocmSmiParsed => ({
 
 export const parseRocmSmiText = (text: string): RocmSmiParsed[] => {
   const byIndex = new Map<number, RocmSmiParsed>();
-  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
   for (const line of lines) {
     const match = line.match(/GPU\[(\d+)\]\s*:\s*([^:]+?)\s*:\s*(.*)$/i);
     if (!match) continue;
     const index = Number(match[1]);
     if (!Number.isFinite(index)) continue;
     const entry = byIndex.get(index) ?? emptyRocmSmiEntry(index);
-    updateRocmSmiEntry(
-      entry,
-      (match[2] ?? "").trim().toLowerCase(),
-      (match[3] ?? "").trim(),
-    );
+    updateRocmSmiEntry(entry, (match[2] ?? "").trim().toLowerCase(), (match[3] ?? "").trim());
     byIndex.set(index, entry);
   }
   return [...byIndex.values()].sort((first, second) => first.index - second.index);
@@ -225,11 +220,11 @@ const amdMetricToGpuInfo = (
   metric: AmdSmiMetricGpu,
   staticByGpu: ReadonlyMap<number, AmdSmiStaticGpu>,
 ): GpuInfo | null => {
-  const index = metric.gpu ?? null;
-  if (index === null) return null;
+  const index = metric.gpu;
+  if (index === undefined) return null;
   const name = staticByGpu.get(index)?.asic?.market_name ?? "AMD GPU";
-  const totalMb = readAmdSmiValueMb(metric.mem_usage?.total_vram) ?? 0;
-  const usedMb = readAmdSmiValueMb(metric.mem_usage?.used_vram) ?? 0;
+  const totalMb = Number(readAmdSmiValueMb(metric.mem_usage?.total_vram));
+  const usedMb = Number(readAmdSmiValueMb(metric.mem_usage?.used_vram));
   const freeMb = readAmdSmiValueMb(metric.mem_usage?.free_vram) ?? Math.max(0, totalMb - usedMb);
   return {
     index,
@@ -237,12 +232,19 @@ const amdMetricToGpuInfo = (
     memory_total_mb: Math.max(0, Math.round(totalMb)),
     memory_used_mb: Math.max(0, Math.round(usedMb)),
     memory_free_mb: Math.max(0, Math.round(freeMb)),
-    utilization_pct: Math.max(0, Math.round(readAmdSmiValueNumber(metric.usage?.gfx_activity) ?? 0)),
-    temp_c: Math.max(0, Math.round(
-      readAmdSmiValueNumber(metric.temperature?.hotspot) ??
-        readAmdSmiValueNumber(metric.temperature?.edge) ?? 0,
-    )),
-    power_draw: Math.max(0, readAmdSmiValueNumber(metric.power?.socket_power) ?? 0),
+    utilization_pct: Math.max(
+      0,
+      Math.round(Number(readAmdSmiValueNumber(metric.usage?.gfx_activity))),
+    ),
+    temp_c: Math.max(
+      0,
+      Math.round(
+        readAmdSmiValueNumber(metric.temperature?.hotspot) ??
+          readAmdSmiValueNumber(metric.temperature?.edge) ??
+          0,
+      ),
+    ),
+    power_draw: Math.max(0, Number(readAmdSmiValueNumber(metric.power?.socket_power))),
     power_limit: 0,
   };
 };

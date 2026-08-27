@@ -11,6 +11,7 @@ import { effectHandler } from "../../http/effect-handler";
 import { CONTROLLER_EVENTS } from "@local-studio/contracts/controller-events";
 import { Event } from "./event-manager";
 import { isRecipeRunning } from "../models/recipes/recipe-matching";
+import type { ProcessInfo, Recipe } from "../models/types";
 import {
   cleanupLogFiles,
   fallbackLogPathFor,
@@ -79,6 +80,24 @@ const terminateChild = (child: ReturnType<typeof spawn>): Effect.Effect<void> =>
     }).pipe(Effect.catch(() => Effect.void));
     yield* Effect.raceFirst(waitForChildExit(child), Effect.sleep(1_000));
   });
+
+type LogSessionRow = {
+  id: string;
+  recipe_id: string;
+  recipe_name: string | null;
+  model_path: string | null;
+  model: string;
+  backend: string | null;
+  created_at: string;
+  status: string;
+};
+
+const logSessionStatus = (recipe: Recipe | null, current: ProcessInfo | null): string => {
+  if (!recipe || !current) return "stopped";
+  return isRecipeRunning(recipe, current, { allowCurrentContainsRecipePath: true })
+    ? "running"
+    : "stopped";
+};
 
 export const registerLogsRoutes = defineRoutes((app, context) => {
   let lastCleanupAt = 0;
@@ -211,30 +230,11 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
             try: () => listLogFiles(context.config.data_dir),
             catch: (error) => error,
           });
-          type LogSessionRow = {
-            id: string;
-            recipe_id: string;
-            recipe_name: string | null;
-            model_path: string | null;
-            model: string;
-            backend: string | null;
-            created_at: string;
-            status: string;
-          };
           const sessions: LogSessionRow[] = [];
           let controllerSession: LogSessionRow | null = null;
           for (const entry of entries) {
             const sessionId = entry.sessionId;
             const recipe = yield* context.stores.recipeStore.get(sessionId);
-            const modifiedAt = new Date(entry.mtimeMs).toISOString();
-            let status = "stopped";
-            if (
-              current &&
-              recipe &&
-              isRecipeRunning(recipe, current, { allowCurrentContainsRecipePath: true })
-            ) {
-              status = "running";
-            }
             const row = {
               id: sessionId,
               recipe_id: recipe?.id ?? sessionId,
@@ -242,14 +242,11 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
               model_path: recipe?.model_path ?? null,
               model: recipe ? (recipe.served_model_name ?? recipe.name) : sessionId,
               backend: recipe?.backend ?? null,
-              created_at: modifiedAt,
-              status,
+              created_at: new Date(entry.mtimeMs).toISOString(),
+              status: logSessionStatus(recipe, current),
             };
-            if (sessionId === "controller") {
-              controllerSession = row;
-            } else {
-              sessions.push(row);
-            }
+            if (sessionId === "controller") controllerSession = row;
+            else sessions.push(row);
           }
           if (controllerSession) sessions.push(controllerSession);
           return ctx.json({ sessions });

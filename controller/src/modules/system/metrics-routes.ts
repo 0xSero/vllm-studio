@@ -48,11 +48,7 @@ const buildModelKeys = (modelId: string, modelPath: string | null | undefined): 
   return keys;
 };
 
-
-const buildBaseMetrics = (
-  lifetimeData: Record<string, number>,
-  gpus: GpuInfo[],
-): EventData => {
+const buildBaseMetrics = (lifetimeData: Record<string, number>, gpus: GpuInfo[]): EventData => {
   const currentPowerWatts = gpus.reduce((sum, gpu) => sum + gpu.power_draw, 0);
   const vramUsedGb = gpus.reduce((sum, gpu) => sum + gpu.memory_used_mb / 1024, 0);
   const vramCapacityGb = gpus.reduce((sum, gpu) => sum + gpu.memory_total_mb / 1024, 0);
@@ -108,7 +104,6 @@ const calculateThroughput = (
   return { prompt, generation };
 };
 
-
 interface CurrentResponseValues {
   baseMetrics: EventData;
   modelId: string;
@@ -125,6 +120,11 @@ interface CurrentResponseValues {
   avgTtftMs: number;
 }
 
+const resolveTokenTotal = (
+  primary: number,
+  fallback: number | null | undefined,
+): number | undefined => positiveOrUndefined(primary) ?? positiveOrUndefined(fallback);
+
 const buildCoreCurrentResponse = (values: CurrentResponseValues): EventData => {
   const usageTotals = values.usageAggregate?.totals;
   return {
@@ -135,11 +135,11 @@ const buildCoreCurrentResponse = (values: CurrentResponseValues): EventData => {
     running_requests: firstMetric(values.prometheus, values.names.runningRequests),
     pending_requests: firstMetric(values.prometheus, values.names.pendingRequests),
     kv_cache_usage: firstMetric(values.prometheus, values.names.kvCacheUsage),
-    prompt_tokens_total:
-      positiveOrUndefined(values.promptTokensTotal) ?? positiveOrUndefined(usageTotals?.prompt_tokens),
-    generation_tokens_total:
-      positiveOrUndefined(values.generationTokensTotal) ??
-      positiveOrUndefined(usageTotals?.completion_tokens),
+    prompt_tokens_total: resolveTokenTotal(values.promptTokensTotal, usageTotals?.prompt_tokens),
+    generation_tokens_total: resolveTokenTotal(
+      values.generationTokensTotal,
+      usageTotals?.completion_tokens,
+    ),
     total_tokens: positiveOrUndefined(usageTotals?.total_tokens),
     total_requests: positiveOrUndefined(usageTotals?.total_requests),
     prompt_throughput: values.promptThroughput,
@@ -165,16 +165,13 @@ const buildPeakResponse = (
   peak_ttft_ms: peak?.ttft_ms ?? null,
 });
 
-
 const resolveMetricsModelId = (
   servedModelName: string | null | undefined,
   modelPath: string | null | undefined,
   scrapedModelName: string | null,
 ): string => servedModelName ?? modelPath?.split("/").pop() ?? scrapedModelName ?? "active";
 
-const buildCurrentMetrics = (
-  context: AppContext,
-): Effect.Effect<EventData, unknown> =>
+const buildCurrentMetrics = (context: AppContext): Effect.Effect<EventData, unknown> =>
   Effect.gen(function* () {
     const current = yield* findObservedInferenceProcess(context, "metrics.current");
     const gpus = yield* getGpuInfo();
@@ -182,7 +179,7 @@ const buildCurrentMetrics = (
     const baseMetrics = buildBaseMetrics(lifetimeData, gpus);
 
     const scrape = yield* scrapeEngineMetrics(context.config.inference_port, 1500);
-    const engineActive = scrape.hasVllm || scrape.hasSglang || scrape.hasLlamacpp;
+    const engineActive = [scrape.hasVllm, scrape.hasSglang, scrape.hasLlamacpp].some(Boolean);
 
     if (!current && !engineActive) {
       return {
@@ -193,7 +190,7 @@ const buildCurrentMetrics = (
       };
     }
 
-    const isSglang = current?.backend === "sglang" || (!current && scrape.hasSglang);
+    const isSglang = [current?.backend === "sglang", !current && scrape.hasSglang].some(Boolean);
     const modelId = resolveMetricsModelId(
       current?.served_model_name,
       current?.model_path,

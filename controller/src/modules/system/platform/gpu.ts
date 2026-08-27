@@ -155,21 +155,17 @@ const warnNoGpuToolingOnce = (): void => {
   console.warn(`No GPUs reported by any monitoring tool; attempted: ${attempted}`);
 };
 
+const collectForcedGpuInfo = (forced: RuntimeGpuMonitoringTool): Effect.Effect<GpuInfo[]> => {
+  if (forced === "nvidia-smi") return getGpuInfoFromNvidiaSmi();
+  if (forced === "amd-smi") return getGpuInfoFromAmdSmi();
+  if (forced === "rocm-smi") return getGpuInfoFromRocmSmi();
+  return getGpuInfoFromIntelSysfs();
+};
+
 const collectGpuInfo = (): Effect.Effect<GpuInfo[]> =>
   Effect.gen(function* () {
     const forced = resolveForcedGpuMonitoringTool();
-    if (forced === "nvidia-smi") {
-      return yield* getGpuInfoFromNvidiaSmi();
-    }
-    if (forced === "amd-smi") {
-      return yield* getGpuInfoFromAmdSmi();
-    }
-    if (forced === "rocm-smi") {
-      return yield* getGpuInfoFromRocmSmi();
-    }
-    if (forced === "intel-sysfs") {
-      return yield* getGpuInfoFromIntelSysfs();
-    }
+    if (forced) return yield* collectForcedGpuInfo(forced);
 
     const nvidia = yield* getGpuInfoFromNvidiaSmi();
     if (nvidia.length > 0) {
