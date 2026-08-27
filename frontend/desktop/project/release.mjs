@@ -177,8 +177,7 @@ export async function signDesktopRelease(args = process.argv.slice(2)) {
   const version = valueAfter(args, "--version")?.trim();
   const commit = valueAfter(args, "--commit")?.trim().toLowerCase();
   const prepackaged = valueAfter(args, "--prepackaged")?.trim();
-  if (!version || !/^\d+\.\d+\.\d+$/.test(version))
-    throw Error("--version must be a semantic version");
+  if (!/^\d+\.\d+\.\d+$/.test(version)) throw Error("--version must be a semantic version");
   if (!commit || !/^[0-9a-f]{40}$/.test(commit))
     throw Error("--commit must be a full Git commit SHA");
   if (!prepackaged || !existsSync(prepackaged)) {

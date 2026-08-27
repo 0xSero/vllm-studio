@@ -497,13 +497,10 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
         Send is pressed.
       </p>
       <ErrorText
-        value={
-          error ||
-          projectsState.error ||
-          modelsState.error ||
-          providers.error ||
-          sessionsState.error
-        }
+        value={[error, projectsState.error, modelsState.error, providers.error, sessionsState.error]
+          .filter(Boolean)
+          .slice(0, 1)
+          .join("")}
       />
       <div className="row">
         <select value={activeCwd} onChange={(event) => setCwd(event.target.value)}>

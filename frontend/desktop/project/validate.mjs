@@ -286,6 +286,10 @@ export function validateUi() {
     }
   };
 
+  const isRetiredUiFeaturePath = (segments) => {
+    return segments[0] === "ui" && segments.length > 2 && retiredUiFeatureDirs.has(segments[1]);
+  };
+
   const inspectFile = (filePath) => {
     const rel = path.relative(srcRoot, filePath);
     const segments = rel.split(path.sep);
@@ -297,7 +301,7 @@ export function validateUi() {
           "src/components is retired; page features live in src/features, primitives in src/ui.",
       });
     }
-    if (segments[0] === "ui" && segments.length > 2 && retiredUiFeatureDirs.has(segments[1])) {
+    if (isRetiredUiFeaturePath(segments)) {
       findings.push({
         rule: "feature-location",
         path: rel,
@@ -497,16 +501,15 @@ export function controllerStandards() {
           "Use Effect concurrency primitives",
         );
     };
+    const isEffectRunnerCall = (owner, method, expression) =>
+      ["runPromise", "runPromiseExit", "runSync", "runFork"].includes(method) &&
+      (owner === "Effect" || /runtime/i.test(expression.getText(sourceFile)));
     const checkEffectCall = (node) => {
       if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return;
       const owner = identifierText(node.expression.expression);
       const method = node.expression.name.text;
       if (owner === "ManagedRuntime" && method === "make") managedRuntimeCount += 1;
-      if (
-        !isRuntimeBoundary &&
-        ["runPromise", "runPromiseExit", "runSync", "runFork"].includes(method) &&
-        (owner === "Effect" || /runtime/i.test(node.expression.expression.getText(sourceFile)))
-      )
+      if (!isRuntimeBoundary && isEffectRunnerCall(owner, method, node.expression.expression))
         addSourceFinding(
           "effect-runner-boundary",
           filePath,

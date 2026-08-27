@@ -119,7 +119,7 @@ export function normalizeScheduleArg(
   if (kind === "weekly") {
     const parsedDay = Schema.decodeUnknownOption(Schema.Number)(input.day);
     const day = parsedDay._tag === "Some" ? Math.round(parsedDay.value) : NaN;
-    if (!Number.isInteger(day) || day < 0 || day > 6) {
+    if (![0, 1, 2, 3, 4, 5, 6].includes(day)) {
       return { ok: false, error: "weekly schedule needs 'day' 0-6 (0 = Sunday)." };
     }
     const parsedTime = Schema.decodeUnknownOption(TimeSchema)(input.time);
@@ -283,7 +283,7 @@ export default function automationsExtension(pi: ExtensionAPI): void {
           });
         const parsedBody = Schema.decodeUnknownOption(CreatedAutomationResponseSchema)(body);
         const automation = parsedBody._tag === "Some" ? parsedBody.value.automation : undefined;
-        const id = automation?.id ?? "(unknown)";
+        const id = [automation?.id, "(unknown)"].filter(Boolean).slice(0, 1).join("");
         return textResult(
           `Created automation "${automation?.name ?? args.name ?? "Untitled"}" [${id}] — ` +
             `${describeSchedule(scheduleResult.schedule)}. Next run ${automation?.nextRunAt ?? "pending"}.`,

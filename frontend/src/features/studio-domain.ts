@@ -161,17 +161,19 @@ function snapshotBlocks(event: RecordJson, message: RecordJson | null): Transcri
     blocks.reduce((total, block) => total + JSON.stringify(block.value).length, 0);
   return payloadSize(candidate) > payloadSize(direct) ? candidate : direct;
 }
+const MESSAGE_EVENT_TYPES: Json[] = ["message", "message_start", "message_update", "message_end"];
+
+function messageRole(value: Json | undefined): FoldedMessage["role"] {
+  if (value === "user") return "user";
+  if (value === "assistant") return "assistant";
+  return "event";
+}
+
 function eventMessage(event: RecordJson): Omit<FoldedMessage, "id"> | null {
   const message = nestedRecord(event.message);
-  if (
-    event.type === "message" ||
-    event.type === "message_start" ||
-    event.type === "message_update" ||
-    event.type === "message_end"
-  ) {
+  if (MESSAGE_EVENT_TYPES.includes(event.type)) {
     const partial = nestedRecord(nestedRecord(event.assistantMessageEvent)?.partial);
-    const roleValue = message?.role ?? partial?.role;
-    const role = roleValue === "user" ? "user" : roleValue === "assistant" ? "assistant" : "event";
+    const role = messageRole(message?.role ?? partial?.role);
     const blocks = snapshotBlocks(event, message);
     const content = blocks.map((block) => block.text).join("");
     return content || blocks.length ? { role, content, blocks } : null;

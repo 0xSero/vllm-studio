@@ -174,13 +174,46 @@ function fileMatch(query: string, name: string, relativePath: string): "name" | 
   if (relativePath.toLowerCase().includes(query)) return "path";
 }
 
+type SearchDirectory = { dir: string; depth: number };
+function searchCandidate(
+  root: string,
+  query: string,
+  current: SearchDirectory,
+  name: string,
+  queue: SearchDirectory[],
+): FsEntry | undefined {
+  if (IGNORE_DIRS.has(name) || (name.startsWith(".") && name !== ".env.example")) return undefined;
+  const abs = path.join(current.dir, name);
+  let stats: ReturnType<typeof lstatSync>;
+  try {
+    stats = lstatSync(abs);
+  } catch {
+    return undefined;
+  }
+  if (stats.isDirectory()) {
+    if (current.depth < SEARCH_MAX_DEPTH) queue.push({ dir: abs, depth: current.depth + 1 });
+    return undefined;
+  }
+  if (stats.isSymbolicLink() || !stats.isFile()) return undefined;
+  const rel = path.relative(root, abs);
+  const match = fileMatch(query, name, rel);
+  if (!match) return undefined;
+  return {
+    name,
+    path: abs,
+    rel,
+    kind: "file",
+    size: stats.size,
+    modifiedAt: stats.mtime.toISOString(),
+  };
+}
+
 export function searchFiles(rootCwd: string, query: string, limit = 20): FsEntry[] {
   const root = resolveWorkspaceRoot(rootCwd);
   const q = query.trim().toLowerCase();
-  // Basename matches rank above path-segment matches, matching byQuery's idiom.
   const nameMatches: FsEntry[] = [];
   const pathMatches: FsEntry[] = [];
-  const queue: Array<{ dir: string; depth: number }> = [{ dir: root, depth: 0 }];
+  const queue: SearchDirectory[] = [{ dir: root, depth: 0 }];
   let visited = 0;
   while (queue.length > 0 && nameMatches.length < limit && visited < SEARCH_MAX_VISITED) {
     const current = queue.shift();
@@ -194,33 +227,9 @@ export function searchFiles(rootCwd: string, query: string, limit = 20): FsEntry
     for (const name of names) {
       if (visited >= SEARCH_MAX_VISITED || nameMatches.length >= limit) break;
       visited += 1;
-      if (IGNORE_DIRS.has(name)) continue;
-      if (name.startsWith(".") && name !== ".env.example") continue;
-      const abs = path.join(current.dir, name);
-      let s: ReturnType<typeof lstatSync>;
-      try {
-        s = lstatSync(abs);
-      } catch {
-        continue;
-      }
-      if (s.isSymbolicLink()) continue;
-      if (s.isDirectory()) {
-        if (current.depth < SEARCH_MAX_DEPTH) queue.push({ dir: abs, depth: current.depth + 1 });
-        continue;
-      }
-      if (!s.isFile()) continue;
-      const rel = path.relative(root, abs);
-      const match = fileMatch(q, name, rel);
-      if (!match) continue;
-      const entry: FsEntry = {
-        name,
-        path: abs,
-        rel,
-        kind: "file",
-        size: s.size,
-        modifiedAt: s.mtime.toISOString(),
-      };
-      if (match === "name") nameMatches.push(entry);
+      const entry = searchCandidate(root, q, current, name, queue);
+      if (!entry) continue;
+      if (!q || name.toLowerCase().includes(q)) nameMatches.push(entry);
       else pathMatches.push(entry);
     }
   }

@@ -49,6 +49,7 @@ export type { AttachAction, AttachModelInput, AttachResult, LocalAgentModel };
 export { detectLocalAgents };
 
 const decodeLocalAgentConfig = JsonRecordSchema.pipe(Schema.decodeUnknownOption);
+const configWriters = { json: writeJsonAtomic, yaml: writeYamlAtomic };
 
 interface AgentConfigFile {
   exists: boolean;
@@ -160,7 +161,7 @@ async function attachToAgent(
     return { agent, ok: false, configPath, error: file.error };
   }
 
-  const config = file.config ?? plan.emptyConfig();
+  const { config = plan.emptyConfig() } = file;
   const mergeAction = plan.merge(config, model);
 
   let backupPath: string | undefined;
@@ -169,11 +170,7 @@ async function attachToAgent(
   }
 
   const mode = file.exists ? ((await existingFileMode(configPath)) ?? 0o600) : 0o600;
-  if (format === "yaml") {
-    await writeYamlAtomic(configPath, config, mode);
-  } else {
-    await writeJsonAtomic(configPath, config, mode);
-  }
+  await configWriters[format](configPath, config, mode);
 
   const action: AttachAction = file.exists ? mergeAction : "created-file";
   const extraUpdates =
