@@ -4,64 +4,23 @@ import { Schema } from "effect";
 import Link from "next/link";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { ErrorText, JsonView } from "./studio-ui";
+export { ErrorText, JsonView } from "./studio-ui";
 import { DesktopManager, MachineManager, NormalizedUsage, RecipeManager } from "./studio-admin";
 
-export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
-export type RecordJson = { [key: string]: Json };
+import {
+  jsonText,
+  records,
+  request,
+  requestRecord,
+  useJson,
+  type Json,
+  type RecordJson,
+} from "./studio-api";
+export { jsonText, records, request, requestRecord, useJson } from "./studio-api";
+export type { Json, RecordJson } from "./studio-api";
 
-const JsonSchema: Schema.Codec<Json, Json> = Schema.suspend(() =>
-  Schema.Union([
-    Schema.Null,
-    Schema.Boolean,
-    Schema.Number,
-    Schema.String,
-    Schema.mutable(Schema.Array(JsonSchema)),
-    Schema.Record(Schema.String, JsonSchema),
-  ]),
-);
-const JsonRecordSchema = Schema.Record(Schema.String, JsonSchema);
-const decodeJson = Schema.decodeUnknownSync(JsonSchema);
-const isRecordJson = Schema.is(JsonRecordSchema);
-const isString = Schema.is(Schema.String);
-
-export async function request(path: `/api/${string}`, init?: RequestInit): Promise<Json> {
-  const response = await fetch(path, { cache: "no-store", ...init });
-  const body = decodeJson(await response.json().catch(() => null));
-  if (!response.ok) {
-    const record = isRecordJson(body) ? body : null;
-    throw new Error(
-      record && isString(record.error) ? record.error : `${response.status} ${response.statusText}`,
-    );
-  }
-  return body;
-}
-export async function requestRecord(
-  path: `/api/${string}`,
-  init?: RequestInit,
-): Promise<RecordJson> {
-  const body = await request(path, init);
-  if (!isRecordJson(body)) throw new Error("Expected an object response");
-  return body;
-}
-export function records(value: Json | null, key: string): RecordJson[] {
-  const list = Array.isArray(value) ? value : isRecordJson(value) ? value[key] : null;
-  return Array.isArray(list) ? list.filter(isRecordJson) : [];
-}
-export function jsonText(value: Json | undefined, fallback = ""): string {
-  return isString(value) ? value : fallback;
-}
-export function useJson(path: `/api/${string}`) {
-  const [data, setData] = useState<Json | null>(null);
-  const [error, setError] = useState("");
-  const reload = () =>
-    request(path)
-      .then(setData)
-      .catch((value) => setError(value instanceof Error ? value.message : String(value)));
-  useMountSubscription(() => {
-    void reload();
-  }, [path]);
-  return { data, error, reload };
-}
+const isNumber = Schema.is(Schema.Number);
 
 type SettingsUpdate = { backendUrl: Json; apiKey?: string };
 type DownloadRequest = {
@@ -71,6 +30,24 @@ type DownloadRequest = {
   allow_patterns?: string[];
   hf_token?: string;
 };
+type SavedController = { id: string; name: string; url: string };
+const SavedControllerSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  url: Schema.String,
+});
+const SavedControllersSchema = Schema.Array(SavedControllerSchema);
+const decodeSavedControllers = Schema.decodeUnknownOption(SavedControllersSchema);
+function loadSavedControllerMetadata(): SavedController[] {
+  const raw = localStorage.getItem("local-studio.saved-controller-metadata");
+  if (!raw) return [];
+  try {
+    const decoded = decodeSavedControllers(JSON.parse(raw));
+    return decoded._tag === "Some" ? [...decoded.value] : [];
+  } catch {
+    return [];
+  }
+}
 
 const NAV = [
   ["/", "Dashboard"],
@@ -125,12 +102,6 @@ export function Page({
     </section>
   );
 }
-export function ErrorText({ value }: { value: string }) {
-  return value ? <p className="error">{value}</p> : null;
-}
-export function JsonView({ value }: { value: Json | null }) {
-  return <pre>{value === null ? "Loading…" : JSON.stringify(value, null, 2)}</pre>;
-}
 export function Tabs({ items }: { items: ReadonlyArray<readonly [string, string]> }) {
   return (
     <div className="tabs">
@@ -148,6 +119,16 @@ export function Dashboard() {
   const status = useJson("/api/proxy/status");
   const metrics = useJson("/api/proxy/v1/metrics/vllm");
   const downloads = useJson("/api/proxy/studio/downloads");
+  const [actionMessage, setActionMessage] = useState("");
+  const stopModel = async () => {
+    try {
+      await request("/api/proxy/evict", { method: "POST" });
+      setActionMessage("Active model stopped");
+      reload();
+    } catch (value) {
+      setActionMessage(value instanceof Error ? value.message : String(value));
+    }
+  };
   const reload = () => {
     void health.reload();
     void status.reload();
@@ -159,8 +140,18 @@ export function Dashboard() {
     return () => window.clearInterval(timer);
   }, []);
   return (
-    <Page title="Dashboard" actions={<button onClick={reload}>Refresh</button>}>
-      <ErrorText value={health.error || status.error || metrics.error || downloads.error} />
+    <Page
+      title="Dashboard"
+      actions={
+        <div className="row">
+          <button onClick={reload}>Refresh</button>
+          <button onClick={stopModel}>Stop active model</button>
+        </div>
+      }
+    >
+      <ErrorText
+        value={actionMessage || health.error || status.error || metrics.error || downloads.error}
+      />
       <div className="grid">
         <article>
           <h2>Controller & active model</h2>
@@ -195,7 +186,7 @@ export function Dashboard() {
 }
 
 export function Usage() {
-  const state = useJson("/api/proxy/usage");
+  const state = useJson("/api/proxy/usage?include_controller=true");
   return (
     <Page title="Usage" actions={<button onClick={state.reload}>Refresh</button>}>
       <ErrorText value={state.error} />
@@ -309,8 +300,42 @@ export function Settings() {
   const [backendUrl, setBackendUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [message, setMessage] = useState("");
+  const [controllerName, setControllerName] = useState("");
+  const [savedControllers, setSavedControllers] = useState<SavedController[]>([]);
   const [remoteConsent, setRemoteConsent] = useState(false);
   const currentRecord = records([current.data], "current")[0] ?? {};
+  const controllerDestination =
+    backendUrl || jsonText(currentRecord.backendUrl, "http://localhost:8080");
+  useMountSubscription(() => {
+    setSavedControllers(loadSavedControllerMetadata());
+  }, []);
+  useMountSubscription(() => {
+    setRemoteConsent(
+      localStorage.getItem(`local-studio.controller-consent.${controllerDestination}`) === "1",
+    );
+  }, [controllerDestination]);
+  const persistControllers = (next: SavedController[]) => {
+    setSavedControllers(next);
+    localStorage.setItem("local-studio.saved-controller-metadata", JSON.stringify(next));
+  };
+  const saveControllerMetadata = () => {
+    const url = backendUrl.trim();
+    if (!url) {
+      setMessage("Enter a controller URL");
+      return;
+    }
+    const existing = savedControllers.find((controller) => controller.url === url);
+    const entry: SavedController = {
+      id: existing?.id ?? crypto.randomUUID(),
+      name: controllerName.trim() || new URL(url).host,
+      url,
+    };
+    persistControllers([
+      ...savedControllers.filter((controller) => controller.id !== entry.id),
+      entry,
+    ]);
+    setMessage("Controller metadata saved locally; credentials are not stored in the browser");
+  };
   const test = async (path: `/api/${string}`, label: string) => {
     try {
       await request(path);
@@ -321,7 +346,7 @@ export function Settings() {
   };
   const save = async () => {
     try {
-      const destination = backendUrl || jsonText(currentRecord.backendUrl, "http://localhost:8080");
+      const destination = controllerDestination;
       const hostname = new URL(destination).hostname;
       const remote = hostname !== "localhost" && hostname !== "127.0.0.1" && hostname !== "::1";
       if (remote && !remoteConsent)
@@ -337,6 +362,7 @@ export function Settings() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(settingsUpdate),
       });
+      setApiKey("");
       setMessage("Connection settings saved locally");
       void current.reload();
     } catch (value) {
@@ -362,6 +388,14 @@ export function Settings() {
             />
           </label>
           <label>
+            Controller name
+            <input
+              value={controllerName}
+              onChange={(event) => setControllerName(event.target.value)}
+              placeholder="Workstation or server"
+            />
+          </label>
+          <label>
             API key
             <input
               type="password"
@@ -378,7 +412,14 @@ export function Settings() {
             <input
               type="checkbox"
               checked={remoteConsent}
-              onChange={(event) => setRemoteConsent(event.target.checked)}
+              onChange={(event) => {
+                const allowed = event.target.checked;
+                setRemoteConsent(allowed);
+                localStorage.setItem(
+                  `local-studio.controller-consent.${controllerDestination}`,
+                  allowed ? "1" : "0",
+                );
+              }}
             />
             I understand that a non-local controller receives prompts, attachments, tool context,
             model requests, and its configured credential.
@@ -389,12 +430,45 @@ export function Settings() {
             custody ends at that destination only after this consent.
           </p>
           <div className="row">
-            <button onClick={() => test("/api/health", "Connection test")}>Test connection</button>
+            <button
+              onClick={async () => {
+                await save();
+                await test("/api/health", "Controller switch and test");
+              }}
+            >
+              Switch and test
+            </button>
             <button onClick={() => test("/api/proxy/compat", "Compatibility check")}>
               Check compatibility
             </button>
             <button onClick={save}>Switch controller</button>
+            <button onClick={saveControllerMetadata}>Save controller</button>
           </div>
+          {savedControllers.map((controller) => (
+            <div className="item" key={controller.id}>
+              <button
+                onClick={() => {
+                  setBackendUrl(controller.url);
+                  setControllerName(controller.name);
+                  setApiKey("");
+                }}
+              >
+                {controller.name} · {controller.url}
+              </button>
+              <button
+                onClick={() =>
+                  persistControllers(
+                    savedControllers.filter((candidate) => candidate.id !== controller.id),
+                  )
+                }
+              >
+                Delete saved controller
+              </button>
+            </div>
+          ))}
+          <p>
+            Saved entries contain URL and name only. Enter a credential for each test or switch.
+          </p>
         </article>
         <article>
           <h2>Runtime settings</h2>
@@ -643,12 +717,19 @@ export function Models() {
   const downloads = useJson("/api/proxy/studio/downloads");
   const status = useJson("/api/proxy/status");
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<RecordJson | null>(null);
+  const [results, setResults] = useState<Json | null>(null);
   const [message, setMessage] = useState("");
   const [revision, setRevision] = useState("");
   const [destination, setDestination] = useState("");
   const [patterns, setPatterns] = useState("");
   const [token, setToken] = useState("");
+  const [downloadConsent, setDownloadConsent] = useState(false);
+  const downloadDestination = destination.trim() || "controller-default-model-store";
+  useMountSubscription(() => {
+    setDownloadConsent(
+      localStorage.getItem(`local-studio.download-consent.${downloadDestination}`) === "1",
+    );
+  }, [downloadDestination]);
   useMountSubscription(() => {
     const timer = window.setInterval(downloads.reload, 2000);
     return () => window.clearInterval(timer);
@@ -667,14 +748,16 @@ export function Models() {
   const search = async (event: FormEvent) => {
     event.preventDefault();
     try {
-      setResults(
-        await requestRecord(`/api/huggingface/models?search=${encodeURIComponent(query)}`),
-      );
+      setResults(await request(`/api/huggingface/models?search=${encodeURIComponent(query)}`));
     } catch (value) {
       setMessage(value instanceof Error ? value.message : String(value));
     }
   };
-  const startDownload = () => {
+  const startDownload = async () => {
+    if (!downloadConsent) {
+      setMessage("Confirm destination custody before downloading");
+      return;
+    }
     const payload: DownloadRequest = { model_id: query };
     if (revision) payload.revision = revision;
     if (destination) payload.destination_dir = destination;
@@ -684,11 +767,12 @@ export function Models() {
         .map((value) => value.trim())
         .filter(Boolean);
     if (token) payload.hf_token = token;
-    return run("/api/proxy/studio/downloads", {
+    await run("/api/proxy/studio/downloads", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
+    setToken("");
   };
   return (
     <Page
@@ -731,15 +815,39 @@ export function Models() {
           placeholder="HF token (kept local)"
         />
         <button>Search</button>
-        <button type="button" onClick={startDownload} disabled={!query.trim()}>
+        <button type="button" onClick={startDownload} disabled={!query.trim() || !downloadConsent}>
           Download
         </button>
       </form>
+      <label>
+        <input
+          type="checkbox"
+          checked={downloadConsent}
+          onChange={(event) => {
+            const allowed = event.target.checked;
+            setDownloadConsent(allowed);
+            localStorage.setItem(
+              `local-studio.download-consent.${downloadDestination}`,
+              allowed ? "1" : "0",
+            );
+          }}
+        />
+        Hugging Face receives the model id and optional token. The controller writes files to{" "}
+        {downloadDestination}. The token is sent only when Download is pressed and then cleared.
+      </label>
       <ErrorText value={message || recipes.error || downloads.error || status.error} />
       {results ? (
         <article>
           <h2>Hugging Face discovery</h2>
-          <JsonView value={results} />
+          {records(results, "models").map((model) => {
+            const id = jsonText(model.modelId, jsonText(model.id));
+            return (
+              <button key={id} className="item" onClick={() => setQuery(id)}>
+                {id} · {isNumber(model.downloads) ? model.downloads.toLocaleString() : "0"}{" "}
+                downloads
+              </button>
+            );
+          })}
         </article>
       ) : null}
       <div className="grid">

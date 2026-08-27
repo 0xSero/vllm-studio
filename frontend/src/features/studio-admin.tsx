@@ -1,15 +1,9 @@
 "use client";
 import { Schema } from "effect";
 import { useState } from "react";
-import {
-  ErrorText,
-  JsonView,
-  records,
-  request,
-  useJson,
-  type Json,
-  type RecordJson,
-} from "./studio-core";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { ErrorText, JsonView } from "./studio-ui";
+import { records, request, useJson, type Json, type RecordJson } from "./studio-api";
 
 const MutationResponseSchema = Schema.Record(Schema.String, Schema.Unknown);
 const decodeMutationResponse = Schema.decodeUnknownSync(MutationResponseSchema, {
@@ -29,8 +23,28 @@ export function RecipeManager() {
   const [id, setId] = useState("");
   const [name, setName] = useState("");
   const [model, setModel] = useState("");
-  const [backend, setBackend] = useState("llama.cpp");
+  const [backend, setBackend] = useState("llamacpp");
   const [message, setMessage] = useState("");
+  const [pinnedRecipes, setPinnedRecipes] = useState<Set<string>>(new Set());
+  useMountSubscription(() => {
+    const saved = localStorage.getItem("local-studio-pinned-recipes");
+    if (!saved) return;
+    try {
+      const decoded = Schema.decodeUnknownOption(Schema.Array(Schema.String))(JSON.parse(saved));
+      if (decoded._tag === "Some") setPinnedRecipes(new Set(decoded.value));
+    } catch {
+      setMessage("Saved recipe pins are invalid");
+    }
+  }, []);
+  const togglePin = (recipeId: string) => {
+    setPinnedRecipes((current) => {
+      const next = new Set(current);
+      if (next.has(recipeId)) next.delete(recipeId);
+      else next.add(recipeId);
+      localStorage.setItem("local-studio-pinned-recipes", JSON.stringify([...next]));
+      return next;
+    });
+  };
   const run = async (path: `/api/${string}`, init?: RequestInit) => {
     try {
       decodeMutationResponse(await request(path, init));
@@ -43,7 +57,7 @@ export function RecipeManager() {
   const draft: RecordJson = {
     id: id || name.toLowerCase().replaceAll(" ", "-"),
     name,
-    model,
+    model_path: model,
     backend,
   };
   return (
@@ -57,11 +71,12 @@ export function RecipeManager() {
           onChange={(event) => setModel(event.target.value)}
           placeholder="Local model path"
         />
-        <input
-          value={backend}
-          onChange={(event) => setBackend(event.target.value)}
-          placeholder="Backend"
-        />
+        <select value={backend} onChange={(event) => setBackend(event.target.value)}>
+          <option value="vllm">vLLM</option>
+          <option value="sglang">SGLang</option>
+          <option value="llamacpp">llama.cpp</option>
+          <option value="mlx">MLX</option>
+        </select>
         <button
           onClick={() =>
             run(
@@ -74,50 +89,49 @@ export function RecipeManager() {
         </button>
       </div>
       <ErrorText value={message || state.error || status.error} />
-      {records(state.data, "recipes").map((recipe) => {
-        const recipeId = text(recipe.id);
-        const label = text(recipe.name) || recipeId;
-        return (
-          <div className="item" key={recipeId}>
-            <span>
-              {label} · {text(recipe.status)}
-            </span>
-            <button
-              onClick={() => {
-                setId(recipeId);
-                setName(label);
-                setModel(text(recipe.model));
-                setBackend(text(recipe.backend) || "llama.cpp");
-              }}
-            >
-              Edit
-            </button>
-            <button
-              onClick={() => {
-                const key = `local-studio.recipe.pinned.${recipeId}`;
-                localStorage.setItem(key, localStorage.getItem(key) === "1" ? "0" : "1");
-                setMessage("Recipe pin saved on this device");
-              }}
-            >
-              Pin / unpin
-            </button>
-            <button
-              onClick={() =>
-                run(`/api/proxy/launch/${encodeURIComponent(recipeId)}`, { method: "POST" })
-              }
-            >
-              Launch
-            </button>
-            <button
-              onClick={() =>
-                run(`/api/proxy/recipes/${encodeURIComponent(recipeId)}`, { method: "DELETE" })
-              }
-            >
-              Delete
-            </button>
-          </div>
-        );
-      })}
+      {records(state.data, "recipes")
+        .sort(
+          (left, right) =>
+            Number(pinnedRecipes.has(text(right.id))) - Number(pinnedRecipes.has(text(left.id))),
+        )
+        .map((recipe) => {
+          const recipeId = text(recipe.id);
+          const label = text(recipe.name) || recipeId;
+          return (
+            <div className="item" key={recipeId}>
+              <span>
+                {label} · {text(recipe.status)}
+              </span>
+              <button
+                onClick={() => {
+                  setId(recipeId);
+                  setName(label);
+                  setModel(text(recipe.model_path));
+                  setBackend(text(recipe.backend) || "llamacpp");
+                }}
+              >
+                Edit
+              </button>
+              <button onClick={() => togglePin(recipeId)}>
+                {pinnedRecipes.has(recipeId) ? "Unpin" : "Pin"}
+              </button>
+              <button
+                onClick={() =>
+                  run(`/api/proxy/launch/${encodeURIComponent(recipeId)}`, { method: "POST" })
+                }
+              >
+                Launch
+              </button>
+              <button
+                onClick={() =>
+                  run(`/api/proxy/recipes/${encodeURIComponent(recipeId)}`, { method: "DELETE" })
+                }
+              >
+                Delete
+              </button>
+            </div>
+          );
+        })}
       <JsonView value={status.data} />
     </article>
   );
@@ -240,7 +254,18 @@ export function DesktopManager() {
   const [deployHost, setDeployHost] = useState("");
   const [hotkey, setHotkey] = useState("");
   const [output, setOutput] = useState<Json | null>(null);
+  const [deployLog, setDeployLog] = useState<string[]>([]);
   const [error, setError] = useState("");
+  useMountSubscription(
+    () =>
+      bridge?.controllerDeploy.onLog((line) =>
+        setDeployLog((lines) => [
+          ...lines,
+          line.replace(/(api[_ -]?key[=: ]+)\S+/gi, "$1[stored]"),
+        ]),
+      ),
+    [bridge],
+  );
   const call = async (operation: () => Promise<object | string | number | boolean | null>) => {
     try {
       setOutput(JSON.stringify(await operation()));
@@ -248,6 +273,28 @@ export function DesktopManager() {
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
     }
+  };
+  const copyPairingCredential = async () => {
+    if (!bridge) return;
+    await call(async () => {
+      const result = await bridge.getKittylitterPairingJson();
+      if (!result.ok || !result.pairingJson)
+        return { ok: false, error: result.error ?? "Pairing credential unavailable" };
+      const copied = await bridge.copyKittylitterPairingJson(result.pairingJson);
+      return { ok: copied.ok, credentialCopied: copied.ok, error: copied.error ?? null };
+    });
+  };
+  const deploy = async () => {
+    if (!bridge || !deployHost.trim()) return;
+    setDeployLog([]);
+    await call(async () => {
+      const result = await bridge.controllerDeploy.start({ host: deployHost });
+      if (!result.ok) return { ok: false, error: result.error ?? "Deployment failed" };
+      if (!result.url || !result.apiKey)
+        return { ok: false, error: "Deployment omitted credentials" };
+      await request("/api/settings", jsonBody({ backendUrl: result.url, apiKey: result.apiKey }));
+      return { ok: true, url: result.url, credentialStored: true };
+    });
   };
   if (!bridge)
     return (
@@ -280,6 +327,8 @@ export function DesktopManager() {
         <button onClick={() => call(() => bridge.revealPath(path))}>Reveal</button>
       </div>
       <div className="row">
+        <button onClick={() => call(() => bridge.getRuntime())}>Desktop runtime</button>
+        <button onClick={() => call(() => bridge.terminal.status())}>Terminal status</button>
         <button onClick={() => call(() => bridge.loadUiPreferences())}>Load preferences</button>
         <button
           onClick={() =>
@@ -301,6 +350,7 @@ export function DesktopManager() {
           onChange={(event) => setHotkey(event.target.value)}
           placeholder="Quick panel hotkey"
         />
+        <button onClick={() => call(() => bridge.quickPanel.getHotkey())}>Get hotkey</button>
         <button onClick={() => call(() => bridge.quickPanel.setHotkey(hotkey))}>Set hotkey</button>
         <button onClick={() => call(() => bridge.quickPanel.expand().then(() => true))}>
           Open quick panel
@@ -308,6 +358,7 @@ export function DesktopManager() {
         <button onClick={() => call(() => bridge.quickPanel.dismiss().then(() => true))}>
           Dismiss quick panel
         </button>
+        <button onClick={copyPairingCredential}>Copy KittyLitter pairing credential</button>
         <button
           onClick={() =>
             call(() => bridge.quickPanel.focusMainAndNavigate(projectId).then(() => true))
@@ -322,10 +373,11 @@ export function DesktopManager() {
           onChange={(event) => setDeployHost(event.target.value)}
           placeholder="SSH host for controller"
         />
-        <button onClick={() => call(() => bridge.controllerDeploy.start({ host: deployHost }))}>
-          Deploy controller
-        </button>
+        <button onClick={deploy}>Deploy controller and store credential</button>
       </div>
+      {deployLog.length ? (
+        <pre aria-label="Controller deployment log">{deployLog.join("\n")}</pre>
+      ) : null}
       <ErrorText value={error} />
       {output === null ? null : <JsonView value={output} />}
     </article>
@@ -334,16 +386,16 @@ export function DesktopManager() {
 
 export function NormalizedUsage({ value }: { value: Json | null }) {
   const [view, setView] = useState<"models" | "activity" | "controller" | "errors">("models");
+  const root = records([value], "value")[0] ?? {};
+  const controller = records([root.controller ?? null], "value")[0] ?? {};
   const rows =
     view === "models"
-      ? records(value, "by_model")
+      ? records(root, "by_model")
       : view === "activity"
-        ? records(value, "daily")
+        ? records(root, "daily")
         : view === "controller"
-          ? records(value, "by_path").concat(
-              records(records(value, "controller")[0] ?? null, "by_path"),
-            )
-          : records(value, "recent_errors");
+          ? records(controller, "by_path")
+          : records(controller, "recent_errors");
   return (
     <article>
       <div className="tabs">
@@ -354,8 +406,11 @@ export function NormalizedUsage({ value }: { value: Json | null }) {
         ))}
       </div>
       <p>
-        Normalized {view} view · {rows.length} rows
+        Normalized {view} view · {rows.length} rows · controller metrics included
       </p>
+      <JsonView
+        value={view === "controller" ? (controller.totals ?? null) : (root.totals ?? null)}
+      />
       <JsonView value={rows} />
     </article>
   );
