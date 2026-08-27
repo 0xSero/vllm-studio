@@ -19,7 +19,19 @@ const DEFAULT_SETTINGS: ApiSettings = {
   apiKey: process.env.API_KEY || "",
 };
 
+function desktopControllerSettings(): ApiSettings | null {
+  if (process.env.LOCAL_STUDIO_DESKTOP !== "1") return null;
+  const backendUrl = process.env.LOCAL_STUDIO_CONTROLLER_URL?.trim();
+  if (!backendUrl) return null;
+  return {
+    backendUrl,
+    apiKey: process.env.LOCAL_STUDIO_API_KEY?.trim() || "",
+  };
+}
+
 export async function getApiSettings(): Promise<ApiSettings> {
+  const desktopSettings = desktopControllerSettings();
+  if (desktopSettings) return desktopSettings;
   const settingsFile = resolveSettingsFilePath();
   if (!existsSync(settingsFile)) return DEFAULT_SETTINGS;
   try {
