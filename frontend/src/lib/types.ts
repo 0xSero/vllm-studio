@@ -95,6 +95,14 @@ export interface RecipeWithStatus extends RecipeBase {
 
 // --- Launch progress ---
 
+export type RecipeOverride =
+  | string
+  | number
+  | boolean
+  | null
+  | RecipeOverride[]
+  | { [key: string]: RecipeOverride };
+
 export type LaunchStage =
   | "preempting"
   | "evicting"
@@ -127,7 +135,7 @@ export interface StarterPreset {
   allow_patterns?: string[];
   backend?: "vllm" | "llamacpp";
   gguf_file?: string;
-  recipe_overrides?: Record<string, unknown>;
+  recipe_overrides?: Record<string, RecipeOverride>;
   remote?: { base_url: string; model: string };
   fits?: boolean;
 }

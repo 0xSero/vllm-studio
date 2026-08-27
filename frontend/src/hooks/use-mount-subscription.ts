@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore, type DependencyList } from "react";
 
 const noopSnapshot = (): number => 0;
+const noopCleanup = (): void => undefined;
 
 type MemoizedSubscribe = {
   deps: DependencyList;
@@ -13,7 +14,7 @@ export function useMountSubscription(
 ): void {
   const normalized = () => {
     const cleanup = subscribe();
-    return typeof cleanup === "function" ? cleanup : () => undefined;
+    return cleanup ?? noopCleanup;
   };
   const [memo] = useState((): MemoizedSubscribe => ({ deps, subscribe: normalized }));
   const changed =

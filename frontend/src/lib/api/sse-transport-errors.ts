@@ -1,3 +1,5 @@
+import { Schema } from "effect";
+
 /** Strip Bun-only debugging suffix from fetch/SSE errors so the UI stays readable. */
 export function scrubTransportFetchErrorMessage(message: string): string {
   return message
@@ -7,6 +9,10 @@ export function scrubTransportFetchErrorMessage(message: string): string {
     )
     .trimEnd();
 }
+
+const isDomException = Schema.is(Schema.instanceOf(DOMException));
+const isTypeError = Schema.is(Schema.instanceOf(TypeError));
+const isError = Schema.is(Schema.instanceOf(Error));
 
 const BENIGN_SSE_MESSAGE_PARTS = [
   "abort",
@@ -33,11 +39,14 @@ function hasBenignSseErrorMessage(error: Error): boolean {
 }
 
 /** Mid-stream TCP/TLS drops often surface as TypeError or runtime-specific messages (e.g. Bun). Treat as EOF for SSE. */
-export function isBenignSseTransportFailure(error: unknown, signal?: AbortSignal): boolean {
+export function isBenignSseTransportFailure<TransportFailure>(
+  error: TransportFailure,
+  signal?: AbortSignal,
+): boolean {
   if (signal?.aborted) return true;
   if (!error) return false;
-  if (error instanceof DOMException) return isAbortOrNetworkDomException(error);
-  if (error instanceof TypeError) return true;
-  if (error instanceof Error) return error.name === "AbortError" || hasBenignSseErrorMessage(error);
+  if (isDomException(error)) return isAbortOrNetworkDomException(error);
+  if (isTypeError(error)) return true;
+  if (isError(error)) return error.name === "AbortError" || hasBenignSseErrorMessage(error);
   return false;
 }

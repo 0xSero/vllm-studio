@@ -44,7 +44,7 @@ const LEGACY_BACKEND_URL_COOKIE = LEGACY_BACKEND_URL_STORAGE;
 export const BACKEND_URL_CHANGED_EVENT = "vllm:backend-url-changed";
 
 function getCookieValue(name: string): string {
-  if (typeof document === "undefined") return "";
+  if (!globalThis.document) return "";
   const prefix = `${encodeURIComponent(name)}=`;
   for (const entry of document.cookie.split(";")) {
     const trimmed = entry.trim();
@@ -54,17 +54,16 @@ function getCookieValue(name: string): string {
 }
 
 function setBackendCookie(url: string): void {
-  if (typeof document === "undefined") return;
+  if (!globalThis.document) return;
   const trimmed = url.trim();
   const encoded = encodeURIComponent(trimmed);
   const maxAge = trimmed ? 60 * 60 * 24 * 365 : 0; // 1 year or delete
-  const secure =
-    typeof location !== "undefined" && location.protocol === "https:" ? "; Secure" : "";
+  const secure = globalThis.location?.protocol === "https:" ? "; Secure" : "";
   document.cookie = `${encodeURIComponent(BACKEND_URL_STORAGE_KEY)}=${encoded}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`;
 }
 
 export function getStoredBackendUrl(): string {
-  if (typeof window === "undefined") return "";
+  if (!globalThis.window) return "";
   try {
     const stored = normalizeControllerUrl(
       window.localStorage.getItem(BACKEND_URL_STORAGE_KEY) ||
@@ -86,7 +85,7 @@ export function getStoredBackendUrl(): string {
 }
 
 export function setStoredBackendUrl(url: string): void {
-  if (typeof window === "undefined") return;
+  if (!globalThis.window) return;
   const previous = getStoredBackendUrl();
   const trimmed = normalizeControllerUrl(url);
   try {
@@ -108,7 +107,7 @@ export function setStoredBackendUrl(url: string): void {
 }
 
 export function clearStoredBackendUrl(): void {
-  if (typeof window === "undefined") return;
+  if (!globalThis.window) return;
   try {
     window.localStorage.removeItem(BACKEND_URL_STORAGE_KEY);
     window.localStorage.removeItem(LEGACY_BACKEND_URL_STORAGE);
@@ -133,7 +132,7 @@ let runtimeApiKey = "";
 export function getApiKey(): string {
   if (runtimeApiKey) return runtimeApiKey;
 
-  if (typeof window !== "undefined") {
+  if (globalThis.window) {
     return getControllerApiKey(getStoredBackendUrl());
   }
 

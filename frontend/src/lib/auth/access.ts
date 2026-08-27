@@ -19,8 +19,7 @@ export type AccessDecision =
   | { kind: "require-token"; token: string };
 
 function trimmedEnv(name: string): string {
-  const value = process.env[name];
-  return typeof value === "string" ? value.trim() : "";
+  return (process.env[name] ?? "").trim();
 }
 
 // Resolve the access posture from environment. Pure function of env so the edge

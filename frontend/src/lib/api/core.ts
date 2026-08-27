@@ -1,7 +1,6 @@
-import { hc } from "hono/client";
+import { Option, Schema } from "effect";
 import { clearStoredBackendUrl, getApiKey, getStoredBackendUrl } from "./connection";
 import { delay } from "../async";
-import { isRecord } from "../guards";
 import { formatHttpErrorMessage, isRetryableError } from "./http-error-message";
 import {
   isBenignSseTransportFailure,
@@ -25,9 +24,54 @@ export interface RequestOptions extends RequestInit {
   retryDelay?: number;
 }
 
+export type JsonValue = null | boolean | number | string | JsonValue[] | JsonRecord;
+export interface JsonRecord {
+  [key: string]: JsonValue;
+}
+
 export interface ChatRunStreamEvent {
   event: string;
-  data: Record<string, unknown>;
+  data: JsonRecord;
+}
+
+interface ApiHeaders {
+  [header: string]: string;
+}
+
+const JsonValueSchema: Schema.Codec<JsonValue, JsonValue> = Schema.suspend(() =>
+  Schema.Union([
+    Schema.Null,
+    Schema.Boolean,
+    Schema.Number,
+    Schema.String,
+    Schema.mutable(Schema.Array(JsonValueSchema)),
+    Schema.Record(Schema.String, JsonValueSchema),
+  ]),
+);
+const JsonRecordSchema = Schema.Record(Schema.String, JsonValueSchema);
+const SseEnvelopeSchema = Schema.Struct({
+  event: Schema.optional(Schema.String),
+  type: Schema.optional(Schema.String),
+  data: Schema.optional(JsonRecordSchema),
+  payload: Schema.optional(JsonRecordSchema),
+});
+const ErrorResponseSchema = Schema.Struct({
+  detail: Schema.optional(Schema.String),
+  error: Schema.optional(Schema.Struct({ message: Schema.optional(Schema.String) })),
+});
+const decodeJsonValue = Schema.decodeUnknownSync(JsonValueSchema);
+const decodeJsonRecord = Schema.decodeUnknownOption(JsonRecordSchema);
+const decodeSseEnvelope = Schema.decodeUnknownOption(SseEnvelopeSchema);
+const decodeErrorResponse = Schema.decodeUnknownOption(ErrorResponseSchema);
+const isString = Schema.is(Schema.String);
+
+class HttpStatusError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
 }
 
 type RpcRequest = (
@@ -65,27 +109,13 @@ export function createApiCore(params: {
   const { baseUrl, useProxy, backendUrlOverride, apiKeyOverride } = params;
   const hasBackendUrlOverride = Boolean(backendUrlOverride?.trim());
 
-  const normalizeSsePayload = (
-    event: string,
-    data: Record<string, unknown>,
-  ): ChatRunStreamEvent => {
-    const nestedEvent =
-      typeof data["event"] === "string"
-        ? (data["event"] as string)
-        : typeof data["type"] === "string"
-          ? (data["type"] as string)
-          : null;
-    const nestedData = isRecord(data["data"])
-      ? (data["data"] as Record<string, unknown>)
-      : isRecord(data["payload"])
-        ? (data["payload"] as Record<string, unknown>)
-        : null;
+  const normalizeSsePayload = (event: string, data: JsonRecord): ChatRunStreamEvent => {
+    const envelope = Option.getOrNull(decodeSseEnvelope(data));
+    const nestedEvent = envelope?.event ?? envelope?.type ?? null;
+    const nestedData = envelope?.data ?? envelope?.payload ?? null;
 
     if ((event === "message" || event === "") && nestedEvent && nestedData) {
-      return {
-        event: nestedEvent,
-        data: nestedData,
-      };
+      return { event: nestedEvent, data: nestedData };
     }
 
     return { event: event || "message", data };
@@ -100,7 +130,7 @@ export function createApiCore(params: {
 
   const shouldRetryWithoutBackendOverride = (
     response: Response,
-    headers: Record<string, string>,
+    headers: ApiHeaders,
     retriedWithoutBackendOverride: boolean,
   ): boolean =>
     useProxy &&
@@ -110,13 +140,13 @@ export function createApiCore(params: {
     !retriedWithoutBackendOverride;
 
   const responseError = async (response: Response): Promise<Error> => {
-    const errorBody: unknown = await response.json().catch(() => ({ detail: "Request failed" }));
-    const error = new Error(formatHttpErrorMessage(response.status, errorBody));
-    (error as Error & { status: number }).status = response.status;
-    return error;
+    const errorBody = decodeJsonValue(
+      await response.json().catch(() => ({ detail: "Request failed" })),
+    );
+    return new HttpStatusError(formatHttpErrorMessage(response.status, errorBody), response.status);
   };
 
-  const normalizeRequestError = (error: unknown, timeout: number): Error => {
+  const normalizeRequestError = <RequestFailure>(error: RequestFailure, timeout: number): Error => {
     if (error instanceof Error && error.name === "AbortError") {
       return new Error(`Request timeout after ${timeout}ms`);
     }
@@ -124,8 +154,8 @@ export function createApiCore(params: {
     return new Error(String(error));
   };
 
-  const shouldRetryAttempt = (
-    error: unknown,
+  const shouldRetryAttempt = <RequestFailure>(
+    error: RequestFailure,
     status: number | undefined,
     attempt: number,
     retries: number,
@@ -150,8 +180,8 @@ export function createApiCore(params: {
     return useProxy ? `${baseUrl}/${path}` : `${baseUrl}${endpoint}`;
   };
 
-  const buildHeaders = (extraHeaders?: HeadersInit): Record<string, string> => {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const buildHeaders = (extraHeaders?: HeadersInit): ApiHeaders => {
+    const headers: ApiHeaders = { "Content-Type": "application/json" };
 
     const storedBackendUrl = backendUrlOverride?.trim() || getStoredBackendUrl();
     if (useProxy && storedBackendUrl) {
@@ -249,21 +279,62 @@ export function createApiCore(params: {
     throw lastError || new Error("Request failed after retries");
   };
 
-  const request = async <T>(endpoint: string, options: RequestOptions = {}): Promise<T> => {
+  function request<Result>(endpoint: string, options?: RequestOptions): Promise<Result>;
+  async function request(endpoint: string, options: RequestOptions = {}): Promise<JsonValue> {
     const response = await fetchResponse(buildUrl(endpoint), endpoint, options);
     const text = await response.text();
-    return text ? (JSON.parse(text) as T) : (null as unknown as T);
-  };
+    return text ? decodeJsonValue(JSON.parse(text)) : null;
+  }
 
   const rpcFetch: typeof fetch = async (input, init) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const url = isString(input) ? input : input instanceof URL ? input.href : input.url;
     return fetchResponse(url, url, init ?? {});
   };
 
-  const rpc = hc(baseUrl, { fetch: rpcFetch }) as unknown as ControllerRpc;
+  const rpcRequest =
+    (path: string, method: string): RpcRequest =>
+    (input = {}, options = {}) => {
+      let resolvedPath = path;
+      for (const [name, value] of Object.entries(input.param ?? {})) {
+        resolvedPath = resolvedPath.replace(`:${name}`, encodeURIComponent(value));
+      }
+      const query = new URLSearchParams(input.query);
+      const queryString = query.size > 0 ? `?${query.toString()}` : "";
+      const url = `${baseUrl.replace(/\/$/, "")}/${resolvedPath}${queryString}`;
+      return rpcFetch(url, { ...options.init, method });
+    };
 
-  const rpcJson = async <Result>(response: Promise<Response>): Promise<Result> =>
-    (await response).json() as Promise<Result>;
+  const rpcRoute = (path: string): RpcRoute => ({
+    $get: rpcRequest(path, "GET"),
+    $post: rpcRequest(path, "POST"),
+    $put: rpcRequest(path, "PUT"),
+    $patch: rpcRequest(path, "PATCH"),
+    $delete: rpcRequest(path, "DELETE"),
+  });
+
+  const recipeRoute = rpcRoute("recipes/:recipeId");
+  const nodeRoute = rpcRoute("studio/rigs/:rigId/nodes/:nodeId");
+  const nodesRoute = rpcRoute("studio/rigs/:rigId/nodes");
+  const rigRoute = rpcRoute("studio/rigs/:rigId");
+  const rigsRoute = rpcRoute("studio/rigs");
+  const recipesRoute = rpcRoute("recipes");
+  const rpc: ControllerRpc = {
+    recipes: { ...recipesRoute, ":recipeId": recipeRoute },
+    studio: {
+      rigs: {
+        ...rigsRoute,
+        ":rigId": {
+          ...rigRoute,
+          nodes: { ...nodesRoute, ":nodeId": nodeRoute },
+        },
+      },
+    },
+  };
+
+  function rpcJson<Result>(response: Promise<Response>): Promise<Result>;
+  async function rpcJson(response: Promise<Response>): Promise<JsonValue> {
+    return decodeJsonValue(await (await response).json());
+  }
 
   const parseSseStream = async function* (
     reader: ReadableStreamDefaultReader<Uint8Array>,
@@ -277,9 +348,11 @@ export function createApiCore(params: {
     const flushEvent = (): ChatRunStreamEvent | null => {
       if (dataLines.length === 0) return null;
       const dataString = dataLines.join("\n");
-      let data: Record<string, unknown>;
+      let data: JsonRecord;
       try {
-        data = JSON.parse(dataString) as Record<string, unknown>;
+        data = Option.getOrElse(decodeJsonRecord(JSON.parse(dataString)), () => ({
+          raw: dataString,
+        }));
       } catch {
         data = { raw: dataString };
       }
@@ -350,9 +423,11 @@ export function createApiCore(params: {
     });
 
     if (!response.ok || !response.body) {
-      const errorBody = await response.json().catch(() => ({ detail: "Request failed" }));
+      const errorBody = Option.getOrNull(
+        decodeErrorResponse(await response.json().catch(() => ({ detail: "Request failed" }))),
+      );
       const errorMessage =
-        errorBody.detail || errorBody.error?.message || `HTTP ${response.status}`;
+        errorBody?.detail ?? errorBody?.error?.message ?? `HTTP ${response.status}`;
       throw new Error(errorMessage);
     }
 
@@ -375,9 +450,9 @@ export function createApiCore(params: {
     return parseSseStream(reader, signal);
   };
 
-  const postSseJson = async (
+  const postSseJson = async <Payload>(
     endpoint: string,
-    payload: unknown,
+    payload: Payload,
     options: { signal?: AbortSignal } = {},
   ): Promise<{ runId: string | null; stream: AsyncGenerator<ChatRunStreamEvent> }> => {
     const url = buildUrl(endpoint);
@@ -404,9 +479,11 @@ export function createApiCore(params: {
     maybeClearInvalidBackendOverride(response);
 
     if (!response.ok || !response.body) {
-      const errorBody = await response.json().catch(() => ({ detail: "Request failed" }));
+      const errorBody = Option.getOrNull(
+        decodeErrorResponse(await response.json().catch(() => ({ detail: "Request failed" }))),
+      );
       const errorMessage =
-        errorBody.detail || errorBody.error?.message || `HTTP ${response.status}`;
+        errorBody?.detail ?? errorBody?.error?.message ?? `HTTP ${response.status}`;
       throw new Error(errorMessage);
     }
 

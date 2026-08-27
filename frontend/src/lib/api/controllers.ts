@@ -1,3 +1,5 @@
+import { Option, Schema } from "effect";
+
 export const CONTROLLERS_STORAGE_KEY = "local-studio.controllers";
 const LEGACY_CONTROLLERS_STORAGE_KEY = [["v", "llm-studio"].join(""), "controllers"].join(".");
 export const CONTROLLERS_CHANGED_EVENT = "vllm:controllers-changed";
@@ -22,17 +24,28 @@ export function normalizeControllerUrl(url: string): string {
   }
 }
 
-function parseSavedController(entry: unknown): SavedController | null {
-  if (typeof entry === "string") {
-    const url = normalizeControllerUrl(entry);
+const SavedControllerInputSchema = Schema.Union([
+  Schema.String,
+  Schema.Struct({
+    url: Schema.String,
+    apiKey: Schema.optional(Schema.String),
+    name: Schema.optional(Schema.String),
+  }),
+]);
+const SavedControllerListSchema = Schema.Array(Schema.Unknown);
+const decodeSavedController = Schema.decodeUnknownOption(SavedControllerInputSchema);
+
+function parseSavedController(entry: typeof Schema.Unknown.Type): SavedController | null {
+  const parsed = Option.getOrNull(decodeSavedController(entry));
+  if (parsed === null) return null;
+  if (Schema.is(Schema.String)(parsed)) {
+    const url = normalizeControllerUrl(parsed);
     return url ? { url } : null;
   }
-  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
-  const record = entry as Record<string, unknown>;
-  const url = typeof record.url === "string" ? normalizeControllerUrl(record.url) : "";
+  const url = normalizeControllerUrl(parsed.url);
   if (!url) return null;
-  const apiKey = typeof record.apiKey === "string" ? record.apiKey.trim() : "";
-  const name = typeof record.name === "string" ? record.name.trim() : "";
+  const apiKey = parsed.apiKey?.trim() ?? "";
+  const name = parsed.name?.trim() ?? "";
   const out: SavedController = { url };
   if (apiKey) out.apiKey = apiKey;
   if (name) out.name = name;
@@ -40,14 +53,13 @@ function parseSavedController(entry: unknown): SavedController | null {
 }
 
 export function loadSavedControllers(): SavedController[] {
-  if (typeof window === "undefined") return [];
+  if (!globalThis.window) return [];
   try {
     const raw =
       window.localStorage.getItem(CONTROLLERS_STORAGE_KEY) ||
       window.localStorage.getItem(LEGACY_CONTROLLERS_STORAGE_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
+    const parsed = Schema.decodeUnknownSync(SavedControllerListSchema)(JSON.parse(raw));
     const byUrl = new Map<string, SavedController>();
     for (const entry of parsed) {
       const controller = parseSavedController(entry);
@@ -68,7 +80,7 @@ export function loadSavedControllers(): SavedController[] {
 }
 
 export function saveSavedControllers(controllers: SavedController[]): SavedController[] {
-  if (typeof window === "undefined") return [];
+  if (!globalThis.window) return [];
   const byUrl = new Map<string, SavedController>();
   for (const controller of controllers) {
     const url = normalizeControllerUrl(controller.url);

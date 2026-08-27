@@ -1,3 +1,4 @@
+import { Schema } from "effect";
 import type { HuggingFaceModel } from "@/lib/types";
 
 const QUANT_MARKERS = [
@@ -41,6 +42,23 @@ const DERIVATIVE_OWNERS = new Set([
 ]);
 
 const BASE_MODEL_PREFIX = "base_model:";
+
+const HuggingFaceModelSchema = Schema.Struct({
+  _id: Schema.String,
+  modelId: Schema.String,
+  downloads: Schema.Number,
+  likes: Schema.Number,
+  tags: Schema.Array(Schema.String),
+  pipeline_tag: Schema.optional(Schema.String),
+  library_name: Schema.optional(Schema.String),
+  lastModified: Schema.optional(Schema.String),
+  createdAt: Schema.optional(Schema.String),
+  author: Schema.optional(Schema.String),
+  private: Schema.Boolean,
+  weightBytes: Schema.optional(Schema.Number),
+});
+const HuggingFaceModelsSchema = Schema.Array(HuggingFaceModelSchema);
+
 export const RECENT_HF_MODEL_MONTHS = 6;
 export const RECENT_HF_MODEL_SORT = "trendingScore";
 
@@ -55,7 +73,7 @@ export type HuggingFaceModelCardPayload = {
   library_name?: string;
   createdAt?: string;
   lastModified?: string;
-  cardData?: Record<string, unknown>;
+  cardData?: object;
   siblings?: Array<{ rfilename?: string; size?: number }>;
   readme?: string;
   url: string;
@@ -197,10 +215,16 @@ export async function fetchHuggingFaceModels(params: URLSearchParams): Promise<H
   const proxyUrl = `/api/proxy/v1/huggingface/models?${query}`;
 
   const directResponse = await fetch(directUrl, { cache: "no-store" });
-  if (directResponse.ok) return (await directResponse.json()) as HuggingFaceModel[];
+  if (directResponse.ok) {
+    const models = Schema.decodeUnknownSync(HuggingFaceModelsSchema)(await directResponse.json());
+    return models.map((model) => ({ ...model, tags: [...model.tags] }));
+  }
 
   const proxyResponse = await fetch(proxyUrl);
-  if (proxyResponse.ok) return (await proxyResponse.json()) as HuggingFaceModel[];
+  if (proxyResponse.ok) {
+    const models = Schema.decodeUnknownSync(HuggingFaceModelsSchema)(await proxyResponse.json());
+    return models.map((model) => ({ ...model, tags: [...model.tags] }));
+  }
 
   const directError = await directResponse
     .json()
