@@ -31,6 +31,7 @@ pub fn validatePrivateKey(allocator: std.mem.Allocator, pem: []const u8) !void {
 }
 
 pub fn mint(allocator: std.mem.Allocator, io: std.Io, organization: []const u8, account_id: []const u8, pem: []const u8, repository: ?[]const u8, scopes: []const []const u8) ![]u8 {
+    _ = account_id;
     try validateOrganization(organization);
     if (repository) |value| try validateRepository(value);
     const pair = try keyPair(allocator, pem);
@@ -40,9 +41,7 @@ pub fn mint(allocator: std.mem.Allocator, io: std.Io, organization: []const u8, 
     try payload.writer.writeAll("{\"iss\":");
     try std.json.Stringify.value(organization, .{}, &payload.writer);
     try payload.writer.writeAll(",\"sub\":");
-    const subject = try std.fmt.allocPrint(allocator, "local-studio-{s}", .{account_id});
-    defer allocator.free(subject);
-    try std.json.Stringify.value(subject, .{}, &payload.writer);
+    try std.json.Stringify.value("@pierre/storage", .{}, &payload.writer);
     if (repository) |value| {
         try payload.writer.writeAll(",\"repo\":");
         try std.json.Stringify.value(value, .{}, &payload.writer);

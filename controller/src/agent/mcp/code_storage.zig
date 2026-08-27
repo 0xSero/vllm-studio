@@ -169,7 +169,7 @@ fn callResponse(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, 
 }
 
 fn listRepositories(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, organization: []const u8, account_id: []const u8, private_key: []const u8, arguments: std.json.ObjectMap) ![]u8 {
-    const token = try auth.mint(allocator, io, organization, account_id, private_key, null, &.{"org:read"});
+    const token = try auth.mint(allocator, io, organization, account_id, private_key, "org", &.{"org:read"});
     defer allocator.free(token);
     const limit = if (arguments.get("limit")) |value| if (value == .integer) std.math.clamp(value.integer, 1, 100) else 50 else 50;
     var url: Io.Writer.Allocating = .init(allocator);
@@ -186,7 +186,7 @@ fn listRepositories(allocator: std.mem.Allocator, io: Io, client: *std.http.Clie
         .redirect_behavior = .unhandled,
         .keep_alive = false,
         .headers = .{ .authorization = .omit, .accept_encoding = .omit },
-        .extra_headers = &.{.{ .name = "Authorization", .value = authorization }},
+        .extra_headers = &.{ .{ .name = "Authorization", .value = authorization }, .{ .name = "Code-Storage-Agent", .value = "local-studio" } },
     });
     defer request.deinit();
     try request.sendBodiless();
@@ -201,7 +201,7 @@ fn listRepositories(allocator: std.mem.Allocator, io: Io, client: *std.http.Clie
 }
 
 pub fn repositories(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, organization: []const u8, account_id: []const u8, private_key: []const u8) ![]u8 {
-    const token = try auth.mint(allocator, io, organization, account_id, private_key, null, &.{"org:read"});
+    const token = try auth.mint(allocator, io, organization, account_id, private_key, "org", &.{"org:read"});
     defer allocator.free(token);
     const url = try std.fmt.allocPrint(allocator, "https://api.{s}.code.storage/api/v1/repos?limit=100", .{organization});
     defer allocator.free(url);
@@ -212,7 +212,7 @@ pub fn repositories(allocator: std.mem.Allocator, io: Io, client: *std.http.Clie
         .redirect_behavior = .unhandled,
         .keep_alive = false,
         .headers = .{ .authorization = .omit, .accept_encoding = .omit },
-        .extra_headers = &.{.{ .name = "Authorization", .value = authorization }},
+        .extra_headers = &.{ .{ .name = "Authorization", .value = authorization }, .{ .name = "Code-Storage-Agent", .value = "local-studio" } },
     });
     defer request.deinit();
     try request.sendBodiless();
@@ -228,29 +228,27 @@ pub fn repositories(allocator: std.mem.Allocator, io: Io, client: *std.http.Clie
 
 pub fn createRepository(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, organization: []const u8, account_id: []const u8, private_key: []const u8, name: []const u8) !void {
     try auth.validateRepository(name);
-    const token = try auth.mint(allocator, io, organization, account_id, private_key, null, &.{"org:write"});
+    const token = try auth.mint(allocator, io, organization, account_id, private_key, name, &.{"repo:write"});
     defer allocator.free(token);
     const url = try std.fmt.allocPrint(allocator, "https://api.{s}.code.storage/api/v1/repos", .{organization});
     defer allocator.free(url);
-    const uri = try std.Uri.parse(url);
     const authorization = try std.fmt.allocPrint(allocator, "Bearer {s}", .{token});
     defer allocator.free(authorization);
-    const body = try std.fmt.allocPrint(allocator, "{{\"id\":\"{s}\"}}", .{name});
-    defer allocator.free(body);
-    var request = try client.request(.POST, uri, .{
+    const body = "{\"default_branch\":\"main\"}";
+    const storage = try allocator.alloc(u8, max_response_bytes);
+    defer allocator.free(storage);
+    var output: Io.Writer = .fixed(storage);
+    const response = try client.fetch(.{
+        .location = .{ .url = url },
+        .method = .POST,
+        .payload = body,
         .redirect_behavior = .unhandled,
         .keep_alive = false,
-        .headers = .{ .authorization = .omit, .accept_encoding = .omit, .content_type = .omit },
-        .extra_headers = &.{ .{ .name = "Authorization", .value = authorization }, .{ .name = "Content-Type", .value = "application/json" } },
+        .headers = .{ .accept_encoding = .omit },
+        .extra_headers = &.{ .{ .name = "Authorization", .value = authorization }, .{ .name = "Content-Type", .value = "application/json" }, .{ .name = "Accept", .value = "application/json" }, .{ .name = "Code-Storage-Agent", .value = "local-studio" } },
+        .response_writer = &output,
     });
-    defer request.deinit();
-    request.transfer_encoding = .{ .content_length = body.len };
-    var write_buffer: [4096]u8 = undefined;
-    var request_body = try request.sendBody(&write_buffer);
-    try request_body.writer.writeAll(body);
-    try request_body.end();
-    var response = try request.receiveHead(&.{});
-    if (response.head.status.class() != .success) return error.CodeStorageRequestRejected;
+    if (response.status.class() != .success) return error.CodeStorageRequestRejected;
 }
 
 pub fn references(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, organization: []const u8, account_id: []const u8, private_key: []const u8, repository: []const u8) ![]u8 {
