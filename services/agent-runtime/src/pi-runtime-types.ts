@@ -1,4 +1,5 @@
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentSessionEvent, CompactionResult } from "@earendil-works/pi-coding-agent";
+import type { UnknownRecord } from "../../../shared/agent/guards";
 import type { AgentImageInput } from "../../../shared/agent/agent-image-input";
 import type { AgentQueueAction } from "../../../shared/agent/agent-turn";
 import type { RuntimeStartOptions } from "./pi-runtime-helpers";
@@ -8,7 +9,7 @@ import type { RuntimeStartOptions } from "./pi-runtime-helpers";
 // names, so we keep the loose index signature for back-compat while widening
 // the type to include the SDK's typed union so newer call sites get
 // autocompletion and discriminated narrowing where they ask for it.
-type PiEvent = (Record<string, unknown> & { type?: string }) | AgentSessionEvent;
+type PiEvent = (UnknownRecord & { type?: string }) | AgentSessionEvent;
 
 export type { AgentSessionEvent };
 
@@ -66,7 +67,7 @@ export interface PiAgentSession {
   /** Resolves with the messages that were still queued, so the caller can
    *  restore them rather than losing them to the stop. */
   abort(): Promise<{ steering: string[]; followUp: string[] }>;
-  compact(customInstructions?: string): Promise<unknown>;
+  compact(customInstructions?: string): Promise<CompactionResult>;
   stop(): Promise<void>;
   readonly status: PiAgentStatus;
   getEventsAfter(seq: number): LoggedPiEvent[];

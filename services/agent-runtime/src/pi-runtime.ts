@@ -1,6 +1,5 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
-import { closeSync, constants, fsyncSync, openSync, readSync, statSync } from "node:fs";
 import {
   createAgentSessionFromServices,
   createAgentSessionRuntime,
@@ -8,7 +7,7 @@ import {
   getAgentDir,
   SessionManager,
   shouldCompact,
-  type AgentSessionEvent,
+  type CompactionResult,
   type AgentSessionRuntime,
   type ExtensionUIContext,
 } from "@earendil-works/pi-coding-agent";
@@ -37,12 +36,16 @@ import { connectorsRevisionSync } from "./connectors-service";
 import type {
   LoggedPiEvent,
   PiAgentSession,
-  PiAgentStatus,
-  PiContextUsage,
   PiPromptOptions,
 } from "./pi-runtime-types";
 
 type PiEvent = LoggedPiEvent["event"];
+
+type ExtensionUiResponse = {
+  value?: string;
+  confirmed?: boolean;
+  cancelled?: boolean;
+};
 
 function comparableQueuedText(text: string): string {
   const marker = "\n\nUser prompt:\n";
@@ -158,10 +161,8 @@ function runtimeFingerprint(
   });
 }
 
-export function shouldRestartAfterPromptError(error: unknown): boolean {
-  return (
-    error instanceof Error && /Cannot continue from message role: assistant/i.test(error.message)
-  );
+export function shouldRestartAfterPromptError(error: Error): boolean {
+  return /Cannot continue from message role: assistant/i.test(error.message);
 }
 
 type PiResourceDiagnostic = {
@@ -200,7 +201,10 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   private bufferedQueueEvent: PiEvent | null = null;
   private extensionUiPending = new Map<
     string,
-    { method: "select" | "confirm" | "input" | "editor"; resolve: (value: unknown) => void }
+    {
+      cancel: () => void;
+      respond: (response: ExtensionUiResponse) => void;
+    }
   >();
 
   ensureStarted(
@@ -277,43 +281,32 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
               ({ cwd, agentDir, sessionManager, sessionStartEvent }) =>
                 Effect.runPromise(
                   Effect.gen(function* () {
+                    const resourceLoaderOptions = {
+                      additionalSkillPaths: sessionOptions.skills,
+                      additionalExtensionPaths: sessionOptions.extensionPaths,
+                      additionalPromptTemplatePaths: sessionOptions.promptTemplatePaths,
+                      extensionFactories: [
+                        {
+                          name: "local-studio-goal",
+                          factory: createGoalPromptExtension(() => sessionManager.getSessionId()),
+                        },
+                      ],
+                    };
+                    if (selectedModel.vision) {
+                      Object.assign(resourceLoaderOptions, {
+                        appendSystemPromptOverride: (base: string[]) => [
+                          ...base,
+                          VISION_GUIDANCE,
+                        ],
+                      });
+                    }
                     const services = yield* Effect.tryPromise({
                       try: () =>
                         createAgentSessionServices({
                           cwd,
                           agentDir,
                           modelRuntime: sharedModelRuntime,
-                          resourceLoaderOptions: {
-                            additionalSkillPaths: sessionOptions.skills,
-                            additionalExtensionPaths: sessionOptions.extensionPaths,
-                            additionalPromptTemplatePaths: sessionOptions.promptTemplatePaths,
-                            // In-process: the goal section is injected per turn
-                            // via before_agent_start, keyed by the canonical
-                            // piSessionId this SessionManager owns. Runs here so
-                            // it never depends on the RPC extension's session id
-                            // (which differs and left the goal unread — #284).
-                            extensionFactories: [
-                              {
-                                name: "local-studio-goal",
-                                factory: createGoalPromptExtension(() =>
-                                  sessionManager.getSessionId(),
-                                ),
-                              },
-                            ],
-                            // Vision guidance is APPENDED, not substituted. This branch used to
-                            // set noExtensions/noSkills/noContextFiles and replace the whole
-                            // system prompt, which silently disabled every first-party extension
-                            // (session goal, artifact policy, subagents) on any
-                            // vision-capable model — i.e. on the primary model.
-                            ...(selectedModel.vision
-                              ? {
-                                  appendSystemPromptOverride: (base: string[]) => [
-                                    ...base,
-                                    VISION_GUIDANCE,
-                                  ],
-                                }
-                              : {}),
-                          },
+                          resourceLoaderOptions,
                         }),
                       catch: (error) => error,
                     });
@@ -361,20 +354,21 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
                     });
                     const extensionErrors = services.resourceLoader
                       .getExtensions()
-                      .errors.map(({ path, error }) => ({
-                        type: "error" as const,
-                        message: `Failed to load extension "${path}": ${error}`,
-                        path,
-                      }));
+                      .errors.map(
+                        ({ path, error }): PiResourceDiagnostic => ({
+                          type: "error",
+                          message: `Failed to load extension "${path}": ${error}`,
+                          path,
+                        }),
+                      );
                     const diagnostics = [...services.diagnostics, ...extensionErrors];
-                    diagnosticsMap().set(
-                      agentDir,
-                      diagnostics.map((d) => ({
-                        type: d.type as PiResourceDiagnostic["type"],
-                        message: d.message,
-                        path: "path" in d ? (d as { path?: string }).path : undefined,
-                      })),
+                    const resourceDiagnostics: PiResourceDiagnostic[] = services.diagnostics.map(
+                      (diagnostic) => ({
+                        type: diagnostic.type,
+                        message: diagnostic.message,
+                      }),
                     );
+                    diagnosticsMap().set(agentDir, [...resourceDiagnostics, ...extensionErrors]);
                     return {
                       ...created,
                       services,
@@ -429,7 +423,9 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
       catch: (error) => error,
     }).pipe(
       Effect.catch((error) =>
-        options.restartOnContinuationError !== false && shouldRestartAfterPromptError(error)
+        options.restartOnContinuationError !== false &&
+          error instanceof Error &&
+          shouldRestartAfterPromptError(error)
           ? this.restartPromptEffect(message, options)
           : Effect.fail(error),
       ),
@@ -532,11 +528,11 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     if (next && !this.currentPiSessionId) this.currentPiSessionId = next;
   }
 
-  compact(customInstructions?: string): Promise<unknown> {
+  compact(customInstructions?: string): Promise<CompactionResult> {
     return Effect.runPromise(this.compactEffect(customInstructions));
   }
 
-  private compactEffect(customInstructions?: string): Effect.Effect<unknown, unknown> {
+  private compactEffect(customInstructions?: string): Effect.Effect<CompactionResult, unknown> {
     if (this.activePromptCount > 0) {
       return Effect.fail(new Error("Cannot compact while the agent is running."));
     }
@@ -576,12 +572,8 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
   ): boolean {
     const pending = this.extensionUiPending.get(requestId);
     if (!pending) return false;
-    this.extensionUiPending.delete(requestId);
-    if (response.cancelled) {
-      pending.resolve(pending.method === "confirm" ? false : undefined);
-      return true;
-    }
-    pending.resolve(pending.method === "confirm" ? response.confirmed === true : response.value);
+    if (response.cancelled) pending.cancel();
+    else pending.respond(response);
     return true;
   }
 
@@ -594,9 +586,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     this.unsubscribe = null;
     const runtime = this.runtime;
     this.runtime = null;
-    for (const pending of this.extensionUiPending.values()) {
-      pending.resolve(pending.method === "confirm" ? false : undefined);
-    }
+    for (const pending of this.extensionUiPending.values()) pending.cancel();
     this.extensionUiPending.clear();
     if (!runtime) return Effect.void;
     return Effect.tryPromise({
@@ -631,11 +621,11 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     const usage = session.getContextUsage();
     if (!usage) return null;
     const settings = session.settingsManager.getCompactionSettings();
-    const tokens = typeof usage.tokens === "number" ? usage.tokens : null;
+    const tokens = usage.tokens;
     return {
       tokens,
       contextWindow: usage.contextWindow,
-      percent: typeof usage.percent === "number" ? usage.percent : null,
+      percent: usage.percent,
       shouldCompact:
         tokens !== null && usage.contextWindow > 0
           ? shouldCompact(tokens, usage.contextWindow, settings)
@@ -658,43 +648,66 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     return session;
   }
 
-  private extensionUiContext(): ExtensionUIContext {
-    const request = (
-      method: "select" | "confirm" | "input" | "editor",
-      payload: Record<string, unknown>,
-      timeout?: number,
-      signal?: AbortSignal,
-    ) => {
-      const requestId = randomUUID();
-      return new Promise<unknown>((resolve) => {
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const finish = (value: unknown) => {
-          if (timer) clearTimeout(timer);
-          signal?.removeEventListener("abort", cancel);
-          this.extensionUiPending.delete(requestId);
-          resolve(value);
-        };
-        const cancel = () => finish(method === "confirm" ? false : undefined);
-        this.extensionUiPending.set(requestId, { method, resolve: finish });
-        this.recordEvent({ type: "extension_ui_request", requestId, method, ...payload });
-        if (timeout && timeout > 0) timer = setTimeout(cancel, timeout);
-        signal?.addEventListener("abort", cancel, { once: true });
-        if (signal?.aborted) cancel();
+  private requestExtensionUi<Result extends string | boolean | undefined>(
+    event: PiEvent,
+    cancelledResult: Result,
+    resolveResponse: (response: ExtensionUiResponse) => Result,
+    timeout?: number,
+    signal?: AbortSignal,
+  ): Promise<Result> {
+    const requestId = randomUUID();
+    return new Promise<Result>((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (value: Result) => {
+        if (timer) clearTimeout(timer);
+        signal?.removeEventListener("abort", cancel);
+        this.extensionUiPending.delete(requestId);
+        resolve(value);
+      };
+      const cancel = () => finish(cancelledResult);
+      this.extensionUiPending.set(requestId, {
+        cancel,
+        respond: (response) => finish(resolveResponse(response)),
       });
-    };
+      this.recordEvent({ ...event, requestId });
+      if (timeout && timeout > 0) timer = setTimeout(cancel, timeout);
+      signal?.addEventListener("abort", cancel, { once: true });
+      if (signal?.aborted) cancel();
+    });
+  }
+
+  private extensionUiContext(): ExtensionUIContext {
     return {
       select: (title, options, opts) =>
-        request("select", { title, options }, opts?.timeout, opts?.signal) as Promise<
-          string | undefined
-        >,
+        this.requestExtensionUi(
+          { type: "extension_ui_request", method: "select", title, options },
+          undefined,
+          (response) => response.value,
+          opts?.timeout,
+          opts?.signal,
+        ),
       confirm: (title, message, opts) =>
-        request("confirm", { title, message }, opts?.timeout, opts?.signal) as Promise<boolean>,
+        this.requestExtensionUi(
+          { type: "extension_ui_request", method: "confirm", title, message },
+          false,
+          (response) => response.confirmed === true,
+          opts?.timeout,
+          opts?.signal,
+        ),
       input: (title, placeholder, opts) =>
-        request("input", { title, placeholder }, opts?.timeout, opts?.signal) as Promise<
-          string | undefined
-        >,
+        this.requestExtensionUi(
+          { type: "extension_ui_request", method: "input", title, placeholder },
+          undefined,
+          (response) => response.value,
+          opts?.timeout,
+          opts?.signal,
+        ),
       editor: (title, prefill) =>
-        request("editor", { title, prefill }) as Promise<string | undefined>,
+        this.requestExtensionUi(
+          { type: "extension_ui_request", method: "editor", title, prefill },
+          undefined,
+          (response) => response.value,
+        ),
       notify: (message, level = "info") => this.recordEvent({ type: "notice", level, message }),
       setStatus: (key, text) =>
         this.recordEvent({ type: "extension_status", key, text: text ?? null }),
@@ -707,14 +720,18 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
       setWidget: () => undefined,
       setFooter: () => undefined,
       setHeader: () => undefined,
-      custom: async () => undefined as never,
+      custom: async () => {
+        throw new Error("Custom extension UI requires the Pi TUI");
+      },
       pasteToEditor: () => undefined,
       setEditorText: () => undefined,
       getEditorText: () => "",
       addAutocompleteProvider: () => undefined,
       setEditorComponent: () => undefined,
       getEditorComponent: () => undefined,
-      theme: undefined as never,
+      get theme(): never {
+        throw new Error("Extension themes require the Pi TUI");
+      },
       getAllThemes: () => [],
       getTheme: () => undefined,
       setTheme: () => ({ success: false, error: "Theme changes require the Pi TUI" }),
@@ -733,7 +750,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
     }
     const logged: LoggedPiEvent = {
       seq: ++this.eventSeq,
-      event: event as PiEvent,
+      event,
       timestamp: new Date().toISOString(),
     };
     this.eventLog.push(logged);
@@ -758,6 +775,11 @@ function piEventsAfter(eventLog: LoggedPiEvent[], seq: number): LoggedPiEvent[] 
 
 const DEFAULT_SESSION_ID = "default";
 
+type RuntimeSessionLookup = {
+  sessionId: string;
+  session: PiAgentSession;
+};
+
 class PiRuntimeManager {
   private sessions = new Map<string, PiAgentSession>();
 
@@ -774,7 +796,7 @@ class PiRuntimeManager {
   getSessionForLookup(
     sessionId = DEFAULT_SESSION_ID,
     piSessionId?: string | null,
-  ): { sessionId: string; session: PiAgentSession } {
+  ): RuntimeSessionLookup {
     const resolved = this.findSessionForLookup(sessionId, piSessionId);
     if (resolved) return resolved;
     const target = piSessionId?.trim();
@@ -791,11 +813,11 @@ class PiRuntimeManager {
   findSessionForLookup(
     sessionId = DEFAULT_SESSION_ID,
     piSessionId?: string | null,
-  ): { sessionId: string; session: PiAgentSession } | null {
+  ): RuntimeSessionLookup | null {
     return findRuntimeSessionForLookup(this.listSessions(), sessionId, piSessionId);
   }
 
-  listSessions(): Array<{ sessionId: string; session: PiAgentSession }> {
+  listSessions(): RuntimeSessionLookup[] {
     return [...this.sessions.entries()].map(([sessionId, session]) => ({ sessionId, session }));
   }
 }

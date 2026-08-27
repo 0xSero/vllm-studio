@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Option, Schema } from "effect";
 import { resolveDataDir } from "./data-dir";
 
 const MARKER = "Local Studio session goal:";
@@ -9,6 +10,14 @@ const MARKER = "Local Studio session goal:";
  *  goal stays in the store (so the UI can show and resume it) but must not keep
  *  pushing the model. */
 const STEERING_STATUSES = new Set(["active", "budget_limited"]);
+const isString = Schema.is(Schema.String);
+const isNumber = Schema.is(Schema.Number);
+const GoalPromptInputSchema = Schema.Struct({
+  objective: Schema.optional(Schema.Unknown),
+  status: Schema.optional(Schema.Unknown),
+  turnBudget: Schema.optional(Schema.Unknown),
+  turnsUsed: Schema.optional(Schema.Unknown),
+});
 
 /** Loose shape: the on-disk goal is normalized elsewhere, but the pure builder
  *  must tolerate partial/legacy documents so a bad field never crashes a turn. */
@@ -25,9 +34,9 @@ export type GoalPromptInput = {
  *  Kept format-identical to the bundled goal.ts builder so the two stay in
  *  sync. */
 export function goalSystemPromptSection(goal: GoalPromptInput): string | null {
-  const objective = typeof goal.objective === "string" ? goal.objective.trim() : "";
+  const objective = isString(goal.objective) ? goal.objective.trim() : "";
   if (!objective) return null;
-  const status = typeof goal.status === "string" ? goal.status : "active";
+  const status = isString(goal.status) ? goal.status : "active";
   if (!STEERING_STATUSES.has(status)) return null;
 
   const lines = [
@@ -39,8 +48,8 @@ export function goalSystemPromptSection(goal: GoalPromptInput): string | null {
     `<objective>${objective}</objective>`,
   ];
 
-  const turnsUsed = typeof goal.turnsUsed === "number" ? goal.turnsUsed : 0;
-  const turnBudget = typeof goal.turnBudget === "number" ? goal.turnBudget : null;
+  const turnsUsed = isNumber(goal.turnsUsed) ? goal.turnsUsed : 0;
+  const turnBudget = isNumber(goal.turnBudget) ? goal.turnBudget : null;
   if (turnBudget !== null) {
     lines.push("", `Turn budget: ${turnsUsed} of ${turnBudget} used.`);
     if (status === "budget_limited") {
@@ -74,8 +83,9 @@ export function readGoalSync(piSessionId: string): GoalPromptInput | null {
   const file = goalFilePath(piSessionId);
   if (!file) return null;
   try {
-    const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
-    return parsed && typeof parsed === "object" ? (parsed as GoalPromptInput) : null;
+    return Option.getOrNull(
+      Schema.decodeUnknownOption(GoalPromptInputSchema)(JSON.parse(readFileSync(file, "utf8"))),
+    );
   } catch {
     // No goal for this session (the common case) — stay silent.
     return null;

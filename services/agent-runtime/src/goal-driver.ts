@@ -30,7 +30,7 @@ type DriverState = {
 };
 
 function eventTouchesTools(event: LoggedPiEvent["event"]): boolean {
-  const type = typeof event?.type === "string" ? event.type : "";
+  const type = event.type ?? "";
   return type.includes("tool");
 }
 
@@ -112,7 +112,7 @@ export function attachGoalDriver(session: PiAgentSession): void {
     pendingContinuation: false,
   };
   session.onLoggedEvent((logged) => {
-    const type = typeof logged.event?.type === "string" ? logged.event.type : "";
+    const type = logged.event.type ?? "";
     if (type === "agent_start") {
       state.sawToolThisTurn = false;
       return;

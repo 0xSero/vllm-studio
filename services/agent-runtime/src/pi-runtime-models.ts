@@ -6,6 +6,7 @@ import { getApiSettings, type ApiSettings } from "./settings-service";
 import { resolveDataDir } from "./data-dir";
 import { listProviderAgentModels, refreshProviderHub } from "./provider-hub";
 import type { OpenAICompletionsCompat } from "@earendil-works/pi-ai";
+import { Schema } from "effect";
 import {
   normalizeOpenAIModels,
   inferReasoningSupport,
@@ -25,29 +26,70 @@ function userPiModelsPath(): string {
   );
 }
 
-type PiProviderModel = {
-  id: string;
-  name?: string;
-  active?: boolean;
-  reasoning?: boolean;
-  input?: string[];
-  contextWindow?: number;
-  maxTokens?: number;
-  cost?: Record<string, number>;
-  compat?: Record<string, unknown>;
-  thinkingLevelMap?: Partial<Record<AgentThinkingLevel, string | null>>;
-};
+type JsonValue = string | number | boolean | null | readonly JsonValue[] | JsonObject;
 
-type PiProviderConfig = {
-  baseUrl: string;
-  apiKey?: string;
-  api?: string;
-  authHeader?: boolean;
-  models?: PiProviderModel[];
-  compat?: Record<string, unknown>;
-};
+interface JsonObject {
+  readonly [key: string]: JsonValue;
+}
 
-type UserPiProviders = Record<string, PiProviderConfig>;
+const JsonValueSchema = Schema.suspend(
+  (): Schema.Codec<JsonValue> =>
+    Schema.Union([
+      Schema.String,
+      Schema.Number,
+      Schema.Boolean,
+      Schema.Null,
+      Schema.Array(JsonValueSchema),
+      Schema.Record(Schema.String, JsonValueSchema),
+    ]),
+);
+
+const ThinkingLevelMapSchema = Schema.Record(
+  Schema.Literals(AGENT_THINKING_LEVELS),
+  Schema.NullOr(Schema.String),
+);
+
+const PiProviderModelSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.optional(Schema.String),
+  active: Schema.optional(Schema.Boolean),
+  reasoning: Schema.optional(Schema.Boolean),
+  input: Schema.optional(Schema.Array(Schema.String)),
+  contextWindow: Schema.optional(Schema.Number),
+  maxTokens: Schema.optional(Schema.Number),
+  cost: Schema.optional(Schema.Record(Schema.String, Schema.Number)),
+  compat: Schema.optional(Schema.Record(Schema.String, JsonValueSchema)),
+  thinkingLevelMap: Schema.optional(ThinkingLevelMapSchema),
+});
+
+type PiProviderModel = typeof PiProviderModelSchema.Type;
+
+const PiProviderConfigSchema = Schema.Struct({
+  baseUrl: Schema.String,
+  apiKey: Schema.optional(Schema.String),
+  api: Schema.optional(Schema.String),
+  authHeader: Schema.optional(Schema.Boolean),
+  models: Schema.optional(Schema.Array(PiProviderModelSchema)),
+  compat: Schema.optional(Schema.Record(Schema.String, JsonValueSchema)),
+});
+
+type PiProviderConfig = typeof PiProviderConfigSchema.Type;
+type UserPiProviders = { [name: string]: PiProviderConfig };
+
+const UserPiProvidersSchema = Schema.Record(Schema.String, PiProviderConfigSchema);
+
+const PersistedControllersSchema = Schema.Array(
+  Schema.Struct({
+    url: Schema.String,
+    apiKey: Schema.optional(Schema.String),
+    name: Schema.optional(Schema.String),
+  }),
+);
+
+const OpenAIModelsResponseSchema = Schema.Struct({
+  object: Schema.optional(Schema.String),
+  data: Schema.optional(Schema.Array(Schema.Record(Schema.String, JsonValueSchema))),
+});
 
 /** Strip any prefixes this writer has already applied.
  *
@@ -70,12 +112,11 @@ async function loadUserPiProviders(): Promise<UserPiProviders> {
   const modelsPath = userPiModelsPath();
   if (!existsSync(modelsPath)) return {};
   try {
-    const parsed = JSON.parse(await readFile(modelsPath, "utf-8")) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const providers = (parsed as { providers?: unknown }).providers;
-    if (!providers || typeof providers !== "object" || Array.isArray(providers)) return {};
+    const parsed = Schema.decodeUnknownSync(
+      Schema.Struct({ providers: Schema.optional(UserPiProvidersSchema) }),
+    )(JSON.parse(await readFile(modelsPath, "utf-8")));
     const collapsed: UserPiProviders = {};
-    for (const [name, config] of Object.entries(providers as UserPiProviders)) {
+    for (const [name, config] of Object.entries(parsed.providers ?? {})) {
       const base = baseProviderName(name);
       // Our own controller providers are regenerated from the live controller
       // every pass; reading them back would duplicate them under a user-pi name
@@ -95,7 +136,7 @@ function userPiModelToAgentModel(
   providerName: string,
   qualifiedProviderId: string,
   model: PiProviderModel,
-  providerCompat?: Record<string, unknown>,
+  providerCompat?: JsonObject,
 ): AgentModel {
   const rawId = model.id;
   const name = model.name ?? rawId;
@@ -120,7 +161,7 @@ function userPiModelToAgentModel(
 function supportedPiThinkingLevels(
   model: PiProviderModel,
   reasoning: boolean,
-  providerCompat?: Record<string, unknown>,
+  providerCompat?: JsonObject,
 ): AgentThinkingLevel[] {
   if (!reasoning) return ["off"];
   const supportsReasoningEffort =
@@ -207,11 +248,9 @@ function normalizeControllerInput(input: PiControllerModelsRequest): PiControlle
   if (!url) return null;
   const apiKey = input.apiKey?.trim() ?? "";
   const name = input.name?.trim();
-  return {
-    url,
-    apiKey,
-    ...(name ? { name } : {}),
-  };
+  const controller: PiControllerConfig = { url, apiKey };
+  if (name) controller.name = name;
+  return controller;
 }
 
 function mergeControllers(
@@ -238,24 +277,11 @@ async function loadPersistedControllers(agentDir: string): Promise<PiControllerM
   const file = controllersPath(agentDir);
   if (!existsSync(file)) return [];
   try {
-    const parsed = JSON.parse(await readFile(file, "utf-8")) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((entry): entry is PiControllerModelsRequest =>
-        Boolean(entry && typeof entry === "object" && !Array.isArray(entry)),
-      )
-      .flatMap((entry) => {
-        const record = entry as Record<string, unknown>;
-        return typeof record.url === "string"
-          ? [
-              {
-                url: record.url,
-                ...(typeof record.apiKey === "string" ? { apiKey: record.apiKey } : {}),
-                ...(typeof record.name === "string" ? { name: record.name } : {}),
-              },
-            ]
-          : [];
-      });
+    return [
+      ...Schema.decodeUnknownSync(PersistedControllersSchema)(
+        JSON.parse(await readFile(file, "utf-8")),
+      ),
+    ];
   } catch {
     return [];
   }
@@ -281,10 +307,14 @@ async function fetchModelsFromController(
   if (!response.ok) {
     throw new Error(`${backendUrl}/v1/models failed with HTTP ${response.status}`);
   }
-  const payload = (await response.json()) as unknown;
+  const payload = Schema.decodeUnknownSync(OpenAIModelsResponseSchema)(await response.json());
+  const data = payload.data?.flatMap((row) => {
+    const id = row["id"];
+    return Schema.is(Schema.String)(id) ? [{ ...row, id }] : [];
+  });
   const providerId = providerIdForController(controller, index);
   const label = controllerLabel(controller, index);
-  const models = normalizeOpenAIModels(payload && typeof payload === "object" ? payload : {}).map(
+  const models = normalizeOpenAIModels({ object: payload.object, data }).map(
     (model) => ({
       ...model,
       reasoning: model.reasoning,
@@ -360,14 +390,15 @@ async function writePiModelsConfig(
     ]),
   );
 
-  const providers: Record<string, unknown> = { ...vllmProviders };
+  const providers: UserPiProviders = {};
+  Object.assign(providers, vllmProviders);
   for (const [name, config] of Object.entries(userPiProviders)) {
     providers[`${USER_PI_PREFIX}${name}`] = {
       baseUrl: config.baseUrl,
-      ...(config.apiKey ? { apiKey: config.apiKey } : {}),
-      ...(config.api ? { api: config.api } : {}),
-      ...(config.authHeader !== undefined ? { authHeader: config.authHeader } : {}),
-      ...(config.compat ? { compat: config.compat } : {}),
+      apiKey: config.apiKey,
+      api: config.api,
+      authHeader: config.authHeader,
+      compat: config.compat,
       models: config.models ?? [],
     };
   }
@@ -378,7 +409,9 @@ async function writePiModelsConfig(
   return agentDir;
 }
 
-export function resolvePiModelSelection(modelId: string): { providerId: string; modelId: string } {
+export type PiModelSelection = { providerId: string; modelId: string };
+
+export function resolvePiModelSelection(modelId: string): PiModelSelection {
   const separator = modelId.indexOf("/");
   if (separator > 0) {
     const maybeProvider = modelId.slice(0, separator);
@@ -407,11 +440,11 @@ export async function refreshPiModels(
   // failure and only surface it when nothing else can serve models.
   let models: AgentModel[] = [];
   let controllerModels: ControllerModels[] = [];
-  let controllerError: unknown = null;
+  let controllerError: Error | null = null;
   try {
     ({ models, controllerModels } = await fetchModelsFromControllers(controllers));
   } catch (error) {
-    controllerError = error;
+    controllerError = error instanceof Error ? error : new Error("No controllers returned models.");
   }
 
   const userPiProviders = await loadUserPiProviders();
@@ -426,9 +459,7 @@ export async function refreshPiModels(
 
   const allModels = [...models, ...userPiModels, ...providerModels];
   if (allModels.length === 0 && controllerError) {
-    throw controllerError instanceof Error
-      ? controllerError
-      : new Error("No controllers returned models.");
+    throw controllerError;
   }
   return { models: allModels, agentDir: writtenAgentDir };
 }
@@ -446,7 +477,7 @@ function isDeepSeekReasoningModel(model: AgentModel): boolean {
 }
 
 function isControllerBackedModel(model: AgentModel): boolean {
-  return typeof model.controllerUrl === "string" && model.controllerUrl.length > 0;
+  return Boolean(model.controllerUrl);
 }
 
 function isInklingReasoningModel(model: AgentModel): boolean {
@@ -519,15 +550,13 @@ export function modelsToPiModels(models: AgentModel[]) {
               },
             }
           : {}),
-      compat: {
-        ...VLLM_OPENAI_COMPAT,
-        ...(deepSeekReasoning
-          ? {
-              thinkingFormat: "deepseek",
-              requiresReasoningContentOnAssistantMessages: true,
-            }
-          : {}),
-      },
+      compat: deepSeekReasoning
+        ? {
+            ...VLLM_OPENAI_COMPAT,
+            thinkingFormat: "deepseek",
+            requiresReasoningContentOnAssistantMessages: true,
+          }
+        : VLLM_OPENAI_COMPAT,
     };
   });
 }

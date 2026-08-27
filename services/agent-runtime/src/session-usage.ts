@@ -1,5 +1,9 @@
 import { statSync } from "node:fs";
 import { readRolloutHead, rolloutCache, scanCompleteRolloutLines } from "./rollout-cache";
+import { isRecord, type UnknownRecord, type UnparsedValue } from "../../../shared/agent/guards";
+import { Schema } from "effect";
+
+const isNumber = Schema.is(Schema.Number);
 
 /** Everything the session has spent, for the whole of its life.
  *
@@ -79,19 +83,17 @@ async function scanFrom(
   return { totals, scannedBytes };
 }
 
-function numeric(source: Record<string, unknown> | null, keys: string[]): number {
+function numeric(source: UnknownRecord | null, keys: string[]): number {
   if (!source) return 0;
   for (const key of keys) {
     const value = source[key];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (isNumber(value) && Number.isFinite(value)) return value;
   }
   return 0;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
+function asRecord(value: UnparsedValue): UnknownRecord | null {
+  return isRecord(value) ? value : null;
 }
 
 export function accumulateUsageLine(totals: SessionUsageTotals, line: string): SessionUsageTotals {
@@ -102,7 +104,7 @@ export function accumulateUsageLine(totals: SessionUsageTotals, line: string): S
   const hasCompaction = line.includes("compaction");
   if (!hasUsage && !hasCompaction) return totals;
 
-  let entry: Record<string, unknown> | null = null;
+  let entry: UnknownRecord | null = null;
   try {
     entry = asRecord(JSON.parse(line));
   } catch {

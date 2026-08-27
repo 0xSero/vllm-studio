@@ -272,7 +272,7 @@ function runtimeEnvInjections(
   options: RuntimeStartOptions,
   env: NodeJS.ProcessEnv,
   cwd: string,
-): Record<string, string> {
+) {
   const frontendBase = env.LOCAL_STUDIO_FRONTEND_BASE ?? deriveFrontendBase(env);
   const relay = readSitegeistRelayEnv(env);
   return {

@@ -5,6 +5,7 @@ import {
   patchAutomation,
   recordAutomationRun,
   type Automation,
+  type AutomationRun,
 } from "./automations-store";
 import { getGlobalSingleton } from "./instances";
 import { piRuntimeManager } from "./pi-runtime";
@@ -56,17 +57,18 @@ export async function runAutomationNow(id: string): Promise<Automation | null> {
     const projectId =
       listProjectsFromStore().find((project) => project.path === status.cwd)?.id ?? null;
     void session.stop().catch(() => undefined);
+    const run: AutomationRun = {
+      at: new Date().toISOString(),
+      piSessionId,
+      cwd: status.cwd,
+      projectId,
+      outcome: error ? "error" : "ok",
+      summary: result.text,
+      error: error ?? undefined,
+    };
     return await recordAutomationRun(
       id,
-      {
-        at: new Date().toISOString(),
-        piSessionId,
-        cwd: status.cwd,
-        projectId,
-        outcome: error ? "error" : "ok",
-        summary: result.text,
-        ...(error ? { error } : {}),
-      },
+      run,
       nextRunAt(automation.schedule, new Date()).toISOString(),
     );
   } catch (error) {

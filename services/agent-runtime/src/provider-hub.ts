@@ -18,6 +18,7 @@ import { chmod, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { Option, Schema } from "effect";
 import type {
   AuthEvent,
   AuthInteraction,
@@ -49,6 +50,9 @@ const INTERNAL_PROVIDER_PREFIXES = ["local-studio", "user-pi-"];
 
 const MAX_JOB_EVENTS = 200;
 const MAX_FINISHED_JOBS = 8;
+const ReasoningCompatSchema = Schema.Struct({
+  supportsReasoningEffort: Schema.optional(Schema.Boolean),
+});
 
 type LoginJob = {
   jobId: string;
@@ -72,32 +76,33 @@ type LoginJob = {
 // the wire format stable if pi adds fields.
 function serializeAuthEvent(event: AuthEvent): ProviderLoginEventPayload {
   switch (event.type) {
-    case "auth_url":
-      return {
-        type: "auth_url",
-        url: event.url,
-        ...(event.instructions ? { instructions: event.instructions } : {}),
-      };
-    case "device_code":
-      return {
+    case "auth_url": {
+      const payload: ProviderLoginEventPayload = { type: "auth_url", url: event.url };
+      if (event.instructions) payload.instructions = event.instructions;
+      return payload;
+    }
+    case "device_code": {
+      const payload: ProviderLoginEventPayload = {
         type: "device_code",
         userCode: event.userCode,
         verificationUri: event.verificationUri,
-        ...(event.intervalSeconds !== undefined ? { intervalSeconds: event.intervalSeconds } : {}),
-        ...(event.expiresInSeconds !== undefined
-          ? { expiresInSeconds: event.expiresInSeconds }
-          : {}),
       };
+      if (event.intervalSeconds !== undefined) payload.intervalSeconds = event.intervalSeconds;
+      if (event.expiresInSeconds !== undefined) payload.expiresInSeconds = event.expiresInSeconds;
+      return payload;
+    }
     case "progress":
       return { type: "progress", message: event.message };
-    default:
-      return {
-        type: "info",
-        message: event.message,
-        ...(event.links?.length
-          ? { links: event.links.map(({ url, label }) => ({ url, ...(label ? { label } : {}) })) }
-          : {}),
-      };
+    default: {
+      const payload: ProviderLoginEventPayload = { type: "info", message: event.message };
+      if (event.links?.length) {
+        payload.links = event.links.map(({ url, label }) => {
+          if (label) return { url, label };
+          return { url };
+        });
+      }
+      return payload;
+    }
   }
 }
 
@@ -149,19 +154,19 @@ export async function listProviders(): Promise<ProviderView[]> {
   for (const provider of runtime.getProviders()) {
     if (isInternalProviderId(provider.id)) continue;
     const status = runtime.getProviderAuthStatus(provider.id);
-    views.push({
+    const view: ProviderView = {
       id: provider.id,
       name: provider.name,
-      ...(provider.auth.oauth ? { oauth: { label: provider.auth.oauth.name } } : {}),
-      ...(provider.auth.apiKey?.login ? { apiKey: { label: provider.auth.apiKey.name } } : {}),
       configured: status.configured,
-      ...(status.source ? { authSource: status.source } : {}),
-      ...(status.label ? { authLabel: status.label } : {}),
-      ...(credentials.has(provider.id)
-        ? { credentialType: credentials.get(provider.id) as "oauth" | "api_key" }
-        : {}),
       modelCount: runtime.getModels(provider.id).length,
-    });
+    };
+    if (provider.auth.oauth) view.oauth = { label: provider.auth.oauth.name };
+    if (provider.auth.apiKey?.login) view.apiKey = { label: provider.auth.apiKey.name };
+    if (status.source) view.authSource = status.source;
+    if (status.label) view.authLabel = status.label;
+    const credentialType = credentials.get(provider.id);
+    if (credentialType) view.credentialType = credentialType;
+    views.push(view);
   }
   return views.sort((a, b) => {
     if (a.configured !== b.configured) return a.configured ? -1 : 1;
@@ -171,13 +176,14 @@ export async function listProviders(): Promise<ProviderView[]> {
 
 function serializePrompt(job: LoginJob, prompt: AuthPrompt): ProviderLoginPrompt {
   job.promptSeq += 1;
-  return {
+  const serialized: ProviderLoginPrompt = {
     id: job.promptSeq,
     type: prompt.type,
     message: prompt.message,
-    ...("placeholder" in prompt && prompt.placeholder ? { placeholder: prompt.placeholder } : {}),
-    ...(prompt.type === "select" ? { options: prompt.options } : {}),
   };
+  if ("placeholder" in prompt && prompt.placeholder) serialized.placeholder = prompt.placeholder;
+  if (prompt.type === "select") serialized.options = prompt.options;
+  return serialized;
 }
 
 function pushEvent(job: LoginJob, event: AuthEvent): void {
@@ -241,7 +247,9 @@ export async function startProviderLogin(
     return { error: `Unknown provider '${providerId}'.`, status: 404 };
   }
   const supportsType =
-    authType === "oauth" ? Boolean(provider.auth.oauth) : Boolean(provider.auth.apiKey?.login);
+    authType === "oauth"
+      ? provider.auth.oauth !== undefined
+      : provider.auth.apiKey?.login !== undefined;
   if (!supportsType) {
     return { error: `Provider '${providerId}' does not support ${authType} login.`, status: 400 };
   }
@@ -275,7 +283,7 @@ export async function startProviderLogin(
   void runtime
     .login(providerId, authType, interaction)
     .then(() => finishJob(job, "success"))
-    .catch((error: unknown) => {
+    .catch((error) => {
       if (job.abort.signal.aborted) {
         finishJob(job, "cancelled");
         return;
@@ -288,15 +296,16 @@ export async function startProviderLogin(
 export function getProviderLoginJob(jobId: string, after = 0): ProviderLoginJobView | null {
   const job = jobsMap().get(jobId);
   if (!job) return null;
-  return {
+  const view: ProviderLoginJobView = {
     jobId: job.jobId,
     providerId: job.providerId,
     authType: job.authType,
     status: job.status,
-    ...(job.error ? { error: job.error } : {}),
     events: job.events.filter((entry) => entry.seq > after),
-    ...(job.pending ? { pendingPrompt: job.pending.prompt } : {}),
   };
+  if (job.error) view.error = job.error;
+  if (job.pending) view.pendingPrompt = job.pending.prompt;
+  return view;
 }
 
 export function respondProviderLogin(jobId: string, promptId: number, value: string): boolean {
@@ -335,12 +344,13 @@ function providerModelToAgentModel(
   model: Model<Api>,
 ): AgentModel {
   const reasoning = model.reasoning || inferReasoningSupport(model.id);
-  const compat = model.compat as { supportsReasoningEffort?: boolean } | undefined;
-  const thinkingLevels = !reasoning
-    ? ["off" as const]
-    : compat?.supportsReasoningEffort === false
-      ? ["high" as const]
-      : getSupportedThinkingLevels({ ...model, reasoning });
+  const compat = Option.getOrUndefined(
+    Schema.decodeUnknownOption(ReasoningCompatSchema)(model.compat),
+  );
+  let thinkingLevels: AgentModel["thinkingLevels"];
+  if (!reasoning) thinkingLevels = ["off"];
+  else if (compat?.supportsReasoningEffort === false) thinkingLevels = ["high"];
+  else thinkingLevels = getSupportedThinkingLevels({ ...model, reasoning });
   return {
     id: `${providerId}/${model.id}`,
     rawId: model.id,
