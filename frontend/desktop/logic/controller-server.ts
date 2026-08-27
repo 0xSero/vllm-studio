@@ -124,6 +124,7 @@ export async function startController(options: StartControllerOptions): Promise<
         LOCAL_STUDIO_BROWSER_HOST_SCRIPT: browserHostEntry(),
         LOCAL_STUDIO_AGENT_CWD: process.env.LOCAL_STUDIO_AGENT_CWD || app.getPath("home"),
         LOCAL_STUDIO_FRONTEND_BASE: options.frontendUrl,
+        LOCAL_STUDIO_VERSION: app.getVersion(),
       },
     },
   );

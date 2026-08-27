@@ -23,6 +23,10 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.sha }}
 
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.19.0
+
       - id: version
         name: Resolve nightly version
         run: |
@@ -85,11 +89,29 @@ jobs:
           provenance: mode=max
           sbom: true
 
-  publish-nightly:
+  publish-controller-snapshot:
     if: github.ref == 'refs/heads/main'
     needs:
       - resolve-nightly-version
       - publish-controller-image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: ./.github/actions/publish-daytona-snapshot
+        with:
+          api-key: ${{ secrets.DAYTONA_API_KEY }}
+          image: ghcr.io/${{ github.repository_owner }}/local-studio-controller:sha-${{ github.sha }}
+          snapshot-name: local-studio-worker-${{ needs.resolve-nightly-version.outputs.version }}
+          sandbox-class: container
+
+  publish-nightly:
+    if: github.ref == 'refs/heads/main'
+    needs:
+      - resolve-nightly-version
+      - publish-controller-snapshot
     runs-on: macos-15
     permissions:
       contents: write

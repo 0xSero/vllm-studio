@@ -231,11 +231,10 @@ fn turnPayloadInternal(allocator: std.mem.Allocator, io: Io, mode: config.Mode, 
             return failure;
         };
         defer allocator.free(checkout);
-        const configured_image = try cloud.defaultImage();
-        defer allocator.free(configured_image);
-        const image = configured_image;
-        const worker_id = try lockedCreateCloudWorker(io, database, session_id, turn_attempt.attempt_id[0..], account_id, requested_harness, image);
-        var provisioned = cloud.provision(client, database, worker_id[0..], session_id, account_id, requested_harness, image, checkout) catch |failure| {
+        const snapshot = try cloud.defaultSnapshot();
+        defer allocator.free(snapshot);
+        const worker_id = try lockedCreateCloudWorker(io, database, session_id, turn_attempt.attempt_id[0..], account_id, requested_harness, snapshot);
+        var provisioned = cloud.provision(client, database, worker_id[0..], session_id, account_id, requested_harness, snapshot, checkout) catch |failure| {
             try lockedCloudWorkerStatus(io, database, worker_id[0..], "failed", @errorName(failure));
             try lockedExecutionStatus(io, database, session_id, "failed", null, @errorName(failure));
             return failure;

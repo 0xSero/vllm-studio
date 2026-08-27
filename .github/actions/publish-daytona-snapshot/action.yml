@@ -1,0 +1,158 @@
+name: Publish Daytona snapshot
+description: Publish an immutable Daytona snapshot from an OCI image digest
+
+inputs:
+  api-key:
+    description: Daytona API key
+    required: true
+  api-url:
+    description: Daytona API URL
+    required: false
+    default: https://app.daytona.io/api
+  image:
+    description: Immutable OCI image reference
+    required: true
+  snapshot-name:
+    description: Immutable Daytona snapshot name
+    required: true
+  sandbox-class:
+    description: Daytona sandbox class
+    required: false
+    default: container
+  timeout-seconds:
+    description: Maximum snapshot build time
+    required: false
+    default: "1800"
+
+outputs:
+  snapshot-id:
+    description: Daytona snapshot ID
+    value: ${{ steps.publish.outputs.snapshot-id }}
+  snapshot-name:
+    description: Daytona snapshot name
+    value: ${{ inputs.snapshot-name }}
+
+runs:
+  using: composite
+  steps:
+    - id: publish
+      name: Publish snapshot
+      shell: bash
+      env:
+        DAYTONA_API_KEY: ${{ inputs.api-key }}
+        DAYTONA_API_URL: ${{ inputs.api-url }}
+        SNAPSHOT_IMAGE: ${{ inputs.image }}
+        SNAPSHOT_NAME: ${{ inputs.snapshot-name }}
+        SNAPSHOT_SANDBOX_CLASS: ${{ inputs.sandbox-class }}
+        SNAPSHOT_TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+      run: |
+        set -euo pipefail
+
+        if [[ ! "$SNAPSHOT_IMAGE" =~ :sha-[0-9a-f]{40}$ ]]; then
+          echo "Snapshot image must use the immutable full commit SHA tag" >&2
+          exit 1
+        fi
+        if [[ ! "$SNAPSHOT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+          echo "Snapshot name contains unsupported characters" >&2
+          exit 1
+        fi
+        if [[ "$SNAPSHOT_SANDBOX_CLASS" != "container" && "$SNAPSHOT_SANDBOX_CLASS" != "linux-vm" ]]; then
+          echo "Snapshot sandbox class must be container or linux-vm" >&2
+          exit 1
+        fi
+        if [[ ! "$SNAPSHOT_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+          echo "Snapshot timeout must be a positive integer" >&2
+          exit 1
+        fi
+
+        endpoint="${DAYTONA_API_URL%/}"
+        response="$RUNNER_TEMP/daytona-snapshot-response.json"
+        encoded_name="$(jq -rn --arg value "$SNAPSHOT_NAME" '$value | @uri')"
+
+        if ! status="$(curl --silent --show-error --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 --output "$response" --write-out '%{http_code}' --header "Authorization: Bearer $DAYTONA_API_KEY" "$endpoint/snapshots/$encoded_name")"; then
+          echo "Unable to query Daytona snapshot" >&2
+          exit 1
+        fi
+
+        if [[ "$status" == "404" ]]; then
+          payload="$(jq -cn --arg name "$SNAPSHOT_NAME" --arg image "$SNAPSHOT_IMAGE" --arg sandbox_class "$SNAPSHOT_SANDBOX_CLASS" '{name: $name, imageName: $image, sandboxClass: $sandbox_class}')"
+          if ! status="$(curl --silent --show-error --connect-timeout 15 --max-time 120 --output "$response" --write-out '%{http_code}' --request POST --header "Authorization: Bearer $DAYTONA_API_KEY" --header 'Content-Type: application/json' --data "$payload" "$endpoint/snapshots")"; then
+            echo "Unable to create Daytona snapshot" >&2
+            exit 1
+          fi
+          if [[ "$status" == "409" ]]; then
+            if ! status="$(curl --silent --show-error --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 --output "$response" --write-out '%{http_code}' --header "Authorization: Bearer $DAYTONA_API_KEY" "$endpoint/snapshots/$encoded_name")"; then
+              echo "Unable to resolve existing Daytona snapshot" >&2
+              exit 1
+            fi
+          fi
+          if [[ ! "$status" =~ ^20[0-9]$ ]]; then
+            jq -c '{statusCode, error, message}' "$response" >&2 || true
+            exit 1
+          fi
+          existing_image="$(jq -r '.imageName // empty' "$response")"
+          existing_class="$(jq -r '.sandboxClass // empty' "$response")"
+          if [[ "$existing_image" != "$SNAPSHOT_IMAGE" || "$existing_class" != "$SNAPSHOT_SANDBOX_CLASS" ]]; then
+            echo "Snapshot name already belongs to a different image or sandbox class" >&2
+            exit 1
+          fi
+        elif [[ "$status" =~ ^20[0-9]$ ]]; then
+          existing_image="$(jq -r '.imageName // empty' "$response")"
+          existing_class="$(jq -r '.sandboxClass // empty' "$response")"
+          if [[ "$existing_image" != "$SNAPSHOT_IMAGE" || "$existing_class" != "$SNAPSHOT_SANDBOX_CLASS" ]]; then
+            echo "Snapshot name already belongs to a different image or sandbox class" >&2
+            exit 1
+          fi
+        else
+          jq -c '{statusCode, error, message}' "$response" >&2 || true
+          exit 1
+        fi
+
+        snapshot_id="$(jq -er '.id' "$response")"
+        snapshot_path="$(jq -rn --arg value "$snapshot_id" '$value | @uri')"
+        deadline=$((SECONDS + SNAPSHOT_TIMEOUT_SECONDS))
+        previous_state=""
+
+        while true; do
+          state="$(jq -r '.state // "unknown"' "$response")"
+          if [[ "$state" != "$previous_state" ]]; then
+            echo "Daytona snapshot $SNAPSHOT_NAME: $state"
+            previous_state="$state"
+          fi
+
+          case "$state" in
+            active)
+              echo "snapshot-id=$snapshot_id" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+            inactive)
+              if ! status="$(curl --silent --show-error --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 --output "$response" --write-out '%{http_code}' --request POST --header "Authorization: Bearer $DAYTONA_API_KEY" "$endpoint/snapshots/$snapshot_path/activate")"; then
+                echo "Unable to activate Daytona snapshot" >&2
+                exit 1
+              fi
+              if [[ ! "$status" =~ ^20[0-9]$ ]]; then
+                jq -c '{statusCode, error, message}' "$response" >&2 || true
+                exit 1
+              fi
+              ;;
+            error|build_failed|removing)
+              jq -r '(.errorReason // "Snapshot publication failed")' "$response" >&2
+              exit 1
+              ;;
+          esac
+
+          if (( SECONDS >= deadline )); then
+            echo "Timed out waiting for Daytona snapshot" >&2
+            exit 1
+          fi
+
+          sleep 5
+          if ! status="$(curl --silent --show-error --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 --output "$response" --write-out '%{http_code}' --header "Authorization: Bearer $DAYTONA_API_KEY" "$endpoint/snapshots/$snapshot_path")"; then
+            echo "Unable to refresh Daytona snapshot" >&2
+            exit 1
+          fi
+          if [[ ! "$status" =~ ^20[0-9]$ ]]; then
+            jq -c '{statusCode, error, message}' "$response" >&2 || true
+            exit 1
+          fi
+        done

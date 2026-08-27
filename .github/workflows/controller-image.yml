@@ -5,13 +5,13 @@ on:
     branches:
       - main
     paths:
+      - .github/actions/publish-daytona-snapshot/**
       - .github/workflows/controller-image.yml
       - .github/workflows/nightly.yml
+      - .github/workflows/release.yml
       - controller/**
       - contracts/**
-  push:
-    tags:
-      - v*.*.*
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -59,3 +59,19 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: mode=max
           sbom: true
+
+  snapshot:
+    name: Publish Daytona snapshot
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: ./.github/actions/publish-daytona-snapshot
+        with:
+          api-key: ${{ secrets.DAYTONA_API_KEY }}
+          image: ghcr.io/${{ github.repository_owner }}/local-studio-controller:sha-${{ github.sha }}
+          snapshot-name: local-studio-worker-${{ github.ref_name }}
+          sandbox-class: container

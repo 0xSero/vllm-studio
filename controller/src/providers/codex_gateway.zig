@@ -5,6 +5,35 @@ const inference_usage = @import("../inference/usage/store.zig");
 
 const max_response_bytes = 64 * 1024 * 1024;
 
+const StreamingWriter = struct {
+    writer: std.Io.Writer,
+    downstream: *std.http.BodyWriter,
+    captured: *std.Io.Writer.Allocating,
+
+    fn init(downstream: *std.http.BodyWriter, captured: *std.Io.Writer.Allocating) StreamingWriter {
+        return .{
+            .writer = .{ .vtable = &.{ .drain = drain }, .buffer = &.{} },
+            .downstream = downstream,
+            .captured = captured,
+        };
+    }
+
+    fn drain(writer: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
+        const stream: *StreamingWriter = @fieldParentPtr("writer", writer);
+        for (data[0 .. data.len - 1]) |bytes| try stream.write(bytes);
+        for (0..splat) |_| try stream.write(data[data.len - 1]);
+        return std.Io.Writer.countSplat(data, splat);
+    }
+
+    fn write(stream: *StreamingWriter, bytes: []const u8) std.Io.Writer.Error!void {
+        if (stream.captured.writer.buffered().len + bytes.len > max_response_bytes) return error.WriteFailed;
+        stream.captured.writer.writeAll(bytes) catch return error.WriteFailed;
+        try stream.downstream.writer.writeAll(bytes);
+        try stream.downstream.writer.flush();
+        try stream.downstream.flush();
+    }
+};
+
 pub fn serve(allocator: std.mem.Allocator, client: *std.http.Client, credential: *const oauth_credentials.Credential, model_id: []const u8, public_protocol: openai_protocol.Protocol, payload: []const u8, requested_stream: bool, request: *std.http.Server.Request) !?inference_usage.Sample {
     const responses_payload = try openai_protocol.request(allocator, public_protocol, .responses, payload);
     defer allocator.free(responses_payload);
@@ -12,6 +41,7 @@ pub fn serve(allocator: std.mem.Allocator, client: *std.http.Client, credential:
     defer allocator.free(upstream_payload);
     const authorization = try std.fmt.allocPrint(allocator, "Bearer {s}", .{credential.access});
     defer allocator.free(authorization);
+    if (requested_stream and public_protocol == .responses) return serveResponsesStream(allocator, client, credential, authorization, upstream_payload, request);
     const storage = try allocator.alloc(u8, max_response_bytes);
     defer allocator.free(storage);
     var upstream_body: std.Io.Writer = .fixed(storage);
@@ -76,6 +106,48 @@ pub fn serve(allocator: std.mem.Allocator, client: *std.http.Client, credential:
     }
     try downstream.end();
     return sample;
+}
+
+fn serveResponsesStream(allocator: std.mem.Allocator, client: *std.http.Client, credential: *const oauth_credentials.Credential, authorization: []const u8, payload: []const u8, request: *std.http.Server.Request) !?inference_usage.Sample {
+    var response_buffer: [16 * 1024]u8 = undefined;
+    var downstream = try request.respondStreaming(&response_buffer, .{
+        .respond_options = .{
+            .status = .ok,
+            .keep_alive = false,
+            .extra_headers = &.{
+                .{ .name = "Content-Type", .value = "text/event-stream; charset=utf-8" },
+                .{ .name = "Cache-Control", .value = "no-cache" },
+                .{ .name = "X-Accel-Buffering", .value = "no" },
+            },
+        },
+    });
+    try downstream.flush();
+    var captured: std.Io.Writer.Allocating = .init(allocator);
+    defer captured.deinit();
+    var stream = StreamingWriter.init(&downstream, &captured);
+    const response = try client.fetch(.{
+        .location = .{ .url = "https://chatgpt.com/backend-api/codex/responses" },
+        .method = .POST,
+        .payload = payload,
+        .redirect_behavior = .not_allowed,
+        .keep_alive = false,
+        .headers = .{ .accept_encoding = .omit, .authorization = .omit, .content_type = .omit },
+        .extra_headers = &.{
+            .{ .name = "Authorization", .value = authorization },
+            .{ .name = "chatgpt-account-id", .value = credential.account_id },
+            .{ .name = "originator", .value = "local-studio" },
+            .{ .name = "User-Agent", .value = "local-studio-zig" },
+            .{ .name = "OpenAI-Beta", .value = "responses=experimental" },
+            .{ .name = "Accept", .value = "text/event-stream" },
+            .{ .name = "Content-Type", .value = "application/json" },
+        },
+        .response_writer = &stream.writer,
+    });
+    try downstream.end();
+    if (response.status.class() != .success) return null;
+    const completed = try completedResponse(allocator, captured.writer.buffered());
+    defer allocator.free(completed);
+    return inference_usage.parseSample(allocator, completed);
 }
 
 fn prepareRequest(allocator: std.mem.Allocator, document: []const u8, model_id: []const u8) ![]u8 {

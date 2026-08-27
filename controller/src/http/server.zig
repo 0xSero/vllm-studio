@@ -3303,7 +3303,10 @@ fn serveHeadInference(allocator: std.mem.Allocator, io: Io, configuration: *cons
         defer credential.deinit();
         const requested_stream = if (parsed.value.object.get("stream")) |stream_value| stream_value == .bool and stream_value.bool else false;
         const public_protocol: openai_protocol.Protocol = if (std.mem.startsWith(u8, captured.target, "/v1/responses")) .responses else .chat_completions;
-        const sample = codex_gateway.serve(allocator, client, &credential, upstream_model, public_protocol, inference_body, requested_stream, request) catch return false;
+        const sample = codex_gateway.serve(allocator, client, &credential, upstream_model, public_protocol, inference_body, requested_stream, request) catch |failure| {
+            std.log.err("Codex gateway failed: {t}", .{failure});
+            return false;
+        };
         persistInferenceUsage(io, database, model_id, "openai-codex", sample, requested_stream);
         return false;
     }
@@ -3578,7 +3581,10 @@ fn serveLocalPassthrough(allocator: std.mem.Allocator, io: Io, configuration: *c
         var credential = (try head_provider_state.credential(client, "openai-codex")) orelse return respondDownloadError(request, .unauthorized, "OpenAI Codex is not connected on this Standalone node");
         defer credential.deinit();
         const requested_stream = if (parsed.value.object.get("stream")) |stream_value| stream_value == .bool and stream_value.bool else false;
-        const sample = codex_gateway.serve(allocator, client, &credential, upstream_model, .responses, inference_body, requested_stream, request) catch return false;
+        const sample = codex_gateway.serve(allocator, client, &credential, upstream_model, .responses, inference_body, requested_stream, request) catch |failure| {
+            std.log.err("Codex gateway failed: {t}", .{failure});
+            return false;
+        };
         persistInferenceUsage(io, database, requested_model, "openai-codex", sample, requested_stream);
         return false;
     }

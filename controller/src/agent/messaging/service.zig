@@ -723,7 +723,7 @@ fn request(allocator: std.mem.Allocator, client: *http.Client, endpoint: []const
     headers[count] = .{ .name = "Content-Type", .value = "application/json" };
     count += 1;
     const storage = try allocator.alloc(u8, max_response_bytes);
-    errdefer allocator.free(storage);
+    defer allocator.free(storage);
     var output: Io.Writer = .fixed(storage);
     const response = try client.fetch(.{
         .location = .{ .url = url },
@@ -735,13 +735,8 @@ fn request(allocator: std.mem.Allocator, client: *http.Client, endpoint: []const
         .extra_headers = headers[0..count],
         .response_writer = &output,
     });
-    if (response.status.class() != .success) {
-        allocator.free(storage);
-        return error.MessagingRequestRejected;
-    }
-    const result = try allocator.dupe(u8, output.buffered());
-    allocator.free(storage);
-    return result;
+    if (response.status.class() != .success) return error.MessagingRequestRejected;
+    return allocator.dupe(u8, output.buffered());
 }
 
 fn verifyDiscord(allocator: std.mem.Allocator, timestamp: []const u8, signature_hex: []const u8, document: []const u8, public_key_hex: []const u8) !void {

@@ -10,6 +10,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  controller-image:
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/controller-image.yml
+    secrets: inherit
+
   build:
     runs-on: macos-15
     permissions:
@@ -139,7 +146,7 @@ jobs:
           retention-days: 7
 
   publish:
-    needs: [build, sign]
+    needs: [build, sign, controller-image]
     runs-on: macos-15
     permissions:
       contents: write
