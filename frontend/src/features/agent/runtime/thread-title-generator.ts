@@ -1,6 +1,6 @@
-import { Effect, Schema } from "effect";
-import { ModelCatalogResponseSchema } from "@local-studio/contracts/model-catalog";
+import { Effect } from "effect";
 import { cleanSessionTitle, messageTextFromBlocks } from "@/features/agent/messages";
+import { loadAgentModelCatalog } from "@/features/agent/model-catalog-client";
 import { foldSessionEvents } from "@/features/agent/runtime/pi-event-applier";
 import { abortSession, loadRuntimeStatus, submitTurnCommand } from "@/features/agent/runtime/api";
 import { readAgentDefaults } from "@/features/agent/workspace/model-preference";
@@ -57,13 +57,8 @@ function titleFromStatusEvents(
 
 function loadTitleRoute(input: ThreadTitleInput): Effect.Effect<ThreadTitleRoute, unknown> {
   return Effect.gen(function* () {
-    const response = yield* Effect.tryPromise(() =>
-      fetch("/api/agent/models", { cache: "no-store" }),
-    );
-    const payload = yield* Effect.tryPromise(() => response.json());
-    if (!response.ok) return yield* Effect.fail(new Error("Model catalog unavailable"));
-    const catalog = Schema.decodeUnknownSync(ModelCatalogResponseSchema)(payload);
-    const choices = threadTitleRouteChoices(catalog.models);
+    const models = yield* Effect.tryPromise(() => loadAgentModelCatalog());
+    const choices = threadTitleRouteChoices(models);
     const defaults = readAgentDefaults(window.localStorage);
     const selected = choices.find(
       (choice) =>

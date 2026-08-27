@@ -128,8 +128,11 @@ export async function prepareTaskWorkspace(input: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  const payload = await response.json();
-  if (!response.ok) throw new Error("Failed to prepare task workspace");
+  const payload = await safeJson<unknown>(response);
+  if (!response.ok) {
+    const failure = payload as { error?: string; detail?: string };
+    throw new Error(failure.error || failure.detail || "Failed to prepare task workspace");
+  }
   return Schema.decodeUnknownSync(PreparedWorkspaceSchema)(payload);
 }
 

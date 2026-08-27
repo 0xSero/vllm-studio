@@ -268,7 +268,6 @@ function openNewSessionInFocusedPane(
   const session: Session = {
     ...payload.tab,
     projectId: payload.project?.id,
-    cwd: payload.project?.path,
     modelId: payload.tab.modelId || state.selectedModel || undefined,
   };
   if (payload.replaceWorkspace) {

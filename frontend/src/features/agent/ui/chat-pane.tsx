@@ -511,6 +511,7 @@ export function ChatPane({
         projectId: project.id,
         cwd: isChatsProject(project) || project.repository ? undefined : project.path,
         managedProject: Boolean(project.repository),
+        workspacePrepared: false,
         baseRef: project.defaultBranch,
         branchName: undefined,
         detached: Boolean(project.repository),

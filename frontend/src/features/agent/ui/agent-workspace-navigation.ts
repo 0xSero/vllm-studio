@@ -62,6 +62,7 @@ export function workspaceNavigationAction(
     projectId: project?.id,
     cwd: isChatsProject(project) || project?.repository ? undefined : project?.path,
     managedProject: Boolean(project?.repository),
+    workspacePrepared: false,
     baseRef: project?.defaultBranch,
     detached: Boolean(project?.repository),
   };

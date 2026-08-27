@@ -207,7 +207,7 @@ function startPromptCommand(
       context.selected.executionKind === "project" &&
       context.selected.managedProject &&
       context.selected.placement !== "sandbox" &&
-      !context.selected.cwd
+      !context.selected.workspacePrepared
     ) {
       setSetupTool(deps, context, {
         name: "local_studio_prepare_checkout",
@@ -229,6 +229,7 @@ function startPromptCommand(
       });
       context.selected.cwd = workspace.path;
       context.selected.detached = workspace.detached;
+      context.selected.workspacePrepared = true;
       setSetupTool(deps, context, {
         name: "local_studio_prepare_checkout",
         status: "done",
@@ -242,6 +243,7 @@ function startPromptCommand(
         ...session,
         cwd: workspace.path,
         detached: workspace.detached,
+        workspacePrepared: true,
       }));
     }
     setSandboxSetupTools(deps, context, "running");

@@ -50,6 +50,7 @@ export type Session = {
   projectId?: string;
   cwd?: string;
   managedProject?: boolean;
+  workspacePrepared?: boolean;
   baseRef?: string;
   branchName?: string;
   detached?: boolean;

@@ -2,7 +2,6 @@
 
 import { Effect, Schema } from "effect";
 import { useMemo, useState } from "react";
-import { ModelCatalogResponseSchema } from "@local-studio/contracts/model-catalog";
 import type { HarnessCatalogEntry } from "@shared/agent/harness-catalog";
 import {
   MessagingDefaultSchema,
@@ -24,7 +23,8 @@ import {
   setThinkingLevelDefault,
 } from "@/features/agent/messages/thinking-level-pref";
 import type { AgentThinkingLevel } from "@/features/agent/contracts";
-import { agentModelsFromCatalog, type CatalogAgentModel } from "@/features/agent/models";
+import type { CatalogAgentModel } from "@/features/agent/models";
+import { loadAgentModelCatalog } from "@/features/agent/model-catalog-client";
 import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
 import {
   recommendedThreadTitleRoute,
@@ -101,14 +101,7 @@ function PriorityOrder({
 }
 
 function loadModels(): Effect.Effect<CatalogAgentModel[], unknown> {
-  return Effect.gen(function* () {
-    const response = yield* Effect.tryPromise(() =>
-      fetch("/api/agent/models", { cache: "no-store" }),
-    );
-    const payload = yield* Effect.tryPromise(() => response.json());
-    if (!response.ok) return yield* Effect.fail(new Error("Failed to load models"));
-    return agentModelsFromCatalog(Schema.decodeUnknownSync(ModelCatalogResponseSchema)(payload));
-  });
+  return Effect.tryPromise(() => loadAgentModelCatalog());
 }
 
 const decodeMessagingDefault = Schema.decodeUnknownSync(MessagingDefaultSchema);

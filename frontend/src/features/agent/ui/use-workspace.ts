@@ -26,10 +26,8 @@ import type {
 } from "@/features/agent/workspace/types";
 import { useProjects } from "@/features/agent/projects/context";
 import { useToolsRef } from "@/features/agent/tools/context";
-import { BACKEND_URL_STORAGE_KEY, getApiKey, getStoredBackendUrl } from "@/lib/api/connection";
-import { getControllerApiKey, normalizeControllerUrl } from "@/lib/api/controllers";
+import { BACKEND_URL_STORAGE_KEY } from "@/lib/api/connection";
 import {
-  getHeadConnection,
   HEAD_CONNECTION_CHANGED_EVENT,
   HEAD_CONNECTION_STORAGE_KEY,
 } from "@/lib/api/head-controller";
@@ -39,8 +37,7 @@ import {
   useWorkspaceRuntimeSync,
 } from "@/features/agent/ui/use-workspace-effects";
 import type { ChatPaneHandle } from "@/features/agent/ui/chat-pane";
-import { agentModelsFromCatalog } from "@/features/agent/models";
-import { ModelCatalogResponseSchema } from "@local-studio/contracts/model-catalog";
+import { loadAgentModelCatalog } from "@/features/agent/model-catalog-client";
 import {
   readDefaultAgentModel,
   readDefaultAgentRoute,
@@ -103,40 +100,8 @@ function createWorkspaceWindow(source: Window): WorkspaceWindow {
   };
 }
 
-async function agentModelControllersPayload() {
-  const settingsResponse = await fetch("/api/settings", { cache: "no-store" });
-  const settings = await safeJson<{ backendUrl?: string }>(settingsResponse);
-  const localUrl = normalizeControllerUrl(getStoredBackendUrl() || settings.backendUrl || "");
-  const head = getHeadConnection();
-  const controllers = localUrl ? [{ url: localUrl, apiKey: getApiKey(), name: "This Mac" }] : [];
-  if (head && normalizeControllerUrl(head.url) !== localUrl) {
-    controllers.push({
-      url: head.url,
-      apiKey: getControllerApiKey(head.url),
-      name: head.name || "Studio Head",
-    });
-  }
-  return controllers;
-}
-
 async function loadAgentModelsPayload(): Promise<{ models?: AgentModel[]; error?: string }> {
-  const response = await fetch("/api/agent/models", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    cache: "no-store",
-    body: JSON.stringify({ controllers: await agentModelControllersPayload() }),
-  });
-  const payload = await safeJson<unknown>(response);
-  if (!response.ok) {
-    const message =
-      typeof payload === "object" && payload !== null && "error" in payload
-        ? String(payload.error)
-        : "Failed to load models";
-    throw new Error(message);
-  }
-  return {
-    models: agentModelsFromCatalog(Schema.decodeUnknownSync(ModelCatalogResponseSchema)(payload)),
-  };
+  return { models: await loadAgentModelCatalog() };
 }
 
 function api(): WorkspaceEffectDeps["api"] {

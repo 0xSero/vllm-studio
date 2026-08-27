@@ -5,8 +5,8 @@ import {
   type Automation,
 } from "@shared/agent/automation";
 import type { AutomationDraft } from "./automation-model";
-import { ModelCatalogResponseSchema } from "@local-studio/contracts/model-catalog";
-import { agentModelsFromCatalog, type CatalogAgentModel } from "@/features/agent/models";
+import type { CatalogAgentModel } from "@/features/agent/models";
+import { loadAgentModelCatalog } from "@/features/agent/model-catalog-client";
 
 const RunResponseSchema = Schema.Struct({
   ok: Schema.Boolean,
@@ -60,10 +60,10 @@ export function listAutomations(): Effect.Effect<Automation[], Error> {
 }
 
 export function listAutomationModels(): Effect.Effect<AutomationModel[], Error> {
-  return Effect.map(
-    requestJson("/api/agent/models", Schema.decodeUnknownSync(ModelCatalogResponseSchema)),
-    (catalog) => agentModelsFromCatalog(catalog).filter((model) => model.available),
-  );
+  return Effect.tryPromise({
+    try: async () => (await loadAgentModelCatalog()).filter((model) => model.available),
+    catch: (error) => (error instanceof Error ? error : new Error("Failed to load models")),
+  });
 }
 
 export function createAutomation(draft: AutomationDraft): Effect.Effect<Automation, Error> {
