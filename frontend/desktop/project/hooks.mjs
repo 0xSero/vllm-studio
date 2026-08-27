@@ -200,7 +200,14 @@ export function prePush() {
     console.log(`Checking conventional commits for ${localRef} -> ${remote}/${remoteRef} (${url})`);
     execute(
       process.execPath,
-      [path.join(repoRoot, "scripts/project.mjs"), "check-commits", "--range", range],
+      [
+        path.join(repoRoot, "scripts/project.mjs"),
+        "check-commits",
+        "--range",
+        range,
+        "--exclude",
+        `${remote}/main`,
+      ],
       repoRoot,
     );
     validatePushedSha(localSha);
