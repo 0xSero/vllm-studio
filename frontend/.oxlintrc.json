@@ -25,7 +25,7 @@
     }
   ],
   "rules": {
-    "complexity": ["error", 20],
+    "complexity": ["error", 15],
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-known-value-widening": "error",
