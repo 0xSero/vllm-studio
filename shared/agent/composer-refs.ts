@@ -6,56 +6,59 @@
 // exact sanitization logic with the frontend; the frontend module re-exports
 // everything from this file for its client-side callers.
 
+import { Schema } from "effect";
+import { isRecord, type UnknownRecord, type UnparsedValue } from "./guards";
+
 export type ComposerSkillRef = {
   id: string;
   name: string;
-  source?: string;
-  path?: string;
-  instructions?: string;
+  source?: string | undefined;
+  path?: string | undefined;
+  instructions?: string | undefined;
 };
 
 export type ComposerPromptTemplateRef = {
   id: string;
   name: string;
-  source?: string;
-  path?: string;
-  description?: string;
-  argumentHint?: string;
+  source?: string | undefined;
+  path?: string | undefined;
+  description?: string | undefined;
+  argumentHint?: string | undefined;
 };
 
-function stringField(record: Record<string, unknown>, key: string): string | undefined {
+const isString = Schema.is(Schema.String);
+
+function stringField(record: UnknownRecord, key: string): string | undefined {
   const value = record[key];
-  return typeof value === "string" && value.trim() ? value : undefined;
+  return isString(value) && value.trim() ? value : undefined;
 }
 
-export function sanitizeComposerSkills(value: unknown): ComposerSkillRef[] {
+export function sanitizeComposerSkills(value: UnparsedValue): ComposerSkillRef[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item): ComposerSkillRef[] => {
-    if (!item || typeof item !== "object") return [];
-    const record = item as Record<string, unknown>;
+    if (!isRecord(item)) return [];
     const skill: ComposerSkillRef = {
-      id: stringField(record, "id") ?? "",
-      name: stringField(record, "name") ?? "",
-      source: stringField(record, "source"),
-      path: stringField(record, "path"),
-      instructions: stringField(record, "instructions"),
+      id: stringField(item, "id") ?? "",
+      name: stringField(item, "name") ?? "",
+      source: stringField(item, "source"),
+      path: stringField(item, "path"),
+      instructions: stringField(item, "instructions"),
     };
     return skill.name || skill.id || skill.path ? [skill] : [];
   });
 }
 
-export function sanitizeComposerPromptTemplates(value: unknown): ComposerPromptTemplateRef[] {
+export function sanitizeComposerPromptTemplates(value: UnparsedValue): ComposerPromptTemplateRef[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item): ComposerPromptTemplateRef[] => {
-    if (!item || typeof item !== "object") return [];
-    const record = item as Record<string, unknown>;
+    if (!isRecord(item)) return [];
     const template: ComposerPromptTemplateRef = {
-      id: stringField(record, "id") ?? "",
-      name: stringField(record, "name") ?? "",
-      source: stringField(record, "source"),
-      path: stringField(record, "path"),
-      description: stringField(record, "description"),
-      argumentHint: stringField(record, "argumentHint"),
+      id: stringField(item, "id") ?? "",
+      name: stringField(item, "name") ?? "",
+      source: stringField(item, "source"),
+      path: stringField(item, "path"),
+      description: stringField(item, "description"),
+      argumentHint: stringField(item, "argumentHint"),
     };
     return template.name || template.id || template.path ? [template] : [];
   });

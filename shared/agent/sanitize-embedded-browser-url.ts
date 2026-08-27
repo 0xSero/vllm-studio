@@ -4,7 +4,7 @@
  * (no loopback / private nets). Local file URLs are intentionally separate so
  * agent/browser-tool and server-side fetch paths cannot accidentally read disk.
  */
-function parseUrl(raw: string): URL | null {
+function parseUrl(raw: string) {
   const trimmed = raw.trim();
   if (!trimmed) return null;
   try {
@@ -18,14 +18,21 @@ function isLocalHostname(host: string): boolean {
   return host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local");
 }
 
-function ipv4Octets(host: string): [number, number, number, number] | null {
+type Ipv4Octets = [number, number, number, number];
+
+function ipv4Octets(host: string): Ipv4Octets | null {
   const match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (!match) return null;
-  const octets = match.slice(1).map(Number) as [number, number, number, number];
+  const octets: Ipv4Octets = [
+    Number(match[1]),
+    Number(match[2]),
+    Number(match[3]),
+    Number(match[4]),
+  ];
   return octets.every((octet) => octet >= 0 && octet <= 255) ? octets : null;
 }
 
-function isPrivateIpv4([a, b]: [number, number, number, number]): boolean {
+function isPrivateIpv4([a, b]: Ipv4Octets): boolean {
   return (
     a === 0 ||
     a === 10 ||
@@ -57,7 +64,7 @@ function isPrivateIpv6(host: string): boolean {
   );
 }
 
-function ipv4FromMappedIpv6(host: string): [number, number, number, number] | null {
+function ipv4FromMappedIpv6(host: string): Ipv4Octets | null {
   const tail = host.startsWith("::ffff:")
     ? host.slice("::ffff:".length)
     : host.startsWith("0:0:0:0:0:ffff:")
@@ -72,7 +79,9 @@ function ipv4FromMappedIpv6(host: string): [number, number, number, number] | nu
   if (words.some((word) => !Number.isInteger(word) || word < 0 || word > 0xffff)) {
     return null;
   }
-  const [high, low] = words as [number, number];
+  const high = words[0];
+  const low = words[1];
+  if (high === undefined || low === undefined) return null;
   return [high >> 8, high & 0xff, low >> 8, low & 0xff];
 }
 
