@@ -20,10 +20,10 @@ const eslintConfig = defineConfig([
   ...nextTs,
   {
     rules: {
-      complexity: ["warn", { max: 20 }],
-      "max-depth": ["warn", 4],
-      "max-params": ["warn", 5],
-      "no-duplicate-imports": "warn",
+      complexity: ["error", { max: 20 }],
+      "max-depth": ["error", 4],
+      "max-params": ["error", 5],
+      "no-duplicate-imports": "error",
       "no-restricted-syntax": [
         "error",
         {
@@ -70,6 +70,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "desktop/dist/**",
     "desktop/project.mjs",
+    "tools/oxlint/anti-slop/**",
     "dist-desktop/**",
     "dist-desktop-dev/**",
   ]),

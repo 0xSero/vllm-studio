@@ -13,8 +13,9 @@
     "start": "node ../scripts/project.mjs start",
     "perf:audit": "node ../scripts/project.mjs perf",
     "perf:browser": "node ../scripts/project.mjs browser-perf",
-    "lint": "eslint",
-    "lint:fix": "eslint --fix",
+    "lint": "eslint --max-warnings=0 && npm run lint:oxlint",
+    "lint:fix": "eslint --fix --max-warnings=0 && npm run lint:oxlint -- --fix",
+    "lint:oxlint": "cd .. && frontend/node_modules/.bin/oxlint --type-aware --deny-warnings --config frontend/.oxlintrc.json frontend/src frontend/desktop controller/src controller/contracts services/agent-runtime/src shared scripts",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
     "depcheck": "depcheck",
@@ -75,6 +76,7 @@
     "zustand": "4.5.7"
   },
   "devDependencies": {
+    "@oxlint/plugins": "1.80.0",
     "@tailwindcss/postcss": "4.1.18",
     "@types/node": "20.19.27",
     "@types/proper-lockfile": "4.1.4",
@@ -91,6 +93,8 @@
     "knip": "5.82.1",
     "lint-staged": "15.5.2",
     "madge": "8.0.0",
+    "oxlint": "1.80.0",
+    "oxlint-tsgolint": "7.0.2001",
     "prettier": "3.8.0",
     "tailwindcss": "4.1.18",
     "typescript": "5.9.3"
