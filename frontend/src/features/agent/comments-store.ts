@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { isRecord } from "@/lib/guards";
+import { Schema } from "effect";
 
 export type Comment = {
   id: string;
@@ -15,6 +15,17 @@ type CommentsDocument = {
   files: Record<string, Comment[]>;
 };
 
+const CommentSchema = Schema.Struct({
+  id: Schema.String,
+  line: Schema.Number,
+  body: Schema.String,
+  createdAt: Schema.String,
+});
+const CommentsDocumentSchema = Schema.Struct({
+  files: Schema.Record(Schema.String, Schema.Array(CommentSchema)),
+});
+const decodeCommentsDocument = Schema.decodeUnknownSync(CommentsDocumentSchema);
+
 function commentsPath(rootCwd: string): string {
   return path.join(rootCwd, ".local-studio", "comments.json");
 }
@@ -22,8 +33,15 @@ function commentsPath(rootCwd: string): string {
 async function readDocument(rootCwd: string): Promise<CommentsDocument> {
   try {
     const parsed: unknown = JSON.parse(await readFile(commentsPath(rootCwd), "utf-8"));
-    if (!isRecord(parsed) || !isRecord(parsed.files)) return { files: {} };
-    return { files: parsed.files as CommentsDocument["files"] };
+    const document = decodeCommentsDocument(parsed);
+    return {
+      files: Object.fromEntries(
+        Object.entries(document.files).map(([file, comments]) => [
+          file,
+          comments.map((comment) => ({ ...comment })),
+        ]),
+      ),
+    };
   } catch {
     return { files: {} };
   }

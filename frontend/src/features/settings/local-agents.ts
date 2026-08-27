@@ -6,10 +6,11 @@
  * in the file and backing the file up before the first modification.
  */
 import path from "node:path";
-import { isRecord } from "@/lib/guards";
+import { Option, Schema } from "effect";
 import {
   backupExistingFile,
   existingFileMode,
+  JsonRecordSchema,
   pathExists,
   readJsonFile,
   readYamlFile,
@@ -46,6 +47,14 @@ import type {
 export { LOCAL_AGENT_IDS, type LocalAgentId, type LocalAgentTarget } from "./local-agent-types";
 export type { AttachAction, AttachModelInput, AttachResult, LocalAgentModel };
 export { detectLocalAgents };
+
+const decodeLocalAgentConfig = JsonRecordSchema.pipe(Schema.decodeUnknownOption);
+
+interface AgentConfigFile {
+  exists: boolean;
+  config?: JsonRecord;
+  error?: string;
+}
 
 interface AgentAttachPlan {
   configPath: string;
@@ -125,13 +134,25 @@ async function attachToAgent(
     };
   }
 
-  let file: { exists: boolean; config?: JsonRecord; error?: string };
+  let file: AgentConfigFile;
   if (format === "yaml") {
     const yamlFile = await readYamlFile(configPath);
     if (yamlFile.error) {
       return { agent, ok: false, configPath, error: yamlFile.error };
     }
-    file = { exists: yamlFile.exists, config: yamlFile.document?.toJS() as JsonRecord | undefined };
+    const decodedConfig = Option.map(
+      decodeLocalAgentConfig(yamlFile.document?.toJS()),
+      (config) => ({ ...config }),
+    );
+    if (yamlFile.exists && Option.isNone(decodedConfig)) {
+      return {
+        agent,
+        ok: false,
+        configPath,
+        error: `${configPath} does not contain a YAML object`,
+      };
+    }
+    file = { exists: yamlFile.exists, config: Option.getOrUndefined(decodedConfig) };
   } else {
     file = await readJsonFile(configPath);
   }
@@ -157,14 +178,15 @@ async function attachToAgent(
   const action: AttachAction = file.exists ? mergeAction : "created-file";
   const extraUpdates =
     agent === "omp" ? await enableOmpModel(home, model, config).catch(() => undefined) : undefined;
-  return {
+  const result: AttachResult = {
     agent,
     ok: true,
     configPath,
     backupPath,
     action,
-    ...(extraUpdates ? { extraUpdates } : {}),
   };
+  if (extraUpdates) result.extraUpdates = extraUpdates;
+  return result;
 }
 
 async function enableOmpModel(
@@ -177,8 +199,10 @@ async function enableOmpModel(
   const settingsPath = ompSettingsPath(home);
   const settings = await readYamlFile(settingsPath);
   if (settings.error || !settings.exists || !settings.document) return undefined;
-  const doc = settings.document.toJS() as JsonRecord | undefined;
-  if (!isRecord(doc)) return undefined;
+  const doc = Option.getOrUndefined(
+    Option.map(decodeLocalAgentConfig(settings.document.toJS()), (config) => ({ ...config })),
+  );
+  if (!doc) return undefined;
   const enabled = doc["enabledModels"];
   if (!Array.isArray(enabled) || enabled.length === 0) return undefined;
   const selector = `${providerKey}/${model.modelId}`;

@@ -16,7 +16,7 @@ export const hermesConfigPath = (home: string): string => path.join(home, ".herm
 export const ompSettingsPath = (home: string): string =>
   path.join(home, ".omp", "agent", "config.yml");
 
-export const ompConfigCandidatePaths = (home: string): { yml: string; json: string } => ({
+export const ompConfigCandidatePaths = (home: string) => ({
   yml: path.join(home, ".omp", "agent", "models.yml"),
   json: path.join(home, ".omp", "agent", "models.json"),
 });
@@ -28,7 +28,7 @@ export async function resolveOmpConfigPath(home: string): Promise<string> {
   return yml;
 }
 
-export const opencodeCandidatePaths = (home: string): { xdg: string; dot: string } => ({
+export const opencodeCandidatePaths = (home: string) => ({
   xdg: path.join(home, ".config", "opencode", "opencode.json"),
   dot: path.join(home, ".opencode", "config.json"),
 });

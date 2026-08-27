@@ -3,8 +3,9 @@
  * mutating the parsed config in place so unrelated keys keep their original
  * order and any fields this feature doesn't know about survive untouched.
  */
+import { Schema } from "effect";
 import type { AttachAction, LocalAgentModel } from "./local-agent-types";
-import { sameBaseUrl, type JsonRecord } from "./local-agent-config-file-io";
+import { sameBaseUrl, type JsonRecord, type JsonValue } from "./local-agent-config-file-io";
 import { isRecord } from "@/lib/guards";
 
 const DEFAULT_PROVIDER_KEY = "local-studio";
@@ -20,8 +21,9 @@ const slugify = (value: string): string =>
   value.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 export function mergePiConfig(config: JsonRecord, model: LocalAgentModel): AttachAction {
-  if (!isRecord(config["providers"])) config["providers"] = {};
-  const providers = config["providers"] as JsonRecord;
+  const providerValue = config["providers"];
+  const providers: JsonRecord = isRecord(providerValue) ? providerValue : {};
+  if (!isRecord(providerValue)) config["providers"] = providers;
 
   const modelEntry: JsonRecord = {
     id: model.modelId,
@@ -38,8 +40,9 @@ export function mergePiConfig(config: JsonRecord, model: LocalAgentModel): Attac
     (provider) => isRecord(provider) && sameBaseUrl(provider["baseUrl"], model.baseUrl),
   );
   if (isRecord(existing)) {
-    if (!Array.isArray(existing["models"])) existing["models"] = [];
-    const models = existing["models"] as unknown[];
+    const modelValue = existing["models"];
+    const models: JsonValue[] = Array.isArray(modelValue) ? modelValue : [];
+    if (!Array.isArray(modelValue)) existing["models"] = models;
     const index = models.findIndex((entry) => isRecord(entry) && entry["id"] === model.modelId);
     if (index >= 0) {
       models[index] = modelEntry;
@@ -69,8 +72,9 @@ export function providerKeyForBaseUrl(config: JsonRecord, baseUrl: string): stri
 }
 
 export function mergeOpencodeConfig(config: JsonRecord, model: LocalAgentModel): AttachAction {
-  if (!isRecord(config["provider"])) config["provider"] = {};
-  const providers = config["provider"] as JsonRecord;
+  const providerValue = config["provider"];
+  const providers: JsonRecord = isRecord(providerValue) ? providerValue : {};
+  if (!isRecord(providerValue)) config["provider"] = providers;
 
   const modelEntry: JsonRecord = {
     id: model.modelId,
@@ -84,8 +88,9 @@ export function mergeOpencodeConfig(config: JsonRecord, model: LocalAgentModel):
     return isRecord(options) && sameBaseUrl(options["baseURL"], model.baseUrl);
   });
   if (isRecord(existing)) {
-    if (!isRecord(existing["models"])) existing["models"] = {};
-    const models = existing["models"] as JsonRecord;
+    const modelValue = existing["models"];
+    const models: JsonRecord = isRecord(modelValue) ? modelValue : {};
+    if (!isRecord(modelValue)) existing["models"] = models;
     const action: AttachAction = model.modelId in models ? "updated" : "added";
     models[model.modelId] = modelEntry;
     return action;
@@ -102,8 +107,9 @@ export function mergeOpencodeConfig(config: JsonRecord, model: LocalAgentModel):
 }
 
 export function mergeDroidConfig(config: JsonRecord, model: LocalAgentModel): AttachAction {
-  if (!Array.isArray(config["customModels"])) config["customModels"] = [];
-  const customModels = config["customModels"] as unknown[];
+  const customModelValue = config["customModels"];
+  const customModels: JsonValue[] = Array.isArray(customModelValue) ? customModelValue : [];
+  if (!Array.isArray(customModelValue)) config["customModels"] = customModels;
 
   const existing = customModels.find(
     (entry) =>
@@ -122,10 +128,12 @@ export function mergeDroidConfig(config: JsonRecord, model: LocalAgentModel): At
     return "updated";
   }
 
-  const indexes = customModels
-    .filter(isRecord)
-    .map((entry) => entry["index"])
-    .filter((value): value is number => typeof value === "number");
+  const indexes: number[] = [];
+  for (const entry of customModels) {
+    if (!isRecord(entry)) continue;
+    const parsedIndex = Schema.decodeUnknownOption(Schema.Number)(entry["index"]);
+    if (parsedIndex._tag === "Some") indexes.push(parsedIndex.value);
+  }
   const index = indexes.length > 0 ? Math.max(...indexes) + 1 : 0;
   customModels.push({
     model: model.modelId,
@@ -142,16 +150,22 @@ export function mergeDroidConfig(config: JsonRecord, model: LocalAgentModel): At
 }
 
 export function mergeHermesConfig(config: JsonRecord, model: LocalAgentModel): AttachAction {
-  if (!Array.isArray(config["custom_models"])) config["custom_models"] = [];
-  const customModels = config["custom_models"] as unknown[];
+  const customModelValue = config["custom_models"];
+  const customModels: JsonValue[] = Array.isArray(customModelValue) ? customModelValue : [];
+  if (!Array.isArray(customModelValue)) config["custom_models"] = customModels;
 
-  const normaliseKey = (entry: unknown, key: "model" | "name") =>
-    isRecord(entry) && typeof entry[key] === "string" ? entry[key] : "";
+  const ConfigKeySchema = Schema.Struct({
+    model: Schema.optional(Schema.String),
+    name: Schema.optional(Schema.String),
+  });
+  type ConfigKey = typeof ConfigKeySchema.Type;
+  const normaliseKey = (entry: ConfigKey, key: "model" | "name") => entry[key] ?? "";
 
   const existing = customModels.find((entry) => {
     if (!isRecord(entry)) return false;
-    const modelKey = normaliseKey(entry, "model");
-    const nameKey = normaliseKey(entry, "name");
+    const parsedEntry = Schema.decodeUnknownOption(ConfigKeySchema)(entry);
+    const modelKey = parsedEntry._tag === "Some" ? normaliseKey(parsedEntry.value, "model") : "";
+    const nameKey = parsedEntry._tag === "Some" ? normaliseKey(parsedEntry.value, "name") : "";
     return (
       (modelKey === model.modelId || nameKey === model.modelId) &&
       sameBaseUrl(entry["base_url"], model.baseUrl)
@@ -167,10 +181,12 @@ export function mergeHermesConfig(config: JsonRecord, model: LocalAgentModel): A
     return "updated";
   }
 
-  const indexes = customModels
-    .filter(isRecord)
-    .map((entry) => entry["index"])
-    .filter((value): value is number => typeof value === "number");
+  const indexes: number[] = [];
+  for (const entry of customModels) {
+    if (!isRecord(entry)) continue;
+    const parsedIndex = Schema.decodeUnknownOption(Schema.Number)(entry["index"]);
+    if (parsedIndex._tag === "Some") indexes.push(parsedIndex.value);
+  }
   const index = indexes.length > 0 ? Math.max(...indexes) + 1 : 0;
   const entry: JsonRecord = {
     name: model.displayName,

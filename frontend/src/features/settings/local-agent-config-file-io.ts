@@ -7,14 +7,29 @@ import { chmod, copyFile, mkdir, readFile, rename, stat, writeFile } from "node:
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import YAML from "yaml";
-import { isRecord } from "@/lib/guards";
+import { Schema } from "effect";
 
-export type JsonRecord = Record<string, unknown>;
+export type JsonValue = null | boolean | number | string | JsonValue[] | JsonRecord;
+export type JsonRecord = { [key: string]: JsonValue };
+
+const JsonValueSchema: Schema.Codec<JsonValue, JsonValue> = Schema.suspend(() =>
+  Schema.Union([
+    Schema.Null,
+    Schema.Boolean,
+    Schema.Number,
+    Schema.String,
+    Schema.mutable(Schema.Array(JsonValueSchema)),
+    Schema.Record(Schema.String, JsonValueSchema),
+  ]),
+);
+export const JsonRecordSchema = Schema.Record(Schema.String, JsonValueSchema);
+const decodeJsonRecord = Schema.decodeUnknownOption(JsonRecordSchema);
+const isString = Schema.is(Schema.String);
 
 const normalizeBaseUrl = (url: string): string => url.trim().replace(/\/+$/, "");
 
-export const sameBaseUrl = (a: unknown, b: string): boolean =>
-  typeof a === "string" && normalizeBaseUrl(a) === normalizeBaseUrl(b);
+export const sameBaseUrl = (a: JsonValue, b: string): boolean =>
+  isString(a) && normalizeBaseUrl(a) === normalizeBaseUrl(b);
 
 export async function pathExists(target: string): Promise<boolean> {
   try {
@@ -36,10 +51,11 @@ export async function readJsonFile(
   }
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!isRecord(parsed)) {
+    const config = decodeJsonRecord(parsed);
+    if (config._tag === "None") {
       return { exists: true, error: `${file} does not contain a JSON object` };
     }
-    return { exists: true, config: parsed };
+    return { exists: true, config: { ...config.value } };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { exists: true, error: `${file} is not valid JSON (${message}); refusing to modify it` };

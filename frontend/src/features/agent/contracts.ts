@@ -1,4 +1,5 @@
 import type { AgentImageInput } from "@shared/agent/agent-image-input";
+import { Schema } from "effect";
 
 export type { AgentImageInput };
 // The turn wire contract + generic body-field helpers live in
@@ -30,7 +31,6 @@ import {
   stringField,
   stringArray,
   type ParseResult,
-  type AgentTurnRuntimeStatus,
   type AgentTurnCommandResult,
 } from "@shared/agent/agent-turn";
 
@@ -64,9 +64,40 @@ export type GitAction =
   | { action: "add_worktree"; branch: string; path: string }
   | { action: "remove_worktree"; path: string };
 
-export function parseGitAction(input: unknown): ParseResult<GitAction> {
+type AgentContractInput = typeof Schema.Unknown.Encoded;
+
+const isString = Schema.is(Schema.String);
+const AgentTurnRuntimeStatusSchema = Schema.Struct({
+  active: Schema.optional(Schema.Boolean),
+  running: Schema.optional(Schema.Boolean),
+  piSessionId: Schema.optional(Schema.NullOr(Schema.String)),
+  modelId: Schema.optional(Schema.NullOr(Schema.String)),
+  eventSeq: Schema.optional(Schema.Number),
+  contextUsage: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        tokens: Schema.NullOr(Schema.Number),
+        contextWindow: Schema.Number,
+        percent: Schema.NullOr(Schema.Number),
+        shouldCompact: Schema.Boolean,
+      }),
+    ),
+  ),
+});
+const AgentTurnCommandResultSchema = Schema.Struct({
+  type: Schema.Literal("command"),
+  outcome: Schema.Literals(["accepted", "queued", "rejected"]),
+  runtimeSessionId: Schema.String,
+  piSessionId: Schema.optional(Schema.NullOr(Schema.String)),
+  active: Schema.Boolean,
+  status: Schema.optional(AgentTurnRuntimeStatusSchema),
+  error: Schema.optional(Schema.String),
+});
+const isAgentTurnCommandResult = Schema.is(AgentTurnCommandResultSchema);
+
+export function parseGitAction(input: AgentContractInput): ParseResult<GitAction> {
   const body = objectRecord(input);
-  if (!body || typeof body.action !== "string") {
+  if (!body || !isString(body.action)) {
     return { ok: false, error: "action is required" };
   }
   if (body.action === "init") return { ok: true, value: { action: "init" } };
@@ -115,32 +146,20 @@ export type TerminalRunResult = {
   error?: string;
 };
 
-export function parseTerminalRunRequest(input: unknown): ParseResult<TerminalRunRequest> {
+export function parseTerminalRunRequest(
+  input: AgentContractInput,
+): ParseResult<TerminalRunRequest> {
   const body = objectRecord(input);
   if (!body) return { ok: false, error: "Invalid JSON body" };
   const command = stringField(body, "command", true);
   return command.ok ? { ok: true, value: { command: command.value! } } : command;
 }
 
-export function parseAgentTurnCommandResult(input: unknown): AgentTurnCommandResult | null {
-  const payload = objectRecord(input);
-  if (!payload || payload.type !== "command") return null;
-  const outcome =
-    payload.outcome === "accepted" || payload.outcome === "queued" || payload.outcome === "rejected"
-      ? payload.outcome
-      : null;
-  const runtimeSessionId =
-    typeof payload.runtimeSessionId === "string" && payload.runtimeSessionId.trim()
-      ? payload.runtimeSessionId.trim()
-      : "";
-  if (!outcome || !runtimeSessionId) return null;
-  return {
-    type: "command",
-    outcome,
-    runtimeSessionId,
-    piSessionId: typeof payload.piSessionId === "string" ? payload.piSessionId : null,
-    active: payload.active === true,
-    status: objectRecord(payload.status) ? (payload.status as AgentTurnRuntimeStatus) : undefined,
-    error: typeof payload.error === "string" ? payload.error : undefined,
-  };
+export function parseAgentTurnCommandResult(
+  input: AgentContractInput,
+): AgentTurnCommandResult | null {
+  if (!isAgentTurnCommandResult(input)) return null;
+  const runtimeSessionId = input.runtimeSessionId.trim();
+  if (!runtimeSessionId) return null;
+  return { ...input, runtimeSessionId };
 }

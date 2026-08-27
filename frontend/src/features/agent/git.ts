@@ -210,7 +210,7 @@ export async function listWorktrees(cwd: string): Promise<GitWorktree[]> {
     }
   }
   if (entry) worktrees.push({ ...entry, current: false });
-  const resolvedCwd = await path.resolve(cwd);
+  const resolvedCwd = path.resolve(cwd);
   return worktrees.map((worktree) => ({
     ...worktree,
     current: path.resolve(worktree.path) === resolvedCwd,
@@ -279,7 +279,12 @@ function parseRefs(raw: string, current: string | null): GitRef[] {
     .map((name) => ({ name, current: name === current, remote: name.includes("/") }));
 }
 
-export function numstatStats(numstat: string): { additions: number; deletions: number } {
+export interface GitDiffStats {
+  additions: number;
+  deletions: number;
+}
+
+export function numstatStats(numstat: string): GitDiffStats {
   let additions = 0;
   let deletions = 0;
   for (const line of numstat.split("\n")) {
@@ -305,10 +310,15 @@ const MAX_UNTRACKED_DIFF_BYTES = 1_500_000;
  * `additions` is the file's true line count (matching git's working-tree count),
  * not the possibly-truncated number of rendered `+` rows.
  */
+export interface UntrackedFileDiffBlock {
+  block: string;
+  additions: number;
+}
+
 export function buildUntrackedFileDiffBlock(
   file: string,
   contents: string,
-): { block: string; additions: number } {
+): UntrackedFileDiffBlock {
   const header = `diff --git a/${file} b/${file}\nnew file mode 100644`;
   if (contents.includes("\0")) {
     return { block: `${header}\nBinary files /dev/null and b/${file} differ\n`, additions: 0 };
