@@ -12,34 +12,30 @@ import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { Schema } from "effect";
-import {
-  getAgentDir,
-  SessionManager,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+import { getAgentDir, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { resolveDataDir } from "./data-dir";
 import { rolloutCache, statRollout } from "./rollout-cache";
 import { transcriptSource } from "./transcript-sidecar";
-import {
-  cleanSessionTitle,
-  sessionTitleFromUserPrompt,
-} from "../../../shared/agent/session-title";
+import { cleanSessionTitle, sessionTitleFromUserPrompt } from "../../../shared/agent/session-title";
 import { readSessionListMetadata } from "./session-metadata-store";
 import type { SessionSummary } from "../../../shared/agent/session-summary";
-import {
-  emptyUsageTotals,
-  readSessionUsageTotals,
-  type SessionUsageTotals,
-} from "./session-usage";
+import { emptyUsageTotals, readSessionUsageTotals, type SessionUsageTotals } from "./session-usage";
 export type { SessionSummary } from "../../../shared/agent/session-summary";
 
 const SessionEventSchema = Schema.Record(Schema.String, Schema.Unknown);
 const MessageSchema = Schema.Struct({
   role: Schema.optional(Schema.String),
-  content: Schema.optional(Schema.Union([
-    Schema.String,
-    Schema.Array(Schema.Struct({ type: Schema.optional(Schema.String), text: Schema.optional(Schema.String) })),
-  ])),
+  content: Schema.optional(
+    Schema.Union([
+      Schema.String,
+      Schema.Array(
+        Schema.Struct({
+          type: Schema.optional(Schema.String),
+          text: Schema.optional(Schema.String),
+        }),
+      ),
+    ]),
+  ),
   timestamp: Schema.optional(Schema.String),
 });
 export type SessionEvent = typeof SessionEventSchema.Type;
@@ -85,11 +81,12 @@ export function encodeCwdForPi(cwd: string): string {
 export function configuredPiSessionDir(cwd: string): string | undefined {
   const envSessionDir = process.env.PI_CODING_AGENT_SESSION_DIR?.trim();
   if (envSessionDir) {
-    const expanded = envSessionDir === "~"
-      ? homedir()
-      : envSessionDir.startsWith(`~${path.sep}`)
-        ? path.join(homedir(), envSessionDir.slice(2))
-        : envSessionDir;
+    const expanded =
+      envSessionDir === "~"
+        ? homedir()
+        : envSessionDir.startsWith(`~${path.sep}`)
+          ? path.join(homedir(), envSessionDir.slice(2))
+          : envSessionDir;
     return path.resolve(expanded);
   }
   return SettingsManager.create(cwd, getAgentDir()).getSessionDir();
@@ -128,7 +125,11 @@ function sessionCwdMatches(summaryCwd: string, cwd: string): boolean {
 
 function piTextContent(content: PiMessageContent | undefined): string | null {
   if (Array.isArray(content)) {
-    const text = content.filter((part) => part?.type === "text" && isString(part.text)).map((part) => part.text).join(" ").trim();
+    const text = content
+      .filter((part) => part?.type === "text" && isString(part.text))
+      .map((part) => part.text)
+      .join(" ")
+      .trim();
     return text || null;
   }
   if (!isString(content)) return null;
@@ -144,10 +145,13 @@ function userEventTimestamp(event: SessionEvent): string | null {
 
 function userTurnFromEvent(event: SessionEvent): UserTurn {
   if (event.type === "user_message") {
-    const content = Schema.is(MessageSchema.fields.content)(event.content) ? event.content : undefined;
+    const content = Schema.is(MessageSchema.fields.content)(event.content)
+      ? event.content
+      : undefined;
     return { isUser: true, text: piTextContent(content), at: userEventTimestamp(event) };
   }
-  if (event.type !== "message" && event.type !== "message_end") return { isUser: false, text: null, at: null };
+  if (event.type !== "message" && event.type !== "message_end")
+    return { isUser: false, text: null, at: null };
   const message = isMessage(event.message) ? event.message : undefined;
   if (message?.role !== "user") return { isUser: false, text: null, at: null };
   return { isUser: true, text: piTextContent(message.content), at: userEventTimestamp(event) };
@@ -228,7 +232,8 @@ async function scanSessionSummary(filepath: string) {
       if (!firstUserMessage) {
         const userTurn = userTurnFromEvent(event);
         if (userTurn.isUser && userTurn.text) {
-          firstUserMessage = cleanSessionTitle(sessionTitleFromUserPrompt(userTurn.text).slice(0, 120)) || null;
+          firstUserMessage =
+            cleanSessionTitle(sessionTitleFromUserPrompt(userTurn.text).slice(0, 120)) || null;
         }
       }
       if (header && firstUserMessage) break;
@@ -613,10 +618,7 @@ function lineIsInert(bytes: Buffer, start: number, end: number): boolean {
 // begins mid-line. Returns the parsed events plus the region's leading partial
 // segment (bytes up to and including the first newline) — the caller carries it
 // into the next-earlier chunk, where the straddling line becomes complete.
-function parseRegion(
-  bytes: Buffer,
-  regionStart: number,
-) {
+function parseRegion(bytes: Buffer, regionStart: number) {
   const events: Array<{ offset: number; event: SessionEvent }> = [];
   let lineStart = 0;
   let head = Buffer.alloc(0);
@@ -680,6 +682,25 @@ async function readSessionHead(
     usage: emptyUsageTotals(),
     piSessionId: null,
   };
+  const recordHeadEvent = (event: SessionEvent): void => {
+    if (isHeaderEvent(event)) headerEvents.push(event);
+    if (event.type === "session") {
+      if (isString(event.timestamp)) meta.startedAt = event.timestamp;
+      const model = [event.modelId, event.model, event.model_id].find(isString);
+      if (model) meta.modelId = model;
+      if (isString(event.id)) meta.piSessionId = event.id;
+    }
+    if (event.type === "model_change") {
+      const model = [event.model, event.modelId].find(isString);
+      if (model) meta.modelId = model;
+    }
+    if (!meta.title) {
+      const userTurn = userTurnFromEvent(event);
+      if (userTurn.isUser && userTurn.text) {
+        meta.title = cleanSessionTitle(userTurn.text.slice(0, 120)) || null;
+      }
+    }
+  };
   const stream = createReadStream(filepath, { encoding: "utf-8" });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
   try {
@@ -692,23 +713,7 @@ async function readSessionHead(
         if (scanned >= HEAD_SCAN_LINE_CAP) break;
         continue;
       }
-      if (isHeaderEvent(event)) headerEvents.push(event);
-      if (event.type === "session") {
-        if (isString(event.timestamp)) meta.startedAt = event.timestamp;
-        const model = [event.modelId, event.model, event.model_id].find(isString);
-        if (model) meta.modelId = model;
-        if (isString(event.id)) meta.piSessionId = event.id;
-      }
-      if (event.type === "model_change") {
-        const model = [event.model, event.modelId].find(isString);
-        if (model) meta.modelId = model;
-      }
-      if (!meta.title) {
-        const userTurn = userTurnFromEvent(event);
-        if (userTurn.isUser && userTurn.text) {
-          meta.title = cleanSessionTitle(userTurn.text.slice(0, 120)) || null;
-        }
-      }
+      recordHeadEvent(event);
       if (headScanComplete(meta, scanned, headerEvents.length)) {
         // Header block is contiguous at the top; once a title is found past it
         // there is nothing more to learn from the head.
@@ -727,12 +732,7 @@ async function readSessionHead(
 // chosen user-turn boundary forward, plus the `before` cursor for paging
 // further back. Memory stays bounded: one chunk + the retained events; inert
 // lines are skipped by byte prefix without ever being decoded.
-function readTailRegion(
-  filepath: string,
-  size: number,
-  tail: number,
-  before: number | undefined,
-) {
+function readTailRegion(filepath: string, size: number, tail: number, before: number | undefined) {
   const end = before === undefined ? size : Math.max(0, Math.min(before, size));
   if (end <= 0) return { events: [], cursor: null };
   const fd = openSync(filepath, "r");

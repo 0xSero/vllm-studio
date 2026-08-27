@@ -86,23 +86,23 @@ function compareVersions(left: string, right: string): number {
 }
 
 function pluginView(manifest: PluginManifest, source: string): PluginView {
-  const version = manifest.version?.trim() || "0.0.0";
+  const pluginInterface = manifest.interface ?? {};
   const view = {
     id: manifest.name,
     name: manifest.name,
-    displayName: manifest.interface?.displayName?.trim() || manifest.name,
-    version,
-    description: manifest.interface?.shortDescription?.trim() || manifest.description?.trim() || "",
-    category: manifest.interface?.category?.trim() || "Other",
+    displayName: pluginInterface.displayName?.trim() || manifest.name,
+    version: manifest.version?.trim() || "0.0.0",
+    description: pluginInterface.shortDescription?.trim() || manifest.description?.trim() || "",
+    category: pluginInterface.category?.trim() || "Other",
     source,
-    capabilities: manifest.interface?.capabilities ?? [],
+    capabilities: pluginInterface.capabilities ?? [],
     provides: {
       skills: Boolean(manifest.skills),
       mcpServers: Boolean(manifest.mcpServers),
       apps: Boolean(manifest.apps),
     },
   };
-  const brandColor = manifest.interface?.brandColor;
+  const { brandColor } = pluginInterface;
   return brandColor ? { ...view, brandColor } : view;
 }
 

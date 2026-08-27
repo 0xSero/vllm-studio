@@ -84,15 +84,7 @@ function taskPrompt(name: string, task: string): string {
   ].join("\n");
 }
 
-export async function runSubagent(input: {
-  parentPiSessionId: string;
-  name: string;
-  task: string;
-  modelId?: string;
-}): Promise<{ piSessionId: string | null; result: string }> {
-  const registry = state();
-  const { parentPiSessionId } = input;
-
+function requireParentRuntime(registry: SubagentState, parentPiSessionId: string) {
   if (
     registry.childPiSessionIds.has(parentPiSessionId) ||
     sessionSubagentLink(parentPiSessionId) !== null
@@ -106,25 +98,37 @@ export async function runSubagent(input: {
   if (parent.sessionId.startsWith(SUBAGENT_SESSION_PREFIX)) {
     throw new Error("Subagents cannot spawn their own subagents.");
   }
-  const running = listSubagents(parentPiSessionId).filter((run) => run.status === "running");
+  const runs = listSubagents(parentPiSessionId);
+  const running = runs.filter((run) => run.status === "running");
   if (running.length >= MAX_CONCURRENT_PER_PARENT) {
     throw new Error(
       `Too many subagents already running (${running.length}). Wait for one to finish.`,
     );
   }
+  return { parent, runs };
+}
 
-  const siblingCount = listSubagents(parentPiSessionId).length;
+export async function runSubagent(input: {
+  parentPiSessionId: string;
+  name: string;
+  task: string;
+  modelId?: string;
+}): Promise<{ piSessionId: string | null; result: string }> {
+  const registry = state();
+  const { parentPiSessionId } = input;
+
+  const { parent, runs } = requireParentRuntime(registry, parentPiSessionId);
+
   const run: SubagentRun = {
     id: randomUUID().slice(0, 8),
     parentPiSessionId,
-    name: input.name.trim() || NICKNAMES[siblingCount % NICKNAMES.length],
+    name: input.name.trim() || NICKNAMES[runs.length % NICKNAMES.length],
     task: input.task,
     piSessionId: null,
     status: "running",
     startedAt: new Date().toISOString(),
     finishedAt: null,
   };
-  const runs = registry.byParent.get(parentPiSessionId) ?? [];
   runs.push(run);
   registry.byParent.set(parentPiSessionId, runs);
 

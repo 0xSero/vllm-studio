@@ -227,6 +227,19 @@ function emptySecrets(): Secrets {
   return { refreshTokens: {}, pendingRevocations: [] };
 }
 
+function savedClientSecrets(
+  incomingSecret: string | undefined,
+  sameClient: boolean,
+  currentSecrets: Secrets,
+): Secrets {
+  const clientSecret = incomingSecret || (sameClient ? currentSecrets.clientSecret : undefined);
+  const secrets: Secrets = {
+    refreshTokens: sameClient ? currentSecrets.refreshTokens : {},
+    pendingRevocations: pendingRevocations(currentSecrets),
+  };
+  return clientSecret ? { ...secrets, clientSecret } : secrets;
+}
+
 function connectionView(
   id: GoogleWorkspacePluginId,
   connection?: Connection,
@@ -274,8 +287,7 @@ export function saveGoogleClient(
         yield* retryPendingGoogleRevocations(vault, dependencies);
         const current = yield* metadataEffect();
         const currentSecrets =
-          (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ??
-          emptySecrets();
+          (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ?? emptySecrets();
         const sameClient = current?.clientId === clientId;
         const revokeToken = GOOGLE_WORKSPACE_PLUGIN_IDS.flatMap((id) =>
           currentSecrets.refreshTokens[id] ? [currentSecrets.refreshTokens[id]] : [],
@@ -287,15 +299,7 @@ export function saveGoogleClient(
           yield* disableGoogleWorkspaceConnectors();
           if (current) yield* writeMetadataEffect({ ...current, connections: {} });
         }
-        const secrets: Secrets = {
-          ...(incomingSecret
-            ? { clientSecret: incomingSecret }
-            : sameClient && currentSecrets.clientSecret
-              ? { clientSecret: currentSecrets.clientSecret }
-              : {}),
-          refreshTokens: sameClient ? currentSecrets.refreshTokens : {},
-          pendingRevocations: pendingRevocations(currentSecrets),
-        };
+        const secrets = savedClientSecrets(incomingSecret, sameClient, currentSecrets);
         const metadata: Metadata = {
           clientId,
           hasClientSecret: Boolean(secrets.clientSecret),
@@ -558,9 +562,7 @@ function updatePendingRevocation(
   present: boolean,
 ): Effect.Effect<void, GoogleAccountError> {
   return Effect.gen(function* () {
-    const secrets =
-      (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ??
-      emptySecrets();
+    const secrets = (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ?? emptySecrets();
     const tokens = new Set(pendingRevocations(secrets));
     if (present) tokens.add(token);
     else tokens.delete(token);
@@ -598,9 +600,7 @@ function retryPendingGoogleRevocations(
   dependencies: GoogleOAuthDependencies,
 ): Effect.Effect<void, GoogleAccountError> {
   return Effect.gen(function* () {
-    const secrets =
-      (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ??
-      emptySecrets();
+    const secrets = (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ?? emptySecrets();
     yield* Effect.forEach(pendingRevocations(secrets), (token) =>
       promiseEffect(() => revokeGoogleGrant(token, dependencies)).pipe(
         Effect.andThen(updatePendingRevocation(vault, token, false)),
@@ -641,8 +641,7 @@ function restoreGoogleAuthorization(
   return Effect.gen(function* () {
     const currentMetadata = (yield* metadataEffect()) ?? commit.previousMetadata;
     const currentSecrets =
-      (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ??
-      commit.previousSecrets;
+      (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ?? commit.previousSecrets;
     const connections = { ...currentMetadata.connections };
     if (connections[commit.accountId]?.revision === commit.connectionRevision) {
       const previous = commit.previousMetadata.connections[commit.accountId];
@@ -703,18 +702,14 @@ function completeGoogleAuthorizationUnlocked(
   dependencies: GoogleOAuthDependencies,
   vault: OAuthVault,
 ): Effect.Effect<AuthorizationCommit, GoogleAccountError> {
+  const matchesPending = (pending: Pending | null): pending is Pending =>
+    pending !== null &&
+    pending.account === account &&
+    pending.state === input.state &&
+    (!expectedFlowId || pending.flowId === expectedFlowId);
   return Effect.gen(function* () {
-    const pending = yield* readVaultJson(
-      vault,
-      pendingKey(account),
-      PendingSchema,
-    );
-    if (
-      !pending ||
-      pending.account !== account ||
-      pending.state !== input.state ||
-      (expectedFlowId && pending.flowId !== expectedFlowId)
-    ) {
+    const pending = yield* readVaultJson(vault, pendingKey(account), PendingSchema);
+    if (!matchesPending(pending)) {
       return yield* Effect.fail(new GoogleAccountError(400, "Google sign-in state is invalid"));
     }
     yield* requireGoogleAuthorizationFlow(account, pending.flowId);
@@ -730,9 +725,7 @@ function completeGoogleAuthorizationUnlocked(
         new GoogleAccountError(409, "Google OAuth client changed; start sign-in again"),
       );
     }
-    const secrets =
-      (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ??
-      emptySecrets();
+    const secrets = (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ?? emptySecrets();
     const token = yield* authorizationRequestEffect(account, pending.flowId, () =>
       exchangeAuthorizationCode(metadata, secrets, pending, input.code, dependencies, cancellation),
     );
@@ -880,8 +873,7 @@ export function disconnectGoogleAccount(
           yield* retryPendingGoogleRevocations(vault, dependencies);
           const metadata = yield* metadataEffect();
           const secrets =
-            (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ??
-            emptySecrets();
+            (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ?? emptySecrets();
           const revokeToken =
             secrets.refreshTokens[account] ??
             GOOGLE_WORKSPACE_PLUGIN_IDS.flatMap((id) =>
@@ -968,9 +960,7 @@ export function googleAuthorizationHeaders(
       if (!metadata?.connections[account]) {
         return yield* Effect.fail(new GoogleAccountError(401, "Google account is not connected"));
       }
-      const secrets =
-        (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ??
-        emptySecrets();
+      const secrets = (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ?? emptySecrets();
       const token = yield* promiseEffect(() =>
         refreshAccessToken(account, metadata, secrets, dependencies),
       );
