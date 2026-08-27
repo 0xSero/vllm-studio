@@ -1,0 +1,362 @@
+"use client";
+import { Schema } from "effect";
+import { useState } from "react";
+import {
+  ErrorText,
+  JsonView,
+  records,
+  request,
+  useJson,
+  type Json,
+  type RecordJson,
+} from "./studio-core";
+
+const MutationResponseSchema = Schema.Record(Schema.String, Schema.Unknown);
+const decodeMutationResponse = Schema.decodeUnknownSync(MutationResponseSchema, {
+  onExcessProperty: "preserve",
+});
+const isString = Schema.is(Schema.String);
+function text(value: Json | undefined): string {
+  return isString(value) ? value : "";
+}
+function jsonBody(value: RecordJson, method = "POST"): RequestInit {
+  return { method, headers: { "content-type": "application/json" }, body: JSON.stringify(value) };
+}
+
+export function RecipeManager() {
+  const state = useJson("/api/proxy/recipes");
+  const status = useJson("/api/proxy/status");
+  const [id, setId] = useState("");
+  const [name, setName] = useState("");
+  const [model, setModel] = useState("");
+  const [backend, setBackend] = useState("llama.cpp");
+  const [message, setMessage] = useState("");
+  const run = async (path: `/api/${string}`, init?: RequestInit) => {
+    try {
+      decodeMutationResponse(await request(path, init));
+      setMessage("Recipe state reconciled with the controller");
+      await Promise.all([state.reload(), status.reload()]);
+    } catch (value) {
+      setMessage(value instanceof Error ? value.message : String(value));
+    }
+  };
+  const draft: RecordJson = {
+    id: id || name.toLowerCase().replaceAll(" ", "-"),
+    name,
+    model,
+    backend,
+  };
+  return (
+    <article>
+      <h2>Recipe editor</h2>
+      <div className="row">
+        <input value={id} onChange={(event) => setId(event.target.value)} placeholder="Recipe id" />
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Name" />
+        <input
+          value={model}
+          onChange={(event) => setModel(event.target.value)}
+          placeholder="Local model path"
+        />
+        <input
+          value={backend}
+          onChange={(event) => setBackend(event.target.value)}
+          placeholder="Backend"
+        />
+        <button
+          onClick={() =>
+            run(
+              id ? `/api/proxy/recipes/${encodeURIComponent(id)}` : "/api/proxy/recipes",
+              jsonBody(draft, id ? "PUT" : "POST"),
+            )
+          }
+        >
+          {id ? "Save recipe" : "Create recipe"}
+        </button>
+      </div>
+      <ErrorText value={message || state.error || status.error} />
+      {records(state.data, "recipes").map((recipe) => {
+        const recipeId = text(recipe.id);
+        const label = text(recipe.name) || recipeId;
+        return (
+          <div className="item" key={recipeId}>
+            <span>
+              {label} · {text(recipe.status)}
+            </span>
+            <button
+              onClick={() => {
+                setId(recipeId);
+                setName(label);
+                setModel(text(recipe.model));
+                setBackend(text(recipe.backend) || "llama.cpp");
+              }}
+            >
+              Edit
+            </button>
+            <button
+              onClick={() => {
+                const key = `local-studio.recipe.pinned.${recipeId}`;
+                localStorage.setItem(key, localStorage.getItem(key) === "1" ? "0" : "1");
+                setMessage("Recipe pin saved on this device");
+              }}
+            >
+              Pin / unpin
+            </button>
+            <button
+              onClick={() =>
+                run(`/api/proxy/launch/${encodeURIComponent(recipeId)}`, { method: "POST" })
+              }
+            >
+              Launch
+            </button>
+            <button
+              onClick={() =>
+                run(`/api/proxy/recipes/${encodeURIComponent(recipeId)}`, { method: "DELETE" })
+              }
+            >
+              Delete
+            </button>
+          </div>
+        );
+      })}
+      <JsonView value={status.data} />
+    </article>
+  );
+}
+
+export function MachineManager() {
+  const rigs = useJson("/api/proxy/studio/rigs");
+  const targets = useJson("/api/proxy/runtime/targets");
+  const providers = useJson("/api/agent/providers");
+  const [rigId, setRigId] = useState("");
+  const [nodeId, setNodeId] = useState("");
+  const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
+  const [message, setMessage] = useState("");
+  const run = async (path: `/api/${string}`, init?: RequestInit) => {
+    try {
+      decodeMutationResponse(await request(path, init));
+      setMessage("Machine configuration saved locally");
+      await Promise.all([rigs.reload(), targets.reload(), providers.reload()]);
+    } catch (value) {
+      setMessage(value instanceof Error ? value.message : String(value));
+    }
+  };
+  return (
+    <article>
+      <h2>Rigs, nodes, runtimes & providers</h2>
+      <div className="row">
+        <input
+          value={rigId}
+          onChange={(event) => setRigId(event.target.value)}
+          placeholder="Rig id for edit"
+        />
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Name" />
+        <button
+          onClick={() =>
+            run(
+              rigId
+                ? `/api/proxy/studio/rigs/${encodeURIComponent(rigId)}`
+                : "/api/proxy/studio/rigs",
+              jsonBody({ name }, rigId ? "PUT" : "POST"),
+            )
+          }
+        >
+          Save rig
+        </button>
+        <button
+          onClick={() =>
+            run(`/api/proxy/studio/rigs/${encodeURIComponent(rigId)}`, { method: "DELETE" })
+          }
+        >
+          Delete rig
+        </button>
+      </div>
+      <div className="row">
+        <input
+          value={nodeId}
+          onChange={(event) => setNodeId(event.target.value)}
+          placeholder="Node id for edit"
+        />
+        <input
+          value={address}
+          onChange={(event) => setAddress(event.target.value)}
+          placeholder="Node address"
+        />
+        <button
+          onClick={() =>
+            run(
+              nodeId
+                ? `/api/proxy/studio/rigs/${encodeURIComponent(rigId)}/nodes/${encodeURIComponent(nodeId)}`
+                : `/api/proxy/studio/rigs/${encodeURIComponent(rigId)}/nodes`,
+              jsonBody({ name, address }, nodeId ? "PUT" : "POST"),
+            )
+          }
+        >
+          Save node
+        </button>
+        <button
+          onClick={() =>
+            run(
+              `/api/proxy/studio/rigs/${encodeURIComponent(rigId)}/nodes/${encodeURIComponent(nodeId)}`,
+              { method: "DELETE" },
+            )
+          }
+        >
+          Delete node
+        </button>
+      </div>
+      {records(targets.data, "targets").map((target) => {
+        const targetId = text(target.id);
+        return (
+          <div className="item" key={targetId}>
+            <span>{text(target.name) || targetId}</span>
+            <button
+              onClick={() =>
+                run(`/api/proxy/runtime/targets/${encodeURIComponent(targetId)}/select`, {
+                  method: "POST",
+                })
+              }
+            >
+              Select runtime
+            </button>
+          </div>
+        );
+      })}
+      <p>
+        Provider accounts are created and removed through explicit sign-in and sign-out in
+        Integrations. Secrets stay in the local vault.
+      </p>
+      <ErrorText value={message || rigs.error || targets.error || providers.error} />
+      <JsonView value={rigs.data} />
+      <JsonView value={providers.data} />
+    </article>
+  );
+}
+
+export function DesktopManager() {
+  const bridge = globalThis.window?.localStudioDesktop;
+  const [path, setPath] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [deployHost, setDeployHost] = useState("");
+  const [hotkey, setHotkey] = useState("");
+  const [output, setOutput] = useState<Json | null>(null);
+  const [error, setError] = useState("");
+  const call = async (operation: () => Promise<object | string | number | boolean | null>) => {
+    try {
+      setOutput(JSON.stringify(await operation()));
+      setError("");
+    } catch (value) {
+      setError(value instanceof Error ? value.message : String(value));
+    }
+  };
+  if (!bridge)
+    return (
+      <article>
+        <h2>Desktop bridge</h2>
+        <p>
+          Desktop-only project, preference, update, quick panel, open, and reveal controls appear in
+          the packaged app.
+        </p>
+      </article>
+    );
+  return (
+    <article>
+      <h2>Desktop bridge</h2>
+      <div className="row">
+        <button onClick={() => call(() => bridge.openDirectory())}>Add project folder</button>
+        <button onClick={() => call(() => bridge.listProjects())}>List projects</button>
+        <input
+          value={projectId}
+          onChange={(event) => setProjectId(event.target.value)}
+          placeholder="Project id"
+        />
+        <button onClick={() => call(() => bridge.removeProject(projectId))}>Remove project</button>
+        <input
+          value={path}
+          onChange={(event) => setPath(event.target.value)}
+          placeholder="Local path"
+        />
+        <button onClick={() => call(() => bridge.openPath(path))}>Open</button>
+        <button onClick={() => call(() => bridge.revealPath(path))}>Reveal</button>
+      </div>
+      <div className="row">
+        <button onClick={() => call(() => bridge.loadUiPreferences())}>Load preferences</button>
+        <button
+          onClick={() =>
+            call(() =>
+              bridge
+                .saveUiPreferences({ theme: document.documentElement.dataset.theme ?? "dark" })
+                .then(() => true),
+            )
+          }
+        >
+          Save preferences
+        </button>
+        <button onClick={() => call(() => bridge.getUpdateStatus())}>Check updates</button>
+        <button onClick={() => call(() => bridge.startUpdate())}>Install update</button>
+      </div>
+      <div className="row">
+        <input
+          value={hotkey}
+          onChange={(event) => setHotkey(event.target.value)}
+          placeholder="Quick panel hotkey"
+        />
+        <button onClick={() => call(() => bridge.quickPanel.setHotkey(hotkey))}>Set hotkey</button>
+        <button onClick={() => call(() => bridge.quickPanel.expand().then(() => true))}>
+          Open quick panel
+        </button>
+        <button onClick={() => call(() => bridge.quickPanel.dismiss().then(() => true))}>
+          Dismiss quick panel
+        </button>
+        <button
+          onClick={() =>
+            call(() => bridge.quickPanel.focusMainAndNavigate(projectId).then(() => true))
+          }
+        >
+          Open project in main window
+        </button>
+      </div>
+      <div className="row">
+        <input
+          value={deployHost}
+          onChange={(event) => setDeployHost(event.target.value)}
+          placeholder="SSH host for controller"
+        />
+        <button onClick={() => call(() => bridge.controllerDeploy.start({ host: deployHost }))}>
+          Deploy controller
+        </button>
+      </div>
+      <ErrorText value={error} />
+      {output === null ? null : <JsonView value={output} />}
+    </article>
+  );
+}
+
+export function NormalizedUsage({ value }: { value: Json | null }) {
+  const [view, setView] = useState<"models" | "activity" | "controller" | "errors">("models");
+  const rows =
+    view === "models"
+      ? records(value, "by_model")
+      : view === "activity"
+        ? records(value, "daily")
+        : view === "controller"
+          ? records(value, "by_path").concat(
+              records(records(value, "controller")[0] ?? null, "by_path"),
+            )
+          : records(value, "recent_errors");
+  return (
+    <article>
+      <div className="tabs">
+        {(["models", "activity", "controller", "errors"] as const).map((name) => (
+          <button key={name} onClick={() => setView(name)}>
+            {name}
+          </button>
+        ))}
+      </div>
+      <p>
+        Normalized {view} view · {rows.length} rows
+      </p>
+      <JsonView value={rows} />
+    </article>
+  );
+}
