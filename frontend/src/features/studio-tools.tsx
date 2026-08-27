@@ -117,6 +117,23 @@ function FileTools({ cwd }: { cwd: string }) {
       setContent(decodeFileResponse(value).content);
       return value;
     });
+  const browse = (directory = path) =>
+    run(async () => {
+      const value = await requestRecord(
+        `/api/agent/fs?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(directory)}`,
+      );
+      setPath(directory);
+      setEntries(decodeFileSearchResponse(value).entries);
+      return value;
+    });
+  const removeComment = (id: string) =>
+    run(async () => {
+      const value = await request(`/api/agent/comments?${query}&id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      setComments((items) => items.filter((entry) => entry.id !== id));
+      return value;
+    });
   return (
     <article>
       <h3>Files, preview & comments</h3>
@@ -126,7 +143,8 @@ function FileTools({ cwd }: { cwd: string }) {
           onChange={(event) => setPath(event.target.value)}
           placeholder="Relative path"
         />
-        <button onClick={open}>Open</button>
+        <button onClick={open}>Open file</button>
+        <button onClick={() => browse()}>Browse directory</button>
         <button
           onClick={() =>
             run(async () => {
@@ -192,13 +210,17 @@ function FileTools({ cwd }: { cwd: string }) {
         </button>
       </div>
       {entries.map((entry) => (
-        <button key={entry.path} onClick={() => setPath(entry.rel)}>
+        <button
+          key={entry.path}
+          onClick={() => (entry.kind === "directory" ? browse(entry.rel) : setPath(entry.rel))}
+        >
           {entry.kind}: {entry.rel}
         </button>
       ))}
       {comments.map((entry) => (
         <p key={entry.id}>
-          Line {entry.line}: {entry.body}
+          Line {entry.line}: {entry.body}{" "}
+          <button onClick={() => removeComment(entry.id)}>Delete</button>
         </p>
       ))}
       <ErrorText value={error} />
@@ -430,7 +452,19 @@ function BrowserTools() {
         </button>
         <button onClick={sendEnter}>Send Enter</button>
       </div>
-      <p>History: {history.join(" · ") || "None"}</p>
+      <p>
+        History:{" "}
+        {history.length
+          ? history.map((entry) => (
+              <button
+                key={entry}
+                onClick={() => run("/api/agent/browser/navigate", post({ url: entry }))}
+              >
+                {entry}
+              </button>
+            ))
+          : "None"}
+      </p>
       {frameUrl ? <img src={frameUrl} alt="Current browser screencast frame" /> : null}
       <ErrorText value={error} />
       {output === null ? null : <JsonView value={output} />}
@@ -444,9 +478,16 @@ function TerminalTools({ cwd }: { cwd: string }) {
   const [output, setOutput] = useState("");
   const [error, setError] = useState("");
   const stream = useRef<EventSource | null>(null);
-  useMountSubscription(() => () => stream.current?.close(), []);
-  const connect = (ptyId: string) => {
+  const reconnectTimer = useRef<number | null>(null);
+  const disconnect = () => {
     stream.current?.close();
+    stream.current = null;
+    if (reconnectTimer.current !== null) window.clearTimeout(reconnectTimer.current);
+    reconnectTimer.current = null;
+  };
+  useMountSubscription(() => disconnect, []);
+  const connect = (ptyId: string) => {
+    disconnect();
     const source = new EventSource(
       `/api/agent/terminal/pty/stream?id=${encodeURIComponent(ptyId)}`,
     );
@@ -454,7 +495,7 @@ function TerminalTools({ cwd }: { cwd: string }) {
     source.onmessage = (event) => setOutput((value) => value + atob(event.data));
     source.onerror = () => {
       source.close();
-      window.setTimeout(() => connect(ptyId), 1500);
+      reconnectTimer.current = window.setTimeout(() => connect(ptyId), 1500);
     };
     stream.current = source;
   };
@@ -477,8 +518,7 @@ function TerminalTools({ cwd }: { cwd: string }) {
     try {
       await request(`/api/agent/terminal/pty/${name}`, post({ id, ...value }));
       if (name === "close") {
-        stream.current?.close();
-        stream.current = null;
+        disconnect();
         setId("");
       }
     } catch (reason) {
