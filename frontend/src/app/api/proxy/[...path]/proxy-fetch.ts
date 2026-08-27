@@ -1,10 +1,17 @@
+import { Schema } from "effect";
 import type { NextRequest } from "next/server";
 import type { ClientInfo } from "./proxy-logging";
 import { getUpstreamTimeoutMs } from "./proxy-timeouts";
 
-export function isAbortError(error: unknown): boolean {
+const isError = Schema.is(Schema.instanceOf(Error));
+const ConnectionErrorSchema = Schema.Struct({
+  cause: Schema.optional(Schema.Struct({ code: Schema.optional(Schema.String) })),
+});
+const decodeConnectionError = Schema.decodeUnknownOption(ConnectionErrorSchema);
+
+export function isAbortError<ProxyFailure>(error: ProxyFailure): boolean {
   return (
-    error instanceof Error &&
+    isError(error) &&
     (error.name === "AbortError" || error.message.toLowerCase().includes("aborted"))
   );
 }
@@ -14,9 +21,10 @@ export function isAbortError(error: unknown): boolean {
  * fresh socket) from a definitive failure like a clean connection refusal or
  * DNS error (where retrying just doubles the load on a down backend).
  */
-function isRetriableConnectionError(error: unknown): boolean {
+function isRetriableConnectionError<ProxyFailure>(error: ProxyFailure): boolean {
   if (isAbortError(error)) return false;
-  const code = (error as { cause?: { code?: string } } | undefined)?.cause?.code;
+  const decoded = decodeConnectionError(error);
+  const code = decoded._tag === "Some" ? decoded.value.cause?.code : undefined;
   if (code) {
     return (
       code === "ECONNRESET" ||
@@ -59,10 +67,12 @@ export function buildFallbackTargetUrl({
     : null;
 }
 
-export function getForwardedSearchParams(request: NextRequest): {
+export interface ForwardedSearchParams {
   apiKeyQuery: string | null;
   searchParams: string;
-} {
+}
+
+export function getForwardedSearchParams(request: NextRequest): ForwardedSearchParams {
   const url = new URL(request.url);
   const forwardedParams = new URLSearchParams(url.searchParams);
   const apiKeyQuery = forwardedParams.get("api_key");
@@ -74,10 +84,8 @@ const DEFAULT_REQUEST_BODY_LIMIT = 32 * 1024 * 1024;
 
 export class ProxyBodyTooLargeError extends Error {}
 
-export const proxyRequestBodyLimit = (path: readonly string[]): number => {
-  const route = path.join("/");
-  return DEFAULT_REQUEST_BODY_LIMIT;
-};
+export const proxyRequestBodyLimit = (_path: readonly string[]): number =>
+  DEFAULT_REQUEST_BODY_LIMIT;
 
 export const readProxyRequestBody = async (
   request: Pick<Request, "body" | "headers">,
@@ -190,18 +198,18 @@ export async function fetchWithOptionalFallback(
 
   try {
     const primaryResponse = await fetchWithTimeout(primaryUrl);
-    if (canFallback && shouldFallbackFromResponse(primaryResponse)) {
+    if (canFallback && fallbackUrl && shouldFallbackFromResponse(primaryResponse)) {
       console.warn(
         `[PROXY FALLBACK] ip=${context.client.ip} | country=${context.client.country} | method=${context.method} | path=/${context.path.join("/")} | reason=override-404-text`,
       );
-      return { response: await fetchWithTimeout(fallbackUrl as string), usedFallback: true };
+      return { response: await fetchWithTimeout(fallbackUrl), usedFallback: true };
     }
     return { response: primaryResponse, usedFallback: false };
   } catch (error) {
-    if (!canFallback) throw error;
+    if (!canFallback || !fallbackUrl) throw error;
     console.warn(
       `[PROXY FALLBACK] ip=${context.client.ip} | country=${context.client.country} | method=${context.method} | path=/${context.path.join("/")} | reason=override-network-error | error=${String(error)}`,
     );
-    return { response: await fetchWithTimeout(fallbackUrl as string), usedFallback: true };
+    return { response: await fetchWithTimeout(fallbackUrl), usedFallback: true };
   }
 }

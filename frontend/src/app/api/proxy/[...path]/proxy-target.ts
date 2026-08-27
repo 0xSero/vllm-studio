@@ -70,7 +70,7 @@ function isTrustedOverride(urlString: string, defaultBackendUrl: string): boolea
   return trusted.has(targetOrigin);
 }
 
-export function clearBackendOverrideHeaders(): Record<string, string> {
+export function clearBackendOverrideHeaders() {
   return {
     "X-Backend-Override-Invalid": "1",
     "Set-Cookie": `${CLEAR_BACKEND_OVERRIDE_COOKIE}, ${CLEAR_LEGACY_BACKEND_OVERRIDE_COOKIE}`,

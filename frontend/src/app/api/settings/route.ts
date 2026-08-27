@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Schema } from "effect";
 import {
   applySettingsUpdate,
   getApiSettings,
   InvalidSettingsError,
   maskedSettingsView,
-  type ApiSettings,
 } from "@local-studio/agent-runtime/settings-service";
 import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
+
+const ApiSettingsUpdateSchema = Schema.Struct({
+  backendUrl: Schema.optional(Schema.String),
+  apiKey: Schema.optional(Schema.String),
+});
+type ApiSettingsUpdate = typeof ApiSettingsUpdateSchema.Type;
 
 export async function GET() {
   try {
@@ -25,7 +31,9 @@ export async function POST(request: NextRequest) {
   const denied = requireApiAccess(request);
   if (denied) return denied;
   try {
-    const update = (await request.json()) as Partial<ApiSettings>;
+    const update: ApiSettingsUpdate = Schema.decodeUnknownSync(ApiSettingsUpdateSchema)(
+      await request.json(),
+    );
     const saved = await applySettingsUpdate(update);
     return NextResponse.json({ success: true, ...maskedSettingsView(saved) });
   } catch (error) {

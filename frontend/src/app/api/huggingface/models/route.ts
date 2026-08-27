@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Option, Schema } from "effect";
 import { fetchWithTimeout } from "@/lib/api/http";
 
 export const runtime = "nodejs";
@@ -6,6 +7,20 @@ export const dynamic = "force-dynamic";
 
 const HF_MODELS = "https://huggingface.co/api/models";
 const TIMEOUT_MS = 12_000;
+
+const HuggingFacePayloadSchema = Schema.Json;
+type HuggingFacePayload = typeof HuggingFacePayloadSchema.Type;
+const HuggingFaceModelSchema = Schema.Record(Schema.String, Schema.Json);
+type HuggingFaceModel = typeof HuggingFaceModelSchema.Type;
+const decodeHuggingFacePayload = Schema.decodeUnknownSync(
+  Schema.fromJsonString(HuggingFacePayloadSchema),
+);
+const decodeHuggingFaceModel = Schema.decodeUnknownOption(HuggingFaceModelSchema);
+const decodeString = Schema.decodeUnknownOption(Schema.String);
+const decodeNumber = Schema.decodeUnknownOption(
+  Schema.Union([Schema.Number, Schema.NumberFromString]),
+);
+const decodeTags = Schema.decodeUnknownOption(Schema.Array(Schema.Json));
 
 // HF /api/models supports these query params. `filter` and `tags` are
 // repeatable (AND logic); the route forwards all of them. `pipeline_tag` and
@@ -48,7 +63,7 @@ export async function GET(request: NextRequest) {
         { status: 502 },
       );
     }
-    const payload = JSON.parse(text) as unknown;
+    const payload = decodeHuggingFacePayload(text);
     const data = Array.isArray(payload) ? payload.map(normalizeModel) : payload;
     return NextResponse.json(data);
   } catch (error) {
@@ -57,31 +72,43 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function normalizeModel(model: unknown): Record<string, unknown> {
-  const record = model && typeof model === "object" ? (model as Record<string, unknown>) : {};
-  const modelId = String(record.modelId ?? record.id ?? "");
+function normalizeModel(model: HuggingFacePayload) {
+  const decoded = decodeHuggingFaceModel(model);
+  const record: HuggingFaceModel = Option.isSome(decoded) ? decoded.value : {};
+  const modelIdValue = decodeString(record.modelId ?? record.id);
+  const modelId = Option.isSome(modelIdValue) ? modelIdValue.value : "";
   // Compute total weight-file size from siblings when present (full=true).
   // Used for accurate VRAM sizing instead of the name-regex estimate.
-  const siblings = Array.isArray(record.siblings) ? record.siblings : [];
-  const weightBytes = siblings.reduce((sum: number, file) => {
-    if (file && typeof file === "object") {
-      const f = file as Record<string, unknown>;
-      const rfilename = String(f.rfilename ?? "");
+  const siblings = decodeTags(record.siblings);
+  const weightBytes = (Option.isSome(siblings) ? siblings.value : []).reduce<number>(
+    (sum, file) => {
+      const decodedFile = decodeHuggingFaceModel(file);
+      if (Option.isNone(decodedFile)) return sum;
+      const rfilename = decodeString(decodedFile.value.rfilename);
       if (
-        /\.(safetensors|bin|pt|gguf|ggml|ot|model|npz|msgpack)(\.index\.json)?$/.test(rfilename)
+        Option.isSome(rfilename) &&
+        /\.(safetensors|bin|pt|gguf|ggml|ot|model|npz|msgpack)(\.index\.json)?$/.test(
+          rfilename.value,
+        )
       ) {
-        return sum + Number(f.size ?? 0);
+        const size = decodeNumber(decodedFile.value.size);
+        return sum + (Option.isSome(size) ? size.value : 0);
       }
-    }
-    return sum;
-  }, 0);
+      return sum;
+    },
+    0,
+  );
+  const id = decodeString(record._id);
+  const downloads = decodeNumber(record.downloads);
+  const likes = decodeNumber(record.likes);
+  const tags = decodeTags(record.tags);
   return {
     ...record,
-    _id: String(record._id ?? modelId),
+    _id: Option.isSome(id) ? id.value : modelId,
     modelId,
-    downloads: Number(record.downloads ?? 0),
-    likes: Number(record.likes ?? 0),
-    tags: Array.isArray(record.tags) ? record.tags : [],
+    downloads: Option.isSome(downloads) ? downloads.value : 0,
+    likes: Option.isSome(likes) ? likes.value : 0,
+    tags: Option.isSome(tags) ? tags.value : [],
     private: Boolean(record.private),
     weightBytes: weightBytes || undefined,
   };

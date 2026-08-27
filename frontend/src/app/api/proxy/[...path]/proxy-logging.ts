@@ -1,8 +1,10 @@
+import { Schema } from "effect";
 import type { NextRequest } from "next/server";
 
 const PROXY_ACCESS_LOGS_ENABLED = process.env.LOCAL_STUDIO_PROXY_ACCESS_LOGS === "true";
 const PROXY_ERROR_LOG_THROTTLE_MS = 30_000;
 const proxyErrorLogTimes = new Map<string, number>();
+const isError = Schema.is(Schema.instanceOf(Error));
 
 export type ClientInfo = { ip: string; country: string; ua: string };
 
@@ -17,12 +19,16 @@ export function getClientInfo(request: NextRequest): ClientInfo {
   return { ip, country, ua };
 }
 
-function proxyLogKey(method: string, path: string[], error: unknown): string {
-  const message = error instanceof Error ? `${error.name}:${error.message}` : String(error);
+function proxyLogKey<ProxyFailure>(method: string, path: string[], error: ProxyFailure): string {
+  const message = isError(error) ? `${error.name}:${error.message}` : String(error);
   return `${method}:${path.join("/")}:${message.slice(0, 120)}`;
 }
 
-export function shouldLogProxyError(method: string, path: string[], error: unknown): boolean {
+export function shouldLogProxyError<ProxyFailure>(
+  method: string,
+  path: string[],
+  error: ProxyFailure,
+): boolean {
   const key = proxyLogKey(method, path, error);
   const now = Date.now();
   const previous = proxyErrorLogTimes.get(key) ?? 0;

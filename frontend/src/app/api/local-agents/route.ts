@@ -1,5 +1,6 @@
 import os from "node:os";
 import { NextRequest, NextResponse } from "next/server";
+import { Schema } from "effect";
 import { getApiSettings } from "@local-studio/agent-runtime/settings-service";
 import { requireApiAccess } from "@/lib/auth/guard";
 import { createApiCore, type ApiCore } from "@/lib/api/core";
@@ -28,8 +29,15 @@ export async function GET() {
   }
 }
 
-const isLocalAgentId = (value: unknown): value is LocalAgentId =>
-  typeof value === "string" && (LOCAL_AGENT_IDS as readonly string[]).includes(value);
+const LocalAgentsBodySchema = Schema.Struct({
+  modelId: Schema.optional(Schema.Unknown),
+  targets: Schema.optional(Schema.Unknown),
+});
+const LocalAgentIdSchema = Schema.Literals(LOCAL_AGENT_IDS);
+const LocalAgentTargetsSchema = Schema.Array(LocalAgentIdSchema);
+const decodeLocalAgentsBody = Schema.decodeUnknownOption(LocalAgentsBodySchema);
+const decodeModelId = Schema.decodeUnknownOption(Schema.String);
+const decodeLocalAgentTargets = Schema.decodeUnknownOption(LocalAgentTargetsSchema);
 
 async function resolveModelImages(core: ApiCore, recipe: RecipeWithStatus, modelId: string) {
   try {
@@ -57,16 +65,22 @@ export async function POST(request: NextRequest) {
   } catch {
     return jsonError("Invalid JSON body");
   }
-  const { modelId, targets } = (body ?? {}) as { modelId?: unknown; targets?: unknown };
-  if (typeof modelId !== "string" || !modelId.trim()) {
+  const decodedBody = decodeLocalAgentsBody(body);
+  const decodedModelId =
+    decodedBody._tag === "Some" ? decodeModelId(decodedBody.value.modelId) : decodedBody;
+  if (decodedModelId._tag === "None" || !decodedModelId.value.trim()) {
     return jsonError("modelId is required");
   }
-  if (!Array.isArray(targets) || targets.length === 0 || !targets.every(isLocalAgentId)) {
+  const modelId = decodedModelId.value;
+  const decodedTargets =
+    decodedBody._tag === "Some" ? decodeLocalAgentTargets(decodedBody.value.targets) : decodedBody;
+  if (decodedTargets._tag === "None" || decodedTargets.value.length === 0) {
     return jsonError(
       "targets must be a non-empty array of agent ids (pi, opencode, droid, hermes, omp)",
     );
   }
 
+  const targets: LocalAgentId[] = [...decodedTargets.value];
   const settings = await getApiSettings();
   const backendUrl = settings.backendUrl.replace(/\/+$/, "");
   const core = createApiCore({

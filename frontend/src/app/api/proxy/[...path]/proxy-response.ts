@@ -72,6 +72,12 @@ export async function toProxyNextResponse(
   const contentType = response.headers.get("content-type") || "application/json";
   if (contentType.includes("text/event-stream") && response.body) {
     const runId = response.headers.get("x-run-id");
+    const headers = new Headers({
+      "Content-Type": contentType,
+      "Cache-Control": response.headers.get("cache-control") || "no-cache",
+      ...invalidOverrideHeaders(context.invalidateOverride),
+    });
+    if (runId) headers.set("X-Run-Id", runId);
     return new NextResponse(
       proxyResponseStream(response.body, {
         client: context.client,
@@ -80,12 +86,7 @@ export async function toProxyNextResponse(
       }),
       {
         status: response.status,
-        headers: {
-          "Content-Type": contentType,
-          "Cache-Control": response.headers.get("cache-control") || "no-cache",
-          ...invalidOverrideHeaders(context.invalidateOverride),
-          ...(runId ? { "X-Run-Id": runId } : {}),
-        },
+        headers,
       },
     );
   }

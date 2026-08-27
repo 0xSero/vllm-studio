@@ -1,5 +1,8 @@
 import { requireApiAccess } from "@/lib/auth/guard";
 import type { NextRequest } from "next/server";
+import { Schema } from "effect";
+
+const ReleaseManifestSchema = Schema.Struct({ version: Schema.optional(Schema.String) });
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,8 +26,8 @@ export async function GET(request: NextRequest) {
         cache: "no-store",
         signal: AbortSignal.timeout(8_000),
       });
-      const manifest = (await response.json()) as { version?: string };
-      if (response.ok && typeof manifest.version === "string") latest = manifest.version;
+      const manifest = Schema.decodeUnknownSync(ReleaseManifestSchema)(await response.json());
+      if (response.ok && manifest.version) latest = manifest.version;
     } catch {
       // Offline or GitHub unreachable — report "unknown" and retry after the TTL.
     }
