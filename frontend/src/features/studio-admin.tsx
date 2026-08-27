@@ -10,8 +10,12 @@ const decodeMutationResponse = Schema.decodeUnknownSync(MutationResponseSchema, 
   onExcessProperty: "preserve",
 });
 const isString = Schema.is(Schema.String);
+const isNumber = Schema.is(Schema.Number);
 function text(value: Json | undefined): string {
   return isString(value) ? value : "";
+}
+function numberText(value: Json | undefined, fallback = ""): string {
+  return isNumber(value) ? String(value) : fallback;
 }
 function jsonBody(value: RecordJson, method = "POST"): RequestInit {
   return { method, headers: { "content-type": "application/json" }, body: JSON.stringify(value) };
@@ -144,7 +148,21 @@ export function MachineManager() {
   const [rigId, setRigId] = useState("");
   const [nodeId, setNodeId] = useState("");
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [hardwareType, setHardwareType] = useState("custom");
+  const [role, setRole] = useState("standalone");
+  const [hostname, setHostname] = useState("");
   const [address, setAddress] = useState("");
+  const [osName, setOsName] = useState("");
+  const [cpuModel, setCpuModel] = useState("");
+  const [memoryGb, setMemoryGb] = useState("");
+  const [notes, setNotes] = useState("");
+  const [acceleratorName, setAcceleratorName] = useState("");
+  const [acceleratorCount, setAcceleratorCount] = useState("1");
+  const [acceleratorMemory, setAcceleratorMemory] = useState("");
+  const [acceleratorType, setAcceleratorType] = useState("");
+  const [acceleratorBandwidth, setAcceleratorBandwidth] = useState("");
+  const [unifiedMemory, setUnifiedMemory] = useState(false);
   const [message, setMessage] = useState("");
   const run = async (path: `/api/${string}`, init?: RequestInit) => {
     try {
@@ -155,6 +173,54 @@ export function MachineManager() {
       setMessage(value instanceof Error ? value.message : String(value));
     }
   };
+  const editRig = (rig: RecordJson) => {
+    setRigId(text(rig.id));
+    setName(text(rig.name));
+    setDescription(text(rig.description));
+  };
+  const editNode = (rig: RecordJson, node: RecordJson) => {
+    editRig(rig);
+    setNodeId(text(node.id));
+    setName(text(node.name));
+    setHardwareType(text(node.hardware_type) || "custom");
+    setRole(text(node.role) || "standalone");
+    setHostname(text(node.hostname));
+    setAddress(text(node.address));
+    setOsName(text(node.os));
+    setCpuModel(text(node.cpu_model));
+    setMemoryGb(numberText(node.memory_gb));
+    setNotes(text(node.notes));
+    const accelerator = records({ items: node.accelerators ?? [] }, "items")[0];
+    setAcceleratorName(text(accelerator?.name));
+    setAcceleratorCount(numberText(accelerator?.count, "1"));
+    setAcceleratorMemory(numberText(accelerator?.memory_gb));
+    setAcceleratorType(text(accelerator?.memory_type));
+    setAcceleratorBandwidth(numberText(accelerator?.memory_bandwidth_gbs));
+    setUnifiedMemory(accelerator?.unified_memory === true);
+  };
+  const nodeBody = (): RecordJson => ({
+    name,
+    hardware_type: hardwareType,
+    role,
+    hostname: hostname || null,
+    address: address || null,
+    os: osName || null,
+    cpu_model: cpuModel || null,
+    memory_gb: Number(memoryGb) || null,
+    notes: notes || null,
+    accelerators: acceleratorName
+      ? [
+          {
+            name: acceleratorName,
+            count: Number(acceleratorCount) || 1,
+            memory_gb: Number(acceleratorMemory) || null,
+            memory_type: acceleratorType || null,
+            memory_bandwidth_gbs: Number(acceleratorBandwidth) || null,
+            unified_memory: unifiedMemory,
+          },
+        ]
+      : [],
+  });
   return (
     <article>
       <h2>Rigs, nodes, runtimes & providers</h2>
@@ -162,22 +228,28 @@ export function MachineManager() {
         <input
           value={rigId}
           onChange={(event) => setRigId(event.target.value)}
-          placeholder="Rig id for edit"
+          placeholder="Rig id"
         />
         <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Name" />
+        <input
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder="Description"
+        />
         <button
           onClick={() =>
             run(
               rigId
                 ? `/api/proxy/studio/rigs/${encodeURIComponent(rigId)}`
                 : "/api/proxy/studio/rigs",
-              jsonBody({ name }, rigId ? "PUT" : "POST"),
+              jsonBody({ name, description: description || null }, rigId ? "PUT" : "POST"),
             )
           }
         >
           Save rig
         </button>
         <button
+          disabled={!rigId}
           onClick={() =>
             run(`/api/proxy/studio/rigs/${encodeURIComponent(rigId)}`, { method: "DELETE" })
           }
@@ -189,26 +261,71 @@ export function MachineManager() {
         <input
           value={nodeId}
           onChange={(event) => setNodeId(event.target.value)}
-          placeholder="Node id for edit"
+          placeholder="Node id"
         />
-        <input
-          value={address}
-          onChange={(event) => setAddress(event.target.value)}
-          placeholder="Node address"
-        />
+        <select value={hardwareType} onChange={(event) => setHardwareType(event.target.value)}>
+          {(
+            [
+              "dgx-spark",
+              "gpu-desktop",
+              "gpu-server",
+              "mac",
+              "laptop",
+              "mini-pc",
+              "custom",
+            ] as const
+          ).map((value) => (
+            <option key={value}>{value}</option>
+          ))}
+        </select>
+        <select value={role} onChange={(event) => setRole(event.target.value)}>
+          {(["head", "worker", "standalone"] as const).map((value) => (
+            <option key={value}>{value}</option>
+          ))}
+        </select>
+        {[
+          { value: hostname, set: setHostname, label: "Hostname" },
+          { value: address, set: setAddress, label: "Address" },
+          { value: osName, set: setOsName, label: "OS" },
+          { value: cpuModel, set: setCpuModel, label: "CPU model" },
+          { value: memoryGb, set: setMemoryGb, label: "Memory GB" },
+          { value: notes, set: setNotes, label: "Notes" },
+          { value: acceleratorName, set: setAcceleratorName, label: "Accelerator" },
+          { value: acceleratorCount, set: setAcceleratorCount, label: "Accelerator count" },
+          { value: acceleratorMemory, set: setAcceleratorMemory, label: "Accelerator memory GB" },
+          { value: acceleratorType, set: setAcceleratorType, label: "Memory type" },
+          { value: acceleratorBandwidth, set: setAcceleratorBandwidth, label: "Bandwidth GB/s" },
+        ].map((field) => (
+          <input
+            key={field.label}
+            value={field.value}
+            onChange={(event) => field.set(event.target.value)}
+            placeholder={field.label}
+          />
+        ))}
+        <label>
+          <input
+            type="checkbox"
+            checked={unifiedMemory}
+            onChange={(event) => setUnifiedMemory(event.target.checked)}
+          />{" "}
+          Unified memory
+        </label>
         <button
+          disabled={!rigId}
           onClick={() =>
             run(
               nodeId
                 ? `/api/proxy/studio/rigs/${encodeURIComponent(rigId)}/nodes/${encodeURIComponent(nodeId)}`
                 : `/api/proxy/studio/rigs/${encodeURIComponent(rigId)}/nodes`,
-              jsonBody({ name, address }, nodeId ? "PUT" : "POST"),
+              jsonBody(nodeBody(), nodeId ? "PUT" : "POST"),
             )
           }
         >
           Save node
         </button>
         <button
+          disabled={!rigId || !nodeId}
           onClick={() =>
             run(
               `/api/proxy/studio/rigs/${encodeURIComponent(rigId)}/nodes/${encodeURIComponent(nodeId)}`,
@@ -219,6 +336,16 @@ export function MachineManager() {
           Delete node
         </button>
       </div>
+      {records(rigs.data, "rigs").map((rig) => (
+        <div className="item" key={text(rig.id)}>
+          <button onClick={() => editRig(rig)}>Edit {text(rig.name)}</button>
+          {records({ items: rig.nodes ?? [] }, "items").map((node) => (
+            <button key={text(node.id)} onClick={() => editNode(rig, node)}>
+              Edit {text(node.name)}
+            </button>
+          ))}
+        </div>
+      ))}
       {records(targets.data, "targets").map((target) => {
         const targetId = text(target.id);
         return (
@@ -237,14 +364,21 @@ export function MachineManager() {
         );
       })}
       <p>
-        Provider accounts are created and removed through explicit sign-in and sign-out in
-        Integrations. Secrets stay in the local vault.
+        Provider accounts use explicit sign-in and sign-out in Integrations. Secrets stay local.
       </p>
       <ErrorText value={message || rigs.error || targets.error || providers.error} />
-      <JsonView value={rigs.data} />
       <JsonView value={providers.data} />
     </article>
   );
+}
+
+function redactDeployLine(line: string): string {
+  return line
+    .replace(
+      /((?:api[_ -]?key|token|secret|password|authorization)["']?\s*[:=]\s*(?:bearer\s+)?["']?)[^"'\s]+/gi,
+      "$1[stored]",
+    )
+    .replace(/(https?:\/\/)[^@\s]+@/gi, "$1[credentials-stored]@");
 }
 
 export function DesktopManager() {
@@ -255,17 +389,33 @@ export function DesktopManager() {
   const [hotkey, setHotkey] = useState("");
   const [output, setOutput] = useState<Json | null>(null);
   const [deployLog, setDeployLog] = useState<string[]>([]);
+  const [terminalId, setTerminalId] = useState("");
+  const [terminalInput, setTerminalInput] = useState("");
+  const [terminalOutput, setTerminalOutput] = useState("");
   const [error, setError] = useState("");
   useMountSubscription(
     () =>
       bridge?.controllerDeploy.onLog((line) =>
-        setDeployLog((lines) => [
-          ...lines,
-          line.replace(/(api[_ -]?key[=: ]+)\S+/gi, "$1[stored]"),
-        ]),
+        setDeployLog((lines) => [...lines, redactDeployLine(line)]),
       ),
     [bridge],
   );
+  useMountSubscription(() => {
+    if (!bridge) return;
+    const stopData = bridge.terminal.onData((id, chunk) => {
+      if (id === terminalId) setTerminalOutput((value) => value + chunk);
+    });
+    const stopExit = bridge.terminal.onExit((id, info) => {
+      if (id === terminalId) {
+        setTerminalOutput((value) => `${value}\n[exit ${info.exitCode}]`);
+        setTerminalId("");
+      }
+    });
+    return () => {
+      stopData();
+      stopExit();
+    };
+  }, [bridge, terminalId]);
   const call = async (operation: () => Promise<object | string | number | boolean | null>) => {
     try {
       setOutput(JSON.stringify(await operation()));
@@ -294,6 +444,23 @@ export function DesktopManager() {
         return { ok: false, error: "Deployment omitted credentials" };
       await request("/api/settings", jsonBody({ backendUrl: result.url, apiKey: result.apiKey }));
       return { ok: true, url: result.url, credentialStored: true };
+    });
+  };
+  const openTerminal = async () => {
+    if (!bridge) return;
+    await call(async () => {
+      const result = await bridge.terminal.open({ cwd: path || undefined, cols: 100, rows: 28 });
+      setTerminalId(result.id);
+      setTerminalOutput(result.replay ?? "");
+      return { id: result.id, reused: result.reused ?? false };
+    });
+  };
+  const closeTerminal = async () => {
+    if (!bridge || !terminalId) return;
+    await call(async () => {
+      await bridge.terminal.close(terminalId);
+      setTerminalId("");
+      return true;
     });
   };
   if (!bridge)
@@ -329,6 +496,35 @@ export function DesktopManager() {
       <div className="row">
         <button onClick={() => call(() => bridge.getRuntime())}>Desktop runtime</button>
         <button onClick={() => call(() => bridge.terminal.status())}>Terminal status</button>
+        <button onClick={openTerminal}>
+          {terminalId ? "Reconnect terminal" : "Open terminal"}
+        </button>
+        <input
+          value={terminalInput}
+          onChange={(event) => setTerminalInput(event.target.value)}
+          placeholder="Terminal input"
+        />
+        <button
+          disabled={!terminalId}
+          onClick={() =>
+            call(async () => {
+              await bridge.terminal.write(terminalId, `${terminalInput}\n`);
+              setTerminalInput("");
+              return true;
+            })
+          }
+        >
+          Write terminal
+        </button>
+        <button
+          disabled={!terminalId}
+          onClick={() => call(() => bridge.terminal.resize(terminalId, 120, 36).then(() => true))}
+        >
+          Resize terminal
+        </button>
+        <button disabled={!terminalId} onClick={closeTerminal}>
+          Close terminal
+        </button>
         <button onClick={() => call(() => bridge.loadUiPreferences())}>Load preferences</button>
         <button
           onClick={() =>
@@ -375,6 +571,7 @@ export function DesktopManager() {
         />
         <button onClick={deploy}>Deploy controller and store credential</button>
       </div>
+      {terminalOutput ? <pre aria-label="Desktop terminal output">{terminalOutput}</pre> : null}
       {deployLog.length ? (
         <pre aria-label="Controller deployment log">{deployLog.join("\n")}</pre>
       ) : null}
