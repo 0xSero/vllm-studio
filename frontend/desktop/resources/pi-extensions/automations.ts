@@ -24,7 +24,6 @@ const textResult = (text: string, details: Record<string, unknown>): ToolResult 
   details,
 });
 
-// ─── Schedule shapes (mirror shared/agent/automation.ts) ────────────────────
 
 type IntervalSchedule = { kind: "interval"; minutes: number };
 type DailySchedule = { kind: "daily"; time: string; weekdaysOnly?: boolean };
@@ -87,7 +86,6 @@ export function normalizeScheduleArg(
   return { ok: false, error: "schedule.kind must be 'interval', 'daily' or 'weekly'." };
 }
 
-/** One-line human description of a schedule, for list output. */
 export function describeSchedule(schedule: NormalizedSchedule): string {
   if (schedule.kind === "interval") return `every ${schedule.minutes} min`;
   if (schedule.kind === "daily") {
@@ -96,7 +94,6 @@ export function describeSchedule(schedule: NormalizedSchedule): string {
   return `weekly on ${WEEKDAY_NAMES[schedule.day] ?? `day ${schedule.day}`} at ${schedule.time}`;
 }
 
-// ─── HTTP helpers ───────────────────────────────────────────────────────────
 
 async function httpJson(
   path: string,
@@ -185,7 +182,6 @@ function formatAutomationLine(record: AutomationRecord): string {
   return `- ${name} [${id}] — ${scheduleText}, ${status}${next}`;
 }
 
-/** describeSchedule for an already-stored (normalized) schedule object. */
 function describeScheduleLoose(schedule: ScheduleArg): string {
   const parsed = normalizeScheduleArg(schedule);
   return parsed.ok ? describeSchedule(parsed.schedule) : "unknown schedule";

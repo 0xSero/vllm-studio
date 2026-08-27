@@ -23,7 +23,6 @@ interface ProjectsDocument {
 export interface ProjectsStoreOptions {
   /** Resolved on every operation so env/Electron path changes keep applying. */
   projectsFilePath: () => string;
-  /** Id of the synthetic "Chats" project pinned to the top of the list. */
   chatsProjectId: string;
   /** Error message thrown when addProject receives a blank path. */
   emptyPathMessage: string;

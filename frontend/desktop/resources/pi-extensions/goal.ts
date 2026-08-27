@@ -1,17 +1,3 @@
-// Session-goal system-prompt section for Local Studio.
-//
-// `/goal <objective>` stores an objective per pi session. The objective is put
-// into the system prompt of every turn so the goal actually steers the session
-// instead of only nudging it between turns.
-//
-// Injection now happens IN-PROCESS in the runtime (services/agent-runtime:
-// goal-prompt.ts / pi-runtime.ts) keyed by the canonical piSessionId — a
-// bundled extension could only see an RPC session id that differed from the id
-// the goal store is keyed by, so the goal was always read as null (#284).
-//
-// This file is retained as the shared, pure section builder. It is no longer
-// registered as a runtime extension.
-
 const MARKER = "Local Studio session goal:";
 
 /** Statuses where the goal should steer the turn. A paused/complete/blocked

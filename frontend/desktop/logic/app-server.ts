@@ -256,7 +256,6 @@ export async function startFrontendServer(
         rmSync(embeddedServerPidPath(), { force: true });
       }
     } catch {
-      // pid file already gone
     }
     log.warn(`Embedded frontend exited code=${code ?? "null"} signal=${signal ?? "null"}`);
     options.onExit?.({ code, signal, pid: child.pid });

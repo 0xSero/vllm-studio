@@ -75,7 +75,6 @@ export interface ControllerDeployBridge {
     port?: number;
     installDir?: string;
   }): Promise<ControllerDeployResultPayload>;
-  /** Streamed installer output lines for the in-flight deploy. */
   onLog(listener: (line: string) => void): () => void;
 }
 

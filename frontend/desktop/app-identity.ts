@@ -44,7 +44,6 @@ if (nonStablePackagedChannel) {
 
 const channelAppName = isDevChannel ? DEV_APP_NAME : undefined;
 
-/** True when this build is packaged from the dev channel (Local Studio Dev). */
 export const isDevChannelBuild = isDevChannel;
 const appName =
   devAppName || channelAppName || (app.isPackaged ? CANONICAL_APP_NAME : app.getName());

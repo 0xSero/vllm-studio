@@ -99,7 +99,6 @@ export default async function connectorsExtension(pi: ExtensionAPI): Promise<voi
     const payload = (await response.json()) as { connectors?: InventoryConnector[] };
     inventory = payload.connectors ?? [];
   } catch {
-    // Frontend unreachable or no connectors — register nothing.
     return;
   }
 

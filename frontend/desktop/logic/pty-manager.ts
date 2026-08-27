@@ -86,7 +86,6 @@ function safeCwd(input: string | undefined | null): string {
     try {
       if (statSync(candidate).isDirectory()) return candidate;
     } catch {
-      // fall through
     }
   }
   return os.homedir();
@@ -257,13 +256,11 @@ function closeInternal(id: string): void {
     try {
       dispose();
     } catch {
-      // ignore
     }
   }
   try {
     session.pty.kill();
   } catch {
-    // ignore — already exited
   }
 }
 

@@ -1,6 +1,5 @@
 import net from "node:net";
 
-/** Returns true if the given TCP port can be bound on `host` right now. */
 export async function isPortAvailable(port: number, host = "127.0.0.1"): Promise<boolean> {
   if (!Number.isInteger(port) || port <= 0 || port > 65535) return false;
   return new Promise<boolean>((resolve) => {

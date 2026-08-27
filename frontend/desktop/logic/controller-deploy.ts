@@ -28,7 +28,6 @@ const HOST_PATTERN = /^[A-Za-z0-9._@-]+$/;
 export const isValidDeployHost = (host: string): boolean =>
   HOST_PATTERN.test(host) && !host.startsWith("-");
 
-/** Local checkout copy of the installer, when running from a dev tree. */
 const findLocalInstallScript = (resourcesPath: string | null): string | null => {
   const candidates = [
     resourcesPath ? resolve(resourcesPath, "install-controller.sh") : null,

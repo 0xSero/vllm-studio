@@ -524,7 +524,6 @@ function setQuickPanelHotkey(hotkey: unknown): { ok: boolean; hotkey: string; er
     try {
       globalShortcut.unregister(quickPanelHotkey);
     } catch {
-      // best effort; unregisterAll on quit still cleans up
     }
   }
   quickPanelHotkey = next;
