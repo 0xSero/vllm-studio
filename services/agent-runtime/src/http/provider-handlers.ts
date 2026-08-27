@@ -12,27 +12,19 @@ import {
   respondProviderLogin,
   startProviderLogin,
 } from "../provider-hub";
-import { errorMessage, jsonError, readJsonBody } from "./helpers";
+import { jsonError, readJsonBody } from "./helpers";
 
 export async function handleProvidersList(): Promise<Response> {
-  try {
-    return Response.json({ providers: await listProviders() });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to list providers."), 500);
-  }
+  return Response.json({ providers: await listProviders() });
 }
 
 export async function handleProviderLogin(request: Request, providerId: string): Promise<Response> {
   const body = await readJsonBody(request);
   const authType = body?.type === "api_key" ? "api_key" : body?.type === "oauth" ? "oauth" : null;
   if (!authType) return jsonError("Body must include type: \"oauth\" | \"api_key\".");
-  try {
-    const result = await startProviderLogin(providerId, authType);
-    if ("error" in result) return jsonError(result.error, result.status);
-    return Response.json(result);
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to start login."), 500);
-  }
+  const result = await startProviderLogin(providerId, authType);
+  if ("error" in result) return jsonError(result.error, result.status);
+  return Response.json(result);
 }
 
 export function handleProviderLoginJob(request: Request, jobId: string): Response {
@@ -64,11 +56,7 @@ export function handleProviderLoginCancel(jobId: string): Response {
 }
 
 export async function handleProviderLogout(providerId: string): Promise<Response> {
-  try {
-    const result = await logoutProvider(providerId);
-    if ("error" in result) return jsonError(result.error, result.status);
-    return Response.json(result);
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to sign out."), 500);
-  }
+  const result = await logoutProvider(providerId);
+  if ("error" in result) return jsonError(result.error, result.status);
+  return Response.json(result);
 }

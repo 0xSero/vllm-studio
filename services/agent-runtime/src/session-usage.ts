@@ -1,5 +1,5 @@
-import { createReadStream, statSync } from "node:fs";
-import { rolloutCache } from "./rollout-cache";
+import { statSync } from "node:fs";
+import { readRolloutHead, rolloutCache, scanCompleteRolloutLines } from "./rollout-cache";
 
 /** Everything the session has spent, for the whole of its life.
  *
@@ -68,55 +68,18 @@ const usageDisk = rolloutCache<CacheEntry>("usage-totals");
  * mid-file would fold a stranger's numbers into this session's total. Cheap
  * enough to check every time: one small read at a fixed offset.
  */
-const HEAD_FINGERPRINT_BYTES = 512;
-
-async function readHead(filepath: string): Promise<string> {
-  const chunks: Buffer[] = [];
-  const stream = createReadStream(filepath, { start: 0, end: HEAD_FINGERPRINT_BYTES - 1 });
-  for await (const chunk of stream) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks).toString("utf-8");
-}
-
 type ScanResult = { totals: SessionUsageTotals; scannedBytes: number };
 
-/**
- * Fold every complete line from `start` onward into `totals`.
- *
- * Splits on newlines by hand rather than using readline because the resume
- * point has to be a byte offset: line lengths in characters are not byte
- * offsets once any turn contains non-ASCII, and being one byte off here
- * corrupts every subsequent total.
- */
 async function scanFrom(
   filepath: string,
   start: number,
   seed: SessionUsageTotals,
 ): Promise<ScanResult> {
   let totals = seed;
-  let consumedBytes = start;
-  let pending = "";
-
-  const stream = createReadStream(filepath, { start, encoding: "utf-8" });
-  for await (const chunk of stream) {
-    pending += chunk as string;
-    // Walk the buffer with a cursor and slice the remainder once per chunk.
-    // Re-slicing `pending` per line instead is quadratic in chunk size, which
-    // cost more than the readline call this replaced.
-    let lineStart = 0;
-    let newline = pending.indexOf("\n", lineStart);
-    while (newline !== -1) {
-      const line = pending.slice(lineStart, newline);
-      if (line) totals = accumulateUsageLine(totals, line);
-      consumedBytes += Buffer.byteLength(line, "utf-8") + 1;
-      lineStart = newline + 1;
-      newline = pending.indexOf("\n", lineStart);
-    }
-    pending = pending.slice(lineStart);
-  }
-  // `pending` is whatever followed the last newline — a partial write, or a
-  // final line with no trailing newline. Either way it is not counted as
-  // scanned, so the next call re-reads it.
-  return { totals, scannedBytes: consumedBytes };
+  const scannedBytes = await scanCompleteRolloutLines(filepath, start, (line) => {
+    if (line) totals = accumulateUsageLine(totals, line);
+  });
+  return { totals, scannedBytes };
 }
 
 function numeric(source: Record<string, unknown> | null, keys: string[]): number {
@@ -203,7 +166,7 @@ export async function readSessionUsageTotals(filepath: string): Promise<SessionU
   }
 
   try {
-    const head = await readHead(filepath);
+    const head = await readRolloutHead(filepath);
 
     // Nothing in memory — but a previous process may have scanned this file.
     // Read the stored prefix even though the rollout has since grown: that is

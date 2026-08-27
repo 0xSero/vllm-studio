@@ -5,7 +5,7 @@
 //
 
 import { listSubagents, runSubagent } from "../subagents";
-import { errorMessage, jsonError } from "./helpers";
+import { jsonError, readJsonBody } from "./helpers";
 
 export async function handleSubagentsList(request: Request): Promise<Response> {
   const parent = new URL(request.url).searchParams.get("piSessionId")?.trim();
@@ -14,30 +14,18 @@ export async function handleSubagentsList(request: Request): Promise<Response> {
 }
 
 export async function handleSubagentRun(request: Request): Promise<Response> {
-  let body: Record<string, unknown> | null = null;
-  try {
-    const parsed = (await request.json()) as unknown;
-    body = parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    body = null;
-  }
+  const body = await readJsonBody(request);
   const parentPiSessionId = typeof body?.parentPiSessionId === "string" ? body.parentPiSessionId : "";
   const name = typeof body?.name === "string" ? body.name : "";
   const task = typeof body?.task === "string" ? body.task : "";
   if (!parentPiSessionId || !task.trim()) {
     return jsonError("Body must include parentPiSessionId and task.");
   }
-  try {
-    const result = await runSubagent({
-      parentPiSessionId,
-      name,
-      task,
-      ...(typeof body?.modelId === "string" ? { modelId: body.modelId } : {}),
-    });
-    return Response.json({ ok: true, ...result });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Subagent run failed."), 500);
-  }
+  const result = await runSubagent({
+    parentPiSessionId,
+    name,
+    task,
+    ...(typeof body?.modelId === "string" ? { modelId: body.modelId } : {}),
+  });
+  return Response.json({ ok: true, ...result });
 }

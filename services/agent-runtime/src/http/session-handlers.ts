@@ -168,18 +168,14 @@ export async function handleSessionPatch(request: Request, id: string): Promise<
       .find((session) => session.id === id) ?? null;
     if (body.archived && !summary) return jsonError("session not found", 404);
   }
-  try {
-    const archiveState = await setSessionArchived(id, body.archived, new Date(), {
-      cwd: summary?.cwd ?? cwd,
-      title: summary?.firstUserMessage ?? optionalString(body, "title"),
-      projectId: optionalString(body, "projectId"),
-      projectName: optionalString(body, "projectName"),
-      sessionUpdatedAt: summary?.updatedAt ?? null,
-    });
-    return Response.json({ session: { id, ...archiveState } });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to update session archive"), 500);
-  }
+  const archiveState = await setSessionArchived(id, body.archived, new Date(), {
+    cwd: summary?.cwd ?? cwd,
+    title: summary?.firstUserMessage ?? optionalString(body, "title"),
+    projectId: optionalString(body, "projectId"),
+    projectName: optionalString(body, "projectName"),
+    sessionUpdatedAt: summary?.updatedAt ?? null,
+  });
+  return Response.json({ session: { id, ...archiveState } });
 }
 
 export function handleSessionsDelete(): Response {

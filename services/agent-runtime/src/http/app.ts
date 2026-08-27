@@ -120,5 +120,8 @@ export function createAgentRuntimeApp() {
   app.post("/api/agent/browser/viewport", (c) => handleBrowserViewport(c.req.raw));
   app.post("/api/agent/browser/:verb", (c) => handleBrowserVerb(c.req.raw, c.req.param("verb")));
 
+  app.onError((error, c) =>
+    c.json({ error: error instanceof Error ? error.message : "Internal Server Error" }, 500),
+  );
   return { app };
 }

@@ -3,7 +3,7 @@
 //
 // 91-95% of a real rollout is `custom` / `custom_message` entries written by pi
 // extensions on every turn — state snapshots that are inert to the transcript
-// and thrown away on every read (see bench/rollout-census.bench.ts). Paging the
+// and thrown away on every read. Paging the
 // transcript therefore means scanning 40-145 MB to find a few hundred messages,
 // and no amount of seeking helps because the messages are interleaved
 // throughout rather than clustered at the end.
@@ -17,12 +17,14 @@
 // the session grows, and a cursor handed out for an earlier page stays valid.
 //
 
-import { appendFileSync, createReadStream, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   evictIfCrowded,
+  readRolloutHead,
   rolloutCache,
   rolloutCacheFilePath,
+  scanCompleteRolloutLines,
   statRollout,
 } from "./rollout-cache";
 
@@ -60,50 +62,19 @@ type SidecarState = {
 
 const state = rolloutCache<SidecarState>("transcript-state");
 
-const HEAD_FINGERPRINT_BYTES = 512;
-
-async function readHead(filepath: string): Promise<string> {
-  const chunks: Buffer[] = [];
-  const stream = createReadStream(filepath, { start: 0, end: HEAD_FINGERPRINT_BYTES - 1 });
-  for await (const chunk of stream) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks).toString("utf-8");
-}
-
-/**
- * Copy every complete non-inert line from `start` onward onto the sidecar.
- * Returns the source offset just past the last complete line consumed — a
- * partial trailing line is left for the next call, exactly as the usage scan
- * does, because a rollout is appended to while it is being read.
- */
 async function appendFrom(source: string, sidecar: string, start: number): Promise<number> {
-  let consumedBytes = start;
-  let pending = "";
   let batch: string[] = [];
-
   const flush = () => {
     if (batch.length === 0) return;
     appendFileSync(sidecar, `${batch.join("\n")}\n`, "utf-8");
     batch = [];
   };
-
-  const stream = createReadStream(source, { start, encoding: "utf-8" });
-  for await (const chunk of stream) {
-    pending += chunk as string;
-    let lineStart = 0;
-    let newline = pending.indexOf("\n", lineStart);
-    while (newline !== -1) {
-      const line = pending.slice(lineStart, newline);
-      consumedBytes += Buffer.byteLength(line, "utf-8") + 1;
-      if (line && !lineIsInert(line)) batch.push(line);
-      lineStart = newline + 1;
-      newline = pending.indexOf("\n", lineStart);
-    }
-    pending = pending.slice(lineStart);
-    // Bounded so a multi-GB rollout never buffers its whole transcript.
+  const scannedBytes = await scanCompleteRolloutLines(source, start, (line) => {
+    if (line && !lineIsInert(line)) batch.push(line);
     if (batch.length >= 2048) flush();
-  }
+  });
   flush();
-  return consumedBytes;
+  return scannedBytes;
 }
 
 export type TranscriptSource = { filepath: string; size: number };
@@ -126,7 +97,7 @@ export async function transcriptSource(filepath: string): Promise<TranscriptSour
 
   try {
     const sidecar = rolloutCacheFilePath(SIDECAR_KIND, filepath, ".jsonl");
-    const head = await readHead(filepath);
+    const head = await readRolloutHead(filepath);
     const previous = state.readStale(filepath);
 
     const sidecarSize = (() => {

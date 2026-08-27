@@ -13,14 +13,10 @@ import {
 import { runAutomationNow } from "../automation-scheduler";
 import { clearGoal, readGoal, writeGoal, type GoalStatus } from "../goals-store";
 import { GOAL_STATUSES } from "../../../../shared/agent/session-goal";
-import { errorMessage, jsonError, readJsonBody } from "./helpers";
+import { jsonError, readJsonBody } from "./helpers";
 
 export async function handleAutomationsList(): Promise<Response> {
-  try {
-    return Response.json({ automations: await listAutomations() });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to list automations."), 500);
-  }
+  return Response.json({ automations: await listAutomations() });
 }
 
 export async function handleAutomationCreate(request: Request): Promise<Response> {
@@ -32,19 +28,14 @@ export async function handleAutomationCreate(request: Request): Promise<Response
   if (!prompt.trim() || !modelId.trim()) {
     return jsonError("Body must include prompt and modelId.");
   }
-  try {
-    const automation = await createAutomation({ name, prompt, modelId, cwd, schedule: body?.schedule });
-    return Response.json({ automation });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to create automation."), 500);
-  }
+  const automation = await createAutomation({ name, prompt, modelId, cwd, schedule: body?.schedule });
+  return Response.json({ automation });
 }
 
 export async function handleAutomationPatch(request: Request, id: string): Promise<Response> {
   const body = await readJsonBody(request);
   if (!body) return jsonError("Body must be a JSON object.");
-  try {
-    const automation = await patchAutomation(id, {
+  const automation = await patchAutomation(id, {
       ...(typeof body.name === "string" ? { name: body.name } : {}),
       ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
       ...(typeof body.modelId === "string" ? { modelId: body.modelId } : {}),
@@ -52,22 +43,15 @@ export async function handleAutomationPatch(request: Request, id: string): Promi
       ...(body.status === "active" || body.status === "paused" ? { status: body.status } : {}),
       ...(typeof body.unread === "boolean" ? { unread: body.unread } : {}),
       ...(body.schedule !== undefined ? { schedule: body.schedule } : {}),
-    });
-    if (!automation) return jsonError(`Unknown automation '${id}'.`, 404);
-    return Response.json({ automation });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to update automation."), 500);
-  }
+  });
+  if (!automation) return jsonError(`Unknown automation '${id}'.`, 404);
+  return Response.json({ automation });
 }
 
 export async function handleAutomationDelete(id: string): Promise<Response> {
-  try {
-    const removed = await deleteAutomation(id);
-    if (!removed) return jsonError(`Unknown automation '${id}'.`, 404);
-    return Response.json({ ok: true });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to delete automation."), 500);
-  }
+  const removed = await deleteAutomation(id);
+  if (!removed) return jsonError(`Unknown automation '${id}'.`, 404);
+  return Response.json({ ok: true });
 }
 
 export async function handleAutomationRun(id: string): Promise<Response> {
@@ -87,11 +71,7 @@ function goalSessionId(request: Request): string | null {
 export async function handleGoalGet(request: Request): Promise<Response> {
   const piSessionId = goalSessionId(request);
   if (!piSessionId) return jsonError("piSessionId is required.");
-  try {
-    return Response.json({ goal: await readGoal(piSessionId) });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to read goal."), 500);
-  }
+  return Response.json({ goal: await readGoal(piSessionId) });
 }
 
 export async function handleGoalPut(request: Request): Promise<Response> {
@@ -99,8 +79,7 @@ export async function handleGoalPut(request: Request): Promise<Response> {
   if (!piSessionId) return jsonError("piSessionId is required.");
   const body = await readJsonBody(request);
   if (!body) return jsonError("Body must be a JSON object.");
-  try {
-    const goal = await writeGoal(piSessionId, {
+  const goal = await writeGoal(piSessionId, {
       ...(typeof body.objective === "string" ? { objective: body.objective } : {}),
       ...(GOAL_STATUSES.includes(body.status as GoalStatus)
         ? { status: body.status as GoalStatus }
@@ -109,20 +88,13 @@ export async function handleGoalPut(request: Request): Promise<Response> {
         ? { turnBudget: body.turnBudget as number | null }
         : {}),
       ...(body.resetTurns === true ? { turnsUsed: 0 } : {}),
-    });
-    return Response.json({ goal: goal.objective ? goal : null });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to update goal."), 500);
-  }
+  });
+  return Response.json({ goal: goal.objective ? goal : null });
 }
 
 export async function handleGoalDelete(request: Request): Promise<Response> {
   const piSessionId = goalSessionId(request);
   if (!piSessionId) return jsonError("piSessionId is required.");
-  try {
-    await clearGoal(piSessionId);
-    return Response.json({ ok: true });
-  } catch (error) {
-    return jsonError(errorMessage(error, "Failed to clear goal."), 500);
-  }
+  await clearGoal(piSessionId);
+  return Response.json({ ok: true });
 }

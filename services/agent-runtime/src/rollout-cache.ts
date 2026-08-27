@@ -18,6 +18,7 @@
 
 import { createHash } from "node:crypto";
 import {
+  createReadStream,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -210,6 +211,38 @@ export function rolloutCache<T, S = T>(
       }
     },
   };
+}
+
+
+export async function readRolloutHead(filepath: string, bytes = 512): Promise<string> {
+  const chunks: Buffer[] = [];
+  const stream = createReadStream(filepath, { start: 0, end: bytes - 1 });
+  for await (const chunk of stream) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks).toString("utf-8");
+}
+
+export async function scanCompleteRolloutLines(
+  filepath: string,
+  start: number,
+  consume: (line: string) => void,
+): Promise<number> {
+  let consumedBytes = start;
+  let pending = "";
+  const stream = createReadStream(filepath, { start, encoding: "utf-8" });
+  for await (const chunk of stream) {
+    pending += chunk as string;
+    let lineStart = 0;
+    let newline = pending.indexOf("\n", lineStart);
+    while (newline !== -1) {
+      const line = pending.slice(lineStart, newline);
+      consume(line);
+      consumedBytes += Buffer.byteLength(line, "utf-8") + 1;
+      lineStart = newline + 1;
+      newline = pending.indexOf("\n", lineStart);
+    }
+    pending = pending.slice(lineStart);
+  }
+  return consumedBytes;
 }
 
 /** stat a rollout, or undefined when it has disappeared. */
