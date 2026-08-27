@@ -1,15 +1,24 @@
 import { Option, Schema } from "effect";
+import type { RecipeExtraArgument } from "../../../contracts/recipes";
 import type { Recipe } from "../models/types";
 
-export type RecipeExtraArgument = Schema.Schema.Type<typeof Schema.Json> | undefined;
-
-const RecipeExtraArgumentSchema = Schema.Json;
+const RecipeExtraArgumentSchema: Schema.Codec<RecipeExtraArgument, RecipeExtraArgument> =
+  Schema.suspend(() =>
+    Schema.Union([
+      Schema.Null,
+      Schema.Boolean,
+      Schema.Number,
+      Schema.String,
+      Schema.mutable(Schema.Array(RecipeExtraArgumentSchema)),
+      Schema.Record(Schema.String, RecipeExtraArgumentSchema),
+    ]),
+  );
 
 export const getExtraArgument = (
   extraArguments: Recipe["extra_args"],
   key: string,
-): RecipeExtraArgument => {
-  const read = (candidate: string): RecipeExtraArgument => {
+): RecipeExtraArgument | undefined => {
+  const read = (candidate: string): RecipeExtraArgument | undefined => {
     if (!Object.prototype.hasOwnProperty.call(extraArguments, candidate)) return undefined;
     return Option.getOrUndefined(
       Schema.decodeUnknownOption(RecipeExtraArgumentSchema)(extraArguments[candidate]),
