@@ -20,7 +20,10 @@ function validateCwd(rawCwd: string | null): Response | null {
   try {
     assertWorkspaceRoot(path.resolve(cwd));
   } catch (error) {
-    return jsonError(error instanceof Error ? error.message : "cwd is not an allowed workspace", 403);
+    return jsonError(
+      error instanceof Error ? error.message : "cwd is not an allowed workspace",
+      403,
+    );
   }
   return null;
 }

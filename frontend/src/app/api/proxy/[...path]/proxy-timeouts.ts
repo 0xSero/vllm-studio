@@ -4,9 +4,7 @@ const SYSTEM_UPSTREAM_TIMEOUT_MS = 20_000;
 const CHAT_COMPLETION_UPSTREAM_TIMEOUT_MS = 600_000;
 const MODEL_LIFECYCLE_TIMEOUT_MS = 360_000;
 const SSE_CONNECT_TIMEOUT_MS = 5_000;
-const POST_TIMEOUTS = new Map([
-  ["studio/downloads", DOWNLOAD_UPSTREAM_TIMEOUT_MS],
-]);
+const POST_TIMEOUTS = new Map([["studio/downloads", DOWNLOAD_UPSTREAM_TIMEOUT_MS]]);
 
 export function getUpstreamTimeoutMs(path: string[], method = "GET"): number {
   const route = path.join("/");
