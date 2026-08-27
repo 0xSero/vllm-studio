@@ -129,6 +129,97 @@ pub const State = struct {
         return state.addProjectPayload(database, payload.writer.buffered());
     }
 
+    pub fn importProjectPayload(state: *State, client: *http.Client, database: *sqlite.Database, document: []const u8) ![]u8 {
+        var parsed = std.json.parseFromSlice(std.json.Value, state.allocator, document, .{}) catch return error.InvalidProjectPayload;
+        defer parsed.deinit();
+        if (parsed.value != .object) return error.InvalidProjectPayload;
+        const account_id = stringField(parsed.value.object, "accountId") orelse return error.CodeStorageAccountRequired;
+        const repository_name = stringField(parsed.value.object, "repository") orelse return error.CodeStorageRepositoryRequired;
+        const workspace = stringField(parsed.value.object, "path") orelse return error.ProjectPathRequired;
+        const default_branch = stringField(parsed.value.object, "defaultBranch") orelse "main";
+        try code_storage_auth.validateRepository(repository_name);
+        const resolved = try agent_projects.resolveAllowedPath(state.allocator, state.io, state.environment, workspace);
+        defer state.allocator.free(resolved);
+        try code_storage_git.validateMirrorSource(state.allocator, state.io, state.environment, resolved);
+        var existing_id: ?[]u8 = null;
+        defer if (existing_id) |value| state.allocator.free(value);
+        {
+            try database.lock(state.io);
+            defer database.unlock(state.io);
+            if (try project_repository.getByPath(state.allocator, database, resolved)) |existing_value| {
+                var existing = existing_value;
+                defer existing.deinit();
+                if (existing.account_id != null) return importedProjectJson(state.allocator, &existing);
+                existing_id = try state.allocator.dupe(u8, existing.id);
+            }
+            if (try project_repository.getByRepository(state.allocator, database, account_id, repository_name)) |repository_value| {
+                var existing_repository = repository_value;
+                defer existing_repository.deinit();
+                if (existing_id == null or !std.mem.eql(u8, existing_id.?, existing_repository.id)) return error.CodeStorageRepositoryAlreadyAdded;
+            }
+        }
+        try state.mutex.lock(state.io);
+        var accounts = repository.load(state.allocator, state.io, state.data_dir) catch |failure| {
+            state.mutex.unlock(state.io);
+            return failure;
+        };
+        defer accounts.deinit();
+        const account = accounts.find(account_id) orelse {
+            state.mutex.unlock(state.io);
+            return error.CodeStorageAccountNotFound;
+        };
+        if (!std.mem.eql(u8, account.provider, "code-storage")) {
+            state.mutex.unlock(state.io);
+            return error.CodeStorageAccountNotFound;
+        }
+        const private_key = repository.resolveSecret(state.allocator, state.io, state.environment, state.data_dir, &accounts, account.secret_ref, account.secret_provider) catch |failure| {
+            state.mutex.unlock(state.io);
+            return failure;
+        };
+        const organization = state.allocator.dupe(u8, account.subject) catch |failure| {
+            state.allocator.free(private_key);
+            state.mutex.unlock(state.io);
+            return failure;
+        };
+        const owned_account_id = state.allocator.dupe(u8, account.id) catch |failure| {
+            state.allocator.free(private_key);
+            state.allocator.free(organization);
+            state.mutex.unlock(state.io);
+            return failure;
+        };
+        state.mutex.unlock(state.io);
+        defer state.allocator.free(private_key);
+        defer state.allocator.free(organization);
+        defer state.allocator.free(owned_account_id);
+        try code_storage_git.createRepository(state.allocator, state.io, client, organization, owned_account_id, private_key, repository_name);
+        var result = try code_storage_git.mirrorRepository(state.allocator, state.io, state.environment, organization, owned_account_id, private_key, repository_name, resolved, "project-import");
+        defer result.deinit();
+        var project_id: []u8 = undefined;
+        var generated_id: ?[]u8 = null;
+        defer if (generated_id) |value| state.allocator.free(value);
+        if (existing_id) |value| {
+            project_id = value;
+        } else {
+            var random: [12]u8 = undefined;
+            state.io.random(&random);
+            const encoded = std.fmt.bytesToHex(random, .lower);
+            generated_id = try std.fmt.allocPrint(state.allocator, "proj-{s}", .{encoded[0..]});
+            project_id = generated_id.?;
+        }
+        var timestamp_buffer: [24]u8 = undefined;
+        const added_at = formatTimestamp(state.io, &timestamp_buffer);
+        try database.lock(state.io);
+        defer database.unlock(state.io);
+        if (existing_id != null) {
+            try project_repository.linkRepository(database, project_id, owned_account_id, organization, repository_name, result.repository_url, default_branch);
+        } else {
+            try project_repository.saveRepository(database, project_id, std.fs.path.basename(resolved), resolved, owned_account_id, organization, repository_name, result.repository_url, default_branch, added_at);
+        }
+        var project = (try project_repository.getById(state.allocator, database, project_id)).?;
+        defer project.deinit();
+        return importedProjectJson(state.allocator, &project);
+    }
+
     pub fn addProjectPayload(state: *State, database: *sqlite.Database, document: []const u8) ![]u8 {
         var parsed = std.json.parseFromSlice(std.json.Value, state.allocator, document, .{}) catch return error.InvalidProjectPayload;
         defer parsed.deinit();
@@ -706,6 +797,33 @@ fn projectJson(allocator: std.mem.Allocator, project: *const project_repository.
     try output.writer.writeAll(",\"addedAt\":");
     try std.json.Stringify.value(project.added_at, .{}, &output.writer);
     try output.writer.writeAll(",\"exists\":false,\"hasGit\":false,\"branch\":null,\"accountId\":");
+    try std.json.Stringify.value(project.account_id orelse "", .{}, &output.writer);
+    try output.writer.writeAll(",\"organization\":");
+    try std.json.Stringify.value(project.organization orelse "", .{}, &output.writer);
+    try output.writer.writeAll(",\"repository\":");
+    try std.json.Stringify.value(project.repository orelse project.name, .{}, &output.writer);
+    try output.writer.writeAll(",\"repositoryUrl\":");
+    try std.json.Stringify.value(project.repository_url orelse "", .{}, &output.writer);
+    try output.writer.writeAll(",\"defaultBranch\":");
+    try std.json.Stringify.value(project.default_branch, .{}, &output.writer);
+    try output.writer.writeAll("}}");
+    return output.toOwnedSlice();
+}
+
+fn importedProjectJson(allocator: std.mem.Allocator, project: *const project_repository.Project) ![]u8 {
+    var output: Io.Writer.Allocating = .init(allocator);
+    errdefer output.deinit();
+    try output.writer.writeAll("{\"project\":{\"id\":");
+    try std.json.Stringify.value(project.id, .{}, &output.writer);
+    try output.writer.writeAll(",\"name\":");
+    try std.json.Stringify.value(project.name, .{}, &output.writer);
+    try output.writer.writeAll(",\"path\":");
+    try std.json.Stringify.value(project.path, .{}, &output.writer);
+    try output.writer.writeAll(",\"addedAt\":");
+    try std.json.Stringify.value(project.added_at, .{}, &output.writer);
+    try output.writer.writeAll(",\"exists\":true,\"hasGit\":true,\"branch\":");
+    try std.json.Stringify.value(project.default_branch, .{}, &output.writer);
+    try output.writer.writeAll(",\"accountId\":");
     try std.json.Stringify.value(project.account_id orelse "", .{}, &output.writer);
     try output.writer.writeAll(",\"organization\":");
     try std.json.Stringify.value(project.organization orelse "", .{}, &output.writer);

@@ -41,6 +41,7 @@ export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(new Set());
   const [addError, setAddError] = useState("");
   const [directoryModalOpen, setDirectoryModalOpen] = useState(false);
+  const [directoryAccountId, setDirectoryAccountId] = useState<string | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [projectsExpanded, setProjectsExpanded] = useState(true);
   const [chatsExpanded, setChatsExpanded] = useState(true);
@@ -48,25 +49,30 @@ export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view
   const addProjectButtonRef = useRef<HTMLButtonElement>(null);
   const removal = useProjectRemoval(projectsContext.removeProject, setOpenIds, setAddError);
 
-  const handleUseFolder = useCallback(async () => {
-    setAddError("");
-    try {
-      const result = await openProjectDirectory();
-      if (result.source === "fallback") {
-        setDirectoryModalOpen(true);
-        return;
+  const handleUseFolder = useCallback(
+    async (accountId: string) => {
+      setAddError("");
+      setDirectoryAccountId(accountId);
+      try {
+        const result = await openProjectDirectory(accountId);
+        if (result.source === "fallback") {
+          setDirectoryModalOpen(true);
+          return;
+        }
+        if (result.project) upsertProject(result.project);
+      } catch (error) {
+        setAddError(error instanceof Error ? error.message : "Failed to add project");
       }
-      if (result.project) upsertProject(result.project);
-    } catch (error) {
-      setAddError(error instanceof Error ? error.message : "Failed to add project");
-    }
-  }, [upsertProject]);
+    },
+    [upsertProject],
+  );
   useProjectsNavAddProjectEffect(() => setAddMenuOpen(true));
 
   const handleDirectoryPicked = async (directoryPath: string) => {
+    if (!directoryAccountId) return;
     setAddError("");
     try {
-      upsertProject(await addProjectFromPath(directoryPath));
+      upsertProject(await addProjectFromPath(directoryPath, directoryAccountId));
       setDirectoryModalOpen(false);
       void refreshProjects();
     } catch (error) {
@@ -234,7 +240,7 @@ export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view
           void refreshProjects();
           router.push(`/agent?project=${encodeURIComponent(project.id)}&new=1&replace=1`);
         }}
-        onUseFolder={() => void handleUseFolder()}
+        onUseFolder={(accountId) => void handleUseFolder(accountId)}
       />
       <ProjectRemoveConfirmModal
         project={removal.project}

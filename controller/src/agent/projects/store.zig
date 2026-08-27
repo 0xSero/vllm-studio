@@ -119,6 +119,18 @@ pub fn saveRepository(database: *sqlite.Database, id: []const u8, name: []const 
     if (try statement.step() != .done) return error.DatabaseUnexpectedRow;
 }
 
+pub fn linkRepository(database: *sqlite.Database, id: []const u8, account_id: []const u8, organization: []const u8, repository_name: []const u8, repository_url: []const u8, default_branch: []const u8) !void {
+    var statement = try database.prepare("UPDATE agent_projects SET account_id = ?, organization = ?, repository = ?, repository_url = ?, default_branch = ?, updated_at = CURRENT_TIMESTAMP WHERE project_id = ?");
+    defer statement.deinit();
+    try statement.bindText(1, account_id);
+    try statement.bindText(2, organization);
+    try statement.bindText(3, repository_name);
+    try statement.bindText(4, repository_url);
+    try statement.bindText(5, default_branch);
+    try statement.bindText(6, id);
+    if (try statement.step() != .done) return error.DatabaseUnexpectedRow;
+}
+
 pub fn delete(database: *sqlite.Database, id: []const u8) !void {
     var statement = try database.prepare("DELETE FROM agent_projects WHERE project_id = ?");
     defer statement.deinit();

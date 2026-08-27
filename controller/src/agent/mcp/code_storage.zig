@@ -20,6 +20,12 @@ pub const MirrorResult = struct {
     }
 };
 
+pub fn validateMirrorSource(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, path: []const u8) !void {
+    if (!std.fs.path.isAbsolute(path)) return error.CodeStoragePathMustBeAbsolute;
+    const head = try gitOutput(allocator, io, environment, path, &.{ "rev-parse", "--verify", "HEAD" }, null);
+    allocator.free(head);
+}
+
 pub fn mirrorRepository(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, organization: []const u8, account_id: []const u8, private_key: []const u8, repository: []const u8, path: []const u8, session_id: []const u8) !MirrorResult {
     try auth.validateRepository(repository);
     if (!std.fs.path.isAbsolute(path)) return error.CodeStoragePathMustBeAbsolute;
@@ -60,11 +66,7 @@ pub fn mirrorRepository(allocator: std.mem.Allocator, io: Io, environment: *cons
     const checkpoint_ref = try std.fmt.allocPrint(allocator, "refs/local-studio/checkpoints/{s}/{s}", .{ session_hex[0..16], suffix[0..] });
     errdefer allocator.free(checkpoint_ref);
     try gitRequired(allocator, io, environment, path, &.{ "update-ref", checkpoint_ref, checkpoint_sha });
-    try gitRequired(allocator, io, environment, path, &.{ "push", remote, "--all" });
-    try gitRequired(allocator, io, environment, path, &.{ "push", remote, "--tags" });
-    const checkpoint_refspec = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ checkpoint_ref, checkpoint_ref });
-    defer allocator.free(checkpoint_refspec);
-    try gitRequired(allocator, io, environment, path, &.{ "push", remote, checkpoint_refspec });
+    try gitRequired(allocator, io, environment, path, &.{ "push", remote, "--mirror" });
     return .{ .allocator = allocator, .checkpoint_ref = checkpoint_ref, .checkpoint_sha = checkpoint_sha, .repository_url = repository_url };
 }
 

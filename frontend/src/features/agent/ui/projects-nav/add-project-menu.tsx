@@ -24,7 +24,7 @@ export function AddProjectMenu({
   anchorRef: React.RefObject<HTMLButtonElement | null>;
   onClose: () => void;
   onAdded: (project: Project) => void;
-  onUseFolder: () => void;
+  onUseFolder: (accountId: string) => void;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [query, setQuery] = useState("");
@@ -161,17 +161,21 @@ export function AddProjectMenu({
       <MenuAction
         icon={<FolderOpen className="size-3.5" />}
         label="Use existing"
+        disabled={!defaultAccountId}
         onClick={() => {
+          if (!defaultAccountId) return;
           onClose();
-          onUseFolder();
+          onUseFolder(defaultAccountId);
         }}
       />
       <MenuAction
         icon={<Plus className="size-3.5" />}
         label="New folder"
+        disabled={!defaultAccountId}
         onClick={() => {
+          if (!defaultAccountId) return;
           onClose();
-          onUseFolder();
+          onUseFolder(defaultAccountId);
         }}
       />
       {error ? (

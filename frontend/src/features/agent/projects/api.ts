@@ -44,22 +44,30 @@ export type OpenProjectDirectoryResult =
   | { source: "desktop"; project: Project | null }
   | { source: "fallback" };
 
-export async function openProjectDirectory(): Promise<OpenProjectDirectoryResult> {
+export async function openProjectDirectory(accountId: string): Promise<OpenProjectDirectoryResult> {
   const bridge = getDesktopBridge();
   if (!bridge?.openDirectory) return { source: "fallback" };
   const path = await bridge.openDirectory();
-  return { source: "desktop", project: path ? await addProjectFromPath(path) : null };
+  return { source: "desktop", project: path ? await addProjectFromPath(path, accountId) : null };
 }
 
-export async function addProjectFromPath(path: string): Promise<Project> {
+export async function addProjectFromPath(path: string, accountId: string): Promise<Project> {
+  const folder = path
+    .replace(/[\\/]+$/u, "")
+    .split(/[\\/]/u)
+    .at(-1)
+    ?.trim();
+  const repository = folder?.replace(/[^A-Za-z0-9._-]+/gu, "-").replace(/^-+|-+$/gu, "");
+  if (!repository || repository === "." || repository === "..")
+    throw new Error("Choose a project folder");
   const response = await fetch("/api/agent/projects", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path }),
+    body: JSON.stringify({ import: true, path, accountId, repository }),
   });
-  const payload = (await response.json()) as { project?: Project; error?: string };
+  const payload = (await response.json()) as { project?: Project; error?: string; detail?: string };
   if (!response.ok || !payload.project) {
-    throw new Error(payload.error || "Failed to add project");
+    throw new Error(payload.error || payload.detail || "Failed to add project");
   }
   return payload.project;
 }

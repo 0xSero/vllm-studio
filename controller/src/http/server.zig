@@ -612,7 +612,12 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         defer if (document) |value| allocator.free(value);
         const response = switch (request.head.method) {
             .GET => agent_projects.listPayload(allocator, io, mode, configuration, client, database, node_id),
-            .POST => if (std.mem.indexOf(u8, document orelse return false, "\"create\":true") != null)
+            .POST => if (std.mem.indexOf(u8, document orelse return false, "\"import\":true") != null)
+                if (mode != .standalone)
+                    agent_code_storage.forward(allocator, io, client, database, "/internal/node/v1/projects", .POST, document.?)
+                else
+                    code_storage.importProjectPayload(client, database, document.?)
+            else if (std.mem.indexOf(u8, document.?, "\"create\":true") != null)
                 if (mode != .standalone)
                     agent_code_storage.forward(allocator, io, client, database, "/internal/node/v1/projects", .POST, document.?)
                 else
@@ -1181,7 +1186,9 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         defer if (document) |value| allocator.free(value);
         const response = switch (request.head.method) {
             .GET => agent_projects.listLocal(allocator, io, configuration, database),
-            .POST => if (std.mem.indexOf(u8, document orelse return false, "\"create\":true") != null)
+            .POST => if (std.mem.indexOf(u8, document orelse return false, "\"import\":true") != null)
+                code_storage.importProjectPayload(client, database, document.?)
+            else if (std.mem.indexOf(u8, document.?, "\"create\":true") != null)
                 code_storage.createProjectPayload(client, database, document.?)
             else if (std.mem.indexOf(u8, document.?, "\"repository\"") != null)
                 code_storage.addProjectPayload(database, document.?)
@@ -2586,9 +2593,11 @@ fn respondHarnessFailure(request: *http.Server.Request, failure: anyerror) !bool
 
 fn respondProjectFailure(request: *http.Server.Request, failure: anyerror) !bool {
     const status: http.Status = switch (failure) {
-        error.ProjectPathRequired, error.ProjectPathMustBeAbsolute, error.ProjectPathNotFound, error.ProjectPathNotDirectory, error.ProjectPathOutsideRoots, error.ProjectIdRequired, error.InvalidProjectId, error.InvalidProjectPayload => .bad_request,
-        error.ProjectNodeRequired, error.ProjectNodeRejected => .conflict,
+        error.ProjectPathRequired, error.ProjectPathMustBeAbsolute, error.ProjectPathNotFound, error.ProjectPathNotDirectory, error.ProjectPathOutsideRoots, error.ProjectIdRequired, error.InvalidProjectId, error.InvalidProjectPayload, error.CodeStorageAccountRequired, error.CodeStorageRepositoryRequired, error.InvalidCodeStorageRepository, error.CodeStoragePathMustBeAbsolute => .bad_request,
+        error.CodeStorageAccountNotFound => .not_found,
+        error.ProjectNodeRequired, error.ProjectNodeRejected, error.CodeStorageRepositoryAlreadyAdded => .conflict,
         error.ProjectNodeUnavailable => .service_unavailable,
+        error.CodeStorageRequestRejected, error.CodeStorageGitFailed => .bad_gateway,
         else => .internal_server_error,
     };
     const detail: []const u8 = switch (failure) {
@@ -2600,6 +2609,14 @@ fn respondProjectFailure(request: *http.Server.Request, failure: anyerror) !bool
         error.ProjectIdRequired => "id is required",
         error.InvalidProjectId => "Invalid project id",
         error.InvalidProjectPayload => "Invalid JSON body",
+        error.CodeStorageAccountRequired => "Choose a Code.Storage account",
+        error.CodeStorageAccountNotFound => "Code.Storage account not found",
+        error.CodeStorageRepositoryRequired => "Repository name is required",
+        error.InvalidCodeStorageRepository => "Repository name is invalid",
+        error.CodeStoragePathMustBeAbsolute => "Project path must be absolute",
+        error.CodeStorageRepositoryAlreadyAdded => "That Code.Storage repository is already a project",
+        error.CodeStorageRequestRejected => "Code.Storage could not create the repository",
+        error.CodeStorageGitFailed => "Git history could not be mirrored to Code.Storage",
         error.ProjectNodeRequired => "No enrolled node offers project storage",
         error.ProjectNodeRejected => "The project node rejected the request",
         error.ProjectNodeUnavailable => "The project node is unavailable",
