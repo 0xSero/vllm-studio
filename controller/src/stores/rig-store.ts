@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { Rig } from "@local-studio/contracts/rigs";
-import { Effect, Schema } from "effect";
+import type { Effect } from "effect";
+import { Schema } from "effect";
 import {
   makeDatabaseCloser,
   openInitializedDatabase,

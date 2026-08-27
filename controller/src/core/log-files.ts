@@ -128,10 +128,14 @@ export const listLogFiles = (dataDirectory: string): LogFileEntry[] => {
   return Array.from(bySession.values()).sort((a, b) => b.mtimeMs - a.mtimeMs);
 };
 
+export interface LogCleanupResult {
+  deleted: number;
+}
+
 export const cleanupLogFiles = (
   dataDirectory: string,
   options: LogCleanupOptions,
-) => {
+): LogCleanupResult => {
   const { maxAgeMs, maxFiles, maxTotalBytes, excludePaths } = options;
   const now = Date.now();
 

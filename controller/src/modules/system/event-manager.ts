@@ -116,7 +116,7 @@ export class EventManager {
     }).pipe(Effect.andThen(this.publish(new Event(CONTROLLER_EVENTS.METRICS, metricsData))));
   }
 
-  public getLatestMetrics() {
+  public getLatestMetrics(): typeof this.latestMetrics {
     return { ...this.latestMetrics };
   }
 

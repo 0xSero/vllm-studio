@@ -213,9 +213,9 @@ const parseTaggedToolCalls = (content: string): ToolCall[] => {
     const functionMatch = block.match(/<function(?:=|\s+name=)([^>\s]+)[^>]*>/i);
     const toolName = functionMatch ? String(functionMatch[1]).replace(/["']/g, "").trim() : "";
     const argsMatch = block.match(/<arguments>([\s\S]*?)<\/arguments>/i);
-    const rawArgs = argsMatch ? String(argsMatch[1] ?? "").trim() : "";
-    const args = rawArgs
-      ? (parseJsonCandidate(rawArgs) ?? rawArgs)
+    const rawArguments = argsMatch ? String(argsMatch[1] ?? "").trim() : "";
+    const args = rawArguments
+      ? (parseJsonCandidate(rawArguments) ?? rawArguments)
       : (parseParameterBlocks(block) ?? {});
     if (toolName) {
       toolCalls.push(buildToolCall(toolName, args, toolCalls.length));

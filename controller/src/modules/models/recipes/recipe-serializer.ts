@@ -25,7 +25,7 @@ const serveRuntimeSchema = Schema.Struct({
 const stringValue = (value: RecipeInputValue): string | null =>
   Schema.is(Schema.String)(value) && value.trim() ? value.trim() : null;
 
-const defaultRuntime = (backend: RecipeInputValue) => {
+const defaultRuntime = (backend: RecipeInputValue): RecipeRuntimeInput => {
   const runtimeReference = stringValue(backend) ?? "vllm";
   return runtimeReference === "llamacpp"
     ? { kind: "binary", ref: "llama-server" }
@@ -216,7 +216,35 @@ export const recipeSchema = Schema.Struct({
   thinking_mode: Schema.String,
 });
 
-const recipeNumericDefaults = (normalized: RecipeInput) => ({
+interface RecipeNumericDefaults {
+  vision: RecipeInputValue;
+  backend: RecipeInputValue;
+  env_vars: RecipeInputValue;
+  tensor_parallel_size: number;
+  pipeline_parallel_size: number;
+  max_model_len: number;
+  gpu_memory_utilization: number;
+  kv_cache_dtype: RecipeInputValue;
+  max_num_seqs: number;
+  trust_remote_code: boolean;
+}
+
+interface RecipeOptionalDefaults {
+  tool_call_parser: RecipeInputValue;
+  reasoning_parser: RecipeInputValue;
+  enable_auto_tool_choice: boolean;
+  quantization: RecipeInputValue;
+  dtype: RecipeInputValue;
+  host: RecipeInputValue;
+  port: number;
+  served_model_name: RecipeInputValue;
+  python_path: RecipeInputValue;
+  extra_args: RecipeInputValue;
+  max_thinking_tokens: number | null;
+  thinking_mode: RecipeInputValue;
+}
+
+const recipeNumericDefaults = (normalized: RecipeInput): RecipeNumericDefaults => ({
   vision: normalized["vision"] ?? null,
   backend: normalized["backend"] ?? "vllm",
   env_vars: normalized["env_vars"] ?? null,
@@ -232,7 +260,7 @@ const recipeNumericDefaults = (normalized: RecipeInput) => ({
   ),
 });
 
-const recipeOptionalDefaults = (normalized: RecipeInput) => ({
+const recipeOptionalDefaults = (normalized: RecipeInput): RecipeOptionalDefaults => ({
   tool_call_parser: normalized["tool_call_parser"] ?? null,
   reasoning_parser: normalized["reasoning_parser"] ?? null,
   enable_auto_tool_choice: coerceBoolean(normalized["enable_auto_tool_choice"], false),

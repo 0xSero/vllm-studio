@@ -281,7 +281,7 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
     sessionId: string | null,
     recordedProvider: string,
     requestStart: number,
-  ) =>
+  ): Effect.Effect<Response, unknown> =>
     Effect.gen(function* () {
       const fetched = yield* Effect.tryPromise({
         try: (signal) =>
@@ -305,7 +305,7 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
       }
       const response = fetched.value;
       const decoded = yield* Effect.tryPromise({
-        try: async (): Promise<ProxyObject> => {
+        try: async () => {
           const value: ProxyObject = JSON.parse(await response.text());
           Schema.decodeUnknownSync(ChatRequestSchema)(value);
           return value;

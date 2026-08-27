@@ -4,6 +4,7 @@ import { Effect, Schedule } from "effect";
 import { getGpuInfo } from "./platform/gpu";
 import { getSystemRuntimeInfo } from "../engines/runtimes/runtime-info";
 import type { UsageAggregate } from "../../stores/inference-request-store";
+import type { RepositoryError } from "../../stores/sqlite";
 import type { PeakMetric, PeakMetricSession } from "./metrics-store";
 import {
   SGLANG_METRIC_NAMES,
@@ -25,6 +26,42 @@ const METRICS_HTTP_TIMEOUT_MS = 5_000;
 const METRICS_RUNTIME_SUMMARY_INTERVAL_MS = 30_000;
 const METRICS_COLLECT_INTERVAL_MS = 5_000;
 const METRICS_LIFETIME_UPTIME_INCREMENT_SECONDS = 5;
+
+interface LifetimeMetricData {
+  lifetime_prompt_tokens: number;
+  lifetime_completion_tokens: number;
+  lifetime_requests: number;
+  lifetime_energy_kwh: number;
+  lifetime_uptime_hours: number;
+  current_power_watts: number;
+  kwh_per_million_input: number | null;
+  kwh_per_million_output: number | null;
+}
+
+interface UsageMetricData {
+  prompt_tokens_total: number | undefined;
+  generation_tokens_total: number | undefined;
+  total_tokens: number | undefined;
+  total_requests: number | undefined;
+  avg_ttft_ms: number;
+  latency_avg: number | undefined;
+}
+
+interface StoredSessionPeakMetricData {
+  session_peak_prefill_tps: number | null;
+  session_peak_generation_tps: number | null;
+  session_peak_best_ttft_ms: number | null;
+  best_session_peak_id: string | null;
+  best_session_prefill_tps: number | null;
+  best_session_generation_tps: number | null;
+  best_session_ttft_ms: number | null;
+}
+
+interface StoredModelPeakMetricData {
+  peak_prefill_tps: number | null;
+  peak_generation_tps: number | null;
+  peak_ttft_ms: number | null;
+}
 
 interface EngineSample {
   promptThroughput: number;
@@ -88,7 +125,10 @@ const calculateEngineSample = (
   return sample;
 };
 
-const lifetimeMetrics = (data: Record<string, number>, currentPowerWatts: number) => ({
+const lifetimeMetrics = (
+  data: Record<string, number>,
+  currentPowerWatts: number,
+): LifetimeMetricData => ({
   lifetime_prompt_tokens: data["prompt_tokens_total"] ?? 0,
   lifetime_completion_tokens: data["completion_tokens_total"] ?? 0,
   lifetime_requests: data["requests_total"] ?? 0,
@@ -103,7 +143,10 @@ const lifetimeMetrics = (data: Record<string, number>, currentPowerWatts: number
     : null,
 });
 
-const usageMetrics = (sample: EngineSample, aggregate: UsageAggregate | null) => {
+const usageMetrics = (
+  sample: EngineSample,
+  aggregate: UsageAggregate | null,
+): UsageMetricData => {
   const totals = aggregate?.totals;
   const usageTtftAvg = positiveOrUndefined(aggregate?.ttft?.avg_ms);
   return {
@@ -123,7 +166,7 @@ const usageMetrics = (sample: EngineSample, aggregate: UsageAggregate | null) =>
 const storedSessionPeakMetrics = (
   sessionPeakData: PeakMetricSession | null,
   bestSessionPeakData: PeakMetricSession | null,
-) => ({
+): StoredSessionPeakMetricData => ({
   session_peak_prefill_tps: sessionPeakData?.peak_prefill_tps ?? null,
   session_peak_generation_tps: sessionPeakData?.peak_generation_tps ?? null,
   session_peak_best_ttft_ms: sessionPeakData?.best_ttft_ms ?? null,
@@ -133,7 +176,9 @@ const storedSessionPeakMetrics = (
   best_session_ttft_ms: bestSessionPeakData?.best_ttft_ms ?? null,
 });
 
-const storedModelPeakMetrics = (peakData: PeakMetric | null) => ({
+const storedModelPeakMetrics = (
+  peakData: PeakMetric | null,
+): StoredModelPeakMetricData => ({
   peak_prefill_tps: peakData?.prefill_tps ?? null,
   peak_generation_tps: peakData?.generation_tps ?? null,
   peak_ttft_ms: peakData?.ttft_ms ?? null,
@@ -157,7 +202,9 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
       return scrape.metrics;
     });
 
-  const publishRuntimeSummary = (current: ProcessInfo | null) => {
+  const publishRuntimeSummary = (
+    current: ProcessInfo | null,
+  ): Effect.Effect<void> => {
     if (Date.now() - lastRuntimeSummaryAt <= METRICS_RUNTIME_SUMMARY_INTERVAL_MS) {
       return Effect.void;
     }
@@ -186,7 +233,10 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
     );
   };
 
-  const collectEngineSample = (current: ProcessInfo, modelId: string) =>
+  const collectEngineSample = (
+    current: ProcessInfo,
+    modelId: string,
+  ): Effect.Effect<EngineSample, RepositoryError> =>
     Effect.gen(function* () {
       if (
         current.backend !== "vllm" &&
@@ -227,7 +277,7 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
     totalVramCapacityGb: number,
     totalPowerWatts: number,
     totalPowerLimitWatts: number,
-  ) =>
+  ): Effect.Effect<void, RepositoryError> =>
     Effect.gen(function* () {
       const modelId =
         current.served_model_name ?? current.model_path?.split("/").pop() ?? "unknown";
@@ -298,7 +348,7 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
     totalVramCapacityGb: number,
     totalPowerWatts: number,
     totalPowerLimitWatts: number,
-  ) => {
+  ): Effect.Effect<void> => {
     sessionModelId = null;
     sessionPeakId = null;
     sessionPeaks = emptyPeaks();

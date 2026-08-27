@@ -37,10 +37,19 @@ const HuggingFaceModelSchema = Schema.Record(Schema.String, Schema.Unknown);
 type HuggingFaceModel = typeof HuggingFaceModelSchema.Type;
 type HuggingFaceModelValue = HuggingFaceModel[string];
 
+interface NormalizedHuggingFaceModel extends HuggingFaceModel {
+  _id: string;
+  modelId: string;
+  downloads: number;
+  likes: number;
+  tags: unknown[];
+  private: boolean;
+}
+
 const modelText = (value: HuggingFaceModelValue): string =>
   Schema.is(Schema.String)(value) ? value : "";
 
-const normalizeHuggingFaceModel = (model: HuggingFaceModel) => {
+const normalizeHuggingFaceModel = (model: HuggingFaceModel): NormalizedHuggingFaceModel => {
   const modelId = modelText(model["modelId"] ?? model["id"]);
   return {
     ...model,

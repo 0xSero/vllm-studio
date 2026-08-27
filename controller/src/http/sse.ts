@@ -33,7 +33,11 @@ export const withSseHeartbeat = <E, R>(
   return signal ? stream.pipe(Stream.interruptWhen(abortEffect(signal))) : stream;
 };
 
-export const buildSseHeaders = (extra: Record<string, string> = {}) => ({
+export interface SseHeaders {
+  [name: string]: string;
+}
+
+export const buildSseHeaders = (extra: Record<string, string> = {}): SseHeaders => ({
   "Content-Type": "text/event-stream",
   "Cache-Control": "no-cache, no-transform",
   Connection: "keep-alive",

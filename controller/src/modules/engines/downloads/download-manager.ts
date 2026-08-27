@@ -209,7 +209,7 @@ export class DownloadManager {
   }
 
   public start(request: DownloadRequest): Effect.Effect<ModelDownload, EngineOperationError> {
-    return Effect.gen(function* (this: DownloadManager) {
+    return Effect.gen(function* (this: DownloadManager): Generator<Effect.Effect<unknown, EngineOperationError>, ModelDownload, never> {
       const modelId = request.model_id?.trim();
       if (!modelId)
         return yield* Effect.fail(operationError("start-download", "Model id is required"));
@@ -280,7 +280,7 @@ export class DownloadManager {
   }
 
   public pause(id: string): Effect.Effect<ModelDownload, EngineOperationError> {
-    return Effect.gen(function* (this: DownloadManager) {
+    return Effect.gen(function* (this: DownloadManager): Generator<Effect.Effect<unknown, EngineOperationError>, ModelDownload, never> {
       const download = yield* this.requireDownload(id);
       download.status = "paused";
       download.updated_at = toTimestamp();
@@ -295,7 +295,7 @@ export class DownloadManager {
     id: string,
     hfToken: string | null = null,
   ): Effect.Effect<ModelDownload, EngineOperationError> {
-    return Effect.gen(function* (this: DownloadManager) {
+    return Effect.gen(function* (this: DownloadManager): Generator<Effect.Effect<unknown, EngineOperationError>, ModelDownload, never> {
       const download = yield* this.requireDownload(id);
       if (download.status === "completed") return download;
       download.status = "queued";
@@ -309,7 +309,7 @@ export class DownloadManager {
   }
 
   public cancel(id: string): Effect.Effect<ModelDownload, EngineOperationError> {
-    return Effect.gen(function* (this: DownloadManager) {
+    return Effect.gen(function* (this: DownloadManager): Generator<Effect.Effect<unknown, EngineOperationError>, ModelDownload, never> {
       const download = yield* this.requireDownload(id);
       download.status = "canceled";
       download.updated_at = toTimestamp();
@@ -321,7 +321,7 @@ export class DownloadManager {
   }
 
   public shutdown(): Effect.Effect<void> {
-    return Effect.gen(function* (this: DownloadManager) {
+    return Effect.gen(function* (this: DownloadManager): Generator<Effect.Effect<unknown, never>, void, never> {
       const active = [...this.active.values()];
       for (const download of active) download.controller.abort();
       yield* Effect.forEach(
@@ -347,7 +347,7 @@ export class DownloadManager {
   }
 
   private launchRun(id: string, hfToken: string | null): Effect.Effect<void> {
-    return Effect.gen(function* (this: DownloadManager) {
+    return Effect.gen(function* (this: DownloadManager): Generator<Effect.Effect<unknown, never>, void, never> {
       if (this.active.has(id)) return;
       const owner: ActiveDownload = { controller: new AbortController(), fiber: null };
       this.active.set(id, owner);
@@ -369,7 +369,7 @@ export class DownloadManager {
     hfToken: string | null,
     owner: ActiveDownload,
   ): Effect.Effect<void, never> {
-    return Effect.gen(function* (this: DownloadManager) {
+    return Effect.gen(function* (this: DownloadManager): Generator<Effect.Effect<unknown, EngineOperationError>, void, never> {
       const download = yield* this.store.get(id);
       if (!download || download.status === "completed" || download.status === "canceled") return;
       const controller = owner.controller;
@@ -449,7 +449,7 @@ export class DownloadManager {
     controller: AbortController,
     hfToken: string | null,
   ): Effect.Effect<void, EngineOperationError> {
-    return Effect.gen(function* (this: DownloadManager) {
+    return Effect.gen(function* (this: DownloadManager): Generator<Effect.Effect<unknown, EngineOperationError>, void, never> {
       let currentDownload = download;
       const localPath = resolve(download.target_dir, ...sanitizePathSegments(file.path));
       const temporaryPath = `${localPath}.part`;
