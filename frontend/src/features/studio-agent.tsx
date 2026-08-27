@@ -23,6 +23,7 @@ import {
   decodeRuntimeSnapshot,
   foldSessionEvent,
   foldSessionEvents,
+  exportTranscript,
   reconcileQueueEvent,
   mergeCanonicalRuntimeEvents,
   type FoldedMessage,
@@ -127,7 +128,7 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
   const sessionsState = useJson(sessionListPath(sessionFilter));
   const [sessionId, setSessionId] = useState("");
   const [piSessionId, setPiSessionId] = useState<string | null>(null);
-  const cursor = useRef<RuntimeCursor>({ received: 0, committed: 0 });
+  const cursor = useRef<RuntimeCursor>({ received: 0, committed: 0, unsequenced: 0 });
   const [streamVersion, setStreamVersion] = useState(0);
   const [messages, setMessages] = useState<Message[]>([]);
   const [queued, setQueued] = useState<QueuedTurn[]>([]);
@@ -174,6 +175,11 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
   const templateCatalogue = records(templatesState.data, "templates");
   const activeModel = modelId || jsonText(models[0]?.id, jsonText(models[0]?.name));
   const selectedModel = models.find((model) => jsonText(model.id) === activeModel);
+  const modelDestination = [
+    jsonText(selectedModel?.providerId, jsonText(selectedModel?.provider, "provider")),
+    jsonText(selectedModel?.controllerUrl, "managed-provider"),
+    activeModel,
+  ].join(":");
   const thinkingLevels = modelThinkingLevels(selectedModel);
   useMountSubscription(() => {
     if (thinking !== "auto" && !thinkingLevels.includes(thinking)) setThinking("auto");
@@ -195,12 +201,14 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
       source: jsonText(template.source),
     }));
   useMountSubscription(() => {
-    setRemoteConsent(localStorage.getItem(`local-studio.remote-consent.${activeModel}`) === "1");
-  }, [activeModel]);
+    setRemoteConsent(
+      localStorage.getItem(`local-studio.remote-consent.${modelDestination}`) === "1",
+    );
+  }, [modelDestination]);
   const createSession = () => {
     setSessionId(crypto.randomUUID());
     setPiSessionId(null);
-    cursor.current = { received: 0, committed: 0 };
+    cursor.current = { received: 0, committed: 0, unsequenced: 0 };
     setMessages([]);
   };
   const loadSession = async (id: string, projectPath = activeCwd) => {
@@ -219,7 +227,7 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
         `/api/agent/runtime/status?sessionId=${encodeURIComponent(id)}${canonicalPiSessionId ? `&piSessionId=${encodeURIComponent(canonicalPiSessionId)}` : ""}`,
       );
       const runtime = decodeRuntimeSnapshot(runtimeData);
-      cursor.current = { received: runtime.cursor, committed: runtime.cursor };
+      cursor.current = { received: runtime.cursor, committed: runtime.cursor, unsequenced: 0 };
       setMessages(foldSessionEvents(mergeCanonicalRuntimeEvents(canonical.events, runtime.events)));
       setQueued([]);
       setStreamVersion((value) => value + 1);
@@ -272,7 +280,7 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
   const exportSession = () => {
     const link = document.createElement("a");
     link.href = URL.createObjectURL(
-      new Blob([messages.map((item) => `${item.role}: ${item.content}`).join("\n\n")], {
+      new Blob([exportTranscript(messages)], {
         type: "text/markdown",
       }),
     );
@@ -293,7 +301,7 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
                 cwd: activeCwd,
                 piSessionId,
                 modelId: activeModel,
-                thinkingLevel: "auto",
+                thinkingLevel: thinking,
                 toolAccess: fullTools ? "full" : "read_only",
                 browserToolEnabled: browserEnabled,
                 skills: composerSkills,
@@ -374,7 +382,7 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
       if (outcome === "queued")
         setQueued((items) => [...items, { id: crypto.randomUUID(), text: content }]);
       if (outcome === "accepted") {
-        cursor.current = { received: 0, committed: 0 };
+        cursor.current = { received: 0, committed: 0, unsequenced: 0 };
         setQueued([]);
         setStreamVersion((value) => value + 1);
       }
@@ -609,10 +617,13 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
           onChange={(event) => {
             const allowed = event.target.checked;
             setRemoteConsent(allowed);
-            localStorage.setItem(`local-studio.remote-consent.${activeModel}`, allowed ? "1" : "0");
+            localStorage.setItem(
+              `local-studio.remote-consent.${modelDestination}`,
+              allowed ? "1" : "0",
+            );
           }}
         />
-        On Send, {activeModel || "the selected destination"} receives this prompt, attachments,
+        On Send, {modelDestination || "the selected destination"} receives this prompt, attachments,
         loaded skill/template paths, and enabled tool context. It controls that copy under its own
         retention policy.
       </label>

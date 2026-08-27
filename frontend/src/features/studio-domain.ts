@@ -157,9 +157,9 @@ function snapshotBlocks(event: RecordJson, message: RecordJson | null): Transcri
   const update = nestedRecord(event.assistantMessageEvent);
   const partial = nestedRecord(update?.partial);
   const candidate = contentBlocks(partial?.content);
-  const directSize = direct.reduce((total, block) => total + block.text.length, 0);
-  const candidateSize = candidate.reduce((total, block) => total + block.text.length, 0);
-  return candidateSize > directSize ? candidate : direct;
+  const payloadSize = (blocks: TranscriptBlock[]) =>
+    blocks.reduce((total, block) => total + JSON.stringify(block.value).length, 0);
+  return payloadSize(candidate) > payloadSize(direct) ? candidate : direct;
 }
 function eventMessage(event: RecordJson): Omit<FoldedMessage, "id"> | null {
   const message = nestedRecord(event.message);
@@ -216,15 +216,27 @@ export function mergeCanonicalRuntimeEvents(
   runtime: RuntimeSnapshot["events"],
 ): RecordJson[] {
   const runtimeEvents = [...runtime].sort((left, right) => left.seq - right.seq);
-  const firstSettled = runtimeEvents.find((entry) => eventFingerprint(entry.event));
-  if (!firstSettled) return [...canonical, ...runtimeEvents.map((entry) => entry.event)];
-  const fingerprint = eventFingerprint(firstSettled.event);
-  let overlap = -1;
-  for (const [index, wrapper] of canonical.entries()) {
+  const canonicalSettled = canonical.flatMap((wrapper, eventIndex) => {
     const event = nestedRecord(wrapper.event) ?? wrapper;
-    if (eventFingerprint(event) === fingerprint) overlap = index;
+    const fingerprint = eventFingerprint(event);
+    return fingerprint ? [{ eventIndex, fingerprint }] : [];
+  });
+  const runtimeSettled = runtimeEvents.flatMap((entry, eventIndex) => {
+    const fingerprint = eventFingerprint(entry.event);
+    return fingerprint ? [{ eventIndex, fingerprint }] : [];
+  });
+  let best: { canonicalEventIndex: number; score: number } | null = null;
+  for (const [canonicalIndex, canonicalEntry] of canonicalSettled.entries()) {
+    if (canonicalEntry.fingerprint !== runtimeSettled[0]?.fingerprint) continue;
+    let score = 0;
+    while (
+      canonicalSettled[canonicalIndex + score]?.fingerprint === runtimeSettled[score]?.fingerprint
+    )
+      score += 1;
+    if (!best || score > best.score)
+      best = { canonicalEventIndex: canonicalEntry.eventIndex, score };
   }
-  const prefix = overlap < 0 ? canonical : canonical.slice(0, overlap);
+  const prefix = best ? canonical.slice(0, best.canonicalEventIndex) : canonical;
   return [...prefix, ...runtimeEvents.map((entry) => entry.event)];
 }
 
@@ -238,7 +250,7 @@ export function foldSessionEvents(events: RecordJson[]): FoldedMessage[] {
   return folded;
 }
 
-export type RuntimeCursor = { received: number; committed: number };
+export type RuntimeCursor = { received: number; committed: number; unsequenced: number };
 export type RuntimeDecision = { cursor: RuntimeCursor; event: RecordJson | null; identity: string };
 export function acceptRuntimePayload(
   cursor: RuntimeCursor,
@@ -249,12 +261,32 @@ export function acceptRuntimePayload(
   if (seq !== undefined && seq <= cursor.received) {
     return { cursor, event: null, identity: `runtime-${seq}` };
   }
-  if (seq === undefined) return { cursor, event: payload.event, identity: "runtime-unsequenced" };
+  if (seq === undefined) {
+    const unsequenced = cursor.unsequenced + 1;
+    return {
+      cursor: { ...cursor, unsequenced },
+      event: payload.event,
+      identity: `runtime-unsequenced-${unsequenced}`,
+    };
+  }
   return {
-    cursor: { received: seq, committed: seq },
+    cursor: { received: seq, committed: seq, unsequenced: cursor.unsequenced },
     event: payload.event,
     identity: `runtime-${seq}`,
   };
+}
+
+export function exportTranscript(messages: FoldedMessage[]): string {
+  return messages
+    .map((message) => {
+      const blocks = message.blocks.flatMap((block) =>
+        block.type === "text"
+          ? []
+          : [`\`\`\`json\n${JSON.stringify(block.value, null, 2)}\n\`\`\``],
+      );
+      return [`## ${message.role}`, message.content, ...blocks].filter(Boolean).join("\n\n");
+    })
+    .join("\n\n");
 }
 
 export type QueuedTurn = { id: string; text: string };
