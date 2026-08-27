@@ -106,8 +106,9 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
           extraArguments["docker_container"] ??
           extraArguments["container-name"] ??
           extraArguments["container_name"];
-        if (typeof value !== "string") return null;
-        const container = value.trim();
+        const decoded = Schema.decodeUnknownOption(Schema.String)(value);
+        if (decoded._tag === "None") return null;
+        const container = decoded.value.trim();
         return /^[a-zA-Z0-9_.-]+$/.test(container) ? container : null;
       }),
     );
@@ -380,13 +381,13 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
             ? Stream.empty
             : context.eventManager.subscribe(`logs:${sessionId}`, signal).pipe(
                 Stream.map((event) => {
-                  if (
-                    event.type === CONTROLLER_EVENTS.LOG &&
-                    typeof event.data["line"] === "string"
-                  ) {
+                  const logData = Schema.decodeUnknownOption(
+                    Schema.Struct({ line: Schema.String }),
+                  )(event.data);
+                  if (event.type === CONTROLLER_EVENTS.LOG && logData._tag === "Some") {
                     return new Event(CONTROLLER_EVENTS.LOG, {
                       ...event.data,
-                      line: redactLogLine(event.data["line"]),
+                      line: redactLogLine(logData.value.line),
                     }).toSse();
                   }
                   return event.toSse();

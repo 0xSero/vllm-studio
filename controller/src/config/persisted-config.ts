@@ -1,12 +1,6 @@
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { Schema } from "effect";
 
 export interface ProviderConfig {
   id: string;
@@ -22,6 +16,27 @@ export interface PersistedConfig {
   selected_runtime_target_ids?: Partial<Record<"vllm" | "sglang" | "llamacpp" | "mlx", string>>;
 }
 
+const ProviderConfigSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  base_url: Schema.String,
+  api_key: Schema.String,
+  enabled: Schema.Boolean,
+});
+
+const PersistedConfigSchema = Schema.Struct({
+  models_dir: Schema.optionalKey(Schema.String),
+  providers: Schema.optionalKey(Schema.mutable(Schema.Array(ProviderConfigSchema))),
+  selected_runtime_target_ids: Schema.optionalKey(
+    Schema.Struct({
+      vllm: Schema.optionalKey(Schema.String),
+      sglang: Schema.optionalKey(Schema.String),
+      llamacpp: Schema.optionalKey(Schema.String),
+      mlx: Schema.optionalKey(Schema.String),
+    }),
+  ),
+});
+
 export const getPersistedConfigPath = (dataDirectory: string): string => {
   return resolve(dataDirectory, "studio-settings.json");
 };
@@ -33,8 +48,8 @@ export const loadPersistedConfig = (dataDirectory: string): PersistedConfig => {
   }
   try {
     const content = readFileSync(path, "utf-8");
-    const parsed = JSON.parse(content) as PersistedConfig;
-    return parsed && typeof parsed === "object" ? parsed : {};
+    const parsed = Schema.decodeUnknownOption(PersistedConfigSchema)(JSON.parse(content));
+    return parsed._tag === "Some" ? parsed.value : {};
   } catch {
     return {};
   }
@@ -51,20 +66,14 @@ export const savePersistedConfig = (
   const path = getPersistedConfigPath(dataDirectory);
   const current = loadPersistedConfig(dataDirectory);
   const next: PersistedConfig = { ...current };
-  const writable = next as Record<
-    keyof PersistedConfig,
-    PersistedConfig[keyof PersistedConfig] | undefined
-  >;
-  (Object.keys(updates) as Array<keyof PersistedConfig>).forEach((key) => {
-    const value = updates[key];
-    if (value === null) {
-      delete next[key];
-      return;
-    }
-    if (value !== undefined) {
-      writable[key] = value;
-    }
-  });
+  if (updates.models_dir === null) delete next.models_dir;
+  else if (updates.models_dir !== undefined) next.models_dir = updates.models_dir;
+  if (updates.providers === null) delete next.providers;
+  else if (updates.providers !== undefined) next.providers = updates.providers;
+  if (updates.selected_runtime_target_ids === null) delete next.selected_runtime_target_ids;
+  else if (updates.selected_runtime_target_ids !== undefined) {
+    next.selected_runtime_target_ids = updates.selected_runtime_target_ids;
+  }
   mkdirSync(dataDirectory, { recursive: true, mode: 0o700 });
   // Write-then-rename so a crash mid-write can't truncate the file — a truncated
   // read is swallowed by loadPersistedConfig, silently resetting models_dir /

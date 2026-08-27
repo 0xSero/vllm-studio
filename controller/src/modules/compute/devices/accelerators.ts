@@ -7,21 +7,21 @@ import { neverFails, type DeviceProbe } from "./probe";
 
 const MB = 1024 * 1024;
 
-const TOOL_VENDORS: Readonly<Record<RuntimeGpuMonitoringTool, DeviceVendor>> = {
+const TOOL_VENDORS = {
   "nvidia-smi": "nvidia",
   "amd-smi": "amd",
   "rocm-smi": "amd",
   "intel-sysfs": "intel",
   "apple-metal": "apple",
-};
+} satisfies Readonly<Record<RuntimeGpuMonitoringTool, DeviceVendor>>;
 
-const ACCELERATOR_BY_VENDOR: Readonly<Record<DeviceVendor, AcceleratorInfo["accelerator"]>> = {
+const ACCELERATOR_BY_VENDOR = {
   nvidia: "cuda",
   amd: "rocm",
   intel: "xpu",
   apple: "metal",
   unknown: "cpu",
-};
+} satisfies Readonly<Record<DeviceVendor, AcceleratorInfo["accelerator"]>>;
 
 /** Stable across reboots. Indices renumber when a card is added or removed, so they are
  *  the last resort and are namespaced by vendor to stay unambiguous. */
@@ -51,7 +51,7 @@ const vendorFor = (tool: RuntimeGpuMonitoringTool | null): DeviceVendor => {
 const available = (flag: boolean | undefined): boolean => flag !== false;
 
 const reading = (flag: boolean | undefined, value: number | undefined): number | null =>
-  available(flag) && typeof value === "number" && Number.isFinite(value) ? value : null;
+  available(flag) && value !== undefined && Number.isFinite(value) ? value : null;
 
 const toAccelerator = (gpu: GpuInfo, vendor: DeviceVendor): AcceleratorInfo => ({
   id: deviceIdFor(gpu, vendor),

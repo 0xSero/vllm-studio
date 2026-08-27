@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { Effect } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { llamacpp as llamacppCompute } from "../../compute/engines/llamacpp";
 import type { Config } from "../../../config/env";
 import { resolveBinary, runCommandAsyncEffect } from "../../../core/command";
@@ -31,8 +31,11 @@ const rejectPathTraversal = (value: string, label: string): void => {
 };
 
 export const resolveLlamaBinary = (recipe: Recipe, config: Config): string => {
-  const override = getExtraArgument(recipe.extra_args, "llama_bin") ?? config.llama_bin;
-  if (typeof override === "string" && override.trim()) {
+  const configuredOverride = Schema.decodeUnknownOption(Schema.String)(
+    getExtraArgument(recipe.extra_args, "llama_bin"),
+  );
+  const override = Option.getOrElse(configuredOverride, () => config.llama_bin ?? "");
+  if (override.trim()) {
     rejectPathTraversal(override, "llama_bin");
     if (!isAllowedLlamaServerBinary(override)) {
       throw new Error("Invalid llama_bin: only llama-server executables are allowed");

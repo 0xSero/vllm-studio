@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 import type { MiddlewareHandler } from "hono";
 import { isHttpStatus } from "../core/errors";
 import type { AppContext } from "../app-context";
@@ -17,15 +17,24 @@ function elapsedMs(start: number): number {
   return Math.round(performance.now() - start);
 }
 
-function errorClass(error: unknown): string {
-  if (isHttpStatus(error)) return `Http${error.status}`;
-  return (error as { name?: string } | null)?.name || "Error";
+interface RequestFailure {
+  readonly cause: unknown;
 }
 
-function errorMessage(error: unknown): string {
-  if (isHttpStatus(error)) return error.detail;
-  if (error instanceof Error) return error.message;
-  return String(error);
+const NamedFailureSchema = Schema.Struct({
+  name: Schema.optional(Schema.String),
+});
+
+function errorClass(failure: RequestFailure): string {
+  if (isHttpStatus(failure.cause)) return `Http${failure.cause.status}`;
+  const named = Schema.decodeUnknownOption(NamedFailureSchema)(failure.cause);
+  return named._tag === "Some" ? named.value.name || "Error" : "Error";
+}
+
+function errorMessage(failure: RequestFailure): string {
+  if (isHttpStatus(failure.cause)) return failure.cause.detail;
+  if (failure.cause instanceof Error) return failure.cause.message;
+  return String(failure.cause);
 }
 
 export function createControllerRequestObservabilityMiddleware(
@@ -63,8 +72,8 @@ export function createControllerRequestObservabilityMiddleware(
             status: isHttpStatus(error) ? error.status : 500,
             duration_ms: elapsedMs(start),
             success: false,
-            error_class: errorClass(error),
-            error_message: errorMessage(error),
+            error_class: errorClass({ cause: error }),
+            error_message: errorMessage({ cause: error }),
             user_agent: userAgent,
           })
           .pipe(Effect.ignore);

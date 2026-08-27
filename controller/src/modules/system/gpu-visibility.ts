@@ -1,3 +1,4 @@
+import { Option, Schema } from "effect";
 import { getExtraArgument } from "../engines/argument-utilities";
 import type { GpuInfo, Recipe } from "../models/types";
 
@@ -19,27 +20,35 @@ const directVisibilityKeys = [
   "cuda-visible-devices",
 ] as const;
 
-function isUnknownRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+const VisibilitySelectorSchema = Schema.Union([Schema.String, Schema.Number, Schema.Boolean]);
+type VisibilitySelector = typeof VisibilitySelectorSchema.Type;
+
+const ExtraEnvironmentSchema = Schema.Struct({
+  CUDA_VISIBLE_DEVICES: Schema.optional(VisibilitySelectorSchema),
+});
+
+function selectorText(value: VisibilitySelector): string | null {
+  return value === false ? null : String(value);
 }
 
 function directVisibilitySelector(recipe: Recipe): string | null {
   for (const key of directVisibilityKeys) {
-    const value = getExtraArgument(recipe.extra_args, key);
-    if (value === undefined || value === null) continue;
-    return value === false ? null : String(value);
+    const value = Schema.decodeUnknownOption(VisibilitySelectorSchema)(
+      getExtraArgument(recipe.extra_args, key),
+    );
+    if (Option.isSome(value)) return selectorText(value.value);
   }
   return null;
 }
 
 function environmentVisibilitySelector(recipe: Recipe): string | null {
-  let selector = recipe.env_vars?.["CUDA_VISIBLE_DEVICES"] ?? null;
-  const extraEnvironment =
+  const selector = recipe.env_vars?.["CUDA_VISIBLE_DEVICES"] ?? null;
+  const rawEnvironment =
     getExtraArgument(recipe.extra_args, "env_vars") ?? recipe.extra_args["envVars"];
-  if (!isUnknownRecord(extraEnvironment)) return selector;
-  const value = extraEnvironment["CUDA_VISIBLE_DEVICES"];
-  if (value !== undefined && value !== null) selector = String(value);
-  return selector;
+  const extraEnvironment = Schema.decodeUnknownOption(ExtraEnvironmentSchema)(rawEnvironment);
+  if (Option.isNone(extraEnvironment)) return selector;
+  const value = extraEnvironment.value.CUDA_VISIBLE_DEVICES;
+  return value === undefined ? selector : selectorText(value);
 }
 
 function canonicalNvidiaUuid(uuid: string): string {

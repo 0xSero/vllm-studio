@@ -5,13 +5,14 @@ function elapsedMs(start: number): number {
   return Math.round(performance.now() - start);
 }
 
-function errorClass(error: unknown): string {
-  return (error as { name?: string } | null)?.name || "Error";
+type FunctionFailure = Error | string;
+
+function errorClass(error: FunctionFailure): string {
+  return error instanceof Error ? error.name || "Error" : "Error";
 }
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
+function errorMessage(error: FunctionFailure): string {
+  return error instanceof Error ? error.message : error;
 }
 
 export const observeControllerFunction = <A, E, R>(

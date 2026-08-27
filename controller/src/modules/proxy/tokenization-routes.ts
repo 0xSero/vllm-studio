@@ -54,11 +54,11 @@ const messageText = (messages: readonly unknown[]): string =>
     .flatMap((message) => {
       const decoded = Schema.decodeUnknownOption(MessageSchema)(message);
       if (decoded._tag === "None" || decoded.value.content === undefined) return [];
-      return typeof decoded.value.content === "string"
-        ? [decoded.value.content]
-        : decoded.value.content.flatMap((part) =>
-            part.type === "text" && part.text ? [part.text] : [],
-          );
+      const stringContent = Schema.decodeUnknownOption(Schema.String)(decoded.value.content);
+      if (stringContent._tag === "Some") return [stringContent.value];
+      const parts = Schema.decodeUnknownOption(Schema.Array(TextPartSchema))(decoded.value.content);
+      if (parts._tag === "None") return [];
+      return parts.value.flatMap((part) => (part.type === "text" && part.text ? [part.text] : []));
     })
     .join("\n");
 

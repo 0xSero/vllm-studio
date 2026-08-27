@@ -13,7 +13,12 @@ export class RecipeStoreError extends Schema.TaggedErrorClass<RecipeStoreError>(
   },
 ) {}
 
-const storeError = (operation: RecipeStoreError["operation"], source: unknown): RecipeStoreError =>
+type RecipeStoreErrorSource = RecipeStoreError["source"];
+
+const storeError = (
+  operation: RecipeStoreError["operation"],
+  source: RecipeStoreErrorSource,
+): RecipeStoreError =>
   new RecipeStoreError({
     operation,
     message: `Recipe ${operation} failed: ${String(source)}`,
@@ -48,7 +53,9 @@ export class RecipeStore {
       .query("SELECT name FROM sqlite_master WHERE type='table' AND name='recipes'")
       .get();
     if (table) {
-      const columns = this.db.query("PRAGMA table_info(recipes)").all() as Array<{ name: string }>;
+      const columns = Schema.decodeUnknownSync(
+        Schema.Array(Schema.Struct({ name: Schema.String })),
+      )(this.db.query("PRAGMA table_info(recipes)").all());
       const columnNames = new Set(columns.map((column) => column.name));
       this.useJsonColumn = columnNames.has("json") && !columnNames.has("data");
       if (!columnNames.has("json") && !columnNames.has("data")) this.useJsonColumn = true;
@@ -69,13 +76,13 @@ export class RecipeStore {
     return Effect.try({
       try: () => {
         const column = this.useJsonColumn ? "json" : "data";
-        const rows = this.db.query(`SELECT ${column} FROM recipes ORDER BY id`).all() as Array<
-          Record<string, string>
-        >;
+        const rows = Schema.decodeUnknownSync(
+          Schema.Array(Schema.Record(Schema.String, Schema.String)),
+        )(this.db.query(`SELECT ${column} FROM recipes ORDER BY id`).all());
         return rows.flatMap((row) => {
           try {
             const raw = row[column];
-            return typeof raw === "string" ? [parseRecipe(JSON.parse(raw))] : [];
+            return raw ? [parseRecipe(JSON.parse(raw))] : [];
           } catch {
             return [];
           }
@@ -89,12 +96,11 @@ export class RecipeStore {
     return Effect.try({
       try: () => {
         const column = this.useJsonColumn ? "json" : "data";
-        const row = this.db
-          .query(`SELECT ${column} FROM recipes WHERE id = ?`)
-          .get(recipeId) as Record<string, string> | null;
-        if (!row) return null;
+        const result = this.db.query(`SELECT ${column} FROM recipes WHERE id = ?`).get(recipeId);
+        if (!result) return null;
+        const row = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.String))(result);
         const raw = row[column];
-        if (typeof raw !== "string") return null;
+        if (!raw) return null;
         try {
           return parseRecipe(JSON.parse(raw));
         } catch {
@@ -145,7 +151,7 @@ export class RecipeStore {
     }).pipe(
       Effect.flatMap((content) =>
         Effect.try({
-          try: () => JSON.parse(content) as unknown,
+          try: () => JSON.parse(content),
           catch: (source) => storeError("import", source),
         }),
       ),

@@ -28,9 +28,6 @@ const installLockDirectory = (config: Pick<Config, "data_dir">): string =>
 const installLockPath = (config: Pick<Config, "data_dir">, backend: EngineBackend): string =>
   join(installLockDirectory(config), `${backend}.install.lock`);
 
-const nodeErrorCode = (error: unknown): string | null =>
-  error instanceof Error && "code" in error ? String(error.code) : null;
-
 const releaseInstallLock = (path: string): void => {
   try {
     rmSync(path);
@@ -70,7 +67,9 @@ const tryAcquireInstallLock = (
     );
     return { path, release: () => releaseInstallLock(path) };
   } catch (error) {
-    if (nodeErrorCode(error) !== "EEXIST") throw error;
+    if (!(error instanceof Error && "code" in error && String(error.code) === "EEXIST")) {
+      throw error;
+    }
     if (isStaleLock(path)) {
       releaseInstallLock(path);
       try {
@@ -81,7 +80,11 @@ const tryAcquireInstallLock = (
         );
         return { path, release: () => releaseInstallLock(path) };
       } catch (retryError) {
-        if (nodeErrorCode(retryError) !== "EEXIST") throw retryError;
+        if (
+          !(retryError instanceof Error && "code" in retryError && String(retryError.code) === "EEXIST")
+        ) {
+          throw retryError;
+        }
       }
     }
     return null;

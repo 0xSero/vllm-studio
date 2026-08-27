@@ -41,7 +41,11 @@ type CreateEngineJobOptions = {
 const MAX_OUTPUT_TAIL_LENGTH = 4000;
 const jobs = new Map<string, EngineJob>();
 const jobChildren = new Map<string, ChildProcess>();
-const jobRuns = new Map<string, { fiber: Fiber.Fiber<void, never> | null }>();
+interface JobRun {
+  fiber: Fiber.Fiber<void, never> | null;
+}
+
+const jobRuns = new Map<string, JobRun>();
 
 const tailOutput = (value: string | null | undefined): string | undefined => {
   if (!value) return undefined;
@@ -53,16 +57,19 @@ const nowIso = (): string => new Date().toISOString();
 const isPlatformBackend = (backend: RuntimeJobBackend): backend is "cuda" | "rocm" =>
   backend === "cuda" || backend === "rocm";
 
-const createJobRecord = (options: CreateEngineJobOptions): EngineJob => ({
-  id: randomUUID(),
-  backend: isPlatformBackend(options.backend) ? "vllm" : options.backend,
-  ...(options.targetId ? { targetId: options.targetId } : {}),
-  type: options.type,
-  status: "queued",
-  progress: 0,
-  message: `${options.type} queued for ${options.backend}`,
-  startedAt: nowIso(),
-});
+const createJobRecord = (options: CreateEngineJobOptions): EngineJob => {
+  const job: EngineJob = {
+    id: randomUUID(),
+    backend: isPlatformBackend(options.backend) ? "vllm" : options.backend,
+    type: options.type,
+    status: "queued",
+    progress: 0,
+    message: `${options.type} queued for ${options.backend}`,
+    startedAt: nowIso(),
+  };
+  if (options.targetId) job.targetId = options.targetId;
+  return job;
+};
 
 const updateJob = (id: string, updates: Partial<EngineJob>): EngineJob | null => {
   const current = jobs.get(id);
@@ -151,22 +158,13 @@ const runEngineInstall = (
     );
   });
 
-const runJob = (
+const resolveJobTarget = (
   config: Config,
-  job: EngineJob,
   options: CreateEngineJobOptions,
-): Effect.Effect<void> =>
+): Effect.Effect<RuntimeTarget | null, EngineOperationError> =>
   Effect.gen(function* () {
-    if (jobs.get(job.id)?.status !== "queued") return;
-    updateJob(job.id, {
-      status: "running",
-      progress: 0.05,
-      message: `${options.type} running for ${options.backend}`,
-      command: describeDefaultCommand(options),
-    });
-    let target: RuntimeTarget | null = null;
     if (options.targetId && !isPlatformBackend(options.backend)) {
-      target = yield* getRuntimeTarget(config, options.targetId, options.runningProcess);
+      const target = yield* getRuntimeTarget(config, options.targetId, options.runningProcess);
       if (!target) {
         return yield* Effect.fail(
           new EngineOperationError({
@@ -183,11 +181,51 @@ const runJob = (
           }),
         );
       }
+      return target;
     }
-    if (!target && options.backend === "vllm") {
-      target = yield* getDefaultRuntimeTarget(config, "vllm", options.runningProcess);
+    if (options.backend === "vllm") {
+      return yield* getDefaultRuntimeTarget(config, "vllm", options.runningProcess);
     }
+    return null;
+  });
 
+const finishJob = (
+  job: EngineJob,
+  options: CreateEngineJobOptions,
+  result: RuntimeUpgradeResult,
+): void => {
+  const outputTail = tailOutput(result.output ?? result.error);
+  const command = result.used_command ?? job.command;
+  const updates: Partial<EngineJob> = {
+    status: result.success ? "success" : "error",
+    progress: 1,
+    message: result.success
+      ? result.version
+        ? `${options.type} complete (${result.version})`
+        : `${options.type} complete`
+      : result.error ?? `${options.type} failed`,
+    finishedAt: nowIso(),
+  };
+  if (command) updates.command = command;
+  if (outputTail) updates.outputTail = outputTail;
+  if (!result.success && result.error) updates.error = result.error;
+  updateRunningJob(job.id, updates);
+};
+
+const runJob = (
+  config: Config,
+  job: EngineJob,
+  options: CreateEngineJobOptions,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    if (jobs.get(job.id)?.status !== "queued") return;
+    updateJob(job.id, {
+      status: "running",
+      progress: 0.05,
+      message: `${options.type} running for ${options.backend}`,
+      command: describeDefaultCommand(options),
+    });
+    const target = yield* resolveJobTarget(config, options);
     const result = isPlatformBackend(options.backend)
       ? yield* runPlatformUpgrade(options.backend, {})
       : yield* runEngineInstall(config, job, options, options.backend, target);
@@ -195,31 +233,7 @@ const runJob = (
     if (options.type === "install" || options.type === "update") {
       clearRuntimeTargetsCache();
     }
-    const outputTail = tailOutput(result.output ?? result.error);
-    const command = result.used_command ?? job.command;
-    if (!result.success) {
-      updateRunningJob(job.id, {
-        status: "error",
-        progress: 1,
-        message: result.error ?? `${options.type} failed`,
-        ...(command ? { command } : {}),
-        ...(outputTail ? { outputTail } : {}),
-        ...(result.error ? { error: result.error } : {}),
-        finishedAt: nowIso(),
-      });
-      return;
-    }
-
-    updateRunningJob(job.id, {
-      status: "success",
-      progress: 1,
-      message: result.version
-        ? `${options.type} complete (${result.version})`
-        : `${options.type} complete`,
-      ...(command ? { command } : {}),
-      ...(outputTail ? { outputTail } : {}),
-      finishedAt: nowIso(),
-    });
+    finishJob(job, options, result);
   }).pipe(
     Effect.catch((error) =>
       Effect.sync(() => {
@@ -263,7 +277,7 @@ export const createEngineJob = (
     const job = createJobRecord(options);
     jobs.set(job.id, job);
     pruneFinishedJobs();
-    const run = { fiber: null as Fiber.Fiber<void, never> | null };
+    const run: JobRun = { fiber: null };
     jobRuns.set(job.id, run);
     run.fiber = yield* runJob(config, job, options).pipe(
       Effect.ensuring(
