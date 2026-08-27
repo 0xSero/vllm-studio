@@ -52,12 +52,20 @@ const ControllerModelsSchema = Schema.Struct({
     ),
   ),
 });
+const ControllerErrorSchema = Schema.Struct({
+  detail: Schema.optional(Schema.String),
+  error: Schema.optional(Schema.Struct({ message: Schema.optional(Schema.String) })),
+  message: Schema.optional(Schema.String),
+});
 type ControllerRecipe = typeof ControllerRecipeSchema.Type;
 const decodeControllerRecipes = Schema.decodeUnknownSync(
   Schema.fromJsonString(ControllerRecipesSchema),
 );
 const decodeControllerModels = Schema.decodeUnknownSync(
   Schema.fromJsonString(ControllerModelsSchema),
+);
+const decodeControllerError = Schema.decodeUnknownOption(
+  Schema.fromJsonString(ControllerErrorSchema),
 );
 
 async function controllerPayload(
@@ -66,14 +74,25 @@ async function controllerPayload(
   endpoint: "/recipes" | "/v1/models",
 ): Promise<string> {
   const headers = new Headers({ accept: "application/json" });
-  if (apiKey) headers.set("X-API-Key", apiKey);
+  if (apiKey) {
+    headers.set("Authorization", `Bearer ${apiKey}`);
+    if (endpoint === "/recipes") headers.set("X-API-Key", apiKey);
+  }
   const response = await fetch(`${backendUrl}${endpoint}`, {
     headers,
     cache: "no-store",
     signal: AbortSignal.timeout(10_000),
   });
-  if (!response.ok) throw new Error(`${endpoint} returned HTTP ${response.status}`);
-  return response.text();
+  const text = await response.text();
+  if (!response.ok) {
+    const decoded = decodeControllerError(text);
+    const message =
+      decoded._tag === "Some"
+        ? decoded.value.detail || decoded.value.error?.message || decoded.value.message
+        : undefined;
+    throw new Error(message || `${endpoint} returned HTTP ${response.status}`);
+  }
+  return text;
 }
 
 async function resolveModelImages(
@@ -129,8 +148,6 @@ export async function POST(request: NextRequest) {
     return jsonError(errorMessage(error, "Failed to fetch recipes from controller"), 502);
   }
 
-  // `||` (not `??`) so an empty served_model_name falls back to the recipe id,
-  // matching how the UI derives the model id it sends here.
   const recipe = recipes.find((entry) => (entry.served_model_name || entry.id) === modelId);
   if (!recipe) return jsonError(`Model not found: ${modelId}`, 404);
 
