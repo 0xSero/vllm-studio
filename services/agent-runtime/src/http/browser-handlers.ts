@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { Schema } from "effect";
 import { sanitizeBrowserPaneUrl } from "../../../../shared/agent/sanitize-embedded-browser-url";
-import { browserHost, type KeyInput, type MouseInput } from "../browser-host/browser-host";
+import { browserHost } from "../browser-host/browser-host";
 import { fetchReadable } from "../browser-host/reader";
 
 const ALLOWED_VERBS = new Set([
@@ -24,6 +25,15 @@ let lastFallbackUrl = "";
 
 type VerbResult = { ok: boolean; data?: unknown; error?: string };
 
+const BrowserVerbPayloadSchema = Schema.Struct({
+  url: Schema.optional(Schema.String),
+  selector: Schema.optional(Schema.String),
+  value: Schema.optional(Schema.Union([Schema.String, Schema.Number, Schema.Boolean])),
+  deltaY: Schema.optional(Schema.Union([Schema.Number, Schema.String])),
+});
+
+type BrowserVerbPayload = typeof BrowserVerbPayloadSchema.Type;
+
 export async function handleBrowserVerb(request: Request, verb: string): Promise<Response> {
   if (!ALLOWED_VERBS.has(verb)) {
     return Response.json({ ok: false, error: `Unknown browser verb: ${verb}` }, { status: 400 });
@@ -40,19 +50,15 @@ export async function handleBrowserVerb(request: Request, verb: string): Promise
   }
 }
 
-async function readPayload(request: Request): Promise<Record<string, unknown>> {
+async function readPayload(request: Request): Promise<BrowserVerbPayload> {
   try {
-    const body = (await request.json()) as Record<string, unknown> | null;
-    if (body && typeof body === "object") {
-      const { sessionId: _sessionId, ...rest } = body;
-      return rest;
-    }
+    return Schema.decodeUnknownSync(BrowserVerbPayloadSchema)(await request.json());
   } catch {
+    return {};
   }
-  return {};
 }
 
-async function dispatchVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
+async function dispatchVerb(verb: string, payload: BrowserVerbPayload): Promise<VerbResult> {
   if (!browserHost.isAvailable()) return fallbackVerb(verb, payload);
   try {
     return await runHostVerb(verb, payload);
@@ -64,7 +70,7 @@ async function dispatchVerb(verb: string, payload: Record<string, unknown>): Pro
   }
 }
 
-async function runHostVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
+async function runHostVerb(verb: string, payload: BrowserVerbPayload): Promise<VerbResult> {
   switch (verb) {
     case "navigate":
       return navigateVerb(payload);
@@ -101,31 +107,32 @@ async function runHostVerb(verb: string, payload: Record<string, unknown>): Prom
   }
 }
 
-async function navigateVerb(payload: Record<string, unknown>): Promise<VerbResult> {
+async function navigateVerb(payload: BrowserVerbPayload): Promise<VerbResult> {
   // Pane rules: public web plus loopback (previewing local dev servers is the
   // pane's main job); other private ranges stay blocked.
-  const url = sanitizeBrowserPaneUrl(String(payload.url ?? ""));
+  const url = sanitizeBrowserPaneUrl(payload.url ?? "");
   if (!url) return { ok: false, error: "valid public or localhost http(s) url required" };
   const result = await browserHost.navigate(url);
   return { ok: true, data: result };
 }
 
-async function scrollVerb(payload: Record<string, unknown>): Promise<VerbResult> {
+async function scrollVerb(payload: BrowserVerbPayload): Promise<VerbResult> {
   const deltaY = Number(payload.deltaY ?? 0);
   const result = await browserHost.scroll({ deltaY: Number.isFinite(deltaY) ? deltaY : 0 });
   return { ok: true, data: { deltaY: result.deltaY, scrollY: result.scrollY } };
 }
 
 function selectorVerb(result: { found: boolean }): VerbResult {
-  return {
+  const response: VerbResult = {
     ok: result.found,
     data: { found: result.found },
-    ...(result.found ? {} : { error: "selector not found" }),
   };
+  if (!result.found) response.error = "selector not found";
+  return response;
 }
 
-function requireSelector(payload: Record<string, unknown>): string {
-  const selector = String(payload.selector ?? "");
+function requireSelector(payload: BrowserVerbPayload): string {
+  const selector = payload.selector ?? "";
   if (!selector) throw new Error("selector required");
   return selector;
 }
@@ -135,9 +142,9 @@ function requireSelector(payload: Record<string, unknown>): string {
 // without a url arg); every other verb returns the clear unavailable error. The
 // fallback honors pane rules (public + loopback) so local dev servers stay
 // previewable even when there's no headless Chromium to drive a full surface.
-async function fallbackVerb(verb: string, payload: Record<string, unknown>): Promise<VerbResult> {
+async function fallbackVerb(verb: string, payload: BrowserVerbPayload): Promise<VerbResult> {
   if (verb === "navigate") {
-    const url = sanitizeBrowserPaneUrl(String(payload.url ?? ""));
+    const url = sanitizeBrowserPaneUrl(payload.url ?? "");
     if (!url) return { ok: false, error: "valid public or localhost http(s) url required" };
     const reader = await fetchReadable(url);
     lastFallbackUrl = reader.url;
@@ -147,7 +154,7 @@ async function fallbackVerb(verb: string, payload: Record<string, unknown>): Pro
     return { ok: true, data: { url: lastFallbackUrl, title: "" } };
   }
   if (verb === "get-text" || verb === "get-html") {
-    const url = sanitizeBrowserPaneUrl(String(payload.url ?? "")) || lastFallbackUrl;
+    const url = sanitizeBrowserPaneUrl(payload.url ?? "") || lastFallbackUrl;
     if (!url) return { ok: false, error: UNAVAILABLE_ERROR };
     const reader = await fetchReadable(url);
     lastFallbackUrl = reader.url;
@@ -203,10 +210,45 @@ export async function handleBrowserFrame(): Promise<Response> {
   }
 }
 
-type InputBody =
-  | ({ kind: "mouse" } & Omit<MouseInput, "type"> & { type: MouseInput["type"] })
-  | ({ kind: "wheel" } & Omit<MouseInput, "type">)
-  | ({ kind: "key" } & KeyInput);
+const MouseButtonSchema = Schema.Union([
+  Schema.Literal("left"),
+  Schema.Literal("right"),
+  Schema.Literal("middle"),
+]);
+
+const MouseInputSchema = Schema.Struct({
+  kind: Schema.Literal("mouse"),
+  type: Schema.Union([
+    Schema.Literal("down"),
+    Schema.Literal("up"),
+    Schema.Literal("move"),
+    Schema.Literal("wheel"),
+  ]),
+  x: Schema.Number,
+  y: Schema.Number,
+  button: Schema.optional(MouseButtonSchema),
+  clickCount: Schema.optional(Schema.Number),
+  deltaX: Schema.optional(Schema.Number),
+  deltaY: Schema.optional(Schema.Number),
+});
+
+const WheelInputSchema = Schema.Struct({
+  kind: Schema.Literal("wheel"),
+  x: Schema.Number,
+  y: Schema.Number,
+  deltaX: Schema.optional(Schema.Number),
+  deltaY: Schema.optional(Schema.Number),
+});
+
+const KeyInputSchema = Schema.Struct({
+  kind: Schema.Literal("key"),
+  type: Schema.Union([Schema.Literal("down"), Schema.Literal("up")]),
+  key: Schema.String,
+  code: Schema.String,
+});
+
+const InputBodySchema = Schema.Union([MouseInputSchema, WheelInputSchema, KeyInputSchema]);
+type InputBody = typeof InputBodySchema.Type;
 
 export async function handleBrowserInput(request: Request): Promise<Response> {
   if (!browserHost.isAvailable()) {
@@ -214,7 +256,7 @@ export async function handleBrowserInput(request: Request): Promise<Response> {
   }
   let body: InputBody;
   try {
-    body = (await request.json()) as InputBody;
+    body = Schema.decodeUnknownSync(InputBodySchema)(await request.json());
   } catch {
     return Response.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
   }
@@ -392,13 +434,18 @@ export async function handleBrowserState(): Promise<Response> {
 }
 
 
+const ViewportBodySchema = Schema.Struct({
+  width: Schema.Union([Schema.Number, Schema.String]),
+  height: Schema.Union([Schema.Number, Schema.String]),
+});
+
 export async function handleBrowserViewport(request: Request): Promise<Response> {
   if (!browserHost.isAvailable()) {
     return Response.json({ ok: false, error: "Browser unavailable" }, { status: 503 });
   }
-  let body: { width?: unknown; height?: unknown };
+  let body: typeof ViewportBodySchema.Type;
   try {
-    body = (await request.json()) as { width?: unknown; height?: unknown };
+    body = Schema.decodeUnknownSync(ViewportBodySchema)(await request.json());
   } catch {
     return Response.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
   }

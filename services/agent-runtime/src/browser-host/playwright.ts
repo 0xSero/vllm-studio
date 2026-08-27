@@ -94,7 +94,7 @@ class PlaywrightManager {
       });
     const dataDirectory = browserDataDirectory();
     this.launching = launch(dataDirectory)
-      .catch((error: unknown) => {
+      .catch((error) => {
         if (!String(error).includes("ProcessSingleton")) throw error;
         return launch(`${dataDirectory}-${process.pid}`);
       })
@@ -124,8 +124,6 @@ export const playwrightManager = getGlobalSingleton(
 );
 
 getGlobalSingleton("playwrightExitHook", () => {
-  if (typeof process !== "undefined") {
-    process.on("exit", () => playwrightManager.stop());
-  }
+  process.on("exit", () => playwrightManager.stop());
   return true;
 });

@@ -8,8 +8,10 @@
 // self-call.
 
 import { lookup } from "node:dns/promises";
+import type { LookupFunction } from "node:net";
 import { request as httpRequest, type RequestOptions } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { Schema } from "effect";
 import { sanitizePublicBrowserUrl } from "../../../../shared/agent/sanitize-embedded-browser-url";
 
 const MAX_BYTES = 512 * 1024;
@@ -27,7 +29,12 @@ export type ReaderResult = {
   contentType: string;
 };
 
-type ResolvedHostAddress = { address: string; family: 4 | 6 };
+const ResolvedHostAddressSchema = Schema.Struct({
+  address: Schema.String,
+  family: Schema.Union([Schema.Literal(4), Schema.Literal(6)]),
+});
+
+type ResolvedHostAddress = typeof ResolvedHostAddressSchema.Type;
 type ResolvedHostInput = string | ResolvedHostAddress;
 type ReaderHostResolver = (hostname: string) => Promise<ResolvedHostInput[]>;
 
@@ -68,7 +75,7 @@ function decodeEntities(value: string): string {
     .replace(/&nbsp;/g, " ");
 }
 
-function htmlToReadable(html: string, baseUrl: string): { title: string; text: string } {
+function htmlToReadable(html: string, baseUrl: string) {
   const noScripts = html
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<style[\s\S]*?<\/style>/gi, "")
@@ -160,8 +167,12 @@ function hostForAddress(address: string): string {
 }
 
 function normalizeResolvedAddress(input: ResolvedHostInput): ResolvedHostAddress {
-  if (typeof input !== "string") return input;
-  return { address: input, family: input.includes(":") ? 6 : 4 };
+  try {
+    return Schema.decodeUnknownSync(ResolvedHostAddressSchema)(input);
+  } catch {
+    const address = Schema.decodeUnknownSync(Schema.String)(input);
+    return { address, family: address.includes(":") ? 6 : 4 };
+  }
 }
 
 function requestBoundedUrl(url: string, address: ResolvedHostAddress): Promise<BoundedResponse> {
@@ -169,17 +180,13 @@ function requestBoundedUrl(url: string, address: ResolvedHostAddress): Promise<B
   if (testRequest) return testRequest(url, address);
   const parsed = new URL(url);
   const request = parsed.protocol === "https:" ? httpsRequest : httpRequest;
+  const pinnedLookup: LookupFunction = (_hostname, lookupOptions, callback) => {
+    if (lookupOptions.all) callback(null, [address]);
+    else callback(null, address.address, address.family);
+  };
   const options: RequestOptions = {
     headers: { Accept: ACCEPT, "User-Agent": USER_AGENT },
-    lookup: ((
-      _hostname: string,
-      lookupOptions: unknown,
-      callback: (...args: unknown[]) => void,
-    ) => {
-      const wantsAll = Boolean((lookupOptions as { all?: boolean } | undefined)?.all);
-      if (wantsAll) callback(null, [address]);
-      else callback(null, address.address, address.family);
-    }) as RequestOptions["lookup"],
+    lookup: pinnedLookup,
   };
 
   return new Promise((resolve, reject) => {
@@ -195,8 +202,7 @@ function requestBoundedUrl(url: string, address: ResolvedHostAddress): Promise<B
       const status = response.statusCode ?? 0;
       const contentType = headerString(response.headers["content-type"]);
       const location = headerString(response.headers.location);
-      response.on("data", (raw: Buffer | string) => {
-        const chunk = typeof raw === "string" ? Buffer.from(raw) : raw;
+      response.on("data", (chunk: Buffer) => {
         if (total >= MAX_BYTES) return;
         const available = MAX_BYTES - total;
         const stored = chunk.length > available ? chunk.subarray(0, available) : chunk;
@@ -207,14 +213,15 @@ function requestBoundedUrl(url: string, address: ResolvedHostAddress): Promise<B
         if (settled) return;
         settled = true;
         const body = new TextDecoder("utf-8", { fatal: false }).decode(concatBytes(chunks, total));
-        resolve({
+        const boundedResponse: BoundedResponse = {
           status,
           ok: status >= 200 && status < 300,
           url,
           contentType,
           body,
-          ...(location ? { location } : {}),
-        });
+        };
+        if (location) boundedResponse.location = location;
+        resolve(boundedResponse);
       });
       response.on("error", fail);
     });
@@ -224,9 +231,15 @@ function requestBoundedUrl(url: string, address: ResolvedHostAddress): Promise<B
   });
 }
 
+const HeaderScalarSchema = Schema.Union([Schema.String, Schema.Number]);
+
 function headerString(value: string | string[] | number | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
-  return typeof value === "string" ? value : typeof value === "number" ? String(value) : "";
+  try {
+    return String(Schema.decodeUnknownSync(HeaderScalarSchema)(value));
+  } catch {
+    return "";
+  }
 }
 
 function concatBytes(chunks: Uint8Array[], total: number): Uint8Array {

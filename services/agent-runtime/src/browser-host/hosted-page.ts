@@ -18,7 +18,7 @@ export type PageState = {
   loading: boolean;
 };
 
-export type ScreencastFrame = { data: string; metadata: Record<string, unknown> };
+export type ScreencastFrame = { data: string; metadata: object };
 
 type NavigationDirection = "back" | "forward" | "reload" | null;
 
@@ -212,15 +212,11 @@ export class HostedPage {
   }
 
   async screenshot(type: "png" | "jpeg", quality?: number): Promise<string> {
-    const data = await this.playwrightPage.screenshot({
-      type,
-      ...(type === "jpeg" && quality ? { quality } : {}),
-    });
+    const data =
+      type === "jpeg" && quality
+        ? await this.playwrightPage.screenshot({ type, quality })
+        : await this.playwrightPage.screenshot({ type });
     return data.toString("base64");
-  }
-
-  evaluate(expression: string): Promise<unknown> {
-    return this.playwrightPage.evaluate(expression);
   }
 
   setViewport(width: number, height: number): Promise<void> {
