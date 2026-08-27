@@ -11,6 +11,7 @@ import {
 import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import { Schema } from "effect";
 import {
   getAgentDir,
   SessionManager,
@@ -32,7 +33,19 @@ import {
 } from "./session-usage";
 export type { SessionSummary } from "../../../shared/agent/session-summary";
 
-export type SessionEvent = Record<string, unknown> & { type?: string };
+const SessionEventSchema = Schema.Record(Schema.String, Schema.Unknown);
+const MessageSchema = Schema.Struct({
+  role: Schema.optional(Schema.String),
+  content: Schema.optional(Schema.Union([
+    Schema.String,
+    Schema.Array(Schema.Struct({ type: Schema.optional(Schema.String), text: Schema.optional(Schema.String) })),
+  ])),
+  timestamp: Schema.optional(Schema.String),
+});
+export type SessionEvent = typeof SessionEventSchema.Type;
+const isSessionEvent = Schema.is(SessionEventSchema);
+const isMessage = Schema.is(MessageSchema);
+const isString = Schema.is(Schema.String);
 
 type ListSessionsOptions = {
   since?: Date;
@@ -50,7 +63,7 @@ type NormalizedListSessionsOptions = {
   archivedOnly: boolean;
 };
 
-type PiMessageContent = string | Array<{ type?: string; text?: string }>;
+type PiMessageContent = string | readonly { type?: string; text?: string }[];
 
 type UserTurn = {
   isUser: boolean;
@@ -115,38 +128,27 @@ function sessionCwdMatches(summaryCwd: string, cwd: string): boolean {
 
 function piTextContent(content: PiMessageContent | undefined): string | null {
   if (Array.isArray(content)) {
-    const text = content
-      .filter((part) => part?.type === "text" && typeof part.text === "string")
-      .map((part) => part.text as string)
-      .join(" ")
-      .trim();
+    const text = content.filter((part) => part?.type === "text" && isString(part.text)).map((part) => part.text).join(" ").trim();
     return text || null;
   }
-  if (typeof content !== "string") return null;
+  if (!isString(content)) return null;
   const text = content.trim();
   return text || null;
 }
 
-function userEventTimestamp(event: Record<string, unknown>): string | null {
-  if (typeof event.timestamp === "string" && event.timestamp) return event.timestamp;
-  const message = event.message as { timestamp?: unknown } | undefined;
-  return message && typeof message.timestamp === "string" && message.timestamp
-    ? message.timestamp
-    : null;
+function userEventTimestamp(event: SessionEvent): string | null {
+  if (isString(event.timestamp) && event.timestamp) return event.timestamp;
+  const message = isMessage(event.message) ? event.message : undefined;
+  return message?.timestamp || null;
 }
 
-function userTurnFromEvent(event: Record<string, unknown>): UserTurn {
+function userTurnFromEvent(event: SessionEvent): UserTurn {
   if (event.type === "user_message") {
-    return {
-      isUser: true,
-      text: piTextContent(event.content as PiMessageContent | undefined),
-      at: userEventTimestamp(event),
-    };
+    const content = Schema.is(MessageSchema.fields.content)(event.content) ? event.content : undefined;
+    return { isUser: true, text: piTextContent(content), at: userEventTimestamp(event) };
   }
-  if (event.type !== "message" && event.type !== "message_end") {
-    return { isUser: false, text: null, at: null };
-  }
-  const message = event.message as { role?: string; content?: PiMessageContent } | undefined;
+  if (event.type !== "message" && event.type !== "message_end") return { isUser: false, text: null, at: null };
+  const message = isMessage(event.message) ? event.message : undefined;
   if (message?.role !== "user") return { isUser: false, text: null, at: null };
   return { isUser: true, text: piTextContent(message.content), at: userEventTimestamp(event) };
 }
@@ -204,6 +206,40 @@ async function readLastUserTurn(filepath: string): Promise<{ text: string; at: s
   return null;
 }
 
+async function scanSessionSummary(filepath: string) {
+  let header: SessionEvent | null = null;
+  let firstUserMessage: string | null = null;
+  const stream = createReadStream(filepath, { encoding: "utf-8" });
+  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+  try {
+    let scanned = 0;
+    for await (const line of rl) {
+      if (!line.trim()) continue;
+      scanned += 1;
+      let event: SessionEvent;
+      try {
+        const parsed = JSON.parse(line);
+        if (!isSessionEvent(parsed)) continue;
+        event = parsed;
+      } catch {
+        continue;
+      }
+      if (!header && event.type === "session") header = event;
+      if (!firstUserMessage) {
+        const userTurn = userTurnFromEvent(event);
+        if (userTurn.isUser && userTurn.text) {
+          firstUserMessage = cleanSessionTitle(sessionTitleFromUserPrompt(userTurn.text).slice(0, 120)) || null;
+        }
+      }
+      if (header && firstUserMessage) break;
+      if (scanned >= SUMMARY_SCAN_LINE_CAP) break;
+    }
+  } finally {
+    stream.destroy();
+  }
+  return { header, firstUserMessage };
+}
+
 async function readSessionSummary(
   filepath: string,
   filename: string,
@@ -213,36 +249,7 @@ async function readSessionSummary(
   if (cached && cached.mtimeMs === stats.mtimeMs) {
     return summaryFromCore(cached.core, stats.mtime);
   }
-  let header: Record<string, unknown> | null = null;
-  let firstUserMessage: string | null = null;
-
-  const stream = createReadStream(filepath, { encoding: "utf-8" });
-  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-  try {
-    let scanned = 0;
-    for await (const line of rl) {
-      if (!line.trim()) continue;
-      scanned += 1;
-      let event: Record<string, unknown>;
-      try {
-        event = JSON.parse(line) as Record<string, unknown>;
-      } catch {
-        continue;
-      }
-      if (!header && event.type === "session") header = event;
-      if (!firstUserMessage) {
-        const userTurn = userTurnFromEvent(event);
-        if (userTurn.isUser && userTurn.text) {
-          firstUserMessage =
-            cleanSessionTitle(sessionTitleFromUserPrompt(userTurn.text).slice(0, 120)) || null;
-        }
-      }
-      if (header && firstUserMessage) break;
-      if (scanned >= SUMMARY_SCAN_LINE_CAP) break;
-    }
-  } finally {
-    stream.destroy();
-  }
+  const { header, firstUserMessage } = await scanSessionSummary(filepath);
 
   let lastUserPromptText: string | undefined;
   let lastUserPromptAt: string | undefined;
@@ -254,20 +261,20 @@ async function readSessionSummary(
     }
   }
 
-  const core = header
-    ? {
-        id: typeof header.id === "string" ? header.id : "",
-        filename,
-        cwd: typeof header.cwd === "string" ? header.cwd : "",
-        startedAt:
-          typeof header.timestamp === "string" ? header.timestamp : stats.birthtime.toISOString(),
-        modelId: typeof header.modelId === "string" ? header.modelId : null,
-        provider: typeof header.provider === "string" ? header.provider : null,
-        firstUserMessage,
-        ...(lastUserPromptText !== undefined ? { lastUserPromptText } : {}),
-        ...(lastUserPromptAt !== undefined ? { lastUserPromptAt } : {}),
-      }
-    : null;
+  let core: SummaryCacheEntry["core"] = null;
+  if (header) {
+    core = {
+      id: isString(header.id) ? header.id : "",
+      filename,
+      cwd: isString(header.cwd) ? header.cwd : "",
+      startedAt: isString(header.timestamp) ? header.timestamp : stats.birthtime.toISOString(),
+      modelId: isString(header.modelId) ? header.modelId : null,
+      provider: isString(header.provider) ? header.provider : null,
+      firstUserMessage,
+    };
+    if (lastUserPromptText !== undefined) core.lastUserPromptText = lastUserPromptText;
+    if (lastUserPromptAt !== undefined) core.lastUserPromptAt = lastUserPromptAt;
+  }
   rememberSummary(filepath, { mtimeMs: stats.mtimeMs, core });
   return summaryFromCore(core, stats.mtime);
 }
@@ -417,10 +424,9 @@ function readPiSessionHeader(filepath: string): { id: string; cwd: string } | nu
     const newline = buffer.indexOf(0x0a, 0);
     if (newline < 0 && size > PI_SESSION_HEADER_BYTE_CAP) return null;
     const lineEnd = newline >= 0 ? newline : bytesRead;
-    const header = JSON.parse(buffer.toString("utf8", 0, lineEnd)) as Record<string, unknown>;
-    return header.type === "session" && typeof header.id === "string"
-      ? { id: header.id, cwd: typeof header.cwd === "string" ? header.cwd : "" }
-      : null;
+    const header = JSON.parse(buffer.toString("utf8", 0, lineEnd));
+    if (!isSessionEvent(header) || header.type !== "session" || !isString(header.id)) return null;
+    return { id: header.id, cwd: isString(header.cwd) ? header.cwd : "" };
   } catch {
     return null;
   } finally {
@@ -493,7 +499,8 @@ function parseEvent(line: string): SessionEvent | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
   try {
-    return JSON.parse(trimmed) as SessionEvent;
+    const event = JSON.parse(trimmed);
+    return isSessionEvent(event) ? event : null;
   } catch {
     return null;
   }
@@ -553,8 +560,7 @@ function activeBranchEvents(filepath: string, events: SessionEvent[]): SessionEv
     const activeIds = activeBranchIds(filepath);
     if (!activeIds) return events;
     return events.filter(
-      (event) =>
-        event.type === "session" || (typeof event.id === "string" && activeIds.has(event.id)),
+      (event) => event.type === "session" || (isString(event.id) && activeIds.has(event.id)),
     );
   } catch {
     return events;
@@ -570,12 +576,11 @@ function isInertEvent(event: SessionEvent): boolean {
 
 function isMessageEvent(event: SessionEvent): boolean {
   if (event.type !== "message" && event.type !== "message_end") return false;
-  const message = event.message as { role?: string } | undefined;
-  return Boolean(message && typeof message.role === "string");
+  return isMessage(event.message) && isString(event.message.role);
 }
 
 function messageRole(event: SessionEvent): string | undefined {
-  return (event.message as { role?: string } | undefined)?.role;
+  return isMessage(event.message) ? event.message.role : undefined;
 }
 
 // Header block: session/model_change/thinking_level_change entries that precede
@@ -611,7 +616,7 @@ function lineIsInert(bytes: Buffer, start: number, end: number): boolean {
 function parseRegion(
   bytes: Buffer,
   regionStart: number,
-): { events: Array<{ offset: number; event: SessionEvent }>; head: Buffer } {
+) {
   const events: Array<{ offset: number; event: SessionEvent }> = [];
   let lineStart = 0;
   let head = Buffer.alloc(0);
@@ -660,6 +665,10 @@ function tailBoundaryIndex(
 // Cheap head-scan: read the first lines of the file to recover the header block
 // (to prefix onto a deep tail slice) and the real session title (the first user
 // prompt — a tail slice's own first user message is NOT the session title).
+function headScanComplete(meta: LoadSessionMeta, scanned: number, headerCount: number): boolean {
+  return Boolean(meta.title && meta.startedAt && scanned >= headerCount && scanned >= 8);
+}
+
 async function readSessionHead(
   filepath: string,
 ): Promise<{ headerEvents: SessionEvent[]; meta: LoadSessionMeta }> {
@@ -685,17 +694,13 @@ async function readSessionHead(
       }
       if (isHeaderEvent(event)) headerEvents.push(event);
       if (event.type === "session") {
-        if (typeof event.timestamp === "string") meta.startedAt = event.timestamp;
-        const model = [event.modelId, event.model, event.model_id].find(
-          (value): value is string => typeof value === "string",
-        );
+        if (isString(event.timestamp)) meta.startedAt = event.timestamp;
+        const model = [event.modelId, event.model, event.model_id].find(isString);
         if (model) meta.modelId = model;
-        if (typeof event.id === "string") meta.piSessionId = event.id;
+        if (isString(event.id)) meta.piSessionId = event.id;
       }
       if (event.type === "model_change") {
-        const model = [event.model, event.modelId].find(
-          (value): value is string => typeof value === "string",
-        );
+        const model = [event.model, event.modelId].find(isString);
         if (model) meta.modelId = model;
       }
       if (!meta.title) {
@@ -704,7 +709,7 @@ async function readSessionHead(
           meta.title = cleanSessionTitle(userTurn.text.slice(0, 120)) || null;
         }
       }
-      if (meta.title && meta.startedAt && scanned >= headerEvents.length && scanned >= 8) {
+      if (headScanComplete(meta, scanned, headerEvents.length)) {
         // Header block is contiguous at the top; once a title is found past it
         // there is nothing more to learn from the head.
         break;
@@ -727,7 +732,7 @@ function readTailRegion(
   size: number,
   tail: number,
   before: number | undefined,
-): { events: SessionEvent[]; cursor: number | null } {
+) {
   const end = before === undefined ? size : Math.max(0, Math.min(before, size));
   if (end <= 0) return { events: [], cursor: null };
   const fd = openSync(filepath, "r");

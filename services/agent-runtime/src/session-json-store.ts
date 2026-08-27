@@ -1,11 +1,23 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { Schema } from "effect";
 import { resolveDataDir } from "./data-dir";
 
 // Serialize read-modify-write cycles per file so concurrent POSTs (e.g. an
 // agent plan autosave overlapping a user edit) can't both read v1 and drop one
 // update. Promise-chain per path; entries are removed when the chain drains.
 const writeChains = new Map<string, Promise<unknown>>();
+
+export type PersistedValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | readonly PersistedValue[]
+  | { readonly [key: string]: PersistedValue };
+
+const isString = Schema.is(Schema.String);
 
 function withFileLock<T>(file: string, task: () => Promise<T>): Promise<T> {
   const previous = writeChains.get(file) ?? Promise.resolve();
@@ -18,7 +30,7 @@ function withFileLock<T>(file: string, task: () => Promise<T>): Promise<T> {
 }
 
 function sanitizeSessionId(sessionId: string | null | undefined): string | null {
-  if (typeof sessionId !== "string") return null;
+  if (!isString(sessionId)) return null;
   const trimmed = sessionId.trim();
   if (!trimmed) return null;
   if (!/^[a-zA-Z0-9_.:-]{1,128}$/.test(trimmed)) return null;
@@ -28,7 +40,7 @@ function sanitizeSessionId(sessionId: string | null | undefined): string | null 
 export function createSessionScopedJsonStore<T extends { updatedAt: string }>(config: {
   subdir: string;
   legacyFile: string;
-  normalize: (input: unknown) => T;
+  normalize: (input: PersistedValue) => T;
 }) {
   const filePath = (sessionId: string | null | undefined): string => {
     const id = sanitizeSessionId(sessionId);

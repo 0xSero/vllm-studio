@@ -19,6 +19,7 @@
 
 import { appendFileSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { Schema } from "effect";
 import {
   evictIfCrowded,
   readRolloutHead,
@@ -35,6 +36,7 @@ const SIDECAR_KIND = "transcript";
  * line so the common case never pays for `JSON.parse`.
  */
 const INERT_PREFIXES = ['{"type":"custom"', '{"type":"custom_message"'];
+const InertEventSchema = Schema.Struct({ type: Schema.optional(Schema.String) });
 
 function lineIsInert(line: string): boolean {
   for (const prefix of INERT_PREFIXES) {
@@ -43,7 +45,7 @@ function lineIsInert(line: string): boolean {
   // Backstop for logs whose key order differs from what pi writes today.
   if (!line.includes('"custom')) return false;
   try {
-    const type = (JSON.parse(line) as { type?: string }).type;
+    const type = Schema.decodeUnknownSync(InertEventSchema)(JSON.parse(line)).type;
     return type === "custom" || type === "custom_message";
   } catch {
     return false;

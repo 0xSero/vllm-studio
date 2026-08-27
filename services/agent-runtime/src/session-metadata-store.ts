@@ -7,9 +7,11 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { Schema } from "effect";
 import lockfile from "proper-lockfile";
 import { resolveDataDir } from "./data-dir";
 import { isRecord } from "../../../shared/agent/guards";
+import type { PersistedValue } from "./session-json-store";
 
 const SESSION_METADATA_FILENAME = "agent-session-metadata.json";
 const LOCK_STALE_MS = 10_000;
@@ -65,24 +67,26 @@ function storePath(): string {
   return path.join(resolveDataDir(), SESSION_METADATA_FILENAME);
 }
 
-function normalizeStore(value: unknown): SessionMetadataStore {
+const isString = Schema.is(Schema.String);
+
+function normalizeStore(value: PersistedValue): SessionMetadataStore {
   if (!isRecord(value) || !isRecord(value.sessions)) return defaultStore();
   const sessions: Record<string, StoredSessionMetadata> = {};
   for (const [id, metadata] of Object.entries(value.sessions)) {
     if (!id.trim() || !isRecord(metadata)) continue;
     sessions[id] = {
       archived: metadata.archived === true,
-      archivedAt: typeof metadata.archivedAt === "string" ? metadata.archivedAt : null,
-      updatedAt: typeof metadata.updatedAt === "string" ? metadata.updatedAt : undefined,
-      cwd: typeof metadata.cwd === "string" ? metadata.cwd : undefined,
-      title: typeof metadata.title === "string" ? metadata.title : null,
-      projectId: typeof metadata.projectId === "string" ? metadata.projectId : undefined,
-      projectName: typeof metadata.projectName === "string" ? metadata.projectName : undefined,
+      archivedAt: isString(metadata.archivedAt) ? metadata.archivedAt : null,
+      updatedAt: isString(metadata.updatedAt) ? metadata.updatedAt : undefined,
+      cwd: isString(metadata.cwd) ? metadata.cwd : undefined,
+      title: isString(metadata.title) ? metadata.title : null,
+      projectId: isString(metadata.projectId) ? metadata.projectId : undefined,
+      projectName: isString(metadata.projectName) ? metadata.projectName : undefined,
       sessionUpdatedAt:
-        typeof metadata.sessionUpdatedAt === "string" ? metadata.sessionUpdatedAt : undefined,
+        isString(metadata.sessionUpdatedAt) ? metadata.sessionUpdatedAt : undefined,
       parentSessionId:
-        typeof metadata.parentSessionId === "string" ? metadata.parentSessionId : undefined,
-      subagentName: typeof metadata.subagentName === "string" ? metadata.subagentName : undefined,
+        isString(metadata.parentSessionId) ? metadata.parentSessionId : undefined,
+      subagentName: isString(metadata.subagentName) ? metadata.subagentName : undefined,
     };
   }
   return { version: 1, sessions };
@@ -103,7 +107,7 @@ function readStore(): SessionMetadataStore {
   const filepath = storePath();
   try {
     if (!existsSync(filepath)) return defaultStore();
-    return normalizeStore(JSON.parse(readFileSync(filepath, "utf-8")) as unknown);
+    return normalizeStore(JSON.parse(readFileSync(filepath, "utf-8")));
   } catch (error) {
     backupUnreadableStore(filepath);
     console.warn("[agent-session-metadata] Failed to read metadata store", error);
@@ -210,12 +214,13 @@ export async function setSubagentLink(
   await withStoreLock(() => {
     const store = readStore();
     const current = store.sessions[childId] ?? {};
-    store.sessions[childId] = {
+    const next = {
       ...current,
       parentSessionId: parentId,
-      ...(subagentName?.trim() ? { subagentName: subagentName.trim() } : {}),
       updatedAt: new Date().toISOString(),
     };
+    if (subagentName?.trim()) next.subagentName = subagentName.trim();
+    store.sessions[childId] = next;
     writeStore(store);
   });
 }

@@ -1,8 +1,12 @@
 import { readdir, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { Schema } from "effect";
 import { resolveDataDir } from "./data-dir";
-import { createSessionScopedJsonStore } from "./session-json-store";
+import {
+  createSessionScopedJsonStore,
+  type PersistedValue,
+} from "./session-json-store";
 import { isRecord } from "../../../shared/agent/guards";
 import type {
   Automation,
@@ -27,22 +31,22 @@ export function prependAutomationRun(
   return [run, ...runs].slice(0, automationRunHistoryLimit);
 }
 
-function normalizeSchedule(value: unknown): AutomationSchedule {
+const isString: (value: PersistedValue) => value is string = Schema.is(Schema.String);
+const isNumber: (value: PersistedValue) => value is number = Schema.is(Schema.Number);
+
+function normalizeSchedule(value: PersistedValue): AutomationSchedule {
   if (isRecord(value)) {
-    if (value.kind === "interval" && typeof value.minutes === "number" && value.minutes >= 1) {
+    if (value.kind === "interval" && isNumber(value.minutes) && value.minutes >= 1) {
       return { kind: "interval", minutes: Math.round(value.minutes) };
     }
-    if (value.kind === "daily" && typeof value.time === "string") {
-      return {
-        kind: "daily",
-        time: value.time,
-        ...(value.weekdaysOnly === true ? { weekdaysOnly: true } : {}),
-      };
+    if (value.kind === "daily" && isString(value.time)) {
+      if (value.weekdaysOnly === true) return { kind: "daily", time: value.time, weekdaysOnly: true };
+      return { kind: "daily", time: value.time };
     }
     if (
       value.kind === "weekly" &&
-      typeof value.day === "number" &&
-      typeof value.time === "string"
+      isNumber(value.day) &&
+      isString(value.time)
     ) {
       return {
         kind: "weekly",
@@ -54,20 +58,21 @@ function normalizeSchedule(value: unknown): AutomationSchedule {
   return { kind: "daily", time: "08:00" };
 }
 
-function normalizeRun(value: unknown): AutomationRun | null {
-  if (!isRecord(value) || typeof value.at !== "string") return null;
-  return {
+function normalizeRun(value: PersistedValue): AutomationRun | null {
+  if (!isRecord(value) || !isString(value.at)) return null;
+  const run: AutomationRun = {
     at: value.at,
-    piSessionId: typeof value.piSessionId === "string" ? value.piSessionId : null,
-    cwd: typeof value.cwd === "string" ? value.cwd : "",
-    projectId: typeof value.projectId === "string" ? value.projectId : null,
+    piSessionId: isString(value.piSessionId) ? value.piSessionId : null,
+    cwd: isString(value.cwd) ? value.cwd : "",
+    projectId: isString(value.projectId) ? value.projectId : null,
     outcome: value.outcome === "error" ? "error" : "ok",
-    summary: typeof value.summary === "string" ? value.summary.slice(0, MAX_SUMMARY_CHARS) : "",
-    ...(typeof value.error === "string" ? { error: value.error } : {}),
+    summary: isString(value.summary) ? value.summary.slice(0, MAX_SUMMARY_CHARS) : "",
   };
+  if (isString(value.error)) return { ...run, error: value.error };
+  return run;
 }
 
-function normalizeAutomation(value: unknown): Automation {
+function normalizeAutomation(value: PersistedValue): Automation {
   const record = isRecord(value) ? value : {};
   const now = new Date().toISOString();
   const lastRun = normalizeRun(record.lastRun);
@@ -81,19 +86,19 @@ function normalizeAutomation(value: unknown): Automation {
       : [];
   return {
     version: 1,
-    id: typeof record.id === "string" ? record.id : "",
-    name: typeof record.name === "string" ? record.name : "Untitled automation",
-    prompt: typeof record.prompt === "string" ? record.prompt : "",
-    modelId: typeof record.modelId === "string" ? record.modelId : "",
-    cwd: typeof record.cwd === "string" ? record.cwd : "",
+    id: isString(record.id) ? record.id : "",
+    name: isString(record.name) ? record.name : "Untitled automation",
+    prompt: isString(record.prompt) ? record.prompt : "",
+    modelId: isString(record.modelId) ? record.modelId : "",
+    cwd: isString(record.cwd) ? record.cwd : "",
     schedule: normalizeSchedule(record.schedule),
     status: record.status === "paused" ? "paused" : "active",
-    nextRunAt: typeof record.nextRunAt === "string" ? record.nextRunAt : null,
+    nextRunAt: isString(record.nextRunAt) ? record.nextRunAt : null,
     lastRun: runs[0] ?? lastRun,
     runs,
     unread: record.unread === true,
-    createdAt: typeof record.createdAt === "string" ? record.createdAt : now,
-    updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : now,
+    createdAt: isString(record.createdAt) ? record.createdAt : now,
+    updatedAt: isString(record.updatedAt) ? record.updatedAt : now,
   };
 }
 
@@ -103,7 +108,7 @@ const store = createSessionScopedJsonStore<Automation>({
   normalize: normalizeAutomation,
 });
 
-function parseTime(time: string): { hours: number; minutes: number } {
+function parseTime(time: string) {
   const match = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
   const hours = match ? Math.min(23, Number(match[1])) : 8;
   const minutes = match ? Math.min(59, Number(match[2])) : 0;
@@ -165,7 +170,13 @@ export async function createAutomation(input: {
   schedule: unknown;
 }): Promise<Automation> {
   const id = `auto-${randomUUID().slice(0, 8)}`;
-  const schedule = normalizeSchedule(input.schedule);
+  let scheduleInput: PersistedValue;
+  try {
+    scheduleInput = JSON.parse(JSON.stringify(input.schedule));
+  } catch {
+    scheduleInput = undefined;
+  }
+  const schedule = normalizeSchedule(scheduleInput);
   return store.write(
     {
       version: 1,
@@ -189,7 +200,7 @@ export async function createAutomation(input: {
 export async function patchAutomation(
   id: string,
   patch: Partial<Pick<Automation, "name" | "prompt" | "modelId" | "cwd" | "status" | "unread">> & {
-    schedule?: unknown;
+    schedule?: PersistedValue;
     nextRunAt?: string | null;
     lastRun?: AutomationRun | null;
     runs?: readonly AutomationRun[];
@@ -199,16 +210,13 @@ export async function patchAutomation(
   if (!existing) return null;
   const { schedule: rawSchedule, ...rest } = patch;
   const schedule = rawSchedule === undefined ? undefined : normalizeSchedule(rawSchedule);
-  const next = await store.write(
-    {
-      ...rest,
-      ...(schedule ? { schedule } : {}),
-      ...(schedule || patch.status === "active"
-        ? { nextRunAt: nextRunAt(schedule ?? existing.schedule, new Date()).toISOString() }
-        : {}),
-    },
-    id,
-  );
+  let update: Partial<Omit<Automation, "version" | "updatedAt">> = { ...rest };
+  if (schedule) update = { ...update, schedule };
+  if (schedule || patch.status === "active") {
+    const value = nextRunAt(schedule ?? existing.schedule, new Date()).toISOString();
+    update = { ...update, nextRunAt: value };
+  }
+  const next = await store.write(update, id);
   return next;
 }
 

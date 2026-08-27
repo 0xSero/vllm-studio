@@ -73,7 +73,7 @@ export function rolloutCacheFilePath(kind: string, filepath: string, extension: 
 function readEnvelope<T>(file: string, size?: number, mtimeMs?: number): T | undefined {
   let parsed: Envelope<T>;
   try {
-    parsed = JSON.parse(readFileSync(file, "utf-8")) as Envelope<T>;
+    parsed = JSON.parse(readFileSync(file, "utf-8"));
   } catch {
     return undefined;
   }
@@ -174,14 +174,36 @@ export function rolloutCache<T, S = T>(
   kind: string,
   codec?: { serialize: (value: T) => S; deserialize: (raw: S) => T },
 ): RolloutCache<T> {
+  if (!codec) {
+    return {
+      read(filepath, stat) {
+        return readEnvelope<T>(cacheFileFor(kind, filepath), stat.size, stat.mtimeMs);
+      },
+      readStale(filepath) {
+        return readEnvelope<T>(cacheFileFor(kind, filepath));
+      },
+      write(filepath, stat, value) {
+        writeEnvelope(cacheFileFor(kind, filepath), {
+          schema: CACHE_SCHEMA,
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+          value,
+        });
+      },
+      forget(filepath) {
+        try {
+          unlinkSync(cacheFileFor(kind, filepath));
+        } catch {}
+      },
+    };
+  }
   const decode = (raw: S): T | undefined => {
     try {
-      return codec ? codec.deserialize(raw) : (raw as unknown as T);
+      return codec.deserialize(raw);
     } catch {
       return undefined;
     }
   };
-
   return {
     read(filepath, stat) {
       const raw = readEnvelope<S>(cacheFileFor(kind, filepath), stat.size, stat.mtimeMs);
@@ -196,15 +218,13 @@ export function rolloutCache<T, S = T>(
         schema: CACHE_SCHEMA,
         size: stat.size,
         mtimeMs: stat.mtimeMs,
-        value: codec ? codec.serialize(value) : (value as unknown as S),
+        value: codec.serialize(value),
       });
     },
     forget(filepath) {
       try {
         unlinkSync(cacheFileFor(kind, filepath));
-      } catch {
-        // Already gone, or never written.
-      }
+      } catch {}
     },
   };
 }
@@ -213,7 +233,7 @@ export function rolloutCache<T, S = T>(
 export async function readRolloutHead(filepath: string, bytes = 512): Promise<string> {
   const chunks: Buffer[] = [];
   const stream = createReadStream(filepath, { start: 0, end: bytes - 1 });
-  for await (const chunk of stream) chunks.push(chunk as Buffer);
+  for await (const chunk of stream) chunks.push(chunk);
   return Buffer.concat(chunks).toString("utf-8");
 }
 
@@ -226,7 +246,7 @@ export async function scanCompleteRolloutLines(
   let pending = "";
   const stream = createReadStream(filepath, { start, encoding: "utf-8" });
   for await (const chunk of stream) {
-    pending += chunk as string;
+    pending += chunk;
     let lineStart = 0;
     let newline = pending.indexOf("\n", lineStart);
     while (newline !== -1) {
