@@ -1,3 +1,5 @@
+import { Schema } from "effect";
+
 export type ModelVisionInput = {
   identifiers: readonly string[];
   recipeOverride?: boolean | null;
@@ -43,19 +45,39 @@ const VISION_IDENTIFIER_PATTERNS = [
   "-mm-",
 ] as const;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
-const booleanValue = (value: unknown): boolean | undefined => {
-  if (typeof value === "boolean") return value;
-  if (typeof value !== "string") return undefined;
+const BooleanDeclarationSchema = Schema.Union([Schema.Boolean, Schema.String]);
+const ModalityDeclarationSchema = Schema.Union([Schema.String, Schema.Array(Schema.String)]);
+const CapabilitiesSchema = Schema.Struct({
+  vision: Schema.optional(BooleanDeclarationSchema),
+  image: Schema.optional(BooleanDeclarationSchema),
+});
+const VisionMetadataSchema = Schema.Struct({
+  vision: Schema.optional(BooleanDeclarationSchema),
+  supportsVision: Schema.optional(BooleanDeclarationSchema),
+  supports_vision: Schema.optional(BooleanDeclarationSchema),
+  multimodal: Schema.optional(BooleanDeclarationSchema),
+  capabilities: Schema.optional(CapabilitiesSchema),
+  input: Schema.optional(ModalityDeclarationSchema),
+  inputs: Schema.optional(ModalityDeclarationSchema),
+  modalities: Schema.optional(ModalityDeclarationSchema),
+  input_modalities: Schema.optional(ModalityDeclarationSchema),
+});
+const ModalitiesSchema = Schema.Array(ModalityDeclarationSchema);
+type BooleanDeclaration = Schema.Schema.Type<typeof BooleanDeclarationSchema>;
+type ModalityDeclaration = Schema.Schema.Type<typeof ModalityDeclarationSchema>;
+type VisionMetadata = Schema.Schema.Type<typeof VisionMetadataSchema>;
+
+const booleanValue = (value: BooleanDeclaration | undefined): boolean | undefined => {
+  if (Schema.is(Schema.Boolean)(value)) return value;
+  if (value === undefined) return undefined;
   const normalized = value.trim().toLowerCase();
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
   if (["0", "false", "no", "off"].includes(normalized)) return false;
   return undefined;
 };
 
-const firstBoolean = (values: readonly unknown[]): boolean | undefined => {
+const firstBoolean = (values: readonly (BooleanDeclaration | undefined)[]): boolean | undefined => {
   for (const value of values) {
     const parsed = booleanValue(value);
     if (parsed !== undefined) return parsed;
@@ -63,17 +85,17 @@ const firstBoolean = (values: readonly unknown[]): boolean | undefined => {
   return undefined;
 };
 
-const imageModality = (value: unknown): boolean | undefined => {
-  const values = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
-  const modalities = values
-    .filter((entry): entry is string => typeof entry === "string")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean);
+const imageModality = (value: ModalityDeclaration | undefined): boolean | undefined => {
+  if (value === undefined) return undefined;
+  const values = Schema.is(Schema.String)(value) ? value.split(",") : value;
+  const modalities = values.map((entry) => entry.trim().toLowerCase()).filter(Boolean);
   if (modalities.length === 0) return undefined;
   return modalities.some((entry) => entry === "image" || entry === "vision");
 };
 
-const firstImageModality = (values: readonly unknown[]): boolean | undefined => {
+const firstImageModality = (
+  values: readonly (ModalityDeclaration | undefined)[],
+): boolean | undefined => {
   let declared = false;
   for (const value of values) {
     const parsed = imageModality(value);
@@ -84,25 +106,24 @@ const firstImageModality = (values: readonly unknown[]): boolean | undefined => 
 };
 
 const legacyVision = (
-  metadataValue: unknown,
-  modalities: readonly unknown[],
+  metadata: VisionMetadata,
+  modalities: readonly ModalityDeclaration[],
 ): boolean | undefined => {
-  const metadata = isRecord(metadataValue) ? metadataValue : {};
-  const capabilities = isRecord(metadata["capabilities"]) ? metadata["capabilities"] : {};
+  const capabilities = metadata.capabilities ?? {};
   return (
     firstBoolean([
-      metadata["vision"],
-      metadata["supportsVision"],
-      metadata["supports_vision"],
-      metadata["multimodal"],
-      capabilities["vision"],
-      capabilities["image"],
+      metadata.vision,
+      metadata.supportsVision,
+      metadata.supports_vision,
+      metadata.multimodal,
+      capabilities.vision,
+      capabilities.image,
     ]) ??
     firstImageModality([
-      metadata["input"],
-      metadata["inputs"],
-      metadata["modalities"],
-      metadata["input_modalities"],
+      metadata.input,
+      metadata.inputs,
+      metadata.modalities,
+      metadata.input_modalities,
       ...modalities,
     ])
   );
@@ -119,5 +140,10 @@ export const resolveModelVision = ({
   recipeOverride,
   metadata,
   modalities = [],
-}: ModelVisionInput): boolean =>
-  recipeOverride ?? legacyVision(metadata, modalities) ?? inferModelVision(identifiers);
+}: ModelVisionInput): boolean => {
+  const parsedMetadata = Schema.decodeUnknownOption(VisionMetadataSchema)(metadata);
+  const parsedModalities = Schema.decodeUnknownOption(ModalitiesSchema)(modalities);
+  const metadataValue = parsedMetadata._tag === "Some" ? parsedMetadata.value : {};
+  const modalityValues = parsedModalities._tag === "Some" ? parsedModalities.value : [];
+  return recipeOverride ?? legacyVision(metadataValue, modalityValues) ?? inferModelVision(identifiers);
+};

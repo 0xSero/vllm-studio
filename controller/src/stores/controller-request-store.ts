@@ -167,7 +167,7 @@ export class ControllerRequestStore {
            MAX(duration_ms) as max_duration_ms
          FROM controller_requests`,
       )
-      .get() as NumberRow | null;
+      .get();
 
     const totalRequests = toFiniteNumber(totals?.["total_requests"]);
     const successfulRequests = toFiniteNumber(totals?.["successful_requests"]);
@@ -188,7 +188,7 @@ export class ControllerRequestStore {
          ORDER BY requests DESC, path ASC
          LIMIT 50`,
       )
-      .all() as NumberRow[];
+      .all();
 
     const byStatus = this.db
       .query<NumberRow, []>(
@@ -199,7 +199,7 @@ export class ControllerRequestStore {
          GROUP BY status
          ORDER BY requests DESC, status ASC`,
       )
-      .all() as NumberRow[];
+      .all();
 
     const errors = this.db
       .query<NumberRow, []>(
@@ -215,7 +215,7 @@ export class ControllerRequestStore {
          ORDER BY created_at DESC
          LIMIT 25`,
       )
-      .all() as NumberRow[];
+      .all();
 
     const recent = this.db
       .query<NumberRow, []>(
@@ -225,7 +225,7 @@ export class ControllerRequestStore {
            SUM(CASE WHEN datetime(created_at) >= datetime('now', '-24 hours') AND success = 0 THEN 1 ELSE 0 END) as last_24h_failed
          FROM controller_requests`,
       )
-      .get() as NumberRow | null;
+      .get();
 
     const functionTotals = this.db
       .query<NumberRow, []>(
@@ -237,7 +237,7 @@ export class ControllerRequestStore {
            MAX(duration_ms) as max_duration_ms
          FROM controller_function_calls`,
       )
-      .get() as NumberRow | null;
+      .get();
 
     const byFunction = this.db
       .query<NumberRow, []>(
@@ -253,7 +253,7 @@ export class ControllerRequestStore {
          ORDER BY calls DESC, function_name ASC
          LIMIT 50`,
       )
-      .all() as NumberRow[];
+      .all();
 
     const functionErrors = this.db
       .query<NumberRow, []>(
@@ -267,7 +267,7 @@ export class ControllerRequestStore {
          ORDER BY created_at DESC
          LIMIT 25`,
       )
-      .all() as NumberRow[];
+      .all();
 
     const totalFunctionCalls = toFiniteNumber(functionTotals?.["total_calls"]);
     const successfulFunctionCalls = toFiniteNumber(functionTotals?.["successful_calls"]);

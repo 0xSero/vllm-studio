@@ -10,6 +10,15 @@ import {
   createThinkRewriter,
   thinkingTagPrefixIsPartial,
 } from "./reasoning";
+import { Schema } from "effect";
+
+interface StreamObject {
+  [key: string]: StreamValue | undefined;
+}
+type StreamValue = string | number | boolean | null | StreamObject | StreamValue[];
+
+const isStreamObject = (value: StreamValue | undefined): value is StreamObject =>
+  value !== null && value !== undefined && !Array.isArray(value) && Object(value) === value;
 
 export interface StreamUsage {
   prompt_tokens: number;
@@ -171,27 +180,29 @@ export const createToolCallStream = (
     if (chunk) enqueueDataEvent(controller, chunk);
   };
 
-  const parseUsage = (data: Record<string, unknown>): void => {
+  const parseUsage = (data: StreamObject): void => {
     if (usageTracked || !onUsage) return;
-    const usage = data["usage"] as Record<string, number> | undefined;
-    if (usage && (usage["prompt_tokens"] || usage["completion_tokens"])) {
-      onUsage({
-        prompt_tokens: usage["prompt_tokens"] ?? 0,
-        completion_tokens: usage["completion_tokens"] ?? 0,
-        reasoning_tokens:
-          (usage["reasoning_tokens"] as number | undefined) ??
-          (usage["completion_tokens_details"] as Record<string, number> | undefined)?.[
-            "reasoning_tokens"
-          ] ??
-          0,
-        cache_read_tokens:
-          (usage["prompt_tokens_details"] as Record<string, number> | undefined)?.[
-            "cached_tokens"
-          ] ?? 0,
-        cache_write_tokens: 0,
-      });
-      usageTracked = true;
-    }
+    const usage = data["usage"];
+    if (!isStreamObject(usage)) return;
+    const promptTokens = Number(usage["prompt_tokens"] ?? 0);
+    const completionTokens = Number(usage["completion_tokens"] ?? 0);
+    if (!promptTokens && !completionTokens) return;
+    const completionDetails = usage["completion_tokens_details"];
+    const promptDetails = usage["prompt_tokens_details"];
+    onUsage({
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      reasoning_tokens:
+        Number(usage["reasoning_tokens"] ?? 0) ||
+        (isStreamObject(completionDetails)
+          ? Number(completionDetails["reasoning_tokens"] ?? 0)
+          : 0),
+      cache_read_tokens: isStreamObject(promptDetails)
+        ? Number(promptDetails["cached_tokens"] ?? 0)
+        : 0,
+      cache_write_tokens: 0,
+    });
+    usageTracked = true;
   };
 
   const trackFirstToken = (): void => {
@@ -207,6 +218,86 @@ export const createToolCallStream = (
       enqueueDataEvent(controller, buildToolCallChunk(parsed));
       toolCallsFound = true;
     }
+  };
+
+  const emitResolvedImplicitPrefix = (
+    controller: TransformStreamDefaultController<Uint8Array>,
+    rawReasoning: string,
+  ): void => {
+    if (rawReasoning) {
+      emitVisibleContent(controller, contentThink.resolveImplicitPrefixAsContent());
+    }
+  };
+
+  const processChoice = (
+    controller: TransformStreamDefaultController<Uint8Array>,
+    choice: StreamValue,
+    choiceIndex: number,
+  ): void => {
+    if (!isStreamObject(choice)) return;
+    const hasDelta = isStreamObject(choice["delta"]);
+    const delta = hasDelta ? choice["delta"] : choice["message"];
+    if (!isStreamObject(delta)) return;
+    const toolCalls = delta["tool_calls"];
+    const hasActiveToolCalls = Array.isArray(toolCalls) && toolCalls.length > 0;
+    if (hasActiveToolCalls) {
+      toolCallsFound = true;
+      trackFirstToken();
+    }
+    const rawContentValue = delta["content"];
+    const rawContent = Schema.is(Schema.String)(rawContentValue) ? rawContentValue : "";
+    const content = normalizeTextDelta(
+      contentHistory,
+      `${choiceIndex}:content`,
+      rawContent,
+      !hasDelta,
+    );
+    const rawReasoning = firstReasoningField(delta);
+    const reasoningRaw = rawReasoning
+      ? normalizeTextDelta(
+          reasoningHistory,
+          `${choiceIndex}:reasoning`,
+          rawReasoning,
+          !hasDelta,
+        )
+      : "";
+    emitResolvedImplicitPrefix(controller, rawReasoning);
+    if (content || reasoningRaw) trackFirstToken();
+    let reasoning = "";
+    let reasoningFromContent = "";
+    if (content) {
+      const rewritten = contentThink.rewrite(content, false);
+      const controlTokensStripped = stripLeakedDeepSeekControlTokens(rewritten.content);
+      if (controlTokensStripped) {
+        visibleContentBuffer += controlTokensStripped;
+      }
+      const cleanedContent = stripToolXmlDelta(controlTokensStripped);
+      if (cleanedContent) {
+        delta["content"] = cleanedContent;
+      } else if ("content" in delta) {
+        delete delta["content"];
+      }
+      reasoningFromContent = rewritten.reasoningAppend;
+    } else if (rawContent && "content" in delta) {
+      delete delta["content"];
+    }
+
+    if (reasoningRaw) {
+      const rewrittenReasoning = reasoningThink.rewrite(reasoningRaw, true);
+      reasoning = `${reasoning}${rewrittenReasoning.reasoningAppend}`;
+    }
+
+    if (reasoningFromContent) {
+      reasoning = `${reasoning}${reasoningFromContent}`;
+    }
+
+    if (reasoning) {
+      delta["reasoning_content"] = stripToolXmlDelta(reasoning);
+    } else if (REASONING_FIELDS.some((field) => field in delta)) {
+      delete delta["reasoning_content"];
+    }
+    delete delta["reasoning"];
+    delete delta["reasoning_text"];
   };
 
   const flushEvent = (
@@ -244,9 +335,9 @@ export const createToolCallStream = (
       return;
     }
 
-    let parsed: Record<string, unknown> | null = null;
+    let parsed: StreamObject | null = null;
     try {
-      parsed = JSON.parse(data) as Record<string, unknown>;
+      parsed = JSON.parse(data);
     } catch {
       parsed = null;
     }
@@ -261,73 +352,7 @@ export const createToolCallStream = (
     const choices = parsed["choices"];
     if (Array.isArray(choices)) {
       for (const [choiceIndex, choice] of choices.entries()) {
-        const choiceRecord = choice as Record<string, unknown>;
-        const hasDelta = choiceRecord["delta"] && typeof choiceRecord["delta"] === "object";
-        const delta = (hasDelta ? choiceRecord["delta"] : choiceRecord["message"]) as
-          | Record<string, unknown>
-          | undefined;
-        if (!delta) continue;
-        const toolCalls = delta["tool_calls"];
-        const hasActiveToolCalls = Array.isArray(toolCalls) && toolCalls.length > 0;
-        if (hasActiveToolCalls) {
-          toolCallsFound = true;
-          trackFirstToken();
-        }
-        const rawContent = typeof delta["content"] === "string" ? String(delta["content"]) : "";
-        const content = normalizeTextDelta(
-          contentHistory,
-          `${choiceIndex}:content`,
-          rawContent,
-          !hasDelta,
-        );
-        const rawReasoning = firstReasoningField(delta);
-        const reasoningRaw = rawReasoning
-          ? normalizeTextDelta(
-              reasoningHistory,
-              `${choiceIndex}:reasoning`,
-              rawReasoning,
-              !hasDelta,
-            )
-          : "";
-        if (rawReasoning) {
-          emitVisibleContent(controller, contentThink.resolveImplicitPrefixAsContent());
-        }
-        if (content || reasoningRaw) trackFirstToken();
-        let reasoning = "";
-        let reasoningFromContent = "";
-        if (content) {
-          const rewritten = contentThink.rewrite(content, false);
-          const controlTokensStripped = stripLeakedDeepSeekControlTokens(rewritten.content);
-          if (controlTokensStripped) {
-            visibleContentBuffer += controlTokensStripped;
-          }
-          const cleanedContent = stripToolXmlDelta(controlTokensStripped);
-          if (cleanedContent) {
-            delta["content"] = cleanedContent;
-          } else if ("content" in delta) {
-            delete delta["content"];
-          }
-          reasoningFromContent = rewritten.reasoningAppend;
-        } else if (rawContent && "content" in delta) {
-          delete delta["content"];
-        }
-
-        if (reasoningRaw) {
-          const rewrittenReasoning = reasoningThink.rewrite(reasoningRaw, true);
-          reasoning = `${reasoning}${rewrittenReasoning.reasoningAppend}`;
-        }
-
-        if (reasoningFromContent) {
-          reasoning = `${reasoning}${reasoningFromContent}`;
-        }
-
-        if (reasoning) {
-          delta["reasoning_content"] = stripToolXmlDelta(reasoning);
-        } else if (REASONING_FIELDS.some((field) => field in delta)) {
-          delete delta["reasoning_content"];
-        }
-        delete delta["reasoning"];
-        delete delta["reasoning_text"];
+        processChoice(controller, choice, choiceIndex);
       }
     }
 

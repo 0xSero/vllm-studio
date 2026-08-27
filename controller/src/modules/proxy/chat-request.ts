@@ -2,6 +2,8 @@ import type { Logger } from "../../core/logger";
 import type { AppContext } from "../../app-context";
 import { Effect } from "effect";
 import type { Recipe } from "../models/types";
+import { Schema } from "effect";
+import { isProxyObject, type ProxyObject } from "./content-normalizer";
 const PROXY_SESSION_HEADER_NAMES = [
   "x-vllm-session-id",
   "x-session-id",
@@ -9,9 +11,18 @@ const PROXY_SESSION_HEADER_NAMES = [
   "openai-conversation-id",
 ];
 
-export type OpenAIUsage = Record<string, number>;
+export interface OpenAIUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  reasoning_tokens?: number;
+  completion_tokens_details?: { reasoning_tokens?: number };
+}
 
 const NON_RUNNING_MODEL_WARN_INTERVAL_MS = 10 * 60_000;
+
+interface WarningLogDetails {
+  [key: string]: string | number | null;
+}
 
 interface NonRunningModelWarningState {
   lastWarnAt: number;
@@ -46,38 +57,39 @@ export const createNonRunningModelWarner = (
 
     const suppressed = state.suppressed;
     warnings.set(key, { lastWarnAt: now, suppressed: 0 });
-    logger.warn("Rejected chat request for non-running model", {
+    const warningDetails: WarningLogDetails = {
       requested_model: details.requestedModel,
       requested_recipe_id: details.requestedRecipeId,
       active_model: details.activeModel,
       source: details.source,
-      ...(suppressed > 0 ? { suppressed_requests: suppressed } : {}),
-    });
+    };
+    if (suppressed > 0) warningDetails["suppressed_requests"] = suppressed;
+    logger.warn("Rejected chat request for non-running model", warningDetails);
   };
 };
 
 export const extractSessionId = (
-  parsedBody: Record<string, unknown>,
+  parsedBody: ProxyObject,
   header: (name: string) => string | undefined,
 ): string | null => {
   const fromHeader = PROXY_SESSION_HEADER_NAMES.map((name) => header(name)).find(Boolean);
   if (fromHeader?.trim()) return fromHeader.trim();
 
   const direct = parsedBody["session_id"] ?? parsedBody["sessionId"] ?? parsedBody["chat_id"];
-  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  if (Schema.is(Schema.String)(direct) && direct.trim()) return direct.trim();
 
   const metadata = parsedBody["metadata"];
-  if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
-    const record = metadata as Record<string, unknown>;
+  if (isProxyObject(metadata)) {
+    const record = metadata;
     const fromMetadata = record["session_id"] ?? record["sessionId"] ?? record["chat_id"];
-    if (typeof fromMetadata === "string" && fromMetadata.trim()) return fromMetadata.trim();
+    if (Schema.is(Schema.String)(fromMetadata) && fromMetadata.trim()) return fromMetadata.trim();
   }
 
   return null;
 };
 
 export const attachSessionUsage = (
-  result: Record<string, unknown>,
+  result: ProxyObject,
   sessionId: string | null,
   usage: OpenAIUsage | undefined,
 ): void => {
@@ -85,9 +97,7 @@ export const attachSessionUsage = (
 
   const promptTokens = usage?.["prompt_tokens"] ?? 0;
   const completionTokens = usage?.["completion_tokens"] ?? 0;
-  const completionDetails = usage?.["completion_tokens_details"] as
-    | Record<string, number>
-    | undefined;
+  const completionDetails = usage?.completion_tokens_details;
   const reasoningTokens =
     usage?.["reasoning_tokens"] ?? completionDetails?.["reasoning_tokens"] ?? 0;
 
@@ -98,7 +108,7 @@ export const attachSessionUsage = (
     total_tokens: promptTokens + completionTokens,
     current_prompt_tokens: promptTokens,
     current_completion_tokens: completionTokens,
-    current_reasoning_tokens: typeof reasoningTokens === "number" ? reasoningTokens : 0,
+    current_reasoning_tokens: reasoningTokens,
   };
 };
 
@@ -119,14 +129,10 @@ export const findRecipeByModel = (
     }),
   );
 
-export const ensureStreamingUsageIncluded = (payload: Record<string, unknown>): boolean => {
-  if (!Boolean(payload["stream"])) return false;
-  const existingStreamOptions =
-    payload["stream_options"] &&
-    typeof payload["stream_options"] === "object" &&
-    !Array.isArray(payload["stream_options"])
-      ? (payload["stream_options"] as Record<string, unknown>)
-      : {};
+export const ensureStreamingUsageIncluded = (payload: ProxyObject): boolean => {
+  if (!payload["stream"]) return false;
+  const rawStreamOptions = payload["stream_options"];
+  const existingStreamOptions: ProxyObject = isProxyObject(rawStreamOptions) ? rawStreamOptions : {};
   if (existingStreamOptions["include_usage"] === true) return false;
   payload["stream_options"] = {
     ...existingStreamOptions,
