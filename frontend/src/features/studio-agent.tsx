@@ -1,6 +1,7 @@
 "use client";
+import { Schema } from "effect";
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
   ErrorText,
@@ -8,137 +9,88 @@ import {
   Page,
   Tabs,
   records,
-  request,
+  requestRecord,
   useJson,
   type Json,
   type RecordJson,
 } from "./studio-core";
+import { WorkspaceTools } from "./studio-tools";
+import {
+  acceptRuntimePayload,
+  decodeCanonicalSession,
+  decodeRuntimePayload,
+  foldSessionEvent,
+  foldSessionEvents,
+  type FoldedMessage,
+  type RuntimeCursor,
+} from "./studio-domain";
 
-type Message = { role: "user" | "assistant" | "event"; content: string };
-
-function objectValue(value: Json | undefined): RecordJson | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+type Message = FoldedMessage;
+const isString = Schema.is(Schema.String);
+function jsonText(value: Json | undefined, fallback = ""): string {
+  return isString(value) ? value : fallback;
 }
-function readableEvent(event: RecordJson): string {
-  const value = event.message ?? event.content ?? event.text ?? event.type;
-  return typeof value === "string" ? value : JSON.stringify(event);
-}
-
-function Tools({ cwd }: { cwd: string }) {
-  const [path, setPath] = useState("");
-  const [command, setCommand] = useState("git status");
-  const [url, setUrl] = useState("http://localhost:3000");
-  const [output, setOutput] = useState<Json | null>(null);
-  const [error, setError] = useState("");
-  const run = async (endpoint: `/api/${string}`, init?: RequestInit) => {
-    try {
-      setOutput(await request<Json>(endpoint, init));
-      setError("");
-    } catch (value) {
-      setError(value instanceof Error ? value.message : String(value));
-    }
-  };
-  const body = (value: RecordJson): RequestInit => ({
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(value),
-  });
-  return (
-    <section className="tools">
-      <h2>Local tools</h2>
-      <p>
-        Read access is local. Terminal, file writes, browser input, and Git mutations require an
-        explicit action here.
-      </p>
-      <div className="row">
-        <input
-          value={path}
-          onChange={(event) => setPath(event.target.value)}
-          placeholder="Relative file path"
-        />
-        <button
-          onClick={() =>
-            run(`/api/agent/fs?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(path)}`)
-          }
-        >
-          Files
-        </button>
-        <button
-          onClick={() =>
-            run(`/api/agent/fs/search?cwd=${encodeURIComponent(cwd)}&q=${encodeURIComponent(path)}`)
-          }
-        >
-          Search
-        </button>
-        <button onClick={() => run(`/api/agent/git?cwd=${encodeURIComponent(cwd)}`)}>Git</button>
-      </div>
-      <div className="row">
-        <input value={command} onChange={(event) => setCommand(event.target.value)} />
-        <button
-          onClick={() =>
-            run(`/api/agent/terminal?cwd=${encodeURIComponent(cwd)}`, body({ command }))
-          }
-        >
-          Run locally
-        </button>
-      </div>
-      <div className="row">
-        <input value={url} onChange={(event) => setUrl(event.target.value)} />
-        <button onClick={() => run("/api/agent/browser/state")}>Browser state</button>
-        <button onClick={() => run("/api/agent/browser/navigate", body({ url }))}>
-          Navigate local browser
-        </button>
-      </div>
-      <ErrorText value={error} />
-      {output !== null ? <JsonView value={output} /> : null}
-    </section>
-  );
-}
+const TurnResponseSchema = Schema.Struct({
+  outcome: Schema.Literals(["accepted", "queued", "rejected"]),
+  piSessionId: Schema.optional(Schema.NullOr(Schema.String)),
+});
+const decodeTurnResponse = Schema.decodeUnknownSync(TurnResponseSchema, {
+  onExcessProperty: "preserve",
+});
 
 export function Workbench({ quick = false }: { quick?: boolean }) {
-  const projectsState = useJson<RecordJson>("/api/agent/projects");
-  const modelsState = useJson<RecordJson>("/api/agent/models");
-  const providers = useJson<RecordJson>("/api/agent/providers");
+  const projectsState = useJson("/api/agent/projects");
+  const modelsState = useJson("/api/agent/models");
+  const providers = useJson("/api/agent/providers");
+  const skillsState = useJson("/api/agent/skills");
+  const templatesState = useJson("/api/agent/prompt-templates");
   const projects = records(projectsState.data, "projects").map((item) => ({
-    id: String(item.id ?? ""),
-    name: String(item.name ?? item.path ?? "Project"),
-    path: String(item.path ?? ""),
+    id: jsonText(item.id),
+    name: jsonText(item.name, jsonText(item.path, "Project")),
+    path: jsonText(item.path),
   }));
   const [cwd, setCwd] = useState("");
   const activeCwd = cwd || projects[0]?.path || "";
-  const sessionsState = useJson<RecordJson>(`/api/agent/sessions/all?since=30d`);
+  const sessionsState = useJson(`/api/agent/sessions/all?since=30d`);
   const [sessionId, setSessionId] = useState("");
   const [piSessionId, setPiSessionId] = useState<string | null>(null);
-  const [eventCursor, setEventCursor] = useState(0);
+  const cursor = useRef<RuntimeCursor>({ received: 0, committed: 0 });
+  const [streamVersion, setStreamVersion] = useState(0);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [queued, setQueued] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<Array<{ name: string; dataUrl: string }>>([]);
+  const [skills, setSkills] = useState<string[]>([]);
+  const [templates, setTemplates] = useState<string[]>([]);
+  const [thinking, setThinking] = useState("auto");
   const [prompt, setPrompt] = useState("");
   const [modelId, setModelId] = useState("");
   const [mode, setMode] = useState<"prompt" | "steer" | "follow_up">("prompt");
   const [fullTools, setFullTools] = useState(false);
   const [browserEnabled, setBrowserEnabled] = useState(false);
   const [error, setError] = useState("");
+  const [sessionTitle, setSessionTitle] = useState("");
+  const [pinned, setPinned] = useState(false);
   const sessions = records(sessionsState.data, "sessions");
   const models = records(modelsState.data, "models");
-  const activeModel = modelId || String(models[0]?.id ?? models[0]?.name ?? "");
+  const activeModel = modelId || jsonText(models[0]?.id, jsonText(models[0]?.name));
   const createSession = () => {
     setSessionId(crypto.randomUUID());
     setPiSessionId(null);
-    setEventCursor(0);
+    cursor.current = { received: 0, committed: 0 };
     setMessages([]);
   };
   const loadSession = async (id: string, projectPath = activeCwd) => {
     setSessionId(id);
     try {
-      const data = await request<RecordJson>(
+      const data = await requestRecord(
         `/api/agent/sessions/${encodeURIComponent(id)}?cwd=${encodeURIComponent(projectPath)}`,
       );
-      const meta = objectValue(data.meta);
-      const canonical = meta?.piSessionId;
-      setPiSessionId(typeof canonical === "string" ? canonical : null);
-      setEventCursor(typeof data.cursor === "number" ? data.cursor : 0);
-      setMessages(
-        records(data, "events").map((entry) => ({ role: "event", content: readableEvent(entry) })),
-      );
+      const canonical = decodeCanonicalSession(data);
+      setPiSessionId(canonical.meta?.piSessionId ?? null);
+      cursor.current = { received: 0, committed: 0 };
+      setMessages(foldSessionEvents(canonical.events));
+      setQueued([]);
+      setStreamVersion((value) => value + 1);
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
     }
@@ -146,22 +98,61 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
   const archiveSession = async () => {
     if (!sessionId) return;
     try {
-      await request<RecordJson>(`/api/agent/sessions/${encodeURIComponent(sessionId)}`, {
+      await requestRecord(`/api/agent/sessions/${encodeURIComponent(sessionId)}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ cwd: activeCwd, archived: true }),
       });
       setSessionId("");
       setMessages([]);
-      sessionsState.reload();
+      void sessionsState.reload();
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
     }
   };
+  const sessionPreference = (patch: RecordJson) => {
+    if (!sessionId) return;
+    const key = `local-studio.session.${sessionId}`;
+    const previous = localStorage.getItem(key);
+    let value: RecordJson = {};
+    if (previous) {
+      try {
+        const parsed: Json = JSON.parse(previous);
+        value = records({ parsed }, "parsed")[0] ?? {};
+      } catch {
+        value = {};
+      }
+    }
+    localStorage.setItem(key, JSON.stringify({ ...value, ...patch }));
+  };
+  const restoreSession = async () => {
+    if (!sessionId) return;
+    try {
+      await requestRecord(`/api/agent/sessions/${encodeURIComponent(sessionId)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cwd: activeCwd, archived: false }),
+      });
+      void sessionsState.reload();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : String(value));
+    }
+  };
+  const exportSession = () => {
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(
+      new Blob([messages.map((item) => `${item.role}: ${item.content}`).join("\n\n")], {
+        type: "text/markdown",
+      }),
+    );
+    link.download = `${sessionTitle || sessionId || "session"}.md`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
   const control = async (endpoint: "abort" | "compact") => {
     if (!sessionId) return;
     try {
-      await request<RecordJson>(`/api/agent/${endpoint}`, {
+      await requestRecord(`/api/agent/${endpoint}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(
@@ -191,28 +182,105 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
     const id = sessionId || crypto.randomUUID();
     setSessionId(id);
     setPrompt("");
-    setMessages((items) => [...items, { role: "user", content }]);
+    setMessages((items) => [...items, { id: crypto.randomUUID(), role: "user", content }]);
     try {
-      const result = await request<RecordJson>("/api/agent/turn", {
+      const result = await requestRecord("/api/agent/turn", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          sessionId: id,
-          modelId: activeModel,
-          message: content,
-          images: [],
-          cwd: activeCwd,
-          piSessionId,
-          toolAccess: fullTools ? "full" : "read_only",
-          browserToolEnabled: browserEnabled,
-          skills: [],
-          promptTemplates: [],
-          mode,
-          streamingBehavior: mode === "steer" ? "steer" : "followUp",
-        }),
+        body: JSON.stringify(
+          (() => {
+            const body: RecordJson = {
+              sessionId: id,
+              modelId: activeModel,
+              message: content,
+              images: attachments.flatMap((attachment) => {
+                const separator = attachment.dataUrl.indexOf(",");
+                const mime = attachment.dataUrl.slice(5, attachment.dataUrl.indexOf(";"));
+                return separator > 0
+                  ? [
+                      {
+                        type: "image",
+                        data: attachment.dataUrl.slice(separator + 1),
+                        mimeType: mime,
+                      },
+                    ]
+                  : [];
+              }),
+              cwd: activeCwd,
+              piSessionId,
+              thinkingLevel: thinking,
+              toolAccess: fullTools ? "full" : "read_only",
+              browserToolEnabled: browserEnabled,
+              skills: skills.map((name) => ({ id: name, name })),
+              promptTemplates: templates.map((name) => ({ id: name, name })),
+            };
+            if (mode === "steer") {
+              body.mode = "steer";
+              body.streamingBehavior = "steer";
+            }
+            if (mode === "follow_up") {
+              body.mode = "follow_up";
+              body.streamingBehavior = "followUp";
+            }
+            return body;
+          })(),
+        ),
       });
-      setMessages((items) => [...items, { role: "event", content: JSON.stringify(result) }]);
-      sessionsState.reload();
+      const command = decodeTurnResponse(result);
+      const outcome = command.outcome;
+      if (outcome === "queued") setQueued((items) => [...items, content]);
+      else setQueued([]);
+      const canonical = command.piSessionId;
+      if (canonical) setPiSessionId(canonical);
+      setAttachments([]);
+      setMessages((items) => [
+        ...items,
+        { id: crypto.randomUUID(), role: "event", content: `Command ${outcome}` },
+      ]);
+      void sessionsState.reload();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : String(value));
+    }
+  };
+  const attach = (event: ChangeEvent<HTMLInputElement>) => {
+    for (const file of Array.from(event.target.files ?? []).slice(0, 4)) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result;
+        if (isString(dataUrl))
+          setAttachments((items) => [...items, { name: file.name, dataUrl }].slice(-4));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+  const mutateQueue = async (action: "promote" | "remove" | "replace", message: string) => {
+    try {
+      const queueBody: RecordJson = {
+        sessionId,
+        piSessionId,
+        cwd: activeCwd,
+        modelId: activeModel,
+        message,
+        mode: "follow_up",
+        queueAction: action,
+        browserToolEnabled: browserEnabled,
+        toolAccess: fullTools ? "full" : "read_only",
+        skills: [],
+        promptTemplates: [],
+      };
+      if (action === "replace") queueBody.queueReplacement = prompt.trim() || message;
+      await requestRecord("/api/agent/turn", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(queueBody),
+      });
+      setQueued((items) =>
+        action === "remove"
+          ? items.filter((item) => item !== message)
+          : action === "replace"
+            ? items.map((item) => (item === message ? prompt.trim() || message : item))
+            : [message, ...items.filter((item) => item !== message)],
+      );
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
     }
@@ -220,21 +288,28 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
   useMountSubscription(() => {
     if (!sessionId) return;
     const events = new EventSource(
-      `/api/agent/runtime/events?sessionId=${encodeURIComponent(sessionId)}&after=${eventCursor}`,
+      `/api/agent/runtime/events?sessionId=${encodeURIComponent(sessionId)}&after=${cursor.current.received}${piSessionId ? `&piSessionId=${encodeURIComponent(piSessionId)}` : ""}`,
     );
     events.onmessage = (event) => {
       try {
-        const parsed = JSON.parse(event.data) as RecordJson;
-        const seq = parsed.seq ?? parsed.eventSeq;
-        if (typeof seq === "number") setEventCursor((current) => Math.max(current, seq));
-        setMessages((items) => [...items, { role: "event", content: readableEvent(parsed) }]);
-      } catch {
-        setMessages((items) => [...items, { role: "event", content: event.data }]);
+        const raw: Json = JSON.parse(event.data);
+        const payload = decodeRuntimePayload(raw);
+        if (!payload) return;
+        const accepted = acceptRuntimePayload(cursor.current, payload);
+        cursor.current = accepted.cursor;
+        const acceptedEvent = accepted.event;
+        if (acceptedEvent) setMessages((items) => foldSessionEvent(items, acceptedEvent));
+        if (payload.type === "status" && payload.phase === "idle") setQueued([]);
+      } catch (value) {
+        setError(value instanceof Error ? value.message : "Invalid runtime event");
       }
     };
-    events.onerror = () => events.close();
+    events.onerror = () => {
+      events.close();
+      window.setTimeout(() => setStreamVersion((value) => value + 1), 1200);
+    };
     return () => events.close();
-  }, [sessionId]);
+  }, [sessionId, piSessionId, streamVersion]);
   return (
     <Page
       title={quick ? "Quick panel" : "Workbench"}
@@ -250,8 +325,10 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
       }
     >
       <p>
-        Sessions, transcripts, tools, and execution stay on this workstation. Enable providers,
-        connectors, browser control, or write access only when the task needs them.
+        Sessions and transcripts stay on this workstation. A selected remote provider or controller
+        receives the prompt, attachments, selected skill/template text, and tool context. Browser,
+        connector, write, or remote access starts only after the matching control is enabled and
+        Send is pressed.
       </p>
       <ErrorText
         value={
@@ -272,12 +349,18 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
         </select>
         <select value={activeModel} onChange={(event) => setModelId(event.target.value)}>
           {models.map((model) => (
-            <option key={String(model.id)} value={String(model.id)}>
-              {String(model.name ?? model.id)}
+            <option key={jsonText(model.id)} value={jsonText(model.id)}>
+              {jsonText(model.name, jsonText(model.id))}
             </option>
           ))}
         </select>
-        <select value={mode} onChange={(event) => setMode(event.target.value as typeof mode)}>
+        <select
+          value={mode}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (value === "prompt" || value === "steer" || value === "follow_up") setMode(value);
+          }}
+        >
           <option value="prompt">Prompt / queue</option>
           <option value="steer">Steer active turn</option>
           <option value="follow_up">Follow up</option>
@@ -298,6 +381,55 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
           />
           Browser
         </label>
+        <select
+          value={thinking}
+          onChange={(event) => setThinking(event.target.value)}
+          aria-label="Thinking level"
+        >
+          <option value="auto">Thinking: auto</option>
+          <option value="off">Off</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+        </select>
+        <input type="file" accept="image/*" multiple onChange={attach} aria-label="Attach images" />
+      </div>
+      <div className="row">
+        {records(skillsState.data, "skills").map((skill) => {
+          const name = jsonText(skill.name, jsonText(skill.id));
+          return (
+            <label key={name}>
+              <input
+                type="checkbox"
+                checked={skills.includes(name)}
+                onChange={() =>
+                  setSkills((items) =>
+                    items.includes(name) ? items.filter((item) => item !== name) : [...items, name],
+                  )
+                }
+              />
+              Skill: {name}
+            </label>
+          );
+        })}
+        {records(templatesState.data, "templates").map((template) => {
+          const name = jsonText(template.name, jsonText(template.id));
+          return (
+            <button
+              key={name}
+              onClick={() =>
+                setTemplates((items) =>
+                  items.includes(name) ? items.filter((item) => item !== name) : [...items, name],
+                )
+              }
+            >
+              Template: {name}
+            </button>
+          );
+        })}
+        {attachments.map((attachment) => (
+          <span key={attachment.name}>{attachment.name}</span>
+        ))}
       </div>
       <div className="workbench">
         <aside className="panel">
@@ -306,14 +438,53 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
             <button onClick={archiveSession} disabled={!sessionId}>
               Archive
             </button>
+            <button onClick={restoreSession} disabled={!sessionId}>
+              Restore
+            </button>
+            <button
+              onClick={() => {
+                const title = window.prompt("Session name", sessionTitle);
+                if (title !== null) {
+                  setSessionTitle(title);
+                  sessionPreference({ title });
+                }
+              }}
+              disabled={!sessionId}
+            >
+              Rename
+            </button>
+            <button
+              onClick={() => {
+                setPinned((value) => {
+                  sessionPreference({ pinned: !value });
+                  return !value;
+                });
+              }}
+              disabled={!sessionId}
+            >
+              {pinned ? "Unpin" : "Pin"}
+            </button>
+            <button onClick={exportSession} disabled={!sessionId}>
+              Export
+            </button>
+            <button
+              onClick={() => {
+                sessionPreference({ hidden: true });
+                setSessionId("");
+                setMessages([]);
+              }}
+              disabled={!sessionId}
+            >
+              Delete locally
+            </button>
           </div>
           {sessions.map((session) => (
             <button
               className="session"
-              key={String(session.id)}
-              onClick={() => loadSession(String(session.id), String(session.cwd ?? activeCwd))}
+              key={jsonText(session.id)}
+              onClick={() => loadSession(jsonText(session.id), jsonText(session.cwd, activeCwd))}
             >
-              {String(session.firstUserMessage ?? session.title ?? session.id)}
+              {jsonText(session.firstUserMessage, jsonText(session.title, jsonText(session.id)))}
             </button>
           ))}
           <h2>Providers</h2>
@@ -321,8 +492,8 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
         </aside>
         <article className="chat">
           {messages.length ? (
-            messages.map((message, index) => (
-              <div key={index} className={message.role}>
+            messages.map((message) => (
+              <div key={message.id} className={message.role}>
                 <b>{message.role}</b>
                 <p>{message.content}</p>
               </div>
@@ -334,6 +505,19 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
             <button onClick={() => control("abort")}>Abort</button>
             <button onClick={() => control("compact")}>Compact</button>
           </div>
+          {queued.length ? (
+            <section>
+              <h3>Queued follow-ups</h3>
+              {queued.map((item) => (
+                <div className="item" key={item}>
+                  <span>{item}</span>
+                  <button onClick={() => mutateQueue("promote", item)}>Promote</button>
+                  <button onClick={() => mutateQueue("replace", item)}>Replace with draft</button>
+                  <button onClick={() => mutateQueue("remove", item)}>Remove</button>
+                </div>
+              ))}
+            </section>
+          ) : null}
           <form onSubmit={send} className="row">
             <textarea
               value={prompt}
@@ -344,25 +528,32 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
           </form>
         </article>
       </div>
-      <Tools cwd={activeCwd} />
+      <WorkspaceTools cwd={activeCwd} />
     </Page>
   );
 }
 
 export function Automations() {
   const [piSessionId, setPiSessionId] = useState("");
-  const automations = useJson<RecordJson>("/api/agent/automations");
-  const goal = useJson<RecordJson>(
-    `/api/agent/goal?piSessionId=${encodeURIComponent(piSessionId)}`,
-  );
+  const automations = useJson("/api/agent/automations");
+  const goal = useJson(`/api/agent/goal?piSessionId=${encodeURIComponent(piSessionId)}`);
   const [text, setText] = useState("");
   const [message, setMessage] = useState("");
+  const [automationId, setAutomationId] = useState("");
+  const [name, setName] = useState("");
+  const [automationPrompt, setAutomationPrompt] = useState("");
+  const [model, setModel] = useState("");
+  const [cwd, setCwd] = useState("");
+  const [scheduleKind, setScheduleKind] = useState<"interval" | "daily" | "weekly">("daily");
+  const [minutes, setMinutes] = useState("60");
+  const [time, setTime] = useState("08:00");
+  const [day, setDay] = useState("1");
   const run = async (path: `/api/${string}`, init?: RequestInit) => {
     try {
-      await request<RecordJson>(path, init);
+      await requestRecord(path, init);
       setMessage("Saved locally");
-      automations.reload();
-      goal.reload();
+      void automations.reload();
+      void goal.reload();
     } catch (value) {
       setMessage(value instanceof Error ? value.message : String(value));
     }
@@ -372,6 +563,20 @@ export function Automations() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(value),
   });
+  const schedule: RecordJson =
+    scheduleKind === "interval"
+      ? { kind: "interval", minutes: Number(minutes) }
+      : scheduleKind === "weekly"
+        ? { kind: "weekly", day: Number(day), time }
+        : { kind: "daily", time };
+  const draft: RecordJson = { name, prompt: automationPrompt, modelId: model, cwd, schedule };
+  const saveAutomation = () =>
+    run(
+      automationId
+        ? `/api/agent/automations/${encodeURIComponent(automationId)}`
+        : "/api/agent/automations",
+      json(draft, automationId ? "PATCH" : "POST"),
+    );
   return (
     <Page title="Goals & automations" actions={<Link href="/agent">Workbench</Link>}>
       <p>
@@ -417,17 +622,112 @@ export function Automations() {
         </article>
         <article>
           <h2>Automations</h2>
+          <div className="row">
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Name"
+            />
+            <input
+              value={automationPrompt}
+              onChange={(event) => setAutomationPrompt(event.target.value)}
+              placeholder="Prompt"
+            />
+            <input
+              value={model}
+              onChange={(event) => setModel(event.target.value)}
+              placeholder="Model id"
+            />
+            <input
+              value={cwd}
+              onChange={(event) => setCwd(event.target.value)}
+              placeholder="Working directory"
+            />
+          </div>
+          <div className="row">
+            <select
+              value={scheduleKind}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (value === "interval" || value === "daily" || value === "weekly")
+                  setScheduleKind(value);
+              }}
+            >
+              <option value="interval">Interval</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+            </select>
+            {scheduleKind === "interval" ? (
+              <input
+                value={minutes}
+                onChange={(event) => setMinutes(event.target.value)}
+                aria-label="Interval minutes"
+              />
+            ) : (
+              <input type="time" value={time} onChange={(event) => setTime(event.target.value)} />
+            )}
+            {scheduleKind === "weekly" ? (
+              <input
+                min="0"
+                max="6"
+                type="number"
+                value={day}
+                onChange={(event) => setDay(event.target.value)}
+                aria-label="Weekday 0 through 6"
+              />
+            ) : null}
+            <button onClick={saveAutomation}>
+              {automationId ? "Save automation" : "Create automation"}
+            </button>
+            <button
+              onClick={() => {
+                setAutomationId("");
+                setName("");
+                setAutomationPrompt("");
+              }}
+            >
+              New
+            </button>
+          </div>
           {records(automations.data, "automations").map((item) => {
-            const id = String(item.id ?? "");
+            const id = jsonText(item.id);
             return (
               <div className="item" key={id}>
-                <span>{String(item.name ?? id)}</span>
+                <span>{jsonText(item.name, id)}</span>
+                <button
+                  onClick={() => {
+                    setAutomationId(id);
+                    setName(jsonText(item.name));
+                    setAutomationPrompt(jsonText(item.prompt));
+                    setModel(jsonText(item.modelId));
+                    setCwd(jsonText(item.cwd));
+                  }}
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() =>
+                    run(
+                      `/api/agent/automations/${encodeURIComponent(id)}`,
+                      json({ status: item.status === "paused" ? "active" : "paused" }, "PATCH"),
+                    )
+                  }
+                >
+                  {item.status === "paused" ? "Resume" : "Pause"}
+                </button>
                 <button
                   onClick={() =>
                     run(`/api/agent/automations/${encodeURIComponent(id)}/run`, { method: "POST" })
                   }
                 >
                   Run now
+                </button>
+                <button
+                  onClick={() =>
+                    run(`/api/agent/automations/${encodeURIComponent(id)}`, { method: "DELETE" })
+                  }
+                >
+                  Delete
                 </button>
               </div>
             );
