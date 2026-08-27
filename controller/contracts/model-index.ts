@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-export { default as bundledModelIndexSource } from "./model-index.json";
+import compactSource from "./model-index.json";
 
 export const ModelIndexVariantSchema = Schema.Struct({
   format: Schema.Literals(["bf16", "fp8", "nvfp4", "q4"]),
@@ -17,14 +17,8 @@ export const ModelIndexModelSchema = Schema.Struct({
   role: Schema.NullOr(Schema.Literals(["fast", "smart"])),
   description: Schema.String,
   params: Schema.String,
-  // Short architecture phrase for the card's spec line ("MoE · 384 experts,
-  // top-8"). Optional so an operator's hand-written data/model-index.json
-  // override from an older build still validates.
   architecture: Schema.optional(Schema.NullOr(Schema.String)),
   total_params_b: Schema.optional(Schema.NullOr(Schema.Number)),
-  // Artificial Analysis Intelligence Index (0-100) and its agentic subscore,
-  // taken from the reasoning-enabled entry where a model ships thinking on by
-  // default. Null means AA has not benchmarked the model, not that it scored 0.
   intelligence_index: Schema.optional(Schema.NullOr(Schema.Number)),
   agentic_index: Schema.optional(Schema.NullOr(Schema.Number)),
   active_params_b: Schema.NullOr(Schema.Number),
@@ -45,7 +39,6 @@ export const ModelIndexTierSchema = Schema.Struct({
 export const ModelIndexSchema = Schema.Struct({
   version: Schema.Number,
   updated: Schema.String,
-  /** Attribution for the intelligence scores, shown under the catalog table. */
   intelligence_source: Schema.optional(Schema.String),
   tiers: Schema.Array(ModelIndexTierSchema),
 });
@@ -55,3 +48,80 @@ export type ModelIndexModel = Schema.Schema.Type<typeof ModelIndexModelSchema>;
 export type ModelIndexTier = Schema.Schema.Type<typeof ModelIndexTierSchema>;
 export type ModelIndexResponse = Schema.Schema.Type<typeof ModelIndexSchema>;
 export type ModelIndexVariantFormat = ModelIndexVariant["format"];
+
+const NullableNumber = Schema.NullOr(Schema.Number);
+const CompactVariantSchema = Schema.Struct({
+  f: Schema.Literals(["bf16", "fp8", "nvfp4", "q4"]),
+  r: Schema.String,
+  o: Schema.Boolean,
+  s: Schema.optional(Schema.String),
+  a: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+  z: NullableNumber,
+  c: Schema.NullOr(Schema.String),
+});
+const CompactModelSchema = Schema.Struct({
+  i: Schema.String,
+  n: Schema.String,
+  r: Schema.NullOr(Schema.Literals(["fast", "smart"])),
+  d: Schema.String,
+  p: Schema.String,
+  a: Schema.optional(Schema.NullOr(Schema.String)),
+  t: Schema.optional(NullableNumber),
+  v: NullableNumber,
+  c: Schema.Number,
+  l: Schema.String,
+  m: Schema.Boolean,
+  n0: Schema.Array(Schema.String),
+  x: Schema.optional(NullableNumber),
+  g: Schema.optional(NullableNumber),
+  q: Schema.Array(CompactVariantSchema),
+});
+const CompactTierSchema = Schema.Struct({
+  i: Schema.String,
+  l: Schema.String,
+  b: Schema.String,
+  m: Schema.Array(CompactModelSchema),
+});
+const CompactIndexSchema = Schema.Struct({
+  v: Schema.Number,
+  u: Schema.String,
+  s: Schema.optional(Schema.String),
+  t: Schema.Array(CompactTierSchema),
+});
+
+const compact = Schema.decodeUnknownSync(CompactIndexSchema)(compactSource);
+export const bundledModelIndexSource: ModelIndexResponse = Schema.decodeUnknownSync(ModelIndexSchema)({
+  version: compact.v,
+  updated: compact.u,
+  intelligence_source: compact.s,
+  tiers: compact.t.map((tier) => ({
+    id: tier.i,
+    label: tier.l,
+    blurb: tier.b,
+    models: tier.m.map((model) => ({
+      id: model.i,
+      name: model.n,
+      role: model.r,
+      description: model.d,
+      params: model.p,
+      architecture: model.a,
+      total_params_b: model.t,
+      active_params_b: model.v,
+      context_tokens: model.c,
+      license: model.l,
+      multimodal: model.m,
+      notes: model.n0,
+      intelligence_index: model.x,
+      agentic_index: model.g,
+      variants: model.q.map((variant) => ({
+        format: variant.f,
+        repo: variant.r,
+        official: variant.o,
+        source: variant.s,
+        allow_patterns: variant.a,
+        size_gb: variant.z,
+        caveat: variant.c,
+      })),
+    })),
+  })),
+});
