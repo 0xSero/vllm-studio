@@ -1,4 +1,5 @@
 import { app } from "electron";
+import { Schema } from "effect";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fork, type ChildProcess } from "node:child_process";
@@ -36,8 +37,10 @@ async function isAgentRuntimeHealthy(url: string): Promise<boolean> {
   try {
     const response = await fetch(`${url}/health`, { signal: AbortSignal.timeout(1_000) });
     if (!response.ok) return false;
-    const payload = (await response.json()) as { service?: unknown };
-    return payload.service === "local-studio-agent-runtime";
+    const payload = Schema.decodeUnknownOption(
+      Schema.Struct({ service: Schema.Literal("local-studio-agent-runtime") }),
+    )(await response.json());
+    return payload._tag === "Some";
   } catch {
     return false;
   }

@@ -1,4 +1,7 @@
 import net from "node:net";
+import { Schema } from "effect";
+
+const PortAddressSchema = Schema.Struct({ port: Schema.Number });
 
 export async function isPortAvailable(port: number, host = "127.0.0.1"): Promise<boolean> {
   if (!Number.isInteger(port) || port <= 0 || port > 65535) return false;
@@ -30,9 +33,9 @@ export async function allocatePort(host = "127.0.0.1"): Promise<number> {
     });
 
     server.listen(0, host, () => {
-      const address = server.address();
-      if (address && typeof address === "object") {
-        const { port } = address;
+      const address = Schema.decodeUnknownOption(PortAddressSchema)(server.address());
+      if (address._tag === "Some") {
+        const { port } = address.value;
         server.close((error) => {
           if (error) {
             reject(error);

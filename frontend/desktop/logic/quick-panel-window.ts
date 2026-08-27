@@ -1,4 +1,10 @@
-import { app, BrowserWindow, screen, type Rectangle } from "electron";
+import {
+  app,
+  BrowserWindow,
+  screen,
+  type BrowserWindowConstructorOptions,
+  type Rectangle,
+} from "electron";
 import path from "node:path";
 import { DESKTOP_CONFIG } from "../configs";
 import {
@@ -69,7 +75,7 @@ function applyBounds(window: BrowserWindow, bounds: Rectangle, animate = false):
 }
 
 function createQuickPanelWindow(appUrl: string): BrowserWindow {
-  const window = new BrowserWindow({
+  const options: BrowserWindowConstructorOptions = {
     ...centeredTopBounds(DESKTOP_CONFIG.quickPanel.homeWindow),
     frame: false,
     transparent: true,
@@ -82,7 +88,6 @@ function createQuickPanelWindow(appUrl: string): BrowserWindow {
     alwaysOnTop: true,
     show: false,
     backgroundColor: "#00000000",
-    ...(process.platform === "darwin" ? { type: "panel" as const } : {}),
     webPreferences: {
       preload: path.join(app.getAppPath(), "desktop", "dist", "preload.js"),
       contextIsolation: true,
@@ -92,7 +97,9 @@ function createQuickPanelWindow(appUrl: string): BrowserWindow {
       allowRunningInsecureContent: false,
       navigateOnDragDrop: false,
     },
-  });
+  };
+  if (process.platform === "darwin") options.type = "panel";
+  const window = new BrowserWindow(options);
 
   hardenWebContents(window, new URL(appUrl).origin);
   window.on("moved", () => {

@@ -3,48 +3,39 @@ import { randomUUID } from "node:crypto";
 import { chmod, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { ChildProcess } from "node:child_process";
-
-type VaultRequest = {
-  channel: "local-studio:oauth-vault:request";
-  id: string;
-  operation: "read" | "write" | "delete";
-  key: string;
-  value?: string;
-};
+import type { ChildProcess, Serializable } from "node:child_process";
+import { Schema } from "effect";
 
 const keyPattern = /^[a-z0-9][a-z0-9:_-]{0,127}$/;
-let vaultAccess = Promise.resolve();
 
-function isVaultRequest(value: unknown): value is VaultRequest {
-  if (!value || typeof value !== "object") return false;
-  const channel = Reflect.get(value, "channel");
-  const id = Reflect.get(value, "id");
-  const operation = Reflect.get(value, "operation");
-  const key = Reflect.get(value, "key");
-  const requestValue = Reflect.get(value, "value");
-  return (
-    channel === "local-studio:oauth-vault:request" &&
-    typeof id === "string" &&
-    typeof operation === "string" &&
-    ["read", "write", "delete"].includes(operation) &&
-    typeof key === "string" &&
-    keyPattern.test(key) &&
-    (requestValue === undefined ||
-      (typeof requestValue === "string" && requestValue.length <= 1_000_000))
-  );
+const VaultRequestSchema = Schema.Struct({
+  channel: Schema.Literal("local-studio:oauth-vault:request"),
+  id: Schema.String,
+  operation: Schema.Literals(["read", "write", "delete"]),
+  key: Schema.String.check(Schema.isPattern(keyPattern)),
+  value: Schema.optional(Schema.String.check(Schema.isMaxLength(1_000_000))),
+});
+type VaultRequest = typeof VaultRequestSchema.Type;
+
+interface VaultSuccessResponse {
+  channel: "local-studio:oauth-vault:response";
+  id: string;
+  ok: true;
+  value?: string;
 }
+
+const VaultFileSchema = Schema.Record(Schema.String, Schema.Unknown);
+const decodeVaultRequest = Schema.decodeUnknownSync(VaultRequestSchema);
+const decodeVaultFile = Schema.decodeUnknownSync(Schema.fromJsonString(VaultFileSchema));
+const isString = Schema.is(Schema.String);
+let vaultAccess = Promise.resolve();
 
 async function readVault(file: string): Promise<Record<string, string>> {
   if (!existsSync(file)) return {};
-  const parsed: unknown = JSON.parse(await readFile(file, "utf8"));
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("OAuth vault is invalid");
-  }
+  const parsed = decodeVaultFile(await readFile(file, "utf8"));
   return Object.fromEntries(
     Object.entries(parsed).filter(
-      (entry): entry is [string, string] =>
-        keyPattern.test(entry[0]) && typeof entry[1] === "string",
+      (entry): entry is [string, string] => keyPattern.test(entry[0]) && isString(entry[1]),
     ),
   );
 }
@@ -86,24 +77,30 @@ function vaultOperation(file: string, request: VaultRequest): Promise<string | u
 
 export function registerOAuthVault(child: ChildProcess, dataDir: string): void {
   const file = path.join(dataDir, "oauth-vault.json");
-  child.on("message", (message: unknown) => {
-    if (!isVaultRequest(message)) return;
-    void vaultOperation(file, message)
+  child.on("message", (message: Serializable) => {
+    let request: VaultRequest;
+    try {
+      request = decodeVaultRequest(message);
+    } catch {
+      return;
+    }
+    void vaultOperation(file, request)
       .then((value) => {
         if (child.connected) {
-          child.send({
+          const response: VaultSuccessResponse = {
             channel: "local-studio:oauth-vault:response",
-            id: message.id,
+            id: request.id,
             ok: true,
-            ...(value === undefined ? {} : { value }),
-          });
+          };
+          if (value !== undefined) response.value = value;
+          child.send(response);
         }
       })
       .catch(() => {
         if (child.connected) {
           child.send({
             channel: "local-studio:oauth-vault:response",
-            id: message.id,
+            id: request.id,
             ok: false,
             error: "Secure OAuth storage failed",
           });

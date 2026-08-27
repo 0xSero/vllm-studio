@@ -14,7 +14,13 @@ function setUpdateState(nextState: DesktopUpdateSnapshot): void {
   latestUpdateState = nextState;
 }
 
-function setUpdateError(error: unknown): void {
+type UpdateFailure = Parameters<StringConstructor>[0];
+interface ConfiguredFeed {
+  ok: true;
+  url: string;
+}
+
+function setUpdateError(error: UpdateFailure): void {
   installIntent.clear();
   const message = String(error);
   setUpdateState({ status: "error", message });
@@ -40,7 +46,7 @@ function resolveFeedUrl(): string | null {
   return raw.replace(/\/+$/, "");
 }
 
-function ensureFeedConfigured(): { ok: true; url: string } {
+function ensureFeedConfigured(): ConfiguredFeed {
   const feedUrl = resolveFeedUrl();
   if (feedUrl) {
     autoUpdater.setFeedURL({

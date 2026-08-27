@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { existsSync, statSync } from "node:fs";
 import { app, type WebContents } from "electron";
+import { Schema } from "effect";
 import { log } from "../helpers/logger";
 
 type PtyHandle = {
@@ -18,6 +19,28 @@ type PtyHandle = {
     dispose(): void;
   };
 };
+
+type PtySpawn = (
+  shell: string,
+  args: string[],
+  opts: { cwd: string; cols: number; rows: number; env: NodeJS.ProcessEnv; name?: string },
+) => PtyHandle;
+
+const PtySpawnSchema = Schema.declare<PtySpawn>(
+  (input): input is PtySpawn => input instanceof Function,
+);
+const PtyModuleSchema = Schema.Struct({ spawn: PtySpawnSchema });
+const PtyModuleExportSchema = Schema.Union([
+  PtyModuleSchema,
+  Schema.Struct({ default: PtyModuleSchema }),
+]);
+const PtyDimensionSchema = Schema.UndefinedOr(
+  Schema.Union([Schema.Number, Schema.NumberFromString]),
+);
+
+type PtyDimensionInput = typeof PtyDimensionSchema.Encoded;
+type ShellConfig = { shell: string; args: string[] };
+type OpenPtyResult = { id: string; replay?: string; reused?: boolean };
 
 type PtyFactory = (opts: {
   cwd: string;
@@ -48,20 +71,13 @@ let factoryError: Error | null = null;
 function loadFactory(): PtyFactory | null {
   if (factory || factoryError) return factory;
   try {
-    type Mod = {
-      spawn: (
-        shell: string,
-        args: string[],
-        opts: { cwd: string; cols: number; rows: number; env: NodeJS.ProcessEnv; name?: string },
-      ) => PtyHandle;
-    };
     const packageRequire = app.isPackaged
       ? createRequire(path.join(process.resourcesPath, "desktop-runtime", "package.json"))
       : createRequire(path.join(app.getAppPath(), "package.json"));
-    const required = packageRequire("@lydell/node-pty") as Mod | { default: Mod };
-    const mod = (
-      required && "spawn" in required ? required : (required as { default: Mod }).default
-    ) as Mod;
+    const required = Schema.decodeUnknownSync(PtyModuleExportSchema)(
+      packageRequire("@lydell/node-pty"),
+    );
+    const mod = "spawn" in required ? required : required.default;
     factory = ({ cwd, cols, rows, shell, args, env }) =>
       mod.spawn(shell, args, { cwd, cols, rows, env, name: "xterm-256color" });
     return factory;
@@ -72,7 +88,7 @@ function loadFactory(): PtyFactory | null {
   }
 }
 
-function resolveShell(): { shell: string; args: string[] } {
+function resolveShell(): ShellConfig {
   if (process.platform === "win32") {
     return { shell: process.env.COMSPEC || "cmd.exe", args: [] };
   }
@@ -85,8 +101,7 @@ function safeCwd(input: string | undefined | null): string {
   if (candidate && existsSync(candidate)) {
     try {
       if (statSync(candidate).isDirectory()) return candidate;
-    } catch {
-    }
+    } catch {}
   }
   return os.homedir();
 }
@@ -106,8 +121,10 @@ function safeOwnerKey(input: string | undefined | null): string | null {
 
 // Coerce a renderer-supplied terminal dimension to a sane integer; a non-numeric
 // value (e.g. a string) would otherwise become NaN and reach node-pty spawn.
-function clampPtyDimension(value: unknown, fallback: number): number {
-  const parsed = Math.floor(Number(value));
+function clampPtyDimension(value: PtyDimensionInput, fallback: number): number {
+  const decoded = Schema.decodeUnknownOption(PtyDimensionSchema)(value);
+  if (decoded._tag === "None" || decoded.value === undefined) return fallback;
+  const parsed = Math.floor(decoded.value);
   return Number.isFinite(parsed) && parsed >= 2 ? parsed : fallback;
 }
 
@@ -152,7 +169,7 @@ export function ptyUnavailableReason(): string | null {
 export function openPty(
   webContents: WebContents,
   opts: { cwd?: string; cols?: number; rows?: number; ownerKey?: string },
-): { id: string; replay?: string; reused?: boolean } {
+): OpenPtyResult {
   const make = loadFactory();
   if (!make) {
     throw new Error(`PTY unavailable: ${factoryError?.message ?? "unknown"}`);
@@ -255,15 +272,13 @@ function closeInternal(id: string): void {
   for (const dispose of session.disposers) {
     try {
       dispose();
-    } catch {
-    }
+    } catch {}
   }
   try {
     session.pty.kill();
-  } catch {
-  }
+  } catch {}
 }
 
 export function killAllPtys(): void {
-  for (const id of [...sessions.keys()]) closeInternal(id);
+  for (const id of sessions.keys()) closeInternal(id);
 }

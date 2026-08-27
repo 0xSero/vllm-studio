@@ -3,12 +3,20 @@ import path from "node:path";
 import { readFileSync } from "node:fs";
 import { migrateLegacyUserData } from "./logic/user-data-migration";
 import { mirrorStableUserData } from "./logic/dev-channel-mirror";
+import { Schema } from "effect";
 
 const CANONICAL_APP_NAME = "Local Studio";
 const LEGACY_BRANDED_APP_NAME = ["v", "LLM Studio"].join("");
 const LEGACY_USER_DATA_NAMES = [LEGACY_BRANDED_APP_NAME, "frontend"];
 const devAppName = process.env.LOCAL_STUDIO_DESKTOP_APP_NAME?.trim();
 const devUserDataDir = process.env.LOCAL_STUDIO_DESKTOP_USER_DATA_DIR?.trim();
+const PackageMetadataSchema = Schema.Struct({
+  localStudioChannel: Schema.optional(Schema.String),
+});
+const decodePackageMetadata = Schema.decodeUnknownSync(
+  Schema.fromJsonString(PackageMetadataSchema),
+);
+
 // A packaged build must know its own channel without depending on the
 // environment it happens to be launched from: electron-builder stamps
 // `localStudioChannel` into the bundled package.json via extraMetadata.
@@ -16,8 +24,7 @@ function packagedChannel(): string | undefined {
   if (!app.isPackaged) return undefined;
   try {
     const metaPath = path.join(app.getAppPath(), "package.json");
-    const meta = JSON.parse(readFileSync(metaPath, "utf8")) as { localStudioChannel?: unknown };
-    return typeof meta.localStudioChannel === "string" ? meta.localStudioChannel : undefined;
+    return decodePackageMetadata(readFileSync(metaPath, "utf8")).localStudioChannel;
   } catch {
     return undefined;
   }

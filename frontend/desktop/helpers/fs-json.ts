@@ -11,7 +11,7 @@ import path from "node:path";
  * Lives under desktop/ because the desktop build (tsc rootDir = desktop/)
  * cannot import from src/.
  */
-export function writeJsonAtomic(filePath: string, payload: unknown, space?: number): void {
+export function writeJsonAtomic<Payload>(filePath: string, payload: Payload, space?: number): void {
   mkdirSync(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(tempPath, `${JSON.stringify(payload, null, space)}\n`, "utf8");

@@ -1,3 +1,4 @@
+import { Option, Schema } from "effect";
 import { isDevChannelBuild } from "./app-identity";
 import {
   app,
@@ -47,6 +48,26 @@ import {
   resizePty,
   writePty,
 } from "./logic/pty-manager";
+
+type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
+type SessionPrefs = { [key: string]: Json };
+type UiPreferences = { [key: string]: string };
+type IpcValue = Json;
+
+const JsonSchema: Schema.Codec<Json, Json> = Schema.suspend(() =>
+  Schema.Union([
+    Schema.Null,
+    Schema.Boolean,
+    Schema.Number,
+    Schema.String,
+    Schema.mutable(Schema.Array(JsonSchema)),
+    Schema.Record(Schema.String, JsonSchema),
+  ]),
+);
+const SessionPrefsSchema = Schema.Record(Schema.String, JsonSchema);
+const decodeStringOption = Schema.decodeUnknownOption(Schema.String);
+const decodeSessionPrefsOption = Schema.decodeUnknownOption(SessionPrefsSchema);
+const isString = Schema.is(Schema.String);
 
 let appState: DesktopAppState = "starting";
 let mainWindow: BrowserWindow | null = null;
@@ -245,9 +266,10 @@ async function restartFrontendServer(
 // repo-relative, "services/agent-runtime/src/foo.ts". Passing that straight to
 // realpath resolves it against the MAIN PROCESS cwd, which is the app bundle,
 // so it throws; try it as given, then against each known project root.
-function resolveHomeConfinedPath(target: unknown): string | null {
-  if (typeof target !== "string" || !target.trim()) return null;
-  const raw = target.trim();
+function resolveHomeConfinedPath(target: IpcValue): string | null {
+  const decoded = decodeStringOption(target);
+  if (Option.isNone(decoded) || !decoded.value.trim()) return null;
+  const raw = decoded.value.trim();
   const candidates = [raw];
   if (!path.isAbsolute(raw) && !raw.startsWith("~")) {
     for (const project of listProjectsWithMeta()) {
@@ -290,7 +312,7 @@ function registerIpcHandlers(): void {
   // Reveal a file the assistant referenced in the OS file manager. Confined to
   // the user's home tree (the same default as the runtime's WORKSPACE_ROOTS) so
   // a crafted markdown link cannot point the renderer at /etc or a mounted disk.
-  ipcMain.handle("desktop:reveal-path", async (_, target: unknown) => {
+  ipcMain.handle("desktop:reveal-path", async (_, target: IpcValue) => {
     const resolved = resolveHomeConfinedPath(target);
     if (!resolved) return false;
     shell.showItemInFolder(resolved);
@@ -299,7 +321,7 @@ function registerIpcHandlers(): void {
 
   // Hand a file to its default application — the only way to view formats the
   // Files panel cannot render (PDFs, archives, media). Same home confinement.
-  ipcMain.handle("desktop:open-path", async (_, target: unknown) => {
+  ipcMain.handle("desktop:open-path", async (_, target: IpcValue) => {
     const resolved = resolveHomeConfinedPath(target);
     if (!resolved) return false;
     const error = await shell.openPath(resolved);
@@ -309,10 +331,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle("desktop:get-update-status", async () => getUpdateState());
   ipcMain.handle("desktop:start-update", async () => startUpdate());
   ipcMain.handle("desktop:get-kittylitter-pairing-json", async () => getKittylitterPairingJson());
-  ipcMain.handle("desktop:copy-kittylitter-pairing-json", async (_, pairingJson: unknown) => {
+  ipcMain.handle("desktop:copy-kittylitter-pairing-json", async (_, pairingJson: IpcValue) => {
     try {
-      if (typeof pairingJson !== "string") throw new Error("invalid pairing payload");
-      clipboard.writeText(normalizeKittylitterPairingJson(pairingJson));
+      const decoded = decodeStringOption(pairingJson);
+      if (Option.isNone(decoded)) throw new Error("invalid pairing payload");
+      clipboard.writeText(normalizeKittylitterPairingJson(decoded.value));
       return { ok: true };
     } catch {
       return { ok: false, error: "Connection JSON could not be copied." };
@@ -351,18 +374,20 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle("desktop:list-projects", async () => listProjectsWithMeta());
 
-  ipcMain.handle("desktop:add-project", async (_, directoryPath: string) => {
-    if (typeof directoryPath !== "string") {
+  ipcMain.handle("desktop:add-project", async (_, directoryPath: IpcValue) => {
+    const decoded = decodeStringOption(directoryPath);
+    if (Option.isNone(decoded)) {
       throw new Error("directoryPath must be a string");
     }
-    return addProject(directoryPath);
+    return addProject(decoded.value);
   });
 
-  ipcMain.handle("desktop:remove-project", async (_, id: string) => {
-    if (typeof id !== "string") {
+  ipcMain.handle("desktop:remove-project", async (_, id: IpcValue) => {
+    const decoded = decodeStringOption(id);
+    if (Option.isNone(decoded)) {
       throw new Error("id must be a string");
     }
-    removeProject(id);
+    removeProject(decoded.value);
     return { ok: true } as const;
   });
 
@@ -370,25 +395,26 @@ function registerIpcHandlers(): void {
     return readSessionPrefsFile();
   });
 
-  ipcMain.handle("desktop:save-session-prefs", async (_, prefs: unknown) => {
-    if (!prefs || typeof prefs !== "object" || Array.isArray(prefs)) {
+  ipcMain.handle("desktop:save-session-prefs", async (_, prefs: IpcValue) => {
+    const decoded = decodeSessionPrefsOption(prefs);
+    if (Option.isNone(decoded)) {
       throw new Error("prefs must be a plain object");
     }
-    writeSessionPrefsFile(prefs as Record<string, unknown>);
+    writeSessionPrefsFile(decoded.value);
   });
 
   ipcMain.handle("desktop:load-ui-preferences", async () => {
     return readUiPreferencesFile();
   });
 
-  ipcMain.handle("desktop:save-ui-preferences", async (_, prefs: unknown) => {
-    if (!prefs || typeof prefs !== "object" || Array.isArray(prefs)) {
+  ipcMain.handle("desktop:save-ui-preferences", async (_, prefs: IpcValue) => {
+    const decoded = decodeSessionPrefsOption(prefs);
+    if (Option.isNone(decoded)) {
       throw new Error("prefs must be a plain object");
     }
     const stringPrefs = Object.fromEntries(
-      Object.entries(prefs as Record<string, unknown>).filter(
-        (entry): entry is [string, string] =>
-          typeof entry[0] === "string" && typeof entry[1] === "string",
+      Object.entries(decoded.value).filter((entry): entry is [string, string] =>
+        isString(entry[1]),
       ),
     );
     writeUiPreferencesFile(stringPrefs);
@@ -406,24 +432,29 @@ function registerIpcHandlers(): void {
     },
   );
 
-  ipcMain.handle("desktop:pty-write", async (_, id: string, data: string) => {
-    if (typeof id !== "string" || typeof data !== "string") return;
-    writePty(id, data);
+  ipcMain.handle("desktop:pty-write", async (_, id: IpcValue, data: IpcValue) => {
+    const decodedId = decodeStringOption(id);
+    const decodedData = decodeStringOption(data);
+    if (Option.isNone(decodedId) || Option.isNone(decodedData)) return;
+    writePty(decodedId.value, decodedData.value);
   });
 
-  ipcMain.handle("desktop:pty-resize", async (_, id: string, cols: number, rows: number) => {
-    if (typeof id !== "string") return;
-    resizePty(id, Number(cols), Number(rows));
+  ipcMain.handle("desktop:pty-resize", async (_, id: IpcValue, cols: IpcValue, rows: IpcValue) => {
+    const decodedId = decodeStringOption(id);
+    if (Option.isNone(decodedId)) return;
+    resizePty(decodedId.value, Number(cols), Number(rows));
   });
 
-  ipcMain.handle("desktop:pty-close", async (_, id: string) => {
-    if (typeof id !== "string") return;
-    closePty(id);
+  ipcMain.handle("desktop:pty-close", async (_, id: IpcValue) => {
+    const decoded = decodeStringOption(id);
+    if (Option.isNone(decoded)) return;
+    closePty(decoded.value);
   });
 
-  ipcMain.handle("desktop:pty-close-owner", async (_, ownerKey: string) => {
-    if (typeof ownerKey !== "string") return;
-    closePtyByOwner(ownerKey);
+  ipcMain.handle("desktop:pty-close-owner", async (_, ownerKey: IpcValue) => {
+    const decoded = decodeStringOption(ownerKey);
+    if (Option.isNone(decoded)) return;
+    closePtyByOwner(decoded.value);
   });
 
   ipcMain.handle("desktop:quick-panel-expand", async () => {
@@ -441,18 +472,20 @@ function registerIpcHandlers(): void {
     defaultHotkey: DESKTOP_CONFIG.quickPanel.hotkey,
   }));
 
-  ipcMain.handle("desktop:quick-panel-set-hotkey", async (_, hotkey: unknown) =>
+  ipcMain.handle("desktop:quick-panel-set-hotkey", async (_, hotkey: IpcValue) =>
     setQuickPanelHotkey(hotkey),
   );
 
   ipcMain.handle(
     "desktop:focus-main-and-navigate",
-    async (_, projectId: string, sessionId?: string) => {
-      if (typeof projectId !== "string" || !frontendServer) return;
+    async (_, projectId: IpcValue, sessionId?: IpcValue) => {
+      const decodedProjectId = decodeStringOption(projectId);
+      const decodedSessionId = decodeStringOption(sessionId);
+      if (Option.isNone(decodedProjectId) || !frontendServer) return;
       const query =
-        typeof sessionId === "string" && sessionId
-          ? `?project=${encodeURIComponent(projectId)}&session=${encodeURIComponent(sessionId)}`
-          : `?project=${encodeURIComponent(projectId)}&new=1`;
+        Option.isSome(decodedSessionId) && decodedSessionId.value
+          ? `?project=${encodeURIComponent(decodedProjectId.value)}&session=${encodeURIComponent(decodedSessionId.value)}`
+          : `?project=${encodeURIComponent(decodedProjectId.value)}&new=1`;
       const targetUrl = `${frontendServer.runtime.url}/agent${query}`;
       if (mainWindow && !mainWindow.isDestroyed()) {
         await mainWindow.loadURL(targetUrl);
@@ -495,12 +528,13 @@ function registerQuickPanelHotkey(): void {
   }
 }
 
-function setQuickPanelHotkey(hotkey: unknown): { ok: boolean; hotkey: string; error?: string } {
+function setQuickPanelHotkey(hotkey: IpcValue) {
   const current = quickPanelHotkey ?? DESKTOP_CONFIG.quickPanel.hotkey;
-  if (typeof hotkey !== "string" || !hotkey.trim()) {
+  const decoded = decodeStringOption(hotkey);
+  if (Option.isNone(decoded) || !decoded.value.trim()) {
     return { ok: false, hotkey: current, error: "Hotkey must be a non-empty string" };
   }
-  const next = hotkey.trim();
+  const next = decoded.value.trim();
   if (next === quickPanelHotkey) {
     setStoredQuickPanelHotkey(next);
     return { ok: true, hotkey: next };
@@ -523,8 +557,7 @@ function setQuickPanelHotkey(hotkey: unknown): { ok: boolean; hotkey: string; er
   if (quickPanelHotkey && quickPanelHotkey !== next) {
     try {
       globalShortcut.unregister(quickPanelHotkey);
-    } catch {
-    }
+    } catch {}
   }
   quickPanelHotkey = next;
   setStoredQuickPanelHotkey(next);
@@ -646,42 +679,35 @@ function uiPreferencesFilePath(): string {
   return path.join(app.getPath("userData"), "ui-preferences.json");
 }
 
-function readSessionPrefsFile(): Record<string, unknown> {
+function readSessionPrefsFile(): SessionPrefs {
   const filePath = sessionPrefsFilePath();
   try {
     if (!existsSync(filePath)) return {};
-    const raw = readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
+    const parsed = decodeSessionPrefsOption(JSON.parse(readFileSync(filePath, "utf8")));
+    return Option.getOrElse(parsed, () => ({}));
   } catch {
     return {};
   }
 }
 
-function writeSessionPrefsFile(prefs: Record<string, unknown>): void {
+function writeSessionPrefsFile(prefs: SessionPrefs): void {
   writeJsonAtomic(sessionPrefsFilePath(), prefs);
 }
 
-function readUiPreferencesFile(): Record<string, string> {
+function readUiPreferencesFile(): UiPreferences {
   const filePath = uiPreferencesFilePath();
   try {
     if (!existsSync(filePath)) return {};
-    const raw = readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const parsed = decodeSessionPrefsOption(JSON.parse(readFileSync(filePath, "utf8")));
+    if (Option.isNone(parsed)) return {};
     return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>).filter(
-        (entry): entry is [string, string] =>
-          typeof entry[0] === "string" && typeof entry[1] === "string",
-      ),
+      Object.entries(parsed.value).filter((entry): entry is [string, string] => isString(entry[1])),
     );
   } catch {
     return {};
   }
 }
 
-function writeUiPreferencesFile(prefs: Record<string, string>): void {
+function writeUiPreferencesFile(prefs: UiPreferences): void {
   writeJsonAtomic(uiPreferencesFilePath(), prefs);
 }
