@@ -52,7 +52,6 @@ export type SubagentRun = {
 };
 
 type SubagentState = {
-  /** parent pi session id -> runs, newest last */
   byParent: Map<string, SubagentRun[]>;
   /** pi session ids that ARE subagents — they may not spawn their own */
   childPiSessionIds: Set<string>;

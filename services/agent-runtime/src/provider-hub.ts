@@ -45,9 +45,6 @@ export type {
   ProviderView,
 } from "./provider-hub-contract";
 
-// Providers composed from Local Studio's own models.json (controllers and
-// user-pi passthroughs). They are configured elsewhere; the hub surfaces only
-// the pi builtin/cloud providers.
 const INTERNAL_PROVIDER_PREFIXES = ["local-studio", "user-pi-"];
 
 const MAX_JOB_EVENTS = 200;

@@ -123,7 +123,6 @@ function safeCwd(input: string | undefined | null): string {
   try {
     if (existsSync(resolved) && statSync(resolved).isDirectory()) return resolved;
   } catch {
-    // fall through
   }
   return os.homedir();
 }
@@ -277,14 +276,12 @@ export function closePtySession(id: string): void {
     try {
       dispose();
     } catch {
-      // ignore
     }
   }
   session.subscribers.clear();
   try {
     session.pty.kill();
   } catch {
-    // already exited
   }
 }
 

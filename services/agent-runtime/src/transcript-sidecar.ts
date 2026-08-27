@@ -51,7 +51,6 @@ function lineIsInert(line: string): boolean {
 }
 
 type SidecarState = {
-  /** Source size when the sidecar was last extended. */
   sourceSize: number;
   sourceMtimeMs: number;
   /** Offset in the SOURCE just past the last complete line copied. */
@@ -131,8 +130,6 @@ export async function transcriptSource(filepath: string): Promise<TranscriptSour
       scannedBytes,
       head,
     });
-    // Sidecars are ~5% of their rollout but there is one per session ever
-    // opened, so they need the same bound the envelopes get.
     evictIfCrowded(path.dirname(sidecar), ".jsonl");
 
     return { filepath: sidecar, size: statSync(sidecar).size };

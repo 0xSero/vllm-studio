@@ -13,11 +13,8 @@ export type SessionUsageTotals = {
   cacheWrite: number;
   reasoning: number;
   total: number;
-  /** Total cost in USD when the provider reports one; 0 for local models. */
   cost: number;
-  /** Assistant round-trips, i.e. how many times a model was actually called. */
   calls: number;
-  /** Successful compactions, each one a point where the context was discarded. */
   compactions: number;
 };
 
@@ -97,7 +94,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-/** Fold one rollout line into the running totals. */
 export function accumulateUsageLine(totals: SessionUsageTotals, line: string): SessionUsageTotals {
   // Cheap pre-filter: the vast majority of lines are tool output and user text
   // with no usage block at all, and JSON.parse on a multi-GB log is the whole

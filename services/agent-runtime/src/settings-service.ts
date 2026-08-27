@@ -1,6 +1,3 @@
-// Server-side API settings service: the single owner of reading, writing,
-// merging, and masking the persisted `<dataDir>/api-settings.json` file.
-
 import { chmod, readFile, rename, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import { resolveSettingsDefaultBackendUrl } from "../../../shared/agent/backend-url";

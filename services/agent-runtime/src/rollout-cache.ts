@@ -39,9 +39,7 @@ const CACHE_SCHEMA = 1;
 
 type Envelope<T> = {
   schema: number;
-  /** Rollout size in bytes when the value was computed. */
   size: number;
-  /** Rollout mtime in ms when the value was computed. */
   mtimeMs: number;
   value: T;
 };
@@ -72,7 +70,6 @@ export function rolloutCacheFilePath(kind: string, filepath: string, extension: 
   return cacheFileFor(kind, filepath, extension);
 }
 
-/** Omit size/mtime to accept the entry whatever the rollout looks like now. */
 function readEnvelope<T>(file: string, size?: number, mtimeMs?: number): T | undefined {
   let parsed: Envelope<T>;
   try {
@@ -161,7 +158,6 @@ export type RolloutCache<T> = {
    * deciding whether the staleness is the kind it can resume from.
    */
   readStale(filepath: string): T | undefined;
-  /** Record a freshly computed value against the stat it was computed from. */
   write(filepath: string, stat: { size: number; mtimeMs: number }, value: T): void;
   /** Drop this rollout's entry — used when the on-disk value is proven stale. */
   forget(filepath: string): void;
@@ -245,7 +241,6 @@ export async function scanCompleteRolloutLines(
   return consumedBytes;
 }
 
-/** stat a rollout, or undefined when it has disappeared. */
 export function statRollout(filepath: string): { size: number; mtimeMs: number } | undefined {
   try {
     const { size, mtimeMs } = statSync(filepath);

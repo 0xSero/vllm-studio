@@ -32,7 +32,6 @@ export type RuntimeStartOptions = {
 
 export type AgentSessionOptionsInput = {
   options: RuntimeStartOptions;
-  /** Resolved session cwd, exported to extensions as LOCAL_STUDIO_CWD. */
   cwd?: string;
   processEnv?: NodeJS.ProcessEnv;
 };
@@ -44,7 +43,6 @@ export type AgentSessionOptions = {
   // dynamic `import(variable)` in the Next runtime bundle.
   extensionPaths: string[];
   skills: string[];
-  /** Absolute prompt-template file/dir paths; forwarded to the SDK. */
   promptTemplatePaths: string[];
   envInjections: Record<string, string>;
 };
@@ -123,7 +121,6 @@ export function resolveSitegeistBrowserExtensionPath(): string | null {
   );
 }
 
-/** Bundled stdio MCP servers (desktop/resources/mcp) — same ladder as extensions. */
 export function resolveBundledMcpServerPath(fileName: string): string | null {
   return resolveBundledResourcePath("mcp", fileName);
 }
@@ -255,7 +252,6 @@ function runtimeExtensionPaths(options: RuntimeStartOptions): string[] {
     browserExtensionPath,
     hasEnabledConnectorsSync() ? resolveConnectorsExtensionPath() : null,
     resolveSubagentsExtensionPath(),
-    // Lets the agent create/list/delete scheduled automations.
     resolveAutomationsExtensionPath(),
     // NOTE: session-goal injection is no longer a bundled extension — it runs
     // in-process via createGoalPromptExtension (see pi-runtime.ts), keyed by the
