@@ -1,15 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
-import recommendationsSource from "@shared/model-recommendations.json";
 import {
   recommendationsForRig,
   requiredPoolGb,
-  type ModelRecommendationsFile,
+  bundledModelRecommendationsSource,
   type RigDescriptor,
 } from "@shared/model-recommendations";
 
-// The full benchmark dataset stays server-side; the client receives only the handful of
-// display fields for picks that actually fit the caller's rig.
-const FILE = recommendationsSource as unknown as ModelRecommendationsFile;
+const FILE = bundledModelRecommendationsSource;
 
 export interface SetupRecommendationRow {
   hfId: string;
