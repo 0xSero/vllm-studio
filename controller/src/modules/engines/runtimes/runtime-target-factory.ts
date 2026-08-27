@@ -18,24 +18,24 @@ const normalizeIdPart = (value: string): string =>
 const targetId = (backend: EngineBackend, kind: RuntimeTargetKind, key: string): string =>
   `${backend}:${kind}:${normalizeIdPart(key)}`;
 
-const createCapabilities = (target: {
+interface CapabilityTarget {
   kind: RuntimeTargetKind;
   backend: EngineBackend;
   installed: boolean;
   source: RuntimeTargetSource;
   pythonPath?: string | null;
-}): RuntimeTarget["capabilities"] => ({
+}
+
+const canUpdateTarget = (target: CapabilityTarget): boolean => {
+  if (target.backend === "llamacpp") return isUpgradeCommandConfigured(LLAMACPP_UPGRADE_ENV);
+  if (!target.installed) return false;
+  if (target.backend === "vllm" || target.backend === "mlx") return target.kind === "venv";
+  return target.kind === "venv" || isUpgradeCommandConfigured(SGLANG_UPGRADE_ENV);
+};
+
+const createCapabilities = (target: CapabilityTarget): RuntimeTarget["capabilities"] => ({
   canLaunch: target.installed || target.source === "running",
-  canUpdate:
-    (target.backend === "vllm" &&
-      target.installed &&
-      target.kind === "venv") ||
-    (target.backend === "sglang" &&
-      target.installed &&
-      (target.kind === "venv" ||
-        isUpgradeCommandConfigured(SGLANG_UPGRADE_ENV))) ||
-    (target.backend === "mlx" && target.installed && target.kind === "venv") ||
-    (target.backend === "llamacpp" && isUpgradeCommandConfigured(LLAMACPP_UPGRADE_ENV)),
+  canUpdate: canUpdateTarget(target),
   canInspectOptions:
     target.backend !== "sglang" &&
     target.backend !== "mlx" &&

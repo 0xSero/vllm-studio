@@ -44,71 +44,99 @@ export const loadDotEnvironment = (): string | undefined => {
 const defaultModelsDirectory = (): string =>
   process.platform === "win32" ? join(homedir(), "models") : "/models";
 
+const isLoopbackHost = (value: string): boolean => {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "127.0.0.1" || normalized === "localhost" || normalized === "::1";
+};
+
+const normalizeOrigin = (value: string): string | null => {
+  try {
+    const origin = new URL(value.trim()).origin;
+    return origin === "null" ? null : origin;
+  } catch {
+    return null;
+  }
+};
+
+const parseCorsOrigins = (value: string | undefined): string[] => {
+  const defaults = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://host.docker.internal:3000",
+    "http://host.docker.internal:3001",
+  ];
+  const candidates =
+    value && value.trim().length > 0 ? value.split(",").map((entry) => entry.trim()) : defaults;
+  return [
+    ...new Set(
+      candidates
+        .map((entry) => normalizeOrigin(entry))
+        .filter((entry): entry is string => Boolean(entry)),
+    ),
+  ];
+};
+
+const environmentSchema = Schema.Struct({
+  LOCAL_STUDIO_HOST: Schema.String,
+  LOCAL_STUDIO_PORT: positiveIntegerSchema,
+  LOCAL_STUDIO_API_KEY: Schema.optional(Schema.String),
+  LOCAL_STUDIO_ALLOW_UNAUTHENTICATED: Schema.optional(Schema.String),
+  LOCAL_STUDIO_CORS_ORIGINS: Schema.optional(Schema.String),
+  LOCAL_STUDIO_INFERENCE_HOST: Schema.String,
+  LOCAL_STUDIO_INFERENCE_PORT: positiveIntegerSchema,
+
+  LOCAL_STUDIO_DATA_DIR: Schema.String,
+  LOCAL_STUDIO_DB_PATH: Schema.optional(Schema.String),
+  LOCAL_STUDIO_MODELS_DIR: Schema.String,
+  LOCAL_STUDIO_SGLANG_PYTHON: Schema.optional(Schema.String),
+  LOCAL_STUDIO_LLAMA_BIN: Schema.optional(Schema.String),
+  LOCAL_STUDIO_MLX_PYTHON: Schema.optional(Schema.String),
+  LOCAL_STUDIO_STRICT_OPENAI_MODELS: Schema.optional(Schema.String),
+});
+
+const coercePositiveInteger = (
+  key: "LOCAL_STUDIO_PORT" | "LOCAL_STUDIO_INFERENCE_PORT",
+  fallback: number,
+): number => {
+  const value = process.env[key];
+  return value === undefined ? fallback : Number(value);
+};
+
+const validateAuthentication = (
+  config: Config,
+  allowUnauthenticatedValue: string | undefined,
+): void => {
+  const allowUnauthenticated = parseBooleanFlag(allowUnauthenticatedValue);
+  if (config.api_key || allowUnauthenticated || isLoopbackHost(config.host)) return;
+  throw new Error(
+    "LOCAL_STUDIO_API_KEY is required when binding the controller to a non-loopback host. Set LOCAL_STUDIO_ALLOW_UNAUTHENTICATED=true only for trusted local environments.",
+  );
+};
+
+const applyRuntimePaths = (
+  config: Config,
+  sglangPython: string | undefined,
+  llamaBinary: string | undefined,
+  mlxPython: string | undefined,
+): void => {
+  if (sglangPython) config.sglang_python = sglangPython;
+  if (llamaBinary) config.llama_bin = llamaBinary;
+  if (mlxPython) config.mlx_python = mlxPython;
+};
+
+const applyPersistedConfig = (config: Config): void => {
+  const persisted = loadPersistedConfig(config.data_dir);
+  if (persisted.models_dir) config.models_dir = resolve(persisted.models_dir);
+  if (Array.isArray(persisted.providers)) config.providers = persisted.providers;
+};
+
 export const createConfig = (): Config => {
   loadDotEnvironment();
 
   const controllerRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const defaultDataDirectory = resolve(controllerRoot, "..", "data");
-
-  const isLoopbackHost = (value: string): boolean => {
-    const normalized = value.trim().toLowerCase();
-    return normalized === "127.0.0.1" || normalized === "localhost" || normalized === "::1";
-  };
-
-  const normalizeOrigin = (value: string): string | null => {
-    try {
-      const origin = new URL(value.trim()).origin;
-      return origin === "null" ? null : origin;
-    } catch {
-      return null;
-    }
-  };
-
-  const parseCorsOrigins = (value: string | undefined): string[] => {
-    const defaults = [
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "http://localhost:3001",
-      "http://127.0.0.1:3001",
-      "http://host.docker.internal:3000",
-      "http://host.docker.internal:3001",
-    ];
-    const candidates =
-      value && value.trim().length > 0 ? value.split(",").map((entry) => entry.trim()) : defaults;
-    return [
-      ...new Set(
-        candidates
-          .map((entry) => normalizeOrigin(entry))
-          .filter((entry): entry is string => Boolean(entry)),
-      ),
-    ];
-  };
-
-  const environmentSchema = Schema.Struct({
-    LOCAL_STUDIO_HOST: Schema.String,
-    LOCAL_STUDIO_PORT: positiveIntegerSchema,
-    LOCAL_STUDIO_API_KEY: Schema.optional(Schema.String),
-    LOCAL_STUDIO_ALLOW_UNAUTHENTICATED: Schema.optional(Schema.String),
-    LOCAL_STUDIO_CORS_ORIGINS: Schema.optional(Schema.String),
-    LOCAL_STUDIO_INFERENCE_HOST: Schema.String,
-    LOCAL_STUDIO_INFERENCE_PORT: positiveIntegerSchema,
-
-    LOCAL_STUDIO_DATA_DIR: Schema.String,
-    LOCAL_STUDIO_DB_PATH: Schema.optional(Schema.String),
-    LOCAL_STUDIO_MODELS_DIR: Schema.String,
-    LOCAL_STUDIO_SGLANG_PYTHON: Schema.optional(Schema.String),
-    LOCAL_STUDIO_LLAMA_BIN: Schema.optional(Schema.String),
-    LOCAL_STUDIO_MLX_PYTHON: Schema.optional(Schema.String),
-    LOCAL_STUDIO_STRICT_OPENAI_MODELS: Schema.optional(Schema.String),
-  });
-
-  const coercePositiveInteger = (
-    key: "LOCAL_STUDIO_PORT" | "LOCAL_STUDIO_INFERENCE_PORT",
-    fallback: number,
-  ): number => {
-    const value = process.env[key];
-    return value === undefined ? fallback : Number(value);
-  };
 
   const parsed = Schema.decodeUnknownSync(environmentSchema, {
     onExcessProperty: "preserve",
@@ -124,9 +152,6 @@ export const createConfig = (): Config => {
   const host = parsed.LOCAL_STUDIO_HOST.trim() || "127.0.0.1";
 
   const strictOpenAIModelsEnabled = parseBooleanFlag(parsed.LOCAL_STUDIO_STRICT_OPENAI_MODELS);
-
-  // The db default follows the resolved data dir so overriding LOCAL_STUDIO_DATA_DIR
-  // alone keeps the database inside it.
   const dataDirectory = resolve(parsed.LOCAL_STUDIO_DATA_DIR);
   const databasePath = resolve(
     parsed.LOCAL_STUDIO_DB_PATH ?? resolve(dataDirectory, "controller.db"),
@@ -150,31 +175,14 @@ export const createConfig = (): Config => {
     config.api_key = parsed.LOCAL_STUDIO_API_KEY;
   }
 
-  const allowUnauthenticated = parseBooleanFlag(parsed.LOCAL_STUDIO_ALLOW_UNAUTHENTICATED);
-  if (!config.api_key && !allowUnauthenticated && !isLoopbackHost(host)) {
-    throw new Error(
-      "LOCAL_STUDIO_API_KEY is required when binding the controller to a non-loopback host. Set LOCAL_STUDIO_ALLOW_UNAUTHENTICATED=true only for trusted local environments.",
-    );
-  }
-
-  if (parsed.LOCAL_STUDIO_SGLANG_PYTHON) {
-    config.sglang_python = parsed.LOCAL_STUDIO_SGLANG_PYTHON;
-  }
-  if (parsed.LOCAL_STUDIO_LLAMA_BIN) {
-    config.llama_bin = parsed.LOCAL_STUDIO_LLAMA_BIN;
-  }
-  if (parsed.LOCAL_STUDIO_MLX_PYTHON) {
-    config.mlx_python = parsed.LOCAL_STUDIO_MLX_PYTHON;
-  }
-
-  const persisted = loadPersistedConfig(config.data_dir);
-  if (persisted.models_dir) {
-    config.models_dir = resolve(persisted.models_dir);
-  }
-
-  if (Array.isArray(persisted.providers)) {
-    config.providers = persisted.providers;
-  }
+  validateAuthentication(config, parsed.LOCAL_STUDIO_ALLOW_UNAUTHENTICATED);
+  applyRuntimePaths(
+    config,
+    parsed.LOCAL_STUDIO_SGLANG_PYTHON,
+    parsed.LOCAL_STUDIO_LLAMA_BIN,
+    parsed.LOCAL_STUDIO_MLX_PYTHON,
+  );
+  applyPersistedConfig(config);
 
   return config;
 };

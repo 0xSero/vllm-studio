@@ -92,9 +92,7 @@ export class ControllerRequestStore {
 
   private prune(db: Database = this.db): void {
     for (const table of ["controller_requests", "controller_function_calls"]) {
-      db.run(
-        `DELETE FROM ${table} WHERE created_at < datetime('now', '-${RETENTION_DAYS} days')`,
-      );
+      db.run(`DELETE FROM ${table} WHERE created_at < datetime('now', '-${RETENTION_DAYS} days')`);
     }
   }
 
@@ -169,9 +167,10 @@ export class ControllerRequestStore {
       )
       .get();
 
-    const totalRequests = toFiniteNumber(totals?.["total_requests"]);
-    const successfulRequests = toFiniteNumber(totals?.["successful_requests"]);
-    const failedRequests = toFiniteNumber(totals?.["failed_requests"]);
+    const totalRow = totals ?? {};
+    const totalRequests = toFiniteNumber(totalRow["total_requests"]);
+    const successfulRequests = toFiniteNumber(totalRow["successful_requests"]);
+    const failedRequests = toFiniteNumber(totalRow["failed_requests"]);
 
     const byPath = this.db
       .query<NumberRow, []>(
@@ -269,8 +268,9 @@ export class ControllerRequestStore {
       )
       .all();
 
-    const totalFunctionCalls = toFiniteNumber(functionTotals?.["total_calls"]);
-    const successfulFunctionCalls = toFiniteNumber(functionTotals?.["successful_calls"]);
+    const functionTotalRow = functionTotals ?? {};
+    const totalFunctionCalls = toFiniteNumber(functionTotalRow["total_calls"]);
+    const successfulFunctionCalls = toFiniteNumber(functionTotalRow["successful_calls"]);
 
     return {
       totals: {
@@ -280,13 +280,13 @@ export class ControllerRequestStore {
         success_rate: totalRequests ? (successfulRequests / totalRequests) * 100 : 0,
       },
       latency: {
-        avg_ms: toNullableNumber(totals?.["avg_duration_ms"]),
-        max_ms: toNullableNumber(totals?.["max_duration_ms"]),
+        avg_ms: toNullableNumber(totalRow["avg_duration_ms"]),
+        max_ms: toNullableNumber(totalRow["max_duration_ms"]),
       },
       recent_activity: {
-        last_hour_requests: toFiniteNumber(recent?.["last_hour"]),
-        last_24h_requests: toFiniteNumber(recent?.["last_24h"]),
-        last_24h_failed_requests: toFiniteNumber(recent?.["last_24h_failed"]),
+        last_hour_requests: toFiniteNumber((recent ?? {})["last_hour"]),
+        last_24h_requests: toFiniteNumber((recent ?? {})["last_24h"]),
+        last_24h_failed_requests: toFiniteNumber((recent ?? {})["last_24h_failed"]),
       },
       by_path: byPath.map((row) => {
         const requests = toFiniteNumber(row["requests"]);
@@ -318,14 +318,14 @@ export class ControllerRequestStore {
         totals: {
           total_calls: totalFunctionCalls,
           successful_calls: successfulFunctionCalls,
-          failed_calls: toFiniteNumber(functionTotals?.["failed_calls"]),
+          failed_calls: toFiniteNumber(functionTotalRow["failed_calls"]),
           success_rate: totalFunctionCalls
             ? (successfulFunctionCalls / totalFunctionCalls) * 100
             : 0,
         },
         latency: {
-          avg_ms: toNullableNumber(functionTotals?.["avg_duration_ms"]),
-          max_ms: toNullableNumber(functionTotals?.["max_duration_ms"]),
+          avg_ms: toNullableNumber(functionTotalRow["avg_duration_ms"]),
+          max_ms: toNullableNumber(functionTotalRow["max_duration_ms"]),
         },
         by_function: byFunction.map((row) => {
           const calls = toFiniteNumber(row["calls"]);

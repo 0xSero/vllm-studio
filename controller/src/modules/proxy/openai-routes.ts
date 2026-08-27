@@ -69,14 +69,6 @@ const isDeepSeekV4ControllerRecipe = (recipe: Recipe | null): boolean => {
     .toLowerCase()
     .includes("deepseek-v4");
 };
-
-/**
- * DeepSeek's hosted API has a different reasoning protocol from our local
- * DeepSeek V4 vLLM endpoint. A stale desktop client may send its hosted-only
- * `thinking` field and inject blank `reasoning_content` fields when replaying
- * tool turns. Remove only that incompatible transport residue at the
- * controller boundary, while preserving actual reasoning and reasoning_effort.
- */
 export const sanitizeDeepSeekV4ControllerRequest = (
   body: ProxyObject,
   recipe: Recipe | null,
@@ -390,10 +382,12 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
           const sourceHeader = getSourceHeader((name) => ctx.req.header(name));
 
           if (
-            !matchedRecipe &&
-            requestProvider === DEFAULT_CHAT_PROVIDER &&
-            requestedModel &&
-            context.config.strict_openai_models
+            [
+              !matchedRecipe,
+              requestProvider === DEFAULT_CHAT_PROVIDER,
+              Boolean(requestedModel),
+              context.config.strict_openai_models,
+            ].every(Boolean)
           ) {
             return yield* Effect.fail(notFound(`Model not managed: ${requestedModel}`));
           }
@@ -407,10 +401,9 @@ export const registerOpenAIRoutes = defineRoutes((app, context) => {
             if (rejection) return ctx.json(rejection, { status: 503 });
           }
 
-          const finalBody =
-            bodyChanged || rewroteModel
-              ? new TextEncoder().encode(JSON.stringify(parsed)).buffer
-              : bodyBuffer;
+          const finalBody = [bodyChanged, rewroteModel].some(Boolean)
+            ? new TextEncoder().encode(JSON.stringify(parsed)).buffer
+            : bodyBuffer;
 
           const clientSignal = ctx.req.raw.signal;
           const requestStart = performance.now();

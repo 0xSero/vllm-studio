@@ -10,9 +10,7 @@ import { probePythonRuntime } from "./runtime-target-probes";
 
 export type ManagedPythonBackend = Extract<EngineBackend, "vllm" | "sglang" | "mlx">;
 
-export const isManagedPythonBackend = (
-  backend: string,
-): backend is ManagedPythonBackend =>
+export const isManagedPythonBackend = (backend: string): backend is ManagedPythonBackend =>
   backend === "vllm" || backend === "sglang" || backend === "mlx";
 
 export const managedVenvName = (backend: ManagedPythonBackend): string => `${backend}-latest`;
@@ -112,6 +110,16 @@ const resolveInstallerEffect = (
     return { command, args, installer };
   });
 
+const installError = (
+  timedOut: boolean,
+  stderr: string,
+  packageSpec: string,
+  installTimeout: number,
+): string =>
+  timedOut
+    ? `Install of ${packageSpec} timed out after ${timeoutMinutes(installTimeout)} minutes. Retry the install; large torch/CUDA wheels are the usual cause.`
+    : stderr || `Failed to install ${packageSpec}`;
+
 const installIntoManagedVenvEffect = (
   options: ManagedInstallOptions,
 ): Effect.Effect<RuntimeUpgradeResult> =>
@@ -168,9 +176,7 @@ const installIntoManagedVenvEffect = (
         success: false,
         version: null,
         output: install.stdout || null,
-        error: install.timedOut
-          ? `Install of ${packageSpec} timed out after ${timeoutMinutes(installTimeout)} minutes. Retry the install; large torch/CUDA wheels are the usual cause.`
-          : install.stderr || `Failed to install ${packageSpec}`,
+        error: installError(install.timedOut, install.stderr, packageSpec, installTimeout),
         used_command: usedCommand,
       };
     }

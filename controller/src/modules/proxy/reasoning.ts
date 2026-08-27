@@ -1,14 +1,6 @@
 import { Schema } from "effect";
 import { parseToolCallsFromContent, stripToolCallsFromContent } from "./tool-call-parser";
-
-// Reasoning text can arrive under different keys depending on the upstream
-// OpenAI-compatible server: vLLM/SGLang emit `reasoning_content`, while some
-// endpoints use `reasoning` or `reasoning_text`. This mirrors how the pi SDK
-// resolves reasoning (see @earendil-works/pi-ai openai-completions): take the
-// first non-empty field so the same text is never counted twice.
 export const REASONING_FIELDS = ["reasoning_content", "reasoning", "reasoning_text"] as const;
-
-/** Return the first non-empty reasoning field on a delta/message record. */
 export interface ReasoningMessage {
   content?: unknown;
   reasoning_content?: unknown;
@@ -127,7 +119,7 @@ export const createThinkRewriter = (
       return pending;
     },
     rewrite(deltaText: string, defaultToReasoning = false): ThinkRewriteResult {
-      const combined = thinkCarry + (deltaText ?? "");
+      const combined = [thinkCarry, deltaText].join("");
       const combinedLower = combined.toLowerCase();
       let carryIndex = combined.length;
       let index = 0;
@@ -139,38 +131,40 @@ export const createThinkRewriter = (
 
         if (combined[index] === "<") {
           const thinkTag = getThinkingTagLength(remainingLower);
-          if (thinkTag?.kind === "open") {
-            if (pendingImplicitContent) {
-              contentOut += pendingImplicitContent;
-              pendingImplicitContent = "";
-            }
-            inThink = true;
-            seenOpen = true;
-            index += thinkTag.length;
-            continue;
-          }
-          if (thinkTag?.kind === "close") {
-            if (!inThink) {
-              // Close tag without an opening tag: model uses implicit
-              // thinking (e.g. DeepSeek sends `...` with no `...`).
-              if (buffersImplicitPrefix(
-                  settings.bufferImplicitReasoningContent,
-                  seenOpen,
-                  resolvedImplicitPrefix,
-                )) {
-                reasoningOut += pendingImplicitContent;
+          switch (thinkTag?.kind) {
+            case "open":
+              if (pendingImplicitContent) {
+                contentOut += pendingImplicitContent;
                 pendingImplicitContent = "";
-                resolvedImplicitPrefix = true;
               }
-              const before = contentOut.trim();
-              if (before) {
-                reasoningOut += contentOut;
-                contentOut = "";
+              inThink = true;
+              seenOpen = true;
+              index += thinkTag.length;
+              continue;
+            case "close":
+              if (!inThink) {
+                if (
+                  buffersImplicitPrefix(
+                    settings.bufferImplicitReasoningContent,
+                    seenOpen,
+                    resolvedImplicitPrefix,
+                  )
+                ) {
+                  reasoningOut += pendingImplicitContent;
+                  pendingImplicitContent = "";
+                  resolvedImplicitPrefix = true;
+                }
+                const before = contentOut.trim();
+                if (before) {
+                  reasoningOut += contentOut;
+                  contentOut = "";
+                }
               }
-            }
-            inThink = false;
-            index += thinkTag.length;
-            continue;
+              inThink = false;
+              index += thinkTag.length;
+              continue;
+            case undefined:
+              break;
           }
           if (thinkingTagPrefixIsPartial(remainingLower)) {
             carryIndex = index;
@@ -178,15 +172,15 @@ export const createThinkRewriter = (
           }
         }
 
-        const ch = combined[index] ?? "";
-        if (inThink || defaultToReasoning) {
+        const ch = combined[index];
+        if ([inThink, defaultToReasoning].some(Boolean)) {
           reasoningOut += ch;
         } else if (
           buffersImplicitPrefix(
-          settings.bufferImplicitReasoningContent,
-          seenOpen,
-          resolvedImplicitPrefix,
-        )
+            settings.bufferImplicitReasoningContent,
+            seenOpen,
+            resolvedImplicitPrefix,
+          )
         ) {
           pendingImplicitContent += ch;
         } else {
@@ -195,7 +189,7 @@ export const createThinkRewriter = (
         index += 1;
       }
 
-      thinkCarry = carryIndex < combined.length ? combined.slice(carryIndex) : "";
+      thinkCarry = combined.slice(carryIndex);
 
       return {
         content: contentOut,
@@ -239,25 +233,13 @@ const extractThinkBlocks = (text: string): ThinkBlocks => {
 };
 
 export const normalizeReasoningAndContentInMessage = (message: ReasoningMessage): void => {
-  // Only a string content carries inline <think> blocks or is safe to rewrite.
-  // A multi-part array content (e.g. text + image_url) must be left untouched —
-  // coercing it to "" here would silently drop the whole message body.
   const contentIsString = isString(message["content"]);
   const contentRaw = isString(message["content"]) ? message["content"] : "";
   const reasoningRaw = firstReasoningField(message);
 
   const contentThink = extractThinkBlocks(contentRaw);
   const reasoningThink = extractThinkBlocks(reasoningRaw);
-
-  // Dedup identical segments: when a model emits its reasoning BOTH inline in
-  // content (<think>…</think>) and in the dedicated reasoning field, the
-  // content-extracted and reasoning-field text are the same string — joining
-  // them verbatim doubled the reasoning.
-  const nextReasoning = [
-    reasoningThink.cleaned,
-    contentThink.extracted,
-    reasoningThink.extracted,
-  ]
+  const nextReasoning = [reasoningThink.cleaned, contentThink.extracted, reasoningThink.extracted]
     .map((v) => v.trim())
     .filter((v, index, all) => v.length > 0 && all.indexOf(v) === index)
     .join("\n");
@@ -267,7 +249,9 @@ export const normalizeReasoningAndContentInMessage = (message: ReasoningMessage)
   if (message["reasoning_content"] !== nextReasoning) message["reasoning_content"] = nextReasoning;
 
   if (contentIsString) {
-    const strippedContent = stripToolCallXmlBlocks(isString(message["content"]) ? message["content"] : "");
+    const strippedContent = stripToolCallXmlBlocks(
+      isString(message["content"]) ? message["content"] : "",
+    );
     message["content"] = collapseRepeatedVisibleContent(strippedContent);
   }
   const strippedReasoning = stripToolCallXmlBlocks(
@@ -296,15 +280,6 @@ export const normalizeToolCallsInMessage = (message: ReasoningMessage): boolean 
   }
   return false;
 };
-
-
-/**
- * Trinity's "thinking" variant sometimes returns a response with empty
- * visible `content` but a populated `reasoning`/`reasoning_content` field —
- * callers that only render `content` would see a blank message. Promote the
- * reasoning text into `content` so it's visible, while still keeping it in
- * `reasoning_content` for callers that distinguish the two.
- */
 export const exposeReasoningAsContentWhenEmpty = (
   message: ReasoningMessage,
   model: string,
@@ -315,12 +290,11 @@ export const exposeReasoningAsContentWhenEmpty = (
   const content = isString(message["content"]) ? message["content"].trim() : "";
   if (content) return false;
 
-  const reasoning =
-    isString(message["reasoning"])
-      ? message["reasoning"].trim()
-      : isString(message["reasoning_content"])
-        ? message["reasoning_content"].trim()
-        : "";
+  const reasoning = isString(message["reasoning"])
+    ? message["reasoning"].trim()
+    : isString(message["reasoning_content"])
+      ? message["reasoning_content"].trim()
+      : "";
   if (!reasoning) return false;
 
   message["content"] = reasoning;

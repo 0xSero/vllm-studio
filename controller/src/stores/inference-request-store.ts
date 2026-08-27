@@ -54,9 +54,7 @@ const changePercent = (current: number, previous: number): number | null => {
 const maxAverageTokens = (rows: SqlRow[]): number =>
   rows.reduce((max, row) => {
     const requests = toFiniteNumber(row["requests"]);
-    const average = requests
-      ? Math.round(toFiniteNumber(row["total_tokens"]) / requests)
-      : 0;
+    const average = requests ? Math.round(toFiniteNumber(row["total_tokens"]) / requests) : 0;
     return Math.max(max, average);
   }, 0);
 
@@ -133,7 +131,6 @@ const buildUsageAggregate = (
   const cacheMisses = toFiniteNumber(summary["cache_write"]);
   const successful = toFiniteNumber(summary["ok"]);
 
-
   return {
     totals: {
       total_tokens: totalTokens,
@@ -143,11 +140,11 @@ const buildUsageAggregate = (
       successful_requests: successful,
       failed_requests: totalRequests - successful,
       success_rate: (successful / totalRequests) * 100,
-      unique_sessions: toFiniteNumber(summary?.["unique_sessions"]),
+      unique_sessions: toFiniteNumber(summary["unique_sessions"]),
       unique_users: 0,
     },
     latency: {
-      avg_ms: toNullableNumber(summary?.["avg_dur"]),
+      avg_ms: toNullableNumber(summary["avg_dur"]),
       p50_ms: null,
       p95_ms: null,
       p99_ms: null,
@@ -155,7 +152,7 @@ const buildUsageAggregate = (
       max_ms: null,
     },
     ttft: {
-      avg_ms: toNullableNumber(summary?.["avg_ttft"]),
+      avg_ms: toNullableNumber(summary["avg_ttft"]),
       p50_ms: null,
       p95_ms: null,
       p99_ms: null,
@@ -177,34 +174,34 @@ const buildUsageAggregate = (
     },
     week_over_week: {
       this_week: {
-        requests: toFiniteNumber(summary?.["this_week_requests"]),
-        tokens: toFiniteNumber(summary?.["this_week_tokens"]),
-        successful: toFiniteNumber(summary?.["this_week_ok"]),
+        requests: toFiniteNumber(summary["this_week_requests"]),
+        tokens: toFiniteNumber(summary["this_week_tokens"]),
+        successful: toFiniteNumber(summary["this_week_ok"]),
       },
       last_week: {
-        requests: toFiniteNumber(summary?.["last_week_requests"]),
-        tokens: toFiniteNumber(summary?.["last_week_tokens"]),
-        successful: toFiniteNumber(summary?.["last_week_ok"]),
+        requests: toFiniteNumber(summary["last_week_requests"]),
+        tokens: toFiniteNumber(summary["last_week_tokens"]),
+        successful: toFiniteNumber(summary["last_week_ok"]),
       },
       change_pct: {
         requests: changePercent(
-          toFiniteNumber(summary?.["this_week_requests"]),
-          toFiniteNumber(summary?.["last_week_requests"]),
+          toFiniteNumber(summary["this_week_requests"]),
+          toFiniteNumber(summary["last_week_requests"]),
         ),
         tokens: changePercent(
-          toFiniteNumber(summary?.["this_week_tokens"]),
-          toFiniteNumber(summary?.["last_week_tokens"]),
+          toFiniteNumber(summary["this_week_tokens"]),
+          toFiniteNumber(summary["last_week_tokens"]),
         ),
       },
     },
     recent_activity: {
-      last_hour_requests: toFiniteNumber(summary?.["last_hour"]),
-      last_24h_requests: toFiniteNumber(summary?.["last_24h"]),
-      prev_24h_requests: toFiniteNumber(summary?.["prev_24h"]),
-      last_24h_tokens: toFiniteNumber(summary?.["last_24h_tokens"]),
+      last_hour_requests: toFiniteNumber(summary["last_hour"]),
+      last_24h_requests: toFiniteNumber(summary["last_24h"]),
+      prev_24h_requests: toFiniteNumber(summary["prev_24h"]),
+      last_24h_tokens: toFiniteNumber(summary["last_24h_tokens"]),
       change_24h_pct: changePercent(
-        toFiniteNumber(summary?.["last_24h"]),
-        toFiniteNumber(summary?.["prev_24h"]),
+        toFiniteNumber(summary["last_24h"]),
+        toFiniteNumber(summary["prev_24h"]),
       ),
     },
     peak_days: peakDays.map((row) => ({
@@ -436,15 +433,7 @@ export class InferenceRequestStore {
       )
       .all(...params);
 
-    return buildUsageAggregate(
-      summary,
-      byModel,
-      daily,
-      dailyByModel,
-      hourly,
-      peakDays,
-      peakHours,
-    );
+    return buildUsageAggregate(summary, byModel, daily, dailyByModel, hourly, peakDays, peakHours);
   }
 
   public aggregateEffect(

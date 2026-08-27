@@ -31,16 +31,26 @@ export interface StreamUsage {
 export interface ToolCallStreamOptions {
   bufferImplicitReasoningContent?: boolean;
 }
-
-// DeepSeek V4 occasionally emits these control tokens as visible text around
-// long, tool-heavy conversations. They are prompt delimiters, never intended
-// for the client, and replaying them in the next assistant message amplifies
-// the leak. The tokenizer normally hides them, but strip the literal fallback
-// here as well so every controller client gets a clean stream.
 const stripLeakedDeepSeekControlTokens = (text: string): string =>
-  text
-    .replaceAll("<｜begin▁of▁sentence｜>", "")
-    .replaceAll("<｜end▁of▁sentence｜>", "");
+  text.replaceAll("<｜begin▁of▁sentence｜>", "").replaceAll("<｜end▁of▁sentence｜>", "");
+
+interface ContentRewrite {
+  visible: string;
+  reasoning: string;
+}
+
+const rewriteContentDelta = (
+  delta: StreamObject,
+  content: string,
+  contentThink: ReturnType<typeof createThinkRewriter>,
+): ContentRewrite => {
+  const rewritten = contentThink.rewrite(content, false);
+  const visible = stripLeakedDeepSeekControlTokens(rewritten.content);
+  const cleanedContent = stripToolCallsFromContent(stripLeakedDeepSeekControlTokens(visible));
+  if (cleanedContent) delta["content"] = cleanedContent;
+  else if ("content" in delta) delete delta["content"];
+  return { visible, reasoning: rewritten.reasoningAppend };
+};
 
 export const createToolCallStream = (
   source: ReadableStream<Uint8Array>,
@@ -86,10 +96,11 @@ export const createToolCallStream = (
       history.set(key, { text: previous.text + merged, snapshot: false });
       return merged;
     }
-    const isCumulative =
-      previous.text.length > 0 &&
-      text.length > previous.text.length &&
-      text.startsWith(previous.text);
+    const isCumulative = [
+      previous.text.length > 0,
+      text.length > previous.text.length,
+      text.startsWith(previous.text),
+    ].every(Boolean);
     const shouldSlice = forceSnapshot || previous.snapshot || isCumulative;
 
     if (shouldSlice) {
@@ -211,6 +222,12 @@ export const createToolCallStream = (
     onFirstToken?.();
   };
 
+  const trackToolCalls = (toolCalls: StreamValue | undefined): void => {
+    if (!Array.isArray(toolCalls) || toolCalls.length === 0) return;
+    toolCallsFound = true;
+    trackFirstToken();
+  };
+
   const maybeInjectToolCalls = (controller: TransformStreamDefaultController<Uint8Array>): void => {
     if (toolCallsFound || !visibleContentBuffer) return;
     const parsed = parseToolCallsFromContent(visibleContentBuffer);
@@ -238,12 +255,7 @@ export const createToolCallStream = (
     const hasDelta = isStreamObject(choice["delta"]);
     const delta = hasDelta ? choice["delta"] : choice["message"];
     if (!isStreamObject(delta)) return;
-    const toolCalls = delta["tool_calls"];
-    const hasActiveToolCalls = Array.isArray(toolCalls) && toolCalls.length > 0;
-    if (hasActiveToolCalls) {
-      toolCallsFound = true;
-      trackFirstToken();
-    }
+    trackToolCalls(delta["tool_calls"]);
     const rawContentValue = delta["content"];
     const rawContent = Schema.is(Schema.String)(rawContentValue) ? rawContentValue : "";
     const content = normalizeTextDelta(
@@ -254,30 +266,16 @@ export const createToolCallStream = (
     );
     const rawReasoning = firstReasoningField(delta);
     const reasoningRaw = rawReasoning
-      ? normalizeTextDelta(
-          reasoningHistory,
-          `${choiceIndex}:reasoning`,
-          rawReasoning,
-          !hasDelta,
-        )
+      ? normalizeTextDelta(reasoningHistory, `${choiceIndex}:reasoning`, rawReasoning, !hasDelta)
       : "";
     emitResolvedImplicitPrefix(controller, rawReasoning);
-    if (content || reasoningRaw) trackFirstToken();
+    if ([content, reasoningRaw].some(Boolean)) trackFirstToken();
     let reasoning = "";
     let reasoningFromContent = "";
     if (content) {
-      const rewritten = contentThink.rewrite(content, false);
-      const controlTokensStripped = stripLeakedDeepSeekControlTokens(rewritten.content);
-      if (controlTokensStripped) {
-        visibleContentBuffer += controlTokensStripped;
-      }
-      const cleanedContent = stripToolXmlDelta(controlTokensStripped);
-      if (cleanedContent) {
-        delta["content"] = cleanedContent;
-      } else if ("content" in delta) {
-        delete delta["content"];
-      }
-      reasoningFromContent = rewritten.reasoningAppend;
+      const rewritten = rewriteContentDelta(delta, content, contentThink);
+      visibleContentBuffer += rewritten.visible;
+      reasoningFromContent = rewritten.reasoning;
     } else if (rawContent && "content" in delta) {
       delete delta["content"];
     }

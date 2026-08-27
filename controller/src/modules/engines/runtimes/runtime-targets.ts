@@ -24,16 +24,6 @@ import {
 } from "./runtime-target-probes";
 import { type EngineOperationError, getEngineSpec } from "../engine-spec";
 
-/**
- * Runtime-target discovery: every way an engine can exist on this box (running process,
- * configured python/binary, managed venv, system install, docker image, bundled wheel),
- * probed and merged into the RuntimeTarget rows the Settings UI shows.
- *
- * Shape: pure candidate builders per stage -> one `materialize` that runs the right
- * probe -> priority merge. The stages only describe *where to look*; how to probe and
- * how to merge lives in exactly one place each.
- */
-
 const BACKENDS: readonly EngineBackend[] = ["vllm", "sglang", "llamacpp", "mlx"];
 const ENGINE_LABEL = {
   vllm: "vLLM",
@@ -79,7 +69,6 @@ const unique = (values: Array<string | null | undefined>): string[] => {
   return result;
 };
 
-
 const runningCandidates = (
   backend: EngineBackend,
   runningProcess?: ProcessInfo | null,
@@ -119,9 +108,10 @@ const configuredPythons = (backend: PythonProbeBackend, config: Config): string[
           config.sglang_python,
           ...splitEnvironmentList(process.env["LOCAL_STUDIO_SGLANG_PYTHONS"]),
         ].filter((value): value is string => Boolean(value))
-      : [config.mlx_python, ...splitEnvironmentList(process.env["LOCAL_STUDIO_MLX_PYTHONS"])].filter(
-          (value): value is string => Boolean(value),
-        );
+      : [
+          config.mlx_python,
+          ...splitEnvironmentList(process.env["LOCAL_STUDIO_MLX_PYTHONS"]),
+        ].filter((value): value is string => Boolean(value));
 
 const venvPythonsOnDisk = (config: Config): string[] => {
   const roots = unique([
@@ -311,26 +301,24 @@ const bundledCandidates = (): Candidate[] => {
   }
 };
 
+const materializeUnprobed = (candidate: Candidate): RuntimeTarget =>
+  makeRuntimeTarget({
+    backend: candidate.backend,
+    kind: candidate.kind,
+    source: candidate.source,
+    key: candidate.candidate,
+    label: candidate.label(candidate.candidate),
+    installed: candidate.installed ?? false,
+    version: candidate.version ?? null,
+    active: candidate.active ?? false,
+    pythonPath: candidate.pythonPath ?? null,
+    binaryPath: candidate.binaryPath ?? null,
+    dockerImage: candidate.dockerImage ?? null,
+  });
 
-const materialize = (
-  candidate: Candidate,
-): Effect.Effect<RuntimeTarget, EngineOperationError> =>
+const materialize = (candidate: Candidate): Effect.Effect<RuntimeTarget, EngineOperationError> =>
   Effect.gen(function* () {
-    if (candidate.probe === "none") {
-      return makeRuntimeTarget({
-        backend: candidate.backend,
-        kind: candidate.kind,
-        source: candidate.source,
-        key: candidate.candidate,
-        label: candidate.label(candidate.candidate),
-        installed: candidate.installed ?? false,
-        version: candidate.version ?? null,
-        active: candidate.active ?? false,
-        pythonPath: candidate.pythonPath ?? null,
-        binaryPath: candidate.binaryPath ?? null,
-        dockerImage: candidate.dockerImage ?? null,
-      });
-    }
+    if (candidate.probe === "none") return materializeUnprobed(candidate);
     if (candidate.probe === "binary") {
       const probe = yield* probeBinaryRuntime(candidate.candidate);
       const path = probe.binaryPath ?? candidate.candidate;
@@ -385,8 +373,6 @@ const materialize = (
 
 const sourcePriority = (source: RuntimeTarget["source"]): number =>
   source === "running" ? 4 : source === "configured" ? 3 : source === "bundled" ? 2 : 1;
-
-/** Same id discovered twice: keep the higher-priority identity, union the facts. */
 const addTarget = (targets: RuntimeTarget[], target: RuntimeTarget): void => {
   const existingIndex = targets.findIndex((candidate) => candidate.id === target.id);
   if (existingIndex === -1) {
@@ -464,10 +450,7 @@ export const getRuntimeTargets = (
       (backend) =>
         Effect.sync(() =>
           isPythonBackend(backend)
-            ? [
-                ...runningCandidates(backend, runningProcess),
-                ...pythonCandidates(backend, config),
-              ]
+            ? [...runningCandidates(backend, runningProcess), ...pythonCandidates(backend, config)]
             : [...runningCandidates(backend, runningProcess), ...llamacppCandidates(config)],
         ),
       { concurrency: "unbounded" },

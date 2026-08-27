@@ -28,6 +28,13 @@ import {
   LLAMACPP_UPGRADE_ENV,
 } from "./upgrade-config";
 
+const PLATFORM_VENDORS = {
+  cuda: "nvidia",
+  rocm: "amd",
+  metal: "apple",
+  unknown: null,
+} satisfies Record<RuntimePlatformKind, RuntimePlatformInfo["vendor"]>;
+
 const SYSTEM_RUNTIME_CACHE_TTL_MS = 30_000;
 let systemRuntimeCache: { expiresAt: number; value: SystemRuntimeInfo } | null = null;
 let systemRuntimeInFlight: Fiber.Fiber<SystemRuntimeInfo, EngineOperationError> | null = null;
@@ -85,7 +92,8 @@ const computeSystemRuntimeInfo = (
     const hasNvidiaSmi = Boolean(resolveNvidiaSmiBinary());
     const rocmSmiTool = resolveRocmSmiTool();
     const hasRocmSmi = Boolean(rocmSmiTool);
-    const nvidiaAllowed = !forcedSmiTool?.trim() || forcedSmiTool.trim() === "nvidia-smi";
+    const normalizedSmiTool = forcedSmiTool?.trim();
+    const nvidiaAllowed = [undefined, "", "nvidia-smi"].includes(normalizedSmiTool);
 
     const vllmFiber = yield* Effect.forkChild(getVllmRuntimeInfo());
     const [nvidiaSnapshot, vllmInfo, sglangInfo, llamaInfo, mlxInfo, torch, detectedGpus] =
@@ -120,8 +128,7 @@ const computeSystemRuntimeInfo = (
     const rocm = kind === "rocm" ? yield* getRocmInfo(rocmSmiTool) : null;
     const platform: RuntimePlatformInfo = {
       kind,
-      vendor:
-        kind === "cuda" ? "nvidia" : kind === "rocm" ? "amd" : kind === "metal" ? "apple" : null,
+      vendor: PLATFORM_VENDORS[kind],
       rocm,
       torch,
     };
@@ -130,8 +137,8 @@ const computeSystemRuntimeInfo = (
         kind === "metal"
           ? Effect.succeed({ available: false, tool: "apple-metal" as const })
           : kind === "cuda" && nvidiaSnapshot
-          ? Effect.succeed({ available: nvidiaSnapshot.available, tool: "nvidia-smi" as const })
-          : probeGpuMonitoring(kind, rocmSmiTool),
+            ? Effect.succeed({ available: nvidiaSnapshot.available, tool: "nvidia-smi" as const })
+            : probeGpuMonitoring(kind, rocmSmiTool),
         kind === "cuda"
           ? getCudaInfo(nvidiaSnapshot?.driverVersion ?? null)
           : Effect.succeed({
