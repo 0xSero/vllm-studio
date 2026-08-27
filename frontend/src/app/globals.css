@@ -1,9 +1,258 @@
 @import "tailwindcss" source("../");
-@import "@xterm/xterm/css/xterm.css";
-@import "./styles/globals/tokens.css";
-@import "./styles/globals/base.css";
-@import "./styles/globals/mobile.css";
-@import "./styles/globals/animations.css";
-@import "./styles/globals/chat.css";
-@import "./styles/globals/pwa.css";
-@import "highlight.js/styles/github-dark.css";
+:root {
+  color-scheme: dark;
+  --bg: #181818;
+  --panel: #212121;
+  --line: #ffffff18;
+  --fg: #f4f4f4;
+  --dim: #aaa;
+  --accent: #70b7ff;
+  font:
+    14px/1.5 system-ui,
+    sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+  background: #ffffff0c;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+}
+button,
+a {
+  cursor: pointer;
+}
+button:hover,
+nav a:hover,
+.tabs a:hover {
+  background: #ffffff12;
+}
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 220px 1fr;
+}
+.shell > aside {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  padding: 1rem;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.brand {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.shell nav {
+  display: grid;
+  gap: 0.25rem;
+}
+.shell nav a,
+.tabs a {
+  padding: 0.55rem 0.7rem;
+  border-radius: 7px;
+}
+.shell small {
+  margin-top: auto;
+  color: var(--dim);
+}
+main {
+  min-width: 0;
+}
+.page {
+  max-width: 1200px;
+  margin: auto;
+  padding: 2rem;
+}
+.page > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.page h1 {
+  margin: 0;
+  font-size: 1.65rem;
+}
+.page h2 {
+  font-size: 1rem;
+}
+.page header p,
+p {
+  color: var(--dim);
+}
+article,
+.panel,
+pre {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 1rem;
+  min-width: 0;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+}
+.tabs,
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.tabs {
+  margin-bottom: 1rem;
+}
+.row input,
+.row textarea {
+  flex: 1;
+  min-width: 200px;
+}
+.document {
+  width: 100%;
+  min-height: 65vh;
+  font-family: ui-monospace, monospace;
+}
+.error {
+  color: #ff7774;
+}
+pre {
+  white-space: pre-wrap;
+  overflow: auto;
+  max-height: 55vh;
+  font-size: 0.78rem;
+}
+.workbench {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  gap: 1rem;
+}
+.chat {
+  min-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.chat form {
+  margin-top: auto;
+}
+.chat textarea {
+  min-height: 70px;
+}
+.chat .user,
+.chat .assistant {
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  background: #ffffff08;
+}
+.chat .user {
+  margin-left: 12%;
+  background: #16446b;
+}
+@media (max-width: 760px) {
+  .shell {
+    display: block;
+  }
+  .shell > aside {
+    position: static;
+    width: auto;
+    height: auto;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 0.75rem;
+  }
+  .shell nav {
+    display: flex;
+    overflow: auto;
+  }
+  .shell small {
+    display: none;
+  }
+  .page {
+    padding: 1rem;
+  }
+  .workbench {
+    display: block;
+  }
+  .panel {
+    margin-bottom: 1rem;
+  }
+  .page > header {
+    align-items: flex-start;
+  }
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.6rem 0;
+  color: var(--dim);
+}
+label input,
+label select {
+  color: var(--fg);
+}
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.session {
+  display: block;
+  width: 100%;
+  margin: 0.25rem 0;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tools {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.event {
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+}
+.shell select {
+  max-width: 260px;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #fafafa;
+  --panel: #fff;
+  --line: #00000018;
+  --fg: #181818;
+  --dim: #666;
+  --accent: #075ea8;
+}
