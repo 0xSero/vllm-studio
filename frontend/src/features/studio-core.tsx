@@ -1,54 +1,76 @@
 "use client";
 
+import { Schema } from "effect";
 import Link from "next/link";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { DesktopManager, MachineManager, NormalizedUsage, RecipeManager } from "./studio-admin";
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type RecordJson = { [key: string]: Json };
 
-export async function request<T extends Json>(
+const JsonSchema: Schema.Codec<Json, Json> = Schema.suspend(() =>
+  Schema.Union([
+    Schema.Null,
+    Schema.Boolean,
+    Schema.Number,
+    Schema.String,
+    Schema.mutable(Schema.Array(JsonSchema)),
+    Schema.Record(Schema.String, JsonSchema),
+  ]),
+);
+const JsonRecordSchema = Schema.Record(Schema.String, JsonSchema);
+const decodeJson = Schema.decodeUnknownSync(JsonSchema);
+const isRecordJson = Schema.is(JsonRecordSchema);
+const isString = Schema.is(Schema.String);
+
+export async function request(path: `/api/${string}`, init?: RequestInit): Promise<Json> {
+  const response = await fetch(path, { cache: "no-store", ...init });
+  const body = decodeJson(await response.json().catch(() => null));
+  if (!response.ok) {
+    const record = isRecordJson(body) ? body : null;
+    throw new Error(
+      record && isString(record.error) ? record.error : `${response.status} ${response.statusText}`,
+    );
+  }
+  return body;
+}
+export async function requestRecord(
   path: `/api/${string}`,
   init?: RequestInit,
-): Promise<T> {
-  const response = await fetch(path, { cache: "no-store", ...init });
-  const body = (await response.json().catch(() => null)) as T | null;
-  if (!response.ok) {
-    const message =
-      body && typeof body === "object" && !Array.isArray(body) && typeof body.error === "string"
-        ? body.error
-        : `${response.status} ${response.statusText}`;
-    throw new Error(message);
-  }
-  return body as T;
+): Promise<RecordJson> {
+  const body = await request(path, init);
+  if (!isRecordJson(body)) throw new Error("Expected an object response");
+  return body;
 }
-
 export function records(value: Json | null, key: string): RecordJson[] {
-  const list = Array.isArray(value)
-    ? value
-    : value && typeof value === "object"
-      ? value[key]
-      : null;
-  return Array.isArray(list)
-    ? list.filter(
-        (item): item is RecordJson =>
-          Boolean(item) && typeof item === "object" && !Array.isArray(item),
-      )
-    : [];
+  const list = Array.isArray(value) ? value : isRecordJson(value) ? value[key] : null;
+  return Array.isArray(list) ? list.filter(isRecordJson) : [];
 }
-
-export function useJson<T extends Json>(path: `/api/${string}`) {
-  const [data, setData] = useState<T | null>(null);
+export function jsonText(value: Json | undefined, fallback = ""): string {
+  return isString(value) ? value : fallback;
+}
+export function useJson(path: `/api/${string}`) {
+  const [data, setData] = useState<Json | null>(null);
   const [error, setError] = useState("");
   const reload = () =>
-    request<T>(path)
+    request(path)
       .then(setData)
-      .catch((value: unknown) => setError(value instanceof Error ? value.message : String(value)));
+      .catch((value) => setError(value instanceof Error ? value.message : String(value)));
   useMountSubscription(() => {
-    reload();
+    void reload();
   }, [path]);
   return { data, error, reload };
 }
+
+type SettingsUpdate = { backendUrl: Json; apiKey?: string };
+type DownloadRequest = {
+  model_id: string;
+  revision?: string;
+  destination_dir?: string;
+  allow_patterns?: string[];
+  hf_token?: string;
+};
 
 const NAV = [
   ["/", "Dashboard"],
@@ -122,15 +144,15 @@ export function Tabs({ items }: { items: ReadonlyArray<readonly [string, string]
 }
 
 export function Dashboard() {
-  const health = useJson<RecordJson>("/api/health");
-  const status = useJson<RecordJson>("/api/proxy/status");
-  const metrics = useJson<RecordJson>("/api/proxy/v1/metrics/vllm");
-  const downloads = useJson<RecordJson>("/api/proxy/studio/downloads");
+  const health = useJson("/api/health");
+  const status = useJson("/api/proxy/status");
+  const metrics = useJson("/api/proxy/v1/metrics/vllm");
+  const downloads = useJson("/api/proxy/studio/downloads");
   const reload = () => {
-    health.reload();
-    status.reload();
-    metrics.reload();
-    downloads.reload();
+    void health.reload();
+    void status.reload();
+    void metrics.reload();
+    void downloads.reload();
   };
   useMountSubscription(() => {
     const timer = window.setInterval(reload, 5000);
@@ -173,24 +195,24 @@ export function Dashboard() {
 }
 
 export function Usage() {
-  const state = useJson<RecordJson>("/api/proxy/usage");
+  const state = useJson("/api/proxy/usage");
   return (
     <Page title="Usage" actions={<button onClick={state.reload}>Refresh</button>}>
       <ErrorText value={state.error} />
-      <JsonView value={state.data} />
+      <NormalizedUsage value={state.data} />
     </Page>
   );
 }
 
 export function Logs() {
-  const state = useJson<RecordJson>("/api/proxy/logs");
+  const state = useJson("/api/proxy/logs");
   const [selected, setSelected] = useState("");
   const [content, setContent] = useState<Json | null>(null);
   const [error, setError] = useState("");
   const open = async (id: string) => {
     setSelected(id);
     try {
-      setContent(await request<Json>(`/api/proxy/logs/${encodeURIComponent(id)}?limit=2000`));
+      setContent(await request(`/api/proxy/logs/${encodeURIComponent(id)}?limit=2000`));
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
     }
@@ -198,10 +220,10 @@ export function Logs() {
   const remove = async () => {
     if (!selected) return;
     try {
-      await request<Json>(`/api/proxy/logs/${encodeURIComponent(selected)}`, { method: "DELETE" });
+      await request(`/api/proxy/logs/${encodeURIComponent(selected)}`, { method: "DELETE" });
       setSelected("");
       setContent(null);
-      state.reload();
+      void state.reload();
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
     }
@@ -235,10 +257,10 @@ export function Logs() {
       <div className="workbench">
         <aside className="panel">
           {records(state.data, "sessions").map((session) => {
-            const id = String(session.id ?? session.session_id ?? "");
+            const id = jsonText(session.id, jsonText(session.session_id));
             return (
               <button className="session" key={id} onClick={() => open(id)}>
-                {String(session.name ?? session.started_at ?? id)}
+                {jsonText(session.name, jsonText(session.started_at, id))}
               </button>
             );
           })}
@@ -250,16 +272,16 @@ export function Logs() {
 }
 
 export function Setup() {
-  const checks = useJson<RecordJson>("/api/agent/setup-checks");
-  const recommendations = useJson<RecordJson>("/api/setup/recommendations");
+  const checks = useJson("/api/agent/setup-checks");
+  const recommendations = useJson("/api/setup/recommendations");
   return (
     <Page
       title="Setup"
       actions={
         <button
           onClick={() => {
-            checks.reload();
-            recommendations.reload();
+            void checks.reload();
+            void recommendations.reload();
           }}
         >
           Refresh
@@ -281,25 +303,42 @@ export function Setup() {
   );
 }
 
-type SettingsDocument = RecordJson;
 export function Settings() {
-  const current = useJson<SettingsDocument>("/api/settings");
-  const studio = useJson<RecordJson>("/api/proxy/studio/settings");
+  const current = useJson("/api/settings");
+  const studio = useJson("/api/proxy/studio/settings");
   const [backendUrl, setBackendUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [message, setMessage] = useState("");
+  const [remoteConsent, setRemoteConsent] = useState(false);
+  const currentRecord = records([current.data], "current")[0] ?? {};
+  const test = async (path: `/api/${string}`, label: string) => {
+    try {
+      await request(path);
+      setMessage(`${label} succeeded`);
+    } catch (value) {
+      setMessage(value instanceof Error ? value.message : String(value));
+    }
+  };
   const save = async () => {
     try {
-      await request<RecordJson>("/api/settings", {
+      const destination = backendUrl || jsonText(currentRecord.backendUrl, "http://localhost:8080");
+      const hostname = new URL(destination).hostname;
+      const remote = hostname !== "localhost" && hostname !== "127.0.0.1" && hostname !== "::1";
+      if (remote && !remoteConsent)
+        throw new Error(
+          "Consent is required before sending requests or credentials to a remote controller.",
+        );
+      const settingsUpdate: SettingsUpdate = {
+        backendUrl: backendUrl || currentRecord.backendUrl || "http://localhost:8080",
+      };
+      if (apiKey) settingsUpdate.apiKey = apiKey;
+      await requestRecord("/api/settings", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          backendUrl: backendUrl || current.data?.backendUrl,
-          ...(apiKey ? { apiKey } : {}),
-        }),
+        body: JSON.stringify(settingsUpdate),
       });
       setMessage("Connection settings saved locally");
-      current.reload();
+      void current.reload();
     } catch (value) {
       setMessage(value instanceof Error ? value.message : String(value));
     }
@@ -319,7 +358,7 @@ export function Settings() {
             <input
               value={backendUrl}
               onChange={(event) => setBackendUrl(event.target.value)}
-              placeholder={String(current.data?.backendUrl ?? "http://localhost:8080")}
+              placeholder={jsonText(currentRecord.backendUrl, "http://localhost:8080")}
             />
           </label>
           <label>
@@ -329,12 +368,33 @@ export function Settings() {
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
               placeholder={
-                current.data?.hasApiKey
+                currentRecord.hasApiKey
                   ? "Configured — leave blank to keep"
                   : "Optional local API key"
               }
             />
           </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={remoteConsent}
+              onChange={(event) => setRemoteConsent(event.target.checked)}
+            />
+            I understand that a non-local controller receives prompts, attachments, tool context,
+            model requests, and its configured credential.
+          </label>
+          <p>
+            Remote destination:{" "}
+            {backendUrl || jsonText(currentRecord.backendUrl, "local controller")}. Local-first
+            custody ends at that destination only after this consent.
+          </p>
+          <div className="row">
+            <button onClick={() => test("/api/health", "Connection test")}>Test connection</button>
+            <button onClick={() => test("/api/proxy/compat", "Compatibility check")}>
+              Check compatibility
+            </button>
+            <button onClick={save}>Switch controller</button>
+          </div>
         </article>
         <article>
           <h2>Runtime settings</h2>
@@ -379,6 +439,7 @@ export function Settings() {
             />
           </label>
         </article>
+        <DesktopManager />
         <article>
           <h2>Shortcuts, archive & setup</h2>
           <label>
@@ -404,7 +465,7 @@ export function Settings() {
 }
 
 function Resource({ title, path }: { title: string; path: `/api/${string}` }) {
-  const state = useJson<RecordJson>(path);
+  const state = useJson(path);
   return (
     <article>
       <h2>{title}</h2>
@@ -415,21 +476,21 @@ function Resource({ title, path }: { title: string; path: `/api/${string}` }) {
   );
 }
 function IntegrationsManager() {
-  const connectors = useJson<RecordJson>("/api/agent/connectors");
-  const plugins = useJson<RecordJson>("/api/agent/plugins");
-  const providers = useJson<RecordJson>("/api/agent/providers");
-  const google = useJson<RecordJson>("/api/agent/accounts/google");
+  const connectors = useJson("/api/agent/connectors");
+  const plugins = useJson("/api/agent/plugins");
+  const providers = useJson("/api/agent/providers");
+  const google = useJson("/api/agent/accounts/google");
   const [id, setId] = useState("");
   const [url, setUrl] = useState("");
   const [message, setMessage] = useState("");
   const run = async (path: `/api/${string}`, init?: RequestInit) => {
     try {
-      await request<RecordJson>(path, init);
+      await requestRecord(path, init);
       setMessage("Integration updated locally");
-      connectors.reload();
-      plugins.reload();
-      providers.reload();
-      google.reload();
+      void connectors.reload();
+      void plugins.reload();
+      void providers.reload();
+      void google.reload();
     } catch (value) {
       setMessage(value instanceof Error ? value.message : String(value));
     }
@@ -475,10 +536,10 @@ function IntegrationsManager() {
         <article>
           <h2>Plugins</h2>
           {records(plugins.data, "plugins").map((plugin) => {
-            const pluginId = String(plugin.id ?? "");
+            const pluginId = jsonText(plugin.id);
             return (
               <div className="item" key={pluginId}>
-                <span>{String(plugin.name ?? pluginId)}</span>
+                <span>{jsonText(plugin.name, pluginId)}</span>
                 <button
                   onClick={() =>
                     run(
@@ -497,10 +558,10 @@ function IntegrationsManager() {
           <h2>Model providers</h2>
           <p>Provider sign-in is explicit. Credentials stay in the local runtime vault.</p>
           {records(providers.data, "providers").map((provider) => {
-            const providerId = String(provider.id ?? "");
+            const providerId = jsonText(provider.id);
             return (
               <div className="item" key={providerId}>
-                <span>{String(provider.name ?? providerId)}</span>
+                <span>{jsonText(provider.name, providerId)}</span>
                 <button
                   onClick={() =>
                     run(`/api/agent/providers/${encodeURIComponent(providerId)}/login`, post({}))
@@ -554,6 +615,7 @@ export function Configure() {
       <section id="machines">
         <h2>Machines</h2>
         <div className="grid">
+          <MachineManager />
           <Resource title="Machines and rigs" path="/api/proxy/studio/rigs" />
           <Resource title="Runtime targets" path="/api/proxy/runtime/targets" />
           <Resource title="Local agents" path="/api/local-agents" />
@@ -577,9 +639,9 @@ export function Configure() {
 }
 
 export function Models() {
-  const recipes = useJson<RecordJson>("/api/proxy/recipes");
-  const downloads = useJson<RecordJson>("/api/proxy/studio/downloads");
-  const status = useJson<RecordJson>("/api/proxy/status");
+  const recipes = useJson("/api/proxy/recipes");
+  const downloads = useJson("/api/proxy/studio/downloads");
+  const status = useJson("/api/proxy/status");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<RecordJson | null>(null);
   const [message, setMessage] = useState("");
@@ -593,11 +655,11 @@ export function Models() {
   }, []);
   const run = async (path: `/api/${string}`, init?: RequestInit) => {
     try {
-      await request<RecordJson>(path, init);
+      await requestRecord(path, init);
       setMessage("Action accepted by the local controller");
-      recipes.reload();
-      downloads.reload();
-      status.reload();
+      void recipes.reload();
+      void downloads.reload();
+      void status.reload();
     } catch (value) {
       setMessage(value instanceof Error ? value.message : String(value));
     }
@@ -606,31 +668,28 @@ export function Models() {
     event.preventDefault();
     try {
       setResults(
-        await request<RecordJson>(`/api/huggingface/models?search=${encodeURIComponent(query)}`),
+        await requestRecord(`/api/huggingface/models?search=${encodeURIComponent(query)}`),
       );
     } catch (value) {
       setMessage(value instanceof Error ? value.message : String(value));
     }
   };
-  const startDownload = () =>
-    run("/api/proxy/studio/downloads", {
+  const startDownload = () => {
+    const payload: DownloadRequest = { model_id: query };
+    if (revision) payload.revision = revision;
+    if (destination) payload.destination_dir = destination;
+    if (patterns)
+      payload.allow_patterns = patterns
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+    if (token) payload.hf_token = token;
+    return run("/api/proxy/studio/downloads", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        model_id: query,
-        ...(revision ? { revision } : {}),
-        ...(destination ? { destination_dir: destination } : {}),
-        ...(patterns
-          ? {
-              allow_patterns: patterns
-                .split(",")
-                .map((value) => value.trim())
-                .filter(Boolean),
-            }
-          : {}),
-        ...(token ? { hf_token: token } : {}),
-      }),
+      body: JSON.stringify(payload),
     });
+  };
   return (
     <Page
       title="Models"
@@ -684,13 +743,14 @@ export function Models() {
         </article>
       ) : null}
       <div className="grid">
+        <RecipeManager />
         <article>
           <h2>Recipes and serving profiles</h2>
           {records(recipes.data, "recipes").map((recipe) => {
-            const id = String(recipe.id ?? "");
+            const id = jsonText(recipe.id);
             return (
               <div className="item" key={id}>
-                <span>{String(recipe.name ?? id)}</span>
+                <span>{jsonText(recipe.name, id)}</span>
                 <button
                   onClick={() =>
                     run(`/api/proxy/launch/${encodeURIComponent(id)}`, { method: "POST" })
@@ -709,11 +769,11 @@ export function Models() {
         <article>
           <h2>Download progress</h2>
           {records(downloads.data, "downloads").map((download) => {
-            const id = String(download.id ?? "");
+            const id = jsonText(download.id);
             return (
               <div className="item" key={id}>
                 <span>
-                  {String(download.model_id ?? id)} · {String(download.status ?? "")}
+                  {jsonText(download.model_id, id)} · {jsonText(download.status)}
                 </span>
                 <button
                   onClick={() =>
