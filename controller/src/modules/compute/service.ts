@@ -10,10 +10,6 @@ import { makeProcessLauncher } from "./launchers/process";
 import type { Launcher } from "./launchers/launcher";
 import { makeComputeService, type ComputeService } from "./lifecycle";
 
-/**
- * Assembly point: telemetry + store + launchers wired into one ComputeService. This is
- * the compute layer's entire footprint in AppContext — there is no other state.
- */
 
 export interface Compute {
   readonly service: ComputeService;

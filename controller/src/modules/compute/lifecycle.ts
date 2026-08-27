@@ -47,7 +47,6 @@ export interface ComputeLaunchInput {
   readonly recipeId: string;
   readonly runtime: EngineRuntimeKind;
   readonly deviceCount: number;
-  /** Pin the launch to these devices (recipe GPU selectors); default = any free. */
   readonly devices?: readonly DeviceId[];
   /** Serve on exactly this port (legacy inference_port); default = engine base scan. */
   readonly portOverride?: number;
@@ -73,7 +72,6 @@ export interface ComputeService {
   readonly cancel: (name: string) => Effect.Effect<boolean>;
   readonly stateOf: (record: InstanceRecord) => Effect.Effect<InstanceState>;
   readonly instances: () => Effect.Effect<readonly InstanceView[]>;
-  /** One supervisor pass: drop records whose handle is gone. The only reaper. */
   readonly superviseOnce: () => Effect.Effect<number>;
 }
 

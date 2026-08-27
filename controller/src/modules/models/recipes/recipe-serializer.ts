@@ -68,11 +68,6 @@ const coerceNullableNumber = (value: unknown): number | null =>
 const coerceBoolean = (value: unknown, fallback: boolean): boolean =>
   value === undefined ? fallback : Boolean(value);
 
-/**
- * Normalize raw recipe input before validation.
- * @param raw - Unknown recipe payload.
- * @returns Normalized record.
- */
 export const normalizeRecipeInput = (raw: unknown): Record<string, unknown> => {
   if (!raw || typeof raw !== "object") {
     throw new Error("Invalid recipe payload");
@@ -173,9 +168,6 @@ export const normalizeRecipeInput = (raw: unknown): Record<string, unknown> => {
   return data;
 };
 
-/**
- * Effect v4 schema for validated recipe input.
- */
 export const recipeSchema = Schema.Struct({
   // An empty id would create a ghost recipe that can't be fetched, updated,
   // deleted, or launched (routes address recipes by /recipes/:recipeId).
@@ -211,11 +203,6 @@ export const recipeSchema = Schema.Struct({
   thinking_mode: Schema.String,
 });
 
-/**
- * Parse and normalize a recipe payload.
- * @param raw - Raw recipe payload.
- * @returns Parsed recipe.
- */
 export const parseRecipe = (raw: unknown): Recipe => {
   const normalized = normalizeRecipeInput(raw);
   const parsed = Schema.decodeUnknownSync(recipeSchema, {

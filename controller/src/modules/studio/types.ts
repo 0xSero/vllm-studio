@@ -14,9 +14,7 @@ export interface StudioStarterPreset {
   model_id?: string;
   allow_patterns?: string[];
   backend?: "vllm" | "llamacpp";
-  /** For llamacpp presets: the exact weights file inside the download dir. */
   gguf_file?: string;
-  /** Extra recipe fields merged over the starter recipe defaults. */
   recipe_overrides?: Record<string, unknown>;
   remote?: { base_url: string; model: string };
 }

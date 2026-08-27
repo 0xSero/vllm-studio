@@ -44,7 +44,6 @@ const ENGINE_LABEL: Record<EngineBackend, string> = {
 
 const skipSystem = (): boolean => process.env["LOCAL_STUDIO_RUNTIME_SKIP_SYSTEM"] === "1";
 
-/** A place a runtime might live, before probing. `probe` picks the materializer. */
 interface Candidate {
   readonly backend: EngineBackend;
   readonly kind: RuntimeTarget["kind"];
@@ -72,7 +71,6 @@ const unique = (values: Array<string | null | undefined>): string[] => {
   return result;
 };
 
-/* ── candidate stages ────────────────────────────────────────────────────── */
 
 const runningCandidates = (
   backend: EngineBackend,
@@ -305,7 +303,6 @@ const bundledCandidates = (): Candidate[] => {
   }
 };
 
-/* ── materialize + merge ─────────────────────────────────────────────────── */
 
 const materialize = (
   candidate: Candidate,

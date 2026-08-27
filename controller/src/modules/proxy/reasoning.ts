@@ -270,12 +270,6 @@ export const normalizeToolCallsInMessage = (message: Record<string, unknown>): b
   return false;
 };
 
-/**
- * Per-model quirks for reasoning/thinking content. The extractors above
- * handle the universal
- * `<think>`/tool-call-XML shapes; these two are narrow, model-specific
- * workarounds).
- */
 
 /**
  * Trinity's "thinking" variant sometimes returns a response with empty

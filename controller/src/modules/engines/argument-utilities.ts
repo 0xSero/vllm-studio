@@ -1,9 +1,3 @@
-/**
- * Shared CLI argument parsing utilities used by both EngineSpec implementations
- * and process-utilities. Extracted here to avoid circular dependencies between
- * engine-spec.ts and process-utilities.ts.
- */
-
 export const getExtraArgument = (
   extraArguments: Record<string, unknown>,
   key: string,
@@ -38,5 +32,3 @@ export const hasCliServeInvocation = (args: string[], cliName: string): boolean 
   const executableIndex = args.findIndex((argument) => executableName(argument) === cliName);
   return executableIndex >= 0 && args[executableIndex + 1] === "serve";
 };
-
-/** Find the positional argument after a "serve" subcommand (vLLM/SGLang CLI pattern). */
