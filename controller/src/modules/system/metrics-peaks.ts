@@ -1,4 +1,6 @@
-export const positiveOrUndefined = (value: unknown): number | undefined => {
+export type MetricValue = number | string | null | undefined;
+
+export const positiveOrUndefined = (value: MetricValue): number | undefined => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };
@@ -45,7 +47,7 @@ export const bumpBestLower = (
 export const firstMetric = (metrics: Record<string, number>, names: string[]): number => {
   for (const name of names) {
     const value = metrics[name];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (value !== undefined && Number.isFinite(value)) return value;
   }
   return 0;
 };

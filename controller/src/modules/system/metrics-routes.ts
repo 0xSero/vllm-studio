@@ -5,6 +5,7 @@ import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-regis
 import { effectHandler } from "../../http/effect-handler";
 import { badRequest, serviceUnavailable } from "../../core/errors";
 import type { AppContext } from "../../app-context";
+import type { GpuInfo } from "../models/types";
 import { getGpuInfo } from "./platform/gpu";
 import { fetchInference } from "../../http/local-fetch";
 import type { UsageAggregate } from "../../stores/inference-request-store";
@@ -14,6 +15,8 @@ import {
   scrapeEngineMetrics,
 } from "./engine-metrics-scrape";
 import { firstMetric, positiveOrUndefined } from "./metrics-peaks";
+import type { EventData } from "./event-manager";
+import type { PeakMetric, PeakMetricSession } from "./metrics-store";
 
 const throughputSamples = new Map<
   string,
@@ -45,28 +48,138 @@ const buildModelKeys = (modelId: string, modelPath: string | null | undefined): 
   return keys;
 };
 
+
+const buildBaseMetrics = (
+  lifetimeData: Record<string, number>,
+  gpus: GpuInfo[],
+): EventData => {
+  const currentPowerWatts = gpus.reduce((sum, gpu) => sum + gpu.power_draw, 0);
+  const vramUsedGb = gpus.reduce((sum, gpu) => sum + gpu.memory_used_mb / 1024, 0);
+  const vramCapacityGb = gpus.reduce((sum, gpu) => sum + gpu.memory_total_mb / 1024, 0);
+  const powerLimitWatts = gpus.reduce((sum, gpu) => sum + gpu.power_limit, 0);
+  return {
+    lifetime_prompt_tokens: lifetimeData["prompt_tokens_total"] ?? 0,
+    lifetime_completion_tokens: lifetimeData["completion_tokens_total"] ?? 0,
+    lifetime_requests: lifetimeData["requests_total"] ?? 0,
+    lifetime_energy_kwh: (lifetimeData["energy_wh"] ?? 0) / 1000,
+    lifetime_uptime_hours: (lifetimeData["uptime_seconds"] ?? 0) / 3600,
+    current_power_watts: currentPowerWatts,
+    vram_used_gb: Math.round(vramUsedGb * 10) / 10,
+    vram_capacity_gb: Math.round(vramCapacityGb * 10) / 10,
+    power_limit_watts: Math.round(powerLimitWatts),
+  };
+};
+
+interface ThroughputValues {
+  prompt: number;
+  generation: number;
+}
+
+const calculateThroughput = (
+  modelId: string,
+  promptTokens: number,
+  generationTokens: number,
+): ThroughputValues => {
+  const nowMs = Date.now();
+  const previous = throughputSamples.get(modelId);
+  if (!previous) {
+    throughputSamples.set(modelId, {
+      promptTokens,
+      genTokens: generationTokens,
+      ts: nowMs,
+      promptTps: 0,
+      genTps: 0,
+    });
+    return { prompt: 0, generation: 0 };
+  }
+  if (nowMs - previous.ts < MIN_RATE_INTERVAL_MS) {
+    return { prompt: previous.promptTps, generation: previous.genTps };
+  }
+  const elapsedSeconds = (nowMs - previous.ts) / 1000;
+  const prompt = Math.max(0, (promptTokens - previous.promptTokens) / elapsedSeconds);
+  const generation = Math.max(0, (generationTokens - previous.genTokens) / elapsedSeconds);
+  throughputSamples.set(modelId, {
+    promptTokens,
+    genTokens: generationTokens,
+    ts: nowMs,
+    promptTps: prompt,
+    genTps: generation,
+  });
+  return { prompt, generation };
+};
+
+
+interface CurrentResponseValues {
+  baseMetrics: EventData;
+  modelId: string;
+  modelPath: string | null | undefined;
+  servedModelName: string | null | undefined;
+  scrapeModelName: string | null;
+  prometheus: Record<string, number>;
+  names: typeof VLLM_METRIC_NAMES;
+  usageAggregate: UsageAggregate | null;
+  promptTokensTotal: number;
+  generationTokensTotal: number;
+  promptThroughput: number;
+  generationThroughput: number;
+  avgTtftMs: number;
+}
+
+const buildCoreCurrentResponse = (values: CurrentResponseValues): EventData => {
+  const usageTotals = values.usageAggregate?.totals;
+  return {
+    ...values.baseMetrics,
+    model_id: values.modelId,
+    model_path: values.modelPath ?? null,
+    served_model_name: values.servedModelName ?? values.scrapeModelName ?? null,
+    running_requests: firstMetric(values.prometheus, values.names.runningRequests),
+    pending_requests: firstMetric(values.prometheus, values.names.pendingRequests),
+    kv_cache_usage: firstMetric(values.prometheus, values.names.kvCacheUsage),
+    prompt_tokens_total:
+      positiveOrUndefined(values.promptTokensTotal) ?? positiveOrUndefined(usageTotals?.prompt_tokens),
+    generation_tokens_total:
+      positiveOrUndefined(values.generationTokensTotal) ??
+      positiveOrUndefined(usageTotals?.completion_tokens),
+    total_tokens: positiveOrUndefined(usageTotals?.total_tokens),
+    total_requests: positiveOrUndefined(usageTotals?.total_requests),
+    prompt_throughput: values.promptThroughput,
+    generation_throughput: values.generationThroughput,
+    avg_ttft_ms:
+      values.avgTtftMs > 0
+        ? Math.round(values.avgTtftMs * 10) / 10
+        : values.usageAggregate?.ttft?.avg_ms,
+    latency_avg: positiveOrUndefined(values.usageAggregate?.latency?.avg_ms),
+  };
+};
+
+const buildPeakResponse = (
+  peak: PeakMetric | null,
+  session: PeakMetricSession | null,
+): EventData => ({
+  best_session_peak_id: session?.session_id ?? null,
+  best_session_prefill_tps: session?.peak_prefill_tps ?? null,
+  best_session_generation_tps: session?.peak_generation_tps ?? null,
+  best_session_ttft_ms: session?.best_ttft_ms ?? null,
+  peak_prefill_tps: peak?.prefill_tps ?? null,
+  peak_generation_tps: peak?.generation_tps ?? null,
+  peak_ttft_ms: peak?.ttft_ms ?? null,
+});
+
+
+const resolveMetricsModelId = (
+  servedModelName: string | null | undefined,
+  modelPath: string | null | undefined,
+  scrapedModelName: string | null,
+): string => servedModelName ?? modelPath?.split("/").pop() ?? scrapedModelName ?? "active";
+
 const buildCurrentMetrics = (
   context: AppContext,
-): Effect.Effect<Record<string, unknown>, unknown> =>
+): Effect.Effect<EventData, unknown> =>
   Effect.gen(function* () {
     const current = yield* findObservedInferenceProcess(context, "metrics.current");
     const gpus = yield* getGpuInfo();
     const lifetimeData = yield* context.stores.lifetimeMetricsStore.getAllEffect();
-    const currentPowerWatts = gpus.reduce((sum, gpu) => sum + gpu.power_draw, 0);
-    const vramUsedGb = gpus.reduce((sum, gpu) => sum + gpu.memory_used_mb / 1024, 0);
-    const vramCapacityGb = gpus.reduce((sum, gpu) => sum + gpu.memory_total_mb / 1024, 0);
-    const powerLimitWatts = gpus.reduce((sum, gpu) => sum + gpu.power_limit, 0);
-    const baseMetrics: Record<string, unknown> = {
-      lifetime_prompt_tokens: lifetimeData["prompt_tokens_total"] ?? 0,
-      lifetime_completion_tokens: lifetimeData["completion_tokens_total"] ?? 0,
-      lifetime_requests: lifetimeData["requests_total"] ?? 0,
-      lifetime_energy_kwh: (lifetimeData["energy_wh"] ?? 0) / 1000,
-      lifetime_uptime_hours: (lifetimeData["uptime_seconds"] ?? 0) / 3600,
-      current_power_watts: currentPowerWatts,
-      vram_used_gb: Math.round(vramUsedGb * 10) / 10,
-      vram_capacity_gb: Math.round(vramCapacityGb * 10) / 10,
-      power_limit_watts: Math.round(powerLimitWatts),
-    };
+    const baseMetrics = buildBaseMetrics(lifetimeData, gpus);
 
     const scrape = yield* scrapeEngineMetrics(context.config.inference_port, 1500);
     const engineActive = scrape.hasVllm || scrape.hasSglang || scrape.hasLlamacpp;
@@ -81,56 +194,28 @@ const buildCurrentMetrics = (
     }
 
     const isSglang = current?.backend === "sglang" || (!current && scrape.hasSglang);
-    const modelId =
-      current?.served_model_name ??
-      current?.model_path?.split("/").pop() ??
-      scrape.modelName ??
-      "active";
+    const modelId = resolveMetricsModelId(
+      current?.served_model_name,
+      current?.model_path,
+      scrape.modelName,
+    );
     const prometheus = scrape.metrics;
     const names = isSglang ? SGLANG_METRIC_NAMES : VLLM_METRIC_NAMES;
     const usageAggregate: UsageAggregate | null =
       yield* context.stores.inferenceRequestStore.aggregateEffect(
         buildModelKeys(modelId, current?.model_path),
       );
-    const usageTotals = usageAggregate?.totals;
     const promptTokensTotal = firstMetric(prometheus, names.promptTokens);
     const generationTokensTotal = firstMetric(prometheus, names.generationTokens);
 
-    let promptThroughput = isSglang ? firstMetric(prometheus, names.promptThroughput) : 0;
-    let generationThroughput = isSglang ? firstMetric(prometheus, names.generationThroughput) : 0;
-    if (!isSglang) {
-      const nowMs = Date.now();
-      const previous = throughputSamples.get(modelId);
-      if (previous && nowMs - previous.ts >= MIN_RATE_INTERVAL_MS) {
-        const elapsedSeconds = (nowMs - previous.ts) / 1000;
-        promptThroughput = Math.max(
-          0,
-          (promptTokensTotal - previous.promptTokens) / elapsedSeconds,
-        );
-        generationThroughput = Math.max(
-          0,
-          (generationTokensTotal - previous.genTokens) / elapsedSeconds,
-        );
-        throughputSamples.set(modelId, {
-          promptTokens: promptTokensTotal,
-          genTokens: generationTokensTotal,
-          ts: nowMs,
-          promptTps: promptThroughput,
-          genTps: generationThroughput,
-        });
-      } else if (previous) {
-        promptThroughput = previous.promptTps;
-        generationThroughput = previous.genTps;
-      } else {
-        throughputSamples.set(modelId, {
-          promptTokens: promptTokensTotal,
-          genTokens: generationTokensTotal,
-          ts: nowMs,
-          promptTps: 0,
-          genTps: 0,
-        });
-      }
-    }
+    const throughput = isSglang
+      ? {
+          prompt: firstMetric(prometheus, names.promptThroughput),
+          generation: firstMetric(prometheus, names.generationThroughput),
+        }
+      : calculateThroughput(modelId, promptTokensTotal, generationTokensTotal);
+    const promptThroughput = throughput.prompt;
+    const generationThroughput = throughput.generation;
     const ttftCount = prometheus[names.ttftCount] ?? 0;
     const avgTtftMs = ttftCount > 0 ? ((prometheus[names.ttftSum] ?? 0) / ttftCount) * 1000 : 0;
     const peakData = yield* context.stores.peakMetricsStore.getEffect(modelId);
@@ -138,38 +223,29 @@ const buildCurrentMetrics = (
       yield* context.stores.peakMetricsStore.getBestSessionEffect(modelId);
 
     return {
-      ...baseMetrics,
-      model_id: modelId,
-      model_path: current?.model_path ?? null,
-      served_model_name: current?.served_model_name ?? scrape.modelName ?? null,
-      running_requests: firstMetric(prometheus, names.runningRequests),
-      pending_requests: firstMetric(prometheus, names.pendingRequests),
-      kv_cache_usage: firstMetric(prometheus, names.kvCacheUsage),
-      prompt_tokens_total:
-        positiveOrUndefined(promptTokensTotal) ?? positiveOrUndefined(usageTotals?.prompt_tokens),
-      generation_tokens_total:
-        positiveOrUndefined(generationTokensTotal) ??
-        positiveOrUndefined(usageTotals?.completion_tokens),
-      total_tokens: positiveOrUndefined(usageTotals?.total_tokens),
-      total_requests: positiveOrUndefined(usageTotals?.total_requests),
-      prompt_throughput: promptThroughput,
-      generation_throughput: generationThroughput,
-      avg_ttft_ms: avgTtftMs > 0 ? Math.round(avgTtftMs * 10) / 10 : usageAggregate?.ttft?.avg_ms,
-      latency_avg: positiveOrUndefined(usageAggregate?.latency?.avg_ms),
-      best_session_peak_id: bestSessionPeakData?.["session_id"] ?? null,
-      best_session_prefill_tps: bestSessionPeakData?.["peak_prefill_tps"] ?? null,
-      best_session_generation_tps: bestSessionPeakData?.["peak_generation_tps"] ?? null,
-      best_session_ttft_ms: bestSessionPeakData?.["best_ttft_ms"] ?? null,
-      peak_prefill_tps: peakData?.["prefill_tps"] ?? null,
-      peak_generation_tps: peakData?.["generation_tps"] ?? null,
-      peak_ttft_ms: peakData?.["ttft_ms"] ?? null,
+      ...buildCoreCurrentResponse({
+        baseMetrics,
+        modelId,
+        modelPath: current?.model_path,
+        servedModelName: current?.served_model_name,
+        scrapeModelName: scrape.modelName,
+        prometheus,
+        names,
+        usageAggregate,
+        promptTokensTotal,
+        generationTokensTotal,
+        promptThroughput,
+        generationThroughput,
+        avgTtftMs,
+      }),
+      ...buildPeakResponse(peakData, bestSessionPeakData),
     };
   });
 
 const PEAK_METRICS_CACHE_TTL_MS = 15_000;
 
 export const registerMonitoringRoutes = defineRoutes((app, context) => {
-  type PeakMetricsBody = Record<string, unknown> | { metrics: Array<Record<string, unknown>> };
+  type PeakMetricsBody = PeakMetric | { error: string } | { metrics: PeakMetric[] };
   const peakMetricsCache = new Map<string, { at: number; body: PeakMetricsBody }>();
 
   return mergeRoutes(
@@ -181,7 +257,7 @@ export const registerMonitoringRoutes = defineRoutes((app, context) => {
           const current = yield* buildCurrentMetrics(context).pipe(
             Effect.tap((metrics) => context.eventManager.publishMetrics(metrics)),
             Effect.catch((error) => {
-              context.logger.warn(`Failed to build current metrics: ${(error as Error).message}`);
+              context.logger.warn(`Failed to build current metrics: ${String(error)}`);
               const latest = context.eventManager.getLatestMetrics();
               return Object.keys(latest).length > 0 ? Effect.succeed(latest) : Effect.fail(error);
             }),

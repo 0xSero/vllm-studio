@@ -36,11 +36,11 @@ export class ControllerSettingsStore {
 
   public getUiPreferences(): Record<string, string> {
     const row = this.db
-      .query("SELECT value FROM controller_settings WHERE key = ?")
-      .get(UI_PREFERENCES_KEY) as SettingRow | null;
+      .query<SettingRow, [string]>("SELECT value FROM controller_settings WHERE key = ?")
+      .get(UI_PREFERENCES_KEY);
     if (!row) return {};
     try {
-      return Schema.decodeUnknownSync(UiPreferencesSchema)(JSON.parse(row.value) as unknown);
+      return Schema.decodeUnknownSync(UiPreferencesSchema)(JSON.parse(row.value));
     } catch {
       return {};
     }
@@ -54,10 +54,7 @@ export class ControllerSettingsStore {
 
   public saveUiPreferences(preferences: Record<string, string>): Record<string, string> {
     const clean = Object.fromEntries(
-      Object.entries(preferences).filter(
-        (entry): entry is [string, string] =>
-          typeof entry[0] === "string" && entry[0].length > 0 && typeof entry[1] === "string",
-      ),
+      Object.entries(preferences).filter(([key]) => key.length > 0),
     );
     this.db
       .query(

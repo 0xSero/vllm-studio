@@ -49,13 +49,15 @@ export const installManagedLlamacpp = (
       command: string,
       args: string[],
       cwd?: string,
-    ): ReturnType<typeof runCommandAsyncEffect> =>
-      runCommandAsyncEffect(command, args, {
+    ): ReturnType<typeof runCommandAsyncEffect> => {
+      const commandOptions: Parameters<typeof runCommandAsyncEffect>[2] = {
         timeoutMs: MANAGED_BUILD_TIMEOUT_MS,
-        ...(cwd ? { cwd } : {}),
-        ...(buildEnvironment ? { env: buildEnvironment } : {}),
-        ...(options.onSpawn ? { onSpawn: options.onSpawn } : {}),
-      });
+      };
+      if (cwd) commandOptions.cwd = cwd;
+      if (buildEnvironment) commandOptions.env = buildEnvironment;
+      if (options.onSpawn) commandOptions.onSpawn = options.onSpawn;
+      return runCommandAsyncEffect(command, args, commandOptions);
+    };
 
     const fail = (
       stage: string,

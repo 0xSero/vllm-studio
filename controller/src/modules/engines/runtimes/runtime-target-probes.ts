@@ -15,7 +15,7 @@ export const normalizePackageSpec = (packageName: string, version?: string | nul
     : `${packageName}==${normalized}`;
 };
 
-const PYTHON_VERSION_PROBES: Record<PythonProbeBackend, string> = {
+const PYTHON_VERSION_PROBES = {
   vllm: "import json, sys\ntry:\n import vllm\n print(json.dumps({'version': vllm.__version__, 'python': sys.executable}))\nexcept Exception as e:\n print(json.dumps({'version': None, 'python': sys.executable, 'error': str(e)}))",
   sglang:
     "import json, sys\ntry:\n import sglang\n print(json.dumps({'version': getattr(sglang, '__version__', None), 'python': sys.executable}))\nexcept Exception as e:\n print(json.dumps({'version': None, 'python': sys.executable, 'error': str(e)}))",

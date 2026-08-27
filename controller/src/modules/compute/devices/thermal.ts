@@ -37,7 +37,7 @@ const readChip = (directory: string): readonly ThermalInfo[] => {
     try {
       return readdirSync(`${HWMON_ROOT}/${directory}`);
     } catch {
-      return [] as string[];
+      return [];
     }
   })();
   const readings: ThermalInfo[] = [];
@@ -66,7 +66,7 @@ export const thermalProbe: DeviceProbe = {
           try {
             return readdirSync(HWMON_ROOT);
           } catch {
-            return [] as string[];
+            return [];
           }
         })();
         const thermals = directories.flatMap(readChip);

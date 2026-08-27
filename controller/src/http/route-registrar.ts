@@ -19,8 +19,11 @@ export const defineRoutes = <Routes extends ControllerRouteApp>(
   registrar: (app: Hono<ControllerEnvironment>, context: AppContext) => Routes,
 ): typeof registrar => registrar;
 
-export const mergeRoutes = <
+export function mergeRoutes<
   const Routes extends readonly [ControllerRouteApp, ...ControllerRouteApp[]],
->(
-  ...routes: Routes
-): UnionToIntersection<Routes[number]> => routes[0] as UnionToIntersection<Routes[number]>;
+>(...routes: Routes): UnionToIntersection<Routes[number]>;
+export function mergeRoutes(
+  ...routes: [ControllerRouteApp, ...ControllerRouteApp[]]
+): ControllerRouteApp {
+  return routes[0];
+}

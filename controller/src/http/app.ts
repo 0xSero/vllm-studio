@@ -99,11 +99,12 @@ export const createApp = (
     ),
   );
 
+  const openApiSource: ControllerRouteApp = routes;
   const documentedRoutes = mergeRoutes(
     routes,
     app.get(
       "/api/spec",
-      openAPIRouteHandler(routes as ControllerRouteApp, {
+      openAPIRouteHandler(openApiSource, {
         includeEmptyPaths: true,
         exclude: ["/*", "/api/spec", "/api/docs"],
         documentation: {
@@ -130,7 +131,7 @@ export const createApp = (
     if (isHttpStatus(error)) {
       return Response.json({ detail: error.detail }, { status: error.status });
     }
-    const name = (error as { name?: string })?.name ?? "";
+    const name = error.name;
     const message = String(error);
     if (
       name === "AbortError" ||
@@ -152,5 +153,5 @@ export const createApp = (
     return ctx.json({ detail: "Internal Server Error" }, { status: 500 });
   });
 
-  return documentedRoutes as ControllerApplication;
+  return documentedRoutes;
 };

@@ -33,7 +33,10 @@ export type Brand<Primitive, Label extends string> = Primitive & {
 
 export type RecipeId = Brand<string, "RecipeId">;
 
-export const asRecipeId = (value: string): RecipeId => value as RecipeId;
+export function asRecipeId(value: string): RecipeId;
+export function asRecipeId(value: string): string {
+  return value;
+}
 
 export interface ControllerRecipe extends Omit<RecipeBase, "id"> {
   id: RecipeId;

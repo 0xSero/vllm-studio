@@ -131,7 +131,7 @@ export const listLogFiles = (dataDirectory: string): LogFileEntry[] => {
 export const cleanupLogFiles = (
   dataDirectory: string,
   options: LogCleanupOptions,
-): { deleted: number } => {
+) => {
   const { maxAgeMs, maxFiles, maxTotalBytes, excludePaths } = options;
   const now = Date.now();
 

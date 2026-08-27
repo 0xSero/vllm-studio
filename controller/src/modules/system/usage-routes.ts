@@ -42,7 +42,7 @@ export const registerUsageRoutes = defineRoutes((app, context) => {
           return yield* withControllerUsage(context, body, includeController);
         }).pipe(
           Effect.catch((error) => {
-            context.logger.error(`[Usage] Error fetching usage stats: ${(error as Error).message}`);
+            context.logger.error(`[Usage] Error fetching usage stats: ${String(error)}`);
             return withControllerUsage(context, emptyResponse(), includeController);
           }),
         );
