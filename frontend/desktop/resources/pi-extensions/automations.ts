@@ -10,25 +10,66 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { Schema } from "effect";
 
 const FRONTEND_BASE = process.env.LOCAL_STUDIO_FRONTEND_BASE ?? "http://127.0.0.1:3000";
 const CALL_TIMEOUT_MS = 30_000;
 
+type AutomationDetails =
+  | { failed: true }
+  | { count: number; automations?: AutomationRecord[] }
+  | { id: string; schedule?: NormalizedSchedule; modelId?: string };
+
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
-  details: Record<string, unknown>;
+  details: AutomationDetails;
 };
 
-const textResult = (text: string, details: Record<string, unknown>): ToolResult => ({
+const textResult = (text: string, details: AutomationDetails): ToolResult => ({
   content: [{ type: "text", text }],
   details,
 });
-
 
 type IntervalSchedule = { kind: "interval"; minutes: number };
 type DailySchedule = { kind: "daily"; time: string; weekdaysOnly?: boolean };
 type WeeklySchedule = { kind: "weekly"; day: number; time: string };
 export type NormalizedSchedule = IntervalSchedule | DailySchedule | WeeklySchedule;
+
+const TimeSchema = Schema.String.check(Schema.isPattern(/^([01]?\d|2[0-3]):[0-5]\d$/));
+const NormalizedScheduleSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("interval"), minutes: Schema.Number }),
+  Schema.Struct({
+    kind: Schema.Literal("daily"),
+    time: Schema.String,
+    weekdaysOnly: Schema.optional(Schema.Boolean),
+  }),
+  Schema.Struct({ kind: Schema.Literal("weekly"), day: Schema.Number, time: Schema.String }),
+]);
+const AutomationRecordSchema = Schema.Struct({
+  id: Schema.optional(Schema.String),
+  name: Schema.optional(Schema.String),
+  status: Schema.optional(Schema.String),
+  nextRunAt: Schema.optional(Schema.String),
+  schedule: Schema.optional(NormalizedScheduleSchema),
+});
+const ErrorResponseSchema = Schema.Struct({ error: Schema.String });
+const ModelsResponseSchema = Schema.Struct({
+  models: Schema.Array(Schema.Struct({ id: Schema.String })),
+});
+const CreatedAutomationResponseSchema = Schema.Struct({
+  automation: Schema.optional(AutomationRecordSchema),
+});
+const AutomationsResponseSchema = Schema.Struct({
+  automations: Schema.Array(AutomationRecordSchema),
+});
+const HttpResponseSchema = Schema.Union([
+  ModelsResponseSchema,
+  AutomationsResponseSchema,
+  CreatedAutomationResponseSchema,
+  ErrorResponseSchema,
+]);
+type HttpResponse = typeof HttpResponseSchema.Type;
+type HttpJsonBody = HttpResponse | null;
 
 type ScheduleArg = {
   kind?: unknown;
@@ -38,50 +79,55 @@ type ScheduleArg = {
   weekdaysOnly?: unknown;
 };
 
-const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-function isValidTime(value: unknown): value is string {
-  return typeof value === "string" && /^([01]?\d|2[0-3]):[0-5]\d$/.test(value.trim());
-}
+const WEEKDAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
 
 /** Validate the agent-supplied schedule into the store's shape, or explain what
  *  is wrong. Kept pure so the normalization is unit-tested without HTTP. */
 export function normalizeScheduleArg(
   input: ScheduleArg | undefined,
 ): { ok: true; schedule: NormalizedSchedule } | { ok: false; error: string } {
-  if (!input || typeof input !== "object") {
+  if (!input) {
     return { ok: false, error: "schedule is required (an object with a 'kind')." };
   }
   const kind = input.kind;
   if (kind === "interval") {
-    const minutes = typeof input.minutes === "number" ? Math.round(input.minutes) : NaN;
+    const parsedMinutes = Schema.decodeUnknownOption(Schema.Number)(input.minutes);
+    const minutes = parsedMinutes._tag === "Some" ? Math.round(parsedMinutes.value) : NaN;
     if (!Number.isFinite(minutes) || minutes < 1) {
       return { ok: false, error: "interval schedule needs 'minutes' >= 1." };
     }
     return { ok: true, schedule: { kind: "interval", minutes } };
   }
   if (kind === "daily") {
-    if (!isValidTime(input.time)) {
+    const parsedTime = Schema.decodeUnknownOption(TimeSchema)(input.time);
+    const time = parsedTime._tag === "Some" ? parsedTime.value.trim() : null;
+    if (!time) {
       return { ok: false, error: "daily schedule needs 'time' as 'HH:MM' (24h)." };
     }
-    return {
-      ok: true,
-      schedule: {
-        kind: "daily",
-        time: (input.time as string).trim(),
-        ...(input.weekdaysOnly === true ? { weekdaysOnly: true } : {}),
-      },
-    };
+    const schedule: DailySchedule = { kind: "daily", time };
+    if (input.weekdaysOnly === true) schedule.weekdaysOnly = true;
+    return { ok: true, schedule };
   }
   if (kind === "weekly") {
-    const day = typeof input.day === "number" ? Math.round(input.day) : NaN;
+    const parsedDay = Schema.decodeUnknownOption(Schema.Number)(input.day);
+    const day = parsedDay._tag === "Some" ? Math.round(parsedDay.value) : NaN;
     if (!Number.isInteger(day) || day < 0 || day > 6) {
       return { ok: false, error: "weekly schedule needs 'day' 0-6 (0 = Sunday)." };
     }
-    if (!isValidTime(input.time)) {
+    const parsedTime = Schema.decodeUnknownOption(TimeSchema)(input.time);
+    const time = parsedTime._tag === "Some" ? parsedTime.value.trim() : null;
+    if (!time) {
       return { ok: false, error: "weekly schedule needs 'time' as 'HH:MM' (24h)." };
     }
-    return { ok: true, schedule: { kind: "weekly", day, time: (input.time as string).trim() } };
+    return { ok: true, schedule: { kind: "weekly", day, time } };
   }
   return { ok: false, error: "schedule.kind must be 'interval', 'daily' or 'weekly'." };
 }
@@ -94,12 +140,11 @@ export function describeSchedule(schedule: NormalizedSchedule): string {
   return `weekly on ${WEEKDAY_NAMES[schedule.day] ?? `day ${schedule.day}`} at ${schedule.time}`;
 }
 
-
 async function httpJson(
   path: string,
   init: RequestInit,
   signal: AbortSignal | undefined,
-): Promise<{ ok: boolean; status: number; body: unknown }> {
+): Promise<{ ok: boolean; status: number; body: HttpJsonBody }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
   const abort = () => controller.abort();
@@ -110,9 +155,10 @@ async function httpJson(
       ...init,
       signal: controller.signal,
     });
-    let body: unknown = null;
+    let body: HttpJsonBody = null;
     try {
-      body = await response.json();
+      const parsedBody = Schema.decodeUnknownOption(HttpResponseSchema)(await response.json());
+      body = parsedBody._tag === "Some" ? parsedBody.value : null;
     } catch {
       body = null;
     }
@@ -123,12 +169,9 @@ async function httpJson(
   }
 }
 
-function errorText(body: unknown, status: number): string {
-  if (body && typeof body === "object" && "error" in body) {
-    const message = (body as { error?: unknown }).error;
-    if (typeof message === "string") return message;
-  }
-  return `HTTP ${status}`;
+function errorText(body: HttpJsonBody, status: number): string {
+  const parsed = Schema.decodeUnknownOption(ErrorResponseSchema)(body);
+  return parsed._tag === "Some" ? parsed.value.error : `HTTP ${status}`;
 }
 
 /** Resolve the model an automation should run under: explicit arg, else the
@@ -142,14 +185,12 @@ async function resolveModelId(
   const envModel = process.env.LOCAL_STUDIO_MODEL_ID?.trim();
   if (envModel) return envModel;
   const { ok, body } = await httpJson("/api/agent/models", { method: "GET" }, signal);
-  if (!ok || !body || typeof body !== "object") return null;
-  const models = (body as { models?: unknown }).models;
-  if (!Array.isArray(models)) return null;
-  for (const model of models) {
-    if (model && typeof model === "object" && typeof (model as { id?: unknown }).id === "string") {
-      const id = (model as { id: string }).id.trim();
-      if (id) return id;
-    }
+  if (!ok) return null;
+  const parsed = Schema.decodeUnknownOption(ModelsResponseSchema)(body);
+  if (parsed._tag === "None") return null;
+  for (const model of parsed.value.models) {
+    const id = model.id.trim();
+    if (id) return id;
   }
   return null;
 }
@@ -162,29 +203,15 @@ function resolveCwd(explicit: string | undefined): string {
   return process.env.LOCAL_STUDIO_CWD?.trim() ?? "";
 }
 
-type AutomationRecord = {
-  id?: unknown;
-  name?: unknown;
-  status?: unknown;
-  nextRunAt?: unknown;
-  schedule?: unknown;
-};
+type AutomationRecord = typeof AutomationRecordSchema.Type;
 
 function formatAutomationLine(record: AutomationRecord): string {
-  const id = typeof record.id === "string" ? record.id : "(no id)";
-  const name = typeof record.name === "string" && record.name ? record.name : "Untitled";
+  const id = record.id ?? "(no id)";
+  const name = record.name || "Untitled";
   const status = record.status === "paused" ? "paused" : "active";
-  const scheduleText =
-    record.schedule && typeof record.schedule === "object"
-      ? describeScheduleLoose(record.schedule as ScheduleArg)
-      : "unknown schedule";
-  const next = typeof record.nextRunAt === "string" ? `, next ${record.nextRunAt}` : "";
+  const scheduleText = record.schedule ? describeSchedule(record.schedule) : "unknown schedule";
+  const next = record.nextRunAt ? `, next ${record.nextRunAt}` : "";
   return `- ${name} [${id}] — ${scheduleText}, ${status}${next}`;
-}
-
-function describeScheduleLoose(schedule: ScheduleArg): string {
-  const parsed = normalizeScheduleArg(schedule);
-  return parsed.ok ? describeSchedule(parsed.schedule) : "unknown schedule";
 }
 
 export default function automationsExtension(pi: ExtensionAPI): void {
@@ -206,9 +233,7 @@ export default function automationsExtension(pi: ExtensionAPI): void {
           ),
           minutes: Type.Optional(Type.Number({ description: "interval only: minutes, >= 1" })),
           time: Type.Optional(Type.String({ description: "daily/weekly only: 'HH:MM' 24h" })),
-          day: Type.Optional(
-            Type.Number({ description: "weekly only: 0-6, 0 = Sunday" }),
-          ),
+          day: Type.Optional(Type.Number({ description: "weekly only: 0-6, 0 = Sunday" })),
           weekdaysOnly: Type.Optional(
             Type.Boolean({ description: "daily only: skip Saturday/Sunday" }),
           ),
@@ -224,24 +249,18 @@ export default function automationsExtension(pi: ExtensionAPI): void {
       ),
     }),
     async execute(_id, params, signal) {
-      const args = (params ?? {}) as {
-        prompt?: string;
-        schedule?: ScheduleArg;
-        name?: string;
-        model?: string;
-        cwd?: string;
-      };
-      const prompt = typeof args.prompt === "string" ? args.prompt.trim() : "";
-      if (!prompt) return textResult("schedule_automation needs a non-empty prompt.", { failed: true });
+      const args = params;
+      const prompt = args.prompt.trim();
+      if (!prompt)
+        return textResult("schedule_automation needs a non-empty prompt.", { failed: true });
       const scheduleResult = normalizeScheduleArg(args.schedule);
       if (!scheduleResult.ok) return textResult(scheduleResult.error, { failed: true });
       try {
         const modelId = await resolveModelId(args.model, signal);
         if (!modelId) {
-          return textResult(
-            "No model available to run the automation. Pass a 'model' id.",
-            { failed: true },
-          );
+          return textResult("No model available to run the automation. Pass a 'model' id.", {
+            failed: true,
+          });
         }
         const { ok, status, body } = await httpJson(
           "/api/agent/automations",
@@ -249,7 +268,7 @@ export default function automationsExtension(pi: ExtensionAPI): void {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              name: typeof args.name === "string" ? args.name : "",
+              name: args.name ?? "",
               prompt,
               modelId,
               cwd: resolveCwd(args.cwd),
@@ -258,12 +277,16 @@ export default function automationsExtension(pi: ExtensionAPI): void {
           },
           signal,
         );
-        if (!ok) return textResult(`Failed to create automation: ${errorText(body, status)}`, { failed: true });
-        const automation = (body as { automation?: AutomationRecord }).automation ?? {};
-        const id = typeof automation.id === "string" ? automation.id : "(unknown)";
+        if (!ok)
+          return textResult(`Failed to create automation: ${errorText(body, status)}`, {
+            failed: true,
+          });
+        const parsedBody = Schema.decodeUnknownOption(CreatedAutomationResponseSchema)(body);
+        const automation = parsedBody._tag === "Some" ? parsedBody.value.automation : undefined;
+        const id = automation?.id ?? "(unknown)";
         return textResult(
-          `Created automation "${typeof automation.name === "string" ? automation.name : args.name ?? "Untitled"}" [${id}] — ` +
-            `${describeSchedule(scheduleResult.schedule)}. Next run ${typeof automation.nextRunAt === "string" ? automation.nextRunAt : "pending"}.`,
+          `Created automation "${automation?.name ?? args.name ?? "Untitled"}" [${id}] — ` +
+            `${describeSchedule(scheduleResult.schedule)}. Next run ${automation?.nextRunAt ?? "pending"}.`,
           { id, schedule: scheduleResult.schedule, modelId },
         );
       } catch (error) {
@@ -285,11 +308,14 @@ export default function automationsExtension(pi: ExtensionAPI): void {
           { method: "GET" },
           signal,
         );
-        if (!ok) return textResult(`Failed to list automations: ${errorText(body, status)}`, { failed: true });
-        const automations = Array.isArray((body as { automations?: unknown }).automations)
-          ? ((body as { automations: AutomationRecord[] }).automations)
-          : [];
-        if (automations.length === 0) return textResult("No automations are scheduled.", { count: 0 });
+        if (!ok)
+          return textResult(`Failed to list automations: ${errorText(body, status)}`, {
+            failed: true,
+          });
+        const parsedBody = Schema.decodeUnknownOption(AutomationsResponseSchema)(body);
+        const automations = parsedBody._tag === "Some" ? parsedBody.value.automations : [];
+        if (automations.length === 0)
+          return textResult("No automations are scheduled.", { count: 0 });
         const lines = automations.map(formatAutomationLine);
         return textResult(`${automations.length} automation(s):\n${lines.join("\n")}`, {
           count: automations.length,
@@ -309,7 +335,7 @@ export default function automationsExtension(pi: ExtensionAPI): void {
       id: Type.String({ description: "The automation id, e.g. 'auto-1a2b3c4d'." }),
     }),
     async execute(_id, params, signal) {
-      const id = typeof (params as { id?: unknown })?.id === "string" ? (params as { id: string }).id.trim() : "";
+      const id = params.id.trim();
       if (!id) return textResult("delete_automation needs an automation id.", { failed: true });
       try {
         const { ok, status, body } = await httpJson(
@@ -317,7 +343,10 @@ export default function automationsExtension(pi: ExtensionAPI): void {
           { method: "DELETE" },
           signal,
         );
-        if (!ok) return textResult(`Failed to delete automation: ${errorText(body, status)}`, { failed: true });
+        if (!ok)
+          return textResult(`Failed to delete automation: ${errorText(body, status)}`, {
+            failed: true,
+          });
         return textResult(`Deleted automation ${id}.`, { id });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

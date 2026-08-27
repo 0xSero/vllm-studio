@@ -6,18 +6,18 @@ const MARKER = "Local Studio session goal:";
 const STEERING_STATUSES = new Set(["active", "budget_limited"]);
 
 type SessionGoal = {
-  objective?: unknown;
-  status?: unknown;
-  turnBudget?: unknown;
-  turnsUsed?: unknown;
+  objective?: string;
+  status?: string;
+  turnBudget?: number;
+  turnsUsed?: number;
 };
 
 /** Codex wraps the objective in tags and states plainly that it is instruction,
  *  not data, then reports budget so the model can pace itself. */
 export function goalSystemPromptSection(goal: SessionGoal): string | null {
-  const objective = typeof goal.objective === "string" ? goal.objective.trim() : "";
+  const objective = goal.objective?.trim() ?? "";
   if (!objective) return null;
-  const status = typeof goal.status === "string" ? goal.status : "active";
+  const status = goal.status ?? "active";
   if (!STEERING_STATUSES.has(status)) return null;
 
   const lines = [
@@ -29,8 +29,8 @@ export function goalSystemPromptSection(goal: SessionGoal): string | null {
     `<objective>${objective}</objective>`,
   ];
 
-  const turnsUsed = typeof goal.turnsUsed === "number" ? goal.turnsUsed : 0;
-  const turnBudget = typeof goal.turnBudget === "number" ? goal.turnBudget : null;
+  const turnsUsed = goal.turnsUsed ?? 0;
+  const turnBudget = goal.turnBudget ?? null;
   if (turnBudget !== null) {
     lines.push("", `Turn budget: ${turnsUsed} of ${turnBudget} used.`);
     if (status === "budget_limited") {

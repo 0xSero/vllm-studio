@@ -36,12 +36,12 @@ const tools = [
   ["browser_tabs_new", "Open a new tab.", { url: "string" }],
   ["browser_tabs_switch", "Switch to a tab id.", { id: "string" }],
   ["browser_tabs_close", "Close a tab id.", { id: "string" }],
-].map(([name, description, shape]) => ({
+].map(([name, description, fields]) => ({
   name,
   description,
   inputSchema: {
     type: "object",
-    properties: Object.fromEntries(Object.entries(shape).map(([key, type]) => [key, { type }])),
+    properties: Object.fromEntries(Object.entries(fields).map(([key, type]) => [key, { type }])),
   },
 }));
 
@@ -59,16 +59,16 @@ function send(message) {
 }
 
 function textResult(value) {
-  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const text = value?.constructor === String ? value : JSON.stringify(value, null, 2);
   return { content: [{ type: "text", text }] };
 }
 
 async function callRelay(method, params) {
-  const headers = {
-    "content-type": "application/json",
-    ...(token() ? { authorization: `Bearer ${token()}` } : {}),
-    ...(sessionId() ? { "x-sitegeist-session": sessionId() } : {}),
-  };
+  const headers = { "content-type": "application/json" };
+  const relayToken = token();
+  if (relayToken) headers.authorization = `Bearer ${relayToken}`;
+  const relaySessionId = sessionId();
+  if (relaySessionId) headers["x-sitegeist-session"] = relaySessionId;
   const response = await fetch(`${baseUrl().replace(/\/+$/, "")}/rpc`, {
     method: "POST",
     headers,

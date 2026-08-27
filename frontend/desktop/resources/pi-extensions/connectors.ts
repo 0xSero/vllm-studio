@@ -10,38 +10,74 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { Schema } from "effect";
+
+type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
+type JsonObject = { [key: string]: Json };
+
+type ConnectorCallDetails = {
+  connectorId: string;
+  tool: string;
+  failed?: boolean;
+  error?: string;
+};
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
-  details: Record<string, unknown>;
+  details: ConnectorCallDetails;
 };
+
+const JsonSchema: Schema.Codec<Json, Json> = Schema.suspend(() =>
+  Schema.Union([
+    Schema.Null,
+    Schema.Boolean,
+    Schema.Number,
+    Schema.String,
+    Schema.mutable(Schema.Array(JsonSchema)),
+    Schema.Record(Schema.String, JsonSchema),
+  ]),
+);
+const JsonObjectSchema = Schema.Record(Schema.String, JsonSchema);
+const InventoryToolSchema = Schema.Struct({
+  name: Schema.String,
+  description: Schema.optional(Schema.String),
+  inputSchema: Schema.optional(JsonObjectSchema),
+});
+const InventoryConnectorSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  tools: Schema.Array(InventoryToolSchema),
+  error: Schema.optional(Schema.String),
+});
+type InventoryConnector = typeof InventoryConnectorSchema.Type;
+
+const InventoryResponseSchema = Schema.Struct({
+  connectors: Schema.optional(Schema.Array(InventoryConnectorSchema)),
+});
+const CallResponseSchema = Schema.Struct({
+  ok: Schema.optional(Schema.Boolean),
+  result: Schema.optional(JsonSchema),
+  error: Schema.optional(Schema.String),
+});
+const McpResultSchema = Schema.Struct({
+  content: Schema.Array(
+    Schema.Struct({ type: Schema.optional(Schema.String), text: Schema.optional(Schema.String) }),
+  ),
+});
 
 const FRONTEND_BASE = process.env.LOCAL_STUDIO_FRONTEND_BASE ?? "http://127.0.0.1:3000";
 const CALL_TIMEOUT_MS = 120_000;
 
-interface InventoryTool {
-  name: string;
-  description?: string;
-  inputSchema?: Record<string, unknown>;
-}
-
-interface InventoryConnector {
-  id: string;
-  name: string;
-  tools: InventoryTool[];
-  error?: string;
-}
-
-const textResult = (text: string, details: Record<string, unknown>): ToolResult => ({
+const textResult = (text: string, details: ConnectorCallDetails): ToolResult => ({
   content: [{ type: "text", text }],
   details,
 });
 
 /** Render an MCP tools/call result (content blocks) as plain text. */
-const renderMcpResult = (result: unknown): string => {
-  if (result && typeof result === "object" && Array.isArray((result as { content?: unknown[] }).content)) {
-    const blocks = (result as { content: Array<{ type?: string; text?: string }> }).content;
-    const texts = blocks
+const renderMcpResult = (result: Json | undefined): string => {
+  const parsed = Schema.decodeUnknownOption(McpResultSchema)(result);
+  if (parsed._tag === "Some") {
+    const texts = parsed.value.content
       .map((block) => (block.type === "text" && block.text ? block.text : JSON.stringify(block)))
       .join("\n");
     return texts || "(empty result)";
@@ -52,7 +88,7 @@ const renderMcpResult = (result: unknown): string => {
 async function callConnectorTool(
   connectorId: string,
   tool: string,
-  args: Record<string, unknown>,
+  args: JsonObject,
   signal: AbortSignal | undefined,
 ): Promise<ToolResult> {
   const controller = new AbortController();
@@ -67,7 +103,7 @@ async function callConnectorTool(
       body: JSON.stringify({ connector_id: connectorId, tool, args }),
       signal: controller.signal,
     });
-    const payload = (await response.json()) as { ok?: boolean; result?: unknown; error?: string };
+    const payload = Schema.decodeUnknownSync(CallResponseSchema)(await response.json());
     if (!response.ok || !payload.ok) {
       return textResult(`${connectorId}/${tool} failed: ${payload.error ?? response.status}`, {
         connectorId,
@@ -91,12 +127,12 @@ async function callConnectorTool(
 }
 
 export default async function connectorsExtension(pi: ExtensionAPI): Promise<void> {
-  let inventory: InventoryConnector[] = [];
+  let inventory: readonly InventoryConnector[] = [];
   try {
     const response = await fetch(`${FRONTEND_BASE}/api/agent/connectors/call`, {
       signal: AbortSignal.timeout(30_000),
     });
-    const payload = (await response.json()) as { connectors?: InventoryConnector[] };
+    const payload = Schema.decodeUnknownSync(InventoryResponseSchema)(await response.json());
     inventory = payload.connectors ?? [];
   } catch {
     return;
@@ -110,16 +146,9 @@ export default async function connectorsExtension(pi: ExtensionAPI): Promise<voi
         label: `${connector.name}: ${tool.name}`,
         description: tool.description || `${tool.name} via the ${connector.name} connector`,
         // MCP tools carry their own JSON Schema; pass it through untyped.
-        parameters: Type.Unsafe<Record<string, unknown>>(
-          tool.inputSchema ?? { type: "object", properties: {} },
-        ),
+        parameters: Type.Unsafe<JsonObject>(tool.inputSchema ?? { type: "object", properties: {} }),
         async execute(_id, params, signal) {
-          return callConnectorTool(
-            connector.id,
-            tool.name,
-            (params ?? {}) as Record<string, unknown>,
-            signal,
-          );
+          return callConnectorTool(connector.id, tool.name, params ?? {}, signal);
         },
       });
     }

@@ -1,10 +1,28 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { Schema } from "effect";
+
+type BrowserPayload =
+  | { url: string }
+  | { selector: string }
+  | { deltaY: number }
+  | { selector: string; value: string }
+  | Record<never, never>;
+
+type BrowserToolDetails =
+  | { verb: string; payload: BrowserPayload; error: string; failed: true }
+  | { verb: string; payload: BrowserPayload; data?: unknown };
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
-  details: Record<string, unknown>;
+  details: BrowserToolDetails;
 };
+
+const BrowserResponseSchema = Schema.Struct({
+  ok: Schema.Boolean,
+  data: Schema.optional(Schema.Unknown),
+  error: Schema.optional(Schema.String),
+});
 
 const FRONTEND_BASE = process.env.LOCAL_STUDIO_FRONTEND_BASE ?? "http://127.0.0.1:3000";
 const BROWSER_SESSION_ID = process.env.LOCAL_STUDIO_BROWSER_SESSION_ID ?? "";
@@ -20,12 +38,8 @@ const BROWSER_TOOL_TIMEOUT_MS = readTimeoutMs(
   DEFAULT_BROWSER_TOOL_TIMEOUT_MS,
 );
 
-function failedToolResult(
-  verb: string,
-  payload: Record<string, unknown>,
-  error: unknown,
-): ToolResult {
-  const message = error instanceof Error ? error.message : String(error);
+function failedToolResult(verb: string, payload: BrowserPayload, error: Error): ToolResult {
+  const message = error.message;
   return {
     content: [{ type: "text", text: `browser_${verb} failed: ${message}` }],
     details: { verb, payload, error: message, failed: true },
@@ -34,7 +48,7 @@ function failedToolResult(
 
 async function callBrowserAction(
   verb: string,
-  payload: Record<string, unknown>,
+  payload: BrowserPayload,
   signal: AbortSignal | undefined,
 ): Promise<ToolResult> {
   const controller = new AbortController();
@@ -57,9 +71,10 @@ async function callBrowserAction(
     const errBody = await response.text().catch(() => "");
     throw new Error(`HTTP ${response.status} ${errBody}`);
   }
-  const result = (await response.json()) as { ok: boolean; data?: unknown; error?: string };
+  const result = Schema.decodeUnknownSync(BrowserResponseSchema)(await response.json());
   if (!result.ok) throw new Error(result.error || "browser bridge returned ok=false");
-  const text = typeof result.data === "string" ? result.data : JSON.stringify(result.data, null, 2);
+  const dataText = Schema.decodeUnknownOption(Schema.String)(result.data);
+  const text = dataText._tag === "Some" ? dataText.value : JSON.stringify(result.data, null, 2);
   return {
     content: [{ type: "text", text }],
     details: { verb, payload, data: result.data },
@@ -68,13 +83,17 @@ async function callBrowserAction(
 
 async function safeBrowserAction(
   verb: string,
-  payload: Record<string, unknown>,
+  payload: BrowserPayload,
   signal: AbortSignal | undefined,
 ): Promise<ToolResult> {
   try {
     return await callBrowserAction(verb, payload, signal);
   } catch (error) {
-    return failedToolResult(verb, payload, error);
+    return failedToolResult(
+      verb,
+      payload,
+      error instanceof Error ? error : new Error(String(error)),
+    );
   }
 }
 

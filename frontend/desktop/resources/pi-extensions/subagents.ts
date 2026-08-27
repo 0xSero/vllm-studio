@@ -10,16 +10,28 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { Schema } from "effect";
 
 const FRONTEND_BASE = process.env.LOCAL_STUDIO_FRONTEND_BASE ?? "http://127.0.0.1:3000";
 const RUN_TIMEOUT_MS = 15 * 60_000;
 
+type SubagentDetails =
+  | { failed: true; name?: string }
+  | { name?: string; piSessionId: string | null };
+
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
-  details: Record<string, unknown>;
+  details: SubagentDetails;
 };
 
-const textResult = (text: string, details: Record<string, unknown>): ToolResult => ({
+const SubagentResponseSchema = Schema.Struct({
+  ok: Schema.optional(Schema.Boolean),
+  result: Schema.optional(Schema.String),
+  piSessionId: Schema.optional(Schema.NullOr(Schema.String)),
+  error: Schema.optional(Schema.String),
+});
+
+const textResult = (text: string, details: SubagentDetails): ToolResult => ({
   content: [{ type: "text", text }],
   details,
 });
@@ -48,7 +60,7 @@ export default function subagentsExtension(pi: ExtensionAPI): void {
       task: Type.String({ description: "Complete standalone task instructions" }),
     }),
     async execute(_id, params, signal) {
-      const args = (params ?? {}) as { name?: string; task?: string };
+      const args = params;
       if (!sessionId) {
         return textResult("Subagents are unavailable: the session id is unknown.", {
           failed: true,
@@ -70,12 +82,7 @@ export default function subagentsExtension(pi: ExtensionAPI): void {
           }),
           signal: controller.signal,
         });
-        const payload = (await response.json()) as {
-          ok?: boolean;
-          result?: string;
-          piSessionId?: string | null;
-          error?: string;
-        };
+        const payload = Schema.decodeUnknownSync(SubagentResponseSchema)(await response.json());
         if (!response.ok || !payload.ok) {
           return textResult(`Subagent failed: ${payload.error ?? response.status}`, {
             failed: true,
