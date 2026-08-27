@@ -24,14 +24,10 @@ export const ENGINE_IDS: readonly EngineId[] = [
 ] as const;
 
 export type Accelerator = "cuda" | "rocm" | "metal" | "xpu" | "cpu";
-/** Where an engine runs. Distinct from the installer-facing `RuntimeKind` in
- *  controller/contracts/system.ts ("venv" | "docker" | "binary" | "system"),
- *  which describes how a runtime was installed, not how a job is launched. */
 export type EngineRuntimeKind = "process" | "docker";
 export type HostPlatform = "linux" | "darwin" | "win32";
 export type HostArch = "x64" | "arm64";
 
-/** Node id. `"self"` is always this host; peers use their registered id. */
 export type NodeId = string;
 
 /** Stable across reboots: an NVIDIA/AMD GPU UUID, or a synthetic id for accelerators
@@ -52,7 +48,6 @@ export interface HostProfile {
   readonly deviceCount: number;
 }
 
-/* ── engines ─────────────────────────────────────────────────────────────── */
 
 export type EngineSupport =
   | { readonly ok: true; readonly runtimes: readonly EngineRuntimeKind[] }
@@ -60,7 +55,6 @@ export type EngineSupport =
 
 export interface HealthCheck {
   readonly path: string;
-  /** Cold start budget. vLLM compiles graphs; llama.cpp just mmaps. */
   readonly readyDeadlineMs: number;
   readonly intervalMs: number;
 }
@@ -95,7 +89,6 @@ export interface Mount {
  */
 export interface LaunchPlan {
   readonly kind: EngineRuntimeKind;
-  /** process: [binary, ...args]. docker: the container's entrypoint args. */
   readonly argv: readonly string[];
   readonly image?: string;
   readonly env: Readonly<Record<string, string>>;
@@ -118,7 +111,6 @@ export interface ServingOptions {
   readonly maxContextLength: number;
   readonly memoryFraction: number;
   readonly maxConcurrentRequests: number;
-  /** "auto" is treated as unset — every engine defaults it the same way. */
   readonly kvCacheDtype: string | null;
   readonly dtype: string | null;
   readonly quantization: string | null;
@@ -133,7 +125,6 @@ export interface LaunchRequest {
   readonly runtime: EngineRuntimeKind;
   readonly devices: readonly DeviceId[];
   readonly port: number;
-  /** Absolute path to the model directory, or the .gguf file for llama.cpp. */
   readonly modelPath: string;
   readonly servedModelName: string;
   readonly options: ServingOptions;
@@ -141,13 +132,9 @@ export interface LaunchRequest {
   readonly extraArgs: readonly string[];
   readonly env: Readonly<Record<string, string>>;
   readonly dockerImage: string | null;
-  /** Resolved executable for process launches; ignored for docker. */
   readonly binary: string;
 }
 
-/** An engine as the compute layer sees it: what it supports, how to plan a
- *  launch, how to check it. Named apart from the legacy engines module's
- *  EngineSpec (install/probe/runtime-info), which it will eventually replace. */
 export interface ComputeEngineSpec {
   readonly id: EngineId;
   readonly supports: (host: HostProfile) => EngineSupport;
@@ -160,7 +147,6 @@ export interface ComputeEngineSpec {
   readonly defaultPort: number;
 }
 
-/* ── instances ───────────────────────────────────────────────────────────── */
 
 export type HandleReference =
   | {
@@ -198,7 +184,6 @@ export interface InstanceRecord {
 
 export type InstanceState = "reserving" | "starting" | "ready" | "unhealthy" | "exited";
 
-/* ── devices ─────────────────────────────────────────────────────────────── */
 
 export type TelemetryField =
   | "memory"

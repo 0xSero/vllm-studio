@@ -23,7 +23,6 @@ export const engineSpec = (id: EngineId): ComputeEngineSpec => SPECS[id];
 
 export const allEngineSpecs: readonly ComputeEngineSpec[] = Object.values(SPECS);
 
-/** Engines this host can actually run, with the runtimes available for each. */
 export const availableEngines = (
   host: HostProfile,
 ): readonly { readonly id: EngineId; readonly support: EngineSupport }[] =>
@@ -38,10 +37,5 @@ export const supportsRuntime = (
   return support.ok && support.runtimes.includes(runtime);
 };
 
-/**
- * The one entry point that turns a request into a runnable plan. Device selection is
- * folded in here so no engine has to know how its accelerator is addressed, and no
- * launcher has to re-derive it.
- */
 export const planLaunch = (request: LaunchRequest): LaunchPlan =>
   applyDevices(SPECS[request.engine].plan(request), request.host.accelerator);

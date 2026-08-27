@@ -1,14 +1,5 @@
 import type { Accelerator, DeviceId, LaunchPlan } from "../contracts";
 
-/**
- * The single place device selection becomes a mechanism.
- *
- * Engines declare `plan.devices` abstractly; this translates that list into whatever the
- * accelerator and runtime actually need. Before this existed the same derivation lived in
- * four modules with four different key precedences (gpu-leases, process-utilities,
- * process-manager, backend-builder) — one of which resolved UUIDs against an empty GPU
- * list and so only ever saw the raw selector.
- */
 
 /** Docker flags a launcher must add for this plan. Empty for process launches. */
 export interface DeviceRuntimeFlags {

@@ -1,7 +1,6 @@
 import { Effect } from "effect";
 import type { DeviceSnapshot, HostProfile, TelemetryField } from "../contracts";
 
-/** What a probe contributes to the merged snapshot. */
 export type SnapshotFragment = Partial<Omit<DeviceSnapshot, "sampledAt" | "capabilities">>;
 
 export interface ProbeResult {
@@ -13,7 +12,6 @@ export interface ProbeResult {
 
 export interface DeviceProbe {
   readonly id: string;
-  /** Cheap gate — no I/O. Probes that pass still have to tolerate missing tooling. */
   readonly detect: (host: HostProfile) => boolean;
   readonly run: (host: HostProfile) => Effect.Effect<ProbeResult>;
 }

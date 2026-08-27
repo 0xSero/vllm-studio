@@ -49,11 +49,9 @@ export const llamacpp: ComputeEngineSpec = {
       args: serverArguments(
         request,
         {
-          // llama.cpp takes a single .gguf file, not a directory.
           modelFlag: "--model",
           servedNameFlag: "--alias",
           spelling,
-          // Prometheus endpoint is opt-in, same as SGLang.
           defaults: ["--metrics"],
         },
         request.port,

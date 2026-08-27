@@ -47,8 +47,6 @@ const defaultModelsDirectory = (): string =>
 export const createConfig = (): Config => {
   loadDotEnvironment();
 
-  // Anchor defaults to the controller package root (two levels up from src/config/)
-  // so the data dir lands at <repo>/data regardless of the cwd the process started from.
   const controllerRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const defaultDataDirectory = resolve(controllerRoot, "..", "data");
 

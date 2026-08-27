@@ -101,7 +101,6 @@ export const serializeRecipeExtraArguments = (recipe: Recipe): string[] => {
   return argv;
 };
 
-/* ── custom launch command (opt-in arbitrary argv, unchanged policy) ───────── */
 
 const splitLaunchCommand = (command: string): string[] => {
   const result: string[] = [];
@@ -153,7 +152,6 @@ const launchCommandOverride = (recipe: Recipe): string[] | null => {
   return argv.length > 0 ? argv : null;
 };
 
-/* ── binary resolution per backend ─────────────────────────────────────────── */
 
 const siblingBinary = (pythonPath: string | undefined | null, name: string): string | null => {
   if (!pythonPath) return null;
@@ -195,7 +193,6 @@ const resolveRecipeBinary = (recipe: Recipe, config: Config): string | null => {
   return resolveEngineBinary(recipe, config);
 };
 
-/* ── recipe -> launch input ────────────────────────────────────────────────── */
 
 export const recipeToLaunchInput = (
   recipe: Recipe,
@@ -237,7 +234,6 @@ export const recipeToLaunchInput = (
   };
 };
 
-/* ── the bridge ────────────────────────────────────────────────────────────── */
 
 const RUNNING_STATES = new Set(["starting", "ready", "unhealthy"]);
 

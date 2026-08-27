@@ -39,7 +39,6 @@ export const getLogCleanupDefaultsFromEnvironment = (): Omit<LogCleanupOptions, 
     return Number.isFinite(n) ? n : fallback;
   };
 
-  // 0 means "no cap" for size/files and "no age expiry" for days.
   const days = parseIntOr(process.env["LOCAL_STUDIO_LOG_RETENTION_DAYS"], 30);
   const maxFiles = parseIntOr(process.env["LOCAL_STUDIO_LOG_MAX_FILES"], 200);
   const maxTotalBytes = parseIntOr(process.env["LOCAL_STUDIO_LOG_MAX_TOTAL_BYTES"], 1_000_000_000);
@@ -141,7 +140,7 @@ export const cleanupLogFiles = (
     ...scanLogDirectory(FALLBACK_LOG_DIR, "tmp"),
   ]
     .filter((entry) => !(excludePaths && excludePaths.has(entry.path)))
-    .sort((a, b) => a.mtimeMs - b.mtimeMs); // oldest first
+    .sort((a, b) => a.mtimeMs - b.mtimeMs);
 
   const shouldDeleteAge = (entry: LogFileEntry): boolean => now - entry.mtimeMs > maxAgeMs;
 
@@ -155,7 +154,6 @@ export const cleanupLogFiles = (
     }
   };
 
-  // 1) Age-based retention.
   for (const entry of entries) {
     if (shouldDeleteAge(entry)) safeUnlink(entry.path);
   }
@@ -163,13 +161,11 @@ export const cleanupLogFiles = (
   // 2) Recompute after deletions.
   const remaining = entries.filter((entry) => !deletedPaths.includes(entry.path));
 
-  // 3) File-count cap.
   if (remaining.length > maxFiles) {
     const overflow = remaining.length - maxFiles;
     for (const entry of remaining.slice(0, overflow)) safeUnlink(entry.path);
   }
 
-  // 4) Total-bytes cap.
   const stillRemaining = remaining.filter((entry) => !deletedPaths.includes(entry.path));
   let totalBytes = stillRemaining.reduce((sum, entry) => sum + entry.sizeBytes, 0);
   if (totalBytes > maxTotalBytes) {

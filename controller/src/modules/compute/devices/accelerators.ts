@@ -71,7 +71,6 @@ const toAccelerator = (gpu: GpuInfo, vendor: DeviceVendor): AcceleratorInfo => (
   driver: null,
 });
 
-/** Which fields at least one accelerator on this host can actually answer. */
 const capabilitiesOf = (accelerators: readonly AcceleratorInfo[]): readonly TelemetryField[] => {
   if (accelerators.length === 0) return [];
   const capabilities: TelemetryField[] = ["memory"];
@@ -81,11 +80,6 @@ const capabilitiesOf = (accelerators: readonly AcceleratorInfo[]): readonly Tele
   return capabilities;
 };
 
-/**
- * Every accelerator on this host, via whichever vendor tool is present. NVIDIA (incl. DGX
- * Spark), AMD, Intel and Apple Silicon all arrive through here — the vendor differences
- * live in the existing platform probes, and this only normalises their output.
- */
 export const acceleratorProbe: DeviceProbe = {
   id: "accelerators",
   detect: () => true,

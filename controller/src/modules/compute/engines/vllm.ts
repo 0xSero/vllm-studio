@@ -9,8 +9,6 @@ import {
   type Spelling,
 } from "./shared";
 
-// vLLM compiles CUDA graphs on a cold start; a large MoE's first launch is the worst case
-// observed, and a warm start beats it by two orders of magnitude.
 const READY_DEADLINE_MS = 1_800_000;
 
 const spelling: Spelling = {
@@ -39,7 +37,6 @@ const supports = (host: HostProfile): EngineSupport => {
   }
   if (host.platform === "win32" && !host.wsl) return unsupported("vLLM on Windows requires WSL2");
   if (host.accelerator === "rocm") {
-    // Upstream publishes ROCm images; the PyPI wheels are CUDA-only.
     return host.dockerGpu
       ? supported("docker")
       : unsupported("vLLM on ROCm needs Docker with GPU passthrough (rocm/vllm)");
@@ -60,7 +57,6 @@ export const vllm: ComputeEngineSpec = {
   supports,
   plan: (request) =>
     plan(request, {
-      // `vllm serve <path>` takes the model positionally.
       args: serverArguments(
         request,
         {

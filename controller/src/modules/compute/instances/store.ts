@@ -110,7 +110,6 @@ const lockIsStale = (lockPath: string): boolean => {
     const holder = Number.parseInt(readFileSync(lockPath, "utf8").trim(), 10);
     return !pidAlive(holder);
   } catch {
-    // Unreadable or already gone — the next acquire attempt settles it.
     return false;
   }
 };
@@ -119,7 +118,6 @@ const releaseLock = (lockPath: string): void => {
   try {
     rmSync(lockPath);
   } catch {
-    /* already gone */
   }
 };
 
@@ -141,7 +139,6 @@ const acquirePlacementLock = (lockPath: string): Effect.Effect<void, LaunchFailu
     }
   });
 
-/* ── store ───────────────────────────────────────────────────────────────── */
 
 export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
   const directory = join(dataDirectory, "instances");
@@ -180,7 +177,6 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
     try {
       rmSync(recordPath(name));
     } catch {
-      /* already gone */
     }
   };
 

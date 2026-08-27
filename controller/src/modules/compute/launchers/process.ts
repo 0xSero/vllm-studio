@@ -27,7 +27,6 @@ const signal = (pid: number, sig: NodeJS.Signals): void => {
   try {
     process.kill(pid, sig);
   } catch {
-    /* already gone */
   }
 };
 

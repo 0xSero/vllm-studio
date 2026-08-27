@@ -37,7 +37,6 @@ export const prometheusMetrics = (prefix: string, kvName: string): MetricMap => 
   generationTokensTotal: [`${prefix}:generation_tokens_total`],
 });
 
-/* ── tuning knobs ────────────────────────────────────────────────────────── */
 
 /**
  * How one engine spells one canonical knob. `null` in a spelling table means the engine
@@ -117,14 +116,12 @@ export const mergeArguments = (base: readonly string[], extra: readonly string[]
       merged.push(token);
       continue;
     }
-    // Skip the flag and its value, if it takes one.
     const next = base[index + 1];
     if (next !== undefined && flagKey(next) === null && !token.includes("=")) index += 1;
   }
   return [...merged, ...extra];
 };
 
-/* ── plan assembly ───────────────────────────────────────────────────────── */
 
 export const modelReference = (request: LaunchRequest): string =>
   request.runtime === "docker" ? CONTAINER_MODEL_DIR : request.modelPath;
@@ -143,10 +140,6 @@ export const serveAddress = (request: LaunchRequest, listenPort: number): string
   String(listenPort),
 ];
 
-/**
- * The shape every OpenAI-compatible server shares. `modelFlag: null` passes the model
- * positionally (vLLM's `serve <path>` form).
- */
 export const serverArguments = (
   request: LaunchRequest,
   spec: {
@@ -183,9 +176,7 @@ export const plan = (
   const image = request.dockerImage ?? parts.image;
   return {
     kind: request.runtime,
-    // A container image supplies its own executable; a process launch needs the binary.
     argv: request.runtime === "docker" ? [...parts.args] : [request.binary, ...parts.args],
-    // An engine may always offer an image; only a container plan carries one.
     ...(request.runtime === "docker" && image ? { image } : {}),
     env: { ...request.env, ...(parts.env ?? {}) },
     ports: [{ container: parts.listenPort, host: request.port }],

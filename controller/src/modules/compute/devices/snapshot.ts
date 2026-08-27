@@ -14,7 +14,6 @@ import type { DeviceProbe } from "./probe";
 
 export interface TelemetryOptions {
   readonly nodeId?: NodeId;
-  /** Extra paths to report free space for — model store, data root. */
   readonly storagePaths?: readonly string[];
   /** How long a sample stays fresh. Ten dashboard clients then cost one `nvidia-smi`. */
   readonly ttlMs?: number;
@@ -29,7 +28,6 @@ const probesFor = (options: TelemetryOptions): readonly DeviceProbe[] => [
   thermalProbe,
 ];
 
-/** Derive the host profile from a snapshot: the accelerator mix decides what can run. */
 export const profileFrom = (
   snapshot: DeviceSnapshot,
   options: { readonly nodeId: NodeId; readonly docker: boolean; readonly dockerGpu: boolean },
