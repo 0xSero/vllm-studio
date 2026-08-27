@@ -6,8 +6,10 @@ import {
   patchAutomation,
 } from "../automations-store";
 import { runAutomationNow } from "../automation-scheduler";
-import { clearGoal, readGoal, writeGoal, type GoalStatus } from "../goals-store";
-import { GOAL_STATUSES } from "../../../../shared/agent/session-goal";
+import { clearGoal, readGoal, writeGoal } from "../goals-store";
+import { Option, Schema } from "effect";
+import { GoalStatusSchema } from "../../../../shared/agent/session-goal";
+import { AutomationScheduleSchema } from "../../../../shared/agent/automation";
 import { jsonError, readJsonBody } from "./helpers";
 
 export async function handleAutomationsList(): Promise<Response> {
@@ -16,29 +18,47 @@ export async function handleAutomationsList(): Promise<Response> {
 
 export async function handleAutomationCreate(request: Request): Promise<Response> {
   const body = await readJsonBody(request);
-  const name = typeof body?.name === "string" ? body.name : "";
-  const prompt = typeof body?.prompt === "string" ? body.prompt : "";
-  const modelId = typeof body?.modelId === "string" ? body.modelId : "";
-  const cwd = typeof body?.cwd === "string" ? body.cwd : "";
+  const name = Option.getOrUndefined(Schema.decodeUnknownOption(Schema.String)(body?.name)) ?? "";
+  const prompt = Option.getOrUndefined(Schema.decodeUnknownOption(Schema.String)(body?.prompt)) ?? "";
+  const modelId = Option.getOrUndefined(Schema.decodeUnknownOption(Schema.String)(body?.modelId)) ?? "";
+  const cwd = Option.getOrUndefined(Schema.decodeUnknownOption(Schema.String)(body?.cwd)) ?? "";
+  const schedule = Option.getOrElse(
+    Schema.decodeUnknownOption(AutomationScheduleSchema)(body?.schedule),
+    () => ({ kind: "daily", time: "08:00" }),
+  );
   if (!prompt.trim() || !modelId.trim()) {
     return jsonError("Body must include prompt and modelId.");
   }
-  const automation = await createAutomation({ name, prompt, modelId, cwd, schedule: body?.schedule });
+  const automation = await createAutomation({ name, prompt, modelId, cwd, schedule });
   return Response.json({ automation });
 }
 
 export async function handleAutomationPatch(request: Request, id: string): Promise<Response> {
-  const body = await readJsonBody(request);
-  if (!body) return jsonError("Body must be a JSON object.");
-  const automation = await patchAutomation(id, {
-      ...(typeof body.name === "string" ? { name: body.name } : {}),
-      ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
-      ...(typeof body.modelId === "string" ? { modelId: body.modelId } : {}),
-      ...(typeof body.cwd === "string" ? { cwd: body.cwd } : {}),
-      ...(body.status === "active" || body.status === "paused" ? { status: body.status } : {}),
-      ...(typeof body.unread === "boolean" ? { unread: body.unread } : {}),
-      ...(body.schedule !== undefined ? { schedule: body.schedule } : {}),
-  });
+  const rawBody = await readJsonBody(request);
+  if (!rawBody) return jsonError("Body must be a JSON object.");
+  const name = Option.getOrUndefined(Schema.decodeUnknownOption(Schema.String)(rawBody.name));
+  const prompt = Option.getOrUndefined(Schema.decodeUnknownOption(Schema.String)(rawBody.prompt));
+  const modelId = Option.getOrUndefined(Schema.decodeUnknownOption(Schema.String)(rawBody.modelId));
+  const cwd = Option.getOrUndefined(Schema.decodeUnknownOption(Schema.String)(rawBody.cwd));
+  const status = Option.getOrUndefined(
+    Schema.decodeUnknownOption(Schema.Literals(["active", "paused"]))(rawBody.status),
+  );
+  const unread = Option.getOrUndefined(Schema.decodeUnknownOption(Schema.Boolean)(rawBody.unread));
+  let patch: Parameters<typeof patchAutomation>[1] = {};
+  if (name !== undefined) patch = { ...patch, name };
+  if (prompt !== undefined) patch = { ...patch, prompt };
+  if (modelId !== undefined) patch = { ...patch, modelId };
+  if (cwd !== undefined) patch = { ...patch, cwd };
+  if (status !== undefined) patch = { ...patch, status };
+  if (unread !== undefined) patch = { ...patch, unread };
+  if ("schedule" in rawBody) {
+    const schedule = Option.getOrElse(
+      Schema.decodeUnknownOption(AutomationScheduleSchema)(rawBody.schedule),
+      () => ({ kind: "daily", time: "08:00" }),
+    );
+    patch = { ...patch, schedule };
+  }
+  const automation = await patchAutomation(id, patch);
   if (!automation) return jsonError(`Unknown automation '${id}'.`, 404);
   return Response.json({ automation });
 }
@@ -71,18 +91,24 @@ export async function handleGoalGet(request: Request): Promise<Response> {
 export async function handleGoalPut(request: Request): Promise<Response> {
   const piSessionId = goalSessionId(request);
   if (!piSessionId) return jsonError("piSessionId is required.");
-  const body = await readJsonBody(request);
-  if (!body) return jsonError("Body must be a JSON object.");
-  const goal = await writeGoal(piSessionId, {
-      ...(typeof body.objective === "string" ? { objective: body.objective } : {}),
-      ...(GOAL_STATUSES.includes(body.status as GoalStatus)
-        ? { status: body.status as GoalStatus }
-        : {}),
-      ...(typeof body.turnBudget === "number" || body.turnBudget === null
-        ? { turnBudget: body.turnBudget as number | null }
-        : {}),
-      ...(body.resetTurns === true ? { turnsUsed: 0 } : {}),
-  });
+  const rawBody = await readJsonBody(request);
+  if (!rawBody) return jsonError("Body must be a JSON object.");
+  const objective = Option.getOrUndefined(
+    Schema.decodeUnknownOption(Schema.String)(rawBody.objective),
+  );
+  const status = Option.getOrUndefined(Schema.decodeUnknownOption(GoalStatusSchema)(rawBody.status));
+  const turnBudget = Option.getOrUndefined(
+    Schema.decodeUnknownOption(Schema.NullOr(Schema.Number))(rawBody.turnBudget),
+  );
+  const resetTurns = Option.getOrUndefined(
+    Schema.decodeUnknownOption(Schema.Boolean)(rawBody.resetTurns),
+  );
+  let patch: Parameters<typeof writeGoal>[1] = {};
+  if (objective !== undefined) patch = { ...patch, objective };
+  if (status !== undefined) patch = { ...patch, status };
+  if (turnBudget !== undefined) patch = { ...patch, turnBudget };
+  if (resetTurns === true) patch = { ...patch, turnsUsed: 0 };
+  const goal = await writeGoal(piSessionId, patch);
   return Response.json({ goal: goal.objective ? goal : null });
 }
 

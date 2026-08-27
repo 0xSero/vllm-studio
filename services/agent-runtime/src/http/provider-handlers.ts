@@ -1,3 +1,4 @@
+import { Option, Schema } from "effect";
 import {
   cancelProviderLogin,
   getProviderLoginJob,
@@ -7,6 +8,14 @@ import {
   startProviderLogin,
 } from "../provider-hub";
 import { jsonError, readJsonBody } from "./helpers";
+
+const ProviderResponseSchema = Schema.Struct({
+  promptId: Schema.optional(Schema.Number),
+  value: Schema.optional(Schema.String),
+});
+
+type ParsedBody = typeof ProviderResponseSchema.Type;
+const EMPTY_PROVIDER_RESPONSE: ParsedBody = {};
 
 export async function handleProvidersList(): Promise<Response> {
   return Response.json({ providers: await listProviders() });
@@ -32,9 +41,12 @@ export async function handleProviderLoginRespond(
   request: Request,
   jobId: string,
 ): Promise<Response> {
-  const body = await readJsonBody(request);
-  const promptId = typeof body?.promptId === "number" ? body.promptId : null;
-  const value = typeof body?.value === "string" ? body.value : null;
+  const body = Option.getOrElse(
+    Schema.decodeUnknownOption(ProviderResponseSchema)(await readJsonBody(request)),
+    () => EMPTY_PROVIDER_RESPONSE,
+  );
+  const promptId = body.promptId ?? null;
+  const value = body.value ?? null;
   if (promptId === null || value === null) {
     return jsonError("Body must include promptId (number) and value (string).");
   }
