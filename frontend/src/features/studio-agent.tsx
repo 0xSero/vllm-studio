@@ -1,6 +1,7 @@
 "use client";
 import { Schema } from "effect";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
@@ -19,14 +20,27 @@ import {
   acceptRuntimePayload,
   decodeCanonicalSession,
   decodeRuntimePayload,
+  decodeRuntimeSnapshot,
   foldSessionEvent,
   foldSessionEvents,
+  reconcileQueueEvent,
+  mergeCanonicalRuntimeEvents,
   type FoldedMessage,
+  type QueuedTurn,
   type RuntimeCursor,
 } from "./studio-domain";
 
 type Message = FoldedMessage;
 const isString = Schema.is(Schema.String);
+const SessionPreferenceSchema = Schema.Struct({
+  title: Schema.optional(Schema.String),
+  pinned: Schema.optional(Schema.Boolean),
+  hidden: Schema.optional(Schema.Boolean),
+});
+const SessionPreferencesSchema = Schema.Record(Schema.String, SessionPreferenceSchema);
+type SessionPreference = typeof SessionPreferenceSchema.Type;
+type SessionPreferences = typeof SessionPreferencesSchema.Type;
+const decodeSessionPreferences = Schema.decodeUnknownOption(SessionPreferencesSchema);
 function jsonText(value: Json | undefined, fallback = ""): string {
   return isString(value) ? value : fallback;
 }
@@ -38,7 +52,61 @@ const decodeTurnResponse = Schema.decodeUnknownSync(TurnResponseSchema, {
   onExcessProperty: "preserve",
 });
 
+type ProjectOption = { id: string; name: string; path: string };
+type SessionFilter = "active" | "archived" | "all";
+type WorkspaceSelection = { cwd: string; projectId: string };
+function selectedWorkspace(
+  projects: ProjectOption[],
+  selectedPath: string,
+  requestedId: string,
+): WorkspaceSelection {
+  const requested = projects.find((project) => project.id === requestedId);
+  const cwd = selectedPath || requested?.path || projects[0]?.path || "";
+  return { cwd, projectId: projects.find((project) => project.path === cwd)?.id ?? requestedId };
+}
+function sessionListPath(filter: SessionFilter): `/api/${string}` {
+  if (filter === "archived") return "/api/agent/sessions/all?archived=only";
+  if (filter === "all") return "/api/agent/sessions/all?includeArchived=true";
+  return "/api/agent/sessions/all?since=30d";
+}
+function modelThinkingLevels(model: RecordJson | undefined): string[] {
+  return Array.isArray(model?.thinkingLevels) ? model.thinkingLevels.filter(isString) : ["auto"];
+}
+function WorkbenchActions({
+  quick,
+  sessionId,
+  projectId,
+}: {
+  quick: boolean;
+  sessionId: string;
+  projectId: string;
+}) {
+  if (!quick)
+    return (
+      <Tabs
+        items={[
+          ["/agent/automations", "Goals & automations"],
+          ["/configure#integrations", "Connectors"],
+        ]}
+      />
+    );
+  if (!sessionId || !globalThis.window?.localStudioDesktop) return null;
+  return (
+    <button
+      onClick={() =>
+        window.localStudioDesktop?.quickPanel.focusMainAndNavigate(projectId, sessionId)
+      }
+    >
+      Continue in main window
+    </button>
+  );
+}
+
 export function Workbench({ quick = false }: { quick?: boolean }) {
+  const searchParams = useSearchParams();
+  const requestedProjectId = searchParams.get("project") ?? "";
+  const requestedSessionId = searchParams.get("session") ?? "";
+  const handedOffSession = useRef(false);
   const projectsState = useJson("/api/agent/projects");
   const modelsState = useJson("/api/agent/models");
   const providers = useJson("/api/agent/providers");
@@ -50,15 +118,22 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
     path: jsonText(item.path),
   }));
   const [cwd, setCwd] = useState("");
-  const activeCwd = cwd || projects[0]?.path || "";
-  const sessionsState = useJson(`/api/agent/sessions/all?since=30d`);
+  const workspace = selectedWorkspace(projects, cwd, requestedProjectId);
+  const activeCwd = workspace.cwd;
+  const activeProjectId = workspace.projectId;
+  const [sessionFilter, setSessionFilter] = useState<SessionFilter>(() =>
+    searchParams.has("archived") ? "archived" : "active",
+  );
+  const sessionsState = useJson(sessionListPath(sessionFilter));
   const [sessionId, setSessionId] = useState("");
   const [piSessionId, setPiSessionId] = useState<string | null>(null);
   const cursor = useRef<RuntimeCursor>({ received: 0, committed: 0 });
   const [streamVersion, setStreamVersion] = useState(0);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [queued, setQueued] = useState<string[]>([]);
-  const [attachments, setAttachments] = useState<Array<{ name: string; dataUrl: string }>>([]);
+  const [queued, setQueued] = useState<QueuedTurn[]>([]);
+  const [attachments, setAttachments] = useState<
+    Array<{ id: string; name: string; dataUrl: string }>
+  >([]);
   const [skills, setSkills] = useState<string[]>([]);
   const [templates, setTemplates] = useState<string[]>([]);
   const [thinking, setThinking] = useState("auto");
@@ -67,12 +142,61 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
   const [mode, setMode] = useState<"prompt" | "steer" | "follow_up">("prompt");
   const [fullTools, setFullTools] = useState(false);
   const [browserEnabled, setBrowserEnabled] = useState(false);
+  const [remoteConsent, setRemoteConsent] = useState(false);
   const [error, setError] = useState("");
   const [sessionTitle, setSessionTitle] = useState("");
   const [pinned, setPinned] = useState(false);
-  const sessions = records(sessionsState.data, "sessions");
+  const [sessionPreferences, setSessionPreferences] = useState<SessionPreferences>({});
+  const sessions = records(sessionsState.data, "sessions").sort((left, right) => {
+    const leftPinned = sessionPreferences[jsonText(left.id)]?.pinned === true;
+    const rightPinned = sessionPreferences[jsonText(right.id)]?.pinned === true;
+    return Number(rightPinned) - Number(leftPinned);
+  });
+  useMountSubscription(() => {
+    const apply = (value: Json) => {
+      const decoded = decodeSessionPreferences(value);
+      if (decoded._tag === "Some") setSessionPreferences(decoded.value);
+    };
+    if (window.localStudioDesktop) {
+      void window.localStudioDesktop.loadSessionPrefs().then(apply);
+      return;
+    }
+    const saved = localStorage.getItem("local-studio-session-preferences");
+    if (!saved) return;
+    try {
+      apply(JSON.parse(saved));
+    } catch {
+      setError("Saved session preferences are invalid");
+    }
+  }, []);
   const models = records(modelsState.data, "models");
+  const skillCatalogue = records(skillsState.data, "skills");
+  const templateCatalogue = records(templatesState.data, "templates");
   const activeModel = modelId || jsonText(models[0]?.id, jsonText(models[0]?.name));
+  const selectedModel = models.find((model) => jsonText(model.id) === activeModel);
+  const thinkingLevels = modelThinkingLevels(selectedModel);
+  useMountSubscription(() => {
+    if (thinking !== "auto" && !thinkingLevels.includes(thinking)) setThinking("auto");
+  }, [activeModel, thinking]);
+  const composerSkills = skillCatalogue
+    .filter((skill) => skills.includes(jsonText(skill.id)))
+    .map((skill) => ({
+      id: jsonText(skill.id),
+      name: jsonText(skill.name),
+      path: jsonText(skill.path),
+      source: jsonText(skill.source),
+    }));
+  const composerTemplates = templateCatalogue
+    .filter((template) => templates.includes(jsonText(template.id)))
+    .map((template) => ({
+      id: jsonText(template.id),
+      name: jsonText(template.name),
+      path: jsonText(template.path),
+      source: jsonText(template.source),
+    }));
+  useMountSubscription(() => {
+    setRemoteConsent(localStorage.getItem(`local-studio.remote-consent.${activeModel}`) === "1");
+  }, [activeModel]);
   const createSession = () => {
     setSessionId(crypto.randomUUID());
     setPiSessionId(null);
@@ -81,20 +205,33 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
   };
   const loadSession = async (id: string, projectPath = activeCwd) => {
     setSessionId(id);
+    const preference = sessionPreferences[id];
+    setSessionTitle(preference?.title ?? "");
+    setPinned(preference?.pinned === true);
     try {
       const data = await requestRecord(
         `/api/agent/sessions/${encodeURIComponent(id)}?cwd=${encodeURIComponent(projectPath)}`,
       );
       const canonical = decodeCanonicalSession(data);
-      setPiSessionId(canonical.meta?.piSessionId ?? null);
-      cursor.current = { received: 0, committed: 0 };
-      setMessages(foldSessionEvents(canonical.events));
+      const canonicalPiSessionId = canonical.meta?.piSessionId ?? null;
+      setPiSessionId(canonicalPiSessionId);
+      const runtimeData = await requestRecord(
+        `/api/agent/runtime/status?sessionId=${encodeURIComponent(id)}${canonicalPiSessionId ? `&piSessionId=${encodeURIComponent(canonicalPiSessionId)}` : ""}`,
+      );
+      const runtime = decodeRuntimeSnapshot(runtimeData);
+      cursor.current = { received: runtime.cursor, committed: runtime.cursor };
+      setMessages(foldSessionEvents(mergeCanonicalRuntimeEvents(canonical.events, runtime.events)));
       setQueued([]);
       setStreamVersion((value) => value + 1);
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
     }
   };
+  useMountSubscription(() => {
+    if (handedOffSession.current || !requestedSessionId || !activeCwd) return;
+    handedOffSession.current = true;
+    void loadSession(requestedSessionId, activeCwd);
+  }, [requestedSessionId, activeCwd]);
   const archiveSession = async () => {
     if (!sessionId) return;
     try {
@@ -110,20 +247,14 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
       setError(value instanceof Error ? value.message : String(value));
     }
   };
-  const sessionPreference = (patch: RecordJson) => {
+  const sessionPreference = (patch: SessionPreference) => {
     if (!sessionId) return;
-    const key = `local-studio.session.${sessionId}`;
-    const previous = localStorage.getItem(key);
-    let value: RecordJson = {};
-    if (previous) {
-      try {
-        const parsed: Json = JSON.parse(previous);
-        value = records({ parsed }, "parsed")[0] ?? {};
-      } catch {
-        value = {};
-      }
-    }
-    localStorage.setItem(key, JSON.stringify({ ...value, ...patch }));
+    setSessionPreferences((current) => {
+      const next = { ...current, [sessionId]: { ...current[sessionId], ...patch } };
+      if (window.localStudioDesktop) void window.localStudioDesktop.saveSessionPrefs(next);
+      else localStorage.setItem("local-studio-session-preferences", JSON.stringify(next));
+      return next;
+    });
   };
   const restoreSession = async () => {
     if (!sessionId) return;
@@ -165,8 +296,8 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
                 thinkingLevel: "auto",
                 toolAccess: fullTools ? "full" : "read_only",
                 browserToolEnabled: browserEnabled,
-                skills: [],
-                promptTemplates: [],
+                skills: composerSkills,
+                promptTemplates: composerTemplates,
               }
             : { sessionId },
         ),
@@ -179,10 +310,22 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
     event.preventDefault();
     const content = prompt.trim();
     if (!content || !activeModel || !activeCwd) return;
+    if (!remoteConsent) {
+      setError("Confirm the selected destination custody disclosure before sending");
+      return;
+    }
     const id = sessionId || crypto.randomUUID();
     setSessionId(id);
     setPrompt("");
-    setMessages((items) => [...items, { id: crypto.randomUUID(), role: "user", content }]);
+    setMessages((items) => [
+      ...items,
+      {
+        id: `optimistic-${id}-${Date.now()}`,
+        role: "user",
+        content,
+        blocks: [{ type: "text", text: content, value: content }],
+      },
+    ]);
     try {
       const result = await requestRecord("/api/agent/turn", {
         method: "POST",
@@ -211,8 +354,8 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
               thinkingLevel: thinking,
               toolAccess: fullTools ? "full" : "read_only",
               browserToolEnabled: browserEnabled,
-              skills: skills.map((name) => ({ id: name, name })),
-              promptTemplates: templates.map((name) => ({ id: name, name })),
+              skills: composerSkills,
+              promptTemplates: composerTemplates,
             };
             if (mode === "steer") {
               body.mode = "steer";
@@ -228,14 +371,24 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
       });
       const command = decodeTurnResponse(result);
       const outcome = command.outcome;
-      if (outcome === "queued") setQueued((items) => [...items, content]);
-      else setQueued([]);
+      if (outcome === "queued")
+        setQueued((items) => [...items, { id: crypto.randomUUID(), text: content }]);
+      if (outcome === "accepted") {
+        cursor.current = { received: 0, committed: 0 };
+        setQueued([]);
+        setStreamVersion((value) => value + 1);
+      }
       const canonical = command.piSessionId;
       if (canonical) setPiSessionId(canonical);
       setAttachments([]);
       setMessages((items) => [
         ...items,
-        { id: crypto.randomUUID(), role: "event", content: `Command ${outcome}` },
+        {
+          id: `command-${id}-${Date.now()}`,
+          role: "event",
+          content: `Command ${outcome}`,
+          blocks: [{ type: "event", text: `Command ${outcome}`, value: outcome }],
+        },
       ]);
       void sessionsState.reload();
     } catch (value) {
@@ -243,17 +396,26 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
     }
   };
   const attach = (event: ChangeEvent<HTMLInputElement>) => {
-    for (const file of Array.from(event.target.files ?? []).slice(0, 4)) {
+    const files = Array.from(event.target.files ?? []);
+    for (const file of files.slice(0, 4)) {
+      if (!file.type.startsWith("image/") || file.size > 10 * 1024 * 1024) {
+        setError(`${file.name} must be an image smaller than 10 MiB`);
+        continue;
+      }
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result;
         if (isString(dataUrl))
-          setAttachments((items) => [...items, { name: file.name, dataUrl }].slice(-4));
+          setAttachments((items) =>
+            [...items, { id: crypto.randomUUID(), name: file.name, dataUrl }].slice(-4),
+          );
       };
       reader.readAsDataURL(file);
     }
+    event.target.value = "";
   };
-  const mutateQueue = async (action: "promote" | "remove" | "replace", message: string) => {
+  const mutateQueue = async (action: "promote" | "remove" | "replace", queuedTurn: QueuedTurn) => {
+    const message = queuedTurn.text;
     try {
       const queueBody: RecordJson = {
         sessionId,
@@ -265,8 +427,8 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
         queueAction: action,
         browserToolEnabled: browserEnabled,
         toolAccess: fullTools ? "full" : "read_only",
-        skills: [],
-        promptTemplates: [],
+        skills: composerSkills,
+        promptTemplates: composerTemplates,
       };
       if (action === "replace") queueBody.queueReplacement = prompt.trim() || message;
       await requestRecord("/api/agent/turn", {
@@ -276,10 +438,12 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
       });
       setQueued((items) =>
         action === "remove"
-          ? items.filter((item) => item !== message)
+          ? items.filter((item) => item.id !== queuedTurn.id)
           : action === "replace"
-            ? items.map((item) => (item === message ? prompt.trim() || message : item))
-            : [message, ...items.filter((item) => item !== message)],
+            ? items.map((item) =>
+                item.id === queuedTurn.id ? { ...item, text: prompt.trim() || message } : item,
+              )
+            : [queuedTurn, ...items.filter((item) => item.id !== queuedTurn.id)],
       );
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
@@ -298,7 +462,10 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
         const accepted = acceptRuntimePayload(cursor.current, payload);
         cursor.current = accepted.cursor;
         const acceptedEvent = accepted.event;
-        if (acceptedEvent) setMessages((items) => foldSessionEvent(items, acceptedEvent));
+        if (acceptedEvent)
+          setMessages((items) => foldSessionEvent(items, acceptedEvent, accepted.identity));
+        if (acceptedEvent?.type === "queue_update")
+          setQueued((items) => reconcileQueueEvent(items, acceptedEvent));
         if (payload.type === "status" && payload.phase === "idle") setQueued([]);
       } catch (value) {
         setError(value instanceof Error ? value.message : "Invalid runtime event");
@@ -313,16 +480,7 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
   return (
     <Page
       title={quick ? "Quick panel" : "Workbench"}
-      actions={
-        !quick ? (
-          <Tabs
-            items={[
-              ["/agent/automations", "Goals & automations"],
-              ["/configure#integrations", "Connectors"],
-            ]}
-          />
-        ) : undefined
-      }
+      actions={<WorkbenchActions quick={quick} sessionId={sessionId} projectId={activeProjectId} />}
     >
       <p>
         Sessions and transcripts stay on this workstation. A selected remote provider or controller
@@ -386,25 +544,26 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
           onChange={(event) => setThinking(event.target.value)}
           aria-label="Thinking level"
         >
-          <option value="auto">Thinking: auto</option>
-          <option value="off">Off</option>
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
+          {["auto", ...thinkingLevels.filter((level) => level !== "auto")].map((level) => (
+            <option key={level} value={level}>
+              Thinking: {level}
+            </option>
+          ))}
         </select>
         <input type="file" accept="image/*" multiple onChange={attach} aria-label="Attach images" />
       </div>
       <div className="row">
-        {records(skillsState.data, "skills").map((skill) => {
-          const name = jsonText(skill.name, jsonText(skill.id));
+        {skillCatalogue.map((skill) => {
+          const id = jsonText(skill.id);
+          const name = jsonText(skill.name, id);
           return (
-            <label key={name}>
+            <label key={id}>
               <input
                 type="checkbox"
-                checked={skills.includes(name)}
+                checked={skills.includes(id)}
                 onChange={() =>
                   setSkills((items) =>
-                    items.includes(name) ? items.filter((item) => item !== name) : [...items, name],
+                    items.includes(id) ? items.filter((item) => item !== id) : [...items, id],
                   )
                 }
               />
@@ -412,14 +571,15 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
             </label>
           );
         })}
-        {records(templatesState.data, "templates").map((template) => {
-          const name = jsonText(template.name, jsonText(template.id));
+        {templateCatalogue.map((template) => {
+          const id = jsonText(template.id);
+          const name = jsonText(template.name, id);
           return (
             <button
-              key={name}
+              key={id}
               onClick={() =>
                 setTemplates((items) =>
-                  items.includes(name) ? items.filter((item) => item !== name) : [...items, name],
+                  items.includes(id) ? items.filter((item) => item !== id) : [...items, id],
                 )
               }
             >
@@ -428,12 +588,50 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
           );
         })}
         {attachments.map((attachment) => (
-          <span key={attachment.name}>{attachment.name}</span>
+          <span key={attachment.id}>
+            {attachment.name}
+            <button
+              type="button"
+              aria-label={`Remove ${attachment.name}`}
+              onClick={() =>
+                setAttachments((items) => items.filter((item) => item.id !== attachment.id))
+              }
+            >
+              Remove
+            </button>
+          </span>
         ))}
       </div>
+      <label>
+        <input
+          type="checkbox"
+          checked={remoteConsent}
+          onChange={(event) => {
+            const allowed = event.target.checked;
+            setRemoteConsent(allowed);
+            localStorage.setItem(`local-studio.remote-consent.${activeModel}`, allowed ? "1" : "0");
+          }}
+        />
+        On Send, {activeModel || "the selected destination"} receives this prompt, attachments,
+        loaded skill/template paths, and enabled tool context. It controls that copy under its own
+        retention policy.
+      </label>
       <div className="workbench">
         <aside className="panel">
           <div className="row">
+            <select
+              aria-label="Session filter"
+              value={sessionFilter}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (value === "active" || value === "archived" || value === "all")
+                  setSessionFilter(value);
+              }}
+            >
+              <option value="active">Active sessions</option>
+              <option value="archived">Archived sessions</option>
+              <option value="all">All sessions</option>
+            </select>
             <button onClick={createSession}>New</button>
             <button onClick={archiveSession} disabled={!sessionId}>
               Archive
@@ -467,15 +665,8 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
             <button onClick={exportSession} disabled={!sessionId}>
               Export
             </button>
-            <button
-              onClick={() => {
-                sessionPreference({ hidden: true });
-                setSessionId("");
-                setMessages([]);
-              }}
-              disabled={!sessionId}
-            >
-              Delete locally
+            <button onClick={archiveSession} disabled={!sessionId}>
+              Archive (deletion disabled)
             </button>
           </div>
           {sessions.map((session) => (
@@ -484,7 +675,8 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
               key={jsonText(session.id)}
               onClick={() => loadSession(jsonText(session.id), jsonText(session.cwd, activeCwd))}
             >
-              {jsonText(session.firstUserMessage, jsonText(session.title, jsonText(session.id)))}
+              {sessionPreferences[jsonText(session.id)]?.title ??
+                jsonText(session.firstUserMessage, jsonText(session.title, jsonText(session.id)))}
             </button>
           ))}
           <h2>Providers</h2>
@@ -496,6 +688,11 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
               <div key={message.id} className={message.role}>
                 <b>{message.role}</b>
                 <p>{message.content}</p>
+                {message.blocks
+                  .filter((block) => block.type !== "text" && !block.text)
+                  .map((block, index) => (
+                    <pre key={`${message.id}-${index}`}>{JSON.stringify(block.value, null, 2)}</pre>
+                  ))}
               </div>
             ))
           ) : (
@@ -509,8 +706,8 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
             <section>
               <h3>Queued follow-ups</h3>
               {queued.map((item) => (
-                <div className="item" key={item}>
-                  <span>{item}</span>
+                <div className="item" key={item.id}>
+                  <span>{item.text}</span>
                   <button onClick={() => mutateQueue("promote", item)}>Promote</button>
                   <button onClick={() => mutateQueue("replace", item)}>Replace with draft</button>
                   <button onClick={() => mutateQueue("remove", item)}>Remove</button>
@@ -524,7 +721,7 @@ export function Workbench({ quick = false }: { quick?: boolean }) {
               onChange={(event) => setPrompt(event.target.value)}
               placeholder="Ask the local agent…"
             />
-            <button>Send</button>
+            <button disabled={!remoteConsent}>Send</button>
           </form>
         </article>
       </div>

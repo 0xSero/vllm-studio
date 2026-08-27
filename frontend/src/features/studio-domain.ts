@@ -1,7 +1,8 @@
 import { Schema } from "effect";
-import { records, type Json, type RecordJson } from "./studio-core";
+import { records, type Json, type RecordJson } from "./studio-api";
 
 const isString = Schema.is(Schema.String);
+const isNumber = Schema.is(Schema.Number);
 
 const JsonRecordSchema = Schema.Record(Schema.String, Schema.Unknown);
 const CanonicalMetaSchema = Schema.Struct({
@@ -27,6 +28,26 @@ const RuntimePayloadSchema = Schema.Union([
     session: Schema.optional(JsonRecordSchema),
   }),
 ]);
+const RuntimeSnapshotSchema = Schema.Struct({
+  status: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        eventSeq: Schema.optional(Schema.Number),
+      }),
+    ),
+  ),
+  events: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        seq: Schema.Number,
+        event: JsonRecordSchema,
+      }),
+    ),
+  ),
+});
+const decodeRuntimeSnapshotOption = Schema.decodeUnknownOption(RuntimeSnapshotSchema, {
+  onExcessProperty: "preserve",
+});
 const decodeCanonicalSessionOption = Schema.decodeUnknownOption(CanonicalSessionSchema, {
   onExcessProperty: "preserve",
 });
@@ -44,7 +65,29 @@ export type CanonicalSession = {
     piSessionId: string | null;
   } | null;
 };
-export type FoldedMessage = { id: string; role: "user" | "assistant" | "event"; content: string };
+export type RuntimeSnapshot = {
+  cursor: number;
+  events: Array<{ seq: number; event: RecordJson }>;
+};
+export function decodeRuntimeSnapshot(value: Json): RuntimeSnapshot {
+  const decoded = decodeRuntimeSnapshotOption(value);
+  if (decoded._tag === "None") throw new Error("Invalid runtime status response");
+  return {
+    cursor: decoded.value.status?.eventSeq ?? 0,
+    events: records(value, "events").flatMap((entry) => {
+      const event = nestedRecord(entry.event);
+      return event && isNumber(entry.seq) ? [{ seq: entry.seq, event }] : [];
+    }),
+  };
+}
+
+export type TranscriptBlock = { type: string; text: string; value: Json };
+export type FoldedMessage = {
+  id: string;
+  role: "user" | "assistant" | "event";
+  content: string;
+  blocks: TranscriptBlock[];
+};
 export type RuntimePayload =
   | { type: "pi"; seq?: number; event: RecordJson }
   | { type: "status"; phase: string; session?: RecordJson };
@@ -88,65 +131,142 @@ function nestedRecord(value: Json | undefined): RecordJson | null {
   if (value === undefined) return null;
   return records({ value }, "value")[0] ?? null;
 }
-function textFromContent(value: Json | undefined): string {
+function blockText(value: Json): string {
   if (isString(value)) return value;
-  if (!Array.isArray(value)) return "";
-  return value
-    .map((part) => {
-      const row = nestedRecord(part);
-      return isString(row?.text) ? row.text : "";
-    })
-    .join("");
+  const block = nestedRecord(value);
+  if (!block) return "";
+  if (isString(block.text)) return block.text;
+  if (isString(block.thinking)) return block.thinking;
+  if (isString(block.content)) return block.content;
+  return "";
 }
-function eventText(
-  event: RecordJson,
-): { role: FoldedMessage["role"]; text: string; append: boolean } | null {
+function contentBlocks(value: Json | undefined): TranscriptBlock[] {
+  const values = Array.isArray(value) ? value : value === undefined ? [] : [value];
+  return values.map((part) => {
+    const block = nestedRecord(part);
+    return {
+      type: block && isString(block.type) ? block.type : "text",
+      text: blockText(part),
+      value: part,
+    };
+  });
+}
+function snapshotBlocks(event: RecordJson, message: RecordJson | null): TranscriptBlock[] {
+  const direct = contentBlocks(message?.content);
+  if (event.type !== "message_update") return direct;
+  const update = nestedRecord(event.assistantMessageEvent);
+  const partial = nestedRecord(update?.partial);
+  const candidate = contentBlocks(partial?.content);
+  const directSize = direct.reduce((total, block) => total + block.text.length, 0);
+  const candidateSize = candidate.reduce((total, block) => total + block.text.length, 0);
+  return candidateSize > directSize ? candidate : direct;
+}
+function eventMessage(event: RecordJson): Omit<FoldedMessage, "id"> | null {
   const message = nestedRecord(event.message);
-  if (event.type === "message_start" || event.type === "message_end") {
-    const role = message?.role === "user" ? "user" : "assistant";
-    const text = textFromContent(message?.content);
-    return text ? { role, text, append: false } : null;
-  }
-  if (event.type === "message_update") {
-    const update = nestedRecord(event.assistantMessageEvent);
-    const delta = update?.delta;
-    return isString(delta) ? { role: "assistant", text: delta, append: true } : null;
+  if (
+    event.type === "message" ||
+    event.type === "message_start" ||
+    event.type === "message_update" ||
+    event.type === "message_end"
+  ) {
+    const partial = nestedRecord(nestedRecord(event.assistantMessageEvent)?.partial);
+    const roleValue = message?.role ?? partial?.role;
+    const role = roleValue === "user" ? "user" : roleValue === "assistant" ? "assistant" : "event";
+    const blocks = snapshotBlocks(event, message);
+    const content = blocks.map((block) => block.text).join("");
+    return content || blocks.length ? { role, content, blocks } : null;
   }
   const direct = event.message ?? event.content ?? event.text;
-  if (isString(direct)) return { role: "event", text: direct, append: false };
-  if (isString(event.type)) return { role: "event", text: event.type, append: false };
-  return null;
+  if (!isString(direct) && !isString(event.type)) return null;
+  const content = isString(direct) ? direct : isString(event.type) ? event.type : "";
+  return { role: "event", content, blocks: [{ type: "event", text: content, value: event }] };
 }
-export function foldSessionEvent(folded: FoldedMessage[], event: RecordJson): FoldedMessage[] {
-  const item = eventText(event);
+function messageIdentity(event: RecordJson, identity: string): string {
+  const message = nestedRecord(event.message);
+  const explicit = event.id ?? message?.id ?? event.toolCallId;
+  return isString(explicit) && explicit ? explicit : identity;
+}
+export function foldSessionEvent(
+  folded: FoldedMessage[],
+  event: RecordJson,
+  identity = `live-${folded.length}`,
+): FoldedMessage[] {
+  const item = eventMessage(event);
   if (!item) return folded;
   const previous = folded.at(-1);
-  if (item.append && previous?.role === item.role) {
-    return [...folded.slice(0, -1), { ...previous, content: previous.content + item.text }];
+  const id = messageIdentity(event, identity);
+  if (previous?.id === id) return [...folded.slice(0, -1), { id, ...item }];
+  const snapshot = event.type === "message_update" || event.type === "message_end";
+  if (snapshot && previous?.role === item.role) {
+    if (item.content.length < previous.content.length && event.type === "message_update")
+      return folded;
+    return [...folded.slice(0, -1), { ...item, id: previous.id }];
   }
-  if (!item.append && event.type === "message_end" && previous?.role === item.role) {
-    return [...folded.slice(0, -1), { ...previous, content: item.text }];
+  if (previous?.role === item.role && previous.content === item.content) return folded;
+  return [...folded, { id, ...item }];
+}
+
+function eventFingerprint(event: RecordJson): string | null {
+  if (event.type !== "message" && event.type !== "message_end") return null;
+  const message = nestedRecord(event.message);
+  return message ? JSON.stringify(message) : null;
+}
+export function mergeCanonicalRuntimeEvents(
+  canonical: RecordJson[],
+  runtime: RuntimeSnapshot["events"],
+): RecordJson[] {
+  const runtimeEvents = [...runtime].sort((left, right) => left.seq - right.seq);
+  const firstSettled = runtimeEvents.find((entry) => eventFingerprint(entry.event));
+  if (!firstSettled) return [...canonical, ...runtimeEvents.map((entry) => entry.event)];
+  const fingerprint = eventFingerprint(firstSettled.event);
+  let overlap = -1;
+  for (const [index, wrapper] of canonical.entries()) {
+    const event = nestedRecord(wrapper.event) ?? wrapper;
+    if (eventFingerprint(event) === fingerprint) overlap = index;
   }
-  if (previous?.role === "event" && previous.content === item.text) return folded;
-  return [...folded, { id: crypto.randomUUID(), role: item.role, content: item.text }];
+  const prefix = overlap < 0 ? canonical : canonical.slice(0, overlap);
+  return [...prefix, ...runtimeEvents.map((entry) => entry.event)];
 }
 
 export function foldSessionEvents(events: RecordJson[]): FoldedMessage[] {
   let folded: FoldedMessage[] = [];
-  for (const wrapper of events)
-    folded = foldSessionEvent(folded, nestedRecord(wrapper.event) ?? wrapper);
+  for (const [index, wrapper] of events.entries()) {
+    const event = nestedRecord(wrapper.event) ?? wrapper;
+    const seq = isNumber(wrapper.seq) ? wrapper.seq : index;
+    folded = foldSessionEvent(folded, event, `canonical-${seq}`);
+  }
   return folded;
 }
 
 export type RuntimeCursor = { received: number; committed: number };
-export type RuntimeDecision = { cursor: RuntimeCursor; event: RecordJson | null };
+export type RuntimeDecision = { cursor: RuntimeCursor; event: RecordJson | null; identity: string };
 export function acceptRuntimePayload(
   cursor: RuntimeCursor,
   payload: RuntimePayload,
 ): RuntimeDecision {
-  if (payload.type !== "pi") return { cursor, event: null };
-  const seq = payload.seq ?? 0;
-  if (seq > 0 && seq <= cursor.received) return { cursor, event: null };
-  const next = seq > 0 ? Math.max(cursor.received, seq) : cursor.received;
-  return { cursor: { received: next, committed: next }, event: payload.event };
+  if (payload.type !== "pi") return { cursor, event: null, identity: "status" };
+  const seq = payload.seq;
+  if (seq !== undefined && seq <= cursor.received) {
+    return { cursor, event: null, identity: `runtime-${seq}` };
+  }
+  if (seq === undefined) return { cursor, event: payload.event, identity: "runtime-unsequenced" };
+  return {
+    cursor: { received: seq, committed: seq },
+    event: payload.event,
+    identity: `runtime-${seq}`,
+  };
+}
+
+export type QueuedTurn = { id: string; text: string };
+export function reconcileQueueEvent(current: QueuedTurn[], event: RecordJson): QueuedTurn[] {
+  if (event.type !== "queue_update" || !Array.isArray(event.followUp)) return current;
+  const pending = event.followUp.filter(isString);
+  const unused = [...current];
+  return pending.map((text, index) => {
+    const found = unused.findIndex((item) => item.text === text);
+    if (found < 0) return { id: `queue-${index}-${text}`, text };
+    const existing = unused[found];
+    unused.splice(found, 1);
+    return existing;
+  });
 }
