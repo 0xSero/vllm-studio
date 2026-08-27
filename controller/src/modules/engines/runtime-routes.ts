@@ -46,13 +46,15 @@ const parseRuntimeJobBody = (
   ctx: Parameters<typeof decodeJsonBody>[0],
 ): Effect.Effect<RuntimeJobBody, ReturnType<typeof badRequest>> =>
   decodeJsonBody(ctx, RuntimeJobBodySchema).pipe(
-    Effect.map((body): RuntimeJobBody => ({
-      ...(body.backend ? { backend: body.backend } : {}),
-      ...(body.targetId ? { targetId: body.targetId } : {}),
-      ...(body.type ? { type: body.type } : {}),
-      ...(body.version ? { version: body.version } : {}),
-      ...(body.prefer_bundled !== undefined ? { preferBundled: body.prefer_bundled } : {}),
-    })),
+    Effect.map((body): RuntimeJobBody => {
+      const parsed: RuntimeJobBody = {};
+      if (body.backend) parsed.backend = body.backend;
+      if (body.targetId) parsed.targetId = body.targetId;
+      if (body.type) parsed.type = body.type;
+      if (body.version) parsed.version = body.version;
+      if (body.prefer_bundled !== undefined) parsed.preferBundled = body.prefer_bundled;
+      return parsed;
+    }),
   );
 
 export const registerRuntimeRoutes = defineRoutes((app, context) => {
@@ -97,14 +99,15 @@ export const registerRuntimeRoutes = defineRoutes((app, context) => {
           const body = yield* parseRuntimeJobBody(ctx);
           if (!body.backend) return yield* Effect.fail(badRequest("backend is required"));
           const current = yield* getObservedProcess("runtime.jobs");
-          const job = yield* createEngineJob(context.config, {
+          const options: Parameters<typeof createEngineJob>[1] = {
             backend: body.backend,
             type: body.type ?? "update",
-            ...(body.targetId ? { targetId: body.targetId } : {}),
-            ...(body.version ? { version: body.version } : {}),
-            ...(body.preferBundled !== undefined ? { preferBundled: body.preferBundled } : {}),
             runningProcess: current,
-          });
+          };
+          if (body.targetId) options.targetId = body.targetId;
+          if (body.version) options.version = body.version;
+          if (body.preferBundled !== undefined) options.preferBundled = body.preferBundled;
+          const job = yield* createEngineJob(context.config, options);
           return ctx.json({ job });
         }),
       ),
@@ -224,14 +227,15 @@ export const registerRuntimeRoutes = defineRoutes((app, context) => {
           if (!backend) return yield* Effect.fail(notFound("Unknown runtime backend"));
           const body = yield* parseRuntimeJobBody(ctx);
           const current = yield* getObservedProcess(`runtime.upgrade.${backend}`);
-          const job = yield* createEngineJob(context.config, {
+          const options: Parameters<typeof createEngineJob>[1] = {
             backend,
             type: "update",
-            ...(body.targetId ? { targetId: body.targetId } : {}),
-            ...(body.version ? { version: body.version.trim() } : {}),
-            ...(body.preferBundled !== undefined ? { preferBundled: body.preferBundled } : {}),
             runningProcess: current,
-          });
+          };
+          if (body.targetId) options.targetId = body.targetId;
+          if (body.version) options.version = body.version.trim();
+          if (body.preferBundled !== undefined) options.preferBundled = body.preferBundled;
+          const job = yield* createEngineJob(context.config, options);
           return ctx.json({ job_id: job.id, job });
         }),
       ),

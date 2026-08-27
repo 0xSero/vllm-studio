@@ -7,6 +7,9 @@ import { documentRoute, defineRoutes, mergeRoutes } from "../../http/route-regis
 import type { Recipe } from "../models/types";
 import { resolveModelVision } from "@local-studio/contracts/model-capabilities";
 
+const metadataSchema = Schema.Record(Schema.String, Schema.Json);
+type RecipeMetadata = typeof metadataSchema.Type;
+
 interface OpenAIModelInfo {
   id: string;
   object: "model";
@@ -14,7 +17,7 @@ interface OpenAIModelInfo {
   owned_by: string;
   active: boolean;
   max_model_len?: number | null;
-  metadata: Record<string, unknown>;
+  metadata: RecipeMetadata;
 }
 
 interface OpenAIModelList {
@@ -27,9 +30,28 @@ const ActiveModelsSchema = Schema.Struct({
     Schema.Array(Schema.Struct({ max_model_len: Schema.optional(Schema.Number) })),
   ),
 });
+type ActiveModels = typeof ActiveModelsSchema.Type;
 
 const HuggingFaceModelsSchema = Schema.Array(Schema.Record(Schema.String, Schema.Unknown));
 const HuggingFaceModelSchema = Schema.Record(Schema.String, Schema.Unknown);
+type HuggingFaceModel = typeof HuggingFaceModelSchema.Type;
+type HuggingFaceModelValue = HuggingFaceModel[string];
+
+const modelText = (value: HuggingFaceModelValue): string =>
+  Schema.is(Schema.String)(value) ? value : "";
+
+const normalizeHuggingFaceModel = (model: HuggingFaceModel) => {
+  const modelId = modelText(model["modelId"] ?? model["id"]);
+  return {
+    ...model,
+    _id: modelText(model["_id"]) || modelId,
+    modelId,
+    downloads: Number(model["downloads"] ?? 0),
+    likes: Number(model["likes"] ?? 0),
+    tags: Array.isArray(model["tags"]) ? model["tags"] : [],
+    private: Boolean(model["private"]),
+  };
+};
 
 const decodeResponse = <S extends Schema.Constraint>(
   response: Response,
@@ -44,16 +66,12 @@ import { notFound } from "../../core/errors";
 import { findObservedInferenceProcess } from "../../core/function-observability";
 import { fetchInference } from "../../http/local-fetch";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function recipeMetadata(recipe: Recipe): Record<string, unknown> {
+function recipeMetadata(recipe: Recipe): RecipeMetadata {
   const metadata = recipe.extra_args?.["metadata"];
-  return isRecord(metadata) ? metadata : {};
+  return Schema.is(metadataSchema)(metadata) ? metadata : {};
 }
 
-function resolvedRecipeMetadata(recipe: Recipe, modelId: string): Record<string, unknown> {
+function resolvedRecipeMetadata(recipe: Recipe, modelId: string): RecipeMetadata {
   const metadata = recipeMetadata(recipe);
   return {
     ...metadata,
@@ -62,6 +80,30 @@ function resolvedRecipeMetadata(recipe: Recipe, modelId: string): Record<string,
       recipeOverride: recipe.vision,
       metadata,
     }),
+  };
+}
+
+type InferenceProcess = Parameters<typeof isRecipeRunning>[1];
+
+function openAIModelInfo(
+  recipe: Recipe,
+  current: InferenceProcess | null,
+  activeModels: ActiveModels | null,
+  created: number,
+): OpenAIModelInfo {
+  const active = current
+    ? isRecipeRunning(recipe, current, { allowEitherPathContains: true })
+    : false;
+  const activeLength = active ? activeModels?.data?.[0]?.max_model_len : undefined;
+  const modelId = recipe.served_model_name ?? recipe.id;
+  return {
+    id: modelId,
+    object: "model",
+    created,
+    owned_by: "local-studio",
+    active,
+    max_model_len: activeLength ?? recipe.max_model_len,
+    metadata: resolvedRecipeMetadata(recipe, modelId),
   };
 }
 
@@ -91,24 +133,7 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
           const models: OpenAIModelInfo[] = [];
           const now = Math.floor(Date.now() / 1000);
           for (const recipe of recipes) {
-            let isActive = false;
-            let maxModelLength = recipe.max_model_len;
-            if (current) {
-              isActive = isRecipeRunning(recipe, current, { allowEitherPathContains: true });
-              if (isActive && activeModelData?.data?.[0]?.max_model_len) {
-                maxModelLength = activeModelData.data[0].max_model_len;
-              }
-            }
-            const modelId = recipe.served_model_name ?? recipe.id;
-            models.push({
-              id: modelId,
-              object: "model",
-              created: now,
-              owned_by: "local-studio",
-              active: isActive,
-              max_model_len: maxModelLength,
-              metadata: resolvedRecipeMetadata(recipe, modelId),
-            });
+            models.push(openAIModelInfo(recipe, current, activeModelData, now));
           }
 
           if (models.length === 0 && current) {
@@ -304,15 +329,15 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
           const limit = Math.min(Math.max(Number(ctx.req.query("limit") ?? 50), 1), 100);
           const offset = Math.max(Number(ctx.req.query("offset") ?? 0), 0);
 
-          const sortMapping: Record<string, string> = {
-            createdAt: "createdAt",
-            trending: "trendingScore",
-            downloads: "downloads",
-            likes: "likes",
-            lastModified: "lastModified",
-            modified: "lastModified",
-          };
-          const hfSort = sort ? (sortMapping[sort] ?? "trendingScore") : undefined;
+          const sortMapping = new Map([
+            ["createdAt", "createdAt"],
+            ["trending", "trendingScore"],
+            ["downloads", "downloads"],
+            ["likes", "likes"],
+            ["lastModified", "lastModified"],
+            ["modified", "lastModified"],
+          ]);
+          const hfSort = sort ? (sortMapping.get(sort) ?? "trendingScore") : undefined;
           const requestLimit = Math.min(limit + offset, 500);
           const params = new URLSearchParams({
             limit: String(requestLimit),
@@ -327,19 +352,6 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
           if (filter) {
             params.set("filter", filter);
           }
-
-          const normalize = (model: Record<string, unknown>): Record<string, unknown> => {
-            const modelId = String(model["modelId"] ?? model["id"] ?? "");
-            return {
-              ...model,
-              _id: String(model["_id"] ?? modelId),
-              modelId,
-              downloads: Number(model["downloads"] ?? 0),
-              likes: Number(model["likes"] ?? 0),
-              tags: Array.isArray(model["tags"]) ? model["tags"] : [],
-              private: Boolean(model["private"]),
-            };
-          };
 
           const url = `https://huggingface.co/api/models?${params.toString()}`;
           return yield* Effect.all([
@@ -363,21 +375,19 @@ export const registerModelsRoutes = defineRoutes((app, context) => {
                   );
                 }
                 const data = (yield* decodeResponse(listResponse, HuggingFaceModelsSchema)).map(
-                  normalize,
+                  normalizeHuggingFaceModel,
                 );
                 let results = data.slice(offset, offset + limit);
 
                 if (exactResponse?.ok) {
-                  const exact = normalize(
+                  const exact = normalizeHuggingFaceModel(
                     yield* decodeResponse(exactResponse, HuggingFaceModelSchema),
                   );
-                  const exactId = String(exact["modelId"] ?? "").toLowerCase();
+                  const exactId = exact.modelId.toLowerCase();
                   if (exactId) {
                     results = [
                       exact,
-                      ...results.filter(
-                        (entry) => String(entry["modelId"] ?? "").toLowerCase() !== exactId,
-                      ),
+                      ...results.filter((entry) => entry.modelId.toLowerCase() !== exactId),
                     ];
                   }
                 }

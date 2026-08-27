@@ -12,7 +12,9 @@ class ControllerStartupError extends Schema.TaggedErrorClass<ControllerStartupEr
   { operation: Schema.String, message: Schema.String, source: Schema.Unknown },
 ) {}
 
-const startupError = (operation: string, source: unknown): ControllerStartupError =>
+type StartupFailure = string | number | boolean | bigint | symbol | null | undefined;
+
+const startupError = (operation: string, source: StartupFailure): ControllerStartupError =>
   new ControllerStartupError({ operation, message: String(source), source });
 
 const metricsDisabled = (): boolean =>
@@ -55,7 +57,7 @@ const serve = (
         idleTimeout: 120,
       });
     },
-    catch: (source) => startupError("server.start", source),
+    catch: (source) => startupError("server.start", String(source)),
   });
 
 const runtime = createControllerRuntime();
@@ -77,7 +79,7 @@ const program = Effect.scoped(
     const server = yield* Effect.acquireRelease(serve(context, runtime), (resource) =>
       Effect.tryPromise({
         try: () => resource.stop(),
-        catch: (source) => startupError("server.stop", source),
+        catch: (source) => startupError("server.stop", String(source)),
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(() =>

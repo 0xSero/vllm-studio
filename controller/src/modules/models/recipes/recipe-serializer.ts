@@ -1,6 +1,16 @@
 import { Schema } from "effect";
 import type { Recipe } from "../types";
+import type { RecipeExtraArgument } from "@local-studio/contracts/recipes";
 import { asRecipeId } from "../types";
+
+const inputObjectSchema = Schema.Record(Schema.String, Schema.Unknown);
+type RecipeInput = typeof inputObjectSchema.Type;
+type RecipeInputValue = RecipeInput[string];
+type MutableRecipeInput = { -readonly [Key in keyof RecipeInput]: RecipeInput[Key] };
+
+interface RecipeRuntimeInput {
+  [key: string]: RecipeInputValue;
+}
 
 const integerSchema = Schema.Number.check(Schema.isInt());
 
@@ -12,23 +22,20 @@ const serveRuntimeSchema = Schema.Struct({
   label: Schema.optional(Schema.String),
 });
 
-const stringValue = (value: unknown): string | null =>
-  typeof value === "string" && value.trim() ? value.trim() : null;
+const stringValue = (value: RecipeInputValue): string | null =>
+  Schema.is(Schema.String)(value) && value.trim() ? value.trim() : null;
 
-const defaultRuntime = (backend: unknown): Record<string, unknown> => {
+const defaultRuntime = (backend: RecipeInputValue) => {
   const runtimeReference = stringValue(backend) ?? "vllm";
   return runtimeReference === "llamacpp"
     ? { kind: "binary", ref: "llama-server" }
     : { kind: "managed_venv", ref: runtimeReference };
 };
 
-const normalizedRuntime = (
-  data: Record<string, unknown>,
-  extraArguments: Record<string, unknown>,
-): Record<string, unknown> => {
+const normalizedRuntime = (data: RecipeInput, extraArguments: RecipeInput): RecipeRuntimeInput => {
   const runtime = data["runtime"];
-  if (runtime && typeof runtime === "object" && !Array.isArray(runtime)) {
-    const record = { ...(runtime as Record<string, unknown>) };
+  if (Schema.is(inputObjectSchema)(runtime)) {
+    const record = { ...runtime };
     if (record["kind"] === "venv") record["kind"] = "managed_venv";
     return record;
   }
@@ -45,7 +52,7 @@ const normalizedRuntime = (
 // the whole recipe silently vanish; a negative/zero passed straight into the
 // engine launch command. Clamp to a valid value instead.
 const coercePositiveInt = (
-  value: unknown,
+  value: RecipeInputValue,
   fallback: number,
   max = Number.MAX_SAFE_INTEGER,
 ): number => {
@@ -55,30 +62,55 @@ const coercePositiveInt = (
   return Math.min(parsed, max);
 };
 
-const clampFraction = (value: unknown, fallback: number): number => {
+const clampFraction = (value: RecipeInputValue, fallback: number): number => {
   if (value === undefined) return fallback;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(1, Math.max(0.01, parsed));
 };
 
-const coerceNullableNumber = (value: unknown): number | null =>
+const coerceNullableNumber = (value: RecipeInputValue): number | null =>
   value === undefined || value === null ? null : Number(value);
 
-const coerceBoolean = (value: unknown, fallback: boolean): boolean =>
+const coerceBoolean = (value: RecipeInputValue, fallback: boolean): boolean =>
   value === undefined ? fallback : Boolean(value);
 
-export const normalizeRecipeInput = (raw: unknown): Record<string, unknown> => {
-  if (!raw || typeof raw !== "object") {
-    throw new Error("Invalid recipe payload");
+const normalizeEnvironment = (
+  data: MutableRecipeInput,
+  extraArguments: MutableRecipeInput,
+): void => {
+  const envCandidates = ["env_vars", "env-vars", "envVars"];
+  const hasEnvironmentVariables =
+    data["env_vars"] !== undefined ||
+    data["env-vars"] !== undefined ||
+    data["envVars"] !== undefined;
+  if (!hasEnvironmentVariables) {
+    for (const key of envCandidates) {
+      if (key in extraArguments) {
+        data["env_vars"] = extraArguments[key];
+        delete extraArguments[key];
+        break;
+      }
+    }
+  } else if (data["env-vars"]) {
+    data["env_vars"] = data["env-vars"];
+    delete data["env-vars"];
+  } else if (data["envVars"]) {
+    data["env_vars"] = data["envVars"];
+    delete data["envVars"];
   }
-  const data = { ...(raw as Record<string, unknown>) };
-  const extraArguments = { ...((data["extra_args"] as Record<string, unknown> | undefined) ?? {}) };
+};
+
+export const normalizeRecipeInput = (raw: RecipeInputValue): MutableRecipeInput => {
+  const data: MutableRecipeInput = { ...Schema.decodeUnknownSync(inputObjectSchema)(raw) };
+  const extraArguments: MutableRecipeInput = {
+    ...Schema.decodeUnknownSync(inputObjectSchema)(data["extra_args"] ?? {}),
+  };
   const legacyVision = extraArguments["vision"];
 
   if (
     data["vision"] === undefined &&
-    (legacyVision === null || typeof legacyVision === "boolean")
+    (legacyVision === null || Schema.is(Schema.Boolean)(legacyVision))
   ) {
     data["vision"] = legacyVision;
   }
@@ -105,26 +137,7 @@ export const normalizeRecipeInput = (raw: unknown): Record<string, unknown> => {
     delete extraArguments[key];
   }
 
-  const envCandidates = ["env_vars", "env-vars", "envVars"];
-  const hasEnvironmentVariables =
-    data["env_vars"] !== undefined ||
-    data["env-vars"] !== undefined ||
-    data["envVars"] !== undefined;
-  if (!hasEnvironmentVariables) {
-    for (const key of envCandidates) {
-      if (key in extraArguments) {
-        data["env_vars"] = extraArguments[key];
-        delete extraArguments[key];
-        break;
-      }
-    }
-  } else if (data["env-vars"]) {
-    data["env_vars"] = data["env-vars"];
-    delete data["env-vars"];
-  } else if (data["envVars"]) {
-    data["env_vars"] = data["envVars"];
-    delete data["envVars"];
-  }
+  normalizeEnvironment(data, extraArguments);
 
   const knownKeys = new Set([
     "id",
@@ -198,43 +211,65 @@ export const recipeSchema = Schema.Struct({
   port: integerSchema,
   served_model_name: nullableStringSchema,
   python_path: nullableStringSchema,
-  extra_args: Schema.Record(Schema.String, Schema.Unknown),
+  extra_args: Schema.Record(Schema.String, Schema.Json),
   max_thinking_tokens: Schema.Union([Schema.Null, integerSchema]),
   thinking_mode: Schema.String,
 });
 
-export const parseRecipe = (raw: unknown): Recipe => {
+const recipeNumericDefaults = (normalized: RecipeInput) => ({
+  vision: normalized["vision"] ?? null,
+  backend: normalized["backend"] ?? "vllm",
+  env_vars: normalized["env_vars"] ?? null,
+  tensor_parallel_size: coercePositiveInt(normalized["tensor_parallel_size"], 1),
+  pipeline_parallel_size: coercePositiveInt(normalized["pipeline_parallel_size"], 1),
+  max_model_len: coercePositiveInt(normalized["max_model_len"], 32768),
+  gpu_memory_utilization: clampFraction(normalized["gpu_memory_utilization"], 0.9),
+  kv_cache_dtype: normalized["kv_cache_dtype"] ?? "auto",
+  max_num_seqs: coercePositiveInt(normalized["max_num_seqs"], 256),
+  trust_remote_code: coerceBoolean(
+    normalized["trust_remote_code"],
+    process.env["LOCAL_STUDIO_DEFAULT_TRUST_REMOTE_CODE"] !== "false",
+  ),
+});
+
+const recipeOptionalDefaults = (normalized: RecipeInput) => ({
+  tool_call_parser: normalized["tool_call_parser"] ?? null,
+  reasoning_parser: normalized["reasoning_parser"] ?? null,
+  enable_auto_tool_choice: coerceBoolean(normalized["enable_auto_tool_choice"], false),
+  quantization: normalized["quantization"] ?? null,
+  dtype: normalized["dtype"] ?? null,
+  host: normalized["host"] ?? "0.0.0.0",
+  port: coercePositiveInt(normalized["port"], 8000, 65535),
+  served_model_name: normalized["served_model_name"] ?? null,
+  python_path: normalized["python_path"] ?? null,
+  extra_args: normalized["extra_args"] ?? {},
+  max_thinking_tokens: coerceNullableNumber(normalized["max_thinking_tokens"]),
+  thinking_mode: normalized["thinking_mode"] ?? "conservative",
+});
+
+const mutableExtraArgument = (value: Schema.Json): RecipeExtraArgument => {
+  if (
+    value === null ||
+    Schema.is(Schema.Union([Schema.String, Schema.Number, Schema.Boolean]))(value)
+  ) {
+    return value;
+  }
+  if (Schema.is(Schema.Array(Schema.Json))(value)) return value.map(mutableExtraArgument);
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [key, mutableExtraArgument(entry)]),
+  );
+};
+
+export const parseRecipe = (raw: RecipeInputValue): Recipe => {
   const normalized = normalizeRecipeInput(raw);
+  const defaults = {
+    ...normalized,
+    ...recipeNumericDefaults(normalized),
+    ...recipeOptionalDefaults(normalized),
+  };
   const parsed = Schema.decodeUnknownSync(recipeSchema, {
     onExcessProperty: "preserve",
-  })({
-    ...normalized,
-    vision: normalized["vision"] ?? null,
-    backend: normalized["backend"] ?? "vllm",
-    env_vars: normalized["env_vars"] ?? null,
-    tensor_parallel_size: coercePositiveInt(normalized["tensor_parallel_size"], 1),
-    pipeline_parallel_size: coercePositiveInt(normalized["pipeline_parallel_size"], 1),
-    max_model_len: coercePositiveInt(normalized["max_model_len"], 32768),
-    gpu_memory_utilization: clampFraction(normalized["gpu_memory_utilization"], 0.9),
-    kv_cache_dtype: normalized["kv_cache_dtype"] ?? "auto",
-    max_num_seqs: coercePositiveInt(normalized["max_num_seqs"], 256),
-    trust_remote_code: coerceBoolean(
-      normalized["trust_remote_code"],
-      process.env["LOCAL_STUDIO_DEFAULT_TRUST_REMOTE_CODE"] !== "false",
-    ),
-    tool_call_parser: normalized["tool_call_parser"] ?? null,
-    reasoning_parser: normalized["reasoning_parser"] ?? null,
-    enable_auto_tool_choice: coerceBoolean(normalized["enable_auto_tool_choice"], false),
-    quantization: normalized["quantization"] ?? null,
-    dtype: normalized["dtype"] ?? null,
-    host: normalized["host"] ?? "0.0.0.0",
-    port: coercePositiveInt(normalized["port"], 8000, 65535),
-    served_model_name: normalized["served_model_name"] ?? null,
-    python_path: normalized["python_path"] ?? null,
-    extra_args: normalized["extra_args"] ?? {},
-    max_thinking_tokens: coerceNullableNumber(normalized["max_thinking_tokens"]),
-    thinking_mode: normalized["thinking_mode"] ?? "conservative",
-  });
+  })(defaults);
   const environmentVariables = parsed.env_vars
     ? Object.fromEntries(
         Object.entries(parsed.env_vars).map(([key, value]) => [key, String(value)]),
@@ -252,6 +287,8 @@ export const parseRecipe = (raw: unknown): Recipe => {
     served_model_name: parsed.served_model_name ?? null,
     python_path: parsed.python_path ?? null,
     max_thinking_tokens: parsed.max_thinking_tokens ?? null,
-    extra_args: parsed.extra_args ?? {},
+    extra_args: Object.fromEntries(
+      Object.entries(parsed.extra_args).map(([key, value]) => [key, mutableExtraArgument(value)]),
+    ),
   };
 };
