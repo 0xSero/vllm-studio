@@ -233,6 +233,51 @@ pub const State = struct {
         return output.toOwnedSlice();
     }
 
+    pub fn cloudCheckoutPayload(state: *State, database: *sqlite.Database, document: []const u8) ![]u8 {
+        var parsed = std.json.parseFromSlice(std.json.Value, state.allocator, document, .{}) catch return error.InvalidProjectWorkspacePayload;
+        defer parsed.deinit();
+        if (parsed.value != .object) return error.InvalidProjectWorkspacePayload;
+        const project_id = stringField(parsed.value.object, "projectId") orelse return error.ProjectIdRequired;
+        try database.lock(state.io);
+        var project = (try project_repository.getById(state.allocator, database, project_id)) orelse {
+            database.unlock(state.io);
+            return error.ProjectNotFound;
+        };
+        database.unlock(state.io);
+        defer project.deinit();
+        const account_id = project.account_id orelse return error.CodeStorageAccountRequired;
+        const repository_name = project.repository orelse return error.CodeStorageRepositoryRequired;
+        const repository_url = project.repository_url orelse return error.CodeStorageRepositoryRequired;
+        try state.mutex.lock(state.io);
+        var accounts = repository.load(state.allocator, state.io, state.data_dir) catch |failure| {
+            state.mutex.unlock(state.io);
+            return failure;
+        };
+        defer accounts.deinit();
+        const account = accounts.find(account_id) orelse {
+            state.mutex.unlock(state.io);
+            return error.CodeStorageAccountNotFound;
+        };
+        const private_key = repository.resolveSecret(state.allocator, state.io, state.environment, state.data_dir, &accounts, account.secret_ref, account.secret_provider) catch |failure| {
+            state.mutex.unlock(state.io);
+            return failure;
+        };
+        state.mutex.unlock(state.io);
+        defer state.allocator.free(private_key);
+        const token = try code_storage_auth.mint(state.allocator, state.io, account.subject, account_id, private_key, repository_name, &.{ "git:read", "git:write" });
+        defer state.allocator.free(token);
+        var output: Io.Writer.Allocating = .init(state.allocator);
+        errdefer output.deinit();
+        try output.writer.writeAll("{\"url\":");
+        try std.json.Stringify.value(repository_url, .{}, &output.writer);
+        try output.writer.writeAll(",\"username\":\"t\",\"password\":");
+        try std.json.Stringify.value(token, .{}, &output.writer);
+        try output.writer.writeAll(",\"ref\":");
+        try std.json.Stringify.value(project.default_branch, .{}, &output.writer);
+        try output.writer.writeByte('}');
+        return output.toOwnedSlice();
+    }
+
     pub fn archiveWorkspace(state: *State, database: *sqlite.Database, project_id: []const u8, session_id: []const u8) !void {
         try database.lock(state.io);
         var project = (try project_repository.getById(state.allocator, database, project_id)) orelse {

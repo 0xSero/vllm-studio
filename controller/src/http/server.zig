@@ -709,14 +709,7 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         defer if (document) |value| allocator.free(value);
         const account_id = if (request.head.method == .DELETE) try request_tools.queryParameter(allocator, request.head.target, "accountId") else null;
         defer if (account_id) |value| allocator.free(value);
-        const response = if (mode != .standalone) remote: {
-            const internal_path = if (account_id) |value|
-                try std.fmt.allocPrint(allocator, "/internal/node/v1/accounts/sandboxes?accountId={s}", .{value})
-            else
-                try allocator.dupe(u8, "/internal/node/v1/accounts/sandboxes");
-            defer allocator.free(internal_path);
-            break :remote agent_code_storage.forward(allocator, io, client, database, internal_path, request.head.method, document);
-        } else switch (request.head.method) {
+        const response = switch (request.head.method) {
             .GET => code_storage.sandboxAccountsPayload(),
             .POST => code_storage.connectSandboxPayload(document orelse return false),
             .DELETE => code_storage.disconnectSandboxPayload(account_id orelse return respondDownloadError(request, .bad_request, "accountId is required")),
@@ -1116,6 +1109,14 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         const document = try readBoundedJsonBody(allocator, request) orelse return false;
         defer allocator.free(document);
         const payload = code_storage.prepareWorkspacePayload(database, document) catch |failure| return respondProjectFailure(request, failure);
+        defer allocator.free(payload);
+        try request.respond(payload, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
+        return request.head.keep_alive;
+    }
+    if (std.mem.eql(u8, route.path, "/internal/node/v1/projects/cloud-checkout")) {
+        const document = try readBoundedJsonBody(allocator, request) orelse return false;
+        defer allocator.free(document);
+        const payload = code_storage.cloudCheckoutPayload(database, document) catch |failure| return respondProjectFailure(request, failure);
         defer allocator.free(payload);
         try request.respond(payload, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
         return request.head.keep_alive;

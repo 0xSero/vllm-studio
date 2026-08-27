@@ -8,18 +8,20 @@ const Io = std.Io;
 const http = std.http;
 const max_response_bytes = 16 * 1024 * 1024;
 const controller_port = 8080;
-const worker_image = "ghcr.io/jake-molnia/local-studio-controller:main";
+const worker_image = "ghcr.io/jake-molnia/local-studio-controller:nightly";
 
 pub const Provisioned = struct {
     allocator: std.mem.Allocator,
     provider_id: []u8,
     node_id: []u8,
     address: []u8,
+    workspace: []u8,
 
     pub fn deinit(worker: *Provisioned) void {
         worker.allocator.free(worker.provider_id);
         worker.allocator.free(worker.node_id);
         worker.allocator.free(worker.address);
+        worker.allocator.free(worker.workspace);
         worker.* = undefined;
     }
 };
@@ -56,7 +58,7 @@ pub const Manager = struct {
         manager.* = undefined;
     }
 
-    pub fn provision(manager: *Manager, client: *http.Client, database: *sqlite.Database, worker_id: []const u8, session_id: []const u8, account_id: []const u8, requested_harness: []const u8, image: []const u8) !Provisioned {
+    pub fn provision(manager: *Manager, client: *http.Client, database: *sqlite.Database, worker_id: []const u8, session_id: []const u8, account_id: []const u8, requested_harness: []const u8, image: []const u8, checkout: []const u8) !Provisioned {
         var account_credential = try manager.loadCredential(account_id);
         defer account_credential.deinit();
         var controller_key_bytes: [32]u8 = undefined;
@@ -79,6 +81,8 @@ pub const Manager = struct {
         const catalog = try manager.waitForCatalog(client, address, controller_key[0..]);
         defer manager.allocator.free(catalog);
         if (!catalogHasHarness(manager.allocator, catalog, requested_harness)) return error.CloudHarnessUnavailable;
+        const workspace = try manager.cloneWorkspace(client, &account_credential, provider_id, session_id, checkout);
+        errdefer manager.allocator.free(workspace);
         const node_id = try std.fmt.allocPrint(manager.allocator, "daytona-{s}", .{worker_id[0..@min(worker_id.len, 20)]});
         errdefer manager.allocator.free(node_id);
         const enrollment = try enrollmentDocument(manager.allocator, node_id, address, controller_key[0..], catalog);
@@ -91,6 +95,7 @@ pub const Manager = struct {
             .provider_id = provider_id,
             .node_id = node_id,
             .address = address,
+            .workspace = workspace,
         };
     }
 
@@ -182,7 +187,7 @@ pub const Manager = struct {
         try std.json.Stringify.value(session_id, .{}, &output.writer);
         try output.writer.writeAll("},\"env\":{\"LOCAL_STUDIO_CONTROLLER_MODE\":\"worker\",\"LOCAL_STUDIO_HOST\":\"0.0.0.0\",\"LOCAL_STUDIO_PORT\":\"8080\",\"LOCAL_STUDIO_API_KEY\":");
         try std.json.Stringify.value(controller_key, .{}, &output.writer);
-        try output.writer.writeAll(",\"LOCAL_STUDIO_DATA_DIR\":\"/home/studio/.local-studio\",\"LOCAL_STUDIO_MODELS_DIR\":\"/home/studio/models\",\"LOCAL_STUDIO_CLOUD_SESSION_ID\":");
+        try output.writer.writeAll(",\"LOCAL_STUDIO_DATA_DIR\":\"/home/node/.local-studio\",\"LOCAL_STUDIO_MODELS_DIR\":\"/home/node/models\",\"LOCAL_STUDIO_CLOUD_SESSION_ID\":");
         try std.json.Stringify.value(session_id, .{}, &output.writer);
         if (manager.environment.get("LOCAL_STUDIO_DAYTONA_SECRETSPEC_PROVIDER")) |provider| {
             try output.writer.writeAll(",\"LOCAL_STUDIO_SECRETSPEC_PROVIDER\":");
@@ -227,11 +232,50 @@ pub const Manager = struct {
         const response = try manager.request(client, account_credential.endpoint, account_credential.api_key, path, method, if (method == .POST) "{}" else null);
         manager.allocator.free(response);
     }
+
+    fn cloneWorkspace(manager: *Manager, client: *http.Client, account_credential: *const Credential, provider_id: []const u8, session_id: []const u8, checkout: []const u8) ![]u8 {
+        var parsed = std.json.parseFromSlice(std.json.Value, manager.allocator, checkout, .{}) catch return error.InvalidCloudCheckout;
+        defer parsed.deinit();
+        if (parsed.value != .object) return error.InvalidCloudCheckout;
+        const repository_url = stringField(parsed.value.object, "url") orelse return error.InvalidCloudCheckout;
+        const username = stringField(parsed.value.object, "username") orelse return error.InvalidCloudCheckout;
+        const password = stringField(parsed.value.object, "password") orelse return error.InvalidCloudCheckout;
+        const reference = stringField(parsed.value.object, "ref") orelse "main";
+        const workspace = try workspacePath(manager.allocator, session_id);
+        errdefer manager.allocator.free(workspace);
+        var document: Io.Writer.Allocating = .init(manager.allocator);
+        defer document.deinit();
+        try document.writer.writeAll("{\"branch\":");
+        try std.json.Stringify.value(reference, .{}, &document.writer);
+        try document.writer.writeAll(",\"commit_id\":\"\",\"depth\":0,\"insecure_skip_tls\":false,\"password\":");
+        try std.json.Stringify.value(password, .{}, &document.writer);
+        try document.writer.writeAll(",\"path\":");
+        try std.json.Stringify.value(workspace, .{}, &document.writer);
+        try document.writer.writeAll(",\"url\":");
+        try std.json.Stringify.value(repository_url, .{}, &document.writer);
+        try document.writer.writeAll(",\"username\":");
+        try std.json.Stringify.value(username, .{}, &document.writer);
+        try document.writer.writeByte('}');
+        const url = try std.fmt.allocPrint(manager.allocator, "https://proxy.app.daytona.io/toolbox/{s}/git/clone", .{provider_id});
+        defer manager.allocator.free(url);
+        const authorization = try std.fmt.allocPrint(manager.allocator, "Bearer {s}", .{account_credential.api_key});
+        defer manager.allocator.free(authorization);
+        const response = try fetch(manager.allocator, client, url, .POST, document.writer.buffered(), &.{
+            .{ .name = "Authorization", .value = authorization },
+            .{ .name = "Content-Type", .value = "application/json" },
+        });
+        manager.allocator.free(response);
+        return workspace;
+    }
 };
+
+pub fn workspacePath(allocator: std.mem.Allocator, session_id: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "/home/node/workspaces/{s}", .{session_id});
+}
 
 fn fetch(allocator: std.mem.Allocator, client: *http.Client, url: []const u8, method: http.Method, payload: ?[]const u8, headers: []const http.Header) ![]u8 {
     const storage = try allocator.alloc(u8, max_response_bytes);
-    errdefer allocator.free(storage);
+    defer allocator.free(storage);
     var output: Io.Writer = .fixed(storage);
     const response = try client.fetch(.{
         .location = .{ .url = url },
@@ -243,14 +287,9 @@ fn fetch(allocator: std.mem.Allocator, client: *http.Client, url: []const u8, me
         .extra_headers = headers,
         .response_writer = &output,
     });
-    if (response.status.class() != .success) {
-        allocator.free(storage);
-        return error.DaytonaRequestRejected;
-    }
+    if (response.status.class() != .success) return error.DaytonaRequestRejected;
     const body = output.buffered();
-    const owned = try allocator.dupe(u8, body);
-    allocator.free(storage);
-    return owned;
+    return allocator.dupe(u8, body);
 }
 
 fn requiredResponseString(allocator: std.mem.Allocator, document: []const u8, name: []const u8) ![]u8 {

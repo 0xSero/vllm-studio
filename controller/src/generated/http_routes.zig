@@ -10,7 +10,7 @@ pub const Route = struct {
     streaming: Streaming,
 };
 
-pub const route_count: usize = 283;
+pub const route_count: usize = 284;
 
 pub const routes = [_]Route{
     .{ .method = .GET, .path = "/api/docs", .ownership = .shared, .streaming = .never },
@@ -228,6 +228,7 @@ pub const routes = [_]Route{
     .{ .method = .DELETE, .path = "/internal/node/v1/projects", .ownership = .worker, .streaming = .never },
     .{ .method = .GET, .path = "/internal/node/v1/projects/repositories", .ownership = .worker, .streaming = .never },
     .{ .method = .POST, .path = "/internal/node/v1/projects/workspace", .ownership = .worker, .streaming = .never },
+    .{ .method = .POST, .path = "/internal/node/v1/projects/cloud-checkout", .ownership = .worker, .streaming = .never },
     .{ .method = .GET, .path = "/internal/node/v1/projects/refs", .ownership = .worker, .streaming = .never },
     .{ .method = .GET, .path = "/internal/node/v1/connectors", .ownership = .worker, .streaming = .never },
     .{ .method = .POST, .path = "/internal/node/v1/connectors", .ownership = .worker, .streaming = .never },

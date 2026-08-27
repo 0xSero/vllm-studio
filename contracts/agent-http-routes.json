@@ -563,6 +563,12 @@
       "streaming": "never"
     },
     {
+      "method": "POST",
+      "path": "/internal/node/v1/projects/cloud-checkout",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
       "method": "GET",
       "path": "/internal/node/v1/projects/refs",
       "ownership": "worker",
