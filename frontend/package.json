@@ -29,7 +29,7 @@
     "desktop:start": "electron desktop/dist/main.js",
     "desktop:start:dev": "LOCAL_STUDIO_DESKTOP_DEV_SERVER_URL=http://127.0.0.1:3000 electron desktop/dist/main.js",
     "desktop:build": "npm run build && npm run desktop:build:main",
-    "desktop:dev": "npm run desktop:build:main && concurrently -k -n NEXT,ELECTRON -c cyan,magenta \"npm run dev\" \"node -e \\\"setTimeout(() => process.exit(0), 3000)\\\" && npm run desktop:start:dev\"",
+    "desktop:dev": "npm run desktop:build:main && concurrently -k -n CONTROLLER,NEXT,ELECTRON -c yellow,cyan,magenta \"bun run --cwd ../controller dev\" \"LOCAL_STUDIO_DESKTOP=1 npm run dev\" \"node -e \\\"setTimeout(() => process.exit(0), 3000)\\\" && npm run desktop:start:dev\"",
     "desktop:dist": "npm run desktop:build && electron-builder --config desktop/electron-builder.yml",
     "desktop:dist:dev": "npm run desktop:build && electron-builder --config desktop/electron-builder.yml --config.appId=org.local.studio.desktop.dev --config.productName=\"Local Studio Dev\" --config.extraMetadata.localStudioChannel=dev --config.directories.output=dist-desktop-dev",
     "desktop:dist:notarized": "npm run desktop:build && electron-builder --config desktop/electron-builder.yml --config.mac.notarize=true",
