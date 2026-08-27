@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
 import {
-  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -10,8 +9,9 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
-import { repoRoot } from "./lib.mjs";
+import { copyPackageTree, packageDirectoryFor, readPackageManifest, repoRoot } from "./lib.mjs";
 
 const packageDir = path.join(repoRoot, "services", "agent-runtime");
 const distDir = path.join(packageDir, "dist");
@@ -62,22 +62,26 @@ export function bundleAgentRuntime() {
     throw Error(`Agent runtime bundle failed with status ${build.status ?? "unknown"}`);
   }
 
-  const lydellDir = path.join(packageDir, "node_modules", "@lydell");
-  if (existsSync(lydellDir)) {
-    for (const entry of readdirSync(lydellDir)) {
-      if (entry.startsWith("node-pty-")) runtimePackages.push(`@lydell/${entry}`);
+  const packageRequire = createRequire(path.join(packageDir, "package.json"));
+  const nodePtyDirectory = packageDirectoryFor(packageRequire, "@lydell/node-pty");
+  const nodePtyManifest = readPackageManifest(path.join(nodePtyDirectory, "package.json"));
+  for (const packageName of Object.keys(nodePtyManifest.optionalDependencies)) {
+    try {
+      packageDirectoryFor(packageRequire, packageName);
+      runtimePackages.push(packageName);
+    } catch {
+      continue;
     }
   }
 
+  const copiedPackages = new Map();
   for (const packageName of runtimePackages) {
-    const segments = packageName.split("/");
-    const source = path.join(packageDir, "node_modules", ...segments);
-    const destination = path.join(distDir, "node_modules", ...segments);
-    if (!existsSync(path.join(source, "package.json"))) {
-      throw Error(`Missing browser runtime package: ${packageName}`);
-    }
-    mkdirSync(path.dirname(destination), { recursive: true });
-    cpSync(source, destination, { recursive: true });
+    copyPackageTree(
+      packageRequire,
+      packageName,
+      path.join(distDir, "node_modules", ...packageName.split("/")),
+      copiedPackages,
+    );
   }
 
   const bundle = readFileSync(bundlePath, "utf8");
