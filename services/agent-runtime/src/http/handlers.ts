@@ -1,8 +1,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { Effect } from "effect";
-import { createAgentSessionRuntime } from "@earendil-works/pi-coding-agent";
+import { Effect, Option, Schema } from "effect";
 import {
   controlTargetHasActiveTurn,
   isAgentThinkingLevel,
@@ -20,7 +19,6 @@ import {
   sanitizeComposerPromptTemplates,
   sanitizeComposerSkills,
   selectedContextInstructions,
-  type ComposerPromptTemplateRef,
   type ComposerSkillRef,
 } from "../../../../shared/agent/composer-refs";
 import { piResourceDiagnostics, piRuntimeManager } from "../pi-runtime";
@@ -35,18 +33,12 @@ import {
 } from "./stream-order";
 
 
-function adoptRuntimePiSessionId(session: unknown, piSessionId: string | null | undefined) {
+function adoptRuntimePiSessionId(
+  session: PiAgentSession,
+  piSessionId: string | null | undefined,
+) {
   const next = piSessionId?.trim();
-  if (!next || !session || typeof session !== "object") return;
-  const runtime = session as {
-    adoptPiSessionId?: (value: string) => void;
-    currentPiSessionId?: string | null;
-  };
-  if (typeof runtime.adoptPiSessionId === "function") {
-    runtime.adoptPiSessionId(next);
-  } else if (!runtime.currentPiSessionId) {
-    runtime.currentPiSessionId = next;
-  }
+  if (next) session.adoptPiSessionId(next);
 }
 
 type ResolvedTurnSession = {
@@ -117,7 +109,7 @@ function launchPrompt(
       try: () =>
         resolved.session.prompt(turn.message, () => undefined, {
           streamingBehavior: resolved.effectiveStreamingBehavior,
-          ...(commandImages ? { images: commandImages } : {}),
+          images: commandImages,
         }),
       catch: (error) => error,
     }).pipe(Effect.catch(() => Effect.void)),
@@ -175,15 +167,16 @@ function commandResult(
   options: { error?: string; piSessionId?: string | null } = {},
 ): AgentTurnCommandResult {
   const status = resolved.session.status;
-  return {
+  const result: AgentTurnCommandResult = {
     type: "command",
     outcome,
     runtimeSessionId: resolved.sessionId,
     piSessionId: options.piSessionId ?? status.piSessionId,
     active: status.active,
     status,
-    ...(options.error ? { error: options.error } : {}),
   };
+  if (options.error) result.error = options.error;
+  return result;
 }
 
 export function handleAgentTurn(request: Request): Promise<Response> {
@@ -262,54 +255,84 @@ function turnRouteEffect(request: Request): Effect.Effect<Response, unknown> {
 }
 
 
+const AgentAbortRequestSchema = Schema.Struct({
+  sessionId: Schema.optional(Schema.String),
+});
+
+type AgentAbortRequest = typeof AgentAbortRequestSchema.Type;
+const EMPTY_AGENT_ABORT_REQUEST: AgentAbortRequest = {};
+
 export async function handleAgentAbort(request: Request): Promise<Response> {
-  const body = (await request.json().catch(() => ({}))) as { sessionId?: string };
-  const sessionId =
-    typeof body.sessionId === "string" && body.sessionId.trim() ? body.sessionId.trim() : "default";
+  const rawBody = await request.json().catch(() => null);
+  const body = Option.getOrElse(
+    Schema.decodeUnknownOption(AgentAbortRequestSchema)(rawBody),
+    () => EMPTY_AGENT_ABORT_REQUEST,
+  );
+  const sessionId = body.sessionId?.trim() || "default";
   // Surface what the stop cleared so the client can put those messages back in
   // front of the user instead of dropping them on the floor.
   const cleared = await piRuntimeManager.getSession(sessionId).abort();
   return Response.json({ ok: true, cleared });
 }
 
+const ExtensionUiRequestSchema = Schema.Struct({
+  sessionId: Schema.optional(Schema.Unknown),
+  requestId: Schema.optional(Schema.Unknown),
+  value: Schema.optional(Schema.Unknown),
+  confirmed: Schema.optional(Schema.Unknown),
+  cancelled: Schema.optional(Schema.Unknown),
+});
+
+const decodeExtensionUiRequest = Schema.decodeUnknownOption(ExtensionUiRequestSchema);
+const decodeText = Schema.decodeUnknownOption(Schema.String);
+const decodeFlag = Schema.decodeUnknownOption(Schema.Boolean);
+
+type ExtensionUiResponse = {
+  value?: string;
+  confirmed?: boolean;
+  cancelled?: boolean;
+};
+
 export async function handleExtensionUiResponse(request: Request): Promise<Response> {
-  const body = (await request.json().catch(() => null)) as
-    | {
-        sessionId?: unknown;
-        requestId?: unknown;
-        value?: unknown;
-        confirmed?: unknown;
-        cancelled?: unknown;
-      }
-    | null;
-  const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
-  const requestId = typeof body?.requestId === "string" ? body.requestId.trim() : "";
+  const rawBody = await request.json().catch(() => null);
+  const body = Option.getOrNull(decodeExtensionUiRequest(rawBody));
+  const sessionId = Option.getOrElse(decodeText(body?.sessionId), () => "").trim();
+  const requestId = Option.getOrElse(decodeText(body?.requestId), () => "").trim();
   if (!sessionId || !requestId) return jsonError("sessionId and requestId are required");
   const resolved = piRuntimeManager.findSessionForLookup(sessionId);
   if (!resolved) return jsonError("Runtime session not found", 404);
-  const accepted = resolved.session.respondExtensionUi(requestId, {
-    ...(typeof body?.value === "string" ? { value: body.value.slice(0, 32_000) } : {}),
-    ...(typeof body?.confirmed === "boolean" ? { confirmed: body.confirmed } : {}),
-    cancelled: body?.cancelled === true,
-  });
-  return accepted ? Response.json({ ok: true }) : jsonError("Extension request is no longer active", 409);
+
+  const response: ExtensionUiResponse = {
+    cancelled: Option.getOrElse(decodeFlag(body?.cancelled), () => false) === true,
+  };
+  const value = Option.getOrUndefined(decodeText(body?.value));
+  const confirmed = Option.getOrUndefined(decodeFlag(body?.confirmed));
+  if (value !== undefined) response.value = value.slice(0, 32_000);
+  if (confirmed !== undefined) response.confirmed = confirmed;
+
+  const accepted = resolved.session.respondExtensionUi(requestId, response);
+  return accepted
+    ? Response.json({ ok: true })
+    : jsonError("Extension request is no longer active", 409);
 }
 
+const CompactRequestSchema = Schema.Struct({
+  sessionId: Schema.optional(Schema.String),
+  modelId: Schema.optional(Schema.String),
+  thinkingLevel: Schema.optional(Schema.String),
+  toolAccess: Schema.optional(Schema.Literals(["read_only", "full"])),
+  cwd: Schema.optional(Schema.String),
+  piSessionId: Schema.optional(Schema.NullOr(Schema.String)),
+  customInstructions: Schema.optional(Schema.String),
+  browserToolEnabled: Schema.optional(Schema.Boolean),
+  browserSessionId: Schema.optional(Schema.String),
+  browserBackend: Schema.optional(Schema.Literals(["embedded", "sitegeist"])),
+  skills: Schema.optional(Schema.Unknown),
+  promptTemplates: Schema.optional(Schema.Unknown),
+});
 
-type CompactRequest = {
-  sessionId?: string;
-  modelId?: string;
-  thinkingLevel?: AgentThinkingLevel;
-  toolAccess?: "read_only" | "full";
-  cwd?: string;
-  piSessionId?: string | null;
-  customInstructions?: string;
-  browserToolEnabled?: boolean;
-  browserSessionId?: string;
-  browserBackend?: "embedded" | "sitegeist";
-  skills?: ComposerSkillRef[];
-  promptTemplates?: ComposerPromptTemplateRef[];
-};
+type CompactRequest = typeof CompactRequestSchema.Type;
+
 
 function compactInstructions(skills: ComposerSkillRef[], custom?: string): string | undefined {
   const selected = selectedContextInstructions(skills);
@@ -328,10 +351,13 @@ export function handleAgentCompact(request: Request): Promise<Response> {
 
 function compactRouteEffect(request: Request): Effect.Effect<Response, unknown> {
   return Effect.gen(function* () {
-    const body = (yield* Effect.tryPromise({
+    const rawBody = yield* Effect.tryPromise({
       try: () => request.json(),
       catch: () => null,
-    })) as CompactRequest | null;
+    });
+    const body: CompactRequest | null = Option.getOrNull(
+      Schema.decodeUnknownOption(CompactRequestSchema)(rawBody),
+    );
     if (!body) return jsonError("Invalid JSON body");
 
     const sessionId = body.sessionId?.trim() || "default";
@@ -339,8 +365,12 @@ function compactRouteEffect(request: Request): Effect.Effect<Response, unknown> 
     const cwd = body.cwd?.trim() || undefined;
     const piSessionId = body.piSessionId?.trim() || null;
     if (!modelId) return jsonError("modelId is required");
-    if (body.thinkingLevel != null && !isAgentThinkingLevel(body.thinkingLevel)) {
-      return jsonError("thinkingLevel must be a supported reasoning level");
+    let thinkingLevel: AgentThinkingLevel | undefined;
+    if (body.thinkingLevel != null) {
+      if (!isAgentThinkingLevel(body.thinkingLevel)) {
+        return jsonError("thinkingLevel must be a supported reasoning level");
+      }
+      thinkingLevel = body.thinkingLevel;
     }
 
     return yield* Effect.gen(function* () {
@@ -350,11 +380,10 @@ function compactRouteEffect(request: Request): Effect.Effect<Response, unknown> 
       yield* Effect.tryPromise({
         try: () =>
           session.ensureStarted(modelId, cwd, piSessionId, {
-            thinkingLevel: body.thinkingLevel,
+            thinkingLevel,
             toolAccess: body.toolAccess === "full" ? "full" : "read_only",
             browserToolEnabled: body.browserToolEnabled === true,
-            browserSessionId:
-              typeof body.browserSessionId === "string" ? body.browserSessionId.trim() : undefined,
+            browserSessionId: body.browserSessionId?.trim() || undefined,
             browserBackend: body.browserBackend === "sitegeist" ? "sitegeist" : "embedded",
             skills,
             promptTemplates,
@@ -410,7 +439,11 @@ function parseSeq(value: string | null): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0;
 }
 
-function encode(payload: unknown, id?: number): Uint8Array {
+type RuntimeStreamPayload =
+  | { type: "pi"; seq: number; event: LoggedPiEvent["event"] }
+  | { type: "status"; phase: "done" | "idle" | "running"; session: PiAgentStatus };
+
+function encode(payload: RuntimeStreamPayload, id?: number): Uint8Array {
   const prefix = id === undefined ? "" : `id: ${id}\n`;
   return new TextEncoder().encode(`${prefix}data: ${JSON.stringify(payload)}\n\n`);
 }
@@ -438,7 +471,7 @@ export function handleRuntimeEvents(request: Request): Response {
       const replayQueue: LoggedPiEvent[] = [];
       const sentSeqs = new Set<number>();
       let after = replayAfterCursor(requestedAfter, session.status.eventSeq);
-      const safeSend = (payload: unknown, id?: number) => {
+      const safeSend = (payload: RuntimeStreamPayload, id?: number) => {
         if (closed) return;
         try {
           controller.enqueue(encode(payload, id));
@@ -544,7 +577,7 @@ export function handleSetupChecks(): Response {
       {
         id: "pi-sdk",
         label: "Pi SDK",
-        ok: typeof createAgentSessionRuntime === "function",
+        ok: true,
         value: "@earendil-works/pi-coding-agent",
         guidance: "The agent runtime is provided by the bundled Pi SDK package.",
       },
