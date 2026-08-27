@@ -3,6 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { NextRequest } from "next/server";
 import { requireApiAccess } from "@/lib/auth/guard";
+import { Schema } from "effect";
+
+const ResolveCwdInputSchema = Schema.Struct({
+  target: Schema.optional(Schema.String),
+  from: Schema.optional(Schema.String),
+  previous: Schema.optional(Schema.String),
+});
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,16 +23,15 @@ function expandTilde(target: string): string {
 export async function POST(request: NextRequest) {
   const denied = requireApiAccess(request);
   if (denied) return denied;
-  let body: unknown;
+  let body: typeof ResolveCwdInputSchema.Type;
   try {
-    body = await request.json();
+    body = Schema.decodeUnknownSync(ResolveCwdInputSchema)(await request.json());
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const record = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
-  const target = typeof record.target === "string" ? record.target.trim() : "";
-  const from = typeof record.from === "string" ? record.from.trim() : "";
-  const previous = typeof record.previous === "string" ? record.previous.trim() : "";
+  const target = body.target?.trim() ?? "";
+  const from = body.from?.trim() ?? "";
+  const previous = body.previous?.trim() ?? "";
 
   let next: string;
   if (!target || target === "~") {

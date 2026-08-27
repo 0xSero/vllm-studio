@@ -1,15 +1,18 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
 import type { NextRequest } from "next/server";
+import { Schema } from "effect";
 
 /** Standard JSON error response used by all app/api routes. */
 export function jsonError(message: string, status = 400): Response {
   return Response.json({ error: message }, { status });
 }
 
+const isError = Schema.is(Schema.instanceOf(Error));
+
 /** Normalize an unknown thrown value into a message for jsonError. */
-export function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
+export function errorMessage<ThrownValue>(error: ThrownValue, fallback: string): string {
+  return isError(error) ? error.message : fallback;
 }
 
 type CwdResult = { cwd: string; response?: never } | { cwd?: never; response: Response };

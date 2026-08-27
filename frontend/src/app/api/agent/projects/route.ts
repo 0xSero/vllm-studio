@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Schema } from "effect";
 import {
   addProjectToStore,
   listProjectsFromStore,
@@ -10,6 +11,8 @@ import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const AddProjectInputSchema = Schema.Struct({ path: Schema.optional(Schema.String) });
+
 export async function GET() {
   try {
     const projects = listProjectsFromStore();
@@ -20,13 +23,14 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  let body: { path?: unknown };
+  let rawBody: unknown;
   try {
-    body = (await request.json()) as { path?: unknown };
+    rawBody = await request.json();
   } catch {
     return jsonError("Invalid JSON body");
   }
-  const directoryPath = typeof body.path === "string" ? body.path.trim() : "";
+  const body = Schema.decodeUnknownOption(AddProjectInputSchema)(rawBody);
+  const directoryPath = body._tag === "Some" ? (body.value.path?.trim() ?? "") : "";
   if (!directoryPath) {
     return jsonError("path is required");
   }

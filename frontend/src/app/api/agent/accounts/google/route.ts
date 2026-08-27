@@ -26,7 +26,7 @@ const GoogleAccountInputSchema = Schema.Struct({
   account: Schema.Union([Schema.Literal("gmail"), Schema.Literal("google-calendar")]),
 });
 
-function failure(error: unknown) {
+function failure(error: Error) {
   const status = error instanceof GoogleAccountError ? error.status : 500;
   return NextResponse.json(
     { error: error instanceof Error ? error.message : "Google account failed" },
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
   try {
     return NextResponse.json({ account: await Effect.runPromise(getGoogleAccount()) });
   } catch (error) {
-    return failure(error);
+    return failure(error instanceof Error ? error : new Error("Google account failed"));
   }
 }
 
@@ -63,7 +63,7 @@ export async function PUT(request: NextRequest) {
     const account = await Effect.runPromise(saveGoogleClient(input));
     return NextResponse.json({ account });
   } catch (error) {
-    return failure(error);
+    return failure(error instanceof Error ? error : new Error("Google account failed"));
   } finally {
     closeGoogleConnections();
   }
@@ -90,7 +90,7 @@ export async function DELETE(request: NextRequest) {
     );
     return NextResponse.json({ account });
   } catch (error) {
-    return failure(error);
+    return failure(error instanceof Error ? error : new Error("Google account failed"));
   } finally {
     closeGoogleConnections();
   }

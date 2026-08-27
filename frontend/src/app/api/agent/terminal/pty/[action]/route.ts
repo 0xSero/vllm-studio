@@ -1,5 +1,6 @@
 import path from "node:path";
 import { NextRequest } from "next/server";
+import { Schema } from "effect";
 import { proxyToAgentRuntime } from "@/app/api/agent/proxy-to-runtime";
 import { requireApiAccess } from "@/lib/auth/guard";
 import { assertWorkspaceRoot } from "@/features/agent/fs-store";
@@ -18,6 +19,10 @@ export const dynamic = "force-dynamic";
 const POST_ACTIONS = new Set(["open", "input", "resize", "close"]);
 const BODY_LIMIT_BYTES = 64 * 1024;
 
+const OpenTerminalBodySchema = Schema.Struct({
+  cwd: Schema.optional(Schema.NullOr(Schema.String)),
+});
+
 function denyCrossSite(request: NextRequest): Response | null {
   const fetchSite = request.headers.get("sec-fetch-site")?.toLowerCase();
   if (fetchSite === "cross-site") {
@@ -33,9 +38,11 @@ async function validateOpenBody(request: NextRequest): Promise<Response | null> 
   } catch {
     return jsonError("Invalid JSON body");
   }
-  const cwd = (body as { cwd?: unknown })?.cwd;
+  const decoded = Schema.decodeUnknownOption(OpenTerminalBodySchema)(body);
+  if (decoded._tag === "None") return jsonError("cwd must be an absolute path");
+  const cwd = decoded.value.cwd;
   if (cwd === undefined || cwd === null || cwd === "") return null;
-  if (typeof cwd !== "string" || !path.isAbsolute(cwd)) {
+  if (!path.isAbsolute(cwd)) {
     return jsonError("cwd must be an absolute path");
   }
   try {

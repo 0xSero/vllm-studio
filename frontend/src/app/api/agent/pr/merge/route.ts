@@ -1,5 +1,6 @@
 import path from "node:path";
 import { NextRequest } from "next/server";
+import { Schema } from "effect";
 import { proxyToAgentRuntime } from "@/app/api/agent/proxy-to-runtime";
 import { requireApiAccess } from "@/lib/auth/guard";
 import { assertWorkspaceRoot } from "@/features/agent/fs-store";
@@ -12,6 +13,8 @@ export const dynamic = "force-dynamic";
 // refuses cross-site callers, and validates the body's cwd against the
 // workspace-root rules before the request reaches the loopback-only runtime.
 const BODY_LIMIT_BYTES = 64 * 1024;
+const MergeBodySchema = Schema.Struct({ cwd: Schema.String });
+const decodeMergeBody = Schema.decodeUnknownOption(MergeBodySchema);
 
 function denyCrossSite(request: NextRequest): Response | null {
   const fetchSite = request.headers.get("sec-fetch-site")?.toLowerCase();
@@ -28,14 +31,18 @@ async function validateBody(request: NextRequest): Promise<Response | null> {
   } catch {
     return jsonError("Invalid JSON body");
   }
-  const cwd = (body as { cwd?: unknown })?.cwd;
-  if (typeof cwd !== "string" || !path.isAbsolute(cwd)) {
+  const decoded = decodeMergeBody(body);
+  if (decoded._tag === "None" || !path.isAbsolute(decoded.value.cwd)) {
     return jsonError("cwd must be an absolute path");
   }
+  const { cwd } = decoded.value;
   try {
     assertWorkspaceRoot(path.resolve(cwd));
   } catch (error) {
-    return jsonError(error instanceof Error ? error.message : "cwd is not an allowed workspace", 403);
+    return jsonError(
+      error instanceof Error ? error.message : "cwd is not an allowed workspace",
+      403,
+    );
   }
   return null;
 }

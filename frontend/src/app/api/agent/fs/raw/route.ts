@@ -10,18 +10,18 @@ export const dynamic = "force-dynamic";
 // Only formats the Files panel renders inline get their real media type. Every
 // other file is served as an opaque download, so a repo's own .html/.svg can
 // never execute as a same-origin document.
-const INLINE_TYPES: Record<string, string> = {
-  ".apng": "image/apng",
-  ".avif": "image/avif",
-  ".bmp": "image/bmp",
-  ".gif": "image/gif",
-  ".ico": "image/x-icon",
-  ".jpeg": "image/jpeg",
-  ".jpg": "image/jpeg",
-  ".pdf": "application/pdf",
-  ".png": "image/png",
-  ".webp": "image/webp",
-};
+const INLINE_TYPES = new Map([
+  [".apng", "image/apng"],
+  [".avif", "image/avif"],
+  [".bmp", "image/bmp"],
+  [".gif", "image/gif"],
+  [".ico", "image/x-icon"],
+  [".jpeg", "image/jpeg"],
+  [".jpg", "image/jpeg"],
+  [".pdf", "application/pdf"],
+  [".png", "image/png"],
+  [".webp", "image/webp"],
+]);
 
 export async function GET(request: NextRequest) {
   const denied = requireApiAccess(request);
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   try {
     const { bytes, size, modifiedAt } = await readFileBytes(result.cwd, relPath);
     const name = path.basename(relPath);
-    const inlineType = INLINE_TYPES[path.extname(relPath).toLowerCase()];
+    const inlineType = INLINE_TYPES.get(path.extname(relPath).toLowerCase());
     return new Response(new Uint8Array(bytes), {
       headers: {
         "content-type": inlineType ?? "application/octet-stream",

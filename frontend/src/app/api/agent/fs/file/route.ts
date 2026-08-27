@@ -3,6 +3,10 @@ import path from "node:path";
 import { readFileSnippet, writeFileContent } from "@/features/agent/fs-store";
 import { requireApiAccess } from "@/lib/auth/guard";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
+import { Option, Schema } from "effect";
+
+const FileWriteInputSchema = Schema.Struct({ content: Schema.String });
+const decodeFileWriteInput = Schema.decodeUnknownOption(FileWriteInputSchema);
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,8 +42,8 @@ export async function PUT(request: NextRequest) {
     return jsonError("cwd must be absolute");
   }
   try {
-    const body = (await request.json()) as { content?: unknown };
-    if (typeof body.content !== "string") return jsonError("content must be a string");
+    const body = Option.getOrNull(decodeFileWriteInput(await request.json()));
+    if (!body) return jsonError("content must be a string");
     await writeFileContent(cwd, relPath, body.content);
     return Response.json(await readFileSnippet(cwd, relPath));
   } catch (error) {

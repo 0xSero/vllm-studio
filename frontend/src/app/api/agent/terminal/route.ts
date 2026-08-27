@@ -3,6 +3,7 @@ import { statSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { NextRequest } from "next/server";
+import { Schema } from "effect";
 import { parseTerminalRunRequest } from "@/features/agent/contracts";
 import { requireApiAccess } from "@/lib/auth/guard";
 import { assertWorkspaceRoot } from "@/features/agent/fs-store";
@@ -12,6 +13,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const execAsync = promisify(exec);
+
+const TerminalExecErrorSchema = Schema.Struct({
+  stdout: Schema.optional(Schema.String),
+  stderr: Schema.optional(Schema.String),
+  code: Schema.optional(Schema.Number),
+  message: Schema.optional(Schema.String),
+});
 
 function assertTerminalCwd(
   request: NextRequest,
@@ -55,13 +63,14 @@ export async function POST(request: NextRequest) {
     });
     return Response.json({ ok: true, command: parsed.value.command, stdout, stderr, exitCode: 0 });
   } catch (err) {
-    const error = err as { stdout?: string; stderr?: string; code?: number; message?: string };
+    const decoded = Schema.decodeUnknownOption(TerminalExecErrorSchema)(err);
+    const error = decoded._tag === "Some" ? decoded.value : {};
     return Response.json({
       ok: false,
       command: parsed.value.command,
       stdout: error.stdout ?? "",
       stderr: error.stderr ?? "",
-      exitCode: typeof error.code === "number" ? error.code : null,
+      exitCode: error.code ?? null,
       error: error.message ?? "Command failed",
     });
   }
