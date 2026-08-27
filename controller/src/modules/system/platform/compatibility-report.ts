@@ -158,13 +158,13 @@ export const buildCompatibilityReport = (args: {
     });
   }
 
-  const mlxInstalled = runtime.backends.mlx?.installed ?? false;
-  if (
-    !runtime.backends.vllm.installed &&
-    !runtime.backends.sglang.installed &&
-    !runtime.backends.llamacpp.installed &&
-    !mlxInstalled
-  ) {
+  const hasInstalledBackend = [
+    runtime.backends.vllm,
+    runtime.backends.sglang,
+    runtime.backends.llamacpp,
+    runtime.backends.mlx,
+  ].some((backend) => backend?.installed ?? false);
+  if (!hasInstalledBackend) {
     addCheck(checks, {
       id: "backends.none-installed",
       severity: "info",

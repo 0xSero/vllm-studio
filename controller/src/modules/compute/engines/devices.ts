@@ -7,6 +7,13 @@ export interface DeviceRuntimeFlags {
   readonly groupAdd: readonly string[];
 }
 
+export interface DeviceEnvironment {
+  readonly CUDA_VISIBLE_DEVICES?: string;
+  readonly HIP_VISIBLE_DEVICES?: string;
+  readonly ROCR_VISIBLE_DEVICES?: string;
+  readonly ONEAPI_DEVICE_SELECTOR?: string;
+}
+
 const joined = (devices: readonly DeviceId[]): string => devices.join(",");
 
 /** Indices for accelerators whose tooling selects by ordinal rather than UUID. */
@@ -16,7 +23,7 @@ const ordinals = (devices: readonly DeviceId[]): string =>
 export const deviceEnvironment = (
   accelerator: Accelerator,
   devices: readonly DeviceId[],
-): Readonly<Record<string, string>> => {
+): DeviceEnvironment => {
   if (devices.length === 0) return {};
   switch (accelerator) {
     case "cuda":

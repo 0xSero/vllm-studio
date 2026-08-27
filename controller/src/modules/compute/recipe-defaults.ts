@@ -2,6 +2,15 @@ import type { Recipe } from "../models/types";
 
 type ParserName = string | undefined;
 
+export type ExpertParallelOverride =
+  | boolean
+  | null
+  | string
+  | number
+  | ExpertParallelOverride[]
+  | { [key: string]: ExpertParallelOverride }
+  | undefined;
+
 const GLM_4_REASONING_TAGS = ["4.5", "4.6", "4.7", "4-5", "4-6", "4-7"];
 const GLM_5_REASONING_TAGS = ["5.0", "5.1", "5-0", "5-1"];
 const MINIMAX_M2_TAGS = ["m2", "m-2"];
@@ -78,7 +87,7 @@ export const getDefaultToolCallParser = (recipe: Recipe): ParserName => {
   return undefined;
 };
 
-export const shouldEnableExpertParallel = (recipe: Recipe, explicitOverride: unknown): boolean => {
+export const shouldEnableExpertParallel = (recipe: Recipe, explicitOverride: ExpertParallelOverride): boolean => {
   if (explicitOverride === true) {
     return true;
   }

@@ -18,13 +18,16 @@ const managedPackageSpec = (version?: string | null): string =>
 
 const probeBinary = (binary: string): Effect.Effect<BinaryProbeResult> =>
   probeVllmBinaryRuntime(binary).pipe(
-    Effect.map((result) => ({
-      installed: result.installed,
-      version: result.version,
-      binaryPath: result.binaryPath,
-      ...(result.pythonPath ? { pythonPath: result.pythonPath } : {}),
-      ...(result.message ? { message: result.message } : {}),
-    })),
+    Effect.map((result) => {
+      const probeResult: BinaryProbeResult = {
+        installed: result.installed,
+        version: result.version,
+        binaryPath: result.binaryPath,
+      };
+      if (result.pythonPath) probeResult.pythonPath = result.pythonPath;
+      if (result.message) probeResult.message = result.message;
+      return probeResult;
+    }),
   );
 
 const getRuntimeInfo = (

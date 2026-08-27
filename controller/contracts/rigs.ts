@@ -64,7 +64,7 @@ export const RIG_HARDWARE_TYPES: RigHardwareType[] = [
 
 export const RIG_NODE_ROLES: RigNodeRole[] = ["head", "worker", "standalone"];
 
-export const RIG_HARDWARE_TYPE_LABELS: Record<RigHardwareType, string> = {
+export const RIG_HARDWARE_TYPE_LABELS = {
   "dgx-spark": "DGX Spark",
   "gpu-desktop": "GPU Desktop",
   "gpu-server": "GPU Server",
@@ -72,13 +72,13 @@ export const RIG_HARDWARE_TYPE_LABELS: Record<RigHardwareType, string> = {
   laptop: "Laptop",
   "mini-pc": "Mini PC",
   custom: "Custom",
-};
+} satisfies Record<RigHardwareType, string>;
 
-export const RIG_NODE_ROLE_LABELS: Record<RigNodeRole, string> = {
+export const RIG_NODE_ROLE_LABELS = {
   head: "Head node",
   worker: "Worker node",
   standalone: "Standalone",
-};
+} satisfies Record<RigNodeRole, string>;
 
 export const RigAcceleratorInputSchema = Schema.Struct({
   name: Schema.String,

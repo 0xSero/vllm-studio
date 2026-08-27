@@ -2,6 +2,20 @@ import type { Backend } from "./recipes";
 
 export type EngineArgType = "string" | "number" | "boolean";
 
+export type EngineExtraArgValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly EngineExtraArgValue[]
+  | EngineExtraArgObject;
+
+export interface EngineExtraArgObject {
+  [key: string]: EngineExtraArgValue;
+}
+
+export interface EngineExtraArgs extends EngineExtraArgObject {}
+
 type EngineArgScope = "vllm" | "shared" | "device";
 
 type EngineArgSpec = {
@@ -161,12 +175,12 @@ const getForeignFlagKeys = (backend: Backend): ReadonlySet<string> => {
 
 export const stripForeignFlagKeys = (
   backend: Backend,
-  extraArgs: Record<string, unknown> | null | undefined,
-): Record<string, unknown> => {
+  extraArgs: EngineExtraArgs | null | undefined,
+): EngineExtraArgs => {
   const source = extraArgs ?? {};
   const foreign = getForeignFlagKeys(backend);
   if (foreign.size === 0) return { ...source };
-  const result: Record<string, unknown> = {};
+  const result: EngineExtraArgs = {};
   for (const [key, value] of Object.entries(source)) {
     if (foreign.has(normalizeEngineArgKey(key))) continue;
     result[key] = value;
@@ -260,7 +274,7 @@ const isKnownVllmExtraArgKey = (key: string): boolean => {
 };
 
 export const getUnknownVllmExtraArgKeys = (
-  extraArgs: Record<string, unknown> | null | undefined,
+  extraArgs: EngineExtraArgs | null | undefined,
 ): string[] => {
   const source = extraArgs ?? {};
   const blocked: string[] = [];

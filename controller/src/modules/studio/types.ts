@@ -3,6 +3,14 @@
  * and become a local recipe; `remote` presets register an external
  * OpenAI-compatible provider (no weights, only an API key).
  */
+export type StudioRecipeOverride =
+  | string
+  | number
+  | boolean
+  | null
+  | StudioRecipeOverride[]
+  | { [key: string]: StudioRecipeOverride };
+
 export interface StudioStarterPreset {
   id: string;
   name: string;
@@ -15,6 +23,6 @@ export interface StudioStarterPreset {
   allow_patterns?: string[];
   backend?: "vllm" | "llamacpp";
   gguf_file?: string;
-  recipe_overrides?: Record<string, unknown>;
+  recipe_overrides?: Record<string, StudioRecipeOverride>;
   remote?: { base_url: string; model: string };
 }

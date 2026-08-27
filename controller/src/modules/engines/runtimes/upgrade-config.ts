@@ -12,7 +12,7 @@ const UPGRADE_COMMAND_TIMEOUT_MS = 10 * 60_000;
 
 export const runEnvironmentUpgradeCommand = (
   command: string,
-  onSpawn?: ((child: ChildProcess) => void) | undefined,
+  onSpawn?: (child: ChildProcess) => void,
   timeoutMs: number = UPGRADE_COMMAND_TIMEOUT_MS,
 ): Effect.Effect<RuntimeUpgradeResult> =>
   runCommandAsyncEffect(command, [], { timeoutMs, onSpawn }).pipe(

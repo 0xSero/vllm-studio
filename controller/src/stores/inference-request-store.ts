@@ -28,17 +28,204 @@ export interface InferenceRequestRecord {
 
 export type UsageAggregate = Omit<UsageStats, "controller">;
 
-interface NumberRow {
-  [key: string]: number;
+type SqlValue = string | number | null;
+
+interface SqlRow {
+  [key: string]: SqlValue;
 }
 
-const buildModelFilter = (
-  knownModels?: ReadonlySet<string>,
-): { clause: string; params: string[] } => {
+interface ModelFilter {
+  clause: string;
+  params: string[];
+}
+
+const buildModelFilter = (knownModels?: ReadonlySet<string>): ModelFilter => {
   if (!knownModels || knownModels.size === 0) return { clause: "", params: [] };
   const params = [...knownModels];
   const placeholders = params.map(() => "?").join(",");
   return { clause: ` AND model IN (${placeholders})`, params };
+};
+
+const changePercent = (current: number, previous: number): number | null => {
+  if (previous === 0) return current === 0 ? 0 : null;
+  return ((current - previous) / previous) * 100;
+};
+
+const maxAverageTokens = (rows: SqlRow[]): number =>
+  rows.reduce((max, row) => {
+    const requests = toFiniteNumber(row["requests"]);
+    const average = requests
+      ? Math.round(toFiniteNumber(row["total_tokens"]) / requests)
+      : 0;
+    return Math.max(max, average);
+  }, 0);
+
+const toModelUsage = (row: SqlRow): UsageAggregate["by_model"][number] => {
+  const requests = toFiniteNumber(row["requests"]);
+  const successful = toFiniteNumber(row["successful"]);
+  return {
+    model: String(row["model"] ?? "unknown"),
+    requests,
+    successful,
+    success_rate: requests ? (successful / requests) * 100 : 0,
+    total_tokens: toFiniteNumber(row["total_tokens"]),
+    prompt_tokens: toFiniteNumber(row["prompt_tokens"]),
+    completion_tokens: toFiniteNumber(row["completion_tokens"]),
+    avg_tokens: requests ? Math.round(toFiniteNumber(row["total_tokens"]) / requests) : 0,
+    avg_latency_ms: toNullableNumber(row["avg_latency_ms"]),
+    p50_latency_ms: null,
+    avg_ttft_ms: toNullableNumber(row["avg_ttft_ms"]),
+    tokens_per_sec: null,
+    prefill_tps: null,
+    generation_tps: null,
+  };
+};
+
+const toDailyUsage = (row: SqlRow): UsageAggregate["daily"][number] => {
+  const requests = toFiniteNumber(row["requests"]);
+  const successful = toFiniteNumber(row["successful"]);
+  return {
+    date: String(row["date"] ?? ""),
+    requests,
+    successful,
+    success_rate: requests ? (successful / requests) * 100 : 0,
+    total_tokens: toFiniteNumber(row["total_tokens"]),
+    prompt_tokens: toFiniteNumber(row["prompt_tokens"]),
+    completion_tokens: toFiniteNumber(row["completion_tokens"]),
+    avg_latency_ms: toFiniteNumber(row["avg_latency_ms"]),
+  };
+};
+
+const toDailyModelUsage = (row: SqlRow): NonNullable<UsageAggregate["daily_by_model"]>[number] => {
+  const requests = toFiniteNumber(row["requests"]);
+  const successful = toFiniteNumber(row["successful"]);
+  return {
+    date: String(row["date"] ?? ""),
+    model: String(row["model"] ?? "unknown"),
+    requests,
+    successful,
+    success_rate: requests ? (successful / requests) * 100 : 0,
+    total_tokens: toFiniteNumber(row["total_tokens"]),
+    prompt_tokens: toFiniteNumber(row["prompt_tokens"]),
+    completion_tokens: toFiniteNumber(row["completion_tokens"]),
+  };
+};
+
+const cacheHitRate = (hits: number, misses: number): number => {
+  const total = hits + misses;
+  return total > 0 ? (hits / total) * 100 : 0;
+};
+
+const buildUsageAggregate = (
+  summary: SqlRow,
+  byModel: SqlRow[],
+  daily: SqlRow[],
+  dailyByModel: SqlRow[],
+  hourly: SqlRow[],
+  peakDays: SqlRow[],
+  peakHours: SqlRow[],
+): UsageAggregate => {
+  const totalRequests = toFiniteNumber(summary["total_requests"]);
+  const promptTokens = toFiniteNumber(summary["prompt_tokens"]);
+  const completionTokens = toFiniteNumber(summary["completion_tokens"]);
+  const totalTokens = promptTokens + completionTokens;
+  const cacheHits = toFiniteNumber(summary["cache_read"]);
+  const cacheMisses = toFiniteNumber(summary["cache_write"]);
+  const successful = toFiniteNumber(summary["ok"]);
+
+
+  return {
+    totals: {
+      total_tokens: totalTokens,
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_requests: totalRequests,
+      successful_requests: successful,
+      failed_requests: totalRequests - successful,
+      success_rate: (successful / totalRequests) * 100,
+      unique_sessions: toFiniteNumber(summary?.["unique_sessions"]),
+      unique_users: 0,
+    },
+    latency: {
+      avg_ms: toNullableNumber(summary?.["avg_dur"]),
+      p50_ms: null,
+      p95_ms: null,
+      p99_ms: null,
+      min_ms: null,
+      max_ms: null,
+    },
+    ttft: {
+      avg_ms: toNullableNumber(summary?.["avg_ttft"]),
+      p50_ms: null,
+      p95_ms: null,
+      p99_ms: null,
+    },
+    tokens_per_request: {
+      avg: Math.round(totalTokens / totalRequests),
+      avg_prompt: Math.round(promptTokens / totalRequests),
+      avg_completion: Math.round(completionTokens / totalRequests),
+      max: maxAverageTokens(byModel),
+      p50: 0,
+      p95: 0,
+    },
+    cache: {
+      hits: cacheHits,
+      misses: cacheMisses,
+      hit_tokens: cacheHits,
+      miss_tokens: cacheMisses,
+      hit_rate: cacheHitRate(cacheHits, cacheMisses),
+    },
+    week_over_week: {
+      this_week: {
+        requests: toFiniteNumber(summary?.["this_week_requests"]),
+        tokens: toFiniteNumber(summary?.["this_week_tokens"]),
+        successful: toFiniteNumber(summary?.["this_week_ok"]),
+      },
+      last_week: {
+        requests: toFiniteNumber(summary?.["last_week_requests"]),
+        tokens: toFiniteNumber(summary?.["last_week_tokens"]),
+        successful: toFiniteNumber(summary?.["last_week_ok"]),
+      },
+      change_pct: {
+        requests: changePercent(
+          toFiniteNumber(summary?.["this_week_requests"]),
+          toFiniteNumber(summary?.["last_week_requests"]),
+        ),
+        tokens: changePercent(
+          toFiniteNumber(summary?.["this_week_tokens"]),
+          toFiniteNumber(summary?.["last_week_tokens"]),
+        ),
+      },
+    },
+    recent_activity: {
+      last_hour_requests: toFiniteNumber(summary?.["last_hour"]),
+      last_24h_requests: toFiniteNumber(summary?.["last_24h"]),
+      prev_24h_requests: toFiniteNumber(summary?.["prev_24h"]),
+      last_24h_tokens: toFiniteNumber(summary?.["last_24h_tokens"]),
+      change_24h_pct: changePercent(
+        toFiniteNumber(summary?.["last_24h"]),
+        toFiniteNumber(summary?.["prev_24h"]),
+      ),
+    },
+    peak_days: peakDays.map((row) => ({
+      date: String(row["date"] ?? ""),
+      requests: toFiniteNumber(row["requests"]),
+      tokens: toFiniteNumber(row["tokens"]),
+    })),
+    peak_hours: peakHours.map((row) => ({
+      hour: toFiniteNumber(row["hour"]),
+      requests: toFiniteNumber(row["requests"]),
+    })),
+    by_model: byModel.map(toModelUsage),
+    daily: daily.map(toDailyUsage),
+    daily_by_model: dailyByModel.map(toDailyModelUsage),
+    hourly_pattern: hourly.map((row) => ({
+      hour: toFiniteNumber(row["hour"]),
+      requests: toFiniteNumber(row["requests"]),
+      successful: toFiniteNumber(row["successful"]),
+      tokens: toFiniteNumber(row["tokens"]),
+    })),
+  };
 };
 
 export class InferenceRequestStore {
@@ -123,7 +310,7 @@ export class InferenceRequestStore {
     const params = filter.params;
 
     const summary = this.db
-      .query<NumberRow, string[]>(
+      .query<SqlRow, string[]>(
         `SELECT
            COUNT(*) as total_requests,
            COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
@@ -148,20 +335,13 @@ export class InferenceRequestStore {
          FROM inference_requests
          WHERE 1=1${filter.clause}`,
       )
-      .get(...params) as NumberRow | null;
+      .get(...params);
 
     const totalRequests = toFiniteNumber(summary?.["total_requests"]);
-    if (totalRequests === 0) return null;
-
-    const promptTokens = toFiniteNumber(summary?.["prompt_tokens"]);
-    const completionTokens = toFiniteNumber(summary?.["completion_tokens"]);
-    const totalTokens = promptTokens + completionTokens;
-    const cacheHits = toFiniteNumber(summary?.["cache_read"]);
-    const cacheMisses = toFiniteNumber(summary?.["cache_write"]);
-    const successful = toFiniteNumber(summary?.["ok"]);
+    if (totalRequests === 0 || !summary) return null;
 
     const byModel = this.db
-      .query<Record<string, unknown>, string[]>(
+      .query<SqlRow, string[]>(
         `SELECT
            model,
            COUNT(*) as requests,
@@ -177,10 +357,10 @@ export class InferenceRequestStore {
          ORDER BY total_tokens DESC
          LIMIT 25`,
       )
-      .all(...params) as Array<Record<string, unknown>>;
+      .all(...params);
 
     const daily = this.db
-      .query<Record<string, unknown>, string[]>(
+      .query<SqlRow, string[]>(
         `SELECT
            DATE(created_at) as date,
            COUNT(*) as requests,
@@ -195,10 +375,10 @@ export class InferenceRequestStore {
          ORDER BY date DESC
          LIMIT 400`,
       )
-      .all(...params) as Array<Record<string, unknown>>;
+      .all(...params);
 
     const dailyByModel = this.db
-      .query<Record<string, unknown>, string[]>(
+      .query<SqlRow, string[]>(
         `SELECT
            DATE(created_at) as date,
            model,
@@ -213,10 +393,10 @@ export class InferenceRequestStore {
          ORDER BY date DESC
          LIMIT 10000`,
       )
-      .all(...params) as Array<Record<string, unknown>>;
+      .all(...params);
 
     const hourly = this.db
-      .query<Record<string, unknown>, string[]>(
+      .query<SqlRow, string[]>(
         `SELECT
            CAST(strftime('%H', created_at) AS INTEGER) as hour,
            COUNT(*) as requests,
@@ -227,10 +407,10 @@ export class InferenceRequestStore {
          GROUP BY strftime('%H', created_at)
          ORDER BY hour`,
       )
-      .all(...params) as Array<Record<string, unknown>>;
+      .all(...params);
 
     const peakDays = this.db
-      .query<Record<string, unknown>, string[]>(
+      .query<SqlRow, string[]>(
         `SELECT
            DATE(created_at) as date,
            COUNT(*) as requests,
@@ -241,10 +421,10 @@ export class InferenceRequestStore {
          ORDER BY requests DESC
          LIMIT 5`,
       )
-      .all(...params) as Array<Record<string, unknown>>;
+      .all(...params);
 
     const peakHours = this.db
-      .query<Record<string, unknown>, string[]>(
+      .query<SqlRow, string[]>(
         `SELECT
            CAST(strftime('%H', created_at) AS INTEGER) as hour,
            COUNT(*) as requests
@@ -254,159 +434,17 @@ export class InferenceRequestStore {
          ORDER BY requests DESC
          LIMIT 5`,
       )
-      .all(...params) as Array<Record<string, unknown>>;
+      .all(...params);
 
-    const calcChangePct = (current: number, previous: number): number | null => {
-      if (previous === 0) return current === 0 ? 0 : null;
-      return ((current - previous) / previous) * 100;
-    };
-
-    return {
-      totals: {
-        total_tokens: totalTokens,
-        prompt_tokens: promptTokens,
-        completion_tokens: completionTokens,
-        total_requests: totalRequests,
-        successful_requests: successful,
-        failed_requests: totalRequests - successful,
-        success_rate: totalRequests ? (successful / totalRequests) * 100 : 0,
-        unique_sessions: toFiniteNumber(summary?.["unique_sessions"]),
-        unique_users: 0,
-      },
-      latency: {
-        avg_ms: toNullableNumber(summary?.["avg_dur"]),
-        p50_ms: null,
-        p95_ms: null,
-        p99_ms: null,
-        min_ms: null,
-        max_ms: null,
-      },
-      ttft: {
-        avg_ms: toNullableNumber(summary?.["avg_ttft"]),
-        p50_ms: null,
-        p95_ms: null,
-        p99_ms: null,
-      },
-      tokens_per_request: {
-        avg: totalRequests ? Math.round(totalTokens / totalRequests) : 0,
-        avg_prompt: totalRequests ? Math.round(promptTokens / totalRequests) : 0,
-        avg_completion: totalRequests ? Math.round(completionTokens / totalRequests) : 0,
-        max: byModel.reduce(
-          (max, row) =>
-            Math.max(
-              max,
-              toFiniteNumber(row["requests"])
-                ? Math.round(toFiniteNumber(row["total_tokens"]) / toFiniteNumber(row["requests"]))
-                : 0,
-            ),
-          0,
-        ),
-        p50: 0,
-        p95: 0,
-      },
-      cache: {
-        hits: cacheHits,
-        misses: cacheMisses,
-        hit_tokens: cacheHits,
-        miss_tokens: cacheMisses,
-        hit_rate: cacheHits + cacheMisses > 0 ? (cacheHits / (cacheHits + cacheMisses)) * 100 : 0,
-      },
-      week_over_week: {
-        this_week: {
-          requests: toFiniteNumber(summary?.["this_week_requests"]),
-          tokens: toFiniteNumber(summary?.["this_week_tokens"]),
-          successful: toFiniteNumber(summary?.["this_week_ok"]),
-        },
-        last_week: {
-          requests: toFiniteNumber(summary?.["last_week_requests"]),
-          tokens: toFiniteNumber(summary?.["last_week_tokens"]),
-          successful: toFiniteNumber(summary?.["last_week_ok"]),
-        },
-        change_pct: {
-          requests: calcChangePct(
-            toFiniteNumber(summary?.["this_week_requests"]),
-            toFiniteNumber(summary?.["last_week_requests"]),
-          ),
-          tokens: calcChangePct(
-            toFiniteNumber(summary?.["this_week_tokens"]),
-            toFiniteNumber(summary?.["last_week_tokens"]),
-          ),
-        },
-      },
-      recent_activity: {
-        last_hour_requests: toFiniteNumber(summary?.["last_hour"]),
-        last_24h_requests: toFiniteNumber(summary?.["last_24h"]),
-        prev_24h_requests: toFiniteNumber(summary?.["prev_24h"]),
-        last_24h_tokens: toFiniteNumber(summary?.["last_24h_tokens"]),
-        change_24h_pct: calcChangePct(
-          toFiniteNumber(summary?.["last_24h"]),
-          toFiniteNumber(summary?.["prev_24h"]),
-        ),
-      },
-      peak_days: peakDays.map((row) => ({
-        date: String(row["date"] ?? ""),
-        requests: toFiniteNumber(row["requests"]),
-        tokens: toFiniteNumber(row["tokens"]),
-      })),
-      peak_hours: peakHours.map((row) => ({
-        hour: toFiniteNumber(row["hour"]),
-        requests: toFiniteNumber(row["requests"]),
-      })),
-      by_model: byModel.map((row) => {
-        const requests = toFiniteNumber(row["requests"]);
-        const ok = toFiniteNumber(row["successful"]);
-        return {
-          model: String(row["model"] ?? "unknown"),
-          requests,
-          successful: ok,
-          success_rate: requests ? (ok / requests) * 100 : 0,
-          total_tokens: toFiniteNumber(row["total_tokens"]),
-          prompt_tokens: toFiniteNumber(row["prompt_tokens"]),
-          completion_tokens: toFiniteNumber(row["completion_tokens"]),
-          avg_tokens: requests ? Math.round(toFiniteNumber(row["total_tokens"]) / requests) : 0,
-          avg_latency_ms: toNullableNumber(row["avg_latency_ms"]),
-          p50_latency_ms: null,
-          avg_ttft_ms: toNullableNumber(row["avg_ttft_ms"]),
-          tokens_per_sec: null,
-          prefill_tps: null,
-          generation_tps: null,
-        };
-      }),
-      daily: daily.map((row) => {
-        const requests = toFiniteNumber(row["requests"]);
-        const ok = toFiniteNumber(row["successful"]);
-        return {
-          date: String(row["date"] ?? ""),
-          requests,
-          successful: ok,
-          success_rate: requests ? (ok / requests) * 100 : 0,
-          total_tokens: toFiniteNumber(row["total_tokens"]),
-          prompt_tokens: toFiniteNumber(row["prompt_tokens"]),
-          completion_tokens: toFiniteNumber(row["completion_tokens"]),
-          avg_latency_ms: toFiniteNumber(row["avg_latency_ms"]),
-        };
-      }),
-      daily_by_model: dailyByModel.map((row) => {
-        const requests = toFiniteNumber(row["requests"]);
-        const ok = toFiniteNumber(row["successful"]);
-        return {
-          date: String(row["date"] ?? ""),
-          model: String(row["model"] ?? "unknown"),
-          requests,
-          successful: ok,
-          success_rate: requests ? (ok / requests) * 100 : 0,
-          total_tokens: toFiniteNumber(row["total_tokens"]),
-          prompt_tokens: toFiniteNumber(row["prompt_tokens"]),
-          completion_tokens: toFiniteNumber(row["completion_tokens"]),
-        };
-      }),
-      hourly_pattern: hourly.map((row) => ({
-        hour: toFiniteNumber(row["hour"]),
-        requests: toFiniteNumber(row["requests"]),
-        successful: toFiniteNumber(row["successful"]),
-        tokens: toFiniteNumber(row["tokens"]),
-      })),
-    };
+    return buildUsageAggregate(
+      summary,
+      byModel,
+      daily,
+      dailyByModel,
+      hourly,
+      peakDays,
+      peakHours,
+    );
   }
 
   public aggregateEffect(

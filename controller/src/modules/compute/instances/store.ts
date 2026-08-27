@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { Effect, Option, Schema } from "effect";
 import type {
   DeviceId,
   EngineId,
@@ -68,13 +68,34 @@ export interface Reservation {
 /** Names come from recipes but stop/drop accept user input — keep them inside the dir. */
 const safeName = (name: string): string => name.replace(/[/\\]/g, "_");
 
-const isRecord = (value: unknown): value is InstanceRecord =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof (value as InstanceRecord).name === "string" &&
-  typeof (value as InstanceRecord).engine === "string" &&
-  typeof (value as InstanceRecord).port === "number" &&
-  Array.isArray((value as InstanceRecord).devices);
+const HandleReferenceSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("process"),
+    pid: Schema.Number,
+    startToken: Schema.NullOr(Schema.String),
+  }),
+  Schema.Struct({ kind: Schema.Literal("docker"), container: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal("remote"),
+    nodeId: Schema.String,
+    name: Schema.String,
+  }),
+  Schema.Struct({ kind: Schema.Literal("pinned"), holder: Schema.String }),
+]);
+
+const InstanceRecordSchema = Schema.Struct({
+  name: Schema.String,
+  nodeId: Schema.String,
+  engine: Schema.Literals(["vllm", "sglang", "llamacpp", "mlx", "exllamav3"]),
+  recipeId: Schema.String,
+  runtime: Schema.Literals(["process", "docker"]),
+  ref: Schema.NullOr(HandleReferenceSchema),
+  port: Schema.Number,
+  devices: Schema.Array(Schema.String),
+  nonce: Schema.String,
+  startedAt: Schema.String,
+  readyDeadlineAt: Schema.String,
+});
 
 const pidAlive = (pid: number): boolean => {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -149,8 +170,10 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
 
   const read = (name: string): InstanceRecord | null => {
     try {
-      const parsed: unknown = JSON.parse(readFileSync(recordPath(name), "utf8"));
-      return isRecord(parsed) ? parsed : null;
+      const parsed = Schema.decodeUnknownOption(InstanceRecordSchema)(
+        JSON.parse(readFileSync(recordPath(name), "utf8")),
+      );
+      return Option.isSome(parsed) ? parsed.value : null;
     } catch {
       return null;
     }

@@ -54,12 +54,12 @@ const createHealth = (
   return message ? { status, message } : { status };
 };
 
-const RELEASE_NOTES: Record<EngineBackend, string> = {
+const RELEASE_NOTES = {
   vllm: "https://github.com/vllm-project/vllm/releases",
   sglang: "https://github.com/sgl-project/sglang/releases",
   llamacpp: "https://github.com/ggml-org/llama.cpp/releases",
   mlx: "https://github.com/ml-explore/mlx-lm/releases",
-};
+} satisfies Record<EngineBackend, string>;
 
 const packageSpecForTarget = (backend: EngineBackend): string => {
   if (backend === "vllm") return normalizePackageSpec("vllm", getVllmUpgradeVersion());
@@ -112,20 +112,18 @@ export const makeRuntimeTarget = (args: {
   dockerImage?: string | null;
   healthMessage?: string | undefined;
 }): RuntimeTarget => {
-  const base = {
+  const capabilities = createCapabilities({
     backend: args.backend,
     kind: args.kind,
     installed: args.installed,
     source: args.source,
-    ...(args.pythonPath !== undefined ? { pythonPath: args.pythonPath } : {}),
-  };
-  const capabilities = createCapabilities(base);
+  });
   const update = updateMetadata({
     backend: args.backend,
     version: args.version,
     capabilities,
   });
-  return {
+  const target: RuntimeTarget = {
     id: targetId(args.backend, args.kind, args.key),
     backend: args.backend,
     kind: args.kind,
@@ -139,6 +137,7 @@ export const makeRuntimeTarget = (args: {
     source: args.source,
     capabilities,
     health: createHealth(args.installed, args.source, args.healthMessage),
-    ...(update ? { update } : {}),
   };
+  if (update === undefined) return target;
+  return { ...target, update };
 };

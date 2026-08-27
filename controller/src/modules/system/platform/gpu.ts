@@ -68,9 +68,7 @@ const parseNvidiaSmiGpuLine = (line: string, index: number): GpuInfo => {
   const memoryTotalMb = reportedTotalMb || fallbackTotalMb;
   const memoryUsedMb = toMb(memoryUsed) || fallbackUsedMb;
   const memoryFreeMb = toMb(memoryFree) || fallbackFreeMb;
-  return {
-    ...(uuid ? { uuid } : {}),
-    ...(pciBusId ? { pci_bus_id: pciBusId } : {}),
+  const gpu: GpuInfo = {
     index,
     name,
     memory_total_mb: memoryTotalMb,
@@ -81,6 +79,9 @@ const parseNvidiaSmiGpuLine = (line: string, index: number): GpuInfo => {
     power_draw: toFiniteNumber(powerDraw),
     power_limit: toFiniteNumber(powerLimit),
   };
+  if (uuid) gpu.uuid = uuid;
+  if (pciBusId) gpu.pci_bus_id = pciBusId;
+  return gpu;
 };
 
 const splitSmiLines = (stdout: string): string[] =>

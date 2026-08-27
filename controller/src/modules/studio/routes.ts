@@ -17,7 +17,6 @@ import {
   getPersistedConfigPath,
   loadPersistedConfig,
   savePersistedConfig,
-  type PersistedConfig,
 } from "../../config/persisted-config";
 import { getVllmRuntimeInfo } from "../engines/runtimes/vllm-runtime";
 
@@ -28,6 +27,13 @@ const SettingsUpdateSchema = Schema.Struct({
 
 const ModelDeleteSchema = Schema.Struct({ path: Schema.String });
 const ModelMoveSchema = Schema.Struct({ source_path: Schema.String, target_root: Schema.String });
+const LegacyStudioSettingsSchema = Schema.Struct({
+  ui_preferences: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+});
+type LegacyStudioSettings = typeof LegacyStudioSettingsSchema.Type;
+
+const ErrnoExceptionSchema = Schema.Struct({ code: Schema.optional(Schema.String) });
+type ErrnoException = typeof ErrnoExceptionSchema.Type;
 
 class StudioOperationError extends Schema.TaggedErrorClass<StudioOperationError>()(
   "StudioOperationError",
@@ -102,16 +108,13 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
           source,
         }),
     });
-    const legacyUiPreferences = (
-      persisted as PersistedConfig & { ui_preferences?: Record<string, string> }
-    ).ui_preferences;
+    const decodedLegacySettings = Schema.decodeUnknownOption(LegacyStudioSettingsSchema)(persisted);
+    const legacySettings: LegacyStudioSettings =
+      decodedLegacySettings._tag === "Some" ? decodedLegacySettings.value : {};
+    const legacyUiPreferences = legacySettings.ui_preferences;
     const dbUiPreferences = yield* context.stores.controllerSettingsStore.getUiPreferencesEffect();
     const uiPreferences =
-      Object.keys(dbUiPreferences).length > 0
-        ? dbUiPreferences
-        : legacyUiPreferences && typeof legacyUiPreferences === "object"
-          ? legacyUiPreferences
-          : {};
+      Object.keys(dbUiPreferences).length > 0 ? dbUiPreferences : (legacyUiPreferences ?? {});
     if (Object.keys(dbUiPreferences).length === 0 && Object.keys(uiPreferences).length > 0) {
       yield* context.stores.controllerSettingsStore.saveUiPreferencesEffect(uiPreferences);
     }
@@ -321,8 +324,11 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
               try: () => rename(source, target),
               catch: (sourceError) => sourceError,
             }).pipe(
-              Effect.catch((sourceError) =>
-                (sourceError as NodeJS.ErrnoException).code === "EXDEV"
+              Effect.catch((sourceError) => {
+                const decodedError = Schema.decodeUnknownOption(ErrnoExceptionSchema)(sourceError);
+                const error: ErrnoException | null =
+                  decodedError._tag === "Some" ? decodedError.value : null;
+                return error?.code === "EXDEV"
                   ? Effect.tryPromise({
                       try: () =>
                         cp(source, target, { recursive: true, force: false, errorOnExist: true }),
@@ -335,8 +341,8 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
                         }),
                       ),
                     )
-                  : Effect.fail(sourceError),
-              ),
+                  : Effect.fail(sourceError);
+              }),
               Effect.mapError(
                 (sourceError) =>
                   new StudioOperationError({

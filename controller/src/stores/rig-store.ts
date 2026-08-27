@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { Rig } from "@local-studio/contracts/rigs";
-import type { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import {
   makeDatabaseCloser,
   openInitializedDatabase,
@@ -10,6 +10,59 @@ import {
 
 type RigRow = {
   data: string;
+};
+
+const RigSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  description: Schema.NullOr(Schema.String),
+  nodes: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      hardware_type: Schema.Literals([
+        "dgx-spark",
+        "gpu-desktop",
+        "gpu-server",
+        "mac",
+        "laptop",
+        "mini-pc",
+        "custom",
+      ]),
+      role: Schema.Literals(["head", "worker", "standalone"]),
+      source: Schema.Literals(["detected", "manual"]),
+      hostname: Schema.NullOr(Schema.String),
+      address: Schema.NullOr(Schema.String),
+      os: Schema.NullOr(Schema.String),
+      cpu_model: Schema.NullOr(Schema.String),
+      cpu_cores: Schema.NullOr(Schema.Number),
+      memory_gb: Schema.NullOr(Schema.Number),
+      accelerators: Schema.Array(
+        Schema.Struct({
+          name: Schema.String,
+          count: Schema.Number,
+          memory_gb: Schema.NullOr(Schema.Number),
+          memory_type: Schema.NullOr(Schema.String),
+          memory_bandwidth_gbs: Schema.NullOr(Schema.Number),
+          unified_memory: Schema.Boolean,
+        }),
+      ),
+      notes: Schema.NullOr(Schema.String),
+    }),
+  ),
+  created_at: Schema.String,
+  updated_at: Schema.String,
+});
+
+const parseRig = (data: string): Rig => {
+  const parsed = Schema.decodeUnknownSync(Schema.fromJsonString(RigSchema))(data);
+  return {
+    ...parsed,
+    nodes: parsed.nodes.map((node) => ({
+      ...node,
+      accelerators: node.accelerators.map((accelerator) => ({ ...accelerator })),
+    })),
+  };
 };
 
 export class RigStore {
@@ -31,11 +84,11 @@ export class RigStore {
   }
 
   public list(): Rig[] {
-    const rows = this.db.query("SELECT data FROM rigs ORDER BY created_at").all() as RigRow[];
+    const rows = this.db.query<RigRow, []>("SELECT data FROM rigs ORDER BY created_at").all();
     const rigs: Rig[] = [];
     for (const row of rows) {
       try {
-        rigs.push(JSON.parse(row.data) as Rig);
+        rigs.push(parseRig(row.data));
       } catch {
         continue;
       }
@@ -48,10 +101,12 @@ export class RigStore {
   }
 
   public get(rigId: string): Rig | null {
-    const row = this.db.query("SELECT data FROM rigs WHERE id = ?").get(rigId) as RigRow | null;
+    const row = this.db
+      .query<RigRow, [string]>("SELECT data FROM rigs WHERE id = ?")
+      .get(rigId);
     if (!row) return null;
     try {
-      return JSON.parse(row.data) as Rig;
+      return parseRig(row.data);
     } catch {
       return null;
     }
