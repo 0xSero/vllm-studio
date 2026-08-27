@@ -11,13 +11,13 @@ import { getEngineSpec } from "../../engines/engine-spec";
 import { applyDevices } from "./devices";
 import { exllamav3 } from "./exllamav3";
 
-const SPECS: Readonly<Record<EngineId, ComputeEngineSpec>> = {
+const SPECS = {
   vllm: getEngineSpec("vllm"),
   sglang: getEngineSpec("sglang"),
   llamacpp: getEngineSpec("llamacpp"),
   mlx: getEngineSpec("mlx"),
   exllamav3,
-};
+} satisfies Record<EngineId, ComputeEngineSpec>;
 
 export const engineSpec = (id: EngineId): ComputeEngineSpec => SPECS[id];
 

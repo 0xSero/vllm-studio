@@ -31,12 +31,10 @@ const readAndValidate = (path: string): Effect.Effect<ModelIndexResponse, ModelI
     catch: (source) =>
       new ModelIndexError({ message: `Could not read model index at ${path}`, source }),
   }).pipe(
-    Effect.flatMap((raw) =>
-      Effect.try({
-        try: () => JSON.parse(raw) as unknown,
-        catch: (source) =>
-          new ModelIndexError({ message: `Model index at ${path} is not valid JSON`, source }),
-      }),
+    Effect.flatMap(Schema.decodeEffect(Schema.UnknownFromJsonString)),
+    Effect.mapError(
+      (source) =>
+        new ModelIndexError({ message: `Model index at ${path} is not valid JSON`, source }),
     ),
     Effect.flatMap((value) =>
       Schema.decodeUnknownEffect(ModelIndexSchema)(value).pipe(

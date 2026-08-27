@@ -1,4 +1,4 @@
-import { Effect, Schedule } from "effect";
+import { Effect, Schedule, type Cause } from "effect";
 import type { ComputeService } from "./lifecycle";
 
 /**
@@ -10,9 +10,11 @@ import type { ComputeService } from "./lifecycle";
 
 const SUPERVISE_INTERVAL_MS = 2_000;
 
+export type ComputeSupervisorError = Cause.Cause<never>;
+
 export const startComputeSupervisor = (
   compute: ComputeService,
-  onError: (error: unknown) => void,
+  onError: (error: ComputeSupervisorError) => void,
 ): Effect.Effect<never> =>
   compute
     .superviseOnce()

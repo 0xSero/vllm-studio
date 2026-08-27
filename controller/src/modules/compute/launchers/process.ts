@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type SpawnOptions } from "node:child_process";
 import { openSync, readFileSync, statSync, openSync as open, closeSync, readSync } from "node:fs";
 import { Effect } from "effect";
 import type { HandleReference, InstanceRecord, LaunchPlan } from "../contracts";
@@ -86,12 +86,15 @@ export const makeProcessLauncher = (logPathFor: (name: string) => string): Launc
           spawnFailed(`cannot open log file for ${record.name}: ${String(error)}`),
         ),
       );
-      const child = spawn(binary, args, {
+      const baseSpawnOptions: SpawnOptions = {
         detached: true,
         stdio: ["ignore", logFd, logFd],
         env: { ...process.env, ...plan.env },
-        ...(plan.workdir ? { cwd: plan.workdir } : {}),
-      });
+      };
+      const spawnOptions = plan.workdir
+        ? { ...baseSpawnOptions, cwd: plan.workdir }
+        : baseSpawnOptions;
+      const child = spawn(binary, args, spawnOptions);
       const pid = yield* Effect.callback<number, never>((resume) => {
         child.on("error", () => resume(Effect.succeed(-1)));
         child.on("spawn", () => resume(Effect.succeed(child.pid ?? -1)));

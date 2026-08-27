@@ -48,6 +48,98 @@ const ModelConfigSchema = Schema.Struct({
   head_dim: Schema.optionalKey(ModelDimensionSchema),
 });
 
+type VramCalculatorBody = Schema.Schema.Type<typeof VramCalculatorBodySchema>;
+type ModelConfig = Schema.Schema.Type<typeof ModelConfigSchema>;
+
+interface VramEstimate {
+  readonly weightsTotalGb: number;
+  readonly weightsPerGpuGb: number;
+  readonly kvCachePerGpuGb: number;
+  readonly activationsPerGpuGb: number;
+  readonly overheadPerGpuGb: number;
+  readonly perGpuGb: number;
+  readonly totalGb: number;
+}
+
+const resolveCalculatorModel = (
+  model: string,
+  modelsDirectory: string,
+): Effect.Effect<string, ReturnType<typeof badRequest>> =>
+  Effect.gen(function* () {
+    const trimmedModel = model.trim();
+    if (!trimmedModel) return yield* Effect.fail(badRequest("model is required"));
+    const resolved = resolve(trimmedModel);
+    const modelsRoot = resolve(modelsDirectory);
+    const rootPrefix = modelsRoot.endsWith(sep) ? modelsRoot : modelsRoot + sep;
+    if (!resolved.startsWith(rootPrefix)) {
+      return yield* Effect.fail(badRequest("model must be inside models_dir"));
+    }
+    const modelExists = yield* Effect.tryPromise({
+      try: () => access(resolved),
+      catch: (source) => source,
+    }).pipe(
+      Effect.as(true),
+      Effect.catch(() => Effect.succeed(false)),
+    );
+    if (!modelExists) return yield* Effect.fail(notFound("Model path not found"));
+    return resolved;
+  });
+
+const readModelConfig = (
+  modelPath: string,
+): Effect.Effect<ModelConfig, Schema.SchemaError> =>
+  Effect.tryPromise({
+    try: () => readFile(join(modelPath, "config.json"), "utf-8"),
+    catch: (source) => source,
+  }).pipe(
+    Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(ModelConfigSchema))),
+    Effect.catch(() => Schema.decodeUnknownEffect(ModelConfigSchema)({})),
+  );
+
+const estimateVram = (
+  body: VramCalculatorBody,
+  weightsBytes: number,
+  config: ModelConfig,
+): VramEstimate => {
+  const layerCount = config.num_hidden_layers ?? config.n_layer ?? config.num_layers;
+  const hiddenSize = config.hidden_size ?? config.n_embd ?? config.d_model ?? config.dim;
+  const headCount = config.num_attention_heads ?? config.n_head ?? config.num_heads;
+  const keyValueHeadCount = config.num_key_value_heads ?? config.num_kv_heads ?? headCount;
+  const headDim =
+    config.head_dim ?? (hiddenSize && headCount ? hiddenSize / headCount : undefined);
+  const kvBytesPerValue = (body.kv_dtype ?? "auto").toLowerCase() === "fp8" ? 1 : 2;
+  const contextLength = body.context_length;
+  const tpSize = body.tp_size ?? 1;
+  const kvCacheBytes =
+    layerCount && keyValueHeadCount && headDim
+      ? contextLength * layerCount * keyValueHeadCount * headDim * 2 * kvBytesPerValue
+      : 0;
+  const weightsTotalGb = weightsBytes / 1024 ** 3;
+  const weightsPerGpuGb = weightsTotalGb / tpSize;
+  const kvCachePerGpuGb = kvCacheBytes > 0 ? kvCacheBytes / 1024 ** 3 / tpSize : 0;
+  const activationsPerGpuGb = Math.max(0.5, weightsPerGpuGb * 0.1);
+  const overheadPerGpuGb = 2.0;
+  const perGpuGb = weightsPerGpuGb + kvCachePerGpuGb + activationsPerGpuGb + overheadPerGpuGb;
+  return {
+    weightsTotalGb,
+    weightsPerGpuGb,
+    kvCachePerGpuGb,
+    activationsPerGpuGb,
+    overheadPerGpuGb,
+    perGpuGb,
+    totalGb: perGpuGb * tpSize,
+  };
+};
+
+const availableVramPerGpu = (tpSize: number): Effect.Effect<number> =>
+  getGpuInfo().pipe(
+    Effect.map((gpus) => {
+      if (gpus.length < tpSize || tpSize <= 0) return 0;
+      const candidates = gpus.slice(0, tpSize).map((gpu) => gpu.memory_total_mb / 1024);
+      return Math.min(...candidates);
+    }),
+  );
+
 export const registerSystemRoutes = defineRoutes((app, context) => {
   const checkService = (
     host: string,
@@ -140,94 +232,33 @@ export const registerSystemRoutes = defineRoutes((app, context) => {
       effectHandler((ctx) =>
         Effect.gen(function* () {
           const body = yield* decodeJsonBody(ctx, VramCalculatorBodySchema);
-          const model = body.model.trim();
-          const contextLength = body.context_length;
-          const tpSize = body.tp_size ?? 1;
-          const kvDtype = body.kv_dtype ?? "auto";
-
-          if (!model) return yield* Effect.fail(badRequest("model is required"));
-
-          const resolved = resolve(model);
-          const modelsRoot = resolve(context.config.models_dir);
-          const rootPrefix = modelsRoot.endsWith(sep) ? modelsRoot : modelsRoot + sep;
-          if (!resolved.startsWith(rootPrefix)) {
-            return yield* Effect.fail(badRequest("model must be inside models_dir"));
-          }
-          const modelExists = yield* Effect.tryPromise({
-            try: () => access(resolved),
-            catch: (error) => error,
-          }).pipe(
-            Effect.as(true),
-            Effect.catch(() => Effect.succeed(false)),
-          );
-          if (!modelExists) return yield* Effect.fail(notFound("Model path not found"));
-
-          const weightsBytes = yield* estimateWeightsSizeBytes(resolved, false);
+          const modelPath = yield* resolveCalculatorModel(body.model, context.config.models_dir);
+          const weightsBytes = yield* estimateWeightsSizeBytes(modelPath, false);
           if (!weightsBytes || weightsBytes <= 0) {
             return yield* Effect.fail(notFound("Model weights not found"));
           }
-
-          const configPath = join(resolved, "config.json");
-          const config = yield* Effect.tryPromise({
-            try: () => readFile(configPath, "utf-8"),
-            catch: (error) => error,
-          }).pipe(
-            Effect.flatMap((raw) =>
-              Effect.try({
-                try: () => JSON.parse(raw) as unknown,
-                catch: (error) => error,
-              }),
-            ),
-            Effect.flatMap((value) => Schema.decodeUnknownEffect(ModelConfigSchema)(value)),
-            Effect.catch(() => Schema.decodeUnknownEffect(ModelConfigSchema)({})),
-          );
-          const layerCount = config.num_hidden_layers ?? config.n_layer ?? config.num_layers;
-          const hiddenSize = config.hidden_size ?? config.n_embd ?? config.d_model ?? config.dim;
-          const headCount = config.num_attention_heads ?? config.n_head ?? config.num_heads;
-          const keyValueHeadCount = config.num_key_value_heads ?? config.num_kv_heads ?? headCount;
-          const headDim =
-            config.head_dim ?? (hiddenSize && headCount ? hiddenSize / headCount : undefined);
-
-          const kvBytesPerValue = kvDtype.toLowerCase() === "fp8" ? 1 : 2;
-          let kvCacheBytes = 0;
-          if (layerCount && keyValueHeadCount && headDim) {
-            kvCacheBytes =
-              contextLength * layerCount * keyValueHeadCount * headDim * 2 * kvBytesPerValue;
-          }
-
-          const weightsTotalGb = weightsBytes / 1024 ** 3;
-          const weightsPerGpuGb = weightsTotalGb / tpSize;
-          const kvCachePerGpuGb = kvCacheBytes > 0 ? kvCacheBytes / 1024 ** 3 / tpSize : 0;
-          const activationsPerGpuGb = Math.max(0.5, weightsPerGpuGb * 0.1);
-          const overheadPerGpuGb = 2.0;
-          const perGpuGb =
-            weightsPerGpuGb + kvCachePerGpuGb + activationsPerGpuGb + overheadPerGpuGb;
-          const totalGb = perGpuGb * tpSize;
-
-          const gpus = yield* getGpuInfo();
-          let perGpuCapacityGb = 0;
-          if (gpus.length >= tpSize && tpSize > 0) {
-            const candidates = gpus.slice(0, tpSize).map((gpu) => gpu.memory_total_mb / 1024);
-            perGpuCapacityGb = Math.min(...candidates);
-          }
-
-          const fits = perGpuCapacityGb > 0 ? perGpuGb <= perGpuCapacityGb : true;
-          const utilizationPercent = perGpuCapacityGb > 0 ? (perGpuGb / perGpuCapacityGb) * 100 : 0;
+          const config = yield* readModelConfig(modelPath);
+          const estimate = estimateVram(body, weightsBytes, config);
+          const tpSize = body.tp_size ?? 1;
+          const perGpuCapacityGb = yield* availableVramPerGpu(tpSize);
+          const fits = perGpuCapacityGb > 0 ? estimate.perGpuGb <= perGpuCapacityGb : true;
+          const utilizationPercent =
+            perGpuCapacityGb > 0 ? (estimate.perGpuGb / perGpuCapacityGb) * 100 : 0;
 
           return ctx.json({
-            model_size_gb: weightsTotalGb,
-            context_memory_gb: kvCachePerGpuGb * tpSize,
-            overhead_gb: overheadPerGpuGb,
-            total_gb: totalGb,
+            model_size_gb: estimate.weightsTotalGb,
+            context_memory_gb: estimate.kvCachePerGpuGb * tpSize,
+            overhead_gb: estimate.overheadPerGpuGb,
+            total_gb: estimate.totalGb,
             fits_in_vram: fits,
             fits,
             utilization_percent: utilizationPercent,
             breakdown: {
-              model_weights_gb: weightsPerGpuGb,
-              kv_cache_gb: kvCachePerGpuGb,
-              activations_gb: activationsPerGpuGb,
-              per_gpu_gb: perGpuGb,
-              total_gb: totalGb,
+              model_weights_gb: estimate.weightsPerGpuGb,
+              kv_cache_gb: estimate.kvCachePerGpuGb,
+              activations_gb: estimate.activationsPerGpuGb,
+              per_gpu_gb: estimate.perGpuGb,
+              total_gb: estimate.totalGb,
             },
           });
         }),

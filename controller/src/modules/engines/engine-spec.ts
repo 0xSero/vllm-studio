@@ -62,12 +62,12 @@ export interface EngineSpec extends Omit<ComputeEngineSpec, "id"> {
   getConfigHelp?: (config: Config) => Effect.Effect<ConfigHelpResult, EngineOperationError>;
 }
 
-const SPECS: Record<EngineBackend, EngineSpec> = {
+const SPECS = {
   vllm: vllmSpec,
   sglang: sglangSpec,
   llamacpp: llamacppSpec,
   mlx: mlxSpec,
-};
+} satisfies Record<EngineBackend, EngineSpec>;
 
 export const getEngineSpec = (backend: EngineBackend): EngineSpec => SPECS[backend];
 

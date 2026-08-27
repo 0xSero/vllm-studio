@@ -126,7 +126,7 @@ export const buildHuggingFaceFileList = (
     }
     files.push({
       path: filename,
-      size_bytes: typeof sibling.size === "number" ? sibling.size : null,
+      size_bytes: sibling.size ?? null,
       downloaded_bytes: 0,
       status: "pending",
     });

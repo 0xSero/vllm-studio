@@ -14,7 +14,7 @@ import { applyDevices } from "./engines/devices";
 import { engineSpec, planLaunch, supportsRuntime } from "./engines/registry";
 import { toEvent } from "./failures";
 import type { Launcher } from "./launchers/launcher";
-import type { InstanceStore } from "./instances/store";
+import type { InstanceStore, Reservation } from "./instances/store";
 
 /**
  * The only mutator in the compute layer. Everything it knows lives in the instance
@@ -194,43 +194,44 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
 
       cancelRequested.delete(input.name);
       const candidates = input.devices ?? (yield* deps.freeDevices());
-      const record = yield* deps.store.reserve(
-        {
-          name: input.name,
-          nodeId: host.nodeId,
-          engine: input.engine,
-          recipeId: input.recipeId,
-          runtime: input.runtime,
-          candidates,
-          need: input.devices
-            ? input.devices.length
-            : Math.min(input.deviceCount, Math.max(candidates.length, 0)),
-          shareable: host.unifiedMemory && !input.devices,
-          basePort: spec.defaultPort,
-          ...(input.portOverride !== undefined ? { exactPort: input.portOverride } : {}),
-          readyDeadlineMs: readyDeadlineOverrideMs() ?? spec.health.readyDeadlineMs,
-        },
-        recordAlive,
-      );
+      const reservationBase: Reservation = {
+        name: input.name,
+        nodeId: host.nodeId,
+        engine: input.engine,
+        recipeId: input.recipeId,
+        runtime: input.runtime,
+        candidates,
+        need: input.devices
+          ? input.devices.length
+          : Math.min(input.deviceCount, Math.max(candidates.length, 0)),
+        shareable: host.unifiedMemory && !input.devices,
+        basePort: spec.defaultPort,
+        readyDeadlineMs: readyDeadlineOverrideMs() ?? spec.health.readyDeadlineMs,
+      };
+      const reservation: Reservation =
+        input.portOverride === undefined
+          ? reservationBase
+          : { ...reservationBase, exactPort: input.portOverride };
+      const record = yield* deps.store.reserve(reservation, recordAlive);
 
       yield* deps.onEvent(record.name, "launching", `${input.engine} on :${record.port}`);
 
+      const customPlanBase = {
+        kind: input.runtime,
+        argv: [...(input.commandOverride ?? [])],
+        env: input.env,
+        ports: [{ container: record.port, host: record.port }],
+        mounts: [],
+        devices: record.devices,
+        health: spec.health,
+      };
+      const customPlan = input.dockerImage
+        ? { ...customPlanBase, image: input.dockerImage }
+        : customPlanBase;
       const plan = input.commandOverride
         ? // A custom launch command is used verbatim — the recipe author owns the argv;
           // only device selection is still folded in.
-          applyDevices(
-            {
-              kind: input.runtime,
-              argv: [...input.commandOverride],
-              env: input.env,
-              ports: [{ container: record.port, host: record.port }],
-              mounts: [],
-              devices: record.devices,
-              health: spec.health,
-              ...(input.dockerImage ? { image: input.dockerImage } : {}),
-            },
-            host.accelerator,
-          )
+          applyDevices(customPlan, host.accelerator)
         : planLaunch({
             engine: input.engine,
             host,

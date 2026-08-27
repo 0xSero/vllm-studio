@@ -5,7 +5,8 @@ export class HttpStatus extends Schema.TaggedErrorClass<HttpStatus>()("HttpStatu
   detail: Schema.String,
 }) {}
 
-export const isHttpStatus = (value: unknown): value is HttpStatus => value instanceof HttpStatus;
+export const isHttpStatus = <Value>(value: Value): value is Value & HttpStatus =>
+  value instanceof HttpStatus;
 
 export const notFound = (detail: string): HttpStatus => new HttpStatus({ status: 404, detail });
 
