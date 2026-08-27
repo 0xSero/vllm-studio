@@ -34,8 +34,8 @@ pub fn load(allocator: std.mem.Allocator, io: std.Io, data_dir: []const u8) !?Co
     const name = stringField(parsed.value.object, "name") orelse "Studio Head";
     const url = stringField(parsed.value.object, "url") orelse return null;
     const api_key = stringField(parsed.value.object, "api_key") orelse "local-studio";
-    const node_id = stringField(parsed.value.object, "node_id") orelse return null;
-    const node_address = stringField(parsed.value.object, "node_address") orelse return null;
+    const node_id = stringField(parsed.value.object, "node_id") orelse "";
+    const node_address = stringField(parsed.value.object, "node_address") orelse "";
     const owned_name = try allocator.dupe(u8, name);
     errdefer allocator.free(owned_name);
     const owned_url = try allocator.dupe(u8, url);

@@ -5,6 +5,7 @@ const execution = @import("../execution/store.zig");
 const cloud_store = @import("../cloud/store.zig");
 const sandbox_runtime = @import("../cloud/runtime.zig");
 const agent_code_storage = @import("../../accounts/code_storage/service.zig");
+const project_repository = @import("../projects/store.zig");
 const sqlite = @import("../../storage/sqlite.zig");
 const harness_nodes = @import("../harness/nodes.zig");
 const harness_catalog = @import("../harness/catalog.zig");
@@ -167,6 +168,7 @@ fn turnPayloadInternal(allocator: std.mem.Allocator, io: Io, mode: config.Mode, 
     const project_id = if (is_chat) "chats" else requested_project_id;
     if (is_chat and project_path != null) return error.InvalidChatSession;
     if (!is_chat and project_path == null) return error.ProjectWorkspaceRequired;
+    if (!is_chat and mode == .standalone and requested_project_id != null) try rejectManagedRepositoryCache(allocator, io, database, requested_project_id.?, project_path.?);
     if (!is_chat and explicit_harness != null and std.mem.eql(u8, explicit_harness.?, "chat")) return error.InvalidProjectHarness;
     const requested_harness = if (is_chat) "chat" else explicit_harness orelse if (existing) |session| session.harness else return error.ProjectHarnessRequired;
     if (existing) |session| if (!std.mem.eql(u8, session.harness, requested_harness)) return error.SessionHarnessMismatch;
@@ -297,6 +299,17 @@ fn turnPayloadInternal(allocator: std.mem.Allocator, io: Io, mode: config.Mode, 
     try lockedAttemptStatus(io, database, turn_attempt.attempt_id[0..], "running", null);
     try ingestRuntimeDocument(allocator, io, database, session_id, response);
     return response;
+}
+
+fn rejectManagedRepositoryCache(allocator: std.mem.Allocator, io: Io, database: *sqlite.Database, project_id: []const u8, workspace: []const u8) !void {
+    try database.lock(io);
+    var project = project_repository.getById(allocator, database, project_id) catch |failure| {
+        database.unlock(io);
+        return failure;
+    };
+    database.unlock(io);
+    defer if (project) |*value| value.deinit();
+    if (project) |value| if (value.repository != null and std.mem.eql(u8, value.path, workspace)) return error.ManagedProjectWorkspaceRequired;
 }
 
 pub fn statusPayload(allocator: std.mem.Allocator, io: Io, mode: config.Mode, client: *http.Client, database: *sqlite.Database, harness: *harness_runtime.Manager, session_id: []const u8, after: u64) ![]u8 {

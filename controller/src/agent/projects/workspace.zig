@@ -16,7 +16,10 @@ pub fn prepare(allocator: std.mem.Allocator, io: Io, environment: *const std.pro
     _ = try Io.Dir.cwd().createDirPathStatus(io, task_root, @enumFromInt(0o700));
     const workspace = try std.fs.path.join(allocator, &.{ task_root, session_id });
     errdefer allocator.free(workspace);
-    if (directoryExists(io, workspace)) return workspace;
+    if (directoryExists(io, workspace)) {
+        if (!workspaceMetadataExists(allocator, io, workspace)) return error.ProjectWorkspaceInvalid;
+        return workspace;
+    }
     if (!directoryExists(io, project.path)) {
         try git(allocator, io, environment, null, &.{ "init", "--bare", project.path });
     }
@@ -108,6 +111,13 @@ fn git(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Env
 fn directoryExists(io: Io, path: []const u8) bool {
     const stat = Io.Dir.cwd().statFile(io, path, .{}) catch return false;
     return stat.kind == .directory;
+}
+
+fn workspaceMetadataExists(allocator: std.mem.Allocator, io: Io, workspace: []const u8) bool {
+    const metadata = std.fs.path.join(allocator, &.{ workspace, ".git" }) catch return false;
+    defer allocator.free(metadata);
+    _ = Io.Dir.cwd().statFile(io, metadata, .{}) catch return false;
+    return true;
 }
 
 fn validateRef(value: []const u8) !void {

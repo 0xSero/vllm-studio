@@ -559,6 +559,12 @@
     },
     {
       "method": "POST",
+      "path": "/internal/node/v1/projects/workspace/archive",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
       "path": "/internal/node/v1/projects/cloud-checkout",
       "ownership": "worker",
       "streaming": "never"

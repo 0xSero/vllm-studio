@@ -21,19 +21,36 @@ pub fn updatePayload(allocator: std.mem.Allocator, io: Io, mode: config.Mode, cl
     const name = optionalString(parsed.value.object, "name") orelse "Studio Head";
     const raw_url = optionalString(parsed.value.object, "url") orelse return error.HeadUrlRequired;
     const api_key = optionalString(parsed.value.object, "apiKey") orelse "local-studio";
-    const raw_node_address = optionalString(parsed.value.object, "nodeAddress") orelse return error.EnrollmentNodeAddressRequired;
-    const node_api_key = optionalString(parsed.value.object, "nodeApiKey") orelse return error.EnrollmentNodeCredentialRequired;
+    const raw_node_address = optionalString(parsed.value.object, "nodeAddress");
+    const node_api_key = optionalString(parsed.value.object, "nodeApiKey");
+    if ((raw_node_address == null) != (node_api_key == null)) return error.IncompleteEnrollment;
     const url = try normalizeUrl(allocator, raw_url);
     defer allocator.free(url);
-    const node_address = try normalizeUrl(allocator, raw_node_address);
-    defer allocator.free(node_address);
     var existing = try repository.load(allocator, io, data_dir);
     defer if (existing) |*value| value.deinit();
+    if (raw_node_address == null) {
+        const same_head = if (existing) |value| std.mem.eql(u8, value.url, url) else false;
+        try repository.save(
+            allocator,
+            io,
+            data_dir,
+            name,
+            url,
+            api_key,
+            if (same_head) existing.?.node_id else "",
+            if (same_head) existing.?.node_address else "",
+        );
+        var connection = (try repository.load(allocator, io, data_dir)) orelse return error.HeadConnectionWriteFailed;
+        defer connection.deinit();
+        return response(allocator, &connection);
+    }
+    const node_address = try normalizeUrl(allocator, raw_node_address.?);
+    defer allocator.free(node_address);
     var random: [16]u8 = undefined;
     io.random(&random);
     const generated = std.fmt.bytesToHex(random, .lower);
-    const node_id = if (existing) |value| value.node_id else generated[0..];
-    const enrollment = try enrollmentDocument(allocator, mode, node_id, hostname, os, node_address, node_api_key, harness);
+    const node_id = if (existing) |value| if (value.node_id.len > 0) value.node_id else generated[0..] else generated[0..];
+    const enrollment = try enrollmentDocument(allocator, mode, node_id, hostname, os, node_address, node_api_key.?, harness);
     defer allocator.free(enrollment);
     try sendEnrollment(allocator, client, url, api_key, .POST, "/api/agent/enrollments", enrollment);
     try repository.save(allocator, io, data_dir, name, url, api_key, node_id, node_address);
@@ -45,11 +62,11 @@ pub fn updatePayload(allocator: std.mem.Allocator, io: Io, mode: config.Mode, cl
 pub fn deletePayload(allocator: std.mem.Allocator, io: Io, client: *http.Client, data_dir: []const u8) ![]u8 {
     var connection = try repository.load(allocator, io, data_dir);
     defer if (connection) |*value| value.deinit();
-    if (connection) |value| {
+    if (connection) |value| if (value.node_id.len > 0) {
         const path = try std.fmt.allocPrint(allocator, "/api/agent/enrollments/{s}", .{value.node_id});
         defer allocator.free(path);
         sendEnrollment(allocator, client, value.url, value.api_key, .DELETE, path, null) catch |failure| std.log.warn("Head enrollment cleanup failed: {t}", .{failure});
-    }
+    };
     try repository.remove(allocator, io, data_dir);
     return allocator.dupe(u8, "{\"success\":true,\"connected\":false}");
 }

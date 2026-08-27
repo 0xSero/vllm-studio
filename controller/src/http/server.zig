@@ -1057,7 +1057,19 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
             if (std.mem.indexOf(u8, document, "\"archived\":true") != null) {
                 sandboxes.archiveSession(client, database, session_id) catch |failure| return respondSessionFailure(request, failure);
                 if (archived_session) |session| if (session.project_id) |project_id| {
-                    code_storage.archiveWorkspace(database, project_id, session.id) catch |failure| return respondProjectFailure(request, failure);
+                    if (mode == .standalone) {
+                        code_storage.archiveWorkspace(database, project_id, session.id) catch |failure| return respondProjectFailure(request, failure);
+                    } else if (!std.mem.startsWith(u8, session.node_id, "daytona-") and !std.mem.startsWith(u8, session.node_id, "vercel-")) {
+                        var archive_document: Io.Writer.Allocating = .init(allocator);
+                        defer archive_document.deinit();
+                        try archive_document.writer.writeAll("{\"projectId\":");
+                        try std.json.Stringify.value(project_id, .{}, &archive_document.writer);
+                        try archive_document.writer.writeAll(",\"sessionId\":");
+                        try std.json.Stringify.value(session.id, .{}, &archive_document.writer);
+                        try archive_document.writer.writeByte('}');
+                        const archived = agent_code_storage.forwardTo(allocator, io, client, database, "/internal/node/v1/projects/workspace/archive", .POST, archive_document.writer.buffered(), session.node_id) catch |failure| return respondProjectFailure(request, failure);
+                        allocator.free(archived);
+                    }
                 };
             }
             try request.respond(response, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
@@ -1159,6 +1171,14 @@ fn serveRequest(allocator: std.mem.Allocator, io: Io, mode: Mode, configuration:
         const document = try readBoundedJsonBody(allocator, request) orelse return false;
         defer allocator.free(document);
         const payload = code_storage.prepareWorkspacePayload(database, document) catch |failure| return respondProjectFailure(request, failure);
+        defer allocator.free(payload);
+        try request.respond(payload, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
+        return request.head.keep_alive;
+    }
+    if (std.mem.eql(u8, route.path, "/internal/node/v1/projects/workspace/archive")) {
+        const document = try readBoundedJsonBody(allocator, request) orelse return false;
+        defer allocator.free(document);
+        const payload = code_storage.archiveWorkspacePayload(database, document) catch |failure| return respondProjectFailure(request, failure);
         defer allocator.free(payload);
         try request.respond(payload, .{ .extra_headers = &.{.{ .name = "Content-Type", .value = "application/json" }} });
         return request.head.keep_alive;
@@ -2567,7 +2587,7 @@ fn respondHarnessFailure(request: *http.Server.Request, failure: anyerror) !bool
     const status: http.Status = switch (failure) {
         error.RemoteHarnessRequired, error.HarnessNodeRequired, error.SessionNodeMismatch, error.SessionHarnessMismatch, error.SessionNotActive, error.ModelChangeRequiresNewSession, error.QueueMutationNotSupported, error.HarnessCommandRejected, error.HarnessDriverUnavailable => .conflict,
         error.SessionNotFound => .not_found,
-        error.InvalidTurnPayload, error.InvalidCompactPayload, error.InvalidExtensionUiPayload, error.InvalidSessionPayload, error.InvalidSessionId, error.InvalidNativeSessionId, error.NativeSessionIdRequired, error.InvalidTranscriptCursor, error.InvalidTurnMode, error.ModelIdRequired, error.MessageRequired, error.SessionIdRequired, error.RequestIdRequired, error.CwdMustBeAbsolute, error.HarnessModelUnsupported => .bad_request,
+        error.InvalidTurnPayload, error.InvalidCompactPayload, error.InvalidExtensionUiPayload, error.InvalidSessionPayload, error.InvalidSessionId, error.InvalidNativeSessionId, error.NativeSessionIdRequired, error.InvalidTranscriptCursor, error.InvalidTurnMode, error.ModelIdRequired, error.MessageRequired, error.SessionIdRequired, error.RequestIdRequired, error.CwdMustBeAbsolute, error.HarnessModelUnsupported, error.ManagedProjectWorkspaceRequired => .bad_request,
         error.FileNotFound, error.AssignedHarnessUnavailable, error.HarnessNodeUnavailable, error.HarnessUnavailable => .service_unavailable,
         else => .internal_server_error,
     };
@@ -2585,6 +2605,7 @@ fn respondHarnessFailure(request: *http.Server.Request, failure: anyerror) !bool
         error.ModelChangeRequiresNewSession => "Changing models requires a new harness session",
         error.QueueMutationNotSupported => "Queue mutation is not available in the Zig harness protocol yet",
         error.CwdMustBeAbsolute => "cwd must be absolute",
+        error.ManagedProjectWorkspaceRequired => "Prepare a task worktree before starting the agent",
         error.FileNotFound => "Pi executable was not found",
         else => @errorName(failure),
     };
@@ -2595,7 +2616,7 @@ fn respondProjectFailure(request: *http.Server.Request, failure: anyerror) !bool
     const status: http.Status = switch (failure) {
         error.ProjectPathRequired, error.ProjectPathMustBeAbsolute, error.ProjectPathNotFound, error.ProjectPathNotDirectory, error.ProjectPathOutsideRoots, error.ProjectIdRequired, error.InvalidProjectId, error.InvalidProjectPayload, error.CodeStorageAccountRequired, error.CodeStorageRepositoryRequired, error.InvalidCodeStorageRepository, error.CodeStoragePathMustBeAbsolute => .bad_request,
         error.CodeStorageAccountNotFound => .not_found,
-        error.ProjectNodeRequired, error.ProjectNodeRejected, error.CodeStorageRepositoryAlreadyAdded => .conflict,
+        error.ProjectNodeRequired, error.ProjectNodeRejected, error.CodeStorageRepositoryAlreadyAdded, error.ProjectWorkspaceInvalid => .conflict,
         error.ProjectNodeUnavailable => .service_unavailable,
         error.CodeStorageRequestRejected, error.CodeStorageGitFailed => .bad_gateway,
         else => .internal_server_error,
@@ -2620,6 +2641,7 @@ fn respondProjectFailure(request: *http.Server.Request, failure: anyerror) !bool
         error.ProjectNodeRequired => "No enrolled node offers project storage",
         error.ProjectNodeRejected => "The project node rejected the request",
         error.ProjectNodeUnavailable => "The project node is unavailable",
+        error.ProjectWorkspaceInvalid => "The task worktree is incomplete",
         else => @errorName(failure),
     };
     return respondDownloadError(request, status, detail);
@@ -3080,8 +3102,7 @@ fn respondHeadConnectionFailure(request: *http.Server.Request, failure: anyerror
         error.InvalidHeadConnection => "Invalid Head connection payload",
         error.HeadUrlRequired => "url is required",
         error.InvalidHeadUrl => "Head URL must use HTTP or HTTPS",
-        error.EnrollmentNodeAddressRequired => "nodeAddress is required",
-        error.EnrollmentNodeCredentialRequired => "nodeApiKey is required",
+        error.IncompleteEnrollment => "nodeAddress and nodeApiKey must be provided together",
         error.HeadEnrollmentRejected => "The Head rejected this node enrollment",
         error.HeadConnectionWriteFailed => "Head connection could not be persisted",
         else => @errorName(failure),

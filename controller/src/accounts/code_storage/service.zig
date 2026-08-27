@@ -381,6 +381,16 @@ pub const State = struct {
         try project_workspace.archive(state.allocator, state.io, state.environment, &project, session_id);
     }
 
+    pub fn archiveWorkspacePayload(state: *State, database: *sqlite.Database, document: []const u8) ![]u8 {
+        var parsed = std.json.parseFromSlice(std.json.Value, state.allocator, document, .{}) catch return error.InvalidProjectWorkspacePayload;
+        defer parsed.deinit();
+        if (parsed.value != .object) return error.InvalidProjectWorkspacePayload;
+        const project_id = stringField(parsed.value.object, "projectId") orelse return error.ProjectIdRequired;
+        const session_id = stringField(parsed.value.object, "sessionId") orelse return error.SessionIdRequired;
+        try state.archiveWorkspace(database, project_id, session_id);
+        return state.allocator.dupe(u8, "{\"ok\":true}");
+    }
+
     pub fn projectRefsPayload(state: *State, database: *sqlite.Database, project_id: []const u8) ![]u8 {
         try database.lock(state.io);
         var project = (try project_repository.getById(state.allocator, database, project_id)) orelse {
@@ -757,7 +767,11 @@ pub const State = struct {
 };
 
 pub fn forward(allocator: std.mem.Allocator, io: Io, client: *http.Client, database: *sqlite.Database, path: []const u8, method: http.Method, document: ?[]const u8) ![]u8 {
-    var target = (try harness_nodes.selectCapability(allocator, io, database, "mcp", null)) orelse return error.ConnectorNodeRequired;
+    return forwardTo(allocator, io, client, database, path, method, document, null);
+}
+
+pub fn forwardTo(allocator: std.mem.Allocator, io: Io, client: *http.Client, database: *sqlite.Database, path: []const u8, method: http.Method, document: ?[]const u8, preferred_node: ?[]const u8) ![]u8 {
+    var target = (try harness_nodes.selectCapability(allocator, io, database, "mcp", preferred_node)) orelse return error.ConnectorNodeRequired;
     defer target.deinit();
     return if (method == .GET)
         node_transport.get(allocator, client, &target, path)
