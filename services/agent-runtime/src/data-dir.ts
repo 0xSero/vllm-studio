@@ -33,7 +33,6 @@ function legacySettingsFileCandidates(): string[] {
     path.join(homedir(), ".local-studio", SETTINGS_FILENAME),
     path.join(homedir(), LEGACY_DOT_DIR, SETTINGS_FILENAME),
     path.join(tmpdir(), "local-studio", SETTINGS_FILENAME),
-    // Past Electron userData siblings.
     path.join(
       homedir(),
       "Library",

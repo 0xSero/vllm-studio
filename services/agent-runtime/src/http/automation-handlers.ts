@@ -1,8 +1,3 @@
-//
-// HTTP surface for automations (Scheduled) and thread goals. Proxied through
-// the Next server like the other runtime handlers.
-//
-
 import {
   createAutomation,
   deleteAutomation,
@@ -61,7 +56,6 @@ export async function handleAutomationRun(id: string): Promise<Response> {
   return Response.json({ ok: true, started: completed !== null });
 }
 
-// ─── Goals ────────────────────────────────────────────────────────────────
 
 function goalSessionId(request: Request): string | null {
   const id = new URL(request.url).searchParams.get("piSessionId")?.trim();

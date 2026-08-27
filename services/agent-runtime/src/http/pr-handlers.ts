@@ -42,7 +42,6 @@ const PR_VIEW_FIELDS = [
 
 const PR_LIST_FIELDS = ["number", "title", "headRefName", "updatedAt", "isDraft"].join(",");
 
-// ─── Pure normalizers (unit-tested; no gh involved) ───────────────────────
 
 export type CheckBucket = "pending" | "passing" | "failing";
 
@@ -72,7 +71,6 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-/** Classify a single rollup entry into a coarse status bucket. */
 function classifyCheck(entry: Record<string, unknown>): CheckBucket {
   // Legacy commit status contexts carry `state`; Actions check runs carry a
   // `status`/`conclusion` pair. Handle whichever is present.
@@ -147,7 +145,6 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-/** `gh pr view --json …` payload → the shape the panel consumes. */
 export function normalizePrView(raw: unknown): NormalizedPr {
   const pr = asRecord(raw);
   const { checks, summary } = normalizeChecks(pr.statusCheckRollup);
@@ -191,7 +188,6 @@ export function normalizePrList(raw: unknown): PrListItem[] {
   });
 }
 
-// ─── gh execution ─────────────────────────────────────────────────────────
 
 type GhFailure = { code: string | null; stderr: string; message: string };
 
@@ -240,7 +236,6 @@ function validateCwd(rawCwd: string | null): string | Response {
   }
 }
 
-// ─── GET /api/agent/pr ─────────────────────────────────────────────────────
 
 export async function handlePrGet(request: Request): Promise<Response> {
   const cwd = validateCwd(new URL(request.url).searchParams.get("cwd"));
@@ -275,7 +270,6 @@ async function listPullRequests(cwd: string): Promise<Response> {
   }
 }
 
-// ─── POST /api/agent/pr/merge ──────────────────────────────────────────────
 
 export async function handlePrMerge(request: Request): Promise<Response> {
   const body = await readJsonRequestWithinLimit(request, PR_MERGE_BODY_LIMIT_BYTES);

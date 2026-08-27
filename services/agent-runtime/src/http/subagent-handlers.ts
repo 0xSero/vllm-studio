@@ -1,9 +1,3 @@
-//
-// HTTP surface for subagents. The pi `subagent` tool extension calls the run
-// endpoint through the frontend proxy (the connectors-bridge pattern); the
-// chips UI polls the list endpoint.
-//
-
 import { listSubagents, runSubagent } from "../subagents";
 import { jsonError, readJsonBody } from "./helpers";
 

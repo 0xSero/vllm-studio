@@ -34,7 +34,6 @@ import {
   shouldSendTrailingIdleStatus,
 } from "./stream-order";
 
-// ─── POST /api/agent/turn ─────────────────────────────────────────────────
 
 function adoptRuntimePiSessionId(session: unknown, piSessionId: string | null | undefined) {
   const next = piSessionId?.trim();
@@ -262,7 +261,6 @@ function turnRouteEffect(request: Request): Effect.Effect<Response, unknown> {
   });
 }
 
-// ─── POST /api/agent/abort ────────────────────────────────────────────────
 
 export async function handleAgentAbort(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => ({}))) as { sessionId?: string };
@@ -297,7 +295,6 @@ export async function handleExtensionUiResponse(request: Request): Promise<Respo
   return accepted ? Response.json({ ok: true }) : jsonError("Extension request is no longer active", 409);
 }
 
-// ─── POST /api/agent/compact ──────────────────────────────────────────────
 
 type CompactRequest = {
   sessionId?: string;
@@ -377,7 +374,6 @@ function compactRouteEffect(request: Request): Effect.Effect<Response, unknown> 
   });
 }
 
-// ─── GET /api/agent/runtime/sessions ──────────────────────────────────────
 
 export function handleRuntimeSessions(): Response {
   return Response.json({
@@ -387,7 +383,6 @@ export function handleRuntimeSessions(): Response {
   });
 }
 
-// ─── GET /api/agent/runtime/status ────────────────────────────────────────
 
 export function handleRuntimeStatus(request: Request): Response {
   const searchParams = new URL(request.url).searchParams;
@@ -409,7 +404,6 @@ export function handleRuntimeStatus(request: Request): Response {
   });
 }
 
-// ─── GET /api/agent/runtime/events (SSE) ──────────────────────────────────
 
 function parseSeq(value: string | null): number {
   const parsed = Number(value ?? 0);
@@ -538,7 +532,6 @@ export function handleRuntimeEvents(request: Request): Response {
   });
 }
 
-// ─── GET /api/agent/setup-checks ──────────────────────────────────────────
 
 export function handleSetupChecks(): Response {
   const codexDir = path.join(homedir(), ".codex");

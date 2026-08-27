@@ -68,8 +68,6 @@ function decodeEntities(value: string): string {
     .replace(/&nbsp;/g, " ");
 }
 
-// Lightweight HTML → readable text. We intentionally avoid pulling in
-// readability/cheerio; the goal is "good enough for the model to read".
 function htmlToReadable(html: string, baseUrl: string): { title: string; text: string } {
   const noScripts = html
     .replace(/<script[\s\S]*?<\/script>/gi, "")

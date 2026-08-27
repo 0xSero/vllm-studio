@@ -1,9 +1,3 @@
-//
-// HTTP surface for the provider hub. All routes are proxied through the Next
-// server (`/api/agent/providers*`) like the other runtime handlers, so the
-// hub's single ModelRuntime instance serves both sign-in and sessions.
-//
-
 import {
   cancelProviderLogin,
   getProviderLoginJob,

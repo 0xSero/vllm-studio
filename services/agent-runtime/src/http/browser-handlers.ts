@@ -44,12 +44,10 @@ async function readPayload(request: Request): Promise<Record<string, unknown>> {
   try {
     const body = (await request.json()) as Record<string, unknown> | null;
     if (body && typeof body === "object") {
-      // sessionId was a renderer-bridge affinity hint; the host is global now.
       const { sessionId: _sessionId, ...rest } = body;
       return rest;
     }
   } catch {
-    // empty body is fine
   }
   return {};
 }
@@ -325,7 +323,6 @@ async function listListeningPorts(): Promise<PortCandidate[]> {
     const ports = parseLsof(stdout);
     if (ports.length > 0) return ports;
   } catch {
-    // Fall through to common dev-server ports.
   }
   return FALLBACK_PORTS.map((port) => ({ port }));
 }
@@ -379,7 +376,6 @@ export async function handleBrowserLocalhosts(request: Request): Promise<Respons
   return Response.json({ sites });
 }
 
-// ─── GET /api/agent/browser/state ─────────────────────────────────────────
 
 export async function handleBrowserState(): Promise<Response> {
   if (!browserHost.isAvailable()) {
@@ -395,10 +391,6 @@ export async function handleBrowserState(): Promise<Response> {
   }
 }
 
-// ─── POST /api/agent/browser/viewport ─────────────────────────────────────
-//
-// Sets the headless Chromium viewport so it matches the visible panel's
-// dimensions. Body: { width, height }.
 
 export async function handleBrowserViewport(request: Request): Promise<Response> {
   if (!browserHost.isAvailable()) {
