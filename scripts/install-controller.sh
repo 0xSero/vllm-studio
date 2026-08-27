@@ -152,6 +152,16 @@ write_env_value LOCAL_STUDIO_CONTROLLER_MODE "$CONTROLLER_MODE"
 write_env_value LOCAL_STUDIO_DATA_DIR "$DATA_DIR"
 write_env_value LOCAL_STUDIO_MODELS_DIR "$MODELS_DIR"
 mkdir -p "$DATA_DIR" "$MODELS_DIR"
+if [ "$OS_NAME" = "Linux" ] && [ -e /etc/NIXOS ]; then
+  SQLITE_LIBRARY="$(find /nix/store -maxdepth 3 -type f -name 'libsqlite3.so.*' 2>/dev/null | sort -V | tail -1)"
+  [ -n "$SQLITE_LIBRARY" ] || { log "SQLite runtime library not found"; exit 1; }
+  SQLITE_LIBRARY_DIR="$DATA_DIR/lib"
+  mkdir -p "$SQLITE_LIBRARY_DIR"
+  cp -L "$SQLITE_LIBRARY" "$SQLITE_LIBRARY_DIR/libsqlite3.so.0.tmp"
+  chmod 755 "$SQLITE_LIBRARY_DIR/libsqlite3.so.0.tmp"
+  mv "$SQLITE_LIBRARY_DIR/libsqlite3.so.0.tmp" "$SQLITE_LIBRARY_DIR/libsqlite3.so.0"
+  write_env_value LD_LIBRARY_PATH "$SQLITE_LIBRARY_DIR"
+fi
 chmod 600 "$ENV_FILE"
 INSTALL_BIN="$DATA_DIR/bin/local-studio-controller"
 mkdir -p "$(dirname "$INSTALL_BIN")"
