@@ -39,6 +39,6 @@
     "shared"
   ],
   "overrides": {
-    "eslint-plugin-react-hooks": "7.0.1"
+    "zod-validation-error": "4.0.2"
   }
 }
