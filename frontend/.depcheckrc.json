@@ -1,18 +1,6 @@
 {
   "ignores": [
-    "@hono/node-server",
-    "@lydell/node-pty",
-    "@modelcontextprotocol/sdk",
-    "brace-expansion",
-    "chromium-bidi",
-    "fast-check",
-    "playwright-core",
-    "proper-lockfile",
-    "semver",
-    "@types/proper-lockfile",
-    "@types/semver",
     "@types/react",
-    "@types/react-dom",
     "@types/node",
     "eslint-config-next",
     "tailwindcss",
@@ -24,7 +12,10 @@
     "lint-staged",
     "concurrently",
     "electron-builder",
-    "madge"
+    "madge",
+    "@oxlint/plugins",
+    "oxlint",
+    "oxlint-tsgolint"
   ],
   "ignore-patterns": ["*.d.ts", ".next/**", "dist-desktop/**", "desktop/dist/**"],
   "specials": ["next", "webpack", "babel"],

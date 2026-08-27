@@ -76,7 +76,7 @@ const nextConfig: NextConfig = {
       "../shared/**/*",
       "../site/**/*",
       "../*.md",
-      "../bun.lock",
+      "../bun.lockb",
       "../release.config.cjs",
       "../tsconfig*.json",
     ],

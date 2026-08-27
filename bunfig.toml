@@ -1,2 +1,3 @@
 [install]
 linker = "hoisted"
+saveTextLockfile = false
