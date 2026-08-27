@@ -16,25 +16,26 @@ const ModelDownloadSchema = Schema.Struct({
   model_id: Schema.String,
   revision: Schema.NullOr(Schema.String),
   status: Schema.Literals(["queued", "downloading", "paused", "completed", "failed", "canceled"]),
-  source: Schema.optional(Schema.NullOr(Schema.String)),
+  source: Schema.optionalKey(Schema.NullOr(Schema.String)),
   created_at: Schema.String,
   updated_at: Schema.String,
-  completed_at: Schema.optional(Schema.NullOr(Schema.String)),
+  completed_at: Schema.optionalKey(Schema.NullOr(Schema.String)),
   target_dir: Schema.String,
   total_bytes: Schema.NullOr(Schema.Number),
   downloaded_bytes: Schema.Number,
-  speed_bytes_per_second: Schema.optional(Schema.NullOr(Schema.Number)),
-  files: Schema.Array(DownloadFileSchema),
+  speed_bytes_per_second: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  files: Schema.mutable(Schema.Array(DownloadFileSchema)),
   error: Schema.NullOr(Schema.String),
 });
 
-const decodeDownload = (value: unknown): Effect.Effect<ModelDownload, EngineOperationError> =>
-  attempt("parse-download-record", () =>
-    typeof value === "string" ? JSON.parse(value) : value,
-  ).pipe(
-    Effect.flatMap((parsed) => Schema.decodeUnknownEffect(ModelDownloadSchema)(parsed)),
+interface DownloadDataRow {
+  readonly data: string;
+}
+
+const decodeDownload = (serialized: string): Effect.Effect<ModelDownload, EngineOperationError> =>
+  attempt("parse-download-record", () => JSON.parse(serialized)).pipe(
+    Effect.flatMap(Schema.decodeUnknownEffect(ModelDownloadSchema)),
     Effect.mapError((cause) => operationError("decode-download-record", cause)),
-    Effect.map((download) => download as ModelDownload),
   );
 
 export class DownloadStore {
@@ -67,16 +68,14 @@ export class DownloadStore {
   }
 
   public list(): Effect.Effect<ModelDownload[], EngineOperationError> {
-    const store = this;
+    const db = this.db;
     return Effect.gen(function* () {
       const rows = yield* attempt(
         "list-downloads",
         () =>
-          store.db
-            .query("SELECT data FROM model_downloads ORDER BY updated_at DESC")
-            .all() as Array<{
-            data: string;
-          }>,
+          db
+            .query<DownloadDataRow, []>("SELECT data FROM model_downloads ORDER BY updated_at DESC")
+            .all(),
       );
       const decoded = yield* Effect.forEach(rows, (row) =>
         decodeDownload(row.data).pipe(Effect.option),
@@ -86,14 +85,12 @@ export class DownloadStore {
   }
 
   public get(id: string): Effect.Effect<ModelDownload | null, EngineOperationError> {
-    const store = this;
+    const db = this.db;
     return Effect.gen(function* () {
       const row = yield* attempt(
         "get-download",
         () =>
-          store.db.query("SELECT data FROM model_downloads WHERE id = ?").get(id) as {
-            data: string;
-          } | null,
+          db.query<DownloadDataRow, [string]>("SELECT data FROM model_downloads WHERE id = ?").get(id),
       );
       if (!row?.data) return null;
       return yield* decodeDownload(row.data).pipe(Effect.catch(() => Effect.succeed(null)));

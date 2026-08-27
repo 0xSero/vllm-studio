@@ -70,16 +70,26 @@ const TUNING_ORDER: readonly TuningKey[] = [
   "reasoningParser",
 ];
 
-/** Parallelism of 1 is the default everywhere; emitting it only adds noise and, for some
- *  builds, forces a distributed code path that a single card does not need. */
-const PARALLEL_KEYS = new Set<TuningKey>(["tensorParallel", "pipelineParallel"]);
-
-const shouldEmit = (key: TuningKey, value: ServingOptions[TuningKey]): boolean => {
-  if (value === null || value === undefined || value === false) return false;
-  if (value === "auto") return false;
-  if (typeof value === "number") return PARALLEL_KEYS.has(key) ? value > 1 : value > 0;
-  if (typeof value === "string") return value.length > 0;
-  return true;
+const shouldEmit = (key: TuningKey, options: ServingOptions): boolean => {
+  switch (key) {
+    case "tensorParallel":
+    case "pipelineParallel":
+      return options[key] > 1;
+    case "maxContextLength":
+    case "memoryFraction":
+    case "maxConcurrentRequests":
+      return options[key] > 0;
+    case "trustRemoteCode":
+      return options[key];
+    case "kvCacheDtype":
+    case "dtype":
+    case "quantization":
+    case "toolCallParser":
+    case "reasoningParser": {
+      const value = options[key];
+      return value !== null && value !== "" && value !== "auto";
+    }
+  }
 };
 
 export const tuningArguments = (options: ServingOptions, spelling: Spelling): string[] => {
@@ -87,8 +97,8 @@ export const tuningArguments = (options: ServingOptions, spelling: Spelling): st
   for (const key of TUNING_ORDER) {
     const spec = spelling[key];
     const value = options[key];
-    if (!spec || !shouldEmit(key, value)) continue;
-    if (typeof value === "boolean") args.push(spec.flag);
+    if (!spec || !shouldEmit(key, options)) continue;
+    if (key === "trustRemoteCode") args.push(spec.flag);
     else args.push(spec.flag, String(value));
     if (spec.companion) args.push(spec.companion);
   }
@@ -174,14 +184,17 @@ export const plan = (
   },
 ): LaunchPlan => {
   const image = request.dockerImage ?? parts.image;
-  return {
+  const launchPlan: LaunchPlan = {
     kind: request.runtime,
     argv: request.runtime === "docker" ? [...parts.args] : [request.binary, ...parts.args],
-    ...(request.runtime === "docker" && image ? { image } : {}),
-    env: { ...request.env, ...(parts.env ?? {}) },
+    env: { ...request.env, ...parts.env },
     ports: [{ container: parts.listenPort, host: request.port }],
     mounts: modelMounts(request),
     devices: request.devices,
     health: parts.health,
   };
+  if (request.runtime === "docker" && image) {
+    return { ...launchPlan, image };
+  }
+  return launchPlan;
 };

@@ -35,20 +35,21 @@ import { type EngineOperationError, getEngineSpec } from "../engine-spec";
  */
 
 const BACKENDS: readonly EngineBackend[] = ["vllm", "sglang", "llamacpp", "mlx"];
-const ENGINE_LABEL: Record<EngineBackend, string> = {
+const ENGINE_LABEL = {
   vllm: "vLLM",
   sglang: "SGLang",
   llamacpp: "llama.cpp",
   mlx: "MLX",
-};
+} satisfies Record<EngineBackend, string>;
 
 const skipSystem = (): boolean => process.env["LOCAL_STUDIO_RUNTIME_SKIP_SYSTEM"] === "1";
 
-interface Candidate {
-  readonly backend: EngineBackend;
+const isPythonBackend = (backend: EngineBackend): backend is PythonProbeBackend =>
+  backend !== "llamacpp";
+
+interface CandidateBase {
   readonly kind: RuntimeTarget["kind"];
   readonly source: RuntimeTarget["source"];
-  readonly probe: "python" | "binary" | "spec-binary" | "none";
   readonly candidate: string;
   readonly label: (resolvedPath: string) => string;
   readonly installed?: boolean;
@@ -58,6 +59,13 @@ interface Candidate {
   readonly binaryPath?: string | null;
   readonly dockerImage?: string | null;
 }
+
+type Candidate =
+  | (CandidateBase & { readonly backend: PythonProbeBackend; readonly probe: "python" })
+  | (CandidateBase & {
+      readonly backend: EngineBackend;
+      readonly probe: "binary" | "spec-binary" | "none";
+    });
 
 const unique = (values: Array<string | null | undefined>): string[] => {
   const seen = new Set<string>();
@@ -229,12 +237,12 @@ const llamacppCandidates = (config: Config): Candidate[] => {
   return [...configured, ...system];
 };
 
-const DOCKER_IMAGE_PATTERN: Record<EngineBackend, RegExp> = {
+const DOCKER_IMAGE_PATTERN = {
   vllm: /(^|[/:_-])vllm($|[/:_-])/i,
   sglang: /(^|[/:_-])sglang($|[/:_-])/i,
   llamacpp: /(llama\.cpp|llamacpp|llama-server)/i,
   mlx: /(mlx-lm|mlx_lm|mlx)/i,
-};
+} satisfies Record<EngineBackend, RegExp>;
 
 const dockerCandidates = (): Effect.Effect<Candidate[]> =>
   Effect.gen(function* () {
@@ -357,22 +365,22 @@ const materialize = (
         healthMessage: "message" in probe ? probe.message : undefined,
       });
     }
-    const probe = yield* probePythonRuntime(
-      candidate.backend as PythonProbeBackend,
-      candidate.candidate,
-    );
-    const path = probe.pythonPath ?? candidate.candidate;
-    return makeRuntimeTarget({
-      backend: candidate.backend,
-      kind: candidate.kind,
-      source: candidate.source,
-      key: path,
-      label: candidate.label(path),
-      installed: probe.installed,
-      version: probe.version,
-      pythonPath: path,
-      healthMessage: probe.message,
-    });
+    if (candidate.probe === "python") {
+      const probe = yield* probePythonRuntime(candidate.backend, candidate.candidate);
+      const path = probe.pythonPath ?? candidate.candidate;
+      return makeRuntimeTarget({
+        backend: candidate.backend,
+        kind: candidate.kind,
+        source: candidate.source,
+        key: path,
+        label: candidate.label(path),
+        installed: probe.installed,
+        version: probe.version,
+        pythonPath: path,
+        healthMessage: probe.message,
+      });
+    }
+    return yield* Effect.die(new Error("Unsupported runtime probe"));
   });
 
 const sourcePriority = (source: RuntimeTarget["source"]): number =>
@@ -422,7 +430,10 @@ const withSelection = (targets: RuntimeTarget[], config: Config): RuntimeTarget[
   }));
 };
 
-const BACKEND_ORDER: Record<EngineBackend, number> = { vllm: 0, sglang: 1, llamacpp: 2, mlx: 3 };
+const BACKEND_ORDER = { vllm: 0, sglang: 1, llamacpp: 2, mlx: 3 } satisfies Record<
+  EngineBackend,
+  number
+>;
 
 const sortTargets = (targets: RuntimeTarget[]): RuntimeTarget[] =>
   [...targets].sort(
@@ -452,12 +463,12 @@ export const getRuntimeTargets = (
       BACKENDS,
       (backend) =>
         Effect.sync(() =>
-          backend === "llamacpp"
-            ? [...runningCandidates(backend, runningProcess), ...llamacppCandidates(config)]
-            : [
+          isPythonBackend(backend)
+            ? [
                 ...runningCandidates(backend, runningProcess),
-                ...pythonCandidates(backend as PythonProbeBackend, config),
-              ],
+                ...pythonCandidates(backend, config),
+              ]
+            : [...runningCandidates(backend, runningProcess), ...llamacppCandidates(config)],
         ),
       { concurrency: "unbounded" },
     );
@@ -497,7 +508,7 @@ export const selectRuntimeTarget = (
     const persisted = loadPersistedConfig(config.data_dir);
     savePersistedConfig(config.data_dir, {
       selected_runtime_target_ids: {
-        ...(persisted.selected_runtime_target_ids ?? {}),
+        ...persisted.selected_runtime_target_ids,
         [target.backend]: target.id,
       },
     });

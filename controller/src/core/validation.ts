@@ -18,9 +18,11 @@ export const decodeJsonBody = <A>(
     Effect.mapError(() => badRequest("Invalid payload")),
   );
 
-export const parseBooleanFlag = (raw: unknown): boolean => {
-  if (typeof raw === "boolean") return raw;
-  if (raw === undefined || raw === null) return false;
-  const normalized = String(raw).trim().toLowerCase();
+export type BooleanFlagInput = string | boolean | null | undefined;
+
+export const parseBooleanFlag = (raw: BooleanFlagInput): boolean => {
+  if (raw === true) return true;
+  if (raw === false || raw === undefined || raw === null) return false;
+  const normalized = raw.trim().toLowerCase();
   return ["1", "true", "yes", "on"].includes(normalized);
 };

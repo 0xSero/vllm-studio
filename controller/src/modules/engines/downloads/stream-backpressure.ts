@@ -1,12 +1,27 @@
 import type { EventEmitter } from "node:events";
 import { Effect } from "effect";
 
+interface StringifiableWriterError {
+  toString: () => string;
+}
+
+type WriterErrorEvent =
+  | Error
+  | StringifiableWriterError
+  | string
+  | number
+  | boolean
+  | bigint
+  | symbol
+  | null
+  | undefined;
+
 type WriterFailure = {
   dispose: () => void;
   throwIfFailed: () => void;
 };
 
-const toError = (error: unknown): Error =>
+const toWriterError = (error: WriterErrorEvent): Error =>
   error instanceof Error ? error : new Error(String(error));
 
 export const waitForWriterDrain = (writer: EventEmitter): Effect.Effect<void, Error> =>
@@ -19,9 +34,9 @@ export const waitForWriterDrain = (writer: EventEmitter): Effect.Effect<void, Er
       cleanup();
       resume(Effect.void);
     };
-    const onError = (error: unknown): void => {
+    const onError = (error: WriterErrorEvent): void => {
       cleanup();
-      resume(Effect.fail(toError(error)));
+      resume(Effect.fail(toWriterError(error)));
     };
     writer.once("drain", onDrain);
     writer.once("error", onError);
@@ -30,8 +45,8 @@ export const waitForWriterDrain = (writer: EventEmitter): Effect.Effect<void, Er
 
 export const trackWriterFailure = (writer: EventEmitter): WriterFailure => {
   let failure: Error | null = null;
-  const onError = (error: unknown): void => {
-    failure = toError(error);
+  const onError = (error: WriterErrorEvent): void => {
+    failure = toWriterError(error);
   };
   writer.on("error", onError);
   return {

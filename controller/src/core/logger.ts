@@ -10,11 +10,14 @@ export interface LoggerOptions {
   onLine?: (line: string, meta: { level: LogLevel }) => void;
 }
 
+export type LogDetailValue = string | number | boolean | null | undefined;
+export type LogDetails = Readonly<Record<string, LogDetailValue>>;
+
 export interface Logger {
-  debug: (message: string, details?: Record<string, unknown>) => void;
-  info: (message: string, details?: Record<string, unknown>) => void;
-  warn: (message: string, details?: Record<string, unknown>) => void;
-  error: (message: string, details?: Record<string, unknown>) => void;
+  debug: (message: string, details?: LogDetails) => void;
+  info: (message: string, details?: LogDetails) => void;
+  warn: (message: string, details?: LogDetails) => void;
+  error: (message: string, details?: LogDetails) => void;
   shutdown: () => Effect.Effect<void>;
 }
 
@@ -31,16 +34,16 @@ export const createLogger = (level: LogLevel, options: LoggerOptions = {}): Logg
     }
   })();
 
-  const priority: Record<LogLevel, number> = {
+  const priority = {
     debug: 10,
     info: 20,
     warn: 30,
     error: 40,
-  };
+  } satisfies Record<LogLevel, number>;
 
   const shouldLog = (target: LogLevel): boolean => priority[target] >= priority[level];
 
-  const format = (message: string, details?: Record<string, unknown>): string => {
+  const format = (message: string, details?: LogDetails): string => {
     if (!details || Object.keys(details).length === 0) {
       return message;
     }
@@ -50,14 +53,14 @@ export const createLogger = (level: LogLevel, options: LoggerOptions = {}): Logg
   const toFileLine = (
     target: LogLevel,
     message: string,
-    details?: Record<string, unknown>,
+    details?: LogDetails,
   ): string => {
     const ts = new Date().toISOString();
     const base = format(message, details);
     return `${ts} ${target.toUpperCase()} ${base}\n`;
   };
 
-  const tryWrite = (target: LogLevel, message: string, details?: Record<string, unknown>): void => {
+  const tryWrite = (target: LogLevel, message: string, details?: LogDetails): void => {
     const line = toFileLine(target, message, details);
 
     if (stream) {

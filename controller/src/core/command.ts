@@ -1,4 +1,10 @@
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import {
+  spawn,
+  spawnSync,
+  type ChildProcess,
+  type SpawnOptions,
+  type SpawnSyncOptions,
+} from "node:child_process";
 import { delimiter, join, resolve } from "node:path";
 import type { Readable } from "node:stream";
 import { Effect } from "effect";
@@ -36,10 +42,12 @@ export interface ProcessRunner {
 export const realProcessRunner: ProcessRunner = {
   runSync: (command, args, options = {}) => {
     try {
-      const result = spawnSync(command, args, {
-        ...(options.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
-        env: process.env,
-      });
+      const baseOptions: SpawnSyncOptions = { env: process.env };
+      const spawnOptions =
+        options.timeoutMs === undefined
+          ? baseOptions
+          : { ...baseOptions, timeout: options.timeoutMs };
+      const result = spawnSync(command, args, spawnOptions);
       return {
         status: result.status,
         stdout: result.stdout ? result.stdout.toString("utf-8").trim() : "",
@@ -53,12 +61,14 @@ export const realProcessRunner: ProcessRunner = {
       };
     }
   },
-  spawnDetached: (command, args, options) =>
-    spawn(command, args, {
+  spawnDetached: (command, args, options) => {
+    const baseOptions: SpawnOptions = {
       stdio: options.stdio === "pipe" ? ["ignore", "pipe", "pipe"] : "ignore",
-      ...(options.env ? { env: options.env } : {}),
       detached: true,
-    }),
+    };
+    const spawnOptions = options.env ? { ...baseOptions, env: options.env } : baseOptions;
+    return spawn(command, args, spawnOptions);
+  },
 };
 
 export type AsyncCommandResult = CommandResult & {
@@ -114,10 +124,11 @@ export const runCommandAsyncEffect = (
     const maximumOutputBytes = Number.isSafeInteger(requestedOutputBytes)
       ? Math.max(0, requestedOutputBytes)
       : DEFAULT_MAX_OUTPUT_BYTES;
-    const child = spawn(command, args, {
-      env: options.env ?? process.env,
-      ...(options.cwd ? { cwd: options.cwd } : {}),
-    });
+    const baseSpawnOptions: SpawnOptions = { env: options.env ?? process.env };
+    const spawnOptions = options.cwd
+      ? { ...baseSpawnOptions, cwd: options.cwd }
+      : baseSpawnOptions;
+    const child = spawn(command, args, spawnOptions);
     options.onSpawn?.(child);
     if (options.stdin !== undefined) {
       child.stdin?.on("error", () => {});

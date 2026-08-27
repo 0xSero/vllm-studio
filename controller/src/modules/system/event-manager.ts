@@ -1,13 +1,18 @@
 import { Effect, PubSub, Semaphore, Stream } from "effect";
 import { CONTROLLER_EVENTS } from "@local-studio/contracts/controller-events";
 
-export class Event {
+export type EventValue = string | number | boolean | null | undefined | EventData | EventValue[];
+export interface EventData {
+  [key: string]: EventValue;
+}
+
+export class Event<Data extends object = object> {
   public readonly type: string;
-  public readonly data: Record<string, unknown>;
+  public readonly data: Data;
   public readonly timestamp: string;
   public readonly id: string;
 
-  public constructor(type: string, data: Record<string, unknown>) {
+  public constructor(type: string, data: Data) {
     this.type = type;
     this.data = data;
     this.timestamp = new Date().toISOString();
@@ -39,7 +44,7 @@ export class EventManager {
     { readonly pubsub: PubSub.PubSub<Event>; subscribers: number }
   >();
   private readonly channelsLock = Semaphore.makeUnsafe(1);
-  private latestMetrics: Record<string, unknown> = {};
+  private latestMetrics = {};
 
   private acquireChannel(
     channel: string,
@@ -97,25 +102,25 @@ export class EventManager {
     );
   }
 
-  public publishStatus(statusData: Record<string, unknown>): Effect.Effect<void> {
+  public publishStatus<Status extends object>(statusData: Status): Effect.Effect<void> {
     return this.publish(new Event(CONTROLLER_EVENTS.STATUS, statusData));
   }
 
-  public publishGpu(gpuData: Record<string, unknown>[]): Effect.Effect<void> {
+  public publishGpu<Gpu extends object>(gpuData: Gpu[]): Effect.Effect<void> {
     return this.publish(new Event(CONTROLLER_EVENTS.GPU, { gpus: gpuData, count: gpuData.length }));
   }
 
-  public publishMetrics(metricsData: Record<string, unknown>): Effect.Effect<void> {
+  public publishMetrics<Metrics extends object>(metricsData: Metrics): Effect.Effect<void> {
     return Effect.sync(() => {
       this.latestMetrics = { ...metricsData };
     }).pipe(Effect.andThen(this.publish(new Event(CONTROLLER_EVENTS.METRICS, metricsData))));
   }
 
-  public getLatestMetrics(): Record<string, unknown> {
+  public getLatestMetrics() {
     return { ...this.latestMetrics };
   }
 
-  public publishRuntimeSummary(summaryData: Record<string, unknown>): Effect.Effect<void> {
+  public publishRuntimeSummary<Summary extends object>(summaryData: Summary): Effect.Effect<void> {
     return this.publish(new Event(CONTROLLER_EVENTS.RUNTIME_SUMMARY, summaryData));
   }
 
@@ -142,8 +147,7 @@ export class EventManager {
     message: string,
     progress?: number,
   ): Effect.Effect<void> {
-    const payload: Record<string, unknown> = { recipe_id: recipeId, stage, message };
-    if (progress !== undefined) payload["progress"] = progress;
+    const payload = { recipe_id: recipeId, stage, message, progress };
     return this.publish(new Event(CONTROLLER_EVENTS.LAUNCH_PROGRESS, payload));
   }
 
