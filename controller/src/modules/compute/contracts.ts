@@ -15,14 +15,6 @@
  *  converge when exllamav3 can actually launch; until then `toEngineBackend` narrows. */
 export type EngineId = "vllm" | "sglang" | "llamacpp" | "mlx" | "exllamav3";
 
-export const ENGINE_IDS: readonly EngineId[] = [
-  "vllm",
-  "sglang",
-  "llamacpp",
-  "mlx",
-  "exllamav3",
-] as const;
-
 export type Accelerator = "cuda" | "rocm" | "metal" | "xpu" | "cpu";
 export type EngineRuntimeKind = "process" | "docker";
 export type HostPlatform = "linux" | "darwin" | "win32";
