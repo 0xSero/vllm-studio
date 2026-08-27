@@ -61,6 +61,19 @@ export type GitAction =
 type AgentContractInput = typeof Schema.Unknown.Encoded;
 
 const isString = Schema.is(Schema.String);
+type AgentContractBody = NonNullable<ReturnType<typeof objectRecord>>;
+
+function parseAddWorktree(body: AgentContractBody): ParseResult<GitAction> {
+  const branch = stringField(body, "branch", true);
+  if (!branch.ok) return branch;
+  const path = stringField(body, "path", true);
+  if (!path.ok) return path;
+  return {
+    ok: true,
+    value: { action: "add_worktree", branch: branch.value!, path: path.value! },
+  };
+}
+
 export function parseGitAction(input: AgentContractInput): ParseResult<GitAction> {
   const body = objectRecord(input);
   if (!body || !isString(body.action)) {
@@ -77,16 +90,7 @@ export function parseGitAction(input: AgentContractInput): ParseResult<GitAction
     if (!branch.ok) return branch;
     return { ok: true, value: { action: body.action, branch: branch.value! } };
   }
-  if (body.action === "add_worktree") {
-    const branch = stringField(body, "branch", true);
-    if (!branch.ok) return branch;
-    const path = stringField(body, "path", true);
-    if (!path.ok) return path;
-    return {
-      ok: true,
-      value: { action: "add_worktree", branch: branch.value!, path: path.value! },
-    };
-  }
+  if (body.action === "add_worktree") return parseAddWorktree(body);
   if (body.action === "remove_worktree") {
     const path = stringField(body, "path", true);
     return path.ok ? { ok: true, value: { action: "remove_worktree", path: path.value! } } : path;

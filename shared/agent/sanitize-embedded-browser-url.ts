@@ -32,11 +32,11 @@ function ipv4Octets(host: string): Ipv4Octets | null {
   return octets.every((octet) => octet >= 0 && octet <= 255) ? octets : null;
 }
 
+const PRIVATE_IPV4_FIRST_OCTETS = new Set([0, 10, 127]);
+
 function isPrivateIpv4([a, b]: Ipv4Octets): boolean {
   return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
+    PRIVATE_IPV4_FIRST_OCTETS.has(a) ||
     (a === 100 && b >= 64 && b <= 127) ||
     (a === 169 && b === 254) ||
     (a === 172 && b >= 16 && b <= 31) ||

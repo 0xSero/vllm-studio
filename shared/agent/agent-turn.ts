@@ -59,6 +59,7 @@ export type AgentBrowserBackend = "embedded" | "sitegeist";
 export type AgentToolAccess = "read_only" | "full";
 
 export type AgentTurnMode = "prompt" | "steer" | "follow_up";
+const isNonPromptTurnMode = Schema.is(Schema.Literals(["steer", "follow_up"]));
 export type AgentStreamingBehavior = "steer" | "followUp";
 export type AgentQueueAction = "promote" | "remove" | "replace";
 export const AGENT_THINKING_LEVELS = [
@@ -213,7 +214,7 @@ export function parseAgentTurnRequest(input: UnparsedValue): ParseResult<AgentTu
   if (!images.ok) return images;
   const browserBackend = body["browserBackend"] === "sitegeist" ? "sitegeist" : "embedded";
   const rawMode = body["mode"];
-  const mode = rawMode === "steer" || rawMode === "follow_up" ? rawMode : "prompt";
+  const mode = isNonPromptTurnMode(rawMode) ? rawMode : "prompt";
   const rawStreamingBehavior = body["streamingBehavior"];
   const streamingBehavior =
     rawStreamingBehavior === "steer" || rawStreamingBehavior === "followUp"

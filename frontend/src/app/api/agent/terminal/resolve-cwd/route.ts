@@ -20,6 +20,19 @@ function expandTilde(target: string): string {
   return target;
 }
 
+function resolveCwd(target: string, from: string, previous: string): string | Response {
+  if (!target || target === "~") return os.homedir();
+  if (target === "-") {
+    return previous || Response.json({ ok: false, error: "OLDPWD not set" }, { status: 400 });
+  }
+  if (target.startsWith("~")) return expandTilde(target);
+  if (path.isAbsolute(target)) return target;
+  if (!from || !path.isAbsolute(from)) {
+    return Response.json({ ok: false, error: "from must be absolute" }, { status: 400 });
+  }
+  return path.resolve(from, target);
+}
+
 export async function POST(request: NextRequest) {
   const denied = requireApiAccess(request);
   if (denied) return denied;
@@ -33,21 +46,8 @@ export async function POST(request: NextRequest) {
   const from = body.from?.trim() ?? "";
   const previous = body.previous?.trim() ?? "";
 
-  let next: string;
-  if (!target || target === "~") {
-    next = os.homedir();
-  } else if (target === "-") {
-    if (!previous) return Response.json({ ok: false, error: "OLDPWD not set" }, { status: 400 });
-    next = previous;
-  } else if (target.startsWith("~")) {
-    next = expandTilde(target);
-  } else if (path.isAbsolute(target)) {
-    next = target;
-  } else {
-    if (!from || !path.isAbsolute(from))
-      return Response.json({ ok: false, error: "from must be absolute" }, { status: 400 });
-    next = path.resolve(from, target);
-  }
+  const next = resolveCwd(target, from, previous);
+  if (next instanceof Response) return next;
 
   try {
     if (!statSync(next).isDirectory())

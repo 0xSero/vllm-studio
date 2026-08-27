@@ -17,19 +17,21 @@ const isString = Schema.is(Schema.String);
 const CompactionResultSchema = Schema.Struct({ status: Schema.optional(Schema.String) });
 const isCompactionResult = Schema.is(CompactionResultSchema);
 
+const COMPACTION_FAILURE_FIELDS = [
+  "error",
+  "errorMessage",
+  "aborted",
+  "cancelled",
+  "canceled",
+  "failed",
+] as const;
+
 export function piEventIsSuccessfulCompaction(event: UnknownRecord): boolean {
   const eventType = event["type"];
   const type = isString(eventType) ? eventType.toLowerCase() : "";
   if (!type.includes("compact") && !type.includes("compaction")) return false;
   if (type.includes("start") || type.includes("begin")) return false;
-  if (
-    event["error"] ||
-    event["errorMessage"] ||
-    event["aborted"] ||
-    event["cancelled"] ||
-    event["canceled"] ||
-    event["failed"]
-  ) {
+  if (COMPACTION_FAILURE_FIELDS.some((field) => event[field])) {
     return false;
   }
   const eventResult = event["result"];

@@ -46,7 +46,8 @@ export async function POST(request: NextRequest) {
   const rel = body.path?.trim() ?? "";
   const line = Number(body.line);
   const text = body.body?.trim() ?? "";
-  if (!cwd || !rel || !Number.isFinite(line) || line < 1 || !text) {
+  const hasRequiredFields = [cwd, rel, text].every(Boolean);
+  if (!hasRequiredFields || !Number.isFinite(line) || line < 1) {
     return jsonError("cwd, path, line, body required");
   }
   if (!path.isAbsolute(cwd)) {
