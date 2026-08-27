@@ -99,6 +99,7 @@ function normalizeAutomation(value: unknown): Automation {
 
 const store = createSessionScopedJsonStore<Automation>({
   subdir: AUTOMATIONS_SUBDIR,
+  legacyFile: "automations-legacy.json",
   normalize: normalizeAutomation,
 });
 

@@ -17,20 +17,27 @@ function withFileLock<T>(file: string, task: () => Promise<T>): Promise<T> {
   return run;
 }
 
-function sanitizeSessionId(sessionId: string): string {
+function sanitizeSessionId(sessionId: string | null | undefined): string | null {
+  if (typeof sessionId !== "string") return null;
   const trimmed = sessionId.trim();
-  if (!/^[a-zA-Z0-9_.:-]{1,128}$/.test(trimmed)) throw new Error("Invalid session id");
+  if (!trimmed) return null;
+  if (!/^[a-zA-Z0-9_.:-]{1,128}$/.test(trimmed)) return null;
   return trimmed;
 }
 
 export function createSessionScopedJsonStore<T extends { updatedAt: string }>(config: {
   subdir: string;
+  legacyFile: string;
   normalize: (input: unknown) => T;
 }) {
-  const filePath = (sessionId: string): string =>
-    path.join(resolveDataDir(), config.subdir, `${sanitizeSessionId(sessionId)}.json`);
+  const filePath = (sessionId: string | null | undefined): string => {
+    const id = sanitizeSessionId(sessionId);
+    return id
+      ? path.join(resolveDataDir(), config.subdir, `${id}.json`)
+      : path.join(resolveDataDir(), config.legacyFile);
+  };
 
-  const read = async (sessionId: string): Promise<T> => {
+  const read = async (sessionId?: string | null): Promise<T> => {
     try {
       return config.normalize(JSON.parse(await readFile(filePath(sessionId), "utf8")));
     } catch {
@@ -38,7 +45,7 @@ export function createSessionScopedJsonStore<T extends { updatedAt: string }>(co
     }
   };
 
-  const write = (patch: Partial<Omit<T, "updatedAt">>, sessionId: string): Promise<T> => {
+  const write = (patch: Partial<Omit<T, "updatedAt">>, sessionId?: string | null): Promise<T> => {
     const file = filePath(sessionId);
     return withFileLock(file, async () => {
       const current = await read(sessionId);

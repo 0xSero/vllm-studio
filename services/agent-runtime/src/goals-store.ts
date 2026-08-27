@@ -35,6 +35,7 @@ function normalizeGoal(value: unknown): SessionGoal {
 
 const store = createSessionScopedJsonStore<SessionGoal>({
   subdir: "goals",
+  legacyFile: "goals-legacy.json",
   normalize: normalizeGoal,
 });
 
