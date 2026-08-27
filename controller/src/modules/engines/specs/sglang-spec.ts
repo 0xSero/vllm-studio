@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { Effect } from "effect";
+import { sglang as sglangCompute } from "../../compute/engines/sglang";
 import type { Config } from "../../../config/env";
 import { resolveBinary, runCommandAsyncEffect } from "../../../core/command";
 import type { ProcessInfo } from "../../models/types";
@@ -137,8 +138,8 @@ const installSglang = (options: InstallOptions): Effect.Effect<RuntimeUpgradeRes
 };
 
 export const sglangSpec: EngineSpec = {
+  ...sglangCompute,
   id: "sglang",
-  healthPath: "/health",
   cliBinary: "sglang",
   managedPackageSpec,
   install: installSglang,

@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { vllm as vllmCompute } from "../../compute/engines/vllm";
 import type { Config } from "../../../config/env";
 import type { ProcessInfo } from "../../models/types";
 import type { RuntimeBackendInfo } from "@local-studio/contracts/system";
@@ -43,8 +44,8 @@ const getRuntimeInfo = (
 const getConfigHelp = (_config: Config): Effect.Effect<ConfigHelpResult> => getVllmConfigHelp();
 
 export const vllmSpec: EngineSpec = {
+  ...vllmCompute,
   id: "vllm",
-  healthPath: "/health",
   cliBinary: "vllm",
   managedPackageSpec,
   install: installVllmRuntime,

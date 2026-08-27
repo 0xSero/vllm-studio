@@ -2,28 +2,6 @@ import { Database } from "bun:sqlite";
 import { chmodSync } from "node:fs";
 import { Effect } from "effect";
 
-const OBSOLETE_TABLES = [
-  "jobs",
-  "chat_sessions",
-  "chat_messages",
-  "chat_runs",
-  "chat_usage",
-  "sessions",
-  "messages",
-  "runs",
-  "usage",
-] as const;
-
-const sweptPaths = new Set<string>();
-
-const dropObsoleteTables = (db: Database, dbPath: string): void => {
-  if (sweptPaths.has(dbPath)) return;
-  for (const table of OBSOLETE_TABLES) {
-    db.run(`DROP TABLE IF EXISTS ${table}`);
-  }
-  sweptPaths.add(dbPath);
-};
-
 export const toFiniteNumber = (value: unknown): number => {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -78,7 +56,6 @@ export const openSqliteDatabase = (dbPath: string): Database => {
         chmodSync(dbPath, 0o600);
       } catch {}
     }
-    dropObsoleteTables(db, dbPath);
     return db;
   } catch (cause) {
     try {

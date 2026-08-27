@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { Effect } from "effect";
+import { mlx as mlxCompute } from "../../compute/engines/mlx";
 import type { Config } from "../../../config/env";
 import type { ProcessInfo } from "../../models/types";
 import type { RuntimeBackendInfo, RuntimeUpgradeResult } from "@local-studio/contracts/system";
@@ -58,8 +59,8 @@ const installMlx = (options: InstallOptions): Effect.Effect<RuntimeUpgradeResult
 };
 
 export const mlxSpec: EngineSpec = {
+  ...mlxCompute,
   id: "mlx",
-  healthPath: "/v1/models",
   cliBinary: null,
   managedPackageSpec,
   install: installMlx,

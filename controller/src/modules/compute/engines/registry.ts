@@ -7,18 +7,15 @@ import type {
   LaunchRequest,
   EngineRuntimeKind,
 } from "../contracts";
+import { getEngineSpec } from "../../engines/engine-spec";
 import { applyDevices } from "./devices";
 import { exllamav3 } from "./exllamav3";
-import { llamacpp } from "./llamacpp";
-import { mlx } from "./mlx";
-import { sglang } from "./sglang";
-import { vllm } from "./vllm";
 
 const SPECS: Readonly<Record<EngineId, ComputeEngineSpec>> = {
-  vllm,
-  sglang,
-  llamacpp,
-  mlx,
+  vllm: getEngineSpec("vllm"),
+  sglang: getEngineSpec("sglang"),
+  llamacpp: getEngineSpec("llamacpp"),
+  mlx: getEngineSpec("mlx"),
   exllamav3,
 };
 

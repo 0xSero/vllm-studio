@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { Effect } from "effect";
+import { llamacpp as llamacppCompute } from "../../compute/engines/llamacpp";
 import type { Config } from "../../../config/env";
 import { resolveBinary, runCommandAsyncEffect } from "../../../core/command";
 import { LLAMACPP_HELP_TIMEOUT_MS } from "../configs";
@@ -79,8 +80,8 @@ const installLlamacpp = (options: InstallOptions): Effect.Effect<RuntimeUpgradeR
 const managedPackageSpec = (_version?: string | null): string => "llama.cpp";
 
 export const llamacppSpec: EngineSpec = {
+  ...llamacppCompute,
   id: "llamacpp",
-  healthPath: "/health",
   cliBinary: "llama-server",
   managedPackageSpec,
   install: installLlamacpp,
