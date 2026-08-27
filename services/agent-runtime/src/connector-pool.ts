@@ -1,4 +1,10 @@
-import { connectMcp, type McpConnection, type McpToolInfo } from "./mcp-client";
+import {
+  connectMcp,
+  type McpCallToolResult,
+  type McpConnection,
+  type McpToolArguments,
+  type McpToolInfo,
+} from "./mcp-client";
 import { connectorAuthorizationHeaders } from "./connector-auth";
 import { listConnectors, type ConnectorConfig } from "./connectors-service";
 
@@ -13,21 +19,19 @@ const toTarget = (connector: ConnectorConfig, signal?: AbortSignal) => {
       command: connector.command ?? "",
       args: [...(connector.args ?? [])],
       env: connector.env ?? {},
-      ...(connector.cwd ? { cwd: connector.cwd } : {}),
+      cwd: connector.cwd,
     };
   }
-  return {
+  const target = {
     transport: "http" as const,
     url: connector.url ?? "",
     headers: connector.headers ?? {},
-    ...(connector.auth
-      ? {
-          authorize: (forceRefresh: boolean) =>
-            connectorAuthorizationHeaders(connector, forceRefresh),
-        }
-      : {}),
-    ...(signal ? { signal } : {}),
+    signal,
+    authorize: connector.auth
+      ? (forceRefresh: boolean) => connectorAuthorizationHeaders(connector, forceRefresh)
+      : undefined,
   };
+  return target;
 };
 
 async function enabledConnector(connectorId: string): Promise<ConnectorConfig> {
@@ -80,8 +84,8 @@ export async function listConnectorTools(connectorId: string): Promise<McpToolIn
 export async function callConnectorTool(
   connectorId: string,
   tool: string,
-  args: Record<string, unknown>,
-): Promise<unknown> {
+  args: McpToolArguments,
+): Promise<McpCallToolResult> {
   const connector = await enabledConnector(connectorId);
   assertToolAllowed(connector, tool);
   try {

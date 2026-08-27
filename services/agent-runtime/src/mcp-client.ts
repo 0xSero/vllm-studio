@@ -1,14 +1,21 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { Tool, ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+import {
+  CallToolResultSchema,
+  type CallToolRequest,
+  type Tool,
+  type ToolAnnotations,
+} from "@modelcontextprotocol/sdk/types.js";
 
 export type McpToolAnnotations = ToolAnnotations;
 export type McpToolInfo = Tool;
+export type McpToolArguments = NonNullable<CallToolRequest["params"]["arguments"]>;
+export type McpCallToolResult = Awaited<ReturnType<Client["callTool"]>>;
 
 export interface McpConnection {
   listTools(): Promise<McpToolInfo[]>;
-  callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
+  callTool(name: string, args: McpToolArguments): Promise<McpCallToolResult>;
   close(): void;
 }
 
@@ -64,13 +71,14 @@ const authorizedFetch = (target: HttpTarget): typeof fetch =>
 
 const transportFor = (target: McpTarget) => {
   if (target.transport === "stdio") {
-    return new StdioClientTransport({
+    const options = {
       command: target.command,
       args: target.args ?? [],
-      env: { ...processEnvironment(), ...(target.env ?? {}) },
-      ...(target.cwd ? { cwd: target.cwd } : {}),
-      stderr: "pipe",
-    });
+      env: { ...processEnvironment(), ...target.env },
+      stderr: "pipe" as const,
+      cwd: target.cwd,
+    };
+    return new StdioClientTransport(options);
   }
   return new StreamableHTTPClientTransport(new URL(target.url), {
     requestInit: { headers: target.headers ?? {} },
@@ -94,11 +102,11 @@ class SdkMcpConnection implements McpConnection {
     return result.tools;
   }
 
-  async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+  async callTool(name: string, args: McpToolArguments): Promise<McpCallToolResult> {
     await this.connected;
     return this.client.callTool(
       { name, arguments: args },
-      undefined,
+      CallToolResultSchema,
       { signal: this.signal },
     );
   }

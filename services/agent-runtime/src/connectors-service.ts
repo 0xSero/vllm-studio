@@ -12,6 +12,7 @@ import {
 import {
   GOOGLE_WORKSPACE_BINDINGS,
   googleWorkspaceConnectorAccount,
+  type GoogleWorkspacePluginId,
 } from "./google-workspace-binding";
 
 export {
@@ -42,13 +43,12 @@ function claimsGoogleWorkspace(connector: ConnectorConfig): boolean {
   );
 }
 
-export function protectManagedConnector(connector: ConnectorConfig): ConnectorConfig {
-  if (!claimsGoogleWorkspace(connector)) return connector;
-  const account = googleWorkspaceConnectorAccount(connector.id);
-  const binding = account ? GOOGLE_WORKSPACE_BINDINGS[account] : null;
-  const valid =
-    account !== null &&
-    binding !== null &&
+function matchesManagedIdentity(
+  connector: ConnectorConfig,
+  account: GoogleWorkspacePluginId,
+  binding: (typeof GOOGLE_WORKSPACE_BINDINGS)[GoogleWorkspacePluginId],
+): boolean {
+  return (
     connector.transport === "http" &&
     connector.url === binding.endpoint &&
     connector.auth?.type === "oauth" &&
@@ -56,15 +56,41 @@ export function protectManagedConnector(connector: ConnectorConfig): ConnectorCo
     connector.auth.account === account &&
     connector.origin?.kind === "account-adapter" &&
     connector.origin.id === account &&
-    connector.origin.binding === "google-workspace" &&
-    !connector.command &&
-    !connector.cwd &&
-    !connector.args?.length &&
-    !connector.env &&
-    !connector.headers &&
-    connector.allowTools?.length === binding?.observeTools.length &&
-    binding?.observeTools.every((tool, index) => connector.allowTools?.[index] === tool);
-  if (!valid || !account || !binding) {
+    connector.origin.binding === "google-workspace"
+  );
+}
+
+function matchesManagedTools(
+  connector: ConnectorConfig,
+  binding: (typeof GOOGLE_WORKSPACE_BINDINGS)[GoogleWorkspacePluginId],
+): boolean {
+  return (
+    connector.allowTools?.length === binding.observeTools.length &&
+    binding.observeTools.every((tool, index) => connector.allowTools?.[index] === tool)
+  );
+}
+
+function hasOnlyManagedFields(connector: ConnectorConfig): boolean {
+  return !(
+    connector.command ||
+    connector.cwd ||
+    connector.args?.length ||
+    connector.env ||
+    connector.headers
+  );
+}
+
+export function protectManagedConnector(connector: ConnectorConfig): ConnectorConfig {
+  if (!claimsGoogleWorkspace(connector)) return connector;
+  const account = googleWorkspaceConnectorAccount(connector.id);
+  const binding = account ? GOOGLE_WORKSPACE_BINDINGS[account] : null;
+  if (
+    !account ||
+    !binding ||
+    !matchesManagedIdentity(connector, account, binding) ||
+    !hasOnlyManagedFields(connector) ||
+    !matchesManagedTools(connector, binding)
+  ) {
     throw new Error(`Managed Google Workspace connector "${connector.id}" is immutable`);
   }
   return {

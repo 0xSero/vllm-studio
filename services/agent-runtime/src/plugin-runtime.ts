@@ -45,8 +45,9 @@ const HttpServerSchema = Schema.Struct({
 
 const McpServerSchema = Schema.Union([StdioServerSchema, HttpServerSchema]);
 const McpManifestSchema = Schema.Struct({
-  mcpServers: Schema.Record(Schema.String, Schema.Unknown),
+  mcpServers: Schema.Record(Schema.String, McpServerSchema),
 });
+type McpServer = Schema.Schema.Type<typeof McpServerSchema>;
 
 type ResolvedServer = {
   connector: ConnectorConfig | null;
@@ -101,9 +102,8 @@ function connectorId(pluginId: string, serverId: string): string {
 async function resolvedServer(
   bundle: PluginBundle,
   serverId: string,
-  input: unknown,
+  server: McpServer,
 ): Promise<ResolvedServer> {
-  const server = Schema.decodeUnknownSync(McpServerSchema)(input);
   const origin = {
     kind: "plugin",
     id: bundle.plugin.id,
@@ -126,7 +126,7 @@ async function resolvedServer(
         transport: "stdio",
         command: await resolvedCommand(root, server.command),
         args,
-        env: { ...(server.env ?? {}) },
+        env: { ...server.env },
         cwd: await containedRealPath(root, server.cwd ?? "."),
         origin,
         enabled: false,
@@ -138,16 +138,15 @@ async function resolvedServer(
   const bearerEnv = server.bearer_token_env_var;
   const bearerToken = bearerEnv ? process.env[bearerEnv]?.trim() : undefined;
   if (bearerEnv && !bearerToken) return { connector: null, blocker: `Set ${bearerEnv}` };
+  const headers = { ...server.headers };
+  if (bearerToken) headers.Authorization = `Bearer ${bearerToken}`;
   return {
     connector: {
       id,
       name,
       transport: "http",
       url: server.url,
-      headers: {
-        ...(server.headers ?? {}),
-        ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
-      },
+      headers,
       origin,
       enabled: false,
     },
@@ -178,7 +177,7 @@ function loadPluginServers(
         ? error
         : new PluginRuntimeError(
             422,
-            `Invalid MCP manifest for ${bundle.plugin.displayName}: ${error}`,
+            `Invalid MCP manifest for ${bundle.plugin.displayName}: ${String(error)}`,
           ),
   });
 }
@@ -233,12 +232,20 @@ function pluginToolsView(
     };
   }
   if (installable.length > 0) {
+    if (blockers.length) {
+      return {
+        state: "available",
+        serverCount: servers.length,
+        allowedToolCount: 0,
+        mode: "observe",
+        reason: blockers.join(" · "),
+      };
+    }
     return {
       state: "available",
       serverCount: servers.length,
       allowedToolCount: 0,
       mode: "observe",
-      ...(blockers.length ? { reason: blockers.join(" · ") } : {}),
     };
   }
   return {
@@ -295,7 +302,7 @@ function googleWorkspaceRuntimeView(
       serverCount: 1,
       allowedToolCount,
       mode: connection.connected ? "observe" : null,
-      ...(reason ? { reason } : {}),
+      reason,
     },
   };
 }
@@ -419,7 +426,7 @@ function connectorReconciliationEffect(
     const initial = yield* connectorsEffect();
     return yield* Effect.tryPromise({
       try: () => reconcileEnabledPluginConnectors(bundles, initial),
-      catch: (error) => new PluginRuntimeError(500, `Plugin reconciliation failed: ${error}`),
+      catch: (error) => new PluginRuntimeError(500, `Plugin reconciliation failed: ${String(error)}`),
     });
   });
 }
@@ -438,7 +445,7 @@ export function refreshEnabledPluginConnectors(
 function connectorsEffect(): Effect.Effect<ConnectorConfig[], PluginRuntimeError> {
   return Effect.tryPromise({
     try: listConnectors,
-    catch: (error) => new PluginRuntimeError(500, `Failed to read connector state: ${error}`),
+    catch: (error) => new PluginRuntimeError(500, `Failed to read connector state: ${String(error)}`),
   });
 }
 
@@ -512,7 +519,7 @@ function enabledObserveConnectors(
     catch: (error) =>
       error instanceof PluginRuntimeError
         ? error
-        : new PluginRuntimeError(502, `Plugin probe failed: ${error}`),
+        : new PluginRuntimeError(502, `Plugin probe failed: ${String(error)}`),
   });
 }
 
@@ -547,7 +554,7 @@ export function setPluginEnabled(
         yield* Effect.tryPromise({
           try: () => upsertConnectors(changed),
           catch: (error) =>
-            new PluginRuntimeError(500, `Failed to save account adapter state: ${error}`),
+            new PluginRuntimeError(500, `Failed to save account adapter state: ${String(error)}`),
         });
       }
       return {
@@ -582,7 +589,7 @@ export function setPluginEnabled(
     }
     yield* Effect.tryPromise({
       try: () => upsertConnectors(changed),
-      catch: (error) => new PluginRuntimeError(500, `Failed to save plugin state: ${error}`),
+      catch: (error) => new PluginRuntimeError(500, `Failed to save plugin state: ${String(error)}`),
     });
     return {
       plugins: yield* listPluginRuntimeViews(sources),

@@ -87,7 +87,7 @@ function compareVersions(left: string, right: string): number {
 
 function pluginView(manifest: PluginManifest, source: string): PluginView {
   const version = manifest.version?.trim() || "0.0.0";
-  return {
+  const view = {
     id: manifest.name,
     name: manifest.name,
     displayName: manifest.interface?.displayName?.trim() || manifest.name,
@@ -96,13 +96,14 @@ function pluginView(manifest: PluginManifest, source: string): PluginView {
     category: manifest.interface?.category?.trim() || "Other",
     source,
     capabilities: manifest.interface?.capabilities ?? [],
-    ...(manifest.interface?.brandColor ? { brandColor: manifest.interface.brandColor } : {}),
     provides: {
       skills: Boolean(manifest.skills),
       mcpServers: Boolean(manifest.mcpServers),
       apps: Boolean(manifest.apps),
     },
   };
+  const brandColor = manifest.interface?.brandColor;
+  return brandColor ? { ...view, brandColor } : view;
 }
 
 async function manifestInDirectory(

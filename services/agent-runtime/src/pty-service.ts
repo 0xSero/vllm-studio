@@ -79,10 +79,8 @@ function loadFactory(): PtyFactory | null {
         opts: { cwd: string; cols: number; rows: number; env: NodeJS.ProcessEnv; name?: string },
       ) => PtyHandle;
     };
-    const required = requireModule("@lydell/node-pty") as Mod | { default: Mod };
-    const mod = (
-      required && "spawn" in required ? required : (required as { default: Mod }).default
-    ) as Mod;
+    const required: Mod | { default: Mod } = requireModule("@lydell/node-pty");
+    const mod: Mod = "spawn" in required ? required : required.default;
     factory = ({ cwd, cols, rows, shell, args, env }) =>
       mod.spawn(shell, args, { cwd, cols, rows, env, name: "xterm-256color" });
     return factory;
@@ -93,7 +91,10 @@ function loadFactory(): PtyFactory | null {
   }
 }
 
-function resolveShell(): { shell: string; args: string[] } {
+type ShellCommand = { shell: string; args: string[] };
+type OpenPtyResult = { id: string; reused: boolean };
+
+function resolveShell(): ShellCommand {
   if (process.platform === "win32") {
     return { shell: process.env.COMSPEC || "cmd.exe", args: [] };
   }
@@ -140,7 +141,7 @@ function safeOwnerKey(input: string | undefined | null): string | null {
   return key ? key.slice(0, 512) : null;
 }
 
-function clampDimension(value: unknown, fallback: number): number {
+function clampDimension(value: number | undefined, fallback: number): number {
   const parsed = Math.floor(Number(value));
   return Number.isFinite(parsed) && parsed >= 2 && parsed <= 1_000 ? parsed : fallback;
 }
@@ -174,7 +175,7 @@ export function openPtySession(opts: {
   cols?: number;
   rows?: number;
   ownerKey?: string;
-}): { id: string; reused: boolean } {
+}): OpenPtyResult {
   const make = loadFactory();
   if (!make) throw new Error(`PTY unavailable: ${factoryError?.message ?? "unknown"}`);
   const ownerKey = safeOwnerKey(opts.ownerKey);
