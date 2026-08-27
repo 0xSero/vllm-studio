@@ -2,14 +2,19 @@ import type { Logger } from "../../core/logger";
 import type { AppContext } from "../../app-context";
 import { Effect } from "effect";
 import type { Recipe } from "../models/types";
+import { buildInferenceUrl } from "../../http/local-fetch";
+import {
+  DEFAULT_CHAT_PROVIDER,
+  parseProviderModel,
+  resolveConfiguredProviderConfig,
+  type ProviderRouteConfig,
+} from "../../services/provider-routing";
 const PROXY_SESSION_HEADER_NAMES = [
   "x-vllm-session-id",
   "x-session-id",
   "x-chat-session-id",
   "openai-conversation-id",
 ];
-
-export type OpenAIUsage = Record<string, number>;
 
 const NON_RUNNING_MODEL_WARN_INTERVAL_MS = 10 * 60_000;
 
@@ -76,32 +81,6 @@ export const extractSessionId = (
   return null;
 };
 
-export const attachSessionUsage = (
-  result: Record<string, unknown>,
-  sessionId: string | null,
-  usage: OpenAIUsage | undefined,
-): void => {
-  if (!sessionId) return;
-
-  const promptTokens = usage?.["prompt_tokens"] ?? 0;
-  const completionTokens = usage?.["completion_tokens"] ?? 0;
-  const completionDetails = usage?.["completion_tokens_details"] as
-    | Record<string, number>
-    | undefined;
-  const reasoningTokens =
-    usage?.["reasoning_tokens"] ?? completionDetails?.["reasoning_tokens"] ?? 0;
-
-  result["session_id"] = sessionId;
-  result["session_usage"] = {
-    prompt_tokens: promptTokens,
-    completion_tokens: completionTokens,
-    total_tokens: promptTokens + completionTokens,
-    current_prompt_tokens: promptTokens,
-    current_completion_tokens: completionTokens,
-    current_reasoning_tokens: typeof reasoningTokens === "number" ? reasoningTokens : 0,
-  };
-};
-
 export const findRecipeByModel = (
   modelName: string,
   context: Pick<AppContext, "stores">,
@@ -118,6 +97,61 @@ export const findRecipeByModel = (
       );
     }),
   );
+
+export interface UpstreamResolution {
+  upstreamUrl: string;
+  auth: Record<string, string>;
+  requestProvider: string;
+  providerRouting: ProviderRouteConfig | null;
+  rewroteModel: boolean;
+}
+
+/**
+ * Resolve where a requested model's traffic goes and how it authenticates.
+ * A "provider/model" id routes to that configured provider with its key, and
+ * anything else reaches the local inference engine with INFERENCE_API_KEY
+ * when one is set. When provider-routed, the request body's model field is
+ * rewritten to the provider-local id.
+ */
+export const resolveUpstreamForModel = (
+  requestedModel: string | null,
+  parsed: Record<string, unknown>,
+  path: string,
+  context: AppContext,
+  options: { includeXApiKey?: boolean } = {},
+): UpstreamResolution => {
+  const providerModel = requestedModel
+    ? parseProviderModel(requestedModel)
+    : { provider: DEFAULT_CHAT_PROVIDER, modelId: "" };
+  const requestProvider = providerModel.provider;
+  const providerRouting =
+    requestProvider !== DEFAULT_CHAT_PROVIDER
+      ? resolveConfiguredProviderConfig(requestProvider, context.config.providers)
+      : null;
+  if (providerRouting) {
+    parsed["model"] = providerModel.modelId;
+    return {
+      upstreamUrl: `${providerRouting.baseUrl.replace(/\/+$/, "")}${path}`,
+      auth: {
+        Authorization: `Bearer ${providerRouting.apiKey}`,
+        // The Anthropic dialect authenticates with x-api-key; sending both
+        // lets one configured key reach either kind of upstream.
+        ...(options.includeXApiKey ? { "x-api-key": providerRouting.apiKey } : {}),
+      },
+      requestProvider,
+      providerRouting,
+      rewroteModel: true,
+    };
+  }
+  const inferenceKey = process.env["INFERENCE_API_KEY"] ?? "";
+  return {
+    upstreamUrl: buildInferenceUrl(context, path),
+    auth: inferenceKey ? { Authorization: `Bearer ${inferenceKey}` } : {},
+    requestProvider,
+    providerRouting: null,
+    rewroteModel: false,
+  };
+};
 
 export const ensureStreamingUsageIncluded = (payload: Record<string, unknown>): boolean => {
   if (!Boolean(payload["stream"])) return false;

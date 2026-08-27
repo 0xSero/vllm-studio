@@ -1,7 +1,8 @@
 "use client";
 
 import { Button, SearchInput, SegmentedControl } from "@/ui";
-import { Clock, Plus } from "@/ui/icon-registry";
+import { Clock, Menu, Plus } from "@/ui/icon-registry";
+import { useAppStore } from "@/store";
 import type { Automation } from "@shared/agent/automation";
 import {
   filterAutomations,
@@ -31,12 +32,24 @@ export function AutomationList({
   onCreate: () => void;
   onSelect: (automation: Automation) => void;
 }) {
+  const setMobileNavOpen = useAppStore((s) => s.setMobileNavOpen);
   const visible = filterAutomations(automations, query, filter);
 
   return (
     <section className="flex min-h-0 w-full shrink-0 flex-col border-r border-(--ui-border) bg-(--ui-bg)">
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-(--ui-border) px-4">
-        <div className="min-w-0">
+      {/* This is the only chrome on a phone — the app topbar steps aside for
+          /agent routes — so the nav hamburger has to live here. */}
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-(--ui-border) px-4">
+        <button
+          type="button"
+          onClick={() => setMobileNavOpen(true)}
+          className="-ml-1.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--ui-muted) hover:bg-(--ui-hover) hover:text-(--ui-fg) md:hidden"
+          aria-label="Open navigation menu"
+          aria-controls="mobile-navigation-drawer"
+        >
+          <Menu className="pointer-events-none h-[18px] w-[18px]" />
+        </button>
+        <div className="min-w-0 flex-1">
           <h1 className="truncate text-[length:var(--fs-xl)] font-medium text-(--ui-fg)">
             Automations
           </h1>

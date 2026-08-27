@@ -99,6 +99,14 @@ export function ScreencastSurface({ url, onState, onUnavailable, visible = true 
           onUnavailableRef.current(payload?.error || "Browser unavailable");
           return; // stop polling; pane switches to reading mode
         }
+        // 502 = the frontend could not reach the agent runtime at all. Only
+        // 503 used to be handled, so a dead runtime left the pane saying
+        // "Connecting to browser…" forever with no error.
+        if (response.status === 502) {
+          const payload = (await response.json().catch(() => null)) as FramePayload | null;
+          onUnavailableRef.current(payload?.error || "Agent runtime unreachable");
+          return;
+        }
         const payload = (await response.json()) as FramePayload;
         if (!disposed && payload.ok && payload.data) {
           if (payload.data.frame) setFrameSrc(`data:image/jpeg;base64,${payload.data.frame}`);

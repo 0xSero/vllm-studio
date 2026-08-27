@@ -59,7 +59,7 @@ preserve the streaming runtime contract.
 
 ```bash
 npm run desktop:build:main
-npm run desktop:start
+electron desktop/dist/main.js  # after npm run desktop:build:main
 npm run desktop:pack
 npm run desktop:dist
 ```
@@ -68,8 +68,8 @@ npm run desktop:dist
 DMG, updater ZIP, blockmaps, and update metadata. The only canonical install is
 `/Applications/Local Studio.app` with bundle id `org.local.studio.desktop`.
 Run `APPLE_KEYCHAIN_PROFILE=vllm-studio-notarize npm run
-desktop:dist:notarized` to submit and staple the app when the Apple developer
-team has an active agreement.
+release signing and notarization run in CI (`sign-release` in release.yml); local
+builds stay unsigned.
 
 ## Controller Connection
 
@@ -84,7 +84,7 @@ credentials into the controller database.
 - `src/features/agent/` — Workbench sessions, messages, workspace, and UI.
 - `src/features/configure/` — consolidated controller configuration.
 - `src/features/settings/` — application settings and runtime target controls.
-- `src/features/integrations/` — plugins, connectors, skills, and speech.
+- `src/features/integrations/` — plugins, connectors, skills, accounts, and model providers.
 - `src/lib/` and `src/hooks/` — shared modules with multiple feature consumers.
 - `src/ui/` — shared primitives and ZCode design tokens.
 - `desktop/` — Electron main process, resources, signing, and packaging.

@@ -692,7 +692,7 @@ export function createSessionRuntimeController(): SessionRuntimeController {
     flush: (sessionId) => coalescer.flushNow(sessionId),
     pollNow: () => {
       stopPoll();
-      if (!binding || binding.getSessions().length === 0) return;
+      if (!binding) return;
       // One immediate reconcile, then a steady interval. setInterval does not
       // fire an extra immediate iteration, so pollNow produces one fetch up front.
       void pollOnce();

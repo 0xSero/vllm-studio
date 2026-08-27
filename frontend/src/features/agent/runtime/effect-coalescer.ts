@@ -22,7 +22,6 @@ export type TextDeltaCoalescer = {
     options?: { flushNow?: boolean; seq?: number },
   ) => boolean;
   flushNow: (sessionId: SessionId) => void;
-  flushAll: () => void;
   /** Drop a session's pending merge without applying it (cursor epoch reset). */
   discard: (sessionId: SessionId) => void;
   /** Flush and drop every slot (workspace teardown). */
@@ -145,10 +144,6 @@ export function createEffectTextDeltaCoalescer({
     return true;
   };
 
-  const flushAll = (): void => {
-    for (const sessionId of Array.from(slots.keys())) flushNow(sessionId);
-  };
-
   // Flush every slot, cancel any pending frame handles, then drop all slots so
   // the map does not retain one entry per session for the app lifetime.
   const clear = (): void => {
@@ -169,7 +164,7 @@ export function createEffectTextDeltaCoalescer({
     slot.pending = null;
   };
 
-  return { enqueuePiEvent, flushNow, flushAll, discard, clear };
+  return { enqueuePiEvent, flushNow, discard, clear };
 }
 
 // A single-frame wait. Uses requestAnimationFrame on the DOM; falls back to a
@@ -195,7 +190,7 @@ const waitForAnimationFrame: Effect.Effect<void> = Effect.callback<void>((resume
   });
 });
 
-export function textDeltaFromPiEvent(event: Record<string, unknown>): TextDeltaSnapshot | null {
+function textDeltaFromPiEvent(event: Record<string, unknown>): TextDeltaSnapshot | null {
   if (event.type !== "message_update") return null;
   const assistantMessageEvent = asRecord(event.assistantMessageEvent);
   const delta = assistantMessageEvent?.delta;

@@ -6,6 +6,11 @@ import type {
   ToolBlock,
 } from "@/features/agent/messages";
 import {
+  goalOutcomeFromText,
+  stripGoalSentinels,
+  type GoalOutcome,
+} from "@shared/agent/goal-protocol";
+import {
   classifyTool,
   toolArg,
   toolVerb,
@@ -20,7 +25,13 @@ export type ActivitySegment =
 export type RoutedBlock =
   | { kind: "activity-group"; id: string; segments: ActivitySegment[] }
   | { kind: "content"; block: TextBlock }
+  | { kind: "subagent"; block: ToolBlock }
   | { kind: "event"; block: EventBlock };
+
+/** Spawning a subagent is not tool noise: it starts a second agent that runs
+ *  for minutes and owns its own session. It gets a top-level row like content
+ *  does, instead of being counted inside a collapsed "called 1 tool". */
+export const SUBAGENT_TOOL_NAME = "subagent";
 
 export type ActivityItem =
   | { kind: "reasoning"; id: string; block: ThinkingBlock }
@@ -33,7 +44,8 @@ export type ActivityItem =
 // gets its own top-level row, so the chat alternates cleanly between answer text
 // and one collapsible work summary. Ids derive from the first underlying block
 // so collapse state survives snapshot rebuilds and ordering normalization.
-export function groupAssistantBlocks(blocks: AssistantBlock[]): RoutedBlock[] {
+export function groupAssistantBlocks(inputBlocks: AssistantBlock[]): RoutedBlock[] {
+  const blocks = withGoalOutcomeMarkers(inputBlocks);
   const routed: RoutedBlock[] = [];
   let segments: ActivitySegment[] = [];
   let reasoning: ThinkingBlock[] = [];
@@ -71,6 +83,11 @@ export function groupAssistantBlocks(blocks: AssistantBlock[]): RoutedBlock[] {
 
   for (const block of blocks) {
     if (block.kind === "tool") {
+      if (block.name.toLowerCase() === SUBAGENT_TOOL_NAME) {
+        flushActivity();
+        routed.push({ kind: "subagent", block });
+        continue;
+      }
       flushReasoning();
       tools.push(block);
       continue;
@@ -230,8 +247,44 @@ export function exploreCounts(blocks: ToolBlock[]): string {
 }
 
 export function assistantContentCopyText(blocks: AssistantBlock[]): string {
-  return blocks
+  return withGoalOutcomeMarkers(blocks)
     .map((block) => (block.kind === "text" ? block.text : ""))
     .filter(Boolean)
     .join("\n\n");
+}
+
+// GOAL_COMPLETE / GOAL_BLOCKED are how the model reports a goal outcome to the
+// driver. They are protocol, not prose, and used to render verbatim in the
+// bubble. Strip them out of the text and re-emit the outcome as an event block,
+// which the timeline already draws as a hairline marker row — a transition
+// should be a line, never a bubble.
+//
+// This runs on every streamed frame, so it must not manufacture array or block
+// identities: an unchanged transcript returns the very same array, and only the
+// text block that actually carried a sentinel is rebuilt.
+function withGoalOutcomeMarkers(blocks: AssistantBlock[]): AssistantBlock[] {
+  let changed = false;
+  const next: AssistantBlock[] = [];
+  for (const block of blocks) {
+    if (block.kind !== "text") {
+      next.push(block);
+      continue;
+    }
+    const stripped = stripGoalSentinels(block.text);
+    if (stripped === block.text) {
+      next.push(block);
+      continue;
+    }
+    changed = true;
+    next.push({ ...block, text: stripped });
+    const outcome = goalOutcomeFromText(block.text);
+    if (outcome)
+      next.push({ kind: "event", id: `${block.id}-goal`, text: goalMarkerText(outcome) });
+  }
+  return changed ? next : blocks;
+}
+
+function goalMarkerText(outcome: GoalOutcome): string {
+  if (outcome.kind === "complete") return "Goal complete";
+  return outcome.reason ? `Goal blocked — ${outcome.reason}` : "Goal blocked";
 }

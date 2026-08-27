@@ -4,7 +4,7 @@ import { isHttpStatus } from "../core/errors";
 import type { AppContext } from "../app-context";
 import { effectMiddleware, type ControllerEnvironment } from "./effect-handler";
 
-export const TELEMETRY_SKIP_PATHS = new Set([
+const TELEMETRY_SKIP_PATHS = new Set([
   "/health",
   "/metrics",
   "/events",
@@ -35,6 +35,7 @@ export function createControllerRequestObservabilityMiddleware(
     if (TELEMETRY_SKIP_PATHS.has(ctx.req.path)) {
       return Effect.tryPromise({ try: () => next(), catch: (source) => source });
     }
+    context.logger.debug(`${ctx.req.method} ${ctx.req.path}`);
     const start = performance.now();
     const method = ctx.req.method.toUpperCase();
     const path = ctx.req.path;

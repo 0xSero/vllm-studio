@@ -49,17 +49,6 @@ type PiProviderConfig = {
 
 type UserPiProviders = Record<string, PiProviderConfig>;
 
-/** Strip any prefixes this writer has already applied.
- *
- *  When PI_CODING_AGENT_DIR points at Local Studio's own data dir — which it
- *  does for the desktop app — the file we read here is the file we write. Every
- *  pass therefore re-prefixed providers that were already prefixed, so
- *  "vibeproxy-claude" became "user-pi-vibeproxy-claude", then
- *  "user-pi-user-pi-vibeproxy-claude", growing by one hop per launch. Observed
- *  in the wild at 26 nested hops and a 466 KB models.json.
- *
- *  Collapsing on read makes the merge idempotent and self-heals files that have
- *  already grown. */
 function baseProviderName(name: string): string {
   let base = name;
   while (base.startsWith(USER_PI_PREFIX)) base = base.slice(USER_PI_PREFIX.length);
@@ -77,11 +66,6 @@ async function loadUserPiProviders(): Promise<UserPiProviders> {
     const collapsed: UserPiProviders = {};
     for (const [name, config] of Object.entries(providers as UserPiProviders)) {
       const base = baseProviderName(name);
-      // Our own controller providers are regenerated from the live controller
-      // every pass; reading them back would duplicate them under a user-pi name
-      // the moment the controller went away. Test the COLLAPSED name — a prior
-      // pass has already produced "user-pi-local-studio" in the wild, which is
-      // our own provider wearing a user-pi hat.
       if (!base || base === PROVIDER_ID || base.startsWith(`${PROVIDER_ID}-`)) continue;
       collapsed[base] = config;
     }
@@ -202,6 +186,24 @@ function normalizeBackendUrl(value: string): string {
   return value.trim().replace(/\/+$/, "");
 }
 
+function controllerUrlIdentity(value: string): string {
+  const normalized = normalizeBackendUrl(value);
+  try {
+    const parsed = new URL(normalized);
+    const rawHostname = parsed.hostname.toLowerCase().replace(/\.+$/, "");
+    const hostname = ["localhost", "127.0.0.1", "[::1]"].includes(rawHostname)
+      ? "loopback"
+      : rawHostname;
+    const port =
+      parsed.port ||
+      (parsed.protocol === "https:" ? "443" : parsed.protocol === "http:" ? "80" : "");
+    const pathname = parsed.pathname.replace(/\/+$/, "");
+    return `${parsed.protocol}//${hostname}:${port}${pathname}`;
+  } catch {
+    return normalized;
+  }
+}
+
 function normalizeControllerInput(input: PiControllerModelsRequest): PiControllerConfig | null {
   const url = normalizeBackendUrl(input.url || "");
   if (!url) return null;
@@ -218,19 +220,29 @@ function mergeControllers(
   settings: ApiSettings,
   requested: PiControllerModelsRequest[] = [],
 ): PiControllerConfig[] {
-  const requestedControllers = requested
-    .map(normalizeControllerInput)
-    .filter((controller): controller is PiControllerConfig => controller !== null);
-  if (requestedControllers.length > 0) {
-    return [
-      ...new Map(requestedControllers.map((controller) => [controller.url, controller])).values(),
-    ];
-  }
   const primary = normalizeControllerInput({
     url: settings.backendUrl,
     apiKey: settings.apiKey,
     name: "primary",
   });
+  const requestedControllers = requested
+    .map(normalizeControllerInput)
+    .filter((controller): controller is PiControllerConfig => controller !== null);
+  if (requestedControllers.length > 0) {
+    // A request that names the primary without its key means "that one", not
+    // "that one, unauthenticated" — backfill the saved credential (compared
+    // by URL identity, so localhost and 127.0.0.1 are the same controller)
+    // so a keyless mention can't silently disconnect a controller that needs
+    // auth.
+    const merged = requestedControllers.map((controller) =>
+      !controller.apiKey &&
+      primary?.apiKey &&
+      controllerUrlIdentity(controller.url) === controllerUrlIdentity(primary.url)
+        ? { ...controller, apiKey: primary.apiKey }
+        : controller,
+    );
+    return [...new Map(merged.map((controller) => [controller.url, controller])).values()];
+  }
   return primary ? [primary] : [];
 }
 
@@ -263,10 +275,44 @@ async function loadPersistedControllers(agentDir: string): Promise<PiControllerM
 
 async function savePersistedControllers(
   agentDir: string,
-  controllers: PiControllerConfig[],
+  controllers: PiControllerModelsRequest[],
 ): Promise<void> {
-  await writeFile(controllersPath(agentDir), JSON.stringify(controllers, null, 2), "utf-8");
+  const normalized = controllers
+    .map(normalizeControllerInput)
+    .filter((controller): controller is PiControllerConfig => controller !== null);
+  const unique = [
+    ...new Map(normalized.map((controller) => [controller.url, controller])).values(),
+  ];
+  await writeFile(controllersPath(agentDir), JSON.stringify(unique, null, 2), "utf-8");
   await chmod(controllersPath(agentDir), 0o600).catch(() => undefined);
+}
+
+/** How long a single controller gets to answer /v1/models before it is
+ *  treated as down. A healthy tailnet peer answers in well under 150ms
+ *  (measured 21-82ms), so 2.5s is already generous headroom for a slow LAN or
+ *  a controller busy loading a model. */
+const CONTROLLER_MODELS_TIMEOUT_MS = 2_500;
+
+/** How long a controller that timed out or refused a connection is skipped
+ *  before it is probed again. Within this window it is served as an empty
+ *  model list immediately, so one dead saved controller cannot make every
+ *  /api/agent/models call pay the full connect timeout (measured: a 4s flat
+ *  median on the desktop app while a saved peer was off). */
+const CONTROLLER_UNREACHABLE_BACKOFF_MS = 60_000;
+
+/** In-memory negative cache of unreachable controllers, keyed by normalized
+ *  controller URL identity. A successful fetch (or any HTTP response at all —
+ *  even an error status proves the host is reachable) clears the entry. */
+const unreachableControllers = new Map<string, { failedAt: number }>();
+
+function isControllerBackedOff(identity: string): boolean {
+  const entry = unreachableControllers.get(identity);
+  if (!entry) return false;
+  if (Date.now() - entry.failedAt >= CONTROLLER_UNREACHABLE_BACKOFF_MS) {
+    unreachableControllers.delete(identity);
+    return false;
+  }
+  return true;
 }
 
 async function fetchModelsFromController(
@@ -275,9 +321,38 @@ async function fetchModelsFromController(
   multipleControllers: boolean,
 ): Promise<ControllerModels> {
   const backendUrl = normalizeBackendUrl(controller.url);
+  const identity = controllerUrlIdentity(backendUrl);
+  if (isControllerBackedOff(identity)) {
+    // Recently unreachable: answer instantly with no models rather than
+    // paying the connect timeout again. The entry expires after the backoff
+    // window, so a controller that comes back is picked up within a minute.
+    return {
+      controller: { ...controller, url: backendUrl },
+      models: [],
+      providerId: providerIdForController(controller, index),
+    };
+  }
   const headers: HeadersInit = { Accept: "application/json" };
   if (controller.apiKey) headers.Authorization = `Bearer ${controller.apiKey}`;
-  const response = await fetch(`${backendUrl}/v1/models`, { headers, cache: "no-store" });
+  let response: Response;
+  try {
+    response = await fetch(`${backendUrl}/v1/models`, {
+      headers,
+      cache: "no-store",
+      // Every saved controller is listed before the composer can show a single
+      // model, and Promise.allSettled below waits for all of them. Without a
+      // deadline one unreachable host holds the whole model picker hostage for
+      // however long its network stack takes to give up — measured at 10.5s for
+      // a tailnet peer that is simply off. A controller slower than the
+      // deadline is reported as failed and the rest of the list still loads.
+      signal: AbortSignal.timeout(CONTROLLER_MODELS_TIMEOUT_MS),
+    });
+  } catch (error) {
+    // Timed out or refused: remember it so the next calls skip this host.
+    unreachableControllers.set(identity, { failedAt: Date.now() });
+    throw error;
+  }
+  unreachableControllers.delete(identity);
   if (!response.ok) {
     throw new Error(`${backendUrl}/v1/models failed with HTTP ${response.status}`);
   }
@@ -402,9 +477,7 @@ export async function refreshPiModels(
       ? requestedControllers
       : await loadPersistedControllers(agentDir);
   const controllers = mergeControllers(settings, persisted);
-  await savePersistedControllers(agentDir, controllers);
-  // A dead controller must not hide signed-in cloud providers: collect the
-  // failure and only surface it when nothing else can serve models.
+  await savePersistedControllers(agentDir, persisted);
   let models: AgentModel[] = [];
   let controllerModels: ControllerModels[] = [];
   let controllerError: unknown = null;
@@ -437,9 +510,6 @@ async function collectProviderAgentModels(): Promise<AgentModel[]> {
   return listProviderAgentModels();
 }
 
-// Moved here from the shared models module: only the runtime needs the
-// pi-model mapping, and the OpenAICompletionsCompat type must resolve against
-// the SDK install.
 function isDeepSeekReasoningModel(model: AgentModel): boolean {
   const id = `${model.id} ${model.rawId ?? ""} ${model.name}`.toLowerCase();
   return model.reasoning && id.includes("deepseek");
@@ -475,13 +545,7 @@ const CONTROLLER_THINKING_LEVEL_MAP = {
 
 export function modelsToPiModels(models: AgentModel[]) {
   return models.map((model) => {
-    // The hosted DeepSeek API uses a `thinking` object and requires an empty
-    // `reasoning_content` field on replayed assistant messages. Our vLLM
-    // controller exposes DeepSeek V4 through the standard OpenAI-compatible
-    // surface instead, where that hosted-only dialect corrupts tool-history
-    // turns. Keep the ordinary `reasoning_effort` mapping for controller models.
-    const deepSeekReasoning =
-      isDeepSeekReasoningModel(model) && !isControllerBackedModel(model);
+    const deepSeekReasoning = isDeepSeekReasoningModel(model) && !isControllerBackedModel(model);
     const inklingReasoning = isInklingReasoningModel(model);
     return {
       id: model.rawId ?? model.id,
@@ -495,30 +559,30 @@ export function modelsToPiModels(models: AgentModel[]) {
       ...(model.controllerUrl && model.reasoning
         ? { thinkingLevelMap: CONTROLLER_THINKING_LEVEL_MAP }
         : deepSeekReasoning
-        ? {
-            thinkingLevelMap: {
-              off: null,
-              minimal: null,
-              low: "low",
-              medium: "medium",
-              high: "high",
-              xhigh: "max",
-              max: "max",
-            },
-          }
-        : inklingReasoning
           ? {
               thinkingLevelMap: {
-                off: "none",
-                minimal: "minimal",
+                off: null,
+                minimal: null,
                 low: "low",
                 medium: "medium",
                 high: "high",
-                xhigh: null,
+                xhigh: "max",
                 max: "max",
               },
             }
-          : {}),
+          : inklingReasoning
+            ? {
+                thinkingLevelMap: {
+                  off: "none",
+                  minimal: "minimal",
+                  low: "low",
+                  medium: "medium",
+                  high: "high",
+                  xhigh: null,
+                  max: "max",
+                },
+              }
+            : {}),
       compat: {
         ...VLLM_OPENAI_COMPAT,
         ...(deepSeekReasoning

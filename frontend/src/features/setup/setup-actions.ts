@@ -204,10 +204,8 @@ export function configureAndLaunchEffect(
     const targetPayload = yield* requestEffect(() => api.getRuntimeTargets()).pipe(
       Effect.catch(() => Effect.succeed({ targets: [] satisfies RuntimeTarget[] })),
     );
-    const runtimeInstalled = targetPayload.targets.some((target) =>
-      backend === "llamacpp"
-        ? target.backend === backend && target.installed
-        : isManagedServeRuntimeTarget(backend, target) && target.installed,
+    const runtimeInstalled = targetPayload.targets.some(
+      (target) => isManagedServeRuntimeTarget(backend, target) && target.installed,
     );
     if (!runtimeInstalled) {
       const { job } = yield* requestEffect(() =>

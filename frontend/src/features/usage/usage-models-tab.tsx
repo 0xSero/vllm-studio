@@ -21,15 +21,7 @@ import { UsageModelDrawer, modelIdentity, type UsageModel } from "./usage-model-
 import { useSortedRows } from "./usage-sort";
 
 type SortKey =
-  | "model"
-  | "requests"
-  | "tokens"
-  | "avg"
-  | "prefill"
-  | "decode"
-  | "ttft"
-  | "latency"
-  | "success";
+  "model" | "requests" | "tokens" | "avg" | "prefill" | "decode" | "ttft" | "latency" | "success";
 
 const sortValue = (row: UsageModel, key: SortKey): number | string | null => {
   switch (key) {
@@ -83,28 +75,17 @@ export function UsageModelsTab({ stats }: { stats: UsageStats }) {
   const peak = sorted.reduce((max, row) => Math.max(max, row.total_tokens), 0);
   const decode = weightedDecodeTps(stats.by_model);
 
+  // Deliberately NOT a second copy of the page's headline grid. Requests,
+  // sessions, success rate and p95 already sit above the tab strip and are true
+  // of the whole window; repeating them here made two near-identical stat rows
+  // stack. What is left is what only this tab can say.
   const summary: Stat[] = [
     {
-      label: "Tokens",
-      value: formatNumber(stats.totals.total_tokens),
-      sub: `${formatCompactTokens(stats.totals.prompt_tokens)} in · ${formatCompactTokens(stats.totals.completion_tokens)} out`,
+      label: "Token mix",
+      value: `${formatCompactTokens(stats.totals.prompt_tokens)} in · ${formatCompactTokens(stats.totals.completion_tokens)} out`,
+      sub: `${formatNumber(stats.totals.total_tokens)} total`,
       title:
-        "Every token this controller proxied, prompt and completion together, across the whole retention window.",
-    },
-    {
-      label: "Requests",
-      value: formatNumber(stats.totals.total_requests),
-      sub: `${stats.totals.success_rate.toFixed(1)}% succeeded`,
-      title: "Completions requested through the proxy, successful and failed.",
-    },
-    {
-      label: "Sessions",
-      value: formatNumber(stats.totals.unique_sessions),
-      sub:
-        stats.totals.unique_users > 0
-          ? `${formatNumber(stats.totals.unique_users)} users`
-          : undefined,
-      title: "Distinct conversation ids seen. One chat that runs all day counts once.",
+        "How the proxied tokens split between prompt and completion. Prefill-heavy traffic is why cache hit rate matters more here than raw throughput.",
     },
     {
       label: "Cache hit rate",
@@ -120,13 +101,6 @@ export function UsageModelsTab({ stats }: { stats: UsageStats }) {
       sub: "weighted by output",
       title:
         "Generation throughput averaged across models, weighted by completion tokens so a rarely-used model cannot skew it. This is the speed a chat actually feels.",
-    },
-    {
-      label: "Latency p95",
-      value: formatMs(stats.latency.p95_ms),
-      sub: `p50 ${formatMs(stats.latency.p50_ms)}`,
-      title:
-        "Wall-clock request duration. p95 is the slow tail you notice; p50 is the request you usually get.",
     },
   ];
 

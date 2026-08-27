@@ -7,7 +7,6 @@ import type { ModelDownload, StarterPreset, StudioDiagnostics } from "@/lib/type
 import type { ModelIndexVariant } from "@/lib/api/studio";
 import { TierSection, useModelIndex } from "@/features/recipes/recipes-content/picks-shared";
 import { useSetupRecommendations, type SetupRecommendation } from "../recommendations";
-import type { GgufFileOption } from "../setup-model-files";
 
 const NO_DOWNLOADS: Map<string, ModelDownload> = new Map();
 const NO_STARTING: Set<string> = new Set();
@@ -135,9 +134,6 @@ export function StepModel({
   maxVram,
   manualModelId,
   setManualModelId,
-  manualGgufOptions,
-  manualGgufFile,
-  setManualGgufFile,
   resolvingManualModel,
   beginVariantDownload,
   submitManualModel,
@@ -153,9 +149,6 @@ export function StepModel({
   maxVram: number;
   manualModelId: string;
   setManualModelId: (value: string) => void;
-  manualGgufOptions: GgufFileOption[];
-  manualGgufFile: string;
-  setManualGgufFile: (value: string) => void;
   resolvingManualModel: boolean;
   beginVariantDownload: (modelId: string, allowPatterns?: string[]) => void;
   submitManualModel: () => void;
@@ -272,17 +265,6 @@ export function StepModel({
             {resolvingManualModel ? "Inspecting" : "Download"}
           </Button>
         </div>
-        {manualGgufOptions.length > 1 ? (
-          <div className="mt-3">
-            <Select
-              label="GGUF weights file"
-              value={manualGgufFile}
-              onChange={(event) => setManualGgufFile(event.target.value)}
-              placeholder="Choose one quantization"
-              options={manualGgufOptions}
-            />
-          </div>
-        ) : null}
       </div>
     </div>
   );

@@ -20,6 +20,8 @@ const DURABLE_KEY_PREFIXES = ["local-studio.", "local-studio-", "localstudio_", 
 const EXCLUDED_DURABLE_KEYS = new Set([
   "local-studio.agent.transcripts.v1",
   "local-studio.agent.activeSessions.snapshot",
+  // The sync base itself — uploading it would nest the whole pref set.
+  "local-studio.ui-prefs-synced",
 ]);
 
 const EXCLUDED_DURABLE_PREFIXES = ["local-studio.agent.transcript."];
@@ -75,9 +77,14 @@ function withoutControllerCredentials(prefs: Record<string, string>): Record<str
   return rest;
 }
 
+// The controller's studio settings store is where preferences live — the
+// runtime's /api/settings only knows backendUrl+apiKey and silently dropped
+// everything this module sent it, which is why prefs never synced between
+// surfaces. The proxy route reaches whichever controller is active and
+// injects its stored key server-side.
 async function loadControllerUiPreferences(): Promise<Record<string, string>> {
   try {
-    const response = await fetch("/api/settings", {
+    const response = await fetch("/api/proxy/studio/settings", {
       cache: "no-store",
       signal: AbortSignal.timeout(UI_PREFERENCES_TIMEOUT_MS),
     });
@@ -89,14 +96,46 @@ async function loadControllerUiPreferences(): Promise<Record<string, string>> {
   }
 }
 
-async function saveControllerUiPreferences(prefs: Record<string, string>): Promise<void> {
+async function saveControllerUiPreferences(prefs: Record<string, string>): Promise<boolean> {
   try {
-    await fetch("/api/settings", {
+    const response = await fetch("/api/proxy/studio/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ui_preferences: withoutControllerCredentials(prefs) }),
       signal: AbortSignal.timeout(UI_PREFERENCES_TIMEOUT_MS),
     });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What each key looked like the last time this surface synced with the
+ * controller. With that base, adoption is a three-way merge without clocks:
+ * a key the user never changed here follows the controller; a key they did
+ * change here wins locally and uploads on the next save.
+ */
+const SYNC_SNAPSHOT_KEY = "local-studio.ui-prefs-synced";
+
+function readSyncSnapshot(): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(SYNC_SNAPSHOT_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writeSyncSnapshot(snapshot: Record<string, string>): void {
+  try {
+    window.localStorage.setItem(SYNC_SNAPSHOT_KEY, JSON.stringify(snapshot));
   } catch {}
 }
 
@@ -160,7 +199,7 @@ function preferencesByUrl(preferences: ControllerPreference[]): Map<string, Cont
   return byUrl;
 }
 
-export function mergeControllersPreference(
+function mergeControllersPreference(
   currentValue: string | null,
   incomingValue: string,
 ): string | null {
@@ -181,6 +220,8 @@ export function mergeControllersPreference(
 function applyMissingPreferences(prefs: Record<string, string>): Set<string> {
   const applied = new Set<string>();
   if (typeof window === "undefined") return applied;
+  const snapshot = readSyncSnapshot();
+  const nextSnapshot = { ...snapshot };
   for (const [key, value] of Object.entries(prefs ?? {})) {
     if (!isDurableUiPreferenceKey(key) || typeof value !== "string") continue;
     const currentValue = window.localStorage.getItem(key);
@@ -190,13 +231,21 @@ function applyMissingPreferences(prefs: Record<string, string>): Set<string> {
         window.localStorage.setItem(key, merged);
         applied.add(key);
       }
+      nextSnapshot[key] = value;
       continue;
     }
-    if (currentValue === null) {
-      window.localStorage.setItem(key, value);
-      applied.add(key);
+    // Adopt the controller's value when this surface never set the key, or
+    // set it and hasn't touched it since the last sync. A locally-changed
+    // key wins here and uploads on the next save.
+    if (currentValue === null || currentValue === snapshot[key]) {
+      if (currentValue !== value) {
+        window.localStorage.setItem(key, value);
+        applied.add(key);
+      }
+      nextSnapshot[key] = value;
     }
   }
+  writeSyncSnapshot(nextSnapshot);
   return applied;
 }
 
@@ -238,7 +287,11 @@ export function scheduleDurableUiPreferencesSave(): void {
   saveTimer = window.setTimeout(() => {
     saveTimer = null;
     const prefs = collectDurableUiPreferences();
-    void saveControllerUiPreferences(prefs);
+    void saveControllerUiPreferences(prefs).then((saved) => {
+      // The upload is now the shared truth; recording it as the sync base
+      // lets the next hydrate treat these values as "unchanged here".
+      if (saved) writeSyncSnapshot(withoutControllerCredentials(prefs));
+    });
     void desktop?.saveUiPreferences?.(prefs).catch(() => undefined);
   }, 200);
 }

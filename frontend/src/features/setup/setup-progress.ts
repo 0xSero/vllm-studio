@@ -14,8 +14,7 @@ const StarterPresetSchema = Schema.Struct({
   min_vram_gb: Schema.NullOr(Schema.Number),
   model_id: Schema.optional(Schema.String),
   allow_patterns: Schema.optional(Schema.Array(Schema.String)),
-  backend: Schema.optional(Schema.Literals(["vllm", "llamacpp"])),
-  gguf_file: Schema.optional(Schema.String),
+  backend: Schema.optional(Schema.Literals(["vllm"])),
   recipe_overrides: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
   remote: Schema.optional(
     Schema.Struct({

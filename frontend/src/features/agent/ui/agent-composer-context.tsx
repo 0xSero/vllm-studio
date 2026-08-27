@@ -2,13 +2,13 @@
 
 import {
   AtSign,
-  Boxes,
   CircleDot,
   Download,
   FileText,
   Gauge,
   GitFork,
   Globe,
+  Plug,
   Slash,
   Sparkles,
   Target,
@@ -232,7 +232,7 @@ const BUILTIN_COMMAND_ICONS: Record<string, typeof Slash> = {
   compact: CircleDot,
   status: Gauge,
   browser: Globe,
-  plugins: Boxes,
+  connectors: Plug,
   terminal: TerminalSquare,
   fork: GitFork,
   export: Download,

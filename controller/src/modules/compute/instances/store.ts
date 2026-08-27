@@ -1,5 +1,9 @@
 import {
+  chmodSync,
+  closeSync,
+  fsyncSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -17,6 +21,7 @@ import type {
   NodeId,
   EngineRuntimeKind,
 } from "../contracts";
+import { decodeInstanceRecord } from "./record-schema";
 
 /**
  * The instance store: one JSON file per running deployment, written write-then-rename so
@@ -67,14 +72,6 @@ export interface Reservation {
 
 /** Names come from recipes but stop/drop accept user input — keep them inside the dir. */
 const safeName = (name: string): string => name.replace(/[/\\]/g, "_");
-
-const isRecord = (value: unknown): value is InstanceRecord =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof (value as InstanceRecord).name === "string" &&
-  typeof (value as InstanceRecord).engine === "string" &&
-  typeof (value as InstanceRecord).port === "number" &&
-  Array.isArray((value as InstanceRecord).devices);
 
 const pidAlive = (pid: number): boolean => {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -146,16 +143,20 @@ const acquirePlacementLock = (lockPath: string): Effect.Effect<void, LaunchFailu
 export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
   const directory = join(dataDirectory, "instances");
   const logsDirectory = join(directory, "logs");
-  mkdirSync(logsDirectory, { recursive: true });
+  mkdirSync(logsDirectory, { recursive: true, mode: 0o700 });
+  chmodSync(directory, 0o700);
+  chmodSync(logsDirectory, 0o700);
   const lockPath = join(directory, "placement.lock");
   const recordPath = (name: string): string => join(directory, `${safeName(name)}.json`);
 
   const read = (name: string): InstanceRecord | null => {
     try {
-      const parsed: unknown = JSON.parse(readFileSync(recordPath(name), "utf8"));
-      return isRecord(parsed) ? parsed : null;
-    } catch {
-      return null;
+      const path = recordPath(name);
+      chmodSync(path, 0o600);
+      return decodeInstanceRecord(JSON.parse(readFileSync(path, "utf8")) as unknown);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
     }
   };
 
@@ -165,15 +166,29 @@ export const makeInstanceStore = (dataDirectory: string): InstanceStore => {
         .filter((file) => file.endsWith(".json"))
         .map((file) => read(file.slice(0, -".json".length)))
         .filter((record): record is InstanceRecord => record !== null);
-    } catch {
-      return [];
+    } catch (error) {
+      throw error;
     }
   };
 
   const write = (record: InstanceRecord): void => {
     const path = recordPath(record.name);
-    writeFileSync(`${path}.tmp`, JSON.stringify(record, null, 2));
-    renameSync(`${path}.tmp`, path);
+    const temporaryPath = `${path}.${randomUUID()}.tmp`;
+    try {
+      // wx + rename keeps a crash mid-write from reading as garbage; the
+      // fsync before rename keeps a power loss right after the rename from
+      // resurrecting an empty lease file (rename can outlive its contents).
+      const file = openSync(temporaryPath, "wx", 0o600);
+      try {
+        writeFileSync(file, JSON.stringify(record, null, 2));
+        fsyncSync(file);
+      } finally {
+        closeSync(file);
+      }
+      renameSync(temporaryPath, path);
+    } finally {
+      rmSync(temporaryPath, { force: true });
+    }
   };
 
   const drop = (name: string): void => {

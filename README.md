@@ -78,7 +78,6 @@ flowchart TB
         Proxy["src/modules/proxy"]
         Studio["src/modules/studio"]
         System["src/modules/system"]
-        Audio["src/modules/audio"]
         Stores["src/stores"]
     end
 
@@ -88,7 +87,6 @@ flowchart TB
     HttpApp --> Proxy
     HttpApp --> Studio
     HttpApp --> System
-    HttpApp --> Audio
     System --> Stores
 ```
 
@@ -110,7 +108,7 @@ Start the controller (listens on `127.0.0.1:8080`, data dir + SQLite created
 automatically, model weights in `LOCAL_STUDIO_MODELS_DIR`, default `/models`):
 
 ```bash
-npm run dev:controller
+bun --cwd controller run dev
 ```
 
 Start the frontend in a second terminal, then open
@@ -169,13 +167,19 @@ terminals:
 
 ```bash
 npm run build
-npm run start:controller
+bun --cwd controller run start
 npm run start
 ```
 
 `npm run start` launches the standalone server through `scripts/project.mjs`.
 Never use plain `next start` — it breaks SSE streaming. The controller runs the
 same way in production as in development: `bun src/main.ts`.
+
+Production web startup fails unless `LOCAL_STUDIO_FRONTEND_TOKEN` is set or
+`LOCAL_STUDIO_FRONTEND_ALLOW_UNAUTHENTICATED=true` explicitly acknowledges
+unauthenticated host access. Enter a configured token at `/access`; it is sent
+only in a POST body and stored in an HttpOnly cookie. Frontend access grants the
+permissions of the host user, including the agent's shell and filesystem tools.
 
 The production frontend binds only to `127.0.0.1` and defaults to port `4783`.
 `PORT` may be set to an integer from 1024 through 65535. Workspace paths are
@@ -222,15 +226,24 @@ The controller installer registers a persistent user service automatically
 (`launchd` on macOS and `systemd --user` on Linux), so installed controllers
 return after login without a repository daemon wrapper.
 
-## Validation
+## Commands
+
+Five commands cover the whole repo; everything else is plumbing they call.
 
 ```bash
-npm run check
+npm run setup           # toolchain check + install every workspace
+npm run dev             # frontend dev server + agent runtime, watch mode
+npm run check           # every gate CI runs, in one command
+npm run build           # production Next build + standalone repair + assertions
+npm run desktop:dist    # build and package the macOS app
 ```
 
-The configured pre-push hook (`.githooks/pre-push`) checks conventional commits
-and runs the frontend quality gate before pushing. The hook filenames are
-symlinks to `scripts/project.mjs`; they do not contain separate automation logic.
+All automation lives in `frontend/desktop/automation/*.mjs` — plain readable
+modules dispatched by `scripts/project.mjs` (`node scripts/project.mjs` with no
+arguments lists every subcommand). The pre-push hook checks conventional
+commits and runs the frontend quality gate before pushing; the hook filenames
+in `.githooks/` are symlinks to `scripts/project.mjs` and contain no logic of
+their own.
 
 ## Releases
 

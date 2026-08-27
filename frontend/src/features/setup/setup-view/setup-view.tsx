@@ -1,8 +1,13 @@
 "use client";
 
-import { AlertTriangle } from "@/ui/icon-registry";
-import { Alert, Spinner } from "@/ui";
+import { AlertTriangle, HardDrive } from "@/ui/icon-registry";
+import { Alert, Button, Spinner } from "@/ui";
 import type { ManagedRuntimeInstallBackend } from "@/features/settings/runtime-targets";
+import {
+  adoptDeployedController,
+  useControllerDeploy,
+} from "@/features/settings/use-controller-deploy";
+import { CONTROLLER_UNREACHABLE_MESSAGE } from "../use-setup-effects";
 import type {
   EngineJob,
   ModelDownload,
@@ -16,7 +21,6 @@ import { StepBringup } from "./step-bringup";
 import { StepHardware } from "./step-hardware";
 import { StepModel } from "./step-model";
 import { StepWelcome } from "./step-welcome";
-import type { GgufFileOption } from "../setup-model-files";
 
 interface SetupBenchmarkResult {
   prompt_tokens: number;
@@ -49,9 +53,6 @@ interface SetupViewProps {
   selectedModel: string;
   manualModelId: string;
   setManualModelId: (value: string) => void;
-  manualGgufOptions: GgufFileOption[];
-  manualGgufFile: string;
-  setManualGgufFile: (value: string) => void;
   resolvingManualModel: boolean;
   savingSettings: boolean;
   upgrading: boolean;
@@ -116,7 +117,9 @@ export function SetupView(props: SetupViewProps) {
       surface={surface}
       onSkip={skipSetup}
     >
-      {error ? (
+      {error === CONTROLLER_UNREACHABLE_MESSAGE ? (
+        <ControllerUnreachableGate />
+      ) : error ? (
         <Alert variant="error" icon={<AlertTriangle className="h-4 w-4" />} className="mb-6">
           <SetupErrorBody error={error} />
         </Alert>
@@ -166,9 +169,6 @@ export function SetupView(props: SetupViewProps) {
           maxVram={props.maxVram}
           manualModelId={props.manualModelId}
           setManualModelId={props.setManualModelId}
-          manualGgufOptions={props.manualGgufOptions}
-          manualGgufFile={props.manualGgufFile}
-          setManualGgufFile={props.setManualGgufFile}
           resolvingManualModel={props.resolvingManualModel}
           beginVariantDownload={props.beginVariantDownload}
           submitManualModel={props.submitManualModel}
@@ -196,6 +196,54 @@ export function SetupView(props: SetupViewProps) {
         />
       )}
     </SetupShell>
+  );
+}
+
+/**
+ * The controller is unreachable. In the desktop app that is an installable
+ * condition, not a dead end: offer to run the bundled installer on this
+ * machine, stream its progress, and reload once the controller is adopted.
+ * The browser build keeps the source-checkout instructions.
+ */
+function ControllerUnreachableGate() {
+  const deploy = useControllerDeploy();
+
+  if (!deploy.available) {
+    return (
+      <Alert variant="error" icon={<AlertTriangle className="h-4 w-4" />} className="mb-6">
+        <SetupErrorBody error={CONTROLLER_UNREACHABLE_MESSAGE} />
+      </Alert>
+    );
+  }
+
+  const install = async () => {
+    const controller = await deploy.run({ mode: "local" }, "This machine");
+    if (controller) {
+      await adoptDeployedController(controller);
+      window.location.reload();
+    }
+  };
+
+  return (
+    <Alert variant="warning" icon={<AlertTriangle className="h-4 w-4" />} className="mb-6">
+      <p className="break-words">
+        No controller is reachable. Install one on this machine, or start yours and reload this
+        page.
+      </p>
+      <div className="mt-3 flex items-center gap-3">
+        <Button variant="secondary" onClick={() => void install()} disabled={deploy.running}>
+          {deploy.running ? <Spinner size="xs" /> : <HardDrive className="h-3.5 w-3.5" />}
+          {deploy.running ? "Installing…" : "Install local controller"}
+        </Button>
+        {deploy.error ? <span className="text-(--err)">{deploy.error}</span> : null}
+        {deploy.done ? <span className="text-(--ok)">{deploy.done}</span> : null}
+      </div>
+      {deploy.lines.length > 0 ? (
+        <pre className="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-all border border-(--border) px-3 py-2 font-mono text-xs opacity-90">
+          {deploy.lines.slice(-12).join("\n")}
+        </pre>
+      ) : null}
+    </Alert>
   );
 }
 

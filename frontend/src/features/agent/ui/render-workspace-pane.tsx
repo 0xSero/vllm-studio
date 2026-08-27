@@ -1,8 +1,9 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
 import { ChatPane } from "@/features/agent/ui/chat-pane";
+import { ComposerFocusContext } from "@/features/agent/workspace/pane-context";
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
 import type { useTools } from "@/features/agent/tools/context";
 import type { Project } from "@/features/agent/projects/types";
@@ -126,6 +127,7 @@ export function sameWorkspacePaneView(
 
 type WorkspacePaneProps = {
   view: WorkspacePaneView;
+  composerFocusIntent: WorkspaceState["composerFocusIntent"];
   models: AgentModel[];
   modelsLoading: boolean;
   defaultModel: string;
@@ -139,6 +141,7 @@ type WorkspacePaneProps = {
 function sameWorkspacePaneProps(previous: WorkspacePaneProps, next: WorkspacePaneProps): boolean {
   return (
     sameWorkspacePaneView(previous.view, next.view) &&
+    previous.composerFocusIntent === next.composerFocusIntent &&
     previous.models === next.models &&
     previous.modelsLoading === next.modelsLoading &&
     previous.defaultModel === next.defaultModel &&
@@ -159,6 +162,7 @@ function sameWorkspacePaneProps(previous: WorkspacePaneProps, next: WorkspacePan
 
 const WorkspacePane = memo(function WorkspacePane({
   view,
+  composerFocusIntent,
   models,
   modelsLoading,
   defaultModel,
@@ -169,60 +173,66 @@ const WorkspacePane = memo(function WorkspacePane({
   composerOnly,
 }: WorkspacePaneProps) {
   const sessions = view.session ? [view.session] : [];
+  const composerFocus = useMemo(
+    () => ({ tabId: view.pane.sessionId, composerFocusIntent }),
+    [view.pane.sessionId, composerFocusIntent],
+  );
   return (
-    <ChatPane
-      paneId={view.paneId}
-      modelId={view.modelId}
-      modelName={view.model?.name ?? view.modelId ?? null}
-      modelSupportsVision={view.model?.vision ?? false}
-      modelThinkingLevels={view.model?.thinkingLevels ?? ["off"]}
-      modelsLoading={modelsLoading}
-      contextWindow={view.model?.contextWindow ?? 0}
-      cwd={view.cwd}
-      projectName={view.project?.name ?? null}
-      gitBranch={view.gitBranch}
-      gitSummary={view.gitSummary}
-      onInitGit={handles.initGitForActiveProject}
-      modelSelector={(reasoning) => (
-        <AgentModelPicker
-          models={models}
-          selectedModel={view.modelId}
-          defaultModel={defaultModel}
-          onSelect={(modelId) => handles.selectPaneModel(view.paneId, modelId)}
-          onSetDefault={handles.setDefaultModel}
-          loading={modelsLoading}
-          {...reasoning}
-        />
-      )}
-      browserToolEnabled={tools.browser.enabled}
-      browserBackend={tools.browser.backend}
-      onToggleBrowserBackend={tools.toggleBrowserBackend}
-      onToggleBrowserTool={() => {
-        if (tools.browser.enabled) {
-          tools.setBrowserEnabled(false);
-          tools.closeComputerTab("browser");
-          return;
-        }
-        tools.setBrowserEnabled(true);
-        tools.setComputerTab("browser");
-      }}
-      onPiSessionIdChange={handles.notifySessionsChanged}
-      isFocused={view.isFocused}
-      onFocus={() => dispatch({ type: "focusPane", paneId: view.paneId })}
-      tabs={sessions}
-      activeTabId={view.pane.sessionId}
-      onUpdateSession={handles.updateSession}
-      onRenameSession={(tabId, title) => handles.renameTab(view.paneId, tabId, title)}
-      onClose={view.canClose ? () => handles.closePane(view.paneId) : undefined}
-      onForkSession={() => handles.splitTabIntoNewPane(view.paneId, view.pane.sessionId)}
-      terminalOwner={terminalOwnerFor(view.project, view.session)}
-      onOpenTerminal={() => tools.setComputerTab("terminal")}
-      rightPanelOpen={tools.computer.open}
-      onToggleRightPanel={tools.toggleComputerOpen}
-      onRegisterHandle={(handle) => handles.registerPaneHandle(view.paneId, handle)}
-      showHeader={!compact}
-      composerOnly={composerOnly}
-    />
+    <ComposerFocusContext.Provider value={composerFocus}>
+      <ChatPane
+        paneId={view.paneId}
+        modelId={view.modelId}
+        modelName={view.model?.name ?? view.modelId ?? null}
+        modelSupportsVision={view.model?.vision ?? false}
+        modelThinkingLevels={view.model?.thinkingLevels ?? ["off"]}
+        modelsLoading={modelsLoading}
+        contextWindow={view.model?.contextWindow ?? 0}
+        cwd={view.cwd}
+        projectName={view.project?.name ?? null}
+        gitBranch={view.gitBranch}
+        gitSummary={view.gitSummary}
+        onInitGit={handles.initGitForActiveProject}
+        modelSelector={(reasoning) => (
+          <AgentModelPicker
+            models={models}
+            selectedModel={view.modelId}
+            defaultModel={defaultModel}
+            onSelect={(modelId) => handles.selectPaneModel(view.paneId, modelId)}
+            onSetDefault={handles.setDefaultModel}
+            loading={modelsLoading}
+            {...reasoning}
+          />
+        )}
+        browserToolEnabled={tools.browser.enabled}
+        browserBackend={tools.browser.backend}
+        onToggleBrowserBackend={tools.toggleBrowserBackend}
+        onToggleBrowserTool={() => {
+          if (tools.browser.enabled) {
+            tools.setBrowserEnabled(false);
+            tools.closeComputerTab("browser");
+            return;
+          }
+          tools.setBrowserEnabled(true);
+          tools.setComputerTab("browser");
+        }}
+        onPiSessionIdChange={handles.notifySessionsChanged}
+        isFocused={view.isFocused}
+        onFocus={() => dispatch({ type: "focusPane", paneId: view.paneId })}
+        tabs={sessions}
+        activeTabId={view.pane.sessionId}
+        onUpdateSession={handles.updateSession}
+        onRenameSession={(tabId, title) => handles.renameTab(view.paneId, tabId, title)}
+        onClose={view.canClose ? () => handles.closePane(view.paneId) : undefined}
+        onForkSession={() => handles.splitTabIntoNewPane(view.paneId, view.pane.sessionId)}
+        terminalOwner={terminalOwnerFor(view.project, view.session)}
+        onOpenTerminal={() => tools.setComputerTab("terminal")}
+        rightPanelOpen={tools.computer.open}
+        onToggleRightPanel={tools.toggleComputerOpen}
+        onRegisterHandle={(handle) => handles.registerPaneHandle(view.paneId, handle)}
+        showHeader={!compact}
+        composerOnly={composerOnly}
+      />
+    </ComposerFocusContext.Provider>
   );
 }, sameWorkspacePaneProps);
 
@@ -243,6 +253,7 @@ export function renderWorkspacePane({
     <WorkspacePane
       key={view.paneId}
       view={view}
+      composerFocusIntent={state.composerFocusIntent}
       models={state.models}
       modelsLoading={state.modelsLoading}
       defaultModel={state.selectedModel}

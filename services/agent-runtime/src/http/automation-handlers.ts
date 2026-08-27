@@ -23,6 +23,14 @@ export async function handleAutomationsList(): Promise<Response> {
   }
 }
 
+/** `targetSessionId` accepts a session id, or null/"" to mean "fresh session
+ *  every run"; anything else leaves the stored value alone. */
+function targetSessionPatch(value: unknown): { targetSessionId: string | null } | null {
+  if (value === null) return { targetSessionId: null };
+  if (typeof value !== "string") return null;
+  return { targetSessionId: value.trim() || null };
+}
+
 export async function handleAutomationCreate(request: Request): Promise<Response> {
   const body = await readJsonBody(request);
   const name = typeof body?.name === "string" ? body.name : "";
@@ -33,7 +41,14 @@ export async function handleAutomationCreate(request: Request): Promise<Response
     return jsonError("Body must include prompt and modelId.");
   }
   try {
-    const automation = await createAutomation({ name, prompt, modelId, cwd, schedule: body?.schedule });
+    const automation = await createAutomation({
+      name,
+      prompt,
+      modelId,
+      cwd,
+      schedule: body?.schedule,
+      ...(targetSessionPatch(body?.targetSessionId) ?? {}),
+    });
     return Response.json({ automation });
   } catch (error) {
     return jsonError(errorMessage(error, "Failed to create automation."), 500);
@@ -52,6 +67,12 @@ export async function handleAutomationPatch(request: Request, id: string): Promi
       ...(body.status === "active" || body.status === "paused" ? { status: body.status } : {}),
       ...(typeof body.unread === "boolean" ? { unread: body.unread } : {}),
       ...(body.schedule !== undefined ? { schedule: body.schedule } : {}),
+      ...(targetSessionPatch(body.targetSessionId) ?? {}),
+      // Forgetting the recorded runs is a write like any other, so it rides the
+      // same PATCH instead of a second endpoint. `lastRun` has to go with them:
+      // it is the same record, and leaving it would repopulate the history on
+      // the next read.
+      ...(body.clearRuns === true ? { runs: [], lastRun: null, unread: false } : {}),
     });
     if (!automation) return jsonError(`Unknown automation '${id}'.`, 404);
     return Response.json({ automation });
@@ -73,8 +94,12 @@ export async function handleAutomationDelete(id: string): Promise<Response> {
 export async function handleAutomationRun(id: string): Promise<Response> {
   const automation = await getAutomation(id);
   if (!automation) return jsonError(`Unknown automation '${id}'.`, 404);
+  // Awaits the whole run: the automation exists, so a null result can only mean
+  // the scheduler is already running it. `automation` carries the recorded run
+  // back so a caller does not have to re-list to learn how it went (the tab
+  // ignores the extra field and reloads its own list).
   const completed = await runAutomationNow(id);
-  return Response.json({ ok: true, started: completed !== null });
+  return Response.json({ ok: true, started: completed !== null, automation: completed });
 }
 
 // ─── Goals ────────────────────────────────────────────────────────────────
@@ -108,7 +133,10 @@ export async function handleGoalPut(request: Request): Promise<Response> {
       ...(typeof body.turnBudget === "number" || body.turnBudget === null
         ? { turnBudget: body.turnBudget as number | null }
         : {}),
-      ...(body.resetTurns === true ? { turnsUsed: 0 } : {}),
+      // `resetTurns` restarts the whole pursuit — turns, banked time and
+      // `createdAt`. Keeping `createdAt` across a re-set objective is what made
+      // a goal set a minute ago report itself as days old.
+      ...(body.resetTurns === true ? { resetProgress: true } : {}),
     });
     return Response.json({ goal: goal.objective ? goal : null });
   } catch (error) {

@@ -1,18 +1,20 @@
 import { Effect } from "effect";
 import type { Config } from "../../config/env";
 import { runCommandAsyncEffect } from "../../core/command";
+import type { Recipe } from "../models/types";
 import type { EventManager } from "../system/event-manager";
+import { createActiveModel, type ActiveModel } from "./active-model";
 import type { DeviceId, HostProfile, EngineRuntimeKind } from "./contracts";
 import { makeTelemetry, profileFrom, type Telemetry } from "./devices/snapshot";
 import { makeInstanceStore, type InstanceStore } from "./instances/store";
 import { makeDockerLauncher } from "./launchers/docker";
-import { makeProcessLauncher } from "./launchers/process";
 import type { Launcher } from "./launchers/launcher";
 import { makeComputeService, type ComputeService } from "./lifecycle";
 
 /**
- * Assembly point: telemetry + store + launchers wired into one ComputeService. This is
- * the compute layer's entire footprint in AppContext — there is no other state.
+ * Assembly point: telemetry + store + launchers wired into one ComputeService, plus
+ * the one-active-model surface. This is the compute layer's entire footprint in
+ * AppContext — there is no other state.
  */
 
 export interface Compute {
@@ -20,6 +22,7 @@ export interface Compute {
   readonly telemetry: Telemetry;
   readonly store: InstanceStore;
   readonly host: () => Effect.Effect<HostProfile>;
+  readonly model: ActiveModel;
 }
 
 const DOCKER_PROBE_TIMEOUT_MS = 5_000;
@@ -43,7 +46,11 @@ const probeDocker = (): Effect.Effect<DockerStatus> =>
     return { docker: true, dockerGpu: gpuRuntime || process.platform === "linux" };
   }).pipe(Effect.catchCause(() => Effect.succeed({ docker: false, dockerGpu: false })));
 
-export const makeCompute = (config: Config, eventManager: EventManager): Compute => {
+export const makeCompute = (
+  config: Config,
+  eventManager: EventManager,
+  getRecipe: (recipeId: string) => Effect.Effect<Recipe | null, unknown>,
+): Compute => {
   const telemetry = makeTelemetry({
     storagePaths: [config.data_dir, config.models_dir],
   });
@@ -74,11 +81,8 @@ export const makeCompute = (config: Config, eventManager: EventManager): Compute
       return profile;
     });
 
-  const processLauncher = makeProcessLauncher(store.logPath);
-  const launcherFor = (runtime: EngineRuntimeKind): Launcher =>
-    runtime === "docker"
-      ? makeDockerLauncher(lastProfile?.accelerator ?? "cuda")
-      : processLauncher;
+  const launcherFor = (_runtime: EngineRuntimeKind): Launcher =>
+    makeDockerLauncher(lastProfile?.accelerator ?? "cuda");
 
   const freeDevices = (): Effect.Effect<readonly DeviceId[]> =>
     telemetry
@@ -94,5 +98,7 @@ export const makeCompute = (config: Config, eventManager: EventManager): Compute
       eventManager.publishLaunchProgress(name, stage, message),
   });
 
-  return { service, telemetry, store, host };
+  const model = createActiveModel({ config, compute: service, store, getRecipe });
+
+  return { service, telemetry, store, host, model };
 };

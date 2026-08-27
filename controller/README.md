@@ -6,7 +6,7 @@
 
 - Launches and evicts model-serving runtimes through recipes.
 - Discovers and selects runtime targets for vLLM, SGLang, llama.cpp, and MLX.
-- Proxies OpenAI-compatible model, chat, audio, and tokenization requests.
+- Proxies OpenAI-compatible model, chat, and tokenization requests.
 - Streams controller/runtime events over SSE.
 - Tracks GPU/system status, logs, downloads, usage, controller settings, and persisted runtime state.
 - Provides Swagger/OpenAPI documentation for the controller API.
@@ -31,14 +31,12 @@ flowchart TB
     App --> Proxy["modules/proxy"]
     App --> Studio["modules/studio"]
     App --> System["modules/system"]
-    App --> Audio["modules/audio"]
 
     Engines --> Runtime["runtime process coordination"]
     Engines --> Targets["runtime target discovery"]
     Models --> Recipes["recipe and model discovery"]
     Proxy --> Inference["OpenAI-compatible inference client"]
     System --> Metrics["metrics, logs, usage, events"]
-    Audio --> Speech["STT/TTS integrations"]
     System --> Stores["src/stores SQLite helpers"]
 ```
 
@@ -70,6 +68,8 @@ bun run check
 - `GET /api/docs`
 - `GET /v1/models`
 - `POST /v1/chat/completions`
+- `POST /v1/responses` — OpenAI Responses API, passed through to the engine
+- `POST /v1/messages` — Anthropic Messages API, passed through to the engine (point `ANTHROPIC_BASE_URL` at the controller)
 - `GET /v1/studio/models`
 - `GET /studio/downloads`
 - `GET /runtime/targets`
@@ -104,3 +104,19 @@ Runtime-related environment variables include:
 - `src/modules/system/`: metrics, logs, usage, events, and platform state.
 - `src/stores/`: SQLite helpers and persisted stores.
 - `contracts/`: the `@local-studio/contracts` package — the controller's HTTP API contract, consumed by the frontend via a `file:` dependency.
+
+## Pointing SDKs at the controller
+
+The controller speaks three dialects, all proxied to the engine:
+
+```bash
+# OpenAI SDK (chat completions or the Responses API)
+OPENAI_BASE_URL=http://127.0.0.1:8080/v1
+
+# Anthropic SDK (Messages API; x-api-key auth is accepted)
+ANTHROPIC_BASE_URL=http://127.0.0.1:8080
+```
+
+Model ids resolve the same way on every route: `provider/model` ids go to
+that configured provider with its key; anything else is canonicalized to the
+recipe's served model name.

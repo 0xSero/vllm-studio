@@ -1,14 +1,18 @@
 import { useCallback, useMemo, useRef } from "react";
 import { Effect } from "effect";
 import {
+  asRecord,
   finalizeRunningToolBlocks,
-  mergeCanonicalAndRuntimeEvents,
-  reconcileReplayMessages,
   replayCursorAfterRuntimeHydration,
-  runtimeStatusAcceptsControl,
+  type ChatMessage,
+  type RuntimeLoggedEvent,
 } from "@/features/agent/messages";
 import { foldSessionEvents } from "@/features/agent/runtime/pi-event-applier";
-import { settleTurnFinalizingTools } from "@/features/agent/runtime/session-status";
+import {
+  runtimeCanHydrateCanonicalSession,
+  runtimeStatusAcceptsControl,
+  settleTurnFinalizingTools,
+} from "@/features/agent/runtime/session-status";
 import {
   selectedContextPrompt,
   type ComposerPromptTemplateRef,
@@ -22,11 +26,7 @@ import type {
   AgentToolAccess,
 } from "@/features/agent/contracts";
 import * as api from "@/features/agent/runtime/api";
-import {
-  runtimeCanHydrateCanonicalSession,
-  submitPromptTurn,
-  type SubmitArgs,
-} from "@/features/agent/runtime/prompt-stream";
+import { submitPromptTurn, type SubmitArgs } from "@/features/agent/runtime/prompt-stream";
 import { readTranscriptSnapshot } from "@/features/agent/workspace/transcript-cache";
 
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
@@ -494,4 +494,95 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       acceptsControl,
     ],
   );
+}
+
+function eventKey(event: Record<string, unknown>): string {
+  try {
+    return JSON.stringify(event);
+  } catch {
+    return `${String(event.type ?? "event")}:${Object.keys(event).join(",")}`;
+  }
+}
+
+function messageFingerprint(event: Record<string, unknown>): string | null {
+  const message = asRecord(event.message);
+  if (!message || typeof message.role !== "string") return null;
+  return eventKey(message);
+}
+
+function canonicalEventsBeforeRuntimeTail(
+  canonicalEvents: Record<string, unknown>[],
+  runtime: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  const canonicalMessages = canonicalEvents.flatMap((event, eventIndex) => {
+    const fingerprint = messageFingerprint(event);
+    return fingerprint ? [{ eventIndex, fingerprint }] : [];
+  });
+  const runtimeMessages = runtime.flatMap((event) => {
+    if (event.type !== "message" && event.type !== "message_end") return [];
+    const fingerprint = messageFingerprint(event);
+    return fingerprint ? [fingerprint] : [];
+  });
+  const firstRuntimeMessage = runtimeMessages[0];
+  if (!firstRuntimeMessage) return canonicalEvents;
+  let best: { eventIndex: number; score: number } | null = null;
+  for (let index = 0; index < canonicalMessages.length; index += 1) {
+    if (canonicalMessages[index]?.fingerprint !== firstRuntimeMessage) continue;
+    let score = 0;
+    while (
+      canonicalMessages[index + score]?.fingerprint === runtimeMessages[score] &&
+      runtimeMessages[score]
+    ) {
+      score += 1;
+    }
+    const candidate = { eventIndex: canonicalMessages[index]?.eventIndex ?? 0, score };
+    if (!best || candidate.score >= best.score) best = candidate;
+  }
+  if (best) {
+    return canonicalEvents.slice(0, best.eventIndex);
+  }
+  return canonicalEvents;
+}
+
+function runtimeEventsInOrder(
+  runtimeEvents: readonly RuntimeLoggedEvent[],
+): Record<string, unknown>[] {
+  return [...runtimeEvents]
+    .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+    .flatMap((entry) => {
+      if (entry.event && typeof entry.event === "object") {
+        return [entry.event];
+      }
+      return [];
+    });
+}
+
+function dedupeAdjacentEvents(events: Record<string, unknown>[]): Record<string, unknown>[] {
+  let previous = "";
+  return events.filter((event) => {
+    const key = eventKey(event);
+    if (key === previous) return false;
+    previous = key;
+    return true;
+  });
+}
+
+function mergeCanonicalAndRuntimeEvents(
+  canonicalEvents: Record<string, unknown>[],
+  runtimeEvents: readonly RuntimeLoggedEvent[] = [],
+): Record<string, unknown>[] {
+  const runtime = runtimeEventsInOrder(runtimeEvents);
+  return dedupeAdjacentEvents([
+    ...canonicalEventsBeforeRuntimeTail(canonicalEvents, runtime),
+    ...runtime,
+  ]);
+}
+
+function reconcileReplayMessages(
+  current: ChatMessage[],
+  canonical: ChatMessage[],
+): ChatMessage[] {
+  if (canonical.length === 0) return current;
+  if (canonical.length >= current.length) return canonical;
+  return current;
 }

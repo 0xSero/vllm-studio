@@ -17,7 +17,7 @@ import { type FileMentionRow, type MentionRow } from "@/features/agent/ui/agent-
 import { builtinCommandProvider } from "@/features/agent/composer/builtin-commands";
 import { AutomationDrawer } from "@/features/agent/ui/automation-drawer";
 import { ComposerProjectDrawer } from "@/features/agent/ui/composer-project-drawer";
-import { SubagentChips } from "@/features/agent/ui/subagent-chips";
+import { TranscriptSessionContext } from "@/features/agent/ui/timeline/subagent-row";
 import { GitDiffDrawer } from "@/features/agent/ui/git-diff-drawer";
 import {
   promptTemplateCommandProvider,
@@ -29,34 +29,11 @@ import {
   type SlashInvocation,
 } from "@/features/agent/composer/command-registry";
 import { deriveComposerVisual } from "@/features/agent/composer/composer-visual-state";
-
-function diffDrawerFor(
-  open: boolean,
-  props: {
-    cwd: string | null;
-    gitBranch?: string | null;
-    gitSummary?: GitSummary | null;
-    onClose: () => void;
-  },
-) {
-  if (!open) return null;
-  return <GitDiffDrawer {...props} />;
-}
-
-function piSessionIdOf(tab: { piSessionId?: string | null } | null | undefined): string | null {
-  return tab?.piSessionId ?? null;
-}
-
-function subagentChipsFor(piSessionId: string | null | undefined) {
-  if (!piSessionId) return null;
-  return <SubagentChips piSessionId={piSessionId} />;
-}
-
 import {
+  useComposerAutosize,
   useComposerLoadedContext,
   useComposerMentionRows,
   useComposerTextareaBehavior,
-  useComposerTextareaHeightSync,
   type UpdateTab,
 } from "@/features/agent/ui/chat-pane-composer";
 import { useComposerAttachments } from "@/features/agent/ui/chat-pane-composer-attachments";
@@ -79,12 +56,12 @@ import {
 import { useChatPaneSessionTitle } from "@/features/agent/ui/chat-pane-session-title";
 import { useGoalCommand } from "@/features/agent/ui/use-goal-command";
 import { useGoalMode } from "@/features/agent/ui/use-goal-mode";
-import { useChatPaneComposerActions } from "@/features/agent/ui/use-chat-pane-composer-actions";
 import { useComposerCommandHandlers } from "@/features/agent/ui/use-composer-command-handlers";
 import { useChatPaneSendFlow } from "@/features/agent/ui/chat-pane-send-flow";
-import { ChatPaneHandle, SessionTab } from "@/features/agent/messages";
+import { ChatPaneHandle } from "@/features/agent/messages";
+import { respondExtensionUi } from "@/features/agent/runtime/api";
 import { useSessionEngine } from "@/features/agent/runtime/engine";
-import type { UpdateSession } from "@/features/agent/runtime/types";
+import type { Session, UpdateSession } from "@/features/agent/runtime/types";
 import { useTools } from "@/features/agent/tools/context";
 import type { GitSummary, Project } from "@/features/agent/projects/types";
 import type { BrowserBackend } from "@/features/agent/tools/types";
@@ -112,12 +89,7 @@ import {
 import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
 import { cx } from "@/ui/utils";
 import { ExtensionUiDialog } from "@/features/agent/ui/extension-ui-dialog";
-import {
-  clearSessionGoal,
-  respondExtensionUi,
-  updateSessionGoal,
-} from "@/features/agent/runtime/api";
-export type { ChatPaneHandle, SessionTab };
+export type { ChatPaneHandle };
 
 const Timeline = dynamic(
   () => import("@/features/agent/ui/timeline/timeline").then((mod) => mod.Timeline),
@@ -173,23 +145,33 @@ function ChatTranscript({
   stickToBottom,
   setStickToBottom,
   running,
+  cwd,
   onForkSession,
   loadEarlierHistory,
 }: {
   composerOnly: boolean;
   terminalView: boolean;
   showEmptyPrompt: boolean;
-  activeTab: SessionTab | undefined;
+  activeTab: Session | undefined;
   stickToBottom: boolean;
   setStickToBottom: (value: boolean) => void;
   running: boolean;
+  cwd: string;
   onForkSession?: () => void;
   loadEarlierHistory: () => Promise<void>;
 }) {
   const viewKey = activeTab?.piSessionId ?? activeTab?.id ?? null;
   const viewAlias = activeTab?.piSessionId ? activeTab.id : null;
+  // Subagent rows inside the transcript need the parent session to look up
+  // their live status; the memoized block layers between here and the row are
+  // exactly why this is a context and not a prop.
+  const transcriptSession = useMemo(
+    () => ({ piSessionId: activeTab?.piSessionId ?? null, cwd: cwd || null }),
+    [activeTab?.piSessionId, cwd],
+  );
   if (composerOnly) return null;
   return (
+    <TranscriptSessionContext value={transcriptSession}>
     <div className={terminalView ? "hidden" : "flex min-h-0 min-w-0 flex-1"}>
       {showEmptyPrompt ? (
         <EmptyPromptTimeline />
@@ -200,6 +182,7 @@ function ChatTranscript({
           onStickToBottomChange={setStickToBottom}
           messages={activeTab?.messages ?? []}
           running={running}
+          cwd={cwd || null}
           viewKey={viewKey}
           viewAlias={viewAlias}
           onForkSession={onForkSession}
@@ -208,6 +191,7 @@ function ChatTranscript({
         />
       )}
     </div>
+    </TranscriptSessionContext>
   );
 }
 
@@ -232,7 +216,7 @@ type Props = {
   isFocused: boolean;
   onFocus: () => void;
   onPiSessionIdChange?: (sessionId: string) => void;
-  tabs: SessionTab[];
+  tabs: Session[];
   activeTabId: string;
   onUpdateSession: UpdateSession;
   onRenameSession: (tabId: string, title: string) => void;
@@ -298,10 +282,7 @@ export function ChatPane({
   const router = useRouter();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const lastAppliedComposerHeightRef = useRef(0);
-  const lastComposerValueLengthRef = useRef(0);
   const [stickToBottom, setStickToBottom] = useState(true);
-  const [queueExpanded, setQueueExpanded] = useState(false);
   const [mention, setMention] = useState<ComposerMention | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [fileMentionRows, setFileMentionRows] = useState<FileMentionRow[]>([]);
@@ -391,17 +372,7 @@ export function ChatPane({
     textareaRef,
   });
   const composerInput = activeTab?.input ?? "";
-  const resetComposerHeight = useCallback(() => {
-    if (textareaRef.current) textareaRef.current.style.height = "";
-    lastAppliedComposerHeightRef.current = 0;
-    lastComposerValueLengthRef.current = 0;
-  }, []);
-  useComposerTextareaHeightSync({
-    value: composerInput,
-    textareaRef,
-    lastAppliedComposerHeightRef,
-    lastComposerValueLengthRef,
-  });
+  const composerAutosize = useComposerAutosize({ textareaRef, value: composerInput });
   const { selectedSkills, selectedPromptTemplates, removeLoadedContext } = useComposerLoadedContext(
     { activeTab, tools },
   );
@@ -430,7 +401,7 @@ export function ChatPane({
     onSelectReasoning: selectThinkingLevel,
   });
 
-  const activePiSessionId = piSessionIdOf(activeTab);
+  const activePiSessionId = activeTab?.piSessionId ?? null;
   const { goalRevision, goalAction, flushPendingGoal } = useGoalCommand(
     activePiSessionId,
     activeTabId,
@@ -495,6 +466,17 @@ export function ChatPane({
     [activeTab, tools],
   );
   const [goalModeOn, setGoalModeOn] = useState(false);
+  // Goal mode is a property of the tab it was entered on, but the state lives
+  // pane-wide — without this reset, entering goal mode in one tab silently
+  // converted the next message of whatever tab was switched to into its goal.
+  // Render-time derived-state reset (React's "adjusting state when a prop
+  // changes" pattern), since effect hooks are banned in this codebase.
+  const goalModeTabId = activeTab?.id ?? null;
+  const [lastGoalModeTabId, setLastGoalModeTabId] = useState(goalModeTabId);
+  if (lastGoalModeTabId !== goalModeTabId) {
+    setLastGoalModeTabId(goalModeTabId);
+    if (goalModeOn) setGoalModeOn(false);
+  }
   const [automationDrawerOpen, setAutomationDrawerOpen] = useState(false);
   // Seed the automation with the last thing the user asked for: the common case
   // is "keep doing what I just asked, on a schedule".
@@ -522,7 +504,9 @@ export function ChatPane({
           compact: () => void compactSession(),
           openStatus: openComputerStatus,
           toggleBrowserTool: onToggleBrowserTool,
-          openPlugins: () => router.push("/integrations"),
+          // The command is `/connectors`, so it lands on the tab it names
+          // rather than on whichever tab the page happens to open with.
+          openIntegrations: () => router.push("/integrations#connectors"),
           ...(openTerminalAction ? { openTerminal: openTerminalAction } : {}),
           ...(onForkSession ? { forkSession: onForkSession } : {}),
           ...(canExport ? { exportSession } : {}),
@@ -572,7 +556,7 @@ export function ChatPane({
     commandContext,
     mention,
     setMention,
-    resetComposerHeight,
+    resetComposerHeight: composerAutosize.reset,
     textareaRef,
     updateTab,
     selectMentionRow,
@@ -588,7 +572,7 @@ export function ChatPane({
       modelId,
       modelSupportsVision,
       readingAttachments,
-      resetComposerHeight,
+      resetComposerHeight: composerAutosize.reset,
       running: Boolean(running),
       setMention,
       setStickToBottom,
@@ -602,10 +586,7 @@ export function ChatPane({
       mentionRows,
       mentionIndex,
       running: Boolean(running),
-      textareaRef,
-      lastAppliedComposerHeightRef,
-      lastComposerValueLengthRef,
-      resetComposerHeight,
+      autosize: composerAutosize,
       updateTab,
       setMention,
       setMentionIndex,
@@ -638,23 +619,28 @@ export function ChatPane({
       }
       void sendMessage(event);
     },
-    [
-      activeTab,
-      commandContext,
-      commandRegistry,
-      goalModeApi,
-      runCommandInvocation,
-      sendMessage,
-    ],
+    [activeTab, commandContext, commandRegistry, goalModeApi, runCommandInvocation, sendMessage],
   );
   const loadEarlierHistory = useCallback(
     () => (activeTabId ? engine.loadEarlier(activeTabId) : Promise.resolve()),
     [activeTabId, engine],
   );
-  const { handleExtensionUiResponse } = useChatPaneComposerActions({
-    activeTab,
-    updateTab,
-  });
+  // Clear the prompt optimistically; a failed round-trip surfaces as the
+  // session error rather than leaving a dead dialog on screen.
+  const handleExtensionUiResponse = useCallback(
+    (response: { value?: string; confirmed?: boolean; cancelled?: boolean }) => {
+      const request = activeTab?.extensionUiRequest;
+      if (!activeTab || !request) return;
+      updateTab(activeTab.id, (session) => ({ ...session, extensionUiRequest: undefined }));
+      void respondExtensionUi(activeTab.id, request.requestId, response).catch((error) => {
+        updateTab(activeTab.id, (session) => ({
+          ...session,
+          error: error instanceof Error ? error.message : "Extension response failed",
+        }));
+      });
+    },
+    [activeTab, updateTab],
+  );
   const composerVisual = deriveComposerVisual({
     compacting,
     hasMessages: (activeTab?.messages.length ?? 0) > 0,
@@ -696,16 +682,19 @@ export function ChatPane({
         stickToBottom={stickToBottom}
         setStickToBottom={setStickToBottom}
         running={Boolean(running)}
+        cwd={cwd}
         onForkSession={onForkSession}
         loadEarlierHistory={loadEarlierHistory}
       />
       <div className={terminalView ? "hidden" : "contents"}>
-        {diffDrawerFor(diffDrawerOpen, {
-          cwd: cwd || null,
-          gitBranch,
-          gitSummary,
-          onClose: closeDiffDrawer,
-        })}
+        {diffDrawerOpen ? (
+          <GitDiffDrawer
+            cwd={cwd || null}
+            gitBranch={gitBranch}
+            gitSummary={gitSummary}
+            onClose={closeDiffDrawer}
+          />
+        ) : null}
         {automationDrawerOpen ? (
           <AutomationDrawer
             modelId={modelId}
@@ -714,7 +703,6 @@ export function ChatPane({
             onClose={() => setAutomationDrawerOpen(false)}
           />
         ) : null}
-        {subagentChipsFor(activePiSessionId)}
         <AgentComposerFrame
           attachments={attachments}
           banner={composerVisual.banner}
@@ -744,16 +732,12 @@ export function ChatPane({
             handleComposerKeyDown(event);
           }}
           onComposerPaste={handleComposerPaste}
-          onEditQueued={editQueued}
           onInitGit={onInitGit}
           onOpenStatus={openComputerStatus}
           onOpenDiff={openDiffDrawer}
-          onQueueExpandedChange={setQueueExpanded}
           onRemoveAttachment={removeAttachment}
           onRemoveLoadedContext={removeLoadedContext}
-          onRemoveQueued={removeQueued}
           onSelectMention={(entry) => void handleSelectMention(entry)}
-          onSteerQueued={(queueId) => void steerQueued(queueId)}
           onSubmit={handleComposerSubmit}
           onToggleBrowserBackend={onToggleBrowserBackend}
           onToggleBrowserTool={onToggleBrowserTool}
@@ -780,8 +764,6 @@ export function ChatPane({
           }
           showStatusBar={!composerVisual.showProjectRow}
           promptTemplates={selectedPromptTemplates}
-          queueExpanded={queueExpanded}
-          queueItems={visibleQueueItems}
           readingAttachments={readingAttachments}
           running={Boolean(running)}
           selectedSkills={selectedSkills}
@@ -808,7 +790,7 @@ function ChatPaneChrome({
   terminalSnapshot,
   header,
 }: {
-  extensionUiRequest: SessionTab["extensionUiRequest"];
+  extensionUiRequest: Session["extensionUiRequest"];
   onExtensionUiRespond: (response: {
     value?: string;
     confirmed?: boolean;

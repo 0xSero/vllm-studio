@@ -16,6 +16,11 @@ export const FILE_WRITE_TOOL_NAMES = new Set([
   "apply_edit",
   "replace_file",
   "str_replace_editor",
+  // Writing a note is writing a file. Named exactly rather than by adding
+  // "create"/"append" to the needle list below, which would sweep up every
+  // unrelated tool whose verb happens to be one of those.
+  "obsidian_create",
+  "obsidian_append",
 ]);
 
 const LANG_BY_EXT: Record<string, string> = {
@@ -194,7 +199,7 @@ export function classifyTool(block: ToolBlock): ToolKind {
   if (hasAnyNeedle(name, ["search", "grep", "find", "ripgrep", "rg"])) return "search";
   if (hasAnyNeedle(name, ["read", "open", "cat", "view", "list"])) return "read";
   if (hasAnyNeedle(name, ["exec", "command", "shell", "bash", "run", "terminal"])) return "exec";
-  if (hasAnyNeedle(name, ["browser", "web", "open_url", "navigate"])) return "browser";
+  if (hasAnyNeedle(name, ["browser", "chrome", "web", "open_url", "navigate"])) return "browser";
   return "generic";
 }
 

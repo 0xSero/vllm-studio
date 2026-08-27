@@ -7,7 +7,6 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "doctor": "node scripts/project.mjs doctor",
     "setup": "node scripts/project.mjs setup",
     "release:notes": "node scripts/project.mjs release-notes",
     "release:check-commits": "node scripts/project.mjs check-commits --range origin/main..HEAD",

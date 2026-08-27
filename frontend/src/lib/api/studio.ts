@@ -4,6 +4,7 @@ import {
   bundledModelIndexSource,
   type ModelIndexResponse,
 } from "@local-studio/contracts/model-index";
+import type { RuntimeJobBackend, RuntimeJobType } from "@local-studio/contracts/system";
 import type {
   ModelDownload,
   EngineJob,
@@ -12,9 +13,6 @@ import type {
   StorageInfo,
   StudioDiagnostics,
   StudioSettings,
-  RuntimeBackendInfo,
-  RuntimeCudaInfo,
-  RuntimeRocmInfo,
   RuntimeTarget,
 } from "../types";
 import { encodePathSegments, type ApiCore, type RequestOptions } from "./core";
@@ -34,27 +32,21 @@ export interface StudioModelsRoot {
   recipe_ids?: string[];
 }
 
-export interface VllmRuntimeInfo {
-  installed: boolean;
-  version: string | null;
-  python_path: string | null;
-  vllm_bin: string | null;
-  upgrade_command_available?: boolean;
-  bundled_wheel: {
-    path: string;
-    version: string | null;
-  } | null;
-}
-
-export interface VllmRuntimeConfig {
-  config: string | null;
-  error?: string | null;
-}
-
 export interface RuntimeJobResponse {
   job_id: string;
   job: EngineJob;
 }
+
+export type RuntimeJobPayload = {
+  backend: RuntimeJobBackend;
+  targetId?: string;
+  type?: RuntimeJobType;
+  version?: string;
+  preferBundled?: boolean;
+};
+
+type RuntimeJobPayloadContract = RuntimeJobPayload &
+  (Extract<keyof RuntimeJobPayload, "command" | "args"> extends never ? unknown : never);
 
 const bundledModelIndex = Schema.decodeUnknownSync(ModelIndexSchema)(bundledModelIndexSource);
 
@@ -212,28 +204,16 @@ export function createStudioApi(core: ApiCore) {
       }>;
     }> => core.request("/studio/provider-models"),
 
-    getVllmRuntime: (): Promise<VllmRuntimeInfo> => core.request("/runtime/vllm"),
-
     getRuntimeTargets: (): Promise<{ targets: RuntimeTarget[] }> =>
       core.request("/runtime/targets"),
 
-    createRuntimeJob: (payload: {
-      backend: "vllm" | "sglang" | "llamacpp" | "mlx";
-      targetId?: string;
-      type?: "install" | "update" | "download" | "inspect";
-      command?: string;
-      args?: string[];
-      version?: string;
-      preferBundled?: boolean;
-    }): Promise<{ job: EngineJob }> =>
+    createRuntimeJob: (payload: RuntimeJobPayloadContract): Promise<{ job: EngineJob }> =>
       core.request("/runtime/jobs", {
         method: "POST",
         body: JSON.stringify({
           backend: payload.backend,
           targetId: payload.targetId,
           type: payload.type,
-          command: payload.command,
-          args: payload.args,
           version: payload.version,
           prefer_bundled: payload.preferBundled,
         }),
@@ -247,23 +227,8 @@ export function createStudioApi(core: ApiCore) {
     cancelRuntimeJob: (id: string): Promise<{ job: EngineJob }> =>
       core.request(`/runtime/jobs/${encodePathSegments(id)}/cancel`, { method: "POST" }),
 
-    getVllmRuntimeConfig: (): Promise<VllmRuntimeConfig> => core.request("/runtime/vllm/config"),
-
-    getSglangRuntime: (): Promise<RuntimeBackendInfo> => core.request("/runtime/sglang"),
-
-    getLlamacppRuntime: (): Promise<RuntimeBackendInfo> => core.request("/runtime/llamacpp"),
-
-    getMlxRuntime: (): Promise<RuntimeBackendInfo> => core.request("/runtime/mlx"),
-
-    getLlamacppRuntimeConfig: (): Promise<{ config: string | null; error?: string | null }> =>
-      core.request("/runtime/llamacpp/config"),
-
-    getCudaRuntime: (): Promise<RuntimeCudaInfo> => core.request("/runtime/cuda"),
-
-    getRocmRuntime: (): Promise<RuntimeRocmInfo> => core.request("/runtime/rocm"),
-
     upgradeRuntime: (
-      backend: "vllm" | "sglang" | "llamacpp" | "mlx" | "cuda" | "rocm",
+      backend: "vllm" | "sglang" | "exllamav3",
       payload: { preferBundled?: boolean; version?: string; targetId?: string } = {},
     ): Promise<RuntimeJobResponse> =>
       core.request(`/runtime/${backend}/upgrade`, {

@@ -13,22 +13,15 @@ import { registerModelsRoutes } from "../modules/models/routes";
 
 import { registerAllProxyRoutes } from "../modules/proxy/routes";
 import { registerStudioRoutes } from "../modules/studio/routes";
-import { documentRoute, mergeRoutes, type ControllerRouteApp } from "./route-registrar";
+import { effectRoute, mergeRoutes, type ControllerRouteApp } from "./route-registrar";
 import {
   createAuthMiddleware,
+  createKeylessRequestGuardMiddleware,
   createMutatingRateLimitMiddleware,
   createReadRateLimitMiddleware,
 } from "./security-middleware";
-import {
-  createControllerRequestObservabilityMiddleware,
-  TELEMETRY_SKIP_PATHS,
-} from "./observability-middleware";
-import {
-  controllerRuntimeMiddleware,
-  effectHandler,
-  effectMiddleware,
-  type ControllerEnvironment,
-} from "./effect-handler";
+import { createControllerRequestObservabilityMiddleware } from "./observability-middleware";
+import { controllerRuntimeMiddleware, type ControllerEnvironment } from "./effect-handler";
 
 type ControllerApplication = ReturnType<typeof registerComputeRoutes> &
   ReturnType<typeof registerSystemRoutes> &
@@ -45,13 +38,22 @@ export const createApp = (
   const allowedCorsOrigins = context.config.cors_origins ?? [];
 
   app.use("*", controllerRuntimeMiddleware(runtime));
+  app.use("*", createKeylessRequestGuardMiddleware(context));
 
   app.use(
     "*",
     cors({
       origin: (origin) => (allowedCorsOrigins.includes(origin) ? origin : null),
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Authorization", "Content-Type", "X-API-Key"],
+      allowHeaders: [
+        "Authorization",
+        "Content-Type",
+        "X-API-Key",
+        // Protocol headers for the Responses and Anthropic Messages dialects.
+        "Anthropic-Version",
+        "Anthropic-Beta",
+        "OpenAI-Beta",
+      ],
       exposeHeaders: [
         "X-RateLimit-Limit",
         "X-RateLimit-Remaining",
@@ -60,24 +62,6 @@ export const createApp = (
       ],
       maxAge: 600,
     }),
-  );
-
-  app.use(
-    "*",
-    effectMiddleware((ctx, next) =>
-      Effect.sync(() => {
-        if (!TELEMETRY_SKIP_PATHS.has(ctx.req.path)) {
-          context.logger.debug(`${ctx.req.method} ${ctx.req.path}`);
-        }
-      }).pipe(
-        Effect.andThen(
-          Effect.tryPromise({
-            try: () => next(),
-            catch: (error) => error,
-          }),
-        ),
-      ),
-    ),
   );
 
   app.use("*", createControllerRequestObservabilityMiddleware(context));
@@ -92,11 +76,7 @@ export const createApp = (
     registerModelsRoutes(app, context),
     registerStudioRoutes(app, context),
     registerAllProxyRoutes(app, context),
-    app.get(
-      "/health",
-      documentRoute,
-      effectHandler((ctx) => Effect.succeed(ctx.json({ status: "ok" }))),
-    ),
+    effectRoute(app.get, "/health", (ctx) => Effect.succeed(ctx.json({ status: "ok" }))),
   );
 
   const documentedRoutes = mergeRoutes(

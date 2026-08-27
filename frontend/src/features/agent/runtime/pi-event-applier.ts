@@ -13,11 +13,10 @@ import {
   usefulToolArgsText,
   type AssistantBlock,
   type ChatMessage,
+  type QueuedMessage,
   messageText,
   newId,
   nowLabel,
-  reconcileQueueWithPiEvent,
-  removeDeliveredQueuedMessage,
   sessionTitleFromPrompt,
   usageFromEvent,
   visibleUserTextFromPi,
@@ -314,6 +313,9 @@ function reduceToolResultMessageEvent(
         (existing) => ({
           ...existing,
           status: isError ? "error" : "done",
+          // Replay is the only place a reopened session learns a tool's
+          // structured payload, so carry it here too.
+          details: asRecord(msg.details) ?? existing.details,
           text: resultText || existing.text,
         }),
         () => ({
@@ -321,6 +323,7 @@ function reduceToolResultMessageEvent(
           id: toolCallId,
           name: (typeof msg.toolName === "string" && msg.toolName) || "tool",
           status: isError ? "error" : "done",
+          ...(asRecord(msg.details) ? { details: asRecord(msg.details) as Record<string, unknown> } : {}),
           text: resultText,
         }),
       ),
@@ -906,4 +909,73 @@ function hasMatchingLastUserMessage(messages: ChatMessage[], text: string): bool
       Boolean(text && lastUser.text.includes(text)) ||
       Boolean(!text && lastUser.attachments?.length)),
   );
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+function queueDisplayText(text: string): string {
+  return visibleUserTextFromPi(text) || text.trim();
+}
+
+function queueKey(mode: QueuedMessage["mode"], text: string): string {
+  return `${mode}:${queueDisplayText(text)}`;
+}
+
+function consumePending(
+  pending: Map<string, string[]>,
+  mode: QueuedMessage["mode"],
+  text: string,
+): string | null {
+  const key = queueKey(mode, text);
+  const values = pending.get(key);
+  if (!values || values.length === 0) return null;
+  const [value, ...remaining] = values;
+  if (remaining.length > 0) pending.set(key, remaining);
+  else pending.delete(key);
+  return value ?? null;
+}
+
+function reconcileQueueWithPiEvent(
+  queue: QueuedMessage[],
+  event: Record<string, unknown>,
+): QueuedMessage[] {
+  if (event.type !== "queue_update") return queue;
+  const pending = new Map<string, string[]>();
+  const addPending = (mode: QueuedMessage["mode"], messages: string[]) => {
+    for (const text of messages) {
+      const key = queueKey(mode, text);
+      pending.set(key, [...(pending.get(key) ?? []), text]);
+    }
+  };
+  addPending("follow_up", stringArray(event.followUp));
+
+  const next = queue.flatMap((item) => {
+    if (item.mode !== "follow_up") return [];
+    const acceptedByPi = consumePending(pending, item.mode, item.text);
+    if (acceptedByPi) return [{ ...item, text: queueDisplayText(acceptedByPi), sent: true }];
+    return item.sent ? [] : [item];
+  });
+
+  for (const [key, messages] of pending) {
+    const separator = key.indexOf(":");
+    const mode = key.slice(0, separator) as QueuedMessage["mode"];
+    for (const text of messages) {
+      next.push({ id: newId("queue"), mode, text: queueDisplayText(text), sent: true });
+    }
+  }
+  return next;
+}
+
+function removeDeliveredQueuedMessage(
+  queue: QueuedMessage[],
+  deliveredText: string,
+): QueuedMessage[] {
+  const delivered = queueDisplayText(deliveredText);
+  const index = queue.findIndex((item) => queueDisplayText(item.text) === delivered);
+  if (index === -1) return queue;
+  return [...queue.slice(0, index), ...queue.slice(index + 1)];
 }

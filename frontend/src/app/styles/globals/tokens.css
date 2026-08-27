@@ -10,6 +10,18 @@
    states; a single saturated blue accent for links and focus; and calibrated
    green/orange/red status hues.
 
+   Light/dark pairing is expressed with `light-dark(light, dark)` on the bare
+   `:root` block, resolved by the `color-scheme` each theme id sets below.
+   This makes the bare `:root` the baseline that resolves on EVERY theme id —
+   the invariant this file has shipped bugs against twice: the theme runtime
+   (`resolveThemeCssTokens` in src/lib/theme-runtime.ts) inlines only surface
+   `--color-*` tokens, so any token declared solely inside a per-theme block
+   is undefined on the other ~14 theme ids and goes invalid at
+   computed-value time (monochrome syntax, missing drawer scrims). With every
+   token on `:root`, non-Studio themes fall back to the arm matching their
+   `color-scheme` (all non-Studio themes are dark; the three light ids flip
+   `color-scheme` below).
+
    The `--ui-*` adapter layer and the shadcn/Radix compatibility aliases are
    preserved and repointed to the new tokens, so existing components re-skin
    without class-name changes. */
@@ -148,381 +160,226 @@
   --color-slate-300: oklch(86.9% 0.022 252.894);
   --color-slate-500: oklch(55.4% 0.046 257.417);
 
-  /* Syntax palette baseline. The theme runtime only emits `--color-*` surface
-     tokens, so these must resolve for every theme id — not just the handful the
-     blocks below name — or `.syntax-highlight .hljs-*` becomes invalid at
-     computed-value time and code renders monochrome. Dark values here; the
-     light block overrides them. */
-  --color-syntax-keyword: #339cff;
-  --color-syntax-string: #85df7b;
-  --color-syntax-title: #f67576;
-  --color-syntax-value: #ff66ad;
-  --color-syntax-comment: #8f8f8f;
-  --color-syntax-deletion: var(--red-300);
+  /* ──────────────────────────────────────────────────────────────────────
+     Themed surface tokens — light-dark(light, dark) pairs.
+     LIGHT arm: pure white canvas, near-white rail, hairline
+     foreground-mix borders, near-black brand, one blue accent
+     (`zai-light` / `nordic-light` / `paper`).
+     DARK arm: unified warm-charcoal canvas (one surface for window, rail,
+     and panels), elevated grays for cards/popovers, translucent white
+     hairlines and overlays, one blue accent. This is the live default.
+     ────────────────────────────────────────────────────────────────────── */
+  --color-background: light-dark(var(--gray-0), var(--gray-900));
+  --color-background-win-alt: light-dark(var(--gray-50), var(--gray-1000));
+  --color-background-alt: var(--color-background-win-alt);
 
-  /* Dialog scrim baseline, for exactly the reason the syntax palette above has
-     one: the theme runtime emits only surface tokens, so a `--color-scrim`
-     defined solely in the light/dark blocks below is undefined on every other
-     theme id. `background-color: var(--color-scrim)` then becomes invalid at
-     computed-value time and the overlay renders fully transparent — a drawer or
-     modal with no backdrop at all. Dark default; the light block overrides. */
-  --color-scrim: rgba(0, 0, 0, 0.55);
+  --color-brand: light-dark(var(--gray-1000), #fff);
+  --color-accent: light-dark(var(--blue-50), var(--blue-900));
+  --color-find-highlight: light-dark(var(--orange-50), var(--orange-900));
+  --color-find-highlight-active: light-dark(var(--orange-300), var(--orange-400));
 
-  /* Default theme is dark. The `.dark` alias and the `[data-theme="zai-dark"]`
-     attribute both select the default dark system. */
+  /* Hairline borders — translucent foreground mixes so they sit correctly on
+     any surface. 8% default, 16% heavy (hover), 5%/4% light. Dark
+     hover/selected are white overlays (5% / 8%). */
+  --color-border: light-dark(#1a1c1f14, #ffffff14);
+  --color-border-light: light-dark(#1a1c1f0d, #ffffff0a);
+  --color-border-heavy: light-dark(#1a1c1f29, #ffffff29);
+  --color-border-hover: light-dark(#1a1c1f29, #ffffff29);
+  --color-hover: light-dark(#1a1c1f0d, #ffffff0d);
+  --color-selected: light-dark(#1a1c1f14, #ffffff14);
+
+  --color-header: light-dark(var(--gray-0), var(--gray-900));
+  --color-panel: light-dark(var(--gray-0), var(--gray-900));
+  --color-sidebar: light-dark(
+    var(--gray-50),
+    color-mix(in srgb, var(--gray-800) 45%, var(--gray-900))
+  );
+  --color-surface: light-dark(var(--gray-75), var(--gray-800));
+  --color-surface-hover: light-dark(var(--gray-100), var(--gray-750));
+
+  --color-card: light-dark(var(--gray-0), var(--gray-800));
+  --color-card-selected: var(--color-input);
+  --color-card-border: var(--color-border);
+
+  --color-popover: light-dark(var(--gray-0), var(--gray-750));
+  --color-popover-header: light-dark(var(--gray-50), var(--gray-700));
+  /* Dark Codex dropdowns float on shadow alone — no hairline. */
+  --color-popover-border: light-dark(var(--color-border), transparent);
+
+  /* Dialog scrim — dims the page, never replaces it. On `:root` for exactly
+     the reason the header comment explains: the theme runtime emits only
+     surface tokens, so a scrim declared solely in a per-theme block is
+     undefined on every other theme id and the overlay renders fully
+     transparent — a drawer or modal with no backdrop at all. */
+  --color-scrim: light-dark(rgba(0, 0, 0, 0.32), rgba(0, 0, 0, 0.55));
+
+  --color-input: light-dark(var(--gray-0), #ffffff0d);
+  --color-input-focused: var(--color-input);
+  /* Dark inputs are filled surfaces with no resting outline. */
+  --color-input-border: light-dark(var(--color-border), transparent);
+  --color-input-border-hover: light-dark(var(--color-border-hover), var(--color-border-heavy));
+  --color-input-border-focused: light-dark(var(--color-border-hover), var(--color-border-heavy));
+
+  /* Terminal palette */
+  --color-terminal-bg: var(--color-background);
+  --color-terminal-fg: var(--color-foreground);
+  --color-terminal-cursor: light-dark(#0d0d0d, #f8f8f8);
+  --color-terminal-cursor-accent: light-dark(var(--color-background), var(--gray-900));
+  --color-terminal-selection: light-dark(#0285ff38, #339cff47);
+  --color-terminal-selection-inactive: light-dark(#0d0d0d1a, #ffffff14);
+  --color-terminal-black: light-dark(#5c5c5c, #363636);
+  --color-terminal-red: light-dark(#e02e2a, #f67576);
+  --color-terminal-green: light-dark(#00a240, #85df7b);
+  --color-terminal-yellow: light-dark(#e25507, #fa994c);
+  --color-terminal-blue: light-dark(#0285ff, #3d8dff);
+  --color-terminal-magenta: light-dark(#924ff7, #b06dff);
+  --color-terminal-cyan: light-dark(#0aa7a7, #6dcbf4);
+  --color-terminal-white: #adadad;
+  --color-terminal-bright-black: light-dark(#888, #747474);
+  --color-terminal-bright-red: light-dark(#fa423e, #f44a4c);
+  --color-terminal-bright-green: light-dark(#04b84c, #59d24e);
+  --color-terminal-bright-yellow: light-dark(#fb6a22, #f87915);
+  --color-terminal-bright-blue: light-dark(#006aff, #55a2ff);
+  --color-terminal-bright-magenta: light-dark(#9840ff, #c592ff);
+  --color-terminal-bright-cyan: #20b8ff;
+  --color-terminal-bright-white: light-dark(#0d0d0d, #f8f8f8);
+
+  /* Usage charts — accent family on white / on charcoal */
+  --color-usage-chart-1: light-dark(#0285ff, #339cff);
+  --color-usage-chart-2: light-dark(#00a240, #40c977);
+  --color-usage-chart-3: light-dark(#924ff7, #ad7bf9);
+  --color-usage-chart-4: light-dark(#e02e2a, #ff6764);
+  --color-usage-chart-5: light-dark(#e25507, #ff8549);
+  --color-usage-chart-6: light-dark(#0aa7a7, #6dcbf4);
+  --color-usage-chart-7: light-dark(#d29b00, #ffd240);
+  --color-usage-chart-8: light-dark(#e0559a, #ff66ad);
+  --color-usage-chart-9: light-dark(#006aff, #0285ff);
+  --color-usage-chart-10: light-dark(#04b84c, #85df7b);
+  --color-usage-chart-11: light-dark(#7453d0, #924ff7);
+  --color-usage-chart-12: light-dark(#20a8d8, #20b8ff);
+
+  /* Context breakdown — blue ramp, deep→pale */
+  --color-context-breakdown-1: light-dark(#0285ff, #339cff);
+  --color-context-breakdown-2: light-dark(#339cff, #5cadff);
+  --color-context-breakdown-3: light-dark(#5cadff, #7cbcff);
+  --color-context-breakdown-4: light-dark(#85c2ff, #99ceff);
+  --color-context-breakdown-5: light-dark(#a8d3ff, #b5daff);
+  --color-context-breakdown-6: light-dark(#c9e3ff, #cfe7ff);
+  --color-context-breakdown-7: #e5f3ff;
+
+  /* Usage heatmap — 5-step blue ramp over the surface */
+  --color-usage-heatmap-0: light-dark(
+    color-mix(in oklab, #0285ff 0%, var(--color-surface)),
+    color-mix(in oklab, #339cff 0%, var(--color-surface))
+  );
+  --color-usage-heatmap-1: light-dark(
+    color-mix(in oklab, #0285ff 18%, var(--color-surface)),
+    color-mix(in oklab, #339cff 22%, var(--color-surface))
+  );
+  --color-usage-heatmap-2: light-dark(
+    color-mix(in oklab, #0285ff 36%, var(--color-surface)),
+    color-mix(in oklab, #339cff 38%, var(--color-surface))
+  );
+  --color-usage-heatmap-3: light-dark(
+    color-mix(in oklab, #0285ff 58%, var(--color-surface)),
+    color-mix(in oklab, #339cff 56%, var(--color-surface))
+  );
+  --color-usage-heatmap-4: light-dark(
+    color-mix(in oklab, #006aff 82%, var(--color-surface)),
+    color-mix(in oklab, #99ceff 72%, var(--color-surface))
+  );
+
+  --color-tab: light-dark(var(--gray-50), var(--gray-900));
+  --color-tab-active: light-dark(var(--gray-0), var(--gray-800));
+  --color-tab-border: var(--color-border);
+
+  --color-menu: light-dark(var(--gray-0), var(--gray-750));
+  --color-menu-hover: light-dark(#1a1c1f0d, #ffffff14);
+
+  --color-primary: light-dark(var(--gray-1000), #fff);
+  --color-primary-foreground: light-dark(#fff, var(--gray-1000));
+  --color-secondary: light-dark(#1a1c1f14, #ffffff14);
+
+  --color-foreground: light-dark(#1a1c1f, #fff);
+  --color-foreground-subtle: light-dark(#5f6165, #ffffffb3);
+  --color-foreground-subtlest: light-dark(#8c8e91, #ffffff80);
+  --color-foreground-inverse: light-dark(#fff, #000);
+
+  --color-success: light-dark(var(--green-500), var(--green-300));
+  --color-success-foreground: light-dark(#fff, var(--gray-1000));
+  --color-destructive: light-dark(var(--red-500), var(--red-300));
+  --color-destructive-foreground: light-dark(#fff, var(--gray-1000));
+  --color-warning: light-dark(var(--orange-500), var(--orange-300));
+  --color-warning-foreground: light-dark(#fff, var(--gray-1000));
+
+  --color-diff-added: light-dark(var(--green-500), var(--green-300));
+  --color-diff-added-foreground: light-dark(#fff, var(--gray-1000));
+  --color-diff-removed: light-dark(var(--red-500), var(--red-400));
+  --color-diff-removed-foreground: light-dark(#fff, var(--gray-1000));
+  --color-diff-added-bg: light-dark(#00a24026, #40c9773b);
+  --color-diff-removed-bg: light-dark(#e02e2a1f, #fa423e3b);
+
+  --color-git-none: var(--color-foreground);
+  --color-git-modified: light-dark(var(--orange-500), var(--orange-300));
+  --color-git-added: light-dark(var(--green-500), var(--green-300));
+  --color-git-deleted: light-dark(var(--red-500), var(--red-300));
+  --color-git-renamed: light-dark(var(--blue-400), var(--blue-300));
+  --color-git-untracked: light-dark(var(--green-400), var(--green-300));
+  --color-git-ignored: var(--color-foreground-subtlest);
+  --color-git-descendant: light-dark(var(--orange-500), var(--orange-300));
+
+  --color-toast: light-dark(#fff, var(--gray-750));
+  --color-tooltip: light-dark(var(--gray-1000), var(--gray-700));
+  --color-tooltip-foreground: light-dark(var(--gray-50), #f8f8f8);
+  --color-tooltip-tag: light-dark(var(--gray-700), var(--gray-600));
+  --color-tooltip-tag-foreground: var(--gray-300);
+  --color-tag: light-dark(#1a1c1f14, #ffffff14);
+
+  /* Node taxonomy — color-coding for engines/models/sessions/skills/agents */
+  --color-file-node: light-dark(#0285ff1a, #339cff24);
+  --color-file-node-hover: light-dark(#0285ff29, #339cff38);
+  --color-file-node-foreground: light-dark(#0269cc, #7cbfff);
+  --color-skill-node: light-dark(#924ff71a, #ad7bf929);
+  --color-skill-node-hover: light-dark(#924ff729, #ad7bf938);
+  --color-skill-node-foreground: light-dark(#8036ea, #c5a1fb);
+  --color-command-node: light-dark(#5d5d5d1a, #afafaf24);
+  --color-command-node-hover: light-dark(#5d5d5d29, #afafaf33);
+  --color-command-node-foreground: light-dark(#5d5d5d, #c6c6c6);
+  --color-subagent-node: light-dark(#a07c001a, #ffd24024);
+  --color-subagent-node-hover: light-dark(#a07c0029, #ffd24038);
+  --color-subagent-node-foreground: light-dark(#a07c00, #ffdf70);
+  --color-session-node: light-dark(#0aa7a71a, #6dcbf424);
+  --color-session-node-hover: light-dark(#0aa7a729, #6dcbf433);
+  --color-session-node-foreground: light-dark(#0a8787, #9adcf7);
+
+  /* Syntax palette — on `:root` (not per-theme blocks) so
+     `.syntax-highlight .hljs-*` stays valid at computed-value time on every
+     theme id and code never renders monochrome. */
+  --color-syntax-keyword: light-dark(#0269cc, #339cff);
+  --color-syntax-string: light-dark(var(--green-700), #85df7b);
+  --color-syntax-title: light-dark(var(--red-600), #f67576);
+  --color-syntax-value: light-dark(#c22f88, #ff66ad);
+  --color-syntax-comment: light-dark(#767a7e, #8f8f8f);
+  --color-syntax-deletion: light-dark(var(--red-600), var(--red-300));
+
+  /* Default theme is dark — every theme id that doesn't flip `color-scheme`
+     below resolves the dark arm of the pairs above. The `.dark` alias and the
+     `[data-theme="zai-dark"]` attribute both select the default dark system. */
   color-scheme: dark;
 }
 
-/* ──────────────────────────────────────────────────────────────────────────
-   LIGHT — `[data-theme="zai-light"]`
-   Pure white canvas, near-white rail, hairline foreground-mix borders,
-   near-black brand, one blue accent.
-   ────────────────────────────────────────────────────────────────────────── */
+/* Light theme ids — flipping `color-scheme` selects the light arm of every
+   light-dark() pair above. A theme id missing from this list silently gets
+   the dark arms, so any future light theme MUST be added here. */
 :root[data-theme="zai-light"],
 :root[data-theme="nordic-light"],
 :root[data-theme="paper"] {
   color-scheme: light;
-
-  --color-background: var(--gray-0);
-  --color-background-win-alt: var(--gray-50);
-  --color-background-alt: var(--color-background-win-alt);
-
-  --color-brand: var(--gray-1000);
-  --color-accent: var(--blue-50);
-  --color-find-highlight: var(--orange-50);
-  --color-find-highlight-active: var(--orange-300);
-
-  /* Hairline borders — translucent foreground mixes so they sit correctly on
-     any surface. 8% default, 16% heavy (hover), 5% light. */
-  --color-border: #1a1c1f14;
-  --color-border-light: #1a1c1f0d;
-  --color-border-heavy: #1a1c1f29;
-  --color-border-hover: #1a1c1f29;
-  --color-hover: #1a1c1f0d;
-  --color-selected: #1a1c1f14;
-
-  --color-header: var(--gray-0);
-  --color-panel: var(--gray-0);
-  --color-sidebar: var(--gray-50);
-  --color-surface: var(--gray-75);
-  --color-surface-hover: var(--gray-100);
-
-  --color-card: var(--gray-0);
-  --color-card-selected: var(--color-input);
-  --color-card-border: var(--color-border);
-
-  --color-popover: var(--gray-0);
-  --color-popover-header: var(--gray-50);
-  --color-popover-border: var(--color-border);
-
-  /* Dialog scrim — dims the page, never replaces it. */
-  --color-scrim: rgba(0, 0, 0, 0.32);
-
-  --color-input: var(--gray-0);
-  --color-input-focused: var(--color-input);
-  --color-input-border: var(--color-border);
-  --color-input-border-hover: var(--color-border-hover);
-  --color-input-border-focused: var(--color-border-hover);
-
-  /* Terminal — light variant */
-  --color-terminal-bg: var(--color-background);
-  --color-terminal-fg: var(--color-foreground);
-  --color-terminal-cursor: #0d0d0d;
-  --color-terminal-cursor-accent: var(--color-background);
-  --color-terminal-selection: #0285ff38;
-  --color-terminal-selection-inactive: #0d0d0d1a;
-  --color-terminal-black: #5c5c5c;
-  --color-terminal-red: #e02e2a;
-  --color-terminal-green: #00a240;
-  --color-terminal-yellow: #e25507;
-  --color-terminal-blue: #0285ff;
-  --color-terminal-magenta: #924ff7;
-  --color-terminal-cyan: #0aa7a7;
-  --color-terminal-white: #adadad;
-  --color-terminal-bright-black: #888;
-  --color-terminal-bright-red: #fa423e;
-  --color-terminal-bright-green: #04b84c;
-  --color-terminal-bright-yellow: #fb6a22;
-  --color-terminal-bright-blue: #006aff;
-  --color-terminal-bright-magenta: #9840ff;
-  --color-terminal-bright-cyan: #20b8ff;
-  --color-terminal-bright-white: #0d0d0d;
-
-  /* Usage charts — accent family on white */
-  --color-usage-chart-1: #0285ff;
-  --color-usage-chart-2: #00a240;
-  --color-usage-chart-3: #924ff7;
-  --color-usage-chart-4: #e02e2a;
-  --color-usage-chart-5: #e25507;
-  --color-usage-chart-6: #0aa7a7;
-  --color-usage-chart-7: #d29b00;
-  --color-usage-chart-8: #e0559a;
-  --color-usage-chart-9: #006aff;
-  --color-usage-chart-10: #04b84c;
-  --color-usage-chart-11: #7453d0;
-  --color-usage-chart-12: #20a8d8;
-
-  /* Context breakdown — blue ramp, deep→pale */
-  --color-context-breakdown-1: #0285ff;
-  --color-context-breakdown-2: #339cff;
-  --color-context-breakdown-3: #5cadff;
-  --color-context-breakdown-4: #85c2ff;
-  --color-context-breakdown-5: #a8d3ff;
-  --color-context-breakdown-6: #c9e3ff;
-  --color-context-breakdown-7: #e5f3ff;
-
-  /* Usage heatmap — 5-step blue ramp, 0%→82% saturation over the surface */
-  --color-usage-heatmap-0: color-mix(in oklab, #0285ff 0%, var(--color-surface));
-  --color-usage-heatmap-1: color-mix(in oklab, #0285ff 18%, var(--color-surface));
-  --color-usage-heatmap-2: color-mix(in oklab, #0285ff 36%, var(--color-surface));
-  --color-usage-heatmap-3: color-mix(in oklab, #0285ff 58%, var(--color-surface));
-  --color-usage-heatmap-4: color-mix(in oklab, #006aff 82%, var(--color-surface));
-
-  --color-tab: var(--gray-50);
-  --color-tab-active: var(--gray-0);
-  --color-tab-border: var(--color-border);
-
-  --color-menu: var(--gray-0);
-  --color-menu-hover: #1a1c1f0d;
-
-  --color-primary: var(--gray-1000);
-  --color-primary-foreground: #fff;
-  --color-secondary: #1a1c1f14;
-
-  --color-foreground: #1a1c1f;
-  --color-foreground-subtle: #5f6165;
-  --color-foreground-subtlest: #8c8e91;
-  --color-foreground-inverse: #fff;
-
-  --color-success: var(--green-500);
-  --color-success-foreground: #fff;
-  --color-destructive: var(--red-500);
-  --color-destructive-foreground: #fff;
-  --color-warning: var(--orange-500);
-  --color-warning-foreground: #fff;
-
-  --color-diff-added: var(--green-500);
-  --color-diff-added-foreground: #fff;
-  --color-diff-removed: var(--red-500);
-  --color-diff-removed-foreground: #fff;
-  --color-diff-added-bg: #00a24026;
-  --color-diff-removed-bg: #e02e2a1f;
-
-  --color-git-none: var(--color-foreground);
-  --color-git-modified: var(--orange-500);
-  --color-git-added: var(--green-500);
-  --color-git-deleted: var(--red-500);
-  --color-git-renamed: var(--blue-400);
-  --color-git-untracked: var(--green-400);
-  --color-git-ignored: var(--color-foreground-subtlest);
-  --color-git-descendant: var(--orange-500);
-
-  --color-toast: #fff;
-  --color-tooltip: var(--gray-1000);
-  --color-tooltip-foreground: var(--gray-50);
-  --color-tooltip-tag: var(--gray-700);
-  --color-tooltip-tag-foreground: var(--gray-300);
-  --color-tag: #1a1c1f14;
-
-  /* Node taxonomy — color-coding for engines/models/sessions/skills/agents */
-  --color-file-node: #0285ff1a;
-  --color-file-node-hover: #0285ff29;
-  --color-file-node-foreground: #0269cc;
-  --color-skill-node: #924ff71a;
-  --color-skill-node-hover: #924ff729;
-  --color-skill-node-foreground: #8036ea;
-  --color-command-node: #5d5d5d1a;
-  --color-command-node-hover: #5d5d5d29;
-  --color-command-node-foreground: #5d5d5d;
-  --color-subagent-node: #a07c001a;
-  --color-subagent-node-hover: #a07c0029;
-  --color-subagent-node-foreground: #a07c00;
-  --color-session-node: #0aa7a71a;
-  --color-session-node-hover: #0aa7a729;
-  --color-session-node-foreground: #0a8787;
-  --color-syntax-keyword: #0269cc;
-  --color-syntax-string: var(--green-700);
-  --color-syntax-title: var(--red-600);
-  --color-syntax-value: #c22f88;
-  --color-syntax-comment: #767a7e;
-  --color-syntax-deletion: var(--red-600);
 }
 
-/* ──────────────────────────────────────────────────────────────────────────
-   DARK — `.dark` / `[data-theme="zai-dark"]`
-   Unified warm-charcoal canvas (one surface for window, rail, and panels),
-   elevated grays for cards/popovers, translucent white hairlines and
-   overlays, one blue accent. This is the live default.
-   ────────────────────────────────────────────────────────────────────────── */
 .dark,
 :root[data-theme="zai-dark"] {
   color-scheme: dark;
-
-  --color-background: var(--gray-900);
-  --color-background-win-alt: var(--gray-1000);
-  --color-background-alt: var(--color-background-win-alt);
-
-  --color-brand: #fff;
-  --color-accent: var(--blue-900);
-  --color-find-highlight: var(--orange-900);
-  --color-find-highlight-active: var(--orange-400);
-
-  /* Hairline borders — translucent white mixes: 8% default, 16% heavy,
-     4% light. Hover/selected are white overlays (5% / 8%). */
-  --color-border: #ffffff14;
-  --color-border-light: #ffffff0a;
-  --color-border-heavy: #ffffff29;
-  --color-border-hover: #ffffff29;
-  --color-hover: #ffffff0d;
-  --color-selected: #ffffff14;
-
-  --color-header: var(--gray-900);
-  --color-panel: var(--gray-900);
-  --color-sidebar: color-mix(in srgb, var(--gray-800) 45%, var(--gray-900));
-  --color-surface: var(--gray-800);
-  --color-surface-hover: var(--gray-750);
-
-  --color-card: var(--gray-800);
-  --color-card-selected: var(--color-input);
-  --color-card-border: var(--color-border);
-
-  --color-popover: var(--gray-750);
-  --color-popover-header: var(--gray-700);
-  /* Codex dropdowns float on shadow alone — no hairline. */
-  --color-popover-border: transparent;
-
-  /* Dialog scrim — dims the page, never replaces it. */
-  --color-scrim: rgba(0, 0, 0, 0.55);
-
-  --color-input: #ffffff0d;
-  --color-input-focused: var(--color-input);
-  /* Dark inputs are filled surfaces with no resting outline. */
-  --color-input-border: transparent;
-  --color-input-border-hover: var(--color-border-heavy);
-  --color-input-border-focused: var(--color-border-heavy);
-
-  /* Terminal — dark variant */
-  --color-terminal-bg: var(--color-background);
-  --color-terminal-fg: var(--color-foreground);
-  --color-terminal-cursor: #f8f8f8;
-  --color-terminal-cursor-accent: var(--gray-900);
-  --color-terminal-selection: #339cff47;
-  --color-terminal-selection-inactive: #ffffff14;
-  --color-terminal-black: #363636;
-  --color-terminal-red: #f67576;
-  --color-terminal-green: #85df7b;
-  --color-terminal-yellow: #fa994c;
-  --color-terminal-blue: #3d8dff;
-  --color-terminal-magenta: #b06dff;
-  --color-terminal-cyan: #6dcbf4;
-  --color-terminal-white: #adadad;
-  --color-terminal-bright-black: #747474;
-  --color-terminal-bright-red: #f44a4c;
-  --color-terminal-bright-green: #59d24e;
-  --color-terminal-bright-yellow: #f87915;
-  --color-terminal-bright-blue: #55a2ff;
-  --color-terminal-bright-magenta: #c592ff;
-  --color-terminal-bright-cyan: #20b8ff;
-  --color-terminal-bright-white: #f8f8f8;
-
-  /* Usage charts — accent family on charcoal */
-  --color-usage-chart-1: #339cff;
-  --color-usage-chart-2: #40c977;
-  --color-usage-chart-3: #ad7bf9;
-  --color-usage-chart-4: #ff6764;
-  --color-usage-chart-5: #ff8549;
-  --color-usage-chart-6: #6dcbf4;
-  --color-usage-chart-7: #ffd240;
-  --color-usage-chart-8: #ff66ad;
-  --color-usage-chart-9: #0285ff;
-  --color-usage-chart-10: #85df7b;
-  --color-usage-chart-11: #924ff7;
-  --color-usage-chart-12: #20b8ff;
-
-  /* Context breakdown — blue ramp */
-  --color-context-breakdown-1: #339cff;
-  --color-context-breakdown-2: #5cadff;
-  --color-context-breakdown-3: #7cbcff;
-  --color-context-breakdown-4: #99ceff;
-  --color-context-breakdown-5: #b5daff;
-  --color-context-breakdown-6: #cfe7ff;
-  --color-context-breakdown-7: #e5f3ff;
-
-  /* Usage heatmap — 5-step blue ramp over the dark surface */
-  --color-usage-heatmap-0: color-mix(in oklab, #339cff 0%, var(--color-surface));
-  --color-usage-heatmap-1: color-mix(in oklab, #339cff 22%, var(--color-surface));
-  --color-usage-heatmap-2: color-mix(in oklab, #339cff 38%, var(--color-surface));
-  --color-usage-heatmap-3: color-mix(in oklab, #339cff 56%, var(--color-surface));
-  --color-usage-heatmap-4: color-mix(in oklab, #99ceff 72%, var(--color-surface));
-
-  --color-tab: var(--gray-900);
-  --color-tab-active: var(--gray-800);
-  --color-tab-border: var(--color-border);
-
-  --color-menu: var(--gray-750);
-  --color-menu-hover: #ffffff14;
-
-  --color-primary: #fff;
-  --color-primary-foreground: var(--gray-1000);
-  --color-secondary: #ffffff14;
-
-  --color-foreground: #fff;
-  --color-foreground-subtle: #ffffffb3;
-  --color-foreground-subtlest: #ffffff80;
-  --color-foreground-inverse: #000;
-
-  --color-success: var(--green-300);
-  --color-success-foreground: var(--gray-1000);
-  --color-destructive: var(--red-300);
-  --color-destructive-foreground: var(--gray-1000);
-  --color-warning: var(--orange-300);
-  --color-warning-foreground: var(--gray-1000);
-
-  --color-diff-added: var(--green-300);
-  --color-diff-added-foreground: var(--gray-1000);
-  --color-diff-removed: var(--red-400);
-  --color-diff-removed-foreground: var(--gray-1000);
-  --color-diff-added-bg: #40c9773b;
-  --color-diff-removed-bg: #fa423e3b;
-
-  --color-git-none: var(--color-foreground);
-  --color-git-modified: var(--orange-300);
-  --color-git-added: var(--green-300);
-  --color-git-deleted: var(--red-300);
-  --color-git-renamed: var(--blue-300);
-  --color-git-untracked: var(--green-300);
-  --color-git-ignored: var(--color-foreground-subtlest);
-  --color-git-descendant: var(--orange-300);
-
-  --color-toast: var(--gray-750);
-  --color-tooltip: var(--gray-700);
-  --color-tooltip-foreground: #f8f8f8;
-  --color-tooltip-tag: var(--gray-600);
-  --color-tooltip-tag-foreground: var(--gray-300);
-  --color-tag: #ffffff14;
-
-  /* Node taxonomy */
-  --color-file-node: #339cff24;
-  --color-file-node-hover: #339cff38;
-  --color-file-node-foreground: #7cbfff;
-  --color-skill-node: #ad7bf929;
-  --color-skill-node-hover: #ad7bf938;
-  --color-skill-node-foreground: #c5a1fb;
-  --color-command-node: #afafaf24;
-  --color-command-node-hover: #afafaf33;
-  --color-command-node-foreground: #c6c6c6;
-  --color-subagent-node: #ffd24024;
-  --color-subagent-node-hover: #ffd24038;
-  --color-subagent-node-foreground: #ffdf70;
-  --color-session-node: #6dcbf424;
-  --color-session-node-hover: #6dcbf433;
-  --color-session-node-foreground: #9adcf7;
-  --color-syntax-keyword: #339cff;
-  --color-syntax-string: #85df7b;
-  --color-syntax-title: #f67576;
-  --color-syntax-value: #ff66ad;
-  --color-syntax-comment: #8f8f8f;
-  --color-syntax-deletion: var(--red-300);
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -530,9 +387,7 @@
    existing component re-skins without class-name changes. `--bg/--fg/--dim/
    --surface, --rail, --border and friends all resolve to the same values.
    ────────────────────────────────────────────────────────────────────────── */
-:root,
-.dark,
-:root[data-theme="zai-dark"] {
+:root {
   --bg: var(--color-background);
   --fg: var(--color-foreground);
   --dim: var(--color-foreground-subtle);
@@ -549,9 +404,13 @@
   --active: var(--color-selected);
   --composer: var(--color-sidebar);
   --composer-footer: var(--color-sidebar);
+  /* Light and dark composer share Codex's flat elevated-gray treatment. */
   --composer-border: transparent;
-  --composer-placeholder: color-mix(in srgb, var(--fg) 32%, transparent);
-  --bubble: var(--gray-750);
+  --composer-placeholder: light-dark(
+    color-mix(in srgb, var(--fg) 40%, transparent),
+    color-mix(in srgb, var(--fg) 32%, transparent)
+  );
+  --bubble: light-dark(var(--gray-75), var(--gray-750));
 
   /* Accents — grayscale brand + one sanctioned chroma: the blue accent */
   --accent: var(--color-brand);
@@ -562,41 +421,7 @@
   --ok: var(--color-success);
   --warn: var(--color-warning);
   /* Blue — links, file/URL chips, focus, live status */
-  --link: var(--blue-300);
-}
-
-:root[data-theme="zai-light"],
-:root[data-theme="nordic-light"],
-:root[data-theme="paper"] {
-  --bg: var(--color-background);
-  --fg: var(--color-foreground);
-  --dim: var(--color-foreground-subtle);
-  --surface: var(--color-card);
-  --surface-2: var(--color-secondary);
-  --surface-3: var(--color-input);
-  --rail: var(--color-sidebar);
-  --agent-bg: var(--color-background);
-  --sidebar-bg: var(--color-sidebar);
-
-  --border: var(--color-border);
-  --separator: var(--color-border-light);
-  --hover: var(--color-hover);
-  --active: var(--color-selected);
-  --composer: var(--color-sidebar);
-  --composer-footer: var(--color-sidebar);
-  /* Light composer: Codex uses the same flat elevated-gray treatment. */
-  --composer-border: transparent;
-  --composer-placeholder: color-mix(in srgb, var(--fg) 40%, transparent);
-  --bubble: var(--gray-75);
-
-  --accent: var(--color-brand);
-  --hl1: var(--color-foreground-subtle);
-  --hl2: var(--color-foreground-subtlest);
-  --hl3: var(--color-neutral-500);
-  --err: var(--color-destructive);
-  --ok: var(--color-success);
-  --warn: var(--color-warning);
-  --link: var(--blue-400);
+  --link: light-dark(var(--blue-400), var(--blue-300));
 }
 
 @media (min-width: 1024px) {
@@ -625,10 +450,14 @@
   --h-toolbar-pane: 40px;
   --composer-w: clamp(28rem, 42rem, 48vw);
   --thread-w: 900px;
-  --composer-radius: 25px;
-  --composer-radius-inner: 20px;
-  --composer-elevation: 0 8px 24px rgba(0, 0, 0, 0.11);
-  --composer-elevation-inner: 0 8px 24px rgba(0, 0, 0, 0.08);
+  /* Tightened from 25/20px radii and 24px-blur shadows: the composer stack is
+     several nested surfaces (drawer, strip, box), and at that scale the
+     roundness and shadow spread read as bulk, not polish — the app's density
+     baseline is 10px cards and hairlines. */
+  --composer-radius: 16px;
+  --composer-radius-inner: 12px;
+  --composer-elevation: 0 3px 10px rgba(0, 0, 0, 0.07);
+  --composer-elevation-inner: 0 2px 6px rgba(0, 0, 0, 0.05);
   --qr-surface: #ffffff;
   --qr-shadow: 0 16px 45px -28px rgba(0, 0, 0, 0.8);
   --qr-placeholder: rgba(0, 0, 0, 0.55);
@@ -648,6 +477,11 @@
   --fs-xl: calc(18px * var(--ui-scale));
   --fs-2xl: calc(20px * var(--ui-scale));
   --fs-3xl: calc(24px * var(--ui-scale));
+  /* One step above the ramp, for a single headline number (Usage's proxied
+     token count). It had been used without ever being defined, which makes
+     font-size invalid at computed-value time and silently drops the hero to
+     inherited body size. */
+  --fs-display: calc(40px * var(--ui-scale));
 
   /* Radius ramp — proportional to --radius-base (default resolves to
      2 / 4 / 6 / 8 / 10 / 12 / 16 / 20 / 24 px). */

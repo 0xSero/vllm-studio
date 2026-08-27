@@ -125,8 +125,7 @@ export interface StarterPreset {
   min_vram_gb: number | null;
   model_id?: string;
   allow_patterns?: string[];
-  backend?: "vllm" | "llamacpp";
-  gguf_file?: string;
+  backend?: "vllm";
   recipe_overrides?: Record<string, unknown>;
   remote?: { base_url: string; model: string };
   fits?: boolean;

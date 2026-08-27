@@ -130,12 +130,13 @@ export function GitBranchIcon(props: IconProps) {
   );
 }
 
-export function SitegeistIcon(props: IconProps) {
-  // "site" + "zeitgeist" → an eye watching a page. The almond eye outline holds
-  // a solid iris, echoing the sitegeist orb mark. Single-color, no strokes.
+export function UserBrowserIcon(props: IconProps) {
+  // The user's own browser: a ring with a solid core, the concentric mark every
+  // Chromium-family browser wears. Deliberately unlike PanelIcon (the embedded
+  // panel) so the two composer buttons never read as the same thing.
   return (
     <Svg {...props}>
-      <path d="M8 2.5c3.4 0 6.2 2.2 7.5 5.5C14.2 11.3 11.4 13.5 8 13.5S1.8 11.3.5 8C1.8 4.7 4.6 2.5 8 2.5zm0 1.8a3.7 3.7 0 1 0 0 7.4 3.7 3.7 0 0 0 0-7.4zm0 1.8a1.9 1.9 0 1 1 0 3.8 1.9 1.9 0 0 1 0-3.8z" />
+      <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1.6a5.4 5.4 0 1 1 0 10.8A5.4 5.4 0 0 1 8 2.6zm0 2.2a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4z" />
     </Svg>
   );
 }
@@ -221,6 +222,21 @@ export function AutomationsIcon(props: IconProps) {
   return (
     <Svg {...props}>
       <path d="M9.8 1 3.4 9.2h3.4L6 15l6.6-8.6H9.2L9.8 1Z" />
+    </Svg>
+  );
+}
+
+/**
+ * Integrations — a plug: the row is about handing a session a capability it
+ * did not arrive with. Deliberately not lucide's stroked `Plug`, which is a
+ * hairline outline beside five solid silhouettes and reads as a hole in the
+ * rail at 13px.
+ */
+export function IntegrationsIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4.7 1h1.9v3.4H4.7V1Zm4.7 0h1.9v3.4H9.4V1Z" />
+      <path d="M2.6 5.2h10.8v3.2l-2.8 2.8H9.1V15H6.9v-3.8H5.4L2.6 8.4V5.2Z" />
     </Svg>
   );
 }

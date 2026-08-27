@@ -3,11 +3,15 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
-import { getSessionActivity, subscribeSessionActivity } from "@/features/agent/session-index";
 import {
-  orderByRecency,
-  recentsTimestamp,
-} from "@/features/agent/ui/session-recency";
+  getSessionActivity,
+  sessionActivity,
+  subscribeSessionActivity,
+  useOpenSessions,
+  useSessionActivity,
+} from "@/features/agent/session-index";
+import { SessionStatusMark } from "@/features/agent/ui/projects-nav/nav-chrome";
+import { orderByRecency, recentsTimestamp } from "@/features/agent/ui/session-recency";
 import { useProjectsNavSessionPrefs } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { Folder } from "@/ui/icons";
@@ -91,10 +95,7 @@ export function RecentSessionsSection() {
 
   const groups = useMemo(() => {
     const visible = (sessions ?? []).filter(
-      (session) =>
-        !session.archived &&
-        !session.parentSessionId &&
-        !prefs[session.id]?.hidden,
+      (session) => !session.archived && !session.parentSessionId && !prefs[session.id]?.hidden,
     );
     const ordered = orderByRecency(visible).slice(0, RECENT_LIMIT);
     const buckets: { label: string; sessions: AggregatedSession[] }[] = [];
@@ -130,25 +131,40 @@ export function RecentSessionsSection() {
   );
 }
 
-function RecentSessionRow({
-  session,
-  prefs,
-}: {
-  session: AggregatedSession;
-  prefs: SessionPrefs;
-}) {
+function RecentSessionRow({ session, prefs }: { session: AggregatedSession; prefs: SessionPrefs }) {
+  const activitySnapshot = useSessionActivity();
+  const openSessions = useOpenSessions();
+  const activity = sessionActivity([session.id], activitySnapshot);
+  // The open thread reads as selected here the same way it does in the
+  // project tree — this list is a navigation surface, so "where am I"
+  // must be answerable at a glance.
+  const isOpen = openSessions.some(
+    (open) => open.focused && (open.threadId === session.id || open.id === session.id),
+  );
   const title = rowTitle(session, prefs);
   const preview = rowPreview(session, title);
   return (
     <Link
       href={`/agent?project=${encodeURIComponent(session.projectId)}&session=${encodeURIComponent(session.id)}&replace=1`}
       title={[title, session.projectName, session.projectPath].filter(Boolean).join(" · ")}
+      aria-current={isOpen ? "page" : undefined}
       // Two lines, not the single-line row the other sections use: the prompt
       // preview is the point of this list, so it gets its own line under the
       // title rather than competing with it for width.
-      className="group flex flex-col gap-0.5 rounded-[var(--sidebar-row-radius)] px-2 py-1.5 transition-colors hover:bg-(--hover)"
+      className={`group flex flex-col gap-0.5 rounded-[var(--sidebar-row-radius)] px-2 py-1.5 transition-colors hover:bg-(--hover) ${
+        isOpen ? "bg-(--hover)" : ""
+      }`}
     >
-      <span className="truncate text-[length:var(--fs-md)] text-(--fg)">{title}</span>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="min-w-0 truncate text-[length:var(--fs-md)] text-(--fg)">{title}</span>
+        {/* The same status marks the project tree uses — a session you are being
+            notified about is exactly the one whose state you want to read. */}
+        <SessionStatusMark
+          activity={activity}
+          runningClass="ml-auto flex shrink-0 justify-end"
+          dotClass="ml-auto h-1.5 w-1.5 shrink-0 rounded-full"
+        />
+      </span>
       {preview ? (
         <span className="line-clamp-2 text-[length:var(--fs-sm)] leading-snug text-(--dim)">
           {preview}

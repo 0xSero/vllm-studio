@@ -180,11 +180,11 @@ export function engagementTier(likes: number, downloads: number): "heavy" | "war
 
 function quantRank(label: string): number {
   const normalized = label.toLowerCase();
-  if (normalized === "mlx") return 0;
-  if (normalized.startsWith("oq")) return 0.5;
-  if (normalized === "gguf") return 1;
   if (normalized === "awq") return 2;
   if (normalized === "gptq") return 3;
+  if (normalized.startsWith("exl")) return 4;
+  if (normalized === "mlx") return 40;
+  if (normalized === "gguf") return 41;
   if (normalized.endsWith("-bit")) return 8;
   const qMatch = normalized.match(/^q([2-8])/);
   if (qMatch) return 10 + Number(qMatch[1]);

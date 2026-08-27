@@ -97,16 +97,26 @@ export function visibleSessionAge(
   return isRunning || completionActivity ? "" : relativeAge(value);
 }
 
+let pendingNewChatNonce: string | null = null;
+
+function isNewChatHref(href: string): boolean {
+  const queryIndex = href.indexOf("?");
+  if (queryIndex < 0) return false;
+  const query = href.slice(queryIndex + 1).split("#", 1)[0];
+  return new URLSearchParams(query).get("new") !== null;
+}
+
 export function hrefWithOpenNonce(href: string): string {
   const separator = href.includes("?") ? "&" : "?";
+  if (isNewChatHref(href)) {
+    if (pendingNewChatNonce === null) pendingNewChatNonce = nextNavigationIntent();
+    return `${href}${separator}open=${pendingNewChatNonce}`;
+  }
   return `${href}${separator}open=${nextNavigationIntent()}`;
 }
 
-export function navigateToSessionHref(
-  router: { push: (href: string) => void },
-  href: string,
-): void {
-  router.push(href);
+export function settleNewChatNavigation(): void {
+  pendingNewChatNonce = null;
 }
 
 export function rememberAgentSessionNavTitle(sessionId: string | null | undefined, title: string) {

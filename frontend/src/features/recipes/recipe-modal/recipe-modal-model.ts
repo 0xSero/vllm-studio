@@ -63,36 +63,10 @@ export function useRecipeModalModel({
     }));
     return entries.length ? entries : [{ key: "", value: "" }];
   });
-  const [llamaConfigHelp, setLlamaConfigHelp] = useState<{
-    config: string | null;
-    error?: string | null;
-  } | null>(null);
-
   const backend = recipe.backend ?? "vllm";
   const runtimeInstallation = useRuntimeInstallation(backend);
   const capabilities = useMemo(() => getEngineCapabilities(backend), [backend]);
-  const isLlamacpp = backend === "llamacpp";
-  const llamaConfigLoading = isLlamacpp && !llamaConfigHelp;
   const safeActiveTab = capabilities.tabs.includes(activeTab) ? activeTab : "general";
-
-  useMountSubscription(() => {
-    if (!isLlamacpp) return;
-    if (llamaConfigHelp) return;
-
-    let cancelled = false;
-    api
-      .getLlamacppRuntimeConfig()
-      .then((result) => {
-        if (!cancelled) setLlamaConfigHelp(result);
-      })
-      .catch((error) => {
-        if (!cancelled) setLlamaConfigHelp({ config: null, error: (error as Error).message });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isLlamacpp, llamaConfigHelp]);
 
   const applyRecipeChange = useCallback(
     (next: RecipeEditor, options: { syncSource?: boolean; syncAuxiliary?: boolean } = {}) => {
@@ -257,7 +231,5 @@ export function useRecipeModalModel({
     handleEnvVarChange,
     handleAddEnvVar,
     handleRemoveEnvVar,
-    llamaConfigLoading,
-    llamaConfigHelp,
   };
 }

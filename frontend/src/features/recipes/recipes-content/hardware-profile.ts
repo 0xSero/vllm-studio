@@ -77,18 +77,13 @@ export function scoreModelFit({
   hardware: HardwareProfile;
 }): ModelFit {
   const quantLabels = new Set(variants.flatMap((variant) => quantizationLabels(variant)));
-  const hasMlx = hasMlxSignal(model, variants, quantLabels);
-  const hasOmlx = hasOmlxSignal(model, variants, quantLabels);
   const engagementScore = Math.log10(maxLikes + 10) * 18 + Math.log10(maxDownloads + 100) * 10;
   const ageDays =
     lastModifiedMs > 0 ? Math.max(0, (Date.now() - lastModifiedMs) / (24 * 60 * 60 * 1000)) : 240;
   const recencyScore = Math.max(0, 28 - ageDays / 7);
-  const appleBonus = hardware.appleSilicon && (hasMlx || hasOmlx) ? 36 : 0;
   const quantBonus = quantLabels.size > 0 ? 8 : 0;
-  const fit = fitFromNeed(needGb, hardware.poolGb, hardware.appleSilicon && hasMlx);
-  const score = Math.round(
-    engagementScore + recencyScore + fit.scoreBoost + appleBonus + quantBonus,
-  );
+  const fit = fitFromNeed(needGb, hardware.poolGb);
+  const score = Math.round(engagementScore + recencyScore + fit.scoreBoost + quantBonus);
 
   return {
     status: fit.status,
@@ -96,9 +91,6 @@ export function scoreModelFit({
       modelId: model.modelId,
       needGb,
       poolGb: hardware.poolGb,
-      appleSilicon: hardware.appleSilicon,
-      hasMlx,
-      hasOmlx,
     }),
     tone: fit.tone,
     score,
@@ -124,13 +116,11 @@ function hardwareLabel(tier: HardwareTier): string {
 function fitFromNeed(
   needGb: number | null,
   poolGb: number,
-  appleMlx: boolean,
 ): { status: FitStatus; tone: FitTone; scoreBoost: number } {
   if (poolGb <= 0 || needGb == null || !Number.isFinite(needGb)) {
-    return { status: "unknown", tone: "default", scoreBoost: appleMlx ? 8 : 0 };
+    return { status: "unknown", tone: "default", scoreBoost: 0 };
   }
-  const effectiveNeed = appleMlx ? needGb * 0.88 : needGb;
-  const ratio = effectiveNeed / poolGb;
+  const ratio = needGb / poolGb;
   if (ratio <= 0.72) return { status: "best", tone: "good", scoreBoost: 34 };
   if (ratio <= 0.92) return { status: "fits", tone: "info", scoreBoost: 24 };
   if (ratio <= 1.15) return { status: "stretch", tone: "warning", scoreBoost: 6 };
@@ -141,16 +131,10 @@ function fitReason({
   modelId,
   needGb,
   poolGb,
-  appleSilicon,
-  hasMlx,
-  hasOmlx,
 }: {
   modelId: string;
   needGb: number | null;
   poolGb: number;
-  appleSilicon: boolean;
-  hasMlx: boolean;
-  hasOmlx: boolean;
 }) {
   const name = modelDisplayName(modelId);
   const footprint =
@@ -158,28 +142,5 @@ function fitReason({
       ? `~${needGb < 10 ? needGb.toFixed(1) : Math.round(needGb)} GB`
       : "unknown footprint";
   const pool = poolGb > 0 ? `${Math.round(poolGb)} GB pool` : "no detected pool";
-  const mlx = appleSilicon && hasMlx ? " · MLX preferred on Apple Silicon" : "";
-  const omlx = hasOmlx ? " · oMLX quant available" : "";
-  return `${name}: ${footprint} against ${pool}${mlx}${omlx}`;
-}
-
-function hasMlxSignal(
-  model: HuggingFaceModel,
-  variants: HuggingFaceModel[],
-  quantLabels: Set<string>,
-): boolean {
-  if (quantLabels.has("MLX")) return true;
-  return [model, ...variants].some((variant) => {
-    const text = `${variant.modelId} ${variant.tags.join(" ")}`.toLowerCase();
-    return text.includes("mlx") || text.includes("omlx");
-  });
-}
-
-function hasOmlxSignal(
-  model: HuggingFaceModel,
-  variants: HuggingFaceModel[],
-  quantLabels: Set<string>,
-): boolean {
-  if ([...quantLabels].some((label) => label.startsWith("OQ"))) return true;
-  return [model, ...variants].some((variant) => /(^|\/)jundot\//i.test(`${variant.modelId}/`));
+  return `${name}: ${footprint} against ${pool}`;
 }

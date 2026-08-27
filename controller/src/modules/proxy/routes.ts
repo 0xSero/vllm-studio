@@ -1,7 +1,10 @@
 import { defineRoutes, mergeRoutes } from "../../http/route-registrar";
-import { registerOpenAIRoutes } from "./openai-routes";
+import { registerPassthroughRoutes } from "./passthrough-routes";
 import { registerTokenizationRoutes } from "./tokenization-routes";
 
 export const registerAllProxyRoutes = defineRoutes((app, context) => {
-  return mergeRoutes(registerOpenAIRoutes(app, context), registerTokenizationRoutes(app, context));
+  return mergeRoutes(
+    registerPassthroughRoutes(app, context),
+    registerTokenizationRoutes(app, context),
+  );
 });

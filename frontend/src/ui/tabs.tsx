@@ -27,7 +27,10 @@ function Tabs<T extends string = string>({
 }: TabsProps<T>) {
   if (variant === "underline") {
     return (
-      <div className={`flex gap-1 ${className}`}>
+      // overflow-x-auto + shrink-0: the labels are nowrap, so without these the
+      // flex row shrinks them past their content width and they overlap into
+      // unreadable text once the strip is wider than a phone.
+      <div className={`flex gap-1 overflow-x-auto ${className}`}>
         {items.map((tab) => (
           <button
             key={tab.id}
@@ -35,7 +38,7 @@ function Tabs<T extends string = string>({
             // inline-flex, not inline: the icons render as block-level SVGs, so
             // an `inline` wrapper dropped them onto their own line above the
             // label instead of sitting beside it.
-            className={`inline-flex items-center gap-2 whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+            className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
               activeTab === tab.id
                 ? "border-(--ui-accent) text-(--ui-fg)"
                 : "border-transparent text-(--ui-muted) hover:text-(--ui-fg)"

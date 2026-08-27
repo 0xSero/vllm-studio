@@ -278,6 +278,10 @@ export function mergeExistingToolState(
       args: block.args ?? existing.args,
       argsText,
       resultText: existing.resultText ?? block.resultText,
+      // The snapshot rebuild reconstructs blocks from the model's own parts,
+      // which never carry execution output — details would be dropped on the
+      // next streaming frame without this.
+      details: existing.details ?? block.details,
       status: existing.status,
       text: argsText || block.text || existing.text,
     };

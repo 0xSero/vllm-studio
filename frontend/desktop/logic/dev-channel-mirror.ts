@@ -16,8 +16,6 @@ const MIRRORED_ENTRIES = [
   "automations",
   "goals",
   "mcp",
-  "chats.db",
-  "controller.db",
   "controllers.json",
   "connectors.json",
   "projects.json",

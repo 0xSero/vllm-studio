@@ -1,8 +1,8 @@
 // Bridges the external content catalogues into slash commands. Prompt templates
-// and skills are discovered by the agent runtime from plugin sources (Local
-// Studio bundled plugins, ~/.claude, ~/.codex, Codex.app plugin caches, …), so
-// these providers are how plugins reach the composer without the core
-// processor knowing anything about plugins.
+// and skills are discovered by the agent runtime from skill sources (Local
+// Studio's bundled skills, ~/.claude, ~/.codex, ~/.factory, …), so these
+// providers are how that content reaches the composer without the core
+// processor knowing where any of it came from.
 import type {
   ComposerPromptTemplateRef,
   ComposerSkillRef,

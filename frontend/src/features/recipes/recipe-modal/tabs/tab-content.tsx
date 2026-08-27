@@ -5,11 +5,8 @@ import type { RecipeModalTabId } from "./tab-id";
 import type { RecipeModalTabProps } from "./tab-props";
 import { RecipeModalTabCommand } from "./tab-command";
 import { RecipeModalTabEnvironment } from "./tab-environment";
-import { RecipeModalTabFeatures } from "./tab-features";
 import { RecipeModalTabGeneral } from "./tab-general";
-import { RecipeModalTabModel } from "./tab-model";
-import { RecipeModalTabPerformance } from "./tab-performance";
-import { RecipeModalTabResources } from "./tab-resources";
+import { RecipeModalOptionTab } from "./option-tab";
 
 export type RecipeModalGeneralProps = {
   availableModels: ModelInfo[];
@@ -28,8 +25,6 @@ export type RecipeModalEnvironmentProps = {
   extraArgsText: string;
   extraArgsError: string | null;
   onExtraArgsChange: (value: string) => void;
-  llamaConfigLoading: boolean;
-  llamaConfigHelp: { config: string | null; error?: string | null } | null;
 };
 
 export type RecipeModalCommandProps = {
@@ -43,13 +38,6 @@ export type RecipeModalCommandProps = {
   onCommandChange: (value: string) => void;
   onResetCommand: () => void;
 };
-
-const OPTION_TABS = {
-  model: RecipeModalTabModel,
-  resources: RecipeModalTabResources,
-  performance: RecipeModalTabPerformance,
-  features: RecipeModalTabFeatures,
-} as const;
 
 export function RecipeModalTabContent({
   activeTab,
@@ -80,6 +68,5 @@ export function RecipeModalTabContent({
   if (activeTab === "command") {
     return <RecipeModalTabCommand {...command} />;
   }
-  const OptionTab = OPTION_TABS[activeTab];
-  return <OptionTab {...tab} />;
+  return <RecipeModalOptionTab tab={activeTab} {...tab} />;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useState } from "react";
 import { Effect, Fiber, Schema } from "effect";
 import {
   GoogleAccountResponseSchema,
@@ -8,18 +8,25 @@ import {
   type GoogleAccountView,
 } from "@local-studio/agent-runtime/google-account-contract";
 import type { GoogleWorkspacePluginId } from "@local-studio/agent-runtime/google-workspace-binding";
-import { Alert, UiModal, UiModalBody, UiModalHeader } from "@/ui";
+import { Alert, Button, UiModal, UiModalBody, UiModalHeader } from "@/ui";
 import { KeyRound, X } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
   GoogleCancellationResponseSchema,
-  requestJson,
+  clientReplacementWarning,
+  connectedGoogleAccounts,
+  connectionSignature,
   openExternal,
-  sharedClientWarning,
+  requestJson,
+  transportNotice,
 } from "./google-account-model";
 import { GoogleAccountLoadState } from "./google-account-load-state";
-import { ConnectedGoogleAccount } from "./google-account-connected";
+import { ConnectedGoogleAccounts } from "./google-account-connected";
 import { GoogleAccountSetup } from "./google-account-setup";
+
+const ACCOUNT_URL = "/api/agent/accounts/google";
+const AUTHORIZE_URL = "/api/agent/accounts/google/authorize";
+const decodeAccount = Schema.decodeUnknownSync(GoogleAccountResponseSchema);
 
 export function GoogleAccountModal({
   accountId,
@@ -37,32 +44,35 @@ export function GoogleAccountModal({
   const [clientSecret, setClientSecret] = useState("");
   const [editing, setEditing] = useState(false);
   const [awaiting, setAwaiting] = useState(false);
-  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
+  const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [lifecycle] = useState(() => ({
     active: false,
+    // The signature of the connections that existed when sign-in started; the
+    // wait ends as soon as it changes, which covers both a mailbox being added
+    // and an existing one being re-authorized.
+    baseline: "",
     cancelAuthorizationRequest: async (): Promise<void> => undefined,
   }));
 
   const refresh = useCallback(async (): Promise<boolean> => {
     try {
-      const result = await requestJson<{ account: GoogleAccountView }>(
-        "/api/agent/accounts/google",
-        Schema.decodeUnknownSync(GoogleAccountResponseSchema),
-        { cache: "no-store" },
-      );
+      const result = await requestJson<{ account: GoogleAccountView }>(ACCOUNT_URL, decodeAccount, {
+        cache: "no-store",
+      });
       setAccount(result.account);
       setError("");
       setClientId((current) => current || result.account.clientId || "");
       if (!result.account.configured) setEditing(true);
-      const connected = result.account.connections[accountId].connected;
-      if (connected) {
+      const settled =
+        lifecycle.active && connectionSignature(result.account, accountId) !== lifecycle.baseline;
+      if (settled) {
         lifecycle.active = false;
         setAwaiting(false);
         onChanged();
       }
-      return connected;
+      return settled;
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Google account failed");
       return false;
@@ -77,16 +87,12 @@ export function GoogleAccountModal({
   }, [refresh]);
 
   const cancelAuthorizationRequest = useCallback(async (): Promise<void> => {
-    await requestJson(
-      "/api/agent/accounts/google/authorize",
-      Schema.decodeUnknownSync(GoogleCancellationResponseSchema),
-      {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ account: accountId }),
-        keepalive: true,
-      },
-    );
+    await requestJson(AUTHORIZE_URL, Schema.decodeUnknownSync(GoogleCancellationResponseSchema), {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ account: accountId }),
+      keepalive: true,
+    });
   }, [accountId]);
 
   const cancelAuthorization = useCallback(async (): Promise<void> => {
@@ -126,8 +132,8 @@ export function GoogleAccountModal({
     try {
       if (!account?.configured || editing) {
         const saved = await requestJson<{ account: GoogleAccountView }>(
-          "/api/agent/accounts/google",
-          Schema.decodeUnknownSync(GoogleAccountResponseSchema),
+          ACCOUNT_URL,
+          decodeAccount,
           {
             method: "PUT",
             headers: { "content-type": "application/json" },
@@ -140,8 +146,9 @@ export function GoogleAccountModal({
         setClientSecret("");
       }
       lifecycle.active = true;
+      lifecycle.baseline = connectionSignature(account, accountId);
       const result = await requestJson<{ authorizationUrl: string }>(
-        "/api/agent/accounts/google/authorize",
+        AUTHORIZE_URL,
         Schema.decodeUnknownSync(GoogleAuthorizationResponseSchema),
         {
           method: "POST",
@@ -159,21 +166,17 @@ export function GoogleAccountModal({
     }
   };
 
-  const disconnect = async () => {
+  const disconnect = async (accountKey: string) => {
     setBusy(true);
     setError("");
     try {
-      const result = await requestJson<{ account: GoogleAccountView }>(
-        "/api/agent/accounts/google",
-        Schema.decodeUnknownSync(GoogleAccountResponseSchema),
-        {
-          method: "DELETE",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ account: accountId }),
-        },
-      );
+      const result = await requestJson<{ account: GoogleAccountView }>(ACCOUNT_URL, decodeAccount, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ account: accountId, accountKey }),
+      });
       setAccount(result.account);
-      setConfirmingDisconnect(false);
+      setConfirmingKey(null);
       onChanged();
     } catch (disconnectError) {
       await refresh();
@@ -188,7 +191,6 @@ export function GoogleAccountModal({
     setError("");
     try {
       await cancelAuthorization();
-      onClose();
     } catch (cancelError) {
       setError(cancelError instanceof Error ? cancelError.message : "Cancellation failed");
     } finally {
@@ -196,50 +198,16 @@ export function GoogleAccountModal({
     }
   };
 
-  const connection = account?.connections[accountId];
-  const warning = sharedClientWarning(accountId, account, editing, clientId);
+  const connected = connectedGoogleAccounts(account, accountId);
+  const replacement = clientReplacementWarning(account, editing, clientId);
+  const needsClient = !account?.configured || editing;
   const dismiss = () => {
     if (!busy && !awaiting) onClose();
   };
-  let content: ReactNode;
-  if (!account) {
-    content = <GoogleAccountLoadState error={error} onRetry={() => void refresh()} />;
-  } else if (connection?.connected && !editing) {
-    content = (
-      <ConnectedGoogleAccount
-        email={connection.email}
-        displayName={displayName}
-        confirming={confirmingDisconnect}
-        busy={busy}
-        onConfirm={() => setConfirmingDisconnect(true)}
-        onKeep={() => setConfirmingDisconnect(false)}
-        onDisconnect={() => void disconnect()}
-        onClose={onClose}
-      />
-    );
-  } else {
-    content = (
-      <GoogleAccountSetup
-        account={account}
-        editing={editing}
-        clientId={clientId}
-        clientSecret={clientSecret}
-        sharedClientWarning={warning}
-        awaiting={awaiting}
-        busy={busy}
-        onClientId={setClientId}
-        onClientSecret={setClientSecret}
-        onEdit={() => setEditing(true)}
-        onClose={onClose}
-        onCancelSignIn={() => void cancelSignIn()}
-        onConnect={() => void connect()}
-      />
-    );
-  }
   return (
     <UiModal isOpen onClose={dismiss} maxWidth="max-w-lg">
       <UiModalHeader
-        title={connection?.connected ? displayName : `Connect ${displayName}`}
+        title={connected.length ? displayName : `Connect ${displayName}`}
         icon={
           <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-(--ui-info)/30 bg-(--ui-info)/10">
             <KeyRound className="h-4 w-4 text-(--ui-info)" />
@@ -250,12 +218,61 @@ export function GoogleAccountModal({
         closeIcon={<X className="h-4 w-4" />}
       />
       <UiModalBody className="space-y-4 pb-5">
-        <Alert variant="info">
-          Google&apos;s first-party Workspace MCP is in developer preview. Add a Desktop OAuth
-          client once; Local Studio encrypts it with the desktop keychain and exposes only declared
-          read-only tools.
-        </Alert>
-        {content}
+        <Alert variant="info">{transportNotice(account)}</Alert>
+        {!account ? (
+          <GoogleAccountLoadState error={error} onRetry={() => void refresh()} />
+        ) : (
+          <>
+            <GoogleAccountSetup
+              account={account}
+              editing={editing}
+              clientId={clientId}
+              clientSecret={clientSecret}
+              replacementWarning={replacement}
+              onClientId={setClientId}
+              onClientSecret={setClientSecret}
+              onEdit={() => setEditing(true)}
+            />
+            <ConnectedGoogleAccounts
+              service={accountId}
+              displayName={displayName}
+              accounts={connected}
+              confirmingKey={confirmingKey}
+              busy={busy}
+              onConfirm={setConfirmingKey}
+              onKeep={() => setConfirmingKey(null)}
+              onDisconnect={(key) => void disconnect(key)}
+            />
+            {awaiting ? (
+              <Alert variant="success">
+                Finish consent in your browser. Local Studio is checking for the connection.
+              </Alert>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                variant="secondary"
+                onClick={awaiting ? () => void cancelSignIn() : onClose}
+                loading={awaiting && busy}
+                disabled={busy && !awaiting}
+              >
+                {awaiting ? "Cancel sign-in" : "Close"}
+              </Button>
+              <Button
+                onClick={() => void connect()}
+                loading={busy && !awaiting}
+                disabled={awaiting || (needsClient && !clientId.trim())}
+              >
+                {awaiting
+                  ? "Waiting for Google"
+                  : replacement
+                    ? "Revoke & replace"
+                    : connected.length
+                      ? "Add another account"
+                      : "Continue with Google"}
+              </Button>
+            </div>
+          </>
+        )}
         {error && account ? <Alert variant="error">{error}</Alert> : null}
       </UiModalBody>
     </UiModal>

@@ -8,7 +8,6 @@ import {
   readdirSync,
   statSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import {
@@ -17,6 +16,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { resolveDataDir } from "./data-dir";
+import { expandHome } from "./pi-runtime-helpers";
 import { rolloutCache, statRollout } from "./rollout-cache";
 import { transcriptSource } from "./transcript-sidecar";
 import {
@@ -72,12 +72,7 @@ export function encodeCwdForPi(cwd: string): string {
 export function configuredPiSessionDir(cwd: string): string | undefined {
   const envSessionDir = process.env.PI_CODING_AGENT_SESSION_DIR?.trim();
   if (envSessionDir) {
-    const expanded = envSessionDir === "~"
-      ? homedir()
-      : envSessionDir.startsWith(`~${path.sep}`)
-        ? path.join(homedir(), envSessionDir.slice(2))
-        : envSessionDir;
-    return path.resolve(expanded);
+    return path.resolve(expandHome(envSessionDir));
   }
   return SettingsManager.create(cwd, getAgentDir()).getSessionDir();
 }
@@ -101,10 +96,15 @@ function sessionsDirsForCwd(cwd: string): string[] {
   const encodedCwds = [...new Set(cwdVariants(cwd).map(encodeCwdForPi))];
   const nativeDir = configuredPiSessionDir(cwd) ?? SessionManager.create(cwd).getSessionDir();
   const legacyRoot = path.join(resolveDataDir(), "pi-agent", "sessions");
-  return [
+  const dirs = [
     path.resolve(nativeDir),
     ...encodedCwds.map((encoded) => path.join(legacyRoot, encoded)),
-  ].filter((value, index, values) => values.indexOf(value) === index);
+  ];
+  return dirs.filter((value, index, values) => values.indexOf(value) === index);
+}
+
+export function sessionDirRootsForCwd(cwd: string): string[] {
+  return [...new Set(sessionsDirsForCwd(cwd).map((dir) => path.dirname(dir)))];
 }
 
 function sessionCwdMatches(summaryCwd: string, cwd: string): boolean {
@@ -249,7 +249,11 @@ async function readSessionSummary(
   if (header && firstUserMessage) {
     const lastTurn = await readLastUserTurn(filepath);
     if (lastTurn) {
-      lastUserPromptText = lastTurn.text;
+      // The raw turn text can open with injected context (<browser_context>…)
+      // that is not what the user typed; the title helper already knows how
+      // to peel it. An all-context turn yields no preview rather than noise.
+      const visible = sessionTitleFromUserPrompt(lastTurn.text);
+      if (visible) lastUserPromptText = visible;
       lastUserPromptAt = lastTurn.at;
     }
   }

@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { Effect } from "effect";
 import type { MiddlewareHandler, Next } from "hono";
 import type { AppContext } from "../app-context";
+import { normalizeHttpOrigin, normalizeRequestAuthority } from "../config/request-authority";
 import { effectMiddleware } from "./effect-handler";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -86,6 +87,27 @@ const rateLimitKey = (path: string, method: string, clientIp: string): string =>
 const nextEffect = (next: Next): Effect.Effect<void, unknown> =>
   Effect.tryPromise({ try: next, catch: (error) => error });
 
+export function createKeylessRequestGuardMiddleware(context: AppContext): MiddlewareHandler {
+  return effectMiddleware((ctx, next) =>
+    Effect.suspend(() => {
+      if (context.config.api_key?.trim()) return nextEffect(next);
+      const authority = ctx.req.header("host");
+      const host = authority ? normalizeRequestAuthority(authority, context.config.port) : null;
+      const originHeader = ctx.req.header("origin");
+      const origin = originHeader === undefined ? undefined : normalizeHttpOrigin(originHeader);
+      if (
+        !host ||
+        !(context.config.allowed_hosts ?? []).includes(host) ||
+        origin === null ||
+        (origin !== undefined && !(context.config.cors_origins ?? []).includes(origin))
+      ) {
+        return Effect.succeed(ctx.json({ detail: "Forbidden request origin" }, { status: 403 }));
+      }
+      return nextEffect(next);
+    }),
+  );
+}
+
 export function createAuthMiddleware(context: AppContext): MiddlewareHandler {
   return effectMiddleware((ctx, next) =>
     Effect.suspend(() => {
@@ -100,66 +122,63 @@ export function createAuthMiddleware(context: AppContext): MiddlewareHandler {
   );
 }
 
-export function createMutatingRateLimitMiddleware(
-  _context: AppContext,
-  options: { windowMs?: number; maxRequests?: number } = {},
-): MiddlewareHandler {
-  const windowMs = options.windowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS;
-  const maxRequests = options.maxRequests ?? DEFAULT_RATE_LIMIT_MAX_REQUESTS;
+function createRateLimitMiddleware(config: {
+  gate: (method: string, path: string) => boolean;
+  store: Map<string, RateLimitEntry>;
+  windowMs: number;
+  maxRequests: number;
+  emitHeaders: boolean;
+}): MiddlewareHandler {
+  const { gate, store, windowMs, maxRequests, emitHeaders } = config;
   return effectMiddleware((ctx, next) =>
     Effect.suspend(() => {
-      if (!isMutatingRequest(ctx.req.method)) return nextEffect(next);
+      if (!gate(ctx.req.method, ctx.req.path)) return nextEffect(next);
       const now = Date.now();
       const clientIp = getClientIpFromRequestHeaders((name) => ctx.req.header(name));
       const key = rateLimitKey(ctx.req.path, ctx.req.method, clientIp);
-      const existing = mutatingRateLimitStore.get(key);
+      const existing = store.get(key);
       const entry: RateLimitEntry =
         existing && existing.resetAt > now
           ? { count: existing.count + 1, resetAt: existing.resetAt }
           : { count: 1, resetAt: now + windowMs };
-      mutatingRateLimitStore.set(key, entry);
-      ctx.header("X-RateLimit-Limit", String(maxRequests));
-      ctx.header("X-RateLimit-Remaining", String(Math.max(maxRequests - entry.count, 0)));
-      ctx.header("X-RateLimit-Reset", String(Math.ceil(entry.resetAt / 1000)));
+      store.set(key, entry);
+      if (emitHeaders) {
+        ctx.header("X-RateLimit-Limit", String(maxRequests));
+        ctx.header("X-RateLimit-Remaining", String(Math.max(maxRequests - entry.count, 0)));
+        ctx.header("X-RateLimit-Reset", String(Math.ceil(entry.resetAt / 1000)));
+      }
       if (entry.count > maxRequests) {
         ctx.header("Retry-After", String(Math.max(Math.ceil((entry.resetAt - now) / 1000), 1)));
         return Effect.succeed(ctx.json({ detail: "Rate limit exceeded" }, { status: 429 }));
       }
-      pruneRateLimitStore(mutatingRateLimitStore, now);
+      pruneRateLimitStore(store, now);
       return nextEffect(next);
     }),
   );
+}
+
+export function createMutatingRateLimitMiddleware(
+  _context: AppContext,
+  options: { windowMs?: number; maxRequests?: number } = {},
+): MiddlewareHandler {
+  return createRateLimitMiddleware({
+    gate: (method) => isMutatingRequest(method),
+    store: mutatingRateLimitStore,
+    windowMs: options.windowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS,
+    maxRequests: options.maxRequests ?? DEFAULT_RATE_LIMIT_MAX_REQUESTS,
+    emitHeaders: true,
+  });
 }
 
 export function createReadRateLimitMiddleware(
   _context: AppContext,
   options: { windowMs?: number; maxRequests?: number } = {},
 ): MiddlewareHandler {
-  const windowMs = options.windowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS;
-  const maxRequests = options.maxRequests ?? DEFAULT_READ_RATE_LIMIT_MAX_REQUESTS;
-  return effectMiddleware((ctx, next) =>
-    Effect.suspend(() => {
-      if (
-        isMutatingRequest(ctx.req.method) ||
-        isReadRateLimitExempt(ctx.req.method, ctx.req.path)
-      ) {
-        return nextEffect(next);
-      }
-      const now = Date.now();
-      const clientIp = getClientIpFromRequestHeaders((name) => ctx.req.header(name));
-      const key = rateLimitKey(ctx.req.path, ctx.req.method, clientIp);
-      const existing = readRateLimitStore.get(key);
-      const entry: RateLimitEntry =
-        existing && existing.resetAt > now
-          ? { count: existing.count + 1, resetAt: existing.resetAt }
-          : { count: 1, resetAt: now + windowMs };
-      readRateLimitStore.set(key, entry);
-      if (entry.count > maxRequests) {
-        ctx.header("Retry-After", String(Math.max(Math.ceil((entry.resetAt - now) / 1000), 1)));
-        return Effect.succeed(ctx.json({ detail: "Rate limit exceeded" }, { status: 429 }));
-      }
-      pruneRateLimitStore(readRateLimitStore, now);
-      return nextEffect(next);
-    }),
-  );
+  return createRateLimitMiddleware({
+    gate: (method, path) => !isMutatingRequest(method) && !isReadRateLimitExempt(method, path),
+    store: readRateLimitStore,
+    windowMs: options.windowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS,
+    maxRequests: options.maxRequests ?? DEFAULT_READ_RATE_LIMIT_MAX_REQUESTS,
+    emitHeaders: false,
+  });
 }

@@ -27,7 +27,10 @@ export const COMPUTER_TAB_IDS = [
 
 export type ComputerTab = (typeof COMPUTER_TAB_IDS)[number];
 
-export type BrowserBackend = "embedded" | "sitegeist";
+// Which browsers the session arms for the model. "embedded" is the headless
+// sandbox on its own; "chrome" arms the user's real browser as well, so the
+// model chooses per task rather than the composer choosing for it.
+export type BrowserBackend = "embedded" | "chrome";
 
 export type BrowserState = {
   enabled: boolean;
@@ -56,6 +59,17 @@ export type ContextAttachRequest = {
   path?: string;
   /** The text injected into the model context. */
   content: string;
+};
+
+/** Ask the right panel to open an existing session (e.g. a subagent's) in its
+ *  side-chat pane. Same id-stamped shape as FileOpenRequest: the consumer
+ *  reacts to a changed id, never to a re-render. */
+export type SessionPreviewRequest = {
+  id: number;
+  piSessionId: string;
+  title: string;
+  /** The session's working directory — replay needs it to find the log. */
+  cwd: string | null;
 };
 
 export type ToolSelection = {
