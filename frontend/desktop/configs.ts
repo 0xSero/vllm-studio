@@ -27,7 +27,12 @@ export function resolveStandaloneBaseDir(): string {
   return path.resolve(app.getAppPath(), ".next", "standalone");
 }
 
-export function resolveStaticAssetsSource(): { staticDir: string; publicDir: string } {
+export interface StaticAssetsSource {
+  staticDir: string;
+  publicDir: string;
+}
+
+export function resolveStaticAssetsSource(): StaticAssetsSource {
   if (app.isPackaged) {
     return {
       staticDir: path.join(process.resourcesPath, "app", "frontend", ".next", "static"),

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { app } from "electron";
+import { Schema } from "effect";
 
 export interface ControllerDeployResult {
   ok: boolean;
@@ -20,6 +21,8 @@ const MARKER = "LOCAL_STUDIO_CONTROLLER ";
 const INSTALL_SCRIPT_URL =
   "https://raw.githubusercontent.com/sybil-solutions/local-studio/main/scripts/install-controller.sh";
 const DEPLOY_TIMEOUT_MS = 15 * 60_000;
+const DeployMarkerSchema = Schema.Struct({ url: Schema.String, api_key: Schema.String });
+const decodeDeployMarker = Schema.decodeUnknownOption(Schema.fromJsonString(DeployMarkerSchema));
 
 // "user@host" / "host" / tailnet names; conservative charset keeps the value
 // safe to place inside the ssh argv (never inside a shell string).
@@ -44,11 +47,10 @@ export const parseDeployMarker = (line: string): { url: string; apiKey: string }
   const index = line.indexOf(MARKER);
   if (index === -1) return null;
   try {
-    const payload = JSON.parse(line.slice(index + MARKER.length)) as {
-      url?: string;
-      api_key?: string;
-    };
-    if (payload.url && payload.api_key) return { url: payload.url, apiKey: payload.api_key };
+    const payload = decodeDeployMarker(line.slice(index + MARKER.length));
+    if (payload._tag === "Some" && payload.value.url && payload.value.api_key) {
+      return { url: payload.value.url, apiKey: payload.value.api_key };
+    }
   } catch {
     return null;
   }
