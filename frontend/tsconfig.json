@@ -20,7 +20,6 @@
         "name": "next"
       }
     ],
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@local-studio/agent-runtime": ["../services/agent-runtime/src/index.ts"],
