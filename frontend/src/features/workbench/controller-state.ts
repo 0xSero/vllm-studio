@@ -75,10 +75,15 @@ export function refreshWorkbench(): Effect.Effect<WorkbenchProjection, Error> {
   return Effect.tap(loadProjection, (next) => Effect.sync(() => publish(next)));
 }
 
+function refreshInBackground(): void {
+  void Effect.runPromise(refreshWorkbench()).catch(() => undefined);
+}
+
 const start = Effect.sync(() => {
   if (started || typeof window === "undefined") return;
   started = true;
-  void Effect.runPromise(refreshWorkbench()).catch(() => undefined);
+  refreshInBackground();
+  window.setInterval(refreshInBackground, 3_000);
   source = new EventSource(workbenchUrl("/api/proxy/api/workbench/events"));
   source.addEventListener("workbench", (event) => {
     if (!(event instanceof MessageEvent) || typeof event.data !== "string") return;
@@ -88,6 +93,7 @@ const start = Effect.sync(() => {
       return;
     }
   });
+  source.addEventListener("error", refreshInBackground);
 });
 
 export function subscribeWorkbench(listener: () => void): () => void {

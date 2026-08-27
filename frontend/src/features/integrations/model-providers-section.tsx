@@ -36,8 +36,6 @@ import {
   HEAD_CONNECTION_CHANGED_EVENT,
 } from "@/lib/api/head-controller";
 
-const HEAD_OWNED_PROVIDER_IDS = new Set(["openai-codex", "cursor", "openrouter"]);
-
 function decodeProviders(input: unknown): ProvidersResponse {
   const providers = (input as { providers?: unknown })?.providers;
   if (!Array.isArray(providers)) throw new Error("Malformed providers response");
@@ -426,17 +424,23 @@ export function ModelProvidersSection({ searchQuery }: { searchQuery?: string } 
       head
         ? requestJson("/api/proxy/studio/model-providers", decodeControllerProviders, {
             headers: headProxyHeaders(head),
-          })
-        : Promise.resolve({ providers: [] }),
+          }).catch(() => null)
+        : Promise.resolve(null),
     ])
       .then(([agentProviders, controllerProviders]) => {
+        if (!controllerProviders) {
+          setProviders(agentProviders.providers);
+          setSelectedProvider((current) =>
+            current
+              ? (agentProviders.providers.find((provider) => provider.id === current.id) ?? current)
+              : null,
+          );
+          return;
+        }
         const controllerIds = new Set(controllerProviders.providers.map((provider) => provider.id));
         const list = [
           ...controllerProviders.providers,
-          ...agentProviders.providers.filter(
-            (provider) =>
-              !HEAD_OWNED_PROVIDER_IDS.has(provider.id) && !controllerIds.has(provider.id),
-          ),
+          ...agentProviders.providers.filter((provider) => !controllerIds.has(provider.id)),
         ];
         setProviders(list);
         setSelectedProvider((current) =>

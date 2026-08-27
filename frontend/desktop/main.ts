@@ -11,6 +11,7 @@ import { createMainWindow } from "./logic/window-manager";
 import { registerNavigationPolicy } from "./logic/security";
 import { startFrontendServer, stopFrontendServer, type ServerHandle } from "./logic/app-server";
 import { releaseController } from "./logic/controller-server";
+import { retireLegacyController } from "./logic/legacy-controller";
 import {
   resolveFrontendRestartUrl,
   shouldReloadAfterFrontendRestart,
@@ -622,6 +623,14 @@ async function run(): Promise<void> {
   registerIpcHandlers();
 
   await app.whenReady();
+
+  try {
+    if (retireLegacyController(app.getPath("home"))) {
+      log.info("Retired legacy TypeScript controller service");
+    }
+  } catch (error) {
+    log.warn(`Failed to retire legacy controller: ${String(error)}`);
+  }
 
   initializeAutoUpdates();
 
