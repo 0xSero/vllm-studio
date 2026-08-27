@@ -1,7 +1,8 @@
 "use client";
 
-import { memo, useCallback, type MouseEvent, type ReactNode } from "react";
+import { memo, useCallback, type MouseEvent } from "react";
 import { MoreVertical, Play, Square } from "@/ui/icon-registry";
+import { MenuItem, handleMenuKeyboard } from "@/ui";
 import type { RecipeWithStatus } from "@/lib/types";
 import { ModelLogo } from "@/ui/model-logo";
 import { cx } from "@/ui/utils";
@@ -174,7 +175,7 @@ function ServerRowMenu({
   open: boolean;
   pinned: boolean;
   recipeName: string;
-  onToggle: (event: MouseEvent<HTMLButtonElement>) => void;
+  onToggle: (event?: MouseEvent<HTMLButtonElement>) => void;
   onTogglePin: () => void;
   onEdit: () => void;
   onAttachAgents: () => void;
@@ -187,6 +188,8 @@ function ServerRowMenu({
         onClick={onToggle}
         title="Actions"
         aria-label="Server actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
         className={cx(
           "-mr-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md text-(--dim) transition-opacity hover:bg-(--hover) hover:text-(--fg) focus-visible:opacity-100 group-hover:opacity-100",
           open ? "opacity-100" : "opacity-0",
@@ -195,7 +198,12 @@ function ServerRowMenu({
         <MoreVertical className="h-3 w-3" />
       </button>
       {open ? (
-        <div className={`absolute right-0 z-50 mt-1 w-48 ${POPOVER_MENU_CLASS}`}>
+        <div
+          className={`ui-popover-enter absolute right-0 z-50 mt-1 w-48 ${POPOVER_MENU_CLASS}`}
+          role="menu"
+          aria-label={`${recipeName} actions`}
+          onKeyDown={(event) => handleMenuKeyboard(event, () => onToggle())}
+        >
           <MenuItem onClick={onTogglePin}>{pinned ? "Unpin" : "Pin"}</MenuItem>
           <MenuItem onClick={onEdit}>Edit</MenuItem>
           <MenuItem onClick={onAttachAgents}>Attach to local agents…</MenuItem>
@@ -210,32 +218,5 @@ function ServerRowMenu({
         </div>
       ) : null}
     </div>
-  );
-}
-
-function MenuItem({
-  children,
-  onClick,
-  danger,
-  title,
-}: {
-  children: ReactNode;
-  onClick: () => void;
-  danger?: boolean;
-  title?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      className={cx(
-        "w-full rounded-lg px-2.5 py-2 text-left text-[length:var(--fs-md)]",
-        danger
-          ? "text-(--color-destructive) hover:bg-(--color-destructive)/10"
-          : "text-(--fg) hover:bg-(--color-menu-hover)",
-      )}
-    >
-      {children}
-    </button>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, type ReactNode } from "react";
+import { useSyncExternalStore } from "react";
 import { Eye, EyeOff } from "@/ui/icon-registry";
 
 const STORAGE_KEY = "localstudio_censor_api_urls";
@@ -27,25 +27,6 @@ export function useApiUrlCensored(): boolean {
 export function setApiUrlCensored(censored: boolean): void {
   window.localStorage.setItem(STORAGE_KEY, String(censored));
   window.dispatchEvent(new Event(CHANGE_EVENT));
-}
-
-/** Visual privacy mode for controller/API addresses during demos and screen sharing. */
-export function CensoredApiUrl({
-  children,
-  className = "",
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  const censored = useApiUrlCensored();
-  return (
-    <span
-      className={`${className}${censored ? " select-none blur-[6px]" : ""}`}
-      aria-label={censored ? "API URL censored" : undefined}
-    >
-      {children}
-    </span>
-  );
 }
 
 export function ApiUrlCensorToggle() {

@@ -1,7 +1,7 @@
 "use client";
 
-import { Button, SearchInput, SegmentedControl } from "@/ui";
-import { Clock, Menu, Plus } from "@/ui/icon-registry";
+import { AppContentColumn, Button, SearchInput, SegmentedControl } from "@/ui";
+import { ChevronRight, Clock, Menu, Plus } from "@/ui/icon-registry";
 import { useAppStore } from "@/store";
 import type { Automation } from "@shared/agent/automation";
 import {
@@ -36,57 +36,74 @@ export function AutomationList({
   const visible = filterAutomations(automations, query, filter);
 
   return (
-    <section className="flex min-h-0 w-full shrink-0 flex-col border-r border-(--ui-border) bg-(--ui-bg)">
-      {/* This is the only chrome on a phone — the app topbar steps aside for
-          /agent routes — so the nav hamburger has to live here. */}
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-(--ui-border) px-4">
-        <button
-          type="button"
-          onClick={() => setMobileNavOpen(true)}
-          className="-ml-1.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--ui-muted) hover:bg-(--ui-hover) hover:text-(--ui-fg) md:hidden"
-          aria-label="Open navigation menu"
-          aria-controls="mobile-navigation-drawer"
-        >
-          <Menu className="pointer-events-none h-[18px] w-[18px]" />
-        </button>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[length:var(--fs-xl)] font-medium text-(--ui-fg)">
-            Automations
-          </h1>
-          <p className="text-[length:var(--fs-xs)] text-(--ui-muted)">
-            {automations.length} scheduled {automations.length === 1 ? "task" : "tasks"}
-          </p>
+    <section className="min-h-0 flex-1 overflow-y-auto bg-(--ui-bg)">
+      <AppContentColumn>
+        <header className="flex items-start gap-3">
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(true)}
+            className="-ml-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[5px] text-(--ui-muted) transition-[background-color,color] duration-[var(--motion-fast)] hover:bg-(--ui-hover) hover:text-(--ui-fg) md:hidden"
+            aria-label="Open navigation menu"
+            aria-controls="mobile-navigation-drawer"
+          >
+            <Menu className="pointer-events-none h-4 w-4" />
+          </button>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-[length:var(--fs-lg)] font-medium tracking-[-0.01em] text-(--ui-fg)">
+              Automations
+            </h1>
+            <p className="mt-0.5 text-[length:var(--fs-xs)] leading-4 text-(--ui-muted)">
+              Schedule recurring work with Local Studio agents.
+            </p>
+          </div>
+          <Button size="sm" onClick={onCreate} icon={<Plus className="h-3.5 w-3.5" />}>
+            New automation
+          </Button>
+        </header>
+
+        <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <SegmentedControl
+            value={filter}
+            onChange={onFilterChange}
+            size="sm"
+            items={[
+              { id: "all", label: "All" },
+              { id: "active", label: "Active" },
+              { id: "paused", label: "Paused" },
+            ]}
+          />
+          <SearchInput
+            value={query}
+            onChange={onQueryChange}
+            placeholder="Search automations"
+            className="w-full sm:w-56"
+          />
         </div>
-        <Button size="sm" onClick={onCreate} icon={<Plus className="h-3.5 w-3.5" />}>
-          New
-        </Button>
-      </header>
 
-      <div className="shrink-0 space-y-2 border-b border-(--ui-separator) p-3">
-        <SearchInput value={query} onChange={onQueryChange} placeholder="Search automations" />
-        <SegmentedControl
-          value={filter}
-          onChange={onFilterChange}
-          size="sm"
-          items={[
-            { id: "all", label: "All" },
-            { id: "active", label: "Active" },
-            { id: "paused", label: "Paused" },
-          ]}
-        />
-      </div>
+        <div className="mt-2.5 flex items-center px-3 text-[length:var(--fs-2xs)] uppercase tracking-[0.06em] text-(--ui-muted)/65">
+          <span className="min-w-0 flex-1">Name</span>
+          <span className="hidden w-44 sm:block">Schedule</span>
+          <span className="hidden w-32 text-right md:block">Status</span>
+          <span className="w-6" />
+        </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
         {loading ? (
-          <ListMessage>Loading scheduled tasks…</ListMessage>
+          <ListMessage title="Loading scheduled tasks…" />
         ) : visible.length === 0 ? (
-          <ListMessage>
-            {automations.length === 0
-              ? "No automations yet. Create one to run work on a schedule."
-              : "No automations match these filters."}
-          </ListMessage>
+          <ListMessage
+            title={automations.length === 0 ? "No automations yet" : "No matching automations"}
+            detail={
+              automations.length === 0
+                ? "Create one to run a task on a schedule."
+                : "Try a different search or status filter."
+            }
+            action={automations.length === 0 ? onCreate : undefined}
+          />
         ) : (
-          <div role="list" className="divide-y divide-(--ui-separator)/70">
+          <div
+            role="list"
+            className="mt-1 overflow-hidden rounded-[8px] border border-(--ui-separator) bg-(--ui-surface)/45"
+          >
             {visible.map((automation) => {
               const selected = automation.id === selectedId;
               const paused = automation.status === "paused";
@@ -96,15 +113,13 @@ export function AutomationList({
                   type="button"
                   role="listitem"
                   onClick={() => onSelect(automation)}
-                  className={`group w-full rounded-[var(--ui-radius)] px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 ${
-                    selected
-                      ? "bg-(--ui-active) text-(--ui-fg)"
-                      : "text-(--ui-fg) hover:bg-(--ui-hover)/60"
+                  className={`group flex min-h-12 w-full items-center border-b border-(--ui-separator)/70 px-3 text-left transition-[background-color,color] duration-[var(--motion-fast)] last:border-b-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-(--focus-ring) ${
+                    selected ? "bg-(--ui-active)" : "hover:bg-(--ui-hover)/70"
                   }`}
                 >
-                  <div className="flex items-start gap-3">
+                  <span className="flex min-w-0 flex-1 items-center gap-2.5 pr-3">
                     <span
-                      className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${
                         paused
                           ? "bg-(--ui-muted)/45"
                           : automation.lastRun?.outcome === "error"
@@ -112,9 +127,9 @@ export function AutomationList({
                             : "bg-(--ui-accent)"
                       }`}
                     />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
-                        <span className="min-w-0 flex-1 truncate text-[length:var(--fs-base)] font-medium">
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate text-[length:var(--fs-sm)] font-medium text-(--ui-fg)">
                           {automation.name}
                         </span>
                         {automation.unread ? (
@@ -124,29 +139,58 @@ export function AutomationList({
                           />
                         ) : null}
                       </span>
-                      <span className="mt-1 flex items-center gap-1.5 text-[length:var(--fs-sm)] text-(--ui-muted)">
-                        <Clock className="h-3 w-3 shrink-0" />
-                        <span className="truncate">{scheduleLabel(automation.schedule)}</span>
-                      </span>
-                      <span className="mt-1 block truncate text-[length:var(--fs-xs)] text-(--ui-muted)/75">
-                        {paused ? "Paused" : `Next run ${relativeTime(automation.nextRunAt)}`}
+                      <span className="block truncate text-[length:var(--fs-xs)] text-(--ui-muted)/75">
+                        {automation.prompt}
                       </span>
                     </span>
-                  </div>
+                  </span>
+                  <span className="hidden w-44 min-w-0 items-center gap-1.5 pr-3 text-[length:var(--fs-xs)] text-(--ui-muted) sm:flex">
+                    <Clock className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{scheduleLabel(automation.schedule)}</span>
+                  </span>
+                  <span className="hidden w-32 text-right text-[length:var(--fs-xs)] text-(--ui-muted) md:block">
+                    {paused ? "Paused" : `Next ${relativeTime(automation.nextRunAt)}`}
+                  </span>
+                  <ChevronRight className="ml-2 h-3.5 w-3.5 shrink-0 text-(--ui-muted)/50 transition-transform duration-[var(--motion-fast)] group-hover:translate-x-0.5 group-hover:text-(--ui-muted)" />
                 </button>
               );
             })}
           </div>
         )}
-      </div>
+      </AppContentColumn>
     </section>
   );
 }
 
-function ListMessage({ children }: { children: string }) {
+function ListMessage({
+  title,
+  detail,
+  action,
+}: {
+  title: string;
+  detail?: string;
+  action?: () => void;
+}) {
   return (
-    <div className="flex min-h-48 items-center justify-center px-8 text-center text-[length:var(--fs-sm)] leading-5 text-(--ui-muted)">
-      {children}
+    <div className="mt-1 flex min-h-48 items-center justify-center rounded-[8px] border border-(--ui-separator) bg-(--ui-surface)/35 px-8 text-center">
+      <div className="max-w-xs">
+        <Clock className="mx-auto h-4 w-4 text-(--ui-muted)/65" />
+        <div className="mt-2 text-[length:var(--fs-sm)] font-medium text-(--ui-fg)/90">{title}</div>
+        {detail ? (
+          <p className="mt-1 text-[length:var(--fs-xs)] leading-4 text-(--ui-muted)">{detail}</p>
+        ) : null}
+        {action ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={action}
+            icon={<Plus className="h-3.5 w-3.5" />}
+            className="mt-3"
+          >
+            New automation
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -56,10 +56,10 @@ export function RecipesTab({
   const live = Boolean(runningRecipeId || activeRecipe);
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-4">
       {/* Same quiet header line as Recommended: what is true on this machine
           right now, stated once, with the single action that changes it. */}
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-(--ui-separator) pb-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-(--ui-separator) pb-2">
         <div className="flex min-w-0 items-baseline gap-2">
           <span className="shrink-0 text-[length:var(--fs-md)] text-(--ui-fg)">
             {runningRecipeName ?? activeRecipe?.name ?? "No server running"}
@@ -87,7 +87,7 @@ export function RecipesTab({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
         <div className="relative min-w-0 flex-1">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-(--ui-muted)" />
           <ModelInput

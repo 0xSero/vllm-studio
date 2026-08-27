@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "definitions": {
+    "ControllerLifecycleMode": {
+      "kind": "enum",
+      "values": ["embedded", "system"]
+    },
+    "TaskConnectionState": {
+      "kind": "enum",
+      "values": ["connected", "disconnected", "archived"]
+    },
+    "WorkbenchResourceKind": {
+      "kind": "enum",
+      "values": ["chat", "terminal", "file", "browser", "diff", "explorer"]
+    },
+    "WorkbenchCommandKind": {
+      "kind": "enum",
+      "values": [
+        "ensure_task",
+        "select_project",
+        "select_task",
+        "move_project",
+        "move_pinned",
+        "pin_project",
+        "pin_task",
+        "rename_task",
+        "archive_task",
+        "open_tab",
+        "select_tab",
+        "move_tab",
+        "close_tab",
+        "set_sidebar",
+        "set_lifecycle_mode",
+        "set_remote_cache_limit"
+      ]
+    },
+    "WorkbenchPreferences": {
+      "kind": "record",
+      "fields": {
+        "lifecycleMode": { "ref": "ControllerLifecycleMode" },
+        "remoteCacheLimitMb": "u64",
+        "sidebarWidth": "u64",
+        "sidebarPinnedOpen": "boolean",
+        "sidebarSectionOrder": { "array": "string" }
+      }
+    },
+    "SidebarProject": {
+      "kind": "record",
+      "fields": {
+        "id": "string",
+        "name": "string",
+        "path": "string",
+        "accountId": { "optional": "string" },
+        "organization": { "optional": "string" },
+        "repository": { "optional": "string" },
+        "repositoryUrl": { "optional": "string" },
+        "defaultBranch": "string",
+        "pinned": "boolean",
+        "rank": "i64"
+      }
+    },
+    "SidebarTask": {
+      "kind": "record",
+      "fields": {
+        "id": "string",
+        "projectId": { "optional": "string" },
+        "title": "string",
+        "ownerControllerId": "string",
+        "connection": { "ref": "TaskConnectionState" },
+        "pinned": "boolean",
+        "rank": "i64"
+      }
+    },
+    "WorkbenchTab": {
+      "kind": "record",
+      "fields": {
+        "id": "string",
+        "taskId": "string",
+        "kind": { "ref": "WorkbenchResourceKind" },
+        "title": "string",
+        "resourceId": "string",
+        "rank": "i64",
+        "closable": "boolean"
+      }
+    },
+    "TaskWorkbench": {
+      "kind": "record",
+      "fields": {
+        "taskId": "string",
+        "revision": "u64",
+        "activeTabId": { "optional": "string" },
+        "tabs": { "array": { "ref": "WorkbenchTab" } }
+      }
+    },
+    "WorkbenchProjection": {
+      "kind": "record",
+      "fields": {
+        "revision": "u64",
+        "profileId": "string",
+        "deviceId": "string",
+        "viewId": "string",
+        "selectedProjectId": { "optional": "string" },
+        "selectedTaskId": { "optional": "string" },
+        "preferences": { "ref": "WorkbenchPreferences" },
+        "projects": { "array": { "ref": "SidebarProject" } },
+        "tasks": { "array": { "ref": "SidebarTask" } },
+        "workbench": { "optional": { "ref": "TaskWorkbench" } }
+      }
+    },
+    "WorkbenchCommand": {
+      "kind": "record",
+      "fields": {
+        "commandId": "string",
+        "actorId": "string",
+        "kind": { "ref": "WorkbenchCommandKind" },
+        "projectId": { "optional": "string" },
+        "taskId": { "optional": "string" },
+        "targetId": { "optional": "string" },
+        "tabId": { "optional": "string" },
+        "resourceKind": { "optional": { "ref": "WorkbenchResourceKind" } },
+        "resourceId": { "optional": "string" },
+        "title": { "optional": "string" },
+        "closable": { "optional": "boolean" },
+        "pinned": { "optional": "boolean" },
+        "sidebarWidth": { "optional": "u64" },
+        "sidebarPinnedOpen": { "optional": "boolean" },
+        "sidebarSectionOrder": { "optional": { "array": "string" } },
+        "lifecycleMode": { "optional": { "ref": "ControllerLifecycleMode" } },
+        "remoteCacheLimitMb": { "optional": "u64" }
+      }
+    },
+    "WorkbenchEvent": {
+      "kind": "record",
+      "fields": {
+        "revision": "u64",
+        "commandId": "string",
+        "projection": { "ref": "WorkbenchProjection" }
+      }
+    }
+  }
+}

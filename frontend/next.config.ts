@@ -14,9 +14,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   images: { unoptimized: true },
   allowedDevOrigins: ["127.0.0.1", "localhost"],
-  // Keep the Pi SDK out of the webpack/turbopack bundle so it loads from
-  // node_modules at runtime (Node-only deps, dynamic jiti loader, etc.).
-  //
+  reactCompiler: true,
   // `ws` (CDP browser host transport) must also stay external: when webpack
   // bundles it, the late `module.exports.mask = …` reassignment in ws's
   // buffer-util.js (the bufferutil-optional path) is mangled so the frame masker
@@ -25,28 +23,7 @@ const nextConfig: NextConfig = {
   // function", and every Page.startScreencast / Input.dispatchMouseEvent call
   // hangs until it times out. Loaded from node_modules, the unbundled masker
   // works and the screencast/input paths are solid.
-  serverExternalPackages: [
-    "@earendil-works/pi-coding-agent",
-    "@earendil-works/pi-agent-core",
-    "@earendil-works/pi-ai",
-    "@earendil-works/pi-tui",
-    "jiti",
-    "ws",
-  ],
-  // pi-ai's register-builtins.js pulls each provider (openai-completions, etc.)
-  // in dynamically, which Next's standalone tracer follows inconsistently — so a
-  // build can silently omit e.g. openai-completions.js and the agent then throws
-  // "Cannot find module …/providers/openai-completions.js" at runtime. Force the
-  // whole pi-ai dist (top-level AND the copy nested under pi-coding-agent) into
-  // the standalone output so the provider set is always complete.
-  outputFileTracingIncludes: {
-    "/api/**": [
-      "./node_modules/@earendil-works/pi-ai/dist/**/*.js",
-      "./node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/**/*.js",
-      "./node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/**/*",
-      "./node_modules/typebox/**/*",
-    ],
-  },
+  serverExternalPackages: ["ws"],
   outputFileTracingExcludes: {
     "/*": [
       // Dev-server output (NEXT_DIST_DIR=.next-dev) is not part of a build and
@@ -81,17 +58,9 @@ const nextConfig: NextConfig = {
       "../tsconfig*.json",
     ],
   },
-  // Ships raw .ts sources (no build step) — Next must transpile it.
-  //
-  // @local-studio/agent-runtime also ships raw .ts (services/agent-runtime), so
-  // it cannot be externalized (Node can't execute TypeScript at runtime in the
-  // standalone server) — it is transpiled and bundled with the app. Long-lived
-  // runtime state survives dev HMR through the package's single globalThis
-  // registry (services/agent-runtime/src/instances.ts).
-  transpilePackages: ["@local-studio/contracts", "@local-studio/agent-runtime"],
+  transpilePackages: ["@local-studio/contracts"],
   // The package and shared/agent live outside frontend/, so their real paths
-  // don't have frontend/node_modules on the walk-up resolution path. Teach
-  // webpack to also look here for their external deps (effect, the pi SDK).
+  // don't have frontend/node_modules on the walk-up resolution path.
   webpack: (config, { nextRuntime }) => {
     config.resolve.modules = [
       ...(config.resolve.modules ?? ["node_modules"]),
@@ -111,11 +80,6 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
-  // No resolveAlias here: turbopack rejects absolute alias targets ("server
-  // relative imports are not implemented yet"), and none is needed — the
-  // services/node_modules → frontend/node_modules symlink (postinstall
-  // link-services-node-modules.mjs) puts effect/the pi SDK on the walk-up
-  // path for the out-of-root agent-runtime sources.
   turbopack: {
     root: path.join(__dirname, ".."),
   },

@@ -12,6 +12,7 @@ import {
   pruneSessions,
 } from "@/features/agent/runtime/store";
 import {
+  findPaneBySessionId,
   findWorkspaceSessionByPiSessionId,
   paneSessionId,
   referencedSessionIds,
@@ -274,9 +275,10 @@ function openNewSessionInFocusedPane(
     const activeId = paneSessionId(pane);
     const active = activeId ? state.sessions.get(activeId) : undefined;
     if (active && isEmptyStarterSession(active)) {
+      const retargeted = { ...session, id: active.id };
       return withComposerFocusIntent(
-        focusSessionAsOnlyPane(state, targetPaneId, active.id),
-        active.id,
+        replaceWorkspaceSession(state, targetPaneId, retargeted),
+        retargeted.id,
       );
     }
     const minted = replaceWorkspaceSession(state, targetPaneId, session);
@@ -301,24 +303,26 @@ function replaySessionInFocusedPane(
   state: WorkspaceState,
   payload: ReplaySessionPayload,
 ): WorkspaceState {
-  if (!payload.piSessionId) return state;
-  const existing = findWorkspaceSessionByPiSessionId(state, payload.piSessionId);
+  if (!payload.sessionId) return state;
+  const existingSession = state.sessions.get(payload.sessionId);
+  const existing = existingSession ? findPaneBySessionId(state, payload.sessionId) : null;
   if (existing) {
-    if (existing.paneId) {
-      return payload.replaceWorkspace
-        ? focusSessionAsOnlyPane(state, existing.paneId, existing.session.id)
-        : focusExistingSession(state, existing.paneId, existing.session.id);
-    }
     return payload.replaceWorkspace
-      ? replaceWorkspaceSession(state, state.focusedPaneId, existing.session)
-      : replacePaneSession(state, state.focusedPaneId, existing.session);
+      ? focusSessionAsOnlyPane(state, existing.paneId, existing.session.id)
+      : focusExistingSession(state, existing.paneId, existing.session.id);
+  }
+  if (existingSession) {
+    return payload.replaceWorkspace
+      ? replaceWorkspaceSession(state, state.focusedPaneId, existingSession)
+      : replacePaneSession(state, state.focusedPaneId, existingSession);
   }
   const targetPaneId = state.focusedPaneId;
   if (payload.replaceWorkspace) {
     if (!isSession(payload.tab)) return state;
     return replaceWorkspaceSession(state, targetPaneId, {
       ...payload.tab,
-      piSessionId: payload.piSessionId,
+      id: payload.sessionId,
+      piSessionId: null,
       title: replaySessionTitle(payload.sessionTitle),
     });
   }
@@ -328,48 +332,38 @@ function replaySessionInFocusedPane(
   const active = activeId ? (state.sessions.get(activeId) ?? null) : null;
   const targetSession = active && isEmptyStarterSession(active) ? active : null;
   if (targetSession) {
-    return adoptReplaySession(state, targetPaneId, targetSession, payload);
+    return replacePaneSession(state, targetPaneId, {
+      ...targetSession,
+      id: payload.sessionId,
+      piSessionId: null,
+      title: replaySessionTitle(payload.sessionTitle),
+    });
   }
   if (!isSession(payload.tab)) return state;
   const session: Session = {
     ...payload.tab,
-    piSessionId: payload.piSessionId,
+    id: payload.sessionId,
+    piSessionId: null,
     title: replaySessionTitle(payload.sessionTitle),
   };
   return replacePaneSession(state, targetPaneId, session);
-}
-
-function adoptReplaySession(
-  state: WorkspaceState,
-  paneId: PaneId,
-  target: Session,
-  payload: ReplaySessionPayload,
-): WorkspaceState {
-  const input = state.sessionDrafts.get(payload.piSessionId) ?? target.input;
-  const sessions = patchSessionInMap(state.sessions, target.id, {
-    projectId: target.projectId ?? payload.tab?.projectId,
-    cwd: target.cwd ?? payload.tab?.cwd,
-    modelId: target.modelId ?? payload.tab?.modelId,
-    piSessionId: payload.piSessionId,
-    title: replaySessionTitle(payload.sessionTitle, target.title || "Loading session"),
-    startedAt: target.startedAt ?? payload.tab?.startedAt,
-    input,
-  });
-  return setPane(withSessions(state, sessions), paneId, { sessionId: target.id });
 }
 
 function replaySessionInSplitPane(
   state: WorkspaceState,
   payload: ReplaySessionInSplitPayload,
 ): WorkspaceState {
-  if (!payload.piSessionId) return state;
-  const existing = findWorkspaceSessionByPiSessionId(state, payload.piSessionId);
-  if (existing?.paneId) return focusExistingSession(state, existing.paneId, existing.session.id);
-  if (existing) return openSessionAdjacentToFocusedPane(state, existing.session, payload.paneId);
+  if (!payload.sessionId) return state;
+  const existingSession = state.sessions.get(payload.sessionId);
+  const existing = existingSession ? findPaneBySessionId(state, payload.sessionId) : null;
+  if (existing) return focusExistingSession(state, existing.paneId, existing.session.id);
+  if (existingSession)
+    return openSessionAdjacentToFocusedPane(state, existingSession, payload.paneId);
   if (!isSession(payload.tab)) return state;
   const session: Session = {
     ...payload.tab,
-    piSessionId: payload.piSessionId,
+    id: payload.sessionId,
+    piSessionId: null,
     title: replaySessionTitle(payload.sessionTitle),
   };
   return openSessionAdjacentToFocusedPane(state, session, payload.paneId);
@@ -554,7 +548,7 @@ export function applyUrlNavigation(
   }
   if (payload.sessionId && payload.split) {
     return replaySessionInSplitPane(marked, {
-      piSessionId: payload.sessionId,
+      sessionId: payload.sessionId,
       sessionTitle,
       tab,
       paneId,
@@ -562,7 +556,7 @@ export function applyUrlNavigation(
   }
   if (payload.sessionId) {
     return replaySessionInFocusedPane(marked, {
-      piSessionId: payload.sessionId,
+      sessionId: payload.sessionId,
       sessionTitle,
       tab,
       newPaneId: paneId,
@@ -580,7 +574,7 @@ type OpenNewSessionPayload = SessionPayload & {
   replaceWorkspace?: boolean;
 };
 type ReplaySessionPayload = SessionPayload & {
-  piSessionId: string;
+  sessionId: string;
   sessionTitle?: string;
   newPaneId?: PaneId;
   replaceWorkspace?: boolean;

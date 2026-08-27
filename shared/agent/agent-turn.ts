@@ -1,9 +1,8 @@
 // The /api/agent/turn wire contract: request parsing, command-result shape,
 // and the generic body-field helpers the other agent route parsers reuse.
 //
-// Moved here from frontend/src/features/agent/contracts.ts so the
-// @local-studio/agent-runtime HTTP handlers can share the exact parsing logic
-// with the frontend; the frontend module re-exports everything from this file.
+// Moved here from frontend/src/features/agent/contracts.ts so controller and
+// frontend callers share the exact parsing logic.
 
 import {
   agentImageDataError,
@@ -71,12 +70,16 @@ export const isAgentThinkingLevel = Schema.is(AgentThinkingLevelSchema);
 
 export type AgentTurnRequest = {
   sessionId: string;
+  harness: string;
   modelId: string;
+  modelRouteId?: string;
   thinkingLevel?: AgentThinkingLevel;
   message: string;
+  displayMessage?: string;
   images: AgentImageInput[];
   cwd?: string;
   piSessionId: string | null;
+  nativeSessionId: string | null;
   toolAccess: AgentToolAccess;
   browserToolEnabled: boolean;
   browserSessionId?: string;
@@ -92,6 +95,10 @@ export type AgentTurnRequest = {
 export type AgentTurnRuntimeStatus = {
   active?: boolean;
   running?: boolean;
+  harness?: string;
+  harnessVersion?: string | null;
+  capabilities?: string[];
+  nativeSessionId?: string | null;
   piSessionId?: string | null;
   modelId?: string | null;
   eventSeq?: number;
@@ -110,6 +117,9 @@ export type AgentTurnCommandResult = {
   // it resolved the command to. The client sends the session id as that key
   // and does not read this back.
   runtimeSessionId: string;
+  harness?: string;
+  harnessVersion?: string | null;
+  nativeSessionId?: string | null;
   piSessionId?: string | null;
   active: boolean;
   status?: AgentTurnRuntimeStatus;
@@ -121,18 +131,26 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
   if (!body) return { ok: false, error: "Invalid JSON body" };
   const message = stringField(body, "message", true);
   if (!message.ok) return message;
+  const displayMessage = stringField(body, "displayMessage");
+  if (!displayMessage.ok) return displayMessage;
   const modelId = stringField(body, "modelId", true);
   if (!modelId.ok) return modelId;
+  const modelRouteId = stringField(body, "modelRouteId");
+  if (!modelRouteId.ok) return modelRouteId;
   const thinkingLevel = body.thinkingLevel;
   if (thinkingLevel != null && !isAgentThinkingLevel(thinkingLevel)) {
     return { ok: false, error: "thinkingLevel must be a supported reasoning level" };
   }
   const sessionId = stringField(body, "sessionId");
   if (!sessionId.ok) return sessionId;
+  const harness = stringField(body, "harness");
+  if (!harness.ok) return harness;
   const cwd = stringField(body, "cwd");
   if (!cwd.ok) return cwd;
   const piSessionId = stringField(body, "piSessionId");
   if (!piSessionId.ok) return piSessionId;
+  const nativeSessionId = stringField(body, "nativeSessionId");
+  if (!nativeSessionId.ok) return nativeSessionId;
   const browserSessionId = stringField(body, "browserSessionId");
   if (!browserSessionId.ok) return browserSessionId;
   const browserBackend = body.browserBackend === "chrome" ? "chrome" : "embedded";
@@ -161,12 +179,16 @@ export function parseAgentTurnRequest(input: unknown): ParseResult<AgentTurnRequ
     ok: true,
     value: {
       sessionId: sessionId.value ?? "default",
+      harness: harness.value ?? "pi",
       modelId: modelId.value!,
+      ...(modelRouteId.value ? { modelRouteId: modelRouteId.value } : {}),
       ...(thinkingLevel ? { thinkingLevel } : {}),
       message: message.value!,
+      ...(displayMessage.value ? { displayMessage: displayMessage.value } : {}),
       images: images.value,
       cwd: cwd.value,
       piSessionId: piSessionId.value ?? null,
+      nativeSessionId: nativeSessionId.value ?? piSessionId.value ?? null,
       toolAccess: body.toolAccess === "full" ? "full" : "read_only",
       browserToolEnabled: boolField(body, "browserToolEnabled"),
       browserSessionId: browserSessionId.value,

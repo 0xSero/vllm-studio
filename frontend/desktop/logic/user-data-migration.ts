@@ -28,8 +28,6 @@ const MIGRATED_USER_DATA_PATHS = [
   "logs",
   "mcp",
   "pi-agent",
-  "projects.json",
-  "session-prefs.json",
   "ui-preferences.json",
   "vekor",
 ] as const;

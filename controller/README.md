@@ -1,122 +1,56 @@
-# Controller
+# Zig controller
 
-`controller/` is the Bun/Hono backend for Local Studio. It exposes the HTTP API that the frontend and desktop app use to manage models, proxy inference requests, read runtime status, and inspect usage/system data.
+`controller/` is the only Local Studio backend. It builds
+`local-studio-controller`, which can run as a head, worker, or standalone node.
 
-## What It Does
+## Source layout
 
-- Launches and evicts model-serving runtimes through recipes.
-- Discovers and selects runtime targets for vLLM, SGLang, llama.cpp, and MLX.
-- Proxies OpenAI-compatible model, chat, and tokenization requests.
-- Streams controller/runtime events over SSE.
-- Tracks GPU/system status, logs, downloads, usage, controller settings, and persisted runtime state.
-- Provides Swagger/OpenAPI documentation for the controller API.
+| Directory | Ownership |
+|---|---|
+| `src/app/` | Configuration, process composition, and shutdown |
+| `src/http/` | HTTP server, canonical route registry, and reverse proxy |
+| `src/agent/` | Sessions, harnesses, browser, MCP, projects, tools, and automations |
+| `src/providers/` | Provider catalog, routing, OpenAI protocol, Codex, and Cursor gateways |
+| `src/inference/` | Models, recipes, downloads, runtimes, compute, usage, and tokenization |
+| `src/topology/` | Head/worker connectivity, rigs, enrollment, and node transport |
+| `src/accounts/` | Account records, OAuth, Google, and Code Storage authentication |
+| `src/system/` | Metrics, logs, settings, telemetry, storage, and host information |
+| `src/storage/` | Shared SQLite compatibility layer |
+| `src/generated/` | Build-checked Zig generated from canonical JSON contracts |
+| `src/assets/` | Runtime assets embedded in the executable |
 
-## What Is In Use
+`src/main.zig` is the executable entry point. Domain stores live beside the
+services that own them; there is no global repository or services bucket.
 
-- Bun runtime.
-- Hono HTTP framework.
-- Effect Schema configuration and boundary validation.
-- SQLite-backed local stores.
-- Swagger UI from `@hono/swagger-ui`.
-- Runtime probes for Python, Docker, `llama-server`, and MLX Python environments.
+## Contracts
 
-## Architecture
-
-```mermaid
-flowchart TB
-    Main["src/main.ts"] --> App["src/http/app.ts"]
-    App --> Security["security middleware"]
-    App --> Engines["modules/engines"]
-    App --> Models["modules/models"]
-    App --> Proxy["modules/proxy"]
-    App --> Studio["modules/studio"]
-    App --> System["modules/system"]
-
-    Engines --> Runtime["runtime process coordination"]
-    Engines --> Targets["runtime target discovery"]
-    Models --> Recipes["recipe and model discovery"]
-    Proxy --> Inference["OpenAI-compatible inference client"]
-    System --> Metrics["metrics, logs, usage, events"]
-    System --> Stores["src/stores SQLite helpers"]
-```
-
-## Prerequisites
-
-- Bun 1.x.
-- Optional NVIDIA/CUDA stack for CUDA model serving.
-- Optional Apple Silicon plus `mlx-lm` for MLX model serving.
-- Optional `llama-server` binary for llama.cpp/GGUF model serving.
-- Optional Docker/Compose infrastructure depending on deployment mode.
-
-## Common Commands
+Canonical route and model data lives in [`../contracts/`](../contracts/).
+`build.zig` embeds those JSON contracts. Regenerate and validate the route table
+with:
 
 ```bash
-bun install
-bun src/main.ts
-bun --watch src/main.ts
-bun run typecheck
-bun run lint
-bun run check
+node contracts/validate-http-routes.mjs
+node contracts/generate-zig-http-routes.mjs --write
 ```
 
-## API Entry Points
+## Cursor provider bridge
 
-- `GET /health`
-- `GET /status`
-- `GET /gpus`
-- `GET /api/spec`
-- `GET /api/docs`
-- `GET /v1/models`
-- `POST /v1/chat/completions`
-- `POST /v1/responses` — OpenAI Responses API, passed through to the engine
-- `POST /v1/messages` — Anthropic Messages API, passed through to the engine (point `ANTHROPIC_BASE_URL` at the controller)
-- `GET /v1/studio/models`
-- `GET /studio/downloads`
-- `GET /runtime/targets`
-- `GET /runtime/vllm`
-- `GET /runtime/sglang`
-- `GET /runtime/llamacpp`
-- `GET /runtime/mlx`
-
-Route registration starts in `src/http/app.ts`.
-
-## Configuration
-
-Configuration parsing lives in `src/config/env.ts`. Runtime state is stored under the configured data directory; when running from `controller/`, the default data path resolves to the repo-level `data/` directory.
-
-Use `.env.local` for machine-specific secrets and deployment values.
-
-Runtime-related environment variables include:
-
-- `LOCAL_STUDIO_SGLANG_PYTHON`: preferred SGLang Python executable.
-- `LOCAL_STUDIO_LLAMA_BIN`: preferred llama.cpp `llama-server` executable.
-- `LOCAL_STUDIO_MLX_PYTHON`: preferred Python executable containing `mlx-lm`.
-- `LOCAL_STUDIO_RUNTIME_SKIP_SYSTEM`: skip system Python/binary discovery when set to `1`.
-- `LOCAL_STUDIO_RUNTIME_SKIP_DOCKER`: skip Docker image/container discovery when set to `1`.
-
-## Where To Look
-
-- `src/main.ts`: server boot.
-- `src/app-context.ts`: shared controller dependencies.
-- `src/http/app.ts`: HTTP app and route mounting.
-- `src/modules/engines/`: lifecycle, recipes, downloads, runtime process management, and runtime target discovery.
-- `src/modules/proxy/`: OpenAI-compatible proxy and inference accounting.
-- `src/modules/system/`: metrics, logs, usage, events, and platform state.
-- `src/stores/`: SQLite helpers and persisted stores.
-- `contracts/`: the `@local-studio/contracts` package — the controller's HTTP API contract, consumed by the frontend via a `file:` dependency.
-
-## Pointing SDKs at the controller
-
-The controller speaks three dialects, all proxied to the engine:
+Cursor is integrated as a model provider, not as an agent harness. The isolated
+TypeScript bridge lives in `bridges/cursor/` because the upstream Cursor client
+is a JavaScript package. Its build produces the embedded
+`src/assets/cursor-provider.mjs`; it is not a backend process.
 
 ```bash
-# OpenAI SDK (chat completions or the Responses API)
-OPENAI_BASE_URL=http://127.0.0.1:8080/v1
-
-# Anthropic SDK (Messages API; x-api-key auth is accepted)
-ANTHROPIC_BASE_URL=http://127.0.0.1:8080
+bun install --cwd controller/bridges/cursor --frozen-lockfile
+bun run --cwd controller/bridges/cursor build
 ```
 
-Model ids resolve the same way on every route: `provider/model` ids go to
-that configured provider with its key; anything else is canonicalized to the
-recipe's served model name.
+## Build
+
+```bash
+node controller/toolchain.mjs build
+```
+
+The toolchain pins Zig, prepares the embedded FX source, validates its patch,
+and invokes `zig build`. The root workspace build refreshes the Cursor asset
+before invoking the toolchain. Release builds use `-Doptimize=ReleaseSafe`.

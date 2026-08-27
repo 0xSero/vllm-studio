@@ -1,3 +1,5 @@
+import type { AgentHarness } from "./harness-id";
+
 export type SessionSummary = {
   id: string;
   filename: string;
@@ -5,6 +7,8 @@ export type SessionSummary = {
   startedAt: string;
   updatedAt: string;
   modelId: string | null;
+  modelRouteId?: string | null;
+  harness?: AgentHarness;
   provider: string | null;
   firstUserMessage: string | null;
   // The most recent user prompt, which is what the recents list sorts and

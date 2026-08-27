@@ -2,7 +2,7 @@
 
 ## Objective
 
-Local Studio evolves its existing controller and rig model into a federated controller topology. Desktop applications keep their local UI, Pi runtime, harness, tools, files, and Pi JSONL sessions. They use one separately deployed Head controller for every controller API operation. The Head coordinates manually configured Worker controllers that own GPU compute, models, recipes, downloads, runtime configuration, metrics, and logs.
+Local Studio evolves its existing controller and rig model into a federated controller topology. Desktop applications keep their local UI while system-installed harnesses and tools run through controllers. They use one separately deployed Head controller for every controller API operation. The Head coordinates manually configured Worker controllers that own GPU compute, models, recipes, downloads, runtime configuration, metrics, logs, and harness sessions.
 
 ## Controller modes
 
@@ -18,7 +18,7 @@ The existing rig roles are the topology source of truth. A separate Hub service 
 
 ```text
 Desktop A                          Desktop B
-Local UI + Pi + files             Local UI + Pi + files
+Local UI                          Local UI
         |                                  |
         +---------- controller API --------+
                            |
@@ -38,7 +38,7 @@ The Head is reachable on a private local network only. Authentication is deferre
 
 Workers are added manually through the existing rig UI. A Worker connection contains its controller address, display name, and optional API key. The Head stores credentials without returning them to clients.
 
-A desktop that should also run local inference runs a Worker controller alongside its UI and Pi runtime, then adds that controller to the Head like any other Worker. The desktop application is not a separate compute node, and the Head's detected hardware never contributes to the inference pool.
+A desktop that should also run local inference or a system-installed harness runs a Worker controller alongside its UI, then adds that controller to the Head like any other Worker. The desktop application is not a separate compute node, and the Head's detected hardware never contributes to the inference pool.
 
 Management surfaces expose a Worker picker populated from the Head. Configure, Status, Usage, and Logs operate on the selected Worker. Every mutating operation targets one Worker explicitly. There is no broadcasting, automatic placement, GPU pooling, or distributed scheduling.
 
@@ -46,7 +46,7 @@ Recipes remain stored on their Worker. Model downloads, runtime installations, c
 
 ## Inference routing
 
-The desktop and Pi runtime use the Head as their only OpenAI-compatible controller endpoint. The chat model picker selects a model, never a Worker.
+The desktop and discovered harnesses use the Head as their only OpenAI-compatible controller endpoint. The chat model picker selects a model, never a Worker.
 
 The Head aggregates models currently served by healthy Workers. For a request, it chooses the healthy Worker serving the selected model with the fewest active inference streams. A Worker may accept as many concurrent requests as its backend supports.
 
@@ -127,7 +127,7 @@ The first release is accepted after hands-on validation with a Head, at least on
 11. Worker-owned recipes, files, and settings remain intact;
 12. `npm run check` succeeds.
 
-The repository does not add automated test code for these scenarios. They are exercised against live controller, frontend, agent-runtime, and desktop processes.
+The repository does not add automated test code for these scenarios. They are exercised against live controller, frontend, and desktop processes.
 
 ## Local operation
 
@@ -137,13 +137,13 @@ Run each controller with its own data and model directories. The Head must bind 
 LOCAL_STUDIO_CONTROLLER_MODE=worker \
 LOCAL_STUDIO_PORT=8081 \
 LOCAL_STUDIO_DATA_DIR="$PWD/.local-studio-worker" \
-bun --cwd controller run start
+./controller/zig-out/bin/local-studio-controller
 
 LOCAL_STUDIO_CONTROLLER_MODE=head \
 LOCAL_STUDIO_HOST=0.0.0.0 \
 LOCAL_STUDIO_PORT=8080 \
 LOCAL_STUDIO_DATA_DIR="$PWD/.local-studio-head" \
-bun --cwd controller run start
+./controller/zig-out/bin/local-studio-controller
 ```
 
 Connect the desktop to the Head URL. In Configure → Machines, add each Worker using its controller address and optional API key. Select a Worker in the Configure header before using model lifecycle, downloads, settings, metrics, events, or logs. The chat model picker remains Worker-free and the Head returns `model_not_running` until a selected Worker has explicitly launched a recipe for that model.

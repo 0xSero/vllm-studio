@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useState, type DragEvent, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { Button, UiModal, UiModalBody, UiModalFooter, UiModalHeader } from "@/ui";
 import { PlusIcon } from "@/ui/icons";
-import { usePersistentTerminalOwners } from "@/features/agent/ui/use-persistent-terminal-owners";
 import {
   useProjectsNavAddProjectEffect,
   useProjectsNavSessionPrefs,
@@ -24,9 +24,10 @@ import { isProjectPinned, toggleProjectPin, usePinnedNav } from "./projects-nav/
 import { PinnedSection } from "./projects-nav/pinned-section";
 import { RecentSessionsSection } from "./projects-nav/recent-sessions-section";
 import { NewChatPlusButton, ProjectRow, ProjectSessions } from "./projects-nav/session-rows";
-import { TerminalRow } from "./projects-nav/terminal-rows";
+import { AddProjectMenu } from "./projects-nav/add-project-menu";
 
 export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view: NavView }) {
+  const router = useRouter();
   const projectsContext = useProjects();
   const projects = projectsContext.projects;
   const { moveProjectBefore, refresh: refreshProjects, upsertProject } = projectsContext;
@@ -35,19 +36,19 @@ export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view
   const activity = useSessionActivity();
   const prefs = useProjectsNavSessionPrefs();
   const pinned = usePinnedNav({ expanded, projects, activeSessions, prefs });
-  const terminalOwners = usePersistentTerminalOwners(false, null).owners;
   const sections = useNavSectionOrder();
 
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(new Set());
   const [addError, setAddError] = useState("");
   const [directoryModalOpen, setDirectoryModalOpen] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [projectsExpanded, setProjectsExpanded] = useState(true);
   const [chatsExpanded, setChatsExpanded] = useState(true);
-  const [terminalsExpanded, setTerminalsExpanded] = useState(true);
   const [dragProjectId, setDragProjectId] = useState<string | null>(null);
+  const addProjectButtonRef = useRef<HTMLButtonElement>(null);
   const removal = useProjectRemoval(projectsContext.removeProject, setOpenIds, setAddError);
 
-  const handleAddProject = useCallback(async () => {
+  const handleUseFolder = useCallback(async () => {
     setAddError("");
     try {
       const result = await openProjectDirectory();
@@ -60,7 +61,7 @@ export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view
       setAddError(error instanceof Error ? error.message : "Failed to add project");
     }
   }, [upsertProject]);
-  useProjectsNavAddProjectEffect(handleAddProject);
+  useProjectsNavAddProjectEffect(() => setAddMenuOpen(true));
 
   const handleDirectoryPicked = async (directoryPath: string) => {
     setAddError("");
@@ -125,30 +126,27 @@ export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view
     projects: (
       <>
         <SidebarSectionHeader
-          label="Projects"
+          label="Workspaces"
           open={projectsExpanded}
           onToggle={() => setProjectsExpanded((value) => !value)}
           {...sections.headerDragProps("projects")}
           action={
             <button
               type="button"
-              onClick={handleAddProject}
+              ref={addProjectButtonRef}
+              onClick={() => setAddMenuOpen((value) => !value)}
               className="flex h-5 w-5 items-center justify-center rounded text-(--dim) transition-colors hover:text-(--fg)"
-              title="Add folder"
-              aria-label="Add folder"
+              title="Add project"
+              aria-label="Add project"
             >
               <PlusIcon className="block h-3.5 w-3.5" />
             </button>
           }
         />
         {!projectsExpanded ? null : unpinnedProjects.length === 0 ? (
-          <button
-            type="button"
-            onClick={handleAddProject}
-            className="px-2 py-1 text-left text-[length:var(--fs-md)] text-(--dim) hover:text-(--fg)"
-          >
-            No projects yet — pick a folder to get started.
-          </button>
+          <div className="px-2 py-1 text-[length:var(--fs-xs)] leading-relaxed text-(--dim)/65">
+            No projects yet.
+          </div>
         ) : (
           <>
             {unpinnedProjects.map((project) => (
@@ -189,18 +187,18 @@ export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view
         )}
       </>
     ),
-    tasks: chatProject ? (
+    chats: chatProject ? (
       <>
         <SidebarSectionHeader
-          label="Tasks"
+          label="Chats"
           open={chatsExpanded}
           indicator={chatsHasActivity}
           onToggle={() => setChatsExpanded((value) => !value)}
-          {...sections.headerDragProps("tasks")}
+          {...sections.headerDragProps("chats")}
           action={
             <NewChatPlusButton
               project={chatProject}
-              label="New task"
+              label="New chat"
               className="flex h-5 w-5 items-center justify-center rounded text-(--dim) transition-colors hover:text-(--fg)"
             />
           }
@@ -215,22 +213,6 @@ export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view
         ) : null}
       </>
     ) : null,
-    terminals:
-      terminalOwners.length > 0 ? (
-        <>
-          <SidebarSectionHeader
-            label="Terminals"
-            open={terminalsExpanded}
-            onToggle={() => setTerminalsExpanded((value) => !value)}
-            {...sections.headerDragProps("terminals")}
-          />
-          {terminalsExpanded
-            ? terminalOwners.map((owner, index) => (
-                <TerminalRow key={owner.mountKey} owner={owner} index={index} />
-              ))
-            : null}
-        </>
-      ) : null,
   };
 
   return (
@@ -240,6 +222,19 @@ export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view
         error={addError}
         onClose={() => setDirectoryModalOpen(false)}
         onSelect={(directoryPath) => void handleDirectoryPicked(directoryPath)}
+        anchorRef={addProjectButtonRef}
+      />
+      <AddProjectMenu
+        open={addMenuOpen}
+        anchorRef={addProjectButtonRef}
+        onClose={() => setAddMenuOpen(false)}
+        onAdded={(project) => {
+          upsertProject(project);
+          projectsContext.selectProject(project);
+          void refreshProjects();
+          router.push(`/agent?project=${encodeURIComponent(project.id)}&new=1&replace=1`);
+        }}
+        onUseFolder={() => void handleUseFolder()}
       />
       <ProjectRemoveConfirmModal
         project={removal.project}
@@ -325,10 +320,7 @@ function ProjectRemoveConfirmModal({
             Remove <span className="font-medium text-(--ui-fg)">{project.name}</span> from the
             sidebar?
           </p>
-          <p className="break-all font-mono text-[length:var(--fs-sm)] text-(--dim)">
-            {project.path}
-          </p>
-          <p>This does not delete files from disk or archive existing sessions.</p>
+          <p>Archive its tasks first. The repository on Code.Storage is kept.</p>
         </div>
       </UiModalBody>
       <UiModalFooter>

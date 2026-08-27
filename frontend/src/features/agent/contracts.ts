@@ -2,8 +2,7 @@ import type { AgentImageInput } from "@shared/agent/agent-image-input";
 
 export type { AgentImageInput };
 // The turn wire contract + generic body-field helpers live in
-// shared/agent/agent-turn.ts so the @local-studio/agent-runtime HTTP handlers
-// can share them; re-exported here for frontend callers.
+// shared/agent/agent-turn.ts and are re-exported here for frontend callers.
 export {
   objectRecord,
   stringField,
@@ -28,7 +27,6 @@ export type {
 import {
   objectRecord,
   stringField,
-  stringArray,
   type ParseResult,
   type AgentTurnRuntimeStatus,
   type AgentTurnCommandResult,
@@ -36,7 +34,6 @@ import {
 
 export type GitRef = { name: string; current: boolean; remote: boolean };
 export type GitBranch = { name: string; current: boolean; remote: boolean };
-export type GitWorktree = { path: string; branch: string | null; current: boolean };
 export type GitStatusEntry = { code: string; path: string };
 
 export type GitState = {
@@ -63,47 +60,6 @@ export type GitAction =
   | { action: "create_branch"; branch: string }
   | { action: "add_worktree"; branch: string; path: string }
   | { action: "remove_worktree"; path: string };
-
-export function parseGitAction(input: unknown): ParseResult<GitAction> {
-  const body = objectRecord(input);
-  if (!body || typeof body.action !== "string") {
-    return { ok: false, error: "action is required" };
-  }
-  if (body.action === "init") return { ok: true, value: { action: "init" } };
-  if (body.action === "push") return { ok: true, value: { action: "push" } };
-  if (body.action === "checkout") {
-    const ref = stringField(body, "ref", true);
-    return ref.ok ? { ok: true, value: { action: "checkout", ref: ref.value! } } : ref;
-  }
-  if (body.action === "switch_branch" || body.action === "create_branch") {
-    const branch = stringField(body, "branch", true);
-    if (!branch.ok) return branch;
-    return { ok: true, value: { action: body.action, branch: branch.value! } };
-  }
-  if (body.action === "add_worktree") {
-    const branch = stringField(body, "branch", true);
-    if (!branch.ok) return branch;
-    const path = stringField(body, "path", true);
-    if (!path.ok) return path;
-    return {
-      ok: true,
-      value: { action: "add_worktree", branch: branch.value!, path: path.value! },
-    };
-  }
-  if (body.action === "remove_worktree") {
-    const path = stringField(body, "path", true);
-    return path.ok ? { ok: true, value: { action: "remove_worktree", path: path.value! } } : path;
-  }
-  if (body.action === "commit") {
-    const message = stringField(body, "message", true);
-    if (!message.ok) return message;
-    return {
-      ok: true,
-      value: { action: "commit", message: message.value!, paths: stringArray(body.paths) },
-    };
-  }
-  return { ok: false, error: `Unsupported git action: ${body.action}` };
-}
 
 export type TerminalRunRequest = { command: string };
 export type TerminalRunResult = {
@@ -138,6 +94,9 @@ export function parseAgentTurnCommandResult(input: unknown): AgentTurnCommandRes
     type: "command",
     outcome,
     runtimeSessionId,
+    harness: typeof payload.harness === "string" ? payload.harness : undefined,
+    harnessVersion: typeof payload.harnessVersion === "string" ? payload.harnessVersion : null,
+    nativeSessionId: typeof payload.nativeSessionId === "string" ? payload.nativeSessionId : null,
     piSessionId: typeof payload.piSessionId === "string" ? payload.piSessionId : null,
     active: payload.active === true,
     status: objectRecord(payload.status) ? (payload.status as AgentTurnRuntimeStatus) : undefined,

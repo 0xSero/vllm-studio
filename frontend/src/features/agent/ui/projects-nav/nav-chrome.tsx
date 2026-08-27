@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useAutoAnimate } from "@formkit/auto-animate/react";
 import type { SessionActivity } from "@/features/agent/session-index";
 import { Spinner } from "@/ui";
 import { PinIcon } from "@/ui/icon-registry";
@@ -44,9 +45,6 @@ export function SessionStatusMark({
   return null;
 }
 
-/** The one pin control for every sidebar row (sessions and projects). It sits in
- *  the row's hover action cluster and, once pinned, stays lit as the pinned
- *  indicator. */
 export function PinButton({
   pinned,
   onToggle,
@@ -66,13 +64,10 @@ export function PinButton({
       }}
       aria-label={pinned ? `Unpin ${target}` : `Pin ${target}`}
       title={pinned ? "Unpin" : "Pin"}
-      // Hidden at rest even when pinned — living in the Pinned section already
-      // says so, and an always-on glyph collided with the date column. On hover
-      // it slides in from the left over the trailing text with a fade.
-      className={`inline-flex h-5 w-5 items-center justify-center rounded-[var(--rad-xs)] transition-[opacity,transform,color] duration-150 hover:text-(--fg) ${
-        pinned ? "text-(--fg)/75" : "text-(--dim)/70"
-      } ${
-        "-translate-x-1.5 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 focus-visible:translate-x-0 focus-visible:opacity-100 pointer-coarse:translate-x-0 pointer-coarse:opacity-100"
+      className={`inline-flex h-5 w-5 items-center justify-center transition-[opacity,color] duration-[var(--motion-fast)] hover:text-white ${
+        pinned
+          ? "text-(--fg)/85 opacity-90"
+          : "pointer-events-none opacity-0 text-(--dim)/70 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100"
       }`}
     >
       <PinIcon className="pointer-events-none h-3 w-3" />
@@ -80,10 +75,21 @@ export function PinButton({
   );
 }
 
-/** Flat column that session rows live in - no guide line, no indent, so rows
- *  start at the same x-column as the section header text. */
-export function SidebarRail({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col">{children}</div>;
+export function SidebarRail({
+  children,
+  animate = true,
+  className = "",
+}: {
+  children: ReactNode;
+  animate?: boolean;
+  className?: string;
+}) {
+  const [animationRef] = useAutoAnimate<HTMLDivElement>({ duration: 150, easing: "ease-out" });
+  return (
+    <div ref={animate ? animationRef : undefined} className={`flex flex-col ${className}`}>
+      {children}
+    </div>
+  );
 }
 
 export function SidebarSectionHeader({
@@ -107,7 +113,7 @@ export function SidebarSectionHeader({
 }) {
   return (
     <div
-      className="group flex cursor-default items-center justify-between pe-0.5 ps-2 pb-1 pt-5 text-[length:var(--fs-md)] font-medium text-(--hl2) opacity-75 transition-opacity group-hover:opacity-100"
+      className="group flex cursor-default items-center justify-between pe-1 ps-2 pb-1 pt-3 text-[length:var(--fs-sm)] font-medium text-(--hl2) opacity-75 transition-opacity duration-[var(--motion-fast)] group-hover:opacity-100"
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
@@ -127,11 +133,11 @@ export function SidebarSectionHeader({
           />
         ) : null}
         <ChevronDownIcon
-          className={`h-2.5 w-2.5 shrink-0 opacity-0 transition-[opacity,transform] group-hover:opacity-100 group-focus-within:opacity-100 ${open ? "" : "-rotate-90"}`}
+          className={`h-2.5 w-2.5 shrink-0 opacity-0 transition-[opacity,transform] duration-[var(--motion-fast)] group-hover:opacity-100 group-focus-within:opacity-100 ${open ? "" : "-rotate-90"}`}
         />
       </button>
       {action ? (
-        <div className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        <div className="opacity-0 transition-opacity duration-[var(--motion-fast)] group-hover:opacity-100 group-focus-within:opacity-100">
           {action}
         </div>
       ) : null}

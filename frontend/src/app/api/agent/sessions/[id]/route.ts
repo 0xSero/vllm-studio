@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
-import { proxyToAgentRuntime } from "@/app/api/agent/proxy-to-runtime";
+import { proxyToController } from "@/app/api/agent/proxy-to-controller";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest): Promise<Response> {
-  return proxyToAgentRuntime(request);
+  return proxyToController(request);
 }
 
 export async function PATCH(request: NextRequest): Promise<Response> {
-  return proxyToAgentRuntime(request, { bodyLimitBytes: 64 * 1024 });
+  return proxyToController(request, { bodyLimitBytes: 64 * 1024 });
 }

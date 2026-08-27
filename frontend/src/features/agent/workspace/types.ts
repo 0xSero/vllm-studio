@@ -1,4 +1,4 @@
-import type { AgentModel } from "@/features/agent/models";
+import type { CatalogAgentModel as AgentModel } from "@/features/agent/models";
 import type { Project } from "@/features/agent/projects/types";
 import type { Session, SessionId, SessionsMap } from "@/features/agent/runtime/types";
 import type { Layout, PaneId } from "@/features/agent/workspace/layout";
@@ -6,7 +6,7 @@ import type { SessionDrafts } from "@/features/agent/workspace/session-drafts";
 
 export type { PaneId } from "@/features/agent/workspace/layout";
 export type { SessionId } from "@/features/agent/runtime/types";
-export type { AgentModel } from "@/features/agent/models";
+export type { CatalogAgentModel as AgentModel } from "@/features/agent/models";
 
 export type WorkspaceLayout = Layout;
 
@@ -24,6 +24,7 @@ export type WorkspaceState = {
   sessionDrafts: SessionDrafts;
   models: AgentModel[];
   selectedModel: string;
+  selectedRoute: string;
   modelsLoading: boolean;
   layout: WorkspaceLayout;
   panesById: ReadonlyMap<PaneId, PaneState>;
@@ -63,8 +64,13 @@ export type WorkspaceHydration = Partial<WorkspaceState>;
 export type WorkspaceAction =
   | { type: "hydrate"; state: WorkspaceHydration; hydrated?: boolean }
   | { type: "setModelsLoading"; loading: boolean }
-  | { type: "setModels"; models: AgentModel[]; preferredModelId?: string }
-  | { type: "setSelectedModel"; modelId: string }
+  | {
+      type: "setModels";
+      models: AgentModel[];
+      preferredModelId?: string;
+      preferredRouteId?: string;
+    }
+  | { type: "setModelSelection"; modelId: string; routeId: string }
   | { type: "setSetupWarning"; warning: string }
   | { type: "setError"; error: string }
   | { type: "setSplitRatio"; path: number[]; ratio: number }

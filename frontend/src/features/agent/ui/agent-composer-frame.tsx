@@ -14,7 +14,6 @@ import type {
   ComposerPromptTemplateRef,
   ComposerSkillRef,
 } from "@/features/agent/composer-context";
-import type { BrowserBackend } from "@/features/agent/tools/types";
 import type { ComposerBanner } from "@/features/agent/composer/composer-visual-state";
 import { Spinner } from "@/ui";
 import { POPOVER_MENU_CLASS } from "@/ui/popover";
@@ -36,12 +35,11 @@ import { CloseIcon } from "@/ui/icons";
 export type AgentComposerFrameProps = {
   attachments: AgentComposerAttachment[];
   banner: ComposerBanner | null;
-  browserToolEnabled: boolean;
-  browserBackend: BrowserBackend;
   composerDragActive: boolean;
   contextWindow: number;
   currentContextTokens: number;
   cwd: string;
+  projectName?: string | null;
   fileInputRef: RefObject<HTMLInputElement | null>;
   gitBranch?: string | null;
   gitSummary?: GitSummary | null;
@@ -51,6 +49,8 @@ export type AgentComposerFrameProps = {
   mentionRows: MentionRow[];
   modelSupportsVision: boolean;
   modelSelector?: ReactNode;
+  contextOpen: boolean;
+  onOpenContext: () => void;
   onAbortTurn: () => void;
   onAttachFiles: (files: FileList | null) => void;
   onComposerChange: ChangeEventHandler<HTMLTextAreaElement>;
@@ -60,18 +60,16 @@ export type AgentComposerFrameProps = {
   onComposerKeyDown: KeyboardEventHandler<HTMLTextAreaElement>;
   onComposerPaste: ClipboardEventHandler<HTMLTextAreaElement>;
   onInitGit?: () => void;
-  onOpenStatus: () => void;
   onOpenDiff: () => void;
   onRemoveAttachment: (id: string) => void;
   onRemoveLoadedContext: (kind: LoadedContextKind, id: string) => void;
   onSelectMention: (entry: MentionRow) => void;
   onSubmit: FormEventHandler<HTMLFormElement>;
-  onToggleBrowserBackend: () => void;
-  onToggleBrowserTool: () => void;
   placeholder: string;
   goalMode?: boolean;
   onExitGoalMode?: () => void;
   drawer?: ReactNode;
+  setupBar?: ReactNode;
   showStatusBar: boolean;
   promptTemplates: ComposerPromptTemplateRef[];
   readingAttachments: boolean;
@@ -79,6 +77,7 @@ export type AgentComposerFrameProps = {
   selectedSkills: ComposerSkillRef[];
   status?: string;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
+  contextTriggerRef: RefObject<HTMLButtonElement | null>;
   floating?: boolean;
   dense?: boolean;
 };
@@ -86,12 +85,11 @@ export type AgentComposerFrameProps = {
 export function AgentComposerFrame({
   attachments,
   banner,
-  browserToolEnabled,
-  browserBackend,
   composerDragActive,
   contextWindow,
   currentContextTokens,
   cwd,
+  projectName,
   fileInputRef,
   gitBranch,
   gitSummary,
@@ -101,6 +99,8 @@ export function AgentComposerFrame({
   mentionRows,
   modelSupportsVision,
   modelSelector,
+  contextOpen,
+  onOpenContext,
   onAbortTurn,
   onAttachFiles,
   onComposerChange,
@@ -110,18 +110,16 @@ export function AgentComposerFrame({
   onComposerKeyDown,
   onComposerPaste,
   onInitGit,
-  onOpenStatus,
   onOpenDiff,
   onRemoveAttachment,
   onRemoveLoadedContext,
   onSelectMention,
   onSubmit,
-  onToggleBrowserBackend,
-  onToggleBrowserTool,
   placeholder,
   goalMode = false,
   onExitGoalMode,
   drawer,
+  setupBar,
   showStatusBar,
   promptTemplates,
   readingAttachments,
@@ -129,6 +127,7 @@ export function AgentComposerFrame({
   selectedSkills,
   status,
   textareaRef,
+  contextTriggerRef,
   floating = false,
   dense = false,
 }: AgentComposerFrameProps) {
@@ -136,32 +135,33 @@ export function AgentComposerFrame({
     <form
       onSubmit={onSubmit}
       className={cx(
-        "relative z-[100] shrink-0",
+        "agent-composer-form relative z-[100] mx-auto w-full max-w-(--thread-w) shrink-0 px-4",
         floating
-          ? "bg-transparent p-[calc(var(--space-base)*2)]"
+          ? "bg-transparent"
           : dense
-            ? "bg-(--agent-bg) px-3 pb-1 pt-1.5"
-            : "bg-transparent px-3 pb-2 pt-0 sm:px-5",
+            ? "bg-(--agent-bg) pb-0.5 pt-0.5"
+            : "bg-transparent pb-1.5 pt-0",
       )}
     >
       {banner ? (
-        <div className="mx-auto flex w-full max-w-[calc(var(--composer-w)*0.9)] items-center gap-2 pb-3 pl-1 text-[length:var(--codex-chat-font-size)] text-(--fg)/35 sm:w-[90%]">
+        <div className="flex w-full items-center gap-2 pb-3 pl-1 text-[length:var(--codex-chat-font-size)] text-(--fg)/35">
           <Spinner size="xs" />
           {banner.label}
         </div>
       ) : null}
-      {drawer}
+      {setupBar}
+      {drawer ? <div className="w-full">{drawer}</div> : null}
       <div
         onDragOver={onComposerDragOver}
         onDragLeave={onComposerDragLeave}
         onDrop={onComposerDrop}
         className={cx(
-          "agent-composer-box relative z-10 mx-auto w-full max-w-[calc(var(--composer-w)*0.9)] overflow-visible rounded-[var(--composer-radius)] border border-(--border) bg-(--composer) shadow-[var(--composer-elevation)] backdrop-blur-lg transition-colors [corner-shape:superellipse(1.5)] sm:w-[90%]",
+          "agent-composer-box relative z-10 flex min-h-[52px] w-full flex-col overflow-visible rounded-[12px] bg-(--composer)",
           composerDragActive && "outline outline-1 outline-(--link)/50",
         )}
       >
         {composerDragActive ? (
-          <div className="px-4 pt-2 text-[length:var(--fs-sm)] text-(--link)">
+          <div className="px-3 pt-1.5 text-[length:var(--fs-xs)] text-(--link)">
             Drop files to attach to the next message.
           </div>
         ) : null}
@@ -171,7 +171,7 @@ export function AgentComposerFrame({
           onRemove={onRemoveLoadedContext}
         />
         {goalMode ? (
-          <div className="flex items-center gap-1.5 px-3 pt-2.5">
+          <div className="flex items-center gap-1.5 px-3 pt-2">
             {/* Themed, not amber-500. A literal Tailwind colour was the one
                 hardcoded hue in the composer chrome and read as foreign on the
                 other ~15 themes; --accent has a bare-:root baseline. */}
@@ -187,7 +187,7 @@ export function AgentComposerFrame({
                 <CloseIcon className="size-3" />
               </button>
             </span>
-            <span className="text-[length:var(--fs-sm)] text-(--fg)/40">
+            <span className="text-[length:var(--fs-xs)] text-(--fg)/40">
               Enter sends this as the session objective
             </span>
           </div>
@@ -223,30 +223,26 @@ export function AgentComposerFrame({
           status={status}
           input={input}
           attachmentsCount={attachments.length}
-          browserToolEnabled={browserToolEnabled}
-          browserBackend={browserBackend}
-          onToggleBrowserBackend={onToggleBrowserBackend}
-          onToggleBrowserTool={onToggleBrowserTool}
           onAbortTurn={onAbortTurn}
           modelSelector={modelSelector}
+          contextOpen={contextOpen}
+          onOpenContext={onOpenContext}
+          contextTriggerRef={contextTriggerRef}
         />
       </div>
       {showStatusBar ? (
         <AgentComposerStatusBar
           cwd={cwd}
+          projectName={projectName}
           gitBranch={gitBranch}
           gitSummary={gitSummary}
           onInitGit={onInitGit}
           currentContextTokens={currentContextTokens}
           contextWindow={contextWindow}
-          onOpenStatus={onOpenStatus}
           onOpenDiff={onOpenDiff}
         />
       ) : (
-        <div
-          aria-hidden="true"
-          className="mx-auto mt-2 h-3 w-full max-w-[calc(var(--composer-w)*0.9)] sm:mt-2.5 sm:h-4 sm:w-[90%]"
-        />
+        <div aria-hidden="true" className="mt-1.5 h-2 w-full sm:mt-2 sm:h-3" />
       )}
     </form>
   );

@@ -14,11 +14,17 @@ const RuntimeLoggedEventSchema = Schema.Struct({
 });
 
 export const RuntimeStatusSchema = Schema.Struct({
+  phase: Schema.optional(Schema.String),
   active: Schema.optional(Schema.Boolean),
   running: Schema.optional(Schema.Boolean),
+  harness: Schema.optional(Schema.String),
+  harnessVersion: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
+  capabilities: Schema.optional(Schema.Array(Schema.String)),
+  nativeSessionId: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
   piSessionId: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
   modelId: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
   eventSeq: Schema.optional(Schema.Number),
+  lastError: Schema.optional(Schema.Union([Schema.Null, Schema.String])),
   events: Schema.optional(Schema.Array(RuntimeLoggedEventSchema)),
   contextUsage: Schema.optional(Schema.Union([Schema.Null, RuntimeContextUsageSchema])),
 });
@@ -31,13 +37,28 @@ const RuntimeStatusEventSchema = Schema.Struct({
   session: Schema.optional(RuntimeStatusSchema),
 });
 
-const RuntimePiEventSchema = Schema.Struct({
-  type: Schema.Literal("pi"),
+const RuntimeHarnessEventSchema = Schema.Struct({
+  type: Schema.Union([Schema.Literal("pi"), Schema.Literal("harness")]),
+  harness: Schema.optional(Schema.String),
   seq: Schema.optional(Schema.Number),
+  normalized: Schema.optional(
+    Schema.Union([
+      Schema.Null,
+      Schema.Struct({
+        type: Schema.String,
+        harness: Schema.String,
+        nativeType: Schema.String,
+      }),
+    ]),
+  ),
   event: Schema.Record(Schema.String, Schema.Unknown),
+  native: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 });
 
-const RuntimeEventPayloadSchema = Schema.Union([RuntimeStatusEventSchema, RuntimePiEventSchema]);
+const RuntimeEventPayloadSchema = Schema.Union([
+  RuntimeStatusEventSchema,
+  RuntimeHarnessEventSchema,
+]);
 
 export type RuntimeEventPayload = Schema.Schema.Type<typeof RuntimeEventPayloadSchema>;
 

@@ -193,6 +193,9 @@ export function toolKindNodeColor(kind: ToolKind): string {
 
 export function classifyTool(block: ToolBlock): ToolKind {
   const name = block.name.toLowerCase();
+  if (extractFromArgs(block.args, block.argsText, ["cmd", "command", "script", "shell"])) {
+    return "exec";
+  }
   if (FILE_WRITE_TOOL_NAMES.has(name) || hasAnyNeedle(name, ["edit", "write", "patch"])) {
     return "edit";
   }
@@ -203,9 +206,6 @@ export function classifyTool(block: ToolBlock): ToolKind {
   return "generic";
 }
 
-/* Codex action rows morph tense with tool status: present participle while the
-   call is in flight ("Running", "Editing"), simple past once it lands ("Ran",
-   "Edited"). The verb is the emphasized part of the row; the detail stays muted. */
 export function toolVerb(block: ToolBlock): string {
   const running = block.status === "running";
   const name = block.name.toLowerCase();

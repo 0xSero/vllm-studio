@@ -21,9 +21,8 @@ export const resolveApiServerBaseUrl = (): string =>
     process.env.LOCAL_STUDIO_BACKEND_URL,
   ) ?? LOCAL_BACKEND_FALLBACK;
 
-// resolveSettingsDefaultBackendUrl lives in shared/agent/backend-url.ts so the
-// agent runtime package's settings service can share it; re-exported here for
-// frontend callers.
+// resolveSettingsDefaultBackendUrl lives in shared/agent/backend-url.ts and is
+// re-exported here for frontend callers.
 export { resolveSettingsDefaultBackendUrl } from "@shared/agent/backend-url";
 
 /**
@@ -64,6 +63,10 @@ function setBackendCookie(url: string): void {
 }
 
 export function getStoredBackendUrl(): string {
+  const configured = normalizeControllerUrl(
+    process.env.NEXT_PUBLIC_LOCAL_STUDIO_CONTROLLER_URL ?? "",
+  );
+  if (configured) return configured;
   if (typeof window === "undefined") return "";
   try {
     const stored = normalizeControllerUrl(

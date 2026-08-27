@@ -1,6 +1,6 @@
 import os from "node:os";
 import { NextRequest, NextResponse } from "next/server";
-import { getApiSettings } from "@local-studio/agent-runtime/settings-service";
+import { getApiSettings } from "@/lib/api/settings-service";
 import { requireApiAccess } from "@/lib/auth/guard";
 import { createApiCore, type ApiCore } from "@/lib/api/core";
 import type { RecipeWithStatus } from "@/lib/types";

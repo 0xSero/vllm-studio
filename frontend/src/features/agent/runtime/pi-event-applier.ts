@@ -79,6 +79,58 @@ function reduceExtensionUiRequestEvent(
   };
 }
 
+function reduceExecutionLifecycleEvent(
+  session: Session,
+  ctx: SessionStreamContext,
+  event: Record<string, unknown>,
+): Session | null {
+  if (event.type === "extension_error" && typeof event.message === "string") {
+    const message = event.message.slice(0, 4_000);
+    const target = resolveAssistantTarget(session, ctx);
+    const failed = patchAssistantMessage(
+      target.session,
+      target.targetId,
+      (current) => {
+        const blocks = appendFailureBlock(
+          finalizeRunningToolBlocks(current.blocks ?? [], "error"),
+          message,
+        );
+        return { ...current, blocks, streamCalls: undefined, text: messageTextFromBlocks(blocks) };
+      },
+      ctx.replay,
+    );
+    ctx.liveAssistantIds.delete(session.id);
+    return { ...failed, activeAssistantId: undefined, error: message };
+  }
+  if (
+    (event.type !== "turn_retry" && event.type !== "turn_waiting") ||
+    typeof event.message !== "string"
+  ) {
+    return null;
+  }
+  const target = resolveAssistantTarget(session, ctx);
+  return patchAssistantMessage(
+    target.session,
+    target.targetId,
+    (current) => {
+      const message = event.message as string;
+      const detail =
+        event.type === "turn_waiting" && typeof event.pending === "number"
+          ? `${message} (${event.pending})`
+          : message;
+      if (current.blocks?.some((block) => block.kind === "event" && block.text === detail)) {
+        return current;
+      }
+      const blocks = [
+        ...(current.blocks ?? []),
+        { kind: "event" as const, id: newId("lifecycle"), text: detail },
+      ];
+      return { ...current, blocks, text: messageTextFromBlocks(blocks) };
+    },
+    ctx.replay,
+  );
+}
+
 export function reduceSessionEvent(
   session: Session,
   ctx: SessionStreamContext,
@@ -90,6 +142,9 @@ export function reduceSessionEvent(
   if (event.type === "notice" && event.level === "error" && typeof event.message === "string") {
     return { ...session, error: event.message.slice(0, 4_000) };
   }
+
+  const afterLifecycle = reduceExecutionLifecycleEvent(session, ctx, event);
+  if (afterLifecycle) return afterLifecycle;
 
   if (event.type === "queue_update") {
     return { ...session, queue: reconcileQueueWithPiEvent(session.queue ?? [], event) };

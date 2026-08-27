@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Download, RefreshCw, SettingsIcon, Smartphone } from "@/ui/icon-registry";
+import { Download, RefreshCw, SettingsIcon } from "@/ui/icon-registry";
 import { Spinner } from "@/ui";
 import { ProfileAvatar, useLocalProfile } from "@/features/shell/local-profile";
 import { useAppUpdate } from "@/features/shell/use-app-update";
@@ -24,7 +24,7 @@ function UpdateButton() {
       onClick={update.startUpdate}
       title={label}
       aria-label={label}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--sidebar-row-radius)] text-(--color-primary) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-primary) transition-colors duration-[var(--motion-fast)] hover:bg-(--hover) hover:text-(--fg)"
     >
       {update.status === "checking" ? (
         <Spinner size="xs" />
@@ -43,11 +43,11 @@ export function ProfileFooter({ settingsActive }: { settingsActive: boolean }) {
   const [profile] = useLocalProfile();
 
   return (
-    <div className="flex h-[var(--sidebar-row-height)] items-center gap-1">
+    <div className="flex h-10 items-center gap-0.5 border-t border-(--border)/45 pt-0.5">
       <Link
         href="/settings#profile"
         prefetch={false}
-        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-[var(--sidebar-row-radius)] px-2 py-1 text-left transition-colors hover:bg-(--hover)"
+        className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--sidebar-row-radius)] px-1.5 py-1 text-left transition-colors duration-[var(--motion-fast)] hover:bg-(--hover)"
         aria-label="Profile settings"
       >
         <ProfileAvatar profile={profile} />
@@ -55,19 +55,10 @@ export function ProfileFooter({ settingsActive }: { settingsActive: boolean }) {
       </Link>
       <UpdateButton />
       <Link
-        href="/settings#profile"
-        prefetch={false}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--sidebar-row-radius)] text-(--fg)/60 transition-colors hover:bg-(--hover) hover:text-(--fg)"
-        title="Connect phone"
-        aria-label="Connect phone in settings"
-      >
-        <Smartphone className="h-3.5 w-3.5" strokeWidth={1.75} />
-      </Link>
-      <Link
         href="/settings"
         prefetch={false}
         title="Settings"
-        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--sidebar-row-radius)] transition-colors ${
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--sidebar-row-radius)] transition-colors duration-[var(--motion-fast)] ${
           settingsActive
             ? "bg-(--active) text-(--fg)"
             : "text-(--fg)/60 hover:bg-(--hover) hover:text-(--fg)"

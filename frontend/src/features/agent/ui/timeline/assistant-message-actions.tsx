@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Copy, GitFork } from "@/ui/icon-registry";
+import { Copy } from "@/ui/icon-registry";
 import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
 import { writeClipboardText } from "@/lib/clipboard";
 
@@ -28,13 +28,7 @@ export function AssistantActionButton({
   );
 }
 
-export function AssistantMessageActions({
-  copyText,
-  onForkSession,
-}: {
-  copyText: string;
-  onForkSession?: () => void;
-}) {
+export function AssistantMessageActions({ copyText }: { copyText: string }) {
   const [copied, markCopied] = useCopiedFlag();
   const copy = async () => {
     if (!copyText.trim()) return;
@@ -49,13 +43,6 @@ export function AssistantMessageActions({
         disabled={!copyText.trim()}
       >
         <Copy className="h-4 w-4" strokeWidth={1.5} />
-      </AssistantActionButton>
-      <AssistantActionButton
-        label="Fork from this point"
-        onClick={() => onForkSession?.()}
-        disabled={!onForkSession}
-      >
-        <GitFork className="h-4 w-4" strokeWidth={1.5} />
       </AssistantActionButton>
     </div>
   );

@@ -11,7 +11,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#0a0a0a",
+  themeColor: "#181818",
 };
 
 export const metadata: Metadata = {
@@ -70,6 +70,8 @@ const bootScript = `${getThemeBootstrapScript()}
   const setAppHeight = () => {
     document.documentElement.style.setProperty('--app-height', String(window.innerHeight) + 'px');
   };
+  const macDesktop = Boolean(window.localStudioDesktop) && /Mac/i.test(navigator.platform);
+  document.documentElement.style.setProperty('--desktop-titlebar-left-inset', macDesktop ? '70px' : '0px');
   window.addEventListener('resize', setAppHeight);
   window.addEventListener('orientationchange', setAppHeight);
   setAppHeight();

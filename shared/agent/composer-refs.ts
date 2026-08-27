@@ -1,10 +1,8 @@
 // Composer skill / prompt-template references and their sanitizers, plus the
 // "selected context" prompt builders derived from them.
 //
-// Moved here from frontend/src/features/agent/composer-context.ts so the
-// @local-studio/agent-runtime HTTP handlers (turn + compact) can share the
-// exact sanitization logic with the frontend; the frontend module re-exports
-// everything from this file for its client-side callers.
+// Moved here from frontend/src/features/agent/composer-context.ts so controller
+// and frontend callers share the exact sanitization logic.
 
 export type ComposerSkillRef = {
   id: string;

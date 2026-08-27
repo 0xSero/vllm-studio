@@ -1,6 +1,15 @@
 "use client";
 
-import { memo, useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { LegendList, type LegendListRef } from "@legendapp/list/react";
+import {
+  memo,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type RefObject,
+} from "react";
 import type { AssistantBlock, ChatMessage } from "@/features/agent/messages";
 import { SessionPaneBlockRouter } from "@/features/agent/ui/timeline/session-pane-block-router";
 import { ChevronDownIcon } from "@/ui/icons";
@@ -17,7 +26,6 @@ type TimelineProps = {
   messages: ChatMessage[];
   running: boolean;
   cwd: string | null;
-  onForkSession?: () => void;
   emptyPrompt?: boolean;
   stickToBottom?: boolean;
   onStickToBottomChange?: (value: boolean) => void;
@@ -34,37 +42,47 @@ const MemoMessage = memo(
     live,
     running,
     cwd,
-    onForkSession,
   }: {
     message: ChatMessage;
     live: boolean;
     running: boolean;
     cwd: string | null;
-    onForkSession?: () => void;
   }) {
-    return (
-      <MessageView
-        message={message}
-        live={live}
-        running={running}
-        cwd={cwd}
-        onForkSession={onForkSession}
-      />
-    );
+    return <MessageView message={message} live={live} running={running} cwd={cwd} />;
   },
   (prev, next) =>
     prev.message === next.message &&
     prev.live === next.live &&
     prev.running === next.running &&
-    prev.cwd === next.cwd &&
-    prev.onForkSession === next.onForkSession,
+    prev.cwd === next.cwd,
 );
+
+const TIMELINE_MAINTAIN_SCROLL_AT_END = {
+  animated: false,
+  on: {
+    dataChange: true,
+    itemLayout: true,
+    layout: true,
+  },
+} as const;
+
+const TIMELINE_MAINTAIN_VISIBLE_CONTENT_POSITION = {
+  data: true,
+  size: true,
+} as const;
+
+function timelineMessageKey(message: ChatMessage) {
+  return message.id;
+}
+
+function timelineMessageType(message: ChatMessage) {
+  return message.role;
+}
 
 export function Timeline({
   messages,
   running,
   cwd,
-  onForkSession,
   emptyPrompt = false,
   stickToBottom = true,
   onStickToBottomChange,
@@ -73,8 +91,8 @@ export function Timeline({
   hasEarlier = false,
   onLoadEarlier,
 }: TimelineProps) {
-  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
-  const [bottom, setBottom] = useState<HTMLDivElement | null>(null);
+  const listRef = useRef<LegendListRef | null>(null);
+  const [scroller, setScroller] = useState<HTMLElement | null>(null);
 
   const [mergeCache] = useState(() => new Map<string, MergedRun>());
   const visibleMessages = useMemo(
@@ -82,9 +100,59 @@ export function Timeline({
     [messages, mergeCache],
   );
 
+  const setListRef = useCallback((list: LegendListRef | null) => {
+    listRef.current = list;
+    const node = (list?.getScrollableNode() as HTMLDivElement | null) ?? null;
+    setScroller((current) => (current === node ? current : node));
+  }, []);
+
+  const renderItem = useCallback(
+    ({ item: message, index }: { item: ChatMessage; index: number }) => {
+      const isLast = index === visibleMessages.length - 1;
+      const previousRole = index > 0 ? visibleMessages[index - 1]?.role : null;
+      const isGrouped = message.role === previousRole;
+      return (
+        <div
+          data-timeline-message-id={message.id}
+          className={`agent-thread-shell mx-auto ${isGrouped ? "pt-1.5" : "pt-3 sm:pt-4"} ${isLast ? "pb-3" : ""}`}
+        >
+          <MemoMessage message={message} live={isLast && running} running={running} cwd={cwd} />
+        </div>
+      );
+    },
+    [cwd, running, visibleMessages],
+  );
+
+  const listHeader = useMemo(
+    () =>
+      hasEarlier && onLoadEarlier ? (
+        <div className="agent-thread-shell mx-auto">
+          <LoadEarlierButton onLoadEarlier={onLoadEarlier} />
+        </div>
+      ) : (
+        <div className="h-1.5" />
+      ),
+    [hasEarlier, onLoadEarlier],
+  );
+
+  const listFooter = useMemo(
+    () => (
+      <div className="agent-thread-shell mx-auto pb-3">
+        {running && visibleMessages[visibleMessages.length - 1]?.role !== "assistant" ? (
+          <div className="pt-3 sm:pt-4">
+            <span className="codex-shimmer-text text-[length:var(--fs-base)] font-normal leading-5">
+              Thinking
+            </span>
+          </div>
+        ) : null}
+      </div>
+    ),
+    [running, visibleMessages],
+  );
+
   useTimelineScrollEffects({
     scroller,
-    bottom,
+    listRef,
     stickToBottom,
     onStickToBottomChange,
     viewKey,
@@ -93,67 +161,34 @@ export function Timeline({
 
   if (emptyPrompt) {
     return (
-      <div className="flex min-h-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-10 pt-2">
-        <div className="agent-thread-shell mx-auto flex flex-1">
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-            <p className="max-w-[24ch] text-[clamp(1.45rem,2.6vw,2.1rem)] font-semibold leading-[1.22] tracking-[-0.02em] text-(--fg)/90">
-              A dream is something you build for yourself.
-            </p>
-            <p className="text-[length:var(--fs-xl)] text-(--dim)">Just talk to it.</p>
-          </div>
-        </div>
-      </div>
+      <div className="agent-chat-empty flex min-h-0 flex-1 bg-(--agent-bg)" aria-hidden="true" />
     );
   }
 
   return (
     <div className="agent-timeline-frame relative flex min-h-0 min-w-0 flex-1">
-      <PromptMarkers scroller={scroller} messages={visibleMessages} />
+      <PromptMarkers scroller={scroller} listRef={listRef} messages={visibleMessages} />
       <div className="relative flex min-h-0 min-w-0 flex-1">
-        <div
-          ref={setScroller}
+        <LegendList<ChatMessage>
+          ref={setListRef}
+          data={visibleMessages}
+          keyExtractor={timelineMessageKey}
+          getItemType={timelineMessageType}
+          renderItem={renderItem}
+          estimatedItemSize={144}
+          initialScrollAtEnd
+          maintainScrollAtEnd={stickToBottom ? TIMELINE_MAINTAIN_SCROLL_AT_END : false}
+          maintainVisibleContentPosition={TIMELINE_MAINTAIN_VISIBLE_CONTENT_POSITION}
+          ListHeaderComponent={listHeader}
+          ListFooterComponent={listFooter}
           data-timeline-scroller
-          className="agent-chat-scroller min-h-0 min-w-0 flex-1 overflow-y-auto bg-(--agent-bg) px-4 pb-0 pt-2 [overflow-anchor:auto] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable] sm:px-5"
-        >
-          <div data-timeline-list className="agent-thread-shell mx-auto flex flex-col">
-            {hasEarlier && onLoadEarlier ? (
-              <LoadEarlierButton onLoadEarlier={onLoadEarlier} />
-            ) : null}
-            {visibleMessages.map((message, index) => {
-              const isLast = index === visibleMessages.length - 1;
-              const prevRole = index > 0 ? visibleMessages[index - 1].role : null;
-              const isGrouped = message.role === prevRole;
-              return (
-                <div
-                  key={message.id}
-                  data-timeline-message-id={message.id}
-                  className={`${isGrouped ? "pt-2" : "pt-4 sm:pt-6"} ${isLast ? "pb-4" : ""}`}
-                >
-                  <MemoMessage
-                    message={message}
-                    live={isLast && running}
-                    running={running}
-                    cwd={cwd}
-                    onForkSession={onForkSession}
-                  />
-                </div>
-              );
-            })}
-            {running && visibleMessages[visibleMessages.length - 1]?.role !== "assistant" ? (
-              <div className="pt-4 pb-4 sm:pt-6">
-                <span className="codex-shimmer-text text-[length:var(--fs-base)] font-normal leading-5">
-                  Thinking
-                </span>
-              </div>
-            ) : null}
-            <div ref={setBottom} aria-hidden="true" className="[overflow-anchor:none]" />
-          </div>
-        </div>
+          className="agent-chat-scroller min-h-0 min-w-0 flex-1 overflow-y-auto bg-(--agent-bg) px-3 pb-0 pt-1.5 [overflow-anchor:auto] [overscroll-behavior:contain] [scroll-behavior:auto] [scrollbar-gutter:stable] sm:px-4"
+        />
         {!stickToBottom && visibleMessages.length > 0 ? (
           <ScrollToBottomButton
             running={running}
             onClick={() => {
-              scroller?.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
+              void listRef.current?.scrollToEnd({ animated: true });
               onStickToBottomChange?.(true);
             }}
           />
@@ -210,30 +245,34 @@ type PromptMarkerEntry = {
   id: string;
   label: string;
   time: string;
+  rowIndex: number;
 };
 
 function PromptMarkers({
   scroller,
+  listRef,
   messages,
 }: {
-  scroller: HTMLDivElement | null;
+  scroller: HTMLElement | null;
+  listRef: RefObject<LegendListRef | null>;
   messages: ChatMessage[];
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const prompts = useMemo(
     () =>
       messages
-        .filter((message) => message.role === "user" && userPromptLabel(message).length > 0)
-        .map((message) => ({
+        .map((message, rowIndex) => ({ message, rowIndex }))
+        .filter(({ message }) => message.role === "user" && userPromptLabel(message).length > 0)
+        .map(({ message, rowIndex }) => ({
           id: message.id,
           label: userPromptLabel(message),
           time: formatPromptTime(message.timestamp),
+          rowIndex,
         })),
     [messages],
   );
   const viewportHeight = useScrollerViewportHeight(scroller);
-  const promptIds = useMemo(() => prompts.map((prompt) => prompt.id), [prompts]);
-  const activeId = useActivePromptId(scroller, promptIds);
+  const activeId = useActivePromptId(scroller, listRef, prompts);
   if (!scroller || prompts.length === 0) return null;
   const maxCount = Math.max(
     1,
@@ -251,11 +290,12 @@ function PromptMarkers({
   }
   const visible =
     prompts.length > maxCount ? prompts.slice(windowStart, windowStart + maxCount) : prompts;
-  const scrollToPrompt = (id: string) => {
-    const node = Array.from(
-      scroller.querySelectorAll<HTMLElement>("[data-timeline-message-id]"),
-    ).find((element) => element.dataset.timelineMessageId === id);
-    node?.scrollIntoView({ block: "center", behavior: "smooth" });
+  const scrollToPrompt = (rowIndex: number) => {
+    void listRef.current?.scrollToIndex({
+      index: rowIndex,
+      animated: true,
+      viewPosition: 0.5,
+    });
   };
   return (
     <nav className="prompt-minimap" aria-label="Session prompts">
@@ -273,7 +313,7 @@ function PromptMarkers({
             onFocus={() => setHoveredId(marker.id)}
             onBlur={() => setHoveredId((value) => (value === marker.id ? null : value))}
             onClick={(event) => {
-              scrollToPrompt(marker.id);
+              scrollToPrompt(marker.rowIndex);
               setHoveredId(null);
               event.currentTarget.blur();
             }}
@@ -299,7 +339,11 @@ const ACTIVE_PROMPT_OFFSET_PX = 96;
 /** Scroll-spy for the prompt rail: which prompt is currently in view. The rail
  *  used to hardcode the highlight to the newest marker, so scrolling back
  *  through a long thread left the indicator stuck at the end. */
-function useActivePromptId(scroller: HTMLDivElement | null, promptIds: string[]): string | null {
+function useActivePromptId(
+  scroller: HTMLElement | null,
+  listRef: RefObject<LegendListRef | null>,
+  prompts: PromptMarkerEntry[],
+): string | null {
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
       if (!scroller) return () => undefined;
@@ -325,24 +369,21 @@ function useActivePromptId(scroller: HTMLDivElement | null, promptIds: string[])
     [scroller],
   );
   const getSnapshot = useCallback(() => {
-    if (!scroller || promptIds.length === 0) return null;
-    const threshold = scroller.getBoundingClientRect().top + ACTIVE_PROMPT_OFFSET_PX;
-    const wanted = new Set(promptIds);
+    if (!scroller || prompts.length === 0) return null;
+    const state = listRef.current?.getState();
+    const threshold = (state?.scroll ?? scroller.scrollTop) + ACTIVE_PROMPT_OFFSET_PX;
     let active: string | null = null;
-    // One ordered pass over the rendered messages: the last prompt whose top has
-    // crossed the threshold is the one being read.
-    for (const node of scroller.querySelectorAll<HTMLElement>("[data-timeline-message-id]")) {
-      const id = node.dataset.timelineMessageId;
-      if (!id || !wanted.has(id)) continue;
-      if (node.getBoundingClientRect().top > threshold) break;
-      active = id;
+    for (const prompt of prompts) {
+      const top = state?.positionAtIndex?.(prompt.rowIndex);
+      if (typeof top === "number" && top > threshold) break;
+      active = prompt.id;
     }
-    return active ?? promptIds[0] ?? null;
-  }, [promptIds, scroller]);
+    return active ?? prompts[0]?.id ?? null;
+  }, [listRef, prompts, scroller]);
   return useSyncExternalStore(subscribe, getSnapshot, () => null);
 }
 
-function useScrollerViewportHeight(scroller: HTMLDivElement | null): number {
+function useScrollerViewportHeight(scroller: HTMLElement | null): number {
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
       if (!scroller) return () => undefined;
@@ -379,55 +420,28 @@ function formatPromptTime(timestamp?: string): string {
   );
 }
 
-const AT_BOTTOM_THRESHOLD_PX = 80;
+const AT_BOTTOM_THRESHOLD_PX = 40;
 const USER_HOLD_MS = 700;
 
-/**
- * Keeps the chat locked to the latest message while streaming and re-pins after
- * any layout growth (new tokens, expanded reasoning, async-loaded history), so
- * the view never drifts off the bottom or shifts under the user.
- *
- * Proximity to the bottom is the single source of truth: if the viewport is at
- * the bottom we follow new content, otherwise we leave the user where they are.
- * `scrollTop` can move from three sources — a genuine user scroll, our own pin
- * write, and now native scroll anchoring compensating for above-viewport growth
- * — but all three classify correctly via `atBottom()`: an anchoring adjustment
- * while scrolled up keeps us off-bottom (stays detached), and while pinned the
- * next pin write re-asserts the bottom, so neither is misread as "scrolled up".
- *
- * Upward gestures (wheel/touch/keys) detach synchronously with a short hold
- * window, so the user can still escape mid-stream even when a synchronous DOM
- * mutation would otherwise re-pin before the async scroll event is delivered.
- *
- * The scroller and bottom-sentinel are passed as DOM nodes (not refs) so the
- * observers re-attach whenever the elements mount — critical when a session
- * mounts empty (history loads async) and the scroller appears after first paint.
- */
 function useTimelineScrollEffects({
   scroller,
-  bottom,
+  listRef,
   stickToBottom,
   onStickToBottomChange,
   viewKey,
   viewAlias,
 }: {
-  scroller: HTMLDivElement | null;
-  bottom: HTMLDivElement | null;
+  scroller: HTMLElement | null;
+  listRef: RefObject<LegendListRef | null>;
   stickToBottom: boolean;
   onStickToBottomChange?: (value: boolean) => void;
   viewKey: string | null;
   viewAlias: string | null;
 }) {
-  // Synchronous source of truth the handlers read. The parent's `stickToBottom`
-  // prop is the eventually-consistent mirror (drives chrome and lets submit /
-  // tab-change force a re-stick); `onChangeRef` reports our changes back to it.
   const stickRef = useRef(stickToBottom);
   const onChangeRef = useRef(onStickToBottomChange);
-  // While set, honor a deliberate upward scroll instead of snapping back to the
-  // bottom (e.g. the user grazes the threshold while reading recent history).
   const userHoldUntilRef = useRef(0);
 
-  // Mirror prop + callback into refs in the commit phase (never during render).
   useMountSubscription(() => {
     stickRef.current = stickToBottom;
   }, [stickToBottom]);
@@ -446,10 +460,6 @@ function useTimelineScrollEffects({
     const distanceFromBottom = () => el.scrollHeight - el.scrollTop - el.clientHeight;
     const atBottom = () => distanceFromBottom() <= AT_BOTTOM_THRESHOLD_PX;
 
-    const pinToBottom = () => {
-      pendingRestoreTop = null;
-      el.scrollTop = el.scrollHeight;
-    };
     const restoreScrollTop = () => {
       if (pendingRestoreTop === null) return;
       const maximum = Math.max(0, el.scrollHeight - el.clientHeight);
@@ -466,14 +476,6 @@ function useTimelineScrollEffects({
         });
       }, 120);
     };
-    let pinFrame: number | null = null;
-    const schedulePinToBottom = () => {
-      if (!stickRef.current || pinFrame !== null) return;
-      pinFrame = window.requestAnimationFrame(() => {
-        pinFrame = null;
-        if (stickRef.current) pinToBottom();
-      });
-    };
     const setStick = (next: boolean) => {
       if (stickRef.current === next) return;
       stickRef.current = next;
@@ -487,8 +489,6 @@ function useTimelineScrollEffects({
         if (pendingRestoreTop !== null) return;
       }
       if (atBottom()) {
-        // Briefly respect a deliberate scroll-up near the bottom instead of
-        // immediately re-locking and fighting the user.
         if (Date.now() < userHoldUntilRef.current) return;
         setStick(true);
         persist();
@@ -515,71 +515,64 @@ function useTimelineScrollEffects({
     const onKeyDown = (event: KeyboardEvent) => {
       if (["ArrowUp", "PageUp", "Home"].includes(event.key)) holdAndDetach();
       else if (["ArrowDown", "PageDown", "End"].includes(event.key)) releaseHold();
+      if (["Enter", " "].includes(event.key)) preserveDisclosureAnchor(event.target);
     };
-    let touchY: number | null = null;
-    const onTouchStart = (event: TouchEvent) => {
-      touchY = event.touches[0]?.clientY ?? null;
-    };
-    const onTouchMove = (event: TouchEvent) => {
-      const y = event.touches[0]?.clientY ?? null;
-      if (touchY !== null && y !== null) {
-        if (y - touchY > 2) holdAndDetach();
-        else if (touchY - y > 2) releaseHold();
+    let anchorFrame: number | null = null;
+    const preserveDisclosureAnchor = (target: EventTarget | null) => {
+      if (!(target instanceof Element) || !target.closest("summary, [aria-expanded]")) return;
+      if (anchorFrame !== null) cancelAnimationFrame(anchorFrame);
+      if (stickRef.current) {
+        anchorFrame = requestAnimationFrame(() => {
+          anchorFrame = requestAnimationFrame(() => {
+            anchorFrame = null;
+            void listRef.current?.scrollToEnd({ animated: false });
+          });
+        });
+        return;
       }
-      touchY = y;
+      const scrollerTop = el.getBoundingClientRect().top;
+      const rows = [...el.querySelectorAll<HTMLElement>("[data-timeline-message-id]")];
+      const anchor = rows.find((row) => row.getBoundingClientRect().bottom > scrollerTop);
+      if (!anchor) return;
+      const before = anchor.getBoundingClientRect().top;
+      anchorFrame = requestAnimationFrame(() => {
+        anchorFrame = requestAnimationFrame(() => {
+          anchorFrame = null;
+          el.scrollTop += anchor.getBoundingClientRect().top - before;
+        });
+      });
     };
-
+    const onPointerDown = (event: PointerEvent) => preserveDisclosureAnchor(event.target);
     el.addEventListener("scroll", onScroll, { passive: true });
     el.addEventListener("wheel", onWheel, { passive: true });
     el.addEventListener("keydown", onKeyDown);
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: true });
+    el.addEventListener("pointerdown", onPointerDown, true);
 
-    // Follow content + viewport growth while pinned. Coalesce observer bursts to
-    // one scroll write per animation frame; streamed tool/thinking text can
-    // otherwise trigger a scrollTop write for every token and make the timeline
-    // look like it is flickering or fighting itself.
-    const listEl = bottom?.parentElement ?? el;
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(() => {
-            if (pendingRestoreTop !== null) restoreScrollTop();
-            else schedulePinToBottom();
-          });
-    resizeObserver?.observe(el);
-    if (listEl !== el) resizeObserver?.observe(listEl);
+    let restoreFrame: number | null = null;
+    let restoreAttempts = 0;
+    const scheduleRestore = () => {
+      restoreFrame = window.requestAnimationFrame(() => {
+        restoreFrame = null;
+        restoreScrollTop();
+        restoreAttempts += 1;
+        if (pendingRestoreTop !== null && restoreAttempts < 3) scheduleRestore();
+      });
+    };
 
-    // Structural timeline changes need following; characterData streaming is
-    // deliberately excluded and left to ResizeObserver so we don't do a DOM
-    // scroll write on every token.
-    const mutationObserver =
-      typeof MutationObserver === "undefined"
-        ? null
-        : new MutationObserver(() => {
-            if (pendingRestoreTop !== null) restoreScrollTop();
-            else schedulePinToBottom();
-          });
-    mutationObserver?.observe(listEl, { childList: true, subtree: true });
-
-    // Initial alignment (also covers async-loaded history once it renders, via
-    // the ResizeObserver above).
     if (restored) {
       stickRef.current = restored.stickToBottom;
       onChangeRef.current?.(restored.stickToBottom);
     }
-    if (stickRef.current) pinToBottom();
-    else restoreScrollTop();
+    if (stickRef.current) void listRef.current?.scrollToEnd({ animated: false });
+    else scheduleRestore();
 
     return () => {
       el.removeEventListener("scroll", onScroll);
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("keydown", onKeyDown);
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchmove", onTouchMove);
-      resizeObserver?.disconnect();
-      mutationObserver?.disconnect();
-      if (pinFrame !== null) window.cancelAnimationFrame(pinFrame);
+      el.removeEventListener("pointerdown", onPointerDown, true);
+      if (anchorFrame !== null) cancelAnimationFrame(anchorFrame);
+      if (restoreFrame !== null) window.cancelAnimationFrame(restoreFrame);
       persistTimer?.cancel();
       if (viewIdentity) {
         patchSessionView(window.localStorage, viewIdentity, {
@@ -588,17 +581,15 @@ function useTimelineScrollEffects({
         });
       }
     };
-  }, [bottom, scroller, viewKey, viewAlias]);
+  }, [scroller, viewKey, viewAlias]);
 
-  // When the parent forces stick=true (submit, tab change, session load), snap
-  // back to the bottom and clear any lingering hold.
   useMountSubscription(() => {
     if (stickToBottom && scroller) {
       stickRef.current = true;
       userHoldUntilRef.current = 0;
-      scroller.scrollTop = scroller.scrollHeight;
+      void listRef.current?.scrollToEnd({ animated: false });
     }
-  }, [stickToBottom, scroller]);
+  }, [listRef, stickToBottom, scroller]);
 }
 
 function MessageView({
@@ -606,21 +597,11 @@ function MessageView({
   live = false,
   running = false,
   cwd = null,
-  onForkSession,
 }: {
   message: ChatMessage;
   live?: boolean;
   running?: boolean;
   cwd?: string | null;
-  onForkSession?: () => void;
 }) {
-  return (
-    <SessionPaneBlockRouter
-      message={message}
-      live={live}
-      running={running}
-      cwd={cwd}
-      onForkSession={onForkSession}
-    />
-  );
+  return <SessionPaneBlockRouter message={message} live={live} running={running} cwd={cwd} />;
 }

@@ -1,92 +1,106 @@
-/* Mobile viewport fix */
 @media (max-width: 768px) {
-  /* Force everything to respect 100vw */
-  * {
-    max-width: 100vw;
+  :root {
+    --sidebar-w: min(240px, calc(100vw - 48px));
+    --workbench-tab-height: var(--h-toolbar);
+    --ui-control-height: 36px;
   }
 
-  /* Prevent horizontal overflow on mobile */
   main,
   article,
   section,
-  div {
-    max-width: 100vw !important;
+  .workbench-shell,
+  .workbench-surface,
+  .workbench-tabpanel {
+    min-width: 0;
+    max-width: 100%;
   }
 
-  /* Fixed and absolute positioned elements */
-  [class*="fixed"],
-  [class*="absolute"] {
-    max-width: 100vw !important;
+  .workbench-tab-strip {
+    max-width: 100%;
+    overflow: visible;
   }
 
-  /* Constrain all content containers */
-  .max-w-3xl,
-  .max-w-4xl,
-  .max-w-5xl,
-  .max-w-6xl,
-  .max-w-7xl {
-    max-width: 100vw !important;
-    padding-left: 1rem !important;
-    padding-right: 1rem !important;
+  .workbench-tab {
+    min-width: 88px;
+    max-width: 180px;
   }
 
-  /* Ensure code blocks don't overflow */
-  pre,
-  code {
-    max-width: 100% !important;
-    overflow-x: auto;
-    word-break: break-word;
+  .workbench-sidebar {
+    width: var(--sidebar-w);
+    max-width: calc(100vw - 48px);
   }
 
-  /* Constrain artifact and code containers */
-  .artifact-container,
-  .code-sandbox,
-  iframe {
-    max-width: calc(100vw - 2rem) !important;
+  .workbench-sidebar-collapsed {
+    width: var(--workbench-sidebar-collapsed-width);
   }
 
-  /* Tables must respect viewport */
-  table {
-    max-width: 100% !important;
-    overflow-x: auto;
-    display: block;
-  }
-}
-
-/* Prevent zoom on input focus for iOS */
-@supports (-webkit-touch-callout: none) {
-  input,
-  textarea,
-  select {
-    font-size: 16px !important;
-  }
-}
-
-/* Mobile chat optimization */
-@media (max-width: 768px) {
   .chat-input-area {
     padding-bottom: env(safe-area-inset-bottom, 0);
   }
 
-  /* Prevent body scroll when modal open */
+  .workbench-surface pre,
+  .workbench-surface code,
+  .artifact-container,
+  .code-sandbox,
+  .workbench-surface iframe {
+    max-width: 100%;
+  }
+
+  .workbench-surface pre,
+  .workbench-surface code {
+    overflow-x: auto;
+    word-break: break-word;
+  }
+
+  .workbench-surface table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .workbench-surface .max-w-3xl,
+  .workbench-surface .max-w-4xl,
+  .workbench-surface .max-w-5xl,
+  .workbench-surface .max-w-6xl,
+  .workbench-surface .max-w-7xl {
+    max-width: 100%;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
   body.modal-open {
-    overflow: hidden;
     position: fixed;
     width: 100%;
+    overflow: hidden;
   }
 
-  /* Increase base font size on mobile for better readability */
-  body {
-    font-size: 16px;
-  }
-
-  /* Ensure minimum touch target sizes (44x44px recommended by Apple/Google) */
   button,
-  a[role="button"] {
-    min-height: 44px;
-    min-width: 44px;
+  a[role="button"],
+  input[type="button"],
+  input[type="submit"] {
+    min-height: var(--touch-target);
+  }
+
+  [data-ui-control="field"] {
+    min-height: var(--touch-target);
+  }
+
+  [data-ui-control="compact"] {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .workbench-tab button,
+  .workbench-toolbar button,
+  .workbench-sidebar button {
+    min-height: 0;
   }
 }
 
-/* The dashboard metric strip now wraps responsively (grid-cols-2/3/6),
-   matching the usage page — no width override needed. */
+@supports (-webkit-touch-callout: none) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}

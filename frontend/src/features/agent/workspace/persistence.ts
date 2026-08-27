@@ -22,12 +22,12 @@ import {
   restoreSessionDrafts,
   sessionDraftsWithSessions,
 } from "@/features/agent/workspace/session-drafts";
-import { readTranscriptSnapshotEntry } from "@/features/agent/workspace/transcript-cache";
 
 const SESSIONS_COLLAPSED_KEY = "local-studio.agent.sessionsCollapsed";
 const SESSIONS_COLLAPSED_CLEANED_KEY = "local-studio.agent.sessionsCollapsedCleaned";
 const LEGACY_TRANSCRIPT_CACHE_KEY = "local-studio.agent.transcripts.v1";
 const LEGACY_ACTIVE_SESSIONS_KEY = "local-studio.agent.activeSessions.snapshot";
+const REMOVED_TRANSCRIPT_CACHE_PREFIX = "local-studio.agent.transcript.v2.";
 
 function readStorage(storage: WorkspaceStorage, key: string): string | null {
   try {
@@ -80,6 +80,13 @@ function migrateStorage(storage: WorkspaceStorage): void {
   }
   removeStorage(storage, LEGACY_TRANSCRIPT_CACHE_KEY);
   removeStorage(storage, LEGACY_ACTIVE_SESSIONS_KEY);
+  const browserStorage = storage as Partial<Storage>;
+  if (typeof browserStorage.length === "number" && typeof browserStorage.key === "function") {
+    const staleKeys = Array.from({ length: browserStorage.length }, (_, index) =>
+      browserStorage.key?.(index),
+    ).filter((key): key is string => Boolean(key?.startsWith(REMOVED_TRANSCRIPT_CACHE_PREFIX)));
+    for (const key of staleKeys) removeStorage(storage, key);
+  }
 }
 
 export type LoadedFromStorage = {
@@ -96,10 +103,7 @@ export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromSto
   const restoredState = rawState ? restorePersistedPaneState(rawState) : null;
   if (restoredState) {
     const { selections, legacyRuntimeKeys, ...workspace } = restoredState;
-    const sessions = restoreSessionDrafts(
-      seedCachedTranscripts(workspace.sessions, storage),
-      storedDrafts,
-    );
+    const sessions = restoreSessionDrafts(workspace.sessions, storedDrafts);
     return {
       workspace: {
         ...workspace,
@@ -130,28 +134,6 @@ export function loadInitialFromStorage(storage: WorkspaceStorage): LoadedFromSto
     selections: new Map(),
     legacyRuntimeKeys: new Map(),
   };
-}
-
-function seedCachedTranscripts(
-  sessions: Map<SessionId, Session>,
-  storage: WorkspaceStorage,
-): Map<SessionId, Session> {
-  let next: Map<SessionId, Session> | null = null;
-  for (const [id, session] of sessions) {
-    if (!session.piSessionId) continue;
-    const cached = readTranscriptSnapshotEntry(session.piSessionId, storage);
-    if (!cached || cached.messages.length === 0) continue;
-    next ??= new Map(sessions);
-    next.set(id, {
-      ...session,
-      ...(cached.title ? { title: cached.title } : {}),
-      messages: cached.messages,
-      // Marked so the replay still runs: these are a truncated placeholder,
-      // not the transcript.
-      hydratedFromCache: true,
-    });
-  }
-  return next ?? sessions;
 }
 
 export function writePaneState(

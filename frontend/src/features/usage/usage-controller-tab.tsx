@@ -107,7 +107,7 @@ export function UsageControllerTab({ stats }: { stats: UsageStats }) {
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       <StatStrip stats={summary} />
 
       {sorted.length > 0 ? (
@@ -253,7 +253,7 @@ function FunctionCalls({ calls }: { calls: ControllerUsageStats["function_calls"
   ];
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-3">
       <div>
         <h3 className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">Tool calls</h3>
         <p className="mt-1 text-[length:var(--fs-sm)] text-(--ui-muted)">

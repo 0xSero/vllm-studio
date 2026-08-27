@@ -110,51 +110,10 @@ export function FileIcon(props: IconProps) {
   );
 }
 
-export function GlobeIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <ellipse cx="8" cy="8" rx="3" ry="6.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M1.5 8h13" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M2.3 5h11.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M2.3 11h11.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
-    </Svg>
-  );
-}
-
 export function GitBranchIcon(props: IconProps) {
   return (
     <Svg {...props}>
       <path d="M4 2a2 2 0 0 1 .8 3.8v4.4a2 2 0 1 1-1.6 0V5.8A2 2 0 0 1 4 2zm8 0a2 2 0 0 1 .8 3.8C12.6 8.5 10.5 9 8.8 9.2A2 2 0 1 1 7.4 7.7c1.5-.2 3.2-.6 3.7-2A2 2 0 0 1 12 2z" />
-    </Svg>
-  );
-}
-
-export function UserBrowserIcon(props: IconProps) {
-  // The user's own browser: a ring with a solid core, the concentric mark every
-  // Chromium-family browser wears. Deliberately unlike PanelIcon (the embedded
-  // panel) so the two composer buttons never read as the same thing.
-  return (
-    <Svg {...props}>
-      <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1.6a5.4 5.4 0 1 1 0 10.8A5.4 5.4 0 0 1 8 2.6zm0 2.2a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4z" />
-    </Svg>
-  );
-}
-
-export function PanelIcon(props: IconProps) {
-  // A bordered panel split into a sidebar + content area — the embedded browser
-  // panel. Solid frame, hollow content well.
-  return (
-    <Svg {...props}>
-      <path d="M2 2.5h12v11H2v-11zm1.5 1.5v8H6v-8H3.5zm4 0v8H12.5v-8H7.5z" />
-    </Svg>
-  );
-}
-
-export function MoreIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M3 6.5h2v3H3v-3zm4 0h2v3H7v-3zm4 0h2v3h-2v-3z" />
     </Svg>
   );
 }
@@ -206,47 +165,11 @@ export function StatusIcon(props: IconProps) {
   );
 }
 
-/** Models — stacked layers: many weights, one shelf. */
-export function ModelsIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M8 1.2 14.8 5 8 8.8 1.2 5 8 1.2Z" />
-      <path d="M1.2 7.6 3.1 6.55 8 9.3l4.9-2.75L14.8 7.6 8 11.4 1.2 7.6Z" />
-      <path d="M1.2 10.6 3.1 9.55 8 12.3l4.9-2.75 1.9 1.05L8 14.4l-6.8-3.8Z" />
-    </Svg>
-  );
-}
-
 /** Automations — a bolt: something fires without you. */
 export function AutomationsIcon(props: IconProps) {
   return (
     <Svg {...props}>
       <path d="M9.8 1 3.4 9.2h3.4L6 15l6.6-8.6H9.2L9.8 1Z" />
-    </Svg>
-  );
-}
-
-/**
- * Integrations — a plug: the row is about handing a session a capability it
- * did not arrive with. Deliberately not lucide's stroked `Plug`, which is a
- * hairline outline beside five solid silhouettes and reads as a hole in the
- * rail at 13px.
- */
-export function IntegrationsIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M4.7 1h1.9v3.4H4.7V1Zm4.7 0h1.9v3.4H9.4V1Z" />
-      <path d="M2.6 5.2h10.8v3.2l-2.8 2.8H9.1V15H6.9v-3.8H5.4L2.6 8.4V5.2Z" />
-    </Svg>
-  );
-}
-
-/** Configure — sliders, not a cog: these are settings you tune, not machinery. */
-export function ConfigureIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M1 4.2h14v1.6H1V4.2Zm3.6-1.6H7v4.8H4.6V2.6Z" />
-      <path d="M1 10.2h14v1.6H1v-1.6Zm8-1.6h2.4v4.8H9V8.6Z" />
     </Svg>
   );
 }

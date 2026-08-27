@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type SetStateAction } from "react";
 import {
   ArrowLeftIcon,
   Code,
@@ -30,6 +30,19 @@ import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { FILESYSTEM_CHANGED_EVENT } from "@/lib/workspace-events";
 
 type Props = { cwd: string | null };
+const fileDraftCache = new Map<string, string>();
+const FILE_DRAFT_CACHE_LIMIT = 24;
+
+function rememberFileDraft(key: string, value: string): void {
+  fileDraftCache.delete(key);
+  fileDraftCache.set(key, value);
+  while (fileDraftCache.size > FILE_DRAFT_CACHE_LIMIT) {
+    const oldest = fileDraftCache.keys().next().value;
+    if (oldest) fileDraftCache.delete(oldest);
+    else break;
+  }
+}
+
 // eslint-disable-next-line complexity
 export function FilesystemPanel({ cwd }: Props) {
   // A file reference can point outside the session project (a PDF on the
@@ -67,9 +80,45 @@ export function FilesystemPanel({ cwd }: Props) {
   const setLastOpenFileByProject = useAppStore((s) => s.setLastOpenFileByProject);
   const rootRef = useRef(root);
   const pendingEditRef = useRef<{ caret: number; insert: string | null } | null>(null);
+  const loadingFileKeyRef = useRef<string | null>(null);
   const previewKind = useMemo(() => previewKindForOpenFile(openFile), [openFile]);
   const binaryPreview = isBinaryPreviewKind(previewKind);
   const dirty = draftContent !== fileContent;
+  const draftKey = root && openFile ? `${root}\0${openFile}` : null;
+  const updateDraftContent = useCallback(
+    (next: string | ((current: string) => string)) => {
+      setDraftContent((current) => {
+        const value = typeof next === "function" ? next(current) : next;
+        if (draftKey) rememberFileDraft(draftKey, value);
+        return value;
+      });
+    },
+    [draftKey],
+  );
+  const setDraftContentFromEffects = useCallback(
+    (next: SetStateAction<string>) => {
+      setDraftContent((current) => {
+        const cached =
+          draftKey && loadingFileKeyRef.current === draftKey
+            ? fileDraftCache.get(draftKey)
+            : undefined;
+        if (cached !== undefined) return cached;
+        return typeof next === "function" ? next(current) : next;
+      });
+    },
+    [draftKey],
+  );
+  const setLoadingFileFromEffects = useCallback(
+    (next: SetStateAction<boolean>) => {
+      setLoadingFile((current) => {
+        const value = typeof next === "function" ? next(current) : next;
+        if (value) loadingFileKeyRef.current = draftKey;
+        else if (loadingFileKeyRef.current === draftKey) loadingFileKeyRef.current = null;
+        return value;
+      });
+    },
+    [draftKey],
+  );
   useMountSubscription(() => {
     const refresh = () => setRefreshRevision((revision) => revision + 1);
     window.addEventListener(FILESYSTEM_CHANGED_EVENT, refresh);
@@ -91,10 +140,10 @@ export function FilesystemPanel({ cwd }: Props) {
     setEntries,
     setOpenFile,
     setFileContent,
-    setDraftContent,
+    setDraftContent: setDraftContentFromEffects,
     setFileTruncated,
     setFileSize,
-    setLoadingFile,
+    setLoadingFile: setLoadingFileFromEffects,
     setSaveError,
     setComments,
     setSearchQuery,
@@ -171,20 +220,23 @@ export function FilesystemPanel({ cwd }: Props) {
     },
     [lines],
   );
-  const focusEditor = useCallback((node: HTMLTextAreaElement | null) => {
-    if (!node) return;
-    node.focus();
-    const pending = pendingEditRef.current;
-    pendingEditRef.current = null;
-    if (!pending) return;
-    const caret = Math.min(pending.caret, node.value.length);
-    if (pending.insert) {
-      node.setRangeText(pending.insert, caret, caret, "end");
-      setDraftContent(node.value);
-    } else {
-      node.setSelectionRange(caret, caret);
-    }
-  }, []);
+  const focusEditor = useCallback(
+    (node: HTMLTextAreaElement | null) => {
+      if (!node) return;
+      node.focus();
+      const pending = pendingEditRef.current;
+      pendingEditRef.current = null;
+      if (!pending) return;
+      const caret = Math.min(pending.caret, node.value.length);
+      if (pending.insert) {
+        node.setRangeText(pending.insert, caret, caret, "end");
+        updateDraftContent(node.value);
+      } else {
+        node.setSelectionRange(caret, caret);
+      }
+    },
+    [updateDraftContent],
+  );
   const saveFile = useCallback(async () => {
     if (!root || !openFile || fileTruncated) return;
     setSavingFile(true);
@@ -207,6 +259,7 @@ export function FilesystemPanel({ cwd }: Props) {
       if (!response.ok || payload.error) throw new Error(payload.error || "Save failed.");
       setFileContent(payload.content ?? draftContent);
       setDraftContent(payload.content ?? draftContent);
+      if (draftKey) fileDraftCache.delete(draftKey);
       setFileTruncated(payload.truncated ?? false);
       setFileSize(payload.size ?? draftContent.length);
     } catch (error) {
@@ -214,7 +267,7 @@ export function FilesystemPanel({ cwd }: Props) {
     } finally {
       setSavingFile(false);
     }
-  }, [root, draftContent, fileTruncated, openFile]);
+  }, [root, draftContent, draftKey, fileTruncated, openFile]);
   const addComment = useCallback(
     async (line: number, body: string) => {
       if (!root || !openFile || !body.trim()) return;
@@ -268,11 +321,11 @@ export function FilesystemPanel({ cwd }: Props) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-(--color-panel)">
       {rootOverride ? (
-        <div className="flex h-8 shrink-0 items-center gap-2 border-b border-(--border) bg-(--color-header) px-2 text-[length:var(--fs-xs)] text-(--dim)">
+        <div className="flex h-8 shrink-0 items-center gap-2 border-b border-(--border)/70 bg-(--color-header) px-2 text-[length:var(--fs-xs)] text-(--dim)">
           <button
             type="button"
             onClick={() => setRootOverride(null)}
-            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-(--border) bg-(--color-input) px-1.5 text-(--dim) hover:text-(--fg)"
+            className="inline-flex h-6 shrink-0 items-center gap-1 rounded border border-(--border) bg-(--color-input) px-1.5 text-(--dim) hover:text-(--fg)"
             title={projectRoot ? `Back to ${projectRoot}` : "Back to the project"}
           >
             <ArrowLeftIcon className="h-3 w-3" />
@@ -285,43 +338,43 @@ export function FilesystemPanel({ cwd }: Props) {
       ) : null}
       <div className="relative flex min-h-0 flex-1 flex-row-reverse">
         {fileListOpen ? (
-          <div className="flex w-[236px] shrink-0 flex-col border-l border-(--border) bg-(--sidebar-bg)">
-            <div className="flex h-9 shrink-0 items-center border-b border-(--border)">
+          <div className="flex w-[224px] shrink-0 flex-col border-l border-(--border)/70 bg-(--sidebar-bg)">
+            <div className="flex h-8 shrink-0 items-center border-b border-(--border)/70">
               <div className="min-w-0 flex-1">
                 <Breadcrumb relPath={relPath} onRoot={() => setRelPath("")} />
               </div>
               <button
                 type="button"
                 onClick={() => setFileListOpen(false)}
-                className="mr-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+                className="mr-1 inline-flex h-6 w-6 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
                 title="Collapse file list"
                 aria-label="Collapse file list"
               >
                 <Minus className="h-3.5 w-3.5" />
               </button>
             </div>
-            <div className="flex shrink-0 border-b border-(--border) px-2 py-2">
+            <div className="flex shrink-0 border-b border-(--border)/70 px-2 py-1.5">
               <input
                 ref={searchRef}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search files…"
-                className="h-7 w-full rounded-md border border-(--border) bg-(--color-input) px-2 text-[length:var(--fs-sm)] text-(--fg) outline-none placeholder:text-(--dim)/75 focus:border-(--border-hover)"
+                className="h-6 w-full rounded border border-(--border) bg-(--color-input) px-2 text-[length:var(--fs-xs)] text-(--fg) outline-none placeholder:text-(--dim)/75 focus:border-(--border-hover)"
                 spellCheck={false}
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
-                  className="ml-1 shrink-0 rounded-md px-1.5 text-[length:var(--fs-xs)] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+                  className="ml-1 shrink-0 rounded px-1.5 text-[length:var(--fs-xs)] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
                   title="Clear search"
                 >
                   ✕
                 </button>
               )}
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto py-1">
+            <div className="min-h-0 flex-1 overflow-y-auto py-0.5">
               <TreeFileList
                 entries={entries}
                 searchQuery={searchQuery}
@@ -334,20 +387,20 @@ export function FilesystemPanel({ cwd }: Props) {
                 dirLoading={dirLoading}
               />
               {entries.length === 0 && !searchQuery && (
-                <div className="px-2 py-2 text-[length:var(--fs-sm)] text-(--dim)">Empty.</div>
+                <div className="px-2 py-2 text-[length:var(--fs-xs)] text-(--dim)">Empty.</div>
               )}
             </div>
           </div>
         ) : null}
         <div className="flex min-w-0 flex-1 flex-col">
           {!openFile ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 text-[length:var(--fs-sm)] text-(--dim)">
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-[length:var(--fs-xs)] text-(--dim)">
               <span>Select a file to view.</span>
               {!fileListOpen ? (
                 <button
                   type="button"
                   onClick={() => setFileListOpen(true)}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-md border border-(--border) bg-(--color-input) px-2 text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg)"
+                  className="inline-flex h-6 items-center gap-1.5 rounded border border-(--border) bg-(--color-input) px-2 text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg)"
                 >
                   <FolderTree className="h-3.5 w-3.5" />
                   Show files
@@ -356,7 +409,7 @@ export function FilesystemPanel({ cwd }: Props) {
             </div>
           ) : previewKind === "image" ? (
             <>
-              <div className="flex h-9 shrink-0 items-center justify-between gap-1 border-b border-(--border) bg-(--color-header) px-2">
+              <div className="flex h-8 shrink-0 items-center justify-between gap-1 border-b border-(--border)/70 bg-(--color-header) px-2">
                 <div
                   className="flex min-w-0 items-center gap-1.5 text-[length:var(--fs-sm)] text-(--fg)"
                   title={openFile}
@@ -371,7 +424,7 @@ export function FilesystemPanel({ cwd }: Props) {
               <ImagePreview name={openFile} url={rawFileUrl(root, openFile)} />
             </>
           ) : binaryPreview || fileTruncated ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-[length:var(--fs-sm)] text-(--dim)">
+            <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-[length:var(--fs-xs)] text-(--dim)">
               <span className="max-w-full truncate font-mono text-(--fg)">
                 {openFile.split("/").pop() ?? openFile}
               </span>
@@ -384,14 +437,14 @@ export function FilesystemPanel({ cwd }: Props) {
               <FileOpenActions root={root} relPath={openFile} />
             </div>
           ) : loadingFile ? (
-            <div className="flex h-full items-center justify-center text-[length:var(--fs-sm)] text-(--dim)">
+            <div className="flex h-full items-center justify-center text-[length:var(--fs-xs)] text-(--dim)">
               Loading…
             </div>
           ) : (
             <>
-              <div className="flex h-9 shrink-0 items-center justify-between gap-1 border-b border-(--border) bg-(--color-header) pr-2">
+              <div className="flex h-8 shrink-0 items-center justify-between gap-1 border-b border-(--border)/70 bg-(--color-header) pr-2">
                 <div
-                  className="relative flex h-full min-w-0 max-w-[55%] items-center gap-1.5 border-r border-(--border) bg-(--color-panel) px-3 text-[length:var(--fs-sm)] text-(--fg) after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-(--link)"
+                  className="relative flex h-full min-w-0 max-w-[55%] items-center gap-1.5 border-r border-(--border) bg-(--color-panel) px-2.5 text-[length:var(--fs-xs)] text-(--fg) after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-(--link)"
                   title={openFile}
                 >
                   <File className={`h-3.5 w-3.5 shrink-0 ${fileTone(openFile)}`} />
@@ -404,7 +457,7 @@ export function FilesystemPanel({ cwd }: Props) {
                     <button
                       type="button"
                       onClick={attachCommentsToChat}
-                      className="mr-1 inline-flex h-6 items-center gap-1 rounded-md border border-(--border) bg-(--color-input) px-1.5 text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg)"
+                      className="mr-1 inline-flex h-6 items-center gap-1 rounded border border-(--border) bg-(--color-input) px-1.5 text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg)"
                       title="Attach this file's comments to the chat as context"
                     >
                       <MessageSquarePlus className="h-3 w-3" />
@@ -414,7 +467,7 @@ export function FilesystemPanel({ cwd }: Props) {
                   <button
                     type="button"
                     onClick={() => setViewMode("edit")}
-                    className={`mr-1 inline-flex h-6 items-center gap-1 rounded-md border border-(--border) bg-(--color-input) px-1.5 text-[length:var(--fs-xs)] ${viewMode === "edit" ? "text-(--fg)" : "text-(--dim) hover:text-(--fg)"}`}
+                    className={`mr-1 inline-flex h-6 items-center gap-1 rounded border border-(--border) bg-(--color-input) px-1.5 text-[length:var(--fs-xs)] ${viewMode === "edit" ? "text-(--fg)" : "text-(--dim) hover:text-(--fg)"}`}
                     title="Edit file"
                   >
                     <SquarePen className="h-3 w-3" />
@@ -423,14 +476,14 @@ export function FilesystemPanel({ cwd }: Props) {
                     type="button"
                     onClick={() => void saveFile()}
                     disabled={!dirty || savingFile || fileTruncated}
-                    className="mr-1 inline-flex h-6 items-center gap-1 rounded-md border border-(--border) bg-(--color-input) px-1.5 text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg) disabled:cursor-not-allowed disabled:opacity-40"
+                    className="mr-1 inline-flex h-6 items-center gap-1 rounded border border-(--border) bg-(--color-input) px-1.5 text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg) disabled:cursor-not-allowed disabled:opacity-40"
                     title={dirty ? "Save file" : "No changes to save"}
                   >
                     <Save className="h-3 w-3" />
                     {savingFile ? "Saving" : "Save"}
                   </button>
                   {previewKind && (
-                    <div className="mr-1 flex items-center gap-0.5 rounded-md border border-(--border) bg-(--color-input) p-0.5">
+                    <div className="mr-1 flex items-center gap-0.5 rounded border border-(--border) bg-(--color-input) p-0.5">
                       <button
                         type="button"
                         onClick={() => setViewMode("preview")}
@@ -447,7 +500,7 @@ export function FilesystemPanel({ cwd }: Props) {
                       </button>
                     </div>
                   )}
-                  <div className="flex items-center gap-0.5 rounded-md border border-(--border) bg-(--color-input) p-0.5">
+                  <div className="flex items-center gap-0.5 rounded border border-(--border) bg-(--color-input) p-0.5">
                     <button
                       type="button"
                       onClick={() => setFontSize(Math.max(8, fontSize - 1))}
@@ -472,7 +525,7 @@ export function FilesystemPanel({ cwd }: Props) {
                     <button
                       type="button"
                       onClick={() => setFileListOpen(true)}
-                      className="ml-1 inline-flex h-6 items-center gap-1 rounded-md border border-(--border) bg-(--color-input) px-1.5 text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg)"
+                      className="ml-1 inline-flex h-6 items-center gap-1 rounded border border-(--border) bg-(--color-input) px-1.5 text-[length:var(--fs-xs)] text-(--dim) hover:text-(--fg)"
                       title="Show file list"
                       aria-label="Show file list"
                     >
@@ -490,9 +543,9 @@ export function FilesystemPanel({ cwd }: Props) {
                 <textarea
                   ref={focusEditor}
                   value={draftContent}
-                  onChange={(event) => setDraftContent(event.target.value)}
+                  onChange={(event) => updateDraftContent(event.target.value)}
                   spellCheck={false}
-                  className="min-h-0 flex-1 resize-none overflow-auto bg-(--bg) p-2 font-mono text-(--fg) outline-none"
+                  className="min-h-0 flex-1 resize-none overflow-auto bg-(--bg) px-3 py-2 font-mono text-(--fg) outline-none"
                   style={{ fontSize, lineHeight: `${Math.round(fontSize * 1.5)}px` }}
                 />
               ) : previewKind && viewMode === "preview" ? (

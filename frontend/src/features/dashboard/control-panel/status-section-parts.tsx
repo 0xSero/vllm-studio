@@ -25,7 +25,6 @@ export function StatusHeader({
   modelName,
   onBenchmark,
   onLaunch,
-  onNavigateLogs,
   onNewRecipe,
   onViewAll,
   pid,
@@ -46,7 +45,6 @@ export function StatusHeader({
   modelName: string;
   onBenchmark: () => void;
   onLaunch?: (recipeId: string) => Promise<void>;
-  onNavigateLogs: () => void;
   onNewRecipe?: () => void;
   onViewAll?: () => void;
   pid?: number;
@@ -55,7 +53,7 @@ export function StatusHeader({
   return (
     // Stacks on phone widths: the header actions would otherwise crush the
     // status line and model name into overlapping slivers.
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0 flex-1">
         <StatusLine
           backend={backend}
@@ -68,7 +66,7 @@ export function StatusHeader({
           pid={pid}
         />
         <h1
-          className="mt-1.5 truncate text-[length:var(--fs-2xl)] font-semibold leading-tight tracking-[-0.01em] text-(--fg) sm:text-[length:var(--fs-3xl)]"
+          className="mt-0.5 truncate text-[length:var(--fs-lg)] font-semibold leading-tight tracking-[-0.01em] text-(--fg) sm:text-[length:var(--fs-xl)]"
           title={modelName || ""}
         >
           {modelName}
@@ -87,7 +85,6 @@ export function StatusHeader({
         lifecycleStatus={lifecycleStatus}
         onBenchmark={onBenchmark}
         onLaunch={onLaunch}
-        onNavigateLogs={onNavigateLogs}
         onNewRecipe={onNewRecipe}
         onViewAll={onViewAll}
         recipes={recipes}
@@ -149,7 +146,6 @@ function StatusHeaderActions({
   lifecycleStatus,
   onBenchmark,
   onLaunch,
-  onNavigateLogs,
   onNewRecipe,
   onViewAll,
   recipes,
@@ -161,7 +157,6 @@ function StatusHeaderActions({
   lifecycleStatus: "idle" | "starting" | "ready" | "error";
   onBenchmark: () => void;
   onLaunch?: (recipeId: string) => Promise<void>;
-  onNavigateLogs: () => void;
   onNewRecipe?: () => void;
   onViewAll?: () => void;
   recipes?: RecipeWithStatus[];
@@ -182,7 +177,6 @@ function StatusHeaderActions({
           recipes={recipes}
         />
       ) : null}
-      <ActionBtn label="Logs" onClick={onNavigateLogs} />
       <ActionBtn
         label={benchmarkButtonLabel(benchmarking, benchmarkResult)}
         onClick={onBenchmark}
@@ -240,16 +234,16 @@ export function StatusMetricStrip({
   return (
     <div
       className={cx(
-        "mt-4 border-b border-(--separator) pb-4 sm:mt-5 sm:pb-5",
+        "mt-2.5 border-b border-(--separator) pb-2.5 sm:mt-3 sm:pb-3",
         detached ? "opacity-45" : "",
       )}
     >
-      <dl className="grid w-full grid-cols-3 gap-x-4 gap-y-3 sm:gap-x-8 sm:gap-y-4 lg:grid-cols-6">
+      <dl className="grid w-full grid-cols-3 gap-x-3 gap-y-2 sm:gap-x-6 sm:gap-y-3 lg:grid-cols-6">
         {live.map((metric) => (
           <MetricCell key={metric.label} metric={metric} />
         ))}
       </dl>
-      <dl className="mt-3 grid w-full grid-cols-2 gap-x-4 gap-y-3 border-t border-(--separator)/55 pt-3 sm:grid-cols-3 sm:gap-x-8 lg:grid-cols-6">
+      <dl className="mt-1.5 grid w-full grid-cols-2 gap-x-3 gap-y-1.5 border-t border-(--separator)/55 pt-1.5 sm:grid-cols-3 sm:gap-x-6 lg:grid-cols-6">
         {steady.map((metric) => (
           <MetricCell key={metric.label} metric={metric} quiet />
         ))}
@@ -283,7 +277,7 @@ function MetricCell({ metric, quiet }: { metric: MetricColumnView; quiet?: boole
       {/* The same 3px rule GpuSection draws, so a share of a cap looks the same
           wherever the page states one. */}
       {typeof fill === "number" ? (
-        <dd className="mt-1.5 h-[3px] w-full overflow-hidden rounded-[var(--rad-2xs)] bg-(--separator)">
+        <dd className="mt-1 h-[2px] w-full overflow-hidden rounded-[var(--rad-2xs)] bg-(--separator)">
           <div
             className="h-full rounded-[var(--rad-2xs)] bg-(--fg)/45 transition-[width] duration-300"
             style={{ width: `${Math.round(fill * 100)}%` }}

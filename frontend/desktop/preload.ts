@@ -12,13 +12,19 @@ const bridge: DesktopBridge = {
   setUpdateChannel: (channel) => ipcRenderer.invoke("desktop:set-update-channel", channel),
   openDirectory: () => ipcRenderer.invoke("desktop:open-directory"),
   getPathForFile: (file) => webUtils.getPathForFile(file),
-  listProjects: () => ipcRenderer.invoke("desktop:list-projects"),
-  addProject: (directoryPath) => ipcRenderer.invoke("desktop:add-project", directoryPath),
-  removeProject: (id) => ipcRenderer.invoke("desktop:remove-project", id),
-  loadSessionPrefs: () => ipcRenderer.invoke("desktop:load-session-prefs"),
-  saveSessionPrefs: (prefs) => ipcRenderer.invoke("desktop:save-session-prefs", prefs),
   loadUiPreferences: () => ipcRenderer.invoke("desktop:load-ui-preferences"),
   saveUiPreferences: (prefs) => ipcRenderer.invoke("desktop:save-ui-preferences", prefs),
+  windowAppearance: {
+    set: (preference) => ipcRenderer.invoke("desktop:window-appearance-set", preference),
+    setReducedTransparency: (reduced) =>
+      ipcRenderer.invoke("desktop:window-appearance-set-reduced", reduced),
+    onChanged: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, state: Parameters<typeof listener>[0]) =>
+        listener(state);
+      ipcRenderer.on("desktop:window-appearance-changed", handler);
+      return () => ipcRenderer.removeListener("desktop:window-appearance-changed", handler);
+    },
+  },
   getKittylitterPairingJson: () => ipcRenderer.invoke("desktop:get-kittylitter-pairing-json"),
   copyKittylitterPairingJson: (pairingJson) =>
     ipcRenderer.invoke("desktop:copy-kittylitter-pairing-json", pairingJson),

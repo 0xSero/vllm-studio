@@ -243,6 +243,7 @@ export function useConfigure(): ConfigureState {
   );
 
   const disconnectHead = useCallback(() => {
+    void fetch("/api/proxy/api/agent/head-connection", { method: "DELETE" });
     clearHeadConnection();
     setConnectedHead(null);
     setHeadConnected(false);

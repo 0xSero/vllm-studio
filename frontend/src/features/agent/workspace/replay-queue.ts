@@ -4,7 +4,7 @@ import type { PaneId, PaneState } from "@/features/agent/workspace/types";
 
 type PaneReplayHandle = {
   sessionId: string;
-  loadAndReplay: (piSessionId: string) => Promise<void> | void;
+  loadAndReplay: (sessionId: string) => Promise<void> | void;
 };
 
 export type SessionReplayQueueDeps = {
@@ -17,8 +17,7 @@ export type SessionReplayQueueDeps = {
 };
 
 export type SessionReplayQueue = {
-  /** Queue (last-wins per pane) a canonical-session replay for a pane. */
-  queue: (paneId: PaneId, piSessionId: string) => void;
+  queue: (paneId: PaneId, sessionId: string) => void;
   /** A pane handle mounted — drain any replay queued before it existed. */
   notifyHandleRegistered: (paneId: PaneId) => void;
 };
@@ -48,11 +47,15 @@ export function createSessionReplayQueue(deps: SessionReplayQueueDeps): SessionR
     if (!handle) return;
     const sessionId = paneSessionId(deps.getState().panesById.get(paneId));
     const current = sessionId ? deps.getState().sessions.get(sessionId) : undefined;
-    if (!current || isFreshStarter(current) || current.messages.length > 0) {
+    if (
+      !current ||
+      (isFreshStarter(current) && current.id !== pendingSessionId) ||
+      current.messages.length > 0
+    ) {
       pending.delete(paneId);
       return;
     }
-    if (current.piSessionId && current.piSessionId !== pendingSessionId) {
+    if (current.id !== pendingSessionId) {
       pending.delete(paneId);
       return;
     }
@@ -62,8 +65,8 @@ export function createSessionReplayQueue(deps: SessionReplayQueueDeps): SessionR
   };
 
   return {
-    queue: (paneId, piSessionId) => {
-      pending.set(paneId, piSessionId);
+    queue: (paneId, sessionId) => {
+      pending.set(paneId, sessionId);
       deps.setTimeout(() => drain(paneId), 0);
     },
     notifyHandleRegistered: (paneId) => {

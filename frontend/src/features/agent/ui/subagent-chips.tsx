@@ -67,7 +67,7 @@ export function SubagentChips({ piSessionId }: { piSessionId: string }) {
   if (runs.length === 0) return null;
 
   return (
-    <div className="mx-auto mb-1.5 flex w-full max-w-[var(--composer-w)] flex-wrap items-center gap-1.5">
+    <div className="mx-auto mb-1 flex w-full max-w-[var(--thread-w)] flex-wrap items-center gap-1">
       {runs.map((run) => (
         <button
           key={run.id}
@@ -83,7 +83,7 @@ export function SubagentChips({ piSessionId }: { piSessionId: string }) {
               ? `${run.name} — failed: ${run.error ?? "unknown error"}`
               : `${run.name} — ${chipHint[run.status]}`
           }
-          className="flex items-center gap-1.5 rounded-full bg-(--fg)/[0.05] px-2.5 py-1 text-[length:var(--fs-sm)] text-(--fg)/75 transition-colors hover:bg-(--fg)/[0.08] hover:text-(--fg)/90 disabled:cursor-default"
+          className="flex items-center gap-1.5 rounded-md border border-(--separator) bg-(--surface)/45 px-2 py-0.5 text-[length:var(--fs-xs)] text-(--fg)/70 transition-colors hover:bg-(--hover) hover:text-(--fg)/90 disabled:cursor-default"
         >
           {run.status === "running" ? (
             <Spinner size="xs" />

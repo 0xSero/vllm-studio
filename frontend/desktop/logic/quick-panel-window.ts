@@ -1,6 +1,5 @@
 import { app, BrowserWindow, screen, type Rectangle } from "electron";
-import path from "node:path";
-import { DESKTOP_CONFIG } from "../configs";
+import { DESKTOP_CONFIG, resolveDesktopPreloadPath } from "../configs";
 import {
   getStoredQuickPanelThreadSize,
   setStoredQuickPanelThreadSize,
@@ -84,13 +83,18 @@ function createQuickPanelWindow(appUrl: string): BrowserWindow {
     backgroundColor: "#00000000",
     ...(process.platform === "darwin" ? { type: "panel" as const } : {}),
     webPreferences: {
-      preload: path.join(app.getAppPath(), "desktop", "dist", "preload.js"),
+      preload: resolveDesktopPreloadPath(),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
       allowRunningInsecureContent: false,
       navigateOnDragDrop: false,
+      backgroundThrottling: true,
+      enableWebSQL: false,
+      spellcheck: false,
+      v8CacheOptions: "code",
+      devTools: !app.isPackaged && !process.env.LOCAL_STUDIO_DESKTOP_DISABLE_DEVTOOLS,
     },
   });
 

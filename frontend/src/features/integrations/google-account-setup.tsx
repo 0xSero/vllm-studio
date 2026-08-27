@@ -1,6 +1,6 @@
 "use client";
 
-import type { GoogleAccountView } from "@local-studio/agent-runtime/google-account-contract";
+import type { GoogleAccountView } from "@shared/agent/google-account-contract";
 import { Alert, Button, FormField, Input } from "@/ui";
 import { ExternalLink } from "@/ui/icon-registry";
 import { openExternal } from "./google-account-model";

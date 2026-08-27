@@ -193,14 +193,14 @@ export function usePersistentTerminalOwners(
   const subscribe = useCallback(
     (notify: () => void) => {
       const unsubscribe = subscribeTerminalOwners(notify);
-      if (
-        active &&
-        owner &&
-        !terminalState.owners.some((terminal) =>
+      if (active && owner) {
+        const existing = terminalState.owners.find((terminal) =>
           terminalKeysMatch(terminal.matchKeys, owner.matchKeys),
-        )
-      ) {
-        queueMicrotask(() => rememberTerminalOwner(owner, { select: true }));
+        );
+        if (!existing) queueMicrotask(() => rememberTerminalOwner(owner, { select: true }));
+        else if (terminalState.activeOwnerKey !== existing.mountKey) {
+          queueMicrotask(() => selectPersistentTerminalOwner(existing.mountKey));
+        }
       }
       return unsubscribe;
     },

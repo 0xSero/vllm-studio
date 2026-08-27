@@ -1,7 +1,20 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
-import { Check, ChevronDown, Laptop, Moon, RotateCcw, Search, Sun, X } from "@/ui/icon-registry";
+import { useMemo, useState, useCallback, useDeferredValue, useRef } from "react";
+import { Schema } from "effect";
+import {
+  Check,
+  ChevronDown,
+  Copy,
+  Download,
+  Laptop,
+  Moon,
+  RotateCcw,
+  Search,
+  Sun,
+  Upload,
+  X,
+} from "@/ui/icon-registry";
 import { useAppStore } from "@/store";
 import {
   FONT_FAMILY_BY_ID,
@@ -13,7 +26,7 @@ import {
   type ThemeTokens,
 } from "@/lib/themes";
 import { applyTokensToDocument, applyUiControl } from "@/lib/theme-runtime";
-import { ColorField, SegmentedControl, type SegmentedItem, Slider } from "@/ui";
+import { ColorField, SegmentedControl, Select, type SegmentedItem, Slider } from "@/ui";
 import type { PreviewHeight } from "@/ui/preview-scroll";
 import {
   TOOL_PREVIEW_HEIGHT_OPTIONS,
@@ -22,10 +35,27 @@ import {
   type ToolPreviewHeightOverrides,
 } from "@/features/agent/ui/timeline/tool-metadata";
 import { SettingsButton, SettingsGroup, SettingsRow } from "./settings-ui";
+import { WindowMaterialSettings } from "./window-material-settings";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 const CUSTOM_THEME_TOKEN_KEY = "local-studio.customThemeTokens";
 const LIGHT_THEME_ID = "zai-light";
 const DARK_THEME_ID = "zai-dark";
+const THEME_MODE_KEY = "local-studio:theme-mode";
+const LIGHT_THEME_KEY = "local-studio:light-theme";
+const DARK_THEME_KEY = "local-studio:dark-theme";
+const ThemeTokensSchema = Schema.Struct({
+  bg: Schema.String,
+  fg: Schema.String,
+  dim: Schema.String,
+  border: Schema.String,
+  surface: Schema.String,
+  accent: Schema.String,
+  hl1: Schema.String,
+  hl2: Schema.String,
+  hl3: Schema.String,
+  err: Schema.String,
+});
 
 type ThemeMode = "light" | "dark" | "system";
 
@@ -102,6 +132,17 @@ function readVar(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function readRemVar(name: string, fallback: number): number {
+  if (typeof document === "undefined") return fallback;
+  const root = getComputedStyle(document.documentElement);
+  const value = root.getPropertyValue(name).trim();
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  if (!value.endsWith("px")) return parsed;
+  const rem = Number.parseFloat(root.fontSize);
+  return Number.isFinite(rem) && rem > 0 ? parsed / rem : fallback;
+}
+
 function ThemeSwatches({ theme }: { theme: ThemeMeta }) {
   return (
     <div className="flex items-center gap-0.5">
@@ -129,6 +170,7 @@ export function AppearanceSettings() {
   const setToolPreviewHeightOverride = useAppStore((s) => s.setToolPreviewHeightOverride);
 
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     () => new Set(["Reference", "Studio"]),
   );
@@ -151,7 +193,7 @@ export function AppearanceSettings() {
   const [chatLineHeight, setChatLineHeight] = useState(() =>
     readVar("--codex-chat-line-height", 1.5),
   );
-  const [chatWidth, setChatWidth] = useState(() => readVar("--composer-w", 48));
+  const [chatWidth, setChatWidth] = useState(() => readRemVar("--thread-w", 56));
   const [bubbleTone, setBubbleTone] = useState(() => readVarString("--bubble", "#282828"));
   const setChatFont = (value: number) => {
     setChatFontSize(value);
@@ -163,7 +205,7 @@ export function AppearanceSettings() {
   };
   const setChatColumn = (value: number) => {
     setChatWidth(value);
-    applyUiControl("--composer-w", `${value}rem`);
+    applyUiControl("--thread-w", `${value}rem`);
   };
   const setBubble = (value: string) => {
     setBubbleTone(value);
@@ -172,20 +214,53 @@ export function AppearanceSettings() {
 
   const currentTheme = THEME_BY_ID.get(themeId) ?? THEMES[0];
 
-  const [mode, setMode] = useState<ThemeMode>(() =>
-    isLightTheme(currentTheme) ? "light" : "dark",
-  );
+  const [mode, setMode] = useState<ThemeMode>(() => {
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem(THEME_MODE_KEY);
+      if (stored === "light" || stored === "dark" || stored === "system") return stored;
+    }
+    return isLightTheme(currentTheme) ? "light" : "dark";
+  });
+
+  const storedThemeForMode = (target: "light" | "dark") => {
+    if (typeof window === "undefined") return target === "light" ? LIGHT_THEME_ID : DARK_THEME_ID;
+    const stored = window.localStorage.getItem(
+      target === "light" ? LIGHT_THEME_KEY : DARK_THEME_KEY,
+    );
+    return stored && THEME_BY_ID.has(stored as never)
+      ? (stored as typeof themeId)
+      : target === "light"
+        ? LIGHT_THEME_ID
+        : DARK_THEME_ID;
+  };
+
+  const selectTheme = (theme: ThemeMeta) => {
+    setThemeId(theme.id);
+    const targetMode = isLightTheme(theme) ? "light" : "dark";
+    window.localStorage.setItem(
+      targetMode === "light" ? LIGHT_THEME_KEY : DARK_THEME_KEY,
+      theme.id,
+    );
+  };
+
+  useMountSubscription(() => {
+    if (mode !== "system") return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const sync = () => setThemeId(storedThemeForMode(media.matches ? "dark" : "light"));
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, [mode, setThemeId]);
 
   const groups = useMemo(() => {
     const map = new Map<string, ThemeMeta[]>();
     for (const theme of THEMES) {
-      if (!matchesQuery(theme, query)) continue;
+      if (!matchesQuery(theme, deferredQuery)) continue;
       const list = map.get(theme.group) ?? [];
       list.push(theme);
       map.set(theme.group, list);
     }
     return Array.from(map.entries());
-  }, [query]);
+  }, [deferredQuery]);
 
   const toggleGroup = (group: string) => {
     setExpandedGroups((prev) => {
@@ -210,6 +285,8 @@ export function AppearanceSettings() {
     () => readCustomTokens() ?? baseTokens,
   );
   const [isCustomActive, setIsCustomActive] = useState(false);
+  const [themeFileError, setThemeFileError] = useState("");
+  const themeFileRef = useRef<HTMLInputElement | null>(null);
 
   const [prevThemeId, setPrevThemeId] = useState(themeId);
   if (themeId !== prevThemeId) {
@@ -235,16 +312,51 @@ export function AppearanceSettings() {
     setIsCustomActive(false);
   };
 
+  const activateCustomTokens = (tokens: ThemeTokens) => {
+    setCustomTokens(tokens);
+    writeCustomTokens(tokens);
+    applyTokensToDocument(tokens);
+    setIsCustomActive(true);
+    setThemeFileError("");
+  };
+
+  const exportTheme = () => {
+    const blob = new Blob(
+      [JSON.stringify({ name: `${currentTheme.name} custom`, tokens: customTokens }, null, 2)],
+      { type: "application/json" },
+    );
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${currentTheme.id}-custom.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importTheme = async (file: File) => {
+    try {
+      const parsed = JSON.parse(await file.text()) as unknown;
+      const source =
+        parsed && typeof parsed === "object" && "tokens" in parsed
+          ? (parsed as { tokens: unknown }).tokens
+          : parsed;
+      activateCustomTokens(Schema.decodeUnknownSync(ThemeTokensSchema)(source));
+    } catch {
+      setThemeFileError("This file does not contain a valid Local Studio theme.");
+    }
+  };
+
   const applyMode = (next: ThemeMode) => {
     setMode(next);
-    if (next === "light") setThemeId(LIGHT_THEME_ID);
-    else if (next === "dark") setThemeId(DARK_THEME_ID);
+    window.localStorage.setItem(THEME_MODE_KEY, next);
+    if (next === "light") setThemeId(storedThemeForMode("light"));
+    else if (next === "dark") setThemeId(storedThemeForMode("dark"));
     else {
       const prefersDark =
         typeof window !== "undefined" &&
         typeof window.matchMedia === "function" &&
         window.matchMedia("(prefers-color-scheme: dark)").matches;
-      setThemeId(prefersDark ? DARK_THEME_ID : LIGHT_THEME_ID);
+      setThemeId(storedThemeForMode(prefersDark ? "dark" : "light"));
     }
     setIsCustomActive(false);
   };
@@ -308,7 +420,7 @@ export function AppearanceSettings() {
                   </span>
                 </button>
                 {expanded ? (
-                  <div className="grid grid-cols-1 gap-1 p-2 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-1 p-2">
                     {themes.map((theme) => {
                       const active = theme.id === themeId && !isCustomActive;
                       const font = FONT_FAMILY_BY_ID.get(theme.fontFamilyId);
@@ -316,7 +428,7 @@ export function AppearanceSettings() {
                         <button
                           key={theme.id}
                           type="button"
-                          onClick={() => setThemeId(theme.id)}
+                          onClick={() => selectTheme(theme)}
                           className={`min-w-0 rounded-[var(--rad-md)] border px-2.5 py-2 text-left transition-colors ${
                             active
                               ? "border-(--ui-accent)/35 bg-(--ui-active)"
@@ -353,6 +465,8 @@ export function AppearanceSettings() {
 
   return (
     <div>
+      <WindowMaterialSettings />
+
       <SettingsGroup
         title="Theme"
         description="Use light, dark, or match your system."
@@ -384,14 +498,48 @@ export function AppearanceSettings() {
       <SettingsGroup
         title="Theme editor"
         actions={
-          isCustomActive ? (
-            <SettingsButton onClick={resetTokens}>
-              <RotateCcw className="h-3 w-3" />
-              Reset
+          <div className="flex items-center gap-1">
+            <input
+              ref={themeFileRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void importTheme(file);
+                event.target.value = "";
+              }}
+            />
+            <SettingsButton onClick={() => themeFileRef.current?.click()} title="Import theme">
+              <Upload className="h-3 w-3" />
+              Import
             </SettingsButton>
-          ) : undefined
+            <SettingsButton onClick={exportTheme} title="Export theme">
+              <Download className="h-3 w-3" />
+              Export
+            </SettingsButton>
+            {!isCustomActive ? (
+              <SettingsButton
+                onClick={() => activateCustomTokens({ ...baseTokens })}
+                title="Duplicate theme"
+              >
+                <Copy className="h-3 w-3" />
+                Duplicate
+              </SettingsButton>
+            ) : (
+              <SettingsButton onClick={resetTokens} title="Reset theme">
+                <RotateCcw className="h-3 w-3" />
+                Reset
+              </SettingsButton>
+            )}
+          </div>
         }
       >
+        {themeFileError ? (
+          <div role="alert" className="px-3 py-2 text-[length:var(--fs-xs)] text-(--ui-danger)">
+            {themeFileError}
+          </div>
+        ) : null}
         {editorTokens.map((row) => (
           <SettingsRow
             key={row.key}
@@ -428,23 +576,15 @@ export function AppearanceSettings() {
         <SettingsRow
           label="Font family"
           control={
-            <div className="relative w-full max-w-[184px]">
-              <select
-                value={fontFamilyId}
-                onChange={(e) => setFontFamilyId(e.target.value as FontFamilyId)}
-                className="h-7 w-full appearance-none rounded-md border border-(--ui-border) bg-(--ui-bg) pl-7 pr-7 text-[length:var(--fs-md)] text-(--ui-fg) outline-none focus:border-(--ui-accent)/40"
-              >
-                {FONT_FAMILY_OPTIONS.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[length:var(--fs-sm)] text-(--ui-muted)">
-                Aa
-              </span>
-              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-(--ui-muted)" />
-            </div>
+            <Select
+              compact
+              value={fontFamilyId}
+              onChange={(event) => setFontFamilyId(event.target.value as FontFamilyId)}
+              options={FONT_FAMILY_OPTIONS.map((option) => ({
+                value: option.id,
+                label: option.label,
+              }))}
+            />
           }
         />
         <SettingsRow
@@ -554,12 +694,12 @@ export function AppearanceSettings() {
         />
         <SettingsRow
           label="Chat column width"
-          description="Maximum width of the thread and composer"
+          description="Maximum width of the message thread"
           control={
             <div className="flex w-full items-center gap-3">
               <Slider
                 value={chatWidth}
-                min={40}
+                min={26}
                 max={64}
                 step={1}
                 onChange={setChatColumn}

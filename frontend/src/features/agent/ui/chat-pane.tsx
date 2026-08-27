@@ -1,6 +1,6 @@
 "use client";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
   useMemo,
@@ -17,6 +17,7 @@ import { type FileMentionRow, type MentionRow } from "@/features/agent/ui/agent-
 import { builtinCommandProvider } from "@/features/agent/composer/builtin-commands";
 import { AutomationDrawer } from "@/features/agent/ui/automation-drawer";
 import { ComposerProjectDrawer } from "@/features/agent/ui/composer-project-drawer";
+import { TaskSetupBar } from "@/features/agent/ui/task-setup-bar";
 import { SubagentChips } from "@/features/agent/ui/subagent-chips";
 import { GitDiffDrawer } from "@/features/agent/ui/git-diff-drawer";
 import {
@@ -63,7 +64,8 @@ import { respondExtensionUi } from "@/features/agent/runtime/api";
 import { useSessionEngine } from "@/features/agent/runtime/engine";
 import type { Session, UpdateSession } from "@/features/agent/runtime/types";
 import { useTools } from "@/features/agent/tools/context";
-import type { GitSummary, Project } from "@/features/agent/projects/types";
+import { isChatsProject, type GitSummary, type Project } from "@/features/agent/projects/types";
+import { useProjects } from "@/features/agent/projects/context";
 import type { BrowserBackend } from "@/features/agent/tools/types";
 import type { AgentThinkingLevel } from "@/features/agent/contracts";
 import {
@@ -91,6 +93,8 @@ import { cx } from "@/ui/utils";
 import { ExtensionUiDialog } from "@/features/agent/ui/extension-ui-dialog";
 export type { ChatPaneHandle };
 
+type ComposerPopover = "context" | "model";
+
 const Timeline = dynamic(
   () => import("@/features/agent/ui/timeline/timeline").then((mod) => mod.Timeline),
   { ssr: false, loading: () => <TimelineFallback /> },
@@ -111,16 +115,7 @@ function downloadTextFile(filename: string, content: string): void {
 
 function EmptyPromptTimeline() {
   return (
-    <div className="flex min-h-0 flex-1 overflow-y-auto bg-(--agent-bg) px-6 pb-10 pt-2">
-      <div className="agent-thread-shell mx-auto flex flex-1">
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-          <p className="max-w-[24ch] text-[clamp(1.45rem,2.6vw,2.1rem)] font-semibold leading-[1.22] tracking-[-0.02em] text-(--fg)/90">
-            A dream is something you build for yourself.
-          </p>
-          <p className="text-[length:var(--fs-xl)] text-(--dim)">Just talk to it.</p>
-        </div>
-      </div>
-    </div>
+    <div className="agent-chat-empty flex min-h-0 flex-1 bg-(--agent-bg)" aria-hidden="true" />
   );
 }
 
@@ -131,9 +126,7 @@ function TimelineFallback() {
 function chatPaneClassName(composerOnly: boolean): string {
   return cx(
     "relative flex min-h-0 min-w-0 flex-1 flex-col",
-    composerOnly
-      ? "bg-transparent"
-      : "bg-(--agent-bg) shadow-[inset_1px_0_rgba(255,255,255,0.015)]",
+    composerOnly ? "bg-transparent" : "bg-(--agent-bg)",
   );
 }
 
@@ -146,7 +139,6 @@ function ChatTranscript({
   setStickToBottom,
   running,
   cwd,
-  onForkSession,
   loadEarlierHistory,
 }: {
   composerOnly: boolean;
@@ -157,7 +149,6 @@ function ChatTranscript({
   setStickToBottom: (value: boolean) => void;
   running: boolean;
   cwd: string;
-  onForkSession?: () => void;
   loadEarlierHistory: () => Promise<void>;
 }) {
   const viewKey = activeTab?.piSessionId ?? activeTab?.id ?? null;
@@ -177,7 +168,6 @@ function ChatTranscript({
           cwd={cwd || null}
           viewKey={viewKey}
           viewAlias={viewAlias}
-          onForkSession={onForkSession}
           hasEarlier={activeTab?.historyCursor != null}
           onLoadEarlier={loadEarlierHistory}
         />
@@ -189,12 +179,14 @@ function ChatTranscript({
 type Props = {
   paneId: string;
   modelId: string;
+  modelRouteId: string;
   modelName: string | null;
   modelSupportsVision: boolean;
   modelThinkingLevels: readonly AgentThinkingLevel[];
   modelsLoading: boolean;
   contextWindow: number;
   cwd: string;
+  projectId: string | null;
   projectName: string | null;
   modelSelector?: (props: ComposerModelSelectorProps) => ReactNode;
   gitBranch?: string | null;
@@ -212,7 +204,6 @@ type Props = {
   onUpdateSession: UpdateSession;
   onRenameSession: (tabId: string, title: string) => void;
   onClose?: () => void;
-  onForkSession?: () => void;
   onOpenTerminal?: () => void;
   terminalOwner?: TerminalOwner | null;
   rightPanelOpen: boolean;
@@ -220,6 +211,7 @@ type Props = {
   onRegisterHandle?: (handle: ChatPaneHandle | null) => void;
   showHeader?: boolean;
   composerOnly?: boolean;
+  readOnly?: boolean;
 };
 
 export type ComposerModelSelectorProps = {
@@ -227,6 +219,8 @@ export type ComposerModelSelectorProps = {
   reasoningLevels: readonly AgentThinkingLevel[];
   reasoningDisabled: boolean;
   onSelectReasoning: (level: AgentThinkingLevel) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 };
 
 function renderComposerModelSelector(
@@ -238,12 +232,14 @@ function renderComposerModelSelector(
 export function ChatPane({
   paneId,
   modelId,
+  modelRouteId,
   modelName,
   modelSupportsVision,
   modelThinkingLevels,
   modelsLoading,
   contextWindow,
   cwd,
+  projectId,
   projectName,
   modelSelector,
   gitBranch,
@@ -261,7 +257,6 @@ export function ChatPane({
   onUpdateSession,
   onRenameSession,
   onClose,
-  onForkSession,
   onOpenTerminal,
   terminalOwner = null,
   rightPanelOpen,
@@ -269,8 +264,15 @@ export function ChatPane({
   onRegisterHandle,
   showHeader = true,
   composerOnly = false,
+  readOnly = false,
 }: Props) {
   const router = useRouter();
+  const routeProjectId = useSearchParams().get("project");
+  const effectiveProjectId = projectId ?? routeProjectId;
+  const projects = useProjects();
+  const selectedProject = effectiveProjectId ? projects.findById(effectiveProjectId) : null;
+  const chatWorkspace = effectiveProjectId === "chats";
+  const workspaceCwd = chatWorkspace ? "" : cwd;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [stickToBottom, setStickToBottom] = useState(true);
@@ -288,8 +290,8 @@ export function ChatPane({
   } = useChatPaneDerivedState({ activeTabId, contextWindow, tabs });
   const [terminalView, setTerminalView] = useState(false);
   const terminalSnapshot = usePersistentTerminalOwners(
-    terminalView,
-    terminalView ? terminalOwner : null,
+    terminalView && !chatWorkspace,
+    terminalView && !chatWorkspace ? terminalOwner : null,
   );
   const toggleTerminalView = useCallback(() => {
     setTerminalView((open) => {
@@ -299,7 +301,7 @@ export function ChatPane({
     });
   }, [terminalOwner]);
   useMountSubscription(() => {
-    if (!isFocused) return;
+    if (!isFocused || chatWorkspace) return;
     const onOpenTerminalEvent = (event: Event) => {
       const detail = (event as CustomEvent<OpenTerminalEventDetail>).detail;
       if (!detail?.mountKey) return;
@@ -308,7 +310,7 @@ export function ChatPane({
     };
     window.addEventListener(OPEN_TERMINAL_EVENT, onOpenTerminalEvent);
     return () => window.removeEventListener(OPEN_TERMINAL_EVENT, onOpenTerminalEvent);
-  }, [isFocused]);
+  }, [chatWorkspace, isFocused]);
   const updateTab = onUpdateSession;
   const {
     attachments,
@@ -347,6 +349,7 @@ export function ChatPane({
   } = useChatPaneSessionTitle({
     activeTab,
     activeTabId,
+    projectId: effectiveProjectId,
     paneId,
     running: Boolean(running),
     onPiSessionIdChange,
@@ -385,14 +388,26 @@ export function ChatPane({
     },
     [activeTab, running, updateTab],
   );
+  const [activeComposerPopover, setActiveComposerPopover] = useState<ComposerPopover | null>(null);
+  const contextOpen = activeComposerPopover === "context";
+  const modelPickerOpen = activeComposerPopover === "model";
   const composerModelSelector = renderComposerModelSelector(modelSelector, {
     reasoningLevel: thinkingLevel,
     reasoningLevels: modelThinkingLevels,
     reasoningDisabled: Boolean(running),
     onSelectReasoning: selectThinkingLevel,
+    open: modelPickerOpen,
+    onOpenChange: (next) => {
+      setActiveComposerPopover((current) => {
+        if (next) return "model";
+        return current === "model" ? null : current;
+      });
+    },
   });
 
-  const activePiSessionId = activeTab?.piSessionId ?? null;
+  const activePiSessionId = activeTab?.piSessionId?.startsWith("tab-")
+    ? null
+    : (activeTab?.piSessionId ?? null);
   const { goalRevision, goalAction, flushPendingGoal } = useGoalCommand(
     activePiSessionId,
     activeTabId,
@@ -412,11 +427,13 @@ export function ChatPane({
     tabs,
     activeTabId,
     modelId,
+    modelRouteId,
     thinkingLevel,
     toolAccess: "full",
     cwd,
     browserToolEnabled,
     browserBackend,
+    executionKind: effectiveProjectId === "chats" ? "chat" : "project",
     onPiSessionIdChange: handlePiSessionIdAssigned,
     updateSession: updateTab,
     selectionFor: tools.selectionFor,
@@ -430,11 +447,11 @@ export function ChatPane({
     onRegisterHandle,
     running: Boolean(running),
   });
-  const openComputerStatus = useCallback(() => {
-    tools.setComputerTab("status");
-    tools.setComputerOpen(true);
-  }, [tools]);
   const [diffDrawerOpen, setDiffDrawerOpen] = useState(false);
+  const contextTriggerRef = useRef<HTMLButtonElement | null>(null);
+  useMountSubscription(() => {
+    setActiveComposerPopover(null);
+  }, [activeTabId]);
   const openDiffDrawer = useCallback(() => setDiffDrawerOpen(true), []);
   const closeDiffDrawer = useCallback(() => setDiffDrawerOpen(false), []);
   const exportSession = useCallback(() => {
@@ -445,7 +462,11 @@ export function ChatPane({
   const canExport = Boolean(
     activeTab?.messages.some((message) => message.role !== "system" && message.text.trim()),
   );
-  const openTerminalAction = terminalOwner ? toggleTerminalView : onOpenTerminal;
+  const openTerminalAction = chatWorkspace
+    ? undefined
+    : terminalOwner
+      ? toggleTerminalView
+      : onOpenTerminal;
   const applyTemplate = useCallback(
     (row: ComposerPromptTemplateRef) =>
       activeTab ? applyContextRow(activeTab.id, "promptTemplate", row, tools) : Promise.resolve(),
@@ -471,8 +492,14 @@ export function ChatPane({
       if (!activeTab || activeTab.messages.length > 0) return;
       updateTab(activeTab.id, (session) => ({
         ...session,
+        executionKind: isChatsProject(project) ? "chat" : "project",
+        harness: undefined,
         projectId: project.id,
-        cwd: project.path,
+        cwd: isChatsProject(project) || project.repository ? undefined : project.path,
+        managedProject: Boolean(project.repository),
+        baseRef: project.defaultBranch,
+        branchName: undefined,
+        detached: Boolean(project.repository),
       }));
     },
     [activeTab, updateTab],
@@ -482,13 +509,11 @@ export function ChatPane({
       createComposerCommandRegistry([
         builtinCommandProvider({
           compact: () => void compactSession(),
-          openStatus: openComputerStatus,
           toggleBrowserTool: onToggleBrowserTool,
           // The command is `/connectors`, so it lands on the tab it names
           // rather than on whichever tab the page happens to open with.
-          openIntegrations: () => router.push("/integrations#connectors"),
+          openIntegrations: () => router.push("/customize#connectors"),
           ...(openTerminalAction ? { openTerminal: openTerminalAction } : {}),
-          ...(onForkSession ? { forkSession: onForkSession } : {}),
           ...(canExport ? { exportSession } : {}),
           goal: goalAction,
           enterGoalMode: () => setGoalModeOn(true),
@@ -507,9 +532,7 @@ export function ChatPane({
       compactSession,
       goalAction,
       exportSession,
-      onForkSession,
       onToggleBrowserTool,
-      openComputerStatus,
       openTerminalAction,
       router,
       tools.promptTemplateCatalogue,
@@ -545,9 +568,10 @@ export function ChatPane({
     useChatPaneSendFlow({
       activeTab,
       attachments,
+      browserBackend,
       browserToolEnabled,
       clearAttachments,
-      cwd,
+      cwd: workspaceCwd,
       engine,
       modelId,
       modelSupportsVision,
@@ -590,6 +614,11 @@ export function ChatPane({
   });
   const handleComposerSubmit = useCallback(
     (event: FormEvent) => {
+      if (!activeTab?.projectId && effectiveProjectId !== "chats") {
+        event.preventDefault();
+        updateTab(activeTabId, (session) => ({ ...session, error: "Choose a project" }));
+        return;
+      }
       if (goalModeApi.submitAsGoal(event, activeTab?.input ?? "")) return;
       const invocation = parseSlashInvocation(activeTab?.input ?? "");
       if (invocation && commandRegistry.find(invocation.name, commandContext)) {
@@ -599,7 +628,17 @@ export function ChatPane({
       }
       void sendMessage(event);
     },
-    [activeTab, commandContext, commandRegistry, goalModeApi, runCommandInvocation, sendMessage],
+    [
+      activeTab,
+      activeTabId,
+      commandContext,
+      commandRegistry,
+      effectiveProjectId,
+      goalModeApi,
+      runCommandInvocation,
+      sendMessage,
+      updateTab,
+    ],
   );
   const loadEarlierHistory = useCallback(
     () => (activeTabId ? engine.loadEarlier(activeTabId) : Promise.resolve()),
@@ -629,47 +668,34 @@ export function ChatPane({
     <section
       onMouseDownCapture={onFocus}
       data-pane-id={paneId}
+      data-empty-prompt={showEmptyPrompt ? "true" : undefined}
       className={chatPaneClassName(composerOnly)}
     >
       <ChatPaneChrome
         extensionUiRequest={activeTab?.extensionUiRequest}
         onExtensionUiRespond={handleExtensionUiResponse}
         showHeader={showHeader}
-        terminalView={terminalView}
+        terminalView={terminalView && !chatWorkspace}
         terminalSnapshot={terminalSnapshot}
         header={{
           title: displayedSessionTitle,
-          pinned: sessionPinned,
-          rightPanelOpen,
-          canFork: Boolean(onForkSession),
-          canClose: Boolean(onClose),
-          canExport,
-          onTogglePinned: togglePinnedSession,
-          onRename: renameActiveSession,
-          onFork: onForkSession,
-          onOpenTerminal: openTerminalAction,
-          terminalOpen: terminalView,
-          onExport: exportSession,
-          onClose,
-          onToggleRightPanel,
         }}
       />
       <ChatTranscript
         composerOnly={composerOnly}
-        terminalView={terminalView}
+        terminalView={terminalView && !chatWorkspace}
         showEmptyPrompt={showEmptyPrompt}
         activeTab={activeTab}
         stickToBottom={stickToBottom}
         setStickToBottom={setStickToBottom}
         running={Boolean(running)}
-        cwd={cwd}
-        onForkSession={onForkSession}
+        cwd={workspaceCwd}
         loadEarlierHistory={loadEarlierHistory}
       />
-      <div className={terminalView ? "hidden" : "contents"}>
-        {diffDrawerOpen ? (
+      <div className={terminalView && !chatWorkspace ? "hidden" : "contents"}>
+        {diffDrawerOpen && !chatWorkspace ? (
           <GitDiffDrawer
-            cwd={cwd || null}
+            cwd={workspaceCwd || null}
             gitBranch={gitBranch}
             gitSummary={gitSummary}
             onClose={closeDiffDrawer}
@@ -678,83 +704,118 @@ export function ChatPane({
         {automationDrawerOpen ? (
           <AutomationDrawer
             modelId={modelId}
-            cwd={cwd}
+            modelRouteId={modelRouteId}
+            cwd={workspaceCwd}
             prompt={lastUserPrompt}
             onClose={() => setAutomationDrawerOpen(false)}
           />
         ) : null}
         {activePiSessionId ? <SubagentChips piSessionId={activePiSessionId} /> : null}
-        <AgentComposerFrame
-          attachments={attachments}
-          banner={composerVisual.banner}
-          browserToolEnabled={browserToolEnabled}
-          browserBackend={browserBackend}
-          composerDragActive={composerDragActive}
-          contextWindow={effectiveContextWindow}
-          currentContextTokens={currentContextTokens}
-          cwd={cwd}
-          fileInputRef={fileInputRef}
-          gitBranch={gitBranch}
-          gitSummary={gitSummary}
-          input={composerInput}
-          mention={mention}
-          mentionIndex={mentionIndex}
-          mentionRows={mentionRows}
-          modelSupportsVision={modelSupportsVision}
-          modelSelector={composerModelSelector}
-          onAbortTurn={() => void abortTurn()}
-          onAttachFiles={(files) => void attachFiles(files)}
-          onComposerChange={handleComposerChange}
-          onComposerDragLeave={handleComposerDragLeave}
-          onComposerDragOver={handleComposerDragOver}
-          onComposerDrop={handleComposerDrop}
-          onComposerKeyDown={(event) => {
-            if (goalModeApi.interceptKeyDown(event)) return;
-            handleComposerKeyDown(event);
-          }}
-          onComposerPaste={handleComposerPaste}
-          onInitGit={onInitGit}
-          onOpenStatus={openComputerStatus}
-          onOpenDiff={openDiffDrawer}
-          onRemoveAttachment={removeAttachment}
-          onRemoveLoadedContext={removeLoadedContext}
-          onSelectMention={(entry) => void handleSelectMention(entry)}
-          onSubmit={handleComposerSubmit}
-          onToggleBrowserBackend={onToggleBrowserBackend}
-          onToggleBrowserTool={onToggleBrowserTool}
-          placeholder={goalModeApi.goalPlaceholder ?? composerVisual.placeholder}
-          drawer={
-            <SessionProjectDrawer
-              tabId={activeTabId}
-              piSessionId={activePiSessionId}
-              revision={goalRevision}
-              projectName={projectName}
-              cwd={cwd}
-              gitBranch={gitBranch}
-              gitSummary={gitSummary}
-              onInitGit={onInitGit}
-              onOpenDiff={openDiffDrawer}
-              showProjectRow={composerVisual.showProjectRow}
-              running={Boolean(running)}
-              onProjectPicked={handleProjectPicked}
-              queueItems={visibleQueueItems}
-              onEditQueued={editQueued}
-              onRemoveQueued={removeQueued}
-              onSteerQueued={(queueId) => void steerQueued(queueId)}
-            />
-          }
-          showStatusBar={!composerVisual.showProjectRow}
-          promptTemplates={selectedPromptTemplates}
-          readingAttachments={readingAttachments}
-          running={Boolean(running)}
-          selectedSkills={selectedSkills}
-          status={activeTab?.status}
-          textareaRef={textareaRef}
-          goalMode={goalModeApi.goalMode}
-          onExitGoalMode={goalModeApi.exitGoalMode}
-          floating={composerOnly}
-          dense={!showHeader && !composerOnly}
-        />
+        {readOnly ? (
+          <div className="flex min-h-12 items-center justify-center border-t border-(--border)/45 px-4 text-[length:var(--fs-sm)] text-(--dim)">
+            Telegram conversation · Continue in Telegram
+          </div>
+        ) : (
+          <AgentComposerFrame
+            attachments={attachments}
+            banner={composerVisual.banner}
+            composerDragActive={composerDragActive}
+            contextWindow={effectiveContextWindow}
+            currentContextTokens={currentContextTokens}
+            cwd={workspaceCwd}
+            projectName={selectedProject?.name ?? projectName}
+            fileInputRef={fileInputRef}
+            gitBranch={chatWorkspace ? null : gitBranch}
+            gitSummary={chatWorkspace ? null : gitSummary}
+            input={composerInput}
+            mention={mention}
+            mentionIndex={mentionIndex}
+            mentionRows={mentionRows}
+            modelSupportsVision={modelSupportsVision}
+            modelSelector={composerModelSelector}
+            setupBar={
+              !chatWorkspace && activeTab && !activeTab.startedAt ? (
+                <TaskSetupBar
+                  session={activeTab}
+                  project={selectedProject}
+                  disabled={Boolean(activeTab.startedAt)}
+                  onProject={handleProjectPicked}
+                  onPatch={(patch) =>
+                    updateTab(activeTab.id, (session) => ({ ...session, ...patch }))
+                  }
+                />
+              ) : null
+            }
+            contextOpen={contextOpen}
+            contextTriggerRef={contextTriggerRef}
+            onOpenContext={() => {
+              setActiveComposerPopover((current) => (current === "context" ? null : "context"));
+            }}
+            onAbortTurn={() => void abortTurn()}
+            onAttachFiles={(files) => void attachFiles(files)}
+            onComposerChange={handleComposerChange}
+            onComposerDragLeave={handleComposerDragLeave}
+            onComposerDragOver={handleComposerDragOver}
+            onComposerDrop={handleComposerDrop}
+            onComposerKeyDown={(event) => {
+              if (goalModeApi.interceptKeyDown(event)) return;
+              handleComposerKeyDown(event);
+            }}
+            onComposerPaste={handleComposerPaste}
+            onInitGit={chatWorkspace ? undefined : onInitGit}
+            onOpenDiff={chatWorkspace ? () => undefined : openDiffDrawer}
+            onRemoveAttachment={removeAttachment}
+            onRemoveLoadedContext={removeLoadedContext}
+            onSelectMention={(entry) => void handleSelectMention(entry)}
+            onSubmit={handleComposerSubmit}
+            placeholder={goalModeApi.goalPlaceholder ?? composerVisual.placeholder}
+            drawer={
+              <SessionProjectDrawer
+                tabId={activeTabId}
+                piSessionId={activePiSessionId}
+                revision={goalRevision}
+                projectName={chatWorkspace ? null : projectName}
+                cwd={workspaceCwd}
+                gitBranch={chatWorkspace ? null : gitBranch}
+                gitSummary={chatWorkspace ? null : gitSummary}
+                onInitGit={chatWorkspace ? undefined : onInitGit}
+                onOpenDiff={openDiffDrawer}
+                showProjectRow={composerVisual.showProjectRow}
+                open={contextOpen}
+                onOpenChange={(next) => {
+                  setActiveComposerPopover((current) => {
+                    if (next) return "context";
+                    return current === "context" ? null : current;
+                  });
+                }}
+                contextTriggerRef={contextTriggerRef}
+                onRequestAttach={() => fileInputRef.current?.click()}
+                browserToolEnabled={browserToolEnabled}
+                browserBackend={browserBackend}
+                onToggleBrowserBackend={onToggleBrowserBackend}
+                onToggleBrowserTool={onToggleBrowserTool}
+                running={Boolean(running)}
+                workspaceToolsEnabled={!chatWorkspace}
+                onProjectPicked={handleProjectPicked}
+                queueItems={visibleQueueItems}
+                onEditQueued={editQueued}
+                onRemoveQueued={removeQueued}
+                onSteerQueued={(queueId) => void steerQueued(queueId)}
+              />
+            }
+            showStatusBar={!composerVisual.showProjectRow}
+            promptTemplates={selectedPromptTemplates}
+            readingAttachments={readingAttachments}
+            running={Boolean(running)}
+            selectedSkills={selectedSkills}
+            status={activeTab?.status}
+            textareaRef={textareaRef}
+            goalMode={goalModeApi.goalMode}
+            onExitGoalMode={goalModeApi.exitGoalMode}
+            floating={composerOnly}
+            dense={!showHeader && !composerOnly}
+          />
+        )}
       </div>
     </section>
   );

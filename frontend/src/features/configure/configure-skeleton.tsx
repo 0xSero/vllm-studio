@@ -12,9 +12,9 @@
 /** One machine, before its facts arrive. */
 export function MachineCardSkeleton() {
   return (
-    <div className="rounded-[var(--rad-lg)] border border-(--ui-border) bg-(--ui-surface) p-3 sm:p-4">
+    <div className="rounded-[var(--rad-md)] border border-(--ui-border) bg-(--ui-surface) p-3 sm:p-3.5">
       <div className="flex items-start gap-3 sm:gap-4">
-        <div className="h-16 w-24 shrink-0 animate-pulse rounded-[var(--rad-md)] bg-(--ui-hover)" />
+        <div className="h-14 w-20 shrink-0 animate-pulse rounded-[var(--rad-md)] bg-(--ui-hover)" />
         <div className="min-w-0 flex-1 space-y-2 pt-1">
           <div className="h-4 w-40 animate-pulse rounded bg-(--ui-hover)" />
           <div className="h-3 w-64 max-w-full animate-pulse rounded bg-(--ui-hover)/70" />
@@ -40,10 +40,10 @@ export function MachineCardSkeleton() {
 export function ConfigurePageSkeleton() {
   return (
     <div className="mx-auto grid w-full max-w-[92rem] grid-cols-1 gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[168px_minmax(0,68rem)] lg:justify-center lg:gap-6 lg:py-5">
-      <aside className="hidden min-w-0 space-y-2 lg:block">
-        <div className="mb-4 h-4 w-24 animate-pulse rounded bg-(--ui-hover)" />
+      <aside className="hidden min-w-0 space-y-1 lg:block">
+        <div className="mb-3 h-4 w-24 animate-pulse rounded bg-(--ui-hover)" />
         {[0, 1].map((row) => (
-          <div key={row} className="h-8 w-full animate-pulse rounded-md bg-(--ui-hover)/60" />
+          <div key={row} className="h-7 w-full animate-pulse rounded bg-(--ui-hover)/60" />
         ))}
       </aside>
       <section className="min-w-0 space-y-4">

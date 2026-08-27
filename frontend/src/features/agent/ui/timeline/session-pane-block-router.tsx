@@ -49,13 +49,11 @@ const AssistantBlocks = memo(function AssistantBlocks({
   live,
   running,
   cwd,
-  onForkSession,
 }: {
   blocks: AssistantBlock[];
   live: boolean;
   running: boolean;
   cwd: string | null;
-  onForkSession?: () => void;
 }) {
   const routedBlocks = useMemo(() => groupAssistantBlocks(blocks), [blocks]);
   traceAgentReasoning("render.blocks", { blocks, routedBlocks });
@@ -90,7 +88,7 @@ const AssistantBlocks = memo(function AssistantBlocks({
         <div key={item.block.id} className="min-w-0">
           <MemoContentBlock block={item.block} cwd={cwd} />
           {showActions && index === lastContentIndex ? (
-            <AssistantMessageActions copyText={copyText} onForkSession={onForkSession} />
+            <AssistantMessageActions copyText={copyText} />
           ) : null}
         </div>,
       );
@@ -110,13 +108,11 @@ function SessionPaneBlockRouterInner({
   live,
   running,
   cwd,
-  onForkSession,
 }: {
   message: ChatMessage;
   live: boolean;
   running: boolean;
   cwd: string | null;
-  onForkSession?: () => void;
 }) {
   if (message.role === "user") {
     return <UserMessage message={message} />;
@@ -128,7 +124,6 @@ function SessionPaneBlockRouterInner({
       live={live}
       running={running}
       cwd={cwd}
-      onForkSession={onForkSession}
     />
   );
 }

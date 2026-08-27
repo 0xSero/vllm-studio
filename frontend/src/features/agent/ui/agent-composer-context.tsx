@@ -122,7 +122,7 @@ function LoadedContextTab({
   const meta = LOADED_TAB_META[prefix];
   return (
     <span
-      className={`inline-flex max-w-[240px] items-center gap-1.5 rounded border px-2 py-1 text-[length:var(--fs-sm)] shadow-sm shadow-black/5 ${meta.classes}`}
+      className={`inline-flex max-w-[240px] items-center gap-1.5 rounded-[6px] border border-(--border) bg-(--color-input) px-2 py-1 text-[length:var(--fs-sm)] text-(--fg) ${meta.classes}`}
       title={title ?? label}
     >
       <meta.Icon className="h-3 w-3 shrink-0" />
@@ -241,11 +241,11 @@ const BUILTIN_COMMAND_ICONS: Record<string, typeof Slash> = {
 const LOADED_TAB_META: Record<"$" | "/", { Icon: typeof AtSign; classes: string }> = {
   $: {
     Icon: Sparkles,
-    classes: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+    classes: "",
   },
   "/": {
     Icon: Slash,
-    classes: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+    classes: "",
   },
 };
 

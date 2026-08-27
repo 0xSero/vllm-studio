@@ -1,26 +1,24 @@
+import { Effect } from "effect";
 import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
-import * as defaultApi from "@/features/agent/projects/api";
-import type { GitSummary, Project, ProjectId } from "@/features/agent/projects/types";
+import * as api from "@/features/agent/projects/api";
+import {
+  dispatchWorkbenchCommand,
+  getWorkbenchProjection,
+  refreshWorkbench,
+  subscribeWorkbench,
+} from "@/features/workbench/controller-state";
+import {
+  CHATS_PROJECT_ID,
+  type GitSummary,
+  type Project,
+  type ProjectId,
+} from "@/features/agent/projects/types";
 
 export type ProjectsSnapshot = {
   projects: Project[];
   loaded: boolean;
   selectedId: ProjectId | null;
   gitSummaries: ReadonlyMap<string, GitSummary>;
-};
-
-type ProjectsApi = Pick<
-  typeof defaultApi,
-  "initGit" | "loadGitSummary" | "loadProjects" | "removeProject"
->;
-
-type BrowserWindowLike = Pick<Window, "addEventListener" | "dispatchEvent" | "removeEventListener">;
-
-export type ProjectsStoreDependencies = {
-  api?: ProjectsApi;
-  readSelectedProjectId?: () => ProjectId | null;
-  writeSelectedProjectId?: (id: ProjectId | null) => void;
-  getWindow?: () => BrowserWindowLike | null;
 };
 
 export type ProjectsStore = {
@@ -35,25 +33,40 @@ export type ProjectsStore = {
   initGitForActiveProject: () => Promise<void>;
 };
 
-const getBrowserWindow = (): BrowserWindowLike | null =>
-  typeof window === "undefined" ? null : window;
+function projectsFromController(): Project[] {
+  return getWorkbenchProjection().projects.map((project) => ({
+    id: project.id,
+    name: project.name,
+    path: project.path,
+    addedAt: "",
+    exists: true,
+    hasGit: false,
+    branch: null,
+    accountId: project.accountId,
+    organization: project.organization,
+    repository: project.repository,
+    repositoryUrl: project.repositoryUrl,
+    defaultBranch: project.defaultBranch,
+  }));
+}
 
-const notify = (target: BrowserWindowLike | null, eventName: string): void => {
-  target?.dispatchEvent(new Event(eventName));
-};
+function selectedProjectId(): ProjectId | null {
+  return getWorkbenchProjection().selectedProjectId ?? null;
+}
 
-export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}): ProjectsStore {
-  const api = dependencies.api ?? defaultApi;
-  const readSelection = dependencies.readSelectedProjectId ?? readSelectedProjectId;
-  const writeSelection = dependencies.writeSelectedProjectId ?? writeSelectedProjectId;
-  const getWindow = dependencies.getWindow ?? getBrowserWindow;
+function projectPathById(projects: readonly Project[], projectId: ProjectId | null): string {
+  if (projectId === CHATS_PROJECT_ID) return "";
+  return projects.find((project) => project.id === projectId)?.path ?? "";
+}
+
+export function createProjectsStore(): ProjectsStore {
   const listeners = new Set<() => void>();
-  let started = false;
+  let controllerUnsubscribe: (() => void) | null = null;
   let lastGitFetch: string | null = null;
   let snapshot: ProjectsSnapshot = {
-    projects: applyProjectOrder(readCachedProjects()),
+    projects: projectsFromController(),
     loaded: false,
-    selectedId: readSelection(),
+    selectedId: selectedProjectId(),
     gitSummaries: new Map(),
   };
 
@@ -66,13 +79,13 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
     emit();
   };
 
-  const setSelectedId = (selectedId: ProjectId | null): void => {
-    if (selectedId !== snapshot.selectedId) writeSelection(selectedId);
-    update({ ...snapshot, selectedId });
-  };
-
-  const replaceProjects = (projects: Project[]): void => {
-    update({ ...snapshot, projects });
+  const syncController = (): void => {
+    update({
+      ...snapshot,
+      projects: projectsFromController(),
+      selectedId: selectedProjectId(),
+      loaded: true,
+    });
   };
 
   const loadGitSummary = async (cwd: string): Promise<GitSummary | null> => {
@@ -93,78 +106,61 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
     }
   };
 
-  const loadGitSummaryOnce = (cwd: string): void => {
-    if (!cwd || lastGitFetch === cwd) return;
-    lastGitFetch = cwd;
-    void loadGitSummary(cwd);
-  };
-
   const refresh = async (): Promise<void> => {
-    let projects: Project[] = [];
-    try {
-      projects = applyProjectOrder(await api.loadProjects());
-      writeCachedProjects(projects);
-    } catch {
-      projects = snapshot.projects;
-    }
-    const previousSelectedId = snapshot.selectedId;
-    const selectedId = resolveSelectedProjectId(previousSelectedId, projects);
-    update({ ...snapshot, projects, loaded: true, selectedId });
-    if (selectedId !== previousSelectedId) writeSelection(selectedId);
-    void loadGitSummary(projectPathById(projects, selectedId));
-  };
-
-  const start = (): void => {
-    if (started) return;
-    started = true;
-    void refresh();
-  };
-
-  const stop = (): void => {
-    if (!started || listeners.size > 0) return;
-    started = false;
+    await Effect.runPromise(refreshWorkbench());
+    syncController();
+    void loadGitSummary(projectPathById(snapshot.projects, snapshot.selectedId));
   };
 
   return {
     getSnapshot: () => snapshot,
     subscribe: (listener) => {
       listeners.add(listener);
-      start();
+      if (!controllerUnsubscribe) {
+        controllerUnsubscribe = subscribeWorkbench(syncController);
+        void refresh().catch(() => update({ ...snapshot, loaded: true }));
+      }
       return () => {
         listeners.delete(listener);
-        stop();
+        if (listeners.size === 0) {
+          controllerUnsubscribe?.();
+          controllerUnsubscribe = null;
+        }
       };
     },
     refresh,
     selectProject: (project) => {
-      setSelectedId(project?.id ?? null);
-      loadGitSummaryOnce(project?.path ?? "");
+      void Effect.runPromise(
+        dispatchWorkbenchCommand({
+          kind: "select_project",
+          ...(project ? { projectId: project.id } : {}),
+        }),
+      );
+      const cwd = project?.id === CHATS_PROJECT_ID ? "" : (project?.path ?? "");
+      if (cwd && lastGitFetch !== cwd) {
+        lastGitFetch = cwd;
+        void loadGitSummary(cwd);
+      }
     },
     upsertProject: (project) => {
-      replaceProjects([project, ...snapshot.projects.filter((entry) => entry.id !== project.id)]);
+      update({
+        ...snapshot,
+        projects: [project, ...snapshot.projects.filter((entry) => entry.id !== project.id)],
+      });
       void refresh();
     },
     removeProject: async (id) => {
       await api.removeProject(id);
-      const previousSelectedId = snapshot.selectedId;
-      const projects = snapshot.projects.filter((entry) => entry.id !== id);
-      const selectedId = previousSelectedId === id ? null : previousSelectedId;
-      update({ ...snapshot, projects, selectedId });
-      if (selectedId !== previousSelectedId) writeSelection(selectedId);
-      void refresh();
+      await refresh();
     },
-    moveProjectBefore: (dragId, targetId) => {
-      if (dragId === targetId) return;
-      const projects = [...snapshot.projects];
-      const fromIndex = projects.findIndex((entry) => entry.id === dragId);
-      if (fromIndex === -1) return;
-      const [moved] = projects.splice(fromIndex, 1);
-      const toIndex = targetId ? projects.findIndex((entry) => entry.id === targetId) : -1;
-      if (toIndex === -1) projects.push(moved);
-      else projects.splice(toIndex, 0, moved);
-      writeProjectOrder(projects.map((entry) => entry.id));
-      writeCachedProjects(projects);
-      replaceProjects(projects);
+    moveProjectBefore: (projectId, targetId) => {
+      void Effect.runPromise(
+        dispatchWorkbenchCommand({
+          kind: "move_project",
+          projectId,
+          ...(targetId ? { targetId } : {}),
+        }),
+      );
     },
     loadGitSummary,
     initGitForActiveProject: async () => {
@@ -172,95 +168,8 @@ export function createProjectsStore(dependencies: ProjectsStoreDependencies = {}
       if (!cwd) return;
       await api.initGit(cwd);
       await loadGitSummary(cwd);
-      void refresh();
-      notify(getWindow(), SESSIONS_CHANGED_EVENT);
+      await refresh();
+      window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT));
     },
   };
-}
-
-function resolveSelectedProjectId(
-  current: ProjectId | null,
-  projects: readonly Project[],
-): ProjectId | null {
-  if (current && projects.some((project) => project.id === current)) return current;
-  return projects[0]?.id ?? null;
-}
-
-function projectPathById(projects: readonly Project[], projectId: ProjectId | null): string {
-  return projects.find((project) => project.id === projectId)?.path ?? "";
-}
-
-const SELECTED_PROJECT_KEY = "local-studio.agent.selectedProjectId";
-const PROJECTS_CACHE_KEY = "local-studio.agent.projects.cache.v1";
-const PROJECTS_ORDER_KEY = "local-studio.agent.projects.order.v1";
-
-function readProjectOrder(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(PROJECTS_ORDER_KEY) ?? "[]") as unknown;
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeProjectOrder(ids: string[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(PROJECTS_ORDER_KEY, JSON.stringify(ids));
-  } catch {}
-}
-
-/** Apply the user's saved manual order; projects without a saved position keep
- * their load order and sort after the ordered ones. */
-function applyProjectOrder(projects: Project[]): Project[] {
-  const order = readProjectOrder();
-  if (order.length === 0) return projects;
-  const position = new Map(order.map((id, index) => [id, index] as const));
-  return [...projects].sort((a, b) => {
-    const pa = position.get(a.id) ?? Number.MAX_SAFE_INTEGER;
-    const pb = position.get(b.id) ?? Number.MAX_SAFE_INTEGER;
-    return pa - pb;
-  });
-}
-
-function readCachedProjects(): Project[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(PROJECTS_CACHE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (entry): entry is Project =>
-        Boolean(entry) &&
-        typeof (entry as Project).id === "string" &&
-        typeof (entry as Project).path === "string",
-    );
-  } catch {
-    return [];
-  }
-}
-
-function writeCachedProjects(projects: Project[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(PROJECTS_CACHE_KEY, JSON.stringify(projects));
-  } catch {}
-}
-
-function readSelectedProjectId(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(SELECTED_PROJECT_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writeSelectedProjectId(id: string | null): void {
-  if (typeof window === "undefined") return;
-  try {
-    if (id) window.localStorage.setItem(SELECTED_PROJECT_KEY, id);
-    else window.localStorage.removeItem(SELECTED_PROJECT_KEY);
-  } catch {}
 }

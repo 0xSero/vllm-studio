@@ -3,7 +3,10 @@
 import { useState, type ComponentType, type ReactNode } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { ProjectsProvider } from "@/features/agent/projects/context";
+import { ToolsProvider } from "@/features/agent/tools/context";
 import { requestIdleWork } from "@/lib/idle-work";
+import { DesktopWindowAppearanceSync } from "@/lib/desktop-window-appearance";
+import { DiffWorkerProvider } from "@/features/agent/ui/diff-worker-provider";
 
 type GlobalListenersComponent = ComponentType;
 
@@ -37,8 +40,13 @@ function LazyGlobalListeners() {
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <ProjectsProvider>
-      <LazyGlobalListeners />
-      {children}
+      <ToolsProvider>
+        <DiffWorkerProvider>
+          <DesktopWindowAppearanceSync />
+          <LazyGlobalListeners />
+          {children}
+        </DiffWorkerProvider>
+      </ToolsProvider>
     </ProjectsProvider>
   );
 }

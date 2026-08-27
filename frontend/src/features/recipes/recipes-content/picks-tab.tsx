@@ -3,7 +3,6 @@
 import { useCallback } from "react";
 import { RefreshCw } from "@/ui/icon-registry";
 import { ModelButton } from "@/ui";
-import { cx } from "@/ui/utils";
 import type { ModelIndexVariant } from "@/lib/api/studio";
 import { useDownloads } from "@/hooks/use-downloads";
 import { TableNotice, TableSkeleton } from "./catalog-table-shell";
@@ -55,16 +54,6 @@ export function PicksTab() {
               updated {data.updated}
             </span>
           ) : null}
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            disabled={loading}
-            title="Reload the catalog"
-            aria-label="Reload the catalog"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--ui-muted) transition-colors hover:bg-(--ui-hover) hover:text-(--ui-fg) disabled:opacity-45"
-          >
-            <RefreshCw className={cx("h-3.5 w-3.5", loading ? "animate-spin" : "")} />
-          </button>
         </div>
       </div>
 

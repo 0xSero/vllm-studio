@@ -1,13 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { Button, FormField, Input, Select, Textarea } from "@/ui";
+import {
+  AppContentColumn,
+  Button,
+  FormField,
+  Input,
+  SegmentedControl,
+  Select,
+  Textarea,
+} from "@/ui";
 import { Clock, Pause, Play, Plus, Trash2, X } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import type { Automation, AutomationSchedule } from "@shared/agent/automation";
+import { AGENT_HARNESSES } from "@shared/agent/harness-id";
 import type { AutomationModel } from "./automation-api";
 import { AutomationRunHistory } from "./automation-run-history";
-import { AutomationSessionPicker } from "./automation-session-picker";
+import { useSandboxAccounts } from "@/features/agent/ui/use-sandbox-accounts";
+import { AgentModelPicker } from "@/features/agent/ui/agent-model-picker";
 import {
   NEW_AUTOMATION_DRAFT,
   draftFromAutomation,
@@ -65,7 +75,6 @@ export function AutomationEditor({
 }: {
   automation: Automation | null;
   creating: boolean;
-  /** Seed for a new automation, so a caller can prefill it from its context. */
   initialDraft?: AutomationDraft;
   models: readonly AutomationModel[];
   action: EditorAction;
@@ -81,11 +90,19 @@ export function AutomationEditor({
     () => (automation ? draftFromAutomation(automation) : initialDraft) ?? NEW_AUTOMATION_DRAFT,
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const sandboxAccounts = useSandboxAccounts();
+  const daytonaAccounts = sandboxAccounts.filter((account) => account.provider === "daytona");
 
   useMountSubscription(() => {
-    if (draft.modelId || models.length === 0) return;
-    setDraft((current) => ({ ...current, modelId: models[0]?.id ?? "" }));
-  }, [draft.modelId, models]);
+    if (models.length === 0) return;
+    const model = models.find((candidate) => candidate.id === draft.modelId) ?? models[0];
+    const readyRoutes = model?.routes.filter((route) => route.status === "ready") ?? [];
+    const routeId = readyRoutes.some((route) => route.id === draft.modelRouteId)
+      ? draft.modelRouteId
+      : (model?.defaultRouteId ?? readyRoutes[0]?.id ?? "");
+    if (draft.modelId === model?.id && draft.modelRouteId === routeId) return;
+    setDraft((current) => ({ ...current, modelId: model?.id ?? "", modelRouteId: routeId }));
+  }, [draft.modelId, draft.modelRouteId, models]);
 
   const updateSchedule = (schedule: AutomationSchedule) => {
     setDraft((current) => ({ ...current, schedule }));
@@ -94,10 +111,6 @@ export function AutomationEditor({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-(--ui-bg)">
-      {/* The form wraps the header so the primary action can sit up there and
-          still submit it. The header is the flex column's fixed row and the
-          fields scroll under it, which is what keeps Save reachable however
-          long the run history grows. */}
       <form
         className="flex min-h-0 flex-1 flex-col"
         onSubmit={(event) => {
@@ -116,7 +129,7 @@ export function AutomationEditor({
           onToggleStatus={onToggleStatus}
         />
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-2xl space-y-5 px-5 py-5 sm:px-7">
+          <AppContentColumn className="space-y-5 py-5 lg:py-5">
             {creating ? (
               <ExamplePicker onSelect={(example) => setDraft(example)} draft={draft} />
             ) : null}
@@ -164,48 +177,108 @@ export function AutomationEditor({
               <ScheduleEditor schedule={draft.schedule} onChange={updateSchedule} />
             </div>
 
-            <div className="grid gap-4 border-t border-(--ui-separator) pt-5 sm:grid-cols-2">
-              <FormField label="Model" required>
-                <Select
-                  value={draft.modelId}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, modelId: event.target.value }))
-                  }
-                >
-                  {models.length === 0 ? <option value="">No models available</option> : null}
-                  {models.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name}
-                    </option>
-                  ))}
-                </Select>
-              </FormField>
-              <FormField
-                label="Working directory"
-                description="Optional. Leave empty to use the Local Studio default."
-              >
-                <Input
-                  value={draft.cwd}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, cwd: event.target.value }))
-                  }
-                  placeholder="/path/to/project"
-                />
-              </FormField>
+            <div className="space-y-4 border-t border-(--ui-separator) pt-5">
+              <div className="grid items-end gap-4 sm:grid-cols-2">
+                <FormField label="Runtime" required>
+                  <SegmentedControl
+                    className="w-fit"
+                    value={draft.executionKind}
+                    onChange={(executionKind) =>
+                      setDraft((current) => ({ ...current, executionKind }))
+                    }
+                    items={[
+                      { id: "chat", label: "Chat" },
+                      { id: "project", label: "Project task" },
+                    ]}
+                  />
+                </FormField>
+                <FormField label="Model" required>
+                  <div className="flex min-h-7 items-center">
+                    <AgentModelPicker
+                      modelsOnly
+                      models={[...models]}
+                      selectedModel={draft.modelId}
+                      selectedRoute={draft.modelRouteId}
+                      loading={models.length === 0}
+                      onSelect={(modelId, modelRouteId) =>
+                        setDraft((current) => ({ ...current, modelId, modelRouteId }))
+                      }
+                    />
+                  </div>
+                </FormField>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {draft.executionKind === "project" ? (
+                  <>
+                    <FormField label="Harness" required>
+                      <Select
+                        value={draft.harness}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            harness: event.target.value as AutomationDraft["harness"],
+                          }))
+                        }
+                      >
+                        {AGENT_HARNESSES.map((harness) => (
+                          <option key={harness} value={harness}>
+                            {harness}
+                          </option>
+                        ))}
+                      </Select>
+                    </FormField>
+                    <FormField label="Working directory" required>
+                      <Input
+                        value={draft.cwd}
+                        onChange={(event) =>
+                          setDraft((current) => ({ ...current, cwd: event.target.value }))
+                        }
+                        placeholder="/path/to/project"
+                      />
+                    </FormField>
+                    <FormField label="Placement" required>
+                      <Select
+                        value={draft.placement}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            placement: event.target.value === "daytona" ? "daytona" : "local",
+                            sandboxAccountId:
+                              event.target.value === "daytona"
+                                ? current.sandboxAccountId || daytonaAccounts[0]?.id || ""
+                                : "",
+                          }))
+                        }
+                      >
+                        <option value="local">Local</option>
+                        <option value="daytona" disabled={daytonaAccounts.length === 0}>
+                          Daytona
+                        </option>
+                      </Select>
+                    </FormField>
+                    {draft.placement === "daytona" ? (
+                      <FormField label="Daytona account" required>
+                        <Select
+                          value={draft.sandboxAccountId}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              sandboxAccountId: event.target.value,
+                            }))
+                          }
+                        >
+                          {daytonaAccounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </FormField>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
             </div>
-
-            <FormField
-              label="Run in"
-              asGroup
-              description="A fresh session starts blank every time. Pick an existing chat to run the task inside that thread's context instead."
-            >
-              <AutomationSessionPicker
-                value={draft.targetSessionId}
-                onChange={(targetSessionId) =>
-                  setDraft((current) => ({ ...current, targetSessionId }))
-                }
-              />
-            </FormField>
 
             {!creating && automation?.runs.length ? (
               <AutomationRunHistory
@@ -228,21 +301,13 @@ export function AutomationEditor({
                 onDelete={onDelete}
               />
             ) : null}
-          </div>
+          </AppContentColumn>
         </div>
       </form>
     </section>
   );
 }
 
-/**
- * Name, state and every non-destructive action, pinned above the scroll area.
- *
- * Saving used to be the last thing on the page, below a run history that grows
- * to twenty entries — so committing an edit meant scrolling past every run.
- * Delete deliberately stays down at the bottom of the form: it is the one
- * action that should not sit a few pixels from Save.
- */
 function EditorHeader({
   automation,
   creating,
@@ -268,64 +333,64 @@ function EditorHeader({
       ? "Paused"
       : `Next run ${relativeTime(automation?.nextRunAt ?? null)}`;
   return (
-    <header className="flex min-h-14 shrink-0 items-center gap-2 border-b border-(--ui-border) px-4 py-2">
-      <div className="min-w-0 flex-1">
-        <h2 className="truncate text-[length:var(--fs-lg)] font-medium text-(--ui-fg)">
-          {creating ? "New scheduled task" : automation?.name}
-        </h2>
-        <p className="truncate text-[length:var(--fs-xs)] text-(--ui-muted)">{statusText}</p>
-      </div>
-      {!creating && automation ? (
-        <>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            loading={action === "run"}
-            disabled={busy}
-            onClick={onRun}
-            icon={<Play className="h-3.5 w-3.5" />}
-            aria-label="Run now"
-          >
-            {/* Labels step aside on a phone; the icons carry the meaning and the
-                primary action keeps its width. */}
-            <span className="hidden sm:inline">Run now</span>
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            loading={action === "status"}
-            disabled={busy}
-            onClick={onToggleStatus}
-            icon={
-              automation.status === "paused" ? (
-                <Play className="h-3.5 w-3.5" />
-              ) : (
-                <Pause className="h-3.5 w-3.5" />
-              )
-            }
-            aria-label={automation.status === "paused" ? "Resume" : "Pause"}
-          >
-            <span className="hidden sm:inline">
-              {automation.status === "paused" ? "Resume" : "Pause"}
-            </span>
-          </Button>
-        </>
-      ) : null}
-      <Button type="submit" size="sm" loading={action === "save"} disabled={!canSave || busy}>
-        {creating ? "Create" : "Save"}
-        <span className="hidden sm:inline">{creating ? " automation" : " changes"}</span>
-      </Button>
-      <Button
-        type="button"
-        variant="icon"
-        size="sm"
-        onClick={onClose}
-        aria-label="Close automation details"
-      >
-        <X className="h-4 w-4" />
-      </Button>
+    <header className="shrink-0 border-b border-(--ui-border)">
+      <AppContentColumn className="flex min-h-14 items-center gap-2 py-2 lg:py-2">
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-[length:var(--fs-lg)] font-medium text-(--ui-fg)">
+            {creating ? "New scheduled task" : automation?.name}
+          </h2>
+          <p className="truncate text-[length:var(--fs-xs)] text-(--ui-muted)">{statusText}</p>
+        </div>
+        {!creating && automation ? (
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              loading={action === "run"}
+              disabled={busy}
+              onClick={onRun}
+              icon={<Play className="h-3.5 w-3.5" />}
+              aria-label="Run now"
+            >
+              <span className="hidden sm:inline">Run now</span>
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              loading={action === "status"}
+              disabled={busy}
+              onClick={onToggleStatus}
+              icon={
+                automation.status === "paused" ? (
+                  <Play className="h-3.5 w-3.5" />
+                ) : (
+                  <Pause className="h-3.5 w-3.5" />
+                )
+              }
+              aria-label={automation.status === "paused" ? "Resume" : "Pause"}
+            >
+              <span className="hidden sm:inline">
+                {automation.status === "paused" ? "Resume" : "Pause"}
+              </span>
+            </Button>
+          </>
+        ) : null}
+        <Button type="submit" size="sm" loading={action === "save"} disabled={!canSave || busy}>
+          {creating ? "Create" : "Save"}
+          <span className="hidden sm:inline">{creating ? " automation" : " changes"}</span>
+        </Button>
+        <Button
+          type="button"
+          variant="icon"
+          size="sm"
+          onClick={onClose}
+          aria-label="Close automation details"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </AppContentColumn>
     </header>
   );
 }
@@ -370,10 +435,6 @@ function EditorError({ error }: { error: string }) {
   );
 }
 
-/**
- * Delete, kept at the far end of the form and behind a confirm — deliberately
- * nowhere near the header where Save now lives.
- */
 function DeleteRow({
   action,
   busy,
@@ -403,13 +464,7 @@ function DeleteRow({
           >
             Delete this automation
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={busy}
-            onClick={onCancelDelete}
-          >
+          <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={onCancelDelete}>
             Cancel
           </Button>
         </>

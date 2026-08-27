@@ -5,15 +5,8 @@ import {
   type Automation,
 } from "@shared/agent/automation";
 import type { AutomationDraft } from "./automation-model";
-
-const AgentModelSchema = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-});
-
-const AgentModelsResponseSchema = Schema.Struct({
-  models: Schema.Array(AgentModelSchema),
-});
+import { ModelCatalogResponseSchema } from "@local-studio/contracts/model-catalog";
+import { agentModelsFromCatalog, type CatalogAgentModel } from "@/features/agent/models";
 
 const RunResponseSchema = Schema.Struct({
   ok: Schema.Boolean,
@@ -24,7 +17,7 @@ const DeleteResponseSchema = Schema.Struct({
   ok: Schema.Boolean,
 });
 
-export type AutomationModel = typeof AgentModelSchema.Type;
+export type AutomationModel = CatalogAgentModel;
 
 async function errorMessage(response: Response): Promise<string> {
   const fallback = `Request failed with HTTP ${response.status}`;
@@ -68,17 +61,27 @@ export function listAutomations(): Effect.Effect<Automation[], Error> {
 
 export function listAutomationModels(): Effect.Effect<AutomationModel[], Error> {
   return Effect.map(
-    requestJson("/api/agent/models", Schema.decodeUnknownSync(AgentModelsResponseSchema)),
-    ({ models }) => [...models],
+    requestJson("/api/agent/models", Schema.decodeUnknownSync(ModelCatalogResponseSchema)),
+    (catalog) => agentModelsFromCatalog(catalog).filter((model) => model.available),
   );
 }
 
 export function createAutomation(draft: AutomationDraft): Effect.Effect<Automation, Error> {
+  const payload = {
+    ...draft,
+    cwd: draft.executionKind === "project" ? draft.cwd : null,
+    harness: draft.executionKind === "project" ? draft.harness : null,
+    placement: draft.executionKind === "project" ? draft.placement : "local",
+    sandboxAccountId:
+      draft.executionKind === "project" && draft.placement === "daytona"
+        ? draft.sandboxAccountId
+        : null,
+  };
   return Effect.map(
     requestJson("/api/agent/automations", Schema.decodeUnknownSync(AutomationResponseSchema), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(draft),
+      body: JSON.stringify(payload),
     }),
     ({ automation }) => automation,
   );
@@ -88,6 +91,10 @@ export function updateAutomation(
   id: string,
   patch: Partial<AutomationDraft> & { status?: Automation["status"]; unread?: boolean },
 ): Effect.Effect<Automation, Error> {
+  const payload =
+    patch.executionKind === "chat"
+      ? { ...patch, cwd: null, harness: null, placement: "local", sandboxAccountId: null }
+      : patch;
   return Effect.map(
     requestJson(
       `/api/agent/automations/${encodeURIComponent(id)}`,
@@ -95,7 +102,7 @@ export function updateAutomation(
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
+        body: JSON.stringify(payload),
       },
     ),
     ({ automation }) => automation,

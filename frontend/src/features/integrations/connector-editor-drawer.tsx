@@ -7,18 +7,14 @@ import {
   ConnectorTestResponseSchema,
   ConnectorsResponseSchema,
   type ConnectorView,
-} from "@local-studio/agent-runtime/connector-contract";
+} from "@shared/agent/connector-contract";
 import { Alert, Button, Checkbox, FormField, Input, SegmentedControl, Spinner } from "@/ui";
 import { Eye, EyeOff, Plus, Trash2, TriangleAlert } from "@/ui/icon-registry";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
 import { ResourceLogo } from "@/ui/resource-logo";
 import { StatusText } from "@/features/recipes/recipes-content/catalog-table-shell";
 import { jsonBody, requestAgentJson } from "./agent-json";
-import {
-  SSH_SERVER_PLACEHOLDER,
-  renderCommandLine,
-  type CatalogEntry,
-} from "./connector-catalog";
+import { SSH_SERVER_PLACEHOLDER, renderCommandLine, type CatalogEntry } from "./connector-catalog";
 
 /**
  * The one place an MCP server is written.
@@ -75,7 +71,6 @@ export interface ConnectorDraft {
   url: string;
   env: Pair[];
   headers: Pair[];
-  allowTools: string;
   enabled: boolean;
 }
 
@@ -94,16 +89,12 @@ const pairsFrom = (
 
 const recordFrom = (pairs: Pair[]): Record<string, string> =>
   Object.fromEntries(
-    pairs
-      .map(({ key, value }) => [key.trim(), value] as const)
-      .filter(([key]) => key.length > 0),
+    pairs.map(({ key, value }) => [key.trim(), value] as const).filter(([key]) => key.length > 0),
   );
 
 const secretFlagsFrom = (pairs: Pair[]): Record<string, boolean> =>
   Object.fromEntries(
-    pairs
-      .map(({ key, secret }) => [key.trim(), secret] as const)
-      .filter(([key]) => key.length > 0),
+    pairs.map(({ key, secret }) => [key.trim(), secret] as const).filter(([key]) => key.length > 0),
   );
 
 const lines = (value: string): string[] =>
@@ -123,7 +114,6 @@ export function draftFromConnector(connector: ConnectorView): ConnectorDraft {
     url: connector.url ?? "",
     env: pairsFrom(connector.env, connector.secret_keys),
     headers: pairsFrom(connector.headers, connector.secret_keys),
-    allowTools: (connector.allowTools ?? []).join("\n"),
     enabled: connector.enabled,
   };
 }
@@ -139,22 +129,31 @@ export function emptyDraft(): ConnectorDraft {
     url: "",
     env: [],
     headers: [],
-    allowTools: "",
     // Off, always. See rule 2 above.
     enabled: false,
   };
 }
 
-export function draftFromCatalog(entry: CatalogEntry, sshServerPath: string | null): ConnectorDraft {
+export function draftFromCatalog(
+  entry: CatalogEntry,
+  sshServerPath: string | null,
+): ConnectorDraft {
+  const legacySshServer = entry.id === "computer" && sshServerPath?.endsWith(".mjs");
   return {
     ...emptyDraft(),
     id: entry.id,
     name: entry.name,
-    transport: entry.transport,
-    command: entry.command,
-    args: entry.args
-      .map((arg) => (arg === SSH_SERVER_PLACEHOLDER ? (sshServerPath ?? arg) : arg))
-      .join("\n"),
+    transport: entry.transport === "builtin" ? "stdio" : entry.transport,
+    command: legacySshServer
+      ? "node"
+      : entry.command === SSH_SERVER_PLACEHOLDER
+        ? (sshServerPath ?? entry.command)
+        : (entry.command ?? ""),
+    args: legacySshServer
+      ? (sshServerPath ?? "")
+      : (entry.args ?? [])
+          .map((arg) => (arg === SSH_SERVER_PLACEHOLDER ? (sshServerPath ?? arg) : arg))
+          .join("\n"),
     env: entry.envFields.map((field) => ({
       key: field.key,
       value: "",
@@ -442,7 +441,9 @@ function IdentityFields({
       <FormField
         label="Server id"
         description={
-          creating ? "Names its tools to the model. Cannot be changed later." : "Fixed once created."
+          creating
+            ? "Names its tools to the model. Cannot be changed later."
+            : "Fixed once created."
         }
         error={idError || undefined}
       >
@@ -552,8 +553,7 @@ export function ConnectorEditorDrawer({
   const patch = (next: Partial<ConnectorDraft>) => setDraft((current) => ({ ...current, ...next }));
   const creating = mode === "create";
   const idError = creating ? idProblem(draft.id.trim(), takenIds) : "";
-  const missingTarget =
-    draft.transport === "stdio" ? !draft.command.trim() : !draft.url.trim();
+  const missingTarget = draft.transport === "stdio" ? !draft.command.trim() : !draft.url.trim();
   const badScheme =
     draft.transport === "http" &&
     draft.url.trim().length > 0 &&
@@ -584,7 +584,6 @@ export function ConnectorEditorDrawer({
                 headers: recordFrom(draft.headers),
                 headerSecret: secretFlagsFrom(draft.headers),
               }),
-          allowTools: lines(draft.allowTools),
           enabled: draft.enabled,
         }),
       );
@@ -679,19 +678,6 @@ export function ConnectorEditorDrawer({
         ) : (
           <HttpFields draft={draft} patch={patch} badScheme={badScheme} />
         )}
-
-        <FormField
-          label="Allowed tools"
-          description="One per line. Leave empty to allow every tool this server declares."
-        >
-          <textarea
-            value={draft.allowTools}
-            onChange={(event) => patch({ allowTools: event.target.value })}
-            rows={3}
-            spellCheck={false}
-            className={CODE_CLASS}
-          />
-        </FormField>
       </div>
 
       <ResourceDrawerSection

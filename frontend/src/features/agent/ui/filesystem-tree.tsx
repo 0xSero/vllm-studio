@@ -51,11 +51,11 @@ function formatEntrySize(size: number): string {
 export function Breadcrumb({ relPath, onRoot }: { relPath: string; onRoot: () => void }) {
   const parts = relPath ? relPath.split("/").filter(Boolean) : [];
   return (
-    <div className="flex h-9 shrink-0 items-center gap-0.5 overflow-x-auto px-2 text-[length:var(--fs-sm)] text-(--dim)">
+    <div className="flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto px-2 text-[length:var(--fs-xs)] text-(--dim)">
       <button
         type="button"
         onClick={onRoot}
-        className="shrink-0 rounded-md px-1.5 text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+        className="shrink-0 rounded px-1.5 text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
         title="Project root"
       >
         /
@@ -110,7 +110,7 @@ export function TreeFileList({
         return (
           <div key={entry.path}>
             <div
-              className={`relative flex w-full items-center gap-1 rounded-sm py-0.5 text-left text-[length:var(--fs-sm)] hover:bg-(--hover) ${isActive ? "bg-(--color-selected) font-medium text-(--fg)" : "text-(--dim)"}`}
+              className={`relative flex w-full items-center gap-1 rounded-sm py-0.5 text-left text-[length:var(--fs-xs)] hover:bg-(--hover) ${isActive ? "bg-(--color-selected) font-medium text-(--fg)" : "text-(--dim)"}`}
               style={{ paddingLeft: `${8 + indent}px`, paddingRight: "8px" }}
             >
               {isActive ? (

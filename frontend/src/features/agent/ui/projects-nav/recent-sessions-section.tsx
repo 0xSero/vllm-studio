@@ -10,16 +10,17 @@ import {
   useOpenSessions,
   useSessionActivity,
 } from "@/features/agent/session-index";
-import { SessionStatusMark } from "@/features/agent/ui/projects-nav/nav-chrome";
+import { SidebarRail, SessionStatusMark } from "@/features/agent/ui/projects-nav/nav-chrome";
 import { orderByRecency, recentsTimestamp } from "@/features/agent/ui/session-recency";
 import { useProjectsNavSessionPrefs } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { Folder } from "@/ui/icons";
 import type { SessionPrefs } from "@/features/agent/messages/prefs";
 import type { AggregatedSession } from "@shared/agent/session-summary";
+import { sessionTitleFromUserPrompt } from "@shared/agent/session-title";
 
-/** The nav lists the 20 most recently prompted sessions, newest first. */
-const RECENT_LIMIT = 20;
+const RECENT_INITIAL_LIMIT = 10;
+const RECENT_PAGE_SIZE = 25;
 /** Enough of the last prompt to recognise the thread without wrapping past two
  *  lines at the widest sidebar setting. */
 const PREVIEW_CHARS = 120;
@@ -47,7 +48,7 @@ function dayLabel(iso: string): string {
 function rowTitle(session: AggregatedSession, prefs: SessionPrefs): string {
   return (
     cleanSessionTitle(prefs[session.id]?.title) ||
-    cleanSessionTitle(session.firstUserMessage) ||
+    sessionTitleFromUserPrompt(session.firstUserMessage) ||
     `Session ${session.id.slice(0, 8)}`
   );
 }
@@ -55,7 +56,7 @@ function rowTitle(session: AggregatedSession, prefs: SessionPrefs): string {
 /** The last prompt, trimmed to a preview. Returns "" when the prompt is the
  *  same text the title already shows, so the row does not say it twice. */
 function rowPreview(session: AggregatedSession, title: string): string {
-  const prompt = cleanSessionTitle(session.lastUserPromptText ?? "");
+  const prompt = sessionTitleFromUserPrompt(session.lastUserPromptText);
   if (!prompt || prompt === title) return "";
   return prompt.length > PREVIEW_CHARS ? `${prompt.slice(0, PREVIEW_CHARS).trimEnd()}…` : prompt;
 }
@@ -63,6 +64,7 @@ function rowPreview(session: AggregatedSession, title: string): string {
 export function RecentSessionsSection() {
   const [sessions, setSessions] = useState<AggregatedSession[] | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [visibleLimit, setVisibleLimit] = useState(RECENT_INITIAL_LIMIT);
   const prefs = useProjectsNavSessionPrefs();
 
   useMountSubscription(() => {
@@ -93,20 +95,20 @@ export function RecentSessionsSection() {
     });
   }, []);
 
-  const groups = useMemo(() => {
+  const { groups, hasMore } = useMemo(() => {
     const visible = (sessions ?? []).filter(
       (session) => !session.archived && !session.parentSessionId && !prefs[session.id]?.hidden,
     );
-    const ordered = orderByRecency(visible).slice(0, RECENT_LIMIT);
+    const ordered = orderByRecency(visible);
     const buckets: { label: string; sessions: AggregatedSession[] }[] = [];
-    for (const session of ordered) {
+    for (const session of ordered.slice(0, visibleLimit)) {
       const label = dayLabel(recentsTimestamp(session));
       const tail = buckets.at(-1);
       if (tail?.label === label) tail.sessions.push(session);
       else buckets.push({ label, sessions: [session] });
     }
-    return buckets;
-  }, [sessions, prefs]);
+    return { groups: buckets, hasMore: ordered.length > visibleLimit };
+  }, [sessions, prefs, visibleLimit]);
 
   if (sessions === null) {
     return <div className="px-2 py-1 text-[length:var(--fs-sm)] text-(--dim)">Loading…</div>;
@@ -116,7 +118,7 @@ export function RecentSessionsSection() {
   }
 
   return (
-    <div className="flex flex-col">
+    <SidebarRail>
       {groups.map((group) => (
         <div key={group.label} className="flex flex-col">
           <div className="px-2 pb-1 pt-5 text-[length:var(--fs-md)] font-medium text-(--hl2) opacity-75">
@@ -127,7 +129,16 @@ export function RecentSessionsSection() {
           ))}
         </div>
       ))}
-    </div>
+      {hasMore ? (
+        <button
+          type="button"
+          onClick={() => setVisibleLimit((limit) => limit + RECENT_PAGE_SIZE)}
+          className="mt-1 flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] px-2 text-left text-[length:var(--fs-sm)] text-(--dim) transition-colors duration-[var(--motion-fast)] hover:bg-(--hover) hover:text-(--fg)"
+        >
+          Show more
+        </button>
+      ) : null}
+    </SidebarRail>
   );
 }
 
@@ -151,7 +162,7 @@ function RecentSessionRow({ session, prefs }: { session: AggregatedSession; pref
       // Two lines, not the single-line row the other sections use: the prompt
       // preview is the point of this list, so it gets its own line under the
       // title rather than competing with it for width.
-      className={`group flex flex-col gap-0.5 rounded-[var(--sidebar-row-radius)] px-2 py-1.5 transition-colors hover:bg-(--hover) ${
+      className={`sidebar-virtual-card group flex flex-col gap-0.5 rounded-[var(--sidebar-row-radius)] px-2 py-1.5 transition-colors duration-[var(--motion-fast)] hover:bg-(--hover) ${
         isOpen ? "bg-(--hover)" : ""
       }`}
     >

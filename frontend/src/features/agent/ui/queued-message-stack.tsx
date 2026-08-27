@@ -44,7 +44,7 @@ export function QueuedMessageStack({
   };
 
   return (
-    <div className="flex flex-col gap-0.5" data-testid="queued-message-stack">
+    <div className="flex flex-col gap-px" data-testid="queued-message-stack">
       {items.map((item) => (
         <QueuedMessageRow
           key={item.id}
@@ -93,7 +93,7 @@ function QueuedMessageRow({
   const steering = item.mode === "steer";
   return (
     <div
-      className="group flex min-w-0 items-center gap-2 rounded-[10px] px-2 py-1 hover:bg-(--fg)/[0.03]"
+      className="group flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[length:var(--fs-sm)] hover:bg-(--hover)"
       title={steering ? `Steering: ${item.text}` : `Queued: ${item.text}`}
     >
       <CornerDownRight
@@ -115,7 +115,7 @@ function QueuedMessageRow({
             }
           }}
           onBlur={onCommitEdit}
-          className="min-w-0 flex-1 rounded-md bg-(--fg)/[0.05] px-1.5 py-0.5 text-(--fg) outline-none"
+          className="min-w-0 flex-1 rounded-sm bg-(--surface) px-1.5 py-0.5 text-(--fg) outline-none"
           aria-label="Edit queued message"
         />
       ) : (

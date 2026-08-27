@@ -1,6 +1,10 @@
 import { Effect } from "effect";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
-import { findPaneByPiSessionId, paneSessionId } from "@/features/agent/runtime/selectors";
+import {
+  findPaneByPiSessionId,
+  findPaneBySessionId,
+  paneSessionId,
+} from "@/features/agent/runtime/selectors";
 import type { Session, SessionId } from "@/features/agent/runtime/types";
 import {
   markSessionActivitySeen,
@@ -22,10 +26,11 @@ import {
 } from "@/features/agent/workspace/store";
 import { writePaneState } from "@/features/agent/workspace/persistence";
 import { writeSessionDrafts } from "@/features/agent/workspace/session-drafts";
-import { writeTranscriptSnapshot } from "@/features/agent/workspace/transcript-cache";
-import { readDefaultAgentModel } from "@/features/agent/workspace/model-preference";
+import {
+  readDefaultAgentModel,
+  readDefaultAgentRoute,
+} from "@/features/agent/workspace/model-preference";
 import { SESSIONS_CHANGED_EVENT } from "@/lib/workspace-events";
-import { syncHeadSessionMetadata } from "@/features/agent/workspace/session-metadata-sync";
 
 const EMPTY_SELECTION: ToolSelection = {
   skills: [],
@@ -134,6 +139,7 @@ function runInitialApiEffects(state: WorkspaceState, deps: WorkspaceEffectDeps):
             type: "setModels",
             models: normalized.models,
             preferredModelId: readDefaultAgentModel(deps.storage),
+            preferredRouteId: readDefaultAgentRoute(deps.storage),
           });
           if (normalized.models.length > 0) {
             deps.dispatch?.({ type: "setSetupWarning", warning: "" });
@@ -187,7 +193,7 @@ function openSessionSnapshot(
   const usedSkills = usedSkillsForSession(tab);
   return {
     id: tab.id,
-    threadId: tab.piSessionId,
+    threadId: tab.id,
     projectId: tab.projectId ?? "",
     cwd: tab.cwd ?? "",
     paneId,
@@ -276,13 +282,13 @@ function publishWorkspaceSessions(
 }
 
 function queueLocatedReplay(
-  piSessionId: string | null | undefined,
+  sessionId: string | null | undefined,
   state: WorkspaceState,
   deps: WorkspaceEffectDeps,
 ): void {
-  if (!piSessionId) return;
-  const located = findPaneByPiSessionId(state, piSessionId);
-  if (located) deps.queueReplay(located.paneId, piSessionId);
+  if (!sessionId) return;
+  const located = findPaneBySessionId(state, sessionId) ?? findPaneByPiSessionId(state, sessionId);
+  if (located) deps.queueReplay(located.paneId, sessionId);
 }
 
 function queueReplayEffects(
@@ -302,7 +308,7 @@ function queueReplayEffects(
       }
       return;
     case "urlNavRequested":
-      if (action.sessionId && !findPaneByPiSessionId(prevState, action.sessionId)) {
+      if (action.sessionId && !findPaneBySessionId(prevState, action.sessionId)) {
         queueLocatedReplay(action.sessionId, nextState, deps);
       }
       return;
@@ -354,77 +360,6 @@ function paneMetadataKey(
   });
 }
 
-function isSettledStatus(status: string): boolean {
-  return status === "idle" || status === "done";
-}
-
-function transcriptSignature(session: Session): string {
-  const last = session.messages[session.messages.length - 1];
-  return [
-    session.piSessionId ?? "",
-    session.status,
-    session.messages.length,
-    last?.id ?? "",
-    last?.text.length ?? 0,
-    last?.blocks?.length ?? 0,
-  ].join("|");
-}
-
-function persistSettledTranscripts(
-  prevState: WorkspaceState,
-  nextState: WorkspaceState,
-  deps: WorkspaceEffectDeps,
-): void {
-  for (const [id, session] of nextState.sessions) {
-    if (!session.piSessionId || session.messages.length === 0) continue;
-    if (!isSettledStatus(session.status)) continue;
-    const before = prevState.sessions.get(id);
-    if (before && transcriptSignature(before) === transcriptSignature(session)) continue;
-    writeTranscriptSnapshot(
-      session.piSessionId,
-      session.messages,
-      cleanSessionTitle(session.title),
-      deps.storage,
-    );
-  }
-}
-
-function persistTurnStartTranscripts(
-  prevState: WorkspaceState,
-  nextState: WorkspaceState,
-  deps: WorkspaceEffectDeps,
-): void {
-  for (const [id, session] of nextState.sessions) {
-    if (!session.piSessionId || session.messages.length === 0) continue;
-    if (session.status !== "running" && session.status !== "starting") continue;
-    const before = prevState.sessions.get(id);
-    if (!before || before.status === session.status) continue;
-    writeTranscriptSnapshot(
-      session.piSessionId,
-      session.messages,
-      cleanSessionTitle(session.title),
-      deps.storage,
-    );
-  }
-}
-
-function persistExitedTranscripts(
-  prevState: WorkspaceState,
-  nextState: WorkspaceState,
-  deps: WorkspaceEffectDeps,
-): void {
-  for (const [id, session] of prevState.sessions) {
-    if (!session.piSessionId || session.messages.length === 0) continue;
-    if (nextState.sessions.has(id)) continue;
-    writeTranscriptSnapshot(
-      session.piSessionId,
-      session.messages,
-      cleanSessionTitle(session.title),
-      deps.storage,
-    );
-  }
-}
-
 export function runWorkspaceEffect(
   action: WorkspaceAction,
   prevState: WorkspaceState,
@@ -436,16 +371,9 @@ export function runWorkspaceEffect(
 
   if (action.type === "hydrate") {
     runInitialApiEffects(nextState, deps);
-    syncHeadSessionMetadata(nextState.sessions);
   }
 
   publishWorkspaceSessions(prevState, nextState, deps);
-  if (SESSIONS_CHANGED_ACTIONS.has(action.type)) {
-    syncHeadSessionMetadata(nextState.sessions);
-    persistSettledTranscripts(prevState, nextState, deps);
-    persistTurnStartTranscripts(prevState, nextState, deps);
-    persistExitedTranscripts(prevState, nextState, deps);
-  }
   if (
     SESSIONS_CHANGED_ACTIONS.has(action.type) &&
     storedSessionsKey(prevState) !== storedSessionsKey(nextState)

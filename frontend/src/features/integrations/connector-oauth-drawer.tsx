@@ -7,11 +7,8 @@ import {
   OAuthStatusResponseSchema,
   type OAuthConnectorAuthDefinition,
   type OAuthStatusResponse,
-} from "@local-studio/agent-runtime/oauth-connector-contract";
-import {
-  ConnectorsResponseSchema,
-  type ConnectorView,
-} from "@local-studio/agent-runtime/connector-contract";
+} from "@shared/agent/oauth-connector-contract";
+import { ConnectorsResponseSchema, type ConnectorView } from "@shared/agent/connector-contract";
 import { Alert, Button, FormField, Input, Spinner, StatusPill } from "@/ui";
 import { ExternalLink } from "@/ui/icon-registry";
 import { ResourceDrawer, ResourceDrawerSection, ResourceFact } from "@/ui/resource-drawer";
@@ -144,11 +141,19 @@ function GrantFacts({
       <ResourceFact
         label="Account"
         value={
-          connected ? <StatusText tone="ok">{status?.account ?? "connected"}</StatusText> : "none yet"
+          connected ? (
+            <StatusText tone="ok">{status?.account ?? "connected"}</StatusText>
+          ) : (
+            "none yet"
+          )
         }
       />
       <ResourceFact label="Scopes" value={scopes || "—"} mono />
-      <ResourceFact label="Runs" value={renderCommandLine(entry.command, entry.args)} mono />
+      <ResourceFact
+        label="Runs"
+        value={renderCommandLine(entry.command ?? "", entry.args ?? [])}
+        mono
+      />
       {entry.auth ? (
         <ResourceFact
           label="Token handling"

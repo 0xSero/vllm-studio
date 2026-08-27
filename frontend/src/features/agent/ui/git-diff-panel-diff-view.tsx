@@ -1,94 +1,162 @@
 "use client";
 
-import { useState } from "react";
-import {
-  diffLineClassName,
-  diffLinePrefix,
-  pairDiffLines,
-  type DiffFile,
-  type DiffViewMode,
-} from "@/features/agent/ui/git-diff-panel-model";
+import { CodeView, FileDiff } from "@pierre/diffs/react";
+import type { CodeViewDiffItem } from "@pierre/diffs";
+import { useAppStore } from "@/store";
+import { THEME_BY_ID, type ThemeId } from "@/lib/themes";
+import type { DiffViewMode } from "@/features/agent/ui/git-diff-panel-model";
+
+const DIFF_SURFACE_CSS = `
+[data-diffs-header],
+[data-diff],
+[data-virtualizer-buffer] {
+  --diffs-header-font-family: var(--font-sans) !important;
+  --diffs-font-family: var(--font-mono) !important;
+  --diffs-bg: var(--color-panel) !important;
+  --diffs-light-bg: var(--color-panel) !important;
+  --diffs-dark-bg: var(--color-panel) !important;
+  --diffs-token-light-bg: transparent;
+  --diffs-token-dark-bg: transparent;
+  --diffs-bg-context-override: var(--color-panel);
+  --diffs-bg-hover-override: var(--color-surface-hover);
+  --diffs-bg-addition-override: var(--color-diff-added-bg);
+  --diffs-bg-deletion-override: var(--color-diff-removed-bg);
+}
+
+[data-diffs-header] {
+  position: sticky !important;
+  top: 0;
+  z-index: 4;
+  min-height: 32px !important;
+  background: var(--color-header) !important;
+  border-color: var(--border) !important;
+  font-family: var(--font-sans) !important;
+  font-size: var(--fs-xs) !important;
+}
+
+:is([data-separator="line-info"], [data-separator="line-info-basic"]) {
+  height: 24px !important;
+  margin-block: 0 !important;
+  background: var(--color-panel) !important;
+}
+
+:is([data-separator="line-info"], [data-separator="line-info-basic"]) [data-expand-button] {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  border: 0 !important;
+}
+
+[data-title] {
+  color: var(--fg) !important;
+}
+
+[data-code] {
+  font-size: var(--fs-xs) !important;
+  line-height: 1.5 !important;
+}
+
+[data-diff],
+[data-file] {
+  transition: opacity 150ms ease-out;
+}
+
+@starting-style {
+  [data-diff],
+  [data-file] {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-diff],
+  [data-file] {
+    transition: none;
+  }
+}
+`;
+
+function themeType(themeId: ThemeId): "light" | "dark" {
+  const background = THEME_BY_ID.get(themeId)?.tokens.bg ?? "#111111";
+  const hex = background.match(/^#([0-9a-f]{6})$/i)?.[1];
+  if (!hex) return themeId.includes("light") ? "light" : "dark";
+  const red = Number.parseInt(hex.slice(0, 2), 16);
+  const green = Number.parseInt(hex.slice(2, 4), 16);
+  const blue = Number.parseInt(hex.slice(4, 6), 16);
+  return red * 0.299 + green * 0.587 + blue * 0.114 > 160 ? "light" : "dark";
+}
 
 export function DiffFileList({
   files,
   viewMode,
   onViewMode,
 }: {
-  files: DiffFile[];
+  files: CodeViewDiffItem[];
   viewMode: DiffViewMode;
   onViewMode: (mode: DiffViewMode) => void;
 }) {
+  const themeId = useAppStore((state) => state.themeId);
+  const resolvedThemeType = themeType(themeId);
+
   return (
-    <div className="min-h-0 flex-1 overflow-auto p-2 font-mono text-[length:var(--fs-sm)] leading-5">
-      <div className="sticky top-0 z-10 mb-2 flex items-center justify-end gap-1 bg-(--color-panel) py-1">
+    <div className="flex min-h-0 flex-1 flex-col font-mono text-[length:var(--fs-xs)]">
+      <div className="flex shrink-0 items-center justify-end gap-1 border-b border-(--border)/60 bg-(--color-panel) px-1.5 py-1">
         <DiffModeButton active={viewMode === "unified"} onClick={() => onViewMode("unified")}>
           Unified
         </DiffModeButton>
-        <DiffModeButton
-          active={viewMode === "side-by-side"}
-          onClick={() => onViewMode("side-by-side")}
-        >
+        <DiffModeButton active={viewMode === "split"} onClick={() => onViewMode("split")}>
           Side by side
         </DiffModeButton>
-        <DiffModeButton active={viewMode === "stacked"} onClick={() => onViewMode("stacked")}>
-          Top / bottom
-        </DiffModeButton>
       </div>
-      <div className="flex flex-col gap-2">
-        {files.map((file, fileIndex) => (
-          <DiffFileEntry
-            key={file.path}
-            file={file}
-            viewMode={viewMode}
-            defaultOpen={fileIndex === 0}
-          />
-        ))}
-      </div>
+      <CodeView
+        items={files}
+        className="min-h-0 flex-1 overflow-auto outline-none"
+        options={{
+          diffStyle: viewMode === "split" ? "split" : "unified",
+          lineDiffType: "none",
+          overflow: "scroll",
+          stickyHeaders: true,
+          theme: { dark: "github-dark", light: "github-light" },
+          themeType: resolvedThemeType,
+          unsafeCSS: DIFF_SURFACE_CSS,
+          itemMetrics: {
+            diffHeaderHeight: 32,
+            hunkSeparatorHeight: 24,
+            spacing: 0,
+            paddingTop: 0,
+            paddingBottom: 8,
+          },
+          layout: { paddingTop: 0, paddingBottom: 0, gap: 0 },
+        }}
+      />
     </div>
   );
 }
 
-// Render a file's diff body only while its <details> is open. A collapsed
-// <details> keeps its children in the DOM, so without this a large diff (a
-// lockfile, a big refactor) would materialize every file's full line list at
-// once — tens of thousands of grid rows — and freeze the pane.
-function DiffFileEntry({
-  file,
-  viewMode,
-  defaultOpen,
-}: {
-  file: DiffFile;
-  viewMode: DiffViewMode;
-  defaultOpen: boolean;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <details
-      className="overflow-hidden rounded-md border border-(--border)/80 bg-(--color-panel)"
-      open={open}
-      onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}
-    >
-      <summary
-        className="flex cursor-pointer list-none items-center gap-2 border-b border-(--border)/80 bg-(--color-header) px-2 py-1.5 text-xs text-(--fg) hover:bg-(--color-surface-hover)"
-        title={file.path}
-      >
-        <span className="min-w-0 flex-1 truncate">{file.path}</span>
-        <span className="shrink-0 font-mono text-[length:var(--fs-xs)]">
-          <span className="text-(--color-diff-added)">+{file.additions}</span>{" "}
-          <span className="text-(--color-diff-removed)">-{file.deletions}</span>
-        </span>
-      </summary>
-      {open ? (
-        viewMode === "side-by-side" ? (
-          <SideBySideDiff file={file} />
-        ) : viewMode === "stacked" ? (
-          <StackedDiff file={file} />
-        ) : (
-          <UnifiedDiff file={file} />
-        )
-      ) : null}
-    </details>
-  );
+export function PierreInlineDiff({ files }: { files: CodeViewDiffItem[] }) {
+  const themeId = useAppStore((state) => state.themeId);
+  const resolvedThemeType = themeType(themeId);
+
+  return files.map(({ id, fileDiff }) => (
+    <FileDiff
+      key={id}
+      fileDiff={fileDiff}
+      className="block min-w-0"
+      options={{
+        collapsed: false,
+        diffStyle: "unified",
+        lineDiffType: "none",
+        overflow: "wrap",
+        theme: { dark: "github-dark", light: "github-light" },
+        themeType: resolvedThemeType,
+        unsafeCSS: DIFF_SURFACE_CSS,
+      }}
+    />
+  ));
 }
 
 function DiffModeButton({
@@ -110,99 +178,5 @@ function DiffModeButton({
     >
       {children}
     </button>
-  );
-}
-
-function UnifiedDiff({ file }: { file: DiffFile }) {
-  return (
-    <div className="min-w-max">
-      {file.lines.map((line, index) => (
-        <div
-          key={`${file.path}-${index}`}
-          className={`grid grid-cols-[3rem_3rem_1fr] gap-2 border-b border-(--border)/20 px-2 ${diffLineClassName(line.kind)}`}
-        >
-          <span className="select-none text-right text-(--dim)">{line.oldLine ?? ""}</span>
-          <span className="select-none text-right text-(--dim)">{line.newLine ?? ""}</span>
-          <span className="whitespace-pre">
-            {diffLinePrefix(line.kind)}
-            {line.text}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function SideBySideDiff({ file }: { file: DiffFile }) {
-  const rows = pairDiffLines(file);
-  return (
-    <div className="min-w-[52rem]">
-      {rows.map((row, index) => (
-        <div
-          key={`${file.path}-pair-${index}`}
-          className="grid grid-cols-2 border-b border-(--border)/20"
-        >
-          <DiffCell line={row.left} side="old" />
-          <DiffCell line={row.right} side="new" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function StackedDiff({ file }: { file: DiffFile }) {
-  const oldLines = file.lines.filter((line) => line.kind !== "add");
-  const newLines = file.lines.filter((line) => line.kind !== "del");
-  return (
-    <div className="grid gap-2 p-2">
-      <div className="rounded border border-red-500/20">
-        <div className="border-b border-red-500/20 px-2 py-1 text-[length:var(--fs-sm)] text-red-300">
-          Before
-        </div>
-        {oldLines.map((line, index) => (
-          <DiffStackLine key={`${file.path}-old-${index}`} line={line} />
-        ))}
-      </div>
-      <div className="rounded-lg border border-(--color-diff-added)/25">
-        <div className="border-b border-(--color-diff-added)/25 px-2 py-1 text-[length:var(--fs-sm)] text-(--color-diff-added)">
-          After
-        </div>
-        {newLines.map((line, index) => (
-          <DiffStackLine key={`${file.path}-new-${index}`} line={line} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DiffCell({ line, side }: { line?: DiffFile["lines"][number]; side: "old" | "new" }) {
-  if (!line) {
-    return <div className="min-h-5 border-r border-(--border)/20 bg-(--color-surface)" />;
-  }
-  const lineNumber = side === "old" ? line.oldLine : line.newLine;
-  return (
-    <div
-      className={`grid grid-cols-[3rem_1fr] gap-2 border-r border-(--border)/20 px-2 ${diffLineClassName(line.kind)}`}
-    >
-      <span className="select-none text-right text-(--dim)">{lineNumber ?? ""}</span>
-      <span className="whitespace-pre">
-        {diffLinePrefix(line.kind)}
-        {line.text}
-      </span>
-    </div>
-  );
-}
-
-function DiffStackLine({ line }: { line: DiffFile["lines"][number] }) {
-  return (
-    <div className={`grid grid-cols-[3rem_1fr] gap-2 px-2 ${diffLineClassName(line.kind)}`}>
-      <span className="select-none text-right text-(--dim)">
-        {line.kind === "del" ? line.oldLine : (line.newLine ?? line.oldLine ?? "")}
-      </span>
-      <span className="whitespace-pre">
-        {diffLinePrefix(line.kind)}
-        {line.text}
-      </span>
-    </div>
   );
 }

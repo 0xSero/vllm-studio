@@ -40,7 +40,7 @@ export function GpuSection({ gpus, platformKind }: GpuSectionProps) {
   if (sortedGpus.length === 0) {
     const metal = platformKind === "metal";
     return (
-      <section className="mt-4 border-t border-(--separator) px-2 pt-3 pb-4">
+      <section className="mt-3 border-t border-(--separator) px-2 pt-2 pb-3">
         <div className="flex w-full items-center gap-4 text-left">
           <div className="flex shrink-0 items-baseline gap-2">
             <span className="text-[length:var(--fs-sm)] font-medium text-(--hl2)">
@@ -72,7 +72,7 @@ export function GpuSection({ gpus, platformKind }: GpuSectionProps) {
     );
 
   return (
-    <section className="mt-4 border-t border-(--separator) px-2 pt-3 pb-5">
+    <section className="mt-3 border-t border-(--separator) px-2 pt-2 pb-4">
       {/* The aggregate stays a button, not a table header: "how much of this rig
           is in use" is one sentence, and it is the thing worth reading when the
           per-device rows are collapsed. */}
@@ -126,7 +126,7 @@ export function GpuSection({ gpus, platformKind }: GpuSectionProps) {
       </button>
 
       {expanded ? (
-        <div className="mt-2">
+        <div className="mt-1.5">
           <GpuTable
             gpus={sortedGpus}
             capacity={totals.capacity}

@@ -1,8 +1,14 @@
 import { app } from "electron";
+import { Schema } from "effect";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import {
+  WINDOW_TRANSPARENCY_DEFAULT,
+  WindowAppearancePreferenceSchema,
+  type WindowAppearancePreference,
+} from "../window-appearance-contract";
 import { writeJsonAtomic } from "../helpers/fs-json";
-import type { DesktopUpdateChannel } from "../types";
+import { DesktopUpdateChannelSchema, type DesktopUpdateChannel } from "../types";
 
 /** Main-process-owned settings (hotkeys, window sizes) — separate from the
  * renderer-owned ui-preferences.json, which the renderer rewrites wholesale. */
@@ -16,9 +22,21 @@ interface DesktopSettings {
   quickPanelHotkey?: string;
   quickPanelThreadSize?: QuickPanelSize;
   updateChannel?: DesktopUpdateChannel;
+  windowAppearance?: WindowAppearancePreference;
 }
 
 const MIN_THREAD_SIZE: QuickPanelSize = { width: 320, height: 280 };
+const DEFAULT_WINDOW_APPEARANCE: WindowAppearancePreference = {
+  material: "subtle",
+  transparency: WINDOW_TRANSPARENCY_DEFAULT,
+};
+const QuickPanelSizeSchema = Schema.Struct({ width: Schema.Number, height: Schema.Number });
+const DesktopSettingsSchema = Schema.Struct({
+  quickPanelHotkey: Schema.optional(Schema.String),
+  quickPanelThreadSize: Schema.optional(QuickPanelSizeSchema),
+  updateChannel: Schema.optional(DesktopUpdateChannelSchema),
+  windowAppearance: Schema.optional(WindowAppearancePreferenceSchema),
+});
 
 function settingsFilePath(): string {
   return path.join(app.getPath("userData"), "desktop-settings.json");
@@ -28,10 +46,9 @@ function readSettings(): DesktopSettings {
   try {
     const filePath = settingsFilePath();
     if (!existsSync(filePath)) return {};
-    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as DesktopSettings)
-      : {};
+    return Schema.decodeUnknownSync(DesktopSettingsSchema)(
+      JSON.parse(readFileSync(filePath, "utf8")) as unknown,
+    );
   } catch {
     return {};
   }
@@ -73,6 +90,14 @@ export function getStoredUpdateChannel(fallback: DesktopUpdateChannel): DesktopU
 
 export function setStoredUpdateChannel(channel: DesktopUpdateChannel): void {
   writeSettings({ updateChannel: channel });
+}
+
+export function getStoredWindowAppearance(): WindowAppearancePreference {
+  return readSettings().windowAppearance ?? DEFAULT_WINDOW_APPEARANCE;
+}
+
+export function setStoredWindowAppearance(appearance: WindowAppearancePreference): void {
+  writeSettings({ windowAppearance: appearance });
 }
 
 export { MIN_THREAD_SIZE as QUICK_PANEL_MIN_THREAD_SIZE };

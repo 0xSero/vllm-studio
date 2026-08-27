@@ -137,13 +137,13 @@ export function AgentBrowser({
     <section className="flex min-h-0 flex-1 flex-col">
       <form
         onSubmit={handleSubmit}
-        className="flex shrink-0 items-center gap-1 border-b border-(--border) px-2 py-1.5"
+        className="flex h-8 shrink-0 items-center gap-0.5 border-b border-(--border)/70 px-1.5"
       >
         <button
           type="button"
           onClick={() => !readingMode && postLiveVerb("back")}
           disabled={readingMode || navState?.canGoBack === false}
-          className="rounded p-1 text-(--dim) hover:bg-(--hover) hover:text-(--fg) disabled:opacity-30"
+          className="inline-flex h-6 w-6 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg) disabled:opacity-30"
           title="Back"
           aria-label="Back"
         >
@@ -153,7 +153,7 @@ export function AgentBrowser({
           type="button"
           onClick={() => !readingMode && postLiveVerb("forward")}
           disabled={readingMode || navState?.canGoForward === false}
-          className="rounded p-1 text-(--dim) hover:bg-(--hover) hover:text-(--fg) disabled:opacity-30"
+          className="inline-flex h-6 w-6 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg) disabled:opacity-30"
           title="Forward"
           aria-label="Forward"
         >
@@ -162,7 +162,7 @@ export function AgentBrowser({
         <button
           type="button"
           onClick={handleReload}
-          className="rounded p-1 text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+          className="inline-flex h-6 w-6 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
           title="Reload"
           aria-label="Reload"
         >
@@ -173,7 +173,7 @@ export function AgentBrowser({
           onChange={(event) => onInputChange(event.target.value)}
           spellCheck={false}
           placeholder="Enter a URL or search local apps"
-          className="min-w-0 flex-1 rounded border border-(--border) bg-(--surface) px-2 py-1 font-mono text-[length:var(--fs-sm)] text-(--fg) outline-none placeholder:text-(--dim)"
+          className="min-w-0 flex-1 rounded border border-(--border)/80 bg-(--surface) px-2 py-1 font-mono text-[length:var(--fs-xs)] text-(--fg) outline-none placeholder:text-(--dim)"
           aria-label="Browser address"
         />
         <BrowserEnginePicker enabled={visible} />
@@ -184,7 +184,7 @@ export function AgentBrowser({
             setReadingMode((value) => !value);
           }}
           disabled={Boolean(liveUnavailable && readingMode)}
-          className={`shrink-0 rounded border px-1.5 py-1 text-[length:var(--fs-sm)] disabled:opacity-40 ${
+          className={`h-6 shrink-0 rounded border px-1.5 text-[length:var(--fs-xs)] disabled:opacity-40 ${
             readingMode
               ? "border-(--accent) bg-(--accent)/10 text-(--accent)"
               : "border-(--border) text-(--dim) hover:text-(--fg)"
@@ -204,7 +204,7 @@ export function AgentBrowser({
           onPointerDown={(event) => event.stopPropagation()}
           onMouseDown={(event) => event.stopPropagation()}
           onClick={onClose}
-          className="ml-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+          className="ml-0.5 inline-flex h-6 w-6 items-center justify-center rounded text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
           title="Close"
           aria-label="Close browser"
         >
@@ -212,13 +212,13 @@ export function AgentBrowser({
         </button>
       </form>
       {liveUnavailable ? (
-        <div className="shrink-0 border-b border-(--err)/40 bg-(--err)/10 px-3 py-2 text-[length:var(--fs-xs)] text-(--err)">
+        <div className="shrink-0 border-b border-(--err)/40 bg-(--err)/10 px-3 py-1.5 text-[length:var(--fs-xs)] text-(--err)">
           {liveUnavailable}. Pick an installed browser above — Chrome, Brave, or Chromium — to
           enable the live view and screenshots; reading mode is active meanwhile.
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 bg-(--bg)">
+      <div className="min-h-0 flex-1 bg-(--color-panel)">
         {showStartPage ? (
           <LocalhostStartPage
             sites={localSites}

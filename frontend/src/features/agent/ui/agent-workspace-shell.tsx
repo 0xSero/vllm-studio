@@ -12,16 +12,14 @@ import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
 import type { AgentModel, WorkspaceState } from "@/features/agent/workspace/types";
 import { useProjects, type ProjectsContextValue } from "@/features/agent/projects/context";
 import { useTools } from "@/features/agent/tools/context";
-import type { Project } from "@/features/agent/projects/types";
+import { isChatsProject, type Project } from "@/features/agent/projects/types";
 import { focusedSession } from "@/features/agent/runtime/selectors";
-import { PaneGrid } from "@/features/agent/ui/pane-grid";
 import { useWorkspace, type WorkspaceHandles } from "@/features/agent/ui/use-workspace";
 import { renderWorkspacePane } from "@/features/agent/ui/render-workspace-pane";
 import { useAgentWorkspaceNavigationEffects } from "@/features/agent/ui/agent-workspace-navigation";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { POPOVER_SURFACE_CLASS } from "@/ui/popover";
 import { cx } from "@/ui/utils";
-import { collectLeaves } from "@/features/agent/workspace/layout";
 
 const LazyAgentBrowserPanel = lazy(() =>
   import("@/features/agent/ui/agent-browser-panel").then(({ AgentBrowserPanel }) => ({
@@ -49,7 +47,7 @@ function quickPanelMode(
 
 function workspaceClassName(mode: QuickPanelMode): string {
   return cx(
-    "agent-workspace flex h-full min-h-0 w-full flex-col text-(--fg) md:h-[100dvh]",
+    "agent-workspace flex h-full min-h-0 w-full flex-col text-(--fg)",
     mode === "composer" ? "bg-transparent" : "bg-(--agent-bg)",
     mode === "thread" && "overflow-hidden rounded-[var(--rad-xl)] shadow-[var(--shadow-2xl)]",
   );
@@ -71,7 +69,7 @@ export function shouldShowProjectEmptyState(
     projects.loaded &&
     !projectParam &&
     !projects.selectedProjectId &&
-    projects.projects.length === 0
+    projects.projects.every(isChatsProject)
   );
 }
 
@@ -102,7 +100,6 @@ export function AgentWorkspaceShell({
   });
   const focusedModel =
     state.models.find((model) => model.id === (focusedTab?.modelId ?? state.selectedModel)) ?? null;
-  const focusedGitSummary = projects.gitSummary(activeProject?.path ?? focusedTab?.cwd);
   const showProjectEmptyState = shouldShowProjectEmptyState(projects, projectParam);
   const focusedMessageCount = focusedTab?.messages.length ?? 0;
   const panelMode = quickPanelMode(compact, showProjectEmptyState, focusedMessageCount);
@@ -110,11 +107,13 @@ export function AgentWorkspaceShell({
   useQuickPanelExpandEffect(compact, panelMode === "thread");
   return (
     <div data-quick-panel-state={panelMode} className={workspaceClassName(panelMode)}>
-      <div
-        className="agent-workspace-panel-row relative flex min-h-0 flex-1"
-        data-multi-pane={collectLeaves(state.layout).length > 1 ? "true" : undefined}
-      >
-        <section className="relative flex min-w-0 flex-1 flex-col">
+      <div className="agent-workspace-panel-row relative flex min-h-0 flex-1">
+        <section
+          className={cx(
+            "relative min-w-0 flex-1 flex-col",
+            !compact && tools.computer.open ? "hidden" : "flex",
+          )}
+        >
           <WorkspaceTopBar
             error={state.error}
             setupWarning={state.setupWarning}
@@ -140,7 +139,7 @@ export function AgentWorkspaceShell({
           />
         </section>
         {!compact ? (
-          <WorkspaceComputerPanel
+          <WorkspaceComputerSurface
             open={tools.computer.open}
             handles={handles}
             activeProject={activeProject}
@@ -150,7 +149,6 @@ export function AgentWorkspaceShell({
             models={state.models}
             modelsLoading={state.modelsLoading}
             focusedModel={focusedModel}
-            focusedGitSummary={focusedGitSummary}
           />
         ) : null}
       </div>
@@ -158,7 +156,7 @@ export function AgentWorkspaceShell({
   );
 }
 
-function WorkspaceComputerPanel({
+function WorkspaceComputerSurface({
   open,
   handles,
   activeProject,
@@ -168,7 +166,6 @@ function WorkspaceComputerPanel({
   models,
   modelsLoading,
   focusedModel,
-  focusedGitSummary,
 }: {
   open: boolean;
   handles: WorkspaceHandles;
@@ -179,7 +176,6 @@ function WorkspaceComputerPanel({
   models: AgentModel[];
   modelsLoading: boolean;
   focusedModel: AgentModel | null;
-  focusedGitSummary: ReturnType<ProjectsContextValue["gitSummary"]>;
 }) {
   return (
     <Suspense fallback={open ? <ComputerPanelFallback /> : null}>
@@ -190,7 +186,6 @@ function WorkspaceComputerPanel({
         sessions={[...sessions.values()]}
         activeModelId={focusedTab?.modelId ?? selectedModel}
         activeModel={focusedModel}
-        gitSummary={focusedGitSummary}
         models={models}
         modelsLoading={modelsLoading}
       />
@@ -235,28 +230,27 @@ function WorkspacePaneContent({
     );
   }
   return (
-    <div className="min-h-0 flex-1">
-      <PaneGrid
-        layout={state.layout}
-        renderPane={(paneId) =>
-          renderWorkspacePane({ paneId, state, projects, tools, dispatch, handles, compact })
-        }
-        onSplit={handles.splitPaneWithPayload}
-        onOpenTab={handles.openSessionPayloadInPane}
-        onResize={handles.setSplitRatio}
-      />
+    <div className="flex min-h-0 flex-1">
+      {renderWorkspacePane({
+        paneId: state.focusedPaneId,
+        state,
+        projects,
+        tools,
+        dispatch,
+        handles,
+        compact,
+      })}
     </div>
   );
 }
 
 function ComputerPanelFallback() {
   return (
-    <aside className="relative flex w-[360px] shrink-0 flex-col bg-(--color-panel) shadow-[var(--elev-side-panel)]">
-      <div className="h-[var(--h-toolbar-pane)] shrink-0 border-b border-(--border) bg-(--color-header)" />
+    <section className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-(--agent-bg)">
       <div className="flex min-h-0 flex-1 items-center justify-center text-xs text-(--dim)">
         Loading tools...
       </div>
-    </aside>
+    </section>
   );
 }
 
@@ -345,7 +339,7 @@ function ProjectEmptyState() {
         <button
           type="button"
           onClick={triggerAddProjectFlow}
-          className="mt-4 inline-flex h-9 items-center gap-2 rounded-full bg-(--fg)/5 px-4 text-[length:var(--fs-base)] font-medium text-(--fg) hover:bg-(--fg)/10"
+          className="mt-4 inline-flex h-8 items-center gap-2 rounded-[var(--ui-radius-control)] bg-(--fg)/5 px-3 text-[length:var(--fs-base)] font-medium text-(--fg) hover:bg-(--fg)/10"
         >
           <PlusIcon className="h-4 w-4" />
           Add a project

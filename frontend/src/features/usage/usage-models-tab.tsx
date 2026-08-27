@@ -21,7 +21,15 @@ import { UsageModelDrawer, modelIdentity, type UsageModel } from "./usage-model-
 import { useSortedRows } from "./usage-sort";
 
 type SortKey =
-  "model" | "requests" | "tokens" | "avg" | "prefill" | "decode" | "ttft" | "latency" | "success";
+  | "model"
+  | "requests"
+  | "tokens"
+  | "avg"
+  | "prefill"
+  | "decode"
+  | "ttft"
+  | "latency"
+  | "success";
 
 const sortValue = (row: UsageModel, key: SortKey): number | string | null => {
   switch (key) {
@@ -105,7 +113,7 @@ export function UsageModelsTab({ stats }: { stats: UsageStats }) {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <StatStrip stats={summary} />
 
       {stats.by_model.length === 0 ? (

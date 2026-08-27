@@ -26,6 +26,18 @@ export function findPaneByPiSessionId(
   return null;
 }
 
+export function findPaneBySessionId(
+  state: WorkspaceState,
+  sessionId: SessionId,
+): { paneId: PaneId; session: Session } | null {
+  const session = state.sessions.get(sessionId);
+  if (!session) return null;
+  for (const [paneId, pane] of state.panesById.entries()) {
+    if (paneSessionId(pane) === sessionId) return { paneId, session };
+  }
+  return null;
+}
+
 export function findWorkspaceSessionByPiSessionId(
   state: WorkspaceState,
   piSessionId: string,

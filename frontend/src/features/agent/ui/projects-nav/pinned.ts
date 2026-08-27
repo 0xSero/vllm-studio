@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, type DragEvent } from "react";
+import { useMemo, useState } from "react";
+import { Effect } from "effect";
 import type { AggregatedSession } from "@shared/agent/session-summary";
 import { safeJson } from "@/features/agent/safe-json";
 import {
@@ -12,12 +13,11 @@ import { uniqueOpenSessions, type OpenAgentSession } from "@/features/agent/sess
 import { isChatsProject, type Project as ProjectEntry } from "@/features/agent/projects/types";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { mergeActiveSessionPref } from "./helpers";
+import { orderPinnedEntries } from "./pinned-order";
 import {
-  movePinnedEntryBefore,
-  orderPinnedEntries,
-  readPinnedSessionOrder,
-  writePinnedSessionOrder,
-} from "./pinned-order";
+  dispatchWorkbenchCommand,
+  useWorkbenchProjection,
+} from "@/features/workbench/controller-state";
 import type { PinnedSession } from "./types";
 
 /** Joins id lists into one effect-dependency string; NUL cannot appear in ids. */
@@ -60,18 +60,9 @@ export type PinnedNav = {
   renderedSessionIds: ReadonlySet<string>;
   pinnedProjectIds: ReadonlySet<string>;
   dragging: boolean;
-  entryDragProps: (entryId: string) => {
-    dragging: boolean;
-    onReorderDragStart: () => void;
-    onReorderDragEnd: () => void;
-    onReorderDragOver: (event: DragEvent) => void;
-    onReorderDrop: (event: DragEvent) => void;
-  };
-  /** Drop target for the list itself — moves the dragged entry to the end. */
-  listDropProps: {
-    onDragOver: (event: DragEvent) => void;
-    onDrop: (event: DragEvent) => void;
-  };
+  draggingId: string | null;
+  setDraggingId: (entryId: string | null) => void;
+  moveEntry: (draggedId: string, targetId: string) => void;
 };
 
 /** Immutable start time of a pinned session entry; projects sort to the top. */
@@ -93,7 +84,21 @@ export function usePinnedNav({
   prefs: SessionPrefs;
 }): PinnedNav {
   const [historySessions, setHistorySessions] = useState<PinnedSession[]>([]);
-  const [order, setOrder] = useState(readPinnedSessionOrder);
+  const projection = useWorkbenchProjection();
+  const order = useMemo(
+    () =>
+      [
+        ...projection.projects
+          .filter((project) => project.pinned)
+          .map((project) => ({ id: projectPinKey(project.id), rank: project.rank })),
+        ...projection.tasks
+          .filter((task) => task.pinned)
+          .map((task) => ({ id: task.id, rank: task.rank })),
+      ]
+        .sort((left, right) => left.rank - right.rank)
+        .map((entry) => entry.id),
+    [projection.projects, projection.tasks],
+  );
   const [dragId, setDragId] = useState<string | null>(null);
 
   const pinnedKeys = useMemo(
@@ -206,12 +211,15 @@ export function usePinnedNav({
     return orderPinnedEntries([...projectEntries, ...sessionEntries], order);
   }, [activeSessionIds, historySessions, order, pinnedActive, pinnedProjectIds, projects]);
 
-  const moveBefore = (draggedId: string, targetId: string | null) => {
-    setOrder((current) => {
-      const next = movePinnedEntryBefore(entries, current, draggedId, targetId);
-      writePinnedSessionOrder(next);
-      return next;
-    });
+  const moveEntry = (draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return;
+    void Effect.runPromise(
+      dispatchWorkbenchCommand({
+        kind: "move_pinned",
+        projectId: draggedId,
+        targetId,
+      }),
+    );
   };
 
   return {
@@ -219,32 +227,9 @@ export function usePinnedNav({
     renderedSessionIds,
     pinnedProjectIds,
     dragging: dragId !== null,
-    entryDragProps: (entryId: string) => ({
-      dragging: dragId === entryId,
-      onReorderDragStart: () => setDragId(entryId),
-      onReorderDragEnd: () => setDragId(null),
-      onReorderDragOver: (event: DragEvent) => {
-        if (dragId && dragId !== entryId) event.preventDefault();
-      },
-      onReorderDrop: (event: DragEvent) => {
-        if (!dragId) return;
-        event.preventDefault();
-        event.stopPropagation();
-        if (dragId !== entryId) moveBefore(dragId, entryId);
-        setDragId(null);
-      },
-    }),
-    listDropProps: {
-      onDragOver: (event: DragEvent) => {
-        if (dragId) event.preventDefault();
-      },
-      onDrop: (event: DragEvent) => {
-        if (!dragId) return;
-        event.preventDefault();
-        moveBefore(dragId, null);
-        setDragId(null);
-      },
-    },
+    draggingId: dragId,
+    setDraggingId: setDragId,
+    moveEntry,
   };
 }
 

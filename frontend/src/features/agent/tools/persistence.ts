@@ -1,9 +1,8 @@
-import {
-  COMPUTER_TAB_IDS,
-  type BrowserBackend,
-  type BrowserState,
-  type ComputerState,
-  type ComputerTab,
+import type {
+  BrowserBackend,
+  BrowserState,
+  ComputerState,
+  ComputerTab,
 } from "@/features/agent/tools/types";
 
 export const BROWSER_TOOL_KEY = "local-studio.agent.browserToolEnabled";
@@ -14,8 +13,6 @@ export const COMPUTER_BROWSER_OPEN_KEY = "local-studio.agent.computer.browserOpe
 export const COMPUTER_FILES_OPEN_KEY = "local-studio.agent.computer.filesOpen";
 export const COMPUTER_DEFAULT_CLOSED_STORAGE_ID = "local-studio.agent.computer.defaultCollapsedV2";
 export const COMPUTER_WIDTH_KEY = "local-studio.agent.computer.width";
-export const COMPUTER_TAB_KEY = "local-studio.agent.computer.tab";
-export const COMPUTER_TABS_KEY = "local-studio.agent.computer.tabs";
 
 export const DEFAULT_BROWSER_URL = "about:blank";
 export const DEFAULT_BROWSER_BACKEND: BrowserBackend = "embedded";
@@ -24,8 +21,6 @@ export const MIN_COMPUTER_WIDTH = 280;
 export const MAX_COMPUTER_WIDTH = 1200;
 export const MIN_CHAT_WIDTH_WHEN_COMPUTER_OPEN = 360;
 export const COMPUTER_SNAP_WIDTHS = [360, 440, 520, 720, 960] as const;
-
-const COMPUTER_TABS: readonly ComputerTab[] = COMPUTER_TAB_IDS;
 
 function viewportWidth(): number | undefined {
   return typeof window === "undefined" ? undefined : window.innerWidth;
@@ -122,37 +117,12 @@ export function loadBrowserState(): BrowserState {
 
 export function loadComputerState(): ComputerState {
   const storedWidth = Number(read(COMPUTER_WIDTH_KEY));
-  const storedTab = read(COMPUTER_TAB_KEY);
-  const tab: ComputerTab = isComputerTab(storedTab) ? storedTab : "status";
-  const storedTabs = readComputerTabs();
-  const persistedTabs = uniqueComputerTabs([
-    "status",
-    ...(storedTabs.length ? storedTabs : [tab]),
-  ]);
-  const tabs = persistedTabs.includes(tab)
-    ? persistedTabs
-    : uniqueComputerTabs([...persistedTabs, tab]);
   return {
     open: false,
-    tab,
-    tabs,
+    tab: "files",
+    tabs: [],
     width: Number.isFinite(storedWidth) ? clampComputerWidth(storedWidth) : DEFAULT_COMPUTER_WIDTH,
   };
-}
-
-function isComputerTab(value: unknown): value is ComputerTab {
-  return typeof value === "string" && COMPUTER_TABS.includes(value as ComputerTab);
-}
-
-function readComputerTabs(): ComputerTab[] {
-  const raw = read(COMPUTER_TABS_KEY);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? uniqueComputerTabs(parsed.filter(isComputerTab)) : [];
-  } catch {
-    return [];
-  }
 }
 
 export function uniqueComputerTabs(tabs: ComputerTab[]): ComputerTab[] {
@@ -163,11 +133,11 @@ export function uniqueComputerTabs(tabs: ComputerTab[]): ComputerTab[] {
     seen.add(tab);
     out.push(tab);
   }
-  return out.includes("status") ? out : ["status", ...out];
+  return out;
 }
 
 export function computerPanelVisibility(current: ComputerState, open: boolean): ComputerState {
-  const tabs = uniqueComputerTabs(current.tabs.length ? current.tabs : ["status"]);
+  const tabs = uniqueComputerTabs(current.tabs.length ? current.tabs : open ? [current.tab] : []);
   const tabsUnchanged =
     tabs.length === current.tabs.length && tabs.every((tab, index) => tab === current.tabs[index]);
   if (current.open === open && tabsUnchanged) return current;
@@ -189,15 +159,6 @@ function parseBrowserBackend(value: string | null): BrowserBackend {
 
 export function writeBrowserBackend(backend: BrowserBackend): void {
   write(BROWSER_BACKEND_KEY, backend);
-}
-
-export function writeComputerTab(tab: ComputerTab): void {
-  write(COMPUTER_FILES_OPEN_KEY, tab === "files" ? "1" : "0");
-  write(COMPUTER_TAB_KEY, tab);
-}
-
-export function writeComputerTabs(tabs: ComputerTab[]): void {
-  write(COMPUTER_TABS_KEY, JSON.stringify(uniqueComputerTabs(tabs)));
 }
 
 export function writeComputerWidth(width: number): void {

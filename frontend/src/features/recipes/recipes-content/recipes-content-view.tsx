@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { Download, Search, Server, Sparkles } from "@/ui/icon-registry";
 import type { ModelDownload, ModelInfo, RecipeWithStatus, RuntimeTarget } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
-import { ConfirmDeleteModal, RefreshButton, TabbedPage, Tabs } from "@/ui";
+import { ConfirmDeleteModal, TabbedPage, Tabs } from "@/ui";
 import { DrawerOverlay } from "@/ui/drawer";
 import type { RecipesContentTab } from "./recipes-content-model";
 import type { RecipesTableProps } from "./types";
@@ -85,7 +85,6 @@ export function RecipesContentView(props: Props) {
     tab,
     setTab,
     loading,
-    refreshing,
     filter,
     setFilter,
     modalOpen,
@@ -101,7 +100,6 @@ export function RecipesContentView(props: Props) {
     availableModels,
     runtimeTargets,
     sortedRecipes,
-    onRefresh,
     onNewRecipe,
     onCreateServeFromDownload,
     onSaveRecipe,
@@ -147,18 +145,10 @@ export function RecipesContentView(props: Props) {
   return (
     <>
       {embedded ? (
-        <div className="space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-(--ui-separator) pb-3">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--ui-separator) pb-2">
             <Tabs variant="pill" items={MODEL_TABS} activeTab={tab} onSelectTab={setTab} />
-            <div className="flex items-center gap-2">
-              {managementAction}
-              <RefreshButton
-                onRefresh={onRefresh}
-                loading={refreshing || loading}
-                label="Refresh models"
-                className="h-8 w-8"
-              />
-            </div>
+            <div className="flex items-center gap-2">{managementAction}</div>
           </div>
           {content}
         </div>
@@ -170,17 +160,7 @@ export function RecipesContentView(props: Props) {
           tabs={MODEL_TABS}
           activeTab={tab}
           onSelectTab={setTab}
-          actions={
-            <div className="flex items-center gap-2">
-              {managementAction}
-              <RefreshButton
-                onRefresh={onRefresh}
-                loading={refreshing || loading}
-                label="Refresh models"
-                className="h-8 w-8"
-              />
-            </div>
-          }
+          actions={<div className="flex items-center gap-2">{managementAction}</div>}
         >
           {content}
         </TabbedPage>

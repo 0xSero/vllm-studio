@@ -1,5 +1,5 @@
-// Pure pi-event predicates shared by the agent runtime package
-// (services/agent-runtime) and the frontend's client-side event pipeline.
+// Pure pi-event predicates shared by the controller agent surface and the
+// frontend's client-side event pipeline.
 // Keep this module dependency-free.
 
 export function isAgentEndEvent(event: { type?: unknown } | null | undefined): boolean {

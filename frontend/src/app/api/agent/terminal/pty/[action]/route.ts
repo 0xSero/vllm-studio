@@ -1,6 +1,6 @@
 import path from "node:path";
 import { NextRequest } from "next/server";
-import { proxyToAgentRuntime } from "@/app/api/agent/proxy-to-runtime";
+import { proxyToController } from "@/app/api/agent/proxy-to-controller";
 import { requireApiAccess } from "@/lib/auth/guard";
 import { assertWorkspaceRoot } from "@/features/agent/fs-store";
 import { jsonError } from "@/app/api/_lib/route-helpers";
@@ -57,7 +57,7 @@ export async function GET(
   if (action !== "stream") return jsonError("Unknown action", 404);
   const denied = requireApiAccess(request) ?? denyCrossSite(request);
   if (denied) return denied;
-  return proxyToAgentRuntime(request);
+  return proxyToController(request);
 }
 
 export async function POST(
@@ -72,5 +72,5 @@ export async function POST(
     const invalid = await validateOpenBody(request);
     if (invalid) return invalid;
   }
-  return proxyToAgentRuntime(request, { bodyLimitBytes: BODY_LIMIT_BYTES });
+  return proxyToController(request, { bodyLimitBytes: BODY_LIMIT_BYTES });
 }

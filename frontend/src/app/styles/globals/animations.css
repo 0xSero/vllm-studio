@@ -1,5 +1,5 @@
 /* Animations */
-@keyframes fade-in {
+@keyframes ui-scrim-enter {
   from {
     opacity: 0;
   }
@@ -8,127 +8,99 @@
   }
 }
 
-@keyframes slide-up {
+@keyframes ui-modal-enter {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(4px) scale(0.99);
   }
   to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes pulse-soft {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.6;
-  }
-}
-
-.animate-fade-in {
-  animation: fade-in 0.2s ease-out;
-}
-
-.animate-slide-up {
-  animation: slide-up 0.3s ease-out;
-}
-
-.animate-pulse-soft {
-  animation: pulse-soft 2s ease-in-out infinite;
-}
-
-@keyframes bounce {
-  0%,
-  100% {
-    transform: translateY(0);
-    opacity: 0.6;
-  }
-  50% {
-    transform: translateY(-8px);
-    opacity: 1;
-  }
-}
-
-.animate-bounce {
-  animation: bounce 1.4s ease-in-out infinite;
-}
-
-/* Slide animations for mobile */
-@keyframes slide-in-left {
-  from {
-    opacity: 0;
-    transform: translateX(-100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes slide-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.animate-slide-in-left {
-  animation: slide-in-left 0.2s ease-out;
-}
-
-.animate-slide-in-right {
-  animation: slide-in-right 0.2s ease-out;
-}
-
-/* Premium spring animation for messages */
-@keyframes message-appear {
-  0% {
-    opacity: 0;
-    transform: translateY(12px) scale(0.98);
-  }
-  100% {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
 }
 
-.animate-message-appear {
-  animation: message-appear 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* Subtle glow for active elements */
-@keyframes subtle-glow {
-  0%,
-  100% {
-    box-shadow: 0 0 0 rgba(139, 115, 85, 0);
+@keyframes ui-drawer-enter-right {
+  from {
+    transform: translateX(12px);
   }
-  50% {
-    box-shadow: 0 0 20px rgba(139, 115, 85, 0.1);
+  to {
+    transform: translateX(0);
   }
 }
 
-.animate-subtle-glow {
-  animation: subtle-glow 3s ease-in-out infinite;
+@keyframes ui-drawer-enter-left {
+  from {
+    transform: translateX(-12px);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 
-@keyframes blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
+.ui-scrim-enter {
+  animation: ui-scrim-enter var(--motion-fast) var(--ease-standard) both;
+}
+
+.ui-modal-enter {
+  animation: ui-modal-enter var(--motion-standard) var(--ease-enter) both;
+}
+
+@keyframes ui-popover-enter {
+  from {
     opacity: 0;
+    transform: translateY(-2px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
-.animate-cursor-blink {
-  animation: blink 0.7s ease-in-out infinite;
+@keyframes ui-popover-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-1px) scale(0.985);
+  }
+}
+
+.ui-popover-enter {
+  animation: ui-popover-enter 120ms var(--ease-enter) both;
+  transform-origin: top center;
+}
+
+.ui-popover-exit {
+  animation: ui-popover-exit 90ms var(--ease-exit) both;
+  transform-origin: top center;
+}
+
+.ui-drawer-enter-right {
+  animation: ui-drawer-enter-right var(--motion-panel) var(--ease-enter) both;
+}
+
+.ui-drawer-enter-left {
+  animation: ui-drawer-enter-left var(--motion-panel) var(--ease-enter) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+  transition-duration: 1ms !important;
 }

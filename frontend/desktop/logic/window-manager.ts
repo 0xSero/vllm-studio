@@ -1,8 +1,8 @@
 import { app, BrowserWindow } from "electron";
-import path from "node:path";
-import { DESKTOP_CONFIG } from "../configs";
+import { DESKTOP_CONFIG, resolveDesktopPreloadPath } from "../configs";
 import { log } from "../helpers/logger";
 import { hardenWebContents, registerPermissionPolicy } from "./security";
+import { mainWindowAppearanceOptions } from "./window-appearance";
 
 async function memorySummary(): Promise<string> {
   try {
@@ -19,20 +19,24 @@ export function createMainWindow(appUrl: string): BrowserWindow {
     height: DESKTOP_CONFIG.preferredWindow.height,
     minWidth: DESKTOP_CONFIG.minimumWindow.width,
     minHeight: DESKTOP_CONFIG.minimumWindow.height,
-    backgroundColor: "#0b0f14",
+    ...mainWindowAppearanceOptions(),
     show: false,
     title: DESKTOP_CONFIG.appName,
     autoHideMenuBar: true,
     webPreferences: {
-      preload: path.join(app.getAppPath(), "desktop", "dist", "preload.js"),
+      preload: resolveDesktopPreloadPath(),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
       webviewTag: false,
       webSecurity: true,
-      devTools: !process.env.LOCAL_STUDIO_DESKTOP_DISABLE_DEVTOOLS,
+      devTools: !app.isPackaged && !process.env.LOCAL_STUDIO_DESKTOP_DISABLE_DEVTOOLS,
       allowRunningInsecureContent: false,
       navigateOnDragDrop: false,
+      backgroundThrottling: true,
+      enableWebSQL: false,
+      spellcheck: false,
+      v8CacheOptions: "code",
     },
   });
 

@@ -45,10 +45,11 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textare
       <textarea
         ref={ref}
         id={textareaId}
+        data-ui-control="field"
         required={field.required}
         aria-describedby={describedBy}
         aria-invalid={field.invalid ?? (error ? true : undefined)}
-        className={`w-full resize-none rounded-xl border border-(--ui-border) bg-(--surface-3) px-3 py-2.5 text-[length:var(--fs-base)] text-(--ui-fg) transition-all placeholder:text-(--hl2) focus:border-(--link)/70 focus:outline-none focus:ring-1 focus:ring-(--link)/25 ${error ? "border-(--ui-danger)" : ""} ${className}`}
+        className={`w-full resize-none rounded-[var(--rad-md)] border border-(--ui-border) bg-(--surface-3) px-3 py-2 text-[length:var(--fs-md)] leading-5 text-(--ui-fg) transition-[background-color,border-color] placeholder:text-(--hl2) focus:border-(--link)/70 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${error ? "border-(--ui-danger)" : ""} ${className}`}
         {...props}
       />
       {error && (

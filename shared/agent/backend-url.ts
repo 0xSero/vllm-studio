@@ -1,5 +1,5 @@
-// Env-derived default backend URL, shared by the frontend connection module
-// and the agent runtime package's settings service.
+// Env-derived default backend URL shared by frontend connection and settings
+// services.
 
 const LOCAL_BACKEND_FALLBACK = "http://localhost:8080";
 

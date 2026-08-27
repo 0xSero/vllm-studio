@@ -10,7 +10,6 @@ import {
 import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
 import type { FsEntry } from "@/features/agent/filesystem-types";
-import { listProjectsFromStore } from "@local-studio/agent-runtime/projects-store";
 
 const IGNORE_DIRS = new Set([
   ".git",
@@ -99,13 +98,7 @@ function resolveRealPath(candidate: string): string {
 // not required: sessions may run from the repo opened by the app, a project
 // subdirectory, or a newly selected cwd before the project registry refreshes.
 function resolveWorkspaceRoot(cwd: string): string {
-  const requestedReal = resolveRealPath(cwd);
-  for (const project of listProjectsFromStore()) {
-    if (!project.exists) continue;
-    const projectReal = resolveRealPath(project.path);
-    if (projectReal === requestedReal) return projectReal;
-  }
-  return assertWorkspaceRoot(requestedReal);
+  return assertWorkspaceRoot(resolveRealPath(cwd));
 }
 
 // Reject any path that escapes the project root, resolving symlinks on both the

@@ -4,7 +4,6 @@ import { Effect } from "effect";
 import { useCallback, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/ui";
-import { Clock, Plus } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import type { Automation } from "@shared/agent/automation";
 import {
@@ -172,28 +171,7 @@ export default function AutomationsPage() {
   const missing = !creating && requestedId !== null && automations !== null && selected === null;
 
   return (
-    // h-full, not h-[100dvh]: the scroll parent already subtracts the phone's
-    // bottom safe-area inset, so a viewport-height child overflows it.
-    <div className="flex h-full min-h-0 w-full bg-(--ui-bg) text-(--ui-fg) md:h-[100dvh]">
-      <div
-        className={
-          editorOpen
-            ? "hidden min-h-0 shrink-0 md:flex md:w-[min(380px,38%)]"
-            : "flex min-h-0 w-full shrink-0 md:w-[min(380px,38%)]"
-        }
-      >
-        <AutomationList
-          automations={automations ?? []}
-          loading={automations === null}
-          query={query}
-          filter={filter}
-          selectedId={selected?.id ?? null}
-          onQueryChange={setQuery}
-          onFilterChange={setFilter}
-          onCreate={() => navigate("new")}
-          onSelect={navigate}
-        />
-      </div>
+    <div className="flex h-full min-h-0 w-full bg-(--ui-bg) text-(--ui-fg)">
       {editorOpen ? (
         missing ? (
           <MissingAutomation onClose={() => navigate("index")} />
@@ -214,33 +192,19 @@ export default function AutomationsPage() {
           />
         )
       ) : (
-        <AutomationWelcome onCreate={() => navigate("new")} />
+        <AutomationList
+          automations={automations ?? []}
+          loading={automations === null}
+          query={query}
+          filter={filter}
+          selectedId={selected?.id ?? null}
+          onQueryChange={setQuery}
+          onFilterChange={setFilter}
+          onCreate={() => navigate("new")}
+          onSelect={navigate}
+        />
       )}
     </div>
-  );
-}
-
-function AutomationWelcome({ onCreate }: { onCreate: () => void }) {
-  return (
-    <section className="hidden min-h-0 flex-1 items-center justify-center px-8 md:flex">
-      <div className="max-w-sm text-left">
-        <span className="flex h-9 w-9 items-center justify-center rounded-[var(--ui-radius)] border border-(--ui-separator) bg-(--ui-surface) text-(--ui-muted)">
-          <Clock className="h-4 w-4" />
-        </span>
-        <h2 className="mt-4 text-[length:var(--fs-lg)] font-medium">Select an automation</h2>
-        <p className="mt-1.5 text-[length:var(--fs-sm)] leading-5 text-(--ui-muted)">
-          Review its task and schedule, run it now, pause it, or change its configuration.
-        </p>
-        <Button
-          size="sm"
-          onClick={onCreate}
-          icon={<Plus className="h-3.5 w-3.5" />}
-          className="mt-4"
-        >
-          New automation
-        </Button>
-      </div>
-    </section>
   );
 }
 

@@ -4,6 +4,7 @@ import { newId, randomIdSegment } from "@/features/agent/messages/helpers";
 import type { AgentImageInput } from "@/features/agent/contracts";
 import { formatBytes } from "@/lib/formatters";
 import { AGENT_IMAGE_LIMITS, agentImageSizesLimitError } from "@shared/agent/agent-image-input";
+import { prepareImageForAttachment } from "@/features/agent/ui/image-compression";
 
 export type ChatAttachment = {
   id: string;
@@ -258,6 +259,32 @@ export function filesFromDataTransfer(dataTransfer: DataTransfer | null): File[]
   return files;
 }
 
+function shouldPrepareImage(file: File): boolean {
+  return file.type.startsWith("image/") || /\.(?:heic|heif)$/i.test(file.name);
+}
+
+function attachmentMetadataContent(
+  previewKind: ChatAttachment["previewKind"],
+  path: string | undefined,
+  preparedImage: Awaited<ReturnType<typeof prepareImageForAttachment>> | null,
+): string {
+  if (previewKind === "image") {
+    const reason =
+      preparedImage && !preparedImage.ok && preparedImage.reason === "unreadable"
+        ? "Image could not be decoded, so only metadata is attached to the model."
+        : `Image could not be reduced below the ${formatBytes(MAX_INLINE_IMAGE_ATTACHMENT_BYTES)} inline image limit, so only metadata is attached to the model.`;
+    return [reason, path ? `It is available on disk at ${path}.` : ""].filter(Boolean).join(" ");
+  }
+  if (path) return `File is too large to inline; it is available on disk at ${path}.`;
+  if (previewKind === "pdf") {
+    return "PDF preview is visible in the chat UI, but only metadata is attached to the model.";
+  }
+  if (previewKind === "audio" || previewKind === "video") {
+    return "Media preview is visible in the chat UI, but only metadata is attached to the model.";
+  }
+  return "File is too large to inline; only metadata is attached.";
+}
+
 function readFileAsText(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -278,59 +305,49 @@ function readFileAsDataUrl(file: File) {
 
 export async function createAttachment(file: File): Promise<ChatAttachment> {
   const id = newAttachmentId();
-  const name = fileDisplayName(file);
-  const type = file.type || "application/octet-stream";
   const path = getDesktopFilePath(file) ?? undefined;
+  const preparedImage = shouldPrepareImage(file)
+    ? await prepareImageForAttachment(file, MAX_INLINE_IMAGE_ATTACHMENT_BYTES)
+    : null;
+  const attachmentFile = preparedImage?.ok ? preparedImage.file : file;
+  const name = fileDisplayName(attachmentFile);
+  const type = attachmentFile.type || "application/octet-stream";
   const previewKind = previewKindFor(type);
   const previewUrl = ["image", "video", "audio", "pdf"].includes(previewKind ?? "")
-    ? objectUrlFor(file)
+    ? objectUrlFor(attachmentFile)
     : undefined;
-  if (isTextLike(file, name) && file.size <= MAX_INLINE_TEXT_ATTACHMENT_BYTES) {
+  if (isTextLike(attachmentFile, name) && attachmentFile.size <= MAX_INLINE_TEXT_ATTACHMENT_BYTES) {
     return {
       id,
       name,
       type: file.type || "text/plain",
-      size: file.size,
+      size: attachmentFile.size,
       path,
       mode: "text",
-      content: await readFileAsText(file),
+      content: await readFileAsText(attachmentFile),
       previewKind,
       previewUrl,
     };
   }
-  if (previewKind === "image" && file.size <= MAX_INLINE_IMAGE_ATTACHMENT_BYTES) {
+  if (previewKind === "image" && preparedImage?.ok) {
     return {
       id,
       name,
       type,
-      size: file.size,
+      size: attachmentFile.size,
       path,
       mode: "data-url",
-      content: await readFileAsDataUrl(file),
+      content: await readFileAsDataUrl(attachmentFile),
       previewKind,
       previewUrl,
     };
   }
-  const metadataContent =
-    previewKind === "image"
-      ? [
-          `Image is above the ${formatBytes(MAX_INLINE_IMAGE_ATTACHMENT_BYTES)} inline image limit, so only metadata is attached to the model.`,
-          path ? `It is available on disk at ${path}.` : "",
-        ]
-          .filter(Boolean)
-          .join(" ")
-      : path
-        ? `File is too large to inline; it is available on disk at ${path}.`
-        : previewKind === "pdf"
-          ? "PDF preview is visible in the chat UI, but only metadata is attached to the model."
-          : previewKind === "audio" || previewKind === "video"
-            ? "Media preview is visible in the chat UI, but only metadata is attached to the model."
-            : "File is too large to inline; only metadata is attached.";
+  const metadataContent = attachmentMetadataContent(previewKind, path, preparedImage);
   return {
     id,
     name,
     type,
-    size: file.size,
+    size: attachmentFile.size,
     path,
     mode: "metadata",
     content: metadataContent,

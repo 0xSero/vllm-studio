@@ -1,5 +1,8 @@
-import { SESSION_PREFS_KEY } from "@/features/agent/workspace/store";
-import { SESSION_PREFS_CHANGED_EVENT } from "@/lib/workspace-events";
+import { Effect } from "effect";
+import {
+  dispatchWorkbenchCommand,
+  getWorkbenchProjection,
+} from "@/features/workbench/controller-state";
 
 export type SessionPref = {
   title?: string;
@@ -9,78 +12,63 @@ export type SessionPref = {
 
 export type SessionPrefs = Record<string, SessionPref>;
 
-function getDesktopBridge(): {
-  loadSessionPrefs(): Promise<SessionPrefs>;
-  saveSessionPrefs(prefs: SessionPrefs): Promise<void>;
-} | null {
-  if (typeof window === "undefined") return null;
-  const bridge = (
-    window as {
-      localStudioDesktop?: {
-        loadSessionPrefs?: () => Promise<SessionPrefs>;
-        saveSessionPrefs?: (prefs: SessionPrefs) => Promise<void>;
-      };
-    }
-  ).localStudioDesktop;
-  if (!bridge?.loadSessionPrefs || !bridge?.saveSessionPrefs) return null;
-  return bridge as {
-    loadSessionPrefs(): Promise<SessionPrefs>;
-    saveSessionPrefs(prefs: SessionPrefs): Promise<void>;
-  };
-}
+const PROJECT_PIN_PREFIX = "project:";
 
-/** Fast synchronous read from localStorage. Use this during renders. */
 export function loadSessionPrefs(): SessionPrefs {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(SESSION_PREFS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object" ? (parsed as SessionPrefs) : {};
-  } catch {
-    return {};
+  const projection = getWorkbenchProjection();
+  const prefs: SessionPrefs = {};
+  for (const task of projection.tasks) {
+    prefs[task.id] = {
+      ...(task.title !== task.id ? { title: task.title } : {}),
+      ...(task.pinned ? { pinned: true } : {}),
+      ...(task.connection === "archived" ? { hidden: true } : {}),
+    };
   }
+  for (const project of projection.projects) {
+    if (project.pinned) prefs[`${PROJECT_PIN_PREFIX}${project.id}`] = { pinned: true };
+  }
+  return prefs;
 }
 
-/** One-time bootstrap: if localStorage is empty, restore from the durable
- *  desktop file (survives killall / crash). Call on app startup. */
 export async function hydrateSessionPrefsFromDesktop(): Promise<void> {
-  if (typeof window === "undefined") return;
-  // Only hydrate if localStorage is empty — avoids overwriting newer data.
-  if (window.localStorage.getItem(SESSION_PREFS_KEY)) return;
-  try {
-    const bridge = getDesktopBridge();
-    if (!bridge) return;
-    const prefs = await bridge.loadSessionPrefs();
-    if (prefs && typeof prefs === "object" && Object.keys(prefs).length > 0) {
-      window.localStorage.setItem(SESSION_PREFS_KEY, JSON.stringify(prefs));
-      window.dispatchEvent(new Event(SESSION_PREFS_CHANGED_EVENT));
-    }
-  } catch {
-    /* ignore */
-  }
+  return Promise.resolve();
 }
 
-export function saveSessionPrefs(prefs: SessionPrefs): void {
-  if (typeof window === "undefined") return;
-  // Primary: localStorage for fast access.
-  window.localStorage.setItem(SESSION_PREFS_KEY, JSON.stringify(prefs));
-  // Backup: durable file via Electron main process (survives killall / crash).
-  try {
-    const bridge = getDesktopBridge();
-    if (bridge) void bridge.saveSessionPrefs(prefs).catch(() => {});
-  } catch {
-    /* ignore if not in Electron */
-  }
-  window.dispatchEvent(new Event(SESSION_PREFS_CHANGED_EVENT));
-}
-
-export function patchSessionPref(piSessionId: string, patch: SessionPref): void {
-  patchCanonicalSessionPref(piSessionId, [], patch);
+export function patchSessionPref(taskId: string, patch: SessionPref): void {
+  patchCanonicalSessionPref(taskId, [], patch);
 }
 
 function hasSessionPref(pref: SessionPref): boolean {
   return Boolean(pref.title || pref.pinned || pref.hidden);
+}
+
+function applyTaskPatch(taskId: string, previous: SessionPref, next: SessionPref): void {
+  if (next.title !== previous.title) {
+    void Effect.runPromise(
+      dispatchWorkbenchCommand({
+        kind: "rename_task",
+        taskId,
+        title: next.title?.trim() || taskId,
+      }),
+    );
+  }
+  if (next.pinned !== previous.pinned) {
+    void Effect.runPromise(
+      dispatchWorkbenchCommand({
+        kind: "pin_task",
+        taskId,
+        pinned: Boolean(next.pinned),
+      }),
+    );
+  }
+  if (next.hidden && !previous.hidden) {
+    void Effect.runPromise(
+      dispatchWorkbenchCommand({
+        kind: "archive_task",
+        taskId,
+      }),
+    );
+  }
 }
 
 export function patchCanonicalSessionPref(
@@ -89,19 +77,21 @@ export function patchCanonicalSessionPref(
   patch: SessionPref = {},
 ): void {
   if (!primaryKey) return;
-  const all = loadSessionPrefs();
-  const aliases = [...new Set(aliasKeys.filter((key) => key && key !== primaryKey))];
-  if (Object.keys(patch).length === 0 && !aliases.some((key) => hasSessionPref(all[key] ?? {}))) {
+  const prefs = loadSessionPrefs();
+  const key = [primaryKey, ...aliasKeys].find((candidate) => candidate in prefs) ?? primaryKey;
+  const previous = prefs[key] ?? {};
+  const next = { ...previous, ...patch };
+  if (primaryKey.startsWith(PROJECT_PIN_PREFIX)) {
+    void Effect.runPromise(
+      dispatchWorkbenchCommand({
+        kind: "pin_project",
+        projectId: primaryKey.slice(PROJECT_PIN_PREFIX.length),
+        pinned: Boolean(next.pinned),
+      }),
+    );
     return;
   }
-  let current: SessionPref = {};
-  for (const key of aliases) current = { ...current, ...(all[key] ?? {}) };
-  current = { ...current, ...(all[primaryKey] ?? {}) };
-  const next: SessionPref = { ...current, ...patch };
-  for (const key of aliases) delete all[key];
-  if (hasSessionPref(next)) all[primaryKey] = next;
-  else delete all[primaryKey];
-  saveSessionPrefs(all);
+  if (hasSessionPref(next) || hasSessionPref(previous)) applyTaskPatch(key, previous, next);
 }
 
 export function isLocalSessionPrefKey(key: string): boolean {

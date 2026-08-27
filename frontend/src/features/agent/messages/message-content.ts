@@ -1,4 +1,8 @@
-import type { TextContent, ThinkingContent, ToolCall } from "@earendil-works/pi-ai";
+import type {
+  AssistantTextContent,
+  AssistantThinkingContent,
+  AssistantToolCall,
+} from "@shared/agent/assistant-content";
 import { newId } from "@/features/agent/messages/helpers";
 import type { AssistantBlock, TextBlock } from "@/features/agent/messages/types";
 
@@ -139,13 +143,19 @@ export const messageTextFromBlocks = (blocks: AssistantBlock[]): string =>
 // `arguments` may still be a partial JSON string, and the controller proxy may
 // attach reasoning to a text part (or emit a "reasoning" part) before pi
 // normalizes it to ThinkingContent — so we widen exactly those two spots.
-type PiContentPart =
-  | (TextContent & { reasoning_content?: string })
-  | ThinkingContent
-  | (Omit<ToolCall, "arguments"> & { arguments?: string | Record<string, unknown> })
+type AssistantContentPart =
+  | (AssistantTextContent & { reasoning_content?: string })
+  | AssistantThinkingContent
+  | (Omit<AssistantToolCall, "arguments"> & {
+      arguments?: string | Record<string, unknown>;
+    })
   | { type: "reasoning"; reasoning?: string; thinking?: string; text?: string };
 
-function partToBlocks(part: PiContentPart, callOrdinal: number, index: number): AssistantBlock[] {
+function partToBlocks(
+  part: AssistantContentPart,
+  callOrdinal: number,
+  index: number,
+): AssistantBlock[] {
   const idBase = `${callOrdinal}:${index}`;
   if (part.type === "toolCall") {
     const args = toolArgs(part);
@@ -210,7 +220,7 @@ function mergeAdjacentTextLike(blocks: AssistantBlock[]): AssistantBlock[] {
  * Build the bubble's blocks from the per-call content snapshots of a turn.
  * `calls[i]` is the full accumulated `content` array of the i-th LLM call.
  * Parts arrive duck-typed (live runtime + replayed log), so the input stays
- * loose and `asRecordPart` narrows each one to a typed `PiContentPart`.
+ * loose and `asRecordPart` narrows each one to a typed `AssistantContentPart`.
  */
 export function blocksFromTurnSnapshots(calls: unknown[][]): AssistantBlock[] {
   const out: AssistantBlock[] = [];
@@ -226,9 +236,9 @@ export function blocksFromTurnSnapshots(calls: unknown[][]): AssistantBlock[] {
   return mergeAdjacentTextLike(out);
 }
 
-const asRecordPart = (value: unknown): PiContentPart =>
+const asRecordPart = (value: unknown): AssistantContentPart =>
   value && typeof value === "object" && !Array.isArray(value)
-    ? (value as PiContentPart)
+    ? (value as AssistantContentPart)
     : { type: "text", text: "" };
 
 // ---------------------------------------------------------------------------

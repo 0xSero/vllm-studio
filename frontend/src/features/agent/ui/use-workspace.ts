@@ -1,5 +1,6 @@
 "use client";
 
+import { Schema } from "effect";
 import { useCallback, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { safeJson } from "@/features/agent/safe-json";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -20,6 +21,7 @@ import type {
   AgentModel,
   PaneId,
   WorkspaceAction,
+  WorkspaceSessionPayload,
   WorkspaceState,
 } from "@/features/agent/workspace/types";
 import { useProjects } from "@/features/agent/projects/context";
@@ -37,15 +39,17 @@ import {
   useWorkspaceRuntimeSync,
 } from "@/features/agent/ui/use-workspace-effects";
 import type { ChatPaneHandle } from "@/features/agent/ui/chat-pane";
-import type { SessionDropPayload } from "@/features/agent/ui/pane-grid";
+import { agentModelsFromCatalog } from "@/features/agent/models";
+import { ModelCatalogResponseSchema } from "@local-studio/contracts/model-catalog";
 import {
   readDefaultAgentModel,
+  readDefaultAgentRoute,
   writeDefaultAgentModel,
 } from "@/features/agent/workspace/model-preference";
 
 export type WorkspaceHandles = {
   registerComputerAside: (element: HTMLElement | null) => void;
-  openSessionPayloadInPane: (paneId: PaneId, payload: SessionDropPayload) => void;
+  openSessionPayloadInPane: (paneId: PaneId, payload: WorkspaceSessionPayload) => void;
   renameTab: (paneId: PaneId, tabId: string, title: string) => void;
   splitTabIntoNewPane: (paneId: PaneId, tabId: string) => void;
   registerPaneHandle: (paneId: PaneId, handle: ChatPaneHandle | null) => void;
@@ -59,10 +63,10 @@ export type WorkspaceHandles = {
     paneId: PaneId,
     direction: "vertical" | "horizontal",
     side: "a" | "b",
-    payload: SessionDropPayload,
+    payload: WorkspaceSessionPayload,
   ) => void;
-  selectPaneModel: (paneId: PaneId, modelId: string) => void;
-  setDefaultModel: (modelId: string) => void;
+  selectPaneModel: (paneId: PaneId, modelId: string, routeId: string) => void;
+  setDefaultModel: (modelId: string, routeId: string) => void;
   notifySessionsChanged: () => void;
   startComputerResize: (event: ReactMouseEvent<HTMLDivElement>) => void;
   initGitForActiveProject: () => Promise<void>;
@@ -122,9 +126,17 @@ async function loadAgentModelsPayload(): Promise<{ models?: AgentModel[]; error?
     cache: "no-store",
     body: JSON.stringify({ controllers: await agentModelControllersPayload() }),
   });
-  const payload = await safeJson<{ models?: AgentModel[]; error?: string }>(response);
-  if (!response.ok) throw new Error(payload.error || "Failed to load models");
-  return payload;
+  const payload = await safeJson<unknown>(response);
+  if (!response.ok) {
+    const message =
+      typeof payload === "object" && payload !== null && "error" in payload
+        ? String(payload.error)
+        : "Failed to load models";
+    throw new Error(message);
+  }
+  return {
+    models: agentModelsFromCatalog(Schema.decodeUnknownSync(ModelCatalogResponseSchema)(payload)),
+  };
 }
 
 function api(): WorkspaceEffectDeps["api"] {
@@ -204,6 +216,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
             type: "setModels",
             models: models.models ?? [],
             preferredModelId: readDefaultAgentModel(window.localStorage),
+            preferredRouteId: readDefaultAgentRoute(window.localStorage),
           });
         })
         .catch((error) => {
@@ -242,7 +255,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
       registerComputerAside: (element: HTMLElement | null) => {
         computerAsideRef.current = element;
       },
-      openSessionPayloadInPane: (paneId: PaneId, payload: SessionDropPayload) =>
+      openSessionPayloadInPane: (paneId: PaneId, payload: WorkspaceSessionPayload) =>
         dispatch({ type: "openSessionPayloadInPane", paneId, payload, tab: makeFreshTab() }),
       renameTab: (paneId: PaneId, tabId: string, title: string) =>
         dispatch({ type: "renameTab", paneId, tabId, title }),
@@ -277,7 +290,7 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
         paneId: PaneId,
         direction: "vertical" | "horizontal",
         side: "a" | "b",
-        payload: SessionDropPayload,
+        payload: WorkspaceSessionPayload,
       ) =>
         dispatch({
           type: "splitPaneWithPayload",
@@ -288,11 +301,15 @@ export function useWorkspace({ ephemeral = false }: UseWorkspaceOptions = {}): U
           newPaneId: newPaneId(),
           tab: makeFreshTab(),
         }),
-      selectPaneModel: (paneId: PaneId, modelId: string) =>
-        dispatch({ type: "patchActiveTab", paneId, patch: { modelId } }),
-      setDefaultModel: (modelId: string) => {
-        writeDefaultAgentModel(ephemeral ? createMemoryStorage() : window.localStorage, modelId);
-        dispatch({ type: "setSelectedModel", modelId });
+      selectPaneModel: (paneId: PaneId, modelId: string, routeId: string) =>
+        dispatch({ type: "patchActiveTab", paneId, patch: { modelId, modelRouteId: routeId } }),
+      setDefaultModel: (modelId: string, routeId: string) => {
+        writeDefaultAgentModel(
+          ephemeral ? createMemoryStorage() : window.localStorage,
+          modelId,
+          routeId,
+        );
+        dispatch({ type: "setModelSelection", modelId, routeId });
       },
       notifySessionsChanged: () => dispatch({ type: "notifySessionsChanged" }),
       startComputerResize: (event: ReactMouseEvent<HTMLDivElement>) => {

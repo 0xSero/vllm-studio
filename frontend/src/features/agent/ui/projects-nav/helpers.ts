@@ -73,30 +73,6 @@ export function triggerAddProjectFlow() {
   window.dispatchEvent(new Event(ADD_PROJECT_EVENT));
 }
 
-/** Compact right-aligned age for a session row: "now", "5m", "3h", "2d", "4w". */
-export function relativeAge(value?: string | null): string {
-  if (!value) return "";
-  const then = Date.parse(value);
-  if (!Number.isFinite(then)) return "";
-  const seconds = Math.max(0, (Date.now() - then) / 1000);
-  if (seconds < 60) return "now";
-  const minutes = seconds / 60;
-  if (minutes < 60) return `${Math.floor(minutes)}m`;
-  const hours = minutes / 60;
-  if (hours < 24) return `${Math.floor(hours)}h`;
-  const days = hours / 24;
-  if (days < 7) return `${Math.floor(days)}d`;
-  return `${Math.floor(days / 7)}w`;
-}
-
-export function visibleSessionAge(
-  isRunning: boolean,
-  value?: string | null,
-  completionActivity = false,
-): string {
-  return isRunning || completionActivity ? "" : relativeAge(value);
-}
-
 let pendingNewChatNonce: string | null = null;
 
 function isNewChatHref(href: string): boolean {

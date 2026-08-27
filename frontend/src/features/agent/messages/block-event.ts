@@ -251,11 +251,19 @@ export function applyAssistantPiEventToBlocks(
   if (event.type === "tool_execution_start") {
     const id = String(event.toolCallId || makeId("tool"));
     const name = String(event.toolName || "tool");
+    const args = asRecord(event.arguments) ?? undefined;
+    const argsText = stringifyToolArgs(args) ?? "";
     return upsertToolForActivity(
       blocks,
       id,
-      (existing) => existing,
-      () => toolBlock(id, name),
+      (existing) => ({
+        ...existing,
+        name,
+        args: args ?? existing.args,
+        argsText: argsText || existing.argsText,
+        text: argsText || existing.text,
+      }),
+      () => toolBlock(id, name, { args, argsText, text: argsText }),
     );
   }
   if (event.type === "tool_execution_update" || event.type === "tool_execution_end") {

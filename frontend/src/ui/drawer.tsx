@@ -43,8 +43,8 @@ export function Drawer({
       className={cx(
         "relative flex shrink-0 flex-col bg-(--color-popover)",
         side === "right"
-          ? "border-l border-(--color-popover-border) shadow-[-24px_0_80px_rgba(0,0,0,0.38)]"
-          : "border-r border-(--color-popover-border) shadow-[24px_0_80px_rgba(0,0,0,0.38)]",
+          ? "ui-drawer-enter-right border-l border-(--color-popover-border) shadow-[-12px_0_36px_rgba(0,0,0,0.32)]"
+          : "ui-drawer-enter-left border-r border-(--color-popover-border) shadow-[12px_0_36px_rgba(0,0,0,0.32)]",
         className,
       )}
       style={{ ...sizing, ...style }}
@@ -74,7 +74,7 @@ export function DrawerOverlay({
       // inside a `space-y-*` stack and the sibling margin lands on this fixed
       // box, shrinking it away from the bottom of the viewport.
       className={cx(
-        "fixed inset-0 z-50 m-0 flex bg-(--color-scrim) backdrop-blur-[2px]",
+        "ui-scrim-enter fixed inset-0 z-[250] m-0 flex bg-(--color-scrim) backdrop-blur-[2px]",
         side === "right" ? "justify-end" : "justify-start",
         className,
       )}
@@ -113,7 +113,7 @@ export function DrawerHeader({
   return (
     <header
       className={cx(
-        "flex h-10 shrink-0 items-center gap-2 border-b border-(--border) bg-(--color-popover-header) px-3 text-[length:var(--fs-sm)]",
+        "flex h-9 shrink-0 items-center gap-2 border-b border-(--border) bg-(--color-popover-header) px-3 text-[length:var(--fs-sm)]",
         className,
       )}
     >
@@ -148,7 +148,7 @@ export function DrawerFooter({
   return (
     <footer
       className={cx(
-        "flex h-11 shrink-0 items-center justify-between gap-3 border-t border-(--border) bg-(--color-popover-header) px-3 text-[length:var(--fs-sm)]",
+        "flex h-10 shrink-0 items-center justify-between gap-3 border-t border-(--border) bg-(--color-popover-header) px-3 text-[length:var(--fs-sm)]",
         className,
       )}
     >

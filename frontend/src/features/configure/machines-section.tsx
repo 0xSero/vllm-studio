@@ -80,7 +80,12 @@ export function MachinesSection({ state }: { state: ConfigureState }) {
     if (!nodeTarget) return;
     if (nodeTarget.mode === "head" || payload.role === "head") {
       if (!payload.address) throw new Error("Enter the Head controller URL");
-      await connectHead({ name: payload.name, url: payload.address });
+      await connectHead({
+        name: payload.name,
+        url: payload.address,
+        apiKey: payload.api_key,
+        nodeAddress: payload.hostname ?? "",
+      });
       await state.reload();
       return;
     }
@@ -98,7 +103,7 @@ export function MachinesSection({ state }: { state: ConfigureState }) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2 border-b border-(--ui-separator) pb-3">
         <div className="flex min-w-0 items-baseline gap-2">
           <span className="text-[length:var(--fs-md)] tabular-nums text-(--ui-fg)">
@@ -145,7 +150,7 @@ export function MachinesSection({ state }: { state: ConfigureState }) {
         groups.map(({ rig, nodes, gpuGb, containsLocal }) => (
           <section key={rig.id} className="space-y-2">
             {showGroupBands ? (
-              <div className="flex items-baseline justify-between gap-4 px-1 pt-2">
+              <div className="flex items-baseline justify-between gap-3 px-1 pt-1">
                 <div className="flex min-w-0 items-baseline gap-2.5">
                   <span className="shrink-0 text-[length:var(--fs-xs)] font-medium text-(--dim)">
                     {groupTitle(rig)}

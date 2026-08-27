@@ -30,7 +30,6 @@ export interface DashboardLayoutProps {
   isConnected: boolean;
   isStatusLoading: boolean;
   inferencePort?: number;
-  onNavigateLogs: () => void;
   onBenchmark: () => void;
   onLaunch: (recipeId: string) => Promise<void>;
   onNewRecipe: () => void;

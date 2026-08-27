@@ -1,13 +1,5 @@
 import { isDevChannelBuild } from "./app-identity";
-import {
-  app,
-  clipboard,
-  dialog,
-  globalShortcut,
-  ipcMain,
-  shell,
-  type BrowserWindow,
-} from "electron";
+import { app, clipboard, BrowserWindow, dialog, globalShortcut, ipcMain, shell } from "electron";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import type { DesktopAppState } from "./types";
@@ -18,6 +10,7 @@ import { isHttpUrl } from "./helpers/url";
 import { createMainWindow } from "./logic/window-manager";
 import { registerNavigationPolicy } from "./logic/security";
 import { startFrontendServer, stopFrontendServer, type ServerHandle } from "./logic/app-server";
+import { releaseController } from "./logic/controller-server";
 import {
   resolveFrontendRestartUrl,
   shouldReloadAfterFrontendRestart,
@@ -29,7 +22,6 @@ import {
   setUpdateChannel,
   startUpdate,
 } from "./logic/update-manager";
-import { addProject, listProjectsWithMeta, removeProject } from "./logic/projects-store";
 import { deployController } from "./logic/controller-deploy";
 import {
   getKittylitterPairingJson,
@@ -43,6 +35,13 @@ import {
   toggleQuickPanel,
 } from "./logic/quick-panel-window";
 import { getStoredQuickPanelHotkey, setStoredQuickPanelHotkey } from "./logic/desktop-settings";
+import { WindowAppearancePreferenceSchema } from "./window-appearance-contract";
+import { Schema } from "effect";
+import {
+  getWindowAppearanceState,
+  updateReducedTransparency,
+  updateWindowAppearance,
+} from "./logic/window-appearance";
 import {
   closePty,
   closePtyByOwner,
@@ -73,6 +72,11 @@ const HEALTH_FAILURE_THRESHOLD = 5;
 const RESTART_BACKOFF_STEP_MS = 1_000;
 const RESTART_BACKOFF_MAX_MS = 15_000;
 const RESTART_BACKOFF_WINDOW_MS = 60_000;
+const WorkbenchLifecycleSchema = Schema.Struct({
+  preferences: Schema.Struct({
+    lifecycleMode: Schema.Union([Schema.Literal("embedded"), Schema.Literal("system")]),
+  }),
+});
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -160,9 +164,9 @@ async function checkFrontendHealth(): Promise<void> {
     expectedFrontendStopPids.add(pid);
     setTimeout(() => expectedFrontendStopPids.delete(pid), 30_000);
   }
-  await stopFrontendServer(stalledServer, { stopAgentRuntime: false });
+  await stopFrontendServer(stalledServer, { stopController: false });
   if (frontendServer === stalledServer) frontendServer = undefined;
-  await restartFrontendServer(stalledServer.runtime.port, stalledServer.agentRuntime, rendererUrl);
+  await restartFrontendServer(stalledServer.runtime.port, stalledServer.controller, rendererUrl);
 }
 
 function handleFrontendServerExit(details: {
@@ -180,16 +184,12 @@ function handleFrontendServerExit(details: {
   log.error(
     `Embedded frontend stopped unexpectedly code=${details.code ?? "null"} signal=${details.signal ?? "null"}`,
   );
-  void restartFrontendServer(
-    previousServer?.runtime.port,
-    previousServer?.agentRuntime,
-    rendererUrl,
-  );
+  void restartFrontendServer(previousServer?.runtime.port, previousServer?.controller, rendererUrl);
 }
 
 async function restartFrontendServer(
   port?: number,
-  agentRuntime?: ServerHandle["agentRuntime"],
+  controller?: ServerHandle["controller"],
   rendererUrl?: string,
 ): Promise<void> {
   if (restartingFrontend || appState === "stopping") return;
@@ -209,7 +209,7 @@ async function restartFrontendServer(
       if (isAppStopping()) return;
     }
     const started = await startFrontendServer({
-      agentRuntime,
+      controller,
       port,
       onExit: handleFrontendServerExit,
     });
@@ -248,18 +248,13 @@ async function restartFrontendServer(
 
 // Resolve a renderer-supplied file reference to a real path inside the user's
 // home tree, or null. Assistant output cites files the way people write them —
-// repo-relative, "services/agent-runtime/src/foo.ts". Passing that straight to
+// repo-relative, "shared/agent/agent-turn.ts". Passing that straight to
 // realpath resolves it against the MAIN PROCESS cwd, which is the app bundle,
 // so it throws; try it as given, then against each known project root.
 function resolveHomeConfinedPath(target: unknown): string | null {
   if (typeof target !== "string" || !target.trim()) return null;
   const raw = target.trim();
   const candidates = [raw];
-  if (!path.isAbsolute(raw) && !raw.startsWith("~")) {
-    for (const project of listProjectsWithMeta()) {
-      if (project.path) candidates.push(path.join(project.path, raw));
-    }
-  }
   const home = realpathSync.native(app.getPath("home"));
   for (const candidate of candidates) {
     let resolved: string;
@@ -278,6 +273,15 @@ function resolveHomeConfinedPath(target: unknown): string | null {
 }
 
 function registerIpcHandlers(): void {
+  const broadcastWindowAppearance = (state: ReturnType<typeof getWindowAppearanceState>) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.webContents.isDestroyed()) {
+        window.webContents.send("desktop:window-appearance-changed", state);
+      }
+    }
+    return state;
+  };
+
   ipcMain.handle("desktop:get-runtime", async () => ({
     platform: process.platform,
     appVersion: app.getVersion(),
@@ -337,12 +341,7 @@ function registerIpcHandlers(): void {
     if (result.canceled) return null;
     const selected = result.filePaths[0];
     if (!selected) return null;
-    try {
-      return addProject(selected);
-    } catch (error) {
-      log.error(`Failed to add project from dialog: ${String(error)}`);
-      throw error;
-    }
+    return selected;
   });
 
   ipcMain.handle(
@@ -359,34 +358,6 @@ function registerIpcHandlers(): void {
     },
   );
 
-  ipcMain.handle("desktop:list-projects", async () => listProjectsWithMeta());
-
-  ipcMain.handle("desktop:add-project", async (_, directoryPath: string) => {
-    if (typeof directoryPath !== "string") {
-      throw new Error("directoryPath must be a string");
-    }
-    return addProject(directoryPath);
-  });
-
-  ipcMain.handle("desktop:remove-project", async (_, id: string) => {
-    if (typeof id !== "string") {
-      throw new Error("id must be a string");
-    }
-    removeProject(id);
-    return { ok: true } as const;
-  });
-
-  ipcMain.handle("desktop:load-session-prefs", async () => {
-    return readSessionPrefsFile();
-  });
-
-  ipcMain.handle("desktop:save-session-prefs", async (_, prefs: unknown) => {
-    if (!prefs || typeof prefs !== "object" || Array.isArray(prefs)) {
-      throw new Error("prefs must be a plain object");
-    }
-    writeSessionPrefsFile(prefs as Record<string, unknown>);
-  });
-
   ipcMain.handle("desktop:load-ui-preferences", async () => {
     return readUiPreferencesFile();
   });
@@ -402,6 +373,16 @@ function registerIpcHandlers(): void {
       ),
     );
     writeUiPreferencesFile(stringPrefs);
+  });
+
+  ipcMain.handle("desktop:window-appearance-set", async (_, preference: unknown) => {
+    const decoded = Schema.decodeUnknownSync(WindowAppearancePreferenceSchema)(preference);
+    return broadcastWindowAppearance(updateWindowAppearance(mainWindow, decoded));
+  });
+
+  ipcMain.handle("desktop:window-appearance-set-reduced", async (_, reduced: unknown) => {
+    const decoded = Schema.decodeUnknownSync(Schema.Boolean)(reduced);
+    return broadcastWindowAppearance(updateReducedTransparency(mainWindow, decoded));
   });
 
   ipcMain.handle("desktop:pty-status", async () => ({
@@ -549,11 +530,27 @@ async function shutdown(): Promise<void> {
     appState = "stopping";
     stopFrontendHealthMonitor();
     globalShortcut.unregisterAll();
-    killAllPtys();
-    await stopFrontendServer(frontendServer);
+    const keepController = await controllerSurvivesQuit(frontendServer);
+    if (!keepController) killAllPtys();
+    await stopFrontendServer(frontendServer, { stopController: !keepController });
+    if (keepController) releaseController(frontendServer?.controller);
     frontendServer = undefined;
   })();
   return shutdownPromise;
+}
+
+async function controllerSurvivesQuit(handle?: ServerHandle): Promise<boolean> {
+  if (!handle?.controller.process) return false;
+  try {
+    const response = await fetch(`${handle.controller.url}/api/workbench`, {
+      signal: AbortSignal.timeout(1_000),
+    });
+    if (!response.ok) return false;
+    const payload = Schema.decodeUnknownSync(WorkbenchLifecycleSchema)(await response.json());
+    return payload.preferences?.lifecycleMode === "system";
+  } catch {
+    return false;
+  }
 }
 
 async function run(): Promise<void> {
@@ -649,30 +646,8 @@ async function run(): Promise<void> {
 
 void run();
 
-function sessionPrefsFilePath(): string {
-  return path.join(app.getPath("userData"), "session-prefs.json");
-}
-
 function uiPreferencesFilePath(): string {
   return path.join(app.getPath("userData"), "ui-preferences.json");
-}
-
-function readSessionPrefsFile(): Record<string, unknown> {
-  const filePath = sessionPrefsFilePath();
-  try {
-    if (!existsSync(filePath)) return {};
-    const raw = readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeSessionPrefsFile(prefs: Record<string, unknown>): void {
-  writeJsonAtomic(sessionPrefsFilePath(), prefs);
 }
 
 function readUiPreferencesFile(): Record<string, string> {

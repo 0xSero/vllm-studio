@@ -1,0 +1,12 @@
+.{
+    .name = .local_studio_controller,
+    .version = "0.0.0",
+    .fingerprint = 0x5b2c537ac1a5a5a5,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

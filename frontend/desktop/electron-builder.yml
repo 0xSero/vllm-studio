@@ -16,72 +16,13 @@ files:
 extraResources:
   - from: desktop/resources/app-update.yml
     to: app-update.yml
-  - from: ../services/agent-runtime/dist/standalone.mjs
-    to: app/agent-runtime/standalone.mjs
-  - from: ../services/agent-runtime/dist/node_modules/playwright-core
-    to: app/agent-runtime/node_modules/playwright-core
+  - from: desktop/dist/browser-host.js
+    to: app/browser-host.js
+  - from: ../controller/zig-out/bin
+    to: app/controller
     filter:
-      - "**/*"
-      - "!**/*.{map,ts,mts,cts}"
-  - from: ../services/agent-runtime/dist/node_modules/chromium-bidi
-    to: app/agent-runtime/node_modules/chromium-bidi
-    filter:
-      - "**/*"
-      - "!**/*.{map,ts,mts,cts}"
-  - from: ../services/agent-runtime/dist/node_modules/chromium-bidi/node_modules/zod
-    to: app/agent-runtime/node_modules/chromium-bidi/node_modules/zod
-    filter:
-      - "**/*"
-      - "!**/*.{map,ts,mts,cts}"
-  - from: ../services/agent-runtime/dist/node_modules/mitt
-    to: app/agent-runtime/node_modules/mitt
-    filter:
-      - "**/*"
-      - "!**/*.{map,ts,mts,cts}"
-  - from: ../services/agent-runtime/dist/node_modules/devtools-protocol
-    to: app/agent-runtime/node_modules/devtools-protocol
-    filter:
-      - "**/*"
-      - "!**/*.{map,ts,mts,cts}"
-  - from: ../services/agent-runtime/dist/node_modules/@silvia-odwyer/photon-node
-    to: app/agent-runtime/node_modules/@silvia-odwyer/photon-node
-    filter:
-      - "**/*"
-      - "!**/*.{map,ts,mts,cts}"
-  - from: ../services/agent-runtime/dist/node_modules/undici
-    to: app/agent-runtime/node_modules/undici
-    filter:
-      - "**/*"
-      - "!**/*.{map,ts,mts,cts}"
-  - from: ../services/agent-runtime/dist/node_modules/@lydell
-    to: app/agent-runtime/node_modules/@lydell
-    filter:
-      - "**/*"
-      - "!**/*.{map,ts,mts,cts}"
-  # Pi's extension loader (jiti alias mode) eagerly require.resolve()s typebox
-  # and import.meta.resolve()s the pi packages from standalone.mjs's directory
-  # before loading ANY extension file. Without these four next to the bundle,
-  # every bundled pi extension fails with "Cannot find module 'typebox'".
-  - from: ../services/agent-runtime/dist/node_modules/typebox
-    to: app/agent-runtime/node_modules/typebox
-    filter:
-      - "**/*"
-      - "!**/*.{map,ts,mts,cts}"
-  - from: ../services/agent-runtime/dist/node_modules/@earendil-works/pi-agent-core
-    to: app/agent-runtime/node_modules/@earendil-works/pi-agent-core
-    filter:
-      - "**/*"
-      - "!**/*.{map,ts,mts,cts}"
-  - from: ../services/agent-runtime/dist/node_modules/@earendil-works/pi-tui
-    to: app/agent-runtime/node_modules/@earendil-works/pi-tui
-    filter:
-      - "**/*"
-      - "!**/*.{map,ts,mts,cts}"
-  - from: ../services/agent-runtime/dist/node_modules/@earendil-works/pi-ai
-    to: app/agent-runtime/node_modules/@earendil-works/pi-ai
-    filter:
-      - "**/*"
-      - "!**/*.{map,ts,mts,cts}"
+      - "local-studio-controller*"
+      - "secretspec*"
   - from: node_modules/@lydell/node-pty
     to: desktop-runtime/node_modules/@lydell/node-pty
     filter:
@@ -101,6 +42,9 @@ extraResources:
       - "!**/dist-desktop/**"
       - "!**/*.log"
       - "!**/*.{map,ts,mts,cts}"
+      - "!**/{docs,doc,examples,example,test,tests,__tests__}/**"
+      - "!**/{README,Readme,readme,CHANGELOG,Changelog,changelog,CHANGES,Changes,changes,HISTORY,History,history}"
+      - "!**/{README,Readme,readme,CHANGELOG,Changelog,changelog,CHANGES,Changes,changes,HISTORY,History,history}.{md,markdown,txt}"
       - "!**/.next/cache/**"
       - "!**/.next/trace"
   - from: .next/static
@@ -113,18 +57,6 @@ extraResources:
       - "**/*"
   - from: ../scripts/install-controller.sh
     to: app/scripts/install-controller.sh
-  - from: desktop/resources/pi-extensions
-    to: desktop/resources/pi-extensions
-    filter:
-      - "**/*"
-  - from: desktop/resources/mcp
-    to: desktop/resources/mcp
-    filter:
-      - "**/*"
-  - from: desktop/resources/plugins
-    to: desktop/resources/plugins
-    filter:
-      - "**/*"
   - from: desktop/resources/skills
     to: desktop/resources/skills
     filter:

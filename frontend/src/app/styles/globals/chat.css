@@ -3,9 +3,9 @@
   --codex-chat-font-family: var(--font-sans);
   --codex-chat-mono-font-family:
     ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  --codex-chat-font-size: 16px;
+  --codex-chat-font-size: 14px;
   --codex-chat-line-height: 1.5;
-  --codex-chat-code-font-size: 13px;
+  --codex-chat-code-font-size: 12px;
   --codex-chat-font-weight: 400;
 }
 
@@ -24,8 +24,19 @@
 }
 
 .agent-thread-shell {
-  width: 90%;
-  max-width: calc(var(--composer-w) * 0.9);
+  width: min(100%, var(--thread-w));
+  max-width: var(--thread-w);
+}
+
+[data-empty-prompt="true"] {
+  position: relative;
+}
+
+[data-empty-prompt="true"] .agent-composer-form {
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 /* Phone widths: give the thread the full column — the 90% inset plus the
@@ -164,6 +175,44 @@
   background: transparent;
 }
 
+.assistant-markdown-table .chat-markdown table,
+.chat-markdown .assistant-markdown-table table {
+  min-width: 100%;
+}
+
+.chat-markdown-alert {
+  margin: 12px 0;
+  border-left: 2px solid var(--accent);
+  padding: 2px 0 2px 14px;
+  color: color-mix(in srgb, var(--fg) 84%, transparent);
+}
+
+.chat-markdown-alert-title {
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.chat-markdown-alert[data-markdown-alert="tip"] {
+  border-left-color: var(--ui-success);
+}
+
+.chat-markdown-alert[data-markdown-alert="tip"] .chat-markdown-alert-title {
+  color: var(--ui-success);
+}
+
+.chat-markdown-alert[data-markdown-alert="warning"],
+.chat-markdown-alert[data-markdown-alert="caution"] {
+  border-left-color: var(--ui-warning);
+}
+
+.chat-markdown-alert[data-markdown-alert="warning"] .chat-markdown-alert-title,
+.chat-markdown-alert[data-markdown-alert="caution"] .chat-markdown-alert-title {
+  color: var(--ui-warning);
+}
+
 .chat-markdown thead th {
   background: transparent;
   border-bottom: 1px solid var(--separator);
@@ -283,6 +332,16 @@
 .agent-chat-scroller::-webkit-scrollbar-thumb:active {
   background: color-mix(in srgb, var(--accent) 60%, var(--fg));
   background-clip: padding-box;
+}
+
+.agent-composer-form {
+  max-width: min(var(--thread-w), calc(100% - 2rem));
+}
+
+@media (max-width: 768px) {
+  .agent-composer-form {
+    max-width: 100%;
+  }
 }
 
 .agent-timeline-frame {
@@ -452,14 +511,82 @@
   font-weight: 600;
 }
 
-.agent-composer-box {
-  container-type: inline-size;
+.agent-composer-box:focus-within {
+  box-shadow: var(--composer-elevation-focus);
 }
 
-@container (max-width: 27rem) {
-  .composer-action-optional {
-    display: none;
+.agent-composer-box {
+  box-shadow: var(--composer-elevation);
+  backdrop-filter: blur(4px);
+  transition: box-shadow 150ms var(--ease-standard);
+}
+
+.composer-popover {
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.composer-popover[data-placement="below"] {
+  transform-origin: top center;
+}
+
+.composer-popover[data-placement="above"] {
+  transform-origin: bottom center;
+}
+
+.composer-context-popover[data-placement="below"] {
+  transform-origin: top left;
+}
+
+.composer-context-popover[data-placement="above"] {
+  transform-origin: bottom left;
+}
+
+.composer-popover[data-open-source="pointer"] [role^="menuitem"]:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.composer-popover-enter {
+  animation: composer-popover-enter 120ms var(--ease-enter) both;
+}
+
+.composer-popover-exit {
+  animation: composer-popover-exit 90ms var(--ease-exit) both;
+}
+
+@keyframes composer-popover-enter {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.985);
   }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes composer-popover-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(2px) scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-popover-enter,
+  .composer-popover-exit {
+    animation: none;
+  }
+}
+
+.agent-composer-box textarea:focus-visible {
+  outline: none;
 }
 
 .chat-markdown blockquote {

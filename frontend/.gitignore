@@ -12,6 +12,7 @@
 
 # next.js
 /.next/
+/.next-codex-dev/
 /.next-dev/
 /out/
 
@@ -46,9 +47,6 @@ next-env.d.ts
 /desktop/dist/
 /dist-desktop/
 /dist-installers/
-
-# generated desktop Pi runtime
-/.desktop-pi-runtime/
 
 # local replay-parity goldens over real pi sessions (private content, never commit)
 /scripts/.parity-goldens/

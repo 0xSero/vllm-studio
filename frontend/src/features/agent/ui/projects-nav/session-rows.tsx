@@ -18,7 +18,7 @@ import {
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { useProjectSessionsReloadEffect } from "@/features/agent/ui/projects-nav/use-projects-nav-effects";
 import { workspaceCommands } from "@/features/agent/workspace/commands";
-import type { Project as ProjectEntry } from "@/features/agent/projects/types";
+import { isChatsProject, type Project as ProjectEntry } from "@/features/agent/projects/types";
 import { ChatIcon, Folder, FolderOpen, PlusIcon, TrashIcon } from "@/ui/icons";
 import {
   mergeActiveSessionPref,
@@ -31,8 +31,10 @@ import {
 import { PinButton, SidebarRail } from "./nav-chrome";
 import { SessionNavRow } from "./session-nav-row";
 import type { ActiveAgentSession, SessionSummary } from "./types";
+import { sessionTitleFromUserPrompt } from "@shared/agent/session-title";
 
-const SESSIONS_PAGE_SIZE = 5;
+const SESSIONS_INITIAL_LIMIT = 10;
+const SESSIONS_PAGE_SIZE = 25;
 
 export function ProjectRow({
   project,
@@ -84,7 +86,7 @@ export function ProjectRow({
   return (
     <div className="flex flex-col">
       <div
-        className={`group relative flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] px-2 text-(--fg) transition-colors hover:bg-(--hover) ${dragging ? "opacity-45" : ""}`}
+        className={`sidebar-virtual-row group relative flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] px-2 text-(--fg) transition-colors duration-[var(--motion-fast)] hover:bg-(--hover) ${dragging ? "opacity-45" : ""}`}
         draggable={reorderDraggable}
         onDragStart={onReorderDragStart}
         onDragEnd={onReorderDragEnd}
@@ -95,19 +97,17 @@ export function ProjectRow({
           type="button"
           onClick={handleToggle}
           title={project.path}
-          className={`flex min-w-0 flex-1 items-center gap-2 px-0 text-left ${
-            pinned ? "pr-[62px]" : "pr-8 group-hover:pr-[62px]"
-          }`}
+          className="flex min-w-0 flex-1 items-center gap-2 px-0 pr-[62px] text-left"
         >
           {icon === "chat" ? (
-            <ChatIcon className="h-4 w-4 shrink-0 opacity-80 transition-opacity group-hover:opacity-100" />
+            <ChatIcon className="h-4 w-4 shrink-0 opacity-75 transition-opacity duration-[var(--motion-fast)] group-hover:opacity-100" />
           ) : (
-            <span className="relative h-4 w-4 shrink-0 opacity-80 transition-opacity group-hover:opacity-100">
+            <span className="relative h-4 w-4 shrink-0 opacity-75 transition-opacity duration-[var(--motion-fast)] group-hover:opacity-100">
               <Folder
-                className={`absolute inset-0 h-4 w-4 transition-all duration-150 ${open ? "scale-90 opacity-0" : "scale-100 opacity-100"}`}
+                className={`absolute inset-0 h-4 w-4 transition-[transform,opacity] duration-[var(--motion-fast)] ${open ? "scale-90 opacity-0" : "scale-100 opacity-100"}`}
               />
               <FolderOpen
-                className={`absolute inset-0 h-4 w-4 transition-all duration-150 ${open ? "scale-100 opacity-100" : "scale-90 opacity-0"}`}
+                className={`absolute inset-0 h-4 w-4 transition-[transform,opacity] duration-[var(--motion-fast)] ${open ? "scale-100 opacity-100" : "scale-90 opacity-0"}`}
               />
             </span>
           )}
@@ -132,7 +132,7 @@ export function ProjectRow({
                 event.stopPropagation();
                 onRemove();
               }}
-              className="flex h-5 w-5 items-center justify-center text-(--dim)/55 opacity-0 transition-opacity hover:text-(--err) group-hover:opacity-100"
+              className="pointer-events-none flex h-5 w-5 items-center justify-center text-(--dim)/55 opacity-0 transition-opacity duration-[var(--motion-fast)] group-hover:pointer-events-auto group-hover:opacity-100 hover:text-(--err) focus-visible:pointer-events-auto focus-visible:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100"
               title="Remove from list"
               aria-label="Remove project"
             >
@@ -142,7 +142,7 @@ export function ProjectRow({
           <NewChatPlusButton
             project={project}
             label={`New task in ${project.name}`}
-            className="flex h-5 w-5 items-center justify-center text-(--dim)/55 opacity-0 transition-opacity hover:text-(--fg)/80 group-hover:opacity-100"
+            className="pointer-events-none flex h-5 w-5 items-center justify-center text-(--dim)/55 opacity-0 transition-opacity duration-[var(--motion-fast)] group-hover:pointer-events-auto group-hover:opacity-100 hover:text-(--fg)/80 focus-visible:pointer-events-auto focus-visible:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100"
             onNavigateStart={onNewChatStart}
           />
         </div>
@@ -185,7 +185,7 @@ export function ProjectSessions({
 }) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
-  const [visibleLimit, setVisibleLimit] = useState(SESSIONS_PAGE_SIZE);
+  const [visibleLimit, setVisibleLimit] = useState(SESSIONS_INITIAL_LIMIT);
   const activity = useSessionActivity();
   const projectActiveSessions = useMemo(
     () => activeSessions.filter((session) => session.projectId === project.id),
@@ -195,7 +195,9 @@ export function ProjectSessions({
     setLoading(true);
     try {
       const response = await fetch(
-        `/api/agent/sessions?cwd=${encodeURIComponent(project.path)}&since=7d&limit=${visibleLimit + 9}`,
+        isChatsProject(project)
+          ? `/api/agent/sessions?projectId=${encodeURIComponent(project.id)}&since=7d&limit=${visibleLimit + SESSIONS_PAGE_SIZE}`
+          : `/api/agent/sessions?cwd=${encodeURIComponent(project.path)}&since=7d&limit=${visibleLimit + SESSIONS_PAGE_SIZE}`,
         { cache: "no-store" },
       );
       const payload = await safeJson<{ sessions?: SessionSummary[] }>(response);
@@ -247,10 +249,10 @@ export function ProjectSessions({
 
   return (
     <SidebarRail>
-      {loading && !sessions ? (
-        <div className="pl-2 pr-2 py-0.5 text-[length:var(--fs-sm)] text-(--dim)">Loading...</div>
-      ) : orderedRows.length === 0 ? (
-        <div className="pl-2 pr-2 py-0.5 text-[length:var(--fs-sm)] text-(--dim)">No chats</div>
+      {loading && !sessions ? null : orderedRows.length === 0 ? (
+        <div className="px-2 py-1 text-center text-[length:var(--fs-xs)] text-(--dim)/55">
+          No chats
+        </div>
       ) : (
         visibleRows.map((row) => {
           const parentId = row.kind === "open" ? row.session.threadId : row.session.id;
@@ -283,7 +285,7 @@ export function ProjectSessions({
         <button
           type="button"
           onClick={() => setVisibleLimit((value) => value + SESSIONS_PAGE_SIZE)}
-          className="flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-3 pr-2 text-left text-[length:var(--fs-sm)] text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+          className="flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-3 pr-2 text-left text-[length:var(--fs-sm)] text-(--dim) transition-colors duration-[var(--motion-fast)] hover:bg-(--hover) hover:text-(--fg)"
         >
           Show more
         </button>
@@ -307,7 +309,7 @@ function SubagentSessionRows({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex h-[var(--sidebar-row-height)] items-center gap-1.5 rounded-[var(--sidebar-row-radius)] pl-2 pr-2 text-left text-[length:var(--fs-sm)] text-(--dim) transition-colors hover:bg-(--hover) hover:text-(--fg)"
+        className="flex h-[var(--sidebar-row-height)] items-center gap-1.5 rounded-[var(--sidebar-row-radius)] pl-2 pr-2 text-left text-[length:var(--fs-sm)] text-(--dim) transition-colors duration-[var(--motion-fast)] hover:bg-(--hover) hover:text-(--fg)"
         aria-expanded={open}
       >
         <span
@@ -345,6 +347,7 @@ export function ActiveSessionRow({
   onReorderDragEnd,
   onReorderDragOver,
   onReorderDrop,
+  card = false,
 }: {
   project: ProjectEntry;
   session: ActiveAgentSession;
@@ -355,17 +358,18 @@ export function ActiveSessionRow({
   onReorderDragEnd?: () => void;
   onReorderDragOver?: (event: DragEvent) => void;
   onReorderDrop?: (event: DragEvent) => void;
+  card?: boolean;
 }) {
-  const label =
-    cleanSessionTitle(pref.title) || cleanSessionTitle(session.title) || "Current session";
+  const sessionRuntimeTitle = sessionTitleFromUserPrompt(session.title);
+  const label = cleanSessionTitle(pref.title) || sessionRuntimeTitle || "Current session";
   const isFocused = session.focused === true;
-  const rowClass = `group relative flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-2 pr-0 transition-[color,background-color,opacity] ${dragging ? "opacity-45" : ""} ${isFocused ? "bg-(--hover) text-(--fg)" : "hover:bg-(--hover)"}`;
+  const rowClass = `${card ? "sidebar-virtual-card min-h-[52px] border border-(--border)/55 bg-(--surface-2)/35 px-2 shadow-[0_1px_2px_rgba(0,0,0,0.08)]" : "sidebar-virtual-row h-[var(--sidebar-row-height)] pl-2 pr-0"} group relative flex items-center rounded-[var(--sidebar-row-radius)] transition-[color,background-color,opacity,border-color,box-shadow] duration-[var(--motion-fast)] ${dragging ? "opacity-45" : ""} ${isFocused ? "border-(--accent)/25 bg-(--hover) text-(--fg)" : "hover:bg-(--hover)"}`;
 
   return (
     <SessionNavRow
       pref={pref}
       label={label}
-      initialDraft={cleanSessionTitle(pref.title) || cleanSessionTitle(session.title)}
+      initialDraft={cleanSessionTitle(pref.title) || sessionRuntimeTitle}
       rowClass={rowClass}
       href={`/agent?project=${encodeURIComponent(project.id)}${
         session.threadId ? `&session=${encodeURIComponent(session.threadId)}&replace=1` : ""
@@ -384,6 +388,11 @@ export function ActiveSessionRow({
         session.threadId
           ? () => {
               const threadId = session.threadId as string;
+              if (
+                project.repository &&
+                !window.confirm("Archive this task and delete its checkout?")
+              )
+                return;
               void setSessionArchive(threadId, project, label, true)
                 .then(() => patchSessionPref(threadId, { hidden: undefined, pinned: undefined }))
                 .catch((error) => {
@@ -396,7 +405,7 @@ export function ActiveSessionRow({
         workspaceCommands().renameSession(
           session.paneId,
           session.id,
-          cleanSessionTitle(trimmed) || cleanSessionTitle(session.title) || label,
+          cleanSessionTitle(trimmed) || sessionRuntimeTitle || label,
         )
       }
       onRememberTitle={() => {
@@ -410,7 +419,7 @@ export function ActiveSessionRow({
           cwd: session.cwd,
           paneId: session.paneId,
           tabId: session.id,
-          title: session.title,
+          title: sessionRuntimeTitle || session.title,
         });
         onReorderDragStart?.();
       }}
@@ -420,9 +429,12 @@ export function ActiveSessionRow({
       // The focused row is the one being read, so its unseen/finished marks
       // have already served their purpose; only the live spinner survives focus.
       activity={isFocused && activity !== "running" ? "idle" : activity}
-      timestamp={session.updatedAt || session.startedAt}
       canDoubleClickRename
+      onContextMenu
+      showClearAction
       renameInputClass="text-[length:var(--fs-xs)]"
+      card={card}
+      secondaryLabel={session.id.startsWith("message:telegram:") ? "Telegram" : project.name}
     />
   );
 }
@@ -437,6 +449,7 @@ export function SessionRow({
   onReorderDragEnd,
   onReorderDragOver,
   onReorderDrop,
+  card = false,
 }: {
   project: ProjectEntry;
   session: SessionSummary;
@@ -447,6 +460,7 @@ export function SessionRow({
   onReorderDragEnd?: () => void;
   onReorderDragOver?: (event: DragEvent) => void;
   onReorderDrop?: (event: DragEvent) => void;
+  card?: boolean;
 }) {
   const label =
     cleanSessionTitle(pref.title) ||
@@ -459,12 +473,13 @@ export function SessionRow({
       label={label}
       initialDraft={cleanSessionTitle(pref.title) || cleanSessionTitle(session.firstUserMessage)}
       activity={activity}
-      timestamp={session.updatedAt || session.startedAt}
-      rowClass={`group relative flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] pl-2 pr-0 transition-[color,background-color,opacity] hover:bg-(--hover) ${dragging ? "opacity-45" : ""}`}
+      rowClass={`${card ? "sidebar-virtual-card min-h-[52px] border border-(--border)/55 bg-(--surface-2)/35 px-2 shadow-[0_1px_2px_rgba(0,0,0,0.08)]" : "sidebar-virtual-row h-[var(--sidebar-row-height)] pl-2 pr-0"} group relative flex items-center rounded-[var(--sidebar-row-radius)] transition-[color,background-color,opacity,border-color,box-shadow] duration-[var(--motion-fast)] hover:bg-(--hover) ${dragging ? "opacity-45" : ""}`}
       renameRowClass="flex h-[var(--sidebar-row-height)] items-center rounded-[var(--sidebar-row-radius)] bg-(--surface)/40 pl-2 pr-1"
       href={`/agent?project=${encodeURIComponent(project.id)}&session=${encodeURIComponent(session.id)}&replace=1`}
       onPatchPref={(patch) => patchSessionPref(session.id, patch)}
       onArchive={() => {
+        if (project.repository && !window.confirm("Archive this task and delete its checkout?"))
+          return;
         void setSessionArchive(session.id, project, label, true)
           .then(() => patchSessionPref(session.id, { hidden: undefined, pinned: undefined }))
           .catch((error) => {
@@ -489,6 +504,8 @@ export function SessionRow({
       onDrop={onReorderDrop}
       onContextMenu
       showClearAction
+      card={card}
+      secondaryLabel={project.name}
     />
   );
 }

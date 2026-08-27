@@ -17,11 +17,18 @@ import type {
 import type { BrowserBackend, ToolSelection } from "@/features/agent/tools/types";
 import * as api from "@/features/agent/runtime/api";
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
-import type { Session, SessionId, UpdateSession } from "@/features/agent/runtime/types";
+import type {
+  AgentHarness,
+  Session,
+  SessionId,
+  UpdateSession,
+} from "@/features/agent/runtime/types";
 import {
   runtimeCanHydrateCanonicalSession,
   settleTurn,
 } from "@/features/agent/runtime/session-status";
+import { readAgentDefaults } from "@/features/agent/workspace/model-preference";
+import { prepareTaskWorkspace } from "@/features/agent/projects/api";
 
 const EMPTY_SKILLS: ComposerSkillRef[] = [];
 const EMPTY_PROMPT_TEMPLATES: ComposerPromptTemplateRef[] = [];
@@ -47,7 +54,9 @@ export type PromptStreamDeps = {
   browserToolEnabled: boolean;
   browserBackend: BrowserBackend;
   cwd: string;
+  executionKind: "chat" | "project";
   modelId: string;
+  modelRouteId: string;
   thinkingLevel: AgentThinkingLevel;
   toolAccess: AgentToolAccess;
   onPiSessionIdChange?: (piSessionId: string) => void;
@@ -99,8 +108,19 @@ function createPromptTurnContext(
   args: SubmitArgs,
 ): PromptTurnContext | null {
   const sessionId = args.targetSessionId ?? deps.activeTabId;
-  const selected = deps.tabsRef.current.find((tab) => tab.id === sessionId);
-  if (!selected || !deps.modelId) return null;
+  const current = deps.tabsRef.current.find((tab) => tab.id === sessionId);
+  if (!current || !deps.modelId) return null;
+  const defaultHarness =
+    typeof window === "undefined" ? "pi" : readAgentDefaults(window.localStorage).harness;
+  const executionKind = current.executionKind ?? deps.executionKind;
+  const selected = {
+    ...current,
+    executionKind,
+    harness:
+      executionKind === "project"
+        ? (current.harness ?? (defaultHarness as AgentHarness))
+        : undefined,
+  };
 
   const selection = deps.selectionFor(sessionId);
   const skills = args.skills ?? selection.skills ?? EMPTY_SKILLS;
@@ -109,7 +129,8 @@ function createPromptTurnContext(
 
   return {
     assistantId: newId("assistant"),
-    browserEnabledForTurn: args.browserToolEnabled ?? deps.browserToolEnabled,
+    browserEnabledForTurn:
+      executionKind === "chat" ? true : (args.browserToolEnabled ?? deps.browserToolEnabled),
     promptTemplates,
     // The session id is the opaque runtime key the server addresses this
     // session by.
@@ -128,8 +149,15 @@ function appendOptimisticPrompt(
 ): void {
   deps.updateSession(context.sessionId, (session) => ({
     ...session,
-    cwd: session.cwd || deps.cwd,
+    executionKind: context.selected.executionKind,
+    harness: context.selected.harness,
+    placement:
+      context.selected.executionKind === "project" ? context.selected.placement : undefined,
+    sandboxAccountId:
+      context.selected.executionKind === "project" ? context.selected.sandboxAccountId : undefined,
+    cwd: context.selected.executionKind === "chat" ? undefined : session.cwd || deps.cwd,
     modelId: session.modelId || deps.modelId,
+    modelRouteId: session.modelRouteId || deps.modelRouteId,
     startedAt: session.startedAt ?? new Date().toISOString(),
     input: "",
     error: "",
@@ -161,13 +189,38 @@ function startPromptCommand(
   args: SubmitArgs,
 ): Promise<void> {
   const program = Effect.gen(function* () {
+    if (
+      context.selected.executionKind === "project" &&
+      context.selected.managedProject &&
+      !context.selected.cwd
+    ) {
+      const workspace = yield* Effect.tryPromise({
+        try: () =>
+          prepareTaskWorkspace({
+            projectId: context.selected.projectId ?? "",
+            sessionId: context.sessionId,
+            ref: context.selected.baseRef || "main",
+            ...(context.selected.branchName ? { branch: context.selected.branchName } : {}),
+          }),
+        catch: (error) => ({ _tag: "WorkspaceFailed" as const, error }),
+      });
+      context.selected.cwd = workspace.path;
+      context.selected.detached = workspace.detached;
+      deps.updateSession(context.sessionId, (session) => ({
+        ...session,
+        cwd: workspace.path,
+        detached: workspace.detached,
+      }));
+    }
     const result = yield* Effect.tryPromise({
       try: () => api.submitTurnCommand(promptTurnRequest(deps, context, args)),
       catch: (error) => ({ _tag: "SubmitFailed" as const, error }),
     });
+    const canonicalSessionId =
+      result.nativeSessionId || result.piSessionId || result.runtimeSessionId || context.runtime;
     deps.updateSession(context.sessionId, (session) => ({
       ...session,
-      piSessionId: result.piSessionId || session.piSessionId,
+      piSessionId: canonicalSessionId || session.piSessionId,
       contextUsage: api.runtimeContextUsage(result.status, session.contextUsage),
       status: "running",
       activeAssistantId: session.activeAssistantId ?? context.assistantId,
@@ -177,7 +230,7 @@ function startPromptCommand(
       context.assistantId,
       result.status?.eventSeq,
     );
-    if (result.piSessionId) deps.onPiSessionIdChange?.(result.piSessionId);
+    if (canonicalSessionId) deps.onPiSessionIdChange?.(canonicalSessionId);
   }).pipe(
     Effect.catch(({ error }) =>
       Effect.gen(function* () {
@@ -223,7 +276,11 @@ function startPromptCommand(
  */
 function settleFailedTurn(session: Session, assistantId: string, message: string): Session {
   if (session.activeAssistantId && session.activeAssistantId !== assistantId) return session;
-  return { ...settleTurn(session), error: message };
+  return {
+    ...settleTurn(session),
+    messages: session.messages.filter((entry) => entry.id !== assistantId),
+    error: message,
+  };
 }
 
 function promptTurnRequest(
@@ -233,12 +290,24 @@ function promptTurnRequest(
 ): api.SubmitTurnArgs {
   return {
     sessionId: context.runtime,
+    kind: context.selected.executionKind ?? deps.executionKind,
+    harness: context.selected.harness,
+    projectId: context.selected.projectId,
+    placement:
+      context.selected.executionKind === "project" ? context.selected.placement : undefined,
+    sandboxAccountId:
+      context.selected.executionKind === "project" ? context.selected.sandboxAccountId : undefined,
     modelId: deps.modelId,
+    modelRouteId: context.selected.modelRouteId || deps.modelRouteId,
     thinkingLevel: deps.thinkingLevel,
     toolAccess: deps.toolAccess,
     message: args.prompt,
+    displayMessage: args.displayText,
     images: args.images,
-    cwd: deps.cwd.trim() || undefined,
+    cwd:
+      context.selected.executionKind === "chat"
+        ? undefined
+        : (context.selected.cwd || deps.cwd).trim() || undefined,
     piSessionId:
       deps.tabsRef.current.find((tab) => tab.id === context.sessionId)?.piSessionId ??
       context.selected.piSessionId,

@@ -2,7 +2,6 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from "re
 import { PreviewScroll } from "@/ui";
 import { PREVIEW_HEIGHT_PX, type PreviewHeight } from "@/ui/preview-scroll";
 import {
-  ChevronRight,
   FilePenLine,
   FileText,
   Globe2,
@@ -35,6 +34,8 @@ import {
   parseDiffPreview,
   type DiffPreviewLine,
 } from "@/features/agent/ui/timeline/diff-preview-model";
+import { parseUnifiedDiff } from "@/features/agent/ui/git-diff-panel-model";
+import { PierreInlineDiff } from "@/features/agent/ui/git-diff-panel-diff-view";
 
 const ToolPreviewHeightContext = createContext<PreviewHeight>("md");
 
@@ -81,8 +82,9 @@ function toolMeta(block: ToolBlock, filePath?: string | null): ToolMeta {
 
   switch (kind) {
     case "edit":
-    case "read":
       return { verb, detail: resolvedPath ?? fileBasename(resolvedPath) };
+    case "read":
+      return { verb: block.status === "running" ? "Reading file" : "Read file", detail: null };
     case "search": {
       const compact = compactToolText(query, 80);
       return { verb, detail: compact ? `for ${compact}` : (path ?? "files") };
@@ -135,32 +137,22 @@ function ToolSummary({
   block,
   filePath,
   children,
-  open = false,
 }: {
   block: ToolBlock;
   filePath?: string | null;
   children?: ReactNode;
-  open?: boolean;
 }) {
-  const [userOpen, setUserOpen] = useState<boolean | null>(null);
-  const expanded = userOpen ?? open;
   const meta = toolMeta(block, filePath);
   const running = block.status === "running";
   const kind = classifyTool(block);
   const idleColor = toolKindNodeColor(kind);
   const Icon = TOOL_ICONS[kind];
   return (
-    <details className="group min-w-0" open={expanded}>
-      <summary
-        className="flex min-h-6 min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-0.5 transition-colors hover:bg-(--hover) [&::-webkit-details-marker]:hidden"
-        onClick={(event) => {
-          event.preventDefault();
-          setUserOpen(!expanded);
-        }}
-      >
+    <div className="min-w-0">
+      <div className="flex min-h-5 min-w-0 items-center gap-1.5 px-1 py-0.5">
         <Icon className="h-3.5 w-3.5 shrink-0 text-(--dim)/65" strokeWidth={1.7} />
         <span
-          className={`shrink-0 text-[length:var(--fs-base)] font-normal leading-5 ${
+          className={`shrink-0 text-[length:var(--fs-sm)] font-normal leading-5 ${
             running ? "codex-shimmer-text" : idleColor
           }`}
         >
@@ -176,13 +168,9 @@ function ToolSummary({
         {block.status === "error" ? (
           <span className="shrink-0 text-[length:var(--fs-sm)] text-(--err)">failed</span>
         ) : null}
-        <ChevronRight
-          className="h-3.5 w-3.5 shrink-0 text-(--dim)/55 transition-transform group-open:rotate-90"
-          strokeWidth={1.7}
-        />
-      </summary>
-      {expanded && children ? <div className="mb-1.5 ml-1.5 mt-1 min-w-0">{children}</div> : null}
-    </details>
+      </div>
+      {children ? <div className="mb-1.5 ml-1.5 mt-1 min-w-0">{children}</div> : null}
+    </div>
   );
 }
 
@@ -206,10 +194,7 @@ function ShellBlock({
         failed ? "border-(--err)/35" : "border-(--border)"
       }`}
     >
-      <PreviewScroll
-        height={height}
-        className="px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6]"
-      >
+      <div className="px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6]">
         <div className="flex items-start gap-2">
           <span
             className={`select-none ${failed ? "text-(--err)" : "text-(--color-terminal-green)"}`}
@@ -220,10 +205,14 @@ function ShellBlock({
             {command}
           </span>
         </div>
-        {trimmedOutput ? (
-          <pre className="mt-2 whitespace-pre-wrap break-words text-(--fg)/55">{trimmedOutput}</pre>
-        ) : null}
-      </PreviewScroll>
+      </div>
+      {trimmedOutput ? (
+        <PreviewScroll height={height} className="border-t border-(--separator) bg-(--surface)/45">
+          <pre className="whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/55">
+            {trimmedOutput}
+          </pre>
+        </PreviewScroll>
+      ) : null}
     </div>
   );
 }
@@ -283,6 +272,7 @@ const DIFF_MARKER_STYLES: Record<DiffPreviewLine["kind"], string> = {
 function DiffPreviewSource({ body, filePath }: { body: string; filePath?: string | null }) {
   const height = useToolPreviewHeight();
   const preview = useMemo(() => parseDiffPreview(body), [body]);
+  const pierreFiles = useMemo(() => parseUnifiedDiff(body), [body]);
   const language = detectLang(filePath);
   const highlightedLines = useMemo(
     () =>
@@ -294,6 +284,15 @@ function DiffPreviewSource({ body, filePath }: { body: string; filePath?: string
         : null,
     [language, preview.lines],
   );
+  if (pierreFiles.length > 0) {
+    return (
+      <div className="overflow-hidden rounded-md border border-(--border) bg-(--color-input)">
+        <PreviewScroll height={height} stickToBottom={false}>
+          <PierreInlineDiff files={pierreFiles} />
+        </PreviewScroll>
+      </div>
+    );
+  }
   return (
     <div className="overflow-hidden rounded-md border border-(--border) bg-(--color-input)">
       <div className="flex h-7 items-center justify-between border-b border-(--separator) px-3 text-[length:var(--fs-xs)]">
@@ -445,7 +444,7 @@ function FileWritePreview({
   const sourceLang = fileContent === null && patchContent !== null ? "diff" : lang;
 
   return (
-    <ToolSummary block={block} filePath={filePath} open>
+    <ToolSummary block={block} filePath={filePath}>
       {patchContent ? (
         <DiffPreviewSource body={patchContent} filePath={filePath} />
       ) : (
@@ -510,7 +509,7 @@ function diffPreviewData(block: ToolBlock): string | null {
 function DiffPreview({ block, diffText }: { block: ToolBlock; diffText: string }) {
   const filePath = toolArg(block, ["path", "file_path", "filePath", "file", "filename"]);
   return (
-    <ToolSummary block={block} filePath={filePath} open>
+    <ToolSummary block={block} filePath={filePath}>
       <DiffPreviewSource body={diffText} filePath={filePath} />
     </ToolSummary>
   );
@@ -523,40 +522,29 @@ function execCommand(block: ToolBlock): string | null {
     "script",
     "shell",
     "input",
+    "command_line",
+    "commandLine",
   ]);
-  return command && command.trim() ? command : null;
+  if (command?.trim()) return command;
+  const args = block.args;
+  if (!args) return null;
+  for (const key of ["cmd", "command", "script", "shell", "input"]) {
+    const value = args[key];
+    if (Array.isArray(value) && value.every((part) => typeof part === "string")) {
+      return value.join(" ");
+    }
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const nested = value as Record<string, unknown>;
+    for (const nestedKey of ["cmd", "command", "script", "shell", "input"]) {
+      const nestedValue = nested[nestedKey];
+      if (typeof nestedValue === "string" && nestedValue.trim()) return nestedValue;
+    }
+  }
+  return null;
 }
 
 function BrowserPreview({ block }: { block: ToolBlock }) {
-  const args = browserToolArgs(block);
-  const display =
-    compactBrowserResult(block.resultText) ||
-    (block.text && block.text !== block.argsText ? compactBrowserResult(block.text) : null);
-  return (
-    <ToolSummary block={block} open={block.status === "running"}>
-      {args ? (
-        <div className="mb-1.5 rounded-md border border-(--border) bg-(--color-input) px-3 py-1.5 font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/75">
-          {args}
-        </div>
-      ) : null}
-      {display ? <ToolOutput>{display}</ToolOutput> : null}
-    </ToolSummary>
-  );
-}
-
-function browserToolArgs(block: ToolBlock): string | null {
-  if (!block.args || Object.keys(block.args).length === 0) return null;
-  const pairs = Object.entries(block.args).flatMap(([key, value]) => {
-    if (value === undefined || value === null || value === "") return [];
-    const text = typeof value === "string" || typeof value === "number" ? String(value) : "";
-    return text ? [`${key}: ${text}`] : [];
-  });
-  return pairs.length ? pairs.join("  ") : null;
-}
-
-function compactBrowserResult(result: string | null | undefined): string | null {
-  if (!result) return null;
-  return compactToolText(result, 1200);
+  return <ToolSummary block={block} />;
 }
 
 function ToolPreviewHeightProvider({ kind, children }: { kind: ToolKind; children: ReactNode }) {
@@ -590,16 +578,12 @@ export function ToolBlockView({ block }: { block: ToolBlock }) {
     );
   }
   if (kind === "exec") {
-    const command = execCommand(block);
-    if (command) {
-      return (
-        <ToolPreviewHeightProvider kind={kind}>
-          <ToolSummary block={block} open={block.status === "running"}>
-            <ShellBlock command={command} output={block.resultText || null} status={block.status} />
-          </ToolSummary>
-        </ToolPreviewHeightProvider>
-      );
-    }
+    const command = execCommand(block) ?? humanizeToolName(block.name);
+    return (
+      <ToolPreviewHeightProvider kind={kind}>
+        <ShellBlock command={command} output={block.resultText || null} status={block.status} />
+      </ToolPreviewHeightProvider>
+    );
   }
   if (kind === "browser") {
     return (
@@ -613,9 +597,7 @@ export function ToolBlockView({ block }: { block: ToolBlock }) {
     block.resultText || (block.text && block.text !== block.argsText ? block.text : "");
   return (
     <ToolPreviewHeightProvider kind={kind}>
-      <ToolSummary block={block} open={block.status === "running"}>
-        {display ? <ToolOutput>{display}</ToolOutput> : null}
-      </ToolSummary>
+      <ToolSummary block={block}>{display ? <ToolOutput>{display}</ToolOutput> : null}</ToolSummary>
     </ToolPreviewHeightProvider>
   );
 }

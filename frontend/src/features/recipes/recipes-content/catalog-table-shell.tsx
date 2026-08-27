@@ -22,7 +22,7 @@ export function TableFrame({
   minWidthClass?: string;
 }) {
   return (
-    <div className="min-w-0 overflow-x-auto">
+    <div className="catalog-table-frame min-w-0 overflow-x-auto">
       <table className={cx("w-full border-collapse tabular-nums", minWidthClass)}>{children}</table>
     </div>
   );
@@ -50,12 +50,12 @@ export function TableSection({
   children: ReactNode;
 }) {
   return (
-    <section className="min-w-0">
-      <div className="flex min-h-8 items-end justify-between gap-4 px-3 pb-1">
+    <section className="catalog-table-section min-w-0">
+      <div className="catalog-table-heading flex min-h-7 items-end justify-between gap-3 px-2 pb-1">
         <div className="min-w-0">
-          <h3 className="text-[length:var(--fs-md)] font-medium text-(--fg)">{title}</h3>
+          <h3 className="text-[length:var(--fs-sm)] font-medium text-(--fg)">{title}</h3>
           {description ? (
-            <p className="mt-0.5 text-[length:var(--fs-sm)] text-(--dim)">{description}</p>
+            <p className="mt-0.5 text-[length:var(--fs-xs)] text-(--dim)">{description}</p>
           ) : null}
         </div>
         {actions ? <div className="shrink-0">{actions}</div> : null}
@@ -97,7 +97,7 @@ export function HeadCell({
   );
   return (
     <th
-      className={cx("px-3 pb-2 font-medium", numeric ? "text-right" : "text-left")}
+      className={cx("px-2 pb-1.5 font-medium", numeric ? "text-right" : "text-left")}
       aria-sort={onSort ? (active ? (desc ? "descending" : "ascending") : "none") : undefined}
     >
       {onSort ? (
@@ -135,7 +135,7 @@ export function GroupRow({
 }) {
   return (
     <tr>
-      <td colSpan={colSpan} className="px-3 pb-1.5 pt-6">
+      <td colSpan={colSpan} className="px-2 pb-1 pt-4">
         <div className="flex items-baseline justify-between gap-4">
           <div className="flex min-w-0 items-baseline gap-2.5">
             <span className="shrink-0 text-[length:var(--fs-xs)] font-medium text-(--dim)">
@@ -221,7 +221,7 @@ export function DetailRow({ colSpan, children }: { colSpan: number; children: Re
 
 /** Leftmost cell: identity. Rounded so the hover wash has a shaped left edge. */
 export function LeadCell({ children }: { children: ReactNode }) {
-  return <td className="rounded-l-lg px-3 py-2">{children}</td>;
+  return <td className="rounded-l-[6px] px-2 py-1">{children}</td>;
 }
 
 /**
@@ -246,18 +246,18 @@ export function IdentityCell({
 }) {
   return (
     <LeadCell>
-      <div className="flex min-w-0 items-center gap-2.5">
+      <div className="flex min-w-0 items-center gap-2">
         {leading ? <span className="flex shrink-0 items-center">{leading}</span> : null}
         <div className="min-w-0">
           <div
-            className="truncate text-[length:var(--fs-md)] font-medium text-(--fg)"
+            className="truncate text-[length:var(--fs-sm)] font-medium leading-[14px] text-(--fg)"
             title={title ?? (typeof label === "string" ? label : undefined)}
           >
             {label}
           </div>
           {description ? (
             <div
-              className="truncate text-[length:var(--fs-xs)] text-(--dim)/60"
+              className="truncate text-[length:var(--fs-xs)] leading-[13px] text-(--dim)/60"
               title={typeof description === "string" ? description : undefined}
             >
               {description}
@@ -294,7 +294,7 @@ export function TextCell({
 }) {
   return (
     <td
-      className={cx("px-3 py-2", align === "right" ? "text-right" : "text-left")}
+      className={cx("px-2 py-1", align === "right" ? "text-right" : "text-left")}
       title={title ?? (typeof children === "string" ? children : undefined)}
     >
       <div
@@ -338,7 +338,7 @@ export function NumCell({
     // whitespace-nowrap: a value like "~155 GB" wrapping onto two lines makes
     // the row twice as tall as its neighbours and breaks the scan down the
     // column. Narrow viewports scroll the table instead.
-    <td className="whitespace-nowrap px-3 py-2 text-right" title={title}>
+    <td className="whitespace-nowrap px-2 py-1 text-right" title={title}>
       <div
         className={cx(
           strong
@@ -362,7 +362,7 @@ export function NumCell({
 
 /** Rightmost cell: status, and the row's action revealed on hover. */
 export function EndCell({ children }: { children: ReactNode }) {
-  return <td className="rounded-r-lg px-3 py-2 text-right">{children}</td>;
+  return <td className="rounded-r-[6px] px-2 py-1 text-right">{children}</td>;
 }
 
 /**
@@ -402,7 +402,7 @@ export function RowAction({
       // -mr-2 cancels the button's own right padding so its label lands on the
       // same right edge as the plain-text statuses and the header above.
       className={cx(
-        "-mr-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[length:var(--fs-xs)] font-medium transition-opacity focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 group-hover:opacity-100 disabled:cursor-not-allowed",
+        "-mr-1 inline-flex h-6 items-center gap-1 rounded-[4px] px-1.5 text-[length:var(--fs-xs)] font-medium transition-opacity focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 group-hover:opacity-100 disabled:cursor-not-allowed",
         alwaysVisible ? "opacity-100 disabled:opacity-45" : "opacity-0",
         tone === "danger"
           ? "text-(--err) focus-visible:ring-(--err)/50"
@@ -452,13 +452,7 @@ const STATUS_TONE_CLASS: Record<StatusTone, string> = {
  * it reads as decoration, and the colour alone already carries "fine / needs
  * attention / broken" at a glance.
  */
-export function StatusText({
-  children,
-  tone = "dim",
-}: {
-  children: ReactNode;
-  tone?: StatusTone;
-}) {
+export function StatusText({ children, tone = "dim" }: { children: ReactNode; tone?: StatusTone }) {
   return (
     <span className={cx("text-[length:var(--fs-xs)]", STATUS_TONE_CLASS[tone])}>{children}</span>
   );
@@ -527,9 +521,9 @@ export function TableNotice({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-start gap-2 px-3 py-10">
-      <div className="text-[length:var(--fs-md)] font-medium text-(--fg)">{title}</div>
-      <p className="max-w-lg text-[length:var(--fs-sm)] leading-5 text-(--dim)">{body}</p>
+    <div className="catalog-table-notice flex flex-col items-start gap-1.5 px-2 py-4">
+      <div className="text-[length:var(--fs-sm)] font-medium text-(--fg)">{title}</div>
+      <p className="max-w-lg text-[length:var(--fs-xs)] leading-4 text-(--dim)">{body}</p>
       {action ? <div className="mt-1">{action}</div> : null}
     </div>
   );

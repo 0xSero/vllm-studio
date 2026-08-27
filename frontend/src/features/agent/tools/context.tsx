@@ -39,13 +39,12 @@ import {
   uniqueComputerTabs,
   writeBrowserBackend,
   writeBrowserEnabled,
-  writeComputerTab,
-  writeComputerTabs,
   writeComputerWidth,
 } from "@/features/agent/tools/persistence";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { openWorkbenchResource } from "@/features/workbench/controller-state";
 import {
-  computerSessionView,
+  browserSessionView,
   patchSessionView,
   readSessionView,
   type SessionViewIdentity,
@@ -68,9 +67,11 @@ type ToolsActions = {
   setComputerTab: (tab: ComputerTab) => void;
   selectComputerTabWithoutOpening: (tab: ComputerTab) => void;
   closeComputerTab: (tab: ComputerTab) => void;
+  registerComputerTabCloseHandler: (tab: ComputerTab, handler: () => void) => () => void;
   setComputerWidth: (width: number) => void;
   setActiveComputerSession: (identity: SessionViewIdentity | null) => void;
   requestFileOpen: (path: string) => void;
+  showFileResource: (path: string) => void;
   requestContextAttach: (request: { label: string; path?: string; content: string }) => void;
   /**
    * Replace the entire selection for a session. Pass `null` to clear it (used
@@ -91,11 +92,15 @@ type ToolSelectionsValue = {
 export type ToolsContextValue = ToolsActions &
   ToolSelectionsValue & {
     browser: BrowserState;
-    computer: ComputerState;
+    computer: ComputerToolsValue;
   };
 
+export type ComputerToolsValue = ComputerState & {
+  sessionKey: string | null;
+};
+
 const ToolsActionsContext = createContext<ToolsActions | null>(null);
-const ComputerToolsContext = createContext<ComputerState | null>(null);
+const ComputerToolsContext = createContext<ComputerToolsValue | null>(null);
 const BrowserToolsContext = createContext<BrowserState | null>(null);
 const ToolSelectionsContext = createContext<ToolSelectionsValue | null>(null);
 // Stable ref to the composed value for imperative (event-time) readers that
@@ -142,23 +147,16 @@ function LazyToolsEffectsBridge(props: ToolsEffectsBridgeProps) {
 }
 
 function buildInitialBrowser(): BrowserState {
-  if (typeof window === "undefined") {
-    return { enabled: false, backend: "embedded", url: "", input: "" };
-  }
-  migrateToolStorage();
-  return loadBrowserState();
+  return { enabled: false, backend: "embedded", url: "", input: "" };
 }
 
 function buildInitialComputer(): ComputerState {
-  if (typeof window === "undefined") {
-    return {
-      open: false,
-      tab: "status",
-      tabs: ["status"],
-      width: 0,
-    };
-  }
-  return loadComputerState();
+  return {
+    open: false,
+    tab: "files",
+    tabs: [],
+    width: 0,
+  };
 }
 
 export function ToolsProvider({ children }: { children: ReactNode }) {
@@ -166,7 +164,9 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const catalogueEnabled = pathname === "/agent" || pathname === "/quick";
   const [browser, setBrowser] = useState<BrowserState>(() => buildInitialBrowser());
   const [computer, setComputer] = useState<ComputerState>(() => buildInitialComputer());
+  const [activeComputerSessionKey, setActiveComputerSessionKey] = useState<string | null>(null);
   const activeComputerSessionRef = useRef<SessionViewIdentity | null>(null);
+  const computerTabCloseHandlersRef = useRef(new Map<ComputerTab, () => void>());
   const [fileOpenRequest, setFileOpenRequest] = useState<FileOpenRequest | null>(null);
   const [contextAttachRequest, setContextAttachRequest] = useState<ContextAttachRequest | null>(
     null,
@@ -177,13 +177,26 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   >([]);
   const selectionsRef = useRef<Map<SessionId, ToolSelection>>(new Map());
   const [selectionVersion, setSelectionVersion] = useState(0);
+  useMountSubscription(() => {
+    migrateToolStorage();
+    const storedBrowser = loadBrowserState();
+    const storedComputer = loadComputerState();
+    setBrowser({ ...buildInitialBrowser(), backend: storedBrowser.backend });
+    setComputer({ ...buildInitialComputer(), width: storedComputer.width });
+  }, []);
   const updateComputer = useCallback<Dispatch<SetStateAction<ComputerState>>>((update) => {
     setComputer((current) => {
+      const next = typeof update === "function" ? update(current) : update;
+      return next === current ? current : next;
+    });
+  }, []);
+  const updateBrowser = useCallback<Dispatch<SetStateAction<BrowserState>>>((update) => {
+    setBrowser((current) => {
       const next = typeof update === "function" ? update(current) : update;
       if (next === current) return current;
       const identity = activeComputerSessionRef.current;
       if (identity) {
-        patchSessionView(window.localStorage, identity, { computer: computerSessionView(next) });
+        patchSessionView(window.localStorage, identity, { browser: browserSessionView(next) });
       }
       return next;
     });
@@ -202,45 +215,57 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const setBrowserEnabled = useCallback((enabled: boolean) => {
-    setBrowser((current) => (current.enabled === enabled ? current : { ...current, enabled }));
-    writeBrowserEnabled(enabled);
-  }, []);
+  const setBrowserEnabled = useCallback(
+    (enabled: boolean) => {
+      updateBrowser((current) => (current.enabled === enabled ? current : { ...current, enabled }));
+      writeBrowserEnabled(enabled);
+    },
+    [updateBrowser],
+  );
 
-  const setBrowserBackend = useCallback((backend: BrowserBackend) => {
-    setBrowser((current) => (current.backend === backend ? current : { ...current, backend }));
-    writeBrowserBackend(backend);
-  }, []);
+  const setBrowserBackend = useCallback(
+    (backend: BrowserBackend) => {
+      updateBrowser((current) => (current.backend === backend ? current : { ...current, backend }));
+      writeBrowserBackend(backend);
+    },
+    [updateBrowser],
+  );
 
   const toggleBrowserBackend = useCallback(() => {
-    setBrowser((current) => {
+    updateBrowser((current) => {
       const backend = current.backend === "chrome" ? "embedded" : "chrome";
       writeBrowserBackend(backend);
       return { ...current, backend };
     });
-  }, []);
+  }, [updateBrowser]);
 
   const toggleBrowser = useCallback(() => {
-    setBrowser((current) => {
+    updateBrowser((current) => {
       const next = !current.enabled;
       writeBrowserEnabled(next);
       return { ...current, enabled: next };
     });
-  }, []);
+  }, [updateBrowser]);
 
-  const setBrowserUrl = useCallback((url: string, input?: string) => {
-    if (typeof url !== "string" || !url.trim()) return;
-    setBrowser((current) => ({
-      ...current,
-      url,
-      input: input ?? current.input,
-    }));
-  }, []);
+  const setBrowserUrl = useCallback(
+    (url: string, input?: string) => {
+      if (typeof url !== "string" || !url.trim()) return;
+      updateBrowser((current) => ({
+        ...current,
+        url,
+        input: input ?? current.input,
+      }));
+    },
+    [updateBrowser],
+  );
 
-  const setBrowserInput = useCallback((input: string) => {
-    if (typeof input !== "string") return;
-    setBrowser((current) => ({ ...current, input }));
-  }, []);
+  const setBrowserInput = useCallback(
+    (input: string) => {
+      if (typeof input !== "string") return;
+      updateBrowser((current) => ({ ...current, input }));
+    },
+    [updateBrowser],
+  );
 
   const setComputerOpen = useCallback(
     (open: boolean) => {
@@ -257,21 +282,19 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     (tab: ComputerTab) => {
       updateComputer((current) => {
         const tabs = uniqueComputerTabs([...current.tabs, tab]);
-        writeComputerTabs(tabs);
         return current.tab === tab && current.tabs === tabs
           ? current
           : { ...current, open: true, tab, tabs };
       });
-      writeComputerTab(tab);
       if (tab === "browser") {
-        setBrowser((current) => {
+        updateBrowser((current) => {
           if (current.enabled) return current;
           writeBrowserEnabled(true);
           return { ...current, enabled: true };
         });
       }
     },
-    [updateComputer],
+    [updateBrowser, updateComputer],
   );
 
   // Register + select a tab WITHOUT force-opening the computer panel. Used when
@@ -282,41 +305,39 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     (tab: ComputerTab) => {
       updateComputer((current) => {
         const tabs = uniqueComputerTabs([...current.tabs, tab]);
-        writeComputerTabs(tabs);
-        writeComputerTab(tab);
         return current.tab === tab && current.tabs === tabs ? current : { ...current, tab, tabs };
       });
       if (tab === "browser") {
-        setBrowser((current) => {
+        updateBrowser((current) => {
           if (current.enabled) return current;
           writeBrowserEnabled(true);
           return { ...current, enabled: true };
         });
       }
     },
-    [updateComputer],
+    [updateBrowser, updateComputer],
   );
 
   const closeComputerTab = useCallback(
     (tab: ComputerTab) => {
-      if (tab === "status" || tab === "tools") return;
-      if (tab === "browser") {
-        setBrowser((current) => {
-          if (!current.enabled) return current;
-          writeBrowserEnabled(false);
-          return { ...current, enabled: false };
-        });
-      }
+      computerTabCloseHandlersRef.current.get(tab)?.();
       updateComputer((current) => {
         const tabs = uniqueComputerTabs(current.tabs.filter((item) => item !== tab));
-        const activeTab = current.tab === tab ? (tabs[tabs.length - 1] ?? "status") : current.tab;
-        writeComputerTabs(tabs);
-        writeComputerTab(activeTab);
-        return { ...current, tab: activeTab, tabs };
+        const activeTab = current.tab === tab ? (tabs[tabs.length - 1] ?? "files") : current.tab;
+        return { ...current, open: tabs.length ? current.open : false, tab: activeTab, tabs };
       });
     },
     [updateComputer],
   );
+
+  const registerComputerTabCloseHandler = useCallback((tab: ComputerTab, handler: () => void) => {
+    computerTabCloseHandlersRef.current.set(tab, handler);
+    return () => {
+      if (computerTabCloseHandlersRef.current.get(tab) === handler) {
+        computerTabCloseHandlersRef.current.delete(tab);
+      }
+    };
+  }, []);
 
   const setComputerWidth = useCallback(
     (width: number) => {
@@ -332,23 +353,24 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
 
   const setActiveComputerSession = useCallback((identity: SessionViewIdentity | null) => {
     const previous = activeComputerSessionRef.current;
-    if (previous?.key === identity?.key) return;
-    setComputer((current) => {
+    if (previous && identity && previous.key === identity.key) return;
+    const restored = identity ? readSessionView(window.localStorage, identity) : null;
+    activeComputerSessionRef.current = identity;
+    setActiveComputerSessionKey(identity?.key ?? null);
+    setComputer((current) => ({ ...current, open: false, tab: "files", tabs: [] }));
+    setBrowser((current) => {
       if (previous) {
-        patchSessionView(window.localStorage, previous, { computer: computerSessionView(current) });
+        patchSessionView(window.localStorage, previous, { browser: browserSessionView(current) });
       }
-      activeComputerSessionRef.current = identity;
-      const restored = identity ? readSessionView(window.localStorage, identity)?.computer : null;
-      return restored ? { ...current, ...restored } : { ...current, open: false };
+      return restored?.browser ? restored.browser : buildInitialBrowser();
     });
   }, []);
 
-  const requestFileOpen = useCallback(
+  const showFileResource = useCallback(
     (path: string) => {
       const clean = path.trim();
       if (!clean) return;
       updateComputer((current) => ({ ...current, open: true, tab: "files" }));
-      writeComputerTab("files");
       setFileOpenRequest((current) => ({
         id: (current?.id ?? 0) + 1,
         path: clean,
@@ -356,6 +378,16 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     },
     [updateComputer],
   );
+
+  const requestFileOpen = useCallback((path: string) => {
+    const clean = path.trim();
+    if (!clean) return;
+    openWorkbenchResource({
+      kind: "file",
+      resourceId: clean,
+      title: clean.split("/").at(-1) || "File",
+    });
+  }, []);
 
   const requestContextAttach = useCallback(
     (request: { label: string; path?: string; content: string }) => {
@@ -434,9 +466,11 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       setComputerTab,
       selectComputerTabWithoutOpening,
       closeComputerTab,
+      registerComputerTabCloseHandler,
       setComputerWidth,
       setActiveComputerSession,
       requestFileOpen,
+      showFileResource,
       requestContextAttach,
       setSelection,
       hydrateSelections,
@@ -453,9 +487,11 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       setComputerTab,
       selectComputerTabWithoutOpening,
       closeComputerTab,
+      registerComputerTabCloseHandler,
       setComputerWidth,
       setActiveComputerSession,
       requestFileOpen,
+      showFileResource,
       requestContextAttach,
       setSelection,
       hydrateSelections,
@@ -473,11 +509,16 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     [fileOpenRequest, contextAttachRequest, skillCatalogue, promptTemplateCatalogue, selectionFor],
   );
 
+  const computerValue = useMemo<ComputerToolsValue>(
+    () => ({ ...computer, sessionKey: activeComputerSessionKey }),
+    [activeComputerSessionKey, computer],
+  );
+
   // Latest-value ref for imperative readers (use-workspace's event handlers).
   // Refreshed post-render, which is always before any event-time read.
   const value = useMemo<ToolsContextValue>(
-    () => ({ browser, computer, ...selections, ...actions }),
-    [browser, computer, selections, actions],
+    () => ({ browser, computer: computerValue, ...selections, ...actions }),
+    [browser, computerValue, selections, actions],
   );
   const valueRef = useRef(value);
   useMountSubscription(() => {
@@ -486,7 +527,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
 
   return (
     <ToolsActionsContext.Provider value={actions}>
-      <ComputerToolsContext.Provider value={computer}>
+      <ComputerToolsContext.Provider value={computerValue}>
         <BrowserToolsContext.Provider value={browser}>
           <ToolSelectionsContext.Provider value={selections}>
             <ToolsRefContext.Provider value={valueRef}>
@@ -515,7 +556,7 @@ export function useToolsActions(): ToolsActions {
 }
 
 /** Computer panel state (open/tab/tabs/width). */
-export function useComputerTools(): ComputerState {
+export function useComputerTools(): ComputerToolsValue {
   return useToolsSlice(ComputerToolsContext, "useComputerTools");
 }
 

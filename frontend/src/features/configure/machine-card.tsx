@@ -105,7 +105,7 @@ function MachineHeader({
 
   return (
     <div className="flex items-start gap-3 sm:gap-4">
-      <MachineImage node={node} className="h-16 w-24" />
+      <MachineImage node={node} className="h-14 w-20" />
       <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
         <div className="min-w-0">
           <h3
@@ -226,7 +226,7 @@ export function MachineCard({
   onRemove?: () => void;
 }) {
   return (
-    <article className="rounded-[var(--rad-lg)] border border-(--ui-border) bg-(--ui-surface) p-3 transition-colors hover:border-(--ui-border)/60 sm:p-4">
+    <article className="rounded-[var(--rad-md)] border border-(--ui-border) bg-(--ui-surface) p-3 transition-colors hover:border-(--ui-border)/60 sm:p-3.5">
       <MachineHeader
         node={node}
         isLocal={isLocal}

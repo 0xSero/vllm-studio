@@ -5,7 +5,7 @@ import {
   InvalidSettingsError,
   maskedSettingsView,
   type ApiSettings,
-} from "@local-studio/agent-runtime/settings-service";
+} from "@/lib/api/settings-service";
 import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";

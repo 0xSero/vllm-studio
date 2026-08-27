@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { ApiErrorResponseSchema } from "@local-studio/agent-runtime/api-contract";
+import { ApiErrorResponseSchema } from "@shared/agent/api-contract";
 
 /**
  * Call one of this app's own `/api/agent/*` routes and decode the result.

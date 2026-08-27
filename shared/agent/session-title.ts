@@ -1,5 +1,5 @@
-// Session-title normalization shared by the agent runtime package (session
-// summaries read from disk) and the frontend's client-side message helpers.
+// Session-title normalization shared by controller session summaries and the
+// frontend's client-side message helpers.
 
 export function isPlaceholderSessionTitle(value: string | null | undefined): boolean {
   const normalized = value?.replace(/\s+/g, " ").trim();

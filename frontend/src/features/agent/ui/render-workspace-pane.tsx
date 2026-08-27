@@ -6,7 +6,7 @@ import { ChatPane } from "@/features/agent/ui/chat-pane";
 import { ComposerFocusContext } from "@/features/agent/workspace/pane-context";
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
 import type { useTools } from "@/features/agent/tools/context";
-import type { Project } from "@/features/agent/projects/types";
+import { isChatsProject, type Project } from "@/features/agent/projects/types";
 import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
 import type {
   AgentModel,
@@ -18,6 +18,9 @@ import { activeSession } from "@/features/agent/runtime/selectors";
 import { terminalOwnerFor } from "@/features/agent/terminal-owners";
 import { collectLeaves } from "@/features/agent/workspace/layout";
 import type { WorkspaceHandles } from "@/features/agent/ui/use-workspace";
+import { isMessagingSessionId, type AgentHarness } from "@/features/agent/runtime/types";
+import { readAgentDefaults } from "@/features/agent/workspace/model-preference";
+import { openWorkbenchResource } from "@/features/workbench/controller-state";
 
 export type WorkspacePaneRenderContext = {
   paneId: PaneId;
@@ -37,6 +40,7 @@ export type WorkspacePaneView = {
   project: Project | null;
   cwd: string;
   modelId: string;
+  modelRouteId: string;
   model: AgentModel | null;
   gitSummary: ReturnType<ProjectsContextValue["gitSummary"]>;
   gitBranch: string | null;
@@ -65,7 +69,9 @@ function resolvePaneModelId(
     if (exact) return exact.id;
     const alias = models.find(
       (model) =>
-        model.rawId === candidate || model.name === candidate || model.id.endsWith(`/${candidate}`),
+        model.name === candidate ||
+        model.id.endsWith(`/${candidate}`) ||
+        model.routes.some((route) => route.id === candidate || route.rawModelId === candidate),
     );
     if (alias) return alias.id;
   }
@@ -88,6 +94,13 @@ function selectWorkspacePaneView(
   const session = activeSession(state, paneId);
   const project = projects.resolveProject(session);
   const modelId = resolvePaneModelId(session?.modelId, state.selectedModel, state.models);
+  const model = state.models.find((candidate) => candidate.id === modelId) ?? null;
+  const preferredRouteId = session?.modelRouteId || state.selectedRoute;
+  const modelRouteId =
+    model?.routes.find((route) => route.id === preferredRouteId)?.id ??
+    model?.defaultRouteId ??
+    model?.routes[0]?.id ??
+    "";
   const gitSummary = projects.gitSummary(project?.path);
   return {
     paneId,
@@ -96,7 +109,8 @@ function selectWorkspacePaneView(
     project,
     cwd: session?.cwd ?? project?.path ?? projects.agentCwd,
     modelId,
-    model: state.models.find((model) => model.id === modelId) ?? null,
+    modelRouteId,
+    model,
     gitSummary,
     gitBranch: paneGitBranch(gitSummary, project),
     isNewSession: Boolean(session && !session.piSessionId && session.messages.length === 0),
@@ -116,6 +130,7 @@ export function sameWorkspacePaneView(
     previous.project === next.project &&
     previous.cwd === next.cwd &&
     previous.modelId === next.modelId &&
+    previous.modelRouteId === next.modelRouteId &&
     previous.model === next.model &&
     previous.gitSummary === next.gitSummary &&
     previous.gitBranch === next.gitBranch &&
@@ -173,21 +188,27 @@ const WorkspacePane = memo(function WorkspacePane({
   composerOnly,
 }: WorkspacePaneProps) {
   const sessions = view.session ? [view.session] : [];
+  const chatWorkspace = isChatsProject(view.project);
+  const defaultHarness =
+    typeof window === "undefined" ? "pi" : readAgentDefaults(window.localStorage).harness;
   const composerFocus = useMemo(
     () => ({ tabId: view.pane.sessionId, composerFocusIntent }),
     [view.pane.sessionId, composerFocusIntent],
   );
+  const messagingSession = isMessagingSessionId(view.pane.sessionId);
   return (
     <ComposerFocusContext.Provider value={composerFocus}>
       <ChatPane
         paneId={view.paneId}
         modelId={view.modelId}
+        modelRouteId={view.modelRouteId}
         modelName={view.model?.name ?? view.modelId ?? null}
         modelSupportsVision={view.model?.vision ?? false}
         modelThinkingLevels={view.model?.thinkingLevels ?? ["off"]}
         modelsLoading={modelsLoading}
         contextWindow={view.model?.contextWindow ?? 0}
         cwd={view.cwd}
+        projectId={view.project?.id ?? null}
         projectName={view.project?.name ?? null}
         gitBranch={view.gitBranch}
         gitSummary={view.gitSummary}
@@ -196,17 +217,29 @@ const WorkspacePane = memo(function WorkspacePane({
           <AgentModelPicker
             models={models}
             selectedModel={view.modelId}
+            selectedRoute={view.modelRouteId}
             defaultModel={defaultModel}
-            onSelect={(modelId) => handles.selectPaneModel(view.paneId, modelId)}
-            onSetDefault={handles.setDefaultModel}
+            onSelect={(modelId, routeId) => handles.selectPaneModel(view.paneId, modelId, routeId)}
+            selectedHarness={view.session?.harness ?? defaultHarness}
+            harnessDisabled={chatWorkspace || !view.isNewSession}
+            {...(chatWorkspace
+              ? {}
+              : {
+                  onSelectHarness: (harness: string) =>
+                    handles.updateSession(view.pane.sessionId, (session) => ({
+                      ...session,
+                      harness: harness as AgentHarness,
+                    })),
+                })}
             loading={modelsLoading}
             {...reasoning}
           />
         )}
-        browserToolEnabled={tools.browser.enabled}
-        browserBackend={tools.browser.backend}
+        browserToolEnabled={chatWorkspace ? true : tools.browser.enabled}
+        browserBackend={chatWorkspace ? "embedded" : tools.browser.backend}
         onToggleBrowserBackend={tools.toggleBrowserBackend}
         onToggleBrowserTool={() => {
+          if (chatWorkspace) return;
           if (tools.browser.enabled) {
             tools.setBrowserEnabled(false);
             tools.closeComputerTab("browser");
@@ -223,14 +256,23 @@ const WorkspacePane = memo(function WorkspacePane({
         onUpdateSession={handles.updateSession}
         onRenameSession={(tabId, title) => handles.renameTab(view.paneId, tabId, title)}
         onClose={view.canClose ? () => handles.closePane(view.paneId) : undefined}
-        onForkSession={() => handles.splitTabIntoNewPane(view.paneId, view.pane.sessionId)}
-        terminalOwner={terminalOwnerFor(view.project, view.session)}
-        onOpenTerminal={() => tools.setComputerTab("terminal")}
+        terminalOwner={chatWorkspace ? null : terminalOwnerFor(view.project, view.session)}
+        onOpenTerminal={
+          chatWorkspace
+            ? undefined
+            : () =>
+                openWorkbenchResource({
+                  kind: "terminal",
+                  resourceId: crypto.randomUUID(),
+                  title: "Terminal",
+                })
+        }
         rightPanelOpen={tools.computer.open}
         onToggleRightPanel={tools.toggleComputerOpen}
         onRegisterHandle={(handle) => handles.registerPaneHandle(view.paneId, handle)}
-        showHeader={!compact}
+        showHeader={!compact && chatWorkspace}
         composerOnly={composerOnly}
+        readOnly={messagingSession}
       />
     </ComposerFocusContext.Provider>
   );

@@ -110,10 +110,12 @@ function resumeConnectionKey(connectionKey: string, piSessionId: string | null):
 }
 
 function patchRuntimeStatus(status: RuntimeStatus): Partial<Session> {
+  const canonicalSessionId = status.nativeSessionId || status.piSessionId;
   return {
-    ...(status.piSessionId ? { piSessionId: status.piSessionId } : {}),
+    ...(canonicalSessionId ? { piSessionId: canonicalSessionId } : {}),
     ...(status.modelId ? { modelId: status.modelId } : {}),
     ...(status.contextUsage !== undefined ? { contextUsage: status.contextUsage } : {}),
+    ...(status.lastError ? { error: status.lastError } : {}),
   };
 }
 
@@ -122,6 +124,7 @@ function sameRuntimePatch(session: Session, patch: Partial<Session>, status: str
     session.status === status &&
     (patch.piSessionId === undefined || session.piSessionId === patch.piSessionId) &&
     (patch.modelId === undefined || session.modelId === patch.modelId) &&
+    (patch.error === undefined || session.error === patch.error) &&
     (patch.contextUsage === undefined ||
       JSON.stringify(session.contextUsage ?? null) === JSON.stringify(patch.contextUsage ?? null))
   );
@@ -249,20 +252,27 @@ export function createSessionRuntimeController(): SessionRuntimeController {
     sessionId: SessionId,
     payload: Extract<RuntimeEventPayload, { type: "status" }>,
   ) => {
-    const idle = payload.phase === "done" || payload.phase === "idle";
-    if (idle) dropLiveTarget(sessionId);
+    const terminal =
+      payload.phase === "done" ||
+      payload.phase === "idle" ||
+      payload.phase === "failed" ||
+      payload.phase === "interrupted" ||
+      payload.phase === "unavailable" ||
+      payload.phase === "stopped";
+    if (terminal) dropLiveTarget(sessionId);
     commit(sessionId, (session) => ({
       ...session,
       piSessionId: payload.session?.piSessionId || session.piSessionId,
       contextUsage: runtimeContextUsage(payload.session, session.contextUsage),
-      status: idle ? "idle" : session.status === "stopping" ? "stopping" : "running",
-      activeAssistantId: idle ? undefined : session.activeAssistantId,
+      ...(payload.session?.lastError ? { error: payload.session.lastError } : {}),
+      status: terminal ? "idle" : session.status === "stopping" ? "stopping" : "running",
+      activeAssistantId: terminal ? undefined : session.activeAssistantId,
     }));
   };
 
   const applyPiPayload = (
     sessionId: SessionId,
-    payload: Extract<RuntimeEventPayload, { type: "pi" }>,
+    payload: Exclude<RuntimeEventPayload, { type: "status" }>,
   ) => {
     const eventId = piSessionIdFromEvent(payload.event);
     if (!acceptSeq(sessionId, payload.seq)) return;
@@ -537,7 +547,7 @@ export function createSessionRuntimeController(): SessionRuntimeController {
           if (status.active) {
             commit(sessionId, (session) => ({
               ...session,
-              piSessionId: status.piSessionId || session.piSessionId,
+              piSessionId: status.nativeSessionId || status.piSessionId || session.piSessionId,
               contextUsage: runtimeContextUsage(status, session.contextUsage),
               status: session.status === "stopping" ? "stopping" : "running",
             }));

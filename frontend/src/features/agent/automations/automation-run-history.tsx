@@ -76,7 +76,7 @@ export function AutomationRunHistory({
       </div>
       <div className="divide-y divide-(--ui-separator) border-y border-(--ui-separator)">
         {automation.runs.map((run, index) => (
-          <RunRow key={`${run.at}-${run.piSessionId ?? index}`} run={run} />
+          <RunRow key={`${run.at}-${run.sessionId || index}`} run={run} />
         ))}
       </div>
     </div>
@@ -89,9 +89,7 @@ function RunRow({ run }: { run: Automation["runs"][number] }) {
   // is not a registered project — the scheduler resolves projectId by
   // matching cwd against the project list, so that is most of them — and
   // the UI claimed "Transcript unavailable" for threads that existed.
-  const transcriptHref = run.piSessionId
-    ? `/agent?${run.projectId ? `project=${encodeURIComponent(run.projectId)}&` : ""}session=${encodeURIComponent(run.piSessionId)}&replace=1`
-    : null;
+  const transcriptHref = `/agent?${run.projectId ? `project=${encodeURIComponent(run.projectId)}&` : ""}session=${encodeURIComponent(run.sessionId)}&replace=1`;
   return (
     <div className="px-1 py-3 transition-colors hover:bg-(--ui-hover)/25">
       <div className="flex items-start justify-between gap-3">
@@ -109,18 +107,12 @@ function RunRow({ run }: { run: Automation["runs"][number] }) {
             {new Date(run.at).toLocaleString()}
           </p>
         </div>
-        {transcriptHref ? (
-          <Link
-            href={transcriptHref}
-            className="shrink-0 text-[length:var(--fs-sm)] text-(--link) hover:underline"
-          >
-            Open run
-          </Link>
-        ) : (
-          <span className="shrink-0 text-[length:var(--fs-xs)] text-(--ui-muted)">
-            Transcript unavailable
-          </span>
-        )}
+        <Link
+          href={transcriptHref}
+          className="shrink-0 text-[length:var(--fs-sm)] text-(--link) hover:underline"
+        >
+          Open run
+        </Link>
       </div>
       {run.error ? (
         <p className="mt-2 whitespace-pre-wrap text-[length:var(--fs-sm)] leading-5 text-(--ui-danger)">

@@ -6,27 +6,27 @@ import { GitBranchIcon } from "@/ui/icons";
 
 export function AgentComposerStatusBar({
   cwd,
+  projectName,
   gitBranch,
   gitSummary,
   onInitGit,
   currentContextTokens,
   contextWindow,
-  onOpenStatus,
   onOpenDiff,
 }: {
   cwd: string;
+  projectName?: string | null;
   gitBranch?: string | null;
   gitSummary?: GitSummary | null;
   onInitGit?: () => void;
   currentContextTokens: number;
   contextWindow: number;
-  onOpenStatus: () => void;
   onOpenDiff: () => void;
 }) {
-  const displayCwd = formatHomeRelativePath(cwd);
+  const displayCwd = projectName || projectNameFromPath(cwd);
 
   return (
-    <div className="relative z-20 mx-auto mt-2 flex w-full max-w-[calc(var(--composer-w)*0.9)] items-center gap-2 overflow-visible font-mono text-[length:var(--fs-xs)] text-(--dim) sm:mt-2.5 sm:w-[90%]">
+    <div className="relative z-20 mt-1.5 flex w-full items-center gap-2 overflow-visible font-mono text-[length:var(--fs-xs)] text-(--dim) sm:mt-2">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
         <div className="min-w-0 max-w-[42%] shrink overflow-visible">
           {displayCwd ? (
@@ -38,11 +38,7 @@ export function AgentComposerStatusBar({
         <GitBranchState gitBranch={gitBranch} gitSummary={gitSummary} onInitGit={onInitGit} />
         <GitSummaryState gitSummary={gitSummary} onOpenDiff={onOpenDiff} />
       </div>
-      <ContextReadout
-        current={currentContextTokens}
-        contextWindow={contextWindow}
-        onClick={onOpenStatus}
-      />
+      <ContextReadout current={currentContextTokens} contextWindow={contextWindow} />
     </div>
   );
 }
@@ -100,43 +96,54 @@ function GitSummaryState({
     >
       <span className="text-(--ok)">+{gitSummary.additions}</span>
       <span className="text-(--err)">-{gitSummary.deletions}</span>
-      {gitSummary.statusCount > 0 ? (
-        <span className="text-(--dim)">· {gitSummary.statusCount} files</span>
-      ) : null}
     </button>
   );
 }
 
-function ContextReadout({
-  current,
-  contextWindow,
-  onClick,
-}: {
-  current: number;
-  contextWindow: number;
-  onClick: () => void;
-}) {
-  const title = `Open status · Context ${formatTokenCount(current)} / ${formatTokenCount(contextWindow)}`;
+function ContextReadout({ current, contextWindow }: { current: number; contextWindow: number }) {
+  const title = `Context ${formatTokenCount(current)} / ${formatTokenCount(contextWindow)}`;
+  const ratio = contextWindow > 0 ? Math.min(1, Math.max(0, current / contextWindow)) : 0;
+  const circumference = 2 * Math.PI * 6;
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="ml-auto inline-flex shrink-0 items-center rounded-sm px-1 text-(--dim) hover:text-(--fg)/80"
+    <span
+      className="ml-auto inline-flex shrink-0 items-center gap-1.5 px-1 text-(--dim)"
       title={title}
       aria-label={title}
     >
+      <svg viewBox="0 0 16 16" className="h-4 w-4 -rotate-90" aria-hidden="true">
+        <circle
+          cx="8"
+          cy="8"
+          r="6"
+          fill="none"
+          stroke="currentColor"
+          strokeOpacity="0.18"
+          strokeWidth="2"
+        />
+        <circle
+          cx="8"
+          cy="8"
+          r="6"
+          fill="none"
+          stroke={
+            ratio > 0.9 ? "var(--ui-danger)" : ratio > 0.75 ? "var(--ui-warning)" : "var(--accent)"
+          }
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * (1 - ratio)}
+        />
+      </svg>
       <span className="tabular-nums">
         {formatTokenCount(current)}/{formatTokenCount(contextWindow)}
       </span>
-    </button>
+    </span>
   );
 }
 
-function formatHomeRelativePath(value: string): string {
+function projectNameFromPath(value: string): string {
   const normalized = value.trim().replace(/\\/g, "/").replace(/\/+$/, "");
   if (!normalized) return "";
-  const homeMatch = normalized.match(/^\/Users\/[^/]+(\/.*)?$/);
-  if (homeMatch) return `~${homeMatch[1] ?? ""}`;
-  return normalized;
+  return normalized.slice(normalized.lastIndexOf("/") + 1);
 }

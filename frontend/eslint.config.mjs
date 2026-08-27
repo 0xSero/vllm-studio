@@ -63,6 +63,7 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    ".next-codex-dev/**",
     // Dev server output when NEXT_DIST_DIR=.next-dev keeps it clear of builds.
     ".next-dev/**",
     "out/**",

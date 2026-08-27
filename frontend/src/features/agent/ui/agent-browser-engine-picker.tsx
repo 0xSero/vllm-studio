@@ -77,7 +77,7 @@ export function BrowserEnginePicker({ enabled }: { enabled: boolean }) {
       // WIDEST option, and "Google Chrome (not installed)" would shove the
       // reader toggle and close button out of a 280px-wide panel. The popup
       // still renders full labels, and the tooltip carries the active one.
-      className={`h-7 w-20 shrink-0 truncate rounded border bg-(--surface) px-1 text-[length:var(--fs-xs)] outline-none disabled:opacity-40 ${
+      className={`h-6 w-20 shrink-0 truncate rounded border bg-(--surface) px-1 text-[length:var(--fs-2xs)] outline-none disabled:opacity-40 ${
         state.preferenceUnavailable
           ? "border-(--err)/50 text-(--err)"
           : "border-(--border) text-(--dim) hover:text-(--fg)"

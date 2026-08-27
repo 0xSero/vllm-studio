@@ -2,10 +2,12 @@
 
 import React, {
   Children,
+  cloneElement,
   isValidElement,
   memo,
   useCallback,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -13,6 +15,9 @@ import { PreviewScroll } from "@/ui";
 import { useCopiedFlag } from "@/features/agent/ui/use-copied-flag";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { highlightLines } from "@/features/agent/highlight-cache";
 import { normalizeBrowserInput } from "@/features/agent/tools/browser-url";
 import { useToolsActions } from "@/features/agent/tools/context";
@@ -100,6 +105,7 @@ const FencedCodeBlock = memo(function FencedCodeBlock({
   code: string;
   language: string | null;
 }) {
+  const [wrapped, setWrapped] = useState(false);
   const codeClassName = [language ? `language-${language}` : "", "font-mono"]
     .filter(Boolean)
     .join(" ");
@@ -114,10 +120,24 @@ const FencedCodeBlock = memo(function FencedCodeBlock({
         <span className="font-mono text-[length:var(--fs-sm)] font-medium text-(--dim)">
           {language ?? "code"}
         </span>
-        {code ? <CodeBlockCopyButton code={code} /> : null}
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setWrapped((value) => !value)}
+            className={`rounded px-1 text-[length:var(--fs-xs)] hover:text-(--fg) ${wrapped ? "bg-(--hover) text-(--fg)" : "text-(--dim)"}`}
+            aria-pressed={wrapped}
+            aria-label={wrapped ? "Disable code wrapping" : "Wrap code"}
+            title={wrapped ? "Disable wrapping" : "Wrap code"}
+          >
+            Wrap
+          </button>
+          {code ? <CodeBlockCopyButton code={code} /> : null}
+        </div>
       </div>
       <PreviewScroll height="lg" stickToBottom={false} className="max-w-full">
-        <pre className="m-0 overflow-x-auto bg-transparent px-3 py-2.5 text-[length:var(--fs-sm)] leading-[1.6]">
+        <pre
+          className={`m-0 bg-transparent px-3 py-2.5 text-[length:var(--fs-sm)] leading-[1.6] ${wrapped ? "whitespace-pre-wrap break-words" : "overflow-x-auto"}`}
+        >
           {highlightedCode !== null ? (
             <code
               className={`${codeClassName} syntax-highlight`}
@@ -152,14 +172,99 @@ const components: Components = {
       <span>{children}</span>
     ),
   img: ({ alt }) => <span>{alt ? `[Image: ${alt}]` : "[Remote image hidden]"}</span>,
-  // Cells/rows are styled entirely via `.chat-markdown` in chat.css; only the
-  // scroll wrapper needs a component override.
-  table: ({ node: _n, ...props }) => (
-    <div className="my-3 max-w-full overflow-x-auto">
-      <table {...props} />
-    </div>
-  ),
+  table: ({ node: _n, children }) => <MarkdownTable>{children}</MarkdownTable>,
+  blockquote: ({ node: _n, children }) => <MarkdownBlockquote>{children}</MarkdownBlockquote>,
 };
+
+function tableText(table: HTMLTableElement): string[][] {
+  return [...table.rows].map((row) => [...row.cells].map((cell) => cell.innerText.trim()));
+}
+
+function markdownTable(rows: string[][]): string {
+  if (!rows.length) return "";
+  const escape = (value: string) => value.replaceAll("|", "\\|").replaceAll("\n", " ");
+  const width = Math.max(...rows.map((row) => row.length));
+  const normalized = rows.map((row) =>
+    Array.from({ length: width }, (_, index) => escape(row[index] ?? "")),
+  );
+  const header = normalized[0] ?? [];
+  return [header, header.map(() => "---"), ...normalized.slice(1)]
+    .map((row) => `| ${row.join(" | ")} |`)
+    .join("\n");
+}
+
+function csvTable(rows: string[][]): string {
+  return rows
+    .map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(","))
+    .join("\n");
+}
+
+function MarkdownTable({ children }: { children?: ReactNode }) {
+  const tableRef = useRef<HTMLTableElement | null>(null);
+  const [copied, setCopied] = useState<"markdown" | "csv" | null>(null);
+  const copy = (format: "markdown" | "csv") => {
+    const table = tableRef.current;
+    if (!table) return;
+    const rows = tableText(table);
+    void writeClipboardText(format === "markdown" ? markdownTable(rows) : csvTable(rows)).then(
+      () => {
+        setCopied(format);
+        window.setTimeout(() => setCopied(null), 1500);
+      },
+    );
+  };
+  return (
+    <div className="assistant-markdown-table group/table my-3 overflow-hidden rounded-[var(--rad-md)] border border-(--border)">
+      <div className="flex h-7 items-center justify-end gap-1 border-b border-(--border) bg-(--color-panel-subtle) px-1.5 opacity-70 transition-opacity group-hover/table:opacity-100 focus-within:opacity-100">
+        <button
+          type="button"
+          onClick={() => copy("markdown")}
+          className="rounded px-1.5 py-0.5 text-[length:var(--fs-xs)] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+        >
+          {copied === "markdown" ? "Copied" : "Markdown"}
+        </button>
+        <button
+          type="button"
+          onClick={() => copy("csv")}
+          className="rounded px-1.5 py-0.5 text-[length:var(--fs-xs)] text-(--dim) hover:bg-(--hover) hover:text-(--fg)"
+        >
+          {copied === "csv" ? "Copied" : "CSV"}
+        </button>
+      </div>
+      <div className="max-w-full overflow-x-auto">
+        <table ref={tableRef}>{children}</table>
+      </div>
+    </div>
+  );
+}
+
+const ALERT_TYPES = new Set(["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"]);
+
+function stripAlertMarker(node: ReactNode, state: { stripped: boolean }): ReactNode {
+  if (typeof node === "string" && !state.stripped) {
+    const next = node.replace(/^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/i, "");
+    if (next !== node) state.stripped = true;
+    return next;
+  }
+  if (Array.isArray(node)) return node.map((child) => stripAlertMarker(child, state));
+  if (isValidElement<{ children?: ReactNode }>(node)) {
+    return cloneElement(node, undefined, stripAlertMarker(node.props.children, state));
+  }
+  return node;
+}
+
+function MarkdownBlockquote({ children }: { children?: ReactNode }) {
+  const match = /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i.exec(nodeToPlainText(children));
+  const type = match?.[1]?.toUpperCase();
+  if (!type || !ALERT_TYPES.has(type)) return <blockquote>{children}</blockquote>;
+  const stripped = stripAlertMarker(children, { stripped: false });
+  return (
+    <div role="note" data-markdown-alert={type.toLowerCase()} className="chat-markdown-alert">
+      <div className="chat-markdown-alert-title">{type}</div>
+      {stripped}
+    </div>
+  );
+}
 
 function safeExternalHref(value: string | undefined): boolean {
   if (!value) return false;
@@ -172,7 +277,20 @@ function safeExternalHref(value: string | undefined): boolean {
 
 // The remark/rehype plugin lists are constant. Hoisted out of render so the
 // `ReactMarkdown` reconciler sees the same array identity each commit.
-const REMARK_PLUGINS = [remarkGfm, remarkLocalMediaReferences];
+const REMARK_PLUGINS = [remarkGfm, remarkBreaks, remarkLocalMediaReferences];
+const REHYPE_PLUGINS = [
+  rehypeRaw,
+  [
+    rehypeSanitize,
+    {
+      ...defaultSchema,
+      attributes: {
+        ...defaultSchema.attributes,
+        code: [...(defaultSchema.attributes?.code ?? []), ["className", /^language-/]],
+      },
+    },
+  ],
+] satisfies NonNullable<React.ComponentProps<typeof ReactMarkdown>["rehypePlugins"]>;
 
 function appUrlTransform(value: string): string {
   return isFileReference(value) || assistantMediaKind(value) ? value : defaultUrlTransform(value);
@@ -432,6 +550,7 @@ function AssistantMarkdownInner({ text, cwd = null }: { text: string; cwd?: stri
       >
         <ReactMarkdown
           remarkPlugins={REMARK_PLUGINS}
+          rehypePlugins={REHYPE_PLUGINS}
           components={componentsWithAppLinks}
           urlTransform={appUrlTransform}
         >

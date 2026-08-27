@@ -1,5 +1,6 @@
 import { permanentRedirect } from "next/navigation";
+import { settingsHref } from "@/features/settings/settings-navigation";
 
 export default function ServerRedirect() {
-  permanentRedirect("/configure?section=server#server");
+  permanentRedirect(settingsHref("machine:local:logs"));
 }

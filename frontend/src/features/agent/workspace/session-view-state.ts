@@ -1,10 +1,5 @@
 import { Schema } from "effect";
-import {
-  COMPUTER_TAB_IDS,
-  type ComputerState,
-  type ComputerTab,
-} from "@/features/agent/tools/types";
-import { clampComputerWidth, uniqueComputerTabs } from "@/features/agent/tools/persistence";
+import type { BrowserState } from "@/features/agent/tools/types";
 
 export const SESSION_VIEW_STATE_KEY = "local-studio.agent.sessionViewState.v1";
 const MAX_SESSION_VIEWS = 100;
@@ -16,25 +11,25 @@ export type SessionViewIdentity = {
   aliases: string[];
 };
 
-export type SessionComputerState = Pick<ComputerState, "open" | "tab" | "tabs" | "width">;
+export type SessionBrowserState = BrowserState;
 
 export type SessionViewState = {
   scrollTop: number;
   stickToBottom: boolean;
-  computer?: SessionComputerState;
+  browser?: SessionBrowserState;
 };
 
-const SessionComputerStateSchema = Schema.Struct({
-  open: Schema.Boolean,
-  tab: Schema.String,
-  tabs: Schema.Array(Schema.String),
-  width: Schema.Number,
+const SessionBrowserStateSchema = Schema.Struct({
+  enabled: Schema.Boolean,
+  backend: Schema.String,
+  url: Schema.String,
+  input: Schema.String,
 });
 
 const SessionViewStateSchema = Schema.Struct({
   scrollTop: Schema.Number,
   stickToBottom: Schema.Boolean,
-  computer: Schema.optional(SessionComputerStateSchema),
+  browser: Schema.optional(SessionBrowserStateSchema),
 });
 
 const SessionViewStoreSchema = Schema.Struct({
@@ -44,35 +39,19 @@ const SessionViewStoreSchema = Schema.Struct({
 
 const decodeSessionViews = Schema.decodeUnknownOption(SessionViewStoreSchema);
 
-function computerTab(value: string): ComputerTab | undefined {
-  return COMPUTER_TAB_IDS.find((tab) => tab === value);
-}
-
-function normalizeComputerState(
-  value: typeof SessionComputerStateSchema.Type,
-): SessionComputerState | undefined {
-  const tab = computerTab(value.tab);
-  if (!tab) return undefined;
-  const tabs = uniqueComputerTabs(
-    value.tabs.flatMap((item) => {
-      const resolved = computerTab(item);
-      return resolved ? [resolved] : [];
-    }),
-  );
-  return {
-    open: value.open,
-    tab,
-    tabs: tabs.includes(tab) ? tabs : uniqueComputerTabs([...tabs, tab]),
-    width: clampComputerWidth(value.width),
-  };
-}
-
 function normalizeView(value: typeof SessionViewStateSchema.Type): SessionViewState {
-  const computer = value.computer ? normalizeComputerState(value.computer) : undefined;
+  const browser: SessionBrowserState | undefined = value.browser
+    ? {
+        enabled: value.browser.enabled,
+        backend: value.browser.backend === "chrome" ? "chrome" : "embedded",
+        url: value.browser.url.slice(0, 8192),
+        input: value.browser.input.slice(0, 8192),
+      }
+    : undefined;
   return {
     scrollTop: Math.max(0, value.scrollTop),
     stickToBottom: value.stickToBottom,
-    ...(computer ? { computer } : {}),
+    ...(browser ? { browser } : {}),
   };
 }
 
@@ -132,11 +111,6 @@ export function patchSessionView(
   return next;
 }
 
-export function computerSessionView(computer: ComputerState): SessionComputerState {
-  return {
-    open: computer.open,
-    tab: computer.tab,
-    tabs: computer.tabs,
-    width: computer.width,
-  };
+export function browserSessionView(browser: BrowserState): SessionBrowserState {
+  return browser;
 }

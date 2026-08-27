@@ -58,7 +58,7 @@ function MermaidBlock({ code, fence }: { code: string; fence: string }) {
     };
   }, [code]);
   if (failed) return <AssistantMarkdown text={fence} />;
-  return <div ref={containerRef} className="my-3 overflow-x-auto" />;
+  return <div ref={containerRef} className="my-2 overflow-x-auto" />;
 }
 
 function MarkdownWithMermaid({ text }: { text: string }) {
@@ -107,7 +107,7 @@ export function rawFileUrl(root: string, relPath: string): string {
 // panel hands those to the OS or a browser tab instead of framing them.
 export function ImagePreview({ name, url }: { name: string; url: string }) {
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-(--bg) p-3">
+    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-(--bg) p-4">
       <img src={url} alt={name} className="max-h-full max-w-full object-contain" />
     </div>
   );
@@ -144,7 +144,7 @@ export function RenderedPreview({ content, kind }: { content: string; kind: Prev
   if (isBinaryPreviewKind(kind)) return null;
   if (kind === "md") {
     return (
-      <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg) px-3 py-2 text-sm leading-6 text-(--fg)">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg) px-5 py-4 text-sm leading-6 text-(--fg)">
         <MarkdownWithMermaid text={content} />
       </div>
     );

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { NextRequest } from "next/server";
-import { proxyToAgentRuntime } from "@/app/api/agent/proxy-to-runtime";
+import { proxyToController } from "@/app/api/agent/proxy-to-controller";
 import { requireApiAccess } from "@/lib/auth/guard";
 import { assertWorkspaceRoot } from "@/features/agent/fs-store";
 import { jsonError } from "@/app/api/_lib/route-helpers";
@@ -35,7 +35,10 @@ async function validateBody(request: NextRequest): Promise<Response | null> {
   try {
     assertWorkspaceRoot(path.resolve(cwd));
   } catch (error) {
-    return jsonError(error instanceof Error ? error.message : "cwd is not an allowed workspace", 403);
+    return jsonError(
+      error instanceof Error ? error.message : "cwd is not an allowed workspace",
+      403,
+    );
   }
   return null;
 }
@@ -45,5 +48,5 @@ export async function POST(request: NextRequest): Promise<Response> {
   if (denied) return denied;
   const invalid = await validateBody(request);
   if (invalid) return invalid;
-  return proxyToAgentRuntime(request, { bodyLimitBytes: BODY_LIMIT_BYTES });
+  return proxyToController(request, { bodyLimitBytes: BODY_LIMIT_BYTES });
 }

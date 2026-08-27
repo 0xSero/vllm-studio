@@ -7,6 +7,7 @@ import { POPOVER_PANEL_CLASS } from "@/ui/popover";
 import { ChatIcon, Folder } from "@/ui/icons";
 import { cleanSessionTitle } from "@/features/agent/messages/helpers";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { settingsHref } from "@/features/settings/settings-navigation";
 
 import { type ActiveSession, indexOpenByThreadId } from "@/features/agent/session-index";
 import { formatRelative } from "@/features/agent/ui/session-recency";
@@ -27,30 +28,30 @@ type AppDestination = {
 
 const APP_DESTINATIONS: AppDestination[] = [
   {
-    href: "/",
+    href: settingsHref("machine:local:status"),
     label: "Status",
-    keywords: "dashboard controller gpu metrics decode prefill throughput live historic",
-    description: "Controller, GPU, model status, and live metrics.",
+    keywords: "machine dashboard controller gpu metrics decode prefill throughput live historic",
+    description: "Local machine, controller, GPU, model status, and live metrics.",
   },
   {
-    href: "/usage",
+    href: settingsHref("usage"),
     label: "Usage",
     keywords: "tokens requests analytics costs provider pi sessions peaks",
     description: "Token, request, and model usage analytics.",
   },
   {
-    href: "/integrations",
-    label: "Integrations",
+    href: "/customize",
+    label: "Customize",
     keywords:
-      "connectors mcp servers accounts google gmail workspace access grants providers cloud models sign in oauth api keys skills plugins",
+      "connectors mcp servers accounts google gmail workspace access grants providers cloud models sign in oauth api keys skills",
     description: "Connectors, accounts, model sign-ins, and skills.",
   },
   {
-    href: "/configure",
-    label: "Configure",
+    href: settingsHref("machines"),
+    label: "Machines",
     keywords:
       "machines hardware gpu memory pool server logs api docs swagger controller engines runtime",
-    description: "Manage the machines that run models, and the controller.",
+    description: "Manage machines, controller connections, and deployment.",
   },
   {
     href: "/agent",

@@ -1,4 +1,5 @@
 import { isAgentThinkingLevel, type AgentThinkingLevel } from "@/features/agent/contracts";
+import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 
 // Global, client-only preference for the reasoning ("thinking") level a *new*
 // session should start at. Persisted in localStorage so the last level the user
@@ -27,6 +28,7 @@ export function setThinkingLevelDefault(level: AgentThinkingLevel): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(THINKING_LEVEL_DEFAULT_KEY, level);
+    scheduleDurableUiPreferencesSave();
   } catch {
     /* ignore storage failures — persistence here is a convenience, not load-bearing */
   }

@@ -7,9 +7,17 @@ import type { ChatMessage, QueuedMessage, TokenStats } from "@/features/agent/me
 import type { ComposerSkillRef } from "@/features/agent/composer-context";
 import type { RuntimeContextUsage } from "@/features/agent/runtime/api";
 import type { AgentThinkingLevel } from "@/features/agent/contracts";
+import type { AgentHarness } from "@shared/agent/harness-id";
+import type { AgentSessionKind } from "@shared/agent/execution-contract";
+
+export type { AgentHarness } from "@shared/agent/harness-id";
 
 // The session identity string — the same value a pane stores as `sessionId`.
 export type SessionId = string;
+
+export function isMessagingSessionId(value: string | null | undefined): boolean {
+  return Boolean(value?.startsWith("message:telegram:") || value?.startsWith("message:discord:"));
+}
 
 export type SessionStatus = "idle" | "starting" | "running" | "stopping" | "loading";
 
@@ -32,13 +40,21 @@ export type Session = {
   // Pane/client identity AND the opaque runtime key sent to the server. One
   // per tab so tabs run independent agent sessions.
   id: SessionId;
-  headTracked?: boolean;
   // Pi session UUID (null = unstarted, will be assigned by pi when the first
   // turn runs).
   piSessionId: string | null;
+  executionKind?: AgentSessionKind;
+  placement?: "local" | "daytona";
+  sandboxAccountId?: string;
+  harness?: AgentHarness;
   projectId?: string;
   cwd?: string;
+  managedProject?: boolean;
+  baseRef?: string;
+  branchName?: string;
+  detached?: boolean;
   modelId?: string;
+  modelRouteId?: string;
   thinkingLevel?: AgentThinkingLevel;
   title: string;
   messages: ChatMessage[];
@@ -64,16 +80,6 @@ export type Session = {
   // view ("load earlier"). Set when a tail load left earlier events unread;
   // null/undefined once the whole log is loaded.
   historyCursor?: number | null;
-  /**
-   * These messages came from the localStorage snapshot, not from a replay.
-   *
-   * The snapshot exists so a reopened session paints instantly, but it is
-   * lossy by design — capped at 200 messages and 512KB — and it carries no
-   * history cursor. Anything deciding "do we already have this transcript?"
-   * has to tell the two apart, or the placeholder gets mistaken for the real
-   * thing and the replay that would load the rest never runs.
-   */
-  hydratedFromCache?: boolean;
 };
 
 export type SessionsMap = ReadonlyMap<SessionId, Session>;

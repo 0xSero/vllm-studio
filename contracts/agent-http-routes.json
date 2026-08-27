@@ -1,0 +1,884 @@
+{
+  "version": 1,
+  "routes": [
+    { "method": "GET", "path": "/api/workbench", "ownership": "shared", "streaming": "never" },
+    {
+      "method": "POST",
+      "path": "/api/workbench/commands",
+      "ownership": "shared",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/workbench/events",
+      "ownership": "shared",
+      "streaming": "always"
+    },
+    { "method": "POST", "path": "/api/agent/turn", "ownership": "head", "streaming": "never" },
+    { "method": "POST", "path": "/api/agent/abort", "ownership": "head", "streaming": "never" },
+    { "method": "POST", "path": "/api/agent/compact", "ownership": "head", "streaming": "never" },
+    {
+      "method": "POST",
+      "path": "/api/agent/runtime/extension-ui",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/runtime/sessions",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/runtime/status",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/runtime/events",
+      "ownership": "head",
+      "streaming": "always"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/runtime/transcript",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/session-list-changed",
+      "ownership": "head",
+      "streaming": "always"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/sessions",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/agent/sessions",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/sessions/all",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/sessions/:id",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agent/sessions/:id",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/setup-checks",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/harnesses",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/models",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/models",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/providers",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/providers/login/:jobId",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/providers/login/:jobId/respond",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/providers/login/:jobId/cancel",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/providers/:providerId/login",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/providers/:providerId/logout",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/head-connection",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/agent/head-connection",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/agent/head-connection",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/enrollments",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/agent/enrollments/:id",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/automations",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/automations",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agent/automations/:id",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/agent/automations/:id",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/automations/:id/run",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/projects",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/projects",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/agent/projects",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/projects/repositories",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/projects/workspace",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/projects/refs",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/connectors",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/connectors",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/agent/connectors",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    { "method": "POST", "path": "/api/agent/oauth/authorize", "ownership": "head", "streaming": "never" },
+    { "method": "DELETE", "path": "/api/agent/oauth/authorize", "ownership": "head", "streaming": "never" },
+    { "method": "GET", "path": "/api/agent/oauth/status", "ownership": "head", "streaming": "never" },
+    { "method": "PUT", "path": "/api/agent/oauth/client", "ownership": "head", "streaming": "never" },
+    { "method": "DELETE", "path": "/api/agent/oauth", "ownership": "head", "streaming": "never" },
+    { "method": "GET", "path": "/api/agent/accounts/google", "ownership": "head", "streaming": "never" },
+    { "method": "PUT", "path": "/api/agent/accounts/google", "ownership": "head", "streaming": "never" },
+    { "method": "DELETE", "path": "/api/agent/accounts/google", "ownership": "head", "streaming": "never" },
+    { "method": "POST", "path": "/api/agent/accounts/google/authorize", "ownership": "head", "streaming": "never" },
+    { "method": "DELETE", "path": "/api/agent/accounts/google/authorize", "ownership": "head", "streaming": "never" },
+    { "method": "GET", "path": "/api/agent/accounts/code-storage", "ownership": "head", "streaming": "never" },
+    { "method": "POST", "path": "/api/agent/accounts/code-storage", "ownership": "head", "streaming": "never" },
+    { "method": "DELETE", "path": "/api/agent/accounts/code-storage", "ownership": "head", "streaming": "never" },
+    { "method": "GET", "path": "/api/agent/accounts/credential-store", "ownership": "head", "streaming": "never" },
+    { "method": "PUT", "path": "/api/agent/accounts/credential-store", "ownership": "head", "streaming": "never" },
+    { "method": "GET", "path": "/api/agent/accounts/sandboxes", "ownership": "head", "streaming": "never" },
+    { "method": "POST", "path": "/api/agent/accounts/sandboxes", "ownership": "head", "streaming": "never" },
+    { "method": "DELETE", "path": "/api/agent/accounts/sandboxes", "ownership": "head", "streaming": "never" },
+    { "method": "GET", "path": "/api/agent/accounts/messaging", "ownership": "head", "streaming": "never" },
+    { "method": "POST", "path": "/api/agent/accounts/messaging", "ownership": "head", "streaming": "never" },
+    { "method": "DELETE", "path": "/api/agent/accounts/messaging", "ownership": "head", "streaming": "never" },
+    { "method": "GET", "path": "/api/agent/messaging/access", "ownership": "head", "streaming": "never" },
+    { "method": "POST", "path": "/api/agent/messaging/access", "ownership": "head", "streaming": "never" },
+    { "method": "DELETE", "path": "/api/agent/messaging/access", "ownership": "head", "streaming": "never" },
+    { "method": "GET", "path": "/api/agent/messaging/defaults", "ownership": "head", "streaming": "never" },
+    { "method": "PUT", "path": "/api/agent/messaging/defaults", "ownership": "head", "streaming": "never" },
+    { "method": "POST", "path": "/api/agent/messaging/discord/:accountId", "ownership": "head", "streaming": "never" },
+    { "method": "GET", "path": "/api/agent/cloud/workers", "ownership": "head", "streaming": "never" },
+    { "method": "POST", "path": "/api/agent/git/mirror", "ownership": "head", "streaming": "never" },
+    {
+      "method": "GET",
+      "path": "/api/agent/connectors/grants",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/agent/connectors/grants",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/agent/connectors/grants",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/connectors/call",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/connectors/call",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/connectors/test",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/connectors/ssh-server-path",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/skills",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/skills/load",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/prompt-templates",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/prompt-templates/load",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/pr",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/pr/merge",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/git",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/git",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/git/branches",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/git/worktrees",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/terminal",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/terminal/resolve-cwd",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/terminal/pty/open",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/terminal/pty/stream",
+      "ownership": "head",
+      "streaming": "always"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/terminal/pty/input",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/terminal/pty/resize",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/terminal/pty/close",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/browser/fetch",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/browser/frame",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/browser/localhosts",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/browser/state",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/browser/history",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/browser/engines",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/browser/engine",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/browser/input",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/browser/viewport",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/browser/:verb",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/goal",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/agent/goal",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/agent/goal",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/subagents",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/subagents",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/subagents/:runId",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/subagents/:runId/stop",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/projects",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/projects",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "DELETE",
+      "path": "/internal/node/v1/projects",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/projects/repositories",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/projects/workspace",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/projects/refs",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/connectors",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/connectors",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "DELETE",
+      "path": "/internal/node/v1/connectors",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    { "method": "POST", "path": "/internal/node/v1/oauth/authorize", "ownership": "worker", "streaming": "never" },
+    { "method": "DELETE", "path": "/internal/node/v1/oauth/authorize", "ownership": "worker", "streaming": "never" },
+    { "method": "GET", "path": "/internal/node/v1/oauth/status", "ownership": "worker", "streaming": "never" },
+    { "method": "PUT", "path": "/internal/node/v1/oauth/client", "ownership": "worker", "streaming": "never" },
+    { "method": "DELETE", "path": "/internal/node/v1/oauth", "ownership": "worker", "streaming": "never" },
+    { "method": "GET", "path": "/internal/node/v1/accounts/google", "ownership": "worker", "streaming": "never" },
+    { "method": "PUT", "path": "/internal/node/v1/accounts/google", "ownership": "worker", "streaming": "never" },
+    { "method": "DELETE", "path": "/internal/node/v1/accounts/google", "ownership": "worker", "streaming": "never" },
+    { "method": "POST", "path": "/internal/node/v1/accounts/google/authorize", "ownership": "worker", "streaming": "never" },
+    { "method": "DELETE", "path": "/internal/node/v1/accounts/google/authorize", "ownership": "worker", "streaming": "never" },
+    { "method": "GET", "path": "/internal/node/v1/accounts/code-storage", "ownership": "worker", "streaming": "never" },
+    { "method": "POST", "path": "/internal/node/v1/accounts/code-storage", "ownership": "worker", "streaming": "never" },
+    { "method": "DELETE", "path": "/internal/node/v1/accounts/code-storage", "ownership": "worker", "streaming": "never" },
+    { "method": "GET", "path": "/internal/node/v1/accounts/credential-store", "ownership": "worker", "streaming": "never" },
+    { "method": "PUT", "path": "/internal/node/v1/accounts/credential-store", "ownership": "worker", "streaming": "never" },
+    { "method": "GET", "path": "/internal/node/v1/accounts/sandboxes", "ownership": "worker", "streaming": "never" },
+    { "method": "POST", "path": "/internal/node/v1/accounts/sandboxes", "ownership": "worker", "streaming": "never" },
+    { "method": "DELETE", "path": "/internal/node/v1/accounts/sandboxes", "ownership": "worker", "streaming": "never" },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/connector-grants",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "PUT",
+      "path": "/internal/node/v1/connector-grants",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "DELETE",
+      "path": "/internal/node/v1/connector-grants",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/connector-call",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/connector-call",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/connector-test",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/messaging/react",
+      "ownership": "head",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/connectors/ssh-server-path",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/skills",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/skills/load",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/prompt-templates",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/prompt-templates/load",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/pr",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/pr/merge",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/git",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/git",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/git/branches",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/git/worktrees",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/terminal",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/terminal/resolve-cwd",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/terminal/pty/open",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/terminal/pty/stream",
+      "ownership": "worker",
+      "streaming": "always"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/terminal/pty/input",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/terminal/pty/resize",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/terminal/pty/close",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/browser/fetch",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/browser/frame",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/browser/localhosts",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/browser/state",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/browser/history",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/node/v1/browser/engines",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/browser/engine",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/browser/input",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/browser/viewport",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/node/v1/browser/:verb",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/harness/v1/turn",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/harness/v1/fx-gateway",
+      "ownership": "worker",
+      "streaming": "always"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/harness/v1/abort",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/harness/v1/compact",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/harness/v1/extension-ui",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/harness/v1/sessions",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/harness/v1/status",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/harness/v1/events",
+      "ownership": "worker",
+      "streaming": "always"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/harness/v1/transcript",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/harness/v1/setup-checks",
+      "ownership": "worker",
+      "streaming": "never"
+    },
+    {
+      "method": "GET",
+      "path": "/internal/harness/v1/catalog",
+      "ownership": "worker",
+      "streaming": "never"
+    }
+  ]
+}

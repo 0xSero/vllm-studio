@@ -112,7 +112,7 @@ export function ResourceLogo({
     setImageState({ imageKey, failed: false, loaded: false });
   }
   const color = normalizedColor(`${identity} ${label} ${company ?? ""}`, brandColor);
-  const dimensions = size === "md" ? "h-9 w-9" : "h-7 w-7";
+  const dimensions = size === "md" ? "h-9 w-9" : "h-6 w-6";
   const requestImage = Boolean(resolvedImageUrl) && !imageState.failed;
   const showImage = requestImage && imageState.loaded;
   return (

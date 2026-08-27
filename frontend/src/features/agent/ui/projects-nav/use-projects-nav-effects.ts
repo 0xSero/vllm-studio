@@ -80,7 +80,7 @@ export function useProjectsNavAddProjectEffect(handleAddProject: () => void): vo
   }, [handleAddProject]);
 }
 
-const SESSIONS_RELOAD_DEBOUNCE_MS = 300;
+const SESSIONS_RELOAD_DEBOUNCE_MS = 50;
 
 export function useProjectSessionsReloadEffect(reload: () => Promise<void>): void {
   useMountSubscription(() => {

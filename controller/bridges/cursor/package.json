@@ -1,0 +1,16 @@
+{
+  "name": "@local-studio/cursor-bridge",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build.mjs"
+  },
+  "dependencies": {
+    "@rahularya01/pi-cursor": "1.4.27",
+    "effect": "4.0.0-beta.90"
+  },
+  "engines": {
+    "bun": ">=1.3.14"
+  }
+}

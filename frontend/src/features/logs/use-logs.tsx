@@ -3,6 +3,13 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import api from "@/lib/api/client";
 import { BACKEND_URL_CHANGED_EVENT, getApiKey } from "@/lib/api/connection";
+import {
+  createHeadApiClient,
+  createHeadWorkerApiClient,
+  HEAD_CONNECTION_CHANGED_EVENT,
+  type HeadConnection,
+} from "@/lib/api/head-controller";
+import type { ApiClient } from "@/lib/api/create-api-client";
 import type { LogSession } from "@/lib/types";
 import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
@@ -10,10 +17,47 @@ import { useMountSubscription } from "@/hooks/use-mount-subscription";
 const MAX_RENDERED_LINES = 20_000;
 const FAST_LOG_REQUEST = { timeout: 3_000, retries: 0 } as const;
 
-export function useLogs() {
+export type LogsTarget =
+  | { kind: "local" }
+  | { kind: "head"; connection: HeadConnection }
+  | { kind: "worker"; connection: HeadConnection; workerId: string };
+
+type LogScope = {
+  cacheKey: string;
+  client: ApiClient;
+  remote: boolean;
+};
+
+const createLogScope = (target?: LogsTarget): LogScope => {
+  if (target?.kind === "worker") {
+    return {
+      cacheKey: `logs:sessions:worker:${target.connection.url}:${target.workerId}`,
+      client: createHeadWorkerApiClient(target.workerId, target.connection),
+      remote: true,
+    };
+  }
+  if (target?.kind === "head") {
+    return {
+      cacheKey: `logs:sessions:head:${target.connection.url}`,
+      client: createHeadApiClient(target.connection),
+      remote: true,
+    };
+  }
+  return { cacheKey: "logs:sessions:local", client: api, remote: false };
+};
+
+export function useLogs(target?: LogsTarget) {
+  const scope = useMemo(
+    () => createLogScope(target),
+    [
+      target?.kind,
+      target?.kind === "local" ? "local" : target?.connection.url,
+      target?.kind === "worker" ? target.workerId : "",
+    ],
+  );
   // Stale-while-revalidate: paint the last-loaded session list instantly on
   // navigation while the fresh fetch runs in the background.
-  const cachedSessions = readPageCache<LogSession[]>("logs:sessions");
+  const cachedSessions = readPageCache<LogSession[]>(scope.cacheKey);
   const [sessions, setSessions] = useState<LogSession[]>(() => cachedSessions ?? []);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
@@ -22,15 +66,15 @@ export function useLogs() {
   const [loading, setLoading] = useState(cachedSessions === null);
   const [loadingContent, setLoadingContent] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const loadSessions = useCallback(async () => {
     try {
-      const data = await api.getLogSessions(FAST_LOG_REQUEST);
-      writePageCache("logs:sessions", data.sessions || []);
+      const data = await scope.client.getLogSessions(FAST_LOG_REQUEST);
+      writePageCache(scope.cacheKey, data.sessions || []);
       setSessions(data.sessions || []);
       if (data.sessions?.length > 0 && !selectedSession) setSelectedSession(data.sessions[0].id);
     } catch (e) {
@@ -38,21 +82,24 @@ export function useLogs() {
     } finally {
       setLoading(false);
     }
-  }, [selectedSession]);
+  }, [scope, selectedSession]);
 
-  const loadLogContent = useCallback(async (sessionId: string, silent = false) => {
-    if (!silent) setLoadingContent(true);
-    try {
-      const data = await api.getLogs(sessionId, 2000, FAST_LOG_REQUEST);
-      const lines = Array.isArray(data.logs) ? data.logs : [];
-      setLogLines(lines);
-    } catch (e) {
-      console.error("Failed to load log content:", e);
-      setLogLines(["Failed to load log content"]);
-    } finally {
-      if (!silent) setLoadingContent(false);
-    }
-  }, []);
+  const loadLogContent = useCallback(
+    async (sessionId: string, silent = false) => {
+      if (!silent) setLoadingContent(true);
+      try {
+        const data = await scope.client.getLogs(sessionId, 2000, FAST_LOG_REQUEST);
+        const lines = Array.isArray(data.logs) ? data.logs : [];
+        setLogLines(lines);
+      } catch (e) {
+        console.error("Failed to load log content:", e);
+        setLogLines(["Failed to load log content"]);
+      } finally {
+        if (!silent) setLoadingContent(false);
+      }
+    },
+    [scope],
+  );
 
   const deleteSession = useCallback(
     async (sessionId: string) => {
@@ -62,7 +109,7 @@ export function useLogs() {
       }
       if (!confirm("Delete this log session?")) return;
       try {
-        await api.deleteLogSession(sessionId);
+        await scope.client.deleteLogSession(sessionId);
         if (selectedSession === sessionId) {
           setSelectedSession(null);
           setLogLines([]);
@@ -72,7 +119,7 @@ export function useLogs() {
         alert("Failed to delete: " + (e as Error).message);
       }
     },
-    [loadSessions, selectedSession],
+    [loadSessions, scope, selectedSession],
   );
 
   const downloadLog = useCallback(() => {
@@ -97,7 +144,7 @@ export function useLogs() {
 
   useMountSubscription(() => {
     void loadSessions();
-  }, [loadSessions]);
+  }, [loadSessions, scope]);
   useMountSubscription(() => {
     const handler = () => {
       eventSourceRef.current?.close();
@@ -109,8 +156,12 @@ export function useLogs() {
       void loadSessions();
     };
     window.addEventListener(BACKEND_URL_CHANGED_EVENT, handler);
-    return () => window.removeEventListener(BACKEND_URL_CHANGED_EVENT, handler);
-  }, [loadSessions]);
+    window.addEventListener(HEAD_CONNECTION_CHANGED_EVENT, handler);
+    return () => {
+      window.removeEventListener(BACKEND_URL_CHANGED_EVENT, handler);
+      window.removeEventListener(HEAD_CONNECTION_CHANGED_EVENT, handler);
+    };
+  }, [loadSessions, scope]);
   useMountSubscription(() => {
     if (selectedSession) void loadLogContent(selectedSession);
   }, [loadLogContent, selectedSession]);
@@ -126,6 +177,13 @@ export function useLogs() {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
+    }
+
+    if (scope.remote) {
+      const interval = window.setInterval(() => {
+        void loadLogContent(selectedSession, true);
+      }, 3_000);
+      return () => window.clearInterval(interval);
     }
 
     const apiKey = getApiKey();
@@ -165,7 +223,7 @@ export function useLogs() {
         eventSourceRef.current = null;
       }
     };
-  }, [autoRefresh, selectedSession]);
+  }, [autoRefresh, loadLogContent, scope.remote, selectedSession]);
   useMountSubscription(() => {
     if (autoScroll && logRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;

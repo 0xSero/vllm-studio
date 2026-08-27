@@ -5,11 +5,8 @@ import { Effect } from "effect";
 
 export function register(): Promise<void> {
   return Effect.runPromise(
-    Effect.gen(function* () {
-      const net = yield* Effect.tryPromise({
-        try: () => import("node:net"),
-        catch: (error) => error,
-      });
+    Effect.sync(() => {
+      const net = process.getBuiltinModule("node:net");
       const setTimeoutFn = (
         net as unknown as {
           setDefaultAutoSelectFamilyAttemptTimeout?: (value: number) => void;

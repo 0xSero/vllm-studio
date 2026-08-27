@@ -6,8 +6,8 @@ import {
   GoogleAccountResponseSchema,
   GoogleAuthorizationResponseSchema,
   type GoogleAccountView,
-} from "@local-studio/agent-runtime/google-account-contract";
-import type { GoogleWorkspacePluginId } from "@local-studio/agent-runtime/google-workspace-binding";
+} from "@shared/agent/google-account-contract";
+import type { GoogleWorkspacePluginId } from "@shared/agent/google-workspace-binding";
 import { Alert, Button, UiModal, UiModalBody, UiModalHeader } from "@/ui";
 import { KeyRound, X } from "@/ui/icon-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";

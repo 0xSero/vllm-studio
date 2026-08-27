@@ -1,7 +1,10 @@
 "use client";
 
-import { useState, type MouseEvent, type PointerEvent } from "react";
+import { useRef, useState, type MouseEvent, type PointerEvent } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { Check } from "@/ui/icon-registry";
+import { handleMenuKeyboard } from "@/ui";
+import { useClickOutside } from "@/features/agent/hooks/use-click-outside";
 import { Folder } from "@/ui/icons";
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
 import { POPOVER_SURFACE_CLASS } from "@/ui/popover";
@@ -17,6 +20,7 @@ function stopToolbarEvent(event: MouseEvent | PointerEvent) {
 
 export function QuickProjectPicker({ projects }: Props) {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
   // The projects store seeds from localStorage synchronously, so the client
   // knows the project on its first render and the server does not. Naming it
   // during hydration mismatches, and React answers a mismatch by discarding
@@ -24,15 +28,12 @@ export function QuickProjectPicker({ projects }: Props) {
   const [hydrated, setHydrated] = useState(false);
   useMountSubscription(() => setHydrated(true), []);
   const active = hydrated ? (projects.selectedProject ?? projects.projects[0] ?? null) : null;
+  useClickOutside(ref, open, () => setOpen(false));
 
   return (
     <div
+      ref={ref}
       className="relative shrink-0"
-      onBlur={(event) => {
-        const nextTarget = event.relatedTarget;
-        if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
-        setOpen(false);
-      }}
       onPointerDown={stopToolbarEvent}
       onMouseDown={stopToolbarEvent}
     >
@@ -45,13 +46,18 @@ export function QuickProjectPicker({ projects }: Props) {
         )}
         title={active?.name ?? "Choose project"}
         aria-label={`Project: ${active?.name ?? "none"}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         <Folder className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{active?.name ?? "Choose project"}</span>
       </button>
       {open ? (
         <div
-          className={`absolute top-full left-0 z-[80] mt-1 max-h-[280px] w-[220px] overflow-y-auto p-1.5 ${POPOVER_SURFACE_CLASS}`}
+          className={`ui-popover-enter absolute left-0 top-full z-[80] mt-1 max-h-[280px] w-[220px] overflow-y-auto p-1 ${POPOVER_SURFACE_CLASS}`}
+          role="menu"
+          aria-label="Choose project"
+          onKeyDown={(event) => handleMenuKeyboard(event, () => setOpen(false))}
         >
           {projects.projects.map((project) => (
             <button
@@ -61,9 +67,13 @@ export function QuickProjectPicker({ projects }: Props) {
                 projects.selectProject(project);
                 setOpen(false);
               }}
+              role="menuitemradio"
+              aria-checked={project.id === active?.id}
               className={cx(
-                "flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs",
-                project.id === active?.id ? "bg-(--hover)/50" : "hover:bg-(--hover)",
+                "flex h-7 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[length:var(--fs-xs)] text-(--fg) transition-[background-color,color] duration-[var(--motion-fast)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring)",
+                project.id === active?.id
+                  ? "bg-(--color-selected)"
+                  : "hover:bg-(--color-menu-hover)",
               )}
             >
               <span
@@ -73,6 +83,9 @@ export function QuickProjectPicker({ projects }: Props) {
                 )}
               />
               <span className="truncate text-(--fg)">{project.name}</span>
+              {project.id === active?.id ? (
+                <Check className="ml-auto h-3.5 w-3.5 shrink-0 text-(--fg)" strokeWidth={1.75} />
+              ) : null}
             </button>
           ))}
         </div>

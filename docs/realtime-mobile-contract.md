@@ -1,6 +1,6 @@
 # Realtime mobile contract
 
-Status: contract version 1, not yet exposed by the agent-runtime gateway.
+Status: contract version 1, not yet exposed by the controller gateway.
 
 The realtime contract extends `litter-bridge/v1`; it does not create another endpoint or authentication model. Local Studio owns provider credentials, capability discovery, session creation, and teardown. Alleycat forwards authenticated control messages. Litter keeps native WebRTC peer connections and platform audio processing. Media does not traverse Alleycat in version 1.
 

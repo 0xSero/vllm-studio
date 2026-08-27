@@ -45,13 +45,13 @@ export function GoalStrip({
   // Turn N is in flight while the goal is active; once it settles, N is done.
   const iteration = goal.status === "active" ? goal.turnsUsed + 1 : Math.max(1, goal.turnsUsed);
   return (
-    <div className="mx-auto mb-1 flex w-[calc(100%_-_26px)] max-w-[calc(var(--composer-w)*0.9_-_26px)] items-center gap-2 rounded-[var(--composer-radius-inner)] border border-(--border) bg-(--fg)/[0.022] px-2.5 py-1 text-[length:var(--fs-xs)] backdrop-blur-sm [corner-shape:superellipse(1.5)] sm:w-[calc(90%_-_26px)]">
+    <div className="mx-auto mb-1 flex w-[calc(100%_-_26px)] items-center gap-1.5 rounded-[var(--composer-radius-inner)] border border-(--separator) bg-(--surface)/35 px-2 py-0.5 text-[length:var(--fs-xs)] backdrop-blur-sm [corner-shape:superellipse(1.5)]">
       <button
         type="button"
         onClick={onOpen}
         title={goal.objective}
         aria-label={`${GOAL_STATUS_LABEL[goal.status]}: ${goal.objective}`}
-        className="flex h-6 min-w-0 flex-1 items-center gap-2 text-left"
+        className="flex h-5 min-w-0 flex-1 items-center gap-1.5 text-left"
       >
         <Target
           className={cx("h-3.5 w-3.5 shrink-0", GOAL_STATUS_COLOR[goal.status])}

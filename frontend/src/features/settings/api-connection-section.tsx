@@ -25,7 +25,6 @@ import {
 } from "@/lib/api/connection";
 import { scheduleDurableUiPreferencesSave } from "@/lib/desktop-ui-preferences";
 import { DeployControllerPanel } from "./deploy-controller-panel";
-import { AppVersionSection } from "./app-version-section";
 import { StatusPill, Spinner, type UiTone } from "@/ui";
 import { ApiUrlCensorToggle, useApiUrlCensored } from "@/ui/api-url-censor";
 import { getHeadConnection } from "@/lib/api/head-controller";
@@ -150,10 +149,9 @@ export function ApiConnectionSection({
 
   return (
     <div>
-      <AppVersionSection />
       <SettingsGroup
-        title="Local controller"
-        description="This endpoint runs models on this machine. Connect and manage the Studio Head from Configure."
+        title="Controller connections"
+        description="Endpoints this desktop can activate for inference and machine management."
         actions={
           <div className="flex items-center gap-2">
             <ApiUrlCensorToggle />

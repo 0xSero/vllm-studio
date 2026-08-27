@@ -7,6 +7,7 @@ import type { TerminalRunResult } from "@/features/agent/contracts";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { effectTimeout } from "@/lib/effect-timers";
 import { webPtyBridge } from "@/features/agent/ui/web-pty-bridge";
+import { isKeyboardTabFocusPending } from "@/features/workbench/focus-handoff";
 import {
   bumpTerminalFontSize,
   getTerminalFontSize,
@@ -16,12 +17,6 @@ import {
   subscribeTerminalStore,
   type TerminalAction,
 } from "@/lib/terminal-keybinds";
-
-export function preloadTerminalPanel(): void {
-  void import("@xterm/xterm");
-  void import("@xterm/addon-fit");
-  void import("@xterm/addon-web-links").catch(() => null);
-}
 
 export function TerminalPanel({ cwd, ownerKey }: { cwd: string | null; ownerKey: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -44,7 +39,7 @@ export function TerminalPanel({ cwd, ownerKey }: { cwd: string | null; ownerKey:
           if ((event.target as HTMLElement)?.tagName === "A") return;
           stateRef.current.term?.focus();
         }}
-        className="min-h-0 flex-1 overflow-hidden px-3 py-2.5 [--xterm-color-background:var(--color-terminal-bg)]"
+        className="min-h-0 flex-1 overflow-hidden px-2 py-2 [--xterm-color-background:var(--color-terminal-bg)]"
       />
     </section>
   );
@@ -304,7 +299,7 @@ function useTerminalPanelEffects({
       // have changed while detached), fit to the new box, and focus.
       refreshTerminalPresentation(entry, container);
       effectTimeout(() => {
-        if (!entry.refs.disposed) {
+        if (!entry.refs.disposed && !isKeyboardTabFocusPending()) {
           entry.refs.applyResize?.();
           entry.refs.term?.focus();
         }
@@ -395,7 +390,7 @@ async function bootTerminal(
   }
 
   effectTimeout(() => {
-    if (!refs.disposed && element.isConnected) term.focus();
+    if (!refs.disposed && element.isConnected && !isKeyboardTabFocusPending()) term.focus();
   }, 0);
 }
 
@@ -466,10 +461,28 @@ async function bootPty({
   const dataSub = term.onData((data) => {
     void pty.write(id, data);
   });
+  let lastCols = cols;
+  let lastRows = rows;
+  let lastWidth = element.clientWidth;
+  let lastHeight = element.clientHeight;
   refs.applyResize = () => {
-    if (refs.disposed || !element.isConnected) return;
+    if (
+      refs.disposed ||
+      !element.isConnected ||
+      element.clientWidth === 0 ||
+      element.clientHeight === 0
+    )
+      return;
+    const width = element.clientWidth;
+    const height = element.clientHeight;
+    if (width === lastWidth && height === lastHeight) return;
+    lastWidth = width;
+    lastHeight = height;
     try {
       fit.fit();
+      if (term.cols === lastCols && term.rows === lastRows) return;
+      lastCols = term.cols;
+      lastRows = term.rows;
       void pty.resize(id, term.cols, term.rows);
     } catch {}
   };

@@ -45,14 +45,14 @@ compiles to one binary. That is the direction of every slimming decision here.
 ### M4 findings (sync map, 2026-08-20)
 
 Why desktop and browser don't sync:
-1. Two independent agent-runtimes, two data roots (Electron userData vs ~/.local-studio); no replication anywhere.
+1. Two independent agent controller instances, two data roots (Electron userData vs ~/.local-studio); no replication anywhere.
 2. session-list-changed SSE is fully wired but process-local — it cannot see another host's writes.
 3. 25 of 65 /api/agent routes run in-process in Next (connectors, projects, terminals, fs, git, plugins, skills) — they never reach a remote runtime even if repointed.
 4. Browser tier is per-origin localStorage; desktop and pop-os are different origins.
 5. The desktop-ui-preferences sync is DEAD CODE: POSTs ui_preferences to /api/settings whose schema drops the field; reads a `persisted` key it never returns. The controller's ui_preferences store exists, implemented, written by nothing.
 6. Each runtime runs its own automation scheduler — divergent execution, not just divergent lists.
 
-Fix ladder (ranked): D repair pref-sync via controller studio settings (~20 lines, LWW) → A point desktop Next at a remote runtime (env exists: LOCAL_STUDIO_AGENT_RUNTIME_URL; needs bind+auth) → B proxy the in-process routes to the runtime (mechanical for 6 groups) → C serve the browser surface FROM the desktop (Tailscale Serve, documented).
+Fix ladder (ranked): D repair pref-sync via controller studio settings (~20 lines, LWW) → A point desktop Next at a remote controller (needs bind+auth) → B proxy the in-process routes to the controller (mechanical for 6 groups) → C serve the browser surface FROM the desktop (Tailscale Serve, documented).
 
 ### M0 complete + first measurements
 

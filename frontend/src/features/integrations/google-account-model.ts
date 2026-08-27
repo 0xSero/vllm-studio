@@ -2,8 +2,8 @@ import { Schema } from "effect";
 import type {
   GoogleAccountEntryView,
   GoogleAccountView,
-} from "@local-studio/agent-runtime/google-account-contract";
-import type { GoogleWorkspacePluginId } from "@local-studio/agent-runtime/google-workspace-binding";
+} from "@shared/agent/google-account-contract";
+import type { GoogleWorkspacePluginId } from "@shared/agent/google-workspace-binding";
 
 export const GoogleCancellationResponseSchema = Schema.Struct({
   cancelled: Schema.Literal(true),

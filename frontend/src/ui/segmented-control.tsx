@@ -27,6 +27,7 @@ export function SegmentedControl<T extends string = string>({
   return (
     <div
       role="tablist"
+      aria-orientation="horizontal"
       className={cx(
         "inline-flex items-center gap-0.5 rounded-[var(--ui-radius)] border border-(--ui-separator) bg-(--ui-surface) p-0.5",
         className,
@@ -43,10 +44,10 @@ export function SegmentedControl<T extends string = string>({
             disabled={disabled}
             onClick={() => onChange(item.id)}
             className={cx(
-              "inline-flex items-center gap-1.5 rounded-[calc(var(--ui-radius)-2px)] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+              "inline-flex items-center gap-1.5 rounded-[5px] transition-[color,background-color,box-shadow] duration-[var(--motion-fast)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring) focus-visible:ring-offset-[-1px] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
               size === "sm"
-                ? "px-2 py-0.5 text-[length:var(--fs-sm)]"
-                : "px-2.5 py-1 text-[length:var(--fs-md)]",
+                ? "h-6 px-2 text-[length:var(--fs-sm)]"
+                : "h-7 px-2.5 text-[length:var(--fs-md)]",
               active
                 ? "bg-(--ui-active) text-(--ui-fg)"
                 : "text-(--ui-muted) hover:bg-(--ui-hover)/50 hover:text-(--ui-fg)",

@@ -34,12 +34,19 @@ function lightnessFromColor(value: string): number | null {
   return ((Math.max(r, g, b) + Math.min(r, g, b)) / 2) * 100;
 }
 
+function inkForTheme(tokens: ThemeTokens): string {
+  return (lightnessFromColor(tokens.bg) ?? 0) > 50 ? "26, 28, 31" : "255, 255, 255";
+}
+
 function deriveThemeUiTokens(
   tokens: ThemeTokens,
   overrides: Partial<ThemeUiTokens> = {},
 ): ThemeUiTokens {
   const isLight = (lightnessFromColor(tokens.bg) ?? 0) > 50;
-  const ink = isLight ? "26, 28, 31" : "255, 255, 255";
+  const ink = inkForTheme(tokens);
+  const rail = isLight
+    ? `color-mix(in oklab, ${tokens.bg} 97%, #000)`
+    : `color-mix(in oklab, ${tokens.bg} 82%, #000)`;
   return {
     // White/ink overlays over a unified canvas: 8% surfaces, 5% hover,
     // 8% active, hairline 8% borders — the same ratios tokens.css encodes.
@@ -47,16 +54,20 @@ function deriveThemeUiTokens(
     "surface-3": `rgba(${ink}, 0.05)`,
     // The rail sits one tone step above the canvas so the body reads darker
     // than the left navbar (mirrors tokens.css --color-sidebar).
-    rail: isLight ? "#f9f9f9" : `color-mix(in srgb, ${tokens.bg} 97%, #ffffff)`,
+    rail,
     border: `rgba(${ink}, 0.08)`,
     separator: `rgba(${ink}, 0.05)`,
     hover: `rgba(${ink}, 0.05)`,
     active: `rgba(${ink}, 0.08)`,
-    composer: "var(--sidebar-bg)",
-    "composer-footer": "var(--sidebar-bg)",
+    composer: tokens.bg,
+    "composer-footer": tokens.bg,
     bubble: tokens.surface,
     ...overrides,
   };
+}
+
+function translucentSurface(color: string): string {
+  return `color-mix(in srgb, ${color} var(--desktop-surface-opacity, 100%), transparent)`;
 }
 
 export function resolveThemeCssTokens(
@@ -67,19 +78,19 @@ export function resolveThemeCssTokens(
   return {
     ...tokens,
     ...ui,
-    "agent-bg": tokens.bg,
-    "sidebar-bg": ui.rail,
+    "agent-bg": translucentSurface(tokens.bg),
+    "sidebar-bg": translucentSurface(ui.rail),
     "color-background": tokens.bg,
     "color-background-win-alt": tokens.bg,
     "color-background-alt": tokens.bg,
     "color-brand": tokens.accent,
     "color-border": ui.border,
     "color-border-light": ui.separator,
-    "color-border-heavy": ui.border,
-    "color-border-hover": ui.border,
+    "color-border-heavy": `rgba(${inkForTheme(tokens)}, 0.16)`,
+    "color-border-hover": `rgba(${inkForTheme(tokens)}, 0.16)`,
     "color-hover": ui.hover,
     "color-selected": ui.active,
-    "color-header": tokens.bg,
+    "color-header": ui.rail,
     "color-panel": tokens.bg,
     "color-sidebar": ui.rail,
     "color-surface": tokens.surface,
@@ -107,7 +118,7 @@ export function resolveThemeCssTokens(
     "color-foreground-subtle": tokens.dim,
     "color-foreground-subtlest": tokens.hl2,
     "color-tag": ui["surface-2"],
-    "ui-bg": tokens.bg,
+    "ui-bg": translucentSurface(tokens.bg),
     "ui-fg": tokens.fg,
     "ui-muted": tokens.dim,
     "ui-surface": tokens.surface,
@@ -147,8 +158,16 @@ export function applyThemeToDocument(themeId: ThemeId): ThemeId {
   const nextTheme = THEME_BY_ID.get(themeId) ?? THEME_BY_ID.get(DEFAULT_THEME_ID);
   if (!nextTheme) return themeId;
 
-  document.documentElement.setAttribute("data-theme", nextTheme.id);
+  const root = document.documentElement;
+  root.classList.add("theme-changing");
+  root.setAttribute("data-theme", nextTheme.id);
   setThemeTokens(nextTheme.tokens, nextTheme.ui);
+  root.style.colorScheme = nextTheme.id.includes("light") ? "light" : "dark";
+  document.body.style.backgroundColor = nextTheme.tokens.bg;
+  document
+    .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    ?.setAttribute("content", nextTheme.tokens.bg);
+  requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-changing")));
   return nextTheme.id;
 }
 

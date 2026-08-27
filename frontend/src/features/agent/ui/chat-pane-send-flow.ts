@@ -12,6 +12,7 @@ import {
   type SessionSubmitGuard,
 } from "@/features/agent/runtime/prompt-stream";
 import { type ToolsContextValue } from "@/features/agent/tools/context";
+import type { BrowserBackend } from "@/features/agent/tools/types";
 import {
   attachmentPrompt,
   imageInputsFromAttachments,
@@ -25,6 +26,7 @@ import {
 type UseChatPaneSendFlowOptions = {
   activeTab: Session | null;
   attachments: ChatAttachment[];
+  browserBackend: BrowserBackend;
   browserToolEnabled: boolean;
   clearAttachments: () => void;
   cwd: string;
@@ -43,6 +45,7 @@ type UseChatPaneSendFlowOptions = {
 export function useChatPaneSendFlow({
   activeTab,
   attachments,
+  browserBackend,
   browserToolEnabled,
   clearAttachments,
   cwd,
@@ -75,7 +78,7 @@ export function useChatPaneSendFlow({
       const contextText = selectedContextPrompt(text, selection.skills);
       const browserContextText = browserContextPrompt({
         enabled: effectiveBrowserEnabled,
-        backend: tools.browser.backend,
+        backend: browserBackend,
         url: tools.browser.url,
         vision: modelSupportsVision,
       });
@@ -113,7 +116,7 @@ export function useChatPaneSendFlow({
         promptTemplates: selection.promptTemplates,
       };
     },
-    [attachments, browserToolEnabled, modelId, modelSupportsVision, tools],
+    [attachments, browserBackend, browserToolEnabled, modelId, modelSupportsVision, tools],
   );
 
   const submitPrompt = useCallback(

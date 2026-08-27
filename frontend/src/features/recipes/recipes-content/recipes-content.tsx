@@ -5,6 +5,7 @@ import { AppPage, ModelButton, PageContainer, PageHeader } from "@/ui";
 import { ModelMachineSelect, useModelMachines } from "@/features/recipes/model-management-machine";
 import { ModelManagementApiProvider } from "@/features/recipes/model-management-api";
 import { TableNotice } from "./catalog-table-shell";
+import { settingsHref } from "@/features/settings/settings-navigation";
 import type { RecipesTableProps } from "./types";
 import { useRecipesContentModel, type RecipesContentTab } from "./recipes-content-model";
 import { RecipesContentView } from "./recipes-content-view";
@@ -170,7 +171,7 @@ function ModelsWorkerGate({
           <ModelButton
             tone="primary"
             onClick={() => {
-              window.location.href = "/configure?section=rig#rig";
+              window.location.href = settingsHref("machines");
             }}
           >
             Open Machines
@@ -182,7 +183,7 @@ function ModelsWorkerGate({
 
   if (embedded) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-end">{action}</div>
         {notice}
       </div>
@@ -197,7 +198,7 @@ function ModelsWorkerGate({
           description="Choose a machine, then manage its recommendations, downloads, recipes, and model servers."
           actions={action}
         />
-        <div className="mt-8">{notice}</div>
+        <div className="mt-5">{notice}</div>
       </PageContainer>
     </AppPage>
   );

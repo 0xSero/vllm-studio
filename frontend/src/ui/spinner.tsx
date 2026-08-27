@@ -14,7 +14,7 @@ export type SpinnerSize = keyof typeof SPINNER_SIZES;
  * Always-spinning progress glyph. `variant="loader"` renders the lucide
  * loader arc (Loader2); `variant="refresh"` renders the circular-arrows
  * glyph used by list/content reload states. For refresh icons that only
- * spin while loading, use RefreshButton / RefreshIconButton instead.
+ * spin while loading, use the default animation instead.
  */
 export function Spinner({
   size = "md",

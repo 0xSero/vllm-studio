@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getApiSettings } from "@local-studio/agent-runtime/settings-service";
+import { getApiSettings } from "@/lib/api/settings-service";
 import type { ClientInfo } from "./proxy-logging";
 
 const OVERRIDE_ALLOWLIST_ENV_KEY = "LOCAL_STUDIO_PROXY_OVERRIDE_ALLOWLIST";

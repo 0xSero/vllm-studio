@@ -24,11 +24,7 @@ import type {
   ToolPreviewHeightOverrides,
 } from "@/features/agent/ui/timeline/tool-metadata";
 
-// --- App slice ---
-
 export interface AppSlice {
-  sidebarWidth: number;
-  setSidebarWidth: (width: number) => void;
   fileViewerFontSize: number;
   setFileViewerFontSize: (size: number) => void;
   toolPreviewHeight: PreviewHeight;
@@ -39,18 +35,9 @@ export interface AppSlice {
   setLastOpenFileByProject: (cwd: string, rel: string) => void;
 }
 
-export const DEFAULT_SIDEBAR_WIDTH = 275;
-
-const LEGACY_DEFAULT_SIDEBAR_WIDTHS = new Set([204, 220, 224, 240, 260, 275]);
-
-function restoredSidebarWidth(value: unknown, fallback: number): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return LEGACY_DEFAULT_SIDEBAR_WIDTHS.has(value) ? DEFAULT_SIDEBAR_WIDTH : value;
-}
+export const DEFAULT_SIDEBAR_WIDTH = 280;
 
 const createAppSlice: StateCreator<AppSlice, [], [], AppSlice> = (set) => ({
-  sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
-  setSidebarWidth: (sidebarWidth) => set({ sidebarWidth }),
   fileViewerFontSize: 12,
   setFileViewerFontSize: (fileViewerFontSize) => set({ fileViewerFontSize }),
   toolPreviewHeight: "md",
@@ -69,8 +56,6 @@ const createAppSlice: StateCreator<AppSlice, [], [], AppSlice> = (set) => ({
       lastOpenFileByProject: { ...state.lastOpenFileByProject, [cwd]: rel },
     })),
 });
-
-// --- Theme slice ---
 
 export interface ThemeSlice {
   themeId: ThemeId;
@@ -106,14 +91,8 @@ const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (set) => 
   },
 });
 
-// --- Store ---
-
 export type AppStore = AppSlice &
   ThemeSlice & {
-    desktopSidebarPinnedOpen: boolean;
-    setDesktopSidebarPinnedOpen: (open: boolean) => void;
-    // Phone-only navigation drawer. Lives in the store because the agent chat
-    // header owns the hamburger there, while the drawer itself is in the shell.
     mobileNavOpen: boolean;
     setMobileNavOpen: (open: boolean) => void;
   };
@@ -121,8 +100,6 @@ export type AppStore = AppSlice &
 const createAppStoreImpl: StateCreator<AppStore, [], [], AppStore> = (set, ...args) => ({
   ...createAppSlice(set, ...args),
   ...createThemeSlice(set, ...args),
-  desktopSidebarPinnedOpen: true,
-  setDesktopSidebarPinnedOpen: (desktopSidebarPinnedOpen) => set({ desktopSidebarPinnedOpen }),
   mobileNavOpen: false,
   setMobileNavOpen: (mobileNavOpen) => set({ mobileNavOpen }),
 });
@@ -147,28 +124,23 @@ export const useAppStore = create<AppStore>()(
   devtools(
     persist(createAppStoreImpl, {
       name: "local-studio-state",
+      version: 1,
+      migrate: (persisted) => ({ ...((persisted ?? {}) as Partial<AppStore>) }),
       storage,
       skipHydration: true,
       partialize: (state) => ({
         themeId: state.themeId,
         fontFamilyId: state.fontFamilyId,
         fontSizeId: state.fontSizeId,
-        desktopSidebarPinnedOpen: state.desktopSidebarPinnedOpen,
-        sidebarWidth: state.sidebarWidth,
         fileViewerFontSize: state.fileViewerFontSize,
         toolPreviewHeight: state.toolPreviewHeight,
         toolPreviewHeightOverrides: state.toolPreviewHeightOverrides,
         lastOpenFileByProject: state.lastOpenFileByProject,
       }),
-      merge: (persisted, current) => {
-        const persistedRecord = (persisted ?? {}) as Record<string, unknown>;
-        const persistedStore = (persisted ?? {}) as Partial<AppStore>;
-        return {
-          ...current,
-          ...persistedStore,
-          sidebarWidth: restoredSidebarWidth(persistedRecord.sidebarWidth, current.sidebarWidth),
-        };
-      },
+      merge: (persisted, current) => ({
+        ...current,
+        ...((persisted ?? {}) as Partial<AppStore>),
+      }),
       onRehydrateStorage: () => (state) => {
         if (state?.themeId) state.setThemeId(state.themeId);
         if (state?.fontFamilyId) state.setFontFamilyId(state.fontFamilyId);

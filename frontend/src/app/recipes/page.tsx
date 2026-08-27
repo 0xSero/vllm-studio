@@ -1,5 +1,5 @@
 import { permanentRedirect } from "next/navigation";
 
 export default function RecipesRedirect() {
-  permanentRedirect("/models");
+  permanentRedirect("/settings#models");
 }

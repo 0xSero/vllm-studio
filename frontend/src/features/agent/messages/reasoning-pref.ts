@@ -1,5 +1,3 @@
-import { REASONING_VISIBILITY_CHANGED_EVENT } from "@/lib/workspace-events";
-
 // Global, client-only preference for whether model reasoning ("Thinking"/
 // "Thought") is shown in the timeline. Stored in localStorage so it survives
 // reloads without touching the (separately-owned) settings service. Default is
@@ -16,15 +14,4 @@ export function loadReasoningVisible(): boolean {
   } catch {
     return true;
   }
-}
-
-/** Persist the preference and notify open panes so they re-render at once. */
-export function setReasoningVisible(visible: boolean): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(REASONING_VISIBLE_KEY, visible ? "1" : "0");
-  } catch {
-    /* ignore storage failures — the dispatch below still updates live state */
-  }
-  window.dispatchEvent(new Event(REASONING_VISIBILITY_CHANGED_EVENT));
 }

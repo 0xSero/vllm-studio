@@ -18,7 +18,6 @@ import type {
 
 export const PANE_LAYOUT_KEY = "local-studio.agent.paneLayout";
 export const PANE_STATE_KEY = "local-studio.agent.paneState";
-export const SESSION_PREFS_KEY = "local-studio.agent.sessionPrefs";
 
 export type WorkspaceStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -45,6 +44,7 @@ export function createInitialState(): WorkspaceState {
     sessionDrafts: new Map(),
     models: [],
     selectedModel: "",
+    selectedRoute: "",
     modelsLoading: true,
     layout: { kind: "leaf", paneId: "p-init" },
     panesById: new Map([["p-init", { sessionId: session.id }]]),
@@ -86,7 +86,6 @@ export function normalizePersistedTab(value: unknown): Session | null {
     ...fallback,
     ...persisted,
     id: tab.id,
-    headTracked: tab.headTracked === true,
     piSessionId: typeof tab.piSessionId === "string" ? tab.piSessionId : null,
     title: cleanSessionTitle(tab.title) || fallback.title,
     messages: [],
@@ -226,9 +225,11 @@ export function sessionMetaForPersistence(
   const base: PersistedSessionMeta = {
     id: tab.id,
     piSessionId: tab.piSessionId,
+    harness: tab.harness,
     projectId: tab.projectId,
     cwd: tab.cwd,
     modelId: tab.modelId,
+    modelRouteId: tab.modelRouteId,
     thinkingLevel: tab.thinkingLevel,
     title: cleanSessionTitle(tab.title) || "New session",
     startedAt: tab.startedAt,

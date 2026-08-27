@@ -131,7 +131,7 @@ export function UsageActivityTab({ stats }: { stats: UsageStats }) {
   }));
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       <StatStrip stats={summary} />
 
       {hourly.length > 0 ? (

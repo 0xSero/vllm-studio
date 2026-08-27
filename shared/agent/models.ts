@@ -1,7 +1,7 @@
 import {
   inferModelVision,
   resolveModelVision,
-} from "../../controller/contracts/model-capabilities";
+} from "../../contracts/model-capabilities";
 import type { AgentThinkingLevel } from "./agent-turn";
 import { isRecord } from "./guards";
 

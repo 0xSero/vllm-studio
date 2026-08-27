@@ -58,6 +58,9 @@ Thumbs.db
 *.zip
 .tmp/
 reports/
+**/.zig-cache/
+**/zig-out*/
+**/zig-pkg/
 
 # Local proofs / scratch
 proof-*.png

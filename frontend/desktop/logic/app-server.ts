@@ -8,11 +8,16 @@ import { log } from "../helpers/logger";
 import { registerOAuthVault } from "./oauth-vault";
 import { resolveStablePort } from "../helpers/ports";
 import { resolveAugmentedPath } from "../helpers/resolve-path";
-import {
-  startOrReuseAgentRuntime,
-  stopAgentRuntime,
-  type AgentRuntimeHandle,
-} from "./agent-runtime-server";
+import { startOrReuseController, stopController, type ControllerHandle } from "./controller-server";
+
+const DEFAULT_FRONTEND_PORT = 4783;
+const configuredControllerPort = Number(process.env.LOCAL_STUDIO_DESKTOP_CONTROLLER_PORT);
+const DEFAULT_CONTROLLER_PORT =
+  Number.isInteger(configuredControllerPort) &&
+  configuredControllerPort > 0 &&
+  configuredControllerPort <= 65_535
+    ? configuredControllerPort
+    : 8081;
 
 // The most recently forked embedded server. A single process-exit hook kills
 // whichever child is current — registering a fresh once("exit") per (re)start
@@ -25,8 +30,8 @@ process.once("exit", () => {
 });
 
 interface ServerHandle {
-  agentRuntimeExitListener?: () => void;
-  agentRuntime: AgentRuntimeHandle;
+  controllerExitListener?: () => void;
+  controller: ControllerHandle;
   runtime: DesktopServerRuntime;
   process?: ChildProcess;
 }
@@ -38,13 +43,13 @@ type ServerExitDetails = {
 };
 
 type StartFrontendServerOptions = {
-  agentRuntime?: AgentRuntimeHandle;
+  controller?: ControllerHandle;
   port?: number;
   onExit?: (details: ServerExitDetails) => void;
 };
 
 type StopFrontendServerOptions = {
-  stopAgentRuntime?: boolean;
+  stopController?: boolean;
 };
 
 function embeddedServerPidPath(): string {
@@ -169,11 +174,11 @@ export async function startFrontendServer(
       port: Number(new URL(DESKTOP_CONFIG.devServerUrl).port || "3000"),
       url: DESKTOP_CONFIG.devServerUrl,
     };
-    const agentRuntime = await startOrReuseAgentRuntime(
-      { frontendUrl: runtime.url, preferredPort: 8081 },
-      options.agentRuntime,
+    const controller = await startOrReuseController(
+      { frontendUrl: runtime.url, preferredPort: DEFAULT_CONTROLLER_PORT },
+      options.controller,
     );
-    return { agentRuntime, runtime };
+    return { controller, runtime };
   }
 
   await killStaleEmbeddedServer();
@@ -201,10 +206,15 @@ export async function startFrontendServer(
     copyDirectory(publicDir, targetPublicDir);
   }
 
-  const port = await resolveStablePort(options.port ?? readPersistedPort());
+  const port = await resolveStablePort(
+    options.port ?? readPersistedPort() ?? DEFAULT_FRONTEND_PORT,
+  );
   persistPort(port);
   const url = `http://127.0.0.1:${port}`;
-  const agentRuntime = await startOrReuseAgentRuntime({ frontendUrl: url }, options.agentRuntime);
+  const controller = await startOrReuseController(
+    { frontendUrl: url, preferredPort: DEFAULT_CONTROLLER_PORT },
+    options.controller,
+  );
 
   log.info(`Starting embedded frontend server from ${serverScript} on ${url}`);
 
@@ -230,10 +240,9 @@ export async function startFrontendServer(
       NEXT_TELEMETRY_DISABLED: "1",
       LOCAL_STUDIO_DESKTOP: "1",
       LOCAL_STUDIO_DATA_DIR: DESKTOP_CONFIG.userDataDir,
-      LOCAL_STUDIO_PROJECTS_FILE: path.join(DESKTOP_CONFIG.userDataDir, "projects.json"),
       LOCAL_STUDIO_RESOURCES_PATH: process.resourcesPath,
       LOCAL_STUDIO_AGENT_CWD: process.env.LOCAL_STUDIO_AGENT_CWD || app.getPath("home"),
-      LOCAL_STUDIO_AGENT_RUNTIME_URL: agentRuntime.url,
+      LOCAL_STUDIO_CONTROLLER_URL: controller.url,
       LOCAL_STUDIO_FRONTEND_BASE: url,
     },
   });
@@ -262,10 +271,10 @@ export async function startFrontendServer(
     options.onExit?.({ code, signal, pid: child.pid });
   });
 
-  const agentRuntimeExitListener = () => {
+  const controllerExitListener = () => {
     if (currentEmbeddedServer === child && !child.killed) child.kill("SIGTERM");
   };
-  agentRuntime.process?.once("exit", agentRuntimeExitListener);
+  controller.process?.once("exit", controllerExitListener);
 
   currentEmbeddedServer = child;
 
@@ -274,19 +283,19 @@ export async function startFrontendServer(
   } catch (error) {
     await stopFrontendServer(
       {
-        agentRuntime,
-        agentRuntimeExitListener,
+        controller,
+        controllerExitListener,
         process: child,
         runtime: { mode: "embedded-standalone", port, url },
       },
-      { stopAgentRuntime: agentRuntime !== options.agentRuntime },
+      { stopController: controller !== options.controller },
     );
     throw error;
   }
 
   return {
-    agentRuntime,
-    agentRuntimeExitListener,
+    controller,
+    controllerExitListener,
     runtime: {
       mode: "embedded-standalone",
       port,
@@ -301,8 +310,8 @@ export async function stopFrontendServer(
   options: StopFrontendServerOptions = {},
 ): Promise<void> {
   if (!handle) return;
-  if (handle.agentRuntimeExitListener) {
-    handle.agentRuntime.process?.off("exit", handle.agentRuntimeExitListener);
+  if (handle.controllerExitListener) {
+    handle.controller.process?.off("exit", handle.controllerExitListener);
   }
   if (handle.process) {
     const child = handle.process;
@@ -330,7 +339,7 @@ export async function stopFrontendServer(
       });
     });
   }
-  if (options.stopAgentRuntime !== false) await stopAgentRuntime(handle.agentRuntime);
+  if (options.stopController !== false) await stopController(handle.controller);
 }
 
 export type { ServerHandle };

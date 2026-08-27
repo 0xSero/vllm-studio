@@ -3,6 +3,8 @@
 import { useRef, useState } from "react";
 import type { RecipeWithStatus } from "@/lib/types";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import { Check } from "@/ui/icon-registry";
+import { handleMenuKeyboard } from "@/ui";
 import { POPOVER_PANEL_CLASS } from "@/ui/popover";
 
 export function ModelsDropdown({
@@ -23,14 +25,26 @@ export function ModelsDropdown({
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const ref = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useMountSubscription(() => {
     if (!open) return;
+    const frame = requestAnimationFrame(() => inputRef.current?.focus());
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [open]);
 
   const q = filter.toLowerCase();
@@ -42,16 +56,24 @@ export function ModelsDropdown({
   return (
     <div className="relative" ref={ref}>
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
         className="h-7 rounded-full bg-(--fg)/5 px-3 text-[length:var(--fs-sm)] text-(--fg)/85 hover:bg-(--fg)/10 hover:text-(--fg)"
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         Models ▾
       </button>
       {open ? (
-        <div className={`absolute right-0 z-30 mt-1 w-[22rem] ${POPOVER_PANEL_CLASS}`}>
+        <div
+          className={`ui-popover-enter absolute right-0 z-30 mt-1 w-[22rem] ${POPOVER_PANEL_CLASS}`}
+          role="menu"
+          aria-label="Models"
+          onKeyDown={(event) => handleMenuKeyboard(event, () => setOpen(false))}
+        >
           <div className="grid grid-cols-[minmax(0,1fr)_auto] border-b border-(--border)">
             <input
-              autoFocus
+              ref={inputRef}
               type="text"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
@@ -60,6 +82,7 @@ export function ModelsDropdown({
             />
             {onNewRecipe ? (
               <button
+                type="button"
                 onClick={() => {
                   setOpen(false);
                   onNewRecipe();
@@ -89,6 +112,7 @@ export function ModelsDropdown({
           </div>
           {onViewAll && filtered.length > visible.length ? (
             <button
+              type="button"
               onClick={() => {
                 setOpen(false);
                 onViewAll();
@@ -124,12 +148,15 @@ function ModelDropdownRow({
   const disabled = lifecycleStatus === "starting" || isCurrent;
   return (
     <button
+      type="button"
       disabled={disabled}
       onClick={async () => {
         setOpen(false);
         await onLaunch(recipe.id);
       }}
-      className={`flex w-full items-center gap-2 border-b border-(--separator) px-2.5 py-1.5 text-left last:border-b-0 ${isCurrent ? "bg-(--fg)/8" : "hover:bg-(--fg)/5"} ${disabled && !isCurrent ? "cursor-not-allowed opacity-30" : ""}`}
+      role="menuitemradio"
+      aria-checked={isCurrent}
+      className={`flex h-7 w-full items-center gap-2 border-b border-(--separator) px-2.5 text-left text-[length:var(--fs-xs)] text-(--fg) transition-[background-color,color] duration-[var(--motion-fast)] last:border-b-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-(--focus-ring) ${isCurrent ? "bg-(--color-selected)" : "hover:bg-(--color-menu-hover)"} ${disabled && !isCurrent ? "cursor-not-allowed opacity-30" : ""}`}
     >
       <span
         className={`h-3 w-0.5 shrink-0 ${isCurrent ? "bg-(--fg)" : running ? "bg-(--fg)/60" : "bg-(--dim)/40"}`}
@@ -137,6 +164,7 @@ function ModelDropdownRow({
       <span className="flex-1 truncate text-[length:var(--fs-sm)] text-(--fg)" title={recipe.name}>
         {recipe.name}
       </span>
+      {isCurrent ? <Check className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} /> : null}
       {running ? <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> : null}
       <span className="text-[length:var(--fs-2xs)] text-(--dim)">
         tp{recipe.tp || recipe.tensor_parallel_size}

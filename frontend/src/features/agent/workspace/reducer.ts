@@ -29,6 +29,20 @@ function chooseModelId(
   return models.find((model) => model.active)?.id || models[0]?.id || "";
 }
 
+function chooseRouteId(models: AgentModel[], modelId: string, preferredRouteId?: string): string {
+  const model = models.find((candidate) => candidate.id === modelId);
+  if (!model) return "";
+  if (preferredRouteId && model.routes.some((route) => route.id === preferredRouteId)) {
+    return preferredRouteId;
+  }
+  return (
+    model.routes.find((route) => route.id === model.defaultRouteId)?.id ??
+    model.routes.find((route) => route.active)?.id ??
+    model.routes[0]?.id ??
+    ""
+  );
+}
+
 function reduceWorkspaceStatus(
   state: WorkspaceState,
   action: WorkspaceAction,
@@ -42,15 +56,26 @@ function reduceWorkspaceStatus(
       return state;
     case "setModelsLoading":
       return { ...state, modelsLoading: action.loading };
-    case "setModels":
+    case "setModels": {
+      const selectedModel = chooseModelId(
+        action.models,
+        state.selectedModel,
+        action.preferredModelId,
+      );
       return {
         ...state,
         models: action.models,
-        selectedModel: chooseModelId(action.models, state.selectedModel, action.preferredModelId),
+        selectedModel,
+        selectedRoute: chooseRouteId(
+          action.models,
+          selectedModel,
+          action.preferredRouteId || state.selectedRoute,
+        ),
         modelsLoading: false,
       };
-    case "setSelectedModel":
-      return { ...state, selectedModel: action.modelId };
+    }
+    case "setModelSelection":
+      return { ...state, selectedModel: action.modelId, selectedRoute: action.routeId };
     case "setSetupWarning":
       return { ...state, setupWarning: action.warning };
     case "setError":

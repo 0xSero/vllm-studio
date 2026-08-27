@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { ComposerFocusContext } from "@/features/agent/workspace/pane-context";
+import { isKeyboardTabFocusPending } from "@/features/workbench/focus-handoff";
 
 export function AgentComposerTextArea({
   inputRef,
@@ -32,7 +33,9 @@ export function AgentComposerTextArea({
   useMountSubscription(() => {
     if (nonce === 0 || lastSeenNonceRef.current === nonce) return;
     lastSeenNonceRef.current = nonce;
-    if (composerFocusIntent?.targetTabId === tabId) inputRef.current?.focus();
+    if (composerFocusIntent?.targetTabId === tabId && !isKeyboardTabFocusPending()) {
+      inputRef.current?.focus();
+    }
   }, [nonce, composerFocusIntent, tabId, inputRef]);
   return (
     <textarea
@@ -43,7 +46,7 @@ export function AgentComposerTextArea({
       onChange={onChange}
       onKeyDown={onKeyDown}
       placeholder={placeholder}
-      className="min-h-11 max-h-[36vh] w-full resize-none overflow-y-auto bg-transparent px-4 pb-0 pt-3.5 text-[length:var(--codex-chat-font-size)] leading-[1.5] tracking-normal text-(--fg)/82 outline-none placeholder:text-(--composer-placeholder)"
+      className="block min-h-[27px] max-h-[36vh] w-full shrink-0 resize-none overflow-y-auto bg-transparent px-3 pb-0.5 pt-1.5 text-[13px] leading-[18px] tracking-normal text-(--fg)/82 outline-none placeholder:text-(--composer-placeholder)"
     />
   );
 }

@@ -120,7 +120,9 @@ export function visibleUserTextFromPi(text: string): string {
   // means no bubble is appended and no assistant bubble is opened for it, so a
   // long goal reads as the agent working rather than talking to itself.
   if (isGoalContinuationPrompt(body)) return "";
-  return stripAttachmentPromptText(stripBrowserContextText(body)).trim();
+  const goalMarker = "\n\n<local_studio_goal>";
+  const visible = body.includes(goalMarker) ? body.slice(0, body.indexOf(goalMarker)) : body;
+  return stripAttachmentPromptText(stripBrowserContextText(visible)).trim();
 }
 
 // The Browser panel prepends a <browser_context>…</browser_context> block to
@@ -177,7 +179,6 @@ export function makeFreshTab(): Session {
     // server (ids are opaque server-side). Sessions persisted under a legacy
     // rt-* runtime key reattach via the controller's connection-key seed.
     id: newId("tab"),
-    headTracked: true,
     piSessionId: null,
     title: "New session",
     messages: [],

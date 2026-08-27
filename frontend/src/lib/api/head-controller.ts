@@ -22,7 +22,15 @@ const parseHeadConnection = (value: unknown): HeadConnection | null => {
   }
 };
 
+const getConfiguredHeadConnection = (): HeadConnection | null => {
+  const url = process.env.NEXT_PUBLIC_LOCAL_STUDIO_HEAD_URL?.trim();
+  if (!url) return null;
+  return parseHeadConnection({ name: "Devenv Head", url });
+};
+
 export const getHeadConnection = (): HeadConnection | null => {
+  const configured = getConfiguredHeadConnection();
+  if (configured) return configured;
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(HEAD_CONNECTION_STORAGE_KEY);

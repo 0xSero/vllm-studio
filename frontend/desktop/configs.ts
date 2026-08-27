@@ -19,12 +19,22 @@ export const DESKTOP_CONFIG = {
   },
 };
 
+export function resolveDesktopPreloadPath(): string {
+  return app.isPackaged
+    ? path.join(app.getAppPath(), "desktop", "dist", "preload.js")
+    : path.join(app.getAppPath(), "preload.js");
+}
+
+export function resolveDevelopmentFrontendDir(): string {
+  return path.resolve(app.getAppPath(), "..", "..");
+}
+
 export function resolveStandaloneBaseDir(): string {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, "app", "frontend", ".next", "standalone");
   }
 
-  return path.resolve(app.getAppPath(), ".next", "standalone");
+  return path.join(resolveDevelopmentFrontendDir(), ".next", "standalone");
 }
 
 export function resolveStaticAssetsSource(): { staticDir: string; publicDir: string } {
@@ -36,7 +46,7 @@ export function resolveStaticAssetsSource(): { staticDir: string; publicDir: str
   }
 
   return {
-    staticDir: path.resolve(app.getAppPath(), ".next", "static"),
-    publicDir: path.resolve(app.getAppPath(), "public"),
+    staticDir: path.join(resolveDevelopmentFrontendDir(), ".next", "static"),
+    publicDir: path.join(resolveDevelopmentFrontendDir(), "public"),
   };
 }

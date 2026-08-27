@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { AgentHarnessSchema } from "./harness-id";
 
 export const AutomationScheduleSchema = Schema.Union([
   Schema.Struct({
@@ -19,8 +20,9 @@ export const AutomationScheduleSchema = Schema.Union([
 
 export const AutomationRunSchema = Schema.Struct({
   at: Schema.String,
-  piSessionId: Schema.NullOr(Schema.String),
-  cwd: Schema.String,
+  sessionId: Schema.String,
+  nativeSessionId: Schema.NullOr(Schema.String),
+  workspace: Schema.NullOr(Schema.String),
   projectId: Schema.NullOr(Schema.String),
   outcome: Schema.Literals(["ok", "error"]),
   summary: Schema.String,
@@ -28,18 +30,19 @@ export const AutomationRunSchema = Schema.Struct({
 });
 
 export const AutomationSchema = Schema.Struct({
-  version: Schema.Literal(1),
+  version: Schema.Literal(2),
   id: Schema.String,
   name: Schema.String,
   prompt: Schema.String,
   modelId: Schema.String,
-  cwd: Schema.String,
-  /**
-   * The pi session every run should continue, so the automation works inside a
-   * thread the user already has instead of a blank one. Null (or absent, on
-   * records written before this field existed) means each run starts fresh.
-   */
-  targetSessionId: Schema.optional(Schema.NullOr(Schema.String)),
+  modelRouteId: Schema.optional(Schema.NullOr(Schema.String)),
+  executionKind: Schema.Literals(["chat", "project"]),
+  cwd: Schema.NullOr(Schema.String),
+  nodeId: Schema.optional(Schema.NullOr(Schema.String)),
+  projectId: Schema.optional(Schema.NullOr(Schema.String)),
+  harness: Schema.NullOr(AgentHarnessSchema),
+  placement: Schema.optional(Schema.Literals(["local", "daytona"])),
+  sandboxAccountId: Schema.optional(Schema.NullOr(Schema.String)),
   schedule: AutomationScheduleSchema,
   status: Schema.Literals(["active", "paused"]),
   nextRunAt: Schema.NullOr(Schema.String),

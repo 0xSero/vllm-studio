@@ -2,7 +2,7 @@
 
 `frontend/` is the Next.js 16 and React 19 interface for Local Studio and the
 source of the macOS Electron app. The web and desktop builds share the same
-routes, agent runtime integration, controller API bridge, and UI kit.
+routes, controller-backed agent integration, controller API bridge, and UI kit.
 
 ## Product Surface
 
@@ -23,19 +23,18 @@ redirects into Configure. New navigation must target the canonical route.
 flowchart TB
     Desktop["Electron main process"] --> Routes["Next.js app routes"]
     Browser["Web browser"] --> Routes
-    Routes --> AgentApi["agent runtime proxy"]
+    Routes --> AgentApi["agent controller proxy"]
     Routes --> ControllerApi["controller proxy routes"]
-    AgentApi --> Pi["standalone Pi agent runtime"]
+    AgentApi --> Controller
     ControllerApi --> Controller["Local Studio controller"]
     Configure["/configure"] --> ControllerApi
     Workbench["/agent"] --> AgentApi
 ```
 
-The Pi execution and browser-host routes always run in the standalone
-`services/agent-runtime/` sidecar. Next proxies those routes while importing
-shared contracts and non-runtime services from the package. Shared controller
-HTTP shapes come from `@local-studio/contracts`; frontend and agent-runtime
-shapes come from `shared/agent/`.
+The Zig controller owns Pi execution, sessions, connectors, plugins, browser
+hosting, terminals, and automation scheduling. Next proxies those routes to the
+controller. Shared controller HTTP shapes come from `@local-studio/contracts`;
+agent-specific shapes come from `shared/agent/`.
 
 ## Requirements and Commands
 

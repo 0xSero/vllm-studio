@@ -1,7 +1,7 @@
 "use client";
 
-import type { GoogleAccountEntryView } from "@local-studio/agent-runtime/google-account-contract";
-import type { GoogleWorkspacePluginId } from "@local-studio/agent-runtime/google-workspace-binding";
+import type { GoogleAccountEntryView } from "@shared/agent/google-account-contract";
+import type { GoogleWorkspacePluginId } from "@shared/agent/google-workspace-binding";
 import { Alert, Button, StatusPill } from "@/ui";
 
 function DisconnectRow({

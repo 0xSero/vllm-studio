@@ -18,8 +18,6 @@ const MIRRORED_ENTRIES = [
   "mcp",
   "controllers.json",
   "connectors.json",
-  "projects.json",
-  "session-prefs.json",
   "ui-preferences.json",
   "desktop-settings.json",
   "api-settings.json",

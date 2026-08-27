@@ -15,6 +15,19 @@ interface Window {
     setUpdateChannel?(
       channel: import("../desktop/types").DesktopUpdateChannel,
     ): Promise<import("../desktop/types").DesktopUpdateSnapshot>;
+    windowAppearance?: {
+      set(
+        preference: import("../desktop/window-appearance-contract").WindowAppearancePreference,
+      ): Promise<import("../desktop/window-appearance-contract").WindowAppearanceState>;
+      setReducedTransparency(
+        reduced: boolean,
+      ): Promise<import("../desktop/window-appearance-contract").WindowAppearanceState>;
+      onChanged(
+        listener: (
+          state: import("../desktop/window-appearance-contract").WindowAppearanceState,
+        ) => void,
+      ): () => void;
+    };
     getKittylitterPairingJson?(): Promise<import("../desktop/interfaces").KittylitterPairingResult>;
     copyKittylitterPairingJson?(pairingJson: string): Promise<{
       ok: boolean;

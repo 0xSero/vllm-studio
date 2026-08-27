@@ -27,7 +27,6 @@ import type {
 } from "@/features/agent/contracts";
 import * as api from "@/features/agent/runtime/api";
 import { submitPromptTurn, type SubmitArgs } from "@/features/agent/runtime/prompt-stream";
-import { readTranscriptSnapshot } from "@/features/agent/workspace/transcript-cache";
 
 import { sessionRuntimeController } from "@/features/agent/runtime/session-runtime-controller";
 
@@ -40,11 +39,13 @@ export type UseSessionEngineDeps = {
   tabs: Session[];
   activeTabId: SessionId;
   modelId: string;
+  modelRouteId: string;
   thinkingLevel: AgentThinkingLevel;
   toolAccess: AgentToolAccess;
   cwd: string;
   browserToolEnabled: boolean;
   browserBackend: BrowserBackend;
+  executionKind: "chat" | "project";
   onPiSessionIdChange?: (piSessionId: string) => void;
   /** Mutate a single session record. */
   updateSession: UpdateSession;
@@ -62,7 +63,7 @@ export type SessionEngine = {
     piSessionId?: string | null,
   ) => Promise<api.RuntimeStatus | null>;
   abortTurn: (sessionId: SessionId) => Promise<api.AbortSessionResult>;
-  loadAndReplay: (piSessionId: string, sessionId: SessionId) => Promise<void>;
+  loadAndReplay: (canonicalSessionId: string, sessionId: SessionId) => Promise<void>;
   /** Fetch and prepend the previous page of older history (tail paging). */
   loadEarlier: (sessionId: SessionId) => Promise<void>;
   compact: (sessionId: SessionId) => Promise<void>;
@@ -91,11 +92,13 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     tabs,
     activeTabId,
     modelId,
+    modelRouteId,
     thinkingLevel,
     toolAccess,
     cwd,
     browserToolEnabled,
     browserBackend,
+    executionKind,
     onPiSessionIdChange,
     updateSession,
     selectionFor,
@@ -122,6 +125,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           const skills = selection.skills ?? EMPTY_SKILLS;
           const promptTemplates = selection.promptTemplates ?? EMPTY_PROMPT_TEMPLATES;
           const browserEnabledForTurn = browserToolEnabled;
+          const session = tabsRef.current.find((tab) => tab.id === sessionId);
           const message = selectedContextPrompt(text, skills);
           const contextualQueueReplacement = queueReplacement
             ? selectedContextPrompt(queueReplacement, skills)
@@ -130,11 +134,17 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             try: () =>
               api.submitTurnCommand({
                 sessionId: runtime,
+                kind: session?.executionKind ?? executionKind,
+                harness: session?.harness,
                 modelId,
+                modelRouteId,
                 thinkingLevel,
                 toolAccess,
                 message,
-                cwd: cwd.trim() || undefined,
+                cwd:
+                  (session?.executionKind ?? executionKind) === "project"
+                    ? (session?.cwd || cwd).trim() || undefined
+                    : undefined,
                 piSessionId,
                 mode,
                 queueAction,
@@ -178,7 +188,9 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       browserToolEnabled,
       browserBackend,
       cwd,
+      executionKind,
       modelId,
+      modelRouteId,
       thinkingLevel,
       toolAccess,
       onPiSessionIdChange,
@@ -193,8 +205,10 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           activeTabId,
           browserToolEnabled,
           browserBackend,
+          executionKind,
           cwd,
           modelId,
+          modelRouteId,
           thinkingLevel,
           toolAccess,
           onPiSessionIdChange,
@@ -207,11 +221,13 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
     [
       activeTabId,
       modelId,
+      modelRouteId,
       thinkingLevel,
       toolAccess,
       cwd,
       browserToolEnabled,
       browserBackend,
+      executionKind,
       onPiSessionIdChange,
       updateSession,
     ],
@@ -245,24 +261,13 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
   );
 
   const loadAndReplay = useCallback(
-    (piSessionId: string, sessionId: SessionId) => {
+    (canonicalSessionId: string, sessionId: SessionId) => {
       if (inFlightReplays.has(sessionId)) return Promise.resolve();
       inFlightReplays.add(sessionId);
       return Effect.runPromise(
         Effect.gen(function* () {
-          const cachedMessages = readTranscriptSnapshot(piSessionId);
-          const seedCached = (session: Session) =>
-            session.messages.length === 0 && cachedMessages
-              ? { ...session, messages: cachedMessages }
-              : session;
-          if (!cwd) {
-            updateSession(sessionId, (session) =>
-              seedCached(session.status === "loading" ? { ...session, status: "idle" } : session),
-            );
-            return;
-          }
           updateSession(sessionId, (session) => ({
-            ...seedCached(session),
+            ...session,
             status: "loading",
             error: "",
           }));
@@ -274,11 +279,11 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           const [replayResult, runtimeStatus] = yield* Effect.all(
             [
               Effect.tryPromise({
-                try: () => api.loadCanonicalSession(piSessionId, cwd),
+                try: () => api.loadCanonicalSession(canonicalSessionId, cwd),
                 catch: (error) => error,
               }).pipe(Effect.result),
               Effect.tryPromise({
-                try: () => api.loadRuntimeStatus(runtimeId, piSessionId),
+                try: () => api.loadRuntimeStatus(runtimeId),
                 catch: () => null,
               }),
             ],
@@ -286,7 +291,12 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
           );
           if (replayResult._tag === "Success") {
             const { events, cursor, meta } = replayResult.success;
-            const runtimeActive = runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId);
+            const nativeSessionId =
+              meta?.piSessionId ??
+              runtimeStatus?.nativeSessionId ??
+              runtimeStatus?.piSessionId ??
+              null;
+            const runtimeActive = runtimeCanHydrateCanonicalSession(runtimeStatus, nativeSessionId);
             const replayEvents = mergeCanonicalAndRuntimeEvents(
               events,
               runtimeActive ? runtimeStatus?.events : [],
@@ -298,11 +308,14 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               modelId: replayModelId,
               tokenStats,
             } = foldSessionEvents(replayEvents);
-            const replaySeq = replayCursorAfterRuntimeHydration(runtimeStatus, piSessionId);
+            const replaySeq = replayCursorAfterRuntimeHydration(
+              runtimeStatus,
+              nativeSessionId ?? "",
+            );
             updateSession(sessionId, (session) => ({
               ...session,
-              messages: reconcileReplayMessages(session.messages, messages),
-              piSessionId,
+              messages,
+              piSessionId: nativeSessionId,
               cwd: session.cwd || cwd,
               // Head-scan meta carries the real session model/title; the fold's
               // own title would be the tail slice's first user message, not the
@@ -313,6 +326,8 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
                 replayModelId ||
                 runtimeStatus?.modelId ||
                 modelId,
+              modelRouteId: session.modelRouteId || meta?.modelRouteId || modelRouteId,
+              harness: meta?.harness ?? session.harness,
               title: meta?.title ?? title ?? session.title,
               startedAt: meta?.startedAt ?? startedAt ?? session.startedAt,
               tokenStats: tokenStats ?? undefined,
@@ -325,9 +340,6 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               // A non-null cursor means the tail load left older history unread;
               // the timeline shows a "Load earlier" affordance while it is set.
               historyCursor: messages.length > 0 ? cursor : (session.historyCursor ?? null),
-              // The replay has landed, so whatever came from the snapshot has
-              // been superseded and must not keep asking to be replayed.
-              hydratedFromCache: false,
               error: "",
             }));
             // Reattach the live stream from the hydrated cursor so EventSource
@@ -339,7 +351,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
             // session idle (which would drop the live stream — reconcile only
             // subscribes for live statuses): keep the seeded history, mark it running,
             // and reset the cursor so the reattached SSE replays the runtime backlog.
-            if (runtimeCanHydrateCanonicalSession(runtimeStatus, piSessionId)) {
+            if (runtimeCanHydrateCanonicalSession(runtimeStatus, null)) {
               updateSession(sessionId, (session) => ({
                 ...session,
                 contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
@@ -365,7 +377,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
         ),
       );
     },
-    [cwd, modelId, updateSession],
+    [cwd, modelId, modelRouteId, updateSession],
   );
 
   // Page the previous (older) chunk of a tail-loaded transcript into view and
@@ -379,11 +391,10 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
       if (!session || !session.piSessionId || !cwd || cursor == null) return Promise.resolve();
       if (loadingEarlierRef.current.has(sessionId)) return Promise.resolve();
       loadingEarlierRef.current.add(sessionId);
-      const piSessionId = session.piSessionId;
       return Effect.runPromise(
         Effect.gen(function* () {
           const result = yield* Effect.tryPromise({
-            try: () => api.loadCanonicalSession(piSessionId, cwd, { before: cursor }),
+            try: () => api.loadCanonicalSession(session.id, cwd, { before: cursor }),
             catch: (error) => error,
           }).pipe(Effect.result);
           if (result._tag !== "Success") return;
@@ -430,10 +441,9 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               }),
             catch: (error) => error,
           });
-          const nextSessionId = result.status?.piSessionId || session.piSessionId;
-          if (nextSessionId) {
+          if (result.status?.piSessionId || session.piSessionId) {
             yield* Effect.tryPromise({
-              try: () => loadAndReplay(nextSessionId, sessionId),
+              try: () => loadAndReplay(session.id, sessionId),
               catch: (error) => error,
             });
           }
@@ -576,13 +586,4 @@ function mergeCanonicalAndRuntimeEvents(
     ...canonicalEventsBeforeRuntimeTail(canonicalEvents, runtime),
     ...runtime,
   ]);
-}
-
-function reconcileReplayMessages(
-  current: ChatMessage[],
-  canonical: ChatMessage[],
-): ChatMessage[] {
-  if (canonical.length === 0) return current;
-  if (canonical.length >= current.length) return canonical;
-  return current;
 }

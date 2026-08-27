@@ -11,7 +11,10 @@ import {
   type AutomationModel,
 } from "@/features/agent/automations/automation-api";
 import { AutomationEditor } from "@/features/agent/automations/automation-editor";
-import { NEW_AUTOMATION_DRAFT, type AutomationDraft } from "@/features/agent/automations/automation-model";
+import {
+  NEW_AUTOMATION_DRAFT,
+  type AutomationDraft,
+} from "@/features/agent/automations/automation-model";
 
 /** Turn a chat session into a scheduled automation without leaving the chat.
  *
@@ -21,11 +24,13 @@ import { NEW_AUTOMATION_DRAFT, type AutomationDraft } from "@/features/agent/aut
  * draft from the pane (model, project, last thing the user asked for). */
 export function AutomationDrawer({
   modelId,
+  modelRouteId,
   cwd,
   prompt,
   onClose,
 }: {
   modelId: string;
+  modelRouteId: string;
   cwd: string;
   prompt: string;
   onClose: () => void;
@@ -66,7 +71,7 @@ export function AutomationDrawer({
         <AutomationEditor
           automation={null}
           creating
-          initialDraft={{ ...NEW_AUTOMATION_DRAFT, modelId, cwd, prompt }}
+          initialDraft={{ ...NEW_AUTOMATION_DRAFT, modelId, modelRouteId, cwd, prompt }}
           models={models}
           action={saving ? "save" : null}
           error={error}

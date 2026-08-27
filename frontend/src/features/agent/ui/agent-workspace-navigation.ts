@@ -4,7 +4,7 @@ import {
 } from "@/features/agent/ui/projects-nav/helpers";
 import type { WorkspaceDispatch } from "@/features/agent/workspace/effects";
 import type { ProjectsContextValue } from "@/features/agent/projects/context";
-import type { Project } from "@/features/agent/projects/types";
+import { isChatsProject, type Project } from "@/features/agent/projects/types";
 import { makeFreshTab, newPaneId } from "@/features/agent/messages/helpers";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import type { WorkspaceAction } from "@/features/agent/workspace/types";
@@ -58,8 +58,12 @@ export function workspaceNavigationAction(
   if (!key) return null;
   const tab = {
     ...makeFreshTab(),
+    executionKind: isChatsProject(project) ? ("chat" as const) : ("project" as const),
     projectId: project?.id,
-    cwd: project?.path,
+    cwd: isChatsProject(project) || project?.repository ? undefined : project?.path,
+    managedProject: Boolean(project?.repository),
+    baseRef: project?.defaultBranch,
+    detached: Boolean(project?.repository),
   };
   return {
     type: "urlNavRequested",
