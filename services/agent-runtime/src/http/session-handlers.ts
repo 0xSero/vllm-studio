@@ -1,4 +1,5 @@
 import path from "node:path";
+import { Option, Schema } from "effect";
 import type { AggregatedSession } from "../../../../shared/agent/session-summary";
 import { listProjectsFromStore, resolveAllowedWorkspace } from "../projects-store";
 import { listArchivedSessionMetadata, setSessionArchived } from "../session-metadata-store";
@@ -15,15 +16,27 @@ function parseRelativeSince(value: string | null): Date | null {
   return new Date(Date.now() - amount * multiplier);
 }
 
-function archiveOptions(searchParams: URLSearchParams) {
+type ArchiveOptions = {
+  includeArchived?: boolean;
+  archivedOnly?: boolean;
+};
+
+type SessionListOptions = ArchiveOptions & {
+  since?: Date;
+  ids?: string[];
+  limit?: number;
+};
+
+function archiveOptions(searchParams: URLSearchParams): ArchiveOptions {
   const archived = searchParams.get("archived")?.toLowerCase();
   const includeArchived = searchParams.get("includeArchived")?.toLowerCase();
-  return {
-    ...(includeArchived === "1" || includeArchived === "true" ? { includeArchived: true } : {}),
-    ...(archived === "1" || archived === "true" || archived === "only"
-      ? { archivedOnly: true, includeArchived: true }
-      : {}),
-  };
+  const options: ArchiveOptions = {};
+  if (includeArchived === "1" || includeArchived === "true") options.includeArchived = true;
+  if (archived === "1" || archived === "true" || archived === "only") {
+    options.archivedOnly = true;
+    options.includeArchived = true;
+  }
+  return options;
 }
 
 function positiveInteger(value: string | null): number | undefined {
@@ -67,12 +80,13 @@ export async function handleSessionsList(request: Request): Promise<Response> {
   const sinceValue = searchParams.get("since");
   const since = parseRelativeSince(sinceValue);
   if (sinceValue && !since) return jsonError("since must use a relative value like 7d");
-  const sessions = await listSessions(cwd, {
-    ...(since ? { since } : {}),
-    ...(limit ? { limit } : {}),
+  const options: SessionListOptions = {
     ids: idsFrom(searchParams),
     ...archiveOptions(searchParams),
-  });
+  };
+  if (since) options.since = since;
+  if (limit) options.limit = limit;
+  const sessions = await listSessions(cwd, options);
   return Response.json({ sessions });
 }
 
@@ -85,11 +99,12 @@ export async function handleAllSessions(request: Request): Promise<Response> {
   await Promise.all(listProjectsFromStore().map(async (project) => {
     try {
       const cwd = resolveAllowedWorkspace(project.path);
-      const sessions = await listSessions(cwd, {
-        ...(since && !archive.archivedOnly ? { since } : {}),
+      const options: SessionListOptions = {
         ids: idsFrom(searchParams),
         ...archive,
-      });
+      };
+      if (since && !archive.archivedOnly) options.since = since;
+      const sessions = await listSessions(cwd, options);
       for (const summary of sessions) {
         seenIds.add(summary.id);
         aggregated.push({
@@ -147,16 +162,29 @@ export async function handleSessionGet(request: Request, id: string): Promise<Re
   return Response.json({ events, cursor, meta });
 }
 
-function optionalString(body: Record<string, unknown>, key: string): string | null {
-  const value = body[key];
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+const SessionPatchSchema = Schema.Struct({
+  archived: Schema.Boolean,
+  cwd: Schema.optional(Schema.Unknown),
+  title: Schema.optional(Schema.Unknown),
+  projectId: Schema.optional(Schema.Unknown),
+  projectName: Schema.optional(Schema.Unknown),
+});
+
+type SessionPatch = typeof SessionPatchSchema.Type;
+
+const decodeOptionalString = Schema.decodeUnknownOption(Schema.String);
+
+function optionalString(value: SessionPatch["title"]): string | null {
+  const decoded = Option.getOrNull(decodeOptionalString(value));
+  return decoded?.trim() || null;
 }
 
 export async function handleSessionPatch(request: Request, id: string): Promise<Response> {
   if (!validSessionId(id)) return jsonError("session id is invalid");
-  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body.archived !== "boolean") return jsonError("archived boolean is required");
-  const cwdValue = typeof body.cwd === "string" ? body.cwd.trim() : "";
+  const rawBody = await request.json().catch(() => null);
+  const body = Option.getOrNull(Schema.decodeUnknownOption(SessionPatchSchema)(rawBody));
+  if (!body) return jsonError("archived boolean is required");
+  const cwdValue = optionalString(body.cwd) ?? "";
   if (body.archived && !cwdValue) return jsonError("cwd is required to archive a session");
   let cwd = "";
   let summary: Awaited<ReturnType<typeof listSessions>>[number] | null = null;
@@ -170,9 +198,9 @@ export async function handleSessionPatch(request: Request, id: string): Promise<
   }
   const archiveState = await setSessionArchived(id, body.archived, new Date(), {
     cwd: summary?.cwd ?? cwd,
-    title: summary?.firstUserMessage ?? optionalString(body, "title"),
-    projectId: optionalString(body, "projectId"),
-    projectName: optionalString(body, "projectName"),
+    title: summary?.firstUserMessage ?? optionalString(body.title),
+    projectId: optionalString(body.projectId),
+    projectName: optionalString(body.projectName),
     sessionUpdatedAt: summary?.updatedAt ?? null,
   });
   return Response.json({ session: { id, ...archiveState } });
