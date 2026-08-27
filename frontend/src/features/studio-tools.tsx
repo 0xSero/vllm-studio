@@ -11,15 +11,78 @@ import {
   type RecordJson,
 } from "./studio-core";
 
+const GitStateSchema = Schema.Struct({
+  isRepo: Schema.Boolean,
+  branch: Schema.NullOr(Schema.String),
+  status: Schema.Array(Schema.String),
+  diff: Schema.String,
+  additions: Schema.Number,
+  deletions: Schema.Number,
+});
+const PullRequestResponseSchema = Schema.Struct({
+  pr: Schema.optional(
+    Schema.Struct({
+      number: Schema.Number,
+      title: Schema.String,
+      state: Schema.String,
+      url: Schema.String,
+      mergeable: Schema.String,
+    }),
+  ),
+});
+type GitState = typeof GitStateSchema.Type;
+type PullRequest = NonNullable<(typeof PullRequestResponseSchema.Type)["pr"]>;
+const decodeGitState = Schema.decodeUnknownSync(GitStateSchema, { onExcessProperty: "preserve" });
+const decodePullRequest = Schema.decodeUnknownSync(PullRequestResponseSchema, {
+  onExcessProperty: "preserve",
+});
 const FileResponseSchema = Schema.Struct({ content: Schema.String });
 const PtyOpenResponseSchema = Schema.Struct({
   id: Schema.String,
   replay: Schema.optional(Schema.String),
 });
+const FileSearchResponseSchema = Schema.Struct({
+  entries: Schema.Array(
+    Schema.Struct({
+      name: Schema.String,
+      path: Schema.String,
+      rel: Schema.String,
+      kind: Schema.Literals(["file", "directory"]),
+    }),
+  ),
+});
+const CommentListResponseSchema = Schema.Struct({
+  comments: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      line: Schema.Number,
+      body: Schema.String,
+      createdAt: Schema.String,
+    }),
+  ),
+});
+const BrowserFrameResponseSchema = Schema.Struct({
+  data: Schema.Struct({
+    frame: Schema.NullOr(Schema.String),
+    url: Schema.String,
+    title: Schema.String,
+    canGoBack: Schema.Boolean,
+    canGoForward: Schema.Boolean,
+  }),
+});
 const decodeFileResponse = Schema.decodeUnknownSync(FileResponseSchema, {
   onExcessProperty: "preserve",
 });
 const decodePtyOpenResponse = Schema.decodeUnknownSync(PtyOpenResponseSchema, {
+  onExcessProperty: "preserve",
+});
+const decodeFileSearchResponse = Schema.decodeUnknownSync(FileSearchResponseSchema, {
+  onExcessProperty: "preserve",
+});
+const decodeCommentListResponse = Schema.decodeUnknownSync(CommentListResponseSchema, {
+  onExcessProperty: "preserve",
+});
+const decodeBrowserFrameResponse = Schema.decodeUnknownSync(BrowserFrameResponseSchema, {
   onExcessProperty: "preserve",
 });
 
@@ -36,6 +99,8 @@ function FileTools({ cwd }: { cwd: string }) {
   const [line, setLine] = useState("1");
   const [comment, setComment] = useState("");
   const [output, setOutput] = useState<Json | null>(null);
+  const [entries, setEntries] = useState<(typeof FileSearchResponseSchema.Type)["entries"]>([]);
+  const [comments, setComments] = useState<(typeof CommentListResponseSchema.Type)["comments"]>([]);
   const [error, setError] = useState("");
   const query = `cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(path)}`;
   const run = async (operation: () => Promise<Json>) => {
@@ -64,11 +129,13 @@ function FileTools({ cwd }: { cwd: string }) {
         <button onClick={open}>Open</button>
         <button
           onClick={() =>
-            run(() =>
-              request(
+            run(async () => {
+              const value = await requestRecord(
                 `/api/agent/fs/search?cwd=${encodeURIComponent(cwd)}&q=${encodeURIComponent(path)}`,
-              ),
-            )
+              );
+              setEntries(decodeFileSearchResponse(value).entries);
+              return value;
+            })
           }
         >
           Search
@@ -112,10 +179,28 @@ function FileTools({ cwd }: { cwd: string }) {
         >
           Comment
         </button>
-        <button onClick={() => run(() => request(`/api/agent/comments?${query}`))}>
+        <button
+          onClick={() =>
+            run(async () => {
+              const value = await requestRecord(`/api/agent/comments?${query}`);
+              setComments(decodeCommentListResponse(value).comments);
+              return value;
+            })
+          }
+        >
           List comments
         </button>
       </div>
+      {entries.map((entry) => (
+        <button key={entry.path} onClick={() => setPath(entry.rel)}>
+          {entry.kind}: {entry.rel}
+        </button>
+      ))}
+      {comments.map((entry) => (
+        <p key={entry.id}>
+          Line {entry.line}: {entry.body}
+        </p>
+      ))}
       <ErrorText value={error} />
       {output === null ? null : <JsonView value={output} />}
     </article>
@@ -131,6 +216,9 @@ function GitTools({ cwd }: { cwd: string }) {
   const [branch, setBranch] = useState("");
   const [worktree, setWorktree] = useState("");
   const [commit, setCommit] = useState("");
+  const [prNumber, setPrNumber] = useState("");
+  const [gitState, setGitState] = useState<GitState | null>(null);
+  const [pullRequest, setPullRequest] = useState<PullRequest | null>(null);
   const [output, setOutput] = useState<Json | null>(null);
   const [error, setError] = useState("");
   const query = `cwd=${encodeURIComponent(cwd)}`;
@@ -142,13 +230,44 @@ function GitTools({ cwd }: { cwd: string }) {
       setError(value instanceof Error ? value.message : String(value));
     }
   };
-  const gitAction = (value: RecordJson) => run(`/api/agent/git?${query}`, post(value));
+  const refreshGit = async () => {
+    try {
+      const value = await requestRecord(`/api/agent/git?${query}`);
+      setGitState(decodeGitState(value));
+      setOutput(value);
+      setError("");
+    } catch (value) {
+      setError(value instanceof Error ? value.message : String(value));
+    }
+  };
+  const refreshPullRequest = async () => {
+    try {
+      const value = await requestRecord(`/api/agent/pr?${query}`);
+      setPullRequest(decodePullRequest(value).pr ?? null);
+      setOutput(value);
+      setError("");
+    } catch (value) {
+      setError(value instanceof Error ? value.message : String(value));
+    }
+  };
+  const gitAction = async (value: RecordJson) => {
+    try {
+      const response = await requestRecord(`/api/agent/git?${query}`, post(value));
+      setGitState(decodeGitState(response));
+      setOutput(response);
+      setError("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  };
   const indexAction = (verb: "add" | "restore" | "revert") => {
     const quoted = shellPath(path);
     if (!quoted) {
       setError("Choose a safe relative path");
       return;
     }
+    if (verb === "revert" && !window.confirm(`Discard all working-tree changes to ${path}?`))
+      return;
     const command =
       verb === "add"
         ? `git add -- ${quoted}`
@@ -161,10 +280,29 @@ function GitTools({ cwd }: { cwd: string }) {
     <article>
       <h3>Git review</h3>
       <div className="row">
-        <button onClick={() => run(`/api/agent/git?${query}`)}>Diff & status</button>
+        <button onClick={refreshGit}>Diff & status</button>
         <button onClick={() => run(`/api/agent/git/branches?${query}`)}>Branches</button>
         <button onClick={() => run(`/api/agent/git/worktrees?${query}`)}>Worktrees</button>
-        <button onClick={() => run(`/api/agent/pr?${query}`)}>Pull request</button>
+        <button onClick={refreshPullRequest}>Pull request</button>
+      </div>
+      <div className="row">
+        <input
+          value={prNumber}
+          onChange={(event) => setPrNumber(event.target.value)}
+          placeholder="Pull request number"
+        />
+        <button
+          onClick={() => {
+            if (!prNumber || !window.confirm(`Merge pull request #${prNumber} with squash?`))
+              return;
+            void run(
+              "/api/agent/pr/merge",
+              post({ cwd, number: Number(prNumber), method: "squash" }),
+            );
+          }}
+        >
+          Squash and merge
+        </button>
       </div>
       <div className="row">
         <input
@@ -211,6 +349,20 @@ function GitTools({ cwd }: { cwd: string }) {
           Remove
         </button>
       </div>
+      {gitState ? (
+        <section>
+          <p>
+            Branch {gitState.branch ?? "detached"} · +{gitState.additions} -{gitState.deletions}
+          </p>
+          <pre>{gitState.diff || gitState.status.join("\n") || "Working tree clean"}</pre>
+        </section>
+      ) : null}
+      {pullRequest ? (
+        <p>
+          PR #{pullRequest.number}: {pullRequest.title} · {pullRequest.state} ·{" "}
+          {pullRequest.mergeable}
+        </p>
+      ) : null}
       <ErrorText value={error} />
       {output === null ? null : <JsonView value={output} />}
     </article>
@@ -222,20 +374,40 @@ function BrowserTools() {
   const [history, setHistory] = useState<string[]>([]);
   const [output, setOutput] = useState<Json | null>(null);
   const [error, setError] = useState("");
-  const [frameVersion, setFrameVersion] = useState(0);
+  const [frameUrl, setFrameUrl] = useState("");
+  const refreshFrame = async () => {
+    const response = decodeBrowserFrameResponse(await requestRecord("/api/agent/browser/frame"));
+    setFrameUrl(response.data.frame ? `data:image/jpeg;base64,${response.data.frame}` : "");
+    setUrl(response.data.url);
+    setHistory((items) =>
+      items.at(-1) === response.data.url ? items : [...items, response.data.url].slice(-24),
+    );
+  };
   const run = async (endpoint: `/api/${string}`, init?: RequestInit) => {
     try {
       setOutput(await request(endpoint, init));
       setError("");
-      setFrameVersion((value) => value + 1);
+      await refreshFrame();
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
     }
   };
-  const navigate = () => {
-    setHistory((items) => [...items.filter((item) => item !== url), url].slice(-12));
-    void run("/api/agent/browser/navigate", post({ url }));
+  const navigate = () => void run("/api/agent/browser/navigate", post({ url }));
+  const sendEnter = async () => {
+    try {
+      const key = { kind: "key", key: "Enter", code: "Enter" };
+      await request("/api/agent/browser/input", post({ ...key, type: "down" }));
+      await request("/api/agent/browser/input", post({ ...key, type: "up" }));
+      await refreshFrame();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : String(value));
+    }
   };
+  useMountSubscription(() => {
+    void refreshFrame().catch((value) =>
+      setError(value instanceof Error ? value.message : String(value)),
+    );
+  }, []);
   return (
     <article>
       <h3>Local browser</h3>
@@ -256,17 +428,10 @@ function BrowserTools() {
         >
           1280 × 800
         </button>
-        <button
-          onClick={() => run("/api/agent/browser/input", post({ type: "key", key: "Enter" }))}
-        >
-          Send Enter
-        </button>
+        <button onClick={sendEnter}>Send Enter</button>
       </div>
       <p>History: {history.join(" · ") || "None"}</p>
-      <img
-        src={`/api/agent/browser/frame?v=${frameVersion}`}
-        alt="Current browser screencast frame"
-      />
+      {frameUrl ? <img src={frameUrl} alt="Current browser screencast frame" /> : null}
       <ErrorText value={error} />
       {output === null ? null : <JsonView value={output} />}
     </article>
@@ -311,6 +476,11 @@ function TerminalTools({ cwd }: { cwd: string }) {
   const action = async (name: "input" | "resize" | "close", value: RecordJson) => {
     try {
       await request(`/api/agent/terminal/pty/${name}`, post({ id, ...value }));
+      if (name === "close") {
+        stream.current?.close();
+        stream.current = null;
+        setId("");
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
