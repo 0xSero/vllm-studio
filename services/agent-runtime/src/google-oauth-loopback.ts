@@ -1,5 +1,5 @@
 import { createServer, type Server, type ServerResponse } from "node:http";
-import { Effect, Fiber } from "effect";
+import { Effect, Fiber, Schema } from "effect";
 import {
   beginGoogleAuthorization,
   cancelGoogleAuthorization,
@@ -117,12 +117,14 @@ function listen(server: Server): Promise<number> {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       server.removeListener("error", reject);
-      const address = server.address();
-      if (!address || typeof address === "string") {
+      const address = Schema.decodeUnknownOption(
+        Schema.Struct({ port: Schema.Number }),
+      )(server.address());
+      if (address._tag === "None") {
         reject(new Error("Loopback listener failed"));
         return;
       }
-      resolve(address.port);
+      resolve(address.value.port);
     });
   });
 }

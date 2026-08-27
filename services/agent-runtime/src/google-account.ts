@@ -197,24 +197,24 @@ function vaultError(): GoogleAccountError {
 function readVaultJson<A>(
   vault: OAuthVault,
   key: string,
-  decode: (input: unknown) => A,
+  schema: Schema.Codec<A, unknown, never>,
 ): Effect.Effect<A | null, GoogleAccountError> {
   return vault.read(key).pipe(
     Effect.mapError(vaultError),
     Effect.flatMap((raw) => {
       if (!raw) return Effect.succeed(null);
       return Effect.try({
-        try: () => decode(JSON.parse(raw)),
+        try: () => Schema.decodeUnknownSync(schema)(JSON.parse(raw)),
         catch: () => new GoogleAccountError(500, "Secure OAuth record is invalid"),
       });
     }),
   );
 }
 
-function writeVaultJson(
+function writeVaultJson<A>(
   vault: OAuthVault,
   key: string,
-  value: unknown,
+  value: A,
 ): Effect.Effect<void, GoogleAccountError> {
   return vault.write(key, JSON.stringify(value)).pipe(Effect.mapError(vaultError));
 }
@@ -274,7 +274,7 @@ export function saveGoogleClient(
         yield* retryPendingGoogleRevocations(vault, dependencies);
         const current = yield* metadataEffect();
         const currentSecrets =
-          (yield* readVaultJson(vault, secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
+          (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ??
           emptySecrets();
         const sameClient = current?.clientId === clientId;
         const revokeToken = GOOGLE_WORKSPACE_PLUGIN_IDS.flatMap((id) =>
@@ -425,8 +425,8 @@ async function exchangeAuthorizationCode(
     grant_type: "authorization_code",
     redirect_uri: pending.redirectUri,
     resource: pending.resource,
-    ...(secrets.clientSecret ? { client_secret: secrets.clientSecret } : {}),
   });
+  if (secrets.clientSecret) body.set("client_secret", secrets.clientSecret);
   const response = await dependencies.fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -478,7 +478,7 @@ async function verifyGoogleWorkspaceAccess(
       throw new GoogleAccountError(502, "Google read-only tool contract could not be verified");
     }
     const result = await connection.callTool(binding.verifyTool, {});
-    if (result !== null && typeof result === "object" && Reflect.get(result, "isError") === true) {
+    if ("isError" in result && result.isError === true) {
       throw new GoogleAccountError(502, "Google read-only access could not be verified");
     }
   } finally {
@@ -525,9 +525,12 @@ async function revokeGoogleGrant(
     signal: googleRequestSignal(dependencies),
   });
   if (response.ok) return;
-  const body: unknown = await response.json().catch(() => null);
-  if (response.status === 400 && body && typeof body === "object") {
-    if (Reflect.get(body, "error") === "invalid_token") return;
+  const RevokeResponseSchema = Schema.Struct({ error: Schema.optional(Schema.String) });
+  const body = Schema.decodeUnknownOption(RevokeResponseSchema)(
+    await response.json().catch(() => null),
+  );
+  if (response.status === 400 && body._tag === "Some" && body.value.error === "invalid_token") {
+    return;
   }
   throw new GoogleAccountError(502, "Google access could not be revoked");
 }
@@ -556,7 +559,7 @@ function updatePendingRevocation(
 ): Effect.Effect<void, GoogleAccountError> {
   return Effect.gen(function* () {
     const secrets =
-      (yield* readVaultJson(vault, secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
+      (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ??
       emptySecrets();
     const tokens = new Set(pendingRevocations(secrets));
     if (present) tokens.add(token);
@@ -596,7 +599,7 @@ function retryPendingGoogleRevocations(
 ): Effect.Effect<void, GoogleAccountError> {
   return Effect.gen(function* () {
     const secrets =
-      (yield* readVaultJson(vault, secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
+      (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ??
       emptySecrets();
     yield* Effect.forEach(pendingRevocations(secrets), (token) =>
       promiseEffect(() => revokeGoogleGrant(token, dependencies)).pipe(
@@ -638,19 +641,15 @@ function restoreGoogleAuthorization(
   return Effect.gen(function* () {
     const currentMetadata = (yield* metadataEffect()) ?? commit.previousMetadata;
     const currentSecrets =
-      (yield* readVaultJson(vault, secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
+      (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ??
       commit.previousSecrets;
-    const connections: Partial<Record<GoogleWorkspacePluginId, Connection>> = {
-      ...currentMetadata.connections,
-    };
+    const connections = { ...currentMetadata.connections };
     if (connections[commit.accountId]?.revision === commit.connectionRevision) {
       const previous = commit.previousMetadata.connections[commit.accountId];
       if (previous) connections[commit.accountId] = previous;
       else delete connections[commit.accountId];
     }
-    const refreshTokens: Partial<Record<GoogleWorkspacePluginId, string>> = {
-      ...currentSecrets.refreshTokens,
-    };
+    const refreshTokens = { ...currentSecrets.refreshTokens };
     if (refreshTokens[commit.accountId] === commit.committedRefreshToken) {
       const previous = commit.previousSecrets.refreshTokens[commit.accountId];
       if (previous) refreshTokens[commit.accountId] = previous;
@@ -708,7 +707,7 @@ function completeGoogleAuthorizationUnlocked(
     const pending = yield* readVaultJson(
       vault,
       pendingKey(account),
-      Schema.decodeUnknownSync(PendingSchema),
+      PendingSchema,
     );
     if (
       !pending ||
@@ -732,7 +731,7 @@ function completeGoogleAuthorizationUnlocked(
       );
     }
     const secrets =
-      (yield* readVaultJson(vault, secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
+      (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ??
       emptySecrets();
     const token = yield* authorizationRequestEffect(account, pending.flowId, () =>
       exchangeAuthorizationCode(metadata, secrets, pending, input.code, dependencies, cancellation),
@@ -776,11 +775,16 @@ function completeGoogleAuthorizationUnlocked(
       connectedAt: new Date(dependencies.now()).toISOString(),
       revision: connectionRevision,
     };
-    const updatedSecrets: Secrets = {
-      ...(secrets.clientSecret ? { clientSecret: secrets.clientSecret } : {}),
-      refreshTokens: { ...secrets.refreshTokens, [account]: refreshToken },
-      pendingRevocations: pendingRevocations(secrets),
-    };
+    const updatedSecrets: Secrets = secrets.clientSecret
+      ? {
+          clientSecret: secrets.clientSecret,
+          refreshTokens: { ...secrets.refreshTokens, [account]: refreshToken },
+          pendingRevocations: pendingRevocations(secrets),
+        }
+      : {
+          refreshTokens: { ...secrets.refreshTokens, [account]: refreshToken },
+          pendingRevocations: pendingRevocations(secrets),
+        };
     const updatedMetadata: Metadata = {
       ...metadata,
       connections: { ...metadata.connections, [account]: connection },
@@ -793,8 +797,8 @@ function completeGoogleAuthorizationUnlocked(
       flowId: pending.flowId,
       previousMetadata: metadata,
       previousSecrets: secrets,
-      ...(rollbackToken ? { rollbackToken } : {}),
     };
+    if (rollbackToken) commit.rollbackToken = rollbackToken;
     yield* writeVaultJson(vault, secretsKey, updatedSecrets).pipe(
       Effect.andThen(writeMetadataEffect(updatedMetadata)),
       Effect.catch((error: GoogleAccountError) =>
@@ -876,7 +880,7 @@ export function disconnectGoogleAccount(
           yield* retryPendingGoogleRevocations(vault, dependencies);
           const metadata = yield* metadataEffect();
           const secrets =
-            (yield* readVaultJson(vault, secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
+            (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ??
             emptySecrets();
           const revokeToken =
             secrets.refreshTokens[account] ??
@@ -889,11 +893,13 @@ export function disconnectGoogleAccount(
           const updatedMetadata: Metadata | null = metadata
             ? { ...metadata, connections: {} }
             : null;
-          const updatedSecrets: Secrets = {
-            ...(secrets.clientSecret ? { clientSecret: secrets.clientSecret } : {}),
-            refreshTokens: {},
-            pendingRevocations: pendingRevocations(secrets),
-          };
+          const updatedSecrets: Secrets = secrets.clientSecret
+            ? {
+                clientSecret: secrets.clientSecret,
+                refreshTokens: {},
+                pendingRevocations: pendingRevocations(secrets),
+              }
+            : { refreshTokens: {}, pendingRevocations: pendingRevocations(secrets) };
           return yield* Effect.gen(function* () {
             if (updatedMetadata) yield* writeMetadataEffect(updatedMetadata);
             yield* Effect.forEach(GOOGLE_WORKSPACE_PLUGIN_IDS, (id) =>
@@ -929,8 +935,8 @@ async function refreshAccessToken(
     refresh_token: refreshToken,
     grant_type: "refresh_token",
     resource: binding.resource,
-    ...(secrets.clientSecret ? { client_secret: secrets.clientSecret } : {}),
   });
+  if (secrets.clientSecret) body.set("client_secret", secrets.clientSecret);
   const response = await dependencies.fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -963,7 +969,7 @@ export function googleAuthorizationHeaders(
         return yield* Effect.fail(new GoogleAccountError(401, "Google account is not connected"));
       }
       const secrets =
-        (yield* readVaultJson(vault, secretsKey, Schema.decodeUnknownSync(SecretsSchema))) ??
+        (yield* readVaultJson(vault, secretsKey, SecretsSchema)) ??
         emptySecrets();
       const token = yield* promiseEffect(() =>
         refreshAccessToken(account, metadata, secrets, dependencies),

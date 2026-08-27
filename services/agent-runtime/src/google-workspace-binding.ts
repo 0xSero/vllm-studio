@@ -11,7 +11,7 @@ type GoogleWorkspaceBinding = {
   verifyTool: string;
 };
 
-export const GOOGLE_WORKSPACE_BINDINGS: Record<GoogleWorkspacePluginId, GoogleWorkspaceBinding> = {
+export const GOOGLE_WORKSPACE_BINDINGS = {
   gmail: {
     name: "Gmail",
     connectorId: "account-google-gmail",
@@ -34,7 +34,7 @@ export const GOOGLE_WORKSPACE_BINDINGS: Record<GoogleWorkspacePluginId, GoogleWo
     observeTools: ["list_events", "get_event", "list_calendars", "suggest_time"],
     verifyTool: "list_calendars",
   },
-};
+} satisfies Record<GoogleWorkspacePluginId, GoogleWorkspaceBinding>;
 
 export function isGoogleWorkspacePlugin(id: string): id is GoogleWorkspacePluginId {
   return id === "gmail" || id === "google-calendar";

@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
-type VaultResponse = {
-  channel: "local-studio:oauth-vault:response";
+type VaultRequest = {
+  channel: "local-studio:oauth-vault:request";
   id: string;
-  ok: boolean;
+  operation: "read" | "write" | "delete";
+  key: string;
   value?: string;
-  error?: string;
 };
 
 type PendingRequest = {
@@ -26,33 +26,28 @@ export class OAuthVaultError extends Error {}
 const pending = new Map<string, PendingRequest>();
 let listening = false;
 
-function isVaultResponse(value: unknown): value is VaultResponse {
-  if (!value || typeof value !== "object") return false;
-  const channel = Reflect.get(value, "channel");
-  const id = Reflect.get(value, "id");
-  const ok = Reflect.get(value, "ok");
-  const responseValue = Reflect.get(value, "value");
-  const error = Reflect.get(value, "error");
-  return (
-    channel === "local-studio:oauth-vault:response" &&
-    typeof id === "string" &&
-    typeof ok === "boolean" &&
-    (responseValue === undefined || typeof responseValue === "string") &&
-    (error === undefined || typeof error === "string")
-  );
-}
+const VaultResponseSchema = Schema.Struct({
+  channel: Schema.Literal("local-studio:oauth-vault:response"),
+  id: Schema.String,
+  ok: Schema.Boolean,
+  value: Schema.optional(Schema.String),
+  error: Schema.optional(Schema.String),
+});
+
+const decodeVaultResponse = Schema.decodeUnknownOption(VaultResponseSchema);
 
 function listen(): void {
   if (listening) return;
   listening = true;
-  process.on("message", (message: unknown) => {
-    if (!isVaultResponse(message)) return;
-    const request = pending.get(message.id);
+  process.on("message", (message) => {
+    const response = decodeVaultResponse(message);
+    if (response._tag === "None") return;
+    const request = pending.get(response.value.id);
     if (!request) return;
-    pending.delete(message.id);
+    pending.delete(response.value.id);
     clearTimeout(request.timeout);
-    if (message.ok) request.resolve(message.value);
-    else request.reject(new OAuthVaultError(message.error ?? "Secure OAuth storage failed"));
+    if (response.value.ok) request.resolve(response.value.value);
+    else request.reject(new OAuthVaultError(response.value.error ?? "Secure OAuth storage failed"));
   });
 }
 
@@ -73,14 +68,15 @@ function request(
       reject(new OAuthVaultError("Secure OAuth storage timed out"));
     }, 10_000);
     pending.set(id, { resolve, reject, timeout });
+    const payload: VaultRequest = {
+      channel: "local-studio:oauth-vault:request",
+      id,
+      operation,
+      key,
+    };
+    if (value !== undefined) payload.value = value;
     process.send(
-      {
-        channel: "local-studio:oauth-vault:request",
-        id,
-        operation,
-        key,
-        ...(value === undefined ? {} : { value }),
-      },
+      payload,
       undefined,
       undefined,
       (error: Error | null) => {

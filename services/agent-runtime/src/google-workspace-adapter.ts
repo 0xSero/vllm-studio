@@ -91,7 +91,7 @@ export function enableGoogleWorkspaceAdapter(
       closePooledConnection(enabled.id);
       return saved;
     },
-    catch: (error) => new Error(`Google Workspace adapter failed: ${error}`),
+    catch: (error) => new Error(`Google Workspace adapter failed: ${String(error)}`),
   });
 }
 
@@ -115,7 +115,7 @@ export function googleWorkspaceAdapterEnabled(
       ownedGoogleWorkspaceConnectors(await listConnectors(), id).some(
         (connector) => connector.enabled,
       ),
-    catch: (error) => new Error(`Google Workspace adapter state failed: ${error}`),
+    catch: (error) => new Error(`Google Workspace adapter state failed: ${String(error)}`),
   });
 }
 
@@ -134,7 +134,7 @@ export function restoreGoogleWorkspaceAdapter(
       closePooledConnection(GOOGLE_WORKSPACE_BINDINGS[id].connectorId);
       return saved;
     },
-    catch: (error) => new Error(`Google Workspace adapter restore failed: ${error}`),
+    catch: (error) => new Error(`Google Workspace adapter restore failed: ${String(error)}`),
   });
 }
 
@@ -150,6 +150,6 @@ export function disableGoogleWorkspaceAdapter(
       owned.forEach((connector) => closePooledConnection(connector.id));
       return saved;
     },
-    catch: (error) => new Error(`Google Workspace disconnect failed: ${error}`),
+    catch: (error) => new Error(`Google Workspace disconnect failed: ${String(error)}`),
   });
 }
