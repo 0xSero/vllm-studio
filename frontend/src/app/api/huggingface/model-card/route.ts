@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Option, Schema } from "effect";
 import { fetchWithTimeout } from "@/lib/api/http";
-import type { HuggingFaceModelCardPayload } from "@/lib/huggingface";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +9,23 @@ const HF_API = "https://huggingface.co/api/models";
 const HF_RAW = "https://huggingface.co";
 const TIMEOUT_MS = 10_000;
 const MAX_README_CHARS = 12_000;
+
+type HuggingFaceModelCardPayload = {
+  modelId: string;
+  author?: string;
+  sha?: string;
+  downloads?: number;
+  likes?: number;
+  tags?: string[];
+  pipeline_tag?: string;
+  library_name?: string;
+  createdAt?: string;
+  lastModified?: string;
+  cardData?: object;
+  siblings?: Array<{ rfilename?: string; size?: number }>;
+  readme?: string;
+  url: string;
+};
 
 const HuggingFaceRecordSchema = Schema.Record(Schema.String, Schema.Unknown);
 const HuggingFaceSiblingSchema = Schema.Struct({
