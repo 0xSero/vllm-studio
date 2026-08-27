@@ -11,6 +11,7 @@ export function AgentComposerStatusBar({
   gitSummary,
   onInitGit,
   currentContextTokens,
+  taskTokenTotal,
   contextWindow,
   onOpenDiff,
 }: {
@@ -20,6 +21,7 @@ export function AgentComposerStatusBar({
   gitSummary?: GitSummary | null;
   onInitGit?: () => void;
   currentContextTokens: number;
+  taskTokenTotal: number;
   contextWindow: number;
   onOpenDiff: () => void;
 }) {
@@ -38,6 +40,12 @@ export function AgentComposerStatusBar({
         <GitBranchState gitBranch={gitBranch} gitSummary={gitSummary} onInitGit={onInitGit} />
         <GitSummaryState gitSummary={gitSummary} onOpenDiff={onOpenDiff} />
       </div>
+      <span
+        className="shrink-0 tabular-nums text-(--dim)"
+        title={`${formatTokenCount(taskTokenTotal)} tokens used by this task and its subagents`}
+      >
+        {formatTokenCount(taskTokenTotal)} total
+      </span>
       <ContextReadout current={currentContextTokens} contextWindow={contextWindow} />
     </div>
   );

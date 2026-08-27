@@ -5,6 +5,8 @@ import {
   FilePenLine,
   FileText,
   Globe2,
+  Plug,
+  Rocket,
   Search,
   TerminalSquare,
   Wrench,
@@ -25,7 +27,6 @@ import {
   fileBasename,
   humanizeToolName,
   toolArg,
-  toolKindNodeColor,
   toolPreviewHeightFor,
   toolVerb,
   type ToolKind,
@@ -49,10 +50,12 @@ export const TOOL_ICONS: Record<ToolKind, LucideIcon> = {
   read: FileText,
   exec: TerminalSquare,
   browser: Globe2,
+  mcp: Plug,
+  setup: Rocket,
   generic: Wrench,
 };
 
-type ToolMeta = { verb: string; detail: string | null };
+type ToolMeta = { title: string; detail: string | null; provider: string | null };
 
 function previewHtmlDocument(source: string): string {
   const resetStyle = "<style>html,body{margin:0;padding:0}</style>";
@@ -60,6 +63,39 @@ function previewHtmlDocument(source: string): string {
   if (/<html[\s>]/i.test(source))
     return source.replace(/<html([^>]*)>/i, `<html$1><head>${resetStyle}</head>`);
   return `<!doctype html><html><head><meta charset="utf-8">${resetStyle}</head><body>${source}</body></html>`;
+}
+
+function mcpProvider(name: string): string | null {
+  const normalized = name.toLowerCase();
+  const match = normalized.match(/^mcp__([^_]+)__/);
+  if (match?.[1]) return match[1];
+  const prefix = normalized.match(/^([a-z0-9-]+)[._]/)?.[1] ?? null;
+  return prefix &&
+    ["github", "figma", "slack", "linear", "notion", "obsidian", "context7"].includes(prefix)
+    ? prefix
+    : null;
+}
+
+function mcpTitle(block: ToolBlock): string {
+  const running = block.status === "running";
+  const action = block.name
+    .toLowerCase()
+    .replace(/^mcp__[^_]+__/, "")
+    .replace(/^[^.]+\./, "");
+  if (action.includes("search_pull_requests"))
+    return running ? "Searching pull requests" : "Searched pull requests";
+  if (action.includes("search_issues")) return running ? "Searching issues" : "Searched issues";
+  if (action.includes("create_pull_request"))
+    return running ? "Creating pull request" : "Created pull request";
+  if (action.includes("get_pull_request"))
+    return running ? "Opening pull request" : "Opened pull request";
+  if (action.includes("create_issue")) return running ? "Creating issue" : "Created issue";
+  if (action.includes("search")) return running ? "Searching" : "Searched";
+  if (action.includes("list")) return running ? "Listing" : "Listed";
+  if (action.includes("get") || action.includes("read")) return running ? "Reading" : "Read";
+  if (action.includes("create") || action.includes("post")) return running ? "Creating" : "Created";
+  if (action.includes("update") || action.includes("edit")) return running ? "Updating" : "Updated";
+  return humanizeToolName(block.name);
 }
 
 function toolMeta(block: ToolBlock, filePath?: string | null): ToolMeta {
@@ -75,45 +111,74 @@ function toolMeta(block: ToolBlock, filePath?: string | null): ToolMeta {
   ]);
   const query = toolArg(block, ["query", "q", "pattern", "search", "search_query", "needle"]);
   const command = toolArg(block, ["cmd", "command", "script", "shell", "input"]);
-  const url = toolArg(block, ["url", "href"]);
+  const url = browserUrlFromBlock(block);
   const resolvedPath = filePath ?? path;
   const kind = classifyTool(block);
   const verb = toolVerb(block);
   const setupDetail = toolArg(block, ["ref"]);
 
   if (block.name.startsWith("local_studio_")) {
-    return { verb, detail: compactToolText(setupDetail, 110) };
+    return { title: verb, detail: compactToolText(setupDetail, 110), provider: null };
   }
 
   switch (kind) {
     case "edit":
-      return { verb, detail: resolvedPath ?? fileBasename(resolvedPath) };
+      return {
+        title: fileBasename(resolvedPath) ?? verb,
+        detail: null,
+        provider: null,
+      };
     case "read":
-      return { verb: block.status === "running" ? "Reading file" : "Read file", detail: null };
+      return { title: fileBasename(resolvedPath) ?? "File", detail: null, provider: null };
     case "search": {
       const compact = compactToolText(query, 80);
-      return { verb, detail: compact ? `for ${compact}` : (path ?? "files") };
+      return { title: compact ?? path ?? "Search", detail: null, provider: null };
     }
     case "exec":
-      return { verb, detail: compactToolText(command, 110) ?? "command" };
+      return { title: compactToolText(command, 160) ?? "Command", detail: null, provider: null };
     case "browser":
       return {
-        verb: browserToolLabel(block),
-        detail: compactToolText(url ?? browserToolDetail(block), 110),
+        title: browserToolLabel(block),
+        detail: browserDomain(url) ?? compactToolText(browserToolDetail(block), 80),
+        provider: null,
+      };
+    case "mcp":
+      return {
+        title: mcpTitle(block),
+        detail: compactToolText(query ?? path ?? url, 80),
+        provider: mcpProvider(block.name),
       };
     default:
       return {
-        verb,
-        detail:
-          [humanizeToolName(block.name), compactToolText(command ?? query ?? path ?? url, 80)]
-            .filter(Boolean)
-            .join(" · ") || null,
+        title: humanizeToolName(block.name),
+        detail: compactToolText(command ?? query ?? path ?? url, 80),
+        provider: null,
       };
+  }
+}
+
+function browserDomain(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
   }
 }
 
 function browserToolLabel(block: ToolBlock): string {
   const running = block.status === "running";
+  const query = toolArg(block, ["query", "q"]);
+  if (query) return running ? "Searching the web" : "Searched the web";
+  if (Array.isArray(block.args?.search_query))
+    return running ? "Searching the web" : "Searched the web";
+  if (Array.isArray(block.args?.image_query))
+    return running ? "Searching images" : "Searched images";
+  if (Array.isArray(block.args?.open)) return running ? "Opening page" : "Opened page";
+  if (Array.isArray(block.args?.click)) return running ? "Clicking link" : "Clicked link";
+  if (Array.isArray(block.args?.find)) return running ? "Finding on page" : "Found on page";
+  if (Array.isArray(block.args?.screenshot))
+    return running ? "Taking screenshot" : "Took screenshot";
   const normalized = block.name
     .toLowerCase()
     .replace(/^browser_/, "")
@@ -130,6 +195,13 @@ function browserToolLabel(block: ToolBlock): string {
   return running ? "Using browser" : "Used browser";
 }
 
+function browserUrlFromBlock(block: ToolBlock): string | null {
+  const direct = toolArg(block, ["url", "href"]);
+  if (direct) return direct;
+  const source = JSON.stringify(block.args ?? {});
+  return source.match(/https?:\\?\/\\?\/[^"]+/)?.[0]?.replaceAll("\\/", "/") ?? null;
+}
+
 function browserToolDetail(block: ToolBlock): string | null {
   const stringValue = toolArg(block, ["selector", "value", "tabId", "query"]);
   const deltaY = block.args?.deltaY;
@@ -137,6 +209,41 @@ function browserToolDetail(block: ToolBlock): string | null {
   if (typeof deltaY === "number") return `deltaY ${deltaY}`;
   return compactToolText(block.resultText, 110);
 }
+
+function durationLabel(block: ToolBlock): string | null {
+  if (!block.startedAt || !block.finishedAt) return null;
+  const elapsed = Date.parse(block.finishedAt) - Date.parse(block.startedAt);
+  if (!Number.isFinite(elapsed) || elapsed < 0) return null;
+  if (elapsed < 1_000) return `${Math.round(elapsed)}ms`;
+  return `${(elapsed / 1_000).toFixed(elapsed < 10_000 ? 1 : 0)}s`;
+}
+
+function GithubMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true" fill="currentColor">
+      <path d="M12 .7a11.5 11.5 0 0 0-3.64 22.4c.58.1.79-.25.79-.56v-2.23c-3.22.7-3.9-1.37-3.9-1.37-.52-1.34-1.28-1.7-1.28-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.74-1.55-2.57-.3-5.27-1.29-5.27-5.7 0-1.26.45-2.3 1.19-3.1-.12-.29-.52-1.47.11-3.06 0 0 .97-.31 3.17 1.18a10.94 10.94 0 0 1 5.77 0c2.2-1.5 3.17-1.18 3.17-1.18.63 1.59.23 2.77.11 3.06.74.8 1.19 1.84 1.19 3.1 0 4.42-2.7 5.4-5.28 5.7.42.36.79 1.07.79 2.16v3.2c0 .31.2.67.8.56A11.5 11.5 0 0 0 12 .7Z" />
+    </svg>
+  );
+}
+
+function ZigMark({ className }: { className?: string }) {
+  return <span className={`${className ?? ""} font-mono text-[11px] font-semibold`}>Z</span>;
+}
+
+function ProviderMark({ provider }: { provider: string }) {
+  if (provider === "github") {
+    return <GithubMark className="h-3.5 w-3.5 shrink-0 text-(--dim)/70" />;
+  }
+  const label =
+    provider === "slack" ? "#" : provider === "obsidian" ? "◇" : provider.slice(0, 1).toUpperCase();
+  return (
+    <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center font-mono text-[11px] font-semibold text-(--color-skill-node-foreground)">
+      {label}
+    </span>
+  );
+}
+
+const ToolAutoOpenContext = createContext(false);
 
 function ToolSummary({
   block,
@@ -150,74 +257,87 @@ function ToolSummary({
   const meta = toolMeta(block, filePath);
   const running = block.status === "running";
   const kind = classifyTool(block);
-  const idleColor = toolKindNodeColor(kind);
   const Icon = TOOL_ICONS[kind];
+  const autoOpen = useContext(ToolAutoOpenContext) || block.status === "error";
+  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  const open = manualOpen ?? autoOpen;
+  const duration = durationLabel(block);
+  const resolvedPath =
+    filePath ?? toolArg(block, ["path", "file_path", "filePath", "file", "filename"]);
+  const zig = resolvedPath?.toLowerCase().endsWith(".zig") ?? false;
+  const browserUrl = kind === "browser" ? browserUrlFromBlock(block) : null;
+  const favicon = browserDomain(browserUrl)
+    ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(browserDomain(browserUrl) ?? "")}&sz=32`
+    : null;
   return (
-    <div className="min-w-0">
-      <div className="flex min-h-5 min-w-0 items-center gap-1.5 px-1 py-0.5">
-        <Icon className="h-3.5 w-3.5 shrink-0 text-(--dim)/65" strokeWidth={1.7} />
+    <div className="min-w-0 py-0.5">
+      <button
+        type="button"
+        disabled={!children}
+        aria-expanded={children ? open : undefined}
+        onClick={() => children && setManualOpen(!open)}
+        className="group flex min-h-7 w-full min-w-0 items-center gap-2 px-1 text-left disabled:cursor-default"
+      >
+        {meta.provider ? (
+          <ProviderMark provider={meta.provider} />
+        ) : zig ? (
+          <ZigMark className="flex h-3.5 w-3.5 shrink-0 items-center justify-center text-(--color-file-node-foreground)" />
+        ) : favicon ? (
+          <img src={favicon} alt="" className="h-3.5 w-3.5 shrink-0 rounded-[3px]" />
+        ) : (
+          <Icon className="h-3.5 w-3.5 shrink-0 text-(--dim)/65" strokeWidth={1.7} />
+        )}
         <span
-          className={`shrink-0 text-[length:var(--fs-sm)] font-normal leading-5 ${
-            running ? "codex-shimmer-text" : idleColor
+          className={`min-w-0 truncate text-[length:var(--fs-sm)] font-normal leading-5 transition-colors group-hover:text-(--fg) ${
+            running ? "codex-shimmer-text" : "text-(--fg)/78"
           }`}
         >
-          {meta.verb}
+          {meta.title}
         </span>
         {meta.detail ? (
-          <span className="min-w-0 flex-1 truncate font-mono text-[length:var(--codex-chat-code-font-size)] leading-5 text-(--hl2)">
+          <span className="min-w-0 flex-1 truncate text-[length:var(--fs-xs)] leading-5 text-(--dim)/70 transition-colors group-hover:text-(--fg)/65">
             {meta.detail}
           </span>
         ) : (
           <span className="min-w-0 flex-1" />
         )}
-        {block.status === "error" ? (
-          <span className="shrink-0 text-[length:var(--fs-sm)] text-(--err)">failed</span>
+        {meta.provider && meta.provider !== "github" ? (
+          <span className="shrink-0 text-[length:var(--fs-xs)] text-(--dim)/60">
+            {meta.provider}
+          </span>
         ) : null}
-      </div>
-      {children ? <div className="mb-1.5 ml-1.5 mt-1 min-w-0">{children}</div> : null}
+        {duration ? (
+          <span className="shrink-0 font-mono text-[length:var(--fs-xs)] tabular-nums text-(--dim)/65">
+            {duration}
+          </span>
+        ) : null}
+        {block.status === "error" ? (
+          <span className="shrink-0 text-[length:var(--fs-xs)] text-(--err)">failed</span>
+        ) : null}
+      </button>
+      {children && open ? <div className="min-w-0 pt-0.5">{children}</div> : null}
     </div>
   );
 }
 
 /* The shell block: a single flat terminal surface — `$ command` line, then
    dim scrollback-style output. Failure tints the prompt; no chips, no rows. */
-function ShellBlock({
-  command,
-  output,
-  status,
-}: {
-  command: string;
-  output: string | null;
-  status: ToolBlock["status"];
-}) {
+function ShellBlock({ output, status }: { output: string | null; status: ToolBlock["status"] }) {
   const failed = status === "error";
   const trimmedOutput = output?.replace(/\s+$/, "") || null;
   const height = useToolPreviewHeight();
+  if (!trimmedOutput) return null;
   return (
     <div
-      className={`overflow-hidden rounded-md border bg-(--color-input) ${
+      className={`overflow-hidden rounded-b-md border border-t-0 bg-(--color-input) ${
         failed ? "border-(--err)/35" : "border-(--border)"
       }`}
     >
-      <div className="px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6]">
-        <div className="flex items-start gap-2">
-          <span
-            className={`select-none ${failed ? "text-(--err)" : "text-(--color-terminal-green)"}`}
-          >
-            $
-          </span>
-          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-(--fg)/90">
-            {command}
-          </span>
-        </div>
-      </div>
-      {trimmedOutput ? (
-        <PreviewScroll height={height} className="border-t border-(--separator) bg-(--surface)/45">
-          <pre className="whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/55">
-            {trimmedOutput}
-          </pre>
-        </PreviewScroll>
-      ) : null}
+      <PreviewScroll height={height} className="bg-(--surface)/45">
+        <pre className="whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[length:var(--fs-sm)] leading-[1.6] text-(--fg)/55">
+          {trimmedOutput}
+        </pre>
+      </PreviewScroll>
     </div>
   );
 }
@@ -549,7 +669,11 @@ function execCommand(block: ToolBlock): string | null {
 }
 
 function BrowserPreview({ block }: { block: ToolBlock }) {
-  return <ToolSummary block={block} />;
+  const display =
+    block.resultText || (block.text && block.text !== block.argsText ? block.text : "");
+  return (
+    <ToolSummary block={block}>{display ? <ToolOutput>{display}</ToolOutput> : null}</ToolSummary>
+  );
 }
 
 function ToolPreviewHeightProvider({ kind, children }: { kind: ToolKind; children: ReactNode }) {
@@ -561,7 +685,13 @@ function ToolPreviewHeightProvider({ kind, children }: { kind: ToolKind; childre
   );
 }
 
-export function ToolBlockView({ block }: { block: ToolBlock }) {
+export function ToolBlockView({
+  block,
+  autoOpen = false,
+}: {
+  block: ToolBlock;
+  autoOpen?: boolean;
+}) {
   useFilesystemRefresh(block);
   const kind = classifyTool(block);
   const fileWritePreview = FILE_WRITE_TOOL_NAMES.has(block.name.toLowerCase())
@@ -569,41 +699,56 @@ export function ToolBlockView({ block }: { block: ToolBlock }) {
     : null;
   if (fileWritePreview) {
     return (
-      <ToolPreviewHeightProvider kind={kind}>
-        <FileWritePreview block={block} {...fileWritePreview} />
-      </ToolPreviewHeightProvider>
+      <ToolAutoOpenContext.Provider value={autoOpen}>
+        <ToolPreviewHeightProvider kind={kind}>
+          <FileWritePreview block={block} {...fileWritePreview} />
+        </ToolPreviewHeightProvider>
+      </ToolAutoOpenContext.Provider>
     );
   }
   const diffPreview = diffPreviewData(block);
   if (diffPreview) {
     return (
-      <ToolPreviewHeightProvider kind={kind}>
-        <DiffPreview block={block} diffText={diffPreview} />
-      </ToolPreviewHeightProvider>
+      <ToolAutoOpenContext.Provider value={autoOpen}>
+        <ToolPreviewHeightProvider kind={kind}>
+          <DiffPreview block={block} diffText={diffPreview} />
+        </ToolPreviewHeightProvider>
+      </ToolAutoOpenContext.Provider>
     );
   }
   if (kind === "exec") {
     const command = execCommand(block) ?? humanizeToolName(block.name);
+    const output = block.resultText || null;
     return (
-      <ToolPreviewHeightProvider kind={kind}>
-        <ShellBlock command={command} output={block.resultText || null} status={block.status} />
-      </ToolPreviewHeightProvider>
+      <ToolAutoOpenContext.Provider value={autoOpen}>
+        <ToolPreviewHeightProvider kind={kind}>
+          <ToolSummary block={{ ...block, args: { ...block.args, command } }}>
+            {output ? <ShellBlock output={output} status={block.status} /> : null}
+          </ToolSummary>
+        </ToolPreviewHeightProvider>
+      </ToolAutoOpenContext.Provider>
     );
   }
   if (kind === "browser") {
     return (
-      <ToolPreviewHeightProvider kind={kind}>
-        <BrowserPreview block={block} />
-      </ToolPreviewHeightProvider>
+      <ToolAutoOpenContext.Provider value={autoOpen}>
+        <ToolPreviewHeightProvider kind={kind}>
+          <BrowserPreview block={block} />
+        </ToolPreviewHeightProvider>
+      </ToolAutoOpenContext.Provider>
     );
   }
 
   const display =
     block.resultText || (block.text && block.text !== block.argsText ? block.text : "");
   return (
-    <ToolPreviewHeightProvider kind={kind}>
-      <ToolSummary block={block}>{display ? <ToolOutput>{display}</ToolOutput> : null}</ToolSummary>
-    </ToolPreviewHeightProvider>
+    <ToolAutoOpenContext.Provider value={autoOpen}>
+      <ToolPreviewHeightProvider kind={kind}>
+        <ToolSummary block={block}>
+          {display ? <ToolOutput>{display}</ToolOutput> : null}
+        </ToolSummary>
+      </ToolPreviewHeightProvider>
+    </ToolAutoOpenContext.Provider>
   );
 }
 

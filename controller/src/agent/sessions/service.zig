@@ -1,5 +1,6 @@
 const std = @import("std");
 const records = @import("control_store.zig");
+const session_usage = @import("usage.zig");
 const sqlite = @import("../../storage/sqlite.zig");
 const session_change = @import("change.zig");
 
@@ -172,7 +173,9 @@ pub fn transcriptResponse(allocator: std.mem.Allocator, session: *const records.
     try std.json.Stringify.value(session.created_at, .{}, &output.writer);
     try output.writer.writeAll(",\"piSessionId\":");
     if (session.native_session_id) |value| try std.json.Stringify.value(value, .{}, &output.writer) else try output.writer.writeAll("null");
-    try output.writer.writeAll(",\"usage\":null}}");
+    try output.writer.writeAll(",\"usage\":");
+    try session_usage.fromTranscript(allocator, document).write(&output.writer);
+    try output.writer.writeAll("}}");
     return output.toOwnedSlice();
 }
 

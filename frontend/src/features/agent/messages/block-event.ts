@@ -262,8 +262,16 @@ export function applyAssistantPiEventToBlocks(
         args: args ?? existing.args,
         argsText: argsText || existing.argsText,
         text: argsText || existing.text,
+        startedAt:
+          existing.startedAt ?? (typeof event.timestamp === "string" ? event.timestamp : undefined),
       }),
-      () => toolBlock(id, name, { args, argsText, text: argsText }),
+      () =>
+        toolBlock(id, name, {
+          args,
+          argsText,
+          text: argsText,
+          startedAt: typeof event.timestamp === "string" ? event.timestamp : undefined,
+        }),
     );
   }
   if (event.type === "tool_execution_update" || event.type === "tool_execution_end") {
@@ -397,10 +405,18 @@ function applyToolExecutionToBlocks(
     (existing) => ({
       ...existing,
       status: status ?? existing.status,
+      finishedAt:
+        status && typeof event.timestamp === "string" ? event.timestamp : existing.finishedAt,
       resultText: resultText || existing.resultText,
       text: existing.argsText || existing.text || resultText,
     }),
-    () => toolBlock(id, "tool", { status: status ?? "running", resultText, text: resultText }),
+    () =>
+      toolBlock(id, "tool", {
+        status: status ?? "running",
+        resultText,
+        text: resultText,
+        finishedAt: status && typeof event.timestamp === "string" ? event.timestamp : undefined,
+      }),
   );
 }
 

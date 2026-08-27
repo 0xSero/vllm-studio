@@ -307,6 +307,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               startedAt,
               modelId: replayModelId,
               tokenStats,
+              usageTotals,
             } = foldSessionEvents(replayEvents);
             const replaySeq = replayCursorAfterRuntimeHydration(
               runtimeStatus,
@@ -333,7 +334,7 @@ export function useSessionEngine(deps: UseSessionEngineDeps): SessionEngine {
               tokenStats: tokenStats ?? undefined,
               // Lifetime spend is computed server-side from the whole rollout,
               // so it survives both compaction and the tail load's cutoff.
-              usageTotals: meta?.usage ?? session.usageTotals,
+              usageTotals: meta?.usage ?? usageTotals ?? session.usageTotals,
               contextUsage: api.runtimeContextUsage(runtimeStatus, session.contextUsage),
               status: runtimeActive ? "running" : "idle",
               activeAssistantId: undefined,
@@ -514,6 +515,12 @@ function eventKey(event: Record<string, unknown>): string {
   }
 }
 
+function eventFingerprint(event: Record<string, unknown>): string {
+  const { timestamp: ignoredTimestamp, ...stable } = event;
+  void ignoredTimestamp;
+  return eventKey(stable);
+}
+
 function messageFingerprint(event: Record<string, unknown>): string | null {
   const message = asRecord(event.message);
   if (!message || typeof message.role !== "string") return null;
@@ -524,6 +531,25 @@ function canonicalEventsBeforeRuntimeTail(
   canonicalEvents: Record<string, unknown>[],
   runtime: Record<string, unknown>[],
 ): Record<string, unknown>[] {
+  const firstRuntimeEvent = runtime[0];
+  if (firstRuntimeEvent) {
+    const runtimeKeys = runtime.map(eventFingerprint);
+    let bestOverlap: { eventIndex: number; score: number } | null = null;
+    for (let eventIndex = 0; eventIndex < canonicalEvents.length; eventIndex += 1) {
+      if (eventFingerprint(canonicalEvents[eventIndex] ?? {}) !== runtimeKeys[0]) continue;
+      let score = 0;
+      while (
+        canonicalEvents[eventIndex + score] &&
+        runtimeKeys[score] &&
+        eventFingerprint(canonicalEvents[eventIndex + score] ?? {}) === runtimeKeys[score]
+      ) {
+        score += 1;
+      }
+      const candidate = { eventIndex, score };
+      if (!bestOverlap || candidate.score >= bestOverlap.score) bestOverlap = candidate;
+    }
+    if (bestOverlap?.score) return canonicalEvents.slice(0, bestOverlap.eventIndex);
+  }
   const canonicalMessages = canonicalEvents.flatMap((event, eventIndex) => {
     const fingerprint = messageFingerprint(event);
     return fingerprint ? [{ eventIndex, fingerprint }] : [];
@@ -561,7 +587,7 @@ function runtimeEventsInOrder(
     .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
     .flatMap((entry) => {
       if (entry.event && typeof entry.event === "object") {
-        return [entry.event];
+        return [entry.timestamp ? { ...entry.event, timestamp: entry.timestamp } : entry.event];
       }
       return [];
     });
@@ -570,7 +596,7 @@ function runtimeEventsInOrder(
 function dedupeAdjacentEvents(events: Record<string, unknown>[]): Record<string, unknown>[] {
   let previous = "";
   return events.filter((event) => {
-    const key = eventKey(event);
+    const key = eventFingerprint(event);
     if (key === previous) return false;
     previous = key;
     return true;

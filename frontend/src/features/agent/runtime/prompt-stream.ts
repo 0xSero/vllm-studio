@@ -347,6 +347,11 @@ function setSetupTool(
         argsText: JSON.stringify(args),
         ...(resultText ? { resultText } : {}),
         text: resultText ?? JSON.stringify(args),
+        startedAt:
+          index >= 0 && blocks[index]?.kind === "tool"
+            ? blocks[index].startedAt
+            : new Date().toISOString(),
+        ...(status !== "running" ? { finishedAt: new Date().toISOString() } : {}),
       };
       const next: AssistantBlock[] =
         index < 0

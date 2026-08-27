@@ -397,7 +397,7 @@ pub fn serveEvents(allocator: std.mem.Allocator, io: Io, _: config.Mode, _: *htt
             const payload = try storedEventPayload(allocator, event.document);
             defer allocator.free(payload);
             try body.writer.print("id: {d}\ndata: ", .{event.sequence});
-            try harness_events.writeStreamEnvelope(allocator, &body.writer, snapshot.session.harness, event.sequence, payload);
+            try harness_events.writeStreamEnvelope(allocator, &body.writer, snapshot.session.harness, event.sequence, event.created_at, payload);
             try body.writer.writeAll("\n\n");
             after = event.sequence;
             sent = true;

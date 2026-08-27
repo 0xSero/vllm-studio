@@ -64,6 +64,7 @@ const AssistantBlocks = memo(function AssistantBlocks({
   );
   const showActions = !running && copyText.trim().length > 0 && lastContentIndex >= 0;
   const hasActivity = routedBlocks.some((item) => item.kind === "activity-group");
+  const lastActivityIndex = routedBlocks.findLastIndex((item) => item.kind === "activity-group");
   // The work phase ends the moment the final response starts streaming.
   const working = live && lastContentIndex === -1;
 
@@ -79,6 +80,7 @@ const AssistantBlocks = memo(function AssistantBlocks({
           key={item.id}
           segments={item.segments}
           live={live && index === routedBlocks.length - 1}
+          latest={index === lastActivityIndex}
         />,
       );
       return;

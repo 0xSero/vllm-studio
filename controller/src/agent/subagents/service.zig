@@ -6,6 +6,7 @@ const sqlite = @import("../../storage/sqlite.zig");
 const agent_coordinator = @import("../sessions/coordinator.zig");
 const agent_run_completion = @import("../sessions/run_completion.zig");
 const harness_runtime = @import("../harness/runtime.zig");
+const session_usage = @import("../sessions/usage.zig");
 
 const Io = std.Io;
 const http = std.http;
@@ -21,7 +22,7 @@ pub fn listPayload(allocator: std.mem.Allocator, io: Io, database: *sqlite.Datab
     try output.writer.writeAll("{\"subagents\":[");
     for (runs.records, 0..) |*run, index| {
         if (index > 0) try output.writer.writeByte(',');
-        try writeRun(&output.writer, run, false);
+        try writeRun(&output.writer, run, false, try runUsage(allocator, database, run.runtime_session_id));
     }
     try output.writer.writeAll("]}");
     return output.toOwnedSlice();
@@ -35,7 +36,7 @@ pub fn getPayload(allocator: std.mem.Allocator, io: Io, database: *sqlite.Databa
     var output: Io.Writer.Allocating = .init(allocator);
     errdefer output.deinit();
     try output.writer.writeAll("{\"ok\":true,\"subagent\":");
-    try writeRun(&output.writer, &run, true);
+    try writeRun(&output.writer, &run, true, try lockedUsage(allocator, io, database, run.runtime_session_id));
     try output.writer.writeByte('}');
     return output.toOwnedSlice();
 }
@@ -67,7 +68,7 @@ pub fn runPayload(allocator: std.mem.Allocator, io: Io, mode: config.Mode, clien
     defer allocator.free(runtime_id);
     var started_buffer: [24]u8 = undefined;
     const started_at = timestamp(io, &started_buffer);
-    try lockedCreate(io, database, run_id, parent_id, name, task, runtime_id, cwd, started_at);
+    try lockedCreate(io, database, run_id, parent_id, name, task, runtime_id, model_id, model_route_id, parent.harness, cwd, started_at);
     const prompt = try taskPrompt(allocator, name, task);
     defer allocator.free(prompt);
     const turn = try turnDocument(allocator, runtime_id, parent.harness, parent.node_id, parent.project_id, model_id, model_route_id, cwd, prompt);
@@ -136,9 +137,11 @@ fn stoppedResponse(allocator: std.mem.Allocator, io: Io, database: *sqlite.Datab
     return output.toOwnedSlice();
 }
 
-fn writeRun(writer: *Io.Writer, run: *const repository.Run, include_report: bool) !void {
+fn writeRun(writer: *Io.Writer, run: *const repository.Run, include_report: bool, usage_total: u64) !void {
     try writer.writeAll("{\"id\":");
     try std.json.Stringify.value(run.id, .{}, writer);
+    try writer.writeAll(",\"runtimeSessionId\":");
+    try std.json.Stringify.value(run.runtime_session_id, .{}, writer);
     try writer.writeAll(",\"name\":");
     try std.json.Stringify.value(run.name, .{}, writer);
     try writer.writeAll(",\"task\":");
@@ -151,8 +154,15 @@ fn writeRun(writer: *Io.Writer, run: *const repository.Run, include_report: bool
     try std.json.Stringify.value(run.started_at, .{}, writer);
     try writer.writeAll(",\"finishedAt\":");
     if (run.finished_at) |value| try std.json.Stringify.value(value, .{}, writer) else try writer.writeAll("null");
+    try writer.writeAll(",\"modelId\":");
+    if (run.model_id) |value| try std.json.Stringify.value(value, .{}, writer) else try writer.writeAll("null");
+    try writer.writeAll(",\"modelRouteId\":");
+    if (run.model_route_id) |value| try std.json.Stringify.value(value, .{}, writer) else try writer.writeAll("null");
+    try writer.writeAll(",\"harness\":");
+    if (run.harness) |value| try std.json.Stringify.value(value, .{}, writer) else try writer.writeAll("null");
     try writer.writeAll(",\"error\":");
     if (run.failure) |value| try std.json.Stringify.value(value, .{}, writer) else try writer.writeAll("null");
+    try writer.print(",\"usageTotal\":{d}", .{usage_total});
     if (include_report) {
         try writer.writeAll(",\"report\":");
         try std.json.Stringify.value(run.report, .{}, writer);
@@ -221,6 +231,20 @@ fn lockedSession(allocator: std.mem.Allocator, io: Io, database: *sqlite.Databas
     return agent_control.get(allocator, database, id);
 }
 
+fn lockedUsage(allocator: std.mem.Allocator, io: Io, database: *sqlite.Database, id: []const u8) !u64 {
+    try database.lock(io);
+    defer database.unlock(io);
+    return runUsage(allocator, database, id);
+}
+
+fn runUsage(allocator: std.mem.Allocator, database: *sqlite.Database, id: []const u8) !u64 {
+    var transcript = try agent_control.transcript(allocator, database, id);
+    defer transcript.deinit();
+    var totals: session_usage.Totals = .{};
+    for (transcript.records) |entry| totals.addDocument(allocator, entry.document);
+    return totals.total;
+}
+
 fn lockedGet(allocator: std.mem.Allocator, io: Io, database: *sqlite.Database, parent: []const u8, id: []const u8) !?repository.Run {
     try database.lock(io);
     defer database.unlock(io);
@@ -247,10 +271,10 @@ fn lockedSiblingCount(allocator: std.mem.Allocator, io: Io, database: *sqlite.Da
     return runs.records.len;
 }
 
-fn lockedCreate(io: Io, database: *sqlite.Database, run_id: []const u8, parent: []const u8, name: []const u8, task: []const u8, runtime: []const u8, cwd: []const u8, started: []const u8) !void {
+fn lockedCreate(io: Io, database: *sqlite.Database, run_id: []const u8, parent: []const u8, name: []const u8, task: []const u8, runtime: []const u8, model_id: []const u8, model_route_id: []const u8, harness: []const u8, cwd: []const u8, started: []const u8) !void {
     try database.lock(io);
     defer database.unlock(io);
-    try repository.create(database, run_id, parent, name, task, runtime, cwd, started);
+    try repository.create(database, run_id, parent, name, task, runtime, model_id, model_route_id, harness, cwd, started);
 }
 
 fn lockedAdopt(io: Io, database: *sqlite.Database, parent: []const u8, id: []const u8, native: []const u8) !void {

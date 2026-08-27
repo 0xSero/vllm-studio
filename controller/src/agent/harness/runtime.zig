@@ -658,7 +658,7 @@ pub const Manager = struct {
             var sent = false;
             for (session.?.events.values()) |event| if (event.seq > after) {
                 try body.writer.print("id: {d}\ndata: ", .{event.seq});
-                try harness_events.writeStreamEnvelope(manager.allocator, &body.writer, session.?.harness.name(), event.seq, event.document);
+                try harness_events.writeStreamEnvelope(manager.allocator, &body.writer, session.?.harness.name(), event.seq, event.timestamp[0..], event.document);
                 try body.writer.writeAll("\n\n");
                 after = event.seq;
                 sent = true;
@@ -1547,7 +1547,7 @@ pub const Manager = struct {
                 try event.writer.writeAll(",\"toolName\":");
                 try std.json.Stringify.value(optionalString(block.object, "name") orelse "tool", .{}, &event.writer);
                 if (block.object.get("input")) |input| {
-                    try event.writer.writeAll(",\"args\":");
+                    try event.writer.writeAll(",\"arguments\":");
                     try std.json.Stringify.value(input, .{}, &event.writer);
                 }
                 try event.writer.writeByte('}');

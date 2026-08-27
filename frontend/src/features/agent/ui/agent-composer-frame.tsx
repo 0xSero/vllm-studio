@@ -38,6 +38,7 @@ export type AgentComposerFrameProps = {
   composerDragActive: boolean;
   contextWindow: number;
   currentContextTokens: number;
+  taskTokenTotal: number;
   cwd: string;
   projectName?: string | null;
   fileInputRef: RefObject<HTMLInputElement | null>;
@@ -88,6 +89,7 @@ export function AgentComposerFrame({
   composerDragActive,
   contextWindow,
   currentContextTokens,
+  taskTokenTotal,
   cwd,
   projectName,
   fileInputRef,
@@ -238,6 +240,7 @@ export function AgentComposerFrame({
           gitSummary={gitSummary}
           onInitGit={onInitGit}
           currentContextTokens={currentContextTokens}
+          taskTokenTotal={taskTokenTotal}
           contextWindow={contextWindow}
           onOpenDiff={onOpenDiff}
         />

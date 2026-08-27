@@ -41,6 +41,7 @@ const RuntimeHarnessEventSchema = Schema.Struct({
   type: Schema.Union([Schema.Literal("pi"), Schema.Literal("harness")]),
   harness: Schema.optional(Schema.String),
   seq: Schema.optional(Schema.Number),
+  timestamp: Schema.optional(Schema.String),
   normalized: Schema.optional(
     Schema.Union([
       Schema.Null,

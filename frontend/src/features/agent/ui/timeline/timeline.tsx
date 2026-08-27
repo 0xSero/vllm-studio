@@ -21,6 +21,7 @@ import {
   messageRenders,
   type MergedRun,
 } from "@/features/agent/ui/timeline/visible-messages";
+import { SubagentActivityRows, type SubagentRun } from "@/features/agent/ui/subagent-activity";
 
 type TimelineProps = {
   messages: ChatMessage[];
@@ -34,6 +35,7 @@ type TimelineProps = {
   /** Older history remains unread beyond the loaded tail (shows "Load earlier"). */
   hasEarlier?: boolean;
   onLoadEarlier?: () => Promise<void> | void;
+  subagents?: readonly SubagentRun[];
 };
 
 const MemoMessage = memo(
@@ -90,6 +92,7 @@ export function Timeline({
   viewAlias,
   hasEarlier = false,
   onLoadEarlier,
+  subagents = [],
 }: TimelineProps) {
   const listRef = useRef<LegendListRef | null>(null);
   const [scroller, setScroller] = useState<HTMLElement | null>(null);
@@ -138,6 +141,7 @@ export function Timeline({
   const listFooter = useMemo(
     () => (
       <div className="agent-thread-shell mx-auto pb-3">
+        <SubagentActivityRows runs={subagents} />
         {running && visibleMessages[visibleMessages.length - 1]?.role !== "assistant" ? (
           <div className="pt-3 sm:pt-4">
             <span className="codex-shimmer-text text-[length:var(--fs-base)] font-normal leading-5">
@@ -147,7 +151,7 @@ export function Timeline({
         ) : null}
       </div>
     ),
-    [running, visibleMessages],
+    [running, subagents, visibleMessages],
   );
 
   useTimelineScrollEffects({

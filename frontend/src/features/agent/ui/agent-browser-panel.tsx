@@ -22,6 +22,7 @@ import { PersistentTerminals } from "@/features/agent/ui/persistent-terminals";
 import type { WorkspaceHandles } from "@/features/agent/ui/use-workspace";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import { useWorkbenchProjection } from "@/features/workbench/controller-state";
+import { sessionIdFromSubagentResource } from "@/features/agent/ui/subagent-activity";
 
 type AgentBrowserPanelHandles = Pick<
   WorkspaceHandles,
@@ -44,12 +45,15 @@ function createSideChatSession(
   focusedSession: Session | null,
   activeModelId: string,
   resourceId?: string,
+  resourceTitle?: string,
 ): Session {
   const tab = makeFreshTab();
+  const subagentSessionId = sessionIdFromSubagentResource(resourceId);
   return {
     ...tab,
-    ...(resourceId ? { id: resourceId } : {}),
-    title: "Side chat",
+    ...(resourceId ? { id: subagentSessionId ?? resourceId } : {}),
+    title: resourceTitle ?? "Side chat",
+    piSessionId: subagentSessionId,
     cwd: focusedSession?.cwd ?? activeProject?.path,
     projectId: focusedSession?.projectId ?? activeProject?.id,
     modelId: focusedSession?.modelId ?? activeModelId,
@@ -101,8 +105,15 @@ export function AgentBrowserPanel({
     sideChatResource ?? focusedSession?.id ?? `project:${activeProject?.id ?? "workspace"}`;
   const [sideChatSeeds, setSideChatSeeds] = useState<Record<string, Session>>({});
   const fallbackSideChatSeed = useMemo(
-    () => createSideChatSession(activeProject, focusedSession, activeModelId, sideChatResource),
-    [activeModelId, activeProject, focusedSession, sideChatResource],
+    () =>
+      createSideChatSession(
+        activeProject,
+        focusedSession,
+        activeModelId,
+        sideChatResource,
+        activeWorkbenchTab?.title,
+      ),
+    [activeModelId, activeProject, activeWorkbenchTab?.title, focusedSession, sideChatResource],
   );
   const sideChatSeed = sideChatSeeds[sideChatScope] ?? fallbackSideChatSeed;
   useMountSubscription(() => {
@@ -180,6 +191,7 @@ export function AgentBrowserPanel({
         focusedSession,
         activeModelId,
         sideChatResource,
+        activeWorkbenchTab?.title,
       ),
     }));
   }, [
@@ -188,6 +200,7 @@ export function AgentBrowserPanel({
     focusedSession,
     handles,
     sideChatResource,
+    activeWorkbenchTab?.title,
     sideChatScope,
     sideChatSeed.id,
   ]);

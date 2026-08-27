@@ -162,7 +162,33 @@ export function reduceSessionEvent(
   }
 
   const usage = usageFromEvent(event);
-  if (usage) next = { ...next, tokenStats: usage };
+  if (usage) {
+    const settledUsage = event.type === "message" || event.type === "message_end";
+    const totals = next.usageTotals ?? {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      reasoning: 0,
+      total: 0,
+      cost: 0,
+      calls: 0,
+      compactions: 0,
+    };
+    next = {
+      ...next,
+      tokenStats: usage,
+      usageTotals: settledUsage
+        ? {
+            ...totals,
+            input: totals.input + usage.read,
+            output: totals.output + usage.write,
+            total: totals.total + usage.current,
+            calls: totals.calls + 1,
+          }
+        : totals,
+    };
+  }
 
   const afterToolResult = reduceToolResultMessageEvent(next, ctx, event);
   if (afterToolResult) return afterToolResult;
@@ -235,6 +261,7 @@ export function foldSessionEvents(events: Record<string, unknown>[]): {
   startedAt: string | null;
   modelId: string | null;
   tokenStats: Session["tokenStats"];
+  usageTotals: Session["usageTotals"];
 } {
   const ctx: SessionStreamContext = { liveAssistantIds: new Map(), replay: true };
   let session: Session = {
@@ -253,6 +280,7 @@ export function foldSessionEvents(events: Record<string, unknown>[]): {
     startedAt: session.startedAt ?? null,
     modelId: session.modelId ?? null,
     tokenStats: session.tokenStats,
+    usageTotals: session.usageTotals,
   };
 }
 
@@ -806,11 +834,7 @@ function reduceFinalAssistantMessageEvent(
     const patched = patchAssistantMessage(
       target.session,
       target.targetId,
-      (current) => ({
-        ...current,
-        text,
-        blocks,
-      }),
+      (current) => reconcileFinalAssistantMessage(current, text, blocks),
       ctx.replay,
     );
     ctx.liveAssistantIds.delete(session.id);

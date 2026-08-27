@@ -2,7 +2,7 @@ const std = @import("std");
 
 const Io = std.Io;
 
-pub fn writeStreamEnvelope(allocator: std.mem.Allocator, writer: *Io.Writer, harness: []const u8, sequence: u64, document: []const u8) !void {
+pub fn writeStreamEnvelope(allocator: std.mem.Allocator, writer: *Io.Writer, harness: []const u8, sequence: u64, timestamp: []const u8, document: []const u8) !void {
     try writer.writeAll("{\"type\":");
     try std.json.Stringify.value(if (std.mem.eql(u8, harness, "pi")) "pi" else "harness", .{}, writer);
     try writer.writeAll(",\"harness\":");
@@ -13,6 +13,8 @@ pub fn writeStreamEnvelope(allocator: std.mem.Allocator, writer: *Io.Writer, har
     try writeCanonical(allocator, writer, harness, document);
     try writer.writeAll(",\"native\":");
     try writer.writeAll(document);
+    try writer.writeAll(",\"timestamp\":");
+    try std.json.Stringify.value(timestamp, .{}, writer);
     try writer.writeByte('}');
 }
 
@@ -124,11 +126,20 @@ fn writeCodexCanonical(allocator: std.mem.Allocator, writer: *Io.Writer, documen
         try writer.writeAll("}]}}");
         return;
     }
+    if (std.mem.eql(u8, item_type, "reasoning")) {
+        if (!std.mem.eql(u8, event_type, "item.completed")) return writer.writeAll("{}");
+        try writer.writeAll("{\"type\":\"message_update\",\"assistantMessageEvent\":{\"type\":\"thinking_delta\",\"delta\":");
+        try std.json.Stringify.value(stringField(item.object, "text") orelse stringField(item.object, "summary") orelse "", .{}, writer);
+        try writer.writeAll("}}");
+        return;
+    }
     if (std.mem.eql(u8, item_type, "command_execution")) {
         if (std.mem.eql(u8, event_type, "item.started")) {
             try writer.writeAll("{\"type\":\"tool_execution_start\",\"toolCallId\":");
             try std.json.Stringify.value(item_id, .{}, writer);
-            try writer.writeAll(",\"toolName\":\"command\"}");
+            try writer.writeAll(",\"toolName\":\"command\",\"arguments\":{\"command\":");
+            try std.json.Stringify.value(stringField(item.object, "command") orelse "", .{}, writer);
+            try writer.writeAll("}}");
             return;
         }
         try writer.writeAll("{\"type\":\"tool_execution_end\",\"toolCallId\":");
@@ -140,7 +151,57 @@ fn writeCodexCanonical(allocator: std.mem.Allocator, writer: *Io.Writer, documen
         try writer.writeAll("}]}}");
         return;
     }
+    if (std.mem.eql(u8, item_type, "file_change")) {
+        try writeCodexToolEvent(writer, item.object, item_id, event_type, "apply_patch", "changes", "status");
+        return;
+    }
+    if (std.mem.eql(u8, item_type, "web_search")) {
+        try writeCodexToolEvent(writer, item.object, item_id, event_type, "browser_search", "query", "status");
+        return;
+    }
+    if (std.mem.eql(u8, item_type, "mcp_tool_call")) {
+        var name: Io.Writer.Allocating = .init(allocator);
+        defer name.deinit();
+        try name.writer.print("mcp__{s}__{s}", .{
+            stringField(item.object, "server") orelse "mcp",
+            stringField(item.object, "tool") orelse stringField(item.object, "name") orelse "tool",
+        });
+        try writeCodexToolEvent(writer, item.object, item_id, event_type, name.writer.buffered(), "arguments", "result");
+        return;
+    }
     return writer.writeAll(document);
+}
+
+fn writeCodexToolEvent(writer: *Io.Writer, item: std.json.ObjectMap, item_id: []const u8, event_type: []const u8, tool_name: []const u8, arguments_field: []const u8, result_field: []const u8) !void {
+    const started = std.mem.eql(u8, event_type, "item.started");
+    try writer.writeAll(if (started) "{\"type\":\"tool_execution_start\",\"toolCallId\":" else "{\"type\":\"tool_execution_end\",\"toolCallId\":");
+    try std.json.Stringify.value(item_id, .{}, writer);
+    if (started) {
+        try writer.writeAll(",\"toolName\":");
+        try std.json.Stringify.value(tool_name, .{}, writer);
+        if (item.get(arguments_field)) |arguments| {
+            try writer.writeAll(",\"arguments\":");
+            if (arguments == .object) {
+                try std.json.Stringify.value(arguments, .{}, writer);
+            } else {
+                try writer.writeAll("{");
+                try std.json.Stringify.value(arguments_field, .{}, writer);
+                try writer.writeAll(":");
+                try std.json.Stringify.value(arguments, .{}, writer);
+                try writer.writeAll("}");
+            }
+        }
+    } else {
+        const failed = std.mem.eql(u8, stringField(item, "status") orelse "", "failed");
+        try writer.writeAll(",\"isError\":");
+        try writer.writeAll(if (failed) "true" else "false");
+        if (item.get(result_field)) |result| if (result == .string) {
+            try writer.writeAll(",\"result\":{\"content\":[{\"type\":\"text\",\"text\":");
+            try std.json.Stringify.value(result.string, .{}, writer);
+            try writer.writeAll("}]}");
+        };
+    }
+    try writer.writeByte('}');
 }
 
 pub fn writeNormalized(allocator: std.mem.Allocator, writer: *Io.Writer, harness: []const u8, document: []const u8) !void {

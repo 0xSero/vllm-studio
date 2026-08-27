@@ -274,10 +274,13 @@ export function createSessionRuntimeController(): SessionRuntimeController {
     sessionId: SessionId,
     payload: Exclude<RuntimeEventPayload, { type: "status" }>,
   ) => {
-    const eventId = piSessionIdFromEvent(payload.event);
+    const event: Record<string, unknown> = payload.timestamp
+      ? { ...payload.event, timestamp: payload.timestamp }
+      : { ...payload.event, timestamp: new Date().toISOString() };
+    const eventId = piSessionIdFromEvent(event);
     if (!acceptSeq(sessionId, payload.seq)) return;
 
-    if (isAgentSettledEvent(payload.event)) {
+    if (isAgentSettledEvent(event)) {
       // Record the authoritative end-of-turn so the runtime poll won't
       // resurrect "running" off a stale still-active list snapshot.
       turnFinishedAt.set(sessionId, Date.now());
@@ -285,7 +288,7 @@ export function createSessionRuntimeController(): SessionRuntimeController {
       // finalize tool blocks, stamp the cursor, and clear the live status
       // together.
       coalescer.flushNow(sessionId);
-      applyEvent(sessionId, payload.event, payload.seq, (session) => ({
+      applyEvent(sessionId, event, payload.seq, (session) => ({
         ...clearAwaitingEchoUserMessages(settleTurn(session)),
         piSessionId: eventId || session.piSessionId,
       }));
@@ -316,7 +319,7 @@ export function createSessionRuntimeController(): SessionRuntimeController {
             status: session.status === "stopping" ? "stopping" : "running",
           },
     );
-    enqueueEvent(sessionId, payload.event, payload.seq);
+    enqueueEvent(sessionId, event, payload.seq);
   };
 
   // True while a session sits in its post-`agent_settled` grace: the SSE already

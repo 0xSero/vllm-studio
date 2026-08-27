@@ -16,6 +16,8 @@ export type ToolBlock = {
   id: string;
   name: string;
   status: "running" | "done" | "error";
+  startedAt?: string;
+  finishedAt?: string;
   // Streaming raw text of the tool-call arguments (assembled from toolcall_delta
   // events, then replaced by the canonical JSON at toolcall_end). For file-write
   // tools, this lets us live-render the file content as the model generates it.
@@ -95,4 +97,5 @@ export type SessionTab = Session;
 export type RuntimeLoggedEvent = {
   readonly seq?: number;
   readonly event?: Record<string, unknown>;
+  readonly timestamp?: string;
 };

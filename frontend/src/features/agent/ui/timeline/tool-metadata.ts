@@ -143,7 +143,15 @@ export function toolArg(
   return extractFromArgs(block.args, block.argsText, keys) ?? fallback ?? null;
 }
 
-export type ToolKind = "edit" | "search" | "read" | "exec" | "browser" | "generic";
+export type ToolKind =
+  | "edit"
+  | "search"
+  | "read"
+  | "exec"
+  | "browser"
+  | "mcp"
+  | "setup"
+  | "generic";
 
 export type ToolPreviewHeightOverrides = Partial<Record<ToolKind, PreviewHeight>>;
 
@@ -159,6 +167,8 @@ export const TOOL_PREVIEW_KIND_LABELS: Record<ToolKind, string> = {
   read: "Reads",
   exec: "Commands",
   browser: "Browser",
+  mcp: "MCP calls",
+  setup: "Setup",
   generic: "Other tools",
 };
 
@@ -170,29 +180,18 @@ export function toolPreviewHeightFor(
   return overrides[kind] ?? defaultHeight;
 }
 
-/**
- * ZCode node-taxonomy colors for tool kinds — color-codes each tool verb so the
- * timeline reads like ZCode's node taxonomy (command/file/session/skill nodes).
- * Returns the foreground class used for the verb label when the tool is idle.
- */
-export function toolKindNodeColor(kind: ToolKind): string {
-  switch (kind) {
-    case "exec":
-      return "text-(--color-command-node-foreground)";
-    case "edit":
-    case "read":
-    case "search":
-      return "text-(--color-file-node-foreground)";
-    case "browser":
-      return "text-(--color-session-node-foreground)";
-    case "generic":
-    default:
-      return "text-(--color-skill-node-foreground)";
-  }
-}
-
 export function classifyTool(block: ToolBlock): ToolKind {
   const name = block.name.toLowerCase();
+  if (name.startsWith("local_studio_")) return "setup";
+  if (
+    name.startsWith("mcp__") ||
+    /^(github|figma|slack|linear|notion|obsidian|context7)[._]/.test(name)
+  ) {
+    return "mcp";
+  }
+  if (hasAnyNeedle(name, ["browser", "chrome", "web", "open_url", "navigate"])) {
+    return "browser";
+  }
   if (extractFromArgs(block.args, block.argsText, ["cmd", "command", "script", "shell"])) {
     return "exec";
   }
@@ -202,7 +201,6 @@ export function classifyTool(block: ToolBlock): ToolKind {
   if (hasAnyNeedle(name, ["search", "grep", "find", "ripgrep", "rg"])) return "search";
   if (hasAnyNeedle(name, ["read", "open", "cat", "view", "list"])) return "read";
   if (hasAnyNeedle(name, ["exec", "command", "shell", "bash", "run", "terminal"])) return "exec";
-  if (hasAnyNeedle(name, ["browser", "chrome", "web", "open_url", "navigate"])) return "browser";
   return "generic";
 }
 

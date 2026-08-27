@@ -9,6 +9,9 @@ pub const Run = struct {
     task: []u8,
     runtime_session_id: []u8,
     native_session_id: ?[]u8,
+    model_id: ?[]u8,
+    model_route_id: ?[]u8,
+    harness: ?[]u8,
     cwd: []u8,
     status: []u8,
     started_at: []u8,
@@ -23,6 +26,9 @@ pub const Run = struct {
         run.allocator.free(run.task);
         run.allocator.free(run.runtime_session_id);
         if (run.native_session_id) |value| run.allocator.free(value);
+        if (run.model_id) |value| run.allocator.free(value);
+        if (run.model_route_id) |value| run.allocator.free(value);
+        if (run.harness) |value| run.allocator.free(value);
         run.allocator.free(run.cwd);
         run.allocator.free(run.status);
         run.allocator.free(run.started_at);
@@ -53,6 +59,9 @@ pub fn initialize(database: *sqlite.Database) !void {
         \\  task TEXT NOT NULL,
         \\  runtime_session_id TEXT NOT NULL UNIQUE,
         \\  native_session_id TEXT,
+        \\  model_id TEXT,
+        \\  model_route_id TEXT,
+        \\  harness TEXT,
         \\  cwd TEXT NOT NULL,
         \\  status TEXT NOT NULL,
         \\  started_at TEXT NOT NULL,
@@ -62,6 +71,9 @@ pub fn initialize(database: *sqlite.Database) !void {
         \\);
         \\CREATE INDEX IF NOT EXISTS idx_agent_subagents_parent ON agent_subagents(parent_session_id, started_at);
     );
+    try ensureColumn(database, "model_id", "ALTER TABLE agent_subagents ADD COLUMN model_id TEXT");
+    try ensureColumn(database, "model_route_id", "ALTER TABLE agent_subagents ADD COLUMN model_route_id TEXT");
+    try ensureColumn(database, "harness", "ALTER TABLE agent_subagents ADD COLUMN harness TEXT");
 }
 
 pub fn list(allocator: std.mem.Allocator, database: *sqlite.Database, parent_session_id: []const u8) !List {
@@ -70,7 +82,7 @@ pub fn list(allocator: std.mem.Allocator, database: *sqlite.Database, parent_ses
         for (records.items) |*record| record.deinit();
         records.deinit(allocator);
     }
-    var statement = try database.prepare("SELECT run_id, parent_session_id, name, task, runtime_session_id, native_session_id, cwd, status, started_at, finished_at, error, report FROM agent_subagents WHERE parent_session_id = ? ORDER BY started_at");
+    var statement = try database.prepare("SELECT run_id, parent_session_id, name, task, runtime_session_id, native_session_id, model_id, model_route_id, harness, cwd, status, started_at, finished_at, error, report FROM agent_subagents WHERE parent_session_id = ? ORDER BY started_at");
     defer statement.deinit();
     try statement.bindText(1, parent_session_id);
     while (try statement.step() == .row) try records.append(allocator, try readRun(allocator, &statement));
@@ -78,7 +90,7 @@ pub fn list(allocator: std.mem.Allocator, database: *sqlite.Database, parent_ses
 }
 
 pub fn get(allocator: std.mem.Allocator, database: *sqlite.Database, parent_session_id: []const u8, run_id: []const u8) !?Run {
-    var statement = try database.prepare("SELECT run_id, parent_session_id, name, task, runtime_session_id, native_session_id, cwd, status, started_at, finished_at, error, report FROM agent_subagents WHERE parent_session_id = ? AND run_id = ?");
+    var statement = try database.prepare("SELECT run_id, parent_session_id, name, task, runtime_session_id, native_session_id, model_id, model_route_id, harness, cwd, status, started_at, finished_at, error, report FROM agent_subagents WHERE parent_session_id = ? AND run_id = ?");
     defer statement.deinit();
     try statement.bindText(1, parent_session_id);
     try statement.bindText(2, run_id);
@@ -101,16 +113,19 @@ pub fn runningCount(database: *sqlite.Database, parent_session_id: []const u8) !
     return @intCast(@max(statement.columnInt(0), 0));
 }
 
-pub fn create(database: *sqlite.Database, run_id: []const u8, parent_session_id: []const u8, name: []const u8, task: []const u8, runtime_session_id: []const u8, cwd: []const u8, started_at: []const u8) !void {
-    var statement = try database.prepare("INSERT INTO agent_subagents (run_id, parent_session_id, name, task, runtime_session_id, cwd, status, started_at) VALUES (?, ?, ?, ?, ?, ?, 'running', ?)");
+pub fn create(database: *sqlite.Database, run_id: []const u8, parent_session_id: []const u8, name: []const u8, task: []const u8, runtime_session_id: []const u8, model_id: []const u8, model_route_id: []const u8, harness: []const u8, cwd: []const u8, started_at: []const u8) !void {
+    var statement = try database.prepare("INSERT INTO agent_subagents (run_id, parent_session_id, name, task, runtime_session_id, model_id, model_route_id, harness, cwd, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?)");
     defer statement.deinit();
     try statement.bindText(1, run_id);
     try statement.bindText(2, parent_session_id);
     try statement.bindText(3, name);
     try statement.bindText(4, task);
     try statement.bindText(5, runtime_session_id);
-    try statement.bindText(6, cwd);
-    try statement.bindText(7, started_at);
+    try statement.bindText(6, model_id);
+    try statement.bindText(7, model_route_id);
+    try statement.bindText(8, harness);
+    try statement.bindText(9, cwd);
+    try statement.bindText(10, started_at);
     if (try statement.step() != .done) return error.DatabaseUnexpectedRow;
 }
 
@@ -146,12 +161,15 @@ fn readRun(allocator: std.mem.Allocator, statement: *const sqlite.Statement) !Ru
         .task = try required(allocator, statement, 3),
         .runtime_session_id = try required(allocator, statement, 4),
         .native_session_id = try optional(allocator, statement, 5),
-        .cwd = try required(allocator, statement, 6),
-        .status = try required(allocator, statement, 7),
-        .started_at = try required(allocator, statement, 8),
-        .finished_at = try optional(allocator, statement, 9),
-        .failure = try optional(allocator, statement, 10),
-        .report = try required(allocator, statement, 11),
+        .model_id = try optional(allocator, statement, 6),
+        .model_route_id = try optional(allocator, statement, 7),
+        .harness = try optional(allocator, statement, 8),
+        .cwd = try required(allocator, statement, 9),
+        .status = try required(allocator, statement, 10),
+        .started_at = try required(allocator, statement, 11),
+        .finished_at = try optional(allocator, statement, 12),
+        .failure = try optional(allocator, statement, 13),
+        .report = try required(allocator, statement, 14),
     };
 }
 
@@ -162,4 +180,14 @@ fn required(allocator: std.mem.Allocator, statement: *const sqlite.Statement, in
 fn optional(allocator: std.mem.Allocator, statement: *const sqlite.Statement, index: u31) !?[]u8 {
     const value = statement.columnText(index) orelse return null;
     return @as(?[]u8, try allocator.dupe(u8, value));
+}
+
+fn ensureColumn(database: *sqlite.Database, column: []const u8, statement_text: []const u8) !void {
+    var statement = try database.prepare("PRAGMA table_info(agent_subagents)");
+    defer statement.deinit();
+    while (try statement.step() == .row) {
+        const name = statement.columnText(1) orelse continue;
+        if (std.mem.eql(u8, name, column)) return;
+    }
+    try database.execute(statement_text);
 }

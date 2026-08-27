@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import type { ThinkingBlock, ToolBlock } from "@/features/agent/messages";
 import { useReasoningVisible } from "@/features/agent/messages/use-reasoning-visible";
 import {
@@ -6,86 +6,52 @@ import {
   type ActivitySegment,
 } from "@/features/agent/ui/timeline/activity-grouping";
 import { ToolBlockView } from "@/features/agent/ui/timeline/tool-block-view";
-import { classifyTool, toolArg } from "@/features/agent/ui/timeline/tool-metadata";
-import { Globe2 } from "@/ui/icon-registry";
+import { Brain } from "@/ui/icon-registry";
 
 type ActivityItem =
   | { kind: "tool"; id: string; block: ToolBlock }
-  | { kind: "reasoning"; id: string; block: ThinkingBlock }
-  | { kind: "browser-group"; id: string; blocks: ToolBlock[] };
+  | { kind: "reasoning"; id: string; block: ThinkingBlock };
 
 function cleanThinkingText(text: string): string {
   return text.replace(/\*\*([\s\S]*?)\*\*/g, "$1").trim();
 }
 
-function browserUrl(block: ToolBlock): string | null {
-  const direct = toolArg(block, ["url", "href"]);
-  if (direct) return direct;
+function reasoningParts(text: string): { title: string; detail: string | null } {
+  const cleaned = cleanThinkingText(text);
+  const firstBreak = cleaned.search(/\n\s*\n|\n|(?<=[.!?])\s+/);
+  if (firstBreak < 0) return { title: cleaned, detail: null };
+  const title = cleaned.slice(0, firstBreak).trim();
+  const detail = cleaned.slice(firstBreak).trim();
+  return { title: title || "Reasoning", detail: detail || null };
+}
+
+function ReasoningRow({ block, autoOpen }: { block: ThinkingBlock; autoOpen: boolean }) {
+  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  const { title, detail } = reasoningParts(block.text);
+  const open = manualOpen ?? autoOpen;
   return (
-    block.argsText?.match(/https?:\/\/[^\s"'}]+/)?.[0] ??
-    block.text?.match(/https?:\/\/[^\s"'}]+/)?.[0] ??
-    block.resultText?.match(/https?:\/\/[^\s"'}]+/)?.[0] ??
-    null
-  );
-}
-
-function browserSite(url: string): { href: string; label: string; favicon: string } | null {
-  try {
-    const parsed = new URL(url);
-    const hostname = parsed.hostname.replace(/^www\./, "");
-    return {
-      href: parsed.href,
-      label: hostname,
-      favicon: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=32`,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function groupBrowserItems(items: ActivityItem[]): ActivityItem[] {
-  const grouped: ActivityItem[] = [];
-  for (const item of items) {
-    if (item.kind !== "tool" || classifyTool(item.block) !== "browser") {
-      grouped.push(item);
-      continue;
-    }
-    const previous = grouped.at(-1);
-    if (previous?.kind === "browser-group") {
-      previous.blocks.push(item.block);
-    } else {
-      grouped.push({ kind: "browser-group", id: `browser-${item.id}`, blocks: [item.block] });
-    }
-  }
-  return grouped;
-}
-
-function BrowserActivity({ blocks, live }: { blocks: ToolBlock[]; live: boolean }) {
-  const sites = new Map<string, ReturnType<typeof browserSite>>();
-  for (const block of blocks) {
-    const url = browserUrl(block);
-    const site = url ? browserSite(url) : null;
-    if (site) sites.set(site.label, site);
-  }
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5 rounded-md border border-(--border) bg-(--color-input)/55 px-2.5 py-2">
-      <Globe2 className={`h-3.5 w-3.5 shrink-0 text-(--dim)/65 ${live ? "animate-pulse" : ""}`} />
-      {[...sites.values()].map((site) =>
-        site ? (
-          <a
-            key={site.label}
-            href={site.href}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-6 max-w-44 items-center gap-1.5 rounded-full border border-(--border) bg-(--surface) px-2 text-[length:var(--fs-xs)] text-(--fg)/72 transition-colors hover:bg-(--hover) hover:text-(--fg)"
-          >
-            <img src={site.favicon} alt="" className="h-3.5 w-3.5 shrink-0 rounded-sm" />
-            <span className="truncate">{site.label}</span>
-          </a>
-        ) : null,
-      )}
-      {sites.size === 0 ? (
-        <span className="text-[length:var(--fs-xs)] text-(--dim)">Web</span>
+    <div className="min-w-0 py-0.5">
+      <button
+        type="button"
+        disabled={!detail}
+        aria-expanded={detail ? open : undefined}
+        onClick={() => detail && setManualOpen(!open)}
+        className="group flex min-h-7 w-full min-w-0 items-center gap-2 px-1 text-left disabled:cursor-default"
+      >
+        <Brain
+          className="h-3.5 w-3.5 shrink-0 text-(--color-command-node-foreground)/75"
+          strokeWidth={1.7}
+        />
+        <span
+          className={`min-w-0 flex-1 truncate text-[length:var(--fs-sm)] leading-5 text-(--fg)/78 transition-colors group-hover:text-(--fg) ${autoOpen ? "codex-shimmer-text" : ""}`}
+        >
+          {title || "Reasoning"}
+        </span>
+      </button>
+      {detail && open ? (
+        <div className="px-6 pb-1 pt-0.5 whitespace-pre-wrap text-[length:var(--fs-sm)] leading-[1.55] text-(--dim)/78">
+          {detail}
+        </div>
       ) : null}
     </div>
   );
@@ -94,9 +60,11 @@ function BrowserActivity({ blocks, live }: { blocks: ToolBlock[]; live: boolean 
 export const AssistantActivityGroup = memo(function AssistantActivityGroup({
   segments,
   live,
+  latest,
 }: {
   segments: ActivitySegment[];
   live: boolean;
+  latest: boolean;
 }) {
   const showReasoning = useReasoningVisible();
   const items = useMemo<ActivityItem[]>(() => {
@@ -112,31 +80,28 @@ export const AssistantActivityGroup = memo(function AssistantActivityGroup({
       const block = mergeReasoningBlocks(segment.blocks);
       if (block) next.push({ kind: "reasoning", id: block.id, block });
     }
-    return groupBrowserItems(next);
+    return next;
   }, [segments, showReasoning]);
 
+  const lastToolIndex = items.findLastIndex((item) => item.kind === "tool");
+  const lastReasoningIndex = items.findLastIndex((item) => item.kind === "reasoning");
   if (items.length === 0) return null;
 
   return (
-    <div className="flex min-w-0 flex-col gap-2.5">
+    <div className="flex min-w-0 flex-col gap-0.5">
       {items.map((item, index) =>
         item.kind === "reasoning" ? (
-          <div
+          <ReasoningRow
             key={item.id}
-            className={`whitespace-pre-wrap text-[length:var(--fs-base)] leading-[1.625] text-(--fg)/62 ${
-              live && index === items.length - 1 ? "codex-shimmer-text" : ""
-            }`}
-          >
-            {cleanThinkingText(item.block.text)}
-          </div>
-        ) : item.kind === "browser-group" ? (
-          <BrowserActivity
-            key={item.id}
-            blocks={item.blocks}
-            live={live && index === items.length - 1}
+            block={item.block}
+            autoOpen={live && index === lastReasoningIndex && index > lastToolIndex}
           />
         ) : (
-          <ToolBlockView key={item.id} block={item.block} />
+          <ToolBlockView
+            key={item.id}
+            block={item.block}
+            autoOpen={latest && index === lastToolIndex}
+          />
         ),
       )}
     </div>

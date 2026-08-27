@@ -101,6 +101,7 @@ function SideChatTab({
   sideChatSession,
   tools,
 }: ComputerTabPanelProps) {
+  const subagent = sideChatSession.id.startsWith("subagent:");
   const modelId = sideChatSession.modelId ?? focusedSession?.modelId ?? activeModelId;
   const selectedModel = models.find((model) => model.id === modelId) ?? activeModel;
   const modelRouteId =
@@ -171,6 +172,8 @@ function SideChatTab({
         rightPanelOpen
         onToggleRightPanel={() => tools.setComputerOpen(false)}
         showHeader={false}
+        readOnly={subagent}
+        readOnlyVariant={subagent ? "subagent" : "telegram"}
       />
     </section>
   );
