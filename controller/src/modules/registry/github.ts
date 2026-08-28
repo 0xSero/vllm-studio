@@ -134,7 +134,8 @@ export const makeGitHubClient = (options: GitHubOptions = {}): Omit<GitHubClient
                 ...(init.headers ?? {}),
               },
             }),
-          catch: (source: unknown) => failure(operation, "GitHub request failed", source),
+          catch: (source: unknown) =>
+            failure(operation, `GitHub request failed for ${apiBase}${path}: ${String(source)}`, source),
         }).pipe(
           Effect.flatMap((response) =>
             Effect.tryPromise({
