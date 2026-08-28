@@ -51,8 +51,8 @@ pub fn mirrorRepository(allocator: std.mem.Allocator, io: Io, environment: *cons
     var index_environment = try environment.clone(allocator);
     defer index_environment.deinit();
     try index_environment.put("GIT_INDEX_FILE", index_path);
-    try gitRequired(allocator, io, &index_environment, path, &.{ "read-tree", "HEAD" });
-    try gitRequired(allocator, io, &index_environment, path, &.{ "add", "-A", "--", "." });
+    try gitRequired(allocator, io, &index_environment, path, &.{ "read-tree", "HEAD" }, null);
+    try gitRequired(allocator, io, &index_environment, path, &.{ "add", "-A", "--", "." }, null);
     const tree_value = try gitOutput(allocator, io, &index_environment, path, &.{"write-tree"}, null);
     defer allocator.free(tree_value);
     const tree = std.mem.trim(u8, tree_value, " \t\r\n");
@@ -65,8 +65,8 @@ pub fn mirrorRepository(allocator: std.mem.Allocator, io: Io, environment: *cons
     const session_hex = std.fmt.bytesToHex(session_digest, .lower);
     const checkpoint_ref = try std.fmt.allocPrint(allocator, "refs/local-studio/checkpoints/{s}/{s}", .{ session_hex[0..16], suffix[0..] });
     errdefer allocator.free(checkpoint_ref);
-    try gitRequired(allocator, io, environment, path, &.{ "update-ref", checkpoint_ref, checkpoint_sha });
-    try gitRequired(allocator, io, environment, path, &.{ "push", remote, "--mirror" });
+    try gitRequired(allocator, io, environment, path, &.{ "update-ref", checkpoint_ref, checkpoint_sha }, null);
+    try gitRequired(allocator, io, environment, path, &.{ "push", "--no-verify", remote, "--mirror" }, token);
     return .{ .allocator = allocator, .checkpoint_ref = checkpoint_ref, .checkpoint_sha = checkpoint_sha, .repository_url = repository_url };
 }
 
@@ -348,8 +348,7 @@ fn runGit(allocator: std.mem.Allocator, io: Io, operation: []const u8, organizat
     return redacted;
 }
 
-fn gitOutput(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, path: []const u8, args: []const []const u8, stdin: ?[]const u8) ![]u8 {
-    _ = stdin;
+fn gitOutput(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, path: []const u8, args: []const []const u8, redaction: ?[]const u8) ![]u8 {
     var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(allocator);
     try argv.append(allocator, "git");
@@ -368,14 +367,20 @@ fn gitOutput(allocator: std.mem.Allocator, io: Io, environment: *const std.proce
         else => false,
     };
     if (!ok) {
+        const detail = if (result.stderr.len > 0) result.stderr else result.stdout;
+        if (detail.len > 0) {
+            const redacted = if (redaction) |value| try std.mem.replaceOwned(u8, allocator, detail, value, "[credential redacted]") else try allocator.dupe(u8, detail);
+            defer allocator.free(redacted);
+            std.log.err("Code.Storage Git command failed: {s}", .{std.mem.trim(u8, redacted, " \t\r\n")});
+        }
         allocator.free(result.stdout);
         return error.CodeStorageGitFailed;
     }
     return result.stdout;
 }
 
-fn gitRequired(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, path: []const u8, args: []const []const u8) !void {
-    const output = try gitOutput(allocator, io, environment, path, args, null);
+fn gitRequired(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, path: []const u8, args: []const []const u8, redaction: ?[]const u8) !void {
+    const output = try gitOutput(allocator, io, environment, path, args, redaction);
     allocator.free(output);
 }
 
