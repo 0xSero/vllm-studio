@@ -18,6 +18,7 @@ const DOCKER_TIMEOUT_MS = 30_000;
 const RECOVERY_ATTEMPTS = 4;
 const RECOVERY_DELAY_MS = 50;
 const RECOVERY_DEADLINE_MS = 30_000;
+const CUDA_MULTI_GPU_SHM_SIZE = "32g";
 const INSPECT_FORMAT = `{{.Id}}\n{{index .Config.Labels "${NONCE_LABEL}"}}\n{{index .Config.Labels "${NAME_LABEL}"}}\n{{.State.Running}}`;
 
 const containerName = (instanceName: string): string =>
@@ -351,6 +352,13 @@ export const makeDockerLauncher = (
       if (!daemonId) return yield* spawnFailed("docker daemon identity unavailable");
       const name = containerName(record.name);
       const deviceFlags = dockerFlagsFor(accelerator, plan.devices);
+      // NCCL-backed tensor parallelism needs substantially more than Docker's
+      // 64 MiB default /dev/shm. Match the accepted multi-GPU serving contract
+      // while leaving single-GPU and non-CUDA containers isolated by default.
+      const sharedMemoryFlags =
+        accelerator === "cuda" && plan.devices.length > 1
+          ? ["--ipc", "host", "--shm-size", CUDA_MULTI_GPU_SHM_SIZE]
+          : [];
       const arguments_: string[] = [
         "run",
         "-d",
@@ -361,6 +369,7 @@ export const makeDockerLauncher = (
         "--label",
         `${NONCE_LABEL}=${record.nonce}`,
         ...deviceFlags.args,
+        ...sharedMemoryFlags,
         ...deviceFlags.groupAdd.flatMap((group) => ["--group-add", group]),
         ...plan.ports.flatMap((binding) => ["-p", `${binding.host}:${binding.container}`]),
         ...plan.mounts.flatMap((mount) => [
