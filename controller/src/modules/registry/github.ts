@@ -263,6 +263,26 @@ export const makeGitHubClient = (options: GitHubOptions = {}): Omit<GitHubClient
             html_url: record.html_url ?? `https://github.com/${input.owner}/${input.repo}/pulls`,
           } satisfies GitHubPullRequest;
         }),
+        Effect.catch((error) =>
+          error.status === 422
+            ? // GitHub refuses a second PR for an open head/base pair; resolve it.
+              request(
+                "find existing pull",
+                `/repos/${input.owner}/${input.repo}/pulls?head=${encodeURIComponent(input.head)}&base=${input.base}&state=open`,
+              ).pipe(
+                Effect.flatMap(({ body }) => {
+                  const existing = (body as Array<{ number?: number; html_url?: string }>)[0];
+                  if (!existing) return Effect.fail(error);
+                  return Effect.succeed({
+                    number: existing.number ?? 0,
+                    html_url:
+                      existing.html_url ??
+                      `https://github.com/${input.owner}/${input.repo}/pull/${existing.number}`,
+                  } satisfies GitHubPullRequest);
+                }),
+              )
+            : Effect.fail(error),
+        ),
       ),
   };
 };
