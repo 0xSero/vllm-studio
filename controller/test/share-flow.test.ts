@@ -311,6 +311,29 @@ describe("share flow", () => {
     }
   });
 
+  test("unmeasured bypass: flagged records, shareable, PR body discloses it", async () => {
+    process.env["LOCAL_AI_REGISTRY_ALLOW_UNMEASURED"] = "1";
+    try {
+      const github = githubFake();
+      const service = makeShareService(
+        makeDeps({ isRunning: promise(async () => false), peaks: promise(async () => null) }, github),
+      );
+      const result = await runEffect(service.preview("gemma-local"));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.shareable).toBe(true);
+      const metadata = (result.value.records.recipe as Record<string, Record<string, unknown>>)[
+        "metadata"
+      ] as Record<string, Record<string, unknown>>;
+      expect(metadata["local_studio"]?.["unmeasured"]).toBe(true);
+      expect(result.value.pr.body).toContain("unmeasured");
+      const created = await runEffect(service.createPullRequest("gemma-local", true));
+      expect(created.ok).toBe(true);
+    } finally {
+      delete process.env["LOCAL_AI_REGISTRY_ALLOW_UNMEASURED"];
+    }
+  });
+
   test("a registry outage blocks the share before any GitHub call", async () => {
     const github = githubFake();
     const service = makeShareService(makeDeps({

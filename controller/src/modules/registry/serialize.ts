@@ -40,6 +40,8 @@ export interface ContributionInput {
   readonly launch: LaunchEvidence | null;
   readonly peaks: MeasuredPeaks | null;
   readonly nowIso: string;
+  /** Demo bypass: the config has not run on this machine. */
+  readonly unmeasured?: boolean;
 }
 
 export interface Contribution {
@@ -257,7 +259,11 @@ export const buildContribution = (input: ContributionInput): Contribution => {
     },
     speed_sweeps_ids: [],
     metadata: {
-      local_studio: { recipe_id: recipe.id, recipe_name: recipe.name },
+      local_studio: {
+        recipe_id: recipe.id,
+        recipe_name: recipe.name,
+        ...(input.unmeasured ? { unmeasured: true } : {}),
+      },
     },
     provenance: factProvenance(nowIso),
     facts: {},

@@ -1,3 +1,4 @@
+import { cpus } from "node:os";
 import { Effect, Schema } from "effect";
 import { badRequest, HttpStatus } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
@@ -79,7 +80,10 @@ const hardwareMatches = (): Effect.Effect<HardwareMatches, HttpStatus> =>
       (id) => client.hardware(id).pipe(Effect.mapError(registryError)),
       { concurrency: 8 },
     );
-    const detected = [...detectedFromGpus(gpus), ...detectedAppleSilicon(null)];
+    const detected = [
+      ...detectedFromGpus(gpus),
+      ...detectedAppleSilicon(cpus()[0]?.model ?? null),
+    ];
     return { index, hardware, matches: matchAccelerators(detected, hardware) };
   });
 
