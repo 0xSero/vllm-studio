@@ -1,5 +1,6 @@
 const std = @import("std");
 const project_store = @import("store.zig");
+const git_policy = @import("../git/policy.zig");
 
 const Io = std.Io;
 const max_output_bytes = 2 * 1024 * 1024;
@@ -33,6 +34,7 @@ pub fn prepare(allocator: std.mem.Allocator, io: Io, environment: *const std.pro
     if (!directoryExists(io, project.path)) {
         try gitRequired(allocator, io, environment, null, &.{ "init", "--bare", project.path }, error.ProjectRepositoryInitializeFailed);
     }
+    try removeHooks(allocator, io, project.path);
     try gitRequired(allocator, io, environment, null, &.{ "--git-dir", project.path, "fetch", "--prune", remote, "+refs/heads/*:refs/remotes/code-storage/*" }, error.ProjectFetchFailed);
     const remote_ref = try std.fmt.allocPrint(allocator, "refs/remotes/code-storage/{s}", .{base_ref});
     defer allocator.free(remote_ref);
@@ -44,7 +46,6 @@ pub fn prepare(allocator: std.mem.Allocator, io: Io, environment: *const std.pro
         try gitRequired(allocator, io, environment, null, &.{ "--git-dir", project.path, "worktree", "remove", "--force", workspace }, error.ProjectWorktreeRemoveFailed);
     }
     try addWorktree(allocator, io, environment, project.path, workspace, remote_ref, branch);
-    try installDetachedCommitGuard(allocator, io, project.path);
     return workspace;
 }
 
@@ -74,21 +75,16 @@ fn workspaceRoot(allocator: std.mem.Allocator, environment: *const std.process.E
     return std.fs.path.join(allocator, &.{ home, "Local Studio" });
 }
 
-fn installDetachedCommitGuard(allocator: std.mem.Allocator, io: Io, git_dir: []const u8) !void {
+fn removeHooks(allocator: std.mem.Allocator, io: Io, git_dir: []const u8) !void {
     const hooks = try std.fs.path.join(allocator, &.{ git_dir, "hooks" });
     defer allocator.free(hooks);
-    _ = try Io.Dir.cwd().createDirPathStatus(io, hooks, @enumFromInt(0o700));
-    const hook = try std.fs.path.join(allocator, &.{ hooks, "pre-commit" });
-    defer allocator.free(hook);
-    var file = try Io.Dir.cwd().createFile(io, hook, .{ .permissions = @enumFromInt(0o700) });
-    defer file.close(io);
-    try file.writeStreamingAll(io, "#!/bin/sh\ngit symbolic-ref -q HEAD >/dev/null || { echo 'Create a branch before committing.' >&2; exit 1; }\n");
+    try Io.Dir.cwd().deleteTree(io, hooks);
 }
 
 fn git(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, cwd: ?[]const u8, args: []const []const u8) !GitCommand {
     var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(allocator);
-    try argv.append(allocator, "git");
+    try argv.appendSlice(allocator, &.{ "git", "-c", git_policy.hooks_disabled });
     try argv.appendSlice(allocator, args);
     const result = try std.process.run(allocator, io, .{
         .argv = argv.items,

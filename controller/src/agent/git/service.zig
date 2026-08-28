@@ -4,6 +4,7 @@ const sqlite = @import("../../storage/sqlite.zig");
 const agent_projects = @import("../projects/service.zig");
 const harness_nodes = @import("../harness/nodes.zig");
 const node_transport = @import("../../topology/node_transport.zig");
+const git_policy = @import("policy.zig");
 
 const Io = std.Io;
 const http = std.http;
@@ -216,7 +217,7 @@ pub fn worktreesLocal(allocator: std.mem.Allocator, io: Io, configuration: *cons
 fn git(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, cwd: []const u8, args: []const []const u8) !Command {
     var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(allocator);
-    try argv.append(allocator, "git");
+    try argv.appendSlice(allocator, &.{ "git", "-c", git_policy.hooks_disabled });
     try argv.appendSlice(allocator, args);
     var clean_environment = try environment.clone(allocator);
     defer clean_environment.deinit();

@@ -1,5 +1,6 @@
 const std = @import("std");
 const auth = @import("../../accounts/code_storage/auth.zig");
+const git_policy = @import("../git/policy.zig");
 
 const Io = std.Io;
 const max_line_bytes = 1024 * 1024;
@@ -28,7 +29,7 @@ pub fn validateMirrorSource(allocator: std.mem.Allocator, io: Io, environment: *
 
 pub fn sourceDefaultBranch(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, path: []const u8, fallback: ?[]const u8) ![]u8 {
     const result = try std.process.run(allocator, io, .{
-        .argv = &.{ "git", "symbolic-ref", "--quiet", "--short", "HEAD" },
+        .argv = &.{ "git", "-c", git_policy.hooks_disabled, "symbolic-ref", "--quiet", "--short", "HEAD" },
         .cwd = .{ .path = path },
         .environ_map = environment,
         .stdout_limit = .limited(max_git_output_bytes),
@@ -51,7 +52,7 @@ pub fn sourceDefaultBranch(allocator: std.mem.Allocator, io: Io, environment: *c
     const ref = try std.fmt.allocPrint(allocator, "refs/heads/{s}", .{branch});
     defer allocator.free(ref);
     const verify = try std.process.run(allocator, io, .{
-        .argv = &.{ "git", "show-ref", "--verify", "--quiet", ref },
+        .argv = &.{ "git", "-c", git_policy.hooks_disabled, "show-ref", "--verify", "--quiet", ref },
         .cwd = .{ .path = path },
         .environ_map = environment,
         .stdout_limit = .limited(max_git_output_bytes),
@@ -305,7 +306,7 @@ pub fn references(allocator: std.mem.Allocator, io: Io, environment: *const std.
     const remote = try std.fmt.allocPrint(allocator, "https://t:{s}@{s}.code.storage/{s}.git", .{ token, organization, repository });
     defer allocator.free(remote);
     const result = try std.process.run(allocator, io, .{
-        .argv = &.{ "git", "ls-remote", "--heads", remote },
+        .argv = &.{ "git", "-c", git_policy.hooks_disabled, "ls-remote", "--heads", remote },
         .cwd = .inherit,
         .environ_map = environment,
         .stdout_limit = .limited(max_git_output_bytes),
@@ -346,7 +347,7 @@ fn runGit(allocator: std.mem.Allocator, io: Io, operation: []const u8, organizat
     defer allocator.free(remote);
     var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(allocator);
-    try argv.append(allocator, "git");
+    try argv.appendSlice(allocator, &.{ "git", "-c", git_policy.hooks_disabled });
     if (std.mem.eql(u8, operation, "clone_repository")) {
         const destination = stringField(arguments, "destination") orelse return error.CodeStorageDestinationRequired;
         if (!std.fs.path.isAbsolute(destination)) return error.CodeStoragePathMustBeAbsolute;
@@ -398,7 +399,7 @@ fn runGit(allocator: std.mem.Allocator, io: Io, operation: []const u8, organizat
 fn gitOutput(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, path: []const u8, args: []const []const u8, redaction: ?[]const u8) ![]u8 {
     var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(allocator);
-    try argv.append(allocator, "git");
+    try argv.appendSlice(allocator, &.{ "git", "-c", git_policy.hooks_disabled });
     try argv.appendSlice(allocator, args);
     const result = try std.process.run(allocator, io, .{
         .argv = argv.items,
