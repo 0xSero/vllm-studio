@@ -120,7 +120,7 @@ export async function addRepositoryProject(repository: RepositoryOption): Promis
 export async function prepareTaskWorkspace(input: {
   projectId: string;
   sessionId: string;
-  ref: string;
+  ref?: string;
   branch?: string;
 }): Promise<{ path: string; ref: string; detached: boolean }> {
   const response = await fetch("/api/agent/projects/workspace", {

@@ -48,7 +48,7 @@ export function TaskSetupBar({
     if (menu !== "git" || !project?.id) return;
     void Effect.runPromise(
       Effect.tryPromise(() => listProjectRefs(project.id)).pipe(
-        Effect.catch(() => Effect.succeed([project.defaultBranch || "main"])),
+        Effect.catch(() => Effect.succeed([project.defaultBranch])),
       ),
     ).then(setRefs);
   }, [menu, project]);
@@ -69,7 +69,7 @@ export function TaskSetupBar({
         icon={<GitBranch className="size-3.5" />}
         label={
           session.branchName ||
-          `${session.baseRef || project?.defaultBranch || "main"}${session.detached ? " · detached" : ""}`
+          `${session.baseRef || project?.defaultBranch || ""}${session.detached ? " · detached" : ""}`
         }
         disabled={!project}
         onClick={() => toggle("git")}
@@ -110,7 +110,11 @@ export function TaskSetupBar({
                 <MenuRow
                   label={`Create ${branch.trim()}`}
                   onClick={() => {
-                    onPatch({ branchName: branch.trim(), detached: false });
+                    onPatch({
+                      branchName: branch.trim(),
+                      detached: false,
+                      workspacePrepared: false,
+                    });
                     setBranch("");
                     setMenu(null);
                   }}
@@ -118,7 +122,7 @@ export function TaskSetupBar({
               ) : null}
               <div className="my-0.5 h-px bg-(--border)" />
               <div className="max-h-44 overflow-y-auto">
-                {(refs.length ? refs : [project?.defaultBranch || "main"])
+                {(refs.length ? refs : project?.defaultBranch ? [project.defaultBranch] : [])
                   .filter(
                     (name) => !branch.trim() || name.toLowerCase().includes(branch.toLowerCase()),
                   )
@@ -129,7 +133,12 @@ export function TaskSetupBar({
                       detail="detached"
                       active={!session.branchName && session.baseRef === name}
                       onClick={() => {
-                        onPatch({ baseRef: name, branchName: undefined, detached: true });
+                        onPatch({
+                          baseRef: name,
+                          branchName: undefined,
+                          detached: true,
+                          workspacePrepared: false,
+                        });
                         setMenu(null);
                       }}
                     />

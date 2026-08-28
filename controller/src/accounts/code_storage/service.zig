@@ -78,8 +78,9 @@ pub const State = struct {
                 const url = try std.fmt.allocPrint(state.allocator, "https://{s}.code.storage/{s}.git", .{ account.subject, repository_name });
                 defer state.allocator.free(url);
                 try std.json.Stringify.value(url, .{}, &output.writer);
+                const default_branch = stringField(value.object, "default_branch") orelse return error.InvalidCodeStorageRepositoryResponse;
                 try output.writer.writeAll(",\"defaultBranch\":");
-                try std.json.Stringify.value(stringField(value.object, "default_branch") orelse "main", .{}, &output.writer);
+                try std.json.Stringify.value(default_branch, .{}, &output.writer);
                 try output.writer.writeByte('}');
                 count += 1;
             }
@@ -118,7 +119,7 @@ pub const State = struct {
         state.mutex.unlock(state.io);
         defer state.allocator.free(private_key);
         defer state.allocator.free(organization);
-        try code_storage_git.createRepository(state.allocator, state.io, client, organization, account_id, private_key, name);
+        try code_storage_git.createRepository(state.allocator, state.io, client, organization, account_id, private_key, name, "main");
         var payload: Io.Writer.Allocating = .init(state.allocator);
         defer payload.deinit();
         try payload.writer.writeAll("{\"accountId\":");
@@ -136,11 +137,13 @@ pub const State = struct {
         const account_id = stringField(parsed.value.object, "accountId") orelse return error.CodeStorageAccountRequired;
         const repository_name = stringField(parsed.value.object, "repository") orelse return error.CodeStorageRepositoryRequired;
         const workspace = stringField(parsed.value.object, "path") orelse return error.ProjectPathRequired;
-        const default_branch = stringField(parsed.value.object, "defaultBranch") orelse "main";
+        const requested_default_branch = stringField(parsed.value.object, "defaultBranch");
         try code_storage_auth.validateRepository(repository_name);
         const resolved = try agent_projects.resolveAllowedPath(state.allocator, state.io, state.environment, workspace);
         defer state.allocator.free(resolved);
         try code_storage_git.validateMirrorSource(state.allocator, state.io, state.environment, resolved);
+        const default_branch = try code_storage_git.sourceDefaultBranch(state.allocator, state.io, state.environment, resolved, requested_default_branch);
+        defer state.allocator.free(default_branch);
         var existing_id: ?[]u8 = null;
         defer if (existing_id) |value| state.allocator.free(value);
         {
@@ -191,7 +194,7 @@ pub const State = struct {
         defer state.allocator.free(private_key);
         defer state.allocator.free(organization);
         defer state.allocator.free(owned_account_id);
-        try code_storage_git.createRepository(state.allocator, state.io, client, organization, owned_account_id, private_key, repository_name);
+        try code_storage_git.createRepository(state.allocator, state.io, client, organization, owned_account_id, private_key, repository_name, default_branch);
         var result = try code_storage_git.mirrorRepository(state.allocator, state.io, state.environment, organization, owned_account_id, private_key, repository_name, resolved, "project-import");
         defer result.deinit();
         var project_id: []u8 = undefined;
@@ -226,7 +229,7 @@ pub const State = struct {
         if (parsed.value != .object) return error.InvalidProjectPayload;
         const account_id = stringField(parsed.value.object, "accountId") orelse return error.CodeStorageAccountRequired;
         const repository_name = stringField(parsed.value.object, "repository") orelse return error.CodeStorageRepositoryRequired;
-        const default_branch = stringField(parsed.value.object, "defaultBranch") orelse "main";
+        const default_branch = stringField(parsed.value.object, "defaultBranch") orelse return error.ProjectDefaultBranchRequired;
         try state.mutex.lock(state.io);
         var accounts = repository.load(state.allocator, state.io, state.data_dir) catch |failure| {
             state.mutex.unlock(state.io);
@@ -277,7 +280,7 @@ pub const State = struct {
         if (parsed.value != .object) return error.InvalidProjectWorkspacePayload;
         const project_id = stringField(parsed.value.object, "projectId") orelse return error.ProjectIdRequired;
         const session_id = stringField(parsed.value.object, "sessionId") orelse return error.SessionIdRequired;
-        const base_ref = stringField(parsed.value.object, "ref") orelse "main";
+        const requested_ref = stringField(parsed.value.object, "ref");
         const branch = stringField(parsed.value.object, "branch");
         try database.lock(state.io);
         var project = (try project_repository.getById(state.allocator, database, project_id)) orelse {
@@ -286,6 +289,7 @@ pub const State = struct {
         };
         database.unlock(state.io);
         defer project.deinit();
+        const base_ref = requested_ref orelse project.default_branch;
         const account_id = project.account_id orelse return error.CodeStorageAccountRequired;
         const repository_name = project.repository orelse return error.CodeStorageRepositoryRequired;
         try state.mutex.lock(state.io);

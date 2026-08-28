@@ -26,6 +26,48 @@ pub fn validateMirrorSource(allocator: std.mem.Allocator, io: Io, environment: *
     allocator.free(head);
 }
 
+pub fn sourceDefaultBranch(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, path: []const u8, fallback: ?[]const u8) ![]u8 {
+    const result = try std.process.run(allocator, io, .{
+        .argv = &.{ "git", "symbolic-ref", "--quiet", "--short", "HEAD" },
+        .cwd = .{ .path = path },
+        .environ_map = environment,
+        .stdout_limit = .limited(max_git_output_bytes),
+        .stderr_limit = .limited(max_git_output_bytes),
+        .timeout = .{ .duration = .{ .clock = .awake, .raw = .fromSeconds(120) } },
+    });
+    defer allocator.free(result.stdout);
+    defer allocator.free(result.stderr);
+    const ok = switch (result.term) {
+        .exited => |code| code == 0,
+        else => false,
+    };
+    if (ok) {
+        const branch = std.mem.trim(u8, result.stdout, " \t\r\n");
+        try validateRef(branch);
+        return allocator.dupe(u8, branch);
+    }
+    const branch = fallback orelse return error.CodeStorageDefaultBranchRequired;
+    try validateRef(branch);
+    const ref = try std.fmt.allocPrint(allocator, "refs/heads/{s}", .{branch});
+    defer allocator.free(ref);
+    const verify = try std.process.run(allocator, io, .{
+        .argv = &.{ "git", "show-ref", "--verify", "--quiet", ref },
+        .cwd = .{ .path = path },
+        .environ_map = environment,
+        .stdout_limit = .limited(max_git_output_bytes),
+        .stderr_limit = .limited(max_git_output_bytes),
+        .timeout = .{ .duration = .{ .clock = .awake, .raw = .fromSeconds(120) } },
+    });
+    defer allocator.free(verify.stdout);
+    defer allocator.free(verify.stderr);
+    const exists = switch (verify.term) {
+        .exited => |code| code == 0,
+        else => false,
+    };
+    if (!exists) return error.CodeStorageDefaultBranchNotFound;
+    return allocator.dupe(u8, branch);
+}
+
 pub fn mirrorRepository(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, organization: []const u8, account_id: []const u8, private_key: []const u8, repository: []const u8, path: []const u8, session_id: []const u8) !MirrorResult {
     try auth.validateRepository(repository);
     if (!std.fs.path.isAbsolute(path)) return error.CodeStoragePathMustBeAbsolute;
@@ -226,22 +268,27 @@ pub fn repositories(allocator: std.mem.Allocator, io: Io, client: *std.http.Clie
     return allocator.dupe(u8, body.buffered());
 }
 
-pub fn createRepository(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, organization: []const u8, account_id: []const u8, private_key: []const u8, name: []const u8) !void {
+pub fn createRepository(allocator: std.mem.Allocator, io: Io, client: *std.http.Client, organization: []const u8, account_id: []const u8, private_key: []const u8, name: []const u8, default_branch: []const u8) !void {
     try auth.validateRepository(name);
+    try validateRef(default_branch);
     const token = try auth.mint(allocator, io, organization, account_id, private_key, name, &.{"repo:write"});
     defer allocator.free(token);
     const url = try std.fmt.allocPrint(allocator, "https://api.{s}.code.storage/api/v1/repos", .{organization});
     defer allocator.free(url);
     const authorization = try std.fmt.allocPrint(allocator, "Bearer {s}", .{token});
     defer allocator.free(authorization);
-    const body = "{\"default_branch\":\"main\"}";
+    var body: Io.Writer.Allocating = .init(allocator);
+    defer body.deinit();
+    try body.writer.writeAll("{\"default_branch\":");
+    try std.json.Stringify.value(default_branch, .{}, &body.writer);
+    try body.writer.writeByte('}');
     const storage = try allocator.alloc(u8, max_response_bytes);
     defer allocator.free(storage);
     var output: Io.Writer = .fixed(storage);
     const response = try client.fetch(.{
         .location = .{ .url = url },
         .method = .POST,
-        .payload = body,
+        .payload = body.writer.buffered(),
         .redirect_behavior = .unhandled,
         .keep_alive = false,
         .headers = .{ .accept_encoding = .omit },

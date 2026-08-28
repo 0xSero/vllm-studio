@@ -214,7 +214,7 @@ function startPromptCommand(
         status: "running",
         args: {
           repository: context.selected.projectId ?? "",
-          ref: context.selected.baseRef || "main",
+          ref: context.selected.baseRef ?? "",
         },
       });
       const workspace = yield* Effect.tryPromise({
@@ -222,7 +222,7 @@ function startPromptCommand(
           prepareTaskWorkspace({
             projectId: context.selected.projectId ?? "",
             sessionId: context.sessionId,
-            ref: context.selected.baseRef || "main",
+            ...(context.selected.baseRef ? { ref: context.selected.baseRef } : {}),
             ...(context.selected.branchName ? { branch: context.selected.branchName } : {}),
           }),
         catch: (error) => ({ _tag: "WorkspaceFailed" as const, error }),
@@ -235,7 +235,7 @@ function startPromptCommand(
         status: "done",
         args: {
           repository: context.selected.projectId ?? "",
-          ref: context.selected.baseRef || "main",
+          ref: workspace.ref,
         },
         resultText: workspace.path,
       });

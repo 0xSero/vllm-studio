@@ -2614,9 +2614,9 @@ fn respondHarnessFailure(request: *http.Server.Request, failure: anyerror) !bool
 
 fn respondProjectFailure(request: *http.Server.Request, failure: anyerror) !bool {
     const status: http.Status = switch (failure) {
-        error.ProjectPathRequired, error.ProjectPathMustBeAbsolute, error.ProjectPathNotFound, error.ProjectPathNotDirectory, error.ProjectPathOutsideRoots, error.ProjectIdRequired, error.InvalidProjectId, error.InvalidProjectPayload, error.CodeStorageAccountRequired, error.CodeStorageRepositoryRequired, error.InvalidCodeStorageRepository, error.CodeStoragePathMustBeAbsolute => .bad_request,
+        error.ProjectPathRequired, error.ProjectPathMustBeAbsolute, error.ProjectPathNotFound, error.ProjectPathNotDirectory, error.ProjectPathOutsideRoots, error.ProjectIdRequired, error.InvalidProjectId, error.InvalidProjectPayload, error.CodeStorageAccountRequired, error.CodeStorageRepositoryRequired, error.InvalidCodeStorageRepository, error.CodeStoragePathMustBeAbsolute, error.ProjectDefaultBranchRequired, error.CodeStorageDefaultBranchRequired, error.CodeStorageDefaultBranchNotFound => .bad_request,
         error.CodeStorageAccountNotFound => .not_found,
-        error.ProjectNodeRequired, error.ProjectNodeRejected, error.CodeStorageRepositoryAlreadyAdded, error.ProjectWorkspaceInvalid => .conflict,
+        error.ProjectNodeRequired, error.ProjectNodeRejected, error.CodeStorageRepositoryAlreadyAdded, error.ProjectWorkspaceInvalid, error.ProjectRefNotFound, error.ProjectWorkspaceDirty => .conflict,
         error.ProjectNodeUnavailable => .service_unavailable,
         error.CodeStorageRequestRejected, error.CodeStorageGitFailed => .bad_gateway,
         else => .internal_server_error,
@@ -2635,6 +2635,9 @@ fn respondProjectFailure(request: *http.Server.Request, failure: anyerror) !bool
         error.CodeStorageRepositoryRequired => "Repository name is required",
         error.InvalidCodeStorageRepository => "Repository name is invalid",
         error.CodeStoragePathMustBeAbsolute => "Project path must be absolute",
+        error.ProjectDefaultBranchRequired => "The repository default branch is required",
+        error.CodeStorageDefaultBranchRequired => "The imported repository is detached; choose its default branch",
+        error.CodeStorageDefaultBranchNotFound => "The selected default branch does not exist in the imported repository",
         error.CodeStorageRepositoryAlreadyAdded => "That Code.Storage repository is already a project",
         error.CodeStorageRequestRejected => "Code.Storage could not create the repository",
         error.CodeStorageGitFailed => "Git history could not be mirrored to Code.Storage",
@@ -2642,6 +2645,14 @@ fn respondProjectFailure(request: *http.Server.Request, failure: anyerror) !bool
         error.ProjectNodeRejected => "The project node rejected the request",
         error.ProjectNodeUnavailable => "The project node is unavailable",
         error.ProjectWorkspaceInvalid => "The task worktree is incomplete",
+        error.ProjectRepositoryInitializeFailed => "Git could not initialize the managed repository",
+        error.ProjectFetchFailed => "Git could not fetch branches from Code.Storage",
+        error.ProjectRefNotFound => "The selected branch does not exist in Code.Storage",
+        error.ProjectWorkspaceDirty => "The task worktree has changes and cannot move to another branch",
+        error.ProjectWorkspaceInspectFailed => "Git could not inspect the existing task worktree",
+        error.ProjectWorktreeCreateFailed => "Git could not create the task worktree at the selected branch",
+        error.ProjectWorktreeRemoveFailed => "Git could not replace the existing task worktree",
+        error.ProjectWorktreePruneFailed => "Git could not prune archived task worktrees",
         else => @errorName(failure),
     };
     return respondDownloadError(request, status, detail);

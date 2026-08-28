@@ -4,8 +4,22 @@ const project_store = @import("store.zig");
 const Io = std.Io;
 const max_output_bytes = 2 * 1024 * 1024;
 
+const GitCommand = struct {
+    allocator: std.mem.Allocator,
+    ok: bool,
+    stdout: []u8,
+    stderr: []u8,
+
+    fn deinit(command: *GitCommand) void {
+        command.allocator.free(command.stdout);
+        command.allocator.free(command.stderr);
+        command.* = undefined;
+    }
+};
+
 pub fn prepare(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, project: *const project_store.Project, session_id: []const u8, remote: []const u8, base_ref: []const u8, branch: ?[]const u8) ![]u8 {
     const repository = project.repository orelse return error.ProjectRepositoryRequired;
+    try validateRef(base_ref);
     const root = try workspaceRoot(allocator, environment);
     defer allocator.free(root);
     const repositories_root = try std.fs.path.join(allocator, &.{ root, "Repositories" });
@@ -16,29 +30,20 @@ pub fn prepare(allocator: std.mem.Allocator, io: Io, environment: *const std.pro
     _ = try Io.Dir.cwd().createDirPathStatus(io, task_root, @enumFromInt(0o700));
     const workspace = try std.fs.path.join(allocator, &.{ task_root, session_id });
     errdefer allocator.free(workspace);
-    if (directoryExists(io, workspace)) {
-        if (!workspaceMetadataExists(allocator, io, workspace)) return error.ProjectWorkspaceInvalid;
-        return workspace;
-    }
     if (!directoryExists(io, project.path)) {
-        try git(allocator, io, environment, null, &.{ "init", "--bare", project.path });
+        try gitRequired(allocator, io, environment, null, &.{ "init", "--bare", project.path }, error.ProjectRepositoryInitializeFailed);
     }
-    try git(allocator, io, environment, null, &.{ "--git-dir", project.path, "fetch", "--prune", remote, "+refs/heads/*:refs/remotes/code-storage/*" });
+    try gitRequired(allocator, io, environment, null, &.{ "--git-dir", project.path, "fetch", "--prune", remote, "+refs/heads/*:refs/remotes/code-storage/*" }, error.ProjectFetchFailed);
     const remote_ref = try std.fmt.allocPrint(allocator, "refs/remotes/code-storage/{s}", .{base_ref});
     defer allocator.free(remote_ref);
-    addWorktree(allocator, io, environment, project.path, workspace, remote_ref, branch) catch |failure| {
-        if (failure != error.ProjectGitFailed or !std.mem.eql(u8, base_ref, "main")) return failure;
-        try initializeMain(allocator, io, environment, project.path, workspace, remote);
-        if (branch == null) {
-            try git(allocator, io, environment, null, &.{ "--git-dir", project.path, "worktree", "remove", "--force", workspace });
-            try git(allocator, io, environment, null, &.{ "--git-dir", project.path, "fetch", remote, "+refs/heads/*:refs/remotes/code-storage/*" });
-            try addWorktree(allocator, io, environment, project.path, workspace, remote_ref, null);
-        } else if (!std.mem.eql(u8, branch.?, "main")) {
-            try git(allocator, io, environment, null, &.{ "--git-dir", project.path, "worktree", "remove", "--force", workspace });
-            try git(allocator, io, environment, null, &.{ "--git-dir", project.path, "fetch", remote, "+refs/heads/*:refs/remotes/code-storage/*" });
-            try addWorktree(allocator, io, environment, project.path, workspace, remote_ref, branch);
-        }
-    };
+    if (!try refExists(allocator, io, environment, project.path, remote_ref)) return error.ProjectRefNotFound;
+    if (directoryExists(io, workspace)) {
+        if (!workspaceMetadataExists(allocator, io, workspace)) return error.ProjectWorkspaceInvalid;
+        if (try workspaceMatches(allocator, io, environment, project.path, workspace, remote_ref, branch)) return workspace;
+        if (!try workspaceClean(allocator, io, environment, workspace)) return error.ProjectWorkspaceDirty;
+        try gitRequired(allocator, io, environment, null, &.{ "--git-dir", project.path, "worktree", "remove", "--force", workspace }, error.ProjectWorktreeRemoveFailed);
+    }
+    try addWorktree(allocator, io, environment, project.path, workspace, remote_ref, branch);
     try installDetachedCommitGuard(allocator, io, project.path);
     return workspace;
 }
@@ -46,16 +51,10 @@ pub fn prepare(allocator: std.mem.Allocator, io: Io, environment: *const std.pro
 fn addWorktree(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, git_dir: []const u8, workspace: []const u8, remote_ref: []const u8, branch: ?[]const u8) !void {
     if (branch) |name| {
         try validateRef(name);
-        try git(allocator, io, environment, null, &.{ "--git-dir", git_dir, "worktree", "add", "-b", name, workspace, remote_ref });
+        try gitRequired(allocator, io, environment, null, &.{ "--git-dir", git_dir, "worktree", "add", "-b", name, workspace, remote_ref }, error.ProjectWorktreeCreateFailed);
     } else {
-        try git(allocator, io, environment, null, &.{ "--git-dir", git_dir, "worktree", "add", "--detach", workspace, remote_ref });
+        try gitRequired(allocator, io, environment, null, &.{ "--git-dir", git_dir, "worktree", "add", "--detach", workspace, remote_ref }, error.ProjectWorktreeCreateFailed);
     }
-}
-
-fn initializeMain(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, git_dir: []const u8, workspace: []const u8, remote: []const u8) !void {
-    try git(allocator, io, environment, null, &.{ "--git-dir", git_dir, "worktree", "add", "--orphan", "-b", "main", workspace });
-    try git(allocator, io, environment, workspace, &.{ "-c", "user.name=Local Studio", "-c", "user.email=local-studio@localhost", "commit", "--allow-empty", "-m", "Initial commit" });
-    try git(allocator, io, environment, workspace, &.{ "push", remote, "main:refs/heads/main" });
 }
 
 pub fn archive(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, project: *const project_store.Project, session_id: []const u8) !void {
@@ -65,8 +64,8 @@ pub fn archive(allocator: std.mem.Allocator, io: Io, environment: *const std.pro
     const workspace = try std.fs.path.join(allocator, &.{ root, "Workspaces", repository, session_id });
     defer allocator.free(workspace);
     if (!directoryExists(io, workspace)) return;
-    try git(allocator, io, environment, null, &.{ "--git-dir", project.path, "worktree", "remove", "--force", workspace });
-    try git(allocator, io, environment, null, &.{ "--git-dir", project.path, "worktree", "prune" });
+    try gitRequired(allocator, io, environment, null, &.{ "--git-dir", project.path, "worktree", "remove", "--force", workspace }, error.ProjectWorktreeRemoveFailed);
+    try gitRequired(allocator, io, environment, null, &.{ "--git-dir", project.path, "worktree", "prune" }, error.ProjectWorktreePruneFailed);
 }
 
 fn workspaceRoot(allocator: std.mem.Allocator, environment: *const std.process.Environ.Map) ![]u8 {
@@ -86,7 +85,7 @@ fn installDetachedCommitGuard(allocator: std.mem.Allocator, io: Io, git_dir: []c
     try file.writeStreamingAll(io, "#!/bin/sh\ngit symbolic-ref -q HEAD >/dev/null || { echo 'Create a branch before committing.' >&2; exit 1; }\n");
 }
 
-fn git(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, cwd: ?[]const u8, args: []const []const u8) !void {
+fn git(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, cwd: ?[]const u8, args: []const []const u8) !GitCommand {
     var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(allocator);
     try argv.append(allocator, "git");
@@ -99,13 +98,44 @@ fn git(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Env
         .stderr_limit = .limited(max_output_bytes),
         .timeout = .{ .duration = .{ .clock = .awake, .raw = .fromSeconds(600) } },
     });
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
     const ok = switch (result.term) {
         .exited => |code| code == 0,
         else => false,
     };
-    if (!ok) return error.ProjectGitFailed;
+    return .{ .allocator = allocator, .ok = ok, .stdout = result.stdout, .stderr = result.stderr };
+}
+
+fn gitRequired(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, cwd: ?[]const u8, args: []const []const u8, failure: anyerror) !void {
+    var command = try git(allocator, io, environment, cwd, args);
+    defer command.deinit();
+    if (!command.ok) return failure;
+}
+
+fn refExists(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, git_dir: []const u8, ref: []const u8) !bool {
+    var command = try git(allocator, io, environment, null, &.{ "--git-dir", git_dir, "show-ref", "--verify", "--quiet", ref });
+    defer command.deinit();
+    return command.ok;
+}
+
+fn workspaceMatches(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, git_dir: []const u8, workspace: []const u8, remote_ref: []const u8, branch: ?[]const u8) !bool {
+    var expected = try git(allocator, io, environment, null, &.{ "--git-dir", git_dir, "rev-parse", "--verify", remote_ref });
+    defer expected.deinit();
+    if (!expected.ok) return error.ProjectWorkspaceInspectFailed;
+    var actual = try git(allocator, io, environment, workspace, &.{ "rev-parse", "--verify", "HEAD" });
+    defer actual.deinit();
+    if (!actual.ok) return error.ProjectWorkspaceInspectFailed;
+    if (!std.mem.eql(u8, std.mem.trim(u8, expected.stdout, " \t\r\n"), std.mem.trim(u8, actual.stdout, " \t\r\n"))) return false;
+    var current_branch = try git(allocator, io, environment, workspace, &.{ "symbolic-ref", "--quiet", "--short", "HEAD" });
+    defer current_branch.deinit();
+    if (branch) |name| return current_branch.ok and std.mem.eql(u8, std.mem.trim(u8, current_branch.stdout, " \t\r\n"), name);
+    return !current_branch.ok;
+}
+
+fn workspaceClean(allocator: std.mem.Allocator, io: Io, environment: *const std.process.Environ.Map, workspace: []const u8) !bool {
+    var command = try git(allocator, io, environment, workspace, &.{ "status", "--porcelain" });
+    defer command.deinit();
+    if (!command.ok) return error.ProjectWorkspaceInspectFailed;
+    return std.mem.trim(u8, command.stdout, " \t\r\n").len == 0;
 }
 
 fn directoryExists(io: Io, path: []const u8) bool {
