@@ -1,10 +1,8 @@
 import Ajv2020 from "ajv/dist/2020";
 import { REGISTRY_JSON_SCHEMAS } from "@local-studio/contracts/registry-schemas";
+import type { SchemaIssue } from "@local-studio/contracts/registry";
 
-export interface SchemaIssue {
-  readonly path: string;
-  readonly message: string;
-}
+export type { SchemaIssue } from "@local-studio/contracts/registry";
 
 export interface SchemaValidation {
   readonly ok: boolean;
@@ -18,7 +16,7 @@ const SCHEMA_IDS = [common, hardware, index, model, modelInstance, recipe, speed
 export const CONTRIBUTION_SCHEMAS = ["model", "model-instance", "recipe"] as const;
 export type ContributionSchemaName = (typeof CONTRIBUTION_SCHEMAS)[number];
 
-const SCHEMA_BY_NAME: Record<ContributionSchemaName, unknown> = {
+const SCHEMA_BY_NAME: Record<ContributionSchemaName, object> = {
   model,
   "model-instance": modelInstance,
   recipe,
@@ -32,7 +30,7 @@ const makeAjv = (): Ajv2020 => {
 
 const validators = new Map<ContributionSchemaName, ReturnType<Ajv2020["compile"]>>();
 
-const validatorFor = (name: ContributionSchemaName) => {
+const validatorFor = (name: ContributionSchemaName): ReturnType<Ajv2020["compile"]> => {
   const existing = validators.get(name);
   if (existing) return existing;
   const compiled = makeAjv().compile(SCHEMA_BY_NAME[name]);
@@ -58,17 +56,3 @@ export const validateAgainstRegistrySchema = (
   };
 };
 
-/** Validate every contributed record; the first schema failure blocks sharing. */
-export const validateContribution = (records: {
-  readonly model?: unknown;
-  readonly model_instance: unknown;
-  readonly recipe: unknown;
-}): SchemaValidation => {
-  const issues: SchemaIssue[] = [];
-  if (records.model !== undefined) {
-    issues.push(...validateAgainstRegistrySchema("model", records.model).issues);
-  }
-  issues.push(...validateAgainstRegistrySchema("model-instance", records.model_instance).issues);
-  issues.push(...validateAgainstRegistrySchema("recipe", records.recipe).issues);
-  return { ok: issues.length === 0, issues };
-};

@@ -2,10 +2,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** Directory holding the trimmed copies of real published registry records. */
-export const fixturesDir = join(import.meta.dir, "fixtures", "registry");
+export const fixturesDirectory = join(import.meta.dir, "fixtures", "registry");
 
 export const fixtureJson = (name: string): unknown =>
-  JSON.parse(readFileSync(join(fixturesDir, name), "utf8"));
+  JSON.parse(readFileSync(join(fixturesDirectory, name), "utf8"));
 
 export interface RecordedRequest {
   readonly url: string;
@@ -16,17 +16,24 @@ export interface RecordedRequest {
  * Path shape matches raw.githubusercontent: <base>/index.json,
  * <base>/<collection>/<id>.json.
  */
-export const fixtureFetch = (options?: {
+interface FixtureFetchOptions {
   /** URLs that should fail at the network level. */
   readonly failing?: readonly string[];
   /** URLs that should answer 404. */
   readonly missing?: readonly string[];
   /** Override the body for a URL (tests of envelope unwrapping / bad JSON). */
   readonly bodies?: Record<string, string>;
-}) => {
+}
+
+interface RecordedFetch {
+  readonly fetch: typeof globalThis.fetch;
+  readonly requests: string[];
+}
+
+export const fixtureFetch = (options?: FixtureFetchOptions): RecordedFetch => {
   const requests: string[] = [];
-  const fetch = async (input: string | URL | Request): Promise<Response> => {
-    const url = String(input);
+  const load = async (input: string): Promise<Response> => {
+    const url = input;
     requests.push(url);
     if (options?.failing?.some((pattern) => url.includes(pattern))) {
       throw new Error("connection refused");
@@ -40,16 +47,14 @@ export const fixtureFetch = (options?: {
     }
     const relative = url.split("/registry/")[1] ?? "";
     const normalized = relative.endsWith(".json") ? relative : `${relative}.json`;
-    const path = normalized;
-    const flattened = normalized.includes("/")
-      ? normalized.split("/").join("--")
-      : normalized;
+    const flattened = normalized.split("/").join("--");
     try {
-      return new Response(readFileSync(join(fixturesDir, flattened), "utf8"), { status: 200 });
+      return new Response(readFileSync(join(fixturesDirectory, flattened), "utf8"), { status: 200 });
     } catch {
       return new Response("not found", { status: 404 });
     }
   };
+  const fetch = (input: string | URL | Request): Promise<Response> => load(String(input));
   return { fetch: fetch as unknown as typeof globalThis.fetch, requests };
 };
 

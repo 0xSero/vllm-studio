@@ -64,7 +64,7 @@ const TAB_HEADINGS: Record<RecipesContentTab, { title: string; description: stri
   picks: {
     title: "Recommended models",
     description:
-      "Hand-picked models grouped by the hardware they need, each checked against this machine's memory.",
+      "Registry configs measured on real hardware, led by what matches this machine — every record stays inspectable.",
   },
   get: {
     title: "Search Hugging Face",

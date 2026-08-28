@@ -3,6 +3,10 @@ import {
   REGISTRY_BASE_BRANCH,
   REGISTRY_REPO,
   type RegistryHardware,
+  type SchemaIssue,
+  type ShareFile,
+  type SharePreviewPayload,
+  type SharePullRequestResult,
 } from "@local-studio/contracts/registry";
 import type { ModelDownload } from "@local-studio/contracts/recipes";
 import type { GpuInfo, Recipe } from "../models/types";
@@ -20,9 +24,9 @@ import {
   type MeasuredPeaks,
 } from "./serialize";
 import { collectRedactionSecrets, redactRecord } from "./redact";
-import { validateAgainstRegistrySchema, type SchemaIssue } from "./validate";
+import { validateAgainstRegistrySchema } from "./validate";
 import { makeGitHubClient, type GitHubClient, type GitHubError } from "./github";
-import { makeRegistryClient, RegistryClientError, type RegistryClient } from "./client";
+import { makeRegistryClient, type RegistryClient, type RegistryClientError } from "./client";
 
 export const SHARE_PR_NOTICE = `This will create a PR to https://github.com/${REGISTRY_REPO}`;
 
@@ -57,42 +61,6 @@ export type ShareError =
   | ShareNotValid
   | ShareUnavailable
   | ShareFailed;
-
-export interface ShareFile {
-  readonly path: string;
-  readonly record: unknown;
-}
-
-export interface SharePreviewPayload {
-  readonly recipe_id: string;
-  readonly recipe_name: string;
-  readonly shareable: boolean;
-  readonly reason: string | null;
-  readonly records: {
-    readonly model?: unknown;
-    readonly model_instance: unknown;
-    readonly recipe: unknown;
-  };
-  readonly file_paths: readonly string[];
-  readonly model_exists_in_registry: boolean | null;
-  readonly validation: { readonly ok: boolean; readonly issues: readonly SchemaIssue[] };
-  readonly redactions: readonly string[];
-  readonly hardware: { readonly id: string; readonly name: string; readonly count: number } | null;
-  readonly pr: {
-    readonly base_repo: string;
-    readonly base_branch: string;
-    readonly head_branch: string;
-    readonly title: string;
-    readonly body: string;
-  };
-}
-
-export interface SharePullRequestResult {
-  readonly pull_request_url: string;
-  readonly number: number;
-  readonly head_branch: string;
-  readonly files: readonly string[];
-}
 
 export interface ShareService {
   readonly preview: (recipeId: string) => Effect.Effect<SharePreviewPayload, ShareError>;
@@ -246,7 +214,7 @@ export const makeShareService = (deps: ShareDependencies): ShareService => {
           .pipe(
             Effect.orElseSucceed(() => null),
             Effect.map((bytes) =>
-              bytes != null && bytes > 0 ? Math.round((bytes / 1024 ** 3) * 10) / 10 : null,
+              bytes !== null && bytes > 0 ? Math.round((bytes / 1024 ** 3) * 10) / 10 : null,
             ),
           ),
         deps.gpus().pipe(Effect.orElseSucceed(() => [] as GpuInfo[])),
@@ -277,7 +245,10 @@ export const makeShareService = (deps: ShareDependencies): ShareService => {
         validateAgainstRegistrySchema("model-instance", instance.record),
         validateAgainstRegistrySchema("recipe", recipeRecord.record),
       ].reduce(
-        (acc, result) => ({ ok: acc.ok && result.ok, issues: [...acc.issues, ...result.issues] }),
+        (accumulator, result) => ({
+          ok: accumulator.ok && result.ok,
+          issues: [...accumulator.issues, ...result.issues],
+        }),
         { ok: true, issues: [] as readonly SchemaIssue[] },
       );
       const contribution: Contribution = {
@@ -292,7 +263,7 @@ export const makeShareService = (deps: ShareDependencies): ShareService => {
       return {
         contribution,
         hardware,
-        working: running || peaks != null,
+        working: running || peaks !== null,
         redactions,
         files: [
           ...(model !== undefined ? [{ path: raw.paths.model, record: model }] : []),
@@ -309,7 +280,7 @@ export const makeShareService = (deps: ShareDependencies): ShareService => {
       const modelExists = yield* deps.registry
         .model(built.contribution.model_id)
         .pipe(Effect.orElseSucceed(() => null))
-        .pipe(Effect.map((record) => (record != null ? true : false)));
+        .pipe(Effect.map((record) => (record !== null ? true : false)));
       const shareable = built.validation.ok && built.working;
       const reason = !built.working
         ? "This configuration has not run yet — launch it once (or record speed evidence) before sharing."
@@ -395,8 +366,8 @@ export const makeShareService = (deps: ShareDependencies): ShareService => {
             }),
           );
         }
-        const fail = (step: string) => (error: GitHubError) =>
-          new ShareFailed({ step, message: error.message });
+        const fail = (step: string): ((error: GitHubError) => ShareFailed) =>
+          (error: GitHubError) => new ShareFailed({ step, message: error.message });
         const upstream = yield* deps.github.getRepo(REGISTRY_OWNER ?? "0xSero", REGISTRY_NAME ?? REGISTRY_REPO).pipe(
           Effect.mapError(fail("github")),
         );
@@ -470,7 +441,7 @@ export const shareErrorStatus = (error: ShareError): number => {
     case "ShareNotValid":
     case "ShareUnavailable":
       return 422;
-    default:
+    case "ShareFailed":
       return 502;
   }
 };
@@ -513,16 +484,26 @@ export const shareDependenciesFromContext = (context: {
   launchInput: (recipe) => Effect.succeed(context.toLaunchInput(recipe)),
   sizeBytes: (modelPath) => estimateWeightsSizeBytes(modelPath, true),
   engineVersion: (port) =>
-    Effect.mapError(
-      Effect.promise(async () => {
-        const response = await fetch(`http://127.0.0.1:${port}/version`, {
-          signal: AbortSignal.timeout(2_000),
-        });
-        if (!response.ok) return null;
-        const body = (await response.json()) as { version?: string };
-        return typeof body.version === "string" ? body.version : null;
+    Effect.tryPromise({
+      try: (signal) =>
+        fetch(`http://127.0.0.1:${port}/version`, {
+          signal: AbortSignal.any([AbortSignal.timeout(2_000), signal]),
+        }),
+      catch: () => null,
+    }).pipe(
+      Effect.flatMap((response) =>
+        response.ok
+          ? Effect.tryPromise({
+              try: () => response.json(),
+              catch: () => null,
+            })
+          : Effect.succeed(null),
+      ),
+      Effect.map((body) => {
+        const version = (body as { version?: unknown } | null)?.["version"];
+        return typeof version === "string" ? version : null;
       }),
-      () => null as string | null,
+      Effect.orElseSucceed(() => null),
     ),
   registry: makeRegistryClient(),
   github: makeGitHubClient(),

@@ -56,13 +56,6 @@ export interface Contribution {
   };
 }
 
-const slugify = (value: string): string =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9.]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64) || "model";
-
 /** "Qwen/Qwen3-4B" -> {owner: "qwen", name: "qwen3-4b"}; local paths never produce an owner. */
 export const repositoryFromModelPath = (modelPath: string): string | null => {
   const withoutBackslashes = modelPath.replace(/\\/g, "/");
@@ -88,7 +81,7 @@ export const precisionFromRecipe = (recipe: Recipe): string | null => {
   if (explicit && explicit.toLowerCase() !== "auto") return explicit.toLowerCase();
   const name = modelNameFromRepository(repositoryFromModelPath(recipe.model_path));
   const match = name.match(PRECISION_TOKEN);
-  return match ? (match[0] ?? null)?.toLowerCase() ?? null : null;
+  return match ? (match[0]?.toLowerCase() ?? null) : null;
 };
 
 /** Parameter count parsed from the artifact name ("Qwen3-4B" -> 4). */
@@ -110,20 +103,20 @@ const registryIdSlug = (value: string): string =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-const factProvenance = (nowIso: string) => ({
+const factProvenance = (nowIso: string): { sources: { kind: string; url: string; captured_at: string }[]; captured_at: string } => ({
   sources: [
     { kind: "local-studio", url: LOCAL_STUDIO_PROVENANCE_URL, captured_at: nowIso },
   ],
   captured_at: nowIso,
 });
 
-const knownFact = (value: unknown, nowIso: string) => ({
+const knownFact = (value: unknown, nowIso: string): Record<string, unknown> => ({
   state: "known" as const,
   value,
   provenance: factProvenance(nowIso),
 });
 
-const unknownFact = (reason: string, nowIso: string) => ({
+const unknownFact = (reason: string, nowIso: string): Record<string, unknown> => ({
   state: "unknown" as const,
   reason,
   provenance: factProvenance(nowIso),
@@ -191,7 +184,7 @@ export const buildContribution = (input: ContributionInput): Contribution => {
         ? knownFact(input.revision, nowIso)
         : unknownFact("artifact-revision-not-pinned", nowIso),
       "weights.size_gb":
-        input.sizeGb != null ? knownFact(input.sizeGb, nowIso) : unknownFact("artifact-size-not-published", nowIso),
+        input.sizeGb !== null ? knownFact(input.sizeGb, nowIso) : unknownFact("artifact-size-not-published", nowIso),
     },
   };
 
@@ -258,8 +251,8 @@ export const buildContribution = (input: ContributionInput): Contribution => {
     serving,
     capabilities: {
       chat: true,
-      reasoning: recipe.reasoning_parser != null,
-      tools: recipe.tool_call_parser != null,
+      reasoning: recipe.reasoning_parser !== null,
+      tools: recipe.tool_call_parser !== null,
       vision: recipe.vision === true,
     },
     speed_sweeps_ids: [],
@@ -271,7 +264,7 @@ export const buildContribution = (input: ContributionInput): Contribution => {
   };
 
   const model =
-    paramsB != null
+    paramsB !== null
       ? {
           schema_version: REGISTRY_SCHEMA_VERSION,
           id: modelId,

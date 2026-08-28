@@ -1,25 +1,11 @@
 import type {
   RegistryHardwareMatch,
   RegistryIndex,
-  RegistryIndexRow,
+  RegistryRecommendationsPayload,
 } from "@local-studio/contracts/registry";
 import { fitStateFor } from "./hardware-match";
 
-export interface RegistryRecommendationRow {
-  readonly row: RegistryIndexRow;
-  readonly fit: {
-    readonly state: "match" | "other";
-    readonly hardware_match: RegistryHardwareMatch | null;
-  };
-}
-
-export interface RegistryRecommendationsPayload {
-  readonly base_url: string;
-  readonly fetched_at: string;
-  readonly counts: { readonly total: number; readonly matched: number };
-  readonly matches: readonly RegistryHardwareMatch[];
-  readonly rows: readonly RegistryRecommendationRow[];
-}
+export type RegistryRecommendationRow = RegistryRecommendationsPayload["rows"][number];
 
 /**
  * Join discovery rows with this machine's hardware matches. Matched configs

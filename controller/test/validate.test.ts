@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { validateAgainstRegistrySchema, validateContribution } from "../src/modules/registry/validate";
+import { validateAgainstRegistrySchema } from "../src/modules/registry/validate";
 import { fixtureJson } from "./fixtures";
 
 describe("registry schema validation", () => {
@@ -17,16 +17,12 @@ describe("registry schema validation", () => {
   });
 
   test("generated contributions pass the schemas", () => {
-    const contribution = fixtureJson("index.json") as unknown as { recipes: unknown[] };
-    void contribution;
     const instance = fixtureJson("model-instance--redhatai-deepseek-coder-v2-lite-instruct-fp8--fp8.json");
     const model = fixtureJson("model--deepseek.json");
-    const result = validateContribution({
-      model,
-      model_instance: instance,
-      recipe: fixtureJson("recipe--deepseek-fp8-rtx-pro-6000-blackwell-96gb-vllm-tp1.json"),
-    });
-    expect(result.ok).toBe(true);
+    const recipe = fixtureJson("recipe--deepseek-fp8-rtx-pro-6000-blackwell-96gb-vllm-tp1.json");
+    expect(validateAgainstRegistrySchema("model", model).ok).toBe(true);
+    expect(validateAgainstRegistrySchema("model-instance", instance).ok).toBe(true);
+    expect(validateAgainstRegistrySchema("recipe", recipe).ok).toBe(true);
   });
 
   test("missing required fields fail with precise paths", () => {
@@ -43,16 +39,16 @@ describe("registry schema validation", () => {
 
   test("validated status with a reference launch is rejected by the schema", () => {
     const recipe = fixtureJson("recipe--deepseek-fp8-rtx-pro-6000-blackwell-96gb-vllm-tp1.json") as Record<string, unknown>;
-    const referenceLaunch = { ...(recipe as any), launch: { kind: "reference" }, status: "validated" };
+    const referenceLaunch = { ...recipe, launch: { kind: "reference" }, status: "validated" };
     expect(validateAgainstRegistrySchema("recipe", referenceLaunch).ok).toBe(false);
   });
 
-  test("contribution validation reports every failing record", () => {
-    const result = validateContribution({
-      model_instance: { id: "bad id" },
-      recipe: { id: "also bad" },
-    });
-    expect(result.ok).toBe(false);
-    expect(result.issues.length).toBeGreaterThanOrEqual(2);
+  test("every failing record reports its own issues", () => {
+    const instance = validateAgainstRegistrySchema("model-instance", { id: "bad id" });
+    const recipe = validateAgainstRegistrySchema("recipe", { id: "also bad" });
+    expect(instance.ok).toBe(false);
+    expect(recipe.ok).toBe(false);
+    expect(instance.issues.length).toBeGreaterThan(0);
+    expect(recipe.issues.length).toBeGreaterThan(0);
   });
 });

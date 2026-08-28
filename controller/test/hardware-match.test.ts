@@ -87,10 +87,18 @@ describe("hardware matching", () => {
   });
 
   test("detected groups collapse identical GPUs and keep counts", () => {
-    const gpus = [
-      { index: 0, name: "NVIDIA GeForce RTX 3090", memory_total_mb: 24576, memory_used_mb: 0, memory_free_mb: 24576, utilization_pct: 0, temp_c: 0 },
-      { index: 1, name: "NVIDIA GeForce RTX 3090", memory_total_mb: 24576, memory_used_mb: 0, memory_free_mb: 24576, utilization_pct: 0, temp_c: 0 },
-    ];
+    const gpu = {
+      index: 0,
+      name: "NVIDIA GeForce RTX 3090",
+      memory_total_mb: 24576,
+      memory_used_mb: 0,
+      memory_free_mb: 24576,
+      utilization_pct: 0,
+      temp_c: 0,
+      power_draw: 0,
+      power_limit: 350,
+    };
+    const gpus = [gpu, { ...gpu, index: 1 }];
     expect(detectedFromGpus(gpus)).toEqual([
       { name: "NVIDIA GeForce RTX 3090", memoryGb: 24, count: 2 },
     ]);

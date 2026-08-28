@@ -24,7 +24,7 @@ export class RegistryClientError extends Schema.TaggedErrorClass<RegistryClientE
   },
 ) {}
 
-type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+type FetchLike = typeof globalThis.fetch;
 
 export interface RegistryClient {
   readonly index: () => Effect.Effect<RegistryIndex, RegistryClientError>;
@@ -36,7 +36,7 @@ export interface RegistryClient {
   readonly recipe: (id: string) => Effect.Effect<RegistryRecipe, RegistryClientError>;
   readonly speedSweep: (id: string) => Effect.Effect<unknown, RegistryClientError>;
   /** Drop every cached record; the next read refetches. */
-  readonly invalidate: () => void;
+  readonly invalidate: () => Effect.Effect<void>;
 }
 
 export const registryBaseUrl = (): string =>
@@ -84,7 +84,7 @@ export const makeRegistryClient = (options?: {
           );
         }
         return Effect.tryPromise({
-          try: () => response.json() as Promise<unknown>,
+          try: () => response.json(),
           catch: (source) =>
             new RegistryClientError({
               operation: `read ${path}`,
@@ -117,27 +117,20 @@ export const makeRegistryClient = (options?: {
       ),
     );
 
-  const memoized = (key: string, load: () => Effect.Effect<unknown, RegistryClientError>) => {
-    const existing = cache.get(key);
-    if (existing) return existing;
-    // One promise per key, held across effect executions: the fetch runs once
-    // and later callers await the same result. A failed load removes itself so
-    // a transient registry outage can be retried.
-    let inflight: Promise<unknown> | null = null;
-    const effect = Effect.tryPromise({
-      try: () => {
-        inflight ??= Effect.runPromise(load()).catch((error: unknown) => {
-          inflight = null;
-          cache.delete(key);
-          throw error;
-        });
-        return inflight;
-      },
-      catch: (source) => source as RegistryClientError,
+  const memoized = (
+    key: string,
+    load: () => Effect.Effect<unknown, RegistryClientError>,
+  ): Effect.Effect<unknown, RegistryClientError> =>
+    Effect.suspend(() => {
+      const existing = cache.get(key);
+      if (existing) return existing;
+      // First run materializes the memoized inner effect from Effect.cached
+      // and stores it; later runs replay the stored result without refetching.
+      return Effect.map(Effect.cached(load()), (inner) => {
+        cache.set(key, inner);
+        return inner;
+      }).pipe(Effect.flatten);
     });
-    cache.set(key, effect);
-    return effect;
-  };
 
   const record = (
     collection: RegistryCollection,
@@ -147,7 +140,7 @@ export const makeRegistryClient = (options?: {
       | typeof RegistryModelSchema
       | typeof RegistryModelInstanceSchema
       | typeof RegistryRecipeSchema,
-  ) =>
+  ): Effect.Effect<unknown, RegistryClientError> =>
     memoized(`${collection}/${id}`, () =>
       readRecord(`${collection}/${id}`).pipe(
         Effect.flatMap((value) =>
@@ -191,6 +184,9 @@ export const makeRegistryClient = (options?: {
     recipe: (id) =>
       record("recipe", id, decodeCollection.recipe) as Effect.Effect<RegistryRecipe, RegistryClientError>,
     speedSweep: (id) => memoized(`speed-sweeps/${id}`, () => readRecord(`speed-sweeps/${id}`)),
-    invalidate: () => cache.clear(),
+    invalidate: () =>
+      Effect.sync(() => {
+        cache.clear();
+      }),
   } satisfies RegistryClient;
 };

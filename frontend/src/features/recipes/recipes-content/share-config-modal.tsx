@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ExternalLink } from "@/ui/icon-registry";
 import { Button, StatusPill } from "@/ui";
 import { UiModal, UiModalBody, UiModalFooter, UiModalHeader } from "@/ui/modal";
 import api from "@/lib/api/client";
 import type { SharePreviewPayload } from "@/lib/api/registry";
 import type { RecipeWithStatus } from "@/lib/types";
+import { useMountSubscription } from "@/hooks/use-mount-subscription";
 
 const FALLBACK_NOTICE = "This will create a PR to https://github.com/0xSero/local-ai-registry";
 
@@ -32,7 +33,7 @@ export function ShareConfigModal({
   const [error, setError] = useState<string | null>(null);
   const [pullRequestUrl, setPullRequestUrl] = useState<string | null>(null);
 
-  useEffect(() => {
+  useMountSubscription(() => {
     let cancelled = false;
     api
       .getSharePreview(recipe.id)
@@ -75,89 +76,13 @@ export function ShareConfigModal({
     <UiModal isOpen onClose={onClose} maxWidth="max-w-lg">
       <UiModalHeader title={`Share config — ${recipe.name}`} onClose={onClose} />
       <UiModalBody>
-        {step === "loading" ? (
-          <p className="text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
-            Building the registry contribution from this configuration…
-          </p>
-        ) : null}
-
-        {step === "ask" && preview ? (
-          <div className="space-y-3 text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
-            <p>
-              This publishes the working configuration as registry records — hardware, model
-              artifact, engine, launch arguments, and any measured speed evidence — for other
-              local operators to reuse.
-            </p>
-            <ul className="space-y-1 font-mono text-[length:var(--fs-sm)]">
-              <li>
-                hardware: {preview.hardware ? `${preview.hardware.name} ×${preview.hardware.count}` : "—"}
-              </li>
-              <li>records: {preview.file_paths.join(", ")}</li>
-              <li>
-                validation:{" "}
-                {preview.validation.ok ? (
-                  <span className="text-(--ok)">schema ok</span>
-                ) : (
-                  <span className="text-(--err)">{preview.validation.issues.length} issues</span>
-                )}
-              </li>
-              {preview.redactions.length > 0 ? (
-                <li>redacted: {preview.redactions.join(", ")}</li>
-              ) : (
-                <li>redacted: nothing sensitive found</li>
-              )}
-            </ul>
-            {!preview.shareable && preview.reason ? (
-              <p className="rounded-lg border border-(--warn)/40 bg-(--warn)/10 p-2.5 text-[length:var(--fs-sm)] text-(--fg)">
-                {preview.reason}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-
-        {step === "confirm" ? (
-          <div className="space-y-3">
-            <p className="text-[length:var(--fs-base)] font-medium text-(--fg)">{notice}</p>
-            <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">
-              A contribution branch on your fork with{" "}
-              {preview?.file_paths.length ?? 0} record file
-              {preview?.file_paths.length === 1 ? "" : "s"} is committed, then the pull request is
-              opened. Decline cancels everything.
-            </p>
-          </div>
-        ) : null}
-
-        {step === "creating" ? (
-          <p className="text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
-            Creating the fork, branch, and pull request…
-          </p>
-        ) : null}
-
-        {step === "done" ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <StatusPill tone="good">opened</StatusPill>
-              <span className="text-[length:var(--fs-base)] text-(--fg)">
-                Pull request opened against the registry.
-              </span>
-            </div>
-            {pullRequestUrl ? (
-              <a
-                href={pullRequestUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-[length:var(--fs-sm)] text-(--ui-muted) transition-colors hover:text-(--fg)"
-              >
-                {pullRequestUrl}
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            ) : null}
-          </div>
-        ) : null}
-
-        {step === "error" ? (
-          <p className="text-[length:var(--fs-base)] leading-relaxed text-(--err)">{error}</p>
-        ) : null}
+        <ShareStepBody
+          step={step}
+          preview={preview}
+          notice={notice}
+          error={error}
+          pullRequestUrl={pullRequestUrl}
+        />
       </UiModalBody>
       <UiModalFooter>
         {step === "ask" ? (
@@ -196,5 +121,103 @@ export function ShareConfigModal({
         ) : null}
       </UiModalFooter>
     </UiModal>
+  );
+}
+
+function ShareStepBody({
+  step,
+  preview,
+  notice,
+  error,
+  pullRequestUrl,
+}: {
+  step: Step;
+  preview: SharePreviewPayload | null;
+  notice: string;
+  error: string | null;
+  pullRequestUrl: string | null;
+}) {
+  if (step === "ask" && preview) return <AskBody preview={preview} />;
+  if (step === "confirm") {
+    return (
+      <div className="space-y-3">
+        <p className="text-[length:var(--fs-base)] font-medium text-(--fg)">{notice}</p>
+        <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">
+          A contribution branch on your fork with {preview?.file_paths.length ?? 0} record file
+          {preview?.file_paths.length === 1 ? "" : "s"} is committed, then the pull request is
+          opened. Decline cancels everything.
+        </p>
+      </div>
+    );
+  }
+  if (step === "done") {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <StatusPill tone="good">opened</StatusPill>
+          <span className="text-[length:var(--fs-base)] text-(--fg)">
+            Pull request opened against the registry.
+          </span>
+        </div>
+        {pullRequestUrl ? (
+          <a
+            href={pullRequestUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-[length:var(--fs-sm)] text-(--ui-muted) transition-colors hover:text-(--fg)"
+          >
+            {pullRequestUrl}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        ) : null}
+      </div>
+    );
+  }
+  const quiet =
+    step === "loading"
+      ? "Building the registry contribution from this configuration…"
+      : step === "creating"
+        ? "Creating the fork, branch, and pull request…"
+        : null;
+  if (quiet !== null) {
+    return <p className="text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">{quiet}</p>;
+  }
+  return <p className="text-[length:var(--fs-base)] leading-relaxed text-(--err)">{error}</p>;
+}
+
+function AskBody({ preview }: { preview: SharePreviewPayload }) {
+  return (
+    <div className="space-y-3 text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
+      <p>
+        This publishes the working configuration as registry records — hardware, model artifact,
+        engine, launch arguments, and any measured speed evidence — for other local operators to
+        reuse.
+      </p>
+      <ul className="space-y-1 font-mono text-[length:var(--fs-sm)]">
+        <li>
+          hardware:{" "}
+          {preview.hardware ? `${preview.hardware.name} ×${preview.hardware.count}` : "—"}
+        </li>
+        <li>records: {preview.file_paths.join(", ")}</li>
+        <li>
+          validation:{" "}
+          {preview.validation.ok ? (
+            <span className="text-(--ok)">schema ok</span>
+          ) : (
+            <span className="text-(--err)">{preview.validation.issues.length} issues</span>
+          )}
+        </li>
+        {preview.redactions.length > 0 ? (
+          <li>redacted: {preview.redactions.join(", ")}</li>
+        ) : (
+          <li>redacted: nothing sensitive found</li>
+        )}
+      </ul>
+      {!preview.shareable && preview.reason ? (
+        <p className="rounded-lg border border-(--warn)/40 bg-(--warn)/10 p-2.5 text-[length:var(--fs-sm)] text-(--fg)">
+          {preview.reason}
+        </p>
+      ) : null}
+    </div>
   );
 }

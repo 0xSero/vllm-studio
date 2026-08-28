@@ -64,7 +64,8 @@ describe("registry client", () => {
     const result = await run(client.hardware("rtx-5090-32gb"));
     expect(!result.ok).toBe(true);
     if (result.ok) return;
-    expect(result.error).toBeInstanceOf(RegistryClientError);
+    expect(result.error instanceof RegistryClientError).toBe(true);
+    if (!(result.error instanceof RegistryClientError)) return;
     expect(result.error.operation).toContain("hardware");
   });
 
@@ -74,7 +75,7 @@ describe("registry client", () => {
     const result = await run(client.index());
     expect(!result.ok).toBe(true);
     if (result.ok) return;
-    expect(result.error).toBeInstanceOf(RegistryClientError);
+    expect(result.error instanceof RegistryClientError).toBe(true);
   });
 
   test("a 404 record reports a typed error carrying the status", async () => {
@@ -83,14 +84,14 @@ describe("registry client", () => {
     const result = await run(client.recipe("does-not-exist"));
     expect(!result.ok).toBe(true);
     if (result.ok) return;
-    expect(result.error.status).toBe(404);
+    expect((result.error as RegistryClientError | undefined)?.status).toBe(404);
   });
 
   test("invalidate drops the cache so records are refetched", async () => {
     const { fetch, requests } = fixtureFetch();
     const client = makeRegistryClient({ baseUrl: BASE, fetch });
     await run(client.model("deepseek"));
-    client.invalidate();
+    await run(client.invalidate());
     await run(client.model("deepseek"));
     expect(requests.filter((url) => url.endsWith("/model/deepseek.json")).length).toBe(2);
   });

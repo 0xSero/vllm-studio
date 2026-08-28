@@ -1,6 +1,5 @@
-import { execFile } from "node:child_process";
 import { Effect, Schema } from "effect";
-import { promisify } from "node:util";
+import { runCommandAsyncEffect } from "../../core/command";
 
 export class GitHubError extends Schema.TaggedErrorClass<GitHubError>()("GitHubError", {
   operation: Schema.String,
@@ -58,26 +57,24 @@ export interface GitHubClient {
   }) => Effect.Effect<GitHubPullRequest, GitHubError>;
 }
 
-type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+type FetchLike = typeof globalThis.fetch;
 
-const execGhAuthToken = async (): Promise<string | null> => {
-  try {
-    const { stdout } = await promisify(execFile)("gh", ["auth", "token"], { timeout: 5_000 });
-    const token = stdout.trim();
-    return token.length > 0 ? token : null;
-  } catch {
-    return null;
-  }
-};
+const tokenFromGhCli = (): Effect.Effect<string | null> =>
+  runCommandAsyncEffect("gh", ["auth", "token"], { timeoutMs: 5_000 }).pipe(
+    Effect.map((result) => {
+      const token = result.status === 0 ? result.stdout.trim() : "";
+      return token.length > 0 ? token : null;
+    }),
+    Effect.catch(() => Effect.succeed(null)),
+  );
 
 /** Explicit env token first, then an authenticated `gh` CLI. */
-export const resolveGitHubToken = (): Promise<string | null> => {
-  const fromEnv =
+export const resolveGitHubToken = (): Effect.Effect<string | null> => {
+  const fromEnvironment =
     process.env["LOCAL_AI_REGISTRY_GITHUB_TOKEN"]?.trim() ||
     process.env["GH_TOKEN"]?.trim() ||
     process.env["GITHUB_TOKEN"]?.trim();
-  if (fromEnv) return Promise.resolve(fromEnv);
-  return execGhAuthToken();
+  return fromEnvironment ? Effect.succeed(fromEnvironment) : tokenFromGhCli();
 };
 
 interface GitHubOptions {
@@ -93,10 +90,14 @@ export const makeGitHubClient = (options: GitHubOptions = {}): Omit<GitHubClient
   const doFetch = options.fetch ?? globalThis.fetch;
   let cachedToken: string | null | undefined = options.token === undefined ? undefined : options.token;
 
-  const token = async (): Promise<string | null> => {
-    if (cachedToken === undefined) cachedToken = await resolveGitHubToken();
-    return cachedToken;
-  };
+  const token = (): Effect.Effect<string | null> =>
+    Effect.suspend(() => {
+      if (cachedToken !== undefined) return Effect.succeed(cachedToken);
+      return Effect.map(resolveGitHubToken(), (resolved) => {
+        cachedToken = resolved;
+        return resolved;
+      });
+    });
 
   const failure = (operation: string, message: string, source?: unknown): GitHubError =>
     source === undefined
@@ -109,7 +110,7 @@ export const makeGitHubClient = (options: GitHubOptions = {}): Omit<GitHubClient
     init: RequestInit = {},
   ): Effect.Effect<{ readonly status: number; readonly body: unknown }, GitHubError> =>
     Effect.flatMap(
-      Effect.promise(() => token()),
+      token(),
       (authToken) => {
         if (!authToken) {
           return Effect.fail(
@@ -188,13 +189,13 @@ export const makeGitHubClient = (options: GitHubOptions = {}): Omit<GitHubClient
   };
 
   return {
-    authenticated: () => cachedToken != null,
-    getRepo: (owner, repo) =>
+    authenticated: (): boolean => cachedToken !== null,
+    getRepo: (owner: string, repo: string) =>
       request(`get ${owner}/${repo}`, `/repos/${owner}/${repo}`).pipe(
         Effect.map(({ body }) => repoFrom(body)),
         Effect.catch((error) => (error.status === 404 ? Effect.succeed(null) : Effect.fail(error))),
       ),
-    getBranch: (owner, repo, branch) =>
+    getBranch: (owner: string, repo: string, branch: string) =>
       request(`get branch ${branch}`, `/repos/${owner}/${repo}/branches/${branch}`).pipe(
         Effect.map(({ body }) => {
           const record = body as { commit?: { sha?: string } };
@@ -203,7 +204,7 @@ export const makeGitHubClient = (options: GitHubOptions = {}): Omit<GitHubClient
         }),
         Effect.catch((error) => (error.status === 404 ? Effect.succeed(null) : Effect.fail(error))),
       ),
-    createFork: (owner, repo) =>
+    createFork: (owner: string, repo: string) =>
       request(`fork ${owner}/${repo}`, `/repos/${owner}/${repo}/forks`, { method: "POST" }).pipe(
         Effect.map(({ body }) => repoFrom(body)),
         Effect.catch((error) =>
@@ -214,7 +215,7 @@ export const makeGitHubClient = (options: GitHubOptions = {}): Omit<GitHubClient
             : Effect.fail(error),
         ),
       ),
-    createBranch: (owner, repo, branch, sha) =>
+    createBranch: (owner: string, repo: string, branch: string, sha: string) =>
       request(`create branch ${branch}`, `/repos/${owner}/${repo}/git/refs`, {
         method: "POST",
         body: JSON.stringify({ ref: `refs/heads/${branch}`, sha }),
@@ -225,8 +226,8 @@ export const makeGitHubClient = (options: GitHubOptions = {}): Omit<GitHubClient
           error.status === 422 ? Effect.void : Effect.fail(error),
         ),
       ),
-    putFile: ({ owner, repo, branch, path, content, message }) => {
-      const attempt = (sha: string | null) =>
+    putFile: ({ owner, repo, branch, path, content, message }: { owner: string; repo: string; branch: string; path: string; content: string; message: string }): Effect.Effect<void, GitHubError> => {
+      const attempt = (sha: string | null): Effect.Effect<void, GitHubError> =>
         request(`commit ${path}`, `/repos/${owner}/${repo}/contents/${path}`, {
           method: "PUT",
           body: JSON.stringify({
@@ -249,16 +250,16 @@ export const makeGitHubClient = (options: GitHubOptions = {}): Omit<GitHubClient
         ),
       );
     },
-    createPull: ({ owner, repo, title, head, base, body }) =>
-      request(`create pull request`, `/repos/${owner}/${repo}/pulls`, {
+    createPull: (input: { owner: string; repo: string; title: string; head: string; base: string; body: string }) =>
+      request("create pull request", `/repos/${input.owner}/${input.repo}/pulls`, {
         method: "POST",
-        body: JSON.stringify({ title, head, base, body }),
+        body: JSON.stringify({ title: input.title, head: input.head, base: input.base, body: input.body }),
       }).pipe(
         Effect.map(({ body: pull }) => {
           const record = pull as { number?: number; html_url?: string };
           return {
             number: record.number ?? 0,
-            html_url: record.html_url ?? `https://github.com/${owner}/${repo}/pulls`,
+            html_url: record.html_url ?? `https://github.com/${input.owner}/${input.repo}/pulls`,
           } satisfies GitHubPullRequest;
         }),
       ),

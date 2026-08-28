@@ -75,8 +75,8 @@ const baseInput = {
 describe("contribution serialization", () => {
   test("carries everything required for reproducibility", () => {
     const contribution = buildContribution(baseInput);
-    const instance = contribution.model_instance as Record<string, any>;
-    const recipe = contribution.recipe as Record<string, any>;
+    const instance = contribution.model_instance as Record<string, unknown>;
+    const recipe = contribution.recipe as Record<string, Record<string, unknown> | unknown>;
 
     expect(instance["repository"]).toBe("unsloth/gemma-4-12b-it-NVFP4");
     expect(instance["revision"]).toBe("b1f649734b34aa5575b03d186abd1b9be3d0d5c4");
@@ -84,9 +84,10 @@ describe("contribution serialization", () => {
     expect(recipe["engine"]).toEqual({ name: "sglang", version: "0.5.2", graph_mode: null });
     expect(recipe["hardware_id"]).toBe("rtx-5090-32gb");
     expect(recipe["hardware_count"]).toBe(1);
-    expect(recipe["serving"]["configured_max_context_tokens"]).toBe(131072);
-    expect(recipe["serving"]["measured"]).toMatchObject({ peak_generation_tps: 41.2 });
-    const launch = recipe["launch"] as Record<string, any>;
+    const serving = recipe["serving"] as Record<string, unknown>;
+    expect(serving["configured_max_context_tokens"]).toBe(131072);
+    expect(serving["measured"]).toMatchObject({ peak_generation_tps: 41.2 });
+    const launch = recipe["launch"] as Record<string, unknown>;
     expect(launch["kind"]).toBe("controller");
     expect(launch["image"]).toBe("lmsysorg/sglang:dev-cu13");
     expect(launch["digest"]).toContain("sha256:6cd46352");
@@ -113,8 +114,8 @@ describe("contribution serialization", () => {
 
   test("measured evidence is optional but included when present", () => {
     const withoutPeaks = buildContribution({ ...baseInput, peaks: null });
-    const serving = (withoutPeaks.recipe as Record<string, any>)["serving"];
-    expect(serving["measured"]).toBeUndefined();
+    const serving = (withoutPeaks.recipe as Record<string, Record<string, unknown>>)["serving"];
+    expect(serving?.["measured"]).toBeUndefined();
   });
 
   test("precision falls back to the artifact name suffix", () => {

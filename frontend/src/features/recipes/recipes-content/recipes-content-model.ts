@@ -3,12 +3,11 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import api from "@/lib/api/client";
-import type { ModelDownload, ModelInfo, RecipeWithStatus, RuntimeTarget } from "@/lib/types";
+import type { ModelDownload, ModelInfo, Recipe, RecipeWithStatus, RuntimeTarget } from "@/lib/types";
 import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
 import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import type { Recipe } from "@/lib/types";
 import type { HydratedRegistryRow } from "./use-registry";
 import { normalizeRecipeForEditor } from "@/features/recipes/normalize-recipe";
 import { prepareRecipeForSave } from "@/features/recipes/prepare-recipe";
@@ -21,6 +20,44 @@ export type RecipesContentTab = "picks" | "get" | "serves" | "downloads";
 
 const requestedTab = (value: string | null): RecipesContentTab =>
   value === "get" || value === "serves" || value === "downloads" ? value : "picks";
+
+
+const BACKEND_IDS: readonly string[] = ["vllm", "sglang", "exllamav3"];
+
+const recordObject = (record: unknown): Record<string, unknown> | null =>
+  record && typeof record === "object" ? (record as Record<string, unknown>) : null;
+
+const registryRepository = (row: HydratedRegistryRow): string | null => {
+  const instance = recordObject(row.instance);
+  const repository = instance?.["repository"];
+  const isRepo = typeof repository === "string" && repository.includes("/");
+  return isRepo ? repository : null;
+};
+
+const registryServing = (row: HydratedRegistryRow): Record<string, unknown> | null => {
+  const config = recordObject(row.recipe);
+  return recordObject(config?.["serving"]);
+};
+
+/** Map a hydrated registry row onto a prefilled local server draft. */
+export const registryConfigDraft = (row: HydratedRegistryRow): Partial<Recipe> => {
+  const repo = registryRepository(row);
+  const name = repo?.split("/")[1] ?? row.row.model_instance_id;
+  const context = registryServing(row)?.["configured_max_context_tokens"];
+  const parallel = registryServing(row)?.["tensor_parallel"];
+  const engine = row.row.engine;
+  const contextOk = typeof context === "number" && context > 0;
+  const parallelOk = typeof parallel === "number" && parallel >= 1;
+  const backendOk = BACKEND_IDS.includes(engine);
+  return {
+    name,
+    model_path: repo ?? row.row.model_instance_id,
+    served_model_name: name,
+    ...(backendOk ? { backend: engine as Recipe["backend"] } : {}),
+    ...(contextOk ? { max_model_len: context } : {}),
+    ...(parallelOk ? { tensor_parallel_size: parallel } : {}),
+  };
+};
 
 export function useRecipesContentModel() {
   const searchParams = useSearchParams();
@@ -139,34 +176,8 @@ export function useRecipesContentModel() {
 
   const closeShareModal = useCallback(() => setShareRecipe(null), []);
 
-  const backendIds = ["vllm", "sglang", "exllamav3"] as const;
   const handleUseRegistryConfig = useCallback((row: HydratedRegistryRow) => {
-    const instance = row.instance && row.instance !== "error" ? row.instance : null;
-    const config = row.recipe && row.recipe !== "error" ? row.recipe : null;
-    const repository = instance?.["repository"];
-    const repo =
-      typeof repository === "string" && repository.includes("/") ? repository : null;
-    const name = repo?.split("/")[1] ?? row.row.model_instance_id;
-    const serving =
-      config && config["serving"] && typeof config["serving"] === "object"
-        ? (config["serving"] as Record<string, unknown>)
-        : undefined;
-    const engine = row.row.engine;
-    const context = serving?.["configured_max_context_tokens"];
-    const parallel = serving?.["tensor_parallel"];
-    const draft: Partial<Recipe> = {
-      name,
-      model_path: repo ?? row.row.model_instance_id,
-      served_model_name: name,
-      ...(backendIds.includes(engine as (typeof backendIds)[number])
-        ? { backend: engine as Recipe["backend"] }
-        : {}),
-      ...(typeof context === "number" && context > 0 ? { max_model_len: context } : {}),
-      ...(typeof parallel === "number" && parallel >= 1
-        ? { tensor_parallel_size: parallel }
-        : {}),
-    };
-    setModalRecipe(normalizeRecipeForEditor({ ...DEFAULT_RECIPE, ...draft }));
+    setModalRecipe(normalizeRecipeForEditor({ ...DEFAULT_RECIPE, ...registryConfigDraft(row) }));
     setModalOpen(true);
   }, []);
 

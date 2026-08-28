@@ -3,13 +3,18 @@ import { badRequest, HttpStatus } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
 import { defineRoutes, effectRoute, mergeRoutes } from "../../http/route-registrar";
 import type { AppContext } from "../../app-context";
-import type { RegistryCollection } from "@local-studio/contracts/registry";
-import { makeRegistryClient, RegistryClientError, registryBaseUrl } from "./client";
+import type {
+  RegistryCollection,
+  RegistryHardware,
+  RegistryIndex,
+} from "@local-studio/contracts/registry";
+import { makeRegistryClient, registryBaseUrl, type RegistryClientError } from "./client";
 import { buildRecommendations } from "./recommendations";
 import { detectedAppleSilicon, detectedFromGpus, matchAccelerators } from "./hardware-match";
 import { getGpuInfo } from "../system/platform/gpu";
 import { recipeToLaunchInput } from "../compute/active-model";
 import {
+  SHARE_PR_NOTICE,
   makeShareService,
   shareDependenciesFromContext,
   shareErrorStatus,
@@ -27,12 +32,6 @@ const COLLECTIONS: readonly RegistryCollection[] = [
 
 let registryClient: ReturnType<typeof makeRegistryClient> | null = null;
 let shareService: ShareService | null = null;
-
-/** Test seam: drop the process-wide clients so the next request rebuilds them. */
-export const resetRegistryClients = (): void => {
-  registryClient = null;
-  shareService = null;
-};
 
 const registryFor = (): ReturnType<typeof makeRegistryClient> => {
   if (!registryClient) registryClient = makeRegistryClient();
@@ -62,7 +61,13 @@ const registryError = (error: RegistryClientError): HttpStatus =>
 const shareFailure = (error: ShareError): HttpStatus =>
   new HttpStatus({ status: shareErrorStatus(error), detail: error.message });
 
-const hardwareMatches = () =>
+interface HardwareMatches {
+  index: RegistryIndex;
+  hardware: RegistryHardware[];
+  matches: ReturnType<typeof matchAccelerators>;
+}
+
+const hardwareMatches = (): Effect.Effect<HardwareMatches, HttpStatus> =>
   Effect.gen(function* () {
     const client = registryFor();
     const [gpus, index] = yield* Effect.all([
@@ -82,7 +87,7 @@ export const registerRegistryRoutes = defineRoutes((app, context) =>
   mergeRoutes(
     effectRoute(app.get, "/registry/index", (ctx) =>
       Effect.gen(function* () {
-        if (ctx.req.query("refresh") === "1") registryFor().invalidate();
+        if (ctx.req.query("refresh") === "1") yield* registryFor().invalidate();
         const index = yield* registryFor().index().pipe(Effect.mapError(registryError));
         return ctx.json({
           data: index,
@@ -93,7 +98,7 @@ export const registerRegistryRoutes = defineRoutes((app, context) =>
 
     effectRoute(app.get, "/registry/recommendations", (ctx) =>
       Effect.gen(function* () {
-        if (ctx.req.query("refresh") === "1") registryFor().invalidate();
+        if (ctx.req.query("refresh") === "1") yield* registryFor().invalidate();
         const { index, hardware, matches } = yield* hardwareMatches();
         const payload = buildRecommendations(
           index,
@@ -149,11 +154,7 @@ export const registerRegistryRoutes = defineRoutes((app, context) =>
     ),
 
     effectRoute(app.get, "/registry/share/notice", (ctx) =>
-      Effect.gen(function* () {
-        void context;
-        const { SHARE_PR_NOTICE } = yield* Effect.promise(() => import("./share"));
-        return ctx.json({ notice: SHARE_PR_NOTICE });
-      }),
+      Effect.succeed(ctx.json({ notice: SHARE_PR_NOTICE })),
     ),
 
     effectRoute(app.get, "/registry/share/preview", (ctx) =>

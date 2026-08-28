@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import type { Recipe } from "../src/modules/models/types";
 import type { ComputeLaunchInput } from "../src/modules/compute/lifecycle";
 import type { HostProfile } from "../src/modules/compute/contracts";
-import { GitHubError } from "../src/modules/registry/github";
+import { GitHubError, type GitHubPullRequest, type GitHubRepo } from "../src/modules/registry/github";
 import {
   makeShareService,
   ShareConfirmationRequired,
@@ -84,55 +84,64 @@ const launchInput: ComputeLaunchInput = {
   dockerImage: "lmsysorg/sglang:dev-cu13",
 };
 
+type GitHubFake = {
+  calls: string[];
+  client: ShareDependencies["github"];
+};
+
 const githubFake = (options?: {
   repoMissing?: boolean;
   forkFails?: boolean;
   branchFails?: boolean;
   putFailsFrom?: number;
   pullFails?: boolean;
-}) => {
+}): GitHubFake => {
   const calls: string[] = [];
-  const fail = (step: string) => new GitHubError({ operation: step, message: `${step} exploded`, status: 500 });
+  const fail = (step: string): GitHubError =>
+    new GitHubError({ operation: step, message: `${step} exploded`, status: 500 });
   // The contract speaks in Effects; the fake adapts async bodies into them.
-  const eff = <A>(body: () => Promise<A>) =>
+  const eff = <A>(body: () => Promise<A>): Effect.Effect<A, GitHubError> =>
     Effect.tryPromise({
       try: body,
-      catch: (source) => (source instanceof GitHubError ? source : new GitHubError({ operation: "fake", message: String(source) })),
+      catch: (source) =>
+        source instanceof GitHubError
+          ? source
+          : new GitHubError({ operation: "fake", message: String(source) }),
     });
   return {
     calls,
     client: {
       getRepo: (owner: string, repo: string) =>
-        eff(async () => {
+        eff(async (): Promise<GitHubRepo | null> => {
           calls.push(`getRepo ${owner}/${repo}`);
           return options?.repoMissing
             ? null
             : { full_name: `${owner}/${repo}`, default_branch: "main", fork: false, owner: { login: owner } };
         }),
       getBranch: (owner: string, repo: string, branch: string) =>
-        eff(async () => {
+        eff(async (): Promise<{ sha: string } | null> => {
           calls.push(`getBranch ${branch}`);
           return { sha: "basesha0000000000000000000000000000000000" };
         }),
       createFork: (owner: string, repo: string) =>
-        eff(async () => {
+        eff(async (): Promise<GitHubRepo> => {
           calls.push(`fork ${owner}/${repo}`);
           if (options?.forkFails) throw fail("fork");
           return { full_name: "gil/local-ai-registry", default_branch: "main", fork: true, owner: { login: "gil" } };
         }),
       createBranch: (owner: string, repo: string, branch: string, sha: string) =>
-        eff(async () => {
+        eff(async (): Promise<void> => {
           calls.push(`branch ${branch} @ ${sha}`);
           if (options?.branchFails) throw fail("branch");
         }),
       putFile: (input: { path: string }) =>
-        eff(async () => {
+        eff(async (): Promise<void> => {
           calls.push(`put ${input.path}`);
           const puts = calls.filter((call) => call.startsWith("put ")).length;
           if (options?.putFailsFrom && puts >= options.putFailsFrom) throw fail("commit");
         }),
       createPull: (input: { owner: string; repo: string; head: string; base: string; title: string }) =>
-        eff(async () => {
+        eff(async (): Promise<GitHubPullRequest> => {
           if (options?.pullFails) throw fail("pull-request");
           calls.push(`pr ${input.owner}/${input.repo} ${input.head} -> ${input.base}`);
           return { number: 42, html_url: "https://github.com/0xSero/local-ai-registry/pull/42" };
@@ -142,8 +151,8 @@ const githubFake = (options?: {
 };
 
 /** Adapt an async fake into the Effect the dependency contract expects. */
-const promise = <A>(fn: () => Promise<A>) => () =>
-  Effect.tryPromise({ try: fn, catch: (source) => source as never });
+const promise = <A>(body: () => Promise<A>): (() => Effect.Effect<A, never>) => () =>
+  Effect.tryPromise({ try: body, catch: (source) => source as never });
 
 const DETECTED_5090 = [
   {
@@ -192,10 +201,12 @@ describe("share flow", () => {
     expect(payload.shareable).toBe(true);
     expect(payload.validation.ok).toBe(true);
     expect(payload.file_paths.length).toBe(3);
-    const recipe = payload.records.recipe as Record<string, any>;
+    const recipe = payload.records.recipe as Record<string, unknown>;
     expect(recipe["engine"]).toMatchObject({ name: "sglang", version: "0.5.2" });
-    expect(String(recipe["launch"]["image"])).toContain("sglang");
-    expect(recipe["serving"]["configured_max_context_tokens"]).toBe(131072);
+    const launch = recipe["launch"] as Record<string, unknown>;
+    const serving = recipe["serving"] as Record<string, unknown>;
+    expect(String(launch["image"])).toContain("sglang");
+    expect(serving["configured_max_context_tokens"]).toBe(131072);
   });
 
   test("preview never leaks secrets, device ids, or home paths", async () => {

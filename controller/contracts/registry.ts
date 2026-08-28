@@ -152,6 +152,57 @@ export interface RegistryRecommendation {
   };
 }
 
+export type RegistryRecord = Record<string, unknown>;
+
+export interface RegistryRecommendationsPayload {
+  readonly base_url: string;
+  readonly fetched_at: string;
+  readonly counts: { readonly total: number; readonly matched: number };
+  readonly matches: readonly RegistryHardwareMatch[];
+  readonly rows: readonly RegistryRecommendation[];
+}
+
+export interface SchemaIssue {
+  readonly path: string;
+  readonly message: string;
+}
+
+export interface ShareFile {
+  readonly path: string;
+  readonly record: unknown;
+}
+
+export interface SharePreviewPayload {
+  readonly recipe_id: string;
+  readonly recipe_name: string;
+  readonly shareable: boolean;
+  readonly reason: string | null;
+  readonly records: {
+    readonly model?: unknown;
+    readonly model_instance: unknown;
+    readonly recipe: unknown;
+  };
+  readonly file_paths: readonly string[];
+  readonly model_exists_in_registry: boolean | null;
+  readonly validation: { readonly ok: boolean; readonly issues: readonly SchemaIssue[] };
+  readonly redactions: readonly string[];
+  readonly hardware: { readonly id: string; readonly name: string; readonly count: number } | null;
+  readonly pr: {
+    readonly base_repo: string;
+    readonly base_branch: string;
+    readonly head_branch: string;
+    readonly title: string;
+    readonly body: string;
+  };
+}
+
+export interface SharePullRequestResult {
+  readonly pull_request_url: string;
+  readonly number: number;
+  readonly head_branch: string;
+  readonly files: readonly string[];
+}
+
 /** One detected accelerator group joined to a registry hardware record. */
 export interface RegistryHardwareMatch {
   hardware_id: string;

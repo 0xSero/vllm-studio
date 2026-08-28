@@ -17,7 +17,7 @@ describe("redaction", () => {
       { launch: { environment: { HF_TOKEN: "hf_x", NCCL_P2P_DISABLE: "1", API_KEY: "k" } } },
       SECRETS,
     );
-    const environment = (record as any)["launch"]["environment"];
+    const environment = (record as Record<string, Record<string, Record<string, unknown>>>)["launch"]?.["environment"];
     expect(environment).toEqual({ NCCL_P2P_DISABLE: "1" });
     expect(redactions.join(" ")).toContain('credential-bearing field "HF_TOKEN"');
   });
@@ -32,10 +32,10 @@ describe("redaction", () => {
       },
       SECRETS,
     );
-    expect((record as any)["mount"]).toBe("~/models/org/repo");
-    expect((record as any)["node"]).toBe("[redacted-host]:8080");
-    expect((record as any)["devices"]).toBe("[redacted-device-id],0");
-    expect((record as any)["leaked"]).toBe("Bearer [redacted]");
+    expect((record as Record<string, unknown>)["mount"]).toBe("~/models/org/repo");
+    expect((record as Record<string, unknown>)["node"]).toBe("[redacted-host]:8080");
+    expect((record as Record<string, unknown>)["devices"]).toBe("[redacted-device-id],0");
+    expect((record as Record<string, unknown>)["leaked"]).toBe("Bearer [redacted]");
     expect(redactions.length).toBeGreaterThanOrEqual(3);
   });
 

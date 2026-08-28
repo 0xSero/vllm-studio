@@ -1,73 +1,25 @@
 import type { RequestOptions } from "./core";
+import type {
+  RegistryHardware,
+  RegistryRecord,
+  RegistryRecommendationsPayload,
+  SharePreviewPayload,
+  SharePullRequestResult,
+} from "@local-studio/contracts/registry";
 
-/** Registry records as consumed from the published local-ai-registry. */
-export interface RegistryIndexRow {
-  id: string;
-  recipe_source: string;
-  status: "candidate" | "validated";
-  model_instance_id: string;
-  hardware_id: string;
-  hardware_count: number;
-  engine: string;
-  launch_kind: string;
-  has_evidence: boolean;
-  capabilities: {
-    chat: boolean | null;
-    reasoning: boolean | null;
-    tools: boolean | null;
-    vision: boolean | null;
-  };
-}
+export type {
+  RegistryIndexRow,
+  RegistryHardwareMatch,
+  RegistryRecord,
+  RegistryRecommendationsPayload,
+  SharePreviewPayload,
+  SharePullRequestResult,
+} from "@local-studio/contracts/registry";
 
-export interface RegistryHardwareMatch {
-  hardware_id: string;
-  registry_name: string;
-  detected_name: string;
-  vendor: string;
-  memory_gb: number | null;
-  registry_memory_gb: number | null;
-  detected_count: number;
-  matched: boolean;
-  reason: string;
-}
-
-export interface RegistryRecommendations {
-  base_url: string;
-  fetched_at: string;
-  counts: { total: number; matched: number };
-  matches: RegistryHardwareMatch[];
-  rows: Array<{ row: RegistryIndexRow; fit: { state: "match" | "other"; hardware_match: RegistryHardwareMatch | null } }>;
-  hardware_records: Record<string, unknown>;
-}
-
-export type RegistryRecord = Record<string, unknown>;
-
-export interface SharePreviewPayload {
-  recipe_id: string;
-  recipe_name: string;
-  shareable: boolean;
-  reason: string | null;
-  records: { model?: unknown; model_instance: unknown; recipe: unknown };
-  file_paths: string[];
-  model_exists_in_registry: boolean | null;
-  validation: { ok: boolean; issues: Array<{ path: string; message: string }> };
-  redactions: string[];
-  hardware: { id: string; name: string; count: number } | null;
-  pr: {
-    base_repo: string;
-    base_branch: string;
-    head_branch: string;
-    title: string;
-    body: string;
-  };
-}
-
-export interface SharePullRequestResult {
-  pull_request_url: string;
-  number: number;
-  head_branch: string;
-  files: string[];
-}
+/** The recommendations payload as delivered over the controller API. */
+export type RegistryRecommendations = RegistryRecommendationsPayload & {
+  hardware_records: Record<string, RegistryHardware>;
+};
 
 export function createRegistryApi(core: import("./core").ApiCore) {
   return {

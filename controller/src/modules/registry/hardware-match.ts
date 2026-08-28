@@ -40,6 +40,8 @@ interface CandidateMatch {
   readonly basis: string;
 }
 
+const PARTIAL_SCORE = 40;
+
 const scoreAgainst = (detected: DetectedAccelerator, hardware: RegistryHardware): CandidateMatch | null => {
   const detectedKey = normalizeName(detected.name);
   if (!detectedKey) return null;
@@ -59,26 +61,26 @@ const scoreAgainst = (detected: DetectedAccelerator, hardware: RegistryHardware)
   ];
   let best: { score: number; basis: string } | null = null;
   for (const candidate of candidates) {
-    if (!candidate.key) continue;
-    if (candidate.key === detectedKey) {
-      if (!best || candidate.score > best.score) best = { score: candidate.score, basis: candidate.basis };
+    if (candidate.key.length === 0) continue;
+    if (candidate.key === detectedKey && (best === null || candidate.score > best.score)) {
+      best = { score: candidate.score, basis: candidate.basis };
       continue;
     }
     // Partial containment keeps "rtx 5090" aliases matching "rtx 5090 32gb"
     // style keys without letting "rtx 50" match everything.
     if (
       candidate.key.length >= 6 &&
-      (detectedKey.includes(candidate.key) || candidate.key.includes(detectedKey))
+      (detectedKey.includes(candidate.key) || candidate.key.includes(detectedKey)) &&
+      (best === null || PARTIAL_SCORE > best.score)
     ) {
-      const partial = 40;
-      if (!best || partial > best.score) best = { score: partial, basis: "partial" };
+      best = { score: PARTIAL_SCORE, basis: "partial" };
     }
   }
-  if (!best) return null;
+  if (best === null) return null;
   const registryMemory = hardware.memory.vram_gb;
   const memoryOk =
-    detected.memoryGb == null ||
-    registryMemory == null ||
+    detected.memoryGb === null ||
+    registryMemory === null ||
     Math.abs(detected.memoryGb - registryMemory) <= MEMORY_TOLERANCE_GB;
   return { hardware, score: memoryOk ? best.score : 0, memoryOk, basis: best.basis };
 };
@@ -124,7 +126,7 @@ export const matchAccelerators = (
       detected_count: accelerator.count,
       matched: true,
       reason: `Matched by ${best.basis}${
-        accelerator.memoryGb == null ? "" : best.memoryOk ? " with memory within 1 GB" : ""
+        accelerator.memoryGb === null ? "" : best.memoryOk ? " with memory within 1 GB" : ""
       }`,
     });
   }
@@ -163,7 +165,7 @@ export const detectedAppleSilicon = (
     {
       name: cpuModel ?? "Apple Silicon",
       memoryGb:
-        options?.totalMemoryBytes != null
+        options?.totalMemoryBytes !== null && options?.totalMemoryBytes !== undefined
           ? Math.round(options.totalMemoryBytes / 1024 ** 3)
           : Math.round(totalmem() / 1024 ** 3),
       count: 1,

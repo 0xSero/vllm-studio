@@ -289,13 +289,10 @@ function RegistryDrawer({
 }) {
   const [showRaw, setShowRaw] = useState(false);
   const repository = repositoryOf(entry.instance);
-  const identity = repository ?? entry.row.model_instance_id;
-  const revision = revisionOf(entry);
-  const sizeGb = sizeGbOf(entry);
   return (
     <ResourceDrawer
       title={repository?.split("/")[1] ?? entry.row.model_instance_id}
-      icon={<ModelLogo modelId={modelIdFromPath(identity)} size="sm" className="rounded-md" />}
+      icon={<ModelLogo modelId={modelIdFromPath(repository ?? entry.row.model_instance_id)} size="sm" className="rounded-md" />}
       badge={statusPill(entry.row.status)}
       status={`${entry.row.engine} · ${hardwareNameOf(entry)}`}
       footer={
@@ -329,39 +326,7 @@ function RegistryDrawer({
         </p>
       )}
 
-      <ResourceDrawerSection title="Artifact">
-        <ResourceFact label="Repository" value={repository ?? "—"} />
-        <ResourceFact label="Revision" value={revision ? revisionShort(revision) : "not pinned"} />
-        <ResourceFact label="Precision" value={precisionOf(entry) ?? "—"} />
-        <ResourceFact label="Weights size" value={sizeGb != null ? formatGb(sizeGb) : "—"} />
-      </ResourceDrawerSection>
-
-      <ResourceDrawerSection title="Engine and serving">
-        <ResourceFact label="Engine" value={entry.row.engine} />
-        <ResourceFact label="Hardware count" value={String(entry.row.hardware_count)} />
-        <ResourceFact label="Context" value={contextOf(entry) ?? "—"} />
-        <ResourceFact
-          label="Capabilities"
-          value={capabilitiesOf(entry.row).length > 0 ? capabilitiesOf(entry.row).join(", ") : "chat"}
-        />
-        <ResourceFact
-          label="Launch"
-          value={
-            String(
-              entry.recipe && entry.recipe !== "error"
-                ? (entry.recipe["launch"] as { kind?: unknown } | undefined)?.["kind"]
-                : null,
-            ) || entry.row.launch_kind
-          }
-        />
-      </ResourceDrawerSection>
-
-      {poolGb > 0 && sizeGb != null ? (
-        <p className="text-[length:var(--fs-xs)] text-(--ui-muted)">
-          Weights are {Math.round((sizeGb / poolGb) * 100)}% of this machine&apos;s{" "}
-          {Math.round(poolGb)} GB pool.
-        </p>
-      ) : null}
+      <ConfigFacts entry={entry} poolGb={poolGb} />
 
       <div className="mb-2 flex items-baseline justify-between gap-4">
         <div>
@@ -381,35 +346,73 @@ function RegistryDrawer({
         </button>
       </div>
       <ResourceDrawerSection title={showRaw ? "Raw records" : "Records"}>
-        {showRaw ? (
-          <div className="space-y-3">
-            {(
-              [
-                ["recipe", entry.recipe],
-                ["model-instance", entry.instance],
-                ["model", entry.model],
-                ["hardware", entry.hardware],
-              ] as const
-            ).map(([name, record]) =>
-              record && record !== "error" ? (
-                <div key={name}>
-                  <div className="mb-1 font-mono text-[length:var(--fs-xs)] text-(--dim)/70">
-                    {name}
-                  </div>
-                  <pre className="max-h-56 overflow-auto rounded-lg border border-(--ui-border) bg-(--ui-surface)/40 p-2 font-mono text-[length:var(--fs-xs)] leading-4 text-(--muted)">
-                    {JSON.stringify(record, null, 2)}
-                  </pre>
-                </div>
-              ) : null,
-            )}
-          </div>
-        ) : (
-          <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">
-            Recipe, artifact, model, and hardware records — inspect the exact JSON before relying
-            on a configuration.
-          </p>
-        )}
+        {showRaw ? <RawRecords entry={entry} /> : null}
       </ResourceDrawerSection>
     </ResourceDrawer>
+  );
+}
+
+const RAW_SECTIONS = [
+  ["recipe", "recipe"],
+  ["model-instance", "instance"],
+  ["model", "model"],
+  ["hardware", "hardware"],
+] as const;
+
+function RawRecords({ entry }: { entry: HydratedRegistryRow }) {
+  return (
+    <div className="space-y-3">
+      {RAW_SECTIONS.map(([name, key]) => {
+        const record = entry[key];
+        if (record === null || record === "error") return null;
+        return (
+          <div key={name}>
+            <div className="mb-1 font-mono text-[length:var(--fs-xs)] text-(--dim)/70">{name}</div>
+            <pre className="max-h-56 overflow-auto rounded-lg border border-(--ui-border) bg-(--ui-surface)/40 p-2 font-mono text-[length:var(--fs-xs)] leading-4 text-(--muted)">
+              {JSON.stringify(record, null, 2)}
+            </pre>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ConfigFacts({ entry, poolGb }: { entry: HydratedRegistryRow; poolGb: number }) {
+  const repository = repositoryOf(entry.instance);
+  const revision = revisionOf(entry);
+  const sizeGb = sizeGbOf(entry);
+  const launchKind =
+    entry.recipe && entry.recipe !== "error"
+      ? (entry.recipe["launch"] as { kind?: unknown } | undefined)?.["kind"]
+      : null;
+  const capabilities = capabilitiesOf(entry.row);
+  return (
+    <>
+      <ResourceDrawerSection title="Artifact">
+        <ResourceFact label="Repository" value={repository ?? "—"} />
+        <ResourceFact label="Revision" value={revision ? revisionShort(revision) : "not pinned"} />
+        <ResourceFact label="Precision" value={precisionOf(entry) ?? "—"} />
+        <ResourceFact label="Weights size" value={sizeGb != null ? formatGb(sizeGb) : "—"} />
+      </ResourceDrawerSection>
+
+      <ResourceDrawerSection title="Engine and serving">
+        <ResourceFact label="Engine" value={entry.row.engine} />
+        <ResourceFact label="Hardware count" value={String(entry.row.hardware_count)} />
+        <ResourceFact label="Context" value={contextOf(entry) ?? "—"} />
+        <ResourceFact
+          label="Capabilities"
+          value={capabilities.length > 0 ? capabilities.join(", ") : "chat"}
+        />
+        <ResourceFact label="Launch" value={String(launchKind) || entry.row.launch_kind} />
+      </ResourceDrawerSection>
+
+      {poolGb > 0 && sizeGb != null ? (
+        <p className="text-[length:var(--fs-xs)] text-(--ui-muted)">
+          Weights are {Math.round((sizeGb / poolGb) * 100)}% of this machine&apos;s{" "}
+          {Math.round(poolGb)} GB pool.
+        </p>
+      ) : null}
+    </>
   );
 }

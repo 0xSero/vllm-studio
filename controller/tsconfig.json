@@ -1,10 +1,16 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "types": ["bun-types", "node"],
+    "types": [
+      "bun-types",
+      "node"
+    ],
     "strict": true,
     "noImplicitAny": true,
     "noUncheckedIndexedAccess": true,
@@ -18,8 +24,14 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "paths": {
-      "@local-studio/contracts/*": ["./contracts/*.ts"]
+      "@local-studio/contracts/*": [
+        "./contracts/*.ts"
+      ]
     }
   },
-  "include": ["src/**/*.ts", "contracts/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "contracts/**/*.ts",
+    "test/**/*.ts"
+  ]
 }
