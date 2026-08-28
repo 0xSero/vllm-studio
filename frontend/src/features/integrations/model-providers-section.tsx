@@ -311,10 +311,82 @@ function LoginFlowPanel({
   );
 }
 
+function ProviderApiKeyForm({
+  provider,
+  onSave,
+}: {
+  provider: ProviderView;
+  onSave: (provider: ProviderView, apiKey: string) => Promise<void>;
+}) {
+  const [apiKey, setApiKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const save = async () => {
+    const normalized = apiKey.trim();
+    if (!normalized) return;
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await onSave(provider, normalized);
+      setApiKey("");
+      setSaved(true);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Failed to save API key");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      className="mb-5 space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void save();
+      }}
+    >
+      <label
+        htmlFor={`provider-api-key-${provider.id}`}
+        className="block text-[length:var(--fs-sm)] font-medium text-(--ui-fg)"
+      >
+        API key
+      </label>
+      <div className="flex items-center gap-2">
+        <Input
+          id={`provider-api-key-${provider.id}`}
+          type="password"
+          value={apiKey}
+          onChange={(event) => {
+            setApiKey(event.target.value);
+            setError(null);
+            setSaved(false);
+          }}
+          placeholder="sk-or-v1-..."
+          autoComplete="off"
+          spellCheck={false}
+          className="font-mono"
+        />
+        <SettingsButton type="submit" disabled={busy || !apiKey.trim()}>
+          {busy ? <Spinner size="xs" /> : provider.configured ? "Replace key" : "Save key"}
+        </SettingsButton>
+      </div>
+      {error ? (
+        <div className="text-[length:var(--fs-sm)] text-(--ui-danger)">{error}</div>
+      ) : saved ? (
+        <div className="text-[length:var(--fs-sm)] text-(--ui-success)">API key saved.</div>
+      ) : null}
+    </form>
+  );
+}
+
 function ProviderDrawer({
   provider,
   active,
   onConnect,
+  onSaveApiKey,
   onSignOut,
   onFinished,
   onClose,
@@ -322,6 +394,7 @@ function ProviderDrawer({
   provider: ProviderView;
   active: ActiveLogin | null;
   onConnect: (provider: ProviderView, type: "oauth" | "api_key") => void;
+  onSaveApiKey: (provider: ProviderView, apiKey: string) => Promise<void>;
   onSignOut: (providerId: string) => Promise<void>;
   onFinished: () => void;
   onClose: () => void;
@@ -344,11 +417,6 @@ function ProviderDrawer({
           {provider.oauth ? (
             <ModelButton onClick={() => onConnect(provider, "oauth")}>
               {provider.configured ? "Reconnect account" : "Sign in"}
-            </ModelButton>
-          ) : null}
-          {provider.apiKey ? (
-            <ModelButton onClick={() => onConnect(provider, "api_key")}>
-              {provider.configured ? "Replace API key" : "API key"}
             </ModelButton>
           ) : null}
           {provider.configured && provider.credentialType ? (
@@ -390,6 +458,7 @@ function ProviderDrawer({
           ? `Your ${provider.name} credential stays on the Studio Head. Pi reaches these models through the Head proxy.`
           : `Models from ${provider.name} appear beside controller models in Workbench after this provider is connected.`}
       </p>
+      {provider.apiKey ? <ProviderApiKeyForm provider={provider} onSave={onSaveApiKey} /> : null}
       {activeForProvider ? (
         <LoginFlowPanel
           key={activeForProvider.jobId}
@@ -494,6 +563,35 @@ export function ModelProvidersSection({ searchQuery }: { searchQuery?: string } 
       refresh();
     },
     [providers, refresh],
+  );
+
+  const saveApiKey = useCallback(
+    async (provider: ProviderView, apiKey: string) => {
+      setError(null);
+      const apiRoot = providerApiRoot(provider);
+      const headers = {
+        "Content-Type": "application/json",
+        ...(provider.controllerOwned ? headProxyHeaders() : {}),
+      };
+      const { jobId } = await requestJson(`${apiRoot}/login`, decodeLoginStart, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ type: "api_key" }),
+      });
+      await requestJson(
+        `${apiRoot}/login/${encodeURIComponent(jobId)}/respond`,
+        () => ({
+          ok: true,
+        }),
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ promptId: 1, value: apiKey }),
+        },
+      );
+      refresh();
+    },
+    [refresh],
   );
 
   const finished = useCallback(() => {
@@ -615,6 +713,7 @@ export function ModelProvidersSection({ searchQuery }: { searchQuery?: string } 
           provider={selectedProvider}
           active={active}
           onConnect={(provider, type) => void connect(provider, type)}
+          onSaveApiKey={saveApiKey}
           onSignOut={signOut}
           onFinished={finished}
           onClose={() => {

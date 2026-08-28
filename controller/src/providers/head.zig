@@ -205,7 +205,7 @@ pub const State = struct {
         }
         try output.writer.writeByte(']');
         if (job.pending_prompt and job.status == .running) {
-            try output.writer.writeAll(",\"pendingPrompt\":{\"id\":1,\"type\":\"text\",\"message\":\"Enter your OpenRouter API key\",\"placeholder\":\"sk-or-v1-...\"}");
+            try output.writer.writeAll(",\"pendingPrompt\":{\"id\":1,\"type\":\"secret\",\"message\":\"Enter your OpenRouter API key\",\"placeholder\":\"sk-or-v1-...\"}");
         }
         try output.writer.writeByte('}');
         return output.toOwnedSlice();
