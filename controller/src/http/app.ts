@@ -13,6 +13,7 @@ import { registerModelsRoutes } from "../modules/models/routes";
 
 import { registerAllProxyRoutes } from "../modules/proxy/routes";
 import { registerStudioRoutes } from "../modules/studio/routes";
+import { registerRegistryRoutes } from "../modules/registry/routes";
 import { effectRoute, mergeRoutes, type ControllerRouteApp } from "./route-registrar";
 import {
   createAuthMiddleware,
@@ -28,6 +29,7 @@ type ControllerApplication = ReturnType<typeof registerComputeRoutes> &
   ReturnType<typeof registerEngineRoutes> &
   ReturnType<typeof registerModelsRoutes> &
   ReturnType<typeof registerStudioRoutes> &
+  ReturnType<typeof registerRegistryRoutes> &
   ReturnType<typeof registerAllProxyRoutes>;
 
 export const createApp = (
@@ -75,6 +77,7 @@ export const createApp = (
     registerEngineRoutes(app, context),
     registerModelsRoutes(app, context),
     registerStudioRoutes(app, context),
+    registerRegistryRoutes(app, context),
     registerAllProxyRoutes(app, context),
     effectRoute(app.get, "/health", (ctx) => Effect.succeed(ctx.json({ status: "ok" }))),
   );

@@ -1,0 +1,136 @@
+{
+ "schema_version": "local-ai-registry/v1",
+ "resolver_rule": "Resolve <field>_id from <field>/<id>.json and <field>_ids as an array of those records; underscores in collection names become hyphens. Resolve price ids from price/<product-id>/<region>.json.",
+ "counts": {
+  "hardware": 2,
+  "model": 2,
+  "model_instance": 2,
+  "price": 0,
+  "recipe": 2,
+  "speed_sweeps": 0
+ },
+ "collections": {
+  "hardware": [
+   "rtx-5090-32gb",
+   "rtx-pro-6000-blackwell-96gb"
+  ],
+  "model": [
+   "deepseek",
+   "diffusiongemma-26b-a4b"
+  ],
+  "model-instance": [
+   "google-diffusiongemma-26b-a4b-it--bf16",
+   "redhatai-deepseek-coder-v2-lite-instruct-fp8--fp8"
+  ],
+  "price": [],
+  "recipe": [
+   "deepseek-fp8-rtx-pro-6000-blackwell-96gb-vllm-tp1",
+   "diffusiongemma-26b-a4b-bf16-rtx-pro-6000-blackwell-96gb-vllm-tp1"
+  ],
+  "speed-sweeps": []
+ },
+ "recipes": [
+  {
+   "capabilities": {
+    "chat": null,
+    "reasoning": null,
+    "tools": null,
+    "vision": null
+   },
+   "engine": "vllm",
+   "hardware_count": 1,
+   "hardware_id": "rtx-pro-6000-blackwell-96gb",
+   "has_evidence": true,
+   "id": "deepseek-fp8-rtx-pro-6000-blackwell-96gb-vllm-tp1",
+   "launch_kind": "reference",
+   "model_instance_id": "redhatai-deepseek-coder-v2-lite-instruct-fp8--fp8",
+   "recipe_source": "localmaxxing",
+   "status": "candidate"
+  },
+  {
+   "capabilities": {
+    "chat": true,
+    "reasoning": true,
+    "tools": true,
+    "vision": false
+   },
+   "engine": "sglang",
+   "hardware_count": 2,
+   "hardware_id": "rtx-pro-6000-blackwell-96gb",
+   "has_evidence": true,
+   "id": "deepseek-v4-flash-0731-fp8-fp4-rtxpro6000-sglang-tp2",
+   "launch_kind": "docker",
+   "model_instance_id": "deepseek-ai-deepseek-v4-flash-0731--fp8",
+   "recipe_source": "ppickle1989",
+   "status": "candidate"
+  },
+  {
+   "capabilities": {
+    "chat": true,
+    "reasoning": true,
+    "tools": true,
+    "vision": false
+   },
+   "engine": "vllm",
+   "hardware_count": 4,
+   "hardware_id": "rtx-pro-6000-blackwell-96gb",
+   "has_evidence": false,
+   "id": "deepseek-v4-flash-0731-fp8-rtxpro6000-vllm-tp4",
+   "launch_kind": "controller",
+   "model_instance_id": "deepseek-ai-deepseek-v4-flash-0731--fp8",
+   "recipe_source": "0xsero",
+   "status": "candidate"
+  },
+  {
+   "capabilities": {
+    "chat": null,
+    "reasoning": null,
+    "tools": null,
+    "vision": null
+   },
+   "engine": "vllm",
+   "hardware_count": 4,
+   "hardware_id": "rtx-5090-32gb",
+   "has_evidence": true,
+   "id": "deepseek-v4-flash-2-bit-experts-vllm-moet-w2-fp8-kv-rtx-5090-32gb-vllm-tp1",
+   "launch_kind": "reference",
+   "model_instance_id": "deepseek-ai-deepseek-v4-flash--2-bit-experts-vllm-moet-w2-fp8-kv",
+   "recipe_source": "localmaxxing",
+   "status": "candidate"
+  },
+  {
+   "capabilities": {
+    "chat": true,
+    "reasoning": true,
+    "tools": true,
+    "vision": false
+   },
+   "engine": "sglang",
+   "hardware_count": 4,
+   "hardware_id": "rtx-pro-6000-blackwell-96gb",
+   "has_evidence": true,
+   "id": "deepseek-v4-flash-fp8-rtxpro6000-sglang-tp4",
+   "launch_kind": "docker-compose",
+   "model_instance_id": "sgl-project-deepseek-v4-flash-fp8--fp8",
+   "recipe_source": "0xsero",
+   "status": "candidate"
+  },
+  {
+   "capabilities": {
+    "chat": null,
+    "reasoning": null,
+    "tools": null,
+    "vision": null
+   },
+   "engine": "vllm",
+   "hardware_count": 1,
+   "hardware_id": "rtx-pro-6000-blackwell-96gb",
+   "has_evidence": true,
+   "id": "diffusiongemma-26b-a4b-bf16-rtx-pro-6000-blackwell-96gb-vllm-tp1",
+   "launch_kind": "reference",
+   "model_instance_id": "google-diffusiongemma-26b-a4b-it--bf16",
+   "recipe_source": "localmaxxing",
+   "status": "candidate"
+  }
+ ]
+}

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local-ai-registry.dev/schema/recipe.schema.json",
+  "title": "Recipe",
+  "type": "object",
+  "required": ["schema_version", "id", "recipe_source", "status", "model_instance_id", "hardware_id", "hardware_count", "engine", "launch", "serving", "capabilities", "speed_sweeps_ids", "metadata", "provenance", "facts"],
+  "properties": {
+    "schema_version": { "const": "local-ai-registry/v1" },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$" },
+    "recipe_source": { "type": "string" },
+    "status": { "enum": ["candidate", "validated"] },
+    "description": { "type": ["string", "null"] },
+    "model_instance_id": { "type": "string" },
+    "hardware_id": { "type": "string" },
+    "hardware_count": { "type": "integer", "minimum": 1 },
+    "engine": {
+      "type": "object",
+      "required": ["name", "version", "graph_mode"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": ["string", "null"] },
+        "graph_mode": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "launch": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["reference", "docker", "docker-compose", "controller", "script", "native"] },
+        "container": { "$ref": "common.schema.json#/$defs/container" }
+      },
+      "additionalProperties": true
+    },
+    "serving": { "type": "object" },
+    "capabilities": {
+      "type": "object",
+      "required": ["chat", "reasoning", "tools", "vision"],
+      "properties": {
+        "chat": { "type": ["boolean", "null"] },
+        "reasoning": { "type": ["boolean", "null"] },
+        "tools": { "type": ["boolean", "null"] },
+        "vision": { "type": ["boolean", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "speed_sweeps_ids": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "metadata": { "type": "object" },
+    "provenance": { "$ref": "common.schema.json#/$defs/provenance" },
+    "facts": { "$ref": "common.schema.json#/$defs/facts" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "recipe_source": { "const": "localmaxxing" } }, "required": ["recipe_source"] },
+      "then": {
+        "properties": {
+          "status": { "const": "candidate" },
+          "launch": { "properties": { "kind": { "const": "reference" } }, "required": ["kind"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "validated" } }, "required": ["status"] },
+      "then": { "properties": { "launch": { "not": { "properties": { "kind": { "const": "reference" } }, "required": ["kind"] } } } }
+    }
+  ],
+  "additionalProperties": false
+}

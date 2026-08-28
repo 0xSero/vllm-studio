@@ -1,0 +1,594 @@
+{
+ "accelerator_backend": "nvidia",
+ "aliases": [
+  "rtx 5090"
+ ],
+ "family": "rtx-5090",
+ "id": "rtx-5090-32gb",
+ "kind": "discrete",
+ "memory": {
+  "bandwidth_gb_per_s": 1792,
+  "cpu_memory_gb": null,
+  "vram_gb": 32,
+  "vram_type": "GDDR7"
+ },
+ "name": "GeForce RTX 5090",
+ "products": [],
+ "schema_version": "local-ai-registry/v1",
+ "sources": [
+  {
+   "kind": "vendor",
+   "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+   "publisher": "NVIDIA",
+   "captured_at": "2026-08-27T04:55:00Z"
+  },
+  {
+   "kind": "vendor",
+   "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+   "publisher": "NVIDIA",
+   "captured_at": "2026-08-27T04:55:00Z"
+  }
+ ],
+ "vendor": "nvidia",
+ "captured_at": "2026-08-27",
+ "accelerator": {
+  "count": 1,
+  "unit": "GPU"
+ },
+ "compute": {
+  "stats": {
+   "fp32": {
+    "unknown": {
+     "state": "unknown",
+     "reason": {
+      "code": "not-published",
+      "detail": "No directly comparable fp32 throughput was published for this exact accelerator; no FLOPS inferred."
+     },
+     "provenance": {
+      "sources": [
+       {
+        "kind": "vendor",
+        "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       },
+       {
+        "kind": "vendor",
+        "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       }
+      ],
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     "unit": "tflops"
+    }
+   },
+   "tf32": {
+    "unknown": {
+     "state": "unknown",
+     "reason": {
+      "code": "not-published",
+      "detail": "No directly comparable tf32 throughput was published for this exact accelerator; no FLOPS inferred."
+     },
+     "provenance": {
+      "sources": [
+       {
+        "kind": "vendor",
+        "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       },
+       {
+        "kind": "vendor",
+        "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       }
+      ],
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     "unit": "tflops"
+    }
+   },
+   "fp16": {
+    "unknown": {
+     "state": "unknown",
+     "reason": {
+      "code": "not-published",
+      "detail": "No directly comparable fp16 throughput was published for this exact accelerator; no FLOPS inferred."
+     },
+     "provenance": {
+      "sources": [
+       {
+        "kind": "vendor",
+        "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       },
+       {
+        "kind": "vendor",
+        "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       }
+      ],
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     "unit": "tflops"
+    }
+   },
+   "bf16": {
+    "unknown": {
+     "state": "unknown",
+     "reason": {
+      "code": "not-published",
+      "detail": "No directly comparable bf16 throughput was published for this exact accelerator; no FLOPS inferred."
+     },
+     "provenance": {
+      "sources": [
+       {
+        "kind": "vendor",
+        "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       },
+       {
+        "kind": "vendor",
+        "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       }
+      ],
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     "unit": "tflops"
+    }
+   },
+   "fp8": {
+    "unknown": {
+     "state": "unknown",
+     "reason": {
+      "code": "not-published",
+      "detail": "No directly comparable fp8 throughput was published for this exact accelerator; no FLOPS inferred."
+     },
+     "provenance": {
+      "sources": [
+       {
+        "kind": "vendor",
+        "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       },
+       {
+        "kind": "vendor",
+        "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       }
+      ],
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     "unit": "tflops"
+    }
+   },
+   "int8": {
+    "unknown": {
+     "state": "unknown",
+     "reason": {
+      "code": "not-published",
+      "detail": "No directly comparable int8 throughput was published for this exact accelerator; no FLOPS inferred."
+     },
+     "provenance": {
+      "sources": [
+       {
+        "kind": "vendor",
+        "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       },
+       {
+        "kind": "vendor",
+        "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       }
+      ],
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     "unit": "tflops"
+    }
+   },
+   "int4": {
+    "unknown": {
+     "state": "unknown",
+     "reason": {
+      "code": "not-published",
+      "detail": "No directly comparable int4 throughput was published for this exact accelerator; no FLOPS inferred."
+     },
+     "provenance": {
+      "sources": [
+       {
+        "kind": "vendor",
+        "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       },
+       {
+        "kind": "vendor",
+        "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       }
+      ],
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     "unit": "tflops"
+    }
+   }
+  },
+  "architecture": "NVIDIA Blackwell",
+  "cuda_cores": 21760,
+  "tensor_ai_tops": 3352,
+  "rt_core_tflops": 318
+ },
+ "commercial": {
+  "availability": {
+   "state": "unknown",
+   "reason": {
+    "code": "not-captured",
+    "detail": "Current purchasable availability was not validated for this partner_channel channel."
+   },
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     {
+      "kind": "vendor",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "prices": [
+   {
+    "amount": 1999,
+    "currency": "USD",
+    "unit": "one_time",
+    "region": "US",
+    "kind": "MSRP",
+    "scope": "manufacturer_launch_price",
+    "source": {
+     "kind": "vendor",
+     "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+     "publisher": "NVIDIA",
+     "captured_at": "2026-08-27T04:55:00Z"
+    },
+    "captured_at": "2026-08-27T04:55:00Z",
+    "as_of": "2025-01-30"
+   }
+  ]
+ },
+ "facts": {
+  "memory.capacity_gb": {
+   "value": 32,
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     {
+      "kind": "vendor",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "memory.type": {
+   "value": "GDDR7",
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     {
+      "kind": "vendor",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "memory.bandwidth_gb_per_s": {
+   "value": 1792,
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     {
+      "kind": "vendor",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "accelerator.count": {
+   "value": 1,
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     {
+      "kind": "vendor",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   },
+   "unit": "GPU"
+  },
+  "compute.cuda_cores": {
+   "value": 21760,
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     {
+      "kind": "vendor",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "compute.tensor_ai_tops": {
+   "value": 3352,
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     {
+      "kind": "vendor",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   },
+   "unit": "tops"
+  },
+  "compute.rt_core_tflops": {
+   "value": 318,
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     {
+      "kind": "vendor",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   },
+   "unit": "tflops"
+  },
+  "compute.architecture": {
+   "value": "NVIDIA Blackwell",
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     {
+      "kind": "vendor",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "commercial.prices": {
+   "value": {
+    "scope": "manufacturer_launch_price",
+    "count": 1
+   },
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     {
+      "kind": "vendor",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "commercial.msrp": {
+   "value": {
+    "amount": 1999,
+    "currency": "USD"
+   },
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     {
+      "kind": "vendor",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   },
+   "unit": "one_time"
+  },
+  "commercial.current_street_price": {
+   "state": "unknown",
+   "reason": {
+    "code": "not-captured",
+    "detail": "NVIDIA marketplace query exposed no machine-readable live offer"
+   },
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     {
+      "kind": "vendor",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "commercial.current_stock": {
+   "state": "unknown",
+   "reason": {
+    "code": "not-captured",
+    "detail": "Audit availability note: unknown."
+   },
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     {
+      "kind": "vendor",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "commercial.channel_status": {
+   "value": "partner_channel",
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     {
+      "kind": "vendor",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "commercial.availability": {
+   "state": "unknown",
+   "reason": {
+    "code": "not-captured",
+    "detail": "Current purchasable availability was not validated for this partner_channel channel."
+   },
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/?section=compare-specs",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     {
+      "kind": "vendor",
+      "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-geforce-rtx-50-series-opens-new-world-of-ai-computer-graphics",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  }
+ }
+}

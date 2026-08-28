@@ -8,6 +8,8 @@ import type { RecipeEditor } from "@/features/recipes/recipe-editor";
 import { useRealtimeStatusStore } from "@/hooks/realtime-status-store";
 import { readPageCache, writePageCache } from "@/lib/page-data-cache";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
+import type { Recipe } from "@/lib/types";
+import type { HydratedRegistryRow } from "./use-registry";
 import { normalizeRecipeForEditor } from "@/features/recipes/normalize-recipe";
 import { prepareRecipeForSave } from "@/features/recipes/prepare-recipe";
 import { DEFAULT_RECIPE } from "./default-recipe";
@@ -128,6 +130,45 @@ export function useRecipesContentModel() {
     setTab("serves");
     handleNewRecipe();
   }, [handleNewRecipe, newRecipeRequested, urlTab]);
+
+  const [shareRecipe, setShareRecipe] = useState<RecipeWithStatus | null>(null);
+
+  const handleShareConfig = useCallback((recipe: RecipeWithStatus) => {
+    setShareRecipe(recipe);
+  }, []);
+
+  const closeShareModal = useCallback(() => setShareRecipe(null), []);
+
+  const backendIds = ["vllm", "sglang", "exllamav3"] as const;
+  const handleUseRegistryConfig = useCallback((row: HydratedRegistryRow) => {
+    const instance = row.instance && row.instance !== "error" ? row.instance : null;
+    const config = row.recipe && row.recipe !== "error" ? row.recipe : null;
+    const repository = instance?.["repository"];
+    const repo =
+      typeof repository === "string" && repository.includes("/") ? repository : null;
+    const name = repo?.split("/")[1] ?? row.row.model_instance_id;
+    const serving =
+      config && config["serving"] && typeof config["serving"] === "object"
+        ? (config["serving"] as Record<string, unknown>)
+        : undefined;
+    const engine = row.row.engine;
+    const context = serving?.["configured_max_context_tokens"];
+    const parallel = serving?.["tensor_parallel"];
+    const draft: Partial<Recipe> = {
+      name,
+      model_path: repo ?? row.row.model_instance_id,
+      served_model_name: name,
+      ...(backendIds.includes(engine as (typeof backendIds)[number])
+        ? { backend: engine as Recipe["backend"] }
+        : {}),
+      ...(typeof context === "number" && context > 0 ? { max_model_len: context } : {}),
+      ...(typeof parallel === "number" && parallel >= 1
+        ? { tensor_parallel_size: parallel }
+        : {}),
+    };
+    setModalRecipe(normalizeRecipeForEditor({ ...DEFAULT_RECIPE, ...draft }));
+    setModalOpen(true);
+  }, []);
 
   const handleCreateServeFromDownload = useCallback((download: ModelDownload) => {
     const modelName = download.model_id.split("/").filter(Boolean).at(-1) ?? download.model_id;
@@ -251,6 +292,7 @@ export function useRecipesContentModel() {
       onStop: handleEvictModel,
       onEdit: handleEditRecipe,
       onRequestDelete: handleRequestDelete,
+      onShareConfig: handleShareConfig,
     }),
     [
       derived.sortedRecipes,
@@ -264,6 +306,7 @@ export function useRecipesContentModel() {
       handleEvictModel,
       handleEditRecipe,
       handleRequestDelete,
+      handleShareConfig,
     ],
   );
 
@@ -295,7 +338,11 @@ export function useRecipesContentModel() {
       deleteRecipe: derived.deleteRecipe,
     },
     table,
+    shareRecipe,
     actions: {
+      closeShareModal,
+      handleShareConfig,
+      handleUseRegistryConfig,
       handleRefresh,
       handleNewRecipe,
       handleCreateServeFromDownload,

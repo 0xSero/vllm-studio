@@ -1,0 +1,72 @@
+{
+ "facts": {
+  "revision": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "artifact-revision-not-pinned",
+   "state": "unknown"
+  },
+  "weights.size_gb": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "artifact-size-not-published",
+   "state": "unknown"
+  }
+ },
+ "huggingface": {
+  "link_type": "repository",
+  "provenance": {
+   "captured_at": "2026-08-27T06:04:13.773Z",
+   "sources": [
+    {
+     "captured_at": "2026-08-27T06:04:13.773Z",
+     "kind": "huggingface-api",
+     "url": "https://huggingface.co/api/models/RedHatAI/DeepSeek-Coder-V2-Lite-Instruct-FP8"
+    }
+   ]
+  },
+  "reason": "hf-api-confirmed-public",
+  "repository": "RedHatAI/DeepSeek-Coder-V2-Lite-Instruct-FP8",
+  "status": "known",
+  "url": "https://huggingface.co/RedHatAI/DeepSeek-Coder-V2-Lite-Instruct-FP8"
+ },
+ "id": "redhatai-deepseek-coder-v2-lite-instruct-fp8--fp8",
+ "kind": "quant",
+ "model_id": "deepseek",
+ "provenance": {
+  "captured_at": "2026-08-27T06:04:13.773Z",
+  "sources": [
+   {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "kind": "normalized-model-instance",
+    "url": "https://huggingface.co/RedHatAI/DeepSeek-Coder-V2-Lite-Instruct-FP8"
+   }
+  ]
+ },
+ "repository": "RedHatAI/DeepSeek-Coder-V2-Lite-Instruct-FP8",
+ "revision": null,
+ "schema_version": "local-ai-registry/v1",
+ "served_name": "DeepSeek-Coder-V2-Lite-Instruct-FP8",
+ "url": "https://huggingface.co/RedHatAI/DeepSeek-Coder-V2-Lite-Instruct-FP8",
+ "weights": {
+  "format": "safetensors",
+  "precision": "FP8",
+  "size_gb": null
+ }
+}

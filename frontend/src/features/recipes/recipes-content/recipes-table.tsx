@@ -22,6 +22,7 @@ type Props = {
   onStop: () => void;
   onEdit: (recipe: RecipeWithStatus) => void;
   onRequestDelete: (recipeId: string) => void;
+  onShareConfig: (recipe: RecipeWithStatus) => void;
   onNewRecipe: () => void;
 };
 
@@ -39,6 +40,7 @@ export function RecipesTable({
   onStop,
   onEdit,
   onRequestDelete,
+  onShareConfig,
   onNewRecipe,
 }: Props) {
   const [attachRecipe, setAttachRecipe] = useState<RecipeWithStatus | null>(null);
@@ -109,6 +111,7 @@ export function RecipesTable({
               onStop={onStop}
               onEdit={onEdit}
               onRequestDelete={onRequestDelete}
+              onShare={onShareConfig}
               onAttachAgents={setAttachRecipe}
             />
           ))}

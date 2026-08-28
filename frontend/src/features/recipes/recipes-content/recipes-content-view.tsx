@@ -10,6 +10,8 @@ import type { RecipesContentTab } from "./recipes-content-model";
 import type { RecipesTableProps } from "./types";
 import { RecipesTab } from "./recipes-tab";
 import { RecipeModal } from "../recipe-modal/recipe-modal";
+import { ShareConfigModal } from "./share-config-modal";
+import type { HydratedRegistryRow } from "./use-registry";
 import { ExploreTab } from "./explore-tab";
 import { DownloadsTab } from "./downloads-tab";
 import { PicksTab } from "./picks-tab";
@@ -43,6 +45,9 @@ type Props = {
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
   onEvictModel: () => void;
+  shareRecipe: RecipeWithStatus | null;
+  onCloseShareModal: () => void;
+  onUseRegistryConfig: (row: HydratedRegistryRow) => void;
   table: RecipesTableProps;
 };
 
@@ -105,6 +110,9 @@ export function RecipesContentView(props: Props) {
     onCancelDelete,
     onConfirmDelete,
     onEvictModel,
+    shareRecipe,
+    onCloseShareModal,
+    onUseRegistryConfig,
     table,
   } = props;
   const heading = TAB_HEADINGS[tab];
@@ -130,7 +138,7 @@ export function RecipesContentView(props: Props) {
             table={table}
           />
         ) : tab === "picks" ? (
-          <PicksTab />
+          <PicksTab onUseConfig={onUseRegistryConfig} />
         ) : tab === "get" ? (
           <ExploreTab />
         ) : (
@@ -189,6 +197,10 @@ export function RecipesContentView(props: Props) {
             recipes={recipes}
           />
         </DrawerOverlay>
+      ) : null}
+
+      {shareRecipe ? (
+        <ShareConfigModal recipe={shareRecipe} onClose={onCloseShareModal} />
       ) : null}
 
       {deleteConfirm ? (

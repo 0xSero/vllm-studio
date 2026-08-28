@@ -33,12 +33,14 @@ export function RecipesContent({ embedded = false }: { embedded?: boolean }) {
       onStop: model.actions.handleEvictModel,
       onEdit: model.actions.handleEditRecipe,
       onRequestDelete: model.actions.handleRequestDelete,
+      onShareConfig: model.actions.handleShareConfig,
     }),
     [
       model.actions.handleEditRecipe,
       model.actions.handleEvictModel,
       model.actions.handleLaunchRecipe,
       model.actions.handleRequestDelete,
+      model.actions.handleShareConfig,
       model.actions.handleToggleRecipeMenu,
       model.derived.sortedRecipes,
       model.launching,
@@ -83,6 +85,9 @@ export function RecipesContent({ embedded = false }: { embedded?: boolean }) {
         }
       }}
       onEvictModel={model.actions.handleEvictModel}
+      shareRecipe={model.shareRecipe}
+      onCloseShareModal={model.actions.closeShareModal}
+      onUseRegistryConfig={model.actions.handleUseRegistryConfig}
       table={table}
     />
   );

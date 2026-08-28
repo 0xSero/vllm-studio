@@ -3,8 +3,8 @@
 import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api/client";
 import type { GPU, HuggingFaceModel } from "@/lib/types";
-import type { ModelIndexModel } from "@/lib/api/studio";
 import { useHuggingFaceModelSearch } from "@/features/recipes/use-huggingface-model-search";
+import { useRegistryRecords, useRegistryRecommendations } from "./use-registry";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import {
   engagementTier,
@@ -15,7 +15,6 @@ import {
   RECENT_HF_MODEL_SORT,
 } from "@/lib/huggingface";
 import {
-  filterIndexModelsWithinPool,
   hasHfEngagementStats,
   interleaveExploreGroupsByVramTier,
   isRecentlyCreatedOnHf,
@@ -76,7 +75,6 @@ export function useExplore() {
   const [library, setLibrary] = useState("");
   const [sort, setSort] = useState("");
   const [poolOverrideGb, setPoolOverrideGbState] = useState<number | null>(null);
-  const [catalogModels, setCatalogModels] = useState<ModelIndexModel[]>([]);
 
   const configureExploreParams = useCallback(
     (params: URLSearchParams, isBrowsing: boolean) => {
@@ -119,59 +117,65 @@ export function useExplore() {
     [gpus, poolGb, detectedPoolGb, poolOverrideGb],
   );
 
-  const spotlightCatalog = useMemo(() => {
-    return filterIndexModelsWithinPool(catalogModels, poolGb);
-  }, [catalogModels, poolGb]);
-
-  const loadCatalogAndGpus = useCallback(async () => {
+  const loadGpus = useCallback(async () => {
     try {
-      const [indexData, presetsData, gpuData] = await Promise.all([
-        api.getModelIndex(),
+      const [presetsData, gpuData] = await Promise.all([
         api.getStarterPresets().catch(() => null),
         api.getGPUs().catch(() => ({ gpus: [] as GPU[] })),
       ]);
-      setCatalogModels(indexData.tiers?.flatMap((tier) => tier.models) ?? []);
       const vram = typeof presetsData?.max_vram_gb === "number" ? presetsData.max_vram_gb : 0;
       setApiMaxVramGb(vram);
       setGpus(gpuData.gpus ?? []);
     } catch {
-      setCatalogModels([]);
       setApiMaxVramGb(0);
       setGpus([]);
     }
   }, []);
 
   useMountSubscription(() => {
-    void loadCatalogAndGpus();
-  }, [loadCatalogAndGpus]);
+    void loadGpus();
+  }, [loadGpus]);
 
-  const catalogByKey = useMemo(() => {
-    const m = new Map<string, ModelIndexModel>();
-    const add = (repo: string | null | undefined, model: ModelIndexModel, override: boolean) => {
-      if (!repo) return;
-      const k = exploreGroupKey(repo);
-      if (override || !m.has(k)) m.set(k, model);
-    };
-    for (const model of catalogModels) {
-      add(model.id, model, false);
-      for (const variant of model.variants) {
-        if (variant.format !== "bf16") add(variant.repo, model, false);
-      }
-      for (const variant of model.variants) {
-        if (variant.format === "bf16") add(variant.repo, model, true);
-      }
+  // Registry-grounded sizes: exact weight sizes from the model registry's
+  // matched hardware rows hydrate progressively and replace the name-based
+  // estimate wherever the artifact is known.
+  const registry = useRegistryRecommendations();
+  const { recordFor } = useRegistryRecords();
+  const registryInstances = useMemo(() => {
+    for (const entry of registry.data?.rows ?? []) {
+      recordFor("model-instance", entry.row.model_instance_id);
     }
-    return m;
-  }, [catalogModels]);
+    return (registry.data?.rows ?? []).map(({ row }) => ({
+      hardwareId: row.hardware_id,
+      instance: recordFor("model-instance", row.model_instance_id),
+    }));
+  }, [registry.data, recordFor]);
+
+  const sizesByKey = useMemo(() => {
+    const sizes = new Map<string, number>();
+    for (const { instance } of registryInstances) {
+      if (!instance || instance === "error") continue;
+      const repository = instance["repository"];
+      const weights = instance["weights"] as { size_gb?: unknown } | undefined;
+      const sizeGb = weights?.["size_gb"];
+      if (typeof repository !== "string" || typeof sizeGb !== "number" || sizeGb <= 0) continue;
+      const key = exploreGroupKey(repository);
+      if (!sizes.has(key)) sizes.set(key, sizeGb);
+    }
+    return sizes;
+  }, [registryInstances]);
 
   const spotlightKeys = useMemo(() => {
     const keys = new Set<string>();
-    for (const model of spotlightCatalog) {
-      keys.add(exploreGroupKey(model.id));
-      for (const variant of model.variants) keys.add(exploreGroupKey(variant.repo));
+    for (const { hardwareId, instance } of registryInstances) {
+      if (!instance || instance === "error") continue;
+      if (registry.data?.matches.some((m) => m.hardware_id === hardwareId && m.matched)) {
+        const repository = instance["repository"];
+        if (typeof repository === "string") keys.add(exploreGroupKey(repository));
+      }
     }
     return keys;
-  }, [spotlightCatalog]);
+  }, [registryInstances, registry.data]);
 
   const groupedModels = useMemo((): ModelGroup[] => {
     const groups = new Map<string, HuggingFaceModel[]>();
@@ -204,7 +208,7 @@ export function useExplore() {
       const maxDownloads = sorted.reduce((m, v) => Math.max(m, v.downloads), 0);
       const maxLikes = sorted.reduce((m, v) => Math.max(m, v.likes), 0);
       const lastModifiedMs = sorted.reduce((m, v) => Math.max(m, modelRecencyMs(v)), 0);
-      const needGb = resolveGroupNeedGb(key, catalogByKey, lead);
+      const needGb = resolveGroupNeedGb(key, sizesByKey, lead);
       const tier = engagementTier(maxLikes, maxDownloads);
       const fit = scoreModelFit({
         model: lead,
@@ -227,7 +231,7 @@ export function useExplore() {
         fit,
       };
     });
-  }, [models, catalogByKey, search, hardwareProfile]);
+  }, [models, sizesByKey, search, hardwareProfile]);
 
   const sortedGroups = useMemo(() => {
     const isSearching = search.trim().length > 0;
@@ -289,10 +293,10 @@ export function useExplore() {
 
   const refresh = useCallback(() => {
     void (async () => {
-      await loadCatalogAndGpus();
+      await loadGpus();
       await fetchModels(false, 0);
     })();
-  }, [loadCatalogAndGpus, fetchModels]);
+  }, [loadGpus, fetchModels]);
 
   return {
     groups: visibleGroups,
@@ -308,7 +312,6 @@ export function useExplore() {
     library,
     sort,
     hasMore,
-    catalogModels,
     setSearch,
     setLibrary,
     setSort,

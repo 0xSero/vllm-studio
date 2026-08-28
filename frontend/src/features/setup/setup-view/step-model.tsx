@@ -4,8 +4,8 @@ import { useCallback, useState } from "react";
 import { DownloadCloud, Zap } from "@/ui/icon-registry";
 import { Button, Input, Select, Spinner } from "@/ui";
 import type { ModelDownload, StarterPreset, StudioDiagnostics } from "@/lib/types";
-import type { ModelIndexVariant } from "@/lib/api/studio";
-import { TierSection, useModelIndex } from "@/features/recipes/recipes-content/picks-shared";
+import { useRegistryRecommendations, useHydratedRegistryRows } from "@/features/recipes/recipes-content/use-registry";
+import { RegistryCatalog } from "@/features/recipes/recipes-content/registry-catalog";
 import { useSetupRecommendations, type SetupRecommendation } from "../recommendations";
 
 const NO_DOWNLOADS: Map<string, ModelDownload> = new Map();
@@ -155,8 +155,8 @@ export function StepModel({
 }) {
   const recommendations = useSetupRecommendations(diagnostics, maxVram);
   const [showCatalog, setShowCatalog] = useState(false);
-  const { data: catalog } = useModelIndex();
-  const tiers = catalog?.tiers ?? [];
+  const { data: registry, refresh: refreshRegistry } = useRegistryRecommendations();
+  const registryRows = useHydratedRegistryRows(registry?.rows ?? []);
   const remotePresets = presets.filter((preset) => preset.kind === "remote");
   const localPresets = presets.filter((preset) => preset.kind !== "remote");
 
@@ -171,12 +171,8 @@ export function StepModel({
     [localPresets, beginPresetSetup, beginVariantDownload],
   );
 
-  const handleCatalogDownload = useCallback(
-    (variant: ModelIndexVariant) =>
-      beginVariantDownload(
-        variant.repo,
-        variant.allow_patterns?.length ? variant.allow_patterns : undefined,
-      ),
+  const handleRegistryDownload = useCallback(
+    (repository: string) => beginVariantDownload(repository),
     [beginVariantDownload],
   );
 
@@ -230,16 +226,16 @@ export function StepModel({
         </button>
         {showCatalog ? (
           <div className="mt-3 space-y-5">
-            {tiers.map((tier) => (
-              <TierSection
-                key={tier.id}
-                tier={tier}
-                poolGb={maxVram}
-                downloadsByModel={NO_DOWNLOADS}
-                startingModelIds={NO_STARTING}
-                onDownload={handleCatalogDownload}
-              />
-            ))}
+            <RegistryCatalog
+              rows={registryRows}
+              recommendations={registry}
+              poolGb={maxVram}
+              downloadsByModel={NO_DOWNLOADS}
+              startingModelIds={NO_STARTING}
+              onDownload={handleRegistryDownload}
+              onUseConfig={() => {}}
+              onRetry={() => void refreshRegistry()}
+            />
           </div>
         ) : null}
       </div>

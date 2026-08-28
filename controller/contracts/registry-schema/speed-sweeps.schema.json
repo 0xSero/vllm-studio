@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local-ai-registry.dev/schema/speed-sweeps.schema.json",
+  "title": "Speed sweep",
+  "type": "object",
+  "required": ["schema_version", "id", "recipe_id", "measured_at", "accepted_at", "source", "rows"],
+  "properties": {
+    "schema_version": { "const": "local-ai-registry/v1" },
+    "id": { "type": "string" },
+    "recipe_id": { "type": "string" },
+    "measured_at": { "type": ["string", "null"] },
+    "accepted_at": { "type": ["string", "null"] },
+    "source": { "type": ["object", "null"] },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "inference_engine_version": { "type": ["string", "null"] },
+        "concurrency": { "type": ["integer", "null"], "minimum": 1 },
+        "decode_mode": { "type": ["string", "null"] },
+        "point_count": { "type": ["integer", "null"], "minimum": 0 },
+        "max_prompt_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "max_context_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "peak_generation_tps": { "type": ["number", "null"], "minimum": 0 },
+        "peak_prompt_tps": { "type": ["number", "null"], "minimum": 0 },
+        "peak_memory_bytes": { "type": ["string", "null"], "pattern": "^[0-9]+$" },
+        "base_memory_bytes": { "type": ["string", "null"], "pattern": "^[0-9]+$" },
+        "base_memory_context_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "decode8k_tps": { "type": ["number", "null"], "minimum": 0 },
+        "decode8k_context_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "decode32k_tps": { "type": ["number", "null"], "minimum": 0 },
+        "decode32k_context_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "decode_max_context_tps": { "type": ["number", "null"], "minimum": 0 },
+        "decode_max_context_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "ttft32k_seconds": { "type": ["number", "null"], "minimum": 0 },
+        "ttft32k_context_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "ttft32k_cached_prompt_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "memory8k_bytes": { "type": ["string", "null"], "pattern": "^[0-9]+$" },
+        "memory8k_context_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "memory_max_context_bytes": { "type": ["string", "null"], "pattern": "^[0-9]+$" },
+        "memory_max_context_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "latest_point_at": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "provenance": { "$ref": "common.schema.json#/$defs/provenance" },
+    "facts": { "$ref": "common.schema.json#/$defs/facts" },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["concurrency", "context_tokens", "output_tokens", "prefill_tok_s", "decode_tok_s", "ttft_ms_p50", "peak_vram_gb", "samples", "status"],
+        "properties": {
+          "concurrency": { "type": ["integer", "null"], "minimum": 1 },
+          "context_tokens": { "type": ["integer", "null"], "minimum": 0 },
+          "output_tokens": { "type": ["integer", "null"], "minimum": 0 },
+          "prefill_tok_s": { "type": ["number", "null"], "minimum": 0 },
+          "decode_tok_s": { "type": ["number", "null"], "minimum": 0 },
+          "decode_tok_s_per_stream": { "type": ["number", "null"], "minimum": 0 },
+          "ttft_ms_p50": { "type": ["number", "null"], "minimum": 0 },
+          "peak_vram_gb": { "type": ["number", "null"], "minimum": 0 },
+          "samples": { "type": ["integer", "null"], "minimum": 1 },
+          "status": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}
