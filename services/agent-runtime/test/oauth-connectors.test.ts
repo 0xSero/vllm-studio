@@ -182,7 +182,10 @@ describe("oauth connector engine", () => {
   test("token store is 0600 and holds the refresh token, which status never returns", async () => {
     const file = resolveOAuthTokensFilePath();
     expect(existsSync(file)).toBe(true);
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    // Windows carries no POSIX mode bits: node reports a fixed mode there whatever
+    // chmod was asked for, so the check would assert nothing. The secret the file
+    // holds is guarded by the assertions below on every platform.
+    if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
     const raw = readFileSync(file, "utf8");
     expect(raw).toContain("gho_device_access_1");
     expect(raw).toContain("ghr_refresh_1");
