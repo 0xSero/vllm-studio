@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { repoRoot } from "./lib.mjs";
+import { platformInvocation, repoRoot } from "./lib.mjs";
 
 const packageDir = path.join(repoRoot, "services", "agent-runtime");
 const distDir = path.join(packageDir, "dist");
@@ -52,25 +52,22 @@ export function bundleAgentRuntime() {
   rmSync(distDir, { recursive: true, force: true });
   mkdirSync(distDir, { recursive: true });
 
-  const build = spawnSync(
-    "bun",
-    [
-      "build",
-      "src/server.ts",
-      "--target=node",
-      "--external",
-      "fsevents",
-      "--external",
-      "playwright-core",
-      "--external",
-      "@silvia-odwyer/photon-node",
-      "--external",
-      "undici",
-      "--minify",
-      "--outfile=dist/standalone.mjs",
-    ],
-    { cwd: packageDir, stdio: "inherit" },
-  );
+  const [bun, bunArgs] = platformInvocation("bun", [
+    "build",
+    "src/server.ts",
+    "--target=node",
+    "--external",
+    "fsevents",
+    "--external",
+    "playwright-core",
+    "--external",
+    "@silvia-odwyer/photon-node",
+    "--external",
+    "undici",
+    "--minify",
+    "--outfile=dist/standalone.mjs",
+  ]);
+  const build = spawnSync(bun, bunArgs, { cwd: packageDir, stdio: "inherit" });
   if (build.status !== 0) {
     throw Error(`Agent runtime bundle failed with status ${build.status ?? "unknown"}`);
   }
