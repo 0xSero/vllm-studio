@@ -156,6 +156,7 @@ dmg:
   sign: true
 
 win:
+  icon: desktop/resources/icon.ico
   target:
     - target: nsis
       arch:
