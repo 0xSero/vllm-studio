@@ -66,7 +66,12 @@ function summaryStartTime(session: Pick<SessionSummary, "startedAt" | "updatedAt
 export function encodeCwdForPi(cwd: string): string {
   const normalized = path.resolve(cwd).replace(/\\+/g, "/");
   const collapsed = normalized.replace(/^\//, "").replace(/\/+/g, "-");
-  return `--${collapsed}--`;
+  // A drive letter keeps its colon through the collapse, and on Windows a colon
+  // inside a path component names an alternate data stream rather than a directory:
+  // creating or reading one fails with ENOTDIR. POSIX keeps the historic spelling so
+  // session directories written before this still match.
+  const legal = process.platform === "win32" ? collapsed.replace(/:/g, "-") : collapsed;
+  return `--${legal}--`;
 }
 
 export function configuredPiSessionDir(cwd: string): string | undefined {
