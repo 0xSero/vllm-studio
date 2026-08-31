@@ -16,10 +16,8 @@ export interface DeviceRuntimeFlags {
   readonly groupAdd: readonly string[];
 }
 
-const joined = (devices: readonly DeviceId[]): string => devices.join(",");
-
-/** Indices for accelerators whose tooling selects by ordinal rather than UUID. */
-const ordinals = (devices: readonly DeviceId[]): string =>
+/** Runtime selectors with the controller's accelerator namespace removed. */
+const runtimeSelectors = (devices: readonly DeviceId[]): string =>
   devices.map((device) => device.slice(device.lastIndexOf(":") + 1)).join(",");
 
 export const deviceEnvironment = (
@@ -29,13 +27,18 @@ export const deviceEnvironment = (
   if (devices.length === 0) return {};
   switch (accelerator) {
     case "cuda":
-      return { CUDA_VISIBLE_DEVICES: joined(devices) };
+      // DeviceIds are namespaced as cuda:<UUID>. CUDA accepts the UUID, but not
+      // the controller namespace prefix.
+      return { CUDA_VISIBLE_DEVICES: runtimeSelectors(devices) };
     case "rocm":
       // ROCR_ gates the runtime, HIP_ gates the HIP API; setting only one leaves the
       // other seeing every card on the box.
-      return { HIP_VISIBLE_DEVICES: ordinals(devices), ROCR_VISIBLE_DEVICES: ordinals(devices) };
+      return {
+        HIP_VISIBLE_DEVICES: runtimeSelectors(devices),
+        ROCR_VISIBLE_DEVICES: runtimeSelectors(devices),
+      };
     case "xpu":
-      return { ONEAPI_DEVICE_SELECTOR: `level_zero:${ordinals(devices)}` };
+      return { ONEAPI_DEVICE_SELECTOR: `level_zero:${runtimeSelectors(devices)}` };
     case "metal":
     case "cpu":
       // Metal exposes no device selection, and CPU has nothing to select.
