@@ -50,7 +50,7 @@ export const dockerFlagsFor = (
   if (devices.length === 0) return { args: [], groupAdd: [] };
   switch (accelerator) {
     case "cuda":
-      return { args: ["--gpus", `"device=${joined(devices)}"`], groupAdd: [] };
+      return { args: ["--gpus", "all"], groupAdd: [] };
     case "rocm":
       return {
         args: ["--device", "/dev/kfd", "--device", "/dev/dri", "--security-opt", "seccomp=unconfined"],

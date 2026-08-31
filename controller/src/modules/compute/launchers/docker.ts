@@ -79,6 +79,12 @@ const docker = (
   timeoutMs = DOCKER_TIMEOUT_MS,
 ): Effect.Effect<AsyncCommandResult> => runtime.run(executable, args, timeoutMs);
 
+const isMissingDockerObject = (stderr: string, objectId?: string): boolean => {
+  const detail = stderr.trim();
+  if (!/no such object/i.test(detail)) return false;
+  return objectId === undefined || detail.toLowerCase().endsWith(objectId.toLowerCase());
+};
+
 const sameExecutable = (reference: HandleReference, executable: DockerExecutable | null): boolean =>
   reference.kind === "docker" &&
   executable?.path === reference.executablePath &&
@@ -129,7 +135,7 @@ const ownershipExact = (
       reference.containerId,
     ]);
     if (inspected.status !== 0) {
-      return inspected.stderr.trim() === `Error: No such object: ${reference.containerId}`
+      return isMissingDockerObject(inspected.stderr, reference.containerId)
         ? "gone"
         : "unknown";
     }
@@ -148,7 +154,7 @@ const discoveredReference = (
   daemonId: string,
 ): DiscoveryState => {
   if (inspected.status !== 0) {
-    return inspected.stderr.includes("No such object") ? { kind: "absent" } : { kind: "unknown" };
+    return isMissingDockerObject(inspected.stderr) ? { kind: "absent" } : { kind: "unknown" };
   }
   const [containerId, nonce, name, running, ...extra] = inspected.stdout.trim().split(/\r?\n/);
   if (extra.length !== 0 || !containerId || !/^[a-f0-9]{64}$/.test(containerId)) {
@@ -360,6 +366,10 @@ export const makeDockerLauncher = (
         `${NAME_LABEL}=${record.name}`,
         "--label",
         `${NONCE_LABEL}=${record.nonce}`,
+        "--init",
+        "--ipc=host",
+        "--shm-size",
+        "32g",
         ...deviceFlags.args,
         ...deviceFlags.groupAdd.flatMap((group) => ["--group-add", group]),
         ...plan.ports.flatMap((binding) => ["-p", `${binding.host}:${binding.container}`]),
