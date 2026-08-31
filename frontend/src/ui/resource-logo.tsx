@@ -26,6 +26,7 @@ const PROVIDER_COLORS: Record<string, string> = {
   nvidia: "#76B900",
   openai: "#10A37F",
   openrouter: "#8B5CF6",
+  orcarouter: "#0160E6",
   xai: "#E5E7EB",
   zai: "#111827",
 };
@@ -49,6 +50,7 @@ const LOGO_OWNERS: ReadonlyArray<readonly [RegExp, string]> = [
   [/mistral/i, "mistralai"],
   [/nvidia/i, "nvidia"],
   [/openrouter/i, "OpenRouter"],
+  [/orcarouter/i, "OrcaRouter"],
   [/together/i, "togethercomputer"],
   [/xai/i, "xai-org"],
   [/xiaomi|mimo/i, "XiaomiMiMo"],
