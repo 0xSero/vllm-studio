@@ -227,7 +227,12 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
               argv: [...input.commandOverride],
               env: input.env,
               ports: [{ container: record.port, host: record.port }],
-              mounts: [],
+              mounts: input.modelPath
+                ? [
+                    { from: input.modelPath, to: "/model", readOnly: true },
+                    { from: input.modelPath, to: "/models", readOnly: true },
+                  ]
+                : [],
               devices: record.devices,
               health: spec.health,
               ...(input.dockerImage ? { image: input.dockerImage } : {}),
