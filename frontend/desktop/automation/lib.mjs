@@ -4,6 +4,7 @@
 // side effects — each exports functions the project.mjs entry dispatches to.
 
 import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import path from "node:path";
 
 /** Repo root: this file lives at frontend/desktop/automation/lib.mjs. */
@@ -16,9 +17,42 @@ export function valueAfter(args, name) {
   return index === -1 ? undefined : args[index + 1];
 }
 
+/**
+ * Windows has no `npm`, `npx`, or `bun` on PATH — it has `npm.cmd`, `npx.cmd`, and a
+ * `bun.exe` that a Node-managed install leaves outside PATH entirely. spawnSync does
+ * not consult PATHEXT, so the bare name fails with ENOENT. Resolve npm and npx to the
+ * JavaScript CLI the running Node already ships and invoke it directly, which also
+ * avoids handing an argv to cmd.exe for re-parsing. POSIX is returned untouched.
+ */
+export function platformInvocation(command, args) {
+  if (process.platform !== "win32") return [command, args];
+  if (command === "bun") {
+    const candidates = [
+      path.join(path.dirname(process.execPath), "node_modules", "bun", "bin", "bun.exe"),
+      process.env["BUN_INSTALL"] ? path.join(process.env["BUN_INSTALL"], "bin", "bun.exe") : null,
+    ];
+    const executable = candidates.find((candidate) => candidate && existsSync(candidate));
+    return executable ? [executable, args] : [command, args];
+  }
+  if (command !== "npm" && command !== "npx") return [command, args];
+  const npmCli = process.env["npm_execpath"]?.trim();
+  const cli =
+    command === "npm" ? npmCli : npmCli ? path.join(path.dirname(npmCli), "npx-cli.js") : null;
+  const fallback = path.join(
+    path.dirname(process.execPath),
+    "node_modules",
+    "npm",
+    "bin",
+    `${command}-cli.js`,
+  );
+  const script = cli && existsSync(cli) ? cli : fallback;
+  return [process.execPath, [script, ...args]];
+}
+
 /** Run a command inheriting stdio; exit the process with its status on failure. */
 export function run(command, args, cwd = repoRoot) {
-  const result = spawnSync(command, args, { cwd, stdio: "inherit" });
+  const [resolvedCommand, resolvedArgs] = platformInvocation(command, args);
+  const result = spawnSync(resolvedCommand, resolvedArgs, { cwd, stdio: "inherit" });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }

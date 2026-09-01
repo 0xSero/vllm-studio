@@ -584,16 +584,26 @@ export function controllerStandards() {
 }
 
 /**
- * The automation layout gate: exactly two shell scripts plus the project.mjs
- * symlink in scripts/, exactly three tracked executables, no per-package
- * scripts/ directories. The automation modules themselves live in
- * frontend/desktop/automation/ as ordinary non-executable source.
+ * The automation layout gate: exactly three files in scripts/, exactly seven tracked
+ * executables, no per-package scripts/ directories. The automation modules themselves
+ * live in frontend/desktop/automation/ as ordinary non-executable source.
+ *
+ * The hooks and scripts/project.mjs are executable shims rather than symlinks, because
+ * a Windows checkout materialises a symlink as a text file holding its target path.
+ * Both lists are therefore stated rather than derived from one another.
  */
 export function auditLayout() {
-  const expected = [
-    "frontend/desktop/project.mjs",
+  const expectedScripts = [
     "scripts/install-controller.sh",
     "scripts/install-desktop-app.sh",
+    "scripts/project.mjs",
+  ];
+  const expectedExecutable = [
+    ".githooks/commit-msg",
+    ".githooks/pre-commit",
+    ".githooks/pre-push",
+    "frontend/desktop/project.mjs",
+    ...expectedScripts,
   ];
   const actual = readdirSync(path.join(repoRoot, "scripts"), { withFileTypes: true })
     .filter((entry) => entry.isFile())
@@ -608,8 +618,8 @@ export function auditLayout() {
     (directory) => existsSync(path.join(repoRoot, directory)),
   );
   if (
-    JSON.stringify(actual) !== JSON.stringify(expected.slice(1)) ||
-    JSON.stringify(executable) !== JSON.stringify(expected) ||
+    JSON.stringify(actual) !== JSON.stringify(expectedScripts) ||
+    JSON.stringify(executable) !== JSON.stringify(expectedExecutable) ||
     stale.length > 0
   ) {
     throw Error(
