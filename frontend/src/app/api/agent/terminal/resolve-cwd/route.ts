@@ -1,15 +1,15 @@
 import { statSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { NextRequest } from "next/server";
+import { homeRoot } from "@/app/api/_lib/home-root";
 import { requireApiAccess } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function expandTilde(target: string): string {
-  if (target === "~") return os.homedir();
-  if (target.startsWith("~/")) return path.join(os.homedir(), target.slice(2));
+  if (target === "~") return homeRoot();
+  if (target.startsWith("~/")) return path.join(homeRoot(), target.slice(2));
   return target;
 }
 
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
 
   let next: string;
   if (!target || target === "~") {
-    next = os.homedir();
+    next = homeRoot();
   } else if (target === "-") {
     if (!previous) return Response.json({ ok: false, error: "OLDPWD not set" }, { status: 400 });
     next = previous;

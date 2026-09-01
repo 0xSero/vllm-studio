@@ -3,10 +3,11 @@
 // lives in ./automation/ as ordinary readable ESM — this file only dispatches.
 //
 // Four ways in:
-//   * `node scripts/project.mjs <command>` (scripts/project.mjs is a symlink
-//     here) — the subcommand registry below.
-//   * The .githooks/{commit-msg,pre-commit,pre-push} symlinks — dispatched on
-//     the invoked basename, with no logic in the hook files themselves.
+//   * `node scripts/project.mjs <command>` (scripts/project.mjs is a one-line
+//     shim that imports this file) — the subcommand registry below.
+//   * The .githooks/{commit-msg,pre-commit,pre-push} shims — dispatched on the
+//     invoked basename, with no logic in the hook files themselves. Shims, not
+//     symlinks: a Windows checkout writes a symlink out as its target path.
 //   * `setup-hooks`, special-cased so a fresh clone can register the hooks
 //     before anything else works.
 //   * As a module: electron-builder imports the default export as its
