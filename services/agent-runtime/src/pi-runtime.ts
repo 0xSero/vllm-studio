@@ -13,6 +13,7 @@ import {
   type ExtensionUIContext,
 } from "@earendil-works/pi-coding-agent";
 import { Effect } from "effect";
+import { scaleCompactionForLocalModels } from "./pi-compaction";
 import type { AgentImageInput } from "../../../shared/agent/agent-image-input";
 import type { AgentQueueAction } from "../../../shared/agent/agent-turn";
 import {
@@ -335,6 +336,7 @@ class PiSdkSession extends EventEmitter implements PiAgentSession {
                         }),
                       catch: (error) => error,
                     });
+                    scaleCompactionForLocalModels(created.session);
                     const activeToolNames =
                       options.toolAccess === "read_only"
                         ? ["read", "grep", "find", "ls"]
