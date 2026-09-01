@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import os from "node:os";
 import path from "node:path";
 import { readdir, stat } from "node:fs/promises";
+import { homeRoot } from "@/app/api/_lib/home-root";
 import { errorMessage, jsonError } from "@/app/api/_lib/route-helpers";
 
 export const runtime = "nodejs";
@@ -30,7 +30,7 @@ function isLoopbackHost(host: string | null): boolean {
 
 function configuredRoots(): string[] {
   const raw = process.env.LOCAL_STUDIO_DIRECTORY_BROWSER_ROOTS;
-  if (!raw) return [path.resolve(os.homedir())];
+  if (!raw) return [path.resolve(homeRoot())];
   return raw
     .split(path.delimiter)
     .map((entry) => entry.trim())
@@ -46,7 +46,7 @@ function isWithinRoot(candidate: string, root: string): boolean {
 }
 
 function resolveAllowedPath(input: string | null, roots: string[]): string | null {
-  const fallbackRoot = roots[0] ?? path.resolve(os.homedir());
+  const fallbackRoot = roots[0] ?? path.resolve(homeRoot());
   const candidate = path.resolve(input?.trim() || fallbackRoot);
   return roots.some((root) => isWithinRoot(candidate, root)) ? candidate : null;
 }
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
     return Response.json({
       path: directoryPath,
       parent: parent === directoryPath ? null : parent,
-      home: os.homedir(),
+      home: homeRoot(),
       entries,
     });
   } catch (error) {

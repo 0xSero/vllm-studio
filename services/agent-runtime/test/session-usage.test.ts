@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync, truncateSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { readSessionUsageTotals, type SessionUsageTotals } from "../src/session-usage";
@@ -147,19 +148,26 @@ describe("incremental usage scan", () => {
 async function scanInFreshProcess(file: string, dataDir: string): Promise<SessionUsageTotals> {
   const script = `
     const { readSessionUsageTotals } = await import(${JSON.stringify(
-      path.resolve(import.meta.dir, "../src/session-usage.ts"),
+      pathToFileURL(path.resolve(import.meta.dir, "../src/session-usage.ts")).href,
     )});
     const started = performance.now();
     const totals = await readSessionUsageTotals(${JSON.stringify(file)});
     console.log(JSON.stringify({ ...totals, ms: performance.now() - started }));
   `;
-  const proc = Bun.spawn(["bun", "-e", script], {
+  // Windows drops a multi-line argument on its way to "bun -e": the runtime
+  // prints its help and exits, and the last line of that help is what the parse
+  // below would then choke on. A file carries the same script to every platform.
+  const scriptDir = mkdtempSync(path.join(tmpdir(), "session-usage-spawn-"));
+  const scriptFile = path.join(scriptDir, "scan.ts");
+  writeFileSync(scriptFile, script);
+  const proc = Bun.spawn(["bun", scriptFile], {
     env: { ...process.env, LOCAL_STUDIO_DATA_DIR: dataDir },
     stdout: "pipe",
     stderr: "pipe",
   });
   const out = await new Response(proc.stdout).text();
   const code = await proc.exited;
+  rmSync(scriptDir, { recursive: true, force: true });
   if (code !== 0) throw new Error(await new Response(proc.stderr).text());
   // The runtime may print its own notices before ours; the result is the last
   // line we wrote.
