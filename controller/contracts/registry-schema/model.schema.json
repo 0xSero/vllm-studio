@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local-ai-registry.dev/schema/model.schema.json",
+  "title": "Model",
+  "type": "object",
+  "required": ["schema_version", "id", "family", "name", "params", "active_params", "architecture", "url", "huggingface", "provenance", "facts"],
+  "properties": {
+    "schema_version": { "const": "local-ai-registry/v1" },
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "family": { "type": "string" },
+    "name": { "type": "string", "minLength": 1 },
+    "params": { "type": "number", "exclusiveMinimum": 0 },
+    "active_params": { "type": ["number", "null"], "minimum": 0 },
+    "architecture": { "type": ["string", "null"] },
+    "url": { "type": ["string", "null"], "format": "uri" },
+    "huggingface": { "$ref": "common.schema.json#/$defs/huggingface_identity" },
+    "provenance": { "$ref": "common.schema.json#/$defs/provenance" },
+    "facts": { "$ref": "common.schema.json#/$defs/facts" }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local-ai-registry.dev/schema/common.schema.json",
+  "title": "Shared enrichment types",
+  "$defs": {
+    "source": {
+      "type": "object",
+      "required": ["kind", "url"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "repository": { "type": ["string", "null"] },
+        "commit": { "type": ["string", "null"] },
+        "paths": { "type": ["array", "null"], "items": { "type": "string" } },
+        "captured_at": { "type": "string", "format": "date-time" },
+        "publisher": { "type": "string" },
+        "retrieved_from": { "type": "string", "format": "uri" }
+      },
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["sources", "captured_at"],
+      "properties": {
+        "sources": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/source" } },
+        "captured_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "fact": {
+      "type": "object",
+      "required": ["state", "provenance"],
+      "properties": {
+        "value": {},
+        "state": { "enum": ["known", "unknown", "unavailable", "not_applicable"] },
+        "reason": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            {
+              "type": "object",
+              "required": ["code", "detail"],
+              "properties": {
+                "code": { "type": "string", "minLength": 1 },
+                "detail": { "type": "string", "minLength": 1 }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "note": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "minLength": 1 },
+        "unit": { "type": "string", "minLength": 1 },
+        "as_of": { "type": "string", "minLength": 1 },
+        "provenance": { "$ref": "common.schema.json#/$defs/provenance" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "known" } }, "required": ["state"] },
+          "then": { "required": ["value"] }
+        },
+        {
+          "if": { "properties": { "state": { "enum": ["unknown", "unavailable", "not_applicable"] } }, "required": ["state"] },
+          "then": { "required": ["reason"] }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "facts": {
+      "type": "object",
+      "additionalProperties": { "$ref": "common.schema.json#/$defs/fact" }
+    },
+    "huggingface_identity": {
+      "type": "object",
+      "required": ["repository", "url", "status", "link_type", "reason", "provenance"],
+      "properties": {
+        "repository": { "type": ["string", "null"] },
+        "url": { "type": "string", "format": "uri" },
+        "status": { "enum": ["known", "unknown", "unavailable"] },
+        "link_type": { "enum": ["repository", "search"] },
+        "reason": { "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "object", "required": ["code", "detail"], "properties": { "code": { "type": "string", "minLength": 1 }, "detail": { "type": "string", "minLength": 1 } }, "additionalProperties": false }] },
+        "provenance": { "$ref": "common.schema.json#/$defs/provenance" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "link_type": { "const": "repository" } }, "required": ["link_type"] },
+          "then": {
+            "properties": {
+              "repository": { "type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$" },
+              "url": { "pattern": "^https://huggingface\\.co/[^/]+/[^/]+/?$" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "link_type": { "const": "search" } }, "required": ["link_type"] },
+          "then": { "properties": { "url": { "pattern": "^https://huggingface\\.co/models\\?search=" } } }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "container": {
+      "type": "object",
+      "required": ["state", "runtime", "image", "digest", "compose_file", "source", "captured_at", "reason"],
+      "properties": {
+        "state": { "enum": ["digest-pinned", "mutable", "indirect", "none"] },
+        "runtime": { "enum": ["docker", "docker-compose", null] },
+        "image": { "type": ["string", "null"] },
+        "digest": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" },
+        "compose_file": { "type": ["string", "null"] },
+        "source": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/source" } },
+        "captured_at": { "type": "string", "format": "date-time" },
+        "reason": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "digest-pinned" } }, "required": ["state"] },
+          "then": {
+            "properties": {
+              "runtime": { "enum": ["docker", "docker-compose"] },
+              "image": { "type": "string" },
+              "digest": { "type": "string" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "const": "none" } }, "required": ["state"] },
+          "then": {
+            "properties": { "runtime": { "type": "null" }, "image": { "type": "null" }, "digest": { "type": "null" }, "compose_file": { "type": "null" } }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "compute_stat": {
+      "type": "object",
+      "required": ["precision", "sparsity", "value", "state", "provenance"],
+      "properties": {
+        "precision": { "enum": ["fp32", "tf32", "fp16", "bf16", "fp8", "fp4", "int8", "int4"] },
+        "sparsity": { "enum": ["dense", "structured_2_4", "unstructured", "unknown"] },
+        "value": { "type": ["number", "null"], "minimum": 0 },
+        "unit": { "const": "tflops" },
+        "state": { "enum": ["known", "unknown", "unavailable", "not_applicable"] },
+        "reason": { "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "object", "required": ["code", "detail"], "properties": { "code": { "type": "string", "minLength": 1 }, "detail": { "type": "string", "minLength": 1 } }, "additionalProperties": false }] },
+        "provenance": { "$ref": "common.schema.json#/$defs/provenance" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "enum": ["unknown", "unavailable", "not_applicable"] } }, "required": ["state"] },
+          "then": { "required": ["reason"] }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

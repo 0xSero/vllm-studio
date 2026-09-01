@@ -1,0 +1,468 @@
+{
+ "accelerator_backend": "nvidia",
+ "aliases": [
+  "rtx pro 6000 blackwell"
+ ],
+ "family": "rtx-pro-6000-blackwell",
+ "id": "rtx-pro-6000-blackwell-96gb",
+ "kind": "discrete",
+ "memory": {
+  "bandwidth_gb_per_s": 1792,
+  "cpu_memory_gb": null,
+  "vram_gb": 96,
+  "vram_type": "GDDR7 ECC"
+ },
+ "name": "RTX PRO 6000 Blackwell",
+ "products": [],
+ "schema_version": "local-ai-registry/v1",
+ "sources": [
+  {
+   "kind": "vendor",
+   "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+   "publisher": "NVIDIA",
+   "captured_at": "2026-08-27T04:55:00Z"
+  }
+ ],
+ "vendor": "nvidia",
+ "captured_at": "2026-08-27",
+ "accelerator": {
+  "count": 1,
+  "unit": "GPU"
+ },
+ "compute": {
+  "stats": {
+   "fp32": {
+    "dense": {
+     "value": 125,
+     "state": "known",
+     "provenance": {
+      "sources": [
+       {
+        "kind": "vendor",
+        "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       }
+      ],
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     "unit": "tflops"
+    },
+    "structured_2_4": {
+     "state": "unknown",
+     "reason": {
+      "code": "not-published",
+      "detail": "No structured 2:4 fp32 throughput was published for this exact accelerator."
+     },
+     "provenance": {
+      "sources": [
+       {
+        "kind": "vendor",
+        "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       }
+      ],
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     "unit": "tflops"
+    }
+   },
+   "tf32": {
+    "unknown": {
+     "state": "unknown",
+     "reason": {
+      "code": "not-published",
+      "detail": "No directly comparable tf32 throughput was published for this exact accelerator; no FLOPS inferred."
+     },
+     "provenance": {
+      "sources": [
+       {
+        "kind": "vendor",
+        "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       }
+      ],
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     "unit": "tflops"
+    }
+   },
+   "fp16": {
+    "unknown": {
+     "state": "unknown",
+     "reason": {
+      "code": "not-published",
+      "detail": "No directly comparable fp16 throughput was published for this exact accelerator; no FLOPS inferred."
+     },
+     "provenance": {
+      "sources": [
+       {
+        "kind": "vendor",
+        "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       }
+      ],
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     "unit": "tflops"
+    }
+   },
+   "bf16": {
+    "unknown": {
+     "state": "unknown",
+     "reason": {
+      "code": "not-published",
+      "detail": "No directly comparable bf16 throughput was published for this exact accelerator; no FLOPS inferred."
+     },
+     "provenance": {
+      "sources": [
+       {
+        "kind": "vendor",
+        "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       }
+      ],
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     "unit": "tflops"
+    }
+   },
+   "fp8": {
+    "unknown": {
+     "state": "unknown",
+     "reason": {
+      "code": "not-published",
+      "detail": "No directly comparable fp8 throughput was published for this exact accelerator; no FLOPS inferred."
+     },
+     "provenance": {
+      "sources": [
+       {
+        "kind": "vendor",
+        "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       }
+      ],
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     "unit": "tflops"
+    }
+   },
+   "int8": {
+    "unknown": {
+     "state": "unknown",
+     "reason": {
+      "code": "not-published",
+      "detail": "No directly comparable int8 throughput was published for this exact accelerator; no FLOPS inferred."
+     },
+     "provenance": {
+      "sources": [
+       {
+        "kind": "vendor",
+        "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       }
+      ],
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     "unit": "tflops"
+    }
+   },
+   "int4": {
+    "unknown": {
+     "state": "unknown",
+     "reason": {
+      "code": "not-published",
+      "detail": "No directly comparable int4 throughput was published for this exact accelerator; no FLOPS inferred."
+     },
+     "provenance": {
+      "sources": [
+       {
+        "kind": "vendor",
+        "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+        "publisher": "NVIDIA",
+        "captured_at": "2026-08-27T04:55:00Z"
+       }
+      ],
+      "captured_at": "2026-08-27T04:55:00Z"
+     },
+     "unit": "tflops"
+    }
+   }
+  },
+  "architecture": "NVIDIA Blackwell",
+  "cuda_cores": 24064,
+  "tensor_cores": "5th generation",
+  "rt_cores": "4th generation"
+ },
+ "commercial": {
+  "availability": {
+   "state": "unknown",
+   "reason": {
+    "code": "not-captured",
+    "detail": "Current purchasable availability was not validated for this partner_channel channel."
+   },
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "prices": []
+ },
+ "facts": {
+  "memory.capacity_gb": {
+   "value": 96,
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "memory.type": {
+   "value": "GDDR7 ECC",
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "memory.bandwidth_gb_per_s": {
+   "value": 1792,
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "accelerator.count": {
+   "value": 1,
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   },
+   "unit": "GPU"
+  },
+  "compute.cuda_cores": {
+   "value": 24064,
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "compute.tensor_cores": {
+   "value": "5th generation",
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "compute.rt_cores": {
+   "value": "4th generation",
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "compute.architecture": {
+   "value": "NVIDIA Blackwell",
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "compute.fp4_tops": {
+   "value": 4000,
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   },
+   "unit": "tops"
+  },
+  "commercial.prices": {
+   "state": "unknown",
+   "reason": {
+    "code": "not-published",
+    "detail": "No validated price observation was captured for this exact hardware record."
+   },
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "commercial.msrp": {
+   "state": "unknown",
+   "reason": {
+    "code": "not-published",
+    "detail": "NVIDIA directs buyers to workstation/system partners"
+   },
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "commercial.current_street_price": {
+   "state": "unknown",
+   "reason": {
+    "code": "not-captured",
+    "detail": "No current validated retailer offer captured"
+   },
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "commercial.current_stock": {
+   "state": "unknown",
+   "reason": {
+    "code": "not-captured",
+    "detail": "Audit availability note: unknown."
+   },
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "commercial.channel_status": {
+   "value": "partner_channel",
+   "state": "known",
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  },
+  "commercial.availability": {
+   "state": "unknown",
+   "reason": {
+    "code": "not-captured",
+    "detail": "Current purchasable availability was not validated for this partner_channel channel."
+   },
+   "provenance": {
+    "sources": [
+     {
+      "kind": "vendor",
+      "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/workstation-blackwell-rtx-pro-6000-workstation-edition-nvidia-us-3519208-web.pdf",
+      "publisher": "NVIDIA",
+      "captured_at": "2026-08-27T04:55:00Z"
+     }
+    ],
+    "captured_at": "2026-08-27T04:55:00Z"
+   }
+  }
+ }
+}

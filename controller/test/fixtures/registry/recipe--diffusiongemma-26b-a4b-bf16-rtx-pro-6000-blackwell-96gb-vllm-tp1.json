@@ -1,0 +1,250 @@
+{
+ "capabilities": {
+  "chat": null,
+  "reasoning": null,
+  "tools": null,
+  "vision": null
+ },
+ "description": null,
+ "engine": {
+  "graph_mode": null,
+  "name": "vllm",
+  "version": "0.1.dev1+ga275a28e0"
+ },
+ "facts": {
+  "capabilities.chat": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "capability-not-verified",
+   "state": "unknown"
+  },
+  "capabilities.reasoning": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "capability-not-verified",
+   "state": "unknown"
+  },
+  "capabilities.tools": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "capability-not-verified",
+   "state": "unknown"
+  },
+  "capabilities.vision": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "capability-not-verified",
+   "state": "unknown"
+  },
+  "description": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "not-observed",
+   "state": "unknown"
+  },
+  "engine.graph_mode": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "runtime-detail-not-published",
+   "state": "unknown"
+  },
+  "metadata.localmaxxing.engine_flags.flashAttn": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "not-observed",
+   "state": "unknown"
+  },
+  "metadata.localmaxxing.engine_flags.gpuLayers": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "not-observed",
+   "state": "unknown"
+  },
+  "metadata.localmaxxing.engine_flags.tensorParallel": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "not-observed",
+   "state": "unknown"
+  },
+  "serving.kv_cache_tokens": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "kv-cache-capacity-not-published",
+   "state": "unknown"
+  },
+  "serving.max_concurrency": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "not-observed",
+   "state": "unknown"
+  },
+  "serving.max_context_tokens": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "not-observed",
+   "state": "unknown"
+  }
+ },
+ "hardware_count": 1,
+ "hardware_id": "rtx-pro-6000-blackwell-96gb",
+ "id": "diffusiongemma-26b-a4b-bf16-rtx-pro-6000-blackwell-96gb-vllm-tp1",
+ "launch": {
+  "container": {
+   "captured_at": "2026-08-27T06:04:13.773Z",
+   "compose_file": null,
+   "digest": null,
+   "image": null,
+   "reason": "reference-only-launch",
+   "runtime": null,
+   "source": [
+    {
+     "captured_at": "2026-08-27T06:04:13.773Z",
+     "kind": "recipe-launch",
+     "url": "https://www.localmaxxing.com/en/runs/cmr37xws306stpi01f5g70cvn"
+    }
+   ],
+   "state": "none"
+  },
+  "kind": "reference",
+  "run_id": "cmr37xws306stpi01f5g70cvn",
+  "source": "localmaxxing",
+  "url": "https://www.localmaxxing.com/en/runs/cmr37xws306stpi01f5g70cvn"
+ },
+ "metadata": {
+  "localmaxxing": {
+   "base_lineage": "derived",
+   "engine_flags": {
+    "attentionBackend": "TRITON_ATTN",
+    "flashAttn": null,
+    "gpuLayers": null,
+    "kvCacheDtype": "fp8",
+    "mtpEnabled": false,
+    "specDecoding": false,
+    "tensorParallel": null
+   },
+   "hardware_label": "1x RTX PRO 6000 Blackwell 95.6GB",
+   "notes": "Remote vLLM DiffusionGemma benchmark against localhost endpoint using served alias diffusiongemma-page-vlm. vLLM process was observed using the NVIDIA RTX PRO 6000 Blackwell. No-stream request-window throughput is the meaningful figure for this block-diffusion endpoint; streamed decode timing is not comparable because output arrives in canvas-sized chunks.",
+   "revision_unpinned": true,
+   "run_id": "cmr37xws306stpi01f5g70cvn"
+  }
+ },
+ "model_instance_id": "google-diffusiongemma-26b-a4b-it--bf16",
+ "provenance": {
+  "captured_at": "2026-08-27T06:04:13.773Z",
+  "sources": [
+   {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "kind": "normalized-recipe",
+    "url": "https://www.localmaxxing.com/en/runs/cmr37xws306stpi01f5g70cvn"
+   }
+  ]
+ },
+ "recipe_source": "localmaxxing",
+ "schema_version": "local-ai-registry/v1",
+ "serving": {
+  "kv_cache_tokens": null,
+  "max_concurrency": null,
+  "max_context_tokens": null,
+  "tensor_parallel": 1
+ },
+ "speed_sweeps_ids": [
+  "diffusiongemma-26b-a4b-bf16-rtx-pro-6000-blackwell-96gb-vllm-tp1-sweep"
+ ],
+ "status": "candidate"
+}

@@ -5,7 +5,6 @@ import { Effect, Schema } from "effect";
 import { badRequest, notFound } from "../../core/errors";
 import { decodeJsonBody } from "../../core/validation";
 import { effectRoute, defineRoutes, mergeRoutes } from "../../http/route-registrar";
-import { registerStudioModelIndexRoutes } from "./model-index";
 import { registerStudioProviderRoutes } from "./provider-routes";
 import { registerStudioRigRoutes } from "./rig-routes";
 import { getGpuInfo } from "../system/platform/gpu";
@@ -327,7 +326,6 @@ export const registerStudioRoutes = defineRoutes((app, context) => {
       }),
     ),
 
-    registerStudioModelIndexRoutes(app, context),
     registerStudioProviderRoutes(app, context),
     registerStudioRigRoutes(app, context),
   );

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local-ai-registry.dev/schema/index.schema.json",
+  "title": "Registry index",
+  "type": "object",
+  "required": ["schema_version", "resolver_rule", "collections", "counts", "recipes"],
+  "properties": {
+    "schema_version": { "const": "local-ai-registry/v1" },
+    "resolver_rule": { "type": "string" },
+    "collections": { "type": "object" },
+    "counts": { "type": "object" },
+    "recipes": { "type": "array" }
+  },
+  "additionalProperties": false
+}

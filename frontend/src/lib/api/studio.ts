@@ -1,9 +1,3 @@
-import { Schema } from "effect";
-import {
-  ModelIndexSchema,
-  bundledModelIndexSource,
-  type ModelIndexResponse,
-} from "@local-studio/contracts/model-index";
 import type { RuntimeJobBackend, RuntimeJobType } from "@local-studio/contracts/system";
 import type {
   ModelDownload,
@@ -17,13 +11,6 @@ import type {
 } from "../types";
 import { encodePathSegments, type ApiCore, type RequestOptions } from "./core";
 
-export type {
-  ModelIndexModel,
-  ModelIndexResponse,
-  ModelIndexTier,
-  ModelIndexVariant,
-  ModelIndexVariantFormat,
-} from "@local-studio/contracts/model-index";
 
 export interface StudioModelsRoot {
   path: string;
@@ -48,11 +35,6 @@ export type RuntimeJobPayload = {
 type RuntimeJobPayloadContract = RuntimeJobPayload &
   (Extract<keyof RuntimeJobPayload, "command" | "args"> extends never ? unknown : never);
 
-const bundledModelIndex = Schema.decodeUnknownSync(ModelIndexSchema)(bundledModelIndexSource);
-
-const hasStatus = (error: unknown, status: number): boolean =>
-  error instanceof Error && (error as Error & { status?: number }).status === status;
-
 export function createStudioApi(core: ApiCore) {
   return {
     getModels: (): Promise<{
@@ -76,21 +58,6 @@ export function createStudioApi(core: ApiCore) {
     getStudioDiagnostics: (): Promise<StudioDiagnostics> => core.request("/studio/diagnostics"),
 
     getStudioStorage: (): Promise<StorageInfo> => core.request("/studio/storage"),
-
-    getModelIndex: async (options?: RequestOptions): Promise<ModelIndexResponse> => {
-      try {
-        const served = await core.request<ModelIndexResponse>("/studio/model-index", options);
-        // The app ships its own copy of the catalog, and the controller is
-        // deployed separately — so a freshly updated app would otherwise show a
-        // stale set of picks until someone restarts the controller. Whichever
-        // catalog carries the later `updated` date wins; ties go to the
-        // controller, since that is where an operator's curated override lives.
-        return served.updated >= bundledModelIndex.updated ? served : bundledModelIndex;
-      } catch (error) {
-        if (!hasStatus(error, 404)) throw error;
-        return bundledModelIndex;
-      }
-    },
 
     getStarterPresets: (): Promise<{
       presets: StarterPreset[];

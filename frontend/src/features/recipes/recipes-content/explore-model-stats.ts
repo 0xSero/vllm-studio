@@ -1,5 +1,4 @@
 import type { HuggingFaceModel } from "@/lib/types";
-import type { ModelIndexModel } from "@/lib/api/studio";
 import { estimateModelSizeMb, type QuantFormat } from "@/features/recipes/vram-estimator";
 
 const QUANT_TAG_MATCHERS: Array<{ quant: QuantFormat; tags: string[] }> = [
@@ -84,26 +83,12 @@ export function estimateRoughWeightsGb(model: HuggingFaceModel): number | null {
   return weightsGb * 1.25;
 }
 
-export function catalogNeedGb(model: ModelIndexModel): number | null {
-  const bf16 = model.variants.find(
-    (variant) => variant.format === "bf16" && variant.size_gb != null && variant.size_gb > 0,
-  );
-  if (bf16?.size_gb != null) return bf16.size_gb;
-  const sizes = model.variants
-    .map((variant) => variant.size_gb)
-    .filter((size): size is number => size != null && size > 0);
-  return sizes.length > 0 ? Math.min(...sizes) : null;
-}
-
 export function resolveGroupNeedGb(
   key: string,
-  catalogByKey: Map<string, ModelIndexModel>,
+  registrySizesByKey: Map<string, number>,
   lead: HuggingFaceModel,
 ): number | null {
-  const catalogModel = catalogByKey.get(key);
-  if (catalogModel) {
-    const fromCatalog = catalogNeedGb(catalogModel);
-    if (fromCatalog != null) return fromCatalog;
-  }
+  const fromRegistry = registrySizesByKey.get(key);
+  if (fromRegistry != null) return fromRegistry;
   return estimateRoughWeightsGb(lead);
 }

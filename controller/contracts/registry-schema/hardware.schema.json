@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local-ai-registry.dev/schema/hardware.schema.json",
+  "title": "Hardware",
+  "type": "object",
+  "required": ["schema_version", "id", "vendor", "name", "kind", "accelerator_backend", "memory", "sources"],
+  "properties": {
+    "schema_version": { "const": "local-ai-registry/v1" },
+    "id": { "$ref": "#/$defs/id" },
+    "vendor": { "enum": ["nvidia", "amd", "intel", "apple"] },
+    "name": { "type": "string", "minLength": 1 },
+    "family": { "type": ["string", "null"] },
+    "kind": { "enum": ["discrete", "integrated", "unified"] },
+    "accelerator_backend": { "enum": ["nvidia", "amd-rocm", "intel-xpu", "metal"] },
+    "memory": {
+      "type": "object",
+      "required": ["vram_gb", "vram_type", "bandwidth_gb_per_s", "cpu_memory_gb"],
+      "properties": {
+        "vram_gb": { "type": "number", "exclusiveMinimum": 0 },
+        "vram_type": { "type": ["string", "null"] },
+        "cpu_memory_gb": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "bandwidth_gb_per_s": {
+          "oneOf": [
+            { "type": "number", "exclusiveMinimum": 0 },
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["min", "max"],
+              "properties": {
+                "min": { "type": "number", "exclusiveMinimum": 0 },
+                "max": { "type": "number", "exclusiveMinimum": 0 }
+              },
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "aliases": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "products": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "url"],
+        "properties": { "kind": { "type": "string" }, "url": { "type": "string", "format": "uri" } },
+        "additionalProperties": true
+      }
+    },
+    "commercial": {
+      "type": "object",
+      "required": ["availability", "prices"],
+      "properties": {
+        "availability": { "$ref": "common.schema.json#/$defs/fact" },
+        "prices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["amount", "currency", "unit", "source", "captured_at"],
+            "properties": {
+              "amount": { "type": "number", "exclusiveMinimum": 0 },
+              "currency": { "type": "string", "minLength": 3, "maxLength": 3 },
+              "unit": { "type": "string", "minLength": 1 },
+              "region": { "type": ["string", "null"] },
+              "kind": { "type": "string", "minLength": 1 },
+              "scope": { "type": "string", "minLength": 1 },
+              "configuration": { "type": "string", "minLength": 1 },
+              "as_of": { "type": "string", "minLength": 1 },
+              "source": { "$ref": "common.schema.json#/$defs/source" },
+              "captured_at": { "type": "string", "format": "date-time" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "compute": {
+      "type": "object",
+      "required": ["stats"],
+      "properties": {
+        "stats": {
+          "type": "object",
+          "patternProperties": {
+            "^(fp32|tf32|fp16|bf16|fp8|fp4|int8|int4)$": {
+              "type": "object",
+              "patternProperties": {
+                "^(dense|structured_2_4|unstructured|unknown)$": {
+                  "type": "object",
+                  "required": ["state", "provenance", "unit"],
+                  "properties": {
+                    "value": { "type": ["number", "null"], "minimum": 0 },
+                    "state": { "enum": ["known", "unknown", "unavailable", "not_applicable"] },
+                    "reason": { "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "object", "required": ["code", "detail"], "properties": { "code": { "type": "string", "minLength": 1 }, "detail": { "type": "string", "minLength": 1 } }, "additionalProperties": false }] },
+                    "provenance": { "$ref": "common.schema.json#/$defs/provenance" },
+                    "unit": { "const": "tflops" }
+                  },
+                  "allOf": [
+                    {
+                      "if": { "properties": { "state": { "enum": ["unknown", "unavailable", "not_applicable"] } }, "required": ["state"] },
+                      "then": { "required": ["reason"] }
+                    }
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "provenance": { "$ref": "common.schema.json#/$defs/provenance" },
+    "facts": { "$ref": "common.schema.json#/$defs/facts" }
+  },
+  "$defs": { "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" } },
+  "additionalProperties": true
+}

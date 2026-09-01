@@ -1,0 +1,67 @@
+{
+ "active_params": null,
+ "architecture": "moe",
+ "facts": {
+  "active_params": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "not-observed",
+   "state": "unknown"
+  },
+  "url": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "canonical-url-not-published",
+   "state": "unknown"
+  }
+ },
+ "family": "deepseek",
+ "huggingface": {
+  "link_type": "search",
+  "provenance": {
+   "captured_at": "2026-08-27T06:04:13.773Z",
+   "sources": [
+    {
+     "captured_at": "2026-08-27T06:04:13.773Z",
+     "kind": "huggingface-search",
+     "url": "https://huggingface.co/models?search=DeepSeek"
+    }
+   ]
+  },
+  "reason": "canonical-model-repository-not-published",
+  "repository": null,
+  "status": "unknown",
+  "url": "https://huggingface.co/models?search=DeepSeek"
+ },
+ "id": "deepseek",
+ "name": "DeepSeek",
+ "params": 16,
+ "provenance": {
+  "captured_at": "2026-08-27T06:04:13.773Z",
+  "sources": [
+   {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "kind": "normalized-model",
+    "url": "https://github.com/0xSero/local-ai-registry"
+   }
+  ]
+ },
+ "schema_version": "local-ai-registry/v1",
+ "url": null
+}

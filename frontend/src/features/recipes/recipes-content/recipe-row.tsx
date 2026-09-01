@@ -24,6 +24,7 @@ type Props = {
   onEdit: (recipe: RecipeWithStatus) => void;
   onRequestDelete: (recipeId: string) => void;
   onAttachAgents: (recipe: RecipeWithStatus) => void;
+  onShare: (recipe: RecipeWithStatus) => void;
 };
 
 /**
@@ -48,6 +49,7 @@ export const ServerRow = memo(function ServerRow({
   onEdit,
   onRequestDelete,
   onAttachAgents,
+  onShare,
 }: Props) {
   const handleTogglePin = useCallback(() => onTogglePin(recipe.id), [onTogglePin, recipe.id]);
   const handleLaunch = useCallback(() => onLaunch(recipe.id), [onLaunch, recipe.id]);
@@ -63,6 +65,10 @@ export const ServerRow = memo(function ServerRow({
     onToggleMenu(recipe.id);
     onAttachAgents(recipe);
   }, [onAttachAgents, onToggleMenu, recipe]);
+  const handleShare = useCallback(() => {
+    onToggleMenu(recipe.id);
+    onShare(recipe);
+  }, [onShare, onToggleMenu, recipe]);
   const handleRequestDelete = useCallback(
     () => onRequestDelete(recipe.id),
     [onRequestDelete, recipe.id],
@@ -153,6 +159,7 @@ export const ServerRow = memo(function ServerRow({
             onTogglePin={handleTogglePin}
             onEdit={handleEdit}
             onAttachAgents={handleAttachAgents}
+            onShare={handleShare}
             onRequestDelete={handleRequestDelete}
           />
         </div>
@@ -169,6 +176,7 @@ function ServerRowMenu({
   onTogglePin,
   onEdit,
   onAttachAgents,
+  onShare,
   onRequestDelete,
 }: {
   open: boolean;
@@ -178,6 +186,7 @@ function ServerRowMenu({
   onTogglePin: () => void;
   onEdit: () => void;
   onAttachAgents: () => void;
+  onShare: () => void;
   onRequestDelete: () => void;
 }) {
   return (
@@ -199,6 +208,7 @@ function ServerRowMenu({
           <MenuItem onClick={onTogglePin}>{pinned ? "Unpin" : "Pin"}</MenuItem>
           <MenuItem onClick={onEdit}>Edit</MenuItem>
           <MenuItem onClick={onAttachAgents}>Attach to local agents…</MenuItem>
+          <MenuItem onClick={onShare}>Share config…</MenuItem>
           <div className={POPOVER_SEPARATOR_CLASS} aria-hidden />
           <MenuItem
             onClick={onRequestDelete}

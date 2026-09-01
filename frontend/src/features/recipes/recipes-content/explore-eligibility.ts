@@ -1,7 +1,5 @@
 import type { GPU, HuggingFaceModel } from "@/lib/types";
-import type { ModelIndexModel } from "@/lib/api/studio";
 import { toGB, toGBFromMB } from "@/lib/formatters";
-import { catalogNeedGb } from "./explore-model-stats";
 
 /** Sum total VRAM across connected GPUs (one card = one capacity; eight cards = eight capacities). */
 export function sumGpuMemoryPoolGb(gpus: GPU[]): number {
@@ -37,17 +35,6 @@ export function isRecentlyCreatedOnHf(
 
 export function hasHfEngagementStats(model: HuggingFaceModel): boolean {
   return model.downloads > 0 || model.likes > 0;
-}
-
-export function filterIndexModelsWithinPool(
-  models: ModelIndexModel[],
-  poolGb: number,
-): ModelIndexModel[] {
-  if (poolGb <= 0) return models;
-  return models.filter((model) => {
-    const needGb = catalogNeedGb(model);
-    return needGb == null || needGb <= poolGb;
-  });
 }
 
 export type ExploreVramTierItem = { needGb: number | null };

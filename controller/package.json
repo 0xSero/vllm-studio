@@ -9,13 +9,15 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "standards": "node ../scripts/project.mjs controller-standards",
-    "check": "knip && jscpd src && depcheck --skip-missing && bun run standards"
+    "check": "knip && jscpd src && depcheck --skip-missing && bun run standards && bun test",
+    "test": "bun test"
   },
   "dependencies": {
     "@hono/standard-validator": "0.2.3",
     "@hono/swagger-ui": "0.5.3",
     "@standard-community/standard-json": "0.3.5",
     "@standard-community/standard-openapi": "0.2.9",
+    "ajv": "8.17.1",
     "dotenv": "16.6.1",
     "effect": "4.0.0-beta.90",
     "hono": "4.12.30",

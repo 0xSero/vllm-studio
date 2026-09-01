@@ -1,0 +1,72 @@
+{
+ "facts": {
+  "revision": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "artifact-revision-not-pinned",
+   "state": "unknown"
+  },
+  "weights.size_gb": {
+   "provenance": {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "sources": [
+     {
+      "captured_at": "2026-08-27T06:04:13.773Z",
+      "kind": "registry-enrichment",
+      "url": "https://github.com/0xSero/local-ai-registry"
+     }
+    ]
+   },
+   "reason": "artifact-size-not-published",
+   "state": "unknown"
+  }
+ },
+ "huggingface": {
+  "link_type": "repository",
+  "provenance": {
+   "captured_at": "2026-08-27T06:04:13.773Z",
+   "sources": [
+    {
+     "captured_at": "2026-08-27T06:04:13.773Z",
+     "kind": "huggingface-api",
+     "url": "https://huggingface.co/api/models/google/diffusiongemma-26B-A4B-it"
+    }
+   ]
+  },
+  "reason": "hf-api-confirmed-public",
+  "repository": "google/diffusiongemma-26B-A4B-it",
+  "status": "known",
+  "url": "https://huggingface.co/google/diffusiongemma-26B-A4B-it"
+ },
+ "id": "google-diffusiongemma-26b-a4b-it--bf16",
+ "kind": "quant",
+ "model_id": "diffusiongemma-26b-a4b",
+ "provenance": {
+  "captured_at": "2026-08-27T06:04:13.773Z",
+  "sources": [
+   {
+    "captured_at": "2026-08-27T06:04:13.773Z",
+    "kind": "normalized-model-instance",
+    "url": "https://huggingface.co/google/diffusiongemma-26B-A4B-it"
+   }
+  ]
+ },
+ "repository": "google/diffusiongemma-26B-A4B-it",
+ "revision": null,
+ "schema_version": "local-ai-registry/v1",
+ "served_name": "diffusiongemma-26B-A4B-it",
+ "url": "https://huggingface.co/google/diffusiongemma-26B-A4B-it",
+ "weights": {
+  "format": "safetensors",
+  "precision": "bf16",
+  "size_gb": null
+ }
+}

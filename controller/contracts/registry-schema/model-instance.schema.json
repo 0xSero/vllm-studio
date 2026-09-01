@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local-ai-registry.dev/schema/model-instance.schema.json",
+  "title": "Model instance",
+  "type": "object",
+  "required": ["schema_version", "id", "model_id", "repository", "revision", "served_name", "weights", "kind", "huggingface", "provenance", "facts"],
+  "properties": {
+    "schema_version": { "const": "local-ai-registry/v1" },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*(?:--[a-z0-9][a-z0-9.-]*)*$" },
+    "model_id": { "type": "string" },
+    "repository": { "type": "string", "minLength": 1 },
+    "url": { "type": ["string", "null"], "format": "uri" },
+    "revision": { "type": ["string", "null"] },
+    "served_name": { "type": ["string", "null"] },
+    "weights": {
+      "type": "object",
+      "required": ["format", "precision", "size_gb"],
+      "properties": {
+        "format": { "type": ["string", "null"] },
+        "precision": { "type": ["string", "null"] },
+        "size_gb": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "kind": { "enum": ["base", "quant", "fine-tune"] },
+    "huggingface": { "$ref": "common.schema.json#/$defs/huggingface_identity" },
+    "provenance": { "$ref": "common.schema.json#/$defs/provenance" },
+    "facts": { "$ref": "common.schema.json#/$defs/facts" }
+  },
+  "additionalProperties": false
+}
