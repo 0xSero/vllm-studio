@@ -22,3 +22,13 @@ export function sessionTitleFromUserPrompt(value: string | null | undefined): st
   );
   return cleanSessionTitle(visible);
 }
+
+export const GENERATED_SESSION_TITLE_MAX_CHARS = 60;
+
+export function generatedSessionTitle(value: string | null | undefined): string {
+  const firstLine = (value ?? "").split(/\r?\n/).find((line) => line.trim()) ?? "";
+  return cleanSessionTitle(firstLine.replace(/^["'`]+|["'`]+$/g, "")).slice(
+    0,
+    GENERATED_SESSION_TITLE_MAX_CHARS,
+  );
+}

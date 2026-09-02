@@ -13,6 +13,11 @@ import {
   scrapeEngineMetrics,
 } from "./engine-metrics-scrape";
 import { firstMetric, positiveOrUndefined } from "./metrics-peaks";
+import {
+  discoverContainerPublishingPort,
+  parseEngineLogMetrics,
+} from "./docker-engine-logs";
+import { runCommandAsyncEffect } from "../../core/command";
 
 const throughputSamples = new Map<
   string,
@@ -68,7 +73,25 @@ const buildCurrentMetrics = (
     };
 
     const scrape = yield* scrapeEngineMetrics(context.config.inference_port, 1500);
-    const engineActive = scrape.hasVllm || scrape.hasSglang || scrape.hasLlamacpp;
+    const logMetrics =
+      scrape.hasVllm || scrape.hasSglang
+        ? null
+        : yield* discoverContainerPublishingPort(context.config.inference_port).pipe(
+            Effect.flatMap((container) =>
+              container
+                ? runCommandAsyncEffect("docker", ["logs", "--tail", "80", container], {
+                    timeoutMs: 5_000,
+                    maxOutputBytes: 512 * 1024,
+                  }).pipe(
+                    Effect.map((result) =>
+                      parseEngineLogMetrics(`${result.stdout || ""}\n${result.stderr || ""}`),
+                    ),
+                  )
+                : Effect.succeed(null),
+            ),
+            Effect.catch(() => Effect.succeed(null)),
+          );
+    const engineActive = scrape.hasVllm || scrape.hasSglang || scrape.hasLlamacpp || Boolean(logMetrics);
 
     if (!current && !engineActive) {
       return {
@@ -94,25 +117,33 @@ const buildCurrentMetrics = (
     const usageTotals = usageAggregate?.totals;
     const promptTokensTotal = firstMetric(prometheus, names.promptTokens);
     const generationTokensTotal = firstMetric(prometheus, names.generationTokens);
+    const promptTokensForRate =
+      positiveOrUndefined(promptTokensTotal) ?? usageTotals?.prompt_tokens ?? 0;
+    const generationTokensForRate =
+      positiveOrUndefined(generationTokensTotal) ?? usageTotals?.completion_tokens ?? 0;
 
-    let promptThroughput = isSglang ? firstMetric(prometheus, names.promptThroughput) : 0;
-    let generationThroughput = isSglang ? firstMetric(prometheus, names.generationThroughput) : 0;
-    if (!isSglang) {
+    let promptThroughput = firstMetric(prometheus, names.promptThroughput);
+    let generationThroughput = firstMetric(prometheus, names.generationThroughput);
+    if (promptThroughput <= 0 && logMetrics) promptThroughput = logMetrics.promptThroughput;
+    if (generationThroughput <= 0 && logMetrics) {
+      generationThroughput = logMetrics.generationThroughput;
+    }
+    if (promptThroughput <= 0 && generationThroughput <= 0) {
       const nowMs = Date.now();
       const previous = throughputSamples.get(modelId);
       if (previous && nowMs - previous.ts >= MIN_RATE_INTERVAL_MS) {
         const elapsedSeconds = (nowMs - previous.ts) / 1000;
         promptThroughput = Math.max(
           0,
-          (promptTokensTotal - previous.promptTokens) / elapsedSeconds,
+          (promptTokensForRate - previous.promptTokens) / elapsedSeconds,
         );
         generationThroughput = Math.max(
           0,
-          (generationTokensTotal - previous.genTokens) / elapsedSeconds,
+          (generationTokensForRate - previous.genTokens) / elapsedSeconds,
         );
         throughputSamples.set(modelId, {
-          promptTokens: promptTokensTotal,
-          genTokens: generationTokensTotal,
+          promptTokens: promptTokensForRate,
+          genTokens: generationTokensForRate,
           ts: nowMs,
           promptTps: promptThroughput,
           genTps: generationThroughput,
@@ -122,8 +153,8 @@ const buildCurrentMetrics = (
         generationThroughput = previous.genTps;
       } else {
         throughputSamples.set(modelId, {
-          promptTokens: promptTokensTotal,
-          genTokens: generationTokensTotal,
+          promptTokens: promptTokensForRate,
+          genTokens: generationTokensForRate,
           ts: nowMs,
           promptTps: 0,
           genTps: 0,
@@ -141,9 +172,11 @@ const buildCurrentMetrics = (
       model_id: modelId,
       model_path: current?.model_path ?? null,
       served_model_name: current?.served_model_name ?? scrape.modelName ?? null,
-      running_requests: firstMetric(prometheus, names.runningRequests),
-      pending_requests: firstMetric(prometheus, names.pendingRequests),
-      kv_cache_usage: firstMetric(prometheus, names.kvCacheUsage),
+      running_requests:
+        firstMetric(prometheus, names.runningRequests) || logMetrics?.runningRequests || 0,
+      pending_requests:
+        firstMetric(prometheus, names.pendingRequests) || logMetrics?.pendingRequests || 0,
+      kv_cache_usage: firstMetric(prometheus, names.kvCacheUsage) || logMetrics?.kvCacheUsage || 0,
       prompt_tokens_total:
         positiveOrUndefined(promptTokensTotal) ?? positiveOrUndefined(usageTotals?.prompt_tokens),
       generation_tokens_total:

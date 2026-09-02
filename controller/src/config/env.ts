@@ -29,6 +29,11 @@ export interface Config {
   db_path: string;
   models_dir: string;
   strict_openai_models: boolean;
+  /** Fraction of the active model's max_model_len at which the passthrough
+   * proxy rejects further growth with a context_length_exceeded error so
+   * agent clients compact instead of driving the engine to the hard limit.
+   * 0 disables the guard. */
+  context_soft_limit_ratio: number;
   providers: ProviderConfig[];
 }
 
@@ -93,6 +98,7 @@ export const createConfig = (): Config => {
     LOCAL_STUDIO_DB_PATH: Schema.optional(Schema.String),
     LOCAL_STUDIO_MODELS_DIR: Schema.String,
     LOCAL_STUDIO_STRICT_OPENAI_MODELS: Schema.optional(Schema.String),
+    LOCAL_STUDIO_CONTEXT_SOFT_LIMIT_RATIO: Schema.optional(Schema.String),
   });
 
   const coercePositiveInteger = (
@@ -118,6 +124,16 @@ export const createConfig = (): Config => {
 
   const strictOpenAIModelsEnabled = parseBooleanFlag(parsed.LOCAL_STUDIO_STRICT_OPENAI_MODELS);
 
+  // 0 disables the context guard; anything unparsable or out of (0, 1) falls
+  // back to the default rather than silently guarding at a nonsense ceiling.
+  const parseSoftLimitRatio = (value: string | undefined): number => {
+    if (value === undefined || value.trim() === "") return 0.85;
+    const ratio = Number(value);
+    if (ratio === 0) return 0;
+    return Number.isFinite(ratio) && ratio > 0 && ratio < 1 ? ratio : 0.85;
+  };
+  const contextSoftLimitRatio = parseSoftLimitRatio(parsed.LOCAL_STUDIO_CONTEXT_SOFT_LIMIT_RATIO);
+
   // The db default follows the resolved data dir so overriding LOCAL_STUDIO_DATA_DIR
   // alone keeps the database inside it.
   const dataDirectory = resolve(parsed.LOCAL_STUDIO_DATA_DIR);
@@ -141,6 +157,7 @@ export const createConfig = (): Config => {
     db_path: databasePath,
     models_dir: resolve(parsed.LOCAL_STUDIO_MODELS_DIR),
     strict_openai_models: strictOpenAIModelsEnabled,
+    context_soft_limit_ratio: contextSoftLimitRatio,
     ...(allowedHosts ? { allowed_hosts: allowedHosts } : {}),
     cors_origins: parseCorsOrigins(parsed.LOCAL_STUDIO_CORS_ORIGINS),
     providers: [],

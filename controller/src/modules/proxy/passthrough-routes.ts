@@ -21,13 +21,17 @@ import {
   type InferenceUsageInput,
 } from "./inference-accounting";
 import { createUsageObserver, usageFromPayload, type ProxyDialect } from "./usage-observer";
+import { createContextGuard, type ContextLimits } from "./context-guard";
+import { normalizeResponsesBody } from "./responses-normalizer";
 
 /**
  * The one inference proxy: OpenAI chat completions, OpenAI Responses, and
  * Anthropic Messages, all served the same way. The engines this controller
  * launches speak all three dialects natively — vLLM and SGLang serve
  * /v1/responses and /v1/messages beside /v1/chat/completions — so the
- * controller's job is routing, auth, and recording, never translation.
+ * controller's job is routing, auth, and recording — never translation, with
+ * one exception: lax Responses-API item shapes are normalized to the strict
+ * schema vLLM validates against (see responses-normalizer.ts).
  *
  * The request body is forwarded verbatim except for the model field (resolved
  * against the recipe store so aliases reach the engine under its served model
@@ -78,6 +82,7 @@ const errorFrame = (message: string): Uint8Array =>
 
 export const registerPassthroughRoutes = defineRoutes((app, context) => {
   const warnNonRunningModel = createNonRunningModelWarner(context.logger);
+  const contextGuard = createContextGuard(context);
 
   const gateOnRunningModel = (
     matchedRecipe: Recipe,
@@ -112,6 +117,7 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
       provider: string;
     };
     requestStart: number;
+    extraHeaders?: Record<string, string>;
   }): Response => {
     const merged: InferenceUsageInput = {};
     let sawUsage = false;
@@ -138,8 +144,9 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
         return Stream.empty;
       }),
       Stream.ensuring(
-        Effect.suspend(() =>
-          sawUsage
+        Effect.suspend(() => {
+          if (sawUsage) contextGuard.observe(input.record, merged);
+          return sawUsage
             ? recordStreamingInferenceUsage(
                 { logger: context.logger, stores: context.stores },
                 {
@@ -158,8 +165,8 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
                   ),
                 ),
               )
-            : Effect.void,
-        ),
+            : Effect.void;
+        }),
       ),
     );
     // Chat clients idle through long generations behind proxies that time out
@@ -176,7 +183,7 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
         : upstream;
     return new Response(Stream.toReadableStream(stream), {
       status: input.upstream.status,
-      headers: buildSseHeaders(),
+      headers: buildSseHeaders(input.extraHeaders ?? {}),
     });
   };
 
@@ -240,6 +247,7 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
 
         const isStreaming = Boolean(parsed["stream"]);
         if (dialect === "chat") ensureStreamingUsageIncluded(parsed);
+        if (dialect === "responses") normalizeResponsesBody(parsed);
 
         const headers: Record<string, string> = { "Content-Type": "application/json", ...auth };
         for (const name of FORWARDED_HEADERS) {
@@ -254,6 +262,37 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
           session_id: sessionId,
           provider: providerRouting ? requestProvider : "local",
         };
+
+        // Context guard: refuse to grow a local session past the soft ceiling.
+        // The rejection is shaped as a context-overflow error so agent clients
+        // compact and retry instead of pushing the engine to its hard limit.
+        let contextLimits: ContextLimits | null = null;
+        if (matchedRecipe && record.provider === "local") {
+          contextLimits = yield* contextGuard.resolveLimits(matchedRecipe);
+          if (contextLimits) {
+            const rejection = contextGuard.check({
+              dialect,
+              sessionId,
+              model: record.model,
+              body: parsed,
+              limits: contextLimits,
+            });
+            if (rejection) {
+              context.logger.warn("Context guard rejected request", {
+                model: record.model,
+                session_id: sessionId,
+                source: sourceHeader,
+                soft_limit: contextLimits.softLimit,
+                window: contextLimits.window,
+              });
+              return ctx.json(rejection.body, {
+                status: rejection.status,
+                headers: contextGuard.headers(contextLimits),
+              });
+            }
+          }
+        }
+        const contextHeaders = contextLimits ? contextGuard.headers(contextLimits) : {};
 
         const fetched = yield* Effect.tryPromise({
           try: (signal) =>
@@ -296,6 +335,7 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
             clientSignal,
             record,
             requestStart,
+            extraHeaders: contextHeaders,
           });
         }
 
@@ -312,6 +352,7 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
               payload && typeof payload === "object" && !Array.isArray(payload)
                 ? usageFromPayload(dialect, payload as Record<string, unknown>)
                 : null;
+            if (usage) contextGuard.observe(record, usage);
             return recordNonStreamingInferenceUsage(
               { logger: context.logger, stores: context.stores },
               {
@@ -328,7 +369,7 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
         );
         return new Response(body, {
           status: upstream.status,
-          headers: { "Content-Type": contentType || "application/json" },
+          headers: { "Content-Type": contentType || "application/json", ...contextHeaders },
         });
       });
 
