@@ -105,23 +105,13 @@ export async function startAgentRuntime(
       PORT: String(port),
       LOCAL_STUDIO_DATA_DIR: DESKTOP_CONFIG.userDataDir,
       PI_CODING_AGENT_DIR: path.join(DESKTOP_CONFIG.userDataDir, "pi-agent"),
-      LOCAL_STUDIO_PROJECTS_FILE: path.join(DESKTOP_CONFIG.userDataDir, "projects.json"),
       LOCAL_STUDIO_RESOURCES_PATH: process.resourcesPath,
       LOCAL_STUDIO_AGENT_CWD: process.env.LOCAL_STUDIO_AGENT_CWD || app.getPath("home"),
       LOCAL_STUDIO_FRONTEND_BASE: options.frontendUrl,
-      // The desktop app is a single user browsing their own network: LAN and
-      // tailnet (CGNAT) URLs are the embedded browser's day job here, not an
-      // SSRF surface. Shared deployments leave this unset and stay strict.
-      LOCAL_STUDIO_BROWSER_ALLOW_PRIVATE:
-        process.env.LOCAL_STUDIO_BROWSER_ALLOW_PRIVATE || "1",
+      LOCAL_STUDIO_BROWSER_ALLOW_PRIVATE: process.env.LOCAL_STUDIO_BROWSER_ALLOW_PRIVATE || "1",
     },
   });
 
-  // The Google OAuth handlers moved into this child (#431) but secrets still
-  // live behind the Electron safeStorage vault, answered over process IPC.
-  // Without a listener here every vault call times out and Connect dies with
-  // "Secure OAuth storage is unavailable" — the Next child having its own
-  // listener does not help a request sent on this channel.
   registerOAuthVault(child, DESKTOP_CONFIG.userDataDir);
 
   child.stdout?.on("data", (chunk: Buffer | string) => {

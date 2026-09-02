@@ -24,7 +24,6 @@ import {
   shouldReloadAfterFrontendRestart,
 } from "./logic/frontend-restart";
 import { getUpdateState, initializeAutoUpdates, startUpdate } from "./logic/update-manager";
-import { addProject, listProjectsWithMeta, removeProject } from "./logic/projects-store";
 import { deployController } from "./logic/controller-deploy";
 import {
   getKittylitterPairingJson,
@@ -71,8 +70,6 @@ const RESTART_BACKOFF_WINDOW_MS = 60_000;
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Read the latest app state without control-flow narrowing so it can be
-// re-checked after an `await` (e.g. shutdown started during restart backoff).
 function isAppStopping(): boolean {
   return appState === "stopping";
 }
@@ -130,8 +127,6 @@ async function checkFrontendHealth(): Promise<void> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
   try {
-    // Any HTTP answer means the Node server is alive and serving; only a
-    // transport-level failure (process dead/hung) rejects and counts as unhealthy.
     await fetch(`${frontendServer.runtime.url}/api/desktop-health`, {
       redirect: "manual",
       signal: controller.signal,
@@ -208,10 +203,6 @@ async function restartFrontendServer(
       port,
       onExit: handleFrontendServerExit,
     });
-    // Shutdown may have begun during the fork. If so, shutdown() already cleared
-    // the health monitor and no-op'd the (mid-restart undefined) server stop —
-    // so tear this just-started server down instead of re-arming the monitor and
-    // resurrecting a server the app is trying to quit.
     if (isAppStopping()) {
       await stopFrontendServer(started).catch(() => undefined);
       return;
@@ -241,19 +232,13 @@ async function restartFrontendServer(
   }
 }
 
-// Resolve a renderer-supplied file reference to a real path inside the user's
-// home tree, or null. Assistant output cites files the way people write them —
-// repo-relative, "services/agent-runtime/src/foo.ts". Passing that straight to
-// realpath resolves it against the MAIN PROCESS cwd, which is the app bundle,
-// so it throws; try it as given, then against each known project root.
 function resolveHomeConfinedPath(target: unknown): string | null {
   if (typeof target !== "string" || !target.trim()) return null;
   const raw = target.trim();
   const candidates = [raw];
-  if (!path.isAbsolute(raw) && !raw.startsWith("~")) {
-    for (const project of listProjectsWithMeta()) {
-      if (project.path) candidates.push(path.join(project.path, raw));
-    }
+  const agentCwd = process.env.LOCAL_STUDIO_AGENT_CWD?.trim();
+  if (agentCwd && !path.isAbsolute(raw) && !raw.startsWith("~")) {
+    candidates.push(path.join(agentCwd, raw));
   }
   const home = realpathSync.native(app.getPath("home"));
   for (const candidate of candidates) {
@@ -263,8 +248,6 @@ function resolveHomeConfinedPath(target: unknown): string | null {
     } catch {
       continue;
     }
-    // Confined to the user's home tree, so a crafted markdown link cannot point
-    // the renderer at /etc or a mounted disk.
     const relative = path.relative(home, resolved);
     if (relative.startsWith("..") || path.isAbsolute(relative)) continue;
     return resolved;
@@ -288,9 +271,6 @@ function registerIpcHandlers(): void {
     return true;
   });
 
-  // Reveal a file the assistant referenced in the OS file manager. Confined to
-  // the user's home tree (the same default as the runtime's WORKSPACE_ROOTS) so
-  // a crafted markdown link cannot point the renderer at /etc or a mounted disk.
   ipcMain.handle("desktop:reveal-path", async (_, target: unknown) => {
     const resolved = resolveHomeConfinedPath(target);
     if (!resolved) return false;
@@ -298,8 +278,6 @@ function registerIpcHandlers(): void {
     return true;
   });
 
-  // Hand a file to its default application — the only way to view formats the
-  // Files panel cannot render (PDFs, archives, media). Same home confinement.
   ipcMain.handle("desktop:open-path", async (_, target: unknown) => {
     const resolved = resolveHomeConfinedPath(target);
     if (!resolved) return false;
@@ -326,14 +304,7 @@ function registerIpcHandlers(): void {
       ? await dialog.showOpenDialog(owner, { properties: ["openDirectory", "createDirectory"] })
       : await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });
     if (result.canceled) return null;
-    const selected = result.filePaths[0];
-    if (!selected) return null;
-    try {
-      return addProject(selected);
-    } catch (error) {
-      log.error(`Failed to add project from dialog: ${String(error)}`);
-      throw error;
-    }
+    return result.filePaths[0] ?? null;
   });
 
   ipcMain.handle(
@@ -349,23 +320,6 @@ function registerIpcHandlers(): void {
       });
     },
   );
-
-  ipcMain.handle("desktop:list-projects", async () => listProjectsWithMeta());
-
-  ipcMain.handle("desktop:add-project", async (_, directoryPath: string) => {
-    if (typeof directoryPath !== "string") {
-      throw new Error("directoryPath must be a string");
-    }
-    return addProject(directoryPath);
-  });
-
-  ipcMain.handle("desktop:remove-project", async (_, id: string) => {
-    if (typeof id !== "string") {
-      throw new Error("id must be a string");
-    }
-    removeProject(id);
-    return { ok: true } as const;
-  });
 
   ipcMain.handle("desktop:load-session-prefs", async () => {
     return readSessionPrefsFile();
@@ -467,7 +421,6 @@ function registerIpcHandlers(): void {
       mainWindow.focus();
       hideQuickPanel();
       resizeQuickPanelToHome();
-      // The thread now lives in the main window; next quick-panel open starts fresh.
       resetQuickPanel();
     },
   );
@@ -487,9 +440,6 @@ function registerQuickPanelHotkey(): void {
     return;
   }
   log.warn(`Failed to register quick panel hotkey: ${accelerator}`);
-  // A stored hotkey can become unregisterable (claimed by another app, or a
-  // stale/invalid accelerator). Fall back to the default so the panel keeps
-  // a working hotkey instead of silently having none.
   const fallback = DESKTOP_CONFIG.quickPanel.hotkey;
   if (accelerator !== fallback && globalShortcut.register(fallback, onQuickPanelHotkey)) {
     quickPanelHotkey = fallback;
@@ -524,9 +474,7 @@ function setQuickPanelHotkey(hotkey: unknown): { ok: boolean; hotkey: string; er
   if (quickPanelHotkey && quickPanelHotkey !== next) {
     try {
       globalShortcut.unregister(quickPanelHotkey);
-    } catch {
-      // best effort; unregisterAll on quit still cleans up
-    }
+    } catch {}
   }
   quickPanelHotkey = next;
   setStoredQuickPanelHotkey(next);
@@ -625,16 +573,12 @@ async function run(): Promise<void> {
     registerQuickPanelHotkey();
   } catch (error) {
     log.error(`Failed to bootstrap desktop app: ${String(error)}`);
-    // Surface the failure instead of vanishing from the dock with no feedback
-    // (port in use, unwritable userData, missing server.js, slow-start timeout).
     try {
       dialog.showErrorBox(
         "Local Studio failed to start",
         `${error instanceof Error ? error.message : String(error)}\n\nSee the app logs for details.`,
       );
-    } catch {
-      // dialog unavailable (very early failure) — the log above still records it.
-    }
+    } catch {}
     app.quit();
   }
 }

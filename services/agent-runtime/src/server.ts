@@ -2,7 +2,9 @@ import { serve } from "@hono/node-server";
 import { startAutomationScheduler } from "./automation-scheduler";
 import { createAgentRuntimeApp } from "./http/app";
 import { createSessionListWatcher } from "./session-list-watcher";
+import { initializeProjectsStore } from "./projects-store";
 
+await initializeProjectsStore();
 startAutomationScheduler();
 
 const { app } = createAgentRuntimeApp();

@@ -1,4 +1,5 @@
 import { existsSync, watch, type FSWatcher } from "node:fs";
+import path from "node:path";
 import { listProjectsFromStore, projectsStoreFilePath } from "./projects-store";
 import { notifySessionListChanged } from "./session-list-changed";
 import { sessionDirRootsForCwd } from "./sessions-store";
@@ -76,9 +77,13 @@ export function createSessionListWatcher(): SessionListWatcher {
       if (disposed) return;
       refresh();
       const storePath = projectsStoreFilePath();
-      if (existsSync(storePath)) {
+      if (existsSync(path.dirname(storePath))) {
         try {
-          const watcher = watch(storePath, () => refresh());
+          const watcher = watch(path.dirname(storePath), (_eventType, filename) => {
+            if (filename === null || filename.toString() === path.basename(storePath)) {
+              refresh();
+            }
+          });
           watcher.on("error", () => {
             if (projectsWatcher === watcher) projectsWatcher = null;
             closeWatcher(watcher);

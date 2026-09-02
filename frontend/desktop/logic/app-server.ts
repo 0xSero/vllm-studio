@@ -14,9 +14,6 @@ import {
   type AgentRuntimeHandle,
 } from "./agent-runtime-server";
 
-// The most recently forked embedded server. A single process-exit hook kills
-// whichever child is current — registering a fresh once("exit") per (re)start
-// leaked listeners on every frontend restart.
 let currentEmbeddedServer: ChildProcess | null = null;
 process.once("exit", () => {
   if (currentEmbeddedServer && !currentEmbeddedServer.killed) {
@@ -55,11 +52,6 @@ function embeddedServerPortPath(): string {
   return path.join(DESKTOP_CONFIG.userDataDir, "embedded-frontend.port");
 }
 
-/**
- * The embedded server's origin (http://127.0.0.1:<port>) is the storage key for
- * all renderer state (selected controller, API key, sessions). Persisting the
- * port keeps that origin stable across launches and restarts so state survives.
- */
 function readPersistedPort(): number | undefined {
   try {
     const raw = readFileSync(embeddedServerPortPath(), "utf8").trim();
@@ -74,19 +66,14 @@ function persistPort(port: number): void {
   try {
     mkdirSync(DESKTOP_CONFIG.userDataDir, { recursive: true });
     writeFileSync(embeddedServerPortPath(), String(port));
-  } catch {
-    // Non-fatal: a fresh port will be chosen next launch.
-  }
+  } catch {}
 }
 
 function writeEmbeddedServerPid(pid: number | undefined): void {
   try {
     mkdirSync(DESKTOP_CONFIG.userDataDir, { recursive: true });
     writeFileSync(embeddedServerPidPath(), String(pid ?? ""));
-  } catch {
-    // Non-fatal: stale-pid cleanup just won't find a file next launch. The
-    // server is already running; failing here would orphan it.
-  }
+  } catch {}
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -211,15 +198,7 @@ export async function startFrontendServer(
   const child = fork(serverScript, {
     cwd: serverRoot,
     stdio: "pipe",
-    // Electron's bundled Node/undici races IPv4/IPv6 with a 250ms per-attempt
-    // connect timeout. On hosts with broken IPv6 (or slow Cloudflare-fronted
-    // backends that need ~1s to connect), every outbound fetch from the embedded
-    // server aborts with ETIMEDOUT, surfacing as 500/502 from the proxy. Give the
-    // family-autoselection enough time to fall back to a working address.
     execArgv: ["--network-family-autoselection-attempt-timeout=2000"],
-    // Keep the embedded Next server attached to Electron. A detached child can
-    // survive a main-process exit with closed stdio pipes and spin while the
-    // desktop app itself is gone.
     detached: false,
     env: {
       ...process.env,
@@ -230,7 +209,6 @@ export async function startFrontendServer(
       NEXT_TELEMETRY_DISABLED: "1",
       LOCAL_STUDIO_DESKTOP: "1",
       LOCAL_STUDIO_DATA_DIR: DESKTOP_CONFIG.userDataDir,
-      LOCAL_STUDIO_PROJECTS_FILE: path.join(DESKTOP_CONFIG.userDataDir, "projects.json"),
       LOCAL_STUDIO_RESOURCES_PATH: process.resourcesPath,
       LOCAL_STUDIO_AGENT_CWD: process.env.LOCAL_STUDIO_AGENT_CWD || app.getPath("home"),
       LOCAL_STUDIO_AGENT_RUNTIME_URL: agentRuntime.url,
@@ -255,9 +233,7 @@ export async function startFrontendServer(
       if (readFileSync(embeddedServerPidPath(), "utf8") === String(child.pid ?? "")) {
         rmSync(embeddedServerPidPath(), { force: true });
       }
-    } catch {
-      // pid file already gone
-    }
+    } catch {}
     log.warn(`Embedded frontend exited code=${code ?? "null"} signal=${signal ?? "null"}`);
     options.onExit?.({ code, signal, pid: child.pid });
   });
