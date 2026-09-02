@@ -18,6 +18,7 @@ import {
   Smartphone,
 } from "@/ui/icon-registry";
 import { SettingsLayout, type SettingsSectionDef, type SettingsSectionId } from "./settings-ui";
+import type { SettingsNavGroup } from "./settings-section-nav";
 import type { CompatibilityReport, ConfigData } from "@/lib/types";
 import type { ApiConnectionSettings, ConnectionStatus } from "./types";
 import { ApiConnectionSection } from "./api-connection-section";
@@ -56,31 +57,49 @@ interface SettingsViewProps {
   onSaveSettings: () => void;
   onSystemSectionActive: () => void;
 }
-const sectionIcon = (Icon: LucideIcon) => <Icon className="h-3.5 w-3.5" />;
-// One settings surface (docs/cursor-restructure-plan.md): everything that is
-// not the workspace is a section here — Configure, Usage and the Integrations
-// tabs collapsed into this rail rather than holding their own pages.
+const sectionIcon = (Icon: LucideIcon) => <Icon className="h-4 w-4" strokeWidth={1.6} />;
 const SECTIONS: SettingsSectionDef[] = [
-  ["profile", "Profile & phone", "Your identity and phone pairing.", Smartphone],
+  ["profile", "Profile", "Your identity and phone pairing.", Smartphone],
   ["connection", "General", "Controller connections and API access.", Cable],
-  ["models-hub", "Model accounts", "Sign-in state and API keys for model companies.", Brain],
-  ["machines", "Machines", "Computers whose GPUs this workspace can run models on.", Monitor],
+  ["machines", "Machines", "GPUs and computers this workspace can run on.", Monitor],
   ["system", "System", "Engines, services, storage, and hardware.", Cpu],
   ["server", "Server & logs", "Controller health, logs, and API reference.", Server],
-  ["mcp", "Tools & MCP", "MCP servers a session can reach, and which models may call them.", Plug],
-  ["extend", "Skills & plugins", "Skills the agent can use and plugins the runtime loads.", GraduationCap],
-  ["accounts", "Accounts", "Google services a session can read from.", KeyRound],
-  ["usage", "Usage", "Tokens, requests, latency, and errors over time.", Activity],
+  ["setup", "Setup", "Local prerequisites and first-run checks.", ServerCog],
+  ["models-hub", "Model accounts", "API keys and sign-in for model providers.", Brain],
+  ["mcp", "Tools & MCP", "MCP servers and which models may call them.", Plug],
+  ["extend", "Skills & plugins", "Agent skills and runtime plugins.", GraduationCap],
+  ["accounts", "Google accounts", "Google services a session can read from.", KeyRound],
+  ["usage", "Usage", "Tokens, requests, latency, and errors.", Activity],
   ["appearance", "Appearance", "Theme, typography, and interface scale.", Paintbrush],
   ["terminal", "Shortcuts", "Quick panel and terminal key bindings.", Keyboard],
   ["archive", "Archived chats", "Sessions hidden from the task list.", Archive],
-  ["setup", "Setup", "Local prerequisites and first-run checks.", ServerCog],
 ].map(([id, label, description, Icon]) => ({
   id: id as SettingsSectionId,
   label: label as string,
   description: description as string,
   icon: sectionIcon(Icon as LucideIcon),
 }));
+
+const sectionById = (id: SettingsSectionId) => SECTIONS.find((section) => section.id === id)!;
+
+const SECTION_GROUPS: SettingsNavGroup[] = [
+  {
+    label: "Workspace",
+    items: ["connection", "machines", "system", "server", "setup"].map(sectionById),
+  },
+  {
+    label: "Integrations",
+    items: ["models-hub", "mcp", "extend", "accounts"].map(sectionById),
+  },
+  {
+    label: "Personal",
+    items: ["profile", "appearance", "terminal", "archive"].map(sectionById),
+  },
+  {
+    label: "Insights",
+    items: ["usage"].map(sectionById),
+  },
+];
 const isSectionId = (value: string): value is SettingsSectionId =>
   SECTIONS.some((section) => section.id === value);
 const normalizeSectionId = (value: string): SettingsSectionId | null => {
@@ -144,7 +163,7 @@ export function SettingsView({
   }, [error, hasConfigData, isInitialLoading, loading]);
   return (
     <SettingsLayout
-      sections={SECTIONS}
+      sectionGroups={SECTION_GROUPS}
       activeSection={activeSection}
       title="Settings"
       status={layoutStatus}

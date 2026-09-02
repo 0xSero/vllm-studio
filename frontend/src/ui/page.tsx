@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { forwardRef, type ReactNode } from "react";
 import { RefreshCw } from "@/ui/icon-registry";
 import { cx } from "./utils";
 import { Tabs, type TabItem } from "./tabs";
@@ -12,18 +12,21 @@ export type SectionNavItem<Id extends string = string> = {
   icon: ReactNode;
 };
 
-export function AppPage({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <main
-      className={cx(
-        "min-h-full overflow-y-auto overflow-x-hidden bg-(--ui-bg) text-(--ui-fg)",
-        className,
-      )}
-    >
-      {children}
-    </main>
-  );
-}
+export const AppPage = forwardRef<HTMLElement, { children: ReactNode; className?: string }>(
+  function AppPage({ children, className }, ref) {
+    return (
+      <main
+        ref={ref}
+        className={cx(
+          "min-h-full overflow-y-auto overflow-x-hidden bg-(--ui-bg) text-(--ui-fg) [scrollbar-gutter:stable]",
+          className,
+        )}
+      >
+        {children}
+      </main>
+    );
+  },
+);
 
 export type PageWidth = "sm" | "md" | "lg" | "xl";
 
@@ -141,6 +144,7 @@ export function TabbedPage<T extends string = string>({
   description,
   actions,
   width = "sm",
+  compact = false,
   tabs,
   activeTab,
   onSelectTab,
@@ -151,6 +155,8 @@ export function TabbedPage<T extends string = string>({
   description?: ReactNode;
   actions?: ReactNode;
   width?: PageWidth;
+  /** Tighter header rhythm for data-heavy pages like Models. */
+  compact?: boolean;
   tabs: TabItem<T>[];
   activeTab: T;
   onSelectTab: (tab: T) => void;
@@ -159,12 +165,15 @@ export function TabbedPage<T extends string = string>({
 }) {
   return (
     <AppPage>
-      <PageContainer width={width} className={cx("pt-6 sm:pt-8", className)}>
+      <PageContainer
+        width={width}
+        className={cx(compact ? "pt-4 sm:pt-5" : "pt-6 sm:pt-8", className)}
+      >
         <PageHeader title={title} description={description} actions={actions} />
-        <div className="mt-7 border-b border-(--ui-separator)">
+        <div className={cx(compact ? "mt-4" : "mt-7", "border-b border-(--ui-separator)")}>
           <Tabs items={tabs} activeTab={activeTab} onSelectTab={onSelectTab} className="-mb-px" />
         </div>
-        <div className="mt-8">{children}</div>
+        <div className={compact ? "mt-5" : "mt-8"}>{children}</div>
       </PageContainer>
     </AppPage>
   );
