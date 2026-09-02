@@ -28,12 +28,10 @@ export {
   PinOffIcon,
   Folder,
   FolderOpen,
-  StatusIcon,
-  ModelsIcon,
+  IntegrationsIcon,
   ConfigureIcon,
+  UsageIcon,
   NewTaskIcon,
-  SettingsIcon,
-  SearchIcon,
   BellIcon,
 } from "./icons";
 

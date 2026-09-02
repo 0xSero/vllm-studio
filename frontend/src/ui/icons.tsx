@@ -194,37 +194,14 @@ export function PinOffIcon(props: IconProps) {
  * its label.
  * ---------------------------------------------------------------------- */
 
-/** Status — a beacon: ring plus centre dot, read as "system is reporting". */
-export function StatusIcon(props: IconProps) {
+export function IntegrationsIcon(props: IconProps) {
   return (
     <Svg {...props}>
-      <path
-        fillRule="evenodd"
-        d="M8 1.4a6.6 6.6 0 1 0 0 13.2A6.6 6.6 0 0 0 8 1.4Zm0 1.8a4.8 4.8 0 1 1 0 9.6 4.8 4.8 0 0 1 0-9.6Zm0 2.7a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2Z"
-      />
+      <path d="M4.7 1h1.9v3.4H4.7V1Zm4.7 0h1.9v3.4H9.4V1Z" />
+      <path d="M2.6 5.2h10.8v3.2l-2.8 2.8H9.1V15H6.9v-3.8H5.4L2.6 8.4V5.2Z" />
     </Svg>
   );
 }
-
-/** Models — stacked layers: many weights, one shelf. */
-export function ModelsIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M8 1.2 14.8 5 8 8.8 1.2 5 8 1.2Z" />
-      <path d="M1.2 7.6 3.1 6.55 8 9.3l4.9-2.75L14.8 7.6 8 11.4 1.2 7.6Z" />
-      <path d="M1.2 10.6 3.1 9.55 8 12.3l4.9-2.75 1.9 1.05L8 14.4l-6.8-3.8Z" />
-    </Svg>
-  );
-}
-
-/** Automations — a bolt: something fires without you. */
-
-/**
- * Integrations — a plug: the row is about handing a session a capability it
- * did not arrive with. Deliberately not lucide's stroked `Plug`, which is a
- * hairline outline beside five solid silhouettes and reads as a hole in the
- * rail at 13px.
- */
 
 /** Configure — sliders, not a cog: these are settings you tune, not machinery. */
 export function ConfigureIcon(props: IconProps) {
@@ -237,6 +214,13 @@ export function ConfigureIcon(props: IconProps) {
 }
 
 /** Usage — a bar chart, the shape the page itself draws. */
+export function UsageIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M2 9h3v5H2V9Zm4.5-3.5h3V14h-3V5.5ZM11 2.5h3V14h-3V2.5Z" />
+    </Svg>
+  );
+}
 
 /** New task — a solid tile with the plus knocked out of it. */
 export function NewTaskIcon(props: IconProps) {
@@ -245,30 +229,6 @@ export function NewTaskIcon(props: IconProps) {
       <path
         fillRule="evenodd"
         d="M2 2.5h12v11H2v-11Zm5.25 2.75V7.5H5V9h2.25v2.25h1.5V9H11V7.5H8.75V5.25h-1.5Z"
-      />
-    </Svg>
-  );
-}
-
-/** Settings — a cog, the one place the machinery metaphor is still right. */
-export function SettingsIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path
-        fillRule="evenodd"
-        d="m6.9 1 -.3 1.9-1.3.75L3.5 3l-1.6 2.8 1.5 1.2v1.5l-1.5 1.2L3.5 12.5l1.8-.65 1.3.75.3 1.9h3.2l.3-1.9 1.3-.75 1.8.65 1.6-2.8-1.5-1.2V7l1.5-1.2L13.5 3l-1.8.65-1.3-.75L10.1 1H6.9Zm1.1 4.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8Z"
-      />
-    </Svg>
-  );
-}
-
-/** Search — solid lens, matched to the nav's weight rather than lucide's hairline. */
-export function SearchIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path
-        fillRule="evenodd"
-        d="M7 1.4a5.6 5.6 0 1 0 3.35 10.09l3.08 3.08 1.13-1.13-3.08-3.08A5.6 5.6 0 0 0 7 1.4Zm0 1.8a3.8 3.8 0 1 1 0 7.6 3.8 3.8 0 0 1 0-7.6Z"
       />
     </Svg>
   );
