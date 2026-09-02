@@ -106,6 +106,7 @@ import {
   handleSessionsDelete,
   handleSessionsList,
 } from "./session-handlers";
+import { handleGenerateSessionTitle } from "./title-handlers";
 
 // The runtime binds loopback only, so every legitimate request carries a
 // loopback Host. A browser tricked by DNS rebinding reaches the socket with
@@ -150,6 +151,9 @@ export function createAgentRuntimeApp() {
   app.get("/api/agent/sessions/all", (c) => handleAllSessions(c.req.raw));
   app.get("/api/agent/sessions/:id", (c) => handleSessionGet(c.req.raw, c.req.param("id")));
   app.patch("/api/agent/sessions/:id", (c) => handleSessionPatch(c.req.raw, c.req.param("id")));
+  app.post("/api/agent/sessions/:id/generate-title", (c) =>
+    handleGenerateSessionTitle(c.req.raw, c.req.param("id")),
+  );
   app.get("/api/agent/automations", () => handleAutomationsList());
   app.post("/api/agent/automations", (c) => handleAutomationCreate(c.req.raw));
   app.patch("/api/agent/automations/:id", (c) =>

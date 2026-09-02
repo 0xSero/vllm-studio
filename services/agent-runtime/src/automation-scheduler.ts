@@ -1,9 +1,10 @@
 import {
-  getAutomation,
+  claimDueAutomation,
   listAutomations,
   nextRunAt,
   patchAutomation,
   recordAutomationRun,
+  withAutomationRunLock,
   type Automation,
 } from "./automations-store";
 import { getGlobalSingleton } from "./instances";
@@ -146,64 +147,61 @@ function runSummary(note: string, text: string): string {
   return text ? `${note}\n\n${text}` : note;
 }
 
-export async function runAutomationNow(id: string): Promise<Automation | null> {
+export async function runAutomationNow(
+  id: string,
+  opts: { requireDue?: boolean } = {},
+): Promise<Automation | null> {
   const scheduler = state();
-  const automation = await getAutomation(id);
-  if (!automation || scheduler.running.has(id)) return null;
+  if (scheduler.running.has(id)) return null;
   scheduler.running.add(id);
-  const target = resolveRunTarget(automation);
   try {
-    const { session } = piRuntimeManager.getSessionForLookup(
-      target.runtimeSessionId,
-      target.piSessionId,
-    );
-    const modelId = await runnableModelId(automation.modelId);
-    // Options are left undefined on an adopted session so it keeps the tools
-    // the chat pane started it with; a session this run opens gets the plain
-    // automation runtime.
-    await session.ensureStarted(
-      modelId,
-      target.cwd,
-      target.piSessionId,
-      target.adopted ? undefined : {},
-    );
-    await session.prompt(runPrompt(automation, target.piSessionId !== null), () => {});
-    const status = session.status;
-    const piSessionId = status.piSessionId;
-    const result = piSessionId
-      ? lastAssistantResult(status.cwd, piSessionId)
-      : { text: "", error: null };
-    const error = automationRunError(status.lastError ?? result.error, result.text);
-    const projectId =
-      listProjectsFromStore().find((project) => project.path === status.cwd)?.id ?? null;
-    if (!target.adopted) void session.stop().catch(() => undefined);
-    return await recordAutomationRun(
-      id,
-      {
-        at: new Date().toISOString(),
-        piSessionId,
-        cwd: status.cwd,
-        projectId,
-        outcome: error ? "error" : "ok",
-        summary: runSummary(target.note, result.text),
-        ...(error ? { error } : {}),
-      },
-      nextRunAt(automation.schedule, new Date()).toISOString(),
-    );
-  } catch (error) {
-    return await recordAutomationRun(
-      id,
-      {
-        at: new Date().toISOString(),
-        piSessionId: null,
-        cwd: automation.cwd,
-        projectId: null,
-        outcome: "error",
-        summary: "",
-        error: error instanceof Error ? error.message : "Automation run failed",
-      },
-      nextRunAt(automation.schedule, new Date()).toISOString(),
-    );
+    return await withAutomationRunLock(id, async () => {
+      const claimed = await claimDueAutomation(id, { requireDue: opts.requireDue === true });
+      if (!claimed) return null;
+      const target = resolveRunTarget(claimed);
+      try {
+        const { session } = piRuntimeManager.getSessionForLookup(
+          target.runtimeSessionId,
+          target.piSessionId,
+        );
+        const modelId = await runnableModelId(claimed.modelId);
+        await session.ensureStarted(
+          modelId,
+          target.cwd,
+          target.piSessionId,
+          target.adopted ? undefined : {},
+        );
+        await session.prompt(runPrompt(claimed, target.piSessionId !== null), () => {});
+        const status = session.status;
+        const piSessionId = status.piSessionId;
+        const result = piSessionId
+          ? lastAssistantResult(status.cwd, piSessionId)
+          : { text: "", error: null };
+        const error = automationRunError(status.lastError ?? result.error, result.text);
+        const projectId =
+          listProjectsFromStore().find((project) => project.path === status.cwd)?.id ?? null;
+        if (!target.adopted) void session.stop().catch(() => undefined);
+        return await recordAutomationRun(id, {
+          at: new Date().toISOString(),
+          piSessionId,
+          cwd: status.cwd,
+          projectId,
+          outcome: error ? "error" : "ok",
+          summary: runSummary(target.note, result.text),
+          ...(error ? { error } : {}),
+        });
+      } catch (error) {
+        return await recordAutomationRun(id, {
+          at: new Date().toISOString(),
+          piSessionId: null,
+          cwd: claimed.cwd,
+          projectId: null,
+          outcome: "error",
+          summary: "",
+          error: error instanceof Error ? error.message : "Automation run failed",
+        });
+      }
+    });
   } finally {
     scheduler.running.delete(id);
   }
@@ -226,7 +224,7 @@ async function tick(): Promise<void> {
       continue;
     }
     if (new Date(automation.nextRunAt) <= now) {
-      void runAutomationNow(automation.id);
+      void runAutomationNow(automation.id, { requireDue: true });
     }
   }
 }
