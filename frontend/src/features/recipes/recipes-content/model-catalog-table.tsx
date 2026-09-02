@@ -12,7 +12,7 @@ import {
   EndCell,
   GroupRow,
   HeadCell,
-  LeadCell,
+  IdentityCell,
   NumCell,
   RowAction,
   StatusText,
@@ -179,6 +179,7 @@ function ModelRowCells({
 }) {
   const brand = modelBrand(model);
   const marker = model.role ?? (model.multimodal ? "vision" : model.active_params_b ? "MoE" : null);
+  const subtitle = [brand.label, marker].filter(Boolean).join(" · ");
 
   return (
     <DataRow
@@ -186,8 +187,8 @@ function ModelRowCells({
       ariaLabel={`Open ${model.name} details`}
       dimmed={best.fit.state === "over"}
     >
-      <LeadCell>
-        <div className="flex min-w-0 items-center gap-2.5">
+      <IdentityCell
+        leading={
           <ModelLogo
             modelId={brand.repo}
             author={brand.owner}
@@ -195,15 +196,11 @@ function ModelRowCells({
             size="sm"
             className="rounded-md"
           />
-          <span className="min-w-0 truncate text-[length:var(--fs-md)] font-medium text-(--fg)">
-            {model.name}
-          </span>
-          <span className="shrink-0 text-[length:var(--fs-sm)] text-(--dim)/70">{brand.label}</span>
-          {marker ? (
-            <span className="shrink-0 text-[length:var(--fs-xs)] text-(--dim)/60">{marker}</span>
-          ) : null}
-        </div>
-      </LeadCell>
+        }
+        label={model.name}
+        description={subtitle || brand.repo}
+        title={model.name}
+      />
 
       <IndexCell model={model} />
 
@@ -247,9 +244,9 @@ function PoolCell({ fit, poolGb }: { fit: Fit; poolGb: number }) {
 function IndexCell({ model }: { model: ModelIndexModel }) {
   if (model.intelligence_index == null) {
     return (
-      <td className="px-3 py-2 text-right">
-        <span className="text-[length:var(--fs-sm)] text-(--dim)/50">not rated</span>
-      </td>
+      <NumCell>
+        <span className="text-(--dim)/50">not rated</span>
+      </NumCell>
     );
   }
   return (

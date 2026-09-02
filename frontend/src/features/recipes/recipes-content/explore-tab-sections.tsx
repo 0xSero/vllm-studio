@@ -3,6 +3,7 @@ import { ArrowDownUp, Check, Filter, Gauge, RefreshCw } from "@/ui/icon-registry
 import { ModelButton, SearchInput } from "@/ui";
 import { POPOVER_MENU_CLASS } from "@/ui/popover";
 import { GroupRow, HeadCell, TableFrame, TableNotice, TableSkeleton } from "./catalog-table-shell";
+import { CatalogContextLine } from "./catalog-context-line";
 import type { HuggingFaceModel } from "@/lib/types";
 import { ExploreModelRow } from "./explore-model-row";
 import { estimateRoughWeightsGb } from "./explore-model-stats";
@@ -66,35 +67,33 @@ export function ExploreControls({
 
   return (
     <div className="space-y-3">
-      {/* Same header band as Recommended and Your servers: the machine's memory
-          budget stated once, up front, because every fit badge below is
-          measured against it. */}
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-(--ui-separator) pb-3">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="text-[length:var(--fs-md)] text-(--ui-fg)">
-            {poolGb > 0 ? `${Math.round(poolGb)} GB pool` : "No GPUs detected"}
-          </span>
-          <span className="truncate text-[length:var(--fs-sm)] text-(--ui-muted)">
-            {poolGb > 0
-              ? `${hardwareProfile.label} — weights must stay under ${Math.round(poolGb * FIT_BUDGET_RATIO)} GB (${Math.round(FIT_BUDGET_RATIO * 100)}%)`
-              : "Set a memory pool to check whether a model fits this machine."}
-          </span>
-        </div>
-        <div className="flex shrink-0 items-center gap-3">
-          <span className="text-[length:var(--fs-xs)] tabular-nums text-(--ui-muted)/70">
-            {groupsCount ? `${groupsCount} results` : loading ? "searching…" : "no results"}
-          </span>
-          <ToolbarButton onClick={refresh} disabled={loading} title="Search again">
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          </ToolbarButton>
-        </div>
-      </div>
+      <CatalogContextLine
+        primary={poolGb > 0 ? `${Math.round(poolGb)} GB pool` : "No GPUs detected"}
+        secondary={
+          poolGb > 0
+            ? `${hardwareProfile.label} — under ${Math.round(poolGb * FIT_BUDGET_RATIO)} GB (${Math.round(FIT_BUDGET_RATIO * 100)}%)`
+            : "Set a memory pool to check fit."
+        }
+        meta={groupsCount ? `${groupsCount} results` : loading ? "searching…" : "no results"}
+        actions={
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={loading}
+            title="Search again"
+            aria-label="Search again"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--ui-muted) transition-colors hover:bg-(--ui-hover) hover:text-(--ui-fg) disabled:opacity-45"
+          >
+            <RefreshCw className={loading ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
+          </button>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <SearchInput
           value={search}
           onChange={setSearch}
-          placeholder="Search Hugging Face — model family, organization, or full repo id"
+          placeholder="Search Hugging Face…"
           className="min-w-56 flex-1"
         />
         <ListPopover
@@ -124,31 +123,6 @@ export function ExploreControls({
         />
       </div>
     </div>
-  );
-}
-
-function ToolbarButton({
-  children,
-  onClick,
-  disabled,
-  title,
-}: {
-  children: ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  title?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      aria-label={title}
-      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-(--ui-border) text-(--ui-muted) transition-colors hover:bg-(--ui-hover) hover:text-(--ui-fg) disabled:pointer-events-none disabled:opacity-45"
-    >
-      {children}
-    </button>
   );
 }
 
