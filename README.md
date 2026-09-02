@@ -187,6 +187,21 @@ canonicalized and must be under `WORKSPACE_ROOTS`, a platform-path-delimited
 list that defaults to the current user's home directory. Add mounted locations
 explicitly, for example `WORKSPACE_ROOTS="$HOME:/Volumes/Projects"` on macOS.
 
+Project registrations live in `<LOCAL_STUDIO_DATA_DIR>/projects.json`, defaulting
+to `~/.local-studio/projects.json` outside Electron. The agent runtime owns all
+project writes; the native directory chooser only returns a path to the same HTTP
+API used by manual entry. Session transcripts stay in their existing locations.
+
+At startup, the runtime merges trusted legacy `data/agentfs/projects.json` files
+from its working directory and up to seven ancestors. `LOCAL_STUDIO_PROJECTS_FILE`
+is accepted only as an additional legacy migration source; use
+`LOCAL_STUDIO_DATA_DIR` to choose the active registry location. Legacy files must
+belong to the current user, have no group/world write permission, and have trusted
+parent directories. Migration retains existing IDs where possible, keeps
+owner-only backups beside the canonical registry, and records completed imports
+so removed projects stay removed. Reads use atomic snapshots; mutations acquire
+an asynchronous cross-process lock with bounded retries.
+
 For private mobile access, first configure the exact Serve hostname:
 
 ```bash
