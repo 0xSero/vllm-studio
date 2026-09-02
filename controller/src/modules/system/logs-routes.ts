@@ -22,6 +22,13 @@ import {
 } from "../../core/log-files";
 import { redactLogLine } from "../../core/log-redaction";
 import { runCommandAsyncEffect } from "../../core/command";
+import type { ProcessInfo } from "../models/types";
+import {
+  containerFromExtraArguments,
+  containerFromInstanceReference,
+  discoverContainerPublishingPort,
+  llmInstanceName,
+} from "./docker-engine-logs";
 
 const LogLimitQuerySchema = Schema.Struct({
   limit: Schema.optionalKey(
@@ -96,20 +103,53 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
     return safe ? Effect.succeed(safe) : Effect.fail(badRequest("Invalid log session id"));
   };
 
+  const engineSessionId = (
+    current: ProcessInfo | null,
+    recipeId: string | null | undefined,
+  ): string | null => {
+    const fromName = current?.served_model_name
+      ? sanitizeLogSessionId(current.served_model_name)
+      : "";
+    if (fromName) return fromName;
+    if (recipeId) {
+      const fromRecipe = sanitizeLogSessionId(recipeId);
+      if (fromRecipe) return fromRecipe;
+    }
+    return current ? "engine" : null;
+  };
+
+  const sessionMatchesEngine = (
+    sessionId: string,
+    current: ProcessInfo | null,
+    recipeId: string | null | undefined,
+  ): boolean => {
+    if (!current) return false;
+    const engineId = engineSessionId(current, recipeId);
+    if (engineId && sessionId === engineId) return true;
+    if (recipeId && sessionId === recipeId) return true;
+    return false;
+  };
+
+  const liveEngineContainer = (): Effect.Effect<string | null, unknown> =>
+    Effect.gen(function* () {
+      const record = context.compute.store.read(llmInstanceName());
+      const fromRecord = containerFromInstanceReference(record?.ref ?? null);
+      if (fromRecord) return fromRecord;
+      return yield* discoverContainerPublishingPort(context.config.inference_port);
+    });
+
   const getDockerContainerForSession = (sessionId: string): Effect.Effect<string | null, unknown> =>
-    context.stores.recipeStore.get(sessionId).pipe(
-      Effect.map((recipe) => {
-        const extraArguments = recipe?.extra_args ?? {};
-        const value =
-          extraArguments["docker-container"] ??
-          extraArguments["docker_container"] ??
-          extraArguments["container-name"] ??
-          extraArguments["container_name"];
-        if (typeof value !== "string") return null;
-        const container = value.trim();
-        return /^[a-zA-Z0-9_.-]+$/.test(container) ? container : null;
-      }),
-    );
+    Effect.gen(function* () {
+      const recipe = yield* context.stores.recipeStore.get(sessionId);
+      const fromRecipe = containerFromExtraArguments(recipe?.extra_args);
+      if (fromRecipe) return fromRecipe;
+      const current = yield* context.compute.model.findInferenceProcess();
+      const record = context.compute.store.read(llmInstanceName());
+      if (!sessionMatchesEngine(sessionId, current, record?.recipeId ?? recipe?.id ?? null)) {
+        return null;
+      }
+      return yield* liveEngineContainer();
+    });
 
   const readDockerLogLines = (container: string, limit: number): Effect.Effect<string[]> =>
     runCommandAsyncEffect("docker", ["logs", "--tail", String(limit), container], {
@@ -247,6 +287,25 @@ export const registerLogsRoutes = defineRoutes((app, context) => {
           }
         }
         if (controllerSession) sessions.push(controllerSession);
+        if (current) {
+          const record = context.compute.store.read(llmInstanceName());
+          const engineId = engineSessionId(current, record?.recipeId ?? null);
+          if (engineId && !sessions.some((session) => session.id === engineId)) {
+            const recipe = record?.recipeId
+              ? yield* context.stores.recipeStore.get(record.recipeId)
+              : null;
+            sessions.unshift({
+              id: engineId,
+              recipe_id: recipe?.id ?? record?.recipeId ?? engineId,
+              recipe_name: recipe?.name ?? null,
+              model_path: current.model_path ?? recipe?.model_path ?? null,
+              model: current.served_model_name ?? recipe?.served_model_name ?? engineId,
+              backend: current.backend === "unknown" ? (recipe?.backend ?? null) : current.backend,
+              created_at: record?.startedAt ?? new Date().toISOString(),
+              status: "running",
+            });
+          }
+        }
         return ctx.json({ sessions });
       }),
     ),
