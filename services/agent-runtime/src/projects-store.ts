@@ -1,63 +1,121 @@
-import path from "node:path";
-import { existsSync, realpathSync, statSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
+import path from "node:path";
 import { CHATS_PROJECT_ID } from "../../../shared/agent/project-ids";
-// Shared implementation lives under frontend/desktop/ because the desktop
-// build (tsc rootDir = desktop/) cannot import from frontend/src/.
-import {
-  createProjectsStore,
-  type ProjectEntry,
-} from "../../../frontend/desktop/logic/projects-store-core";
+import type { ProjectEntry, ProjectRecord, ProjectsDocument } from "../../../shared/agent/projects";
+import { resolveProjectsFilePath } from "./data-dir";
+import { ownerFileExists, restrictOwnerFile } from "./owner-files";
+import { projectPathKey, readProjectsDocument, writeProjectsDocument } from "./projects-document";
+import { withProjectsFileTransaction } from "./projects-lock";
+import { migrateLegacyProjectsRegistry } from "./projects-migration";
 
-export type { ProjectEntry };
+export type { ProjectEntry, ProjectRecord } from "../../../shared/agent/projects";
 
-const PROJECTS_RELATIVE = path.join("data", "agentfs", "projects.json");
-
-// The projects store is canonical for the frontend, which proxies
-// /api/agent/projects here. It must resolve to the same
-// <repo>/data/agentfs/projects.json regardless of which subdirectory the
-// process runs from — the frontend standalone server, `bun run src/…`, and the
-// agent-runtime systemd unit (cwd services/agent-runtime) all differ. Anchoring
-// on process.cwd()/.. only worked for the frontend and silently gave the
-// runtime an empty store (services/data/…). Walk up to the repo root instead.
-function projectsFilePath(): string {
-  if (process.env.LOCAL_STUDIO_PROJECTS_FILE) return process.env.LOCAL_STUDIO_PROJECTS_FILE;
-  let dir = process.cwd();
-  let firstRepoRoot: string | null = null;
-  for (let depth = 0; depth < 8; depth += 1) {
-    const candidate = path.join(dir, PROJECTS_RELATIVE);
-    // Prefer an existing store; otherwise remember the topmost repo root so a
-    // fresh install writes it at the repo, not a nested package dir.
-    if (existsSync(candidate)) return candidate;
-    if (firstRepoRoot === null && existsSync(path.join(dir, ".git"))) firstRepoRoot = dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  const root = firstRepoRoot ?? path.resolve(process.cwd(), "..");
-  return path.join(root, PROJECTS_RELATIVE);
-}
-
-const store = createProjectsStore({
-  projectsFilePath,
-  chatsProjectId: CHATS_PROJECT_ID,
-  emptyPathMessage: "path is required",
-});
+const initializations = new Map<string, Promise<void>>();
 
 export function projectsStoreFilePath(): string {
-  return projectsFilePath();
+  return resolveProjectsFilePath();
+}
+
+export function initializeProjectsStore(): Promise<void> {
+  const filePath = projectsStoreFilePath();
+  const existing = initializations.get(filePath);
+  if (existing) return existing;
+  const pending = migrateLegacyProjectsRegistry().catch((error: unknown) => {
+    initializations.delete(filePath);
+    throw error;
+  });
+  initializations.set(filePath, pending);
+  return pending;
+}
+
+async function withProjectsDocument<T>(
+  callback: (document: ProjectsDocument, filePath: string) => T,
+): Promise<T> {
+  await initializeProjectsStore();
+  const filePath = projectsStoreFilePath();
+  return withProjectsFileTransaction(filePath, () => {
+    if (ownerFileExists(filePath)) restrictOwnerFile(filePath);
+    return callback(readProjectsDocument(filePath), filePath);
+  });
+}
+
+function isExistingDirectory(candidate: string): boolean {
+  try {
+    return statSync(candidate).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function gitBranchFor(projectPath: string): string | null {
+  try {
+    const head =
+      readFileSync(path.join(projectPath, ".git", "HEAD"), "utf8")
+        .trim()
+        .split("\n")[0] ?? "";
+    const match = /^ref:\s*refs\/heads\/(.+)$/.exec(head);
+    if (match?.[1]) return match[1];
+    return /^[0-9a-f]{7,40}$/i.test(head) ? head.slice(0, 7) : null;
+  } catch {
+    return null;
+  }
+}
+
+function withMeta(record: ProjectRecord): ProjectEntry {
+  return {
+    ...record,
+    exists: isExistingDirectory(record.path),
+    hasGit: existsSync(path.join(record.path, ".git")),
+    branch: gitBranchFor(record.path),
+  };
+}
+
+function chatsProject(): ProjectEntry {
+  const chatsPath = path.join(homedir(), ".local-studio");
+  mkdirSync(chatsPath, { recursive: true, mode: 0o700 });
+  return withMeta({
+    id: CHATS_PROJECT_ID,
+    name: "Chats",
+    path: chatsPath,
+    addedAt: "1970-01-01T00:00:00.000Z",
+  });
 }
 
 export function listProjectsFromStore(): ProjectEntry[] {
-  return store.listProjects();
+  const projects = readProjectsDocument(projectsStoreFilePath()).projects.filter(
+    (project) => project.id !== CHATS_PROJECT_ID,
+  );
+  return [chatsProject(), ...projects.map(withMeta)];
 }
 
-export function addProjectToStore(rawPath: string): ProjectEntry {
-  return store.addProject(resolveAllowedWorkspace(rawPath));
+export async function addProjectToStore(rawPath: string): Promise<ProjectEntry> {
+  const projectPath = resolveAllowedWorkspace(rawPath);
+  const record = await withProjectsDocument((document, filePath) => {
+    const pathKey = projectPathKey(projectPath);
+    const existing = document.projects.find((project) => projectPathKey(project.path) === pathKey);
+    if (existing) return existing;
+    const record: ProjectRecord = {
+      id: `proj-${randomUUID()}`,
+      name: path.basename(projectPath) || projectPath,
+      path: projectPath,
+      addedAt: new Date().toISOString(),
+    };
+    writeProjectsDocument(filePath, { projects: [record, ...document.projects] });
+    return record;
+  });
+  return withMeta(record);
 }
 
-export function removeProjectFromStore(id: string): void {
-  store.removeProject(id);
+export async function removeProjectFromStore(id: string): Promise<void> {
+  if (id === CHATS_PROJECT_ID) return;
+  await withProjectsDocument((document, filePath) => {
+    if (!document.projects.some((project) => project.id === id)) return;
+    writeProjectsDocument(filePath, {
+      projects: document.projects.filter((project) => project.id !== id),
+    });
+  });
 }
 
 function canonicalDirectory(rawPath: string): string {
@@ -80,7 +138,10 @@ export function resolveAllowedWorkspace(rawPath: string): string {
   const candidate = canonicalDirectory(trimmed);
   const allowed = allowedWorkspaceRoots().some((root) => {
     const relative = path.relative(root, candidate);
-    return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+    return (
+      relative === "" ||
+      (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
+    );
   });
   if (!allowed) throw new Error("Path is outside WORKSPACE_ROOTS");
   return candidate;

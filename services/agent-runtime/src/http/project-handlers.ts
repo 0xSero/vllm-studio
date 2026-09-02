@@ -1,11 +1,8 @@
-//
-// HTTP surface for the projects list (the directories pinned in the sidebar).
-// Moved verbatim from the Next route handlers so a remote runtime's project
-// list is the one the UI shows.
-//
-
+import { Schema } from "effect";
+import { ProjectAddSchema } from "../../../../shared/agent/projects";
 import {
   addProjectToStore,
+  initializeProjectsStore,
   listProjectsFromStore,
   removeProjectFromStore,
   type ProjectEntry,
@@ -14,6 +11,7 @@ import { errorMessage, jsonError } from "./helpers";
 
 export async function handleProjectsList(): Promise<Response> {
   try {
+    await initializeProjectsStore();
     const projects = listProjectsFromStore();
     return Response.json({ projects });
   } catch (error) {
@@ -22,18 +20,23 @@ export async function handleProjectsList(): Promise<Response> {
 }
 
 export async function handleProjectAdd(request: Request): Promise<Response> {
-  let body: { path?: unknown };
+  let body: unknown;
   try {
-    body = (await request.json()) as { path?: unknown };
+    body = await request.json();
   } catch {
     return jsonError("Invalid JSON body");
   }
-  const directoryPath = typeof body.path === "string" ? body.path.trim() : "";
+  let directoryPath: string;
+  try {
+    directoryPath = Schema.decodeUnknownSync(ProjectAddSchema)(body).path.trim();
+  } catch {
+    return jsonError("path is required");
+  }
   if (!directoryPath) {
     return jsonError("path is required");
   }
   try {
-    const project: ProjectEntry = addProjectToStore(directoryPath);
+    const project: ProjectEntry = await addProjectToStore(directoryPath);
     return Response.json({ project });
   } catch (error) {
     return jsonError(errorMessage(error, "Failed to add project"));
@@ -46,7 +49,7 @@ export async function handleProjectRemove(request: Request): Promise<Response> {
     return jsonError("id is required");
   }
   try {
-    removeProjectFromStore(id);
+    await removeProjectFromStore(id);
     return Response.json({ ok: true });
   } catch (error) {
     return jsonError(errorMessage(error, "Failed to remove project"), 500);

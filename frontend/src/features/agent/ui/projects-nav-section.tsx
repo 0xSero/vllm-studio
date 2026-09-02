@@ -55,11 +55,13 @@ export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view
         setDirectoryModalOpen(true);
         return;
       }
-      if (result.project) upsertProject(result.project);
+      if (!result.path) return;
+      upsertProject(await addProjectFromPath(result.path));
+      void refreshProjects();
     } catch (error) {
       setAddError(error instanceof Error ? error.message : "Failed to add project");
     }
-  }, [upsertProject]);
+  }, [refreshProjects, upsertProject]);
   useProjectsNavAddProjectEffect(handleAddProject);
 
   const handleDirectoryPicked = async (directoryPath: string) => {
@@ -114,7 +116,6 @@ export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view
 
   if (view === "recents") return <RecentSessionsSection />;
 
-  // Pinned projects render under Pinned instead, so they are not listed twice.
   const unpinnedProjects = projects.filter(
     (project) => !isChatsProject(project) && !pinned.pinnedProjectIds.has(project.id),
   );
