@@ -106,6 +106,10 @@ function selectTargetLogSession(
   const running = sorted.filter((session) => session.status === "running");
 
   if (process) {
+    const usable = (list: LogSessionSummary[]) =>
+      list.filter((session) => session.id !== "controller");
+    const runningUsable = usable(running);
+    const sortedUsable = usable(sorted);
     const matches = (session: LogSessionSummary) => {
       if (session.model_path && process.model_path) {
         return session.model_path === process.model_path;
@@ -115,14 +119,23 @@ function selectTargetLogSession(
       }
       return session.backend === process.backend;
     };
-    const byProcess = running.find(matches) || sorted.find(matches);
+    const byProcess = runningUsable.find(matches) || sortedUsable.find(matches);
     if (byProcess) return byProcess;
 
     const servedModel = process.served_model_name?.toLowerCase();
     if (servedModel) {
-      const byName = sorted.find((session) => session.id.toLowerCase().includes(servedModel));
+      const byName = sortedUsable.find((session) => session.id.toLowerCase().includes(servedModel));
       if (byName) return byName;
     }
+
+    if (runningRecipe) {
+      const byRecipe =
+        runningUsable.find((session) => session.recipe_id === runningRecipe.id) ||
+        sortedUsable.find((session) => session.recipe_id === runningRecipe.id);
+      if (byRecipe) return byRecipe;
+    }
+
+    return runningUsable[0] || sortedUsable[0] || running[0] || sorted[0] || null;
   }
 
   if (runningRecipe) {

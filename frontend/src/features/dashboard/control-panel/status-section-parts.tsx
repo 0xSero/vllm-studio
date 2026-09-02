@@ -7,7 +7,7 @@ import { useModelLifecycle } from "@/features/dashboard/use-model-lifecycle";
 import type { ProcessInfo, RecipeWithStatus, RuntimePlatformKind } from "@/lib/types";
 import { cx } from "@/ui/utils";
 import { ModelsDropdown } from "./status-section-models-dropdown";
-import type { MetricColumnView } from "./status-section-view";
+import type { MetricColumnView, MetricGroupView } from "./status-section-view";
 
 export function StatusHeader({
   backend,
@@ -220,57 +220,56 @@ function HeaderStopButton({ running }: { running: boolean }) {
 }
 
 /**
- * The metric strip, in two bands.
+ * The metric strip: three captioned clusters of live numbers.
  *
- * Band one is what the engine is doing this second; band two is capacity and
- * lifetime. They are the same grid at two type sizes rather than two different
- * components, so the columns line up down the page — and mixing live and
- * cumulative numbers in one undifferentiated block is exactly the confusion the
- * split is there to prevent.
+ * There used to be a second band of lifetime counters under this. Those
+ * numbers (uptime hours, total tokens, energy per Mtok) never changed a
+ * decision on this page and drifted across engine restarts, so the strip is
+ * now only what the engine is doing this second, organised as the three
+ * questions an operator actually asks: how fast, how loaded, how full.
  */
 export function StatusMetricStrip({
-  live,
-  steady,
+  groups,
   detached,
 }: {
-  live: MetricColumnView[];
-  steady: MetricColumnView[];
+  groups: MetricGroupView[];
   detached?: boolean;
 }) {
   return (
     <div
       className={cx(
-        "mt-4 border-b border-(--separator) pb-4 sm:mt-5 sm:pb-5",
+        "mt-4 grid grid-cols-1 gap-x-8 gap-y-4 border-b border-(--separator) pb-4 sm:grid-cols-3 sm:mt-5 sm:pb-5",
         detached ? "opacity-45" : "",
       )}
     >
-      <dl className="grid w-full grid-cols-3 gap-x-4 gap-y-3 sm:gap-x-8 sm:gap-y-4 lg:grid-cols-6">
-        {live.map((metric) => (
-          <MetricCell key={metric.label} metric={metric} />
-        ))}
-      </dl>
-      <dl className="mt-3 grid w-full grid-cols-2 gap-x-4 gap-y-3 border-t border-(--separator)/55 pt-3 sm:grid-cols-3 sm:gap-x-8 lg:grid-cols-6">
-        {steady.map((metric) => (
-          <MetricCell key={metric.label} metric={metric} quiet />
-        ))}
-      </dl>
+      {groups.map((group, index) => (
+        <div
+          key={group.label}
+          className={cx(
+            "min-w-0",
+            index > 0 ? "sm:border-l sm:border-(--separator)/55 sm:pl-8" : "",
+          )}
+        >
+          <div className="mb-2 text-[length:var(--fs-2xs)] font-medium uppercase tracking-[0.08em] text-(--dim)/60">
+            {group.label}
+          </div>
+          <dl className="grid grid-cols-2 gap-x-4">
+            {group.metrics.map((metric) => (
+              <MetricCell key={metric.label} metric={metric} />
+            ))}
+          </dl>
+        </div>
+      ))}
     </div>
   );
 }
 
-function MetricCell({ metric, quiet }: { metric: MetricColumnView; quiet?: boolean }) {
+function MetricCell({ metric }: { metric: MetricColumnView }) {
   const { label, value, unit, detail, detailTitle, fill } = metric;
   return (
     <div className="min-w-0 overflow-hidden">
       <dt className="truncate text-[length:var(--fs-xs)] text-(--dim)">{label}</dt>
-      <dd
-        className={cx(
-          "mt-1 flex min-w-0 items-baseline gap-1 font-semibold leading-none tabular-nums text-(--fg)",
-          quiet
-            ? "text-[length:var(--fs-md)] sm:text-[length:var(--fs-lg)]"
-            : "text-[length:var(--fs-lg)] sm:text-[length:var(--fs-2xl)]",
-        )}
-      >
+      <dd className="mt-1 flex min-w-0 items-baseline gap-1 font-semibold leading-none tabular-nums text-(--fg) text-[length:var(--fs-lg)] sm:text-[length:var(--fs-2xl)]">
         <span className="truncate" title={value ?? undefined}>
           {value ?? "—"}
         </span>

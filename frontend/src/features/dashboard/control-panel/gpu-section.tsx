@@ -162,6 +162,9 @@ function GpuTable({
   onSort: (key: SortKey) => () => void;
 }) {
   const groups = groupByName ? groupGpusByName(gpus) : [{ name: null, gpus }];
+  // "25% of pool" on every row of a homogeneous rig is the same number four
+  // times; the share is only worth a line when the cards differ.
+  const mixedCapacities = new Set(gpus.map((gpu) => Math.round(gpuMemoryTotal(gpu)))).size > 1;
   return (
     <TableFrame minWidthClass="min-w-[38rem]">
       <thead>
@@ -188,7 +191,12 @@ function GpuTable({
       </thead>
       <tbody>
         {groups.map((group) => (
-          <GpuGroup key={group.name ?? "all"} name={group.name} gpus={group.gpus} pool={capacity} />
+          <GpuGroup
+            key={group.name ?? "all"}
+            name={group.name}
+            gpus={group.gpus}
+            pool={mixedCapacities ? capacity : 0}
+          />
         ))}
       </tbody>
     </TableFrame>
@@ -233,10 +241,6 @@ function gpuCells(gpu: GPU) {
     powerText: powerReadable
       ? `${Math.round(power)}${powerLimit > 0 ? `/${Math.round(powerLimit)}` : ""} W`
       : "—",
-    powerSub:
-      powerReadable && powerLimit > 0
-        ? `${Math.round((power / powerLimit) * 100)}% of cap`
-        : undefined,
     stateText: utilReadable ? (busy ? "busy" : "idle") : "unreported",
     stateTone: busy ? ("ok" as const) : ("dim" as const),
   };
@@ -249,15 +253,15 @@ function GpuRow({ gpu, pool }: { gpu: GPU; pool: number }) {
 
   return (
     <DataRow>
+      {/* Just the index: the card model is stated once, in the section header
+          (or the group row on a mixed rig), not repeated down every row. */}
       <LeadCell>
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="shrink-0 font-mono text-[length:var(--fs-sm)] tabular-nums text-(--fg)">
-            G{label}
-          </span>
-          <span className="truncate text-[length:var(--fs-xs)] text-(--dim)/70" title={gpu.name}>
-            {gpu.name.replace(/^NVIDIA\s+/, "")}
-          </span>
-        </div>
+        <span
+          className="font-mono text-[length:var(--fs-sm)] tabular-nums text-(--fg)"
+          title={gpu.name}
+        >
+          G{label}
+        </span>
       </LeadCell>
       {/* The share is of this device's own capacity, not of the pool: a bar that
           ranked cards against each other would say nothing about whether any one
@@ -272,7 +276,7 @@ function GpuRow({ gpu, pool }: { gpu: GPU; pool: number }) {
       </BarCell>
       <NumCell>{cells.utilText}</NumCell>
       <NumCell>{cells.tempText}</NumCell>
-      <NumCell sub={cells.powerSub}>{cells.powerText}</NumCell>
+      <NumCell>{cells.powerText}</NumCell>
       <EndCell>
         <div className="flex items-center justify-end gap-2">
           <StatusText tone={cells.stateTone}>{cells.stateText}</StatusText>
