@@ -187,6 +187,7 @@ export type SessionSubagentLink = {
 export type SessionListMetadata = SessionArchiveState & {
   parentSessionId: string | null;
   subagentName: string | null;
+  title: string | null;
 };
 
 export function readSessionListMetadata(): (sessionId: string) => SessionListMetadata {
@@ -198,6 +199,7 @@ export function readSessionListMetadata(): (sessionId: string) => SessionListMet
       archivedAt: metadata?.archived === true ? (metadata.archivedAt ?? null) : null,
       parentSessionId: metadata?.parentSessionId ?? null,
       subagentName: metadata?.subagentName ?? null,
+      title: typeof metadata?.title === "string" ? metadata.title : null,
     };
   };
 }
@@ -262,6 +264,23 @@ export function listSubagentChildren(parentSessionId: string): StoredSubagentChi
       task: metadata.subagentTask ?? null,
       updatedAt: metadata.updatedAt ?? null,
     }));
+}
+
+export async function setSessionTitle(sessionId: string, title: string): Promise<string | null> {
+  const id = sessionId.trim();
+  const nextTitle = title.trim();
+  if (!id || !nextTitle) return null;
+  return withStoreLock(() => {
+    const store = readStore();
+    const current = store.sessions[id] ?? {};
+    store.sessions[id] = {
+      ...current,
+      title: nextTitle,
+      updatedAt: new Date().toISOString(),
+    };
+    writeStore(store);
+    return nextTitle;
+  });
 }
 
 export function listArchivedSessionMetadata(): ArchivedSessionMetadata[] {

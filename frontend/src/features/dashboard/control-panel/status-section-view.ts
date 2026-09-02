@@ -1,5 +1,5 @@
 import type { GPU, Metrics, ProcessInfo, RecipeWithStatus, RuntimePlatformKind } from "@/lib/types";
-import { formatCompactTokens, toGBFromMB } from "@/lib/formatters";
+import { toGBFromMB } from "@/lib/formatters";
 
 export type MetricSampleInput = {
   key: string;
@@ -7,10 +7,6 @@ export type MetricSampleInput = {
   generationPeak: number;
   prefill: number;
   prefillPeak: number;
-  ttft: number;
-  ttftPeak: number;
-  requests: number;
-  requestPeak: number;
   active: boolean;
 };
 
@@ -23,8 +19,8 @@ export type MetricSampleInput = {
  * compare" for all of them, or the cell should not be on the strip at all.
  *
  * `fill` (0–1) opts a cell into the hairline meter: only meaningful for values
- * that are a share of a stated cap, which is why VRAM, power and KV cache carry
- * one and throughput does not.
+ * that are a share of a stated cap, which is why VRAM and KV cache carry one
+ * and throughput does not.
  */
 export type MetricColumnView = {
   label: string;
@@ -35,36 +31,34 @@ export type MetricColumnView = {
   fill?: number;
 };
 
-type PeakKind = "generation" | "prefill" | "ttft";
-type PeakTier = "session" | "bestSession" | "all";
-
-const PEAK_FIELDS: Record<PeakKind, Record<PeakTier, readonly (keyof Metrics)[]>> = {
-  generation: {
-    session: [
-      "session_peak_generation_tps",
-      "session_peak_generation_throughput",
-      "session_peak_generation",
-    ],
-    bestSession: ["best_session_generation_tps", "session_peak_generation_tps"],
-    all: ["peak_generation_tps"],
-  },
-  prefill: {
-    session: ["session_peak_prefill_tps", "session_peak_prompt_throughput", "session_peak_prefill"],
-    bestSession: ["best_session_prefill_tps", "session_peak_prefill_tps"],
-    all: ["peak_prefill_tps"],
-  },
-  ttft: {
-    session: ["session_peak_best_ttft_ms", "session_peak_ttft_ms"],
-    bestSession: ["best_session_ttft_ms", "session_peak_best_ttft_ms"],
-    all: ["peak_ttft_ms"],
-  },
+/**
+ * A labelled cluster of two cells. The strip reads as three questions —
+ * how fast is it, how loaded is it, how full is it — and the group caption
+ * names the question so the reader does not have to reconstruct it from six
+ * unrelated-looking columns.
+ */
+export type MetricGroupView = {
+  label: string;
+  metrics: MetricColumnView[];
 };
 
-const PEAK_DISPLAY: Record<PeakKind, { digits: number; suffix: string; label: string }> = {
-  generation: { digits: 1, suffix: "", label: "max" },
-  prefill: { digits: 1, suffix: "", label: "max" },
-  ttft: { digits: 0, suffix: " ms", label: "best" },
-};
+/**
+ * Session peaks only. The strip used to fall back through best-session and
+ * all-time figures when the session peak was missing — which silently mixed
+ * numbers from different runs into one "max" and made the peaks impossible to
+ * trust. A peak the current session did not produce is not shown.
+ */
+const SESSION_PEAK_FIELDS = {
+  generation: [
+    "session_peak_generation_tps",
+    "session_peak_generation_throughput",
+    "session_peak_generation",
+  ],
+  prefill: ["session_peak_prefill_tps", "session_peak_prompt_throughput", "session_peak_prefill"],
+  ttft: ["session_peak_best_ttft_ms", "session_peak_ttft_ms"],
+} as const satisfies Record<string, readonly (keyof Metrics)[]>;
+
+type PeakKind = keyof typeof SESSION_PEAK_FIELDS;
 
 type StatusSectionViewInput = {
   currentProcess: ProcessInfo | null;
@@ -90,20 +84,15 @@ export function resolveStatusSectionView({
     displayPlatformKind: platformKind ?? null,
     displayPort: inferencePort || currentProcess?.port || undefined,
     isRunning,
-    liveMetrics: liveMetricViews(metrics, perf),
-    steadyMetrics: steadyMetricViews(metrics, perf),
+    metricGroups: metricGroupViews(metrics, perf),
     modelName: resolveModelName(currentProcess, currentRecipe),
     pid: currentProcess?.pid,
     sampleInput: {
       key: resolveModelSampleKey(currentProcess, currentRecipe),
       generation: perf.genTps ?? 0,
-      generationPeak: peakFor(metrics, "generation") ?? perf.genTps ?? 0,
+      generationPeak: sessionPeak(metrics, "generation") ?? perf.genTps ?? 0,
       prefill: perf.prefillTps ?? 0,
-      prefillPeak: peakFor(metrics, "prefill") ?? perf.prefillTps ?? 0,
-      ttft: perf.ttftMs ?? 0,
-      ttftPeak: peakFor(metrics, "ttft") ?? perf.ttftMs ?? 0,
-      requests: perf.sessions,
-      requestPeak: perf.peakReq || perf.sessions,
+      prefillPeak: sessionPeak(metrics, "prefill") ?? perf.prefillTps ?? 0,
       active: isRunning,
     },
   };
@@ -143,8 +132,6 @@ function resolvePerformanceMetrics(metrics: Metrics | null, gpus: GPU[]) {
     kvCachePeak: asPercent(metrics?.session_peak_kv_cache_usage),
     totalMemUsed: firstPositive(gpuTotals.memUsed, metrics?.vram_used_gb),
     vramCapacity: firstPositive(gpuTotals.memCapacity, metrics?.vram_capacity_gb),
-    totalPower: firstPositive(gpuTotals.power, metrics?.current_power_watts),
-    powerLimit: firstPositive(gpuTotals.powerLimit, metrics?.power_limit_watts),
   };
 }
 
@@ -153,162 +140,113 @@ function resolveGpuTotals(gpus: GPU[]) {
     (totals, gpu) => ({
       memCapacity: totals.memCapacity + gpuMemoryTotal(gpu),
       memUsed: totals.memUsed + gpuMemoryUsed(gpu),
-      power: totals.power + (gpu.power_draw || 0),
-      powerLimit: totals.powerLimit + (gpu.power_limit || 0),
     }),
-    { memCapacity: 0, memUsed: 0, power: 0, powerLimit: 0 },
+    { memCapacity: 0, memUsed: 0 },
   );
 }
 
 type Perf = ReturnType<typeof resolvePerformanceMetrics>;
 
 /**
- * Row one: what the engine is doing right now.
+ * Three labelled clusters: speed, load, memory.
  *
- * The three shares (requests, VRAM, power) used to be rendered as `409/512G`
- * composites. A composite cannot be scanned down a column of big tabular
- * figures — the eye has to parse a separator before it can compare — so the
- * numerator is the value and the ratio moved to the sub-line, where it belongs.
+ * Decode and prefill are *aggregate* engine throughput — under concurrency
+ * they rise with batch size while each caller's stream slows down. The decode
+ * sub-line therefore switches to a per-request figure whenever more than one
+ * request is running, because "70 tok/s" means something different at one
+ * request than at eight and the strip should say which one it is showing.
  */
-function liveMetricViews(metrics: Metrics | null, perf: Perf): MetricColumnView[] {
+function metricGroupViews(metrics: Metrics | null, perf: Perf): MetricGroupView[] {
   const vramShare = share(perf.totalMemUsed, perf.vramCapacity);
-  const powerShare = share(perf.totalPower, perf.powerLimit);
   return [
     {
-      label: "Decode",
-      value: metricValue(perf.genTps, 1),
-      unit: "tok/s",
-      ...peakDetailFor(metrics, "generation"),
+      label: "Throughput",
+      metrics: [
+        {
+          label: "Decode",
+          value: metricValue(perf.genTps, 1),
+          unit: "tok/s",
+          ...decodeDetail(metrics, perf),
+        },
+        {
+          label: "Prefill",
+          value: metricValue(perf.prefillTps, 1),
+          unit: "tok/s",
+          ...sessionPeakDetail(metrics, "prefill", "max", 1, ""),
+        },
+      ],
     },
     {
-      label: "TTFT",
-      value: metricValue(perf.ttftMs, 0),
-      unit: "ms",
-      ...peakDetailFor(metrics, "ttft"),
+      label: "Load",
+      metrics: [
+        {
+          label: "Requests",
+          value: String(perf.sessions),
+          unit: "live",
+          detail: requestsDetail(perf),
+          detailTitle:
+            "Requests the engine is decoding right now, the session peak, and any admitted but unscheduled requests",
+        },
+        {
+          label: "TTFT avg",
+          value: metricValue(perf.ttftMs, 0),
+          unit: "ms",
+          ...sessionPeakDetail(metrics, "ttft", "best", 0, " ms"),
+        },
+      ],
     },
     {
-      label: "Prefill",
-      value: metricValue(perf.prefillTps, 1),
-      unit: "t/s",
-      ...peakDetailFor(metrics, "prefill"),
-    },
-    {
-      label: "Requests",
-      value: String(perf.sessions),
-      unit: "live",
-      detail: perf.peakReq > 0 ? `peak ${perf.peakReq}` : "peak —",
-      detailTitle: "Requests the engine is decoding right now, and the peak this session",
-    },
-    {
-      label: "VRAM",
-      value: positiveMetricValue(perf.totalMemUsed, 0),
-      unit: "GB",
-      detail: capDetail(vramShare, perf.vramCapacity, "GB"),
-      detailTitle: "GPU memory in use across every visible device",
-      fill: vramShare ?? undefined,
-    },
-    {
-      label: "Power",
-      value: positiveMetricValue(perf.totalPower, 0),
-      unit: "W",
-      detail: capDetail(powerShare, perf.powerLimit, "W cap"),
-      detailTitle: "Board power draw against the enforced limit",
-      fill: powerShare ?? undefined,
+      label: "Memory",
+      metrics: [
+        {
+          label: "VRAM",
+          value: positiveMetricValue(perf.totalMemUsed, 0),
+          unit: "GB",
+          detail: capDetail(vramShare, perf.vramCapacity, "GB"),
+          detailTitle: "GPU memory in use across every visible device",
+          fill: vramShare ?? undefined,
+        },
+        {
+          label: "KV cache",
+          value: perf.kvCache != null ? perf.kvCache.toFixed(0) : null,
+          unit: "%",
+          detail: perf.kvCachePeak != null ? `peak ${perf.kvCachePeak.toFixed(0)}%` : "peak —",
+          detailTitle: "Share of paged KV blocks allocated; sustained highs precede preemption",
+          fill: perf.kvCache != null ? clamp01(perf.kvCache / 100) : undefined,
+        },
+      ],
     },
   ];
 }
 
 /**
- * Row two: the numbers that predict a stall, plus the lifetime counters.
- *
- * KV-cache utilisation and queue depth are the two figures a vLLM operator
- * watches before throughput moves — throughput drops *after* the cache fills
- * and the queue backs up, so a dashboard that only shows tok/s reports the
- * problem one poll late. Both were already on the wire and thrown away.
+ * At one request the interesting comparison is the session max; at several it
+ * is what each caller is actually getting.
  */
-function steadyMetricViews(metrics: Metrics | null, perf: Perf): MetricColumnView[] {
-  return [
-    kvCacheView(perf),
-    queueView(perf.pending),
-    {
-      label: "Uptime",
-      value: fixed(firstPositive(metrics?.lifetime_uptime_hours), 1),
-      unit: "h",
-      detail: "lifetime",
-      detailTitle: "Hours this controller has had an engine running, across sessions",
-    },
-    tokensView(metrics),
-    {
-      label: "Served",
-      value: compact(
-        firstPositive(metrics?.lifetime_requests, metrics?.total_requests, metrics?.requests_total),
-      ),
-      unit: "reqs",
-      detail: "since first launch",
-      detailTitle: "Total requests completed",
-    },
-    {
-      label: "Energy",
-      value: fixed(firstPositive(metrics?.kwh_per_million_tokens), 2),
-      unit: "kWh/Mtok",
-      detail: energyDetail(metrics),
-      detailTitle: "Measured board energy per million tokens — the cost-per-token of this rig",
-    },
-  ];
+function decodeDetail(
+  metrics: Metrics | null,
+  perf: Perf,
+): { detail?: string; detailTitle?: string } {
+  if (perf.sessions > 1 && perf.genTps != null) {
+    const perReq = perf.genTps / perf.sessions;
+    return {
+      detail: `~${perReq.toFixed(1)}/req × ${perf.sessions}`,
+      detailTitle: `Aggregate across ${perf.sessions} concurrent requests — each stream is decoding at roughly ${perReq.toFixed(1)} tok/s`,
+    };
+  }
+  return sessionPeakDetail(metrics, "generation", "max", 1, "");
 }
 
-function kvCacheView(perf: Perf): MetricColumnView {
-  return {
-    label: "KV cache",
-    value: fixed(perf.kvCache, 0),
-    unit: "%",
-    detail: perf.kvCachePeak != null ? `peak ${perf.kvCachePeak.toFixed(0)}%` : "peak —",
-    detailTitle: "Share of paged KV blocks allocated; sustained highs precede preemption",
-    fill: perf.kvCache != null ? clamp01(perf.kvCache / 100) : undefined,
-  };
+function requestsDetail(perf: Perf): string {
+  const peak = perf.peakReq > 0 ? `peak ${perf.peakReq}` : "peak —";
+  return perf.pending > 0 ? `${peak} · ${perf.pending} queued` : peak;
 }
 
-function queueView(pending: number): MetricColumnView {
-  return {
-    label: "Queue",
-    value: String(pending),
-    unit: "waiting",
-    detail: pending > 0 ? "not yet scheduled" : "nothing waiting",
-    detailTitle: "Requests admitted but not yet running",
-  };
-}
-
-function tokensView(metrics: Metrics | null): MetricColumnView {
-  const prompt = metrics?.lifetime_prompt_tokens ?? metrics?.prompt_tokens_total ?? 0;
-  const output = metrics?.lifetime_completion_tokens ?? metrics?.generation_tokens_total ?? 0;
-  return {
-    label: "Tokens",
-    value: compact(
-      firstPositive(metrics?.lifetime_tokens, metrics?.total_tokens, metrics?.tokens_total),
-    ),
-    unit: "total",
-    detail:
-      prompt > 0 || output > 0
-        ? `${formatCompactTokens(prompt)} in · ${formatCompactTokens(output)} out`
-        : undefined,
-    detailTitle: "Prompt and completion tokens counted across every session",
-  };
-}
-
-function energyDetail(metrics: Metrics | null): string | undefined {
-  const kwh = firstPositive(metrics?.lifetime_energy_kwh);
-  return kwh != null ? `${kwh.toFixed(1)} kWh used` : undefined;
-}
-
-function fixed(value: number | null, digits: number): string | null {
-  return value != null ? value.toFixed(digits) : null;
-}
-
-function compact(value: number | null): string | null {
-  return value != null ? formatCompactTokens(value) : null;
-}
-
-function capDetail(shareValue: number | null, cap: number | null, unit: string): string | undefined {
+function capDetail(
+  shareValue: number | null,
+  cap: number | null,
+  unit: string,
+): string | undefined {
   if (shareValue === null || cap === null) return undefined;
   return `${Math.round(shareValue * 100)}% of ${cap.toFixed(0)} ${unit}`;
 }
@@ -333,64 +271,29 @@ function readField(metrics: Metrics | null, field: keyof Metrics): number | null
   return typeof value === "number" ? value : null;
 }
 
-function peakAtTier(metrics: Metrics | null, kind: PeakKind, tier: PeakTier): number | null {
-  return firstPositive(...PEAK_FIELDS[kind][tier].map((f) => readField(metrics, f)));
+function sessionPeak(metrics: Metrics | null, kind: PeakKind): number | null {
+  return firstPositive(...SESSION_PEAK_FIELDS[kind].map((f) => readField(metrics, f)));
 }
 
-function peakFor(metrics: Metrics | null, kind: PeakKind): number | null {
-  return firstPositive(
-    peakAtTier(metrics, kind, "session"),
-    peakAtTier(metrics, kind, "bestSession"),
-    peakAtTier(metrics, kind, "all"),
-  );
-}
-
-function peakDetailFor(metrics: Metrics | null, kind: PeakKind) {
-  const { digits, suffix, label } = PEAK_DISPLAY[kind];
-  return speedMaxDetail({
-    session: peakAtTier(metrics, kind, "session"),
-    bestSession: peakAtTier(metrics, kind, "bestSession"),
-    all: peakAtTier(metrics, kind, "all"),
-    digits,
-    suffix,
-    label,
-  });
+function sessionPeakDetail(
+  metrics: Metrics | null,
+  kind: PeakKind,
+  label: string,
+  digits: number,
+  suffix: string,
+): { detail?: string; detailTitle?: string } {
+  const text = positiveMetricValue(sessionPeak(metrics, kind), digits);
+  if (!text) return {};
+  return {
+    detail: `${label} ${text}${suffix}`,
+    detailTitle: `current session ${label}: ${text}${suffix}`,
+  };
 }
 
 function metricValue(value: number | null, digits: number): string | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? value.toFixed(digits)
     : (0).toFixed(digits);
-}
-
-function speedMaxDetail({
-  session,
-  bestSession,
-  all,
-  digits,
-  suffix = "",
-  label = "max",
-}: {
-  session: number | null;
-  bestSession: number | null;
-  all: number | null;
-  digits: number;
-  suffix?: string;
-  label?: string;
-}): { detail?: string; detailTitle?: string } {
-  const sessionText = positiveMetricValue(session, digits);
-  const bestSessionText = positiveMetricValue(bestSession, digits);
-  const allText = positiveMetricValue(all, digits);
-  const rows = [
-    sessionText ? `current session ${label}: ${sessionText}${suffix}` : null,
-    bestSessionText ? `best session ${label}: ${bestSessionText}${suffix}` : null,
-    allText ? `all-time ${label}: ${allText}${suffix}` : null,
-  ].filter((row): row is string => Boolean(row));
-  const fallbackText = sessionText ?? bestSessionText ?? allText;
-  return {
-    detail: fallbackText ? `${label} ${fallbackText}${suffix}` : undefined,
-    detailTitle: rows.length ? rows.join(" | ") : undefined,
-  };
 }
 
 function positiveMetricValue(value: number | null, digits: number): string | null {

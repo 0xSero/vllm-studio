@@ -8,6 +8,7 @@ export type ThemeId =
   | "zai-rose"
   | "absolutely-dark"
   | "raycast-dark"
+  | "cursor-dark"
   | "midnight"
   | "slate"
   | "graphite"
@@ -60,6 +61,7 @@ const THEME_FONT_FAMILY_BY_ID: Partial<Record<ThemeId, FontFamilyId>> = {
   "chatgpt-dark": "openai",
   "absolutely-dark": "system",
   "raycast-dark": "system",
+  "cursor-dark": "system",
   midnight: "avenir",
   slate: "system",
   espresso: "serif",
@@ -251,6 +253,36 @@ export const THEMES: ThemeMeta[] = [
     "Ported",
     darkTheme("#141414", "#ffffff", "#1e1e1e", "#4fa3f8"),
   ),
+  {
+    // Cursor's real Glass palette, extracted from the app bundle
+    // (docs/research/cursor/01-cursor-design-tokens.md): #141414 chrome,
+    // #181818 canvas, #F0F0F0 text with 74/36 % opacity tiers, steel-blue
+    // accent, and its hairline #F0F0F013 borders.
+    ...createTheme("cursor-dark", "Cursor Dark", "Cursor's Glass palette — graphite chrome and a steel-blue accent", "Ported", {
+      bg: "#181818",
+      fg: "#F0F0F0",
+      dim: "#F0F0F099",
+      border: "#F0F0F013",
+      surface: "#1f1f1f",
+      accent: "#599CE7",
+      hl1: "#F0F0F0bd",
+      hl2: "#F0F0F05c",
+      hl3: "#8f8f8f",
+      err: "#E34671",
+    }),
+    ui: {
+      "surface-2": "#1f1f1f",
+      "surface-3": "#262626",
+      rail: "#141414",
+      border: "#F0F0F013",
+      separator: "#F0F0F00d",
+      hover: "#F0F0F011",
+      active: "#F0F0F01e",
+      composer: "#1c1c1c",
+      "composer-footer": "#1c1c1c",
+      bubble: "#202020",
+    },
+  },
   createTheme(
     "midnight",
     "Midnight",

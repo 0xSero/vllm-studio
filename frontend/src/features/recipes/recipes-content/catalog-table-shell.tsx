@@ -135,7 +135,7 @@ export function GroupRow({
 }) {
   return (
     <tr>
-      <td colSpan={colSpan} className="px-3 pb-1.5 pt-6">
+      <td colSpan={colSpan} className="px-3 pb-1 pt-4">
         <div className="flex items-baseline justify-between gap-4">
           <div className="flex min-w-0 items-baseline gap-2.5">
             <span className="shrink-0 text-[length:var(--fs-xs)] font-medium text-(--dim)">
@@ -452,13 +452,7 @@ const STATUS_TONE_CLASS: Record<StatusTone, string> = {
  * it reads as decoration, and the colour alone already carries "fine / needs
  * attention / broken" at a glance.
  */
-export function StatusText({
-  children,
-  tone = "dim",
-}: {
-  children: ReactNode;
-  tone?: StatusTone;
-}) {
+export function StatusText({ children, tone = "dim" }: { children: ReactNode; tone?: StatusTone }) {
   return (
     <span className={cx("text-[length:var(--fs-xs)]", STATUS_TONE_CLASS[tone])}>{children}</span>
   );

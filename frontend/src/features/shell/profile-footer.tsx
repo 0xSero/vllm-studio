@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Download, RefreshCw, SettingsIcon, Smartphone } from "@/ui/icon-registry";
+import { Download, RefreshCw, Settings, Smartphone } from "@/ui/icon-registry";
 import { Spinner } from "@/ui";
 import { ProfileAvatar, useLocalProfile } from "@/features/shell/local-profile";
 import { useAppUpdate } from "@/features/shell/use-app-update";
@@ -31,9 +31,9 @@ function UpdateButton() {
       ) : update.status === "downloading" && progress !== null ? (
         <span className="text-[8px] font-medium tabular-nums">{progress}%</span>
       ) : update.phase === "ready" ? (
-        <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />
+        <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.6} />
       ) : (
-        <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+        <Download className="h-3.5 w-3.5" strokeWidth={1.6} />
       )}
     </button>
   );
@@ -61,7 +61,7 @@ export function ProfileFooter({ settingsActive }: { settingsActive: boolean }) {
         title="Connect phone"
         aria-label="Connect phone in settings"
       >
-        <Smartphone className="h-3.5 w-3.5" strokeWidth={1.75} />
+        <Smartphone className="h-3.5 w-3.5" strokeWidth={1.6} />
       </Link>
       <Link
         href="/settings"
@@ -73,7 +73,7 @@ export function ProfileFooter({ settingsActive }: { settingsActive: boolean }) {
             : "text-(--fg)/60 hover:bg-(--hover) hover:text-(--fg)"
         }`}
       >
-        <SettingsIcon className="h-3.5 w-3.5" />
+        <Settings className="h-3.5 w-3.5" strokeWidth={1.6} />
       </Link>
     </div>
   );

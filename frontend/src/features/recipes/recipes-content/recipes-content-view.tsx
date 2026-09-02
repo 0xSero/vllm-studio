@@ -50,29 +50,16 @@ type Props = {
 // actually does, because "Picks / Get / Serves" told you nothing from outside.
 const MODEL_TABS: Array<{ id: RecipesContentTab; label: string; icon: ReactNode }> = [
   { id: "picks", label: "Recommended", icon: <Sparkles className="h-3.5 w-3.5" /> },
-  { id: "get", label: "Search Hugging Face", icon: <Search className="h-3.5 w-3.5" /> },
+  { id: "get", label: "Hugging Face", icon: <Search className="h-3.5 w-3.5" /> },
   { id: "serves", label: "Your servers", icon: <Server className="h-3.5 w-3.5" /> },
   { id: "downloads", label: "Downloads", icon: <Download className="h-3.5 w-3.5" /> },
 ];
 
-const TAB_HEADINGS: Record<RecipesContentTab, { title: string; description: string }> = {
-  picks: {
-    title: "Recommended models",
-    description:
-      "Hand-picked models grouped by the hardware they need, each checked against this machine's memory.",
-  },
-  get: {
-    title: "Search Hugging Face",
-    description: "Search the Hub, check whether a model fits this machine, and pull its weights.",
-  },
-  serves: {
-    title: "Your servers",
-    description: "Saved model + runtime + configuration combinations, ready to launch.",
-  },
-  downloads: {
-    title: "Downloads",
-    description: "Everything currently downloading, with progress, retry, and cancel.",
-  },
+const TAB_HINTS: Record<RecipesContentTab, string> = {
+  picks: "Curated models checked against this machine's GPU memory.",
+  get: "Search the Hub, check fit, and pull weights.",
+  serves: "Saved model configurations ready to launch.",
+  downloads: "Active downloads with progress and controls.",
 };
 
 export function RecipesContentView(props: Props) {
@@ -107,11 +94,7 @@ export function RecipesContentView(props: Props) {
     onEvictModel,
     table,
   } = props;
-  const heading = TAB_HEADINGS[tab];
-  // No per-tab heading. The page is already titled "Models" and the active tab
-  // is already named in the tab strip, so a second heading and a second
-  // description restated both — four lines of chrome before any content, on a
-  // page whose whole point is the table.
+
   const content = (
     <section>
       <div>
@@ -158,9 +141,9 @@ export function RecipesContentView(props: Props) {
       ) : (
         <TabbedPage
           title="Models"
-          description={heading.description}
           width="md"
-          tabs={MODEL_TABS}
+          compact
+          tabs={MODEL_TABS.map((item) => ({ ...item, title: TAB_HINTS[item.id] }))}
           activeTab={tab}
           onSelectTab={setTab}
           actions={

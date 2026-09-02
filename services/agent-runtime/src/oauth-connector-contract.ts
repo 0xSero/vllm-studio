@@ -142,6 +142,11 @@ export const OAuthClientInputSchema = Schema.Struct({
   clientId: Schema.String,
 });
 
+export const OAuthTokenInputSchema = Schema.Struct({
+  connectorId: Schema.String,
+  token: Schema.String,
+});
+
 export const OAuthConnectorInputSchema = Schema.Struct({
   connectorId: Schema.String,
 });

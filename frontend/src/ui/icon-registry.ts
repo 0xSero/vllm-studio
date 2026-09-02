@@ -28,16 +28,6 @@ export {
   PinOffIcon,
   Folder,
   FolderOpen,
-  StatusIcon,
-  ModelsIcon,
-  AutomationsIcon,
-  IntegrationsIcon,
-  ConfigureIcon,
-  UsageIcon,
-  NewTaskIcon,
-  SettingsIcon,
-  SearchIcon,
-  BellIcon,
 } from "./icons";
 
 // Sidebar toggles — see panel-toggle-icons.tsx for why these are not lucide's.

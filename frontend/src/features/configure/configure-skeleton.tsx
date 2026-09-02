@@ -36,22 +36,3 @@ export function MachineCardSkeleton() {
   );
 }
 
-/** The whole page: nav rail, heading, summary line, first card. */
-export function ConfigurePageSkeleton() {
-  return (
-    <div className="mx-auto grid w-full max-w-[92rem] grid-cols-1 gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[168px_minmax(0,68rem)] lg:justify-center lg:gap-6 lg:py-5">
-      <aside className="hidden min-w-0 space-y-2 lg:block">
-        <div className="mb-4 h-4 w-24 animate-pulse rounded bg-(--ui-hover)" />
-        {[0, 1].map((row) => (
-          <div key={row} className="h-8 w-full animate-pulse rounded-md bg-(--ui-hover)/60" />
-        ))}
-      </aside>
-      <section className="min-w-0 space-y-4">
-        <div className="h-6 w-40 animate-pulse rounded bg-(--ui-hover)" />
-        <div className="h-3.5 w-72 max-w-full animate-pulse rounded bg-(--ui-hover)/60" />
-        <div className="h-3.5 w-56 max-w-full animate-pulse rounded bg-(--ui-hover)/60" />
-        <MachineCardSkeleton />
-      </section>
-    </div>
-  );
-}

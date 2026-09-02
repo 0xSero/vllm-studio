@@ -174,7 +174,7 @@ export type CanonicalSessionResult = {
 
 // Default page size for the initial tail load — enough to fill a long scrollback
 // while keeping a giant log from being read/parsed whole.
-export const DEFAULT_SESSION_TAIL = 500;
+export const DEFAULT_SESSION_TAIL = 20;
 
 export type LoadCanonicalSessionOptions = { tail?: number; before?: number };
 
@@ -385,5 +385,28 @@ export function clearSessionGoal(piSessionId: string): Promise<void> {
       const response = yield* fetchEffect(sessionGoalUrl(piSessionId), { method: "DELETE" });
       if (!response.ok) return yield* Effect.fail(new Error("Failed to clear the goal."));
     }),
+  );
+}
+
+export function generateSessionTitle(args: {
+  sessionId: string;
+  prompt: string;
+  modelId: string;
+}): Promise<string | null> {
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const response = yield* fetchEffect(
+        `/api/agent/sessions/${encodeURIComponent(args.sessionId)}/generate-title`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: args.prompt, modelId: args.modelId }),
+        },
+      );
+      const payload = yield* safeJsonEffect<{ title?: string; error?: string }>(response);
+      const title = typeof payload.title === "string" ? payload.title.trim() : "";
+      if (!response.ok || !title) return yield* Effect.fail(new Error(payload.error || "title"));
+      return title;
+    }).pipe(Effect.catch(() => Effect.succeed(null))),
   );
 }

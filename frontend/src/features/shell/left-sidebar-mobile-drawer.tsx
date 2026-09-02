@@ -1,11 +1,13 @@
 "use client";
 
-import { NewTaskIcon, SettingsIcon } from "@/ui/icon-registry";
+import { Settings } from "@/ui/icon-registry";
 import { Drawer, DrawerHeader, DrawerOverlay } from "@/ui/drawer";
 import type { ProjectsNavSectionComponent } from "@/features/shell/left-sidebar-lazy";
 import {
   NavItemMobile,
+  NavNewTaskMobile,
   ProjectsNavPlaceholder,
+  SidebarNavSeparator,
   isRouteActive,
   tabs,
 } from "@/features/shell/left-sidebar-nav";
@@ -28,9 +30,6 @@ export function MobileNavigationDrawer({
       <Drawer
         id="mobile-navigation-drawer"
         fullBleed
-        // `mobile-pwa-drawer` carries the safe-area insets, the slide-in
-        // animation and the phone type scale; the shared Drawer supplies the
-        // surface, so the PWA class only has to keep doing the PWA parts.
         className="mobile-pwa-drawer h-full bg-(--bg)"
       >
         <DrawerHeader
@@ -43,12 +42,8 @@ export function MobileNavigationDrawer({
           className="mobile-pwa-drawer-header h-auto px-4"
         />
 
-        <nav className="min-h-0 flex-1 touch-pan-y overscroll-contain overflow-y-auto px-3 pb-4 pt-1">
-          <NavItemMobile
-            href="/agent?new=1&replace=1"
-            label="New task"
-            Icon={NewTaskIcon}
-            active={false}
+        <nav className="min-h-0 flex-1 touch-pan-y overscroll-contain overflow-y-auto px-3 pb-4 pt-2">
+          <NavNewTaskMobile
             onClick={(event) => {
               onClose();
               if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -56,6 +51,7 @@ export function MobileNavigationDrawer({
               onNewTask();
             }}
           />
+
           {tabs.map((tab) => (
             <NavItemMobile
               key={tab.href}
@@ -69,17 +65,20 @@ export function MobileNavigationDrawer({
           <NavItemMobile
             href="/settings"
             label="Settings"
-            Icon={SettingsIcon}
+            Icon={Settings}
             active={isRouteActive(pathname, "/settings")}
             onClick={onClose}
           />
-          <div className="h-4" />
+
           {projectsNavReady ? (
-            ProjectsNavSection ? (
-              <ProjectsNavSection expanded view="projects" />
-            ) : (
-              <ProjectsNavPlaceholder />
-            )
+            <>
+              <SidebarNavSeparator />
+              {ProjectsNavSection ? (
+                <ProjectsNavSection expanded view="recents" />
+              ) : (
+                <ProjectsNavPlaceholder />
+              )}
+            </>
           ) : null}
         </nav>
       </Drawer>

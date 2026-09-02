@@ -31,6 +31,7 @@ const chatUsage = (usage: Record<string, unknown>): InferenceUsageInput => {
   const result: InferenceUsageInput = {};
   setCount(result, "prompt_tokens", usage["prompt_tokens"]);
   setCount(result, "completion_tokens", usage["completion_tokens"]);
+  setCount(result, "reasoning_tokens", usage["reasoning_tokens"]);
   const promptDetails = asRecord(usage["prompt_tokens_details"]);
   const completionDetails = asRecord(usage["completion_tokens_details"]);
   if (promptDetails) result.prompt_tokens_details = promptDetails as Record<string, number>;

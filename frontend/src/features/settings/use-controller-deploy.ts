@@ -31,27 +31,6 @@ const getDeployBridge = (): ControllerDeployBridge | null => {
  * settings page performs: the saved list, the stored backend URL, the runtime
  * key, and the server-side settings cookie.
  */
-export const adoptDeployedController = async (controller: SavedController): Promise<void> => {
-  const url = normalizeControllerUrl(controller.url);
-  if (!url) return;
-  const existing = loadSavedControllers();
-  if (!existing.some((entry) => normalizeControllerUrl(entry.url) === url)) {
-    saveSavedControllers([...existing, { ...controller, url }]);
-  }
-  setApiKey(controller.apiKey ?? "");
-  setStoredBackendUrl(url);
-  try {
-    await fetch("/api/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ backendUrl: url, apiKey: controller.apiKey ?? "" }),
-    });
-  } catch {
-    // The client-side writes above already point the app at the controller.
-  }
-  if (typeof window !== "undefined") window.dispatchEvent(new Event("storage"));
-};
-
 /**
  * One in-flight deploy, shared by the settings panel and the setup gate:
  * streamed installer lines, terminal error or success, and the resulting

@@ -1,43 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { SettingsView } from "@/features/settings/settings-view";
 import { useSettings } from "@/features/settings/use-settings";
-import { SetupView } from "@/features/setup/setup-view/setup-view";
-import { useSetup } from "@/features/setup/use-setup";
-import { useMountSubscription } from "@/hooks/use-mount-subscription";
-import { legacyIntegrationHref } from "@/features/integrations/integration-navigation";
 
-const hasSettingsHash = () => {
-  if (typeof window === "undefined") return true;
-  return window.location.hash.length > 1;
-};
-
+// Settings is always Settings. The first-run wizard used to take this page
+// over when the controller looked offline, which meant a flaky probe replaced
+// the one page that can FIX a bad connection with a wizard the user never
+// asked for. The rail's own Setup section covers first-run checks.
 export default function SettingsPage() {
-  const router = useRouter();
   const configs = useSettings();
-  const setup = useSetup();
-  const [setupComplete] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem("local-studio-setup-complete") === "true";
-  });
-
-  useMountSubscription(() => {
-    const integrationHref = legacyIntegrationHref(window.location.hash);
-    if (integrationHref) router.replace(integrationHref);
-  }, [router]);
-
-  const showSetupWizard =
-    !hasSettingsHash() &&
-    !configs.isInitialLoading &&
-    configs.backendOnline === false &&
-    !setupComplete &&
-    !configs.hasConfigData;
-
-  if (showSetupWizard) {
-    return <SetupView {...setup} />;
-  }
 
   return (
     <SettingsView

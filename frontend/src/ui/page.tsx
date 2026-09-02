@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { forwardRef, type ReactNode } from "react";
 import { RefreshCw } from "@/ui/icon-registry";
 import { cx } from "./utils";
 import { Tabs, type TabItem } from "./tabs";
@@ -12,18 +12,21 @@ export type SectionNavItem<Id extends string = string> = {
   icon: ReactNode;
 };
 
-export function AppPage({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <main
-      className={cx(
-        "min-h-full overflow-y-auto overflow-x-hidden bg-(--ui-bg) text-(--ui-fg)",
-        className,
-      )}
-    >
-      {children}
-    </main>
-  );
-}
+export const AppPage = forwardRef<HTMLElement, { children: ReactNode; className?: string }>(
+  function AppPage({ children, className }, ref) {
+    return (
+      <main
+        ref={ref}
+        className={cx(
+          "min-h-full overflow-y-auto overflow-x-hidden bg-(--ui-bg) text-(--ui-fg) [scrollbar-gutter:stable]",
+          className,
+        )}
+      >
+        {children}
+      </main>
+    );
+  },
+);
 
 export type PageWidth = "sm" | "md" | "lg" | "xl";
 
@@ -90,57 +93,12 @@ export function PageHeader({
   );
 }
 
-export function SectionNav<Id extends string = string>({
-  label,
-  items,
-  activeItem,
-  onSelectItem,
-}: {
-  label: string;
-  items: SectionNavItem<Id>[];
-  activeItem: Id;
-  onSelectItem: (item: Id) => void;
-}) {
-  return (
-    <nav aria-label={label} className="pb-1">
-      <div className="flex flex-wrap gap-1 lg:flex-col lg:flex-nowrap">
-        {items.map((item) => {
-          const active = activeItem === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onSelectItem(item.id)}
-              className={cx(
-                "group grid h-8 max-w-[calc(50%_-_0.125rem)] min-w-0 grid-cols-[16px_minmax(0,1fr)] items-center gap-2 rounded-[8px] px-2 text-left text-[length:var(--fs-md)] transition-[transform,color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-accent)/35 active:scale-[0.99] sm:max-w-none lg:w-full",
-                active
-                  ? "bg-(--ui-active) text-(--ui-fg)"
-                  : "text-(--ui-muted) hover:bg-(--ui-hover)/70 hover:text-(--ui-fg)",
-              )}
-              title={item.description}
-            >
-              <span
-                className={cx(
-                  "flex h-3.5 w-3.5 items-center justify-center text-(--ui-muted)",
-                  active ? "opacity-100" : "opacity-70 group-hover:opacity-100",
-                )}
-              >
-                {item.icon}
-              </span>
-              <span className="truncate font-normal">{item.label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </nav>
-  );
-}
-
 export function TabbedPage<T extends string = string>({
   title,
   description,
   actions,
   width = "sm",
+  compact = false,
   tabs,
   activeTab,
   onSelectTab,
@@ -151,6 +109,8 @@ export function TabbedPage<T extends string = string>({
   description?: ReactNode;
   actions?: ReactNode;
   width?: PageWidth;
+  /** Tighter header rhythm for data-heavy pages like Models. */
+  compact?: boolean;
   tabs: TabItem<T>[];
   activeTab: T;
   onSelectTab: (tab: T) => void;
@@ -159,12 +119,15 @@ export function TabbedPage<T extends string = string>({
 }) {
   return (
     <AppPage>
-      <PageContainer width={width} className={cx("pt-6 sm:pt-8", className)}>
+      <PageContainer
+        width={width}
+        className={cx(compact ? "pt-4 sm:pt-5" : "pt-6 sm:pt-8", className)}
+      >
         <PageHeader title={title} description={description} actions={actions} />
-        <div className="mt-7 border-b border-(--ui-separator)">
+        <div className={cx(compact ? "mt-4" : "mt-7", "border-b border-(--ui-separator)")}>
           <Tabs items={tabs} activeTab={activeTab} onSelectTab={onSelectTab} className="-mb-px" />
         </div>
-        <div className="mt-8">{children}</div>
+        <div className={compact ? "mt-5" : "mt-8"}>{children}</div>
       </PageContainer>
     </AppPage>
   );

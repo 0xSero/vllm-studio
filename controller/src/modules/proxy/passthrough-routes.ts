@@ -22,13 +22,16 @@ import {
 } from "./inference-accounting";
 import { createUsageObserver, usageFromPayload, type ProxyDialect } from "./usage-observer";
 import { createContextGuard, type ContextLimits } from "./context-guard";
+import { normalizeResponsesBody } from "./responses-normalizer";
 
 /**
  * The one inference proxy: OpenAI chat completions, OpenAI Responses, and
  * Anthropic Messages, all served the same way. The engines this controller
  * launches speak all three dialects natively — vLLM and SGLang serve
  * /v1/responses and /v1/messages beside /v1/chat/completions — so the
- * controller's job is routing, auth, and recording, never translation.
+ * controller's job is routing, auth, and recording — never translation, with
+ * one exception: lax Responses-API item shapes are normalized to the strict
+ * schema vLLM validates against (see responses-normalizer.ts).
  *
  * The request body is forwarded verbatim except for the model field (resolved
  * against the recipe store so aliases reach the engine under its served model
@@ -244,6 +247,7 @@ export const registerPassthroughRoutes = defineRoutes((app, context) => {
 
         const isStreaming = Boolean(parsed["stream"]);
         if (dialect === "chat") ensureStreamingUsageIncluded(parsed);
+        if (dialect === "responses") normalizeResponsesBody(parsed);
 
         const headers: Record<string, string> = { "Content-Type": "application/json", ...auth };
         for (const name of FORWARDED_HEADERS) {

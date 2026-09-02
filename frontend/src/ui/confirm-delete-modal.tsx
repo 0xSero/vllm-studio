@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "./button";
 import { UiModal, UiModalBody, UiModalFooter, UiModalHeader } from "./modal";
 
 export type ConfirmDeleteModalProps = {
   title: string;
-  message: string;
+  message: ReactNode;
   /** The destructive verb, so the button says what it does rather than "OK". */
   confirmLabel?: string;
   onCancel: () => void;
@@ -16,10 +16,10 @@ export type ConfirmDeleteModalProps = {
 /**
  * One destructive confirmation for the whole app.
  *
- * Configure and Models each grew their own copy of this modal, which is how two
- * dialogs asking the same question drift into two different button orders. The
- * confirm handler may be async; the button holds its loading state until the
- * promise settles so a slow delete cannot be fired twice.
+ * Every surface — Models, Settings, the sidebar — asks through this dialog so
+ * a delete is never an inline popover clipped inside the thing that triggered
+ * it. The confirm handler may be async; the button holds its loading state
+ * until the promise settles so a slow delete cannot be fired twice.
  */
 export function ConfirmDeleteModal({
   title,
@@ -29,22 +29,37 @@ export function ConfirmDeleteModal({
   onConfirm,
 }: ConfirmDeleteModalProps) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const close = () => {
+    if (!busy) onCancel();
+  };
+
   return (
-    <UiModal isOpen onClose={onCancel} maxWidth="max-w-md">
-      <UiModalHeader title={title} onClose={onCancel} />
+    <UiModal isOpen onClose={close} maxWidth="max-w-md">
+      <UiModalHeader title={title} onClose={busy ? undefined : onCancel} />
       <UiModalBody>
-        <p className="text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">{message}</p>
+        <div className="space-y-2 text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
+          {typeof message === "string" ? <p>{message}</p> : message}
+          {error ? <p className="text-(--err)">{error}</p> : null}
+        </div>
       </UiModalBody>
       <UiModalFooter>
-        <Button variant="ghost" onClick={onCancel}>
+        <Button variant="ghost" onClick={onCancel} disabled={busy}>
           Cancel
         </Button>
         <Button
           variant="danger"
           loading={busy}
+          disabled={busy}
           onClick={() => {
             setBusy(true);
-            void Promise.resolve(onConfirm()).finally(onCancel);
+            setError("");
+            void Promise.resolve(onConfirm())
+              .then(onCancel)
+              .catch((caught: unknown) => {
+                setBusy(false);
+                setError(caught instanceof Error ? caught.message : "Something went wrong");
+              });
           }}
         >
           {confirmLabel}

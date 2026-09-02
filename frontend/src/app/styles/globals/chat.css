@@ -29,6 +29,11 @@
   max-width: calc(var(--composer-w) * 0.9);
 }
 
+.agent-thread-shell [data-timeline-message-id] {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 8rem;
+}
+
 /* Phone widths: give the thread the full column — the 90% inset plus the
    scroller padding otherwise double-margins an already narrow screen. */
 @media (max-width: 640px) {

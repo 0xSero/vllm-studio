@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, type DragEvent, type ReactNode } from "react";
-import { Button, UiModal, UiModalBody, UiModalFooter, UiModalHeader } from "@/ui";
+import { ConfirmDeleteModal } from "@/ui";
 import { PlusIcon } from "@/ui/icons";
 import { usePersistentTerminalOwners } from "@/features/agent/ui/use-persistent-terminal-owners";
 import {
@@ -112,9 +112,7 @@ export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view
 
   if (!expanded) return null;
 
-  // The bell's view is the recents list on its own — pinned rows, the project
-  // tree, and terminals all belong to the projects view.
-  if (view === "notifications") return <RecentSessionsSection />;
+  if (view === "recents") return <RecentSessionsSection />;
 
   // Pinned projects render under Pinned instead, so they are not listed twice.
   const unpinnedProjects = projects.filter(
@@ -234,19 +232,33 @@ export function ProjectsNavSection({ expanded, view }: { expanded: boolean; view
   };
 
   return (
-    <div className="flex shrink-0 flex-col gap-[var(--sidebar-row-gap)]">
+    <div className="flex shrink-0 flex-col gap-0.5">
       <ProjectDirectoryPickerModal
         open={directoryModalOpen}
         error={addError}
         onClose={() => setDirectoryModalOpen(false)}
         onSelect={(directoryPath) => void handleDirectoryPicked(directoryPath)}
       />
-      <ProjectRemoveConfirmModal
-        project={removal.project}
-        removing={removal.removing}
-        onCancel={removal.cancel}
-        onConfirm={removal.confirm}
-      />
+      {removal.project ? (
+        <ConfirmDeleteModal
+          title="Remove project"
+          confirmLabel="Remove"
+          message={
+            <>
+              <p>
+                Remove <span className="font-medium text-(--ui-fg)">{removal.project.name}</span>{" "}
+                from the sidebar?
+              </p>
+              <p className="break-all font-mono text-[length:var(--fs-sm)] text-(--dim)">
+                {removal.project.path}
+              </p>
+              <p>This does not delete files from disk or archive existing sessions.</p>
+            </>
+          }
+          onCancel={removal.cancel}
+          onConfirm={removal.confirm}
+        />
+      ) : null}
       <PinnedSection
         pinned={pinned}
         activeSessions={activeSessions}
@@ -273,12 +285,10 @@ function useProjectRemoval(
   setError: (message: string) => void,
 ) {
   const [project, setProject] = useState<ProjectEntry | null>(null);
-  const [removing, setRemoving] = useState(false);
 
   const confirm = useCallback(async () => {
     if (!project) return;
     setError("");
-    setRemoving(true);
     try {
       await removeProject(project.id);
       setOpenIds((current) => {
@@ -287,58 +297,17 @@ function useProjectRemoval(
         next.delete(project.id);
         return next;
       });
-      setProject(null);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to remove project");
-    } finally {
-      setRemoving(false);
+      const message = error instanceof Error ? error.message : "Failed to remove project";
+      setError(message);
+      throw error instanceof Error ? error : new Error(message);
     }
   }, [project, removeProject, setError, setOpenIds]);
 
   return {
     project,
-    removing: Boolean(project && removing),
     request: useCallback((next: ProjectEntry) => setProject(next), []),
     cancel: useCallback(() => setProject(null), []),
-    confirm: useCallback(() => void confirm(), [confirm]),
+    confirm,
   };
-}
-
-function ProjectRemoveConfirmModal({
-  project,
-  removing,
-  onCancel,
-  onConfirm,
-}: {
-  project: ProjectEntry | null;
-  removing: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  if (!project) return null;
-  return (
-    <UiModal isOpen onClose={removing ? () => {} : onCancel} maxWidth="max-w-md">
-      <UiModalHeader title="Remove project" onClose={removing ? undefined : onCancel} />
-      <UiModalBody>
-        <div className="space-y-2 text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
-          <p>
-            Remove <span className="font-medium text-(--ui-fg)">{project.name}</span> from the
-            sidebar?
-          </p>
-          <p className="break-all font-mono text-[length:var(--fs-sm)] text-(--dim)">
-            {project.path}
-          </p>
-          <p>This does not delete files from disk or archive existing sessions.</p>
-        </div>
-      </UiModalBody>
-      <UiModalFooter>
-        <Button variant="ghost" onClick={onCancel} disabled={removing}>
-          Cancel
-        </Button>
-        <Button variant="danger" onClick={onConfirm} disabled={removing}>
-          {removing ? "Removing..." : "Remove"}
-        </Button>
-      </UiModalFooter>
-    </UiModal>
-  );
 }

@@ -11,6 +11,7 @@ import { Schema } from "effect";
 import {
   OAuthClientInputSchema,
   OAuthConnectorInputSchema,
+  OAuthTokenInputSchema,
 } from "../oauth-connector-contract";
 import {
   beginOAuthConnectorAuthorization,
@@ -19,6 +20,7 @@ import {
   getOAuthConnectorStatus,
   OAuthConnectorError,
   saveOAuthConnectorClient,
+  saveOAuthConnectorToken,
 } from "../oauth-connectors";
 import { closePooledConnection } from "../connector-pool";
 
@@ -82,6 +84,23 @@ export async function handleOAuthClientPut(request: Request): Promise<Response> 
     return Response.json(await getOAuthConnectorStatus(input.connectorId.trim()));
   } catch (error) {
     return failure(error, "OAuth client could not be saved");
+  }
+}
+
+export async function handleOAuthTokenPut(request: Request): Promise<Response> {
+  let input: typeof OAuthTokenInputSchema.Type;
+  try {
+    input = Schema.decodeUnknownSync(OAuthTokenInputSchema)(await request.json());
+  } catch {
+    return Response.json({ error: "connectorId and token are required" }, { status: 400 });
+  }
+  try {
+    const status = await saveOAuthConnectorToken(input.connectorId.trim(), input.token);
+    // A pooled child spawned with the old token keeps running otherwise.
+    closePooledConnection(input.connectorId.trim());
+    return Response.json(status);
+  } catch (error) {
+    return failure(error, "The token could not be saved");
   }
 }
 

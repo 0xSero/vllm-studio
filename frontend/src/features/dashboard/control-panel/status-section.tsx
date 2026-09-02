@@ -82,11 +82,7 @@ export function StatusSection({
         onViewAll={onViewAll}
         recipes={recipes}
       />
-      <StatusMetricStrip
-        live={view.liveMetrics}
-        steady={view.steadyMetrics}
-        detached={metricsDetached}
-      />
+      <StatusMetricStrip groups={view.metricGroups} detached={metricsDetached} />
       <MetricTrends samples={trendData.samples} peaks={trendData.peaks} />
     </section>
   );

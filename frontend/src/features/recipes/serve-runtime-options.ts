@@ -3,10 +3,10 @@ import {
   defaultRuntimeForBackend,
   isManagedServeRuntimeTarget,
   runtimeId,
-} from "@/lib/serve-runtime";
+} from "@/features/recipes/serve-runtime";
 import { ENGINE_LABEL } from "./engine-capabilities";
 
-export { defaultRuntimeForBackend, runtimeId } from "@/lib/serve-runtime";
+export { defaultRuntimeForBackend, runtimeId } from "@/features/recipes/serve-runtime";
 
 export interface ServeRuntimeOption {
   id: string;

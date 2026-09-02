@@ -282,7 +282,16 @@ function applySessionMetadata(
   summary: SessionSummary,
   metadataFor: SessionMetadataLookup,
 ): SessionSummary {
-  return { ...summary, ...metadataFor(summary.id) };
+  const metadata = metadataFor(summary.id);
+  const titled = typeof metadata.title === "string" ? metadata.title.trim() : "";
+  return {
+    ...summary,
+    archived: metadata.archived,
+    archivedAt: metadata.archivedAt,
+    parentSessionId: metadata.parentSessionId,
+    subagentName: metadata.subagentName,
+    firstUserMessage: titled || summary.firstUserMessage,
+  };
 }
 
 function summaryRelevantTime(summary: SessionSummary, archivedOnly: boolean): number {

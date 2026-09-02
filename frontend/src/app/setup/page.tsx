@@ -1,9 +1,7 @@
-"use client";
+import { SettingsRedirect } from "@/features/settings/settings-redirect";
 
-import { SetupView } from "@/features/setup/setup-view/setup-view";
-import { useSetup } from "@/features/setup/use-setup";
-
-export default function SetupPage() {
-  const setup = useSetup();
-  return <SetupView {...setup} />;
+// The first-run wizard is gone (owner call: it was broken more often than it
+// helped). Old links land on Settings' own Setup checks section.
+export default function Page() {
+  return <SettingsRedirect fallback="setup" />;
 }

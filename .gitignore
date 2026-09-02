@@ -88,3 +88,4 @@ frontend/dist-desktop-dev/
 frontend/dist-installers/
 .vercel
 .env*
+.local-studio-dev.pid

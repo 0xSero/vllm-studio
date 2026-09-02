@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useId, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "@/ui/icon-registry";
 import { useDialogFocusTrap } from "./dialog-focus";
 import { MODAL_SURFACE_CLASS } from "./popover";
@@ -21,10 +22,10 @@ function UiModal({ isOpen, onClose, children, className, maxWidth = "max-w-lg" }
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogFocusTrap({ dialogRef, active: isOpen, onClose });
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-center justify-center px-4 py-6">
       <button
         type="button"
         tabIndex={-1}
@@ -46,7 +47,8 @@ function UiModal({ isOpen, onClose, children, className, maxWidth = "max-w-lg" }
       >
         <UiModalTitleIdContext.Provider value={titleId}>{children}</UiModalTitleIdContext.Provider>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -75,10 +77,7 @@ function UiModalHeader({
 
   return (
     <div
-      className={cx(
-        "flex shrink-0 items-start justify-between gap-3 px-6 pb-3 pt-5",
-        className,
-      )}
+      className={cx("flex shrink-0 items-start justify-between gap-3 px-6 pb-3 pt-5", className)}
     >
       <div className="flex min-w-0 items-center gap-2">
         {icon}
@@ -130,10 +129,7 @@ interface UiModalFooterProps {
 function UiModalFooter({ children, leading, className }: UiModalFooterProps) {
   return (
     <div
-      className={cx(
-        "flex shrink-0 items-center justify-between gap-3 px-6 pb-5 pt-4",
-        className,
-      )}
+      className={cx("flex shrink-0 items-center justify-between gap-3 px-6 pb-5 pt-4", className)}
     >
       <div className="flex items-center gap-2">{leading}</div>
       <div className="flex items-center gap-2">{children}</div>

@@ -622,6 +622,36 @@ export async function saveOAuthConnectorClient(
   });
 }
 
+/**
+ * A user-pasted token (a GitHub PAT, or any token minted on the provider's
+ * own site) stored as the connector's grant. This is the click-to-connect
+ * path for providers that ship no client id: the device-flow dance exists
+ * only to obtain what the user can mint on the provider's site in seconds,
+ * and the spawned MCP child receives the same env var either way. The
+ * identity lookup is best-effort — a connection without a display name beats
+ * a failed connect.
+ */
+export async function saveOAuthConnectorToken(
+  connectorId: string,
+  token: string,
+  dependencies: OAuthConnectorDependencies = activeDefaults,
+): Promise<OAuthStatusResponse> {
+  const provider = requireProvider(connectorId);
+  const definition = definitionFor(provider, dependencies);
+  const trimmed = token.trim();
+  if (!trimmed) throw new OAuthConnectorError(400, "Paste a token first");
+  closeFlow(provider.id);
+  lastFlowErrors.delete(provider.id);
+  const account = await fetchAccountName(definition, trimmed, dependencies);
+  await commitConnection(provider, {
+    accessToken: trimmed,
+    scopes: [...definition.scopes],
+    ...(account ? { account } : {}),
+    obtainedAt: new Date(dependencies.now()).toISOString(),
+  });
+  return getOAuthConnectorStatus(connectorId, dependencies);
+}
+
 export async function getOAuthConnectorStatus(
   connectorId: string,
   dependencies: OAuthConnectorDependencies = activeDefaults,

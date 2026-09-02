@@ -185,8 +185,8 @@
   --color-border-light: light-dark(#1a1c1f0d, #ffffff0a);
   --color-border-heavy: light-dark(#1a1c1f29, #ffffff29);
   --color-border-hover: light-dark(#1a1c1f29, #ffffff29);
-  --color-hover: light-dark(#1a1c1f0d, #ffffff0d);
-  --color-selected: light-dark(#1a1c1f14, #ffffff14);
+  --color-hover: light-dark(#1a1c1f10, #ffffff10);
+  --color-selected: light-dark(#1a1c1f1a, #ffffff1a);
 
   --color-header: light-dark(var(--gray-0), var(--gray-900));
   --color-panel: light-dark(var(--gray-0), var(--gray-900));
@@ -432,17 +432,15 @@
 }
 
 :root {
-  /* Density / dimensions — thread nav matches the Codex desktop app:
-     preferred width 275px (clamp 240px), 30px rows, 8px inline padding,
-     10px row radius, 1px row gap. */
-  --sidebar-w: 275px;
+  /* Density / dimensions — thread nav: preferred width 240px (clamp 240px),
+     30px rows, 8px inline padding, 10px row radius, 1px row gap. */
+  --sidebar-w: 240px;
   --sidebar-row-height: 30px;
   /* Rows sat at a 30px pitch against a 30px height, i.e. touching, with no gap
      anywhere in the sidebar. That reads as a wall of text rather than a list.
      Costs 2px per row and no change to the row itself. */
   --sidebar-row-gap: 1px;
-  --sidebar-row-radius: 10px;
-  --sidebar-padding-x: 8px;
+  --sidebar-row-radius: 5px;
   --row-h: 36px;
   --row-radius: var(--rad-md);
   /* Toolbar heights — main bar, small bar, pane header. */

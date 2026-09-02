@@ -8,15 +8,11 @@ type MetricSample = {
   at: number;
   generation: number;
   prefill: number;
-  requests: number;
-  ttft: number;
 };
 
 type MetricPeak = {
   generation: number;
   prefill: number;
-  requests: number;
-  ttft: number;
 };
 
 type TrendSeries = {
@@ -40,10 +36,6 @@ export function useMetricSamples({
   generationPeak,
   prefill,
   prefillPeak,
-  ttft,
-  ttftPeak,
-  requests,
-  requestPeak,
   active,
 }: MetricSampleInput) {
   const samplesRef = useRef<MetricSample[]>([]);
@@ -52,8 +44,6 @@ export function useMetricSamples({
   const peaks: MetricPeak = {
     generation: finitePositive(generationPeak),
     prefill: finitePositive(prefillPeak),
-    requests: finitePositive(requestPeak),
-    ttft: finitePositive(ttftPeak),
   };
 
   if (sampleKeyRef.current !== scopedKey) {
@@ -66,18 +56,10 @@ export function useMetricSamples({
     at: Date.now(),
     generation: finitePositive(generation),
     prefill: finitePositive(prefill),
-    requests: finitePositive(requests),
-    ttft: finitePositive(ttft),
   };
   const current = samplesRef.current;
   const previous = current[current.length - 1];
-  if (
-    !previous ||
-    previous.generation !== next.generation ||
-    previous.prefill !== next.prefill ||
-    previous.ttft !== next.ttft ||
-    previous.requests !== next.requests
-  ) {
+  if (!previous || previous.generation !== next.generation || previous.prefill !== next.prefill) {
     const nextSamples = [...current, next].slice(-56);
     samplesRef.current = nextSamples;
     samplesByKey.set(scopedKey, nextSamples);
@@ -87,77 +69,43 @@ export function useMetricSamples({
 }
 
 /**
- * Three self-scaled panels, each in one unit.
+ * One panel, one unit.
  *
- * TTFT and request count used to share an auto-scaled axis: with TTFT in the
- * hundreds of milliseconds, the request line was pinned flat against the floor
- * and told the reader nothing. Two units cannot share one axis, so they no
- * longer do — and every series now names itself in the header with its current
- * value, because a two-line chart with no legend is a decoration.
+ * There used to be three: throughput, TTFT and live requests. The TTFT series
+ * was a cumulative average — a line that flattens the longer the session runs
+ * and cannot show a regression — and requests on a mostly single-user rig is a
+ * step between 0 and 1. Both were decoration. Throughput is the number this
+ * page exists for, so it keeps the whole width.
  */
 export function MetricTrends({ samples, peaks }: { samples: MetricSample[]; peaks: MetricPeak }) {
   const times = samples.map((sample) => sample.at);
   const window = describeWindow(samples);
   return (
     <div className="mt-4 border-t border-(--separator) pt-3 sm:mt-6">
-      <div className="grid gap-4 sm:gap-5 lg:grid-cols-3">
-        <TrendPanel
-          label="Throughput"
-          unit="tok/s"
-          meta={window}
-          times={times}
-          series={[
-            {
-              label: "prefill",
-              values: samples.map((sample) => sample.prefill),
-              className: "text-(--fg)/80",
-              digits: 0,
-              peak: peaks.prefill,
-              peakClassName: "text-(--hl2)/55",
-            },
-            {
-              label: "decode",
-              values: samples.map((sample) => sample.generation),
-              className: "text-(--accent)/75",
-              digits: 1,
-              peak: peaks.generation,
-              peakClassName: "text-(--accent)/45",
-            },
-          ]}
-        />
-        <TrendPanel
-          label="TTFT"
-          unit="ms"
-          meta={window}
-          times={times}
-          series={[
-            {
-              label: "ttft",
-              values: samples.map((sample) => sample.ttft),
-              className: "text-(--fg)/80",
-              digits: 0,
-              peak: peaks.ttft,
-              peakClassName: "text-(--hl3)/55",
-            },
-          ]}
-        />
-        <TrendPanel
-          label="Requests"
-          unit="live"
-          meta={window}
-          times={times}
-          series={[
-            {
-              label: "running",
-              values: samples.map((sample) => sample.requests),
-              className: "text-(--fg)/80",
-              digits: 0,
-              peak: peaks.requests,
-              peakClassName: "text-(--accent)/45",
-            },
-          ]}
-        />
-      </div>
+      <TrendPanel
+        label="Throughput"
+        unit="tok/s"
+        meta={window}
+        times={times}
+        series={[
+          {
+            label: "prefill",
+            values: samples.map((sample) => sample.prefill),
+            className: "text-(--fg)/80",
+            digits: 0,
+            peak: peaks.prefill,
+            peakClassName: "text-(--hl2)/55",
+          },
+          {
+            label: "decode",
+            values: samples.map((sample) => sample.generation),
+            className: "text-(--accent)/75",
+            digits: 1,
+            peak: peaks.generation,
+            peakClassName: "text-(--accent)/45",
+          },
+        ]}
+      />
     </div>
   );
 }
@@ -377,7 +325,5 @@ function zeroSamples(): MetricSample[] {
     at: 0,
     generation: 0,
     prefill: 0,
-    requests: 0,
-    ttft: 0,
   }));
 }

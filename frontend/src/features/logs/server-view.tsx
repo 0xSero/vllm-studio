@@ -65,7 +65,7 @@ export function ServerContent({ embedded = false }: { embedded?: boolean }) {
 
   if (embedded) {
     return (
-      <div className="flex min-h-[44rem] flex-col overflow-hidden rounded-xl border border-(--ui-border) bg-(--ui-surface)">
+      <div className="flex min-h-[28rem] flex-col overflow-hidden rounded-xl border border-(--ui-border) bg-(--ui-surface)">
         {content}
       </div>
     );

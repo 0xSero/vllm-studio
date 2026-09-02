@@ -1,6 +1,8 @@
-import { readdir, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import lockfile from "proper-lockfile";
 import { resolveDataDir } from "./data-dir";
 import { createSessionScopedJsonStore } from "./session-json-store";
 import { isRecord } from "../../../shared/agent/guards";
@@ -229,16 +231,59 @@ export async function patchAutomation(
 export async function recordAutomationRun(
   id: string,
   run: AutomationRun,
-  nextRunAtValue: string,
 ): Promise<Automation | null> {
   const automation = await getAutomation(id);
   if (!automation) return null;
-  return patchAutomation(id, {
-    unread: true,
-    lastRun: run,
-    runs: prependAutomationRun(automation.runs, run),
-    nextRunAt: nextRunAtValue,
-  });
+  return store.write(
+    {
+      unread: true,
+      lastRun: run,
+      runs: prependAutomationRun(automation.runs, run),
+      nextRunAt: nextRunAt(automation.schedule, new Date()).toISOString(),
+    },
+    id,
+  );
+}
+
+export async function claimDueAutomation(
+  id: string,
+  opts: { requireDue: boolean },
+): Promise<Automation | null> {
+  const existing = await getAutomation(id);
+  if (!existing || existing.status !== "active") return null;
+  const now = new Date();
+  if (opts.requireDue) {
+    if (!existing.nextRunAt || new Date(existing.nextRunAt) > now) return null;
+  }
+  return store.write(
+    { nextRunAt: nextRunAt(existing.schedule, now).toISOString() },
+    id,
+  );
+}
+
+export async function withAutomationRunLock<T>(
+  id: string,
+  task: () => Promise<T>,
+): Promise<T | null> {
+  const dir = path.join(resolveDataDir(), AUTOMATIONS_SUBDIR);
+  await mkdir(dir, { recursive: true });
+  const lockPath = path.join(dir, `${id}.run.lock`);
+  if (!existsSync(lockPath)) await writeFile(lockPath, "", "utf8");
+  let release: (() => Promise<void>) | undefined;
+  try {
+    release = await lockfile.lock(lockPath, {
+      realpath: false,
+      stale: 6 * 60 * 60 * 1000,
+      retries: 0,
+    });
+  } catch {
+    return null;
+  }
+  try {
+    return await task();
+  } finally {
+    await release();
+  }
 }
 
 export async function deleteAutomation(id: string): Promise<boolean> {

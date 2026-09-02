@@ -8,7 +8,7 @@ import {
   ExploreResultsSection,
 } from "./explore-tab-sections";
 import { useExplore } from "./use-explore";
-import { useDownloads } from "@/hooks/use-downloads";
+import { useDownloads } from "@/features/recipes/use-downloads";
 import { useMountSubscription } from "@/hooks/use-mount-subscription";
 import api from "@/lib/api/client";
 import { LazyHuggingFaceModelCardPanel } from "@/ui/lazy-huggingface-model-card";
@@ -128,7 +128,7 @@ export function ExploreTab() {
   );
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-4">
       <ExploreControls
         groupsCount={groups.length}
         maxVramGb={maxVramGb}

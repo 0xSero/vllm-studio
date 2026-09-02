@@ -3,7 +3,7 @@ import type { Recipe } from "../models/types";
 type ParserName = string | undefined;
 
 const GLM_4_REASONING_TAGS = ["4.5", "4.6", "4.7", "4-5", "4-6", "4-7"];
-const GLM_5_REASONING_TAGS = ["5.0", "5.1", "5-0", "5-1"];
+const GLM_5_REASONING_TAGS = ["5.0", "5.1", "5.2", "5.3", "5-0", "5-1", "5-2", "5-3"];
 const MINIMAX_M2_TAGS = ["m2", "m-2"];
 const QWEN_MOE_TAGS = ["qwen3.5", "qwen3-3.5", "qwen3-235b", "qwen3_235b"];
 
