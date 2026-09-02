@@ -92,10 +92,6 @@ export function ComposerProjectDrawer({
 
   const submitGoal = useCallback(
     (draft: GoalDraft) => {
-      // Every write from this card reactivates. Editing used to send the
-      // objective alone, so a re-aimed goal kept its `complete` status — and a
-      // non-active goal is excluded from prompt injection, meaning the new
-      // objective steered nothing while the card still said "Goal complete".
       void patchGoal({
         objective: draft.objective,
         turnBudget: draft.turnBudget,
@@ -107,19 +103,8 @@ export function ComposerProjectDrawer({
   );
 
   const activeProject = projects.findByPath(cwd) ?? projects.selectedProject;
-  // The projects store seeds itself from localStorage synchronously at
-  // creation, so the client's very first render already knows the selected
-  // project while the server's render cannot. Naming it during hydration is a
-  // mismatch, and React responds by throwing away and re-rendering the whole
-  // subtree — the composer. Hold the neutral label until after mount, which is
-  // one frame, and hydrate clean.
   const [hydrated, setHydrated] = useState(false);
   useMountSubscription(() => setHydrated(true), []);
-  // Every source of this name is client-only: `projectName` comes from the
-  // pane's restored view state and `activeProject` from the projects store,
-  // which seeds from localStorage synchronously. The server can know none of
-  // it, so the first client render must say what the server said and only then
-  // fill in — otherwise React discards and re-renders the whole composer.
   const label = hydrated
     ? (projectName ?? activeProject?.name ?? "Choose project")
     : "Choose project";
@@ -150,34 +135,15 @@ export function ComposerProjectDrawer({
       ) : null}
       <section
         data-testid="composer-drawer"
-        // No shadow of its own: the drawer is tucked behind the composer, and a
-        // second drop shadow under the composer's read as a stack of floating
-        // cards — the "clunky backgrounds" complaint. A hairline and a faint
-        // tint are enough to separate it.
         className="relative z-0 mx-auto -mb-3 w-[calc(100%_-_26px)] max-w-[calc(var(--composer-w)*0.9_-_26px)] overflow-hidden rounded-[var(--composer-radius-inner)] border border-(--border) bg-(--fg)/[0.022] pb-2 text-[length:var(--fs-xs)] md:pb-3 md:text-[length:var(--fs-sm)] [corner-shape:superellipse(1.5)] sm:w-[calc(90%_-_26px)]"
       >
-        {/* Collapsed is a summary, not a void: the branch and its diffstat
-            are the thing you check between prompts, so they share the single
-            row with the project label instead of stacking under it. */}
-        <div className="flex items-center gap-1 px-1.5 pt-1">
-          <div className="min-w-0 flex-1">
-            <DrawerSummaryButton
-              open={open}
-              onToggle={() => setOpen((value) => !value)}
-              label={label}
-              queueCount={queueItems.length}
-              hasGoal={goal !== null}
-            />
-          </div>
-          {!open ? (
-            <GitRow
-              compact
-              gitSummary={gitSummary}
-              gitBranch={gitBranch}
-              onInitGit={onInitGit}
-              onOpenDiff={onOpenDiff}
-            />
-          ) : null}
+        <div className="flex items-center px-1.5 pt-1">
+          <DrawerSummaryButton
+            open={open}
+            onToggle={() => setOpen((value) => !value)}
+            label={label}
+            queueCount={queueItems.length}
+          />
         </div>
         {hasQueue ? (
           <div className="px-1.5 pb-0.5">
@@ -641,13 +607,28 @@ function SectionShell({
   create?: ReactNode;
   children: ReactNode;
 }) {
+  const [expanded, setExpanded] = useState(false);
   return (
     <div>
-      <div className="flex h-7 w-full items-center gap-1.5 rounded-[10px] px-2 text-[length:var(--fs-sm)] font-medium text-(--fg)/52">
-        {icon}
-        <span className="min-w-0 flex-1 truncate">{label}</span>
-        {count > 0 ? <span className="text-(--fg)/34">{count}</span> : null}
-        {!addDisabled ? (
+      <div className="flex h-7 w-full items-center gap-1.5 rounded-[10px] pr-2 text-[length:var(--fs-sm)] font-medium text-(--fg)/52">
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          aria-expanded={expanded}
+          className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-[10px] px-2 text-left transition-colors hover:bg-(--hover) hover:text-(--fg)/82"
+        >
+          {icon}
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {count > 0 ? <span className="text-(--fg)/34">{count}</span> : null}
+          <ChevronDown
+            className={cx(
+              "h-3 w-3 shrink-0 text-(--fg)/30 transition-transform",
+              expanded && "rotate-180",
+            )}
+            strokeWidth={1.75}
+          />
+        </button>
+        {expanded && !addDisabled ? (
           <button
             type="button"
             onClick={onAdd}
@@ -659,25 +640,31 @@ function SectionShell({
           </button>
         ) : null}
       </div>
-      <div className="px-2 pb-0.5">
-        <input
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          placeholder={placeholder}
-          className={searchInputClass}
-        />
-      </div>
-      {create}
-      {loading && !itemsLoaded ? (
-        <div className={cx(listRowClass, "text-(--fg)/40")}>
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          <span>Loading…</span>
-        </div>
-      ) : itemsLoaded && empty ? (
-        <div className={cx(listRowClass, "text-(--fg)/40")}>{emptyLabel}</div>
-      ) : (
-        <div className="max-h-44 overflow-y-auto">{children}</div>
-      )}
+      {expanded ? (
+        <>
+          {count > 5 ? (
+            <div className="px-2 pb-0.5">
+              <input
+                value={query}
+                onChange={(event) => onQueryChange(event.target.value)}
+                placeholder={placeholder}
+                className={searchInputClass}
+              />
+            </div>
+          ) : null}
+          {create}
+          {loading && !itemsLoaded ? (
+            <div className={cx(listRowClass, "text-(--fg)/40")}>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span>Loading…</span>
+            </div>
+          ) : itemsLoaded && empty ? (
+            <div className={cx(listRowClass, "text-(--fg)/40")}>{emptyLabel}</div>
+          ) : (
+            <div className="max-h-44 overflow-y-auto">{children}</div>
+          )}
+        </>
+      ) : null}
     </div>
   );
 }
@@ -693,29 +680,22 @@ function GitRow({
   gitBranch,
   onInitGit,
   onOpenDiff,
-  compact = false,
 }: {
   gitSummary?: GitSummary | null;
   gitBranch?: string | null;
   onInitGit?: () => void;
   onOpenDiff: () => void;
-  compact?: boolean;
 }) {
-  // Compact rows sit beside the summary button on one shared line, so they
-  // keep the row metrics but give up w-full and let the summary take the slack.
-  const rowClass = compact
-    ? "flex h-8 shrink-0 items-center gap-2 rounded-[10px] px-2 text-left transition-colors"
-    : listRowClass;
   if (gitSummary?.isRepo) {
     return (
       <button
         type="button"
         onClick={onOpenDiff}
-        className={cx(rowClass, "hover:bg-(--hover)")}
+        className={cx(listRowClass, "hover:bg-(--hover)")}
         title="View changes"
       >
         <GitBranchIcon className="h-3.5 w-3.5 shrink-0 text-(--fg)/56" />
-        <span className={cx("min-w-0 truncate text-(--fg)/72", compact ? "max-w-28" : "flex-1")}>
+        <span className="min-w-0 flex-1 truncate text-(--fg)/72">
           {gitBranch ?? gitSummary.branch ?? "git"}
         </span>
         <span className="flex shrink-0 items-center gap-1 font-mono text-[length:var(--fs-xs)] tabular-nums">
@@ -733,7 +713,7 @@ function GitRow({
       <button
         type="button"
         onClick={onInitGit}
-        className={cx(rowClass, "text-(--fg)/56 hover:bg-(--hover) hover:text-(--fg)/82")}
+        className={cx(listRowClass, "text-(--fg)/56 hover:bg-(--hover) hover:text-(--fg)/82")}
       >
         <GitBranchIcon className="h-3.5 w-3.5 shrink-0" />
         Initialize git
@@ -842,13 +822,11 @@ function DrawerSummaryButton({
   onToggle,
   label,
   queueCount,
-  hasGoal,
 }: {
   open: boolean;
   onToggle: () => void;
   label: string;
   queueCount: number;
-  hasGoal: boolean;
 }) {
   const hasQueue = queueCount > 0;
   return (
@@ -856,31 +834,23 @@ function DrawerSummaryButton({
       type="button"
       onClick={onToggle}
       aria-expanded={open}
-      // Same metrics as every list row below it — the collapsed summary and
-      // the expanded rows share one left edge and one height, so toggling
-      // the drawer doesn't make the text jump.
-      className={cx(listRowClass, "text-(--fg)/78 hover:bg-(--hover)")}
+      className="flex h-8 max-w-full min-w-0 items-center gap-2 rounded-[10px] px-2 text-left text-(--fg)/78 transition-colors hover:bg-(--hover)"
     >
       {hasQueue ? (
         <ListChecks className="h-3.5 w-3.5 shrink-0 text-(--fg)/56" strokeWidth={1.7} />
       ) : (
         <FolderOpen className="h-3.5 w-3.5 shrink-0 text-(--fg)/56" strokeWidth={1.7} />
       )}
-      <span className="min-w-0 flex-1 truncate">
+      <span className="min-w-0 truncate">
         {hasQueue ? `${queueCount} queued message${queueCount === 1 ? "" : "s"}` : label}
       </span>
-      {/* The objective is NOT repeated here. It lives one row up in the goal
-          strip, which is always mounted; printing it twice, a row apart, was
-          the same fact competing with itself. */}
-      {hasGoal || hasQueue ? (
-        <ChevronDown
-          className={cx(
-            "h-3.5 w-3.5 shrink-0 text-(--fg)/36 transition-transform",
-            open && "rotate-180",
-          )}
-          strokeWidth={1.75}
-        />
-      ) : null}
+      <ChevronDown
+        className={cx(
+          "h-3.5 w-3.5 shrink-0 text-(--fg)/36 transition-transform",
+          open && "rotate-180",
+        )}
+        strokeWidth={1.75}
+      />
     </button>
   );
 }
