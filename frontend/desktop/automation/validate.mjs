@@ -584,14 +584,15 @@ export function controllerStandards() {
 }
 
 /**
- * The automation layout gate: exactly two shell scripts plus the project.mjs
- * symlink in scripts/, exactly three tracked executables, no per-package
+ * The automation layout gate: exactly three shell scripts plus the project.mjs
+ * symlink in scripts/, exactly four tracked executables, no per-package
  * scripts/ directories. The automation modules themselves live in
  * frontend/desktop/automation/ as ordinary non-executable source.
  */
 export function auditLayout() {
   const expected = [
     "frontend/desktop/project.mjs",
+    "scripts/dev-watch.sh",
     "scripts/install-controller.sh",
     "scripts/install-desktop-app.sh",
   ];
@@ -616,5 +617,5 @@ export function auditLayout() {
       `Automation layout drifted: scripts=${actual.join(",")}; executable=${executable.join(",")}; stale=${stale.join(",")}`,
     );
   }
-  console.log("Automation layout passed: exactly three scripts");
+  console.log("Automation layout passed: exactly four scripts");
 }
