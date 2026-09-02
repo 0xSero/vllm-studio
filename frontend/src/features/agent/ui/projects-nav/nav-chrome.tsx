@@ -44,48 +44,6 @@ export function SessionStatusMark({
   return null;
 }
 
-export function SessionLiveBadge({
-  activity,
-  status,
-}: {
-  activity: SessionActivity;
-  status?: string;
-}) {
-  if (activity === "running") {
-    const label =
-      status === "starting"
-        ? "Starting"
-        : status === "stopping"
-          ? "Stopping"
-          : status === "loading"
-            ? "Loading"
-            : "Running";
-    return (
-      <span className="inline-flex shrink-0 items-center gap-1 text-[length:var(--fs-xs)] text-(--link)">
-        <Spinner size="xs" className="text-(--link)" />
-        {label}
-      </span>
-    );
-  }
-  if (activity === "finished") {
-    return (
-      <span className="inline-flex shrink-0 items-center gap-1 text-[length:var(--fs-xs)] text-(--ok)">
-        <span className="h-1.5 w-1.5 rounded-full bg-(--ok)" />
-        Done
-      </span>
-    );
-  }
-  if (activity === "unseen") {
-    return (
-      <span className="inline-flex shrink-0 items-center gap-1 text-[length:var(--fs-xs)] text-(--link)">
-        <span className="h-1.5 w-1.5 rounded-full bg-(--link)" />
-        New
-      </span>
-    );
-  }
-  return null;
-}
-
 /** The one pin control for every sidebar row (sessions and projects). It sits in
  *  the row's hover action cluster and, once pinned, stays lit as the pinned
  *  indicator. */

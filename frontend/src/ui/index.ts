@@ -1,8 +1,8 @@
 export { Button, ModelButton, buttonClasses } from "./button";
 export type { ButtonProps, ButtonVariant, ButtonSize, ModelButtonProps } from "./button";
 
-export { Input, ModelInput } from "./input";
-export type { InputProps, ModelInputProps } from "./input";
+export { Input } from "./input";
+export type { InputProps } from "./input";
 
 export { Select } from "./select";
 export type { SelectProps, SelectOption } from "./select";
@@ -39,14 +39,7 @@ export type { AlertProps, AlertVariant } from "./alert";
 export { RefreshButton } from "./refresh-button";
 export type { RefreshButtonProps } from "./refresh-button";
 
-export {
-  AppPage,
-  PageContainer,
-  PageHeader,
-  SectionNav,
-  RefreshIconButton,
-  TabbedPage,
-} from "./page";
+export { AppPage, PageContainer, PageHeader, RefreshIconButton, TabbedPage } from "./page";
 export type { SectionNavItem, PageWidth } from "./page";
 
 export { Slider } from "./slider";
