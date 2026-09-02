@@ -1,26 +1,26 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import {
   AppPage,
   Button,
   buttonClasses,
   Input,
   RefreshIconButton,
-  SectionNav,
   StatusPill,
   type SectionNavItem,
   type UiTone,
 } from "@/ui";
 import { ChevronDown } from "@/ui/icon-registry";
 import { cx } from "@/ui/utils";
+import { SettingsSectionNav, type SettingsNavGroup } from "./settings-section-nav";
 
 export type SettingsSectionId = string;
 export type SettingsSectionDef<Id extends SettingsSectionId = SettingsSectionId> =
   SectionNavItem<Id>;
 
 type LayoutProps<Id extends SettingsSectionId = SettingsSectionId> = {
-  sections: SettingsSectionDef<Id>[];
+  sectionGroups: SettingsNavGroup<Id>[];
   activeSection: Id;
   title: string;
   status?: ReactNode;
@@ -45,7 +45,7 @@ type RowProps = {
 };
 
 export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>({
-  sections,
+  sectionGroups,
   activeSection,
   title,
   status,
@@ -58,54 +58,64 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
   width = "default",
   children,
 }: LayoutProps<Id>) {
-  const active = sections.find((section) => section.id === activeSection);
+  const active = sectionGroups
+    .flatMap((group) => group.items)
+    .find((section) => section.id === activeSection);
+  const pageRef = useRef<HTMLElement>(null);
   const layoutWidth =
     width === "wide"
-      ? "max-w-[92rem] lg:grid-cols-[168px_minmax(0,68rem)]"
-      : "max-w-[68rem] lg:grid-cols-[168px_minmax(0,46rem)]";
+      ? "max-w-[92rem] lg:grid-cols-[11.5rem_minmax(0,68rem)]"
+      : "max-w-[68rem] lg:grid-cols-[11.5rem_minmax(0,46rem)]";
+
+  const selectSection = (section: Id) => {
+    pageRef.current?.scrollTo({ top: 0, behavior: "instant" });
+    onSelectSection(section);
+  };
 
   return (
-    <AppPage>
+    <AppPage ref={pageRef}>
       <div
         className={cx(
           "mx-auto grid w-full grid-cols-1 gap-4 px-4 py-4 sm:px-6 lg:justify-center lg:gap-6 lg:py-5",
           layoutWidth,
         )}
       >
-        <aside className="min-w-0 lg:sticky lg:top-8 lg:self-start">
-          <div className="mb-4 hidden items-center justify-between gap-3 px-1 lg:flex">
-            <h1 className="text-[length:var(--fs-lg)] font-medium tracking-[-0.01em] text-(--ui-fg)">
+        <aside className="min-w-0 lg:sticky lg:top-6 lg:self-start lg:border-r lg:border-(--ui-separator)/50 lg:pr-5">
+          <div className="mb-3 hidden items-center justify-between gap-3 lg:flex">
+            <h1 className="px-2 text-[length:var(--fs-md)] font-medium tracking-[-0.01em] text-(--ui-fg)">
               {title}
             </h1>
             {showRefresh ? (
               <RefreshIconButton onClick={onReload} loading={loading} label={refreshLabel} />
             ) : null}
           </div>
-          <SectionNav
+          <SettingsSectionNav
             label={`${title} sections`}
-            items={sections}
+            groups={sectionGroups}
             activeItem={activeSection}
-            onSelectItem={onSelectSection}
+            onSelectItem={selectSection}
           />
         </aside>
         <section className="min-w-0 pb-10">
-          <header className="mb-5 flex min-h-8 items-start justify-between gap-4">
-            <div className="min-w-0">
+          <header className="mb-5 flex min-h-[4.75rem] items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
               {eyebrow ? (
                 <div className="mb-1 text-[length:var(--fs-sm)] text-(--ui-muted)">{eyebrow}</div>
               ) : null}
-              <h2 className="text-[length:var(--fs-xl)] font-medium tracking-[-0.015em] text-(--ui-fg)">
+              <h2 className="min-h-[1.75rem] text-[length:var(--fs-xl)] font-medium tracking-[-0.015em] text-(--ui-fg)">
                 {active?.label ?? title}
               </h2>
               {active?.description ? (
-                <p className="mt-1 max-w-[38rem] text-[length:var(--fs-base)] leading-relaxed text-(--ui-muted)">
+                <p className="mt-1 min-h-[2.5rem] max-w-[38rem] text-[length:var(--fs-sm)] leading-relaxed text-(--ui-muted) line-clamp-2">
                   {active.description}
                 </p>
-              ) : null}
+              ) : (
+                <div className="mt-1 min-h-[2.5rem]" aria-hidden />
+              )}
             </div>
             {status || showRefresh ? (
-              <div className="flex shrink-0 items-center gap-2 text-[length:var(--fs-xs)] text-(--ui-muted)">
-                {status}
+              <div className="flex min-w-[6.5rem] shrink-0 items-center justify-end gap-2 text-[length:var(--fs-xs)] text-(--ui-muted)">
+                {status ? <span className="truncate text-right">{status}</span> : null}
                 {showRefresh ? (
                   <span className="lg:hidden">
                     <RefreshIconButton onClick={onReload} loading={loading} label={refreshLabel} />
@@ -114,7 +124,7 @@ export function SettingsLayout<Id extends SettingsSectionId = SettingsSectionId>
               </div>
             ) : null}
           </header>
-          <div>{children}</div>
+          <div className="min-h-[20rem]">{children}</div>
         </section>
       </div>
     </AppPage>
