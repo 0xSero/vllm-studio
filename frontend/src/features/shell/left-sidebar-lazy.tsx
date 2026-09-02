@@ -3,7 +3,7 @@
 import { type ComponentType } from "react";
 import type { ActiveSession } from "@/features/agent/session-index";
 
-export type NavView = "projects" | "notifications";
+export type NavView = "projects" | "recents";
 
 export type ProjectsNavSectionComponent = ComponentType<{
   expanded: boolean;

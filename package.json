@@ -11,6 +11,8 @@
     "doctor": "node scripts/project.mjs doctor",
     "check": "node scripts/project.mjs check",
     "dev": "npm --prefix frontend run dev",
+    "dev:watch": "bash scripts/dev-watch.sh",
+    "dev:stop": "bash scripts/dev-watch.sh stop",
     "build": "npm --prefix frontend run build",
     "start": "npm --prefix frontend run start",
     "desktop:build": "npm --prefix frontend run desktop:build",

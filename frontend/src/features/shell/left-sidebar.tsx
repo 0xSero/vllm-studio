@@ -73,15 +73,8 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
   // topbar would be a second stacked row there.
   const ownsMobileHeader = routeOwnsMobileHeader(pathname);
   const [paletteMode, setPaletteMode] = useState<PaletteMode>(null);
-  // The bell swaps the nav body rather than opening a panel; projects is the
-  // resting view, so the toggle always has somewhere to fall back to.
-  const [navView, setNavView] = useState<NavView>("projects");
-  const sessionActivity = useSessionActivity();
-  // The bell used to carry a bare "something happened" dot, which said nothing
-  // about what. What the nav can usefully show is session state: how many runs
-  // are live right now, and how many finished while you were elsewhere.
-  const runningSessions = sessionActivity.active.size;
-  const finishedSessions = sessionActivity.finished.size;
+  const [navView, setNavView] = useState<NavView>("recents");
+  const liveCount = useSessionActivity().active.size;
   const activeSessions = useOpenSessions();
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [projectsNavReady, setProjectsNavReady] = useState(projectsNavImmediate);
@@ -108,14 +101,27 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
 
   useMountSubscription(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      const key = event.key.toLowerCase();
+      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
+      if (key === "k") {
         event.preventDefault();
         setPaletteMode((mode) => (mode === "search" ? null : "search"));
+        return;
       }
+      if (key !== "n") return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("input, textarea, select, [contenteditable=true]")
+      ) {
+        return;
+      }
+      event.preventDefault();
+      router.push(hrefWithOpenNonce("/agent?new=1&replace=1"));
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [router]);
 
   useMountSubscription(() => {
     return () => {
@@ -208,11 +214,8 @@ export function LeftSidebar({ children }: { children: ReactNode }) {
         onSetPinnedOpen={setDesktopSidebarPinnedOpen}
         onOpenSearch={() => setPaletteMode("search")}
         navView={navView}
-        onToggleNavView={() =>
-          setNavView((view) => (view === "notifications" ? "projects" : "notifications"))
-        }
-        runningSessions={runningSessions}
-        finishedSessions={finishedSessions}
+        onToggleNavView={() => setNavView((view) => (view === "recents" ? "projects" : "recents"))}
+        liveCount={liveCount}
         onNewTask={openNewTask}
       />
 

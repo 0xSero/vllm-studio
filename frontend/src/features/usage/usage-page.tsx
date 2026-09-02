@@ -116,14 +116,7 @@ export default function UsagePage({ embedded = false }: { embedded?: boolean }) 
 
   const body = (
     <>
-      {embedded ? (
-        <header className="flex items-center justify-between gap-3">
-          <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">
-            What this machine has served, over the whole retention window.
-          </p>
-          <RefreshButton onRefresh={loadStats} loading={loading} className="h-7 w-7" />
-        </header>
-      ) : (
+      {!embedded ? (
         <header className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <button
@@ -168,67 +161,67 @@ export default function UsagePage({ embedded = false }: { embedded?: boolean }) 
           </div>
           <RefreshButton onRefresh={loadStats} loading={loading} className="h-7 w-7" />
         </header>
-      )}
+      ) : null}
 
-      <section className="mt-8">
-          <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">Proxied tokens</p>
-          <div className="mt-1 text-[length:var(--fs-display)] font-medium leading-none tracking-[-0.03em] tabular-nums text-(--ui-fg)">
-            {formatNumber(stats.totals.total_tokens)}
-          </div>
-          <p className="mt-2 text-[length:var(--fs-sm)] text-(--ui-muted)">
-            Requests proxied through this controller
-          </p>
-        </section>
+      <section className={embedded ? "" : "mt-8"}>
+        <p className="text-[length:var(--fs-sm)] text-(--ui-muted)">Proxied tokens</p>
+        <div className="mt-1 text-[length:var(--fs-display)] font-medium leading-none tracking-[-0.03em] tabular-nums text-(--ui-fg)">
+          {formatNumber(stats.totals.total_tokens)}
+        </div>
+        <p className="mt-2 text-[length:var(--fs-sm)] text-(--ui-muted)">
+          Requests proxied through this controller
+        </p>
+      </section>
 
-        {/* gap-px over a border-coloured ground, rather than divide-x: a divided
+      {/* gap-px over a border-coloured ground, rather than divide-x: a divided
             grid draws a stray left edge on the first cell of every wrapped row,
             so the rule only looked right at the one breakpoint where all six
             cells fit on a single line. This way the hairlines are exact at 2, 3
             and 6 columns, and the rounded corners clip cleanly. */}
-        <StatGrid>
-          <Stat label="Requests" value={formatNumber(stats.totals.total_requests)} />
-          <Stat label="Sessions" value={formatNumber(stats.totals.unique_sessions)} />
-          <Stat label="Active days" value={formatNumber(activeDays(stats))} />
-          <Stat label="Active streak" value={`${currentStreak(stats)} days`} />
-          <Stat label="Success rate" value={`${Math.round(stats.totals.success_rate)}%`} />
-          <Stat label="P95 latency" value={milliseconds(stats.latency.p95_ms)} />
-        </StatGrid>
+      <StatGrid>
+        <Stat label="Requests" value={formatNumber(stats.totals.total_requests)} />
+        <Stat label="Sessions" value={formatNumber(stats.totals.unique_sessions)} />
+        <Stat label="Active days" value={formatNumber(activeDays(stats))} />
+        <Stat label="Active streak" value={`${currentStreak(stats)} days`} />
+        <Stat label="Success rate" value={`${Math.round(stats.totals.success_rate)}%`} />
+        <Stat label="P95 latency" value={milliseconds(stats.latency.p95_ms)} />
+      </StatGrid>
 
-        {/* The year at a glance, above the tabs rather than inside one: it is
+      {/* The year at a glance, above the tabs rather than inside one: it is
             true of the whole window like the grid above it, and it is the thing
             people come to this page to look at. */}
-        <section className="mt-8">
-          <div className="flex items-baseline justify-between gap-4">
-            <h2 className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">Past year</h2>
-            <span className="text-[length:var(--fs-xs)] text-(--ui-muted)">tokens per day</span>
-          </div>
-          <div className="mt-3">
-            <TokenActivityHeatmap daily={stats.daily} />
-          </div>
-        </section>
-
-        <div className="mt-8 border-b border-(--ui-separator)">
-          <Tabs items={USAGE_TABS} activeTab={tab} onSelectTab={setTab} className="-mb-px" />
+      <section className="mt-8">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className="text-[length:var(--fs-md)] font-medium text-(--ui-fg)">Past year</h2>
+          <span className="text-[length:var(--fs-xs)] text-(--ui-muted)">tokens per day</span>
         </div>
+        <div className="mt-3">
+          <TokenActivityHeatmap daily={stats.daily} />
+        </div>
+      </section>
 
-        <section className="mt-8">
-          <h2 className="text-[length:var(--fs-2xl)] font-medium tracking-[-0.015em] text-(--ui-fg)">
-            {heading.title}
-          </h2>
-          <p className="mt-1 text-[length:var(--fs-sm)] text-(--ui-muted)">{heading.description}</p>
+      <div className="mt-8 border-b border-(--ui-separator)">
+        <Tabs items={USAGE_TABS} activeTab={tab} onSelectTab={setTab} className="-mb-px" />
+      </div>
 
-          <div className="mt-6">
-            {tab === "models" ? (
-              <UsageModelsTab stats={stats} />
-            ) : tab === "activity" ? (
-              <UsageActivityTab stats={stats} />
-            ) : tab === "routes" ? (
-              <UsageControllerTab stats={stats} />
-            ) : (
-              <UsageErrorsTab stats={stats} />
-            )}
-          </div>
-        </section>
+      <section className="mt-8">
+        <h2 className="text-[length:var(--fs-2xl)] font-medium tracking-[-0.015em] text-(--ui-fg)">
+          {heading.title}
+        </h2>
+        <p className="mt-1 text-[length:var(--fs-sm)] text-(--ui-muted)">{heading.description}</p>
+
+        <div className="mt-6">
+          {tab === "models" ? (
+            <UsageModelsTab stats={stats} />
+          ) : tab === "activity" ? (
+            <UsageActivityTab stats={stats} />
+          ) : tab === "routes" ? (
+            <UsageControllerTab stats={stats} />
+          ) : (
+            <UsageErrorsTab stats={stats} />
+          )}
+        </div>
+      </section>
     </>
   );
 

@@ -44,6 +44,48 @@ export function SessionStatusMark({
   return null;
 }
 
+export function SessionLiveBadge({
+  activity,
+  status,
+}: {
+  activity: SessionActivity;
+  status?: string;
+}) {
+  if (activity === "running") {
+    const label =
+      status === "starting"
+        ? "Starting"
+        : status === "stopping"
+          ? "Stopping"
+          : status === "loading"
+            ? "Loading"
+            : "Running";
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 text-[length:var(--fs-xs)] text-(--link)">
+        <Spinner size="xs" className="text-(--link)" />
+        {label}
+      </span>
+    );
+  }
+  if (activity === "finished") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 text-[length:var(--fs-xs)] text-(--ok)">
+        <span className="h-1.5 w-1.5 rounded-full bg-(--ok)" />
+        Done
+      </span>
+    );
+  }
+  if (activity === "unseen") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 text-[length:var(--fs-xs)] text-(--link)">
+        <span className="h-1.5 w-1.5 rounded-full bg-(--link)" />
+        New
+      </span>
+    );
+  }
+  return null;
+}
+
 /** The one pin control for every sidebar row (sessions and projects). It sits in
  *  the row's hover action cluster and, once pinned, stays lit as the pinned
  *  indicator. */
@@ -71,9 +113,7 @@ export function PinButton({
       // it slides in from the left over the trailing text with a fade.
       className={`inline-flex h-5 w-5 items-center justify-center rounded-[var(--rad-xs)] transition-[opacity,transform,color] duration-150 hover:text-(--fg) ${
         pinned ? "text-(--fg)/75" : "text-(--dim)/70"
-      } ${
-        "-translate-x-1.5 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 focus-visible:translate-x-0 focus-visible:opacity-100 pointer-coarse:translate-x-0 pointer-coarse:opacity-100"
-      }`}
+      } ${"-translate-x-1.5 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 focus-visible:translate-x-0 focus-visible:opacity-100 pointer-coarse:translate-x-0 pointer-coarse:opacity-100"}`}
     >
       <PinIcon className="pointer-events-none h-3 w-3" />
     </button>
@@ -107,7 +147,7 @@ export function SidebarSectionHeader({
 }) {
   return (
     <div
-      className="group flex cursor-default items-center justify-between pe-0.5 ps-2 pb-1 pt-5 text-[length:var(--fs-md)] font-medium text-(--hl2) opacity-75 transition-opacity group-hover:opacity-100"
+      className="group flex cursor-default items-center justify-between pe-0.5 ps-2 pb-0.5 pt-1.5 text-[length:var(--fs-xs)] font-normal text-(--hl2)"
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
@@ -115,7 +155,7 @@ export function SidebarSectionHeader({
       <button
         type="button"
         onClick={onToggle}
-        className="flex min-w-0 items-center gap-1.5 text-left hover:text-(--fg) focus-visible:text-(--fg) focus-visible:outline-none"
+        className="flex min-w-0 items-center gap-1.5 text-left hover:text-(--dim) focus-visible:text-(--dim) focus-visible:outline-none"
         aria-expanded={open}
       >
         <span>{label}</span>

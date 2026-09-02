@@ -53,6 +53,12 @@ const APP_DESTINATIONS: AppDestination[] = [
     description: "The machines that run models, and the controller.",
   },
   {
+    href: "/agent/automations",
+    label: "Automations",
+    keywords: "automations scheduled tasks cron wake",
+    description: "Scheduled and event-driven agent runs.",
+  },
+  {
     href: "/agent",
     label: "Workbench",
     keywords: "agent chat projects browser terminal tools files",

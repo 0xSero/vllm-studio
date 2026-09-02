@@ -5,6 +5,7 @@ import {
   nowLabel,
   sessionTitleFromPrompt,
 } from "@/features/agent/messages";
+import { patchCanonicalSessionPref } from "@/features/agent/messages/prefs";
 import type {
   ComposerPromptTemplateRef,
   ComposerSkillRef,
@@ -91,7 +92,13 @@ export function submitPromptTurn(deps: PromptStreamDeps, args: SubmitArgs): Prom
   if (!context) return Promise.resolve();
 
   appendOptimisticPrompt(deps, context, args);
-  return startPromptCommand(deps, context, args);
+  const namingFirstTurn =
+    context.selected.messages.filter((message) => message.role === "user").length === 0;
+  const turn = startPromptCommand(deps, context, args);
+  if (namingFirstTurn) {
+    void turn.then(() => nameSessionFromFirstPrompt(deps, context, args)).catch(() => undefined);
+  }
+  return turn;
 }
 
 function createPromptTurnContext(
@@ -272,4 +279,29 @@ function mergeSkills(
   for (const skill of existing ?? []) byId.set(skill.id || skill.path || skill.name, skill);
   for (const skill of next) byId.set(skill.id || skill.path || skill.name, skill);
   return [...byId.values()];
+}
+
+function nameSessionFromFirstPrompt(
+  deps: PromptStreamDeps,
+  context: PromptTurnContext,
+  args: SubmitArgs,
+): Promise<void> {
+  const optimistic = sessionTitleFromPrompt(args.userText);
+  const live = deps.tabsRef.current.find((tab) => tab.id === context.sessionId);
+  const persistId = live?.piSessionId || context.sessionId;
+  return api
+    .generateSessionTitle({
+      sessionId: persistId,
+      prompt: args.userText,
+      modelId: deps.modelId,
+    })
+    .then((title) => {
+      if (!title) return;
+      const latest = deps.tabsRef.current.find((tab) => tab.id === context.sessionId);
+      const current = latest?.title?.trim() ?? "";
+      if (current && current !== optimistic && current !== "New session") return;
+      const key = latest?.piSessionId || persistId;
+      deps.updateSession(context.sessionId, (session) => ({ ...session, title }));
+      patchCanonicalSessionPref(key, [context.sessionId, persistId], { title });
+    });
 }
