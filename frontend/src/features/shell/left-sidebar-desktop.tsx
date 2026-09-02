@@ -4,25 +4,24 @@ import Link from "next/link";
 import { ProfileFooter } from "@/features/shell/profile-footer";
 import { type MouseEvent as ReactMouseEvent } from "react";
 import {
-  BellIcon,
-  ChevronLeft,
-  ChevronRight,
-  SearchIcon,
-  NewTaskIcon,
-  SettingsIcon,
+  Clock,
   PanelLeftHollow,
   PanelLeftFilled,
+  Plus,
+  Search,
+  Settings,
 } from "@/ui/icon-registry";
 import type { NavView, ProjectsNavSectionComponent } from "@/features/shell/left-sidebar-lazy";
 import {
-  NavItemDesktop,
+  NavDestinationsStrip,
+  NavIconButton,
   ProjectsNavPlaceholder,
   isRouteActive,
   tabs,
 } from "@/features/shell/left-sidebar-nav";
 
-const HISTORY_STEPPER_CLASS =
-  "flex h-6 w-6 items-center justify-center rounded-md text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)";
+const TOOLBAR_BTN =
+  "flex h-7 w-7 items-center justify-center rounded-md text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)";
 
 export function DesktopSidebar({
   pathname,
@@ -37,8 +36,7 @@ export function DesktopSidebar({
   onOpenSearch,
   navView,
   onToggleNavView,
-  runningSessions,
-  finishedSessions,
+  liveCount,
   onNewTask,
 }: {
   pathname: string;
@@ -53,8 +51,7 @@ export function DesktopSidebar({
   onOpenSearch: () => void;
   navView: NavView;
   onToggleNavView: () => void;
-  runningSessions: number;
-  finishedSessions: number;
+  liveCount: number;
   onNewTask: () => void;
 }) {
   return (
@@ -81,155 +78,141 @@ export function DesktopSidebar({
         />
       ) : null}
       {!isExpanded ? (
-        <div className="flex h-[var(--h-toolbar)] shrink-0 items-center justify-center">
-          <button
-            onClick={() => onSetPinnedOpen(true)}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
-            title="Expand sidebar"
-            aria-label="Expand sidebar"
-          >
-            <PanelLeftHollow className="h-3.5 w-3.5" strokeWidth={1.75} />
-          </button>
+        <CollapsedRail
+          pathname={pathname}
+          liveCount={liveCount}
+          navView={navView}
+          onExpand={() => onSetPinnedOpen(true)}
+          onNewTask={onNewTask}
+          onToggleNavView={onToggleNavView}
+        />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex h-[var(--h-toolbar)] shrink-0 items-center gap-0.5 bg-(--sidebar-bg) px-1.5">
+            <button
+              onClick={() => onSetPinnedOpen(false)}
+              className={`${TOOLBAR_BTN} rounded-lg`}
+              title="Collapse sidebar"
+              aria-label="Collapse sidebar"
+            >
+              <PanelLeftFilled className="h-3 w-3" strokeWidth={1.6} />
+            </button>
+            <span className="min-w-0 flex-1 truncate px-1 text-[length:var(--fs-md)] font-medium text-(--fg)">
+              {navView === "recents" ? "Tasks" : "Projects"}
+            </span>
+            <button
+              onClick={onOpenSearch}
+              className={TOOLBAR_BTN}
+              title="Search (⌘K)"
+              aria-label="Search sessions"
+            >
+              <Search className="h-4 w-4" strokeWidth={1.6} />
+            </button>
+            <button
+              onClick={onToggleNavView}
+              aria-pressed={navView === "recents"}
+              className={`${TOOLBAR_BTN} relative aria-pressed:text-(--fg)`}
+              title={navView === "recents" ? "Show projects" : "Recent sessions"}
+              aria-label={navView === "recents" ? "Show projects" : "Recent sessions"}
+            >
+              <span className="relative inline-flex">
+                <Clock className="h-4 w-4" strokeWidth={1.6} />
+                {liveCount > 0 ? (
+                  <span
+                    className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-(--ok) animate-pulse-soft"
+                    aria-label={`${liveCount} running`}
+                  />
+                ) : null}
+              </span>
+            </button>
+          </div>
+
+          <NavDestinationsStrip pathname={pathname} onNewTask={onNewTask} />
+
+          <nav className="sidebar-scroller flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-[var(--sidebar-padding-x)] pb-1 [contain:layout_paint]">
+            {projectsNavReady ? (
+              ProjectsNavSection ? (
+                <ProjectsNavSection expanded={isExpanded} view={navView} />
+              ) : (
+                <ProjectsNavPlaceholder />
+              )
+            ) : null}
+          </nav>
+
+          <div className="shrink-0 border-t border-(--border)/55 bg-(--sidebar-bg) px-[var(--sidebar-padding-x)] pb-1.5 pt-1">
+            <ProfileFooter settingsActive={isRouteActive(pathname, "/settings")} />
+          </div>
         </div>
-      ) : null}
-      <div
-        className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
-          isExpanded ? "opacity-100" : "pointer-events-none opacity-0"
-        }`}
-      >
-        {isExpanded ? (
-          <>
-            <div className="sticky top-0 z-50 flex h-[var(--h-toolbar)] shrink-0 items-center gap-1 bg-(--sidebar-bg) px-2">
-              <button
-                onClick={() => onSetPinnedOpen(false)}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
-                title="Collapse sidebar"
-                aria-label="Collapse sidebar"
-              >
-                <PanelLeftFilled className="h-3 w-3" strokeWidth={1.75} />
-              </button>
-              <button
-                onClick={() => window.history.back()}
-                className={HISTORY_STEPPER_CLASS}
-                title="Go back"
-                aria-label="Go back"
-              >
-                <ChevronLeft className="h-3 w-3" strokeWidth={1.75} />
-              </button>
-              <button
-                onClick={() => window.history.forward()}
-                className={HISTORY_STEPPER_CLASS}
-                title="Go forward"
-                aria-label="Go forward"
-              >
-                <ChevronRight className="h-3 w-3" strokeWidth={1.75} />
-              </button>
-              {/* Search is an icon here rather than a row of its own: it reclaims
-                  a full row for the content the sidebar actually exists to list. */}
-              <button
-                onClick={onOpenSearch}
-                className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg)"
-                title="Search sessions (⌘K)"
-                aria-label="Search sessions"
-              >
-                <SearchIcon className="h-4 w-4" />
-              </button>
-              {/* Session state, stated rather than hinted. The bell used to
-                  carry a bare blue dot that meant "something happened" and
-                  nothing more; a count of what is running — or of what finished
-                  while you were elsewhere — is the thing you actually wanted to
-                  know, and it reads without opening anything. */}
-              <SessionStatus running={runningSessions} finished={finishedSessions} />
-              {/* The bell swaps what the nav below lists — notifications when
-                  lit, the project tree otherwise — so it reads as a view toggle.
-                  Pressed is a foreground shift only, matching the other chrome
-                  buttons: a filled pill here sat lit whenever the notifications
-                  view was open, which read as a stuck hover state. */}
-              <button
-                onClick={onToggleNavView}
-                aria-pressed={navView === "notifications"}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-(--hl2) transition-colors hover:bg-(--hover) hover:text-(--fg) aria-pressed:text-(--fg)"
-                title={navView === "notifications" ? "Show projects" : "Show notifications"}
-                aria-label={navView === "notifications" ? "Show projects" : "Show notifications"}
-              >
-                <BellIcon className="h-4 w-4" />
-              </button>
-            </div>
-
-            <nav className="sidebar-scroller flex min-h-0 flex-1 flex-col gap-[var(--sidebar-row-gap)] overflow-x-hidden overflow-y-auto px-[var(--sidebar-padding-x)] py-0.5 [contain:layout_paint]">
-              <Link
-                href="/agent?new=1&replace=1"
-                prefetch={false}
-                onClick={(event) => {
-                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                  event.preventDefault();
-                  onNewTask();
-                }}
-                className="flex h-[var(--sidebar-row-height)] shrink-0 items-center gap-2 rounded-[var(--sidebar-row-radius)] px-2 text-(--fg)/85 transition-colors hover:bg-(--hover) hover:text-(--fg)"
-                title="New task"
-              >
-                <NewTaskIcon className="h-4 w-4 shrink-0 opacity-70" />
-                <span className="flex-1 truncate text-left text-[length:var(--fs-md)] font-normal">
-                  New task
-                </span>
-              </Link>
-              {tabs.map((tab) => (
-                <NavItemDesktop
-                  key={tab.href}
-                  href={tab.href}
-                  label={tab.label}
-                  Icon={tab.icon}
-                  active={isRouteActive(pathname, tab.href)}
-                />
-              ))}
-              {projectsNavReady ? (
-                ProjectsNavSection ? (
-                  <ProjectsNavSection expanded={isExpanded} view={navView} />
-                ) : (
-                  <ProjectsNavPlaceholder />
-                )
-              ) : null}
-            </nav>
-
-            <div className="shrink-0 bg-(--sidebar-bg) px-[var(--sidebar-padding-x)] pb-2 pt-1">
-              <ProfileFooter settingsActive={isRouteActive(pathname, "/settings")} />
-            </div>
-          </>
-        ) : null}
-      </div>
+      )}
     </aside>
   );
 }
 
-/**
- * What the sessions are doing, in the width of a chip.
- *
- * Running wins over finished: a live run is the thing you might want to go
- * watch, and a finished one will still be there afterwards. Nothing renders
- * when nothing is happening, so the resting nav stays quiet.
- */
-function SessionStatus({ running, finished }: { running: number; finished: number }) {
-  if (running > 0) {
-    return (
-      <span
-        className="flex shrink-0 items-center gap-1 rounded-md px-1.5 text-[length:var(--fs-xs)] tabular-nums text-(--hl2)"
-        title={`${running} ${running === 1 ? "session is" : "sessions are"} running`}
+function CollapsedRail({
+  pathname,
+  liveCount,
+  navView,
+  onExpand,
+  onNewTask,
+  onToggleNavView,
+}: {
+  pathname: string;
+  liveCount: number;
+  navView: NavView;
+  onExpand: () => void;
+  onNewTask: () => void;
+  onToggleNavView: () => void;
+}) {
+  return (
+    <div className="flex h-full flex-col items-center gap-0.5 py-1">
+      <NavIconButton label="Expand sidebar" onClick={onExpand}>
+        <PanelLeftHollow className="h-3.5 w-3.5" strokeWidth={1.6} />
+      </NavIconButton>
+      <NavIconButton label="New task" onClick={onNewTask}>
+        <Plus className="h-4 w-4" strokeWidth={1.6} />
+      </NavIconButton>
+      {tabs.map((tab) => (
+        <Link
+          key={tab.href}
+          href={tab.href}
+          prefetch={false}
+          title={tab.label}
+          aria-label={tab.label}
+          className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+            isRouteActive(pathname, tab.href)
+              ? "bg-(--active) text-(--fg)"
+              : "text-(--hl2) hover:bg-(--hover) hover:text-(--fg)"
+          }`}
+        >
+          <tab.icon className="h-4 w-4" strokeWidth={1.6} />
+        </Link>
+      ))}
+      <NavIconButton
+        label={navView === "recents" ? "Show projects" : "Recent sessions"}
+        active={navView === "recents"}
+        onClick={onToggleNavView}
       >
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-(--ok)" aria-hidden />
-        {running}
-      </span>
-    );
-  }
-  if (finished > 0) {
-    return (
-      <span
-        className="flex shrink-0 items-center gap-1 rounded-md px-1.5 text-[length:var(--fs-xs)] tabular-nums text-(--hl2)"
-        title={`${finished} ${finished === 1 ? "session" : "sessions"} finished while you were away`}
+        <span className="relative inline-flex">
+          <Clock className="h-4 w-4" strokeWidth={1.6} />
+          {liveCount > 0 ? (
+            <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-(--ok)" />
+          ) : null}
+        </span>
+      </NavIconButton>
+      <div className="flex-1" />
+      <Link
+        href="/settings"
+        prefetch={false}
+        title="Settings"
+        aria-label="Settings"
+        className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+          isRouteActive(pathname, "/settings")
+            ? "bg-(--active) text-(--fg)"
+            : "text-(--hl2) hover:bg-(--hover) hover:text-(--fg)"
+        }`}
       >
-        <span className="h-1.5 w-1.5 rounded-full bg-(--ok)/60" aria-hidden />
-        {finished}
-      </span>
-    );
-  }
-  return null;
+        <Settings className="h-3.5 w-3.5" strokeWidth={1.6} />
+      </Link>
+    </div>
+  );
 }
