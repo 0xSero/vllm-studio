@@ -15,9 +15,10 @@
     "dev": "bun --watch src/server.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "0.84.2",
+    "@earendil-works/pi-ai": "0.84.3",
     "@earendil-works/pi-coding-agent": "0.84.2",
     "@hono/node-server": "^2.0.12",
+    "@local-studio/harness": "workspace:*",
     "@lydell/node-pty": "1.2.0-beta.12",
     "@modelcontextprotocol/sdk": "1.30.0",
     "chromium-bidi": "0.12.0",
@@ -33,5 +34,8 @@
   },
   "overrides": {
     "brace-expansion": "5.0.9"
-  }
+  },
+  "workspaces": [
+    "packages/*"
+  ]
 }

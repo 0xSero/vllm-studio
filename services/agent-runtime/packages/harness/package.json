@@ -1,0 +1,21 @@
+{
+  "name": "@local-studio/harness",
+  "version": "0.84.3",
+  "private": true,
+  "type": "module",
+  "description": "Vendored @earendil-works/pi-agent-core 0.84.3 (agent loop, harness, session tree, tools).",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts",
+    "./session/testing": "./src/harness/session/testing/index.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "0.84.3",
+    "@earendil-works/pi-telemetry": "0.84.3",
+    "diff": "8.0.4",
+    "ignore": "7.0.5",
+    "typebox": "1.3.7",
+    "yaml": "2.9.0"
+  }
+}

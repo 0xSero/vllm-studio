@@ -17,6 +17,7 @@
     "declaration": false,
     "sourceMap": false,
     "incremental": false,
+    "rewriteRelativeImportExtensions": true,
     // The sources use fetch/Headers/ReadableStream types the way the frontend
     // program does (its lib includes dom); mirror that here.
     "lib": ["esnext", "dom"]
