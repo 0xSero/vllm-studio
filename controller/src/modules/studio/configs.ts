@@ -58,4 +58,18 @@ export const STUDIO_STARTER_PRESETS: StudioStarterPreset[] = [
       model: "deepseek-v4-flash",
     },
   },
+  {
+    id: "orcarouter",
+    name: "OrcaRouter",
+    description:
+      "Connect a hosted OpenAI-compatible gateway with one API key — one endpoint routes across many frontier models, with nothing to download.",
+    kind: "remote",
+    tags: ["remote", "instant"],
+    size_gb: null,
+    min_vram_gb: null,
+    remote: {
+      base_url: "https://api.orcarouter.ai/v1",
+      model: "orcarouter/auto",
+    },
+  },
 ];
