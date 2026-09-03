@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { startAutomationScheduler } from "./automation-scheduler";
+import "./harness";
 import { createAgentRuntimeApp } from "./http/app";
 import { createSessionListWatcher } from "./session-list-watcher";
 
