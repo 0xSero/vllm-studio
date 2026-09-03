@@ -163,11 +163,16 @@ export const recipeToLaunchInput = (
   const runtimeReference = recipe.runtime.kind === "docker" ? recipe.runtime.ref : "";
   const dockerImage =
     runtimeReference.includes("/") || runtimeReference.includes(":") ? runtimeReference : null;
+  // llama.cpp is the one engine that runs natively: a binary/system runtime names
+  // the executable (or a bare name on PATH); every other engine runs in a container.
+  const native =
+    recipe.backend === "llamacpp" &&
+    (recipe.runtime.kind === "binary" || recipe.runtime.kind === "system");
   return {
     name: LLM_INSTANCE,
     engine: recipe.backend as EngineId,
     recipeId: recipe.id,
-    runtime: "docker",
+    runtime: native ? "process" : "docker",
     deviceCount: devices.length,
     ...(devices.length > 0 ? { devices } : {}),
     portOverride: recipe.port || config.inference_port,
@@ -189,6 +194,7 @@ export const recipeToLaunchInput = (
     extraArgs: serializeRecipeExtraArguments(recipe),
     env: recipe.env_vars ?? {},
     dockerImage,
+    binary: native ? recipe.runtime.ref : null,
     ...(override ? { commandOverride: override } : {}),
   };
 };

@@ -76,6 +76,21 @@ export const VLLM_METRIC_NAMES: EngineMetricNames = {
   ttftCount: "vllm:time_to_first_token_seconds_count",
 };
 
+// llama-server --metrics (process launches pass it by default). Throughput comes from
+// the gauge names; token totals drive the same counter-delta math as vLLM/SGLang. There
+// is no TTFT histogram, so those names resolve to nothing and TTFT stays 0.
+export const LLAMACPP_METRIC_NAMES: EngineMetricNames = {
+  promptTokens: ["llamacpp:prompt_tokens_total"],
+  generationTokens: ["llamacpp:tokens_predicted_total"],
+  promptThroughput: ["llamacpp:prompt_tokens_seconds"],
+  generationThroughput: ["llamacpp:predicted_tokens_seconds"],
+  runningRequests: ["llamacpp:requests_processing"],
+  pendingRequests: ["llamacpp:requests_deferred"],
+  kvCacheUsage: ["llamacpp:kv_cache_usage_ratio"],
+  ttftSum: "llamacpp:time_to_first_token_seconds_sum",
+  ttftCount: "llamacpp:time_to_first_token_seconds_count",
+};
+
 export const SGLANG_METRIC_NAMES: EngineMetricNames = {
   promptTokens: ["sglang:prompt_tokens_total", "sglang:prefill_tokens_total"],
   generationTokens: [

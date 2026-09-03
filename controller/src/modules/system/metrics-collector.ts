@@ -4,6 +4,7 @@ import { getGpuInfo } from "./platform/gpu";
 import { getSystemRuntimeInfo } from "../engines/runtimes/runtime-info";
 import type { UsageAggregate } from "../../stores/inference-request-store";
 import {
+  LLAMACPP_METRIC_NAMES,
   SGLANG_METRIC_NAMES,
   VLLM_METRIC_NAMES,
   scrapeEngineMetrics,
@@ -136,12 +137,21 @@ export const startMetricsCollector = (context: AppContext): Effect.Effect<never>
       let generationTokensTotal = 0;
       let avgTtftMs = 0;
 
-      if (current.backend === "vllm" || current.backend === "sglang") {
+      if (
+        current.backend === "vllm" ||
+        current.backend === "sglang" ||
+        current.backend === "llamacpp"
+      ) {
         const vllmMetrics = yield* scrapeVllmMetrics(context.config.inference_port);
         const now = Date.now() / 1000;
         const elapsed =
           lastMetricsTime > 0 ? now - lastMetricsTime : METRICS_LIFETIME_UPTIME_INCREMENT_SECONDS;
-        const names = current.backend === "sglang" ? SGLANG_METRIC_NAMES : VLLM_METRIC_NAMES;
+        const names =
+          current.backend === "sglang"
+            ? SGLANG_METRIC_NAMES
+            : current.backend === "llamacpp"
+              ? LLAMACPP_METRIC_NAMES
+              : VLLM_METRIC_NAMES;
         if (
           elapsed > 0 &&
           Object.keys(vllmMetrics).length > 0 &&

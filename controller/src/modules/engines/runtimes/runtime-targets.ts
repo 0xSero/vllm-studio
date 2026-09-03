@@ -21,6 +21,9 @@ const ENGINE_LABEL: Record<EngineBackend, string> = {
   exllamav3: "exllamav3 (TabbyAPI)",
 };
 
+/** llama.cpp runs as a native process in this fork; it has no docker target row. */
+const DOCKER_ENGINES = ENGINE_IDS.filter((id): id is EngineBackend => id !== "llamacpp");
+
 const DOCKER_COMMAND_TIMEOUT_MS = 3_000;
 const TARGET_CACHE_TTL_MS = 15_000;
 
@@ -86,7 +89,7 @@ export const getRuntimeTargets = (host: HostProfile): Effect.Effect<RuntimeTarge
     if (cache && cache.expiresAt > now) return cache.value;
     const docker = yield* dockerImageState();
     const targets: RuntimeTarget[] = [];
-    for (const backend of ENGINE_IDS) {
+    for (const backend of DOCKER_ENGINES) {
       const spec = engineSpec(backend);
       const support = spec.supports(host);
       const image = spec.image(host);

@@ -11,15 +11,17 @@
  *      deadline — there is no status field to go stale.
  */
 
-/** The engine roster. Matches the shared `EngineBackend` exactly. */
-export type EngineId = "vllm" | "sglang" | "exllamav3";
+/** The engine roster: the shared `EngineBackend` (docker engines) plus llama.cpp,
+ *  which this fork runs as a native process. */
+export type EngineId = "vllm" | "sglang" | "exllamav3" | "llamacpp";
 
-export const ENGINE_IDS: readonly EngineId[] = ["vllm", "sglang", "exllamav3"] as const;
+export const ENGINE_IDS: readonly EngineId[] = ["vllm", "sglang", "exllamav3", "llamacpp"] as const;
 
 export type Accelerator = "cuda" | "rocm" | "metal" | "xpu" | "cpu";
-/** Engines run in containers, full stop. The one-member union keeps the field
- *  self-describing in records and plans. */
-export type EngineRuntimeKind = "docker";
+/** Where an engine runs: a container (every docker engine) or a native process
+ *  (llama.cpp). Distinct from the installer-facing `RuntimeKind` in
+ *  controller/contracts/system.ts, which describes how a runtime was installed. */
+export type EngineRuntimeKind = "process" | "docker";
 export type HostPlatform = "linux" | "darwin" | "win32";
 export type HostArch = "x64" | "arm64";
 
@@ -87,7 +89,7 @@ export interface Mount {
  */
 export interface LaunchPlan {
   readonly kind: EngineRuntimeKind;
-  /** The container's entrypoint args. */
+  /** process: [binary, ...args]. docker: the container's entrypoint args. */
   readonly argv: readonly string[];
   readonly image?: string;
   readonly env: Readonly<Record<string, string>>;
@@ -125,7 +127,7 @@ export interface LaunchRequest {
   readonly runtime: EngineRuntimeKind;
   readonly devices: readonly DeviceId[];
   readonly port: number;
-  /** Absolute path to the model directory. */
+  /** Absolute path to the model directory, or the .gguf file for llama.cpp. */
   readonly modelPath: string;
   readonly servedModelName: string;
   readonly options: ServingOptions;
@@ -133,6 +135,8 @@ export interface LaunchRequest {
   readonly extraArgs: readonly string[];
   readonly env: Readonly<Record<string, string>>;
   readonly dockerImage: string | null;
+  /** Resolved executable for process launches; null for docker. */
+  readonly binary: string | null;
 }
 
 /** An engine as the compute layer sees it: what it supports, how to plan a
@@ -146,6 +150,8 @@ export interface ComputeEngineSpec {
   readonly metrics: MetricMap;
   /** The pinned serving image for this engine on this hardware. */
   readonly image: (host: HostProfile) => string | null;
+  /** Default executable name for process launches when the recipe does not pin one. */
+  readonly defaultBinary?: string;
   readonly defaultPort: number;
 }
 

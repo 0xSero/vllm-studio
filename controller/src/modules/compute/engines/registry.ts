@@ -9,6 +9,7 @@ import type {
 } from "../contracts";
 import { applyDevices } from "./devices";
 import { exllamav3 } from "./exllamav3";
+import { llamacpp } from "./llamacpp";
 import { sglang } from "./sglang";
 import { vllm } from "./vllm";
 
@@ -16,6 +17,7 @@ const SPECS: Readonly<Record<EngineId, ComputeEngineSpec>> = {
   vllm,
   sglang,
   exllamav3,
+  llamacpp,
 };
 
 export const engineSpec = (id: EngineId): ComputeEngineSpec => SPECS[id];

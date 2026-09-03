@@ -8,6 +8,7 @@ import type { DeviceId, HostProfile, EngineRuntimeKind } from "./contracts";
 import { makeTelemetry, profileFrom, type Telemetry } from "./devices/snapshot";
 import { makeInstanceStore, type InstanceStore } from "./instances/store";
 import { makeDockerLauncher } from "./launchers/docker";
+import { makeProcessLauncher } from "./launchers/process";
 import type { Launcher } from "./launchers/launcher";
 import { makeComputeService, type ComputeService } from "./lifecycle";
 
@@ -81,8 +82,11 @@ export const makeCompute = (
       return profile;
     });
 
-  const launcherFor = (_runtime: EngineRuntimeKind): Launcher =>
-    makeDockerLauncher(lastProfile?.accelerator ?? "cuda");
+  const processLauncher = makeProcessLauncher(store.logPath);
+  const launcherFor = (runtime: EngineRuntimeKind): Launcher =>
+    runtime === "docker"
+      ? makeDockerLauncher(lastProfile?.accelerator ?? "cuda")
+      : processLauncher;
 
   const freeDevices = (): Effect.Effect<readonly DeviceId[]> =>
     telemetry

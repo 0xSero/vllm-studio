@@ -1,4 +1,4 @@
-export type Backend = "vllm" | "sglang" | "exllamav3";
+export type Backend = "vllm" | "sglang" | "exllamav3" | "llamacpp";
 
 /** Docker is the only launchable runtime; the legacy kinds remain parseable so
  *  recipes saved by older versions keep loading (they launch via docker anyway). */

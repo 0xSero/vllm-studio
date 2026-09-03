@@ -59,6 +59,8 @@ export interface ComputeLaunchInput {
   readonly extraArgs: readonly string[];
   readonly env: Readonly<Record<string, string>>;
   readonly dockerImage: string | null;
+  /** Executable for process launches; null = the engine's default binary. */
+  readonly binary: string | null;
 }
 
 export interface InstanceView {
@@ -251,6 +253,7 @@ export const makeComputeService = (deps: ComputeDeps): ComputeService => {
             extraArgs: input.extraArgs,
             env: input.env,
             dockerImage: input.dockerImage,
+            binary: input.binary ?? spec.defaultBinary ?? null,
           });
 
       const reference = yield* deps
