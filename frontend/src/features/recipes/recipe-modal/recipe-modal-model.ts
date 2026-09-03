@@ -25,6 +25,11 @@ function useRuntimeInstallation(backend: Backend) {
   const [installing, setInstalling] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const install = useCallback(async () => {
+    // llama.cpp is a native build, not a pulled image: nothing to install.
+    if (backend === "llamacpp") {
+      setMessage("llama.cpp runs natively; point the recipe runtime at your llama-server");
+      return;
+    }
     setInstalling(true);
     setMessage(null);
     try {

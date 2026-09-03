@@ -55,14 +55,20 @@ export const runtimeOptionsFor = (
 ): ServeRuntimeOption[] => {
   const defaultRuntime = defaultRuntimeForBackend(backend);
   const managed = targets.find((target) => isManagedServeRuntimeTarget(backend, target));
+  // llama.cpp is a native binary the operator builds; there is no image to pull.
+  const native = backend === "llamacpp";
   const options: ServeRuntimeOption[] = [
     {
       id: runtimeId(defaultRuntime),
       label: defaultRuntime.label ?? `${ENGINE_LABEL[backend]} (Docker)`,
-      detail: managed?.version ? `pinned image · ${managed.version}` : "engine's pinned image",
+      detail: native
+        ? "llama-server on PATH"
+        : managed?.version
+          ? `pinned image · ${managed.version}`
+          : "engine's pinned image",
       runtime: defaultRuntime,
-      installed: Boolean(managed?.installed),
-      canInstall: !managed?.installed,
+      installed: native || Boolean(managed?.installed),
+      canInstall: !native && !managed?.installed,
       version: managed?.version ?? null,
     },
   ];

@@ -90,10 +90,20 @@ const EXLLAMAV3: EngineCapabilities = {
   chatTemplates: false,
 };
 
+/** llama.cpp runs natively; its knobs (mmproj, sampling, speculation, …) are
+ *  passed through as extra args rather than modelled as editor fields. */
+const LLAMACPP: EngineCapabilities = {
+  ...EXLLAMAV3,
+  backend: "llamacpp",
+  visibleDevices: false,
+  maxNumSeqs: true,
+};
+
 const CAPABILITIES: Record<Backend, EngineCapabilities> = {
   vllm: VLLM,
   sglang: SGLANG,
   exllamav3: EXLLAMAV3,
+  llamacpp: LLAMACPP,
 };
 
 export const getEngineCapabilities = (backend: Backend | undefined): EngineCapabilities =>
@@ -104,4 +114,5 @@ export const ENGINE_LABEL: Record<Backend, string> = {
   vllm: "vLLM",
   sglang: "SGLang",
   exllamav3: "exllamav3",
+  llamacpp: "llama.cpp",
 };

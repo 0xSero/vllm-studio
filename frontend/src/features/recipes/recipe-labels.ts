@@ -2,6 +2,7 @@ export const BACKEND_LABELS: Record<string, string> = {
   vllm: "vLLM",
   sglang: "SGLang",
   exllamav3: "exllamav3",
+  llamacpp: "llama.cpp",
 };
 
 export const formatBackendLabel = (backend?: string | null): string => {

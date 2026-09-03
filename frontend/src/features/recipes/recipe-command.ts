@@ -1,7 +1,4 @@
-import {
-  isInternalRecipeKey,
-  isJsonStringArgumentKey,
-} from "@local-studio/contracts/engine-args";
+import { isInternalRecipeKey, isJsonStringArgumentKey } from "@local-studio/contracts/engine-args";
 import type { RecipeEditor } from "./recipe-editor";
 import { normalizeExtraArgKey } from "./extra-args";
 import { prepareRecipeForSave } from "./prepare-recipe";
@@ -90,12 +87,14 @@ export const generateCommand = (
 function appendBackendCommand(args: string[], backend: string) {
   if (backend === "vllm") args.push("vllm serve");
   else if (backend === "exllamav3") args.push("tabbyapi");
+  else if (backend === "llamacpp") args.push("llama-server");
   else args.push("python -m sglang.launch_server");
 }
 
 function appendModelArgument(args: string[], backend: string, modelPath?: string) {
   if (!modelPath) return;
   if (backend === "exllamav3") args.push(`--model-dir ${modelPath}`);
+  else if (backend === "llamacpp") args.push(`--model ${modelPath}`);
   else if (backend === "sglang") args.push(`--model-path ${modelPath}`);
   else args.push(modelPath);
 }
@@ -107,13 +106,15 @@ function appendNetworkArguments(args: string[], backend: string, payload: Recipe
     args.push(
       backend === "exllamav3"
         ? `--model-name ${payload.served_model_name}`
-        : `--served-model-name ${payload.served_model_name}`,
+        : backend === "llamacpp"
+          ? `--alias ${payload.served_model_name}`
+          : `--served-model-name ${payload.served_model_name}`,
     );
   }
 }
 
 function appendParallelArguments(args: string[], backend: string, payload: RecipeCommandPayload) {
-  if (backend === "exllamav3") return;
+  if (backend === "exllamav3" || backend === "llamacpp") return;
   if (payload.tensor_parallel_size && payload.tensor_parallel_size > 1) {
     args.push(`--tensor-parallel-size ${payload.tensor_parallel_size}`);
   }
@@ -125,6 +126,11 @@ function appendParallelArguments(args: string[], backend: string, payload: Recip
 function appendContextArguments(args: string[], backend: string, payload: RecipeCommandPayload) {
   if (backend === "exllamav3") {
     if (payload.max_model_len) args.push(`--max-seq-len ${payload.max_model_len}`);
+    return;
+  }
+  if (backend === "llamacpp") {
+    if (payload.max_model_len) args.push(`--ctx-size ${payload.max_model_len}`);
+    if (payload.max_num_seqs) args.push(`--parallel ${payload.max_num_seqs}`);
     return;
   }
   if (payload.max_model_len) {
@@ -158,7 +164,7 @@ function appendBackendSpecificArguments(
   backend: string,
   payload: RecipeCommandPayload,
 ) {
-  if (backend === "exllamav3") {
+  if (backend === "exllamav3" || backend === "llamacpp") {
     appendExtraArgsToCommand(args, payload.extra_args ?? {});
     return;
   }
