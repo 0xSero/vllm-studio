@@ -8,10 +8,12 @@ import { frontendDir, git, repoRoot, run } from "./lib.mjs";
 
 /**
  * pre-commit: no commits on main/dev, staged changes capped at 15 files and
- * 600 source lines (lockfiles, snapshots, deletions, and the project.mjs
- * entry exempt; skipped during merges), then the fast per-workspace checks
- * for whatever the commit touches.
+ * 600 source lines (lockfiles, snapshots, deletions, vendored packages under
+ * services/agent-runtime/packages/, and the project.mjs entry exempt; skipped
+ * during merges), then the fast per-workspace checks for whatever the commit
+ * touches.
  */
+const isVendored = (file) => /^services\/agent-runtime\/packages\//.test(file);
 export function preCommit() {
   const branch = git(["branch", "--show-current"]);
   if (["main", "dev"].includes(branch)) {
@@ -20,6 +22,7 @@ export function preCommit() {
   const stagedOutput = git(["diff", "--cached", "--name-only"]);
   const files = stagedOutput ? stagedOutput.split("\n") : [];
   const activeFiles = files.filter((file) => existsSync(path.join(repoRoot, file)));
+  const countedFiles = activeFiles.filter((file) => !isVendored(file));
   const lines = git(["diff", "--cached", "--numstat"])
     .split("\n")
     .reduce((total, row) => {
@@ -28,6 +31,7 @@ export function preCommit() {
       if (
         ["frontend/desktop/project.mjs", "scripts/project.mjs"].includes(file ?? "") ||
         !existsSync(path.join(repoRoot, file ?? "")) ||
+        isVendored(file ?? "") ||
         /(^|\/)(package-lock\.json|bun\.lockb?|.*\.snap)$/.test(file ?? "")
       ) {
         return total;
@@ -41,9 +45,9 @@ export function preCommit() {
   } catch {
     mergeInProgress = false;
   }
-  if (!mergeInProgress && (activeFiles.length > 15 || lines > 600)) {
+  if (!mergeInProgress && (countedFiles.length > 15 || lines > 600)) {
     throw Error(
-      `pre-commit: staged change is too large (${activeFiles.length} files, ${lines} source lines); limit is 15 files and 600 source lines`,
+      `pre-commit: staged change is too large (${countedFiles.length} files, ${lines} source lines); limit is 15 files and 600 source lines`,
     );
   }
   if (activeFiles.some((file) => /^(frontend|shared)\//.test(file))) {
