@@ -40,8 +40,14 @@ const parseEngineMetrics = (status: number, text: string): EngineScrape => {
   return scrape;
 };
 
+// llama-server started with --api-key-file protects /metrics too; reuse the proxy's key.
+const inferenceAuthHeaders = (): Record<string, string> => {
+  const key = process.env["INFERENCE_API_KEY"] ?? "";
+  return key ? { Authorization: `Bearer ${key}` } : {};
+};
+
 export const scrapeEngineMetrics = (port: number, timeoutMs: number): Effect.Effect<EngineScrape> =>
-  fetchLocal(port, "/metrics", { timeoutMs }).pipe(
+  fetchLocal(port, "/metrics", { timeoutMs, headers: inferenceAuthHeaders() }).pipe(
     Effect.flatMap((response) =>
       response.status === 200
         ? Effect.tryPromise(() => response.text()).pipe(
